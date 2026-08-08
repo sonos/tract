@@ -21,6 +21,54 @@ pub struct DeviceArenaView {
 }
 
 impl DeviceArenaView {
+    /// Build a view over any owned device tensor. `shape`/`strides` are in
+    /// elements of `dt`; `offset_bytes` from the buffer start. The backing
+    /// tensor stays alive as long as any view of it does.
+    pub fn from_owned(
+        arena: Arc<Box<dyn OwnedDeviceTensor>>,
+        dt: DatumType,
+        shape: TVec<usize>,
+        strides: TVec<isize>,
+        offset_bytes: usize,
+    ) -> TractResult<Self> {
+        // Unlike arena slots, these views may be non-dense (e.g. the valid
+        // region of a capacity buffer); validate bounds, not density.
+        ensure!(shape.len() == strides.len());
+        ensure!(strides.iter().all(|&s| s >= 0), "negative strides unsupported");
+        let max_index: usize = shape
+            .iter()
+            .zip(strides.iter())
+            .map(|(&d, &s)| d.saturating_sub(1) * s as usize)
+            .sum();
+        let needed = offset_bytes + (max_index + 1) * dt.size_of();
+        let arena_bytes = arena.len() * arena.datum_type().size_of();
+        ensure!(
+            shape.iter().product::<usize>() == 0 || needed <= arena_bytes,
+            "view out of bounds: needs {needed} bytes, arena has {arena_bytes}"
+        );
+        let len = shape.iter().product();
+        Ok(DeviceArenaView { arena, dt, len, shape, strides, offset_bytes, exotic_fact: None })
+    }
+
+    /// Metadata-only slice keeping `[start, end)` along `axis`: same arena,
+    /// same strides, adjusted shape and byte offset. No bytes move, and the
+    /// backing buffer stays alive through the new view's Arc, so other views
+    /// of the arena (e.g. longer KV-cache snapshots) remain valid.
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> TractResult<Self> {
+        ensure!(self.exotic_fact.is_none(), "cannot slice a view with an exotic fact");
+        ensure!(axis < self.shape.len(), "axis {axis} out of rank {}", self.shape.len());
+        ensure!(
+            start <= end && end <= self.shape[axis],
+            "invalid slice [{start}, {end}) on axis {axis} of len {}",
+            self.shape[axis]
+        );
+        let mut shape = self.shape.clone();
+        shape[axis] = end - start;
+        let offset_bytes =
+            self.offset_bytes + start * self.strides[axis] as usize * self.dt.size_of();
+        Self::from_owned(self.arena.clone(), self.dt, shape, self.strides.clone(), offset_bytes)
+    }
+
     #[inline]
     pub fn shape(&self) -> &[usize] {
         self.shape.as_slice()
@@ -71,7 +119,49 @@ impl DeviceArenaView {
         } else {
             self.len() * self.dt.size_of()
         };
-        self.arena.get_bytes_slice(self.offset_bytes, len)
+        if self.is_dense() {
+            return self.arena.get_bytes_slice(self.offset_bytes, len);
+        }
+        // Non-dense view: gather row by row (contiguous rows in one slice,
+        // element-wise when the last axis is strided too, e.g. transposed
+        // KV-cache layouts).
+        let esize = self.dt.size_of();
+        let rank = self.shape.len();
+        let row = self.shape[rank - 1];
+        let last_stride = self.strides[rank - 1] as usize;
+        let outer: usize = self.shape[..rank - 1].iter().product();
+        let mut out = Vec::with_capacity(len);
+        for r in 0..outer {
+            let mut rem = r;
+            let mut offset = self.offset_bytes;
+            for ax in (0..rank - 1).rev() {
+                let ix = rem % self.shape[ax];
+                rem /= self.shape[ax];
+                offset += ix * self.strides[ax] as usize * esize;
+            }
+            if last_stride == 1 {
+                out.extend_from_slice(&self.arena.get_bytes_slice(offset, row * esize));
+            } else {
+                for i in 0..row {
+                    out.extend_from_slice(
+                        &self.arena.get_bytes_slice(offset + i * last_stride * esize, esize),
+                    );
+                }
+            }
+        }
+        out
+    }
+
+    /// True when the view's strides are the natural (packed) strides.
+    pub fn is_dense(&self) -> bool {
+        let mut expect = 1isize;
+        for (d, s) in self.shape.iter().zip(self.strides.iter()).rev() {
+            if *d != 1 && *s != expect {
+                return false;
+            }
+            expect *= *d as isize;
+        }
+        true
     }
 
     /// Reshaped tensor with given shape.

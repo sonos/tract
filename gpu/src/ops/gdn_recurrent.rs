@@ -57,7 +57,7 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
         let output = make_tensor_for_node(session, node_id, DatumType::F16, tensors[0].shape())?;
         // The memory arena is keyed by node, so a second output cannot use the
         // same arena slot as the first one.
-        let final_state = DeviceTensor::uninitialized_dt(DatumType::F32, tensors[5].shape())?;
+        let final_state = DeviceTensor::uninitialized_dt(tensors[5].datum_type(), tensors[5].shape())?;
         (self.dispatch)(
             tensors[0],
             tensors[1],
@@ -81,7 +81,7 @@ impl TypedOp for GpuGatedDeltaNetRecurrent {
             ensure!(facts[2].datum_type == DatumType::F16);
             ensure!(facts[3].datum_type == DatumType::F32);
             ensure!(facts[4].datum_type == DatumType::F16);
-            ensure!(facts[5].datum_type == DatumType::F32);
+            ensure!(matches!(facts[5].datum_type, DatumType::F16 | DatumType::F32));
             Ok(tvec![facts[0].without_value(), facts[5].without_value()])
         })
         .with_context(|| format!("invalid facts for {}", self.name()))

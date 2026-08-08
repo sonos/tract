@@ -19,10 +19,17 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
-use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
-use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
-use tract_gpu::tensor::{DeviceTensor, IntoDevice};
+use tract_gpu::rewrite_rules::cast::bypass_device_downcast_roundtrip;
+use tract_gpu::rewrite_rules::rms_norm::{
+    bypass_float_downcast_roundtrip, fuse_rms_norm_scale, fuse_scaled_rms_norm_in_cast,
+    fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast, swap_rms_norm_cast_mul,
+};
+use tract_gpu::sync::{
+    DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
+};
+use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
+use tract_transformers::ops::moe_ffn::{ExpertLayout, MoeFfn, RouteTopK, RoutedInputMode};
 
 use crate::rewrite_rules;
 
@@ -185,7 +192,12 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("swap_rms_norm_cast_mul", swap_rms_norm_cast_mul)
+            .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
+            .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
+            .with_rule_for("bypass_float_downcast_roundtrip", bypass_float_downcast_roundtrip)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
 
@@ -199,6 +211,9 @@ impl MetalTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("bypass_device_downcast_roundtrip", bypass_device_downcast_roundtrip)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
@@ -281,6 +296,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
+        if let Some(op) = node.op_as::<MoeFfn>()
+            && let Some(outlet_ids) =
+                convert_q40_moe_ffn_to_metal(source, node, target, mapping, op)?
+        {
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
         // Const: inline conversion, not a GPU op
         if let Some(op) = node.op_as::<Const>()
             && DeviceTensor::is_supported_dt(op.val().datum_type())
@@ -325,7 +346,23 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         {
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let is_inplace_kv = gpu_op.is::<ops::fused_sdpa::MetalFusedSdpa>();
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
+            if is_inplace_kv {
+                // The fused in-place KV op's cache outputs (slots 1, 2) must
+                // stay device-resident: they are zero-copy views that the
+                // caller only ever feeds back as next-step inputs. A ToHost
+                // sync here would re-materialize the whole cache per step.
+                let mut synced = sync_model_outputs_if_required(
+                    source,
+                    node,
+                    target,
+                    tvec!(outlet_ids[0]),
+                )?;
+                synced.push(outlet_ids[1]);
+                synced.push(outlet_ids[2]);
+                return Ok(synced);
+            }
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
@@ -333,6 +370,486 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
+}
+
+fn sync_outlet_if_required(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    outlet: OutletId,
+    sync_kind: DeviceSyncKind,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    match sync_kind {
+        DeviceSyncKind::ToHost if target.outlet_fact(outlet)?.as_device_fact().is_some() => {
+            Ok(target.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
+        }
+        DeviceSyncKind::ToDevice if target.outlet_fact(outlet)?.as_device_fact().is_none() => {
+            let host_fact = target.outlet_fact(outlet)?.clone();
+            if let Some(konst) = host_fact.konst.as_ref()
+                && konst.as_device_tensor().is_none()
+            {
+                let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
+                let device_fact = DeviceFact::from_host(host_fact)?;
+                let fact = target.outlet_fact_mut(outlet)?;
+                *fact = device_fact.into_exotic_fact();
+                fact.konst = Some(device_konst.into_arc_tensor());
+                return Ok(outlet);
+            }
+            ensure!(
+                host_fact.datum_type.is_copy(),
+                "Only copy DatumType can be synced to Device: {:?}",
+                host_fact.datum_type
+            );
+            Ok(target.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
+        }
+        _ => Ok(outlet),
+    }
+}
+
+/// Sync after each MoE routed-matmul dispatch (see
+/// `MetalRoutedQ40MatMul::sync_after_dispatch`). Defaults to on: without it,
+/// GPT-OSS on Metal degenerates to constant <|endofprompt|> past ~1024 tokens
+/// of context. `TRACT_METAL_MOE_UNSAFE_NOSYNC=1` disables it, for measuring
+/// the eventual real fix against the fast broken baseline.
+pub(crate) fn moe_sync_after_dispatch() -> bool {
+    !env_flag("TRACT_METAL_MOE_UNSAFE_NOSYNC")
+}
+
+fn q40_moe_activation_supported(op: &MoeFfn) -> bool {
+    matches!(op.activation.as_str(), "silu")
+        || (op.has_w3 && matches!(op.activation.as_str(), "swiglu"))
+}
+
+fn env_flag(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
+}
+
+#[derive(Default)]
+struct MoeInputIndexes {
+    w3: Option<usize>,
+    wg_bias: Option<usize>,
+    w1_bias: Option<usize>,
+    w3_bias: Option<usize>,
+    w2_bias: Option<usize>,
+}
+
+fn moe_input_indexes(op: &MoeFfn) -> MoeInputIndexes {
+    let mut next = 4;
+    let mut take = |present: bool| {
+        if present {
+            let ix = next;
+            next += 1;
+            Some(ix)
+        } else {
+            None
+        }
+    };
+    MoeInputIndexes {
+        w3: take(op.has_w3),
+        wg_bias: take(op.has_wg_bias),
+        w1_bias: take(op.has_w1_bias),
+        w3_bias: take(op.has_w3_bias),
+        w2_bias: take(op.has_w2_bias),
+    }
+}
+
+fn fact_is_f16_or_f32(fact: &TypedFact) -> bool {
+    matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
+}
+
+fn sync_f32_input(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    outlet: OutletId,
+    fact: &TypedFact,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    let device = sync_outlet_if_required(
+        target,
+        format!("{name}.to-device"),
+        outlet,
+        DeviceSyncKind::ToDevice,
+    )?;
+    if fact.datum_type == f32::datum_type() {
+        Ok(device)
+    } else {
+        Ok(target.wire_node(
+            format!("{name}.cast-f32"),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[device],
+        )?[0])
+    }
+}
+
+fn add_routed_bias(
+    target: &mut TypedModel,
+    name: impl Into<String>,
+    value: OutletId,
+    bias: OutletId,
+    route_expert_ids: OutletId,
+) -> TractResult<OutletId> {
+    let name = name.into();
+    Ok(target.wire_node(
+        format!("{name}.bias-add"),
+        ops::MetalRoutedBiasAdd,
+        &[value, bias, route_expert_ids],
+    )?[0])
+}
+
+fn convert_q40_moe_ffn_to_metal(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &HashMap<OutletId, OutletId>,
+    op: &MoeFfn,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let log_lowering = env_flag("TRACT_METAL_LOG_Q40_MOE");
+    if env_flag("TRACT_METAL_DISABLE_Q40_MOE") {
+        return Ok(None);
+    }
+    if op.expert_layout != ExpertLayout::Linear
+        || !q40_moe_activation_supported(op)
+        || (op.act_limit_bits.is_some() && !op.has_w3)
+    {
+        if log_lowering {
+            eprintln!(
+                "Metal Q40 MoE skip {}: metadata layout={:?} activation={} has_w3={} biases=[wg:{} w1:{} w3:{} w2:{}] act_limit={}",
+                node.name,
+                op.expert_layout,
+                op.activation,
+                op.has_w3,
+                op.has_wg_bias,
+                op.has_w1_bias,
+                op.has_w3_bias,
+                op.has_w2_bias,
+                op.act_limit_bits.is_some()
+            );
+        }
+        return Ok(None);
+    }
+
+    let facts = source.node_input_facts(node.id)?;
+    let indexes = moe_input_indexes(op);
+    let x_rank_ok =
+        facts[0].rank() == 2 || (facts[0].rank() == 3 && facts[0].shape.dims()[0] == 1.to_dim());
+    let x_dt_ok = matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16);
+    let wg_dt_ok = matches!(facts[1].datum_type, DatumType::F32 | DatumType::F16);
+    let w1_q40 = as_quant_fact(facts[2], &Q4_0).is_some();
+    let w2_q40 = as_quant_fact(facts[3], &Q4_0).is_some();
+    let w3_q40 =
+        !op.has_w3 || indexes.w3.is_some_and(|ix| as_quant_fact(facts[ix], &Q4_0).is_some());
+    let num_experts = facts[2].shape[0].clone();
+    let d_hidden = facts[2].shape[1].clone();
+    let d_model = facts[2].shape[2].clone();
+    let wg_bias_ok = indexes.wg_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix]) && facts[ix].rank() == 1 && facts[ix].shape[0] == num_experts
+    });
+    let w1_bias_ok = indexes.w1_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_hidden
+    });
+    let w3_bias_ok = indexes.w3_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_hidden
+    });
+    let w2_bias_ok = indexes.w2_bias.is_none_or(|ix| {
+        fact_is_f16_or_f32(facts[ix])
+            && facts[ix].rank() == 2
+            && facts[ix].shape[0] == num_experts
+            && facts[ix].shape[1] == d_model
+    });
+    let facts_supported = x_rank_ok
+        && x_dt_ok
+        && wg_dt_ok
+        && w1_q40
+        && w2_q40
+        && w3_q40
+        && wg_bias_ok
+        && w1_bias_ok
+        && w3_bias_ok
+        && w2_bias_ok;
+    if log_lowering {
+        eprintln!(
+            "Metal Q40 MoE candidate {}: x_rank={} x_dt={:?} wg_dt={:?} w1_q40={} w2_q40={} w3_q40={} shapes x={:?} wg={:?} w1={:?} w2={:?}{}",
+            node.name,
+            facts[0].rank(),
+            facts[0].datum_type,
+            facts[1].datum_type,
+            w1_q40,
+            w2_q40,
+            w3_q40,
+            facts[0].shape,
+            facts[1].shape,
+            facts[2].shape,
+            facts[3].shape,
+            indexes.w3.map(|ix| format!(" w3={:?}", facts[ix].shape)).unwrap_or_default()
+        );
+    }
+    if !facts_supported {
+        if log_lowering {
+            eprintln!("Metal Q40 MoE skip {}: unsupported facts", node.name);
+        }
+        return Ok(None);
+    }
+
+    if log_lowering {
+        eprintln!("Metal Q40 MoE lowering: {}", node.name);
+    }
+
+    let x_device = sync_outlet_if_required(
+        target,
+        format!("{}.x.to-device", node.name),
+        mapping[&node.inputs[0]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let x_device = if facts[0].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.x.cast-f32", node.name),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[x_device],
+        )?[0]
+    } else {
+        x_device
+    };
+    let wg_device = sync_outlet_if_required(
+        target,
+        format!("{}.wg.to-device", node.name),
+        mapping[&node.inputs[1]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let wg_device = if facts[1].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.wg.cast-f32", node.name),
+            metal_cast_new(f32::datum_type()).unwrap(),
+            &[wg_device],
+        )?[0]
+    } else {
+        wg_device
+    };
+    let wg_bias_device = indexes
+        .wg_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.wg_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+
+    let routes = if env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK") {
+        if indexes.wg_bias.is_some() {
+            if log_lowering {
+                eprintln!(
+                    "Metal Q40 MoE skip {}: CPU RouteTopK does not support wg_bias",
+                    node.name
+                );
+            }
+            return Ok(None);
+        }
+        let x_host = sync_outlet_if_required(
+            target,
+            format!("{}.route-x-to-cpu", node.name),
+            mapping[&node.inputs[0]],
+            DeviceSyncKind::ToHost,
+        )?;
+        let wg_host = sync_outlet_if_required(
+            target,
+            format!("{}.route-wg-to-cpu", node.name),
+            mapping[&node.inputs[1]],
+            DeviceSyncKind::ToHost,
+        )?;
+        target.wire_node(
+            format!("{}.route_topk", node.name),
+            RouteTopK { k: op.k, gate: op.gate.clone() },
+            &[x_host, wg_host],
+        )?
+    } else {
+        let mut route_inputs = tvec![x_device, wg_device];
+        if let Some(wg_bias_device) = wg_bias_device {
+            route_inputs.push(wg_bias_device);
+        }
+        target.wire_node(
+            format!("{}.route_topk", node.name),
+            ops::MetalRouteTopK { k: op.k, gate: op.gate.clone() },
+            &route_inputs,
+        )?
+    };
+    let route_token_ids = sync_outlet_if_required(
+        target,
+        format!("{}.route_token_ids.to-device", node.name),
+        routes[0],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let route_expert_ids = sync_outlet_if_required(
+        target,
+        format!("{}.route_expert_ids.to-device", node.name),
+        routes[1],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let route_weights = sync_outlet_if_required(
+        target,
+        format!("{}.route_weights.to-device", node.name),
+        routes[2],
+        DeviceSyncKind::ToDevice,
+    )?;
+
+    let x_shape_like = x_device;
+    let x_expert_input = if facts[0].rank() == 3 {
+        target.wire_node(
+            format!("{}.x.rm-batch", node.name),
+            tract_gpu::ops::change_axes::GpuAxisOp::new(AxisOp::Rm(0)),
+            &[x_device],
+        )?[0]
+    } else {
+        x_device
+    };
+    let w1_device = sync_outlet_if_required(
+        target,
+        format!("{}.w1.to-device", node.name),
+        mapping[&node.inputs[2]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let w2_device = sync_outlet_if_required(
+        target,
+        format!("{}.w2.to-device", node.name),
+        mapping[&node.inputs[3]],
+        DeviceSyncKind::ToDevice,
+    )?;
+    let w1_bias_device = indexes
+        .w1_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w1_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+    let w3_bias_device = indexes
+        .w3_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w3_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+    let w2_bias_device = indexes
+        .w2_bias
+        .map(|ix| {
+            sync_f32_input(
+                target,
+                format!("{}.w2_bias", node.name),
+                mapping[&node.inputs[ix]],
+                facts[ix],
+            )
+        })
+        .transpose()?;
+
+    let mut h1 = target.wire_node(
+        format!("{}.w1", node.name),
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
+        &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
+    )?[0];
+    if let Some(w1_bias_device) = w1_bias_device {
+        h1 = add_routed_bias(
+            target,
+            format!("{}.w1", node.name),
+            h1,
+            w1_bias_device,
+            route_expert_ids,
+        )?;
+    }
+
+    let hidden = if op.has_w3 {
+        let w3_device = sync_outlet_if_required(
+            target,
+            format!("{}.w3.to-device", node.name),
+            mapping[&node.inputs[indexes.w3.context("missing w3 input index")?]],
+            DeviceSyncKind::ToDevice,
+        )?;
+        let mut up = target.wire_node(
+            format!("{}.w3", node.name),
+            ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
+            &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
+        )?[0];
+        if let Some(w3_bias_device) = w3_bias_device {
+            up = add_routed_bias(
+                target,
+                format!("{}.w3", node.name),
+                up,
+                w3_bias_device,
+                route_expert_ids,
+            )?;
+        }
+        if let Some(limit_bits) = op.act_limit_bits {
+            let alpha = op.act_alpha_bits.map(f32::from_bits).unwrap_or(1.0);
+            target.wire_node(
+                format!("{}.clamped_swiglu", node.name),
+                ops::MetalClampedSwiGlu::new(alpha, f32::from_bits(limit_bits)),
+                &[h1, up],
+            )?[0]
+        } else {
+            let activated = target.wire_node(
+                format!("{}.activation", node.name),
+                kernels::element_wise::metal_element_wise_op(Box::new(
+                    tract_core::ops::nn::Silu {},
+                )),
+                &[h1],
+            )?[0];
+            target.wire_node(
+                format!("{}.swiglu_mul", node.name),
+                kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
+                &[activated, up],
+            )?[0]
+        }
+    } else {
+        target.wire_node(
+            format!("{}.activation", node.name),
+            kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
+            &[h1],
+        )?[0]
+    };
+
+    let mut route_values = target.wire_node(
+        format!("{}.w2", node.name),
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows, sync_after_dispatch: moe_sync_after_dispatch() },
+        &[hidden, w2_device, route_token_ids, route_expert_ids],
+    )?[0];
+    if let Some(w2_bias_device) = w2_bias_device {
+        route_values = add_routed_bias(
+            target,
+            format!("{}.w2", node.name),
+            route_values,
+            w2_bias_device,
+            route_expert_ids,
+        )?;
+    }
+    let output = target.wire_node(
+        format!("{}.combine", node.name),
+        ops::MetalRoutedCombine { routes_per_token: op.k as u32 },
+        &[x_shape_like, route_values, route_token_ids, route_weights],
+    )?[0];
+    let output = if facts[0].datum_type != f32::datum_type() {
+        target.wire_node(
+            format!("{}.out.cast", node.name),
+            metal_cast_new(facts[0].datum_type).unwrap(),
+            &[output],
+        )?[0]
+    } else {
+        output
+    };
+
+    Ok(Some(tvec![output]))
 }
 
 pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
@@ -419,7 +936,16 @@ fn convert_matmul_to_metal(
     }
     let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
 
-    let resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
+    let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
+    let mut resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
+    if expected_dt == DatumType::F32
+        && matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
+        && input_facts.iter().any(|fact| fact.datum_type == DatumType::F16)
+    {
+        // Mlx and Mfa only produce homogeneous f16 output here. Use Ggml for
+        // PrefixMatMul nodes that require f32 output from f16 inputs.
+        resolved_gemm_impl = MetalGemmImplKind::Ggml;
+    }
     if matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
         && (input_facts[0].datum_type != input_facts[1].datum_type)
     {
@@ -515,8 +1041,6 @@ fn convert_matmul_to_metal(
     let out_fact = target.outlet_fact(matmul_output[0])?;
     let out_dt = out_fact.as_device_fact().map(|f| f.datum_type).unwrap_or(out_fact.datum_type);
 
-    let expected_dt = model.node_output_facts(node.id)?[0].datum_type;
-
     if out_dt != expected_dt {
         ensure!(
             kernels::array::Cast::is_supported_dt(out_dt),
@@ -564,4 +1088,134 @@ fn split_multi_axis_reduce(
     }
     patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
+}
+
+#[cfg(test)]
+mod q40_moe_lowering_tests {
+    use super::*;
+    use crate::MetalRuntime;
+    use tract_core::transform::ModelTransform;
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
+    use tract_transformers::ops::moe_ffn::{ExpertLayout, GateMode, MoeFfn};
+
+    fn add_q40_const(model: &mut TypedModel, name: &str, tensor: Tensor) -> TractResult<OutletId> {
+        let shape = tensor.shape().to_vec();
+        let k = *shape.last().context("Q40 tensor has no last axis")?;
+        ensure!(k % Q4_0.block_len() == 0);
+        let m: usize = shape[..shape.len() - 1].iter().product();
+        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
+        let packed = Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &shape));
+        let fact = BlockQuantFact::new(Box::new(Q4_0), shape.iter().copied().collect());
+        Ok(model
+            .wire_node(name, tract_core::ops::konst::Const::new_with_exotic_fact(packed, Box::new(fact))?, &[])?[0])
+    }
+
+    /// GPT-OSS-shaped MoeFfn: f16 rank-3 input, linear-layout Q40 experts,
+    /// router + expert biases, clamped SwiGLU. This is the exact configuration
+    /// `convert_q40_moe_ffn_to_metal` lowers for the real model; the in-app
+    /// <|endofprompt|> collapse only shows at >=1024 tokens, which no other
+    /// test reaches.
+    fn check_gpt_oss_moe(tokens: usize) -> TractResult<()> {
+        check_gpt_oss_moe_sized(tokens, 64, 64, 8, 2)
+    }
+
+    fn check_gpt_oss_moe_sized(
+        tokens: usize,
+        d_model: usize,
+        d_hidden: usize,
+        experts: usize,
+        k: usize,
+    ) -> TractResult<()> {
+
+        let mut rng_state: u64 = 4242;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let mut make = |shape: &[usize]| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| next_f32() * 0.5).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape.to_vec(), data).unwrap().into_tensor()
+        };
+
+        let wg_data = make(&[experts, d_model]);
+        // Linear layout: w1/w3 [E,H,D], w2 [E,D,H]
+        let w1_data = make(&[experts, d_hidden, d_model]);
+        let w2_data = make(&[experts, d_model, d_hidden]);
+        let w3_data = make(&[experts, d_hidden, d_model]);
+        let wg_bias_data = make(&[experts]);
+        let w1_bias_data = make(&[experts, d_hidden]);
+        let w3_bias_data = make(&[experts, d_hidden]);
+        let w2_bias_data = make(&[experts, d_model]);
+        let x_data = make(&[1, tokens, d_model]).cast_to::<f16>()?.into_owned();
+
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f16::datum_type().fact([1, tokens, d_model]))?;
+        let wg = model.add_const("wg", wg_data)?;
+        let w1 = add_q40_const(&mut model, "w1", w1_data)?;
+        let w2 = add_q40_const(&mut model, "w2", w2_data)?;
+        let w3 = add_q40_const(&mut model, "w3", w3_data)?;
+        let wg_bias = model.add_const("wg_bias", wg_bias_data)?;
+        let w1_bias = model.add_const("w1_bias", w1_bias_data)?;
+        let w3_bias = model.add_const("w3_bias", w3_bias_data)?;
+        let w2_bias = model.add_const("w2_bias", w2_bias_data)?;
+
+        let op = MoeFfn {
+            k,
+            activation: "swiglu".to_string(),
+            gate: GateMode::SoftmaxTopk,
+            has_w3: true,
+            has_wg_bias: true,
+            has_w1_bias: true,
+            has_w3_bias: true,
+            has_w2_bias: true,
+            act_alpha_bits: Some(1.702f32.to_bits()),
+            act_limit_bits: Some(7.0f32.to_bits()),
+            expert_layout: ExpertLayout::Linear,
+        };
+        let outputs = model.wire_node(
+            "moe",
+            op,
+            &[x, wg, w1, w2, w3, wg_bias, w1_bias, w3_bias, w2_bias],
+        )?;
+        model.select_output_outlets(&outputs)?;
+
+        let mut transformed = model.clone();
+        MetalTransform::default().transform(&mut transformed)?;
+        ensure!(
+            transformed.nodes().iter().any(|n| n.op_is::<crate::ops::MetalRouteTopK>()),
+            "Metal transform did not lower the MoE block (no MetalRouteTopK)"
+        );
+
+        let expected =
+            DefaultRuntime.prepare(model.clone())?.run(tvec![x_data.clone().into_tvalue()])?;
+        let actual = MetalRuntime.prepare(model)?.run(tvec![x_data.into_tvalue()])?;
+        let actual_f32 = actual[0].clone().into_tensor().cast_to::<f32>()?.into_owned();
+        let expected_f32 = expected[0].clone().into_tensor().cast_to::<f32>()?.into_owned();
+        actual_f32.close_enough(&expected_f32, Approximation::VeryApproximate)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_64_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(64)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_1024_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(1024)
+    }
+
+    #[test]
+    fn gpt_oss_moe_lowering_2800_tokens() -> TractResult<()> {
+        check_gpt_oss_moe(2800)
+    }
+
+    // Full production dimensions of gpt-oss-20b. Slow (CPU reference dequants
+    // every expert), but this is the only test at the size where the in-app
+    // collapse reproduces.
+    #[test]
+    fn gpt_oss_moe_lowering_real_dims_1024_tokens() -> TractResult<()> {
+        check_gpt_oss_moe_sized(1024, 2880, 2880, 32, 4)
+    }
 }

@@ -79,10 +79,12 @@ impl RmsNorm {
 
 pub fn cuda_rms_norm_dispatch(
     input: &DeviceTensor,
+    scale: Option<&DeviceTensor>,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
+    ensure!(scale.is_none(), "Cuda RmsNorm does not support a fused scale");
     crate::with_cuda_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
 }
 
@@ -91,6 +93,8 @@ crate::register_cuda_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, no
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
+        false,
+        None,
         "Cuda",
         cuda_rms_norm_dispatch,
     ))))

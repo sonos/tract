@@ -149,7 +149,30 @@ pub fn cuda_gdn_recurrent_launch(
 
 crate::register_cuda_op!(
     tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
-    |_source, _node, _op| {
+    |source, node, _op| {
+        // The cuda kernel is single-step (S == 1) and f16-only; the op's
+        // layout is [b, S, h, w]. Anything else stays on the CPU op until
+        // the kernel grows an S loop (the Metal one already has it).
+        let facts = source.node_input_facts(node.id)?;
+        let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
+        let s_is_one = facts[0]
+            .shape
+            .as_concrete()
+            .map(|s| s.len() == 4 && s[1] == 1)
+            .unwrap_or(false);
+        if !s_is_one
+            || dts
+                != [
+                    DatumType::F16,
+                    DatumType::F16,
+                    DatumType::F16,
+                    DatumType::F32,
+                    DatumType::F16,
+                    DatumType::F32,
+                ]
+        {
+            return Ok(None);
+        }
         Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {
             backend_name: "Cuda",
             dispatch: cuda_gdn_recurrent_launch,

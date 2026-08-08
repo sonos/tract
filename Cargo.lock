@@ -4698,6 +4698,7 @@ dependencies = [
  "tract-api",
  "tract-cuda",
  "tract-extra",
+ "tract-gpu",
  "tract-libcli",
  "tract-metal",
  "tract-nnef",
@@ -5158,7 +5159,9 @@ name = "tract-transformers"
 version = "0.23.5-pre"
 dependencies = [
  "float-ord",
+ "ndarray-npy",
  "rayon",
+ "tract-metal",
  "tract-nnef",
 ]
 

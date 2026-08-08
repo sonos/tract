@@ -18,6 +18,16 @@ register_simple_model_transform!(
     "fuse_inplace_kv_sdpa",
     ops::inplace_kv_cache::InPlaceKvSdpaTransform
 );
+register_simple_model_transform!(
+    "fuse_sdpa_inplace_kv",
+    ops::fused_sdpa::FusedSdpaTransform
+);
+// Historical name of the same transform (it was GPT-OSS-specific before it
+// grew generic): kept so existing callers keep working.
+register_simple_model_transform!(
+    "fuse_gpt_oss_sdpa",
+    ops::fused_sdpa::FusedSdpaTransform
+);
 register_simple_model_transform!("transformers_detect_all", TransformersTransform);
 register_simple_model_transform!(
     "quantize_kv_storage",
@@ -36,6 +46,8 @@ pub fn register(registry: &mut Registry) {
     ops::dyn_kv_cache::register(registry);
     ops::window_kv_cache::register(registry);
     ops::kv_quant::register(registry);
+    ops::moe_ffn::register(registry);
+    ops::fused_sdpa::register(registry);
     ops::quant_dyn_kv_cache::register(registry);
     ops::gdn_recurrent::register(registry);
 }

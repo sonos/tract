@@ -77,14 +77,23 @@ pub fn dispatch_eval(
     let kernel_name = format!("element_wise_ops::{op_name}_out_of_place_{tname}");
 
     let pipeline = stream.load_pipeline(LibraryName::ElementWiseOps, &kernel_name)?;
+    let total = output.len() as u64;
+    if total == 0 {
+        return Ok(());
+    }
+    let mut group_width = (pipeline.max_total_threads_per_threadgroup() as u64).min(256).min(total);
+    while total % group_width != 0 {
+        group_width -= 1;
+    }
+    let grid_width = total / group_width;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
-        let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
+        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())

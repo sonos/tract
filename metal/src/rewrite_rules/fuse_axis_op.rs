@@ -75,8 +75,8 @@ fn split_succs(
         op_ins[idx] = axis_out;
 
         let op_outs = patch.wire_node(succ.name.clone(), succ.op.clone(), &op_ins)?;
-        for out in op_outs {
-            patch.shunt_outside(model, succ.id.into(), out)?;
+        for (slot, out) in op_outs.into_iter().enumerate() {
+            patch.shunt_outside(model, OutletId::new(succ.id, slot), out)?;
         }
     }
 
@@ -90,6 +90,9 @@ pub fn fuse_axis_op(
     axis_node_name: &str,
     axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
+    if std::env::var_os("TRACT_METAL_DISABLE_FUSE_AXIS_OP").is_some() {
+        return Ok(None);
+    }
     // Only support certain axis ops (or a Move, which is handled specially below)
     rule_ensure!(is_supported_axis_op(axis_op) || matches!(axis_op.inner, AxisOp::Move(..)));
 
@@ -104,6 +107,10 @@ pub fn fuse_axis_op(
         node.op_as::<GpuAxisOp>().is_some_and(|op| matches!(op.inner, AxisOp::Move(..)));
 
     rule_ensure!(!is_axis_like || is_allowed_move);
+
+    // The wrapper shunts a single output; fusing into a multi-output op
+    // (e.g. MetalFusedSdpa with its cache outputs) would orphan the rest.
+    rule_ensure!(node.outputs.len() == 1);
 
     let node_name = &node.name;
 

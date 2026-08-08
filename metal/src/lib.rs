@@ -33,7 +33,13 @@ impl Runtime for MetalRuntime {
         mut model: TypedModel,
         options: &RunOptions,
     ) -> TractResult<Box<dyn Runnable>> {
-        MetalTransform::default().transform(&mut model)?;
+        // Pick the GEMM implementation at runtime so a model can be A/B'd
+        // against the alternatives without a rebuild. `ggml` matches the
+        // previous default.
+        let transform = std::env::var("TRACT_METAL_GEMM_IMPL")
+            .unwrap_or_else(|_| "ggml".to_string())
+            .parse::<MetalTransform>()?;
+        transform.transform(&mut model)?;
         model = model.into_optimized()?;
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };

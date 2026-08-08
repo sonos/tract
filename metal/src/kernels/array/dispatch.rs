@@ -16,6 +16,19 @@ pub fn metal_copy_nd_dispatch(
     output_shape: &[usize],
     output_strides: &[isize],
 ) -> TractResult<()> {
+    // The copy_nd kernels index the output innermost axis directly
+    // (`output[out_idx + i]`): only the input side is fully strided. Callers
+    // writing to a transposed/strided layout must permute the copy so the
+    // output's contiguous axis comes last.
+    ensure!(
+        output_shape.last().is_none_or(|d| *d <= 1) || output_strides.last() == Some(&1),
+        "copy_nd requires a contiguous innermost output axis, got strides {output_strides:?}"
+    );
+    if std::env::var_os("TRACT_METAL_LOG_COPY_ND").is_some() {
+        eprintln!(
+            "copy-nd shape={output_shape:?} in_strides={input_strides:?} out_strides={output_strides:?}"
+        );
+    }
     crate::with_metal_stream(|stream| {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
