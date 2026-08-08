@@ -188,6 +188,43 @@ impl GemmKernel for GgmlGemm {
         b_buffer: &Buffer,
         c_buffer: &Buffer,
     ) -> TractResult<()> {
+        let (mut a_buffer, mut b_buffer) = (a_buffer, b_buffer);
+        // A gemv-shaped problem can reach us in weight-first orientation:
+        // A = weights [m rows, k], B = a single activation row [n=1, k]
+        // (e.g. qwen3.5 linear-attention in-projections at decode, exported
+        // as W @ x). The tiled GEMM kernel wastes 63/64 of each 32x64 tile
+        // on it. C [m,1] and C^T [1,m] are byte-identical, so swap the
+        // operands and let the bandwidth-bound mat-vec kernel handle it.
+        let params = if params.n == 1
+            && params.m > 4
+            && params.a_batch == 1
+            && params.b_batch == 1
+            && !params.transpose_a
+            && params.transpose_b
+            && !params.q40_b
+            && params.dts[0] == params.dts[1]
+        {
+            std::mem::swap(&mut a_buffer, &mut b_buffer);
+            GemmDispatchParams {
+                dts: params.dts,
+                a_batch: 1,
+                b_batch: 1,
+                m: 1,
+                n: params.m,
+                k: params.k,
+                transpose_a: false,
+                a_offset: params.b_offset,
+                transpose_b: true,
+                b_offset: params.a_offset,
+                q40_b: false,
+                c_offset: params.c_offset,
+                a_strides: natural_strides(&[1, 1, params.k]),
+                b_strides: natural_strides(&[1, params.m, params.k]),
+            }
+        } else {
+            params
+        };
+
         let GemmDispatchParams {
             dts,
             a_batch,
@@ -329,7 +366,12 @@ fn dispatch_metal_ggml_gemm(
     let i2_tname = DeviceTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
-    //dbg!(&name);
+    if std::env::var_os("TRACT_METAL_LOG_GEMM").is_some() {
+        eprintln!(
+            "ggml-gemm {name} m={} n={} k={} a_batch={} b_batch={}",
+            params.m, params.n, params.k, params.a_batch, params.b_batch
+        );
+    }
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemmParams = params.clone().into();
