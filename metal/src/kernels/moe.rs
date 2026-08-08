@@ -1,4 +1,5 @@
 use crate::encoder::EncoderExt;
+use crate::kernels::matmul::{GemmImpl, GgmlGemm};
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use metal::{MTLSize, NSUInteger};
@@ -81,33 +82,50 @@ pub fn dispatch_route_topk_f32(
     let has_wg_bias = u32::from(wg_bias.is_some());
     let wg_bias = wg_bias.unwrap_or(wg);
 
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_topk_f32")?;
-    let max_group_width = pipeline.max_total_threads_per_threadgroup() as u32;
-    // One simdgroup (32 lanes) per expert, capped by the device threadgroup
-    // limit; the kernel strides experts when there are more experts than
-    // simdgroups.
-    let group_width = (num_experts * 32).min(max_group_width).max(32);
+    // Phase 1: router scores [token_count, num_experts] through the GGML
+    // matmul kernels (mat-vec at decode, tiled GEMM at prefill). The previous
+    // single-kernel design computed the score dots inside one threadgroup per
+    // token: at decode that is one threadgroup reading the whole 1MB router
+    // weight alone (GPU >95% idle, ~12ms/token over 40 MoE layers on
+    // qwen3.5-35B).
+    let x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
+    let wg2 = wg.reshaped(tvec![num_experts as usize, d_model as usize])?;
+    let scores = unsafe {
+        DeviceTensor::uninitialized_dt(
+            f32::datum_type(),
+            &[token_count as usize, num_experts as usize],
+        )?
+    };
+    GemmImpl::<GgmlGemm>::new(false, true).dispatch_eval(stream, &x2, &wg2, &scores)?;
 
+    // Phase 2: tiny per-token top-k over the score rows, one simdgroup per
+    // token.
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_select_topk_f32")?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, x, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, wg, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(2, route_token_ids, metal::MTLResourceUsage::Write);
-        encoder.set_metal_tensor(3, route_expert_ids, metal::MTLResourceUsage::Write);
-        encoder.set_metal_tensor(4, route_weights, metal::MTLResourceUsage::Write);
-        encoder.set_slice(5, &[token_count]);
-        encoder.set_slice(6, &[d_model]);
-        encoder.set_slice(7, &[num_experts]);
-        encoder.set_slice(8, &[k]);
-        encoder.set_slice(9, &[gate_mode]);
-        encoder.set_metal_tensor(10, wg_bias, metal::MTLResourceUsage::Read);
-        encoder.set_slice(11, &[has_wg_bias]);
+        encoder.set_metal_tensor(0, &scores, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, route_token_ids, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(2, route_expert_ids, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(3, route_weights, metal::MTLResourceUsage::Write);
+        encoder.set_slice(4, &[token_count]);
+        encoder.set_slice(5, &[num_experts]);
+        encoder.set_slice(6, &[k]);
+        encoder.set_slice(7, &[gate_mode]);
+        encoder.set_metal_tensor(8, wg_bias, metal::MTLResourceUsage::Read);
+        encoder.set_slice(9, &[has_wg_bias]);
 
-        let grid_size = MTLSize { width: token_count as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
+        let grid_size = MTLSize { width: token_count.max(1) as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: 32, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
+    // The scratch dies when this function returns, unlike op outputs that
+    // live in the plan's value store. Retain it again AFTER both encodes:
+    // under TRACT_METAL_PROFILE_KERNELS every load_pipeline commits the open
+    // command buffer and moves the whole retained list onto it, which would
+    // otherwise leave the buffers actually reading/writing `scores`
+    // unprotected (visible as a SIGABRT with the buffer pool disabled).
+    stream.retain_tensor(&scores);
     Ok(())
 }
 

@@ -165,7 +165,10 @@ mod tests {
         k: usize,
     ) -> TractResult<()> {
         let (model, input) = make_model_sized(gate, rank3, tokens, d_model, experts, k)?;
-        check_model(model, input)
+        // Large shapes route the score matmul through the tiled GEMM kernel,
+        // whose summation order differs from the CPU reference dot: the
+        // selected ids stay Exact but the softmax weights drift ~1e-4.
+        check_model_with(model, input, Approximation::VeryApproximate)
     }
 
     fn check_graph(gate: GateMode, rank3: bool) -> TractResult<()> {
@@ -174,6 +177,14 @@ mod tests {
     }
 
     fn check_model(model: TypedModel, input: Tensor) -> TractResult<()> {
+        check_model_with(model, input, Approximation::Approximate)
+    }
+
+    fn check_model_with(
+        model: TypedModel,
+        input: Tensor,
+        weights_approx: Approximation,
+    ) -> TractResult<()> {
 
         let mut transformed = model.clone();
         MetalTransform::default().transform(&mut transformed)?;
@@ -194,7 +205,7 @@ mod tests {
         actual[2]
             .clone()
             .into_tensor()
-            .close_enough(&expected[2].clone().into_tensor(), Approximation::Approximate)
+            .close_enough(&expected[2].clone().into_tensor(), weights_approx)
     }
 
     // GPT-OSS-20B routing shape at increasing sequence lengths. The in-app
