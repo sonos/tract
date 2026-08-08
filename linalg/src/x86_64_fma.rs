@@ -112,12 +112,14 @@ fn plug_avx512fp16(ops: &mut Ops) {
     log::info!("hardswish_f16: x86_64/avx512fp16 native activated");
 }
 
+/// `silu_f32` is deliberately not overridden here: the fused `fma_silu_f32` plugged by
+/// `plug_fma` also beats a zmm SiLU composed over `avx512_sigmoid_f32`, because the
+/// composition costs a scratch copy and a second traversal that the fused kernel does not.
 fn plug_avx512f(ops: &mut Ops) {
     ops.sigmoid_f32 = Box::new(|| avx512_sigmoid_f32::ew());
     ops.tanh_f32 = Box::new(|| avx512_tanh_f32::ew());
     ops.hardswish_f32 = Box::new(|| act::x86_64_avx512_hardswish_f32_64n::ew());
     ops.leaky_relu_f32 = Box::new(|| act::x86_64_avx512_leaky_relu_f32_64n::ew());
-    ops.silu_f32 = Box::new(|| act::x86_64_avx512_silu_f32_16n::ew());
     ops.gelu_f32 = Box::new(|| act::x86_64_avx512_gelu_f32_16n::ew());
 
     ops.sigmoid_f16 = Box::new(|| act_f16::x86_64_avx512_sigmoid_f16_16n::ew());
@@ -138,7 +140,7 @@ fn plug_avx512f(ops: &mut Ops) {
 
     log::info!(
         "sigmoid_f32, tanh_f32, hardswish_f32, leaky_relu_f32, \
-         silu_f32, gelu_f32, \
+         gelu_f32, \
          sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
          silu_f16, gelu_f16, \
          max_f32, softmax2_fastcompact_f32, softmax2_fastcompact_f16, erf_f32, \
