@@ -1,4 +1,104 @@
+use std::fmt::Debug;
+
 use crate::internal::*;
+
+/// A constant's value and, when its storage is not plain, the fact describing it.
+pub type MaterializedConst = (Arc<Tensor>, Option<Box<dyn ExoticFact>>);
+
+/// Supplies a constant's value on demand, so a model can be built and pruned before its
+/// weights are read.
+///
+/// The provider is asked for its fact at wiring time and for its tensor only when
+/// [`materialize_lazy_consts`] runs. A provider must return the same fact both times.
+pub trait LazyConstProvider: Debug + Send + Sync + 'static {
+    /// The fact of the value this will produce, without reading it.
+    fn output_fact(&self) -> TractResult<TypedFact>;
+    /// Read the value, plus the exotic fact it needs if its storage is not plain.
+    fn materialize(&self) -> TractResult<MaterializedConst>;
+}
+
+/// A constant whose value has not been read yet.
+///
+/// It exists only between loading and [`materialize_lazy_consts`], so that a pass which
+/// discards part of the graph — a shard extraction, say — runs before the discarded
+/// weights are ever read. It is stateless so that it cannot block const-folding of its
+/// consumers, and deliberately has no value: its output fact carries no `konst`, so rules
+/// needing the bytes decline to fire rather than see a wrong one. Evaluating it is an
+/// error; materialize first.
+#[derive(Debug, Clone)]
+pub struct LazyConst(pub Arc<dyn LazyConstProvider>);
+
+/// Two lazy constants are the same when they draw on the same provider; a provider has no
+/// value to compare until it is materialized.
+impl PartialEq for LazyConst {
+    fn eq(&self, other: &Self) -> bool {
+        std::ptr::eq(Arc::as_ptr(&self.0) as *const (), Arc::as_ptr(&other.0) as *const ())
+    }
+}
+
+impl Eq for LazyConst {}
+
+impl std::hash::Hash for LazyConst {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::ptr::hash(Arc::as_ptr(&self.0) as *const (), state)
+    }
+}
+
+impl Op for LazyConst {
+    fn name(&self) -> StaticName {
+        "LazyConst".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("{:?}", self.0)])
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for LazyConst {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        bail!("LazyConst {:?} was not materialized before evaluation", self.0)
+    }
+}
+
+impl TypedOp for LazyConst {
+    as_op!();
+
+    fn output_facts(&self, _inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        Ok(tvec!(self.0.output_fact()?))
+    }
+}
+
+/// Read every lazy constant still in the model and replace it with a [`Const`]. Returns
+/// how many were materialized.
+///
+/// Run this once the graph has been pruned to what will actually be executed: only the
+/// constants that survive are read.
+pub fn materialize_lazy_consts(model: &mut TypedModel) -> TractResult<usize> {
+    let lazy: Vec<usize> =
+        model.nodes().iter().filter(|n| n.op_is::<LazyConst>()).map(|n| n.id).collect();
+    let count = lazy.len();
+    for id in lazy {
+        let op = model.node(id).op_as::<LazyConst>().context("not a LazyConst")?.clone();
+        let (tensor, exotic) =
+            op.0.materialize()
+                .with_context(|| format!("materializing {} ({:?})", model.node(id).name, op.0))?;
+        let konst = Const::new_with_opt_exotic_fact(tensor, exotic)?;
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.wire_node(&model.node(id).name, konst, &[])?[0];
+        patch.shunt_outside(model, OutletId::new(id, 0), wire)?;
+        patch.apply(model)?;
+    }
+    if count > 0 {
+        model.compact()?;
+    }
+    Ok(count)
+}
 
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct Const(Arc<Tensor>, Option<Box<dyn ExoticFact>>);

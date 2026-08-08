@@ -430,7 +430,13 @@ fn proto_model_from_resources(
     let doc = crate::liquid::process_file(&doc.0, &new_resources)?;
     let doc = crate::ast::parse::parse_document(&doc)?;
 
-    let proto = ProtoModel { doc, tensors, quantization, resources: new_resources };
+    let proto = ProtoModel {
+        doc,
+        tensors,
+        lazy_tensors: Default::default(),
+        quantization,
+        resources: new_resources,
+    };
     proto.validate()?;
     Ok(proto)
 }
@@ -465,4 +471,49 @@ fn read_stream<R: std::io::Read>(
         }
     }
     Ok(())
+}
+
+impl Nnef {
+    /// Like `proto_model_for_path`, but read each `.dat`'s 128-byte header instead of its
+    /// payload. The tensors become `LazyConst`s, so the graph can be typed and pruned
+    /// before any weight is read; call `materialize_lazy_consts` on what survives.
+    ///
+    /// Requires an unpacked model directory: a `.nnef.tgz` is a gzip stream with no random
+    /// access, so it cannot be read this way.
+    pub fn proto_model_for_dir_lazy(&self, path: impl AsRef<Path>) -> TractResult<ProtoModel> {
+        let path = path.as_ref();
+        ensure!(
+            path.is_dir(),
+            "lazy loading needs an unpacked NNEF directory, {path:?} is not one"
+        );
+        let mut resources: HashMap<String, Arc<dyn Resource>> = Default::default();
+        let mut lazy_tensors: HashMap<Identifier, Arc<crate::resource::LazyDat>> =
+            Default::default();
+        for entry in walkdir::WalkDir::new(path).min_depth(1) {
+            let entry =
+                entry.map_err(|e| format_err!("Can not walk directory {:?}: {:?}", path, e))?;
+            if entry.path().is_dir() {
+                continue;
+            }
+            let subpath: std::path::PathBuf =
+                entry.path().components().skip(path.components().count()).collect();
+            if subpath.extension().is_some_and(|e| e == "dat") {
+                let id = crate::resource::resource_path_to_id(&subpath)?;
+                let dat = crate::resource::LazyDat::open(entry.path())?;
+                lazy_tensors.insert(Identifier(id), Arc::new(dat));
+            } else {
+                let mut stream = std::fs::File::open(entry.path())?;
+                read_stream(&subpath, &mut stream, &mut resources, self)?;
+            }
+        }
+        let mut proto = proto_model_from_resources(resources)?;
+        proto.lazy_tensors = lazy_tensors;
+        Ok(proto)
+    }
+
+    /// Load a model without reading its weights. See [`Nnef::proto_model_for_dir_lazy`].
+    pub fn model_for_dir_lazy(&self, path: impl AsRef<Path>) -> TractResult<TypedModel> {
+        let proto = self.proto_model_for_dir_lazy(path)?;
+        self.model_for_proto_model(&proto)
+    }
 }

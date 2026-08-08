@@ -80,6 +80,18 @@ impl Debug for Nnef {
     }
 }
 
+impl Nnef {
+    /// Load a model from an unpacked NNEF directory without reading its weights.
+    ///
+    /// Each tensor is typed from its 128-byte header and left on disk, so a transform can
+    /// prune the graph before anything is read. The returned model is **not** decluttered
+    /// and cannot be run: call `materialize_lazy_consts` on whatever survives pruning
+    /// first. A `.nnef.tgz` is a gzip stream with no random access and is not supported.
+    pub fn load_lazy(&self, path: impl AsRef<Path>) -> Result<Model> {
+        Ok(Model(self.0.model_for_dir_lazy(path)?))
+    }
+}
+
 impl NnefInterface for Nnef {
     type Model = Model;
     fn load(&self, path: impl AsRef<Path>) -> Result<Model> {
@@ -230,6 +242,17 @@ impl InferenceModelInterface for InferenceModel {
 // MODEL
 #[derive(Debug, Clone)]
 pub struct Model(TypedModel);
+
+impl Model {
+    #[doc(hidden)]
+    pub fn typed_ref(&self) -> &TypedModel {
+        &self.0
+    }
+    #[doc(hidden)]
+    pub fn into_typed_model(self) -> TypedModel {
+        self.0
+    }
+}
 
 impl ModelInterface for Model {
     type Fact = Fact;
