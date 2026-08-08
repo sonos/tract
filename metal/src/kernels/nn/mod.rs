@@ -1,6 +1,7 @@
 pub mod apply_rope;
 pub mod gelu_approximate;
 pub mod leaky_relu;
+pub mod pool;
 pub mod reduce;
 pub mod rms_norm;
 pub mod scaled_masked_softmax;
