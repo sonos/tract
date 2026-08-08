@@ -203,6 +203,11 @@ impl PackedFormat {
             );
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
+            } else if mn % self.r != 0 {
+                // The kernel computes on the last panel's padding lanes before
+                // their results are discarded; garbage bytes there decode to
+                // denormals and stall the fp pipeline. Zero the partial panel.
+                packed.as_bytes_mut()[(mn / self.r) * panel_bytes..].fill(0u8);
             }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
@@ -246,6 +251,11 @@ impl PackedFormat {
             );
             if cfg!(debug_assertions) {
                 packed.as_bytes_mut().fill(0u8);
+            } else if mn % self.r != 0 {
+                // The kernel computes on the last panel's padding lanes before
+                // their results are discarded; garbage bytes there decode to
+                // denormals and stall the fp pipeline. Zero the partial panel.
+                packed.as_bytes_mut()[(mn / self.r) * panel_bytes..].fill(0u8);
             }
             dispatch_copy!(Self::pack_t(t.datum_type())(
                 self,
