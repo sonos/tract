@@ -373,6 +373,9 @@ pub struct MetalStream {
     pending_kernel_names: RefCell<Vec<String>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
+    /// `command_buffer()` acquisitions since the last cadence commit; only
+    /// maintained when TRACT_METAL_COMMIT_EVERY_N_DISPATCHES is set.
+    dispatches_since_commit: std::cell::Cell<usize>,
 }
 
 impl Default for MetalStream {
@@ -393,6 +396,7 @@ impl MetalStream {
             pending_kernel_names: RefCell::new(Vec::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
+            dispatches_since_commit: std::cell::Cell::new(0),
         }
     }
 
@@ -427,7 +431,36 @@ impl MetalStream {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
+    /// Commit cadence: split the token/forward into command buffers every N
+    /// `command_buffer()` acquisitions (roughly every N kernel dispatches), so
+    /// the GPU starts executing early layers while the CPU still encodes late
+    /// ones. 0 disables the cadence (single buffer per forward, plus whatever
+    /// boundaries ops request themselves). Callers with fn-local scratch
+    /// tensors must re-retain them after encoding (see
+    /// `dispatch_route_topk_f32`): a cadence commit moves the retained list
+    /// onto the buffer being closed.
+    fn commit_every_n_dispatches() -> usize {
+        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        *N.get_or_init(|| {
+            std::env::var("TRACT_METAL_COMMIT_EVERY_N_DISPATCHES")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0)
+        })
+    }
+
     pub fn command_buffer(&self) -> TCommandBuffer {
+        let cadence = Self::commit_every_n_dispatches();
+        if cadence > 0 {
+            let n = self.dispatches_since_commit.get() + 1;
+            if n > cadence && self.command_buffer.borrow().is_some() {
+                // Ignore failure modes commit_current already guards against.
+                let _ = self.commit_current();
+                self.dispatches_since_commit.set(1);
+            } else {
+                self.dispatches_since_commit.set(n);
+            }
+        }
         self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
