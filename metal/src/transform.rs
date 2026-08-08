@@ -19,7 +19,11 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
-use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
+use tract_gpu::rewrite_rules::cast::bypass_device_downcast_roundtrip;
+use tract_gpu::rewrite_rules::rms_norm::{
+    bypass_float_downcast_roundtrip, fuse_rms_norm_scale, fuse_scaled_rms_norm_in_cast,
+    fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast, swap_rms_norm_cast_mul,
+};
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
@@ -188,7 +192,12 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("swap_rms_norm_cast_mul", swap_rms_norm_cast_mul)
+            .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
+            .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
+            .with_rule_for("bypass_float_downcast_roundtrip", bypass_float_downcast_roundtrip)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
 
@@ -202,6 +211,9 @@ impl MetalTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("bypass_device_downcast_roundtrip", bypass_device_downcast_roundtrip)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;

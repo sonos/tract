@@ -49,8 +49,20 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
-            .flat_map(|dt| [true, false].into_iter().map(move |is_l4| (dt, is_l4)))
-            .flat_map(|(dt, is_l4)| RmsNorm.kernel_name(dt, is_l4).into_iter()),
+            .flat_map(|in_dt| {
+                tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+                    .into_iter()
+                    .map(move |out_dt| (in_dt, out_dt))
+            })
+            .flat_map(|(in_dt, out_dt)| {
+                [true, false].into_iter().map(move |is_l4| (in_dt, out_dt, is_l4))
+            })
+            .flat_map(|(in_dt, out_dt, is_l4)| {
+                [false, true].into_iter().map(move |scaled| (in_dt, out_dt, is_l4, scaled))
+            })
+            .flat_map(|(in_dt, out_dt, is_l4, scaled)| {
+                RmsNorm.kernel_name(in_dt, out_dt, is_l4, scaled).into_iter()
+            }),
     );
 
     functions.extend(

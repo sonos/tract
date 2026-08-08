@@ -13,13 +13,22 @@ impl RmsNorm {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, is_l4: bool) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal rmsop", dt);
-        let tname = DeviceTensor::tname(dt)?;
+    pub fn kernel_name(
+        &self,
+        in_dt: DatumType,
+        out_dt: DatumType,
+        is_l4: bool,
+        scaled: bool,
+    ) -> TractResult<String> {
+        ensure!(Self::is_supported_dt(in_dt), "Unsupported dt {:?} for metal rmsop", in_dt);
+        ensure!(Self::is_supported_dt(out_dt), "Unsupported out dt {:?} for metal rmsop", out_dt);
+        let iname = DeviceTensor::tname(in_dt)?;
+        let oname = DeviceTensor::tname(out_dt)?;
+        let variant = if scaled { "rms_norm_scaled" } else { "rms_norm" };
         if !is_l4 {
-            Ok(format!("nn_ops::rms_norm_nd3_{tname}"))
+            Ok(format!("nn_ops::{variant}_nd3_{iname}_{oname}"))
         } else {
-            Ok(format!("nn_ops::rms_norm_nd2_l4_{tname}"))
+            Ok(format!("nn_ops::{variant}_nd2_l4_{iname}_{oname}"))
         }
     }
 
@@ -27,11 +36,14 @@ impl RmsNorm {
         &self,
         stream: &MetalStream,
         input: &DeviceTensor,
+        scale: Option<&DeviceTensor>,
+        out_dt: Option<DatumType>,
         axis: usize,
         eps: &Tensor,
     ) -> TractResult<DeviceTensor> {
-        let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, axis, eps, &output)?;
+        let out_dt = out_dt.unwrap_or(input.datum_type());
+        let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, input.shape())? };
+        self.dispatch_eval(stream, input, scale, axis, eps, &output)?;
         stream.wait_until_completed()?;
         Ok(output)
     }
@@ -40,22 +52,30 @@ impl RmsNorm {
         &self,
         stream: &MetalStream,
         input: &DeviceTensor,
+        scale: Option<&DeviceTensor>,
         axis: usize,
         eps: &Tensor,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
+        if let Some(scale) = scale {
+            stream.retain_tensor(scale);
+            ensure!(scale.datum_type() == DatumType::F32);
+            ensure!(scale.len() == input.shape()[axis]);
+        }
 
         ensure!(output.shape() == input.shape());
-        ensure!(output.datum_type() == input.datum_type());
+        ensure!(Self::is_supported_dt(output.datum_type()));
 
         if (axis == (input.rank() - 1)) && input.shape()[axis].is_multiple_of(4) {
             let shape = input.shape();
             let shape_nd2 = tvec![shape[..axis].iter().product::<usize>(), shape[axis]];
 
-            let pipeline = stream
-                .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), true)?)?;
+            let pipeline = stream.load_pipeline(
+                LibraryName::NNOps,
+                &self.kernel_name(input.datum_type(), output.datum_type(), true, scale.is_some())?,
+            )?;
 
             let iter_dim = shape_nd2[1];
             let iter_dim_div_4 = iter_dim / 4;
@@ -71,21 +91,31 @@ impl RmsNorm {
             let command_buffer = stream.command_buffer();
             command_buffer.encode(|encoder| {
                 encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-                encoder.set_tensor(1, eps);
-                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+                let mut idx = 0;
+                encoder.set_metal_tensor(idx, input, metal::MTLResourceUsage::Read);
+                idx += 1;
+                encoder.set_tensor(idx, eps);
+                idx += 1;
+                if let Some(scale) = scale {
+                    encoder.set_metal_tensor(idx, scale, metal::MTLResourceUsage::Read);
+                    idx += 1;
+                }
+                encoder.set_metal_tensor(idx, output, metal::MTLResourceUsage::Write);
+                idx += 1;
                 encoder.set_bytes(
-                    3,
+                    idx,
                     std::mem::size_of::<usize>() as u64,
                     &iter_dim as *const usize as *const _,
                 );
+                idx += 1;
                 encoder.set_bytes(
-                    4,
+                    idx,
                     std::mem::size_of::<usize>() as u64,
                     &iter_dim_div_4 as *const usize as *const _,
                 );
+                idx += 1;
                 encoder.set_bytes(
-                    5,
+                    idx,
                     std::mem::size_of::<usize>() as u64,
                     &outer_stride as *const usize as *const _,
                 );
@@ -99,8 +129,10 @@ impl RmsNorm {
             let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
             let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
-            let pipeline = stream
-                .load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type(), false)?)?;
+            let pipeline = stream.load_pipeline(
+                LibraryName::NNOps,
+                &self.kernel_name(input.datum_type(), output.datum_type(), false, scale.is_some())?,
+            )?;
 
             let iter_dim = shape_nd3[1];
 
@@ -113,11 +145,19 @@ impl RmsNorm {
             let command_buffer = stream.command_buffer();
             command_buffer.encode(|encoder| {
                 encoder.set_compute_pipeline_state(&pipeline);
-                encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-                encoder.set_tensor(1, eps);
-                encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-                encoder.set_slice(3, &shape_nd3);
-                encoder.set_slice(4, &strides_nd3);
+                let mut idx = 0;
+                encoder.set_metal_tensor(idx, input, metal::MTLResourceUsage::Read);
+                idx += 1;
+                encoder.set_tensor(idx, eps);
+                idx += 1;
+                if let Some(scale) = scale {
+                    encoder.set_metal_tensor(idx, scale, metal::MTLResourceUsage::Read);
+                    idx += 1;
+                }
+                encoder.set_metal_tensor(idx, output, metal::MTLResourceUsage::Write);
+                idx += 1;
+                encoder.set_slice(idx, &shape_nd3);
+                encoder.set_slice(idx + 1, &strides_nd3);
                 encoder.set_threadgroup_memory_length(0, 32 * std::mem::size_of::<f32>() as u64);
                 let grid_size =
                     MTLSize { width: (shape_nd3[2] * shape_nd3[0]) as _, height: 1, depth: 1 };
@@ -132,11 +172,14 @@ impl RmsNorm {
 
 pub fn metal_rms_norm_dispatch(
     input: &DeviceTensor,
+    scale: Option<&DeviceTensor>,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    crate::with_metal_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
+    crate::with_metal_stream(|stream| {
+        RmsNorm.dispatch_eval(stream, input, scale, axis, eps, output)
+    })
 }
 
 crate::register_metal_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, node, op| {
@@ -144,10 +187,30 @@ crate::register_metal_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, n
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
+        false,
+        None,
         "Metal",
         metal_rms_norm_dispatch,
     ))))
 });
+
+crate::register_metal_op!(
+    tract_core::ops::nn::ScaledRmsNorm,
+    |source, node, op| {
+        let input_facts = source.node_input_facts(node.id)?;
+        rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
+        rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
+        rule_if!(input_facts[1].datum_type == DatumType::F32);
+        Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+            op.axis,
+            op.eps.clone(),
+            true,
+            op.out_dt,
+            "Metal",
+            metal_rms_norm_dispatch,
+        ))))
+    }
+);
 
 #[cfg(test)]
 mod tests {
@@ -188,7 +251,7 @@ mod tests {
 
             let cpu_output =
                 cpu_rms.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
-            let metal_output = RmsNorm.eval(stream, &a, axis, &eps)?;
+            let metal_output = RmsNorm.eval(stream, &a, None, None, axis, &eps)?;
 
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)
@@ -209,6 +272,66 @@ mod tests {
     fn test_rms() -> TractResult<()> {
         test_case::<f32>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
         test_case::<f16>(&[4, 4], 1, -8.0, 1.0 / 100.0)?;
+        Ok(())
+    }
+
+    fn scaled_test_case<F>(shape: &[usize], axis: usize, out_dt: DatumType) -> TractResult<()>
+    where
+        F: Float + Datum,
+        usize: AsPrimitive<f32>,
+        f32: AsPrimitive<F>,
+    {
+        use tract_core::ops::nn::ScaledRmsNorm;
+        with_borrowed_metal_stream(|stream| {
+            let len = shape.iter().product::<usize>();
+            let dim = shape[axis];
+
+            let input = Tensor::from_shape(
+                shape,
+                &(0..len)
+                    .map(|f| -> F {
+                        let v: f32 = f.as_();
+                        (v / 33.0 - 5.0).as_()
+                    })
+                    .collect::<Vec<_>>(),
+            )?;
+            let scale = Tensor::from_shape(
+                &[dim],
+                &(0..dim).map(|f| -> f32 { 0.5 + (f as f32) / dim as f32 }).collect::<Vec<_>>(),
+            )?;
+
+            let eps = Arc::new(tensor0(0.0001f32));
+            let cpu_op =
+                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
+            let cpu_output = cpu_op
+                .eval(tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
+
+            let input_m = input.into_device()?;
+            let scale_m = scale.into_device()?;
+            let metal_output =
+                RmsNorm.eval(stream, &input_m, Some(&scale_m), Some(out_dt), axis, &eps)?;
+            let metal_output = metal_output.to_host()?.into_tensor();
+
+            ensure!(metal_output.datum_type() == out_dt);
+            cpu_output
+                .close_enough(&metal_output, Approximation::Approximate)
+                .with_context(|| format!("Cpu: {cpu_output:?}, Metal: {metal_output:?}"))?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_rms_scaled_and_out_dt() -> TractResult<()> {
+        // l4 fast path (last axis, multiple of 4) and nd3 path (non-last axis
+        // or dim not multiple of 4), all in/out dtype combos.
+        for (shape, axis) in [(&[6usize, 8][..], 1), (&[6, 9][..], 1), (&[8, 5][..], 0)] {
+            scaled_test_case::<f32>(shape, axis, DatumType::F32)?;
+            scaled_test_case::<f32>(shape, axis, DatumType::F16)?;
+            scaled_test_case::<f16>(shape, axis, DatumType::F16)?;
+            scaled_test_case::<f16>(shape, axis, DatumType::F32)?;
+        }
         Ok(())
     }
 
@@ -300,7 +423,7 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = RmsNorm.eval(stream, &a, self.axis, &self.eps)?;
+                let metal_output = RmsNorm.eval(stream, &a, None, None, self.axis, &self.eps)?;
                 Ok(metal_output.to_host()?.into_tensor())
             })
         }

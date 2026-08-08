@@ -151,7 +151,7 @@ INSTANTIATE_REDUCE(prod, Prod, f16, half)
 INSTANTIATE_REDUCE(all, All, bool, char)
 INSTANTIATE_REDUCE(any, Any, bool, char)
 
-template <typename F>
+template <typename FI, typename FO>
 [[kernel]] void rms_norm_nd3(device const void *input_b, constant void *eps_b,
                              device void *output_b,
                              constant const size_t shape[3],
@@ -165,9 +165,9 @@ template <typename F>
     if (sgitg == 0) {
         shmem_f32[tiisg] = 0.0f;
     }
-    device const F *input = (device const F *)input_b;
+    device const FI *input = (device const FI *)input_b;
     float eps = ((constant float *)eps_b)[0];
-    device F *output = (device F *)output_b;
+    device FO *output = (device FO *)output_b;
 
     size_t dim = shape[1];
 
@@ -198,11 +198,11 @@ template <typename F>
 
     for (size_t i = tpitg; i < dim; i += ntg) {
         auto idx = base_idx + i * strides[1];
-        output[idx] = input[idx] * norm;
+        output[idx] = static_cast<FO>(static_cast<float>(input[idx]) * norm);
     }
 }
 
-template <typename F, typename F4>
+template <typename I4, typename O4>
 [[kernel]] void rms_norm_nd2_l4(device const char *input_b,
                                 constant char *eps_b, device char *output_b,
                                 constant const size_t &n,
@@ -218,7 +218,7 @@ template <typename F, typename F4>
         shmem_f32[tiisg] = 0.0f;
     }
 
-    device const F4 *x = (device const F4 *)(input_b + tgpig * outer_stride);
+    device const I4 *x = (device const I4 *)(input_b + tgpig * outer_stride);
     float eps = ((constant float *)eps_b)[0];
     float sumf = 0.0f;
 
@@ -243,25 +243,152 @@ template <typename F, typename F4>
     const float mean = sumf / n;
     const float scale = 1.0f / sqrt(mean + eps);
 
-    device F4 *y = (device F4 *)output_b + tgpig * n_div_4;
+    device O4 *y = (device O4 *)output_b + tgpig * n_div_4;
     for (size_t i = tpitg; i < n_div_4; i += ntg) {
-        y[i] = x[i] * scale;
+        y[i] = static_cast<O4>(static_cast<float4>(x[i]) * scale);
     }
 }
 
-typedef decltype(rms_norm_nd3<float>) rms_norm_nd3_t;
-typedef decltype(rms_norm_nd2_l4<float, float4>) rms_norm_nd2_l4_t;
+template <typename FI, typename FO>
+[[kernel]] void rms_norm_scaled_nd3(device const void *input_b,
+                             constant void *eps_b,
+                             device const float *scale,
+                             device void *output_b,
+                             constant const size_t shape[3],
+                             constant const size_t strides[3],
+                             threadgroup float *shmem_f32 [[threadgroup(0)]],
+                             uint tgpig [[threadgroup_position_in_grid]],
+                             ushort tpitg [[thread_position_in_threadgroup]],
+                             ushort sgitg [[simdgroup_index_in_threadgroup]],
+                             ushort tiisg [[thread_index_in_simdgroup]],
+                             ushort ntg [[threads_per_threadgroup]]) {
+    if (sgitg == 0) {
+        shmem_f32[tiisg] = 0.0f;
+    }
+    device const FI *input = (device const FI *)input_b;
+    float eps = ((constant float *)eps_b)[0];
+    device FO *output = (device FO *)output_b;
 
-template [[host_name(
-    "nn_ops::rms_norm_nd3_f32")]] [[kernel]] rms_norm_nd3_t rms_norm_nd3<float>;
-template [[host_name(
-    "nn_ops::rms_norm_nd3_f16")]] [[kernel]] rms_norm_nd3_t rms_norm_nd3<half>;
-template
-    [[host_name("nn_ops::rms_norm_nd2_l4_f32")]] [[kernel]] rms_norm_nd2_l4_t
-        rms_norm_nd2_l4<float, float4>;
-template
-    [[host_name("nn_ops::rms_norm_nd2_l4_f16")]] [[kernel]] rms_norm_nd2_l4_t
-        rms_norm_nd2_l4<half, half4>;
+    size_t dim = shape[1];
+
+    size_t base_idx =
+        (tgpig % shape[2]) * strides[2] + (tgpig / shape[2]) * strides[0];
+
+    float partial_acc = 0.0;
+    for (size_t i = tpitg; i < dim; i += ntg) {
+        float el = static_cast<float>(input[base_idx + i * strides[1]]);
+        partial_acc += el * el;
+    }
+
+    partial_acc = simd_sum(partial_acc);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (tiisg == 0) {
+        shmem_f32[sgitg] = partial_acc;
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    partial_acc = shmem_f32[tiisg];
+    partial_acc = simd_sum(partial_acc);
+
+    float mean_of_squares = partial_acc / dim;
+
+    float norm = metal::rsqrt(mean_of_squares + eps);
+
+    for (size_t i = tpitg; i < dim; i += ntg) {
+        auto idx = base_idx + i * strides[1];
+        output[idx] =
+            static_cast<FO>(static_cast<float>(input[idx]) * norm * scale[i]);
+    }
+}
+
+template <typename I4, typename O4>
+[[kernel]] void rms_norm_scaled_nd2_l4(device const char *input_b,
+                                constant char *eps_b,
+                                device const float4 *scale4,
+                                device char *output_b,
+                                constant const size_t &n,
+                                constant const size_t &n_div_4,
+                                constant const size_t &outer_stride,
+                                threadgroup float *shmem_f32 [[threadgroup(0)]],
+                                uint tgpig [[threadgroup_position_in_grid]],
+                                ushort tpitg [[thread_position_in_threadgroup]],
+                                ushort sgitg [[simdgroup_index_in_threadgroup]],
+                                ushort tiisg [[thread_index_in_simdgroup]],
+                                ushort ntg [[threads_per_threadgroup]]) {
+    if (sgitg == 0) {
+        shmem_f32[tiisg] = 0.0f;
+    }
+
+    device const I4 *x = (device const I4 *)(input_b + tgpig * outer_stride);
+    float eps = ((constant float *)eps_b)[0];
+    float sumf = 0.0f;
+
+    // parallel sum
+    for (size_t i = tpitg; i < n_div_4; i += ntg) {
+        float4 el = static_cast<float4>(x[i]);
+        sumf += dot(el, el);
+    }
+    sumf = simd_sum(sumf);
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (tiisg == 0) {
+        shmem_f32[sgitg] = sumf;
+    }
+
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    sumf = shmem_f32[tiisg];
+    sumf = simd_sum(sumf);
+
+    const float mean = sumf / n;
+    const float scale = 1.0f / sqrt(mean + eps);
+
+    device O4 *y = (device O4 *)output_b + tgpig * n_div_4;
+    for (size_t i = tpitg; i < n_div_4; i += ntg) {
+        y[i] = static_cast<O4>(static_cast<float4>(x[i]) * scale * scale4[i]);
+    }
+}
+
+typedef decltype(rms_norm_nd3<float, float>) rms_norm_nd3_t;
+typedef decltype(rms_norm_nd2_l4<float4, float4>) rms_norm_nd2_l4_t;
+typedef decltype(rms_norm_scaled_nd3<float, float>) rms_norm_scaled_nd3_t;
+typedef decltype(rms_norm_scaled_nd2_l4<float4, float4>) rms_norm_scaled_nd2_l4_t;
+
+template [[host_name("nn_ops::rms_norm_nd3_f32_f32")]] [[kernel]]
+    rms_norm_nd3_t rms_norm_nd3<float, float>;
+template [[host_name("nn_ops::rms_norm_nd2_l4_f32_f32")]] [[kernel]]
+    rms_norm_nd2_l4_t rms_norm_nd2_l4<float4, float4>;
+template [[host_name("nn_ops::rms_norm_scaled_nd3_f32_f32")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, float>;
+template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f32_f32")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, float4>;
+template [[host_name("nn_ops::rms_norm_nd3_f32_f16")]] [[kernel]]
+    rms_norm_nd3_t rms_norm_nd3<float, half>;
+template [[host_name("nn_ops::rms_norm_nd2_l4_f32_f16")]] [[kernel]]
+    rms_norm_nd2_l4_t rms_norm_nd2_l4<float4, half4>;
+template [[host_name("nn_ops::rms_norm_scaled_nd3_f32_f16")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, half>;
+template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f32_f16")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, half4>;
+template [[host_name("nn_ops::rms_norm_nd3_f16_f32")]] [[kernel]]
+    rms_norm_nd3_t rms_norm_nd3<half, float>;
+template [[host_name("nn_ops::rms_norm_nd2_l4_f16_f32")]] [[kernel]]
+    rms_norm_nd2_l4_t rms_norm_nd2_l4<half4, float4>;
+template [[host_name("nn_ops::rms_norm_scaled_nd3_f16_f32")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, float>;
+template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f16_f32")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, float4>;
+template [[host_name("nn_ops::rms_norm_nd3_f16_f16")]] [[kernel]]
+    rms_norm_nd3_t rms_norm_nd3<half, half>;
+template [[host_name("nn_ops::rms_norm_nd2_l4_f16_f16")]] [[kernel]]
+    rms_norm_nd2_l4_t rms_norm_nd2_l4<half4, half4>;
+template [[host_name("nn_ops::rms_norm_scaled_nd3_f16_f16")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, half>;
+template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f16_f16")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, half4>;
 
 struct Sigmoid {
     template <typename T> T operator()(T x) {
