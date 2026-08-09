@@ -424,6 +424,11 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
+        if std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some() {
+            // Same per-dispatch attribution as `load_pipeline`.
+            self.commit_current()?;
+            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
+        }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 

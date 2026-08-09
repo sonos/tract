@@ -215,6 +215,14 @@ impl MetalTransform {
             .with_rule_for("bypass_device_downcast_roundtrip", bypass_device_downcast_roundtrip)
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for("fuse_elementwise_chain_ew", rewrite_rules::fuse_elementwise_chain_ew)
+            .with_rule_for("fuse_elementwise_chain_bin", rewrite_rules::fuse_elementwise_chain_bin)
+            .with_rule_for(
+                "fuse_elementwise_chain_cast",
+                rewrite_rules::fuse_elementwise_chain_cast,
+            )
+            .rewrite(&(), model)?;
+        Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
         Rewriter::default()

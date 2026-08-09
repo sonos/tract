@@ -1,6 +1,7 @@
 pub mod clamped_swiglu;
 pub mod conv;
 pub mod fused_axis_op;
+pub mod fused_elementwise;
 pub mod gemm;
 pub mod fused_sdpa;
 pub mod route_topk;
@@ -10,6 +11,7 @@ pub mod routed_q40_matmul;
 
 pub use clamped_swiglu::MetalClampedSwiGlu;
 pub use fused_axis_op::MetalFusedAxisOp;
+pub use fused_elementwise::MetalFusedElementwise;
 pub use gemm::MetalGemm;
 pub use route_topk::MetalRouteTopK;
 pub use routed_bias_add::MetalRoutedBiasAdd;
