@@ -322,6 +322,89 @@ impl ModelTransform for ForceScanExternalState {
 
 register_simple_model_transform!("force_scan_external_state", ForceScanExternalState);
 
+/// Hands a single-iteration Scan's recurrent state to the caller, so
+/// `declutter_single_loop` can inline the body.
+///
+/// A Scan whose state is seeded by a constant carries that state inside tract
+/// across calls, which `declutter_single_loop` refuses to inline because
+/// inlining would rewire the body's state input back to the seed. This rewires
+/// the state input to a fresh model input and publishes the scan output — which
+/// is the final state when the loop runs once — as a model output, then asserts
+/// `external_state`. The caller must thread the added state pair: pass the
+/// previous value in, feed the returned value back on the next call.
+///
+/// Only Scans that run exactly one iteration, with no warm-up (`skip == 0`),
+/// and are seeded by a constant are touched. A state already fed by a `Source`
+/// belongs to the caller; past one iteration the scan output is the whole
+/// sequence rather than a final value; and a Scan still inside its warm-up
+/// window suppresses body execution in a way an inlined body cannot reproduce.
+/// Model inputs and outputs are appended in Scan node order.
+///
+/// Output is bit-identical to the untransformed model, but the state round-trip
+/// through model I/O is not free: it pays off only where the Scan scaffolding it
+/// removes costs more than the state copy it adds. The profile that benefits is
+/// a pulse-1 streaming graph whose recurrent state is small relative to the
+/// per-frame work — DeepFilterNet3's constant-seeded GRUs are the canonical
+/// case. Models with large recurrent state, or whose remaining Scans are
+/// already cheap, can regress. Measure before adopting.
+#[derive(Debug)]
+struct ExportScanState;
+
+impl ModelTransform for ExportScanState {
+    fn name(&self) -> StaticName {
+        "export_scan_state".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        use crate::ops::konst::Const;
+        use crate::ops::scan::{InputMapping, Scan};
+
+        let scans: Vec<usize> =
+            model.nodes().iter().filter(|n| n.op_is::<Scan>()).map(|n| n.id).collect();
+
+        for id in scans {
+            let eligible = {
+                let inputs = model.node_input_facts(id)?;
+                let scan = model.node(id).op_as::<Scan>().unwrap();
+                scan.skip == 0 && scan.iteration_count(&inputs).map(|i| i.is_one()).unwrap_or(false)
+            };
+            if !eligible {
+                continue;
+            }
+
+            let scan = model.node(id).op_as::<Scan>().unwrap();
+            let Some(state_output) =
+                scan.output_mapping.iter().find(|om| om.state).and_then(|om| om.scan.map(|s| s.0))
+            else {
+                continue;
+            };
+            let seeded: Vec<usize> = scan
+                .input_mapping
+                .iter()
+                .enumerate()
+                .filter(|(_, im)| matches!(im, InputMapping::State))
+                .map(|(slot, _)| slot)
+                .filter(|&slot| model.node(model.node(id).inputs[slot].node).op_is::<Const>())
+                .collect();
+            if seeded.is_empty() {
+                continue;
+            }
+
+            for slot in seeded {
+                let fact = model.outlet_fact(model.node(id).inputs[slot])?.clone().without_value();
+                let name = format!("{}.state_in", model.node(id).name);
+                let source = model.add_source(name, fact)?;
+                model.add_edge(source, InletId::new(id, slot))?;
+            }
+            model.outputs.push(OutletId::new(id, state_output));
+            model.node_mut(id).op_as_mut::<Scan>().unwrap().external_state = true;
+        }
+        Ok(())
+    }
+}
+
+register_simple_model_transform!("export_scan_state", ExportScanState);
+
 register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
 register_simple_model_transform!("block_quant", BlockQuantTransform);
 
