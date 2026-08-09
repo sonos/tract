@@ -16,11 +16,11 @@ then
     device=cpu
 fi
 generation=541
-manifest=$ROOT/.travis/llm-models.json
+manifest=$ROOT/.travis/llm-models.tsv
 
 if [ "$model" = "all" ]
 then
-    for m in $(jq -r '.[].id' $manifest)
+    for m in $(grep -v '^#' $manifest | cut -f1)
     do
         $0 $m $2 $device
     done
@@ -32,6 +32,7 @@ model=$(echo $model | tr 'A-Z' 'a-z' | tr -d "_.-")
 quants=
 while IFS=$'\t' read -r id hf qs
 do
+    case "$id" in ''|\#*) continue;; esac
     local_id=$(echo $hf | sed 's/\//--/g')
     for cand in "$id" "$local_id"
     do
@@ -42,7 +43,7 @@ do
             quants=$qs
         fi
     done
-done < <(jq -r '.[] | "\(.id)\t\(.hf)\t\(.quants|join(","))"' $manifest)
+done < $manifest
 
 if [ -z "$model_id" ]
 then
