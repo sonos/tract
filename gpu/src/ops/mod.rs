@@ -9,6 +9,7 @@ pub mod copy_based;
 pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod element_wise;
+pub mod fused_view_copy;
 pub mod gather;
 pub mod gdn_recurrent;
 pub mod gelu_approximate;

@@ -223,6 +223,16 @@ impl MetalTransform {
             )
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for(
+                "fuse_view_copy_slice",
+                tract_gpu::rewrite_rules::fused_view_copy::fuse_view_copy_slice,
+            )
+            .with_rule_for(
+                "fuse_view_copy_axis",
+                tract_gpu::rewrite_rules::fused_view_copy::fuse_view_copy_axis,
+            )
+            .rewrite(&(), model)?;
+        Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
         Rewriter::default()

@@ -934,4 +934,44 @@ mod tests {
         Ok(())
     }
 
+    /// The fused view copy rewrite must collapse a slice/move/reshape chain
+    /// into one GpuFusedViewCopy and reproduce the CPU layout bit-exactly.
+    #[test]
+    fn fused_view_copy_chain_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::array::Slice;
+
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f16::fact([1, 8, 6]))?;
+        let sliced = model.wire_node("slice", Slice::new(1, 2, 6), &[x])?[0];
+        let moved = model.wire_node("move", AxisOp::Move(1, 2), &[sliced])?[0];
+        let out = model.wire_node(
+            "reshape",
+            AxisOp::Reshape(1, tvec![6.into(), 4.into()], tvec![6.into(), 2.into(), 2.into()]),
+            &[moved],
+        )?;
+        model.select_output_outlets(&out)?;
+
+        let mk = || -> TractResult<TValue> {
+            let data: Vec<f16> = (0..48).map(|i| f16::from_f32(i as f32)).collect();
+            Ok(Tensor::from_shape(&[1, 8, 6], &data)?.into_tvalue())
+        };
+
+        let cpu_out = model.clone().into_runnable()?.run(tvec![mk()?])?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        ensure!(
+            metal
+                .nodes()
+                .iter()
+                .any(|n| n.op_is::<tract_gpu::ops::fused_view_copy::GpuFusedViewCopy>()),
+            "no GpuFusedViewCopy node after transform"
+        );
+        let metal_out = metal.into_runnable()?.run(tvec![mk()?])?;
+
+        cpu_out[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Exact)?;
+        Ok(())
+    }
 }
