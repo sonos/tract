@@ -83,7 +83,7 @@ pub fn dump_metrics(
     options: &RunOptions,
     path: impl AsRef<std::path::Path>,
 ) -> TractResult<()> {
-    log::info!("Analyzing Metal memory schema utilization...");
+    log::info!("Analyzing device memory schema utilization...");
     const SCHEMA_HINT_S: i64 = 1024;
     const SCHEMA_HINT_P: i64 = 0;
 
