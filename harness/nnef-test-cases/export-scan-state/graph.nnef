@@ -1,0 +1,31 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+
+# A Scan whose recurrent state is seeded by a constant: tract carries the state
+# across calls, so declutter_single_loop leaves the Scan alone even when S is 1.
+# `export_scan_state` hands that state to the caller and lets the body inline.
+
+fragment accumulate_body(
+    x_t: tensor<scalar>,
+    h_prev: tensor<scalar>
+) -> ( h_next: tensor<scalar> ) {
+    h_next = add(x_t, h_prev);
+}
+
+graph export_scan_state(input) -> (output)
+{
+    input  = external<scalar>(shape = [S, 4]);
+    h0     = variable<scalar>(label = "h0", shape = [1, 4]);
+    output = tract_core_scan(
+        body   = "accumulate_body",
+        scan   = [("x_t", input, 0, 1)],
+        full   = [],
+        state  = [("h_prev", h0, "h_next")],
+        output = [("h_next", "full", 0, 1)],
+        skip   = 0,
+        reset_every_turn = false,
+        external_state = false
+    );
+}
