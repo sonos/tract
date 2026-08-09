@@ -16,16 +16,11 @@ then
     device=cpu
 fi
 generation=541
+manifest=$ROOT/.travis/llm-models.json
 
 if [ "$model" = "all" ]
 then
-    for m in \
-        openelm-270M \
-	llama-3.2-1B-instruct \
-	llama-3.2-3B-instruct \
-	llama-3.1-8B-instruct \
-	qwen3-1.7B \
-	qwen3-8B
+    for m in $(jq -r '.[].id' $manifest)
     do
         $0 $m $2 $device
     done
@@ -34,29 +29,30 @@ fi
 
 model=$(echo $model | tr 'A-Z' 'a-z' | tr -d "_.-")
 
-for m in \
-    apple--OpenELM-270M \
-    meta-llama--Llama-3.2-1B-Instruct \
-    meta-llama--Llama-3.2-3B-Instruct \
-    meta-llama--Llama-3.1-8B-Instruct \
-    Qwen--Qwen3-1.7B \
-    Qwen--Qwen3-8B
+quants=
+while IFS=$'\t' read -r id hf qs
 do
-    norm=$(echo $m | tr "A-Z" "a-z" | tr -d "_.-")
-    if [[ "$norm" == *"$model"* ]];
-    then
-        model_id=$m
-    fi
-done
+    local_id=$(echo $hf | sed 's/\//--/g')
+    for cand in "$id" "$local_id"
+    do
+        norm=$(echo $cand | tr "A-Z" "a-z" | tr -d "_.-")
+        if [[ "$norm" == *"$model"* ]]
+        then
+            model_id=$local_id
+            quants=$qs
+        fi
+    done
+done < <(jq -r '.[] | "\(.id)\t\(.hf)\t\(.quants|join(","))"' $manifest)
 
 if [ -z "$model_id" ]
 then
     echo "No model matched"
+    exit 1
 fi
 
 if [ "$q" = "all" ]
 then
-    for q in q40ef16 f16f16 f32f32
+    for q in $(echo $quants | tr ',' ' ')
     do
         $0 $1 $q $device
     done

@@ -1,0 +1,8 @@
+[
+  { "id": "openelm-270M",          "hf": "apple/OpenELM-270M",               "quants": ["f16f16", "q40ef16"] },
+  { "id": "llama-3.2-1B-instruct", "hf": "meta-llama/Llama-3.2-1B-Instruct", "quants": ["f32f32", "f16f16", "q40ef16"] },
+  { "id": "llama-3.2-3B-instruct", "hf": "meta-llama/Llama-3.2-3B-Instruct", "quants": ["f16f16", "q40ef16"] },
+  { "id": "llama-3.1-8B-instruct", "hf": "meta-llama/Llama-3.1-8B-Instruct", "quants": ["f16f16", "q40ef16"] },
+  { "id": "qwen3-1.7B",            "hf": "Qwen/Qwen3-1.7B",                   "quants": ["f16f16", "q40ef16"] },
+  { "id": "qwen3-8B",              "hf": "Qwen/Qwen3-8B",                     "quants": ["f16f16", "q40ef16"] }
+]
