@@ -11,14 +11,23 @@ struct MemArenaUsage {
 }
 
 impl MemArenaUsage {
-    pub fn eval_from_schema(
+    fn eval(
         schema: &DeviceMemSchema,
-        symbol_values: &SymbolValues,
+        peak_terms: &[TDim],
+        symbols: &SymbolValues,
     ) -> TractResult<Self> {
+        let arena_memory_size = schema.eval_memory_size(symbols)?;
+        let peak_memory_size = peak_terms
+            .iter()
+            .map(|term| term.eval_to_i64(symbols))
+            .collect::<TractResult<Vec<_>>>()?
+            .into_iter()
+            .max()
+            .unwrap_or(0);
         Ok(Self {
-            arena_memory_size: schema.eval_memory_size(symbol_values)?,
-            peak_memory_size: schema.eval_peak_memory_size(symbol_values)?,
-            peak_memory_usage: schema.eval_usage(symbol_values)?,
+            arena_memory_size,
+            peak_memory_size,
+            peak_memory_usage: peak_memory_size as f32 / arena_memory_size.max(1) as f32,
         })
     }
 }
@@ -47,6 +56,10 @@ impl MemArenaMetrics {
         let sequence_length = symbol_scope.sym("S");
         let past_sequence_length = symbol_scope.sym("P");
 
+        // The per-step arena expressions are the same for every (S, P); summing
+        // the symbolic terms once here keeps the sweep below to numeric evals.
+        let peak_terms = schema.peak_memory_terms();
+
         let mut pp = BTreeMap::new();
         let mut max_memory_size: i64 = 0;
         let mut sum_size: i64 = 0;
@@ -55,7 +68,7 @@ impl MemArenaMetrics {
             log::info!("Prompt processing: P: 0, S: {s}");
             let symbol_values =
                 SymbolValues::default().with(&sequence_length, s).with(&past_sequence_length, 0);
-            let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
+            let usage = MemArenaUsage::eval(schema, &peak_terms, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
             sum_used += usage.peak_memory_size;
@@ -66,7 +79,7 @@ impl MemArenaMetrics {
             log::info!("Token generation: P: {p}, S: 1");
             let symbol_values =
                 SymbolValues::default().with(&sequence_length, 1).with(&past_sequence_length, p);
-            let usage = MemArenaUsage::eval_from_schema(schema, &symbol_values)?;
+            let usage = MemArenaUsage::eval(schema, &peak_terms, &symbol_values)?;
             max_memory_size = max_memory_size.max(usage.arena_memory_size);
             sum_size += usage.arena_memory_size;
             sum_used += usage.peak_memory_size;
