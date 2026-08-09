@@ -175,3 +175,127 @@ kernel void causal_conv1d_update_f16(
     final_state[state_base + tap] = half(window[tap]);
   }
 }
+
+// Threadgroup-parallel variant: one threadgroup per (batch, value head),
+// laid out [width columns x R row-chunks]. The row loops of the original
+// kernel (three serial passes of `width` iterations per thread, with only
+// b*heads*width threads in flight) are split across R chunks and reduced
+// through threadgroup memory, which multiplies occupancy by R and divides
+// the per-thread dependency chains by R. Each thread still owns its
+// (column, chunk-rows) slice of the state exclusively, so the sequential S
+// loop only ever reads back its own device writes.
+template <typename ST>
+kernel void gdn_recurrent_tg(
+    device const half *query [[buffer(0)]],
+    device const half *key [[buffer(1)]],
+    device const half *value [[buffer(2)]],
+    device const float *log_decay [[buffer(3)]],
+    device const half *beta [[buffer(4)]],
+    device const ST *initial_state [[buffer(5)]],
+    device half *output [[buffer(6)]],
+    device ST *final_state [[buffer(7)]],
+    constant int &heads [[buffer(8)]],
+    constant int &width [[buffer(9)]],
+    constant int &s_len [[buffer(10)]],
+    constant int &batch [[buffer(11)]],
+    constant int &k_heads [[buffer(12)]],
+    threadgroup float *scratch [[threadgroup(0)]],
+    uint2 tgpig [[threadgroup_position_in_grid]],
+    uint2 tpitg [[thread_position_in_threadgroup]],
+    uint2 tptg [[threads_per_threadgroup]]) {
+  const int col = tpitg.x;
+  const int r = tpitg.y;
+  const int rchunks = tptg.y;
+  const int head = tgpig.x % heads;
+  const int b = tgpig.x / heads;
+  if (b >= batch) return;
+  const int rows_per_chunk = width / rchunks;
+  const int row0 = r * rows_per_chunk;
+  const int groups = heads / k_heads;
+  const int qk_head = head / groups;
+  const int matrix_base = (b * heads + head) * width * width;
+  const float out_scale = rsqrt(float(width));
+
+  // scratch layout: pred[rchunks][width], res[rchunks][width],
+  // qpart[rchunks], kpart[rchunks]
+  threadgroup float *pred_part = scratch;
+  threadgroup float *res_part = scratch + rchunks * width;
+  threadgroup float *q_part = res_part + rchunks * width;
+  threadgroup float *k_part = q_part + rchunks;
+
+  for (int s = 0; s < s_len; ++s) {
+    const int vector_base = ((b * s_len + s) * heads + head) * width;
+    const int qk_base = ((b * s_len + s) * k_heads + qk_head) * width;
+    const int gate_ix = (b * s_len + s) * heads + head;
+    float q2 = 0.0f;
+    float k2 = 0.0f;
+    for (int row = row0; row < row0 + rows_per_chunk; ++row) {
+      const float q = float(query[qk_base + row]);
+      const float k = float(key[qk_base + row]);
+      q2 += q * q;
+      k2 += k * k;
+    }
+    if (col == 0) {
+      q_part[r] = q2;
+      k_part[r] = k2;
+    }
+    device const ST *state_in = (s == 0) ? initial_state : final_state;
+    const float decay = exp(log_decay[gate_ix]);
+    float pred = 0.0f;
+    for (int row = row0; row < row0 + rows_per_chunk; ++row) {
+      pred += float(key[qk_base + row])
+          * float(state_in[matrix_base + row * width + col]) * decay;
+    }
+    pred_part[r * width + col] = pred;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float q_norm = 0.0f;
+    float k_norm = 0.0f;
+    float predicted = 0.0f;
+    for (int rr = 0; rr < rchunks; ++rr) {
+      q_norm += q_part[rr];
+      k_norm += k_part[rr];
+      predicted += pred_part[rr * width + col];
+    }
+    const float q_inv = rsqrt(q_norm + 1.0e-6f);
+    const float k_inv = rsqrt(k_norm + 1.0e-6f);
+    predicted *= k_inv;
+    const float residual =
+        (float(value[vector_base + col]) - predicted) * float(beta[gate_ix]);
+    float res = 0.0f;
+    for (int row = row0; row < row0 + rows_per_chunk; ++row) {
+      const int offset = matrix_base + row * width + col;
+      const float next = float(state_in[offset]) * decay
+          + float(key[qk_base + row]) * k_inv * residual;
+      final_state[offset] = ST(next);
+      res += float(query[qk_base + row]) * next;
+    }
+    res_part[r * width + col] = res;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (r == 0) {
+      float result = 0.0f;
+      for (int rr = 0; rr < rchunks; ++rr) {
+        result += res_part[rr * width + col];
+      }
+      output[vector_base + col] = half(result * q_inv * out_scale);
+    }
+    // pred_part/q_part/k_part are rewritten next step: make sure every
+    // thread is done reading them (and r==0 done reading res_part).
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
+}
+
+template [[host_name("gdn_recurrent_f16_tg")]] [[kernel]] void
+gdn_recurrent_tg<float>(
+    device const half *, device const half *, device const half *,
+    device const float *, device const half *, device const float *,
+    device half *, device float *, constant int &, constant int &,
+    constant int &, constant int &, constant int &, threadgroup float *,
+    uint2, uint2, uint2);
+
+template [[host_name("gdn_recurrent_f16_state_f16_tg")]] [[kernel]] void
+gdn_recurrent_tg<half>(
+    device const half *, device const half *, device const half *,
+    device const float *, device const half *, device const half *,
+    device half *, device half *, constant int &, constant int &,
+    constant int &, constant int &, constant int &, threadgroup float *,
+    uint2, uint2, uint2);

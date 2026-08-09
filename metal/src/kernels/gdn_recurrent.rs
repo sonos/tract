@@ -50,11 +50,58 @@ fn dispatch_eval(
     for tensor in [query, key, value, log_decay, beta, initial_state, output, final_state] {
         stream.retain_tensor(tensor);
     }
-    let kernel_name = if initial_state.datum_type() == DatumType::F16 {
-        "gdn_recurrent_f16_state_f16"
-    } else {
-        "gdn_recurrent_f16"
-    };
+    let f16_state = initial_state.datum_type() == DatumType::F16;
+
+    // Threadgroup-parallel kernel: one threadgroup per (b, head), threads
+    // [width x rchunks], row loops split across chunks and reduced through
+    // threadgroup memory. Needs the whole column set in one threadgroup;
+    // exotic widths fall back to the thread-per-column kernel.
+    let tg_kernel_name =
+        if f16_state { "gdn_recurrent_f16_state_f16_tg" } else { "gdn_recurrent_f16_tg" };
+    let tg_pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, tg_kernel_name)?;
+    let max_tg = tg_pipeline.max_total_threads_per_threadgroup() as usize;
+    let mut rchunks = 1;
+    while rchunks < 16
+        && width % (rchunks * 2) == 0
+        && width * rchunks * 2 <= max_tg.min(1024)
+    {
+        rchunks *= 2;
+    }
+
+    if width <= max_tg {
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&tg_pipeline);
+            for (ix, tensor) in
+                [query, key, value, log_decay, beta, initial_state].iter().enumerate()
+            {
+                encoder.set_metal_tensor(ix as u64, tensor, metal::MTLResourceUsage::Read);
+            }
+            encoder.set_metal_tensor(6, output, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(7, final_state, metal::MTLResourceUsage::Write);
+            let n_tgs = (batch * heads) as u64;
+            let heads = heads as i32;
+            let width_i = width as i32;
+            let s_len = s_len as i32;
+            let batch_i = batch as i32;
+            let k_heads = k_heads as i32;
+            encoder.set_bytes(8, size_of::<i32>() as u64, &heads as *const i32 as *const _);
+            encoder.set_bytes(9, size_of::<i32>() as u64, &width_i as *const i32 as *const _);
+            encoder.set_bytes(10, size_of::<i32>() as u64, &s_len as *const i32 as *const _);
+            encoder.set_bytes(11, size_of::<i32>() as u64, &batch_i as *const i32 as *const _);
+            encoder.set_bytes(12, size_of::<i32>() as u64, &k_heads as *const i32 as *const _);
+            let scratch_bytes = ((2 * rchunks * width + 2 * rchunks) * size_of::<f32>()) as u64;
+            encoder.set_threadgroup_memory_length(0, scratch_bytes);
+            encoder.dispatch_thread_groups(
+                MTLSize { width: n_tgs, height: 1, depth: 1 },
+                MTLSize { width: width as u64, height: rchunks as u64, depth: 1 },
+            );
+        });
+        return Ok(());
+    }
+
+    let kernel_name =
+        if f16_state { "gdn_recurrent_f16_state_f16" } else { "gdn_recurrent_f16" };
     let pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, kernel_name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
