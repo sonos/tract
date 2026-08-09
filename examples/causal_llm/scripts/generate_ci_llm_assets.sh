@@ -15,10 +15,13 @@ else
 fi
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
-MANIFEST=$ROOT/.travis/llm-models.json
+MANIFEST=$ROOT/.travis/llm-models.tsv
 
-jq -r '.[] | .hf as $hf | .quants[] | "\($hf)\t\(.)"' "$MANIFEST" | while IFS=$'\t' read -r hf_id q
+while IFS=$'\t' read -r id hf_id quants
 do
+    case "$id" in ''|\#*) continue;; esac
+    for q in $(echo $quants | tr ',' ' ')
+    do
     local_id=$(echo $hf_id | sed "s/\//--/g")
          model=$local_id-$q
          rm -rf $model
@@ -43,4 +46,5 @@ do
           then
             aws s3 cp $model/tests/prompt_with_past_io.npz s3://tract-ci-builds/tests/llm/current/$model/$model.p50s50.io.npz
           fi
-done
+    done
+done < "$MANIFEST"

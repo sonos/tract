@@ -101,7 +101,7 @@ jobs:
         run: |
           if [ "$FULL" = "true" ]
           then
-            combos=$(jq -c '[ .[] | .id as $m | .quants[] | {model:$m, q:.} ]' .travis/llm-models.json)
+            combos=$(awk -F'\t' 'BEGIN{printf "["} /^#/||NF<3{next} {n=split($3,qs,","); for(i=1;i<=n;i++){printf "%s{\"model\":\"%s\",\"q\":\"%s\"}", (c++?",":""), $1, qs[i]}} END{print "]"}' .travis/llm-models.tsv)
           else
             echo ::notice::Skipping most checks on PR and commit. Dispatch workflow manually if needed.
             combos='[ {"model":"llama-3.2-1B-instruct","q":"f32f32"}, {"model":"llama-3.2-1B-instruct","q":"q40ef16"} ]'
