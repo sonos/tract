@@ -2,11 +2,12 @@
 using namespace metal;
 
 // Gated delta rule over the whole sequence. Layout matches the CPU op:
-// query/key/value/output [b, S, h, w], log_decay/beta [b, S, h],
-// state [b, h, w, w]. One thread per (batch, head, column); each thread
-// owns its state column exclusively, so the sequential S loop is
-// race-free (later steps read this thread's own prior writes in
-// final_state).
+// query/key [b, S, hk, w], value/output [b, S, hv, w] with hv = G * hk
+// (GQA: value head h reads query/key head h / G; hk == hv is the
+// ungrouped case), log_decay/beta [b, S, hv], state [b, hv, w, w].
+// One thread per (batch, value head, column); each thread owns its
+// state column exclusively, so the sequential S loop is race-free
+// (later steps read this thread's own prior writes in final_state).
 kernel void gdn_recurrent_f16(
     device const half *query [[buffer(0)]],
     device const half *key [[buffer(1)]],
@@ -20,21 +21,25 @@ kernel void gdn_recurrent_f16(
     constant int &width [[buffer(9)]],
     constant int &s_len [[buffer(10)]],
     constant int &batch [[buffer(11)]],
+    constant int &k_heads [[buffer(12)]],
     uint gid [[thread_position_in_grid]]) {
   const int column = gid % width;
   const int head = (gid / width) % heads;
   const int b = gid / (width * heads);
   if (b >= batch) return;
+  const int groups = heads / k_heads;
+  const int qk_head = head / groups;
   const int matrix_base = (b * heads + head) * width * width;
   const float out_scale = rsqrt(float(width));
   for (int s = 0; s < s_len; ++s) {
     const int vector_base = ((b * s_len + s) * heads + head) * width;
+    const int qk_base = ((b * s_len + s) * k_heads + qk_head) * width;
     const int gate_ix = (b * s_len + s) * heads + head;
     float q_norm = 0.0f;
     float k_norm = 0.0f;
     for (int row = 0; row < width; ++row) {
-      const float q = float(query[vector_base + row]);
-      const float k = float(key[vector_base + row]);
+      const float q = float(query[qk_base + row]);
+      const float k = float(key[qk_base + row]);
       q_norm += q * q;
       k_norm += k * k;
     }
@@ -44,7 +49,7 @@ kernel void gdn_recurrent_f16(
     device const float *state_in = (s == 0) ? initial_state : final_state;
     float predicted = 0.0f;
     for (int row = 0; row < width; ++row) {
-      predicted += float(key[vector_base + row]) * k_inv
+      predicted += float(key[qk_base + row]) * k_inv
           * state_in[matrix_base + row * width + column] * decay;
     }
     const float residual =
@@ -54,9 +59,9 @@ kernel void gdn_recurrent_f16(
     for (int row = 0; row < width; ++row) {
       const int offset = matrix_base + row * width + column;
       const float next = state_in[offset] * decay
-          + float(key[vector_base + row]) * k_inv * residual;
+          + float(key[qk_base + row]) * k_inv * residual;
       final_state[offset] = next;
-      result += float(query[vector_base + row]) * q_inv * next;
+      result += float(query[qk_base + row]) * q_inv * next;
     }
     output[vector_base + column] = half(result * out_scale);
   }
@@ -78,21 +83,25 @@ kernel void gdn_recurrent_f16_state_f16(
     constant int &width [[buffer(9)]],
     constant int &s_len [[buffer(10)]],
     constant int &batch [[buffer(11)]],
+    constant int &k_heads [[buffer(12)]],
     uint gid [[thread_position_in_grid]]) {
   const int column = gid % width;
   const int head = (gid / width) % heads;
   const int b = gid / (width * heads);
   if (b >= batch) return;
+  const int groups = heads / k_heads;
+  const int qk_head = head / groups;
   const int matrix_base = (b * heads + head) * width * width;
   const float out_scale = rsqrt(float(width));
   for (int s = 0; s < s_len; ++s) {
     const int vector_base = ((b * s_len + s) * heads + head) * width;
+    const int qk_base = ((b * s_len + s) * k_heads + qk_head) * width;
     const int gate_ix = (b * s_len + s) * heads + head;
     float q_norm = 0.0f;
     float k_norm = 0.0f;
     for (int row = 0; row < width; ++row) {
-      const float q = float(query[vector_base + row]);
-      const float k = float(key[vector_base + row]);
+      const float q = float(query[qk_base + row]);
+      const float k = float(key[qk_base + row]);
       q_norm += q * q;
       k_norm += k * k;
     }
@@ -102,7 +111,7 @@ kernel void gdn_recurrent_f16_state_f16(
     device const half *state_in = (s == 0) ? initial_state : final_state;
     float predicted = 0.0f;
     for (int row = 0; row < width; ++row) {
-      predicted += float(key[vector_base + row]) * k_inv
+      predicted += float(key[qk_base + row]) * k_inv
           * float(state_in[matrix_base + row * width + column]) * decay;
     }
     const float residual =
@@ -112,9 +121,9 @@ kernel void gdn_recurrent_f16_state_f16(
     for (int row = 0; row < width; ++row) {
       const int offset = matrix_base + row * width + column;
       const float next = float(state_in[offset]) * decay
-          + float(key[vector_base + row]) * k_inv * residual;
+          + float(key[qk_base + row]) * k_inv * residual;
       final_state[offset] = half(next);
-      result += float(query[vector_base + row]) * q_inv * next;
+      result += float(query[qk_base + row]) * q_inv * next;
     }
     output[vector_base + column] = half(result * out_scale);
   }

@@ -54,7 +54,9 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             .iter()
             .map(|value| value.to_device_tensor())
             .collect::<TractResult<TVec<_>>>()?;
-        let output = make_tensor_for_node(session, node_id, DatumType::F16, tensors[0].shape())?;
+        // Output takes the VALUE shape: with GQA groups q/k carry hk heads
+        // while v (and the output) carry hv = G * hk.
+        let output = make_tensor_for_node(session, node_id, DatumType::F16, tensors[2].shape())?;
         // The memory arena is keyed by node, so a second output cannot use the
         // same arena slot as the first one.
         let final_state = DeviceTensor::uninitialized_dt(tensors[5].datum_type(), tensors[5].shape())?;
@@ -82,7 +84,8 @@ impl TypedOp for GpuGatedDeltaNetRecurrent {
             ensure!(facts[3].datum_type == DatumType::F32);
             ensure!(facts[4].datum_type == DatumType::F16);
             ensure!(matches!(facts[5].datum_type, DatumType::F16 | DatumType::F32));
-            Ok(tvec![facts[0].without_value(), facts[5].without_value()])
+            // Output = value shape (hv heads), query dtype (f16 here).
+            Ok(tvec![facts[2].without_value(), facts[5].without_value()])
         })
         .with_context(|| format!("invalid facts for {}", self.name()))
     }

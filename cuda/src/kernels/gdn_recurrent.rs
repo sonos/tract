@@ -150,9 +150,10 @@ pub fn cuda_gdn_recurrent_launch(
 crate::register_cuda_op!(
     tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
     |source, node, _op| {
-        // The cuda kernel is single-step (S == 1) and f16-only; the op's
-        // layout is [b, S, h, w]. Anything else stays on the CPU op until
-        // the kernel grows an S loop (the Metal one already has it).
+        // The cuda kernel is single-step (S == 1), f16-only and ungrouped
+        // (q/k head count == v head count); the op's layout is [b, S, h, w].
+        // Anything else stays on the CPU op until the kernel grows an S
+        // loop and GQA-group indexing (the Metal one already has both).
         let facts = source.node_input_facts(node.id)?;
         let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
         let s_is_one = facts[0]
@@ -160,7 +161,9 @@ crate::register_cuda_op!(
             .as_concrete()
             .map(|s| s.len() == 4 && s[1] == 1)
             .unwrap_or(false);
+        let ungrouped = facts[0].shape == facts[2].shape;
         if !s_is_one
+            || !ungrouped
             || dts
                 != [
                     DatumType::F16,

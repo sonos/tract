@@ -21,19 +21,30 @@ fn dispatch_eval(
     ensure!(log_decay.datum_type() == DatumType::F32);
     ensure!(beta.datum_type() == DatumType::F16);
     ensure!(matches!(initial_state.datum_type(), DatumType::F16 | DatumType::F32));
-    ensure!(query.shape() == key.shape() && query.shape() == value.shape());
-    // Layout matches the CPU op: q/k/v [b, S, h, w], gates [b, S, h],
-    // state [b, h, w, w].
-    ensure!(query.rank() == 4, "GDN query must be [b, S, h, w], got {:?}", query.shape());
-    let (batch, s_len, heads, width) =
+    ensure!(query.shape() == key.shape());
+    // Layout matches the CPU op: q/k [b, S, hk, w], v/output [b, S, hv, w]
+    // with hv = G * hk (GQA), gates [b, S, hv], state [b, hv, w, w].
+    ensure!(query.rank() == 4, "GDN query must be [b, S, hk, w], got {:?}", query.shape());
+    let (batch, s_len, k_heads, width) =
         (query.shape()[0], query.shape()[1], query.shape()[2], query.shape()[3]);
+    ensure!(
+        value.rank() == 4
+            && value.shape()[0] == batch
+            && value.shape()[1] == s_len
+            && value.shape()[3] == width
+            && value.shape()[2].is_multiple_of(k_heads),
+        "GDN value must be [b, S, G*hk, w] with query/key [b, S, hk, w], got value {:?} vs query {:?}",
+        value.shape(),
+        query.shape()
+    );
+    let heads = value.shape()[2];
     ensure!(log_decay.len() == batch * s_len * heads && beta.len() == batch * s_len * heads);
     ensure!(
         initial_state.shape() == [batch, heads, width, width],
-        "GDN state must be [b, h, w, w], got {:?}",
+        "GDN state must be [b, hv, w, w], got {:?}",
         initial_state.shape()
     );
-    ensure!(output.shape() == query.shape() && output.datum_type() == DatumType::F16);
+    ensure!(output.shape() == value.shape() && output.datum_type() == DatumType::F16);
     ensure!(final_state.shape() == initial_state.shape());
 
     for tensor in [query, key, value, log_decay, beta, initial_state, output, final_state] {
@@ -57,10 +68,12 @@ fn dispatch_eval(
         let width = width as i32;
         let s_len = s_len as i32;
         let batch = batch as i32;
+        let k_heads = k_heads as i32;
         encoder.set_bytes(8, size_of::<i32>() as u64, &heads as *const i32 as *const _);
         encoder.set_bytes(9, size_of::<i32>() as u64, &width as *const i32 as *const _);
         encoder.set_bytes(10, size_of::<i32>() as u64, &s_len as *const i32 as *const _);
         encoder.set_bytes(11, size_of::<i32>() as u64, &batch as *const i32 as *const _);
+        encoder.set_bytes(12, size_of::<i32>() as u64, &k_heads as *const i32 as *const _);
         encoder.dispatch_threads(
             MTLSize { width: (batch * heads * width) as u64, height: 1, depth: 1 },
             MTLSize { width: width.min(1024) as u64, height: 1, depth: 1 },
@@ -187,27 +200,32 @@ mod tests {
         })
     }
 
-    #[test]
-    fn qwen35_recurrent_multi_step_matches_cpu_op() -> TractResult<()> {
+    /// Multi-step Metal-vs-CPU comparison, parametric over the GQA group
+    /// count (heads = hv = groups * k_heads) and the state datum type.
+    fn multi_step_matches_cpu_op_case(groups: usize, state_dt: DatumType) -> TractResult<()> {
         use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
         with_borrowed_metal_stream(|stream| {
-            let (b, s_len, heads, width) = (1usize, 5usize, 2usize, 32usize);
+            let (b, s_len, k_heads, width) = (1usize, 5usize, 2usize, 32usize);
+            let heads = k_heads * groups;
+            let n_qk = b * s_len * k_heads * width;
             let n_vec = b * s_len * heads * width;
             let n_gate = b * s_len * heads;
             let n_state = b * heads * width * width;
-            let qf = (0..n_vec).map(|i| ((i % 31) as f32 - 15.0) / 64.0).collect::<Vec<_>>();
-            let kf = (0..n_vec).map(|i| ((i % 29) as f32 - 14.0) / 64.0).collect::<Vec<_>>();
+            let qf = (0..n_qk).map(|i| ((i % 31) as f32 - 15.0) / 64.0).collect::<Vec<_>>();
+            let kf = (0..n_qk).map(|i| ((i % 29) as f32 - 14.0) / 64.0).collect::<Vec<_>>();
             let vf = (0..n_vec).map(|i| ((i % 23) as f32 - 11.0) / 32.0).collect::<Vec<_>>();
             let sf = (0..n_state).map(|i| ((i % 37) as f32 - 18.0) / 256.0).collect::<Vec<_>>();
             let gf = (0..n_gate).map(|i| -0.05 - 0.1 * (i % 7) as f32).collect::<Vec<_>>();
             let bf = (0..n_gate).map(|i| 0.125 + 0.08 * (i % 9) as f32).collect::<Vec<_>>();
             let as_f16 = |v: &[f32]| v.iter().copied().map(f16::from_f32).collect::<Vec<_>>();
-            let q = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&qf))?;
-            let k = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&kf))?;
+            let q = Tensor::from_shape(&[b, s_len, k_heads, width], &as_f16(&qf))?;
+            let k = Tensor::from_shape(&[b, s_len, k_heads, width], &as_f16(&kf))?;
             let v = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&vf))?;
             let g = Tensor::from_shape(&[b, s_len, heads], &gf)?;
             let beta = Tensor::from_shape(&[b, s_len, heads], &as_f16(&bf))?;
-            let state = Tensor::from_shape(&[b, heads, width, width], &sf)?;
+            let state = Tensor::from_shape(&[b, heads, width, width], &sf)?
+                .cast_to_dt(state_dt)?
+                .into_owned();
 
             let cpu = GatedDeltaNetRecurrent.eval(tvec![
                 q.clone().into_tvalue(),
@@ -224,8 +242,8 @@ mod tests {
             let gd = g.into_device()?;
             let betad = beta.into_device()?;
             let stated = state.into_device()?;
-            let output = DeviceTensor::uninitialized_dt(DatumType::F16, qd.shape())?;
-            let next = DeviceTensor::uninitialized_dt(DatumType::F32, stated.shape())?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::F16, vd.shape())?;
+            let next = DeviceTensor::uninitialized_dt(state_dt, stated.shape())?;
             dispatch_eval(stream, &qd, &kd, &vd, &gd, &betad, &stated, &output, &next)?;
             stream.wait_until_completed()?;
 
@@ -233,57 +251,6 @@ mod tests {
             let next = next.to_host()?.into_tensor();
             output
                 .cast_to::<f32>()?
-                .close_enough(&cpu[0].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
-            next.close_enough(&cpu[1].clone().into_tensor(), Approximation::Approximate)?;
-            Ok(())
-        })
-    }
-    #[test]
-    fn qwen35_recurrent_f16_state_matches_cpu_op() -> TractResult<()> {
-        use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
-        with_borrowed_metal_stream(|stream| {
-            let (b, s_len, heads, width) = (1usize, 5usize, 2usize, 32usize);
-            let n_vec = b * s_len * heads * width;
-            let n_gate = b * s_len * heads;
-            let n_state = b * heads * width * width;
-            let qf = (0..n_vec).map(|i| ((i % 31) as f32 - 15.0) / 64.0).collect::<Vec<_>>();
-            let kf = (0..n_vec).map(|i| ((i % 29) as f32 - 14.0) / 64.0).collect::<Vec<_>>();
-            let vf = (0..n_vec).map(|i| ((i % 23) as f32 - 11.0) / 32.0).collect::<Vec<_>>();
-            let sf = (0..n_state).map(|i| ((i % 37) as f32 - 18.0) / 256.0).collect::<Vec<_>>();
-            let gf = (0..n_gate).map(|i| -0.05 - 0.1 * (i % 7) as f32).collect::<Vec<_>>();
-            let bf = (0..n_gate).map(|i| 0.125 + 0.08 * (i % 9) as f32).collect::<Vec<_>>();
-            let as_f16 = |v: &[f32]| v.iter().copied().map(f16::from_f32).collect::<Vec<_>>();
-            let q = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&qf))?;
-            let k = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&kf))?;
-            let v = Tensor::from_shape(&[b, s_len, heads, width], &as_f16(&vf))?;
-            let g = Tensor::from_shape(&[b, s_len, heads], &gf)?;
-            let beta = Tensor::from_shape(&[b, s_len, heads], &as_f16(&bf))?;
-            let state = Tensor::from_shape(&[b, heads, width, width], &as_f16(&sf))?;
-
-            let cpu = GatedDeltaNetRecurrent.eval(tvec![
-                q.clone().into_tvalue(),
-                k.clone().into_tvalue(),
-                v.clone().into_tvalue(),
-                g.clone().into_tvalue(),
-                beta.clone().into_tvalue(),
-                state.clone().into_tvalue(),
-            ])?;
-
-            let qd = q.into_device()?;
-            let kd = k.into_device()?;
-            let vd = v.into_device()?;
-            let gd = g.into_device()?;
-            let betad = beta.into_device()?;
-            let stated = state.into_device()?;
-            let output = DeviceTensor::uninitialized_dt(DatumType::F16, qd.shape())?;
-            let next = DeviceTensor::uninitialized_dt(DatumType::F16, stated.shape())?;
-            dispatch_eval(stream, &qd, &kd, &vd, &gd, &betad, &stated, &output, &next)?;
-            stream.wait_until_completed()?;
-            let output = output.to_host()?.into_tensor();
-            let next = next.to_host()?.into_tensor();
-            output
-                .cast_to::<f32>()?
-                .into_owned()
                 .close_enough(&cpu[0].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
             next.cast_to::<f32>()?
                 .into_owned()
@@ -292,4 +259,23 @@ mod tests {
         })
     }
 
+    #[test]
+    fn qwen35_recurrent_multi_step_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_case(1, DatumType::F32)
+    }
+
+    #[test]
+    fn qwen35_recurrent_multi_step_grouped_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_case(2, DatumType::F32)
+    }
+
+    #[test]
+    fn qwen35_recurrent_f16_state_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_case(1, DatumType::F16)
+    }
+
+    #[test]
+    fn qwen35_recurrent_f16_state_grouped_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_case(2, DatumType::F16)
+    }
 }
