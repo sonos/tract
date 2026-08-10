@@ -216,6 +216,19 @@ impl EvalOp for GpuFusedViewCopy {
             }
         }
 
+        // The composed view may be a plain packed region at runtime (e.g. a
+        // channel-range slice plus reshapes once the sequence dim is 1 at
+        // decode): no copy needed then, just alias the source buffer.
+        if view.shape.iter().all(|&d| d != 0)
+            && let Some(aliased) = view.base.try_dense_alias(
+                &view.shape,
+                &view.strides,
+                view.offset * dt.size_of(),
+            )?
+        {
+            return Ok(tvec![aliased.into_tensor().into_tvalue()]);
+        }
+
         let output = crate::session_handler::make_tensor_for_node(
             session,
             node_id,

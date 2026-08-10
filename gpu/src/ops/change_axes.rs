@@ -97,15 +97,22 @@ impl EvalOp for GpuAxisOp {
                 permutation.insert(*to, *from);
 
                 let out_shape = permute_output_shape(input.shape(), &permutation)?;
+                // Compute permuted input strides
+                let permuted_strides: TVec<isize> =
+                    permutation.iter().map(|&i| input.strides()[i]).collect();
+                // A move that leaves memory order unchanged at runtime (only
+                // size-1 axes actually move) is a zero-copy view.
+                if let Some(view) =
+                    input.try_dense_alias(&out_shape, &permuted_strides, 0)?
+                {
+                    return Ok(tvec!(view.into_tensor().into_tvalue()));
+                }
                 let output = crate::session_handler::make_tensor_for_node(
                     session,
                     node_id,
                     input.datum_type(),
                     &out_shape,
                 )?;
-                // Compute permuted input strides
-                let permuted_strides: TVec<isize> =
-                    permutation.iter().map(|&i| input.strides()[i]).collect();
                 let ctx = crate::device::get_context()?;
                 ctx.copy_nd(
                     input,
@@ -132,7 +139,24 @@ impl EvalOp for GpuAxisOp {
             }
         };
 
-        // Memcpy path (Reshape/Add/Rm) — flat copy, treat as 1D
+        // Reshape/Add/Rm keep the flat element order: when the input is
+        // itself packed, the output is a zero-copy reinterpretation.
+        let input_dense = {
+            let mut expect = 1isize;
+            input.shape().iter().zip(input.strides().iter()).rev().all(|(d, s)| {
+                let ok = *d == 1 || *s == expect;
+                expect *= *d as isize;
+                ok
+            })
+        };
+        if input_dense
+            && let Some(view) =
+                input.try_dense_alias(&new_shape, &Tensor::natural_strides(&new_shape), 0)?
+        {
+            return Ok(tvec!(view.into_tensor().into_tvalue()));
+        }
+
+        // Memcpy path (Reshape/Add/Rm), flat copy, treat as 1D
         let output = crate::session_handler::make_tensor_for_node(
             session,
             node_id,

@@ -185,6 +185,72 @@ impl DeviceTensor {
             Self::ArenaView(v) => v.to_host()?.into(),
         })
     }
+
+    /// Zero-copy alias for copy-flavored ops (slice / axis-op / fused view
+    /// copy): when the requested (shape, strides, offset) view of `self` is
+    /// dense (packed row-major, size-1 dims unconstrained), return it as a
+    /// view sharing this tensor's buffer instead of copying. Callers must
+    /// guarantee the source buffer outlives the view; for session arena
+    /// tensors the device memory schema extends the source node's lifetime
+    /// across aliasing ops (see `memory::schema`), and owned tensors are
+    /// kept alive by the view's Arc.
+    pub fn try_dense_alias(
+        &self,
+        shape: &[usize],
+        strides: &[isize],
+        offset_bytes: usize,
+    ) -> TractResult<Option<DeviceTensor>> {
+        static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        if *DISABLED
+            .get_or_init(|| std::env::var_os("TRACT_GPU_DISABLE_COPY_ALIAS").is_some())
+        {
+            return Ok(None);
+        }
+        // The view must be packed row-major over its shape.
+        let mut expect = 1isize;
+        for (d, s) in shape.iter().zip(strides.iter()).rev() {
+            if *d != 1 && *s != expect {
+                return Ok(None);
+            }
+            expect *= *d as isize;
+        }
+        let dt = self.datum_type();
+        let natural = Tensor::natural_strides(shape);
+        match self {
+            Self::ArenaView(v) => {
+                if v.exotic_fact.is_some() {
+                    return Ok(None);
+                }
+                Ok(Some(
+                    DeviceArenaView {
+                        arena: Arc::clone(&v.arena),
+                        dt,
+                        len: shape.iter().product(),
+                        shape: shape.into(),
+                        strides: natural,
+                        offset_bytes: v.offset_bytes + offset_bytes,
+                        exotic_fact: None,
+                    }
+                    .into(),
+                ))
+            }
+            Self::Owned(o) => {
+                if o.exotic_fact().is_some() {
+                    return Ok(None);
+                }
+                // Owned device tensors clone as cheap buffer handles.
+                let arc: Arc<Box<dyn OwnedDeviceTensor>> =
+                    Arc::new(tract_core::dyn_clone::clone_box(&**o));
+                Ok(Some(DeviceTensor::ArenaView(DeviceArenaView::from_owned(
+                    arc,
+                    dt,
+                    shape.into(),
+                    natural,
+                    offset_bytes,
+                )?)))
+            }
+        }
+    }
 }
 
 impl Display for DeviceTensor {

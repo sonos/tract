@@ -53,6 +53,15 @@ fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a Ty
     )
 }
 
+/// True for single-input ops whose eval may return a zero-copy view of
+/// their input buffer (see `DeviceTensor::try_dense_alias`): the source
+/// buffer must then stay alive as long as the aliasing node's own output.
+fn may_alias_input(node: &TypedNode) -> bool {
+    node.op_is::<crate::ops::fused_view_copy::GpuFusedViewCopy>()
+        || node.op_is::<crate::ops::slice::GpuSlice>()
+        || node.op_is::<crate::ops::change_axes::GpuAxisOp>()
+}
+
 pub fn eval_device_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
@@ -74,18 +83,59 @@ pub fn eval_device_mem_req_for_nodes(
                     .unwrap_or(false)
             })
     });
+
+    // Lifetime end per node: one past the step at which it is flushed.
+    let mut end_by_node: Vec<Option<usize>> = vec![None; model.nodes().len()];
+    let step_of: HashMap<usize, usize> =
+        order.iter().enumerate().map(|(step, n)| (*n, step)).collect();
+    for n in order {
+        end_by_node[*n] = flush_lists
+            .iter()
+            .enumerate()
+            .find(|(_step, flush_list)| flush_list.contains(n))
+            .map(|it| usize::min(it.0 + 1, order.len()));
+    }
+
+    // Aliasing ops may hand out views of their input's buffer: extend the
+    // source's lifetime to the alias's own end so the region cannot be
+    // recycled while a view of it is still read. Reverse eval order
+    // propagates through alias chains (an alias's own end is final by the
+    // time its source is visited).
+    let output_nodes: std::collections::HashSet<usize> =
+        outputs.iter().map(|o| o.node).collect();
+    for n in order.iter().rev() {
+        let node = model.node(*n);
+        if !may_alias_input(node) || node.inputs.is_empty() {
+            continue;
+        }
+        let v_end = if output_nodes.contains(n) {
+            // A model output must survive the whole plan.
+            Some(order.len())
+        } else {
+            end_by_node[*n].or_else(|| {
+                // No flush entry (e.g. followed by a ToHost sync): fall back
+                // to one past the last consumer's step.
+                node.outputs
+                    .iter()
+                    .flat_map(|o| o.successors.iter())
+                    .filter_map(|succ| step_of.get(&succ.node))
+                    .max()
+                    .map(|s| s + 1)
+            })
+        };
+        let src = node.inputs[0].node;
+        if let (Some(v_end), Some(src_end)) = (v_end, end_by_node[src].as_mut()) {
+            *src_end = (*src_end).max(v_end);
+        }
+    }
+
     let mut scoped_nodes = tvec![];
 
     for (step, n) in order.iter().enumerate() {
         let lifetime_start = step;
 
-        let lifetime_end = flush_lists
-            .iter()
-            .enumerate()
-            .find(|(_step, flush_list)| flush_list.contains(n))
-            .map(|it| usize::min(it.0 + 1, order.len()));
         // Ignore nodes that won't be flushed from Device.
-        let Some(lifetime_end) = lifetime_end else {
+        let Some(lifetime_end) = end_by_node[*n] else {
             continue;
         };
 
