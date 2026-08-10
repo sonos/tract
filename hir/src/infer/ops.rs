@@ -22,6 +22,11 @@ pub trait InferenceOp: Op {
     /// also try to eval() the op if its a EvalOp and if the inputs are
     /// fully determined.
     ///
+    /// Facts carry no graph, so that eager eval cannot count a constant's
+    /// consumers: on top of holding the output within
+    /// [`CONST_FOLD_MEM_BUDGET`], it requires every input to be plain and
+    /// itself under the allowance.
+    ///
     /// Returns Err in case of an unrecoverable error during the inference,
     /// and the refined properties about the inputs and outputs otherwise.
     fn infer(
