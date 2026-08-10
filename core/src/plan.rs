@@ -373,7 +373,11 @@ where
                     .iter()
                     .all(|s| self.turn_state.resolved_symbols.get(s).is_some());
 
+            let log_slow_nodes: Option<f64> = std::env::var("TRACT_LOG_SLOW_NODES_US")
+                .ok()
+                .and_then(|v| v.parse::<f64>().ok());
             for (step, n) in self.plan.order.iter().enumerate() {
+                let slow_t0 = log_slow_nodes.map(|_| std::time::Instant::now());
                 let node = self.plan.model.node(*n);
                 trace!("Running step {step}, node {node}");
                 let mut inputs: TVec<TValue> = tvec![];
@@ -470,6 +474,12 @@ where
                 }
 
                 self.turn_state.values[node.id] = Some(vs);
+                if let (Some(t0), Some(thresh)) = (slow_t0, log_slow_nodes) {
+                    let us = t0.elapsed().as_secs_f64() * 1e6;
+                    if us >= thresh {
+                        eprintln!("slow-node {us:.0} us: {node}");
+                    }
+                }
             }
             self.plan
                 .session_handler

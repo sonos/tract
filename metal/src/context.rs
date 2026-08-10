@@ -75,6 +75,14 @@ pub(crate) fn buffer_pool_disabled() -> bool {
     *V.get_or_init(|| std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some())
 }
 
+/// Log threshold in KB for pool event logging; None = disabled.
+pub(crate) fn log_pool() -> Option<usize> {
+    static V: OnceLock<Option<usize>> = OnceLock::new();
+    *V.get_or_init(|| {
+        std::env::var("TRACT_METAL_LOG_POOL").ok().map(|v| v.parse::<usize>().unwrap_or(8192))
+    })
+}
+
 #[derive(Debug, Clone)]
 pub struct MetalContext {
     device: Device,
@@ -121,8 +129,20 @@ impl MetalContext {
             return None;
         }
         let mut pool = self.buffer_pool.lock().ok()?;
-        let entry = pool.get_mut(&(dt, TVec::from_slice(shape)))?;
-        let hit = entry.pop()?;
+        let entry = pool.get_mut(&(dt, TVec::from_slice(shape)));
+        if let Some(thresh_kb) = log_pool() {
+            let bytes = shape.iter().product::<usize>() * dt.size_of();
+            if bytes >= thresh_kb * 1024 {
+                eprintln!(
+                    "pool_take {:?} {:?} {:.1} KB: {}",
+                    dt,
+                    shape,
+                    bytes as f64 / 1024.0,
+                    if entry.as_ref().is_some_and(|e| !e.is_empty()) { "hit" } else { "MISS" }
+                );
+            }
+        }
+        let hit = entry?.pop()?;
         self.pooled_bytes.fetch_sub(
             hit.0.len() * dt.size_of(),
             std::sync::atomic::Ordering::Relaxed,
@@ -140,6 +160,17 @@ impl MetalContext {
         }
         let bytes = host.len() * dt.size_of();
         let budget = Self::max_pooled_bytes();
+        if log_pool().is_some_and(|thresh_kb| bytes >= thresh_kb * 1024) {
+            eprintln!(
+                "pool_put {:?} {:?} {:.1} KB (pooled {:.1} MB){}",
+                dt,
+                host.shape(),
+                bytes as f64 / 1024.0,
+                self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) as f64
+                    / (1024.0 * 1024.0),
+                if bytes > budget { " REJECTED-over-budget" } else { "" }
+            );
+        }
         if bytes > budget {
             return;
         }
@@ -156,8 +187,17 @@ impl MetalContext {
             let Some(key) = oldest_key else { break };
             let Some(entry) = pool.get_mut(&key) else { break };
             let (evicted_host, _, _) = entry.remove(0);
+            let evicted_bytes = evicted_host.len() * evicted_host.datum_type().size_of();
+            if log_pool().is_some_and(|thresh_kb| evicted_bytes >= thresh_kb * 1024) {
+                eprintln!(
+                    "pool_evict {:?} {:?} {:.1} KB",
+                    evicted_host.datum_type(),
+                    evicted_host.shape(),
+                    evicted_bytes as f64 / 1024.0,
+                );
+            }
             self.pooled_bytes.fetch_sub(
-                evicted_host.len() * evicted_host.datum_type().size_of(),
+                evicted_bytes,
                 std::sync::atomic::Ordering::Relaxed,
             );
             if entry.is_empty() {
@@ -360,12 +400,23 @@ impl DeviceContext for MetalContext {
                 exotic_fact: None,
             }));
         }
+        let t0 = log_pool().map(|_| std::time::Instant::now());
         let tensor = unsafe {
             Tensor::uninitialized_dt(dt, shape).with_context(|| {
                 format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
             })?
         };
-        self.tensor_to_device(tensor.into())
+        let r = self.tensor_to_device(tensor.into());
+        if let Some(t0) = t0 {
+            eprintln!(
+                "fresh_alloc {:?} {:?} {:.1} KB: {:.1} us",
+                dt,
+                shape,
+                (shape.iter().product::<usize>() * dt.size_of()) as f64 / 1024.0,
+                t0.elapsed().as_secs_f64() * 1e6
+            );
+        }
+        r
     }
 
     fn uninitialized_device_exotic_tensor(
@@ -537,8 +588,14 @@ impl MetalStream {
             let raw: &metal::CommandBufferRef = buffer;
             let start: f64 = unsafe { msg_send![raw, GPUStartTime] };
             let end: f64 = unsafe { msg_send![raw, GPUEndTime] };
+            let ksched: f64 = unsafe { msg_send![raw, kernelStartTime] };
+            let kend: f64 = unsafe { msg_send![raw, kernelEndTime] };
             let label = if names.is_empty() { String::new() } else { format!(" [{}]", names.join("+")) };
-            eprintln!("gpu-time {tag}{label}: {:.3} ms", (end - start) * 1e3);
+            eprintln!(
+                "gpu-time {tag}{label}: {:.3} ms (sched {:.3} ms, gpu_start {start:.6}, gpu_end {end:.6})",
+                (end - start) * 1e3,
+                (kend - ksched) * 1e3
+            );
         }
     }
 
