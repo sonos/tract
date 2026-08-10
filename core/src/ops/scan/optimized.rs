@@ -211,8 +211,14 @@ impl OpState for State {
             }
         }
 
+        // One full-coverage iteration yields each scan output as-is, so the body
+        // tensor is handed through instead of copied into a preallocation. Warm-up
+        // calls (position <= skip) leave outputs unassigned and need the general path.
+        let runs_now = *position + 1 > op.skip;
+        let mut single_shot: TVec<bool> = tvec!();
         let mut outputs = tvec!();
         for (ix, output) in op.output_mapping.iter().enumerate() {
+            let mut one_shot = false;
             if let Some((slot, info)) = output.scan {
                 let fact = op.plan.model().output_fact(ix)?;
                 let mut shape: TVec<usize> =
@@ -222,10 +228,16 @@ impl OpState for State {
                     .as_ref()
                     .and_then(|d| d.as_usize())
                     .unwrap_or(shape[info.axis] * iters);
+                one_shot = iters == 1 && runs_now && scanning_dim == shape[info.axis];
                 shape[info.axis] = scanning_dim;
-                let t = unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? };
+                let t = if one_shot {
+                    Tensor::default()
+                } else {
+                    unsafe { Tensor::uninitialized_dt(fact.datum_type, &shape)? }
+                };
                 outputs.push((slot, t));
             }
+            single_shot.push(one_shot);
             if let Some(slot) = output.last_value_slot {
                 outputs.push((slot, Tensor::default()));
             }
@@ -254,7 +266,14 @@ impl OpState for State {
                 iter_inputs.push(match m {
                     InputMapping::State => hidden_state.pop().unwrap(),
                     InputMapping::Scan(info) => {
-                        Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?.into_tvalue()
+                        let input = &inputs[slot];
+                        // A chunk covering the whole axis slices to the input
+                        // itself, forward or backward.
+                        if i == 0 && input.shape()[info.axis] == info.chunk.unsigned_abs() {
+                            input.clone()
+                        } else {
+                            Self::slice_input(input, info.axis, i, info.chunk)?.into_tvalue()
+                        }
                     }
                     InputMapping::Full => inputs[slot].clone(),
                 });
@@ -274,9 +293,16 @@ impl OpState for State {
             model_state.reset_turn_keep_symbols();
             trace!("iter_outputs #{i}: {iter_outputs:?}");
 
-            for (v, mapping) in iter_outputs.into_iter().zip(&op.output_mapping) {
+            for (ix, (v, mapping)) in iter_outputs.into_iter().zip(&op.output_mapping).enumerate() {
                 if let Some((slot, info)) = mapping.scan {
-                    Self::assign_output(&mut outputs[slot], info.axis, &v, i, info.chunk < 0);
+                    if single_shot[ix] && !mapping.state && mapping.last_value_slot.is_none() {
+                        outputs[slot] = v.into_tensor();
+                        continue;
+                    } else if single_shot[ix] {
+                        outputs[slot] = v.clone().into_tensor();
+                    } else {
+                        Self::assign_output(&mut outputs[slot], info.axis, &v, i, info.chunk < 0);
+                    }
                 }
                 if i == iters - 1
                     && let Some(slot) = mapping.last_value_slot
