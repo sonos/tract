@@ -22,13 +22,16 @@ use self::slice::PushSliceUp;
 use self::uniform_mask::FoldUniformMask;
 use op_optim::OpOptim;
 
-/// Memory a single constant fold may materialize.
+/// Byte allowance for the growth an eager constant fold may cause.
 ///
-/// Bounds every eager evaluation of a constant subgraph, both during inference
-/// and in `prop_const`: a fold under the budget is cheap enough to pay for at
-/// load time, and one over it is left in the graph rather than risk turning a
-/// large weight into several copies. Shape and index arithmetic sits far below
-/// it, decoded weight tensors far above.
+/// A fold is admissible when its output is no larger than
+/// `input_mem.max(BUDGET)`: under the allowance it is cheap enough to pay for
+/// at load time, above it only a fold that does not grow its inputs is worth
+/// the copy. A caller that can see a constant's consumers also weighs the
+/// allowance against turning one shared buffer into one buffer per consumer.
+///
+/// Shape and index arithmetic sits far below it, decoded weight tensors far
+/// above.
 pub const CONST_FOLD_MEM_BUDGET: u64 = 4 << 20;
 
 pub trait TypedPass: Debug + Send + Sync + dyn_clone::DynClone {

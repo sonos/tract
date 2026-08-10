@@ -9,8 +9,13 @@ use crate::optim::{CONST_FOLD_MEM_BUDGET, OptimizerSession};
 
 /// Replaces stateless nodes whose inputs are all constant with the constant they
 /// evaluate to, walking forward through single-successor chains so one patch can
-/// collapse a whole run. Folds are bounded by [`CONST_FOLD_MEM_BUDGET`] so a large
-/// weight is not duplicated once per consumer.
+/// collapse a whole run.
+///
+/// [`CONST_FOLD_MEM_BUDGET`] is weighed only against an input that has several
+/// successors, so a large weight is not duplicated once per consumer; a
+/// sole-consumer input, or any input of a `Slice`, is exempt whatever its size.
+/// Every fold, including each step of the walk, must additionally keep its output
+/// within the allowance.
 #[derive(Clone, Debug, Default)]
 pub struct PropConst(usize);
 
