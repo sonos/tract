@@ -35,6 +35,8 @@ use crate::kernels::matmul::{
 use crate::kernels::moe::{
     GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_kv_quantize_q8_0,
     dispatch_gpt_oss_sinks_softmax_f16, dispatch_gpt_oss_sum_chunks_f16, flash_attn_scratch_len,
+    dispatch_sdpa_prefill_block_softmax_f16, dispatch_sdpa_prefill_finalize_f16,
+    dispatch_sdpa_prefill_rescale_acc_f32,
 };
 use crate::utils::get_metal_buffer;
 
@@ -78,6 +80,33 @@ thread_local! {
 
 const Q8_BLOCK: usize = 32;
 const Q8_BLOCK_BYTES: usize = 34;
+/// Key-block size of the block-wise prefill attention: prefill steps whose
+/// effective key length exceeds this loop key-blocks through a fixed scores
+/// buffer with a running-max/denominator f32 state instead of materializing
+/// the full [Hkv, group*S, T] scores/probs (which near 50k context reaches
+/// GBs per layer, touched 3-4 times). 0 disables.
+const SDPA_PREFILL_BLOCK: usize = 4096;
+
+fn sdpa_prefill_block() -> usize {
+    #[cfg(test)]
+    {
+        let v = SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.get());
+        if v != 0 {
+            return v;
+        }
+    }
+    std::env::var("TRACT_METAL_SDPA_PREFILL_BLOCK")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(SDPA_PREFILL_BLOCK)
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per-thread prefill block-size override so tests can force multi-block
+    /// prefill at test-sized T without racing the process environment.
+    static SDPA_BLOCK_TEST_OVERRIDE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
 /// Context length where the decode AV gemv switches to split-k (partial
 /// sums over key chunks + a small reduce). Measured crossover vs the plain
 /// batched gemv on gpt-oss-20b/M-series: plain wins to ~5.6k (52.6 vs 47.5
@@ -689,6 +718,121 @@ impl OpState for MetalFusedSdpaState {
                 );
             }
             let m = group * s_len;
+            // Block-wise flash prefill: prefill-sized steps over a long
+            // cache loop key-blocks with a fixed scores buffer and a running
+            // row-max/denominator (m, l) f32 state, rescale-accumulating the
+            // partial AV products in f32; sinks fold into the denominator
+            // once at the end (the decode merge math). Bounds the scores
+            // traffic and allocation to O(block) instead of O(T).
+            let block = sdpa_prefill_block();
+            if s_len > FLASH_MAX_S && block > 0 && t_eff > block {
+                let rows = hkv * m;
+                let scores = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv, m, block],
+                    f16dt,
+                )?);
+                let probs = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv, m, block],
+                    f16dt,
+                )?);
+                let partial = Arc::new(get_context()?.uninitialized_device_tensor(
+                    &[hkv, m, d],
+                    f16dt,
+                )?);
+                let partial_all = subview_all(&partial, rows, d)?;
+                let acc = unsafe {
+                    DeviceTensor::uninitialized_dt(f32::datum_type(), &[rows, d])?
+                };
+                let m_state =
+                    unsafe { DeviceTensor::uninitialized_dt(f32::datum_type(), &[rows])? };
+                let l_state =
+                    unsafe { DeviceTensor::uninitialized_dt(f32::datum_type(), &[rows])? };
+                let rescale =
+                    unsafe { DeviceTensor::uninitialized_dt(f32::datum_type(), &[rows])? };
+                let mut j = j0;
+                let mut first = true;
+                while j < t_len {
+                    let bt = (t_len - j).min(block);
+                    let scores_b = subview_all(&scores, rows, bt)?;
+                    let probs_b = subview_all(&probs, rows, bt)?;
+                    let k_bj = self.k.gemm_b_view_from(j)?;
+                    let v_bj = self.v.gemm_b_view_from(j)?;
+                    // Re-retained every iteration: the per-block commit below
+                    // moves the retained list onto the closing buffer, so the
+                    // next block's dispatches need their own retains.
+                    for t in [&scores_b, &probs_b, &k_bj, &v_bj, &q_a, &partial_all, &acc] {
+                        stream.retain_tensor(t);
+                    }
+                    // QK gemm of the block: scores [Hkv, m, bt].
+                    gemm.dispatch_eval(
+                        stream,
+                        GemmDispatchParams {
+                            dts: [f16dt, f16dt, f16dt],
+                            a_batch: hkv,
+                            b_batch: hkv,
+                            m,
+                            k: d,
+                            n: bt,
+                            transpose_a: false,
+                            a_offset: q_a_offset,
+                            transpose_b: true,
+                            b_offset: k_bj.buffer_offset(),
+                            q40_b: false,
+                            c_offset: 0,
+                            a_strides: tvec![(m * d) as isize, d as isize, 1],
+                            b_strides: tvec![(self.k.cap * d) as isize, d as isize, 1],
+                        },
+                        get_metal_buffer(&q_a),
+                        get_metal_buffer(&k_bj),
+                        get_metal_buffer(&scores_b),
+                    )?;
+                    dispatch_sdpa_prefill_block_softmax_f16(
+                        stream, &scores_b, &mask_2d, &probs_b, &m_state, &l_state, &rescale,
+                        rows, bt, s_len, self.scale, j, t_len, first,
+                    )?;
+                    // AV gemm of the block: partial [Hkv, m, D].
+                    gemm.dispatch_eval(
+                        stream,
+                        GemmDispatchParams {
+                            dts: [f16dt, f16dt, f16dt],
+                            a_batch: hkv,
+                            b_batch: hkv,
+                            m,
+                            k: bt,
+                            n: d,
+                            transpose_a: false,
+                            a_offset: 0,
+                            transpose_b: true,
+                            b_offset: v_bj.buffer_offset(),
+                            q40_b: false,
+                            c_offset: 0,
+                            a_strides: tvec![(m * bt) as isize, bt as isize, 1],
+                            b_strides: tvec![
+                                (self.v.d * self.v.cap) as isize,
+                                self.v.cap as isize,
+                                1
+                            ],
+                        },
+                        get_metal_buffer(&probs_b),
+                        get_metal_buffer(&v_bj),
+                        get_metal_buffer(&partial_all),
+                    )?;
+                    dispatch_sdpa_prefill_rescale_acc_f32(
+                        stream, &partial_all, &rescale, &acc, rows, d, first,
+                    )?;
+                    // Boundary between dependent block iterations: the next
+                    // block rewrites scores/probs read here and reads back
+                    // the m/l/acc state (the documented intra-command-buffer
+                    // write->read Metal defect medicine).
+                    stream.commit_current()?;
+                    first = false;
+                    j += bt;
+                }
+                dispatch_sdpa_prefill_finalize_f16(
+                    stream, &acc, &m_state, &l_state, &sinks_flat, &out_all, rows, d, s_len,
+                )?;
+                return Ok(());
+            }
             // Split-k AV at long context: one gemv per (head, dim-row) walks
             // all T keys serially and turns latency-bound; chunking T across
             // extra batch entries plus a small reduce restores parallelism.
@@ -1074,6 +1218,40 @@ mod tests {
     #[test]
     fn metal_matches_cpu_d256_split_k_decode() -> TractResult<()> {
         run_metal_vs_cpu(2, 1, 256, &[2100, 2100, 2100, 2100, 1, 1], usize::MAX, false)
+    }
+
+    /// Multi-block prefill (block-wise flash): a prefill step long enough to
+    /// force several key-blocks with a small test block size, then decode
+    /// steps on top of the blocked-prefill caches. gpt-oss-like geometry
+    /// with sinks.
+    #[test]
+    fn metal_matches_cpu_multiblock_prefill_sinks() -> TractResult<()> {
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(512));
+        let r = run_metal_vs_cpu(4, 2, 64, &[1500, 1, 1], usize::MAX, true);
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(0));
+        r
+    }
+
+    /// Multi-block prefill on the Qwen3.5 full-attention geometry (d=256,
+    /// GQA 16/2, no sinks), including a second prefill-sized step so a
+    /// blocked step also runs from a non-empty cache with a partial last
+    /// block.
+    #[test]
+    fn metal_matches_cpu_multiblock_prefill_qwen35() -> TractResult<()> {
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(512));
+        let r = run_metal_vs_cpu(16, 2, 256, &[1300, 300, 1], usize::MAX, false);
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(0));
+        r
+    }
+
+    /// Sliding-window layers keep their single-block clamp: the blocked path
+    /// engages only when the clamped key range still exceeds the block.
+    #[test]
+    fn metal_matches_cpu_multiblock_prefill_window() -> TractResult<()> {
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(256));
+        let r = run_metal_vs_cpu(4, 2, 64, &[1200, 1], 128, true);
+        SDPA_BLOCK_TEST_OVERRIDE.with(|c| c.set(0));
+        r
     }
 
     /// Transposed capacity buffer: append twice, read back through the

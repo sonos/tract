@@ -560,6 +560,140 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     Ok(())
 }
 
+/// Block-wise prefill softmax: turn one key-block of QK scores into probs
+/// while maintaining the per-row running max/denominator (m, l) f32 state,
+/// emitting the accumulator rescale factor exp(m_old - m_new) per row.
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_sdpa_prefill_block_softmax_f16(
+    stream: &MetalStream,
+    scores: &DeviceTensor,
+    mask: &DeviceTensor,
+    probs: &DeviceTensor,
+    m_state: &DeviceTensor,
+    l_state: &DeviceTensor,
+    rescale: &DeviceTensor,
+    rows: usize,
+    bt: usize,
+    s_len: usize,
+    scale: f32,
+    mask_off: usize,
+    mask_stride: usize,
+    first_block: bool,
+) -> TractResult<()> {
+    for t in [scores, mask, probs, m_state, l_state, rescale] {
+        stream.retain_tensor(t);
+    }
+    ensure!(scores.datum_type() == f16::datum_type());
+    ensure!(probs.datum_type() == f16::datum_type());
+    ensure!(mask.datum_type() == f32::datum_type());
+    ensure!(scores.len() >= rows * bt && probs.len() >= rows * bt);
+    ensure!(m_state.len() >= rows && l_state.len() >= rows && rescale.len() >= rows);
+    ensure!(mask.len() >= (s_len - 1) * mask_stride + mask_off + bt, "mask too small");
+
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "sdpa_prefill_block_softmax_f16")?;
+    let group_width = (pipeline.max_total_threads_per_threadgroup() as u64).min(256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, scores, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, mask, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, probs, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(3, m_state, metal::MTLResourceUsage::Read | metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(4, l_state, metal::MTLResourceUsage::Read | metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(5, rescale, metal::MTLResourceUsage::Write);
+        encoder.set_slice(6, &[rows as u32]);
+        encoder.set_slice(7, &[bt as u32]);
+        encoder.set_slice(8, &[s_len as u32]);
+        encoder.set_slice(9, &[scale]);
+        encoder.set_slice(10, &[mask_off as u32]);
+        encoder.set_slice(11, &[mask_stride as u32]);
+        encoder.set_slice(12, &[first_block as u32]);
+        let grid = MTLSize { width: rows as NSUInteger, height: 1, depth: 1 };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
+/// acc = acc * rescale[row] + partial (acc = partial on the first block).
+pub fn dispatch_sdpa_prefill_rescale_acc_f32(
+    stream: &MetalStream,
+    partial: &DeviceTensor,
+    rescale: &DeviceTensor,
+    acc: &DeviceTensor,
+    rows: usize,
+    d: usize,
+    first_block: bool,
+) -> TractResult<()> {
+    for t in [partial, rescale, acc] {
+        stream.retain_tensor(t);
+    }
+    ensure!(partial.datum_type() == f16::datum_type());
+    ensure!(acc.datum_type() == f32::datum_type());
+    let total = rows * d;
+    ensure!(partial.len() >= total && acc.len() >= total && rescale.len() >= rows);
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "sdpa_prefill_rescale_acc_f32")?;
+    let group_width = (total as u64).clamp(1, 256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, partial, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, rescale, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, acc, metal::MTLResourceUsage::Read | metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &[total as u32]);
+        encoder.set_slice(4, &[d as u32]);
+        encoder.set_slice(5, &[first_block as u32]);
+        let grid = MTLSize { width: (total as u64).div_ceil(group_width), height: 1, depth: 1 };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
+/// out = acc / denominator with the per-head sink logit folded in (same
+/// math as the decode merge; -inf sinks reproduce the plain softmax).
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_sdpa_prefill_finalize_f16(
+    stream: &MetalStream,
+    acc: &DeviceTensor,
+    m_state: &DeviceTensor,
+    l_state: &DeviceTensor,
+    sinks: &DeviceTensor,
+    out: &DeviceTensor,
+    rows: usize,
+    d: usize,
+    s_len: usize,
+) -> TractResult<()> {
+    for t in [acc, m_state, l_state, sinks, out] {
+        stream.retain_tensor(t);
+    }
+    ensure!(acc.datum_type() == f32::datum_type());
+    ensure!(out.datum_type() == f16::datum_type());
+    ensure!(sinks.datum_type() == f32::datum_type());
+    let total = rows * d;
+    ensure!(acc.len() >= total && out.len() >= total);
+    ensure!(m_state.len() >= rows && l_state.len() >= rows);
+    ensure!(sinks.len() >= rows / s_len);
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "sdpa_prefill_finalize_f16")?;
+    let group_width = (total as u64).clamp(1, 256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, acc, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, m_state, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, l_state, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, sinks, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(4, out, metal::MTLResourceUsage::Write);
+        encoder.set_slice(5, &[total as u32]);
+        encoder.set_slice(6, &[d as u32]);
+        encoder.set_slice(7, &[s_len as u32]);
+        let grid = MTLSize { width: (total as u64).div_ceil(group_width), height: 1, depth: 1 };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
+
 #[cfg(test)]
 mod sinks_softmax_tests {
     use super::*;

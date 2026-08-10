@@ -701,3 +701,163 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
         prow[j] = (half)0.0f;
     }
 }
+
+// ---------------------------------------------------------------------------
+// Block-wise prefill attention (flash decomposed into existing gemms plus
+// the three small kernels below). The prefill loop runs QK gemm per key
+// block into a fixed scores buffer, then:
+//   1. sdpa_prefill_block_softmax_f16 turns the block scores into block
+//      probs while maintaining per-row running max `m` and denominator `l`
+//      (f32), emitting the rescale factor exp(m_old - m_new) for the
+//      accumulator.
+//   2. (AV gemm of the block probs -> partial output)
+//   3. sdpa_prefill_rescale_acc_f32 folds the partial into the f32
+//      accumulator: acc = acc * rescale[row] + partial.
+// After the last block sdpa_prefill_finalize_f16 folds the per-head sink
+// logit into the denominator (exactly the decode merge math; -inf sinks
+// reproduce the plain softmax) and writes out = acc / l.
+// ---------------------------------------------------------------------------
+
+// One threadgroup per scores row. Row layout matches the batched QK gemm
+// output: rows = [hkv * group * s_len], mask row = row % s_len.
+[[kernel]] void sdpa_prefill_block_softmax_f16(
+    device const half *scores [[buffer(0)]],
+    device const float *mask [[buffer(1)]],
+    device half *probs [[buffer(2)]],
+    device float *m_state [[buffer(3)]],
+    device float *l_state [[buffer(4)]],
+    device float *rescale [[buffer(5)]],
+    constant uint &rows [[buffer(6)]],
+    constant uint &bt [[buffer(7)]],
+    constant uint &s_len [[buffer(8)]],
+    constant float &scale [[buffer(9)]],
+    constant uint &mask_off [[buffer(10)]],
+    constant uint &mask_stride [[buffer(11)]],
+    constant uint &first_block [[buffer(12)]],
+    uint row [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint tptg [[threads_per_threadgroup]])
+{
+    threadgroup float partials[32];
+    if (row >= rows) {
+        return;
+    }
+    const uint mrow = row % s_len;
+    device const half *srow = scores + (uint64_t)row * bt;
+    device const float *mrow_p = mask + (uint64_t)mrow * mask_stride + mask_off;
+    device half *prow = probs + (uint64_t)row * bt;
+    const uint simd_lane = lane % 32;
+    const uint simd_ix = lane / 32;
+    const uint n_simd = max(tptg / 32, 1u);
+
+    // Pass 1: block row max.
+    float mb = -INFINITY;
+    for (uint j = lane; j < bt; j += tptg) {
+        mb = max(mb, (float)srow[j] * scale + mrow_p[j]);
+    }
+    mb = simd_max(mb);
+    if (simd_lane == 0) partials[simd_ix] = mb;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_ix == 0) {
+        float v = simd_lane < n_simd ? partials[simd_lane] : -INFINITY;
+        v = simd_max(v);
+        if (simd_lane == 0) partials[0] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    mb = partials[0];
+
+    const float m_old = first_block ? -INFINITY : m_state[row];
+    const float m_new = max(m_old, mb);
+
+    // Fully masked so far (m_new == -inf): zero probs, keep state.
+    if (m_new == -INFINITY) {
+        for (uint j = lane; j < bt; j += tptg) {
+            prow[j] = (half)0.0f;
+        }
+        if (lane == 0) {
+            m_state[row] = -INFINITY;
+            l_state[row] = 0.0f;
+            rescale[row] = 0.0f;
+        }
+        return;
+    }
+
+    // Pass 2: block denominator + probs relative to m_new.
+    float den = 0.0f;
+    for (uint j = lane; j < bt; j += tptg) {
+        const float p = exp((float)srow[j] * scale + mrow_p[j] - m_new);
+        prow[j] = (half)p;
+        den += p;
+    }
+    den = simd_sum(den);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_lane == 0) partials[simd_ix] = den;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (simd_ix == 0) {
+        float v = simd_lane < n_simd ? partials[simd_lane] : 0.0f;
+        v = simd_sum(v);
+        if (simd_lane == 0) partials[0] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    den = partials[0];
+
+    if (lane == 0) {
+        const float r = m_old == -INFINITY ? 0.0f : exp(m_old - m_new);
+        l_state[row] = (first_block ? 0.0f : l_state[row]) * r + den;
+        m_state[row] = m_new;
+        rescale[row] = r;
+    }
+}
+
+// acc[row, :] = acc[row, :] * rescale[row] + partial[row, :] (acc = partial
+// on the first block so the accumulator never reads uninitialized memory).
+[[kernel]] void sdpa_prefill_rescale_acc_f32(
+    device const half *partial [[buffer(0)]],
+    device const float *rescale [[buffer(1)]],
+    device float *acc [[buffer(2)]],
+    constant uint &total [[buffer(3)]],
+    constant uint &d [[buffer(4)]],
+    constant uint &first_block [[buffer(5)]],
+    uint tgpig [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint tptg [[threads_per_threadgroup]])
+{
+    const uint ix = tgpig * tptg + lane;
+    if (ix >= total) {
+        return;
+    }
+    const float p = (float)partial[ix];
+    acc[ix] = first_block ? p : acc[ix] * rescale[ix / d] + p;
+}
+
+// out[row, :] = acc[row, :] rescaled by the sink-folded denominator. Rows
+// are [hq * s_len]; sink head = row / s_len (matches the decode merge).
+[[kernel]] void sdpa_prefill_finalize_f16(
+    device const float *acc [[buffer(0)]],
+    device const float *m_state [[buffer(1)]],
+    device const float *l_state [[buffer(2)]],
+    device const float *sinks [[buffer(3)]],
+    device half *out [[buffer(4)]],
+    constant uint &total [[buffer(5)]],
+    constant uint &d [[buffer(6)]],
+    constant uint &s_len [[buffer(7)]],
+    uint tgpig [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_threadgroup]],
+    uint tptg [[threads_per_threadgroup]])
+{
+    const uint ix = tgpig * tptg + lane;
+    if (ix >= total) {
+        return;
+    }
+    const uint row = ix / d;
+    const float m = m_state[row];
+    const float sink = sinks[row / s_len];
+    const float m_fin = max(m, sink);
+    if (m_fin == -INFINITY) {
+        out[ix] = (half)0.0f;
+        return;
+    }
+    const float w = m == -INFINITY ? 0.0f : exp(m - m_fin);
+    const float l_fin = l_state[row] * w + exp(sink - m_fin);
+    out[ix] = (half)(l_fin > 0.0f ? acc[ix] * w / l_fin : 0.0f);
+}
