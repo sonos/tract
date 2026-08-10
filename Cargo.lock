@@ -4904,6 +4904,7 @@ dependencies = [
  "downcast-rs",
  "dyn-eq",
  "dyn-hash",
+ "log",
  "num-traits",
  "tract-core",
  "tract-pulse-opl",

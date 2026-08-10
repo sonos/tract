@@ -18,8 +18,35 @@ impl DeviceSessionHandler {
 
 impl SessionStateHandler for DeviceSessionHandler {
     fn before_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()> {
-        let resolved_mem_schema = self.mem_schema.resolve(&session_state.resolved_symbols)?;
-        let memory_pool = DeviceMemoryPool::from_schema(resolved_mem_schema)?;
+        // A schema that cannot be resolved yet (e.g. a symbol only known
+        // mid-eval) is a performance loss, not an error: ops fall back to
+        // per-node allocation when no memory pool is installed.
+        let resolved_mem_schema = match self.mem_schema.resolve(&session_state.resolved_symbols) {
+            Ok(schema) => schema,
+            Err(e) => {
+                log::warn!("Device memory arena disabled for this run: {e}");
+                return Ok(());
+            }
+        };
+        // The storage cache lives in the session scratch slot, which survives
+        // both plan evaluations and freeze/unfreeze cycles (the tract API
+        // freezes the state between every call), so consecutive evaluations
+        // reuse one storage allocation.
+        let cache = match &session_state.session_scratch {
+            Some(scratch) => scratch.clone(),
+            None => {
+                let cache: Arc<dyn std::any::Any + Send + Sync> =
+                    Arc::new(crate::memory::ArenaStorageCache::default());
+                session_state.session_scratch = Some(cache.clone());
+                cache
+            }
+        };
+        let memory_pool = match cache.downcast_ref::<crate::memory::ArenaStorageCache>() {
+            Some(cache) => DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, cache)?,
+            // Someone else owns the scratch slot: run with a per-evaluation
+            // storage rather than fighting over it.
+            None => DeviceMemoryPool::from_schema(resolved_mem_schema)?,
+        };
 
         session_state.scratch_extensions.insert(memory_pool);
         ensure!(session_state.scratch_extensions.get::<DeviceMemoryPool>().is_some());

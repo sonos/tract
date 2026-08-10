@@ -44,10 +44,18 @@ impl Runtime for MetalRuntime {
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
+        // Always plan transients through the device memory arena: without it
+        // every transient is an individually allocated (wired) Metal buffer,
+        // and a large-batch forward churns through gigabytes of alloc/free,
+        // spiking the process footprint into the compressor and stalling the
+        // next forwards on driver re-residency. Hints only tune the packing
+        // order; missing symbols fall back to a representative default.
+        // Escape hatch: TRACT_GPU_DISABLE_MEMORY_ARENA=1.
+        if std::env::var_os("TRACT_GPU_DISABLE_MEMORY_ARENA").is_none() {
+            let hints = options.memory_sizing_hints.clone().unwrap_or_default();
             let session_handler =
                 tract_gpu::session_handler::DeviceSessionHandler::from_plan(&runnable, &hints)
-                    .context("While sizing memory arena. Missing hint ?")?;
+                    .context("While sizing memory arena")?;
             runnable = runnable.with_session_handler(session_handler);
         }
 

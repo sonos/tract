@@ -1,4 +1,4 @@
-use crate::session_handler::make_tensor_for_node;
+use crate::session_handler::make_tensor_for_node_output;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use tract_core::internal::*;
 
@@ -50,8 +50,10 @@ impl EvalOp for GpuCausalConv1dUpdate {
         let input = input.to_device_tensor()?;
         let weight = weight.to_device_tensor()?;
         let state = state.to_device_tensor()?;
-        let output = make_tensor_for_node(session, node_id, DatumType::F16, input.shape())?;
-        let final_state = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
+        let output =
+            make_tensor_for_node_output(session, node_id, 0, DatumType::F16, input.shape())?;
+        let final_state =
+            make_tensor_for_node_output(session, node_id, 1, DatumType::F16, state.shape())?;
         (self.dispatch)(input, weight, state, &output, &final_state)?;
         Ok(tvec![output.into_tensor().into_tvalue(), final_state.into_tensor().into_tvalue()])
     }

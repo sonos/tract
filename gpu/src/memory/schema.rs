@@ -101,28 +101,35 @@ pub fn eval_device_mem_req_for_nodes(
     // recycled while a view of it is still read. Reverse eval order
     // propagates through alias chains (an alias's own end is final by the
     // time its source is visited).
+    //
+    // A view that reaches a MODEL OUTPUT escapes the evaluation entirely
+    // (e.g. a device-resident KV cache output fed back as the next call's
+    // input, read while the next evaluation already runs): its source
+    // cannot live in the arena at all, since the arena storage is reused
+    // across evaluations. Those source outlets are excluded below.
     let output_nodes: std::collections::HashSet<usize> =
         outputs.iter().map(|o| o.node).collect();
+    let mut escaping: std::collections::HashSet<OutletId> = outputs.iter().cloned().collect();
     for n in order.iter().rev() {
         let node = model.node(*n);
         if !may_alias_input(node) || node.inputs.is_empty() {
             continue;
         }
-        let v_end = if output_nodes.contains(n) {
-            // A model output must survive the whole plan.
-            Some(order.len())
-        } else {
-            end_by_node[*n].or_else(|| {
-                // No flush entry (e.g. followed by a ToHost sync): fall back
-                // to one past the last consumer's step.
-                node.outputs
-                    .iter()
-                    .flat_map(|o| o.successors.iter())
-                    .filter_map(|succ| step_of.get(&succ.node))
-                    .max()
-                    .map(|s| s + 1)
-            })
-        };
+        if output_nodes.contains(n)
+            || (0..node.outputs.len()).any(|slot| escaping.contains(&OutletId::new(*n, slot)))
+        {
+            escaping.insert(node.inputs[0]);
+        }
+        let v_end = end_by_node[*n].or_else(|| {
+            // No flush entry (e.g. followed by a ToHost sync): fall back
+            // to one past the last consumer's step.
+            node.outputs
+                .iter()
+                .flat_map(|o| o.successors.iter())
+                .filter_map(|succ| step_of.get(&succ.node))
+                .max()
+                .map(|s| s + 1)
+        });
         let src = node.inputs[0].node;
         if let (Some(v_end), Some(src_end)) = (v_end, end_by_node[src].as_mut()) {
             *src_end = (*src_end).max(v_end);
@@ -152,6 +159,9 @@ pub fn eval_device_mem_req_for_nodes(
 
         for (slot, fact) in out_device_tmp_facts.iter().enumerate() {
             let outlet_id = OutletId { node: *n, slot };
+            if escaping.contains(&outlet_id) {
+                continue;
+            }
             for buff_size in fact.buffer_sizes() {
                 scoped_nodes.push(NodeMemReq {
                     outlet_id,
@@ -353,6 +363,11 @@ impl DeviceMemSchema {
     /// Build a memory schema for given model and execution order. The hint is used to optimize
     /// the memory schema because it is based on symbolic dimensions. That doesn't mean it will be
     /// optimal for all possible values for symbolic dimensions.
+    ///
+    /// Symbols missing from the hint fall back to a representative default
+    /// (`TRACT_GPU_MEM_HINT_DEFAULT`, 1024): the hint only drives the
+    /// partition packing order, never correctness, so an incomplete (or
+    /// empty) hint still yields a valid schema.
     pub fn build(
         model: &TypedModel,
         order: &[usize],
@@ -361,9 +376,24 @@ impl DeviceMemSchema {
         let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
 
         let exotic_facts = collect_exotic_facts(model)?;
+        let default_dim: i64 = std::env::var("TRACT_GPU_MEM_HINT_DEFAULT")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(1024);
+        let mut hint = hint.clone();
+        for node_mem in &nodes_mem_req {
+            for sym in node_mem.mem_size.symbols() {
+                if hint.get(&sym).is_none() {
+                    log::debug!(
+                        "memory schema hint missing symbol {sym}, defaulting to {default_dim}"
+                    );
+                    hint.set(&sym, default_dim);
+                }
+            }
+        }
         let hinted_mem_size = nodes_mem_req
             .iter()
-            .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(hint)?)))
+            .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(&hint)?)))
             .collect::<TractResult<HashMap<OutletId, i64>>>()?;
 
         nodes_mem_req.sort_by(|lhs, rhs| {

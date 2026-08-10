@@ -1,4 +1,4 @@
-use crate::session_handler::make_tensor_for_node;
+use crate::session_handler::make_tensor_for_node_output;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use tract_core::internal::*;
 
@@ -56,10 +56,15 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             .collect::<TractResult<TVec<_>>>()?;
         // Output takes the VALUE shape: with GQA groups q/k carry hk heads
         // while v (and the output) carry hv = G * hk.
-        let output = make_tensor_for_node(session, node_id, DatumType::F16, tensors[2].shape())?;
-        // The memory arena is keyed by node, so a second output cannot use the
-        // same arena slot as the first one.
-        let final_state = DeviceTensor::uninitialized_dt(tensors[5].datum_type(), tensors[5].shape())?;
+        let output =
+            make_tensor_for_node_output(session, node_id, 0, DatumType::F16, tensors[2].shape())?;
+        let final_state = make_tensor_for_node_output(
+            session,
+            node_id,
+            1,
+            tensors[5].datum_type(),
+            tensors[5].shape(),
+        )?;
         (self.dispatch)(
             tensors[0],
             tensors[1],

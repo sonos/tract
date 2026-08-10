@@ -17,6 +17,12 @@ pub struct TurnState {
     pub scenario: Option<usize>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
     pub scratch_extensions: anymap3::Map,
+    /// Session-lived scratch owned by the plan's session handler (e.g. the
+    /// GPU memory arena storage cache). Unlike `scratch_extensions` it
+    /// survives freeze/unfreeze cycles, so it must be shareable: cloned
+    /// states share it through the `Arc` and the owner is responsible for
+    /// interior synchronization.
+    pub session_scratch: Option<Arc<dyn std::any::Any + Send + Sync>>,
     pub values: Vec<Option<TVec<TValue>>>,
 }
 
@@ -27,6 +33,7 @@ impl Default for TurnState {
             scenario: None,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
+            session_scratch: None,
             values: vec![],
         }
     }
@@ -39,6 +46,7 @@ impl Clone for TurnState {
             scenario: self.scenario,
             cached_mmm_scratch_space: None.into(),
             scratch_extensions: anymap3::Map::new(),
+            session_scratch: self.session_scratch.clone(),
             values: vec![],
         }
     }
@@ -692,6 +700,7 @@ where
             plan: self.plan.clone(),
             resolved_symbols: self.turn_state.resolved_symbols.clone(),
             scenario: self.turn_state.scenario,
+            session_scratch: self.turn_state.session_scratch.clone(),
             states: self.op_states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
             values: self
                 .turn_state
@@ -715,6 +724,7 @@ where
         FrozenSimpleState {
             resolved_symbols: self.turn_state.resolved_symbols,
             scenario: self.turn_state.scenario,
+            session_scratch: self.turn_state.session_scratch,
             states: self.op_states.into_iter().map(|s| s.map(|s| s.freeze_into())).collect(),
             values: self
                 .turn_state
@@ -764,6 +774,7 @@ where
     plan: Arc<SimplePlan<F, O>>,
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
+    pub session_scratch: Option<Arc<dyn std::any::Any + Send + Sync>>,
     pub states: Vec<Option<Box<dyn FrozenOpState>>>,
     pub values: Vec<Option<TVec<Tensor>>>,
 }
@@ -785,6 +796,7 @@ where
                 scenario: self.scenario,
                 cached_mmm_scratch_space: None.into(),
                 scratch_extensions: anymap3::Map::new(),
+                session_scratch: self.session_scratch.clone(),
                 values: self
                     .values
                     .iter()
