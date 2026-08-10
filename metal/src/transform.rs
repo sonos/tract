@@ -21,8 +21,9 @@ use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::cast::bypass_device_downcast_roundtrip;
 use tract_gpu::rewrite_rules::rms_norm::{
-    bypass_float_downcast_roundtrip, fuse_rms_norm_scale, fuse_scaled_rms_norm_in_cast,
-    fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast, swap_rms_norm_cast_mul,
+    bypass_float_downcast_roundtrip, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
+    fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
+    swap_rms_norm_cast_mul,
 };
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
@@ -194,6 +195,7 @@ impl MetalTransform {
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("swap_rms_norm_cast_mul", swap_rms_norm_cast_mul)
             .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
@@ -274,6 +276,27 @@ impl MetalTransform {
                             .collect();
                         eprintln!("  gemm-node {} <- {:?}", node.name, ins);
                     }
+                }
+            }
+            if v == "4" {
+                // Full one-line node listing: wiring around a node whose
+                // rewrite did not fire (names carry the source op chain).
+                for node in model.nodes() {
+                    let ins: Vec<String> = node
+                        .inputs
+                        .iter()
+                        .map(|i| format!("{}:{}", i.node, i.slot))
+                        .collect();
+                    let outs: Vec<String> =
+                        node.outputs.iter().map(|o| format!("{:?}", o.fact)).collect();
+                    eprintln!(
+                        "  node {} [{}] {} <- {:?} -> {:?}",
+                        node.id,
+                        node.op.name(),
+                        node.name,
+                        ins,
+                        outs
+                    );
                 }
             }
             if v == "2" {
