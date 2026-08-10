@@ -52,6 +52,30 @@ fn dispatch_eval(
     }
     let f16_state = initial_state.datum_type() == DatumType::F16;
 
+    // Prefill-shaped steps run the chunked gated delta rule: chunk-local
+    // matrices for all chunks in parallel, then a (head, column-block) scan
+    // that is sequential only across S/64 chunks instead of S steps.
+    // width <= 128: the scan kernel's static threadgroup arrays hold one
+    // [width x GDN_COL_BLOCK] f32 state block.
+    if s_len >= GDN_CHUNK
+        && width <= 128
+        && std::env::var_os("TRACT_METAL_DISABLE_GDN_CHUNKED").is_none()
+    {
+        return dispatch_chunked(
+            stream,
+            query,
+            key,
+            value,
+            log_decay,
+            beta,
+            initial_state,
+            output,
+            final_state,
+            (batch, s_len, k_heads, heads, width),
+            f16_state,
+        );
+    }
+
     // Threadgroup-parallel kernel: one threadgroup per (b, head), threads
     // [width x rchunks], row loops split across chunks and reduced through
     // threadgroup memory. Needs the whole column set in one threadgroup;
@@ -126,6 +150,108 @@ fn dispatch_eval(
             MTLSize { width: width.min(1024) as u64, height: 1, depth: 1 },
         );
     });
+    Ok(())
+}
+
+/// Chunk length of the chunked gated delta rule; must match GDN_CHUNK in
+/// gdn_recurrent.metal.
+const GDN_CHUNK: usize = 64;
+/// State columns per scan threadgroup; must match GDN_COL_BLOCK in
+/// gdn_recurrent.metal.
+const GDN_COL_BLOCK: usize = 16;
+
+/// Chunked gated delta rule (see gdn_recurrent.metal): one parallel
+/// prepare dispatch over (batch, head, chunk), a command-buffer boundary
+/// (the scan reads scratch the prepare just wrote: the documented
+/// intra-command-buffer write->read defect medicine), then the per-head
+/// sequential scan.
+#[allow(clippy::too_many_arguments)]
+fn dispatch_chunked(
+    stream: &MetalStream,
+    query: &DeviceTensor,
+    key: &DeviceTensor,
+    value: &DeviceTensor,
+    log_decay: &DeviceTensor,
+    beta: &DeviceTensor,
+    initial_state: &DeviceTensor,
+    output: &DeviceTensor,
+    final_state: &DeviceTensor,
+    dims: (usize, usize, usize, usize, usize),
+    f16_state: bool,
+) -> TractResult<()> {
+    let (batch, s_len, k_heads, heads, width) = dims;
+    let nch = s_len.div_ceil(GDN_CHUNK);
+    let rows = batch * heads * nch * GDN_CHUNK;
+    let f32dt = DatumType::F32;
+    let value_p = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[rows, width])? };
+    let k_cumdecay = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[rows, width])? };
+    let attn_local = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[rows, GDN_CHUNK])? };
+    let q_g = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[rows, width])? };
+    let w_t = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[rows, width])? };
+    let eg_last = unsafe { DeviceTensor::uninitialized_dt(f32dt, &[batch * heads * nch])? };
+    for t in [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last] {
+        stream.retain_tensor(t);
+    }
+
+    let prep = stream.load_pipeline(LibraryName::GdnRecurrent, "gdn_chunk_prepare_f16")?;
+    let tg_width = (prep.max_total_threads_per_threadgroup() as u64).min(256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&prep);
+        for (ix, t) in [query, key, value, log_decay, beta].iter().enumerate() {
+            encoder.set_metal_tensor(ix as u64, t, metal::MTLResourceUsage::Read);
+        }
+        for (ix, t) in
+            [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last].iter().enumerate()
+        {
+            encoder.set_metal_tensor(5 + ix as u64, t, metal::MTLResourceUsage::Write);
+        }
+        encoder.set_slice(11, &[heads as i32]);
+        encoder.set_slice(12, &[width as i32]);
+        encoder.set_slice(13, &[s_len as i32]);
+        encoder.set_slice(14, &[batch as i32]);
+        encoder.set_slice(15, &[k_heads as i32]);
+        encoder.set_slice(16, &[nch as i32]);
+        encoder.dispatch_thread_groups(
+            MTLSize { width: (batch * heads * nch) as u64, height: 1, depth: 1 },
+            MTLSize { width: tg_width, height: 1, depth: 1 },
+        );
+    });
+    stream.commit_current()?;
+
+    let scan_name = if f16_state { "gdn_chunk_scan_f16_state" } else { "gdn_chunk_scan_f32_state" };
+    let scan = stream.load_pipeline(LibraryName::GdnRecurrent, scan_name)?;
+    let col_blocks = width.div_ceil(GDN_COL_BLOCK);
+    let tg_width = (scan.max_total_threads_per_threadgroup() as u64).min(256);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&scan);
+        for (ix, t) in [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last].iter().enumerate()
+        {
+            encoder.set_metal_tensor(ix as u64, t, metal::MTLResourceUsage::Read);
+        }
+        encoder.set_metal_tensor(6, initial_state, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(7, output, metal::MTLResourceUsage::Write);
+        encoder.set_metal_tensor(8, final_state, metal::MTLResourceUsage::Write);
+        encoder.set_slice(9, &[heads as i32]);
+        encoder.set_slice(10, &[width as i32]);
+        encoder.set_slice(11, &[s_len as i32]);
+        encoder.set_slice(12, &[batch as i32]);
+        encoder.set_slice(13, &[nch as i32]);
+        encoder.dispatch_thread_groups(
+            MTLSize { width: (batch * heads * col_blocks) as u64, height: 1, depth: 1 },
+            MTLSize { width: tg_width, height: 1, depth: 1 },
+        );
+    });
+    // The scratch dies when this function returns. The commit between the
+    // two encodes moved the first retains onto the (closed) prepare buffer,
+    // which completes long before the scan runs: retain everything again so
+    // the scan's command buffer keeps the scratch alive (without this the
+    // buffer pool hands the same memory to the next layer's prepare while
+    // this scan still reads it: real-model junk output).
+    for t in [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last] {
+        stream.retain_tensor(t);
+    }
     Ok(())
 }
 
@@ -250,9 +376,17 @@ mod tests {
     /// Multi-step Metal-vs-CPU comparison, parametric over the GQA group
     /// count (heads = hv = groups * k_heads) and the state datum type.
     fn multi_step_matches_cpu_op_case(groups: usize, state_dt: DatumType) -> TractResult<()> {
+        multi_step_matches_cpu_op_len(groups, state_dt, 5)
+    }
+
+    fn multi_step_matches_cpu_op_len(
+        groups: usize,
+        state_dt: DatumType,
+        s_len: usize,
+    ) -> TractResult<()> {
         use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
         with_borrowed_metal_stream(|stream| {
-            let (b, s_len, k_heads, width) = (1usize, 5usize, 2usize, 32usize);
+            let (b, k_heads, width) = (1usize, 2usize, 32usize);
             let heads = k_heads * groups;
             let n_qk = b * s_len * k_heads * width;
             let n_vec = b * s_len * heads * width;
@@ -324,5 +458,104 @@ mod tests {
     #[test]
     fn qwen35_recurrent_f16_state_grouped_matches_cpu_op() -> TractResult<()> {
         multi_step_matches_cpu_op_case(2, DatumType::F16)
+    }
+
+    /// Prefill-shaped steps (s_len >= 64) take the chunked gated delta rule
+    /// path; 200 forces multiple chunks plus a partial last chunk of 8.
+    #[test]
+    fn qwen35_chunked_prefill_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_len(1, DatumType::F32, 200)
+    }
+
+    #[test]
+    fn qwen35_chunked_prefill_grouped_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_len(2, DatumType::F32, 200)
+    }
+
+    #[test]
+    fn qwen35_chunked_prefill_f16_state_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_len(1, DatumType::F16, 200)
+    }
+
+    #[test]
+    fn qwen35_chunked_prefill_f16_state_grouped_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_len(2, DatumType::F16, 200)
+    }
+
+    /// Exactly one full chunk (the threshold boundary).
+    #[test]
+    fn qwen35_chunked_prefill_single_chunk_matches_cpu_op() -> TractResult<()> {
+        multi_step_matches_cpu_op_len(2, DatumType::F32, 64)
+    }
+
+    /// Timing harness on the real qwen3.5-35B GDN geometry (S=512 prefill
+    /// chunk). Run explicitly: cargo test -p tract-metal --release
+    /// gdn_chunk_bench -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn gdn_chunk_bench() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let (b, s_len, k_heads, groups, width) = (1usize, 512usize, 16usize, 2usize, 128usize);
+            let heads = k_heads * groups;
+            let n_qk = b * s_len * k_heads * width;
+            let n_vec = b * s_len * heads * width;
+            let n_gate = b * s_len * heads;
+            let n_state = b * heads * width * width;
+            let as_f16 = |v: Vec<f32>| v.into_iter().map(f16::from_f32).collect::<Vec<_>>();
+            let q = Tensor::from_shape(
+                &[b, s_len, k_heads, width],
+                &as_f16((0..n_qk).map(|i| ((i % 31) as f32 - 15.0) / 64.0).collect()),
+            )?
+            .into_device()?;
+            let k = Tensor::from_shape(
+                &[b, s_len, k_heads, width],
+                &as_f16((0..n_qk).map(|i| ((i % 29) as f32 - 14.0) / 64.0).collect()),
+            )?
+            .into_device()?;
+            let v = Tensor::from_shape(
+                &[b, s_len, heads, width],
+                &as_f16((0..n_vec).map(|i| ((i % 23) as f32 - 11.0) / 32.0).collect()),
+            )?
+            .into_device()?;
+            let g = Tensor::from_shape(
+                &[b, s_len, heads],
+                &(0..n_gate).map(|i| -0.05 - 0.1 * (i % 7) as f32).collect::<Vec<f32>>(),
+            )?
+            .into_device()?;
+            let beta = Tensor::from_shape(
+                &[b, s_len, heads],
+                &as_f16((0..n_gate).map(|i| 0.125 + 0.08 * (i % 9) as f32).collect()),
+            )?
+            .into_device()?;
+            let state = Tensor::from_shape(
+                &[b, heads, width, width],
+                &as_f16((0..n_state).map(|i| ((i % 37) as f32 - 18.0) / 256.0).collect()),
+            )?
+            .into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::F16, v.shape())?;
+            let next = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
+            for _ in 0..5 {
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+            }
+            stream.wait_until_completed()?;
+            const N: usize = 50;
+            let start = std::time::Instant::now();
+            for _ in 0..N {
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+            }
+            stream.wait_until_completed()?;
+            let per = start.elapsed().as_secs_f64() / N as f64;
+            eprintln!("gdn chunked s=512: {:.1} us/layer-dispatch", per * 1e6);
+            let start = std::time::Instant::now();
+            unsafe { std::env::set_var("TRACT_METAL_DISABLE_GDN_CHUNKED", "1") };
+            for _ in 0..N {
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+            }
+            stream.wait_until_completed()?;
+            unsafe { std::env::remove_var("TRACT_METAL_DISABLE_GDN_CHUNKED") };
+            let per = start.elapsed().as_secs_f64() / N as f64;
+            eprintln!("gdn old tg kernel s=512: {:.1} us/layer-dispatch", per * 1e6);
+            Ok(())
+        })
     }
 }
