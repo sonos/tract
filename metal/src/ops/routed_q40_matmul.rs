@@ -304,8 +304,20 @@ mod tests {
                 .join("\n")
         };
         ensure!(
-            routed_count == 3,
-            "expected 3 MetalRoutedQ40MatMul nodes, got {routed_count}\n{}",
+            routed_count == 1,
+            "expected 1 MetalRoutedQ40MatMul node (w2), got {routed_count}\n{}",
+            transformed_ops()
+        );
+        // The fused op may be wrapped in MetalFusedAxisOp (rank-3 inputs),
+        // which forwards the inner op's name.
+        let fused_count = transformed
+            .nodes()
+            .iter()
+            .filter(|node| node.op().name() == "MetalRoutedQ40SwiGlu")
+            .count();
+        ensure!(
+            fused_count == 1,
+            "expected 1 MetalRoutedQ40SwiGlu node, got {fused_count}\n{}",
             transformed_ops()
         );
         let has_combine =
@@ -399,10 +411,10 @@ mod tests {
             .iter()
             .filter(|node| node.op().name() == "MetalRoutedQ40MatMul")
             .count();
-        ensure!(routed_count == 3, "expected 3 MetalRoutedQ40MatMul nodes, got {routed_count}");
+        ensure!(routed_count == 1, "expected 1 MetalRoutedQ40MatMul node (w2), got {routed_count}");
         ensure!(
-            transformed.nodes().iter().any(|node| node.op_is::<crate::ops::MetalClampedSwiGlu>()),
-            "expected MetalClampedSwiGlu in lowered MoE graph"
+            transformed.nodes().iter().any(|node| node.op().name() == "MetalRoutedQ40SwiGlu"),
+            "expected MetalRoutedQ40SwiGlu in lowered MoE graph"
         );
         ensure!(
             transformed.nodes().iter().any(|node| node.op_is::<crate::ops::MetalRoutedCombine>()),

@@ -68,6 +68,26 @@ typedef struct {
     uint64_t output_route_stride;
 } routed_q40_f32_args;
 
+// Activation epilogue of the fused routed w1/w3 pair (see
+// kernel_routed_q4_0_swiglu_f32): mode 0 is plain swiglu silu(g)*u, mode 1
+// is the clamped variant (same math as clamped_swiglu_f32 in moe.metal).
+typedef struct {
+    int32_t act_mode;
+    int32_t has_bias;
+    float   alpha;
+    float   limit;
+} routed_swiglu_args;
+
+inline float routed_swiglu_apply(routed_swiglu_args sargs, float g, float u) {
+    if (sargs.act_mode == 1) {
+        const float gate = min(g, sargs.limit);
+        const float up = clamp(u, -sargs.limit, sargs.limit);
+        const float glu = gate / (1.0f + exp(-sargs.alpha * gate));
+        return (up + 1.0f) * glu;
+    }
+    return (g / (1.0f + exp(-g))) * u;
+}
+
 #define N_MV_T_T 4
 
 template<typename T0, typename T04, typename T1, typename T14, typename args_t>
@@ -717,6 +737,136 @@ kernel void kernel_routed_q4_0_f32(
             dst_route[weight_row] = tot;
         }
     }
+}
+
+// Fused routed w1/w3 gemv pair + swiglu epilogue: one dispatch computes
+// g = w1 x (+bias1), u = w3 x (+bias3) and writes act(g, u). Same shape
+// contract and route indexing as kernel_routed_q4_0_f32; both weight
+// tensors share expert/row strides (same [experts, n, k] q4_0 layout).
+// Reading both weight rows in the same k-block loop reuses the activation
+// registers, so the extra cost over the single-weight kernel is only the
+// second weight stream.
+kernel void kernel_routed_q4_0_swiglu_f32(
+        constant routed_q40_f32_args & args,
+        constant routed_swiglu_args & sargs,
+        device const char * w1,
+        device const char * w3,
+        device const float * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device const float * bias1,
+        device const float * bias3,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.k/QK4_0;
+
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+
+    device const block_q4_0 * ax1[N_DST];
+    device const block_q4_0 * ax3[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax1[row] = (device const block_q4_0 *) (w1 + offset);
+        ax3[row] = (device const block_q4_0 *) (w3 + offset);
+    }
+
+    float yl[16];
+    float sumf1[N_DST] = {0.f};
+    float sumf3[N_DST] = {0.f};
+
+    const short ix = tiisg/2;
+    const short il = (tiisg%2)*8;
+
+    device const float * yb = y + ix*QK4_0 + il;
+
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            sumy[0]  += yb[i +  0] + yb[i +  1];
+            yl[i + 0] = yb[i +  0];
+            yl[i + 1] = yb[i +  1]/256.f;
+
+            sumy[1]  += yb[i + 16] + yb[i + 17];
+            yl[i + 8] = yb[i + 16]/16.f;
+            yl[i + 9] = yb[i + 17]/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf1[row] += block_q_n_dot_y(ax1[row] + ib, sumy[0] + sumy[1], yl, il);
+            sumf3[row] += block_q_n_dot_y(ax3[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        float g = simd_sum(sumf1[row]);
+        float u = simd_sum(sumf3[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            if (sargs.has_bias != 0) {
+                g += bias1[(uint64_t) expert * (uint)args.n + weight_row];
+                u += bias3[(uint64_t) expert * (uint)args.n + weight_row];
+            }
+            dst_route[weight_row] = routed_swiglu_apply(sargs, g, u);
+        }
+    }
+}
+
+// Grouped-path epilogue of the fused routed swiglu: reads the two
+// expert-sorted mm results, applies bias + activation, scatters back to
+// original route order (one dispatch replacing bias adds, activation and
+// two scatters).
+kernel void routed_swiglu_scatter_f32(
+        constant routed_q40_f32_args & args,
+        constant routed_swiglu_args & sargs,
+        device const float * c1_sorted,
+        device const float * c3_sorted,
+        device const uint * sorted_routes,
+        device const long * route_expert_ids,
+        device const float * bias1,
+        device const float * bias3,
+        device float * dst,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint total = (uint)args.route_count * (uint)args.n;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / (uint)args.n;
+    const uint col = gid - i * (uint)args.n;
+    const uint orig = sorted_routes[i];
+    float g = c1_sorted[gid];
+    float u = c3_sorted[gid];
+    if (sargs.has_bias != 0) {
+        const long e = route_expert_ids[orig];
+        g += bias1[(uint64_t) e * (uint)args.n + col];
+        u += bias3[(uint64_t) e * (uint)args.n + col];
+    }
+    device float * out = (device float *)(
+        (device char *)dst + (uint64_t)orig * args.output_route_stride);
+    out[col] = routed_swiglu_apply(sargs, g, u);
 }
 
 #define BLOCK_SIZE_M 64 // 8 simdgroup matrices from matrix A

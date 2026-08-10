@@ -773,69 +773,108 @@ fn convert_q40_moe_ffn_to_metal(
         })
         .transpose()?;
 
-    let mut h1 = target.wire_node(
-        format!("{}.w1", node.name),
-        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
-        &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
-    )?[0];
-    if let Some(w1_bias_device) = w1_bias_device {
-        h1 = add_routed_bias(
-            target,
-            format!("{}.w1", node.name),
-            h1,
-            w1_bias_device,
-            route_expert_ids,
-        )?;
-    }
-
-    let hidden = if op.has_w3 {
+    // has_w3 blocks fuse w1/w3/(biases)/activation into one op: a single
+    // gemv-pair dispatch at decode, one shared expert sort + gather at
+    // prefill. Both bias inputs must be present or absent together for the
+    // fused kernel; mixed-bias models fall back to the unfused chain.
+    let fused_swiglu = op.has_w3
+        && w1_bias_device.is_some() == w3_bias_device.is_some()
+        && !env_flag("TRACT_METAL_DISABLE_ROUTED_SWIGLU");
+    let hidden = if fused_swiglu {
         let w3_device = sync_outlet_if_required(
             target,
             format!("{}.w3.to-device", node.name),
             mapping[&node.inputs[indexes.w3.context("missing w3 input index")?]],
             DeviceSyncKind::ToDevice,
         )?;
-        let mut up = target.wire_node(
-            format!("{}.w3", node.name),
+        let has_bias = w1_bias_device.is_some();
+        let mut inputs = tvec![
+            x_expert_input,
+            w1_device,
+            w3_device,
+            route_token_ids,
+            route_expert_ids
+        ];
+        if let (Some(b1), Some(b3)) = (w1_bias_device, w3_bias_device) {
+            inputs.push(b1);
+            inputs.push(b3);
+        }
+        target.wire_node(
+            format!("{}.w1w3_swiglu", node.name),
+            ops::MetalRoutedQ40SwiGlu {
+                input_mode: RoutedInputMode::TokenRows,
+                act_alpha_bits: op.act_alpha_bits,
+                act_limit_bits: op.act_limit_bits,
+                has_bias,
+                sync_after_dispatch: moe_sync_after_dispatch(),
+            },
+            &inputs,
+        )?[0]
+    } else {
+        let mut h1 = target.wire_node(
+            format!("{}.w1", node.name),
             ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
-            &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
+            &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
         )?[0];
-        if let Some(w3_bias_device) = w3_bias_device {
-            up = add_routed_bias(
+        if let Some(w1_bias_device) = w1_bias_device {
+            h1 = add_routed_bias(
                 target,
-                format!("{}.w3", node.name),
-                up,
-                w3_bias_device,
+                format!("{}.w1", node.name),
+                h1,
+                w1_bias_device,
                 route_expert_ids,
             )?;
         }
-        if let Some(limit_bits) = op.act_limit_bits {
-            let alpha = op.act_alpha_bits.map(f32::from_bits).unwrap_or(1.0);
-            target.wire_node(
-                format!("{}.clamped_swiglu", node.name),
-                ops::MetalClampedSwiGlu::new(alpha, f32::from_bits(limit_bits)),
-                &[h1, up],
-            )?[0]
-        } else {
-            let activated = target.wire_node(
-                format!("{}.activation", node.name),
-                kernels::element_wise::metal_element_wise_op(Box::new(
-                    tract_core::ops::nn::Silu {},
-                )),
-                &[h1],
+
+        if op.has_w3 {
+            let w3_device = sync_outlet_if_required(
+                target,
+                format!("{}.w3.to-device", node.name),
+                mapping[&node.inputs[indexes.w3.context("missing w3 input index")?]],
+                DeviceSyncKind::ToDevice,
+            )?;
+            let mut up = target.wire_node(
+                format!("{}.w3", node.name),
+                ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows, sync_after_dispatch: moe_sync_after_dispatch() },
+                &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
             )?[0];
+            if let Some(w3_bias_device) = w3_bias_device {
+                up = add_routed_bias(
+                    target,
+                    format!("{}.w3", node.name),
+                    up,
+                    w3_bias_device,
+                    route_expert_ids,
+                )?;
+            }
+            if let Some(limit_bits) = op.act_limit_bits {
+                let alpha = op.act_alpha_bits.map(f32::from_bits).unwrap_or(1.0);
+                target.wire_node(
+                    format!("{}.clamped_swiglu", node.name),
+                    ops::MetalClampedSwiGlu::new(alpha, f32::from_bits(limit_bits)),
+                    &[h1, up],
+                )?[0]
+            } else {
+                let activated = target.wire_node(
+                    format!("{}.activation", node.name),
+                    kernels::element_wise::metal_element_wise_op(Box::new(
+                        tract_core::ops::nn::Silu {},
+                    )),
+                    &[h1],
+                )?[0];
+                target.wire_node(
+                    format!("{}.swiglu_mul", node.name),
+                    kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
+                    &[activated, up],
+                )?[0]
+            }
+        } else {
             target.wire_node(
-                format!("{}.swiglu_mul", node.name),
-                kernels::bin_ops::metal_bin_op(Box::new(tract_core::ops::math::Mul)),
-                &[activated, up],
+                format!("{}.activation", node.name),
+                kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
+                &[h1],
             )?[0]
         }
-    } else {
-        target.wire_node(
-            format!("{}.activation", node.name),
-            kernels::element_wise::metal_element_wise_op(Box::new(tract_core::ops::nn::Silu {})),
-            &[h1],
-        )?[0]
     };
 
     let mut route_values = target.wire_node(
