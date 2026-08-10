@@ -45,6 +45,22 @@ pub fn make_tensor_for_node(
         .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
 }
 
+/// Like [`make_tensor_for_node`] but for one output slot of a multi-output
+/// node: the memory schema reserves one arena region per device output.
+pub fn make_tensor_for_node_output(
+    session: &TurnState,
+    node_id: usize,
+    slot: usize,
+    dt: DatumType,
+    shape: &[usize],
+) -> TractResult<DeviceTensor> {
+    session
+        .scratch_extensions
+        .get::<DeviceMemoryPool>()
+        .map(|mem| mem.tensor_for_node_output(node_id, slot, dt, shape))
+        .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
+}
+
 pub fn make_scalar_exotic_tensor_for_node(
     session: &TurnState,
     node_id: usize,

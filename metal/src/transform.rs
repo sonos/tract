@@ -214,6 +214,7 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("bypass_device_downcast_roundtrip", bypass_device_downcast_roundtrip)
             .rewrite(&(), model)?;
+        rewrite_rules::fuse_sibling_gemms(model)?;
         Rewriter::default()
             .with_rule_for("fuse_elementwise_chain_ew", rewrite_rules::fuse_elementwise_chain_ew)
             .with_rule_for("fuse_elementwise_chain_bin", rewrite_rules::fuse_elementwise_chain_bin)
@@ -240,6 +241,59 @@ impl MetalTransform {
             .rewrite(&(), model)?;
 
         rewire_syncs(model)?;
+
+        // Post-transform graph census for dispatch-count attribution:
+        // TRACT_METAL_DUMP_OPS=1 prints an op histogram, =2 also lists every
+        // copy-flavored node with its facts.
+        if let Ok(v) = std::env::var("TRACT_METAL_DUMP_OPS")
+            && v != "0"
+        {
+            let mut counts: HashMap<String, usize> = HashMap::new();
+            for node in model.nodes() {
+                *counts.entry(node.op.name().to_string()).or_default() += 1;
+            }
+            let mut sorted: Vec<_> = counts.into_iter().collect();
+            sorted.sort_by(|a, b| b.1.cmp(&a.1));
+            eprintln!("metal-transform op census ({} nodes):", model.nodes().len());
+            for (name, count) in &sorted {
+                eprintln!("  {count:5} {name}");
+            }
+            if v == "3" {
+                for node in model.nodes() {
+                    if node.op.name().contains("Gemm") {
+                        let ins: Vec<String> = node
+                            .inputs
+                            .iter()
+                            .map(|i| model.node(i.node).name.to_string())
+                            .collect();
+                        eprintln!("  gemm-node {} <- {:?}", node.name, ins);
+                    }
+                }
+            }
+            if v == "2" {
+                for node in model.nodes() {
+                    let name = node.op.name();
+                    if name.contains("ViewCopy")
+                        || name.contains("Slice")
+                        || name.contains("AxisOp")
+                        || name.contains("Concat")
+                        || name.contains("broadcast")
+                    {
+                        let in_facts = model
+                            .node_input_facts(node.id)
+                            .map(|f| format!("{f:?}"))
+                            .unwrap_or_default();
+                        eprintln!(
+                            "  copy-node {} [{}] {:?} <- {}",
+                            node.name,
+                            name,
+                            node.outputs.iter().map(|o| &o.fact).collect::<Vec<_>>(),
+                            in_facts
+                        );
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }
@@ -1110,7 +1164,7 @@ fn convert_matmul_to_metal(
     Ok(matmul_output)
 }
 
-fn convert_const(op: &Const) -> TractResult<Const> {
+pub(crate) fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let metal_fact = if let Some(of) = op.exotic_fact() {
         DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
