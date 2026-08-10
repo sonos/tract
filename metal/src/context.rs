@@ -70,6 +70,14 @@ pub(crate) fn log_gpu_time() -> bool {
     *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some())
 }
 
+/// Record kernel names per command buffer WITHOUT the per-kernel buffer
+/// split TRACT_METAL_PROFILE_KERNELS forces: gpu-time segment lines then
+/// show each real buffer's kernel composition (who requested the boundary).
+pub(crate) fn log_buffer_kernels() -> bool {
+    static V: OnceLock<bool> = OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_BUFFER_KERNELS").is_some())
+}
+
 pub(crate) fn buffer_pool_disabled() -> bool {
     static V: OnceLock<bool> = OnceLock::new();
     *V.get_or_init(|| std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some())
@@ -517,6 +525,8 @@ impl MetalStream {
             // per-kernel GPU times, logged with the name recorded here.
             self.commit_current()?;
             self.pending_kernel_names.borrow_mut().push(func_name.to_string());
+        } else if log_buffer_kernels() {
+            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
         }
         self.context.load_pipeline(library_name, func_name)
     }
@@ -530,6 +540,8 @@ impl MetalStream {
         if profile_kernels() {
             // Same per-dispatch attribution as `load_pipeline`.
             self.commit_current()?;
+            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
+        } else if log_buffer_kernels() {
             self.pending_kernel_names.borrow_mut().push(func_name.to_string());
         }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
@@ -582,7 +594,7 @@ impl MetalStream {
     }
 
     fn log_gpu_time_named(buffer: &TCommandBuffer, tag: &str, names: &[String]) {
-        if log_gpu_time() || profile_kernels() {
+        if log_gpu_time() || profile_kernels() || log_buffer_kernels() {
             // metal-rs does not wrap GPUStartTime/GPUEndTime; go through objc.
             use objc::{msg_send, sel, sel_impl};
             let raw: &metal::CommandBufferRef = buffer;
