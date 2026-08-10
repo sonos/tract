@@ -131,7 +131,9 @@ pub fn cuda_gdn_recurrent_launch(
     initial_state: &DeviceTensor,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
+    sigmoid_beta: bool,
 ) -> TractResult<()> {
+    anyhow::ensure!(!sigmoid_beta, "cuda GDN kernel has no in-kernel beta sigmoid");
     crate::with_cuda_stream(|stream| {
         CudaGdnRecurrent.dispatch_eval(
             stream,
@@ -149,7 +151,11 @@ pub fn cuda_gdn_recurrent_launch(
 
 crate::register_cuda_op!(
     tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
-    |source, node, _op| {
+    |source, node, op| {
+        // No in-kernel beta sigmoid on cuda yet.
+        if op.sigmoid_beta {
+            return Ok(None);
+        }
         // The cuda kernel is single-step (S == 1), f16-only and ungrouped
         // (q/k head count == v head count); the op's layout is [b, S, h, w].
         // Anything else stays on the CPU op until the kernel grows an S
@@ -179,6 +185,7 @@ crate::register_cuda_op!(
         Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {
             backend_name: "Cuda",
             dispatch: cuda_gdn_recurrent_launch,
+            sigmoid_beta: false,
         })))
     }
 );

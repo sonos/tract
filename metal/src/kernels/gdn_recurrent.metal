@@ -1,6 +1,18 @@
 #include <metal_stdlib>
 using namespace metal;
 
+// Optional in-kernel beta activation: replicates the elementwise Sigmoid
+// functor (element_wise.metal) on half EXACTLY, so folding the upstream
+// sigmoid dispatch into the GDN read is bit-identical to the unfused graph.
+inline half gdn_beta(device const half *beta, int ix, int sigmoid_beta) {
+  half x = beta[ix];
+  if (sigmoid_beta) {
+    half y = 1 / (1 + metal::exp(-metal::abs(x)));
+    return (x < 0) ? 1 - y : y;
+  }
+  return x;
+}
+
 // Gated delta rule over the whole sequence. Layout matches the CPU op:
 // query/key [b, S, hk, w], value/output [b, S, hv, w] with hv = G * hk
 // (GQA: value head h reads query/key head h / G; hk == hv is the
@@ -22,6 +34,7 @@ kernel void gdn_recurrent_f16(
     constant int &s_len [[buffer(10)]],
     constant int &batch [[buffer(11)]],
     constant int &k_heads [[buffer(12)]],
+    constant int &sigmoid_beta [[buffer(13)]],
     uint gid [[thread_position_in_grid]]) {
   const int column = gid % width;
   const int head = (gid / width) % heads;
@@ -54,7 +67,7 @@ kernel void gdn_recurrent_f16(
     }
     const float residual =
         (float(value[vector_base + column]) - predicted)
-        * float(beta[gate_ix]);
+        * float(gdn_beta(beta, gate_ix, sigmoid_beta));
     float result = 0.0f;
     for (int row = 0; row < width; ++row) {
       const int offset = matrix_base + row * width + column;
@@ -84,6 +97,7 @@ kernel void gdn_recurrent_f16_state_f16(
     constant int &s_len [[buffer(10)]],
     constant int &batch [[buffer(11)]],
     constant int &k_heads [[buffer(12)]],
+    constant int &sigmoid_beta [[buffer(13)]],
     uint gid [[thread_position_in_grid]]) {
   const int column = gid % width;
   const int head = (gid / width) % heads;
@@ -116,7 +130,7 @@ kernel void gdn_recurrent_f16_state_f16(
     }
     const float residual =
         (float(value[vector_base + column]) - predicted)
-        * float(beta[gate_ix]);
+        * float(gdn_beta(beta, gate_ix, sigmoid_beta));
     float result = 0.0f;
     for (int row = 0; row < width; ++row) {
       const int offset = matrix_base + row * width + column;
@@ -199,6 +213,7 @@ kernel void gdn_recurrent_tg(
     constant int &s_len [[buffer(10)]],
     constant int &batch [[buffer(11)]],
     constant int &k_heads [[buffer(12)]],
+    constant int &sigmoid_beta [[buffer(13)]],
     threadgroup float *scratch [[threadgroup(0)]],
     uint2 tgpig [[threadgroup_position_in_grid]],
     uint2 tpitg [[thread_position_in_threadgroup]],
@@ -260,7 +275,8 @@ kernel void gdn_recurrent_tg(
     const float k_inv = rsqrt(k_norm + 1.0e-6f);
     predicted *= k_inv;
     const float residual =
-        (float(value[vector_base + col]) - predicted) * float(beta[gate_ix]);
+        (float(value[vector_base + col]) - predicted)
+        * float(gdn_beta(beta, gate_ix, sigmoid_beta));
     float res = 0.0f;
     for (int row = row0; row < row0 + rows_per_chunk; ++row) {
       const int offset = matrix_base + row * width + col;
@@ -289,16 +305,16 @@ gdn_recurrent_tg<float>(
     device const half *, device const half *, device const half *,
     device const float *, device const half *, device const float *,
     device half *, device float *, constant int &, constant int &,
-    constant int &, constant int &, constant int &, threadgroup float *,
-    uint2, uint2, uint2);
+    constant int &, constant int &, constant int &, constant int &,
+    threadgroup float *, uint2, uint2, uint2);
 
 template [[host_name("gdn_recurrent_f16_state_f16_tg")]] [[kernel]] void
 gdn_recurrent_tg<half>(
     device const half *, device const half *, device const half *,
     device const float *, device const half *, device const half *,
     device half *, device half *, constant int &, constant int &,
-    constant int &, constant int &, constant int &, threadgroup float *,
-    uint2, uint2, uint2);
+    constant int &, constant int &, constant int &, constant int &,
+    threadgroup float *, uint2, uint2, uint2);
 
 // ---------------------------------------------------------------------------
 // Chunked gated delta rule (prefill path). Mathematically the standard
@@ -346,6 +362,7 @@ constant int GDN_CHUNK = 64;
     constant int &batch [[buffer(14)]],
     constant int &k_heads [[buffer(15)]],
     constant int &nch [[buffer(16)]],
+    constant int &sigmoid_beta [[buffer(17)]],
     uint tgid [[threadgroup_position_in_grid]],
     uint tid [[thread_index_in_threadgroup]],
     uint tptg [[threads_per_threadgroup]])
@@ -402,7 +419,8 @@ constant int GDN_CHUNK = 64;
   }
   threadgroup_barrier(mem_flags::mem_threadgroup);
   for (int i = tid; i < cn; i += tptg) {
-    const float beta_i = float(beta[(b * s_len + s0 + i) * heads + head]);
+    const float beta_i =
+        float(gdn_beta(beta, (b * s_len + s0 + i) * heads + head, sigmoid_beta));
     bmul[i] = beta_i;
     kmul[i] = k_inv[i] * beta_i * exp(g_cum[i]);
   }

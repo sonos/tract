@@ -9,7 +9,7 @@ pub fn register(registry: &mut Registry) {
             .map(|name| invocation.named_arg_as(builder, name))
             .into_iter()
             .collect::<TractResult<TVec<_>>>()?;
-        builder.wire(GatedDeltaNetRecurrent, &inputs)
+        builder.wire(GatedDeltaNetRecurrent::default(), &inputs)
     }
     for name in ["tract_transformers_gdn_recurrent", "tract_qwen35_gdn_recurrent"] {
         registry.register_primitive(
@@ -45,12 +45,21 @@ pub fn register(registry: &mut Registry) {
 /// pre-GQA graphs load and run unchanged. Outputs: `[b, S, hv, w]` in the
 /// query datum type and the final state in the initial_state datum type.
 /// All compute is f32.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct GatedDeltaNetRecurrent;
+///
+/// With `sigmoid_beta` set the `beta` input carries the raw pre-activation
+/// values and the op applies the sigmoid itself: runtimes can then fold the
+/// singleton sigmoid dispatch that otherwise feeds beta into their kernel.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+pub struct GatedDeltaNetRecurrent {
+    pub sigmoid_beta: bool,
+}
 
 impl Op for GatedDeltaNetRecurrent {
     fn name(&self) -> StaticName {
         "GatedDeltaNetRecurrent".into()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(if self.sigmoid_beta { vec!["sigmoid_beta: true".to_string()] } else { vec![] })
     }
     op_as_typed_op!();
 }
@@ -109,7 +118,12 @@ impl EvalOp for GatedDeltaNetRecurrent {
         let k = to_f32_vec(&inputs[1])?;
         let v = to_f32_vec(&inputs[2])?;
         let g = to_f32_vec(&inputs[3])?;
-        let beta = to_f32_vec(&inputs[4])?;
+        let mut beta = to_f32_vec(&inputs[4])?;
+        if self.sigmoid_beta {
+            for b in beta.iter_mut() {
+                *b = 1.0 / (1.0 + (-*b).exp());
+            }
+        }
         let mut state = to_f32_vec(&inputs[5])?;
 
         let scale: f32 = 1.0 / (width as f32).sqrt();
@@ -199,7 +213,7 @@ mod tests {
         state: &Tensor,
     ) -> TractResult<(Tensor, Tensor)> {
         let _ = (s_len, heads, width);
-        let outputs = GatedDeltaNetRecurrent.eval(tvec![
+        let outputs = GatedDeltaNetRecurrent::default().eval(tvec![
             q.clone().into_tvalue(),
             k.clone().into_tvalue(),
             v.clone().into_tvalue(),

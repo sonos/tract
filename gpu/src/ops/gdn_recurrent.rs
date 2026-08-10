@@ -11,17 +11,19 @@ pub type DispatchGdnRecurrentFn = fn(
     &DeviceTensor,
     &DeviceTensor,
     &DeviceTensor,
+    bool, // sigmoid_beta: beta carries raw logits, kernel applies sigmoid
 ) -> TractResult<()>;
 
 #[derive(Clone, Debug)]
 pub struct GpuGatedDeltaNetRecurrent {
     pub backend_name: &'static str,
     pub dispatch: DispatchGdnRecurrentFn,
+    pub sigmoid_beta: bool,
 }
 
 impl PartialEq for GpuGatedDeltaNetRecurrent {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name
+        self.backend_name == other.backend_name && self.sigmoid_beta == other.sigmoid_beta
     }
 }
 impl Eq for GpuGatedDeltaNetRecurrent {}
@@ -74,6 +76,7 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             tensors[5],
             &output,
             &final_state,
+            self.sigmoid_beta,
         )?;
         Ok(tvec![output.into_tensor().into_tvalue(), final_state.into_tensor().into_tvalue()])
     }

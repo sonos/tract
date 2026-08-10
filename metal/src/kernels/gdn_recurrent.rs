@@ -15,6 +15,7 @@ fn dispatch_eval(
     initial_state: &DeviceTensor,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
+    sigmoid_beta: bool,
 ) -> TractResult<()> {
     ensure!(query.datum_type() == DatumType::F16);
     ensure!(key.datum_type() == DatumType::F16 && value.datum_type() == DatumType::F16);
@@ -73,6 +74,7 @@ fn dispatch_eval(
             final_state,
             (batch, s_len, k_heads, heads, width),
             f16_state,
+            sigmoid_beta,
         );
     }
 
@@ -114,6 +116,12 @@ fn dispatch_eval(
             encoder.set_bytes(10, size_of::<i32>() as u64, &s_len as *const i32 as *const _);
             encoder.set_bytes(11, size_of::<i32>() as u64, &batch_i as *const i32 as *const _);
             encoder.set_bytes(12, size_of::<i32>() as u64, &k_heads as *const i32 as *const _);
+            let sigmoid_beta_i = sigmoid_beta as i32;
+            encoder.set_bytes(
+                13,
+                size_of::<i32>() as u64,
+                &sigmoid_beta_i as *const i32 as *const _,
+            );
             let scratch_bytes = ((2 * rchunks * width + 2 * rchunks) * size_of::<f32>()) as u64;
             encoder.set_threadgroup_memory_length(0, scratch_bytes);
             encoder.dispatch_thread_groups(
@@ -145,6 +153,8 @@ fn dispatch_eval(
         encoder.set_bytes(10, size_of::<i32>() as u64, &s_len as *const i32 as *const _);
         encoder.set_bytes(11, size_of::<i32>() as u64, &batch as *const i32 as *const _);
         encoder.set_bytes(12, size_of::<i32>() as u64, &k_heads as *const i32 as *const _);
+        let sigmoid_beta_i = sigmoid_beta as i32;
+        encoder.set_bytes(13, size_of::<i32>() as u64, &sigmoid_beta_i as *const i32 as *const _);
         encoder.dispatch_threads(
             MTLSize { width: (batch * heads * width) as u64, height: 1, depth: 1 },
             MTLSize { width: width.min(1024) as u64, height: 1, depth: 1 },
@@ -178,6 +188,7 @@ fn dispatch_chunked(
     final_state: &DeviceTensor,
     dims: (usize, usize, usize, usize, usize),
     f16_state: bool,
+    sigmoid_beta: bool,
 ) -> TractResult<()> {
     let (batch, s_len, k_heads, heads, width) = dims;
     let nch = s_len.div_ceil(GDN_CHUNK);
@@ -212,6 +223,7 @@ fn dispatch_chunked(
         encoder.set_slice(14, &[batch as i32]);
         encoder.set_slice(15, &[k_heads as i32]);
         encoder.set_slice(16, &[nch as i32]);
+        encoder.set_slice(17, &[sigmoid_beta as i32]);
         encoder.dispatch_thread_groups(
             MTLSize { width: (batch * heads * nch) as u64, height: 1, depth: 1 },
             MTLSize { width: tg_width, height: 1, depth: 1 },
@@ -265,6 +277,7 @@ pub fn metal_gdn_recurrent_launch(
     initial_state: &DeviceTensor,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
+    sigmoid_beta: bool,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| {
         dispatch_eval(
@@ -277,13 +290,14 @@ pub fn metal_gdn_recurrent_launch(
             initial_state,
             output,
             final_state,
+            sigmoid_beta,
         )
     })
 }
 
 crate::register_metal_op!(
     tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
-    |source, node, _op| {
+    |source, node, op| {
         // The Metal kernel is f16-only (q/k/v/beta f16, gates/state f32);
         // other dtype mixes (e.g. an all-f32 test export) stay on the CPU op.
         let facts = source.node_input_facts(node.id)?;
@@ -303,6 +317,7 @@ crate::register_metal_op!(
         Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {
             backend_name: "Metal",
             dispatch: metal_gdn_recurrent_launch,
+            sigmoid_beta: op.sigmoid_beta,
         })))
     }
 );
@@ -335,7 +350,7 @@ mod tests {
             let state = Tensor::from_shape(&[1, heads, width, width], &sf)?.into_device()?;
             let output = DeviceTensor::uninitialized_dt(DatumType::F16, q.shape())?;
             let next = DeviceTensor::uninitialized_dt(DatumType::F32, state.shape())?;
-            dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+            dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next, false)?;
             stream.wait_until_completed()?;
             let output = output.to_host()?.into_tensor();
             let next = next.to_host()?.into_tensor();
@@ -408,7 +423,7 @@ mod tests {
                 .cast_to_dt(state_dt)?
                 .into_owned();
 
-            let cpu = GatedDeltaNetRecurrent.eval(tvec![
+            let cpu = GatedDeltaNetRecurrent::default().eval(tvec![
                 q.clone().into_tvalue(),
                 k.clone().into_tvalue(),
                 v.clone().into_tvalue(),
@@ -425,7 +440,7 @@ mod tests {
             let stated = state.into_device()?;
             let output = DeviceTensor::uninitialized_dt(DatumType::F16, vd.shape())?;
             let next = DeviceTensor::uninitialized_dt(state_dt, stated.shape())?;
-            dispatch_eval(stream, &qd, &kd, &vd, &gd, &betad, &stated, &output, &next)?;
+            dispatch_eval(stream, &qd, &kd, &vd, &gd, &betad, &stated, &output, &next, false)?;
             stream.wait_until_completed()?;
 
             let output = output.to_host()?.into_tensor();
@@ -488,6 +503,102 @@ mod tests {
         multi_step_matches_cpu_op_len(2, DatumType::F32, 64)
     }
 
+    /// Folding the beta sigmoid into the kernel must be BIT-IDENTICAL to the
+    /// standalone Metal sigmoid dispatch followed by the unfolded kernel, at
+    /// decode (tg kernel) and prefill (chunked) shapes, for both state dtypes.
+    fn sigmoid_beta_fold_is_exact_case(state_dt: DatumType, s_len: usize) -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            let (b, k_heads, groups, width) = (1usize, 2usize, 2usize, 32usize);
+            let heads = k_heads * groups;
+            let n_qk = b * s_len * k_heads * width;
+            let n_vec = b * s_len * heads * width;
+            let n_gate = b * s_len * heads;
+            let n_state = b * heads * width * width;
+            let as_f16 = |v: Vec<f32>| v.into_iter().map(f16::from_f32).collect::<Vec<_>>();
+            let q = Tensor::from_shape(
+                &[b, s_len, k_heads, width],
+                &as_f16((0..n_qk).map(|i| ((i % 31) as f32 - 15.0) / 64.0).collect()),
+            )?
+            .into_device()?;
+            let k = Tensor::from_shape(
+                &[b, s_len, k_heads, width],
+                &as_f16((0..n_qk).map(|i| ((i % 29) as f32 - 14.0) / 64.0).collect()),
+            )?
+            .into_device()?;
+            let v = Tensor::from_shape(
+                &[b, s_len, heads, width],
+                &as_f16((0..n_vec).map(|i| ((i % 23) as f32 - 11.0) / 32.0).collect()),
+            )?
+            .into_device()?;
+            let g = Tensor::from_shape(
+                &[b, s_len, heads],
+                &(0..n_gate).map(|i| -0.05 - 0.1 * (i % 7) as f32).collect::<Vec<f32>>(),
+            )?
+            .into_device()?;
+            // Raw beta logits, both signs exercised.
+            let beta_raw = Tensor::from_shape(
+                &[b, s_len, heads],
+                &as_f16((0..n_gate).map(|i| ((i % 13) as f32 - 6.0) / 3.0).collect()),
+            )?
+            .into_device()?;
+            let state = Tensor::from_shape(
+                &[b, heads, width, width],
+                &(0..n_state).map(|i| ((i % 37) as f32 - 18.0) / 256.0).collect::<Vec<f32>>(),
+            )?
+            .cast_to_dt(state_dt)?
+            .into_owned()
+            .into_device()?;
+
+            // Reference: standalone Metal sigmoid dispatch, then unfolded GDN.
+            let beta_sig = DeviceTensor::uninitialized_dt(DatumType::F16, beta_raw.shape())?;
+            crate::kernels::element_wise::dispatch_eval(
+                stream,
+                &tract_core::ops::nn::Sigmoid {},
+                &beta_raw,
+                &beta_sig,
+            )?;
+            let out_ref = DeviceTensor::uninitialized_dt(DatumType::F16, v.shape())?;
+            let next_ref = DeviceTensor::uninitialized_dt(state_dt, state.shape())?;
+            dispatch_eval(stream, &q, &k, &v, &g, &beta_sig, &state, &out_ref, &next_ref, false)?;
+
+            // Folded: raw beta straight into the kernel.
+            let out_fold = DeviceTensor::uninitialized_dt(DatumType::F16, v.shape())?;
+            let next_fold = DeviceTensor::uninitialized_dt(state_dt, state.shape())?;
+            dispatch_eval(stream, &q, &k, &v, &g, &beta_raw, &state, &out_fold, &next_fold, true)?;
+            stream.wait_until_completed()?;
+
+            out_fold
+                .to_host()?
+                .into_tensor()
+                .close_enough(&out_ref.to_host()?.into_tensor(), Approximation::Exact)?;
+            next_fold
+                .to_host()?
+                .into_tensor()
+                .close_enough(&next_ref.to_host()?.into_tensor(), Approximation::Exact)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn sigmoid_beta_fold_is_exact_decode() -> TractResult<()> {
+        sigmoid_beta_fold_is_exact_case(DatumType::F32, 5)
+    }
+
+    #[test]
+    fn sigmoid_beta_fold_is_exact_decode_f16_state() -> TractResult<()> {
+        sigmoid_beta_fold_is_exact_case(DatumType::F16, 5)
+    }
+
+    #[test]
+    fn sigmoid_beta_fold_is_exact_chunked() -> TractResult<()> {
+        sigmoid_beta_fold_is_exact_case(DatumType::F32, 200)
+    }
+
+    #[test]
+    fn sigmoid_beta_fold_is_exact_chunked_f16_state() -> TractResult<()> {
+        sigmoid_beta_fold_is_exact_case(DatumType::F16, 200)
+    }
+
     /// Timing harness on the real qwen3.5-35B GDN geometry (S=512 prefill
     /// chunk). Run explicitly: cargo test -p tract-metal --release
     /// gdn_chunk_bench -- --ignored --nocapture
@@ -535,13 +646,13 @@ mod tests {
             let output = DeviceTensor::uninitialized_dt(DatumType::F16, v.shape())?;
             let next = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
             for _ in 0..5 {
-                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next, false)?;
             }
             stream.wait_until_completed()?;
             const N: usize = 50;
             let start = std::time::Instant::now();
             for _ in 0..N {
-                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next, false)?;
             }
             stream.wait_until_completed()?;
             let per = start.elapsed().as_secs_f64() / N as f64;
@@ -549,7 +660,7 @@ mod tests {
             let start = std::time::Instant::now();
             unsafe { std::env::set_var("TRACT_METAL_DISABLE_GDN_CHUNKED", "1") };
             for _ in 0..N {
-                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next)?;
+                dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next, false)?;
             }
             stream.wait_until_completed()?;
             unsafe { std::env::remove_var("TRACT_METAL_DISABLE_GDN_CHUNKED") };

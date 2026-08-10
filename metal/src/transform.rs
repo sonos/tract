@@ -199,6 +199,7 @@ impl MetalTransform {
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("bypass_float_downcast_roundtrip", bypass_float_downcast_roundtrip)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
+            .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
