@@ -61,7 +61,12 @@ pub fn all_functions() -> Vec<String> {
                 [false, true].into_iter().map(move |scaled| (in_dt, out_dt, is_l4, scaled))
             })
             .flat_map(|(in_dt, out_dt, is_l4, scaled)| {
-                RmsNorm.kernel_name(in_dt, out_dt, is_l4, scaled).into_iter()
+                [false, true]
+                    .into_iter()
+                    .map(move |with_residual| (in_dt, out_dt, is_l4, scaled, with_residual))
+            })
+            .flat_map(|(in_dt, out_dt, is_l4, scaled, with_residual)| {
+                RmsNorm.kernel_name(in_dt, out_dt, is_l4, scaled, with_residual).into_iter()
             }),
     );
 

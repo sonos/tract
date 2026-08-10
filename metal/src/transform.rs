@@ -224,6 +224,11 @@ impl MetalTransform {
                 rewrite_rules::fuse_elementwise_chain_cast,
             )
             .rewrite(&(), model)?;
+        // After elementwise fusion: only residual adds that stayed standalone
+        // dispatches are worth absorbing into their norm consumer.
+        Rewriter::default()
+            .with_rule_for("fuse_rms_norm_residual", rewrite_rules::fuse_rms_norm_residual)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for(
                 "fuse_view_copy_slice",

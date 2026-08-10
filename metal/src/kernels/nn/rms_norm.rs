@@ -19,12 +19,18 @@ impl RmsNorm {
         out_dt: DatumType,
         is_l4: bool,
         scaled: bool,
+        with_residual: bool,
     ) -> TractResult<String> {
         ensure!(Self::is_supported_dt(in_dt), "Unsupported dt {:?} for metal rmsop", in_dt);
         ensure!(Self::is_supported_dt(out_dt), "Unsupported out dt {:?} for metal rmsop", out_dt);
         let iname = DeviceTensor::tname(in_dt)?;
         let oname = DeviceTensor::tname(out_dt)?;
-        let variant = if scaled { "rms_norm_scaled" } else { "rms_norm" };
+        let variant = match (scaled, with_residual) {
+            (true, true) => "rms_norm_scaled_add",
+            (true, false) => "rms_norm_scaled",
+            (false, true) => "rms_norm_add",
+            (false, false) => "rms_norm",
+        };
         if !is_l4 {
             Ok(format!("nn_ops::{variant}_nd3_{iname}_{oname}"))
         } else {
@@ -43,19 +49,26 @@ impl RmsNorm {
     ) -> TractResult<DeviceTensor> {
         let out_dt = out_dt.unwrap_or(input.datum_type());
         let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, input.shape())? };
-        self.dispatch_eval(stream, input, scale, axis, eps, &output)?;
+        self.dispatch_eval(stream, input, None, scale, axis, eps, &output, None)?;
         stream.wait_until_completed()?;
         Ok(output)
     }
 
+    /// `residual`/`sum_out` come and go together: the normalized value is
+    /// then `input + residual` (computed in the input dtype, bit-identical
+    /// to the standalone Add dispatch) and the sum is also written to
+    /// `sum_out` for the consumers of the residual stream.
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_eval(
         &self,
         stream: &MetalStream,
         input: &DeviceTensor,
+        residual: Option<&DeviceTensor>,
         scale: Option<&DeviceTensor>,
         axis: usize,
         eps: &Tensor,
         output: &DeviceTensor,
+        sum_out: Option<&DeviceTensor>,
     ) -> TractResult<()> {
         stream.retain_tensor(input);
         stream.retain_tensor(output);
@@ -63,6 +76,15 @@ impl RmsNorm {
             stream.retain_tensor(scale);
             ensure!(scale.datum_type() == DatumType::F32);
             ensure!(scale.len() == input.shape()[axis]);
+        }
+        ensure!(residual.is_some() == sum_out.is_some());
+        if let (Some(residual), Some(sum_out)) = (residual, sum_out) {
+            stream.retain_tensor(residual);
+            stream.retain_tensor(sum_out);
+            ensure!(residual.shape() == input.shape());
+            ensure!(residual.datum_type() == input.datum_type());
+            ensure!(sum_out.shape() == input.shape());
+            ensure!(sum_out.datum_type() == input.datum_type());
         }
 
         ensure!(output.shape() == input.shape());
@@ -74,7 +96,13 @@ impl RmsNorm {
 
             let pipeline = stream.load_pipeline(
                 LibraryName::NNOps,
-                &self.kernel_name(input.datum_type(), output.datum_type(), true, scale.is_some())?,
+                &self.kernel_name(
+                    input.datum_type(),
+                    output.datum_type(),
+                    true,
+                    scale.is_some(),
+                    residual.is_some(),
+                )?,
             )?;
 
             let iter_dim = shape_nd2[1];
@@ -94,6 +122,10 @@ impl RmsNorm {
                 let mut idx = 0;
                 encoder.set_metal_tensor(idx, input, metal::MTLResourceUsage::Read);
                 idx += 1;
+                if let Some(residual) = residual {
+                    encoder.set_metal_tensor(idx, residual, metal::MTLResourceUsage::Read);
+                    idx += 1;
+                }
                 encoder.set_tensor(idx, eps);
                 idx += 1;
                 if let Some(scale) = scale {
@@ -102,6 +134,10 @@ impl RmsNorm {
                 }
                 encoder.set_metal_tensor(idx, output, metal::MTLResourceUsage::Write);
                 idx += 1;
+                if let Some(sum_out) = sum_out {
+                    encoder.set_metal_tensor(idx, sum_out, metal::MTLResourceUsage::Write);
+                    idx += 1;
+                }
                 encoder.set_bytes(
                     idx,
                     std::mem::size_of::<usize>() as u64,
@@ -131,7 +167,13 @@ impl RmsNorm {
 
             let pipeline = stream.load_pipeline(
                 LibraryName::NNOps,
-                &self.kernel_name(input.datum_type(), output.datum_type(), false, scale.is_some())?,
+                &self.kernel_name(
+                    input.datum_type(),
+                    output.datum_type(),
+                    false,
+                    scale.is_some(),
+                    residual.is_some(),
+                )?,
             )?;
 
             let iter_dim = shape_nd3[1];
@@ -148,6 +190,10 @@ impl RmsNorm {
                 let mut idx = 0;
                 encoder.set_metal_tensor(idx, input, metal::MTLResourceUsage::Read);
                 idx += 1;
+                if let Some(residual) = residual {
+                    encoder.set_metal_tensor(idx, residual, metal::MTLResourceUsage::Read);
+                    idx += 1;
+                }
                 encoder.set_tensor(idx, eps);
                 idx += 1;
                 if let Some(scale) = scale {
@@ -156,6 +202,10 @@ impl RmsNorm {
                 }
                 encoder.set_metal_tensor(idx, output, metal::MTLResourceUsage::Write);
                 idx += 1;
+                if let Some(sum_out) = sum_out {
+                    encoder.set_metal_tensor(idx, sum_out, metal::MTLResourceUsage::Write);
+                    idx += 1;
+                }
                 encoder.set_slice(idx, &shape_nd3);
                 encoder.set_slice(idx + 1, &strides_nd3);
                 encoder.set_threadgroup_memory_length(0, 32 * std::mem::size_of::<f32>() as u64);
@@ -172,13 +222,15 @@ impl RmsNorm {
 
 pub fn metal_rms_norm_dispatch(
     input: &DeviceTensor,
+    residual: Option<&DeviceTensor>,
     scale: Option<&DeviceTensor>,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
+    sum_out: Option<&DeviceTensor>,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| {
-        RmsNorm.dispatch_eval(stream, input, scale, axis, eps, output)
+        RmsNorm.dispatch_eval(stream, input, residual, scale, axis, eps, output, sum_out)
     })
 }
 
@@ -187,6 +239,7 @@ crate::register_metal_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, n
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
+        false,
         false,
         None,
         "Metal",
@@ -205,6 +258,7 @@ crate::register_metal_op!(
             op.axis,
             op.eps.clone(),
             true,
+            false,
             op.out_dt,
             "Metal",
             metal_rms_norm_dispatch,
