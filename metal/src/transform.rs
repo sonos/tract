@@ -196,6 +196,10 @@ impl MetalTransform {
             .with_rule_for("swap_rms_norm_cast_mul", swap_rms_norm_cast_mul)
             .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
             .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
+            .with_rule_for(
+                "collapse_adjacent_slice_concat",
+                tract_gpu::rewrite_rules::concat::collapse_adjacent_slice_concat,
+            )
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
@@ -203,6 +207,16 @@ impl MetalTransform {
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .rewrite(&(), model)?;
+
+        // TRACT_METAL_DUMP_OPS=5: full node listing at the end of phase 1
+        // (pre-translation), for debugging rules that should fire here.
+        if std::env::var("TRACT_METAL_DUMP_OPS").is_ok_and(|v| v == "5") {
+            for node in model.nodes() {
+                let ins: Vec<String> =
+                    node.inputs.iter().map(|i| format!("{}:{}", i.node, i.slot)).collect();
+                eprintln!("  phase1-node {} [{}] {} <- {:?}", node.id, node.op.name(), node.name, ins);
+            }
+        }
 
         if stop_at_phase == 1 {
             return Ok(());
