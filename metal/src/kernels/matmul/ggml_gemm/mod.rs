@@ -765,7 +765,8 @@ pub fn dispatch_routed_q40_f32(
                 Some(get_metal_buffer(route_token_ids)),
                 route_token_ids.buffer_offset::<u64>(),
             );
-            let total = (route_count * k) as u64;
+            // one thread per 4 elements (vectorized gather)
+            let total = (route_count * k.div_ceil(4)) as u64;
             let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
@@ -792,7 +793,8 @@ pub fn dispatch_routed_q40_f32(
             encoder.set_metal_tensor(1, &c_sorted, metal::MTLResourceUsage::Read);
             encoder.set_buffer(2, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
             encoder.set_metal_tensor(3, &sorted, metal::MTLResourceUsage::Read);
-            let total = (route_count * n) as u64;
+            // one thread per 4 elements (vectorized scatter)
+            let total = (route_count * n.div_ceil(4)) as u64;
             let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
@@ -991,7 +993,8 @@ pub fn dispatch_routed_q40_swiglu_f32(
                 Some(get_metal_buffer(route_token_ids)),
                 route_token_ids.buffer_offset::<u64>(),
             );
-            let total = (route_count * k) as u64;
+            // one thread per 4 elements (vectorized gather)
+            let total = (route_count * k.div_ceil(4)) as u64;
             let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
@@ -1037,7 +1040,8 @@ pub fn dispatch_routed_q40_swiglu_f32(
             encoder.set_buffer(6, Some(b1_buf), b1_off as NSUInteger);
             encoder.set_buffer(7, Some(b3_buf), b3_off as NSUInteger);
             encoder.set_buffer(8, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
-            let total = (route_count * n) as u64;
+            // one thread per 4 elements (vectorized swiglu scatter)
+            let total = (route_count * n.div_ceil(4)) as u64;
             let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
