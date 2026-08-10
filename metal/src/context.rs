@@ -56,6 +56,25 @@ pub fn metal_context() -> MetalContext {
         .clone()
 }
 
+
+/// Env flags read on per-dispatch hot paths, resolved once per process
+/// (getenv on every load_pipeline/commit_current measurably shows up in
+/// decode CPU profiles).
+pub(crate) fn profile_kernels() -> bool {
+    static V: OnceLock<bool> = OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some())
+}
+
+pub(crate) fn log_gpu_time() -> bool {
+    static V: OnceLock<bool> = OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some())
+}
+
+pub(crate) fn buffer_pool_disabled() -> bool {
+    static V: OnceLock<bool> = OnceLock::new();
+    *V.get_or_init(|| std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some())
+}
+
 #[derive(Debug, Clone)]
 pub struct MetalContext {
     device: Device,
@@ -98,7 +117,7 @@ impl MetalContext {
     }
 
     fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
-        if std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some() {
+        if buffer_pool_disabled() {
             return None;
         }
         let mut pool = self.buffer_pool.lock().ok()?;
@@ -112,7 +131,7 @@ impl MetalContext {
     }
 
     fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
-        if std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some() {
+        if buffer_pool_disabled() {
             return;
         }
         let dt = host.datum_type();
@@ -442,7 +461,7 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
-        if std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some() {
+        if profile_kernels() {
             // One command buffer per dispatch: per-buffer GPU clocks become
             // per-kernel GPU times, logged with the name recorded here.
             self.commit_current()?;
@@ -457,7 +476,7 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
-        if std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some() {
+        if profile_kernels() {
             // Same per-dispatch attribution as `load_pipeline`.
             self.commit_current()?;
             self.pending_kernel_names.borrow_mut().push(func_name.to_string());
@@ -512,9 +531,7 @@ impl MetalStream {
     }
 
     fn log_gpu_time_named(buffer: &TCommandBuffer, tag: &str, names: &[String]) {
-        if std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some()
-            || std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some()
-        {
+        if log_gpu_time() || profile_kernels() {
             // metal-rs does not wrap GPUStartTime/GPUEndTime; go through objc.
             use objc::{msg_send, sel, sel_impl};
             let raw: &metal::CommandBufferRef = buffer;
