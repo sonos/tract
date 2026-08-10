@@ -147,7 +147,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
             }
         }
         let fact = TypedFact::try_from(v.clone())?;
-        let name = name.into();
+        let name = self.unique_name(name.into()).into_owned();
         let op = if let Some(exotic) = &fact.exotic_fact {
             crate::ops::konst::Const::new_with_exotic_fact(v, exotic.clone())?
         } else {
@@ -345,5 +345,22 @@ mod test {
     fn test() {
         fn is_sync<T: Sync>() {}
         is_sync::<TypedModel>();
+    }
+
+    #[test]
+    fn add_const_does_not_reuse_a_taken_name() {
+        let mut model = TypedModel::default();
+        let first = model.add_const("konst", tensor1(&[0.0f32])).unwrap();
+        let second = model.add_const("konst", tensor1(&[1.0f32])).unwrap();
+        assert_ne!(first.node, second.node);
+        assert_ne!(model.node(first.node).name, model.node(second.node).name);
+    }
+
+    #[test]
+    fn add_const_still_shares_an_identical_value() {
+        let mut model = TypedModel::default();
+        let first = model.add_const("a", tensor1(&[0.0f32])).unwrap();
+        let second = model.add_const("b", tensor1(&[0.0f32])).unwrap();
+        assert_eq!(first.node, second.node);
     }
 }
