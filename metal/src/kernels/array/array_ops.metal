@@ -54,6 +54,72 @@ METAL_FUNC uint indices_to_outer_idx(uint3 indices,
     template [[host_name(                                                      \
         "array_ops::cast_" #tname)]] [[kernel]] cast_t cast<itype, otype>;
 
+// Tiled 2D-transpose fast path for strided copies whose output-innermost
+// axis is strided on the input while another axis is input-contiguous
+// (e.g. channel-major -> token-major layout changes at prefill). The
+// generic copy_nd kernels read such inputs fully uncoalesced (~20x off
+// roofline); staging 32x32 tiles through threadgroup memory keeps both
+// the loads and the stores coalesced.
+// args: [m, n, in_stride_n, out_stride_m, n_batch0, in_b0, out_b0, in_b1, out_b1]
+//  - m: length of the input-contiguous axis (input stride 1, output stride
+//    out_stride_m)
+//  - n: length of the output-contiguous axis (output stride 1, input stride
+//    in_stride_n)
+//  - grid.z enumerates the flattened batch: z = b1 * n_batch0 + b0
+// Launched with threadgroup size (32, 8, 1).
+template <typename T>
+[[kernel]] void copy_transpose2d(device const void *input_b [[buffer(0)]],
+                                 constant const size_t *args [[buffer(1)]],
+                                 device void *output_b [[buffer(2)]],
+                                 uint3 tgpig [[threadgroup_position_in_grid]],
+                                 ushort3 tpitg [[thread_position_in_threadgroup]]) {
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+    const size_t m = args[0];
+    const size_t n = args[1];
+    const size_t in_stride_n = args[2];
+    const size_t out_stride_m = args[3];
+    const size_t n_batch0 = args[4];
+    const size_t b0 = tgpig.z % n_batch0;
+    const size_t b1 = tgpig.z / n_batch0;
+    const size_t in_base = b0 * args[5] + b1 * args[7];
+    const size_t out_base = b0 * args[6] + b1 * args[8];
+
+    threadgroup T tile[32][33];
+
+    const size_t m0 = (size_t)tgpig.x * 32;
+    const size_t n0 = (size_t)tgpig.y * 32;
+
+    // Load: threads sweep the input-contiguous m axis with tpitg.x.
+    const size_t mm_in = m0 + tpitg.x;
+    for (ushort j = tpitg.y; j < 32; j += 8) {
+        const size_t nn = n0 + j;
+        if (nn < n && mm_in < m) {
+            tile[j][tpitg.x] = input[in_base + nn * in_stride_n + mm_in];
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    // Store: threads sweep the output-contiguous n axis with tpitg.x.
+    const size_t nn_out = n0 + tpitg.x;
+    for (ushort j = tpitg.y; j < 32; j += 8) {
+        const size_t mm = m0 + j;
+        if (nn_out < n && mm < m) {
+            output[out_base + mm * out_stride_m + nn_out] = tile[tpitg.x][j];
+        }
+    }
+}
+
+typedef decltype(copy_transpose2d<float>) copy_transpose2d_t;
+
+#define INSTANTIATE_COPY_TRANSPOSE(tname, type)                                \
+    template [[host_name("array_ops::copy_transpose2d_" #tname)]] [[kernel]]   \
+        copy_transpose2d_t copy_transpose2d<type>;
+
+INSTANTIATE_COPY_TRANSPOSE(u8, uint8_t)
+INSTANTIATE_COPY_TRANSPOSE(u16, uint16_t)
+INSTANTIATE_COPY_TRANSPOSE(u32, uint32_t)
+INSTANTIATE_COPY_TRANSPOSE(u64, uint64_t)
+
 template <typename In, typename Out>
 [[kernel]] void cast(device const void *input_b [[buffer(0)]],
                      device void *output_b [[buffer(1)]],

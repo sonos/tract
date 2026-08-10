@@ -30,6 +30,12 @@ pub fn all_functions() -> Vec<String> {
     );
 
     functions.extend(
+        ["u8", "u16", "u32", "u64"]
+            .into_iter()
+            .map(|tname| format!("array_ops::copy_transpose2d_{tname}")),
+    );
+
+    functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt1| {
