@@ -19,7 +19,9 @@ impl MetalRoutedCombine {
             inputs[0].rank() == 2 || inputs[0].rank() == 3,
             "MetalRoutedCombine shape_like must be rank 2 or 3"
         );
-        ensure!(inputs[0].datum_type == f32::datum_type());
+        // shape_like is never read, only its shape is: f16 x is fine and the
+        // combined output stays f32.
+        ensure!(matches!(inputs[0].datum_type, DatumType::F32 | DatumType::F16));
         ensure!(inputs[1].rank() == 2);
         ensure!(inputs[1].datum_type == f32::datum_type());
         ensure!(inputs[2].rank() == 1);
@@ -96,7 +98,7 @@ impl TypedOp for MetalRoutedCombine {
 
 crate::register_metal_op!(RoutedCombine, |source, node, _op| {
     let facts = source.node_input_facts(node.id)?;
-    rule_if!(facts[0].datum_type == f32::datum_type());
+    rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
     rule_if!(facts[1].datum_type == f32::datum_type());
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == f32::datum_type());

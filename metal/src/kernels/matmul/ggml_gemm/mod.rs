@@ -309,8 +309,15 @@ fn mv_kernel_name_and_dispatch_params(
         // Activation/output dtype is carried at runtime by GgmlGemvParams::out_f16.
         Ok(("kernel_mul_mv_q4_0".to_string(), (8, 8, 1)))
     } else if params.dts[1] == F32 {
-        ensure!(params.dts[0] == F32);
-        Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
+        if params.dts[0] == F16 {
+            // f32 weights, f16 activations, full-precision f32 output (the
+            // MoE router score path; bit-identical to upcasting first).
+            ensure!(params.dts[2] == F32);
+            Ok(("kernel_mul_mv_f32_f16_of32".to_string(), (32, 1, 4)))
+        } else {
+            ensure!(params.dts[0] == F32);
+            Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
+        }
     } else if params.dts[1] == F16 {
         if params.dts[0] == F32 {
             if (params.m * params.a_batch) < 4 {
@@ -864,7 +871,10 @@ pub fn dispatch_routed_q40_swiglu_f32(
     }
 
     ensure!(input.rank() == 2, "routed swiglu input must be [rows,k], got {:?}", input.shape());
-    ensure!(input.datum_type() == F32, "routed swiglu input must be f32");
+    ensure!(
+        matches!(input.datum_type(), F32 | F16),
+        "routed swiglu input must be f32 or f16"
+    );
     ensure!(
         route_token_ids.rank() == 1
             && route_expert_ids.rank() == 1
@@ -980,7 +990,12 @@ pub fn dispatch_routed_q40_swiglu_f32(
                 &params as *const _ as *const _,
             );
         };
-        let gather = stream.load_pipeline(LibraryName::Ggml, "routed_gather_rows_f32")?;
+        // The gather stages activations as f32 whatever the input dtype (the
+        // f16 variant converts exactly), so both mms and the scatter below
+        // are dtype-blind.
+        let gather_name =
+            if input.datum_type() == F16 { "routed_gather_rows_f16x" } else { "routed_gather_rows_f32" };
+        let gather = stream.load_pipeline(LibraryName::Ggml, gather_name)?;
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
             set_args(encoder);
@@ -1049,7 +1064,12 @@ pub fn dispatch_routed_q40_swiglu_f32(
         return Ok(());
     }
 
-    let pipeline = stream.load_pipeline(LibraryName::Ggml, "kernel_routed_q4_0_swiglu_f32")?;
+    let gemv_name = if input.datum_type() == F16 {
+        "kernel_routed_q4_0_swiglu_f16x_f32"
+    } else {
+        "kernel_routed_q4_0_swiglu_f32"
+    };
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, gemv_name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -1417,6 +1437,117 @@ mod tests {
     #[test]
     fn test_routed_q40_route_rows() -> TractResult<()> {
         run_routed_q40_case(RoutedQ40InputMode::RouteRows)
+    }
+
+    /// The f16-activation variants must be BIT-IDENTICAL to upcasting the
+    /// activations to f32 first: same kernels, same accumulation order, the
+    /// half->float element conversion is exact. Covers the per-route gemv
+    /// (few routes) and the expert-grouped gather+mm path (many routes), and
+    /// the router score gemv through dispatch_route_topk_f32.
+    #[test]
+    fn test_routed_swiglu_and_router_f16_input_bit_exact() -> TractResult<()> {
+        use tract_num_traits::AsPrimitive;
+        for tokens in [3usize, 40] {
+            with_borrowed_metal_stream(|stream| {
+                let experts = 8;
+                let per_token = 4;
+                let routes = tokens * per_token;
+                let n = 48;
+                let k = 64;
+                let input_f16 = Tensor::from_shape(
+                    &[tokens, k],
+                    &(0..tokens * k)
+                        .map(|i| {
+                            let v: f32 = ((i * 13 % 97) as f32 - 48.0) / 64.0;
+                            let h: f16 = v.as_();
+                            h
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
+                let input_f32 = input_f16.cast_to::<f32>()?.into_owned();
+                let weight_data = (0..experts * n * k)
+                    .map(|i| ((i * 17 % 101) as f32 - 50.0) / 80.0)
+                    .collect::<Vec<_>>();
+                let w1 = q40_weights_tensor(&[experts, n, k], &weight_data)?.into_device()?;
+                let w3 = q40_weights_tensor(&[experts, n, k], &weight_data)?.into_device()?;
+                let route_token_ids: Vec<i64> =
+                    (0..routes as i64).map(|r| r / per_token as i64).collect();
+                let route_expert_ids: Vec<i64> =
+                    (0..routes as i64).map(|r| (r * 5 + r / 7) % experts as i64).collect();
+                let token_ids =
+                    Tensor::from_shape(&[routes], &route_token_ids)?.into_device()?;
+                let expert_ids =
+                    Tensor::from_shape(&[routes], &route_expert_ids)?.into_device()?;
+
+                let x16 = input_f16.clone().into_device()?;
+                let x32 = input_f32.clone().into_device()?;
+                let mut outs: Vec<Tensor> = vec![];
+                for x in [&x32, &x16] {
+                    let output = unsafe {
+                        DeviceTensor::uninitialized_dt(F32, &[routes, n])?
+                    };
+                    dispatch_routed_q40_swiglu_f32(
+                        stream,
+                        x,
+                        &w1,
+                        &w3,
+                        None,
+                        &token_ids,
+                        &expert_ids,
+                        RoutedQ40InputMode::TokenRows,
+                        RoutedSwigluAct::Plain,
+                        &output,
+                    )?;
+                    stream.wait_until_completed()?;
+                    outs.push(output.to_host()?.into_tensor());
+                }
+                ensure!(outs[0] == outs[1], "swiglu f16 input diverged from upcast-first");
+
+                // Router scores + topk: same exactness contract.
+                let wg = Tensor::from_shape(
+                    &[experts, k],
+                    &(0..experts * k)
+                        .map(|i| ((i * 7 % 89) as f32 - 44.0) / 60.0)
+                        .collect::<Vec<_>>(),
+                )?
+                .into_device()?;
+                let kk = 4usize;
+                let mut routed: Vec<(Tensor, Tensor, Tensor)> = vec![];
+                for x in [&x32, &x16] {
+                    let tid = unsafe {
+                        DeviceTensor::uninitialized_dt(DatumType::I64, &[tokens * kk])?
+                    };
+                    let eid = unsafe {
+                        DeviceTensor::uninitialized_dt(DatumType::I64, &[tokens * kk])?
+                    };
+                    let wts = unsafe {
+                        DeviceTensor::uninitialized_dt(F32, &[tokens * kk])?
+                    };
+                    crate::kernels::moe::dispatch_route_topk_f32(
+                        stream,
+                        x,
+                        &wg,
+                        None,
+                        kk,
+                        &tract_transformers::ops::moe_ffn::GateMode::SoftmaxTopk,
+                        &tid,
+                        &eid,
+                        &wts,
+                    )?;
+                    stream.wait_until_completed()?;
+                    routed.push((
+                        tid.to_host()?.into_tensor(),
+                        eid.to_host()?.into_tensor(),
+                        wts.to_host()?.into_tensor(),
+                    ));
+                }
+                ensure!(routed[0].0 == routed[1].0, "router token ids diverged");
+                ensure!(routed[0].1 == routed[1].1, "router expert ids diverged");
+                ensure!(routed[0].2 == routed[1].2, "router weights diverged");
+                Ok(())
+            })?;
+        }
+        Ok(())
     }
 
     #[test]

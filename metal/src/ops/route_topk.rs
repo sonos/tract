@@ -21,7 +21,9 @@ impl MetalRouteTopK {
         ensure!(self.k <= 16, "MetalRouteTopK supports k <= 16, got {}", self.k);
         ensure!(inputs[0].rank() == 2 || inputs[0].rank() == 3);
         ensure!(inputs[1].rank() == 2 || inputs[1].rank() == 3);
-        ensure!(inputs[0].datum_type == f32::datum_type());
+        // f16 x is read exactly by the mixed-dtype score kernel; the scores,
+        // and so the route weights, stay full-precision f32 either way.
+        ensure!(matches!(inputs[0].datum_type, DatumType::F32 | DatumType::F16));
         ensure!(inputs[1].datum_type == f32::datum_type());
         if inputs.len() == 3 {
             ensure!(inputs[2].rank() == 1);
@@ -116,7 +118,7 @@ impl TypedOp for MetalRouteTopK {
 crate::register_metal_op!(RouteTopK, |source, node, op| {
     let facts = source.node_input_facts(node.id)?;
     rule_if!(op.k <= 16);
-    rule_if!(facts[0].datum_type == f32::datum_type());
+    rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
     rule_if!(facts[1].datum_type == f32::datum_type());
     Ok(Some(Box::new(MetalRouteTopK { k: op.k, gate: op.gate.clone() })))
 });

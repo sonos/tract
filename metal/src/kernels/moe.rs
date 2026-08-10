@@ -38,7 +38,7 @@ pub fn dispatch_route_topk_f32(
 
     ensure!(x.rank() == 2 || x.rank() == 3, "x must be rank 2 or 3");
     ensure!(wg.rank() == 2 || wg.rank() == 3, "wg must be rank 2 or 3");
-    ensure!(x.datum_type() == f32::datum_type());
+    ensure!(matches!(x.datum_type(), DatumType::F32 | DatumType::F16));
     ensure!(wg.datum_type() == f32::datum_type());
     if let Some(wg_bias) = wg_bias {
         ensure!(wg_bias.rank() == 1, "wg_bias must be rank 1");
@@ -88,7 +88,26 @@ pub fn dispatch_route_topk_f32(
     // token: at decode that is one threadgroup reading the whole 1MB router
     // weight alone (GPU >95% idle, ~12ms/token over 40 MoE layers on
     // qwen3.5-35B).
-    let x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
+    let mut x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
+    // f16 x runs the score gemv directly through the mixed f32-weights /
+    // f16-activations / f32-output kernel (bit-identical to upcasting, see
+    // kernel_mul_mv_f32_f16_of32). The tiled GEMM the prefill shapes take
+    // has no such mixed variant: upcast x first there, one dispatch per
+    // prefill chunk, exactly what the graph-level cast used to do. The
+    // predicate mirrors GgmlGemm::dispatch_eval's gemv-vs-gemm choice.
+    let d = d_model as usize;
+    let takes_gemm_path = d % 32 == 0 && d >= 64 && token_count as usize > 4;
+    if x2.datum_type() == DatumType::F16 && takes_gemm_path {
+        let x32 = unsafe {
+            DeviceTensor::uninitialized_dt(
+                f32::datum_type(),
+                &[token_count as usize, d],
+            )?
+        };
+        crate::kernels::array::Cast.dispatch_eval(stream, &x2, &x32)?;
+        stream.retain_tensor(&x32);
+        x2 = x32;
+    }
     let wg2 = wg.reshaped(tvec![num_experts as usize, d_model as usize])?;
     let scores = unsafe {
         DeviceTensor::uninitialized_dt(

@@ -90,7 +90,7 @@ inline float routed_swiglu_apply(routed_swiglu_args sargs, float g, float u) {
 
 #define N_MV_T_T 4
 
-template<typename T0, typename T04, typename T1, typename T14, typename args_t>
+template<typename T0, typename T04, typename T1, typename T14, typename args_t, typename TO = T1>
 void kernel_mul_mv_impl(
         args_t args,
         device const char * src0,
@@ -109,10 +109,12 @@ void kernel_mul_mv_impl(
 
     device const T0 * x = (device const T0 *) (src0 + offset0);
 
-    // Output dtype follows the activation dtype (T1): f32 activations keep f32
-    // outputs, f16 activations produce f16 outputs directly, removing the
-    // f32->activation cast tract would otherwise insert after the matmul.
-    device T1 * dst_o = (device T1 *) dst + (uint64_t)im*args.ne0*args.ne1;
+    // Output dtype defaults to the activation dtype (T1): f32 activations
+    // keep f32 outputs, f16 activations produce f16 outputs directly,
+    // removing the f32->activation cast tract would otherwise insert after
+    // the matmul. TO overrides it for mixed cases (f16 activations with
+    // full-precision f32 outputs, e.g. MoE router scores).
+    device TO * dst_o = (device TO *) dst + (uint64_t)im*args.ne0*args.ne1;
 
     if (args.ne00 < 128) {
         for (int row = 0; row < N_MV_T_T; ++row) {
@@ -132,7 +134,7 @@ void kernel_mul_mv_impl(
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     } else {
@@ -156,13 +158,13 @@ void kernel_mul_mv_impl(
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
                 for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     }
 }
 
-template<typename T0, typename T04, typename T1, typename T14>
+template<typename T0, typename T04, typename T1, typename T14, typename TO = T1>
 kernel void kernel_mul_mv(
         constant ggml_metal_kargs_mul_mv & args,
         device const char * src0,
@@ -170,7 +172,7 @@ kernel void kernel_mul_mv(
         device       char * dst,
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]]) {
-    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &>(
+    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &, TO>(
         args,
         src0,
         src1,
@@ -184,6 +186,12 @@ typedef decltype(kernel_mul_mv<half, half4, half, half4>) mul_mv_t;
 template [[host_name("kernel_mul_mv_f32_f32")]]   kernel mul_mv_t kernel_mul_mv<float,  float4,  float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f32")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f16")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   half,   half4>;
+// Mixed variant: f32 weights, f16 activations, full-precision f32 output
+// (bit-identical to upcasting the activations then running f32_f32: the
+// half->float element conversion is exact and the accumulation order is the
+// same). Used by the MoE router so the expert scores stay exact f32 while
+// the block input skips its f16->f32 cast dispatch.
+template [[host_name("kernel_mul_mv_f32_f16_of32")]] kernel mul_mv_t kernel_mul_mv<float, float4, half, half4, float>;
 
 template<typename T, typename T4>
 kernel void kernel_mul_mv_1row(
@@ -746,12 +754,16 @@ kernel void kernel_routed_q4_0_f32(
 // Reading both weight rows in the same k-block loop reuses the activation
 // registers, so the extra cost over the single-weight kernel is only the
 // second weight stream.
-kernel void kernel_routed_q4_0_swiglu_f32(
+// TX is the activation dtype: every element converts to float before any
+// arithmetic (exact for f16), so the f16-input instantiation is bit-identical
+// to upcasting the activations and running the f32 one.
+template<typename TX>
+kernel void kernel_routed_q4_0_swiglu(
         constant routed_q40_f32_args & args,
         constant routed_swiglu_args & sargs,
         device const char * w1,
         device const char * w3,
-        device const float * input,
+        device const char * input,
         device const long * route_token_ids,
         device const long * route_expert_ids,
         device const float * bias1,
@@ -776,7 +788,7 @@ kernel void kernel_routed_q4_0_swiglu_f32(
     }
 
     const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
-    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+    device const TX * y = (device const TX *) (input + (uint64_t) input_row * args.input_row_stride);
 
     device const block_q4_0 * ax1[N_DST];
     device const block_q4_0 * ax3[N_DST];
@@ -794,20 +806,24 @@ kernel void kernel_routed_q4_0_swiglu_f32(
     const short ix = tiisg/2;
     const short il = (tiisg%2)*8;
 
-    device const float * yb = y + ix*QK4_0 + il;
+    device const TX * yb = y + ix*QK4_0 + il;
 
     for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
         float sumy[2] = { 0.f, 0.f };
 
 #pragma unroll
         for (int i = 0; i < 8; i += 2) {
-            sumy[0]  += yb[i +  0] + yb[i +  1];
-            yl[i + 0] = yb[i +  0];
-            yl[i + 1] = yb[i +  1]/256.f;
+            const float y00 = (float) yb[i +  0];
+            const float y01 = (float) yb[i +  1];
+            sumy[0]  += y00 + y01;
+            yl[i + 0] = y00;
+            yl[i + 1] = y01/256.f;
 
-            sumy[1]  += yb[i + 16] + yb[i + 17];
-            yl[i + 8] = yb[i + 16]/16.f;
-            yl[i + 9] = yb[i + 17]/4096.f;
+            const float y16 = (float) yb[i + 16];
+            const float y17 = (float) yb[i + 17];
+            sumy[1]  += y16 + y17;
+            yl[i + 8] = y16/16.f;
+            yl[i + 9] = y17/4096.f;
         }
 
 #pragma unroll
@@ -833,6 +849,11 @@ kernel void kernel_routed_q4_0_swiglu_f32(
         }
     }
 }
+
+typedef decltype(kernel_routed_q4_0_swiglu<float>) routed_q4_0_swiglu_t;
+
+template [[host_name("kernel_routed_q4_0_swiglu_f32")]]      kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<float>;
+template [[host_name("kernel_routed_q4_0_swiglu_f16x_f32")]] kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<half>;
 
 // Grouped-path epilogue of the fused routed swiglu: reads the two
 // expert-sorted mm results, applies bias + activation, scatters back to
@@ -1090,12 +1111,16 @@ template [[host_name("kernel_mul_mm_q4_0_f32")]]    kernel mat_mm_t kernel_mul_m
 template [[host_name("kernel_mul_mm_f16_f16")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16,  half>;
 template [[host_name("kernel_mul_mm_q4_0_f16")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, half>;
 
-// Gather activation rows into expert-sorted order (f32). One thread moves 4
-// consecutive elements (vectorized load/store, 4x fewer index divisions than
-// the old per-element scheme, which ran ~6x off memory roofline).
-kernel void routed_gather_rows_f32(
+// Gather activation rows into expert-sorted order, always staging as f32.
+// One thread moves 4 consecutive elements (vectorized load/store, 4x fewer
+// index divisions than the old per-element scheme, which ran ~6x off memory
+// roofline). TX is the source dtype: the f16 instantiation converts each
+// element exactly, so downstream mm consumers see the same f32 rows as if
+// the activations had been upcast beforehand.
+template<typename TX, typename TX4>
+kernel void routed_gather_rows(
         constant routed_q40_f32_args & args,
-        device const float * src,
+        device const char * src,
         device float * dst,
         device const uint * sorted_routes,
         device const long * route_token_ids,
@@ -1110,17 +1135,22 @@ kernel void routed_gather_rows_f32(
     const uint kk = (gid - i * k4) * 4;
     const uint orig = sorted_routes[i];
     const long xrow = args.input_mode == 0 ? route_token_ids[orig] : (long)orig;
-    device const float * y = (device const float *)(
-        (device const char *)src + (uint64_t)xrow * args.input_row_stride);
+    device const TX * y = (device const TX *)(
+        src + (uint64_t)xrow * args.input_row_stride);
     device float * d = dst + (uint64_t)i * (uint)args.k;
     if (kk + 4 <= (uint)args.k) {
-        *(device packed_float4 *)(d + kk) = *(device const packed_float4 *)(y + kk);
+        *(device packed_float4 *)(d + kk) = (packed_float4)(*(device const TX4 *)(y + kk));
     } else {
         for (uint c = kk; c < (uint)args.k; c++) {
-            d[c] = y[c];
+            d[c] = (float) y[c];
         }
     }
 }
+
+typedef decltype(routed_gather_rows<float, packed_float4>) routed_gather_rows_t;
+
+template [[host_name("routed_gather_rows_f32")]]  kernel routed_gather_rows_t routed_gather_rows<float, packed_float4>;
+template [[host_name("routed_gather_rows_f16x")]] kernel routed_gather_rows_t routed_gather_rows<half, packed_half4>;
 
 // Scatter expert-sorted result rows back to original route order (f32).
 // Vectorized like the gather.

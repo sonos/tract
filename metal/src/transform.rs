@@ -701,13 +701,31 @@ fn convert_q40_moe_ffn_to_metal(
         eprintln!("Metal Q40 MoE lowering: {}", node.name);
     }
 
+    // has_w3 blocks fuse w1/w3/(biases)/activation into one op: a single
+    // gemv-pair dispatch at decode, one shared expert sort + gather at
+    // prefill. Both bias inputs must be present or absent together for the
+    // fused kernel; mixed-bias models fall back to the unfused chain.
+    let fused_swiglu = op.has_w3
+        && indexes.w1_bias.is_some() == indexes.w3_bias.is_some()
+        && !env_flag("TRACT_METAL_DISABLE_ROUTED_SWIGLU");
+    let cpu_route_topk = env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK");
+
     let x_device = sync_outlet_if_required(
         target,
         format!("{}.x.to-device", node.name),
         mapping[&node.inputs[0]],
         DeviceSyncKind::ToDevice,
     )?;
-    let x_device = if facts[0].datum_type != f32::datum_type() {
+    // f16 x feeds the router and the fused swiglu directly: both read f16
+    // through exact per-element conversion (scores and expert math stay f32,
+    // bit-identical to upcasting first), dropping a per-layer per-step cast
+    // dispatch. The unfused expert chain and the CPU route-topk fallback
+    // still want f32; so does the escape hatch.
+    let f16_x_direct = facts[0].datum_type == DatumType::F16
+        && fused_swiglu
+        && !cpu_route_topk
+        && !env_flag("TRACT_METAL_DISABLE_MOE_F16_X");
+    let x_device = if facts[0].datum_type != f32::datum_type() && !f16_x_direct {
         target.wire_node(
             format!("{}.x.cast-f32", node.name),
             metal_cast_new(f32::datum_type()).unwrap(),
@@ -856,13 +874,8 @@ fn convert_q40_moe_ffn_to_metal(
         })
         .transpose()?;
 
-    // has_w3 blocks fuse w1/w3/(biases)/activation into one op: a single
-    // gemv-pair dispatch at decode, one shared expert sort + gather at
-    // prefill. Both bias inputs must be present or absent together for the
-    // fused kernel; mixed-bias models fall back to the unfused chain.
-    let fused_swiglu = op.has_w3
-        && w1_bias_device.is_some() == w3_bias_device.is_some()
-        && !env_flag("TRACT_METAL_DISABLE_ROUTED_SWIGLU");
+    // fused_swiglu computed above, next to the f16-x decision it gates
+    // (w1_bias/w3_bias devices map 1:1 from the indexes used there).
     let hidden = if fused_swiglu {
         let w3_device = sync_outlet_if_required(
             target,
