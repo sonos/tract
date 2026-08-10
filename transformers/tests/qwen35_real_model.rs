@@ -23,6 +23,97 @@ fn load_decluttered() -> TractResult<TypedModel> {
     nnef.model_for_path(&path)?.into_decluttered()
 }
 
+/// Replicates the ohana load order (raw model -> fuse_sdpa_inplace_kv ->
+/// transformers_detect_all) and checks that the partial-rotary rope glue of
+/// every full-attention layer collapses into ApplyRope (q and k per layer).
+#[test]
+#[ignore]
+fn detects_apply_rope_on_all_full_attention_layers() -> TractResult<()> {
+    use tract_nnef::tract_core::transform::ModelTransform;
+    let path = model_path().expect("model file present (set QWEN35_NNEF)");
+    let nnef = tract_nnef::nnef().with_tract_transformers();
+    let mut model = nnef.model_for_path(&path)?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
+    tract_nnef::tract_core::transform::get_transform("transformers_detect_all")?
+        .context("transform registered")?
+        .transform(&mut model)?;
+    let n_sdpa = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_as::<tract_transformers::ops::fused_sdpa::FusedSdpa>().is_some())
+        .count();
+    let n_rope = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_as::<tract_transformers::ops::apply_rope::ApplyRope>().is_some())
+        .count();
+    eprintln!("fused sdpa: {n_sdpa}, apply rope: {n_rope}");
+    if n_rope == 0 {
+        let mut census: std::collections::HashMap<String, usize> = Default::default();
+        for n in model.nodes() {
+            *census.entry(n.op.name().to_string()).or_default() += 1;
+        }
+        let mut census: Vec<_> = census.into_iter().collect();
+        census.sort_by_key(|(_, c)| std::cmp::Reverse(*c));
+        eprintln!("census: {census:?}");
+        for n in model.nodes() {
+            if n.op_is::<tract_transformers::ops::apply_rope::RotateHalf>() {
+                eprintln!("rotate-half {} input {:?}", n.name, model.node(n.inputs[0].node));
+                for succ in &n.outputs[0].successors {
+                    let s = model.node(succ.node);
+                    eprintln!("  succ: {s:?}");
+                    for ss in &s.outputs[0].successors {
+                        let ss = model.node(ss.node);
+                        eprintln!("    succ2: {ss:?}");
+                        for i in &ss.inputs {
+                            eprintln!("      in: {:?}", model.node(i.node));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    if n_sdpa > 0 {
+        assert_eq!(n_rope, 2 * n_sdpa, "one ApplyRope for q and one for k per attention layer");
+    } else {
+        // Small dummy exports may not match the fused-sdpa pattern; rope
+        // detection must still fire (q + k per attention layer).
+        assert!(n_rope > 0 && n_rope % 2 == 0, "rope detection fired for q and k");
+    }
+    Ok(())
+}
+
+/// Same as above but through the tract-api load path (decluttered before the
+/// transforms, which is what ohana sees): PushSliceUp has already split the
+/// rope pattern, so this exercises the concat-pair rotate-half rule.
+#[test]
+#[ignore]
+fn detects_apply_rope_on_decluttered_model() -> TractResult<()> {
+    use tract_nnef::tract_core::transform::ModelTransform;
+    let mut model = load_decluttered()?;
+    tract_transformers::ops::fused_sdpa::FusedSdpaTransform.transform(&mut model)?;
+    tract_nnef::tract_core::transform::get_transform("transformers_detect_all")?
+        .context("transform registered")?
+        .transform(&mut model)?;
+    let n_sdpa = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_as::<tract_transformers::ops::fused_sdpa::FusedSdpa>().is_some())
+        .count();
+    let n_rope = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_as::<tract_transformers::ops::apply_rope::ApplyRope>().is_some())
+        .count();
+    eprintln!("decluttered: fused sdpa: {n_sdpa}, apply rope: {n_rope}");
+    if n_sdpa > 0 {
+        assert_eq!(n_rope, 2 * n_sdpa, "one ApplyRope for q and one for k per attention layer");
+    } else {
+        assert!(n_rope > 0 && n_rope % 2 == 0, "rope detection fired for q and k");
+    }
+    Ok(())
+}
+
 /// The fuse must catch the 10 full-attention layers (and only them), with no
 /// sinks and no window, preserving the model I/O signature.
 #[test]

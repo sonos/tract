@@ -29,7 +29,10 @@ pub mod gelu_approximate {
     pub use tract_nnef::tract_core::ops::nn::gelu_approximate::*;
 }
 
-pub use apply_rope::{apply_rope_rule, rotate_half_rule};
+pub use apply_rope::{
+    apply_rope_rule, fold_const_dyn_slice_rule, fold_identity_cast_rule,
+    rotate_half_concat_pair_rule, rotate_half_rule,
+};
 pub use diag_gather::{DiagGather, detect_diag_gather, diag_gather_rule};
 pub use dyn_kv_cache::{DynKeyValueCache, replace_kv_cache, unfold_kv_cache};
 pub use scaled_masked_softmax::scaled_masked_softmax_rule;
