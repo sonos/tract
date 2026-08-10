@@ -69,20 +69,33 @@ pub struct MetalContext {
     /// transformer decode reallocates the same transient shapes every token,
     /// so an exact-shape pool absorbs nearly all of it.
     #[allow(clippy::type_complexity)]
-    buffer_pool: Arc<Mutex<HashMap<(DatumType, TVec<usize>), Vec<(Arc<Tensor>, Buffer)>>>>,
+    buffer_pool: Arc<Mutex<HashMap<(DatumType, TVec<usize>), Vec<(Arc<Tensor>, Buffer, u64)>>>>,
     pooled_bytes: Arc<std::sync::atomic::AtomicUsize>,
+    /// Monotonic insertion stamp driving oldest-first pool eviction.
+    pool_stamp: Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl MetalContext {
-    /// Hard cap on recycled bytes; beyond it, drops release for real.
-    const MAX_POOLED_BYTES: usize = 64 * 1024 * 1024;
     const MAX_POOLED_PER_KEY: usize = 16;
-    /// Only small buffers are worth recycling: the alloc/dealloc IOGPU trap
-    /// cost is per-call, not per-byte, and decode's transients are small and
-    /// fixed-shape. Pooling big context-dependent tensors (attention scores
-    /// at growing T) just pins dead wired memory, which measurably slows the
-    /// weight-streaming kernels (MoE routed matmul: 0.7 -> 6 ms/token).
-    const MAX_POOLED_BUFFER_BYTES: usize = 1024 * 1024;
+
+    /// Hard cap on recycled bytes. The budget must hold the session memory
+    /// arena (recycled once per decode step, tens to hundreds of MB at long
+    /// context) with room to spare for the small fixed-shape transients;
+    /// entries beyond it are evicted oldest-first, so stale shapes from a
+    /// grown context cannot pin wired memory forever (unbounded pinning is
+    /// what used to slow the weight-streaming kernels when large buffers
+    /// were pooled without eviction).
+    fn max_pooled_bytes() -> usize {
+        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        *N.get_or_init(|| {
+            std::env::var("TRACT_METAL_POOL_MAX_MB")
+                .ok()
+                .and_then(|v| v.parse::<usize>().ok())
+                .unwrap_or(512)
+                * 1024
+                * 1024
+        })
+    }
 
     fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
         if std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some() {
@@ -95,7 +108,7 @@ impl MetalContext {
             hit.0.len() * dt.size_of(),
             std::sync::atomic::Ordering::Relaxed,
         );
-        Some(hit)
+        Some(hit.0.clone()).map(|host| (host, hit.1))
     }
 
     fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
@@ -107,19 +120,38 @@ impl MetalContext {
             return;
         }
         let bytes = host.len() * dt.size_of();
-        if bytes > Self::MAX_POOLED_BUFFER_BYTES
-            || self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
-                > Self::MAX_POOLED_BYTES
-        {
+        let budget = Self::max_pooled_bytes();
+        if bytes > budget {
             return;
         }
         let Ok(mut pool) = self.buffer_pool.lock() else { return };
+        // Evict oldest entries (globally, by insertion stamp) until the new
+        // buffer fits the budget: recent shapes stay hot, stale shapes from
+        // an earlier context length get released for real.
+        while self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes > budget {
+            let oldest_key = pool
+                .iter()
+                .filter(|(_, v)| !v.is_empty())
+                .min_by_key(|(_, v)| v.first().map(|e| e.2).unwrap_or(u64::MAX))
+                .map(|(k, _)| k.clone());
+            let Some(key) = oldest_key else { break };
+            let Some(entry) = pool.get_mut(&key) else { break };
+            let (evicted_host, _, _) = entry.remove(0);
+            self.pooled_bytes.fetch_sub(
+                evicted_host.len() * evicted_host.datum_type().size_of(),
+                std::sync::atomic::Ordering::Relaxed,
+            );
+            if entry.is_empty() {
+                pool.remove(&key);
+            }
+        }
         let entry = pool.entry((dt, TVec::from_slice(host.shape()))).or_default();
         if entry.len() >= Self::MAX_POOLED_PER_KEY {
             return;
         }
+        let stamp = self.pool_stamp.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         self.pooled_bytes.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
-        entry.push((host, buffer));
+        entry.push((host, buffer, stamp));
     }
 
     pub fn new() -> TractResult<Self> {
@@ -132,6 +164,7 @@ impl MetalContext {
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
             buffer_pool: Arc::new(Mutex::new(HashMap::new())),
             pooled_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            pool_stamp: Arc::new(std::sync::atomic::AtomicU64::new(0)),
         };
         ctxt.preload_pipelines()?;
         Ok(ctxt)

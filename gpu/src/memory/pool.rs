@@ -13,11 +13,23 @@ pub struct DeviceMemoryPool {
 }
 
 impl DeviceMemoryPool {
+    /// Arena allocations are rounded up to this granularity so consecutive
+    /// steps of a growing-context decode request the SAME buffer size: the
+    /// backend buffer pool can then recycle one arena across steps instead
+    /// of allocating and wiring a fresh multi-MB device buffer per token
+    /// (an IOGPU kernel trap on alloc and free, per step, growing with
+    /// context).
+    const ARENA_SIZE_BUCKET: usize = 16 * 1024 * 1024;
+
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
+        let size = if resolved_schema.memory_size > Self::ARENA_SIZE_BUCKET {
+            resolved_schema.memory_size.next_multiple_of(Self::ARENA_SIZE_BUCKET)
+        } else {
+            resolved_schema.memory_size
+        };
         Ok(Self {
             storage: Arc::new(
-                get_context()?
-                    .uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?,
+                get_context()?.uninitialized_device_tensor(&[size], DatumType::U8)?,
             ),
             resolved_schema,
         })
