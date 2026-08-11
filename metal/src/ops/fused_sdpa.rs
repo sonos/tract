@@ -1212,6 +1212,30 @@ mod tests {
         run_metal_vs_cpu(4, 2, 64, &[5, 1, 1, 40, 1], usize::MAX, false)
     }
 
+    /// Granite 3.0 MoE geometry: GQA 16q/8kv, head_dim 64, no sinks. Group 2
+    /// had never run (gpt-oss/qwen are both group 8): prefill + growing-KV
+    /// decode, flash-eligible (d = 64).
+    #[test]
+    fn metal_matches_cpu_granite_geometry() -> TractResult<()> {
+        run_metal_vs_cpu(16, 8, 64, &[256, 1, 1, 600, 1], usize::MAX, false)
+    }
+
+    /// Same geometry with an unaligned short prefill (a real chat prompt is
+    /// rarely a multiple of anything): first Granite integration failed at
+    /// s = 13 while s = 256 passed.
+    #[test]
+    fn metal_matches_cpu_granite_geometry_odd_prefill() -> TractResult<()> {
+        run_metal_vs_cpu(16, 8, 64, &[13, 1, 1, 40, 1], usize::MAX, false)
+    }
+
+    /// OLMoE geometry: MHA 16q/16kv (group 1, first non-GQA user), head_dim
+    /// 128 (> 64: gemm/gemv decode path), no sinks. Prefill + growing-KV
+    /// decode.
+    #[test]
+    fn metal_matches_cpu_olmoe_geometry() -> TractResult<()> {
+        run_metal_vs_cpu(16, 16, 128, &[256, 1, 1, 600, 1], usize::MAX, false)
+    }
+
     /// head_dim 256 decode past the split-k threshold (SPLIT_K_MIN_T = 8192):
     /// the split-k AV gemv + sum-chunks path had only ever run at d = 64.
     /// Reduced head count keeps the CPU reference affordable.

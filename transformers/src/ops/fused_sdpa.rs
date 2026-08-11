@@ -393,23 +393,35 @@ fn load_without_sinks(
 
 // ===================================================================================
 // Detection: fuse the exported attention subgraph on the decluttered graph.
-// Anchor = the attention Softmax. Two variants of the same skeleton:
+// Anchor = the attention Softmax. Variants of the same skeleton:
 //
 //   GPT-OSS:  Add(qk branches) -> Mul(scale) -> Cast(f32) -> Add(mask)
 //             -> Concat(sinks) -> [Reduce<Max>, Sub] -> Softmax -> Slice(drop
 //             sink) -> Cast(f16) -> Reshape([Hkv,G,S,T]) -> EinSum(@V)
 //   Qwen3.5:  Add(qk branches) -> Mul(scale) -> Cast(f32) -> Add(mask)
 //             -> Softmax -> Cast(f16) -> Reshape([Hkv,G,S,T]) -> EinSum(@V)
+//   Granite:  EinSum(f32 casts inside) -> Mul(scale) -> Add(mask) -> Softmax
+//             -> Cast(f16) -> Reshape([Hkv,G,S,T]) -> EinSum(@V)
+//   OLMoE:    EinSum -> Mul(scale) -> Cast(f32) -> Add(mask) -> Softmax
+//             -> Cast(f16) -> EinSum(@V)  (MHA: no GQA probs fold, group = 1)
 //
-// Each qk branch is EinSum(Reshape(q_part), Slice(bcast(AddAxis(KConcat))))
-// covering one head_dim range (the rope split); q parts may be laid out
-// [1,Hq,S,d] or [1,S,Hq,d]. K/V concats are `concat([in_cache, new], axis=2)`
-// and must be model outputs (their slots get the op's views).
+// A qk branch is [Reshape](EinSum([Cast][Reshape](q_part), k_side)); the outer
+// reshape, the q-side f32 cast and the q-side layout reshape are each optional.
+// k_side is `Slice(expand(KConcat))` covering one head_dim range (the rope
+// split), or directly `expand(KConcat)` (single-branch models, start = 0; the
+// expand chain may be empty on MHA exports). Rope-split exports sum two such
+// branches. q parts may be laid out [1,Hq,S,d] or [1,S,Hq,d]. The f32 cast
+// between Mul(scale) and Add(mask) exists only when the QK einsum ran in f16.
+// The AV einsum output is [Hkv,G,S,D], [1,Hkv,G,S,D], or, on MHA exports
+// without the probs fold, [Hq,S,D] or [S,Hq,D]. K/V concats are
+// `concat([in_cache, new], axis=2)` and must be model outputs (their slots get
+// the op's views).
 // ===================================================================================
 
 use tract_nnef::tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
 use tract_nnef::tract_core::ops::binary::TypedBinOp;
 use tract_nnef::tract_core::ops::cast::Cast;
+use tract_nnef::tract_core::ops::math::Mul;
 use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::nn::{Reduce, Reducer, Softmax};
@@ -466,26 +478,29 @@ fn expand_chain_to_concat(model: &TypedModel, outlet: OutletId) -> Option<usize>
 }
 
 /// Walk one QK einsum branch back to (q_part outlet, K concat node, head_dim
-/// slice start). The branch is `Reshape(EinSum(Reshape(q_part), k_side))`
-/// where k_side is `Slice(expand(KConcat))` (rope-split models) or directly
-/// `expand(KConcat)` (single-branch models, start = 0).
+/// slice start). The branch is `[Reshape](EinSum([Cast][Reshape](q_part),
+/// k_side))` where k_side is `Slice(expand(KConcat))` (rope-split models) or
+/// directly `expand(KConcat)` (single-branch models, start = 0). The outer
+/// reshape, the q-side f32 cast (einsum-in-f32 exports) and the q-side layout
+/// reshape are each optional; the q-part shape checks in the caller guard the
+/// tolerant walk.
 fn qk_branch(
     model: &TypedModel,
-    reshape_out: &TypedNode,
+    branch_root: &TypedNode,
 ) -> Option<(OutletId, usize, i64)> {
-    if !reshape_out.op_is::<AxisOp>() {
-        return None;
-    }
-    let einsum = prev(model, reshape_out, 0);
+    let einsum =
+        if branch_root.op_is::<AxisOp>() { prev(model, branch_root, 0) } else { branch_root };
     einsum.op_as::<EinSum>()?;
     if einsum.inputs.len() != 2 {
         return None;
     }
-    let q_reshape = prev(model, einsum, 0);
-    if !q_reshape.op_is::<AxisOp>() {
-        return None;
+    let mut q_part = einsum.inputs[0];
+    if model.node(q_part.node).op_as::<Cast>().is_some() {
+        q_part = model.node(q_part.node).inputs[0];
     }
-    let q_part = q_reshape.inputs[0];
+    if model.node(q_part.node).op_is::<AxisOp>() {
+        q_part = model.node(q_part.node).inputs[0];
+    }
     let k_side = prev(model, einsum, 1);
     let (start, k_expand_root) = if let Some(slice) = k_side.op_as::<Slice>() {
         let start = slice.start.to_i64().ok()?;
@@ -592,27 +607,40 @@ pub fn fuse_sdpa_rule(
     };
     let has_sinks = sinks_tensor.is_some();
 
-    // ---- shared upstream: Add(mask) <- Cast(f32) <- Mul(scale) <- QK ----
+    // ---- shared upstream: Add(mask) <- [Cast(f32)] <- Mul(scale) <- QK ----
+    // The cast exists when the QK einsum ran in f16 (GPT-OSS, Qwen3.5, OLMoE);
+    // einsum-in-f32 exports (Granite) go Mul -> Add directly.
     if !is_bin(mask_add, "Add") {
         return Ok(None);
     }
     let mask_outlet = mask_add.inputs[1];
-    let cast_f32 = prev(model, mask_add, 0);
-    if cast_f32.op_as::<Cast>().is_none() {
-        return Ok(None);
+    let mut scale_mul = prev(model, mask_add, 0);
+    if scale_mul.op_as::<Cast>().is_some() {
+        scale_mul = prev(model, scale_mul, 0);
     }
-    let scale_mul = prev(model, cast_f32, 0);
     if !is_bin(scale_mul, "Mul") {
         return Ok(None);
     }
-    let Some(scale_k) = prev(model, scale_mul, 1).op_as::<Const>() else { return Ok(None) };
-    if scale_k.val().len() != 1 {
+    // Scalar scale constant on either side of the Mul (exports are not
+    // consistent about binop operand order).
+    let Some(scale_slot) = (0..2).find(|&s| {
+        prev(model, scale_mul, s).op_as::<Const>().is_some_and(|k| k.val().len() == 1)
+    }) else {
         return Ok(None);
-    }
+    };
+    let scale_k = prev(model, scale_mul, scale_slot).op_as::<Const>().unwrap();
     let scale = scale_k.val().cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?[0];
 
     // ---- QK branches: rope-split exports sum two dim-range einsums ----
-    let qk_root = prev(model, scale_mul, 0);
+    let qk_root = prev(model, scale_mul, 1 - scale_slot);
+    // Exports that upcast q/k to f32 for the QK matmul (Granite: q max ~73,
+    // k max ~214, dots way past f16 max 65504) rely on f32 logits; device
+    // runtimes compute scores in f16 and NaN out on them. Detected here so
+    // the patch can fold the softmax scale into q up front: post-scale
+    // logits are softmax-sized, so f16 scores are safe again. f16-QK
+    // exports are left untouched (bit-faithful to their own graph).
+    let qk_f32 = model.outlet_fact(scale_mul.inputs[1 - scale_slot])?.datum_type
+        == DatumType::F32;
     let mut branches: Vec<(OutletId, usize, i64)> = vec![];
     if is_bin(qk_root, "Add") {
         for slot in 0..2 {
@@ -659,24 +687,32 @@ pub fn fuse_sdpa_rule(
     if cast_f16.op_as::<Cast>().is_none() {
         return Ok(None);
     }
-    let Some(probs_reshape) = single_consumer(model, cast_f16) else { return Ok(None) };
-    if !probs_reshape.op_is::<AxisOp>() {
-        return Ok(None);
-    }
-    // Probs fold to [Hkv, G, S, T]: the head split pins hkv/group order.
-    let probs_fact = &probs_reshape.outputs[0].fact;
-    if probs_fact.rank() != 4 {
-        return Ok(None);
-    }
-    let (Ok(p_hkv), Ok(group)) = (probs_fact.shape[0].to_usize(), probs_fact.shape[1].to_usize())
-    else {
-        return Ok(None);
+    let Some(after_cast) = single_consumer(model, cast_f16) else { return Ok(None) };
+    let (group, av) = if after_cast.op_is::<AxisOp>() {
+        // GQA: probs fold to [Hkv, G, S, T], the head split pins hkv/group.
+        let probs_fact = &after_cast.outputs[0].fact;
+        if probs_fact.rank() != 4 {
+            return Ok(None);
+        }
+        let (Ok(p_hkv), Ok(group)) =
+            (probs_fact.shape[0].to_usize(), probs_fact.shape[1].to_usize())
+        else {
+            return Ok(None);
+        };
+        if p_hkv != hkv {
+            return Ok(None);
+        }
+        let Some(av) = single_consumer(model, after_cast) else { return Ok(None) };
+        (group, av)
+    } else {
+        // MHA exports skip the fold: probs stay [Hq, S, T], group = 1.
+        let probs_fact = &cast_f16.outputs[0].fact;
+        if probs_fact.rank() != 3 || probs_fact.shape[0].to_usize().ok() != Some(hkv) {
+            return Ok(None);
+        }
+        (1, after_cast)
     };
-    if p_hkv != hkv {
-        return Ok(None);
-    }
     let hq = hkv * group;
-    let Some(av) = single_consumer(model, probs_reshape) else { return Ok(None) };
     if av.op_as::<EinSum>().is_none() || av.inputs.len() != 2 {
         return Ok(None);
     }
@@ -735,25 +771,47 @@ pub fn fuse_sdpa_rule(
         return Ok(None);
     }
 
-    // AV output must be a [.., Hkv, G, S, D] folding of the op's [1,Hq,S,D].
-    let av_fact = &av.outputs[0].fact;
-    let av_shape_ok = match av_fact.rank() {
-        4 => {
-            av_fact.shape[0].to_usize().ok() == Some(hkv)
-                && av_fact.shape[1].to_usize().ok() == Some(group)
-                && av_fact.shape[3].to_usize().ok() == Some(d)
-        }
-        5 => {
-            av_fact.shape[0].to_usize().ok() == Some(1)
-                && av_fact.shape[1].to_usize().ok() == Some(hkv)
-                && av_fact.shape[2].to_usize().ok() == Some(group)
-                && av_fact.shape[4].to_usize().ok() == Some(d)
-        }
-        _ => false,
-    };
-    if !av_shape_ok {
-        return Ok(None);
+    // AV output must be a known re-layout of the op's [1,Hq,S,D]: the GQA
+    // foldings [Hkv,G,S,D] / [1,Hkv,G,S,D], or the MHA rank-3 forms [Hq,S,D]
+    // (head-major) / [S,Hq,D] (seq-major). S is symbolic at fuse time, so
+    // matching concrete head dims disambiguates the rank-3 layouts.
+    #[derive(Clone, Copy, PartialEq)]
+    enum AvLayout {
+        Fold4,
+        Fold5,
+        HeadMajor3,
+        SeqMajor3,
     }
+    let av_fact = &av.outputs[0].fact;
+    let av_layout = match av_fact.rank() {
+        3 if group == 1
+            && av_fact.shape[0].to_usize().ok() == Some(hq)
+            && av_fact.shape[2].to_usize().ok() == Some(d) =>
+        {
+            Some(AvLayout::HeadMajor3)
+        }
+        3 if group == 1
+            && av_fact.shape[1].to_usize().ok() == Some(hq)
+            && av_fact.shape[2].to_usize().ok() == Some(d) =>
+        {
+            Some(AvLayout::SeqMajor3)
+        }
+        4 if av_fact.shape[0].to_usize().ok() == Some(hkv)
+            && av_fact.shape[1].to_usize().ok() == Some(group)
+            && av_fact.shape[3].to_usize().ok() == Some(d) =>
+        {
+            Some(AvLayout::Fold4)
+        }
+        5 if av_fact.shape[0].to_usize().ok() == Some(1)
+            && av_fact.shape[1].to_usize().ok() == Some(hkv)
+            && av_fact.shape[2].to_usize().ok() == Some(group)
+            && av_fact.shape[4].to_usize().ok() == Some(d) =>
+        {
+            Some(AvLayout::Fold5)
+        }
+        _ => None,
+    };
+    let Some(av_layout) = av_layout else { return Ok(None) };
 
     // ---- build the patch ----
     let mut patch = TypedModelPatch::new(format!("fuse-sdpa-inplace-kv @ {node_name}"));
@@ -777,6 +835,26 @@ pub fn fuse_sdpa_rule(
     } else {
         patch.wire_node(format!("{node_name}.q"), TypedConcat { axis: 3 }, &q_parts)?[0]
     };
+    // f32-QK exports: fold the softmax scale into q (see `qk_f32` above) so
+    // f16 device scores stay in range; the op then runs with scale 1. In q's
+    // dtype the fold is exact for power-of-two scales (Granite: 2^-6); any
+    // residual rounding is at f16 epsilon, far below the f16 QK rounding the
+    // other exports already live with.
+    let (q, op_scale) = if qk_f32 {
+        let q_dt = patch.outlet_fact(q)?.datum_type;
+        let scale_t =
+            tensor0(scale).cast_to_dt(q_dt)?.into_owned().broadcast_into_rank(4)?;
+        let scale_c =
+            patch.add_const(format!("{node_name}.q_prescale"), scale_t.into_arc_tensor())?;
+        let scaled = patch.wire_node(
+            format!("{node_name}.q_prescaled"),
+            TypedBinOp(Box::new(Mul), None),
+            &[q, scale_c],
+        )?[0];
+        (scaled, 1f32)
+    } else {
+        (q, scale)
+    };
 
     let k_new_t = patch.tap_model(model, k_new)?;
     let v_new_t = patch.tap_model(model, v_new)?;
@@ -791,19 +869,18 @@ pub fn fuse_sdpa_rule(
 
     let fused = patch.wire_node(
         format!("{node_name}.fused_sdpa"),
-        FusedSdpa { scale_bits: scale.to_bits(), window, has_sinks },
+        FusedSdpa { scale_bits: op_scale.to_bits(), window, has_sinks },
         &op_inputs,
     )?;
 
-    // Attention out [1, Hq, S, D] -> the AV einsum's folded shape.
-    let attn = if av_fact.rank() == 5 {
-        patch.wire_node(
+    // Attention out [1, Hq, S, D] -> the AV einsum's output layout.
+    let attn = match av_layout {
+        AvLayout::Fold5 => patch.wire_node(
             format!("{node_name}.attn_reshape"),
             AxisOp::Reshape(1, tvec![hq.to_dim()], tvec![hkv.to_dim(), group.to_dim()]),
             &[fused[0]],
-        )?[0]
-    } else {
-        patch.wire_node(
+        )?[0],
+        AvLayout::Fold4 => patch.wire_node(
             format!("{node_name}.attn_reshape"),
             AxisOp::Reshape(
                 0,
@@ -811,7 +888,23 @@ pub fn fuse_sdpa_rule(
                 tvec![hkv.to_dim(), group.to_dim()],
             ),
             &[fused[0]],
-        )?[0]
+        )?[0],
+        AvLayout::HeadMajor3 | AvLayout::SeqMajor3 => {
+            let squeezed = patch.wire_node(
+                format!("{node_name}.attn_rm_batch"),
+                AxisOp::Rm(0),
+                &[fused[0]],
+            )?[0];
+            if av_layout == AvLayout::SeqMajor3 {
+                patch.wire_node(
+                    format!("{node_name}.attn_seq_major"),
+                    AxisOp::Move(0, 1),
+                    &[squeezed],
+                )?[0]
+            } else {
+                squeezed
+            }
+        }
     };
 
     patch.shunt_outside(model, OutletId::new(av.id, 0), attn)?;
@@ -998,6 +1091,18 @@ mod tests {
     #[test]
     fn matches_reference_qwen35_geometry() -> TractResult<()> {
         run_reference_check(16, 2, 256, false)
+    }
+
+    /// Granite 3.0 MoE geometry: head_dim 64, GQA 16q/8kv, no sinks.
+    #[test]
+    fn matches_reference_granite_geometry() -> TractResult<()> {
+        run_reference_check(16, 8, 64, false)
+    }
+
+    /// OLMoE geometry: MHA 16q/16kv (group 1), head_dim 128, no sinks.
+    #[test]
+    fn matches_reference_olmoe_geometry() -> TractResult<()> {
+        run_reference_check(16, 16, 128, false)
     }
 
     #[test]
