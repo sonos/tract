@@ -127,7 +127,6 @@ impl Arbitrary for BinEinsumProblem {
                 let b: String = b.into_iter().collect();
                 let c: String = c.into_iter().collect();
                 let expr: AxesMapping = format!("{a},{b}->{c}").parse().unwrap();
-                //eprintln!("{expr}");
                 expr
             })
             .prop_flat_map(|expr| {
@@ -208,12 +207,7 @@ impl BinEinsumProblem {
         }
 
         model.select_output_outlets(&output)?;
-
-        //let test = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
-
         model = model.into_decluttered()?;
-        //let test1 = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
-        //dbg!(&test1.axes);
         Ok(model)
     }
 
@@ -300,7 +294,6 @@ impl Test for BinEinsumProblem {
         approx: Approximation,
     ) -> TestResult {
         let reference = self.reference::<f32>().into_tensor();
-        //dbg!(&reference);
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));

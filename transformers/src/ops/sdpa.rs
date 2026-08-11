@@ -244,7 +244,6 @@ impl Sdpa {
 
         let body_outputs = patch.model.output_outlets()?;
         patch.shunt_outside(model, node.id.into(), body_outputs[0])?;
-        //println!("{}",&patch.model);
         Ok(Some(patch))
     }
 }

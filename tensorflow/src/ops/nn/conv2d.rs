@@ -147,8 +147,6 @@ mod tests {
         let filter = tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
         let exp = tensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
         let got = &conv.eval(tvec![data.into(), filter.into()]).unwrap()[0];
-        //println!("{:?}", got);
-        //println!("{:?}", exp);
         exp.close_enough(got, true).unwrap()
     }
 

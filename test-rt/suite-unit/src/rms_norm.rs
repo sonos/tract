@@ -108,7 +108,6 @@ where
         approx: Approximation,
     ) -> TestResult {
         let reference = self.reference().into_tensor();
-        //dbg!(&reference);
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
