@@ -612,11 +612,26 @@ impl MetalStream {
     }
 
     /// How many committed-but-unawaited buffers `commit_current` keeps in
-    /// flight. Depth 2 overlaps CPU encoding with GPU execution; the wait on
-    /// the oldest buffer is the backpressure that bounds transient memory
-    /// (without it, a long-context forward retains every layer's transients
-    /// at once and thrashes).
-    const MAX_COMMITTED_IN_FLIGHT: usize = 2;
+    /// flight (TRACT_METAL_MAX_IN_FLIGHT). The wait on the oldest buffer is
+    /// the backpressure that bounds transient memory (without it, a
+    /// long-context forward retains every layer's transients at once and
+    /// thrashes). Depth 2 already overlaps CPU encoding with GPU execution,
+    /// but any encode hiccup then drains the queue and the GPU idles between
+    /// buffers (~2.8 ms/step measured on qwen35-35B decode at cadence 10,
+    /// ~115 buffers/step). Depth 8 absorbs the jitter (+5 tok/s on that
+    /// model, +4 at 11k ctx) while transients stay bounded: post-arena they
+    /// are almost all views into the session arena, so deeper retention
+    /// holds Arc clones, not extra wired memory.
+    fn max_committed_in_flight() -> usize {
+        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
+        *N.get_or_init(|| {
+            std::env::var("TRACT_METAL_MAX_IN_FLIGHT")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .filter(|&n| n >= 1)
+                .unwrap_or(8)
+        })
+    }
 
     /// Commit the current command buffer without blocking the CPU on its
     /// completion. The next `command_buffer()` call opens a fresh one; the
@@ -641,7 +656,7 @@ impl MetalStream {
         let names = std::mem::take(&mut *self.pending_kernel_names.borrow_mut());
         let mut committed = self.committed_command_buffers.borrow_mut();
         committed.push_back((command_buffer, retained, names));
-        while committed.len() > Self::MAX_COMMITTED_IN_FLIGHT {
+        while committed.len() > Self::max_committed_in_flight() {
             let (oldest, tensors, names) = committed.pop_front().unwrap();
             oldest.wait_until_completed();
             Self::log_gpu_time_named(&oldest, "segment", &names);
