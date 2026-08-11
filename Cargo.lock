@@ -5136,10 +5136,8 @@ dependencies = [
  "env_logger",
  "log",
  "memmap2",
- "proptest",
  "prost",
  "prost-types",
- "rand 0.10.2",
  "tract-hir",
  "tract-pulse",
 ]

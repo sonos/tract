@@ -32,8 +32,6 @@ tract-pulse.workspace = true
 [dev-dependencies]
 criterion.workspace = true
 env_logger.workspace = true
-proptest.workspace = true
-rand.workspace = true
 
 # [[bench]]
 # name = "conv"
