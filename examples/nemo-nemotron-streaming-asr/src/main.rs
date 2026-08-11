@@ -51,7 +51,7 @@ struct Config {
 }
 
 fn argmax(slice: &[f32]) -> Option<usize> {
-    slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
+    slice.iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
 fn fact_shape(f: &Fact) -> anyhow::Result<Vec<usize>> {

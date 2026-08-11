@@ -154,8 +154,7 @@ mod tests {
             // CPU DiagGather only implements eval_with_session (it resolves
             // TDims against the session's resolved_symbols); pass an empty
             // TurnState since the TDims here are already concrete.
-            let cpu_op =
-                cpu_dg::DiagGather { offset: (offset as i64).to_dim(), out_len: out_len.to_dim() };
+            let cpu_op = cpu_dg::DiagGather { offset: offset.to_dim(), out_len: out_len.to_dim() };
             let session = TurnState::default();
             let cpu_out = cpu_op.eval_with_session(0, &session, tvec![cpu_in.into_tvalue()])?[0]
                 .clone()

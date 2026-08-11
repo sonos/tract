@@ -18,7 +18,7 @@ fn build_chain(n: usize) -> Arc<TypedRunnableModel> {
     let mut prev = model.add_source("input", input_fact).unwrap();
     for i in 0..n {
         let v = (i as f32 + 1.0) * 1e-6;
-        let c = model.add_const(format!("c{i}"), tensor1(&vec![v; VEC_LEN])).unwrap();
+        let c = model.add_const(format!("c{i}"), tensor1(&[v; VEC_LEN])).unwrap();
         prev = model.wire_node(format!("a{i}"), add(), &[prev, c]).unwrap()[0];
     }
     model.select_output_outlets(&[prev]).unwrap();
@@ -27,7 +27,7 @@ fn build_chain(n: usize) -> Arc<TypedRunnableModel> {
 
 fn bench_chain(c: &mut Criterion) {
     let mut group = c.benchmark_group("plan_overhead");
-    let input: TValue = tensor1(&vec![1.0f32; VEC_LEN]).into();
+    let input: TValue = tensor1(&[1.0f32; VEC_LEN]).into();
 
     for &n in &[1, 10, 100, 1000] {
         let plan = build_chain(n);

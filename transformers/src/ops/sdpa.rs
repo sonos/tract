@@ -574,7 +574,7 @@ mod tests {
 
     fn seq_tensor(shape: &[usize], seed: f32) -> Tensor {
         let n: usize = shape.iter().product();
-        let v: Vec<f32> = (0..n).map(|i| ((i as f32 * 0.37 + seed).sin() * 0.5) as f32).collect();
+        let v: Vec<f32> = (0..n).map(|i| (i as f32 * 0.37 + seed).sin() * 0.5).collect();
         Tensor::from_shape(shape, &v).unwrap()
     }
 

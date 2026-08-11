@@ -1,4 +1,5 @@
 #[cfg(test)]
+#[allow(clippy::module_inception)]
 mod tests {
     use crate::MetalTransform;
     use crate::utils::with_borrowed_metal_stream;

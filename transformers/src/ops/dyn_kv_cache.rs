@@ -464,7 +464,7 @@ mod tests {
         };
 
         let mut session_state = TurnState::default();
-        let mut state = op.state(&mut session_state, 0)?.unwrap();
+        let mut state = op.state(&session_state, 0)?.unwrap();
 
         let mut inputs = tvec![];
 
@@ -480,7 +480,7 @@ mod tests {
 
         for shape in input_shapes {
             let len = shape.iter().product::<usize>();
-            let input = Tensor::from_shape(&shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
+            let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
             inputs.push(input.clone().into_tvalue());
             state.eval(&mut session_state, &op, tvec!(input.clone().into()))?[0]
                 .clone()

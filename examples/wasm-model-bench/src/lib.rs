@@ -57,7 +57,7 @@ pub fn run_quality_check(model: &Runnable, inputs: &TVec<TValue>) -> Result<()> 
         let dt = out.datum_type();
         let shape = out.shape();
         if dt == DatumType::F32 {
-            let tensor: &Tensor = &*out;
+            let tensor: &Tensor = out;
             let slice: &[f32] = unsafe { tensor.as_slice_unchecked::<f32>() };
             let n = slice.len();
             let l2: f64 = slice.iter().map(|x| (*x as f64) * (*x as f64)).sum::<f64>().sqrt();

@@ -201,7 +201,7 @@ pub fn arbitrary_problem<K: MatMatMulKer>(
             a.reverse();
             b.reverse();
             PackedPackedProblem {
-                frame_test: Some(mn).filter(|_| frame_test),
+                frame_test: frame_test.then_some(mn),
                 ker: ker.clone(),
                 packing,
                 a,

@@ -148,8 +148,7 @@ mod tests {
             let cpu_in = Tensor::from_shape(shape, &data)?;
             let metal_in = cpu_in.clone().into_device()?;
 
-            let cpu_op =
-                cpu_dg::DiagGather { offset: (offset as i64).to_dim(), out_len: out_len.to_dim() };
+            let cpu_op = cpu_dg::DiagGather { offset: offset.to_dim(), out_len: out_len.to_dim() };
             let session = TurnState::default();
             let cpu_out = cpu_op.eval_with_session(0, &session, tvec![cpu_in.into_tvalue()])?[0]
                 .clone()

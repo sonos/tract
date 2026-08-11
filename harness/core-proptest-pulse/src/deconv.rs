@@ -318,7 +318,7 @@ fn run_issue_2203(group: usize, output_channels: usize, bias: tract_ndarray::Arr
     let in_channels_per_group = output_channels / group;
 
     let mut model = TypedModel::default();
-    let mut fact = f32::fact(&[1, output_channels, input_len]);
+    let mut fact = f32::fact([1, output_channels, input_len]);
     let s = model.symbols.sym("S");
     fact.shape.set(2, s.to_dim());
     let input = model.add_source("a", fact).unwrap();

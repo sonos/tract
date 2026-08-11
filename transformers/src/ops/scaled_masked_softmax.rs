@@ -572,7 +572,7 @@ mod tests {
     fn input_roi_remaps_coord_syms_across_rank_diff() -> TractResult<()> {
         let mut model = TypedModel::default();
         // Scores: rank 4 — [B=2, H=8, T_q=4, T_k=4]
-        let scores = model.add_source("scores", f32::fact(&[2usize, 8, 4, 4]))?;
+        let scores = model.add_source("scores", f32::fact([2usize, 8, 4, 4]))?;
         // Mask: rank 3 — [B=2, T_q=4, T_k=4], with band uniform_tdim on its
         // own axis 2 (T_k axis): `Mul(Ge(🎯2, 1), Ge(2, 🎯2))` = `1 ≤ k ≤ 2`.
         let mask_axis_k = model.symbols.coord_sym(2);
@@ -580,7 +580,7 @@ mod tests {
             TDim::Ge(Box::new(TDim::Sym(mask_axis_k.clone())), Box::new(TDim::Val(1))),
             TDim::Ge(Box::new(TDim::Val(2)), Box::new(TDim::Sym(mask_axis_k))),
         ]);
-        let mut mask_fact = bool::fact(&[2usize, 4, 4]);
+        let mut mask_fact = bool::fact([2usize, 4, 4]);
         mask_fact.uniform_tdim = Some(band);
         let mask = model.add_source("mask", mask_fact)?;
         let sms = model.wire_node("sms", smsoftmax(), &[scores, mask])?[0];

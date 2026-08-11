@@ -459,6 +459,9 @@ mod tests {
         })
     }
 
+    // Expected offsets keep their `1 *` batch-index factor so each one reads as
+    // `batch * stride`, matching the batch being dispatched.
+    #[allow(clippy::identity_op)]
     #[test]
     fn test_gemm_dispatches_params() -> TractResult<()> {
         let dt = DatumType::F32;

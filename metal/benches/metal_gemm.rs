@@ -31,7 +31,7 @@ pub fn tract_with_packing(
 
         let (packer_a, packer_b) = &mmm.packings()[0];
 
-        crit.bench_function(&format!("tract_with_packing_{:?}", dt), |be| {
+        crit.bench_function(format!("tract_with_packing_{:?}", dt), |be| {
             let packed_a = packer_a.prepare_one(&a, 1, 0).unwrap();
             let packed_b = packer_b.prepare_one(&b, 0, 1).unwrap();
 
@@ -46,7 +46,7 @@ pub fn tract_with_packing(
                             a: AsInputValue::Borrowed(&(*packed_a)),
                             b: AsInputValue::Borrowed(&(*packed_b)),
                         },
-                        FusedSpec::Store(c_storage.wrap(&mut c.view_mut())),
+                        FusedSpec::Store(c_storage.wrap(&c.view_mut())),
                     ],
                 )
                 .unwrap()
@@ -79,7 +79,7 @@ pub fn metal_gemm<K: GemmKernel>(
     // Warmup
     let _ = GemmImpl::<MfaGemm>::default().eval(&stream, &metal_a, &metal_b).unwrap();
 
-    crit.bench_function(&format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
+    crit.bench_function(format!("tract_metal_gemm_{}_{:?}", K::name(), dt), |be| {
         be.iter(|| {
             let _ = GemmImpl::<K>::new(false, is_ggml).eval(&stream, &metal_a, &metal_b).unwrap();
         });

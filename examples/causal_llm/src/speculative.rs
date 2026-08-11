@@ -250,7 +250,7 @@ mod tests {
         let drafts = [1u32];
         let draft_probs = vec![vec![0.5, 0.1, 0.4]];
         let target_probs = vec![vec![0.0, 1.0, 0.0], vec![0.2, 0.3, 0.5]];
-        let v = sample_verify(&drafts, &draft_probs, &target_probs, &[0.99], |p| argmax(p));
+        let v = sample_verify(&drafts, &draft_probs, &target_probs, &[0.99], argmax);
         assert_eq!(v.accepted, 1);
         assert_eq!(v.correction, 2); // bonus = argmax of last target row
     }
@@ -261,7 +261,7 @@ mod tests {
         let drafts = [0u32];
         let draft_probs = vec![vec![1.0, 0.0, 0.0]];
         let target_probs = vec![vec![0.0, 0.0, 1.0], vec![0.0, 0.0, 1.0]];
-        let v = sample_verify(&drafts, &draft_probs, &target_probs, &[0.5], |p| argmax(p));
+        let v = sample_verify(&drafts, &draft_probs, &target_probs, &[0.5], argmax);
         assert_eq!(v, SampleVerdict { accepted: 0, correction: 2 });
     }
 }

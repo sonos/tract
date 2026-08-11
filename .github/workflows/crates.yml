@@ -158,7 +158,7 @@ jobs:
     - name: Warnings
       env:
         RUSTFLAGS: -D warnings
-      run: cargo check
+      run: cargo check --all-targets
 
   cargo-deny:
     strategy:

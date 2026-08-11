@@ -49,10 +49,10 @@ pub mod test {
         };
     }
 
-    pub fn test_erf<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
+    pub fn test_erf<K: ElementWiseKer<T>, T>(values: &[f32]) -> TestCaseResult
     where
         f32: AsPrimitive<T>,
-        T: AsPrimitive<f32>,
+        T: LADatum + Float + AsPrimitive<f32>,
     {
         let data = tract_data::prelude::tensor1(values);
         let data = data.cast_to::<T>().unwrap();

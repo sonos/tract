@@ -437,12 +437,12 @@ mod tests {
             let (b, m, n, k) = (10, 32, 32, 16);
             let a = Tensor::from_shape(
                 &[b, m, k],
-                &(0..b * m * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
+                &(0..b * m * k).map(|_f| 1.0_f32).collect::<Vec<_>>(),
             )?
             .into_device()?;
             let b = Tensor::from_shape(
                 &[b, k, n],
-                &(0..b * n * k).map(|_f| 1.0 as f32).collect::<Vec<_>>(),
+                &(0..b * n * k).map(|_f| 1.0_f32).collect::<Vec<_>>(),
             )?
             .into_device()?;
 

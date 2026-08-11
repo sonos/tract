@@ -152,7 +152,7 @@ mod nnef_f16 {
             self.0.write_to_tar(&model, &mut buf)?;
             let reloaded = self.0.model_for_read(&mut &*buf)?;
             Ok(Box::new(RunnableAsF16(
-                reloaded.into_optimized()?.into_runnable_with_options(&options)?,
+                reloaded.into_optimized()?.into_runnable_with_options(options)?,
                 outputs_dt,
             )))
         }

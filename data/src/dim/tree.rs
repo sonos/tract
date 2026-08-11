@@ -2341,9 +2341,9 @@ mod tests {
         }
     }
 
-    /// Sym without an explicit `MulInt` wrapper has implicit coefficient
-    /// 1.  Any common factor gcd including 1 collapses to 1, so the
-    /// reduction does nothing — the rule must not silently drop the Sym.
+    /// Sym without an explicit `MulInt` wrapper has implicit coefficient 1.
+    /// Any common factor gcd including 1 collapses to 1, so the reduction
+    /// does nothing — the rule must not silently drop the Sym.
     #[test]
     fn no_reduce_when_sym_has_implicit_unit_coefficient() {
         // (a + 4) / 2 must stay non-trivial — gcd(1, 4, 2) = 1.

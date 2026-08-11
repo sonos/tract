@@ -53,7 +53,7 @@ const VAE_SCALING_FACTOR: f32 = 0.13025; // SDXL
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b = match chunk.len() {
             3 => [chunk[0], chunk[1], chunk[2]],
@@ -86,9 +86,9 @@ fn display_inline(path: &std::path::Path) {
     let in_tmux = std::env::var("TMUX").is_ok();
     let osc = if in_tmux { "\x1bPtmux;\x1b\x1b]" } else { "\x1b]" };
     let st = if in_tmux { "\x07\x1b\\" } else { "\x07" };
-    let _ = write!(
+    let _ = writeln!(
         std::io::stderr(),
-        "{osc}1337;File=inline=1;width=20;preserveAspectRatio=1:{b64}{st}\n"
+        "{osc}1337;File=inline=1;width=20;preserveAspectRatio=1:{b64}{st}"
     );
 }
 

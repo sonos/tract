@@ -133,7 +133,7 @@ impl Runtime for CudaTestRuntime {
                 let input = model.input_outlets()?[ix];
                 let in_fact = model.outlet_fact(input)?;
                 let rank = in_fact.rank();
-                let shape = in_fact.shape.dims().into_iter().rev().collect::<TVec<_>>();
+                let shape = in_fact.shape.dims().iter().rev().collect::<TVec<_>>();
                 let fact = in_fact.datum_type.fact(shape);
 
                 let transposed_input = model.add_source(format!("transposed_input_{ix}"), fact)?;
@@ -176,7 +176,7 @@ impl Runtime for CudaTestRuntime {
         }
 
         let runnable = CudaTestTransformRunnable {
-            runnable: model.into_runnable_with_options(&options)?,
+            runnable: model.into_runnable_with_options(options)?,
             transpose_inputs: self.transpose_inputs,
             use_arena: self.use_arena,
         };
