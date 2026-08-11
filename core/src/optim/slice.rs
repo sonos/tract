@@ -155,7 +155,7 @@ fn should_slice_output(
         })
         .map(|inlet| inlet.node)
         .collect();
-    /* aggressive: 1 slice as succesor => we propagate it */
+    /* aggressive: 1 slice as successor => we propagate it */
     /*
     let Some(slice) = node.outputs[0].successors.iter().find_map(|inlet| {
         model.node(inlet.node).op_as::<Slice>().filter(|slice| slice.axis == axis).map(|_| inlet.node)

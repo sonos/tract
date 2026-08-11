@@ -116,7 +116,7 @@ model.
 
 ### Specifying input size and optimizing.
 
-TensorFlow models typically do not specify explicitely the input dimensions,
+TensorFlow models typically do not specify explicitly the input dimensions,
 but a lot of optimization in `tract` depends on the knownledge of all tensors
 types and shapes in the network.
 

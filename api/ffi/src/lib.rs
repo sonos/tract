@@ -824,7 +824,7 @@ pub struct TractRunnable(tract::Runnable);
 /// This function does not take ownership of the `runnable` object, it can be used again to spawn
 /// other state instances. The runnable object is internally reference counted, it will be
 /// kept alive as long as any associated `State` exists (or as long as the `runnable` is not
-/// explicitely release with `tract_runnable_release`).
+/// explicitly release with `tract_runnable_release`).
 ///
 /// `state` is a newly-created object. It should ultimately be detroyed with `tract_state_destroy`.
 #[unsafe(no_mangle)]

@@ -97,7 +97,7 @@ pub trait InferenceOp: Op {
     /// manifest with temporaries nodes that can run some form of inference but
     /// require refactoring the network before it can be evaluated.
     ///
-    /// Called after succesful analyse, but before translating to typed model.
+    /// Called after successful analyse, but before translating to typed model.
     #[allow(unused_variables)]
     fn incorporate(
         &self,
