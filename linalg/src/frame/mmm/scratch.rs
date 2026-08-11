@@ -49,7 +49,7 @@ impl TLSScratch {
         unsafe {
             self.blob.ensure_size_and_align(scratch.blob_size, scratch.blob_align);
 
-            for LocDependant { loc, ker_spec, .. } in &scratch.loc_dependant {
+            for LocDependent { loc, ker_spec, .. } in &scratch.loc_dependent {
                 #[allow(clippy::single_match)]
                 if matches!(scratch.ker_specs[*ker_spec], FusedKerSpec::AddMatMul { .. }) {
                     let scratch = &mut *(self.blob.as_ptr().add(*loc) as *mut AddMatMulTemp);
@@ -71,7 +71,7 @@ pub struct ScratchSpaceImpl<TI: LADatum> {
     blob_size: usize,
     blob_align: usize,
     ker_specs: Vec<FusedKerSpec<TI>>,
-    loc_dependant: TVec<LocDependant>,
+    loc_dependent: TVec<LocDependent>,
     valid_down_tiles: usize,
     remnant_down: usize,
     valid_right_tiles: usize,
@@ -79,10 +79,10 @@ pub struct ScratchSpaceImpl<TI: LADatum> {
 }
 
 #[derive(Debug, new)]
-struct LocDependant {
+struct LocDependent {
     spec: usize,
     ker_spec: usize,
-    // offset for the location dependant structure
+    // offset for the location dependent structure
     loc: usize,
     // offset of its associated dynamic-size buffers
     buffer_a: Option<usize>,
@@ -111,7 +111,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         use FusedKerSpec as FKS;
         use FusedSpec as FS;
         self.ker_specs.clear();
-        self.loc_dependant.clear();
+        self.loc_dependent.clear();
         self.ker_specs.reserve(specs.len() + 2);
         self.ker_specs.push(FusedKerSpec::Clear);
         self.valid_down_tiles = m / ker.mr();
@@ -120,8 +120,8 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         self.remnant_right = n % ker.nr();
         let mut offset = 0;
         let mut align = std::mem::size_of::<*const ()>();
-        fn ld(spec: usize, uspec: usize, loc: usize) -> LocDependant {
-            LocDependant { spec, ker_spec: uspec, loc, buffer_a: None, buffer_b: None }
+        fn ld(spec: usize, uspec: usize, loc: usize) -> LocDependent {
+            LocDependent { spec, ker_spec: uspec, loc, buffer_a: None, buffer_b: None }
         }
         for (ix, spec) in specs.iter().enumerate() {
             offset = offset.next_multiple_of(&align);
@@ -138,22 +138,22 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
                 FS::QScale(s, rp, m) => FKS::QScale(*s, *rp, *m),
                 FS::BinPerRow(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
+                    self.loc_dependent.push(ld(ix, self.ker_specs.len(), offset));
                     offset += TI::datum_type().size_of() * ker.mr();
                     FusedKerSpec::Done
                 }
                 FS::BinPerCol(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
+                    self.loc_dependent.push(ld(ix, self.ker_specs.len(), offset));
                     offset += TI::datum_type().size_of() * ker.nr();
                     FusedKerSpec::Done
                 }
                 FS::AddRowColProducts(_, _) => {
-                    self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
+                    self.loc_dependent.push(ld(ix, self.ker_specs.len(), offset));
                     offset += TI::datum_type().size_of() * (ker.mr() + ker.nr());
                     FusedKerSpec::Done
                 }
                 FS::AddUnicast(_) => {
-                    self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
+                    self.loc_dependent.push(ld(ix, self.ker_specs.len(), offset));
                     offset += TI::datum_type().size_of() * ker.mr() * ker.nr();
                     FusedKerSpec::Done
                 }
@@ -173,7 +173,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     } else {
                         store.item_size * ker.mr() * ker.nr()
                     };
-                    self.loc_dependant.push(ld(ix, self.ker_specs.len(), offset));
+                    self.loc_dependent.push(ld(ix, self.ker_specs.len(), offset));
                     offset += tile_bytes;
                     FusedKerSpec::Done
                 }
@@ -193,7 +193,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         ld.buffer_b = Some(offset);
                         offset += tmp.size();
                     }
-                    self.loc_dependant.push(ld);
+                    self.loc_dependent.push(ld);
                     FusedKerSpec::AddMatMul {
                         k: 0,
                         pa: std::ptr::null(),
@@ -283,9 +283,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         unsafe {
             use FusedKerSpec as FKS;
             use FusedSpec as FS;
-            let ScratchSpaceImpl { ker_specs, loc_dependant, .. } = self;
+            let ScratchSpaceImpl { ker_specs, loc_dependent, .. } = self;
             debug_assert!(specs.len() + 2 == ker_specs.len());
-            for LocDependant { spec, ker_spec, loc, buffer_a, buffer_b } in loc_dependant {
+            for LocDependent { spec, ker_spec, loc, buffer_a, buffer_b } in loc_dependent {
                 let spec = specs.get_unchecked(*spec);
                 let it = match spec {
                     FS::BinPerRow(v, op) => {
@@ -365,8 +365,8 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         unsafe {
             use FusedKerSpec as FKS;
             use FusedSpec as FS;
-            for LocDependant { spec, ker_spec: uspec, loc, buffer_a, buffer_b } in
-                &self.loc_dependant
+            for LocDependent { spec, ker_spec: uspec, loc, buffer_a, buffer_b } in
+                &self.loc_dependent
             {
                 let loc = tls.blob.as_mut_ptr().add(*loc);
                 let spec = specs.get_unchecked(*spec);
@@ -564,7 +564,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         TI: LADatum,
     {
         unsafe {
-            for LocDependant { spec, ker_spec: uspec, .. } in self.loc_dependant.iter() {
+            for LocDependent { spec, ker_spec: uspec, .. } in self.loc_dependent.iter() {
                 let spec = specs.get_unchecked(*spec);
                 let ker_spec = tls.ker_specs::<TI>().get_unchecked(*uspec);
                 if let (FusedSpec::Store(c_store), FusedKerSpec::Store(tmp)) = (spec, ker_spec) {
