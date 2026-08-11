@@ -3,6 +3,7 @@
 // before native f16 ISA was available). Both run on 64-byte-aligned, 1024-
 // element buffers — same workload as the existing activations_avx512_f16
 // bench, just adding the native-fp16 column.
+#![cfg_attr(not(target_arch = "x86_64"), allow(dead_code, unused_imports, unused_macros))]
 
 use criterion::*;
 use tract_data::prelude::*;
@@ -47,21 +48,29 @@ macro_rules! bench_triple {
 }
 
 fn benches(c: &mut Criterion) {
-    bench_triple!(
-        c,
-        "hardswish_f16",
-        tract_linalg::generic::hardswish::HHardSwish8,
-        tract_linalg::x86_64_fma::act_f16::x86_64_avx512_hardswish_f16_64n,
-        tract_linalg::x86_64_fma::act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n
-    );
-    bench_triple!(
-        c,
-        "leaky_relu_f16",
-        tract_linalg::generic::leaky_relu::HLeakyRelu8,
-        tract_linalg::x86_64_fma::act_f16::x86_64_avx512_leaky_relu_f16_64n,
-        tract_linalg::x86_64_fma::act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
-        f16::from_f32(0.1)
-    );
+    #[cfg(target_arch = "x86_64")]
+    {
+        bench_triple!(
+            c,
+            "hardswish_f16",
+            tract_linalg::generic::hardswish::HHardSwish8,
+            tract_linalg::x86_64_fma::act_f16::x86_64_avx512_hardswish_f16_64n,
+            tract_linalg::x86_64_fma::act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n
+        );
+        bench_triple!(
+            c,
+            "leaky_relu_f16",
+            tract_linalg::generic::leaky_relu::HLeakyRelu8,
+            tract_linalg::x86_64_fma::act_f16::x86_64_avx512_leaky_relu_f16_64n,
+            tract_linalg::x86_64_fma::act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
+            f16::from_f32(0.1)
+        );
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        eprintln!("this bench only runs on x86_64 targets — skipping on host");
+        let _ = c;
+    }
 }
 
 criterion_group!(g, benches);

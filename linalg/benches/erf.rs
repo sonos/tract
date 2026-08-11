@@ -2,6 +2,7 @@
 // SErf4 (no FMA predecessor exists on x86). All buffers are 64-byte aligned
 // (AVX-512 alignment_bytes) and a multiple of 64 elements so the kernel's
 // nr() = 64 divides the length.
+#![cfg_attr(not(target_arch = "x86_64"), allow(dead_code, unused_imports))]
 
 use criterion::*;
 use tract_data::prelude::*;
@@ -19,19 +20,27 @@ fn aligned_input() -> Tensor {
 }
 
 fn erf_f32(c: &mut Criterion) {
-    let mut g = c.benchmark_group("erf_f32");
-    g.throughput(Throughput::Elements(N as u64));
-    let mut tp = aligned_input();
-    let sp = unsafe { tp.as_slice_mut_unchecked::<f32>() };
-    g.bench_function("generic", |b| b.iter(|| tract_linalg::generic::SErf4::run(sp, ())));
-    if std::is_x86_feature_detected!("avx512f") {
-        let mut ta = aligned_input();
-        let sa = unsafe { ta.as_slice_mut_unchecked::<f32>() };
-        g.bench_function("avx512", |b| {
-            b.iter(|| tract_linalg::x86_64_fma::erf::x86_64_avx512_erf_f32_64n::run(sa, ()))
-        });
+    #[cfg(target_arch = "x86_64")]
+    {
+        let mut g = c.benchmark_group("erf_f32");
+        g.throughput(Throughput::Elements(N as u64));
+        let mut tp = aligned_input();
+        let sp = unsafe { tp.as_slice_mut_unchecked::<f32>() };
+        g.bench_function("generic", |b| b.iter(|| tract_linalg::generic::SErf4::run(sp, ())));
+        if std::is_x86_feature_detected!("avx512f") {
+            let mut ta = aligned_input();
+            let sa = unsafe { ta.as_slice_mut_unchecked::<f32>() };
+            g.bench_function("avx512", |b| {
+                b.iter(|| tract_linalg::x86_64_fma::erf::x86_64_avx512_erf_f32_64n::run(sa, ()))
+            });
+        }
+        g.finish();
     }
-    g.finish();
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        eprintln!("this bench only runs on x86_64 targets — skipping on host");
+        let _ = c;
+    }
 }
 
 criterion_group!(g, erf_f32);

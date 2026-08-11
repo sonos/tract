@@ -148,7 +148,7 @@ jobs:
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
 
-    - run: rustup component add clippy && cargo clippy
+    - run: rustup component add clippy && cargo clippy --all-targets
     - name: clippy (bench-suite feature)
       run: cargo clippy -p tract-cli --features bench-suite
     - name: test (bench-suite feature)
