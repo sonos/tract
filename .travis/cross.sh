@@ -5,10 +5,13 @@ set -ex
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/.travis/ci-system-setup.sh
 
-which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
+ensure_cargo_dinghy() {
+    if which cargo-dinghy
+    then
+        return
+    fi
     if [ `arch` = x86_64 -o `arch` = i386 -o `arch` = arm64 ]
     then
-         cd /tmp/cargo-dinghy
          if [ `uname` = "Darwin" ]
          then
              NAME=macos
@@ -16,13 +19,18 @@ which cargo-dinghy || ( mkdir -p /tmp/cargo-dinghy
              NAME=linux
          fi
          VERSION=0.8.0
-         wget -q https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz -O cargo-dinghy.tgz
-         tar vzxf cargo-dinghy.tgz --strip-components 1
-         mv cargo-dinghy $HOME/.cargo/bin
+         URL=https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz
+         mkdir -p /tmp/cargo-dinghy
+         # Subshell: the callers below all use paths relative to the checkout.
+         ( cd /tmp/cargo-dinghy
+           # wget gives up on a TLS error whatever --tries says, so retry from the shell.
+           wget -nv $URL -O cargo-dinghy.tgz || ( sleep 5 ; wget -nv $URL -O cargo-dinghy.tgz )
+           tar vzxf cargo-dinghy.tgz --strip-components 1
+           mv cargo-dinghy $HOME/.cargo/bin )
     else
         cargo install cargo-dinghy
     fi
-)
+}
 
 if [ -z "$PLATFORM" -a -n "$1" ]
 then
@@ -31,6 +39,7 @@ fi
 
 case "$PLATFORM" in
     "raspbian")
+        ensure_cargo_dinghy
         [ -e $HOME/cached/raspitools ] || git clone --depth 1 https://github.com/raspberrypi/tools $HOME/cached/raspitools
         TOOLCHAIN=$HOME/cached/raspitools/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
@@ -40,6 +49,7 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
+        ensure_cargo_dinghy
         case "$PLATFORM" in
             "aarch64-linux-android")
                 ANDROID_CPU=aarch64
@@ -74,6 +84,7 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-apple-ios")
+        ensure_cargo_dinghy
         rustup target add aarch64-apple-ios
         cargo dinghy --platform auto-ios-aarch64 check -p tract-linalg -p tract-ffi
         ;;
@@ -129,6 +140,7 @@ case "$PLATFORM" in
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
         "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" | "cortexa53-unknown-linux-musl" )
 
+        ensure_cargo_dinghy
         case "$PLATFORM" in
             "aarch64-unknown-linux-gnu")
                 export ARCH=aarch64
