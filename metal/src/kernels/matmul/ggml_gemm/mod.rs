@@ -246,7 +246,6 @@ fn dispatch_metal_ggml_gemv(
     output_offset: usize,
 ) -> TractResult<()> {
     let (name, (nth0, nth1, nrows)) = mv_kernel_name_and_dispatch_params(&params)?;
-    //dbg!(&name);
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemvParams = params.clone().into();
@@ -308,7 +307,6 @@ fn dispatch_metal_ggml_gemm(
     let i2_tname = DeviceTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");
-    //dbg!(&name);
     let pipeline = stream.load_pipeline(LibraryName::Ggml, &name)?;
 
     let ggml_params: GgmlGemmParams = params.clone().into();

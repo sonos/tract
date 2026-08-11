@@ -111,10 +111,6 @@ impl MatmulQ40Problem {
         )?;
 
         model.select_output_outlets(&output)?;
-        //let test = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
-
-        //let test1 = model.node_by_name("einsum")?.op.as_op().downcast_ref::<EinSum>().unwrap();
-        //dbg!(&test1.axes);
         Ok(model)
     }
 
@@ -156,7 +152,6 @@ impl Test for MatmulQ40Problem {
     ) -> TestResult {
         let uses_q81_activations = runtime.name().contains("cuda");
         let reference = self.reference(uses_q81_activations)?;
-        //dbg!(&reference);
         let mut model = self.tract()?;
 
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));

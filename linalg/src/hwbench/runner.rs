@@ -111,11 +111,6 @@ fn run_bench_inner<T, F: FnMut(usize) -> T + Copy>(
     let samples = ((bench_s / (inner_loops as f64 * evaled)) as usize).max(min_samples);
     let warmup = (warmup_s / evaled) as usize;
 
-    // println!(
-    //     "evaled: {:?} samples:{samples} inner_loops:{inner_loops} time:{}",
-    //     Duration::from_secs_f64(evaled),
-    //     (samples * inner_loops) as f64 * evaled
-    // );
     let mut measures = vec![0.0; samples];
 
     black_box(f(warmup));

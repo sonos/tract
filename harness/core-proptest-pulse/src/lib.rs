@@ -44,7 +44,6 @@ fn proptest_regular_against_pulse(
 
     let len = input_array.shape()[axis];
     let model = model.into_decluttered().unwrap();
-    // dbg!(&model);
     let s = model.symbols.sym("S");
     let subs =
         std::collections::HashMap::from([(s.clone(), tract_data::prelude::TDim::Val(len as i64))]);
@@ -55,13 +54,9 @@ fn proptest_regular_against_pulse(
     }
     let runnable = concrete.into_runnable().unwrap();
 
-    // dbg!(&runnable);
     let outputs = runnable.run(tvec!(input_array.clone().into_tvalue())).unwrap();
-    // dbg!(&outputs);
     debug!("Build pulsing model");
-    // dbg!(&model);
     let pulsed = PulsedModel::new(&model, s.clone(), &pulse.to_dim()).unwrap();
-    // dbg!(&pulsed);
     let output_fact = pulsed.output_fact(0).unwrap().clone();
 
     let stream_info = output_fact.stream.as_ref().unwrap();
@@ -81,7 +76,6 @@ fn proptest_regular_against_pulse(
     let mut output_len = None;
 
     debug!("Run pulsing model");
-    //dbg!(pulsed_plan.model());
     let mut written = 0;
     loop {
         let to_write_in_chunk = pulse.min(input_array.shape()[axis].saturating_sub(written));

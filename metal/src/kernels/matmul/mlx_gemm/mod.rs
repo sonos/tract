@@ -397,7 +397,6 @@ pub fn dispatch_metal_mlx_gemm(
     });
     if debug {
         stream.wait_until_completed()?;
-        //log::debug!("{:#?}", gemm_debug);
     }
 
     Ok(())

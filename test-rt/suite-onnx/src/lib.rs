@@ -167,8 +167,6 @@ pub fn ensure_onnx_git_checkout() {
         for (v, _) in versions() {
             let wanted = dir().join(format!("onnx-{}", v.replace('.', "_")));
             if !wanted.join("onnx/backend/test/data").exists() {
-                //let df = std::process::Command::new("df").arg("-h").output().unwrap();
-                //dbg!(df);
                 let tmp = wanted.with_extension("tmp");
                 let _ = std::fs::remove_dir_all(&wanted);
                 let _ = std::fs::remove_dir_all(&tmp);
@@ -302,8 +300,6 @@ fn run_model(
         );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
-        //                println!("computed: {:?}", computed[ix].dump(true));
-        //                println!("expected: {:?}", expected[ix].dump(true));
         if let Err(e) = a.close_enough(b, approx) {
             bail!(
                 "For {:?}, different ({approx:?}) result for output #{}:\ngot:\n{:?}\nexpected:\n{:?} \n{}",
@@ -311,7 +307,7 @@ fn run_model(
                 ix,
                 a.cast_to::<f32>().unwrap().to_plain_array_view::<f32>().unwrap(),
                 b.cast_to::<f32>().unwrap().to_plain_array_view::<f32>().unwrap(),
-                e //                e.display_chain()
+                e
             );
         }
     }
