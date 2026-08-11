@@ -426,7 +426,7 @@ mod tests {
 
         // Build a model with the skew trick chain.
         let mut model = TypedModel::default();
-        let input = model.add_source("pos_raw", f32::fact(&[1, t, r]))?;
+        let input = model.add_source("pos_raw", f32::fact([1, t, r]))?;
 
         // Pad axis 2, pre=1
         let mut pads = vec![(0, 0); 3];
@@ -517,7 +517,7 @@ mod tests {
         let r = 2 * t - 1; // 7
 
         let mut model = TypedModel::default();
-        let src = model.add_source("src", f32::fact(&[1, t, r]))?;
+        let src = model.add_source("src", f32::fact([1, t, r]))?;
         let dg = model.wire_node(
             "dg",
             DiagGather { offset: (t as i64 - 1).to_dim(), out_len: t.to_dim() },

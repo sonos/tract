@@ -184,7 +184,7 @@ mod tests {
             .into_tensor();
         let got = with_borrowed_metal_stream(|stream| {
             let i = input.clone().into_device()?;
-            let o_shape = pool_spec.output_shape(&input.shape().to_vec())?;
+            let o_shape = pool_spec.output_shape(input.shape())?;
             let o = unsafe { DeviceTensor::uninitialized_dt(dt, &o_shape.shape)? };
             dispatch_metal_pool(stream, &pool_spec, kind, &i, &o)?;
             stream.wait_until_completed()?;
@@ -298,7 +298,7 @@ mod tests {
         let shape = [1usize, 14, 14, 32];
         let input = ramp(dt, &shape)?;
         let mut model = TypedModel::default();
-        let i = model.add_source("i", dt.fact(&shape))?;
+        let i = model.add_source("i", dt.fact(shape))?;
         let m = model.wire_node(
             "max",
             MaxPool::new(spec(3, 1, PaddingSpec::SameUpper, 32), None),

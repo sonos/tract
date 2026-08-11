@@ -197,6 +197,7 @@ mod tests {
 
     use super::*;
 
+    #[allow(clippy::too_many_arguments)]
     fn run_test_case(
         batch: usize,
         q_heads: usize,

@@ -36,7 +36,7 @@ fn silu_f32(c: &mut Criterion) {
 fn rust_scalar(input: &mut [f32]) {
     for x in input {
         let sigmoid = 1.0 / (1.0 + (-*x).exp());
-        *x = *x * sigmoid;
+        *x *= sigmoid;
     }
 }
 

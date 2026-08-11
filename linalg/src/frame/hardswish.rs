@@ -17,7 +17,7 @@ macro_rules! hardswish_impl {
 pub mod test {
     use crate::LADatum;
     use crate::frame::element_wise::*;
-    use num_traits::{AsPrimitive, Float, Zero};
+    use num_traits::{AsPrimitive, Float};
     use proptest::test_runner::TestCaseResult;
 
     #[macro_export]

@@ -2315,7 +2315,7 @@ mod tests {
         // Each component must contain exactly its two nodes.
         let g0: BTreeSet<usize> = [b1.node, c1.node].into_iter().collect();
         let g1: BTreeSet<usize> = [b2.node, c2.node].into_iter().collect();
-        assert!(groups.iter().any(|g| *g == g0), "expected component {g0:?} in {groups:?}");
-        assert!(groups.iter().any(|g| *g == g1), "expected component {g1:?} in {groups:?}");
+        assert!(groups.contains(&g0), "expected component {g0:?} in {groups:?}");
+        assert!(groups.contains(&g1), "expected component {g1:?} in {groups:?}");
     }
 }

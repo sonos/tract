@@ -380,7 +380,6 @@ fn dispatch_steel_attention(
 /// Picks the decode (vector / split-KV) or prefill (steel) kernel following
 /// MLX's dispatch tree; causal is bottom-right aligned (`qL_off = kL - qL`).
 #[allow(clippy::too_many_arguments)]
-#[allow(clippy::too_many_arguments)]
 pub fn dispatch_mlx_sdpa(
     stream: &MetalStream,
     scale: f32,
@@ -724,6 +723,7 @@ mod tests {
 
     // Additive-mask path: the shape a causal LLM export actually emits, where the
     // mask is a separate [1, 1, qL, kL] input rather than the `is_causal` flag.
+    #[allow(clippy::too_many_arguments)]
     fn run_masked_case(
         dt: DatumType,
         b: usize,

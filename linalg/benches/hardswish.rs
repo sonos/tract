@@ -1,6 +1,7 @@
 use criterion::*;
 use tract_data::prelude::*;
 
+#[cfg(target_arch = "aarch64")]
 use tract_linalg::element_wise::ElementWiseKer;
 
 fn hardswish_f32(c: &mut Criterion) {
@@ -20,7 +21,7 @@ fn hardswish_f32(c: &mut Criterion) {
 fn rust_f32(input: &mut [f32]) {
     const INV6: f32 = 1.0 / 6.0;
     for x in input {
-        let relu6 = ((*x + 3.0).min(6.0)).max(0.0);
+        let relu6 = (*x + 3.0).clamp(0.0, 6.0);
         *x = *x * relu6 * INV6;
     }
 }

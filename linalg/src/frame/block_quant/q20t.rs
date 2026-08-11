@@ -381,7 +381,7 @@ mod tests {
 
     #[test]
     fn loop_q20t_f32_zeros() {
-        test_loop_exact_f32(Q2_0_T, &vec![0.0; 32]);
+        test_loop_exact_f32(Q2_0_T, &[0.0; 32]);
     }
 
     #[test]
@@ -523,7 +523,7 @@ mod tests {
         let mut ref_y = vec![0f32; m];
         let mut block_q = vec![0u8; q.block_bytes()];
         let mut block_deq = vec![0f32; bl];
-        for i in 0..m {
+        for (i, y) in ref_y.iter_mut().enumerate() {
             let mut acc = 0f32;
             for b in 0..blocks_for_k {
                 let row_block = &weights.as_slice().unwrap()[i * k + b * bl..][..bl];
@@ -533,14 +533,14 @@ mod tests {
                     acc += block_deq[j] * x[b * bl + j];
                 }
             }
-            ref_y[i] = acc;
+            *y = acc;
         }
 
         // integer path: ternary codes (i8) x int8 activations -> i32, scaled per block.
         let (x_i8, x_scale) = quant_activations_i8(&x);
         let mut int_y = vec![0f32; m];
         let mut codes = vec![0i8; bl];
-        for i in 0..m {
+        for (i, y) in int_y.iter_mut().enumerate() {
             let mut acc_f = 0f32;
             for b in 0..blocks_for_k {
                 let row_block = &weights.as_slice().unwrap()[i * k + b * bl..][..bl];
@@ -552,7 +552,7 @@ mod tests {
                 }
                 acc_f += acc_i32 as f32 * w_scale * x_scale;
             }
-            int_y[i] = acc_f;
+            *y = acc_f;
         }
 
         // The integer path differs from the f32 reference only by the activation int8

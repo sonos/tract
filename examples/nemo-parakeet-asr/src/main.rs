@@ -9,7 +9,7 @@ use tract::prelude::*;
 tract::impl_ndarray_interop!();
 
 fn argmax(slice: &[f32]) -> Option<usize> {
-    slice.into_iter().position_max_by_key(|x| FloatOrd(**x))
+    slice.iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
 fn main() -> anyhow::Result<()> {

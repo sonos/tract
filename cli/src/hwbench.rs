@@ -106,8 +106,11 @@ fn parse_dt(s: &str) -> TractResult<DatumType> {
     }
 }
 
+/// One shape to bench: datum type, M, K, N, and whether `--assert` gates it.
+type BenchRequest = (DatumType, usize, usize, usize, bool);
+
 /// Expand `M,K,N` (both f32 and f16) or `M,K,N,dt` into concrete bench requests.
-fn parse_shape(spec: &str) -> TractResult<Vec<(DatumType, usize, usize, usize, bool)>> {
+fn parse_shape(spec: &str) -> TractResult<Vec<BenchRequest>> {
     let f = spec.split(',').collect_vec();
     let dts = match f.len() {
         3 => vec![f32::datum_type(), f16::datum_type()],
@@ -124,7 +127,7 @@ fn parse_shape(spec: &str) -> TractResult<Vec<(DatumType, usize, usize, usize, b
 /// Curated battery run when no explicit shape is given: square, matvec,
 /// im2col-conv (large-N / small-K, where the picker most often mis-selects),
 /// and the M-padding cases the picker was built to handle. Both f32 and f16.
-fn default_battery() -> Vec<(DatumType, usize, usize, usize, bool)> {
+fn default_battery() -> Vec<BenchRequest> {
     // (m, k, n, gate). gate=false = diagnostic: still benched and reported, but not
     // gated by --assert. Reserved for shapes every arch's picker mis-selects and a
     // static scale/quality model can't nail (tiny-K conv crossover, M-padding). Kept

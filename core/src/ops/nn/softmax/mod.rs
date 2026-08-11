@@ -578,15 +578,14 @@ mod test {
                 self.data.iter().map(|it| (*it as f32 - in_zero_point as f32) * in_scale).collect();
             let mut in_float_array = Array1::from_vec(in_float);
             softmax_inner(in_float_array.view_mut(), SoftmaxKind::default());
-            let rescaled_output = in_float_array
+            in_float_array
                 .iter()
                 .map(|it| {
                     ((*it / out_scale).round() as i32 + out_zero_point)
                         .max(u8::MIN as i32)
                         .min(u8::MAX as i32) as u8
                 })
-                .collect();
-            rescaled_output
+                .collect()
         }
 
         fn quantized(&self) -> Vec<u8> {

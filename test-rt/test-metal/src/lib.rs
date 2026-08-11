@@ -136,7 +136,7 @@ impl Runtime for MetalTestRuntime {
                 let input = model.input_outlets()?[ix];
                 let in_fact = model.outlet_fact(input)?;
                 let rank = in_fact.rank();
-                let shape = in_fact.shape.dims().into_iter().rev().collect::<TVec<_>>();
+                let shape = in_fact.shape.dims().iter().rev().collect::<TVec<_>>();
                 let fact = in_fact.datum_type.fact(shape);
 
                 let transposed_input = model.add_source(format!("transposed_input_{ix}"), fact)?;

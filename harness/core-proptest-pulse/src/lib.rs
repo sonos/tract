@@ -106,10 +106,10 @@ fn proptest_regular_against_pulse(
         )
         .unwrap();
         eprintln!("GOT: {got}");
-        if let Some(output_len) = output_len {
-            if got.shape()[output_stream_axis] >= output_len.max(0) + delay {
-                break;
-            }
+        if let Some(output_len) = output_len
+            && got.shape()[output_stream_axis] >= output_len + delay
+        {
+            break;
         }
         eprintln!();
     }
@@ -117,7 +117,7 @@ fn proptest_regular_against_pulse(
     let pulsed_output = got
         .slice_axis(
             Axis(output_stream_axis),
-            (stream_info.delay..stream_info.delay + output_len.unwrap().max(0)).into(),
+            (stream_info.delay..stream_info.delay + output_len.unwrap()).into(),
         )
         .to_owned()
         .into_tensor();

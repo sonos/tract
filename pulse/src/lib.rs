@@ -193,10 +193,10 @@ mod tests {
         let mut state = SimpleState::new(&plan).unwrap();
         let chunk1 = tensor1(&[1f32, 2.0]);
         let out1 = state.run(tvec!(chunk1.into_tvalue())).unwrap();
-        assert_eq!(*out1[0], tensor2(&[[1f32, 2.0]]).into());
+        assert_eq!(*out1[0], tensor2(&[[1f32, 2.0]]));
         let chunk2 = tensor1(&[3f32, 4.0]);
         let out2 = state.run(tvec!(chunk2.into_tvalue())).unwrap();
-        assert_eq!(*out2[0], tensor2(&[[3f32, 4.0]]).into());
+        assert_eq!(*out2[0], tensor2(&[[3f32, 4.0]]));
     }
 
     /// Two parallel pulse paths meeting at an elementwise op produce

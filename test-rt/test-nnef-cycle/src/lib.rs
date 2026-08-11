@@ -31,7 +31,7 @@ mod nnef_predump {
             options: &RunOptions,
         ) -> TractResult<Box<dyn Runnable>> {
             tract_nnef::ser::rewrite_model(&mut model)?;
-            Ok(Box::new(model.into_optimized()?.into_runnable_with_options(&options)?))
+            Ok(Box::new(model.into_optimized()?.into_runnable_with_options(options)?))
         }
 
         fn check(&self) -> TractResult<()> {
@@ -77,7 +77,7 @@ mod nnef_cycle {
             self.0.write_to_tar(&model, &mut buffer)?;
             info!("Reload from NNEF");
             let reloaded = self.0.model_for_read(&mut &*buffer)?;
-            Ok(Box::new(reloaded.into_optimized()?.into_runnable_with_options(&options)?))
+            Ok(Box::new(reloaded.into_optimized()?.into_runnable_with_options(options)?))
         }
         fn check(&self) -> TractResult<()> {
             Ok(())

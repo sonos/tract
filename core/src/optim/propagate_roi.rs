@@ -206,60 +206,6 @@ fn match_diff_of_divs(expr: &TDim) -> Option<(u64, TDim, TDim)> {
     Some((k1, p_expr, q_expr))
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// Closed-form recognition: chunked-band predicate after DG substitution
-    /// `c → r + q − offset` should project `q` out and yield a constant band
-    /// on `r` of width `(L+2)·k − 1`, centred around `offset`.
-    #[test]
-    fn recognise_chunked_band_yields_constant_band() {
-        let scope = SymbolScope::default();
-        let p = scope.coord_sym(0); // q (projected)
-        let k_ax = scope.coord_sym(1); // r (kept)
-        let offset = 9i64;
-        let k: u64 = 14;
-        let big_l = 5i64;
-
-        // A = p/k − (p + k_ax − offset)/k
-        let num1 = TDim::Sym(p.clone());
-        let num2 = TDim::Sym(p.clone()) + TDim::Sym(k_ax.clone()) - TDim::Val(offset);
-        let a = (TDim::Div(Box::new(num1), k) - TDim::Div(Box::new(num2), k)).reduce();
-        let band = TDim::Mul(vec![
-            TDim::Ge(Box::new(TDim::Val(big_l)), Box::new(a.clone())),
-            TDim::Ge(Box::new(a), Box::new(TDim::Val(0))),
-        ])
-        .reduce();
-        eprintln!("input band: {band}");
-
-        let projected =
-            recognise_chunked_band_project(&band, &p, &k_ax).expect("recogniser should match");
-        eprintln!("projected: {projected}");
-
-        // Expected: r ∈ [offset − (L+1)·k + 1, offset + (k − 1)]
-        //         = [9 − 84 + 1, 9 + 13] = [-74, 22] (width 97)
-        let high_expected = offset + k as i64 - 1; // 22
-        let low_expected = offset - (big_l + 1) * k as i64 + 1; // -74
-        let TDim::Mul(terms) = &projected else { panic!("expected Mul") };
-        assert_eq!(terms.len(), 2);
-        // Position-independent: one Ge term is `Ge(high, r)` (= r ≤ high),
-        // the other is `Ge(r, low)` (= r ≥ low).
-        let mut saw_high = false;
-        let mut saw_low = false;
-        for t in terms {
-            let TDim::Ge(l, r) = t else { panic!("expected Ge inside Mul") };
-            if **l == TDim::Val(high_expected) && **r == TDim::Sym(k_ax.clone()) {
-                saw_high = true;
-            } else if **l == TDim::Sym(k_ax.clone()) && **r == TDim::Val(low_expected) {
-                saw_low = true;
-            }
-        }
-        assert!(saw_high, "missing Ge(high={high_expected}, r); got: {projected}");
-        assert!(saw_low, "missing Ge(r, low={low_expected}); got: {projected}");
-    }
-}
-
 impl super::TypedPass for PropagateRoi {
     fn reset(&mut self) -> TractResult<()> {
         Ok(())
@@ -326,5 +272,59 @@ impl super::TypedPass for PropagateRoi {
         }
 
         Ok(any_changed)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Closed-form recognition: chunked-band predicate after DG substitution
+    /// `c → r + q − offset` should project `q` out and yield a constant band
+    /// on `r` of width `(L+2)·k − 1`, centred around `offset`.
+    #[test]
+    fn recognise_chunked_band_yields_constant_band() {
+        let scope = SymbolScope::default();
+        let p = scope.coord_sym(0); // q (projected)
+        let k_ax = scope.coord_sym(1); // r (kept)
+        let offset = 9i64;
+        let k: u64 = 14;
+        let big_l = 5i64;
+
+        // A = p/k − (p + k_ax − offset)/k
+        let num1 = TDim::Sym(p.clone());
+        let num2 = TDim::Sym(p.clone()) + TDim::Sym(k_ax.clone()) - TDim::Val(offset);
+        let a = (TDim::Div(Box::new(num1), k) - TDim::Div(Box::new(num2), k)).reduce();
+        let band = TDim::Mul(vec![
+            TDim::Ge(Box::new(TDim::Val(big_l)), Box::new(a.clone())),
+            TDim::Ge(Box::new(a), Box::new(TDim::Val(0))),
+        ])
+        .reduce();
+        eprintln!("input band: {band}");
+
+        let projected =
+            recognise_chunked_band_project(&band, &p, &k_ax).expect("recogniser should match");
+        eprintln!("projected: {projected}");
+
+        // Expected: r ∈ [offset − (L+1)·k + 1, offset + (k − 1)]
+        //         = [9 − 84 + 1, 9 + 13] = [-74, 22] (width 97)
+        let high_expected = offset + k as i64 - 1; // 22
+        let low_expected = offset - (big_l + 1) * k as i64 + 1; // -74
+        let TDim::Mul(terms) = &projected else { panic!("expected Mul") };
+        assert_eq!(terms.len(), 2);
+        // Position-independent: one Ge term is `Ge(high, r)` (= r ≤ high),
+        // the other is `Ge(r, low)` (= r ≥ low).
+        let mut saw_high = false;
+        let mut saw_low = false;
+        for t in terms {
+            let TDim::Ge(l, r) = t else { panic!("expected Ge inside Mul") };
+            if **l == TDim::Val(high_expected) && **r == TDim::Sym(k_ax.clone()) {
+                saw_high = true;
+            } else if **l == TDim::Sym(k_ax.clone()) && **r == TDim::Val(low_expected) {
+                saw_low = true;
+            }
+        }
+        assert!(saw_high, "missing Ge(high={high_expected}, r); got: {projected}");
+        assert!(saw_low, "missing Ge(r, low={low_expected}); got: {projected}");
     }
 }

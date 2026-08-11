@@ -189,7 +189,7 @@ where
     // Destination: tightly-packed output for easy comparison.
     let mut dst: Vec<TI> = vec![TI::min_value(); ker.mr() * ker.nr()];
     let dst_store = OutputStoreKer {
-        ptr: dst.as_ptr() as _,
+        ptr: dst.as_mut_ptr() as _,
         row_byte_stride: (item * ker.nr()) as isize,
         col_byte_stride: item as isize,
         item_size: item,

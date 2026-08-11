@@ -129,8 +129,7 @@ async fn completions(
     let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed).to_string();
     let s = tokio::task::spawn_blocking(move || -> Result<OpenAICompletionReply> {
         let mut state = global.llm.spawn_with_config(CausalLlmStateConfig {
-            prompt_chunk_size: Some(global.args.prefill_chunk)
-                .filter(|_| !global.args.no_prefill_chunk),
+            prompt_chunk_size: (!global.args.no_prefill_chunk).then_some(global.args.prefill_chunk),
             ..Default::default()
         })?;
         debug!("prompt [{id}] << {}", query.prompt);

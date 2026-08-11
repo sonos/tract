@@ -31,7 +31,7 @@ pub fn cuda_minimal_flash(
         let cuda_v = v.into_device().unwrap();
         let cuda_mask = mask.into_device().unwrap();
 
-        crit.bench_function(&format!("tract_cuda_minimal_flash"), |be| {
+        crit.bench_function("tract_cuda_minimal_flash", |be| {
             be.iter(|| {
                 let _ = CudaFlashAttn
                     .eval(stream, &cuda_q, &cuda_k, &cuda_v, Some(&cuda_mask), 1.0, false)
