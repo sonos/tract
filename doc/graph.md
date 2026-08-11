@@ -124,7 +124,7 @@ TypedFact has also a optional constant value: if a tensor in the graph has a
 constant value regardless of the network inputs, this is information the
 optimiser may be able to use to simplify the network.
 
-As we implied beforehand, this type is not suitable to reprensent network where
+As we implied beforehand, this type is not suitable to represent network where
 some wires have an unknown datum type, or partial shape information. In order
 to reason about these networks, we need a more flexible Fact:
 

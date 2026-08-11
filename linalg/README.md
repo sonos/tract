@@ -1,7 +1,7 @@
 # tract-linalg
 
 linalg stands for "linear algebra". This is a misnamer. This crates contains
-low-level, architecture dependant optimisations used by tract-core.
+low-level, architecture dependent optimisations used by tract-core.
 
 # Functions
 

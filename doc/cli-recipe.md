@@ -63,7 +63,7 @@ The displayed form is `tract-opl` intermediate representation. It is *decluttere
 training artefacts, in a form meant to be simple to reason about and as stripped down as
 possible.
 
-This is not the "optimised" form: `tract-opl` form is meant to be platform independant, can
+This is not the "optimised" form: `tract-opl` form is meant to be platform independent, can
 be serialized to nnef. The optimised form is just meant to be as fast as possible on a given
 CPU.
 

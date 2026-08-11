@@ -242,9 +242,9 @@ rank determined or not and individual dimensions known or not.
 The framework will try to propagate type information accross the graph,
 refining incrementally its knowledge of all the inference facts. It will do
 so by calling the `infer()` method on operators which interfaces are not fully
-determined. The operator receives as paramaters the current information on its
+determined. The operator receives as parameters the current information on its
 inputs and outputs, try to improve them and returns the refined versions. The
-third paramaters and result (`observed`) is out of scope here.
+third parameters and result (`observed`) is out of scope here.
 
 Once a network has been entirely typed, it can be translated to a TypedOp. The
 framework will visit the entire network and call the `to_typed()` method on

@@ -252,7 +252,7 @@ impl Tensor {
         self.as_plain_mut().context("Tensor storage is not plain")
     }
 
-    /// Create an uninitialized tensor (dt as type paramater).
+    /// Create an uninitialized tensor (dt as type parameter).
     #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         unsafe { Self::uninitialized_dt(T::datum_type(), shape) }
