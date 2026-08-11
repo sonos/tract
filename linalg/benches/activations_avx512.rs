@@ -10,6 +10,7 @@
 // All buffers are 64-byte aligned (AVX-512 alignment_bytes) and a multiple of
 // 64 elements so every kernel's nr() divides the length. Criterion reports the
 // distribution; the min of the samples is the relevant "min-of-N" number.
+#![cfg_attr(not(target_arch = "x86_64"), allow(dead_code, unused_imports, unused_macros))]
 
 use criterion::*;
 use tract_data::prelude::*;
@@ -66,43 +67,50 @@ macro_rules! bench_pair {
 
 fn benches(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
-    enable_ftz_daz();
-    use tract_linalg::x86_64_fma::act::*;
-    use tract_linalg::x86_64_fma::{
-        avx512_sigmoid_f32, avx512_tanh_f32, fma_sigmoid_f32, fma_tanh_f32,
-    };
+    {
+        enable_ftz_daz();
+        use tract_linalg::x86_64_fma::act::*;
+        use tract_linalg::x86_64_fma::{
+            avx512_sigmoid_f32, avx512_tanh_f32, fma_sigmoid_f32, fma_tanh_f32,
+        };
 
-    bench_pair!(c, "sigmoid_f32", "fma", fma_sigmoid_f32, avx512_sigmoid_f32);
-    bench_pair!(c, "tanh_f32", "fma", fma_tanh_f32, avx512_tanh_f32);
-    bench_pair!(
-        c,
-        "hardswish_f32",
-        "generic",
-        tract_linalg::generic::SHardSwish4,
-        x86_64_avx512_hardswish_f32_64n
-    );
-    bench_pair!(
-        c,
-        "leaky_relu_f32",
-        "generic",
-        tract_linalg::generic::SLeakyRelu4,
-        x86_64_avx512_leaky_relu_f32_64n,
-        0.1f32
-    );
-    bench_pair!(
-        c,
-        "silu_f32",
-        "generic",
-        tract_linalg::generic::SSiLU4,
-        x86_64_avx512_silu_f32_16n
-    );
-    bench_pair!(
-        c,
-        "gelu_f32",
-        "generic",
-        tract_linalg::generic::SGelu4,
-        x86_64_avx512_gelu_f32_16n
-    );
+        bench_pair!(c, "sigmoid_f32", "fma", fma_sigmoid_f32, avx512_sigmoid_f32);
+        bench_pair!(c, "tanh_f32", "fma", fma_tanh_f32, avx512_tanh_f32);
+        bench_pair!(
+            c,
+            "hardswish_f32",
+            "generic",
+            tract_linalg::generic::SHardSwish4,
+            x86_64_avx512_hardswish_f32_64n
+        );
+        bench_pair!(
+            c,
+            "leaky_relu_f32",
+            "generic",
+            tract_linalg::generic::SLeakyRelu4,
+            x86_64_avx512_leaky_relu_f32_64n,
+            0.1f32
+        );
+        bench_pair!(
+            c,
+            "silu_f32",
+            "generic",
+            tract_linalg::generic::SSiLU4,
+            x86_64_avx512_silu_f32_16n
+        );
+        bench_pair!(
+            c,
+            "gelu_f32",
+            "generic",
+            tract_linalg::generic::SGelu4,
+            x86_64_avx512_gelu_f32_16n
+        );
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        eprintln!("this bench only runs on x86_64 targets — skipping on host");
+        let _ = c;
+    }
 }
 
 criterion_group!(g, benches);

@@ -40,29 +40,37 @@ fn run_kernel(be: &mut Bencher, mmm: &dyn MatMatMul, m: usize, k: usize, n: usiz
 }
 
 fn benches(c: &mut Criterion) {
-    if !std::is_x86_feature_detected!("avx512vnni") {
-        eprintln!("avx512vnni not available, skipping");
-        return;
-    }
-    use tract_linalg::x86_64_fma::mmm::*;
-    for &(m, k, n) in
-        &[(64usize, 256usize, 64usize), (256, 256, 256), (512, 512, 512), (1024, 1024, 64)]
+    #[cfg(target_arch = "x86_64")]
     {
-        let id = format!("{m}x{k}x{n}");
-        let mut g = c.benchmark_group("vnni_i32/packed_packed");
-        g.throughput(Throughput::Elements((m * k * n) as u64));
-        g.bench_with_input(BenchmarkId::new("avx2", &id), &(m, k, n), |b, &(m, k, n)| {
-            run_kernel(b, &*avx2_mmm_i32_8x8.mmm(), m, k, n)
-        });
-        g.bench_with_input(BenchmarkId::new("avx512vnni", &id), &(m, k, n), |b, &(m, k, n)| {
-            run_kernel(b, &*avx512vnni_mmm_i32_8x8.mmm(), m, k, n)
-        });
-        g.bench_with_input(
-            BenchmarkId::new("avx512vnni_16x16", &id),
-            &(m, k, n),
-            |b, &(m, k, n)| run_kernel(b, &*avx512vnni_mmm_i32_16x16.mmm(), m, k, n),
-        );
-        g.finish();
+        if !std::is_x86_feature_detected!("avx512vnni") {
+            eprintln!("avx512vnni not available, skipping");
+            return;
+        }
+        use tract_linalg::x86_64_fma::mmm::*;
+        for &(m, k, n) in
+            &[(64usize, 256usize, 64usize), (256, 256, 256), (512, 512, 512), (1024, 1024, 64)]
+        {
+            let id = format!("{m}x{k}x{n}");
+            let mut g = c.benchmark_group("vnni_i32/packed_packed");
+            g.throughput(Throughput::Elements((m * k * n) as u64));
+            g.bench_with_input(BenchmarkId::new("avx2", &id), &(m, k, n), |b, &(m, k, n)| {
+                run_kernel(b, &*avx2_mmm_i32_8x8.mmm(), m, k, n)
+            });
+            g.bench_with_input(BenchmarkId::new("avx512vnni", &id), &(m, k, n), |b, &(m, k, n)| {
+                run_kernel(b, &*avx512vnni_mmm_i32_8x8.mmm(), m, k, n)
+            });
+            g.bench_with_input(
+                BenchmarkId::new("avx512vnni_16x16", &id),
+                &(m, k, n),
+                |b, &(m, k, n)| run_kernel(b, &*avx512vnni_mmm_i32_16x16.mmm(), m, k, n),
+            );
+            g.finish();
+        }
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    {
+        eprintln!("this bench only runs on x86_64 targets — skipping on host");
+        let _ = c;
     }
 }
 
