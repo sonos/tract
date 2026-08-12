@@ -9,7 +9,7 @@
     Fused SiLU kernel.
 
     Per element (z = clamp(x, -18.6, 18.6), w = z^2):
-        SiLU(x) = f * (0.5 + z * P(w) / Q(w))
+        SiLU(x) = f * max(0.5 + z * P(w) / Q(w), 0)
     where P is the degree-6 Horner polynomial over the numerator coeffs, Q the
     degree-3 Horner polynomial over the denominator coeffs, and f = max(x, -18.6)
     the factor the sigmoid multiplies. Reuses the sigmoid coefficients and
@@ -22,7 +22,9 @@
     the true SiLU approaches from below as x -> -inf.
 
     ARMv7 has only 16 q registers, so f (q4/q5) is kept across a 2-group
-    (8-element) main loop.
+    (8-element) main loop. That leaves q14/q15 as the only registers free across
+    the whole body: they hold the zero floor and the low clamp, so the high clamp
+    is the one constant still re-duped per iteration.
 
     s16-s31 (d8-d15, q4-q7) must be preserved
     s0-s15 (d0-d7, q0-q3) and d16-d31 (q8-q15) do not need to be preserved
@@ -37,18 +39,20 @@ armv7neon_silu_f32_4n_{{suffix}}:
     adr         r2, .coeffs_num
     vldmia      r2!, { s0-s13 }
 
+    vmov.i32    q14, #0                    // q14 <- 0
+    vdup.32     q15, d0[0]                 // q15 <- low = -18.6
+
     cmp         r1, #8
     blt         .loop
 
 .loop_2:
     vldmia      r0, { q6, q7 }             // q6,q7 <- x
 
-    vdup.32     q15, d0[0]
     vmax.f32    q4, q6, q15
     vmax.f32    q5, q7, q15                // q4,q5 <- f = max(x, -18.6)
-    vdup.32     q15, d0[1]
-    vmin.f32    q6, q4, q15
-    vmin.f32    q7, q5, q15                // q6,q7 <- z = min(f, 18.6)
+    vdup.32     q10, d0[1]
+    vmin.f32    q6, q4, q10
+    vmin.f32    q7, q5, q10                // q6,q7 <- z = min(f, 18.6)
 
     vmul.f32    q8, q6, q6                 // q8,q9 <- w = z^2
     vmul.f32    q9, q7, q7
@@ -113,6 +117,11 @@ armv7neon_silu_f32_4n_{{suffix}}:
     vmla.f32    q10, q6, q8                // q10,q11 <- sigmoid = 0.5 + num/denum
     vmla.f32    q11, q7, q9
 
+    // The vmla above cancels down to ~1e-8 on the negative tail, below the rounding error
+    // of the reciprocal; a sigmoid that came out negative would flip the sign of the SiLU.
+    vmax.f32    q10, q10, q14              // q10,q11 <- sigmoid, floored at 0
+    vmax.f32    q11, q11, q14
+
     vmul.f32    q10, q10, q4               // q10,q11 <- SiLU = sigmoid * f
     vmul.f32    q11, q11, q5
 
@@ -128,10 +137,9 @@ armv7neon_silu_f32_4n_{{suffix}}:
 .loop:
     vldmia      r0, { q6 }                 // q6 <- x
 
-    vdup.32     q15, d0[0]
     vmax.f32    q4, q6, q15                // q4 <- f = max(x, -18.6)
-    vdup.32     q15, d0[1]
-    vmin.f32    q6, q4, q15                // q6 <- z = min(f, 18.6)
+    vdup.32     q10, d0[1]
+    vmin.f32    q6, q4, q10                // q6 <- z = min(f, 18.6)
 
     vmul.f32    q8, q6, q6                 // q8 <- w = z^2
 
@@ -166,6 +174,8 @@ armv7neon_silu_f32_4n_{{suffix}}:
 
     vdup.32     q10, d6[1]
     vmla.f32    q10, q6, q8                // q10 <- sigmoid = 0.5 + num/denum
+
+    vmax.f32    q10, q10, q14              // q10 <- sigmoid, floored at 0
 
     vmul.f32    q10, q10, q4               // q10 <- SiLU = sigmoid * f
 

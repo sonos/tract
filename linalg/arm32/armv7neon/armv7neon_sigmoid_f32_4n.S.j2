@@ -132,6 +132,17 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     vmla.f32    q11, q5, q8
     vmla.f32    q12, q6, q9
 
+    // sigmoid is (0, 1): the vmla above cancels down to ~1e-8 on either tail, below the
+    // rounding error of the reciprocal, so the sum needs clamping to stay in range.
+    vmov.i32    q13, #0
+    vdup.32     q14, d6[0]
+    vmax.f32    q10, q13
+    vmax.f32    q11, q13
+    vmax.f32    q12, q13
+    vmin.f32    q10, q14
+    vmin.f32    q11, q14
+    vmin.f32    q12, q14
+
     vstmia      r0!, { q10, q11, q12 }
 
     subs        r1, #12
@@ -182,6 +193,11 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
 
     vdup.32     q10, d6[1]
     vmla.f32    q10, q4, q7
+
+    vmov.i32    q13, #0
+    vdup.32     q14, d6[0]
+    vmax.f32    q10, q13
+    vmin.f32    q10, q14
 
     vstmia      r0!, { q10 }
 
