@@ -4691,6 +4691,7 @@ dependencies = [
  "half",
  "icu_normalizer",
  "icu_properties",
+ "log",
  "reqwest",
  "rustls",
  "serde_json",

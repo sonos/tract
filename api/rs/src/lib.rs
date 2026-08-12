@@ -502,15 +502,36 @@ impl Tensor {
     /// are sliced as metadata only when possible, without synchronizing or
     /// copying, keeping the backing device buffer alive.
     pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
-        use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
+        use tract_gpu::tensor::{DeviceArenaView, DeviceTensor, DeviceTensorExt, OwnedDeviceTensor};
         if let Some(dev) = self.0.as_device_tensor() {
             let sliced = match dev {
                 DeviceTensor::ArenaView(view) => {
                     DeviceTensor::ArenaView(view.sliced(axis, start, end)?)
                 }
+                DeviceTensor::Owned(o)
+                    if o.exotic_fact().is_none() && o.strides().iter().all(|&s| s >= 0) =>
+                {
+                    // Owned device tensors clone as cheap buffer handles:
+                    // wrap one in a metadata-only view and slice that,
+                    // keeping the data on device without synchronizing.
+                    let arc: Arc<Box<dyn OwnedDeviceTensor>> =
+                        Arc::new(tract_nnef::tract_core::dyn_clone::clone_box(&**o));
+                    let view = DeviceArenaView::from_owned(
+                        arc,
+                        dev.datum_type(),
+                        o.shape().into(),
+                        o.strides().into(),
+                        0,
+                    )?;
+                    DeviceTensor::ArenaView(view.sliced(axis, start, end)?)
+                }
                 DeviceTensor::Owned(_) => {
-                    // Rare: owned device tensors have no shareable arena, so
+                    // Exotic or negatively-strided layouts cannot be viewed:
                     // go through the host. Correct, but synchronizes.
+                    log::debug!(
+                        "Tensor::sliced: owned device tensor with exotic/negative-stride \
+                         layout falls back to a host copy"
+                    );
                     let host = dev.to_host()?;
                     return Ok(Tensor(host.slice(axis, start, end)?.into_arc_tensor()));
                 }
@@ -713,4 +734,31 @@ fn from_internal_dt(it: tract_nnef::prelude::DatumType) -> Result<DatumType> {
             anyhow::bail!("Unsupported DatumType in the public API {:?}", it)
         }
     })
+}
+
+#[cfg(all(test, target_vendor = "apple"))]
+mod device_tensor_tests {
+    use super::*;
+
+    /// Finding: Tensor::sliced used to fall back to to_host() for owned
+    /// device tensors, defeating zero-copy for device-resident outputs. The
+    /// owned case must slice as a device-side metadata view.
+    #[test]
+    fn owned_device_tensor_slices_as_device_view() -> Result<()> {
+        use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+        // Initializes (and registers) the Metal device context.
+        tract_metal::with_metal_stream(|_| anyhow::Ok(()))?;
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let dev = InternalTensor::from_shape(&[4, 6], &data)?.into_device()?;
+        assert!(matches!(dev, DeviceTensor::Owned(_)));
+        let tensor = Tensor(dev.into_tensor().into_arc_tensor());
+        let sliced = tensor.sliced(0, 1, 3)?;
+        let inner = sliced.0.as_device_tensor().context("slice must stay on device")?;
+        assert!(matches!(inner, DeviceTensor::ArenaView(_)));
+        assert_eq!(inner.shape(), &[2, 6]);
+        let host = inner.to_host()?;
+        let expected = InternalTensor::from_shape(&[2, 6], &data[6..18])?;
+        assert_eq!(host.as_ref(), &expected);
+        Ok(())
+    }
 }

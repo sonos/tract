@@ -30,6 +30,7 @@ tract-libcli.workspace = true
 tract-transformers.workspace = true
 tract-gpu.workspace = true
 serde_json.workspace = true
+log.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
 tract-metal.workspace = true
