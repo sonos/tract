@@ -189,6 +189,20 @@ avx512_sigmoid_f32_{{suffix}} proc
     vaddps          zmm6, zmm6, zmm1
     vaddps          zmm7, zmm7, zmm1
 
+    // sigmoid is (0, 1): the vaddps above cancels down to ~1e-8 on either tail, below the
+    // rounding error of the division, so the sum needs clamping to stay in range. vpxord
+    // rather than vxorps: the latter needs AVX512DQ, this kernel only requires AVX512F.
+    vpxord          zmm0, zmm0, zmm0
+    vbroadcastss    zmm2, dword ptr [{{offset}} {{L}}coeffs_num_one]
+    vmaxps          zmm4, zmm4, zmm0
+    vmaxps          zmm5, zmm5, zmm0
+    vmaxps          zmm6, zmm6, zmm0
+    vmaxps          zmm7, zmm7, zmm0
+    vminps          zmm4, zmm4, zmm2
+    vminps          zmm5, zmm5, zmm2
+    vminps          zmm6, zmm6, zmm2
+    vminps          zmm7, zmm7, zmm2
+
     vmovaps [rdi], zmm4
     vmovaps [rdi + 64], zmm5
     vmovaps [rdi + 128], zmm6
@@ -242,6 +256,11 @@ avx512_sigmoid_f32_{{suffix}} proc
 
     vdivps          zmm4, zmm4, zmm12
     vaddps          zmm4, zmm4, zmm1
+
+    vpxord          zmm0, zmm0, zmm0
+    vbroadcastss    zmm2, dword ptr [{{offset}} {{L}}coeffs_num_one]
+    vmaxps          zmm4, zmm4, zmm0
+    vminps          zmm4, zmm4, zmm2
 
     vmovaps [rdi], zmm4
     add     rdi, 64
@@ -315,6 +334,9 @@ avx512_sigmoid_f32_{{suffix}} proc
 
 {{L}}coeffs_num_half:
     {{float}} 0.5
+
+{{L}}coeffs_num_one:
+    {{float}} 1.0
 
 {% if msvc %}
 avx512_sigmoid_f32_{{suffix}} endp
