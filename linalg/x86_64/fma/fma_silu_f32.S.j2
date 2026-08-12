@@ -4,7 +4,7 @@
 Fused SiLU kernel.
 
 Per element (z = clamp(x, -18.6, 18.6), w = z^2):
-    SiLU(x) = f * (0.5 + z * P(w) / Q(w))
+    SiLU(x) = f * max(0.5 + z * P(w) / Q(w), 0)
 where P is the degree-6 Horner polynomial over the numerator coeffs, Q the
 degree-3 Horner polynomial over the denominator coeffs, and f = max(x, -18.6)
 the factor the sigmoid multiplies. Reuses the coefficients and the rational
@@ -15,6 +15,12 @@ keeps the sigmoid polynomial argument z in range, whereas SiLU(x) ~ x as
 x -> +inf so the factor must stay unbounded above. The lower clamp keeps the
 negative tail bounded: x < -18.6 saturates at -18.6 * sigmoid(-18.6), which
 the true SiLU approaches from below as x -> -inf.
+
+The sigmoid factor is floored at 0 before it multiplies f, since the final
+`+ 0.5` cancels down to ~1e-8 on the negative tail and a sigmoid that came out
+negative there would flip the sign of the whole result. It needs no matching
+ceiling: an overshoot of one ulp only scales f by 1 + 2^-23, and SiLU has no
+upper bound to violate.
 
 x86-64 has only 16 ymm registers and the sigmoid kernel already fills them with
 a 4-group loop, so holding f costs half the unrolling: the main loop here runs
@@ -167,6 +173,12 @@ fma_silu_f32_{{suffix}} proc
     vaddps          ymm4, ymm4, ymm1
     vaddps          ymm5, ymm5, ymm1        // ymm4..5 <- sigmoid
 
+    // The vaddps above cancels down to ~1e-8 on the negative tail, below the rounding error
+    // of the division; a sigmoid that came out negative would flip the sign of the SiLU.
+    vxorps          ymm0, ymm0, ymm0
+    vmaxps          ymm4, ymm4, ymm0
+    vmaxps          ymm5, ymm5, ymm0        // ymm4..5 <- sigmoid, floored at 0
+
     vmulps          ymm4, ymm4, ymm10
     vmulps          ymm5, ymm5, ymm11       // ymm4..5 <- SiLU
 
@@ -221,6 +233,9 @@ fma_silu_f32_{{suffix}} proc
 
     vdivps          ymm4, ymm4, ymm8
     vaddps          ymm4, ymm4, ymm1        // ymm4 <- sigmoid
+
+    vxorps          ymm0, ymm0, ymm0
+    vmaxps          ymm4, ymm4, ymm0        // ymm4 <- sigmoid, floored at 0
 
     vmulps          ymm4, ymm4, ymm10       // ymm4 <- SiLU
 
