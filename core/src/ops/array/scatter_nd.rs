@@ -112,11 +112,123 @@ impl ScatterNd {
     }
 }
 
+/// Locates the single axis along which `tuples` is the row-major enumeration of a
+/// contiguous block of `data_shape`, every other axis fully covered.
+///
+/// `tuples` is the flattened constant index tensor, `data_shape.len()` coordinates
+/// per tuple. Returns `(axis, start, len)` of the block, or `None` when the tuples
+/// are anything else: the comparison is exact and elementwise, so a match means the
+/// scatter writes exactly `data[.., start..start + len, ..]` once, in order.
+fn scattered_block(tuples: &[i64], data_shape: &[usize]) -> Option<(usize, usize, usize)> {
+    let rank = data_shape.len();
+    let count = tuples.len() / rank;
+    if count == 0 {
+        return None;
+    }
+    for axis in 0..rank {
+        let others: usize =
+            data_shape.iter().enumerate().filter(|(ax, _)| *ax != axis).map(|(_, d)| *d).product();
+        if others == 0 || !count.is_multiple_of(others) {
+            continue;
+        }
+        let len = count / others;
+        let Ok(start) = usize::try_from(tuples[axis]) else { continue };
+        if start + len > data_shape[axis] {
+            continue;
+        }
+        let mut block: TVec<usize> = data_shape.into();
+        block[axis] = len;
+        let canonical = tuples.chunks(rank).enumerate().all(|(pos, tuple)| {
+            let mut rest = pos;
+            (0..rank).rev().all(|ax| {
+                let coord = rest % block[ax];
+                rest /= block[ax];
+                tuple[ax] == (coord + if ax == axis { start } else { 0 }) as i64
+            })
+        });
+        if canonical {
+            return Some((axis, start, len));
+        }
+    }
+    None
+}
+
 impl TypedOp for ScatterNd {
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         Ok(tvec!(inputs[0].datum_type.fact(inputs[0].shape.to_tvec())))
+    }
+
+    /// Rewrites a constant-index block assignment into `Concat(axis, [Slice(data,
+    /// 0..start), updates, Slice(data, end..dim)])`, dropping empty slices.
+    ///
+    /// Fires only when the reduction is `None`, the indices are constant with a last
+    /// dimension equal to the data rank, the tuples are exactly the row-major
+    /// enumeration of a contiguous block along one axis with every other axis fully
+    /// covered, and `updates` matches that block in shape and datum type. Symbolic
+    /// shapes are declined: full coverage of an axis cannot be established against
+    /// constant indices. `TypedConcat::declutter` and `optim::slice` clean up behind
+    /// it.
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.reduction != ScatterReduction::None {
+            return Ok(None);
+        }
+        let (data, indices, updates) = args_3!(model.node_input_facts(node.id)?);
+        rule_if_some!(konst = &indices.konst);
+        rule_if_some!(data_shape = data.shape.as_concrete());
+        rule_if_some!(updates_shape = updates.shape.as_concrete());
+        if !data.is_plain()
+            || !updates.is_plain()
+            || data.datum_type != updates.datum_type
+            || konst.rank() < 2
+            || !konst.is_plain()
+            || *konst.shape().last().unwrap() != data_shape.len()
+        {
+            return Ok(None);
+        }
+        let tuples = konst.cast_to::<i64>()?;
+        let tuples = tuples.try_as_plain()?.as_slice::<i64>()?;
+        rule_if_some!((axis, start, len) = scattered_block(tuples, data_shape));
+        let mut block: TVec<usize> = data_shape.into();
+        block[axis] = len;
+        if updates_shape != &block[..] {
+            return Ok(None);
+        }
+
+        let mut patch = TypedModelPatch::new("ScatterNd as Slice/Concat");
+        let data_tap = patch.tap_model(model, node.inputs[0])?;
+        let mut parts = tvec!();
+        if start > 0 {
+            parts.push(
+                patch.wire_node(
+                    format!("{}.head", node.name),
+                    crate::ops::array::Slice::new(axis, 0, start),
+                    &[data_tap],
+                )?[0],
+            );
+        }
+        parts.push(patch.tap_model(model, node.inputs[2])?);
+        if start + len < data_shape[axis] {
+            parts.push(
+                patch.wire_node(
+                    format!("{}.tail", node.name),
+                    crate::ops::array::Slice::new(axis, start + len, data_shape[axis]),
+                    &[data_tap],
+                )?[0],
+            );
+        }
+        let wire = if parts.len() == 1 {
+            parts[0]
+        } else {
+            patch.wire_node(&node.name, crate::ops::array::TypedConcat::new(axis), &parts)?[0]
+        };
+        patch.shunt_outside(model, node.id.into(), wire)?;
+        Ok(Some(patch))
     }
 }
 
