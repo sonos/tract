@@ -135,13 +135,12 @@ impl WireBody for GRU {
         }
         wire!(ht = self.g.clone(), ht0);
 
-        // Ht = (1 - zt) (.) ht + zt (.) Ht-1
-        let one: OutletId =
-            body.add_const("one", tensor2(&[[1f32]]).cast_to_dt(dt)?.into_owned())?;
-        wire!(one_sub_zt = math::sub(), one, zt);
-        wire!(one_sub_zt_ht = math::mul(), one_sub_zt, ht);
-        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
-        wire!(Ht = math::add(), one_sub_zt_ht, zt_Ht_1);
+        // Ht = (1 - zt) (.) ht + zt (.) Ht-1, rearranged so every operand keeps the
+        // cell shape: a literal 1 is rank-1 and would broadcast on each element-wise
+        // step.
+        wire!(Ht_1_sub_ht = math::sub(), Ht_1, ht);
+        wire!(zt_Ht_1_sub_ht = math::mul(), zt, Ht_1_sub_ht);
+        wire!(Ht = math::add(), ht, zt_Ht_1_sub_ht);
 
         wire!(y_h = AxisOp::Add(1), Ht);
         body.select_output_outlets(&[y_h])?;
