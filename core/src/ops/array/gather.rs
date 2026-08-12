@@ -50,26 +50,28 @@ impl Gather {
 
         let block_len = data_shape[data_axis + 1..].iter().product::<usize>();
 
-        let can_block_copy = data_shape[..data_axis].iter().all(|&d| d == 1)
-            && output_shape[..data_axis].iter().all(|&d| d == 1)
+        // Both shapes agree on the axes before the gathered one, so one outer
+        // stride walks data and output together.
+        let outer_len = data_shape[..data_axis].iter().product::<usize>();
+        let can_block_copy = data_shape[..data_axis] == output_shape[..data_axis]
             && data_view.is_standard_layout()
             && output_view.is_standard_layout();
 
         if can_block_copy {
-            let mut out_offset = 0;
+            let axis_len = data_shape[data_axis];
             let input_slice = data_view.as_slice().unwrap();
             let output_slice = &mut output_view.as_slice_mut().unwrap();
-            for idx_coords in indices.indexed_iter() {
-                let index = *idx_coords.1;
-                let axis_len = data_shape[data_axis] as i64;
-                let resolved_index = if index < 0 { index + axis_len } else { index };
-                let resolved_index = resolved_index as usize;
-
-                let input_offset = resolved_index * block_len;
-
-                output_slice[out_offset..out_offset + block_len]
-                    .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
-                out_offset += block_len;
+            let mut out_offset = 0;
+            for outer in 0..outer_len {
+                let input_base = outer * axis_len * block_len;
+                for index in indices.iter() {
+                    let resolved_index =
+                        if *index < 0 { index + axis_len as i64 } else { *index } as usize;
+                    let input_offset = input_base + resolved_index * block_len;
+                    output_slice[out_offset..out_offset + block_len]
+                        .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
+                    out_offset += block_len;
+                }
             }
         } else {
             let ic_len = self.axis + 1 + output_shape.len() - (self.axis + indices.ndim());
@@ -88,8 +90,10 @@ impl Gather {
                 output_view[ocoords] =
                     data_view.get(&*icoords).cloned().context("Invalid gather")?;
             }
-            unsafe { output.set_datum_type(data.datum_type()) };
         }
+        // Tensor::uninitialized stamps the plain datum type, dropping any
+        // quantization the data carried.
+        unsafe { output.set_datum_type(data.datum_type()) };
         Ok(output)
     }
 
