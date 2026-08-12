@@ -2,6 +2,12 @@
 use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 
+/// f32 sigmoid, as a rational minimax fit of `sigmoid(x) - 0.5` over `[LOW, HIGH]`.
+///
+/// The sum is clamped to `[0, 1]` to keep the range consumers rely on: on either tail
+/// `p / q` approaches ±0.5 and the final `+ 0.5` cancels down to ~1e-8, below the ~6e-8
+/// f32 rounding error of `p / q` itself, so the sum can land just outside the interval.
+/// NaN still propagates.
 pub fn ssigmoid(x: f32) -> f32 {
     const LOW: f32 = -18.6;
     const HIGH: f32 = -LOW;
@@ -36,9 +42,13 @@ pub fn ssigmoid(x: f32) -> f32 {
     let q = x2 * q + BETA_2;
     let q = x2 * q + BETA_0;
 
-    p / q + 0.5
+    (p / q + 0.5).clamp(0.0, 1.0)
 }
 
+/// f16 sigmoid, as a rational minimax fit of `sigmoid(x) - 0.5` over `[LOW, HIGH]`.
+///
+/// Needs no output clamp, unlike [`ssigmoid`]: the `+ 0.5` cancellation stays inside
+/// (0, 1) for every non-NaN f16 input.
 pub fn hsigmoid(x: f16) -> f16 {
     /*
      * (x (0.249895 + x^2 (0.00400222 - 0.0000124702 x^2)))
