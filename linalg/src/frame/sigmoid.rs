@@ -62,6 +62,13 @@ pub mod test {
             }
 
             #[test]
+            fn sigmoid_range_on_tails() {
+                if $cond {
+                    $crate::frame::sigmoid::test::test_sigmoid_range::<$ker, $t>().unwrap()
+                }
+            }
+
+            #[test]
             fn sigmoid_asymptots() {
                 use tract_data::internal::*;
                 use $crate::frame::element_wise::*;
@@ -81,6 +88,18 @@ pub mod test {
                 }
             }
         };
+    }
+
+    /// Assert every output of a sigmoid kernel lands in `[0, 1]`, the range its consumers
+    /// rely on and which the tail cancellation of a `p / q + 0.5` kernel can step outside.
+    pub fn test_sigmoid_range<K: ElementWiseKer<T>, T: LADatum + Float>() -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+    {
+        crate::frame::element_wise::test::test_element_wise_invariant::<K, T>(
+            "a result in [0, 1]",
+            |_, y| y >= T::zero() && y <= T::one(),
+        )
     }
 
     pub fn test_sigmoid<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult

@@ -39,6 +39,13 @@ pub mod test {
                 }
             }
             #[test]
+            fn sign_on_tails() {
+                if $cond {
+                    $crate::frame::silu::test::test_silu_sign::<$ker, $t>().unwrap()
+                }
+            }
+
+            #[test]
             fn tails() {
                 if $cond {
                     $crate::frame::silu::test::test_silu::<$ker, $t>(&[
@@ -48,6 +55,19 @@ pub mod test {
                 }
             }
         };
+    }
+
+    /// Assert every output of a SiLU kernel carries the sign of its input: `SiLU(x) =
+    /// x * sigmoid(x)` and sigmoid is positive, so a sigmoid factor that dips below zero
+    /// flips the sign of the whole result.
+    pub fn test_silu_sign<K: ElementWiseKer<T>, T: LADatum + Float>() -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+    {
+        crate::frame::element_wise::test::test_element_wise_invariant::<K, T>(
+            "the sign of the input",
+            |x, y| if x < T::zero() { y <= T::zero() } else { y >= T::zero() },
+        )
     }
 
     pub fn test_silu<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
