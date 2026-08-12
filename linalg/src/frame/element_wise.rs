@@ -189,8 +189,54 @@ where
 #[cfg(test)]
 pub mod test {
     use crate::{LADatum, frame::element_wise::*};
+    use num_traits::AsPrimitive;
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
+
+    /// Every finite `f16`, or a 1/256 grid of `[-30, 30]` for wider types.
+    ///
+    /// The grid samples where the `f16` set is enumerated, but it reaches past the `±18.6`
+    /// input clamp the f32 kernels apply, so no input outside its bounds takes a path it
+    /// has not already exercised.
+    fn invariant_sweep<T: LADatum>() -> Vec<T>
+    where
+        f32: AsPrimitive<T>,
+    {
+        if T::datum_type() == f16::datum_type() {
+            let all: Vec<f16> =
+                (0..=u16::MAX).map(f16::from_bits).filter(|x| x.is_finite()).collect();
+            let all = tensor1(&all).cast_to::<T>().unwrap().into_owned();
+            return all.try_as_plain().unwrap().as_slice::<T>().unwrap().to_vec();
+        }
+        (-30 * 256..=30 * 256).map(|i| (i as f32 / 256.).as_()).collect()
+    }
+
+    /// Assert `invariant` holds of every `(input, output)` pair a kernel produces over
+    /// [`invariant_sweep`], reporting `expected` on the first pair that breaks it.
+    ///
+    /// The accuracy tests cannot stand in for this on the saturating tails: there the true
+    /// value is smaller than the rounding error of the kernels' own arithmetic, so an
+    /// output that violates the range or the sign still compares close to the reference.
+    pub fn test_element_wise_invariant<K: ElementWiseKer<T>, T: LADatum>(
+        expected: &str,
+        invariant: impl Fn(T, T) -> bool,
+    ) -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+    {
+        crate::setup_test_logger();
+        let values = invariant_sweep::<T>();
+        let mut found = values.clone();
+        K::ew().run(&mut found).unwrap();
+        for (x, y) in values.iter().zip(found.iter()) {
+            proptest::prop_assert!(
+                invariant(*x, *y),
+                "{}({x:?}) returned {y:?}, expected {expected}",
+                K::name()
+            );
+        }
+        Ok(())
+    }
 
     pub fn test_element_wise<K: ElementWiseKer<T, ()>, T: LADatum, F: Fn(T) -> T>(
         values: &[T],
