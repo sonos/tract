@@ -677,12 +677,15 @@ fn convert_q40_moe_ffn_to_metal(
             && facts[ix].shape[0] == num_experts
             && facts[ix].shape[1] == d_model
     });
+    // The Metal route-topk kernel scores at most 256 experts per token.
+    let experts_ok = num_experts.as_i64().is_some_and(|e| e <= 256);
     let facts_supported = x_rank_ok
         && x_dt_ok
         && wg_dt_ok
         && w1_q40
         && w2_q40
         && w3_q40
+        && experts_ok
         && wg_bias_ok
         && w1_bias_ok
         && w3_bias_ok

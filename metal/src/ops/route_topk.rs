@@ -25,6 +25,13 @@ impl MetalRouteTopK {
         // and so the route weights, stay full-precision f32 either way.
         ensure!(matches!(inputs[0].datum_type, DatumType::F32 | DatumType::F16));
         ensure!(inputs[1].datum_type == f32::datum_type());
+        // The kernel scores at most 256 experts per token; the conversion
+        // rule declines larger routers, this guards direct wiring.
+        let num_experts = &inputs[1].shape[inputs[1].rank() - 2];
+        ensure!(
+            num_experts.as_i64().is_some_and(|e| e <= 256),
+            "MetalRouteTopK supports at most 256 experts, got {num_experts}"
+        );
         if inputs.len() == 3 {
             ensure!(inputs[2].rank() == 1);
             ensure!(inputs[2].datum_type == f32::datum_type());
@@ -120,6 +127,11 @@ crate::register_metal_op!(RouteTopK, |source, node, op| {
     rule_if!(op.k <= 16);
     rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
     rule_if!(facts[1].datum_type == f32::datum_type());
+    // The kernel scores at most 256 experts per token: larger (or
+    // non-concrete) routers stay on the CPU op.
+    rule_if!(facts[1].rank() >= 2);
+    let num_experts = &facts[1].shape[facts[1].rank() - 2];
+    rule_if!(num_experts.as_i64().is_some_and(|e| e <= 256));
     Ok(Some(Box::new(MetalRouteTopK { k: op.k, gate: op.gate.clone() })))
 });
 
@@ -226,6 +238,21 @@ mod tests {
     #[test]
     fn graph_route_topk_gpt_oss_shape_2800_tokens() -> TractResult<()> {
         check_graph_sized(GateMode::SoftmaxTopk, true, 2800, 2880, 32, 4)
+    }
+
+    /// The Metal kernel scores at most 256 experts: the conversion rule must
+    /// decline larger routers so the model stays on the CPU op instead of
+    /// failing at eval.
+    #[test]
+    fn graph_route_topk_declines_over_256_experts() -> TractResult<()> {
+        let (model, _input) = make_model_sized(GateMode::SoftmaxTopk, false, 4, 32, 384, 4)?;
+        let mut transformed = model;
+        MetalTransform::default().transform(&mut transformed)?;
+        ensure!(
+            !transformed.nodes().iter().any(|node| node.op_is::<MetalRouteTopK>()),
+            "384-expert RouteTopK must stay on the CPU op"
+        );
+        Ok(())
     }
 
     #[test]
