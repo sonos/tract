@@ -161,36 +161,85 @@ pub fn sync_inputs_if_required(
 /// The matching outputs then yield opaque device tensors; the ToDevice sync
 /// on the paired input passes device tensors through untouched, closing the
 /// loop without any host round trip. Empty/unset keeps every output on host.
-fn device_resident_output_indexes() -> Vec<(usize, usize)> {
+fn parse_device_resident_output_spec(spec: &str) -> TractResult<Vec<(usize, usize)>> {
+    let mut ranges = vec![];
+    for entry in spec.split(',') {
+        let entry = entry.trim();
+        if entry.is_empty() {
+            continue;
+        }
+        let range = if let Some((a, b)) = entry.split_once('-') {
+            (a.trim().parse::<usize>(), b.trim().parse::<usize>())
+        } else {
+            let ix = entry.parse::<usize>();
+            (ix.clone(), ix)
+        };
+        let (Ok(a), Ok(b)) = range else {
+            bail!(
+                "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS: cannot parse entry {entry:?} in {spec:?} \
+                 (expected comma-separated output indexes, `a-b` inclusive ranges allowed)"
+            );
+        };
+        ensure!(
+            a <= b,
+            "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS: empty range {entry:?} in {spec:?} (start > end)"
+        );
+        ranges.push((a, b));
+    }
+    Ok(ranges)
+}
+
+fn device_resident_output_indexes() -> TractResult<Vec<(usize, usize)>> {
     let Ok(spec) = std::env::var("TRACT_GPU_DEVICE_RESIDENT_OUTPUTS") else {
-        return vec![];
+        return Ok(vec![]);
     };
-    spec.split(',')
-        .filter_map(|entry| {
-            let entry = entry.trim();
-            if entry.is_empty() {
-                return None;
-            }
-            if let Some((a, b)) = entry.split_once('-') {
-                Some((a.trim().parse().ok()?, b.trim().parse().ok()?))
-            } else {
-                let ix = entry.parse().ok()?;
-                Some((ix, ix))
-            }
-        })
-        .collect()
+    parse_device_resident_output_spec(&spec)
 }
 
 /// True when the caller declared this src-model output device-resident.
-pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> bool {
-    let ranges = device_resident_output_indexes();
+/// Errors (instead of silently keeping the ToHost sync, which would strip
+/// the loop-closing behavior for e.g. the logits output) on an unparseable
+/// spec or on indexes outside the model's output range.
+pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> TractResult<bool> {
+    let ranges = device_resident_output_indexes()?;
     if ranges.is_empty() {
-        return false;
+        return Ok(false);
     }
-    src.outputs
+    let output_count = src.outputs.len();
+    for &(_, b) in &ranges {
+        ensure!(
+            b < output_count,
+            "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS: output index {b} out of range \
+             (model has {output_count} outputs)"
+        );
+    }
+    static LOGGED: std::sync::Once = std::sync::Once::new();
+    LOGGED.call_once(|| {
+        log::info!("TRACT_GPU_DEVICE_RESIDENT_OUTPUTS resolved to output ranges {ranges:?}");
+    });
+    Ok(src
+        .outputs
         .iter()
         .position(|o| *o == outlet)
-        .is_some_and(|ix| ranges.iter().any(|(a, b)| (*a..=*b).contains(&ix)))
+        .is_some_and(|ix| ranges.iter().any(|(a, b)| (*a..=*b).contains(&ix))))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_device_resident_output_spec() -> TractResult<()> {
+        assert_eq!(parse_device_resident_output_spec("")?, vec![]);
+        assert_eq!(parse_device_resident_output_spec("2")?, vec![(2, 2)]);
+        assert_eq!(parse_device_resident_output_spec("1-80,82")?, vec![(1, 80), (82, 82)]);
+        assert_eq!(parse_device_resident_output_spec(" 1 - 3 , 5 ")?, vec![(1, 3), (5, 5)]);
+        assert!(parse_device_resident_output_spec("1-x").is_err());
+        assert!(parse_device_resident_output_spec("abc").is_err());
+        assert!(parse_device_resident_output_spec("1;2").is_err());
+        assert!(parse_device_resident_output_spec("5-2").is_err());
+        Ok(())
+    }
 }
 
 /// For model outputs that are on device, insert DeviceSync nodes to move them back to host.
@@ -206,7 +255,7 @@ pub fn sync_model_outputs_if_required(
         let is_src_output = src.outputs.contains(&src_outlet);
         if target.outlet_fact(o)?.as_device_fact().is_some()
             && is_src_output
-            && !is_device_resident_output(src, src_outlet)
+            && !is_device_resident_output(src, src_outlet)?
         {
             let sync_output = target.wire_node(
                 format!("{}.to-host-{o_idx}-out", node.name),
