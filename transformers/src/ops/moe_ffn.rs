@@ -1339,6 +1339,54 @@ fn block_quant_group_tensor(input: &Tensor, group: usize) -> TractResult<Tensor>
     Ok(storage.into_tensor_with_shape(input.datum_type(), &[m, k]))
 }
 
+/// Transposes each expert matrix of a rank-3 block-quant tensor [G,A,B] into
+/// [G,B,A], requantizing along the new innermost axis. This maps the
+/// canonical expert layout (w1/w3 [E,D,H], w2 [E,H,D]) to the linear layout
+/// (w1/w3 [E,H,D], w2 [E,D,H]) the routed Q40 kernels consume. Because Q4_0
+/// blocks run along the innermost axis, the transpose regroups values under
+/// new block scales: the result carries requantization noise of the same
+/// order as the original quantization (it is NOT a pure byte shuffle).
+pub fn transpose_block_quant_experts(input: &Tensor) -> TractResult<Tensor> {
+    let shape = input.shape();
+    ensure!(shape.len() == 3, "expected a rank-3 expert tensor, got {shape:?}");
+    let (g, a, b) = (shape[0], shape[1], shape[2]);
+    let bqs = input.try_storage_as::<BlockQuantStorage>()?;
+    let exotic_fact = input.exotic_fact()?.context("block-quant tensor has no exotic fact")?;
+    let bqf = exotic_fact
+        .downcast_ref::<BlockQuantFact>()
+        .context("block-quant tensor has no BlockQuantFact")?;
+    let format = bqf.format.clone();
+    let block_len = format.block_len();
+    ensure!(
+        a % block_len == 0 && b % block_len == 0,
+        "cannot transpose block-quant experts {shape:?}: both matrix axes must be multiples of the block length {block_len}"
+    );
+
+    let out_row_bytes = a / block_len * format.block_bytes();
+    let out_group_bytes = b * out_row_bytes;
+    let mut out = vec![0u8; g * out_group_bytes];
+    let mut transposed = vec![0f32; a * b];
+    for group in 0..g {
+        let q = block_quant_slice(bqs.value(), &*format, a, b, group);
+        let deq_t = format.dequant_f32(q)?;
+        let deq = deq_t.try_as_plain()?.as_slice::<f32>()?;
+        for i in 0..a {
+            for j in 0..b {
+                transposed[j * a + i] = deq[i * b + j];
+            }
+        }
+        let qt = format.quant_f32(&transposed)?;
+        out[group * out_group_bytes..][..out_group_bytes].copy_from_slice(&qt);
+    }
+    let storage = BlockQuantStorage::new(
+        format,
+        g * b,
+        a,
+        Arc::new(Blob::from_bytes_alignment(&out, 128)?),
+    )?;
+    Ok(storage.into_tensor_with_shape(input.datum_type(), &[g, b, a]))
+}
+
 fn concat_block_quant_rows(lhs: &Tensor, rhs: &Tensor) -> TractResult<Tensor> {
     let lhs_shape = lhs.shape();
     let rhs_shape = rhs.shape();
