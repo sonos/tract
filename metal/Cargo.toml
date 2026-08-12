@@ -26,7 +26,6 @@ log.workspace = true
 metal.workspace = true
 objc = { version = "0.2.7" }
 num-traits.workspace = true
-serde_json.workspace = true
 tract-core.workspace = true
 tract-pulse-opl.workspace = true
 tract-transformers.workspace = true

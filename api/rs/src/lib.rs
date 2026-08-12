@@ -354,44 +354,6 @@ pub fn hint_metal_commit_cadence(every_n_dispatches: usize) -> Result<()> {
     }
 }
 
-/// Select the Metal autotune-cache model section this process should apply
-/// (e.g. `"hybrid-gdn"`), on top of the cache's device-wide section. The
-/// cache is a JSON file written offline by a sweep tool (default location
-/// `~/.cache/tract/tuning/<sanitized-device-name>.json`, overridable via
-/// `TRACT_METAL_TUNING_CACHE`); a no-op when no cache exists or it has no
-/// such section. Must be called before the runtime's first Metal dispatch
-/// (i.e. before `Runtime::prepare`); fails afterwards. Env vars and
-/// programmatic hints still win over the cache. No-op on non-Apple targets.
-pub fn hint_metal_tuning_model_key(key: &str) -> Result<()> {
-    #[cfg(target_vendor = "apple")]
-    {
-        tract_metal::set_tuning_model_key(key)
-    }
-    #[cfg(not(target_vendor = "apple"))]
-    {
-        let _ = key;
-        Ok(())
-    }
-}
-
-/// The name of the system default Metal device (e.g. `"Apple M4 Pro"`), and
-/// the autotune cache path a tract session would read for it (whether or not
-/// the file exists). Offline tuning tools use this to write the cache where
-/// sessions will look for it. `None` on non-Apple targets, without a Metal
-/// device, or when `HOME` is unset.
-pub fn metal_tuning_cache_location() -> Option<(String, std::path::PathBuf)> {
-    #[cfg(target_vendor = "apple")]
-    {
-        let name = tract_metal::current_device_name()?;
-        let path = tract_metal::autotune_cache_default_path(&name)?;
-        Some((name, path))
-    }
-    #[cfg(not(target_vendor = "apple"))]
-    {
-        None
-    }
-}
-
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 

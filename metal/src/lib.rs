@@ -20,10 +20,7 @@ pub use crate::kernels::matmul::MetalGemmImplKind;
 
 pub use crate::context::{MetalContext, MetalStream, with_metal_stream};
 pub use crate::transform::MetalTransform;
-pub use crate::tuning::{
-    AutotuneCache, MetalTuning, MetalTuningOverrides, autotune_cache_default_path,
-    current_device_name, sanitize_device_name, set_tuning_model_key, set_tuning_overrides,
-};
+pub use crate::tuning::{MetalTuning, MetalTuningOverrides, set_tuning_overrides};
 
 #[derive(Debug)]
 struct MetalRuntime;
