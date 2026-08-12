@@ -302,10 +302,10 @@ typedef struct {
 } moe_block_q8_0;
 
 // Quantize rows of an f16 buffer into q8_0 blocks: KV-cache shadow
-// maintenance for the GPT-OSS fused attention. Grid (heads, rows, blocks
+// maintenance for the fused attention (FusedSdpa). Grid (heads, rows, blocks
 // from b0); one simdgroup per block; elements past `valid` (from row start)
 // quantize to zero so gemvs over padded lengths read exact zeros.
-[[kernel]] void gpt_oss_kv_quantize_q8_0(
+[[kernel]] void kv_quantize_q8_0(
     device const half *src [[buffer(0)]],
     device char *dst [[buffer(1)]],
     constant uint &src_head_stride [[buffer(2)]],
@@ -367,7 +367,7 @@ typedef struct {
 
 // Sum split-k gemv partials over the chunk axis:
 // out[head][i] = sum_c partial[(head*chunks + c)][i], i over m*n.
-[[kernel]] void gpt_oss_sum_chunks_f16(
+[[kernel]] void sum_chunks_f16(
     device const half *partials [[buffer(0)]],
     device half *out [[buffer(1)]],
     constant uint &heads [[buffer(2)]],
@@ -388,7 +388,7 @@ typedef struct {
     out[gid] = (half)acc;
 }
 
-// Fused flash-attention decode for GPT-OSS, two phases sharing K/V reads
+// Fused flash-attention decode for FusedSdpa, two phases sharing K/V reads
 // across the GQA group (each key is streamed once per KV head, serving all
 // `group` q heads at once).
 //
@@ -412,7 +412,7 @@ constant uint FC_DPL [[function_constant(1)]];
 // write the output row directly, skipping the merge dispatch entirely.
 constant bool FC_FUSE_MERGE [[function_constant(2)]];
 
-[[kernel]] void gpt_oss_flash_attn_part_f16(
+[[kernel]] void fused_sdpa_flash_attn_part_f16(
     device const half *q [[buffer(0)]],
     device const half *k [[buffer(1)]],
     device const half *v [[buffer(2)]],
@@ -588,7 +588,7 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
 }
 
 // Phase 2: one threadgroup (single simdgroup) per output row.
-[[kernel]] void gpt_oss_flash_attn_merge_f16(
+[[kernel]] void fused_sdpa_flash_attn_merge_f16(
     device const float *partials [[buffer(0)]],
     device const float *sinks [[buffer(1)]],
     device half *out [[buffer(2)]],
@@ -624,11 +624,11 @@ constant bool FC_FUSE_MERGE [[function_constant(2)]];
     }
 }
 
-// Row softmax for GPT-OSS attention: probs = softmax over T keys of
+// Row softmax for the fused attention: probs = softmax over T keys of
 // (score*scale + mask[row % s_len]) with a per-head SINK logit participating
 // in the denominator only. Rows are [num_q_heads, s_len] flattened; one
 // threadgroup per row.
-[[kernel]] void gpt_oss_sinks_softmax_f16(
+[[kernel]] void sinks_softmax_f16(
     device const half *scores [[buffer(0)]],
     device const float *mask [[buffer(1)]],
     device const float *sinks [[buffer(2)]],

@@ -259,7 +259,7 @@ pub fn dispatch_routed_combine_f32(
 /// maintenance). Strides in elements / blocks; `valid` elements from row
 /// start, blocks beyond it quantize to zero.
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_gpt_oss_kv_quantize_q8_0(
+pub fn dispatch_kv_quantize_q8_0(
     stream: &MetalStream,
     src: &DeviceTensor,
     dst: &DeviceTensor,
@@ -278,7 +278,7 @@ pub fn dispatch_gpt_oss_kv_quantize_q8_0(
     stream.retain_tensor(src);
     stream.retain_tensor(dst);
     ensure!(src.datum_type() == f16::datum_type());
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_kv_quantize_q8_0")?;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "kv_quantize_q8_0")?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -342,7 +342,7 @@ pub fn dispatch_routed_bias_add_f32(
 }
 
 /// Sum split-k gemv partials over the chunk axis into the final output.
-pub fn dispatch_gpt_oss_sum_chunks_f16(
+pub fn dispatch_sum_chunks_f16(
     stream: &MetalStream,
     partials: &DeviceTensor,
     out: &DeviceTensor,
@@ -352,7 +352,7 @@ pub fn dispatch_gpt_oss_sum_chunks_f16(
 ) -> TractResult<()> {
     stream.retain_tensor(partials);
     stream.retain_tensor(out);
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_sum_chunks_f16")?;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "sum_chunks_f16")?;
     let total = heads * plane;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
@@ -400,7 +400,7 @@ pub fn flash_attn_scratch_len(hq: usize, s_len: usize, t_len: usize, d: usize) -
 
 const FLASH_SG: usize = 8;
 
-pub fn dispatch_gpt_oss_flash_attn_f16(
+pub fn dispatch_fused_sdpa_flash_attn_f16(
     stream: &MetalStream,
     q: &DeviceTensor,
     k: &DeviceTensor,
@@ -409,10 +409,10 @@ pub fn dispatch_gpt_oss_flash_attn_f16(
     sinks: &DeviceTensor,
     out: &DeviceTensor,
     scratch: &DeviceTensor,
-    dims: GptOssFlashAttnDims,
+    dims: FlashAttnDims,
     scale: f32,
 ) -> TractResult<()> {
-    let GptOssFlashAttnDims {
+    let FlashAttnDims {
         hq,
         s_len,
         t_len,
@@ -458,7 +458,7 @@ pub fn dispatch_gpt_oss_flash_attn_f16(
     ]);
     let part = stream.load_pipeline_with_constants(
         LibraryName::MoeOps,
-        "gpt_oss_flash_attn_part_f16",
+        "fused_sdpa_flash_attn_part_f16",
         Some(constants),
     )?;
     let command_buffer = stream.command_buffer();
@@ -491,7 +491,7 @@ pub fn dispatch_gpt_oss_flash_attn_f16(
     if fuse_merge {
         return Ok(());
     }
-    let merge = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_flash_attn_merge_f16")?;
+    let merge = stream.load_pipeline(LibraryName::MoeOps, "fused_sdpa_flash_attn_merge_f16")?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&merge);
@@ -510,7 +510,7 @@ pub fn dispatch_gpt_oss_flash_attn_f16(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GptOssFlashAttnDims {
+pub struct FlashAttnDims {
     pub hq: usize,
     pub s_len: usize,
     pub t_len: usize,
@@ -524,7 +524,7 @@ pub struct GptOssFlashAttnDims {
     pub v_seq_stride: usize,
 }
 
-pub fn dispatch_gpt_oss_sinks_softmax_f16(
+pub fn dispatch_sinks_softmax_f16(
     stream: &MetalStream,
     scores: &DeviceTensor,
     mask: &DeviceTensor,
@@ -556,7 +556,7 @@ pub fn dispatch_gpt_oss_sinks_softmax_f16(
     ensure!(rows % s_len == 0, "rows {rows} not a multiple of s_len {s_len}");
     ensure!(mask.len() >= s_len * t_len, "mask too small");
 
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "gpt_oss_sinks_softmax_f16")?;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "sinks_softmax_f16")?;
     let group_width = (pipeline.max_total_threads_per_threadgroup() as u64).min(256);
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
@@ -741,7 +741,7 @@ mod sinks_softmax_tests {
             let sinks_dev = Tensor::from_shape(&[hq], &sinks)?.into_device()?;
             let probs_dev = DeviceTensor::uninitialized_dt(f16::datum_type(), &[rows, t_len])?;
 
-            dispatch_gpt_oss_sinks_softmax_f16(
+            dispatch_sinks_softmax_f16(
                 stream, &scores_dev, &mask_dev, &sinks_dev, &probs_dev, s_len, scale, t_len, 0,
                 t_len,
             )?;
@@ -800,7 +800,7 @@ mod flash_attn_bench {
                     &[flash_attn_scratch_len(hq, 1, t, d)],
                 )?
             };
-            let dims = GptOssFlashAttnDims {
+            let dims = FlashAttnDims {
                 hq,
                 s_len: 1,
                 t_len: t,
@@ -812,7 +812,7 @@ mod flash_attn_bench {
             };
             // warmup
             for _ in 0..10 {
-                dispatch_gpt_oss_flash_attn_f16(
+                dispatch_fused_sdpa_flash_attn_f16(
                     stream, &q, &k, &v, &mask, &sinks, &out, &scratch, dims, 0.125,
                 )?;
             }
@@ -820,7 +820,7 @@ mod flash_attn_bench {
             let start = std::time::Instant::now();
             const N: usize = 200;
             for _ in 0..N {
-                dispatch_gpt_oss_flash_attn_f16(
+                dispatch_fused_sdpa_flash_attn_f16(
                     stream, &q, &k, &v, &mask, &sinks, &out, &scratch, dims, 0.125,
                 )?;
             }

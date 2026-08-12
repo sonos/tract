@@ -33,8 +33,8 @@ use crate::kernels::matmul::{
     GemmDispatchParams, GemmKernel, GgmlGemm, dispatch_mul_mv_f16_split_k, dispatch_mul_mv_q8_0,
 };
 use crate::kernels::moe::{
-    GptOssFlashAttnDims, dispatch_gpt_oss_flash_attn_f16, dispatch_gpt_oss_kv_quantize_q8_0,
-    dispatch_gpt_oss_sinks_softmax_f16, dispatch_gpt_oss_sum_chunks_f16, flash_attn_scratch_len,
+    FlashAttnDims, dispatch_fused_sdpa_flash_attn_f16, dispatch_kv_quantize_q8_0,
+    dispatch_sinks_softmax_f16, dispatch_sum_chunks_f16, flash_attn_scratch_len,
     dispatch_sdpa_prefill_block_softmax_f16, dispatch_sdpa_prefill_finalize_f16,
     dispatch_sdpa_prefill_rescale_acc_f32,
 };
@@ -416,7 +416,7 @@ impl DeviceKvBuffer {
                 // rows = dims, blocks along seq covering [from..len)
                 let b0 = from / Q8_BLOCK;
                 let b1 = self.len.div_ceil(Q8_BLOCK);
-                dispatch_gpt_oss_kv_quantize_q8_0(
+                dispatch_kv_quantize_q8_0(
                     stream,
                     &src,
                     &dst,
@@ -434,7 +434,7 @@ impl DeviceKvBuffer {
                 )
             } else {
                 // rows = tokens [from..len), full d per row
-                dispatch_gpt_oss_kv_quantize_q8_0(
+                dispatch_kv_quantize_q8_0(
                     stream,
                     &src,
                     &dst,
@@ -652,7 +652,7 @@ impl OpState for MetalFusedSdpaState {
                     0,
                     t_pad,
                 )?;
-                dispatch_gpt_oss_sinks_softmax_f16(
+                dispatch_sinks_softmax_f16(
                     stream,
                     &scores_all,
                     &mask_2d,
@@ -695,7 +695,7 @@ impl OpState for MetalFusedSdpaState {
                         )?
                     });
                 }
-                return dispatch_gpt_oss_flash_attn_f16(
+                return dispatch_fused_sdpa_flash_attn_f16(
                     stream,
                     &q_a,
                     &k_b,
@@ -704,7 +704,7 @@ impl OpState for MetalFusedSdpaState {
                     &sinks_flat,
                     &out_all,
                     self.flash_scratch.as_ref().unwrap(),
-                    GptOssFlashAttnDims {
+                    FlashAttnDims {
                         hq,
                         s_len,
                         t_len,
@@ -890,7 +890,7 @@ impl OpState for MetalFusedSdpaState {
                 get_metal_buffer(&scores_all),
             )?;
             // Fused scale+mask+sinks softmax over all rows at once.
-            dispatch_gpt_oss_sinks_softmax_f16(
+            dispatch_sinks_softmax_f16(
                 stream,
                 &scores_all,
                 &mask_2d,
@@ -926,7 +926,7 @@ impl OpState for MetalFusedSdpaState {
                     m,
                     &partial_all,
                 )?;
-                dispatch_gpt_oss_sum_chunks_f16(
+                dispatch_sum_chunks_f16(
                     stream,
                     &partial_all,
                     &out_all,
