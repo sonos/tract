@@ -6,25 +6,40 @@ use tract_core::internal::*;
 #[derive(Debug, Clone)]
 pub struct DeviceSessionHandler {
     pub mem_schema: DeviceMemSchema,
+    /// Set once the arena-resolution failure has been reported, so a decode
+    /// loop does not log the same error on every step.
+    arena_failure_logged: Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl DeviceSessionHandler {
     pub fn from_plan(plan: &TypedSimplePlan, memory_hint: &SymbolValues) -> TractResult<Self> {
         let mem_schema =
             DeviceMemSchema::build(plan.model(), plan.order_without_consts(), memory_hint)?;
-        Ok(Self { mem_schema })
+        Ok(Self { mem_schema, arena_failure_logged: Arc::new(false.into()) })
     }
 }
 
 impl SessionStateHandler for DeviceSessionHandler {
     fn before_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()> {
         // A schema that cannot be resolved yet (e.g. a symbol only known
-        // mid-eval) is a performance loss, not an error: ops fall back to
-        // per-node allocation when no memory pool is installed.
+        // mid-eval) is not a correctness error: ops fall back to per-node
+        // allocation when no memory pool is installed. It is a heavy
+        // performance loss though, so report it loudly (once per session),
+        // and hard-error under TRACT_GPU_STRICT_ARENA=1.
         let resolved_mem_schema = match self.mem_schema.resolve(&session_state.resolved_symbols) {
             Ok(schema) => schema,
             Err(e) => {
-                log::warn!("Device memory arena disabled for this run: {e}");
+                if std::env::var("TRACT_GPU_STRICT_ARENA").is_ok_and(|v| v == "1") {
+                    return Err(e.context(
+                        "TRACT_GPU_STRICT_ARENA=1: device memory arena resolution failed",
+                    ));
+                }
+                if !self.arena_failure_logged.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                    log::error!(
+                        "Device memory arena disabled for this session, ops fall back to \
+                         per-node allocations (expect a performance loss): {e:?}"
+                    );
+                }
                 return Ok(());
             }
         };
