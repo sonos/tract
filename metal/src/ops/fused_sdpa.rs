@@ -54,21 +54,27 @@ fn env_flag_with_legacy(new: &str, legacy: &str) -> bool {
 }
 
 /// Step sizes up to this may run the fused flash-attention kernel; larger
-/// (prefill-sized) steps always use the batched-gemm pipeline.
+/// (prefill-sized) steps always use the batched-gemm pipeline. Structural
+/// (what the fused kernel supports), not a tuned threshold.
 const FLASH_MAX_S: usize = 8;
-/// Context length where flash decode takes over from the batched gemms.
-/// Benchmarked 2026-08-05 on gpt-oss-20b (M-series): the batched
-/// GGML mm/gemv pipeline beat the flash kernel at every length tried (74,
-/// 2800, 5.6k, 11k ctx: e.g. 24.3 vs 21.1 tok/s at 11k), so flash is
-/// disabled by default and kept for future tuning. Enable with
-/// TRACT_METAL_FLASH_SDPA_MIN_T=<t>.
-const FLASH_MIN_T: usize = usize::MAX;
 
+/// Context length where flash decode takes over from the batched gemms. See
+/// [`crate::tuning::MetalTuning::flash_sdpa_min_t`]
+/// (`TRACT_METAL_FLASH_SDPA_MIN_T`; disabled by default).
 fn flash_min_t() -> usize {
-    env_with_legacy("TRACT_METAL_FLASH_SDPA_MIN_T", "TRACT_METAL_GPT_OSS_FLASH_MIN_T")
-        .and_then(|v| v.into_string().ok())
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(FLASH_MIN_T)
+    #[cfg(test)]
+    if FLASH_MIN_T_TEST_OVERRIDE.with(|c| c.get()) {
+        return 0;
+    }
+    crate::tuning::tuning().flash_sdpa_min_t
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Per-thread flash forcing (min_t = 0) so tests exercise the flash
+    /// decode path at test-sized T without racing other tests through the
+    /// process environment or the resolve-once tuning profile.
+    static FLASH_MIN_T_TEST_OVERRIDE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 /// q8_0 KV shadow for decode attention (KIVI-style bandwidth cut): the f16
@@ -93,13 +99,10 @@ thread_local! {
 
 const Q8_BLOCK: usize = 32;
 const Q8_BLOCK_BYTES: usize = 34;
-/// Key-block size of the block-wise prefill attention: prefill steps whose
-/// effective key length exceeds this loop key-blocks through a fixed scores
-/// buffer with a running-max/denominator f32 state instead of materializing
-/// the full [Hkv, group*S, T] scores/probs (which near 50k context reaches
-/// GBs per layer, touched 3-4 times). 0 disables.
-const SDPA_PREFILL_BLOCK: usize = 4096;
 
+/// Key-block size of the block-wise prefill attention, 0 disables. See
+/// [`crate::tuning::MetalTuning::sdpa_prefill_block`]
+/// (`TRACT_METAL_SDPA_PREFILL_BLOCK`).
 fn sdpa_prefill_block() -> usize {
     #[cfg(test)]
     {
@@ -108,10 +111,7 @@ fn sdpa_prefill_block() -> usize {
             return v;
         }
     }
-    std::env::var("TRACT_METAL_SDPA_PREFILL_BLOCK")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(SDPA_PREFILL_BLOCK)
+    crate::tuning::tuning().sdpa_prefill_block
 }
 
 #[cfg(test)]
@@ -120,13 +120,16 @@ thread_local! {
     /// prefill at test-sized T without racing the process environment.
     static SDPA_BLOCK_TEST_OVERRIDE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
-/// Context length where the decode AV gemv switches to split-k (partial
-/// sums over key chunks + a small reduce). Measured crossover vs the plain
-/// batched gemv on gpt-oss-20b/M-series: plain wins to ~5.6k (52.6 vs 47.5
-/// @2800), split-k wins beyond (39.2 vs 37.6 @11k).
-const SPLIT_K_MIN_T: usize = 8192;
-/// Target keys per split-k chunk.
-const SPLIT_K_CHUNK: usize = 2048;
+/// Context length where the decode AV gemv switches to split-k, and target
+/// keys per split-k chunk. See
+/// [`crate::tuning::MetalTuning::sdpa_split_k_min_t`] and
+/// [`crate::tuning::MetalTuning::sdpa_split_k_chunk`].
+fn split_k_min_t() -> usize {
+    crate::tuning::tuning().sdpa_split_k_min_t
+}
+fn split_k_chunk() -> usize {
+    crate::tuning::tuning().sdpa_split_k_chunk
+}
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalFusedSdpa {
@@ -857,13 +860,13 @@ impl OpState for MetalFusedSdpaState {
             // pad and the cache tail is allocated zeroed, so padded reads
             // contribute exact zeros.
             let split_k = if s_len <= FLASH_MAX_S
-                && t_eff >= SPLIT_K_MIN_T
+                && t_eff >= split_k_min_t()
                 && !env_flag_with_legacy(
                     "TRACT_METAL_DISABLE_SDPA_SPLIT_K",
                     "TRACT_METAL_DISABLE_GPT_OSS_SPLIT_K",
                 )
             {
-                let chunks = t_eff.div_ceil(SPLIT_K_CHUNK).clamp(2, 16);
+                let chunks = t_eff.div_ceil(split_k_chunk()).clamp(2, 16);
                 let k_chunk = t_eff.div_ceil(chunks).next_multiple_of(Q8_BLOCK);
                 let t_ck = chunks * k_chunk;
                 (j0 + t_ck <= self.k.cap).then_some((chunks, k_chunk, t_ck))
@@ -1258,7 +1261,7 @@ mod tests {
         run_metal_vs_cpu(16, 16, 128, &[256, 1, 1, 600, 1], usize::MAX, false)
     }
 
-    /// head_dim 256 decode past the split-k threshold (SPLIT_K_MIN_T = 8192):
+    /// head_dim 256 decode past the split-k threshold (baseline 8192):
     /// the split-k AV gemv + sum-chunks path had only ever run at d = 64.
     /// Reduced head count keeps the CPU reference affordable.
     #[test]
@@ -1443,12 +1446,12 @@ mod tests {
     }
 
     /// Force decode steps onto the flash path regardless of context length,
-    /// so the CPU-comparison tests exercise it at test-sized T. All tests
-    /// setting this use the same value, so parallel execution is safe; the
-    /// gemm decode path is covered by the TRACT_METAL_DISABLE_FLASH_SDPA
-    /// suite run.
+    /// so the CPU-comparison tests exercise it at test-sized T (per-thread
+    /// override: the resolve-once tuning profile cannot be changed after
+    /// first use, and env writes would race parallel tests). The gemm decode
+    /// path is covered by the TRACT_METAL_DISABLE_FLASH_SDPA suite run.
     fn force_flash_for_tests() {
-        unsafe { std::env::set_var("TRACT_METAL_FLASH_SDPA_MIN_T", "0") };
+        FLASH_MIN_T_TEST_OVERRIDE.with(|c| c.set(true));
     }
 
     fn run_metal_vs_cpu(

@@ -123,10 +123,7 @@ impl EvalOp for MetalRoutedQ40SwiGlu {
             )?;
             // Same prefill-only command-buffer boundary as
             // MetalRoutedQ40MatMul (see that op).
-            let min_routes = std::env::var("TRACT_METAL_MOE_COMMIT_MIN_ROUTES")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(64);
+            let min_routes = crate::tuning::tuning().moe_commit_min_routes;
             if self.sync_after_dispatch && route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }

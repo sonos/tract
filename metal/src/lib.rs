@@ -8,6 +8,7 @@ mod rewrite_rules;
 mod tensor;
 mod tests;
 mod transform;
+pub mod tuning;
 mod utils;
 
 use tract_core::internal::*;
@@ -19,6 +20,7 @@ pub use crate::kernels::matmul::MetalGemmImplKind;
 
 pub use crate::context::{MetalContext, MetalStream, with_metal_stream};
 pub use crate::transform::MetalTransform;
+pub use crate::tuning::{MetalTuning, MetalTuningOverrides, set_tuning_overrides};
 
 #[derive(Debug)]
 struct MetalRuntime;

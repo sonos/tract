@@ -111,25 +111,17 @@ pub struct MetalContext {
 }
 
 impl MetalContext {
-    const MAX_POOLED_PER_KEY: usize = 16;
+    /// Cap on recycled buffers per exact (dtype, shape) key. See
+    /// [`crate::tuning::MetalTuning::max_pooled_per_key`].
+    fn max_pooled_per_key() -> usize {
+        crate::tuning::tuning().max_pooled_per_key
+    }
 
-    /// Hard cap on recycled bytes. The budget must hold the session memory
-    /// arena (recycled once per decode step, tens to hundreds of MB at long
-    /// context) with room to spare for the small fixed-shape transients;
-    /// entries beyond it are evicted oldest-first, so stale shapes from a
-    /// grown context cannot pin wired memory forever (unbounded pinning is
-    /// what used to slow the weight-streaming kernels when large buffers
-    /// were pooled without eviction).
+    /// Hard cap on recycled bytes, oldest-first eviction beyond it. See
+    /// [`crate::tuning::MetalTuning::pool_max_bytes`]
+    /// (`TRACT_METAL_POOL_MAX_MB`).
     fn max_pooled_bytes() -> usize {
-        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        *N.get_or_init(|| {
-            std::env::var("TRACT_METAL_POOL_MAX_MB")
-                .ok()
-                .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(512)
-                * 1024
-                * 1024
-        })
+        crate::tuning::tuning().pool_max_bytes
     }
 
     fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
@@ -213,7 +205,7 @@ impl MetalContext {
             }
         }
         let entry = pool.entry((dt, TVec::from_slice(host.shape()))).or_default();
-        if entry.len() >= Self::MAX_POOLED_PER_KEY {
+        if entry.len() >= Self::max_pooled_per_key() {
             return;
         }
         let stamp = self.pool_stamp.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -485,7 +477,8 @@ pub struct MetalStream {
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
     /// `command_buffer()` acquisitions since the last cadence commit; only
-    /// maintained when TRACT_METAL_COMMIT_EVERY_N_DISPATCHES is set.
+    /// maintained when the resolved commit cadence is non-zero
+    /// (`MetalTuning::commit_every_n_dispatches`).
     dispatches_since_commit: std::cell::Cell<usize>,
 }
 
@@ -551,22 +544,14 @@ impl MetalStream {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
-    /// Commit cadence: split the token/forward into command buffers every N
-    /// `command_buffer()` acquisitions (roughly every N kernel dispatches), so
-    /// the GPU starts executing early layers while the CPU still encodes late
-    /// ones. 0 disables the cadence (single buffer per forward, plus whatever
-    /// boundaries ops request themselves). Callers with fn-local scratch
-    /// tensors must re-retain them after encoding (see
+    /// Commit cadence, 0 = disabled. See
+    /// [`crate::tuning::MetalTuning::commit_every_n_dispatches`]
+    /// (`TRACT_METAL_COMMIT_EVERY_N_DISPATCHES`). Callers with fn-local
+    /// scratch tensors must re-retain them after encoding (see
     /// `dispatch_route_topk_f32`): a cadence commit moves the retained list
     /// onto the buffer being closed.
     fn commit_every_n_dispatches() -> usize {
-        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        *N.get_or_init(|| {
-            std::env::var("TRACT_METAL_COMMIT_EVERY_N_DISPATCHES")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0)
-        })
+        crate::tuning::tuning().commit_every_n_dispatches
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
@@ -612,25 +597,11 @@ impl MetalStream {
     }
 
     /// How many committed-but-unawaited buffers `commit_current` keeps in
-    /// flight (TRACT_METAL_MAX_IN_FLIGHT). The wait on the oldest buffer is
-    /// the backpressure that bounds transient memory (without it, a
-    /// long-context forward retains every layer's transients at once and
-    /// thrashes). Depth 2 already overlaps CPU encoding with GPU execution,
-    /// but any encode hiccup then drains the queue and the GPU idles between
-    /// buffers (~2.8 ms/step measured on qwen35-35B decode at cadence 10,
-    /// ~115 buffers/step). Depth 8 absorbs the jitter (+5 tok/s on that
-    /// model, +4 at 11k ctx) while transients stay bounded: post-arena they
-    /// are almost all views into the session arena, so deeper retention
-    /// holds Arc clones, not extra wired memory.
+    /// flight. See
+    /// [`crate::tuning::MetalTuning::max_command_buffers_in_flight`]
+    /// (`TRACT_METAL_MAX_IN_FLIGHT`).
     fn max_committed_in_flight() -> usize {
-        static N: std::sync::OnceLock<usize> = std::sync::OnceLock::new();
-        *N.get_or_init(|| {
-            std::env::var("TRACT_METAL_MAX_IN_FLIGHT")
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .filter(|&n| n >= 1)
-                .unwrap_or(8)
-        })
+        crate::tuning::tuning().max_command_buffers_in_flight
     }
 
     /// Commit the current command buffer without blocking the CPU on its

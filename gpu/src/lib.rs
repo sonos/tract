@@ -6,4 +6,5 @@ pub mod rewrite_rules;
 pub mod session_handler;
 pub mod sync;
 pub mod tensor;
+pub mod tuning;
 pub mod utils;

@@ -330,6 +330,30 @@ impl Model {
     }
 }
 
+/// Hint the Metal runtime's command-buffer commit cadence: split each
+/// forward into command buffers every `every_n_dispatches` kernel dispatches
+/// so the GPU executes early layers while the CPU still encodes late ones
+/// (0 = single buffer per forward). The right value is model-shaped:
+/// hybrid-attention models (many small dispatches per token) want ~10, while
+/// dense-KV models lose under any cadence, hence no global default. The
+/// `TRACT_METAL_COMMIT_EVERY_N_DISPATCHES` env var, when set, wins over this
+/// hint. Must be called before the runtime's first Metal dispatch (i.e.
+/// before `Runtime::prepare`); fails afterwards. No-op on non-Apple targets.
+pub fn hint_metal_commit_cadence(every_n_dispatches: usize) -> Result<()> {
+    #[cfg(target_vendor = "apple")]
+    {
+        tract_metal::set_tuning_overrides(tract_metal::MetalTuningOverrides {
+            commit_every_n_dispatches: Some(every_n_dispatches),
+            ..Default::default()
+        })
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        let _ = every_n_dispatches;
+        Ok(())
+    }
+}
+
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 

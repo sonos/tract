@@ -700,14 +700,14 @@ pub fn dispatch_routed_q40_f32(
     // threadgroup amortize every weight read across 32 routes of one expert.
     // The per-route kernel re-reads an expert's weights once per route, which
     // multiplies weight traffic by routes-per-expert (~64x on a 512-token
-    // top-4 prefill chunk).
-    const GROUPED_MIN_ROUTES: usize = 64;
+    // top-4 prefill chunk). Threshold: MetalTuning::moe_grouped_min_routes.
+    let grouped_min_routes = crate::tuning::tuning().moe_grouped_min_routes;
     let n_experts = weights.shape()[0];
     // Default on: halves 2800-token prefill vs the per-route gemv (11.5 ->
     // 5.9 s on gpt-oss-20b) by running the ALU-bound expert matmuls through
     // the simdgroup-matrix pipeline. Weights pass through f16 in that
     // pipeline, same precision as every dense q40 matmul in the model.
-    if route_count >= GROUPED_MIN_ROUTES
+    if route_count >= grouped_min_routes
         && n_experts <= 256
         && k % 32 == 0
         && std::env::var_os("TRACT_METAL_DISABLE_GROUPED_MOE").is_none()
@@ -945,8 +945,10 @@ pub fn dispatch_routed_q40_swiglu_f32(
         }
     };
 
-    const GROUPED_MIN_ROUTES: usize = 64;
-    if route_count >= GROUPED_MIN_ROUTES
+    // Threshold: MetalTuning::moe_grouped_min_routes (see
+    // dispatch_routed_q40_f32).
+    let grouped_min_routes = crate::tuning::tuning().moe_grouped_min_routes;
+    if route_count >= grouped_min_routes
         && n_experts <= 256
         && k % 32 == 0
         && std::env::var_os("TRACT_METAL_DISABLE_GROUPED_MOE").is_none()
@@ -1366,7 +1368,7 @@ mod tests {
         run_routed_q40_case(RoutedQ40InputMode::TokenRows)
     }
 
-    /// Route counts above GROUPED_MIN_ROUTES take the expert-grouped path
+    /// Route counts above moe_grouped_min_routes take the expert-grouped path
     /// (counting sort + 32-routes-per-threadgroup matmul).
     fn run_routed_q40_grouped_case(input_mode: RoutedQ40InputMode) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
