@@ -69,7 +69,14 @@ impl LstmEpilogue {
         let h = self.hidden;
         let c_prev = &inputs[1]; // [.., h]
         let cp = unsafe { c_prev.as_slice_unchecked::<T>() };
-        let rows = inputs[0].len() / (4 * h); // any leading-dim layout, row-major
+        // Rows come from the state, which also sizes the outputs: a preact left
+        // broadcast on the batch axis would otherwise under-fill them.
+        let rows = cp.len() / h;
+        ensure!(
+            inputs[0].len() == rows * 4 * h,
+            "LstmEpilogue expects preact shaped [{rows}, 4*{h}], got {:?}",
+            inputs[0].shape()
+        );
         // Mutable copy of preact so the activation kernels run in place.
         let mut pre_t = inputs[0].clone().into_tensor();
         let pre = unsafe { pre_t.as_slice_mut_unchecked::<T>() };
