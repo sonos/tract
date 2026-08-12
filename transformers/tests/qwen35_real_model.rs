@@ -5,6 +5,9 @@
 //! `#[ignore]` because it needs a local 23 GB artifact; set `QWEN35_NNEF` to
 //! the model.nnef.tgz path and run with `-- --ignored`.
 
+// Exercises the Metal runtime: tract-metal is an Apple-only dev-dependency.
+#![cfg(target_vendor = "apple")]
+
 use tract_nnef::internal::*;
 use tract_transformers::WithTractTransformers;
 #[allow(unused_imports)]

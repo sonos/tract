@@ -25,5 +25,9 @@ tract-nnef.workspace = true
 rayon.workspace = true
 
 [dev-dependencies]
-tract-metal = { path = "../metal", version = "=0.23.5-pre" }
 ndarray-npy.workspace = true
+
+# Real-model regression tests exercise the Metal runtime; only buildable on
+# Apple platforms (the test files are cfg-gated to match).
+[target.'cfg(target_vendor = "apple")'.dev-dependencies]
+tract-metal = { path = "../metal", version = "=0.23.5-pre" }

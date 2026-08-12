@@ -4,6 +4,9 @@
 //! These tests are `#[ignore]` because they need a local 13 GB artifact; set
 //! `GPT_OSS_NNEF` to the model.nnef.tgz path and run with `-- --ignored`.
 
+// Exercises the Metal runtime: tract-metal is an Apple-only dev-dependency.
+#![cfg(target_vendor = "apple")]
+
 use std::collections::HashMap;
 
 use tract_nnef::internal::*;
