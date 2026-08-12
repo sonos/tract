@@ -110,6 +110,13 @@ pub fn eval_device_mem_req_for_nodes(
     let output_nodes: std::collections::HashSet<usize> =
         outputs.iter().map(|o| o.node).collect();
     let mut escaping: std::collections::HashSet<OutletId> = outputs.iter().cloned().collect();
+    // Lifetime extensions requested on aliasing nodes by their own aliases.
+    // Kept separate from end_by_node so an extension still propagates
+    // transitively through a mid-chain alias that has no flush entry of its
+    // own (e.g. one followed by a ToHost sync): the original source must
+    // stay alive until the LAST second-level view is done, not just until
+    // the mid-chain alias's last direct consumer.
+    let mut alias_ext: Vec<Option<usize>> = vec![None; model.nodes().len()];
     for n in order.iter().rev() {
         let node = model.node(*n);
         if !may_alias_input(node) || node.inputs.is_empty() {
@@ -120,19 +127,23 @@ pub fn eval_device_mem_req_for_nodes(
         {
             escaping.insert(node.inputs[0]);
         }
-        let v_end = end_by_node[*n].or_else(|| {
-            // No flush entry (e.g. followed by a ToHost sync): fall back
-            // to one past the last consumer's step.
-            node.outputs
-                .iter()
-                .flat_map(|o| o.successors.iter())
-                .filter_map(|succ| step_of.get(&succ.node))
-                .max()
-                .map(|s| s + 1)
-        });
+        // No flush entry (e.g. followed by a ToHost sync): fall back to one
+        // past the last consumer's step.
+        let last_consumer_end = node
+            .outputs
+            .iter()
+            .flat_map(|o| o.successors.iter())
+            .filter_map(|succ| step_of.get(&succ.node))
+            .max()
+            .map(|s| s + 1);
+        let v_end =
+            [end_by_node[*n], alias_ext[*n], last_consumer_end].into_iter().flatten().max();
         let src = node.inputs[0].node;
-        if let (Some(v_end), Some(src_end)) = (v_end, end_by_node[src].as_mut()) {
-            *src_end = (*src_end).max(v_end);
+        if let Some(v_end) = v_end {
+            if let Some(src_end) = end_by_node[src].as_mut() {
+                *src_end = (*src_end).max(v_end);
+            }
+            alias_ext[src] = Some(alias_ext[src].map_or(v_end, |e| e.max(v_end)));
         }
     }
 
@@ -443,6 +454,64 @@ impl DeviceMemSchema {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::slice::GpuSlice;
+    use crate::sync::{DeviceSync, DeviceSyncKind};
+    use tract_core::ops::array::Slice;
+
+    /// Alias chain A(slice) -> V1(slice) where V1 feeds both a ToHost sync
+    /// (so V1 gets no flush entry) and a second-level slice B whose own
+    /// consumers run much later. A's arena region must stay reserved until
+    /// B's end: the extension has to propagate transitively through V1 even
+    /// though end_by_node[V1] is None.
+    #[test]
+    fn test_alias_lifetime_extension_through_unflushed_mid_chain_alias() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([8, 8]))?;
+        let xd = model.wire_node("xd", DeviceSync::new(DeviceSyncKind::ToDevice), &[x])?[0];
+        let a = model.wire_node("a", GpuSlice::new(Slice::new(0, 0, 8)), &[xd])?[0];
+        let v1 = model.wire_node("v1", GpuSlice::new(Slice::new(0, 0, 4)), &[a])?[0];
+        let v1_host =
+            model.wire_node("v1_host", DeviceSync::new(DeviceSyncKind::ToHost), &[v1])?[0];
+        let b = model.wire_node("b", GpuSlice::new(Slice::new(0, 0, 2)), &[v1])?[0];
+        // Filler chain pushing B's consumer to a later step.
+        let f1 = model.wire_node("f1", GpuSlice::new(Slice::new(0, 4, 8)), &[a])?[0];
+        let f1_host =
+            model.wire_node("f1_host", DeviceSync::new(DeviceSyncKind::ToHost), &[f1])?[0];
+        let c = model.wire_node("c", GpuSlice::new(Slice::new(0, 0, 1)), &[b])?[0];
+        let c_host = model.wire_node("c_host", DeviceSync::new(DeviceSyncKind::ToHost), &[c])?[0];
+        model.select_output_outlets(&[v1_host, f1_host, c_host])?;
+
+        let order: Vec<usize> = vec![
+            x.node,
+            xd.node,
+            a.node,
+            v1.node,
+            v1_host.node,
+            b.node,
+            f1.node,
+            f1_host.node,
+            c.node,
+            c_host.node,
+        ];
+        let reqs = eval_device_mem_req_for_nodes(&model, &order)?;
+        let step_of = |n: usize| order.iter().position(|it| *it == n).unwrap();
+
+        let a_req = reqs
+            .iter()
+            .find(|r| r.outlet_id.node == a.node)
+            .context("node a should be arena-tracked")?;
+        // c (a view of b, itself a view of v1, itself a view of a) is the
+        // last second-level consumer: a must live at least until one past
+        // c's step.
+        let c_end = step_of(c.node) + 1;
+        assert!(
+            a_req.lifetime.end >= c_end,
+            "a's lifetime end {} must reach past its transitive alias consumer c (end {})",
+            a_req.lifetime.end,
+            c_end
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_lifetime_is_disjoint() {
