@@ -280,6 +280,30 @@ impl MoeFfn {
         }
     }
 
+    /// Inner activation of the reference paths, matching `activation_op`:
+    /// silu for "silu"/"swiglu" (w3 provides the gate branch), the pow-3
+    /// tanh-approximate gelu, and relu. The clamped-SwiGLU (gpt-oss) case is
+    /// handled by the callers before reaching this.
+    fn apply_reference_activation(&self, h: &mut Array2<f32>) -> TractResult<()> {
+        match self.activation.as_str() {
+            "silu" | "swiglu" => {
+                h.iter_mut().for_each(|v| *v = *v / (1.0 + (-*v).exp()));
+            }
+            "gelu" => {
+                let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
+                h.iter_mut().for_each(|v| {
+                    let x = *v;
+                    *v = 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3))));
+                });
+            }
+            "relu" => {
+                h.iter_mut().for_each(|v| *v = v.max(0.0));
+            }
+            other => bail!("MoeFfn reference eval: unsupported activation {other:?}"),
+        }
+        Ok(())
+    }
+
     fn can_eval_lazy_block_quant(&self, inputs: &[TValue], idx: &MoeInputIdx) -> bool {
         !self.has_w1_bias
             && !self.has_w3_bias
@@ -391,14 +415,10 @@ impl MoeFfn {
                     ExpertLayout::Canonical => x_batch.dot(&w3_e),
                     ExpertLayout::Linear => x_batch.dot(&w3_e.t()),
                 };
-                h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| {
-                    let silu = *h_val / (1.0 + (-*h_val).exp());
-                    *h_val = silu * g_val;
-                });
+                self.apply_reference_activation(&mut h)?;
+                h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| *h_val *= g_val);
             } else {
-                h.iter_mut().for_each(|h_val| {
-                    *h_val = *h_val / (1.0 + (-*h_val).exp());
-                });
+                self.apply_reference_activation(&mut h)?;
             }
 
             let w2_e_t = block_quant_group_as_2d(&inputs[3], eid)?;
@@ -1526,7 +1546,7 @@ impl EvalOp for MoeFfn {
                     *g = (up + 1.0) * glu;
                 });
             } else if let Some(ref w3) = w3 {
-                // SwiGLU: h = silu(h) * (x_batch @ w3_e + w3_bias)
+                // GLU: h = act(h) * (x_batch @ w3_e + w3_bias)
                 let w3_e = w3.slice(s![eid, .., ..]);
                 let mut gate: Array2<f32> = match self.expert_layout {
                     ExpertLayout::Canonical => x_batch.dot(&w3_e),
@@ -1535,15 +1555,11 @@ impl EvalOp for MoeFfn {
                 if let Some(ref b) = w3_bias {
                     add_expert_bias(&mut gate, b, eid)?;
                 }
-                h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| {
-                    let silu = *h_val / (1.0 + (-*h_val).exp());
-                    *h_val = silu * g_val;
-                });
+                self.apply_reference_activation(&mut h)?;
+                h.iter_mut().zip(gate.iter()).for_each(|(h_val, &g_val)| *h_val *= g_val);
             } else {
-                // Simple silu activation
-                h.iter_mut().for_each(|h_val| {
-                    *h_val = *h_val / (1.0 + (-*h_val).exp());
-                });
+                // Plain declared activation
+                self.apply_reference_activation(&mut h)?;
             }
 
             // y_expert -> [n, D]  (BLAS-backed GEMM)
@@ -1796,6 +1812,16 @@ impl TypedOp for MoeFfn {
             return Ok(None);
         }
 
+        // The routed primitive lowering below models neither per-expert
+        // biases nor the clamped activation: ops carrying either must stay
+        // on the reference evaluator when their weights are not all consts.
+        if biased_or_clamped {
+            return Ok(None);
+        }
+        let Some(act_op) = act_op else {
+            return Ok(None);
+        };
+
         let expert_inputs: &[usize] = if self.has_w3 { &[2, 3, 4] } else { &[2, 3] };
         for &input_ix in expert_inputs {
             if let Some(konst) = model.node(node.inputs[input_ix].node).op_as::<Const>() {
@@ -1834,9 +1860,6 @@ impl TypedOp for MoeFfn {
             RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: cache_w1 },
             &[x, w1, route_token_ids, route_expert_ids],
         )?[0];
-        // The routed lowering is gated on the plain, bias-free case above, so
-        // an activation op is always resolved here.
-        let act_op = act_op.context("routed MoE lowering requires a plain activation")?;
         let activated = patch.wire_node(format!("{}.activation", node.name), act_op, &[h1])?[0];
 
         let hidden = if self.has_w3 {
@@ -3408,6 +3431,117 @@ mod tests {
         let output = result[0].to_plain_array_view::<f32>()?;
         assert!(output.iter().all(|v| v.is_finite()));
 
+        Ok(())
+    }
+
+    /// Findings: the routed fall-through lowering models neither biases nor
+    /// the clamped activation, so ops carrying either must keep the reference
+    /// evaluator when their weights are not constants.
+    fn non_const_codegen_patch(
+        op: MoeFfn,
+        extra_bias_input: bool,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let (t_tokens, d_model, d_hidden, num_experts) = (4, 16, 32, 2);
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([t_tokens, d_model]))?;
+        let wg = model.add_source("wg", f32::datum_type().fact([num_experts, d_model]))?;
+        let w1 =
+            model.add_source("w1", f32::datum_type().fact([num_experts, d_model, d_hidden]))?;
+        let w2 =
+            model.add_source("w2", f32::datum_type().fact([num_experts, d_hidden, d_model]))?;
+        let mut inputs = vec![x, wg, w1, w2];
+        if op.has_w3 {
+            let w3 =
+                model.add_source("w3", f32::datum_type().fact([num_experts, d_model, d_hidden]))?;
+            inputs.push(w3);
+        }
+        if extra_bias_input {
+            let w2_bias =
+                model.add_source("w2_bias", f32::datum_type().fact([num_experts, d_model]))?;
+            inputs.push(w2_bias);
+        }
+        let outputs = model.wire_node("moe", op.clone(), &inputs)?;
+        model.select_output_outlets(&outputs)?;
+        op.codegen(&model, model.node(outputs[0].node))
+    }
+
+    #[test]
+    fn test_biased_moe_non_const_weights_stays_reference() -> TractResult<()> {
+        let mut op = MoeFfn::basic(2, "swiglu", GateMode::SoftmaxTopk, true);
+        op.has_w2_bias = true;
+        let patch = non_const_codegen_patch(op, true)?;
+        assert!(patch.is_none(), "biased MoE with non-const weights must not lower");
+        Ok(())
+    }
+
+    #[test]
+    fn test_clamped_moe_non_const_weights_stays_reference() -> TractResult<()> {
+        let mut op = MoeFfn::basic(2, "swiglu", GateMode::SoftmaxTopk, true);
+        op.act_alpha_bits = Some(1.702f32.to_bits());
+        op.act_limit_bits = Some(7.0f32.to_bits());
+        let patch = non_const_codegen_patch(op, false)?;
+        assert!(patch.is_none(), "clamped-activation MoE with non-const weights must not lower");
+        Ok(())
+    }
+
+    #[test]
+    fn test_plain_moe_non_const_weights_still_lowers_routed() -> TractResult<()> {
+        let op = MoeFfn::basic(2, "swiglu", GateMode::SoftmaxTopk, true);
+        let patch = non_const_codegen_patch(op, false)?;
+        assert!(patch.is_some(), "bias-free plain MoE should still get the routed lowering");
+        Ok(())
+    }
+
+    /// Finding: reference evaluators used to hardcode silu whatever
+    /// `self.activation` declared. Single expert, k = 1, so the softmax gate
+    /// weight is exactly 1.0 and the expected output is gelu(x @ w1) @ w2.
+    #[test]
+    fn test_reference_eval_applies_gelu_activation() -> TractResult<()> {
+        let (t_tokens, d_model, d_hidden) = (3, 4, 8);
+        let mut rng_state: u64 = 7;
+        let mut next_f32 = || -> f32 {
+            rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
+        };
+        let make = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
+            let n: usize = shape.iter().product();
+            let data: Vec<f32> = (0..n).map(|_| rng()).collect();
+            tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
+        };
+        let x = make(&[t_tokens, d_model], &mut next_f32);
+        let wg = make(&[1, d_model], &mut next_f32);
+        let w1 = make(&[1, d_model, d_hidden], &mut next_f32);
+        let w2 = make(&[1, d_hidden, d_model], &mut next_f32);
+
+        let op = MoeFfn::basic(1, "gelu", GateMode::SoftmaxTopk, false);
+        let got = op.eval(tvec![
+            x.clone().into_tvalue(),
+            wg.into_tvalue(),
+            w1.clone().into_tvalue(),
+            w2.clone().into_tvalue(),
+        ])?;
+
+        let x_a: tract_ndarray::Array2<f32> =
+            x.to_plain_array_view::<f32>()?.into_dimensionality()?.to_owned();
+        let w1_a: tract_ndarray::Array2<f32> = w1
+            .to_plain_array_view::<f32>()?
+            .into_shape_with_order((d_model, d_hidden))?
+            .into_dimensionality()?
+            .to_owned();
+        let w2_a: tract_ndarray::Array2<f32> = w2
+            .to_plain_array_view::<f32>()?
+            .into_shape_with_order((d_hidden, d_model))?
+            .into_dimensionality()?
+            .to_owned();
+        let mut h = x_a.dot(&w1_a);
+        let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
+        h.iter_mut().for_each(|v| {
+            let x = *v;
+            *v = 0.5 * x * (1.0 + f32::tanh(sqrt_2_over_pi * (x + 0.044715 * x.powi(3))));
+        });
+        let expected = h.dot(&w2_a).into_tensor();
+
+        got[0].close_enough(&expected, Approximation::Approximate)?;
         Ok(())
     }
 
