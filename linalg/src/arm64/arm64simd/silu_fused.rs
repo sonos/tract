@@ -1,7 +1,7 @@
 // Fused SiLU kernel
 //
 // Exact formula computed per element (z = clamp(x, -18.6, 18.6), w = z²):
-//   SiLU(x) = f * (0.5 + z * P(w) / Q(w))
+//   SiLU(x) = f * max(0.5 + z * P(w) / Q(w), 0)
 // where P is the degree-6 Horner polynomial over coeffs COEFFS[2..=8], Q the
 // degree-3 Horner polynomial over coeffs COEFFS[9..=12], and f = max(x, -18.6)
 // the factor the sigmoid multiplies.
@@ -15,6 +15,12 @@
 // negative tail would return x * sigmoid(-18.6), whose magnitude grows toward -inf instead of
 // decaying to 0. With it, x < -18.6 saturates at the constant -18.6 * sigmoid(-18.6) ~= -1.55e-7,
 // which the true SiLU approaches from below as x -> -inf, so the error is bounded and tiny.
+//
+// The sigmoid factor is floored at 0 before it multiplies f: `0.5 + z * P(w) / Q(w)` cancels
+// down to ~1e-8 on the negative tail, below the rounding error of the division, and a sigmoid
+// that came out negative there would flip the sign of the whole result. It needs no matching
+// ceiling — the sigmoid kernel clamps at 1 to keep its own range, but here an overshoot of one
+// ulp only scales f by 1 + 2^-23, and SiLU has no upper bound to violate.
 
 ew_impl_wrap!(
     f32,
@@ -58,6 +64,7 @@ ew_impl_wrap!(
                 dup v5.4s, v0.s[0]             // v5 <- low, broadcasted
                 dup v6.4s, v0.s[1]             // v6 <- high, broadcasted
                 dup v7.4s, v3.s[1]             // v7 <- 0.5, broadcasted
+                movi v4.4s, #0                 // v4 <- 0, the sigmoid floor
 
                 cmp {len}, #16
                 blt 9f
@@ -176,6 +183,11 @@ ew_impl_wrap!(
                     fadd v18.4s, v18.4s, v7.4s
                     fadd v19.4s, v19.4s, v7.4s     // v16 <- sigmoid
 
+                    fmax v16.4s, v16.4s, v4.4s
+                    fmax v17.4s, v17.4s, v4.4s
+                    fmax v18.4s, v18.4s, v4.4s
+                    fmax v19.4s, v19.4s, v4.4s     // v16 <- sigmoid, floored at 0
+
                     fmul v16.4s, v16.4s, v8.4s
                     fmul v17.4s, v17.4s, v9.4s
                     fmul v18.4s, v18.4s, v10.4s
@@ -218,7 +230,8 @@ ew_impl_wrap!(
                     fmla v24.4s, v20.4s, v28.4s    // v24 <- denum
 
                     fdiv v16.4s, v16.4s, v24.4s
-                    fadd v16.4s, v16.4s, v7.4s     // v16 <- sigmoid
+                    fadd v16.4s, v16.4s, v7.4s
+                    fmax v16.4s, v16.4s, v4.4s     // v16 <- sigmoid, floored at 0
 
                     fmul v16.4s, v16.4s, v8.4s     // v16 <- SiLU (sigmoid * clamped-below x)
 
@@ -232,7 +245,7 @@ ew_impl_wrap!(
             ptr = inout(reg) ptr => _,
             len = inout(reg) len => _,
             out("v0") _, out("v1") _, out("v2") _, out("v3") _,
-            out("v5") _, out("v6") _, out("v7") _,
+            out("v4") _, out("v5") _, out("v6") _, out("v7") _,
             out("v8") _, out("v9") _, out("v10") _, out("v11") _,
             out("v16") _, out("v17") _, out("v18") _, out("v19") _,
             out("v20") _, out("v21") _, out("v22") _, out("v23") _,
