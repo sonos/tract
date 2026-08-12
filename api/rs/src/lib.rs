@@ -311,6 +311,25 @@ impl ModelInterface for Model {
     }
 }
 
+impl Model {
+    /// Declare model outputs that GPU runtimes (metal/cuda) keep on device,
+    /// skipping the final ToHost sync (a full GPU pipeline stall per output
+    /// per run). Use it for loop-carried outputs -- unfolded KV caches,
+    /// recurrent/conv states -- that the caller only ever feeds back verbatim
+    /// as the next step's inputs. Such outputs come back as opaque device
+    /// tensors: slice them with [`Tensor::sliced`] or feed them straight back
+    /// as inputs; reading them on host is not possible. The CPU runtime
+    /// ignores the declaration. Declaring an empty set clears a previous
+    /// declaration; the `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` env var (escape
+    /// hatch), when set, overrides the declaration in both directions.
+    pub fn declare_device_resident_outputs(
+        &mut self,
+        outputs: impl IntoIterator<Item = usize>,
+    ) -> Result<()> {
+        tract_gpu::sync::declare_device_resident_outputs(&mut self.0, outputs)
+    }
+}
+
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 

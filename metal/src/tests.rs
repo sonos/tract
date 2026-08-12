@@ -834,6 +834,41 @@ mod tests {
         Ok(())
     }
 
+    /// The device-resident output declaration (the API replacing the
+    /// TRACT_GPU_DEVICE_RESIDENT_OUTPUTS side channel) must thread through
+    /// the metal transform: declared outputs keep their device fact (no
+    /// ToHost sync), undeclared ones still sync to host.
+    #[test]
+    fn declared_device_resident_output_skips_to_host_sync() -> TractResult<()> {
+        use tract_gpu::fact::DeviceTypedFactExt;
+        let build = || -> TractResult<TypedModel> {
+            let mut m = TypedModel::default();
+            let a = m.add_source("a", f32::fact([2, 3]))?;
+            let b = m.add_source("b", f32::fact([2, 3]))?;
+            let sum = m.wire_node("sum", add(), &[a, b])?[0];
+            let prod = m.wire_node("prod", mul(), &[a, b])?[0];
+            m.select_output_outlets(&[sum, prod])?;
+            Ok(m)
+        };
+
+        // No declaration: both outputs come back as host tensors.
+        let plain = MetalTransform::default().transform_into(build()?)?;
+        assert!(plain.outlet_fact(plain.outputs[0])?.as_device_fact().is_none());
+        assert!(plain.outlet_fact(plain.outputs[1])?.as_device_fact().is_none());
+
+        // Output 1 declared device-resident: its ToHost sync is skipped,
+        // output 0 still reaches the host.
+        let mut declared = build()?;
+        tract_gpu::sync::declare_device_resident_outputs(&mut declared, [1])?;
+        let declared = MetalTransform::default().transform_into(declared)?;
+        assert!(declared.outlet_fact(declared.outputs[0])?.as_device_fact().is_none());
+        assert!(
+            declared.outlet_fact(declared.outputs[1])?.as_device_fact().is_some(),
+            "declared output must keep its device fact (ToHost sync skipped)"
+        );
+        Ok(())
+    }
+
     #[test]
     fn bool_bitor_matches_cpu_on_metal() -> TractResult<()> {
         use tract_core::ops::logic::bitor;
