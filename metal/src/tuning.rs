@@ -1,22 +1,45 @@
 //! Device performance-tuning profile for the Metal runtime.
 //!
 //! Every Metal perf constant that used to be scattered as a hardcoded const
-//! plus an env escape hatch lives here, resolved ONCE per process into a
-//! single [`MetalTuning`] value. Resolution order (lowest to highest
+//! plus an env escape hatch lives here, resolved into a single
+//! [`MetalTuning`] value per process. Resolution order (lowest to highest
 //! precedence):
 //!
 //! 1. [`MetalTuning::BASELINE`]: the hardcoded defaults. All of them were
 //!    tuned on an Apple M4 Pro, 48 GB, during the 2026-08 decode-perf
 //!    campaign (models: gpt-oss-20b q40 MoE, qwen3.5-35B-A3B q40 hybrid).
 //! 2. Device-informed derivations. None exist today: no baseline value has a
-//!    principled scaling rule across device classes yet. When one does (or a
-//!    micro-autotuner lands), it belongs in [`MetalTuning::resolve`], between
-//!    the baseline and the overrides (e.g. a future
-//!    `MetalTuning::from_autotune_cache()` feeding `AppOverrides`).
-//! 3. Application overrides ([`set_tuning_overrides`]): programmatic hints an
-//!    embedding application registers before the first Metal dispatch.
-//! 4. Env overrides: the historical variable names, unchanged semantics,
-//!    still highest precedence.
+//!    principled scaling rule across device classes yet. When one does, it
+//!    belongs in [`MetalTuning::resolve`], between the baseline and the
+//!    probe.
+//! 3. The load-time autotune probe (see `crate::autotune`): ON by default,
+//!    at the end of the Metal runtime's `prepare` it sweeps the
+//!    output-invariant scheduling knobs on a synthetic decode-shaped
+//!    workload (budget `TRACT_METAL_AUTOTUNE_BUDGET_MS`, default 10 s) and
+//!    adopts winners IN-MEMORY for the process; nothing is ever persisted.
+//!    Opt out with `TRACT_METAL_AUTOTUNE=0` or [`set_autotune`]`(false)`
+//!    (the env var wins over the hint; `TRACT_METAL_AUTOTUNE=1` forces it
+//!    back on).
+//! 4. Application overrides ([`set_tuning_overrides`]): programmatic hints an
+//!    embedding application registers before the first Metal dispatch. The
+//!    probe does not sweep knobs these pin.
+//! 5. Env overrides: the historical variable names, unchanged semantics,
+//!    still highest precedence. The probe does not sweep knobs these pin.
+//!
+//! # Profile lifecycle
+//!
+//! resolve -> optional probe window -> frozen. The first [`tuning`] read
+//! resolves the profile from layers 1, 2, 4 and 5. With the probe enabled
+//! the profile stays swappable (mutex-guarded, values coherent at every
+//! read) until the probe at `prepare` freezes it, winners included; with
+//! the probe opted out it freezes at that first read, the historical
+//! resolve-once behavior (env lookups on per-dispatch hot paths measurably
+//! show up in decode CPU profiles, hence a frozen static read). Once
+//! frozen, the profile is immutable: late [`set_tuning_overrides`] /
+//! [`set_autotune`] calls fail, late probe writes fail.
+//!
+//! Nothing here reads or writes any file: tuning state lives and dies with
+//! the process (some target systems have read-only disks).
 //!
 //! Debug/disable escape hatches (`TRACT_METAL_DISABLE_*`, `TRACT_METAL_LOG_*`,
 //! `TRACT_METAL_PROFILE_KERNELS`, `TRACT_METAL_GEMM_IMPL`, ...) are NOT part
@@ -34,7 +57,7 @@ use tract_core::internal::*;
 /// The resolved per-process Metal performance-tuning profile.
 ///
 /// Read it through [`tuning`]; construct it directly only in tests.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MetalTuning {
     /// Context length (in cached tokens) where decode-shaped SDPA steps
     /// switch from the batched-gemm pipeline to the fused flash-attention
@@ -71,8 +94,8 @@ pub struct MetalTuning {
     /// vs 20: +1.0 tok/s @74, +1.2 @2799, +1.8 @11k; 4-6 too eager, 12
     /// equal, >=16 loses), while dense-KV models (gpt-oss-20b, few large
     /// dispatches) lose badly under any cadence (66 -> 53 tok/s), hence
-    /// baseline 0 and a per-model application hint
-    /// ([`set_tuning_overrides`]). Env:
+    /// baseline 0, a per-model application hint ([`set_tuning_overrides`])
+    /// and the load-time probe. Env:
     /// `TRACT_METAL_COMMIT_EVERY_N_DISPATCHES`.
     pub commit_every_n_dispatches: usize,
     /// How many committed-but-unawaited command buffers `commit_current`
@@ -122,7 +145,8 @@ pub struct MetalTuning {
 
 /// Partial profile an embedding application may register through
 /// [`set_tuning_overrides`] before the first Metal dispatch. `None` fields
-/// keep the baseline; env vars still win over these hints.
+/// keep the baseline; env vars still win over these hints, and the load-time
+/// probe does not sweep knobs these pin.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MetalTuningOverrides {
     pub flash_sdpa_min_t: Option<usize>,
@@ -135,6 +159,68 @@ pub struct MetalTuningOverrides {
     pub moe_grouped_min_routes: Option<usize>,
     pub pool_max_bytes: Option<usize>,
     pub max_pooled_per_key: Option<usize>,
+}
+
+impl MetalTuningOverrides {
+    /// Merge `other` over `self`, field by field: `Some` fields of `other`
+    /// win, `None` fields keep the current value.
+    fn merge_from(&mut self, other: &MetalTuningOverrides) {
+        macro_rules! merge {
+            ($($field:ident),*) => {
+                $(if let Some(v) = other.$field { self.$field = Some(v); })*
+            };
+        }
+        merge!(
+            flash_sdpa_min_t,
+            sdpa_prefill_block,
+            sdpa_split_k_min_t,
+            sdpa_split_k_chunk,
+            commit_every_n_dispatches,
+            max_command_buffers_in_flight,
+            moe_commit_min_routes,
+            moe_grouped_min_routes,
+            pool_max_bytes,
+            max_pooled_per_key
+        );
+    }
+}
+
+/// Which probeable scheduling knobs already have an externally supplied
+/// value (env var or app override): the load-time probe skips those, better
+/// information already exists, and those layers outrank probe results
+/// anyway (probing what is pinned is wasted load time).
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PinnedKnobs {
+    pub max_command_buffers_in_flight: bool,
+    pub commit_every_n_dispatches: bool,
+    pub moe_commit_min_routes: bool,
+}
+
+impl PinnedKnobs {
+    /// Recompute from the same sources as [`MetalTuning::resolve`], injected
+    /// for hermetic tests.
+    fn compute(
+        overrides: &MetalTuningOverrides,
+        env: impl Fn(&str) -> Option<String>,
+    ) -> PinnedKnobs {
+        let parsed = |name: &str| env(name).and_then(|v| v.parse::<usize>().ok());
+        PinnedKnobs {
+            max_command_buffers_in_flight: parsed("TRACT_METAL_MAX_IN_FLIGHT")
+                .filter(|&n| n >= 1)
+                .is_some()
+                || overrides.max_command_buffers_in_flight.is_some(),
+            commit_every_n_dispatches: parsed("TRACT_METAL_COMMIT_EVERY_N_DISPATCHES").is_some()
+                || overrides.commit_every_n_dispatches.is_some(),
+            moe_commit_min_routes: parsed("TRACT_METAL_MOE_COMMIT_MIN_ROUTES").is_some()
+                || overrides.moe_commit_min_routes.is_some(),
+        }
+    }
+}
+
+/// The pinned-knob mask for this process, from the live env/app-hint state.
+pub(crate) fn pinned_knobs() -> PinnedKnobs {
+    let overrides = app_overrides().lock().map(|o| o.clone()).unwrap_or_default();
+    PinnedKnobs::compute(&overrides, |name| std::env::var(name).ok())
 }
 
 impl MetalTuning {
@@ -167,10 +253,9 @@ impl MetalTuning {
         env: impl Fn(&str) -> Option<String>,
     ) -> MetalTuning {
         let base = MetalTuning::BASELINE;
-        // Seam for device-informed derivations and a future
-        // `from_autotune_cache()`: adjust `base` here, between the baseline
-        // and the overrides. Nothing today has a principled cross-device
-        // scaling rule, so `base` is used as-is.
+        // Seam for device-informed derivations: adjust `base` here, between
+        // the baseline and the app overrides. Nothing today has a principled
+        // cross-device scaling rule, so `base` is used as-is.
         let parsed = |name: &str| env(name).and_then(|v| v.parse::<usize>().ok());
         MetalTuning {
             flash_sdpa_min_t: parsed("TRACT_METAL_FLASH_SDPA_MIN_T")
@@ -211,23 +296,104 @@ fn app_overrides() -> &'static Mutex<MetalTuningOverrides> {
 
 static RESOLVED: AtomicBool = AtomicBool::new(false);
 
-/// The process-wide resolved tuning profile. First call resolves (and logs)
-/// it; later calls are a static read. Env lookups on per-dispatch hot paths
-/// measurably show up in decode CPU profiles, hence resolve-once.
-pub fn tuning() -> &'static MetalTuning {
-    static T: OnceLock<MetalTuning> = OnceLock::new();
-    T.get_or_init(|| {
+/// The immutable process profile, set at freeze time. Before it is set,
+/// reads go through [`probe_window`] (only the default-on load-time
+/// autotune probe keeps that window open past the first read).
+static FROZEN: OnceLock<MetalTuning> = OnceLock::new();
+
+/// Profile storage between first resolution and freeze: the load-time
+/// autotune probe swaps candidate values in here.
+fn probe_window() -> &'static Mutex<Option<MetalTuning>> {
+    static W: OnceLock<Mutex<Option<MetalTuning>>> = OnceLock::new();
+    W.get_or_init(|| Mutex::new(None))
+}
+
+/// The autotune probe opt-OUT hint ([`set_autotune`]`(false)`); the probe is
+/// on by default. `TRACT_METAL_AUTOTUNE` (0/1), when set, wins over the hint.
+static AUTOTUNE_DISABLED_HINT: AtomicBool = AtomicBool::new(false);
+
+pub(crate) fn autotune_enabled() -> bool {
+    static ENV: OnceLock<Option<bool>> = OnceLock::new();
+    let env = *ENV.get_or_init(|| {
+        std::env::var("TRACT_METAL_AUTOTUNE").ok().map(|v| v != "0")
+    });
+    autotune_enabled_from(env, AUTOTUNE_DISABLED_HINT.load(Ordering::Acquire))
+}
+
+/// Pure polarity rule, env pre-parsed for hermetic tests: default ON, the
+/// hint opts out, an explicit env value overrides the hint in both
+/// directions.
+fn autotune_enabled_from(env: Option<bool>, hint_disabled: bool) -> bool {
+    env.unwrap_or(!hint_disabled)
+}
+
+/// The process-wide tuning profile. Lifecycle: the first call resolves (and
+/// logs) it; with the probe opted out it freezes right there and every
+/// later call is a static read (env lookups on per-dispatch hot paths
+/// measurably show up in decode CPU profiles, hence resolve-once). With the
+/// default-on probe, reads go through a mutex until the load-time probe
+/// freezes the profile (see `crate::autotune`); the values are still
+/// coherent at every read, only the fast path is deferred.
+pub fn tuning() -> MetalTuning {
+    if let Some(t) = FROZEN.get() {
+        return *t;
+    }
+    tuning_unfrozen()
+}
+
+#[cold]
+fn tuning_unfrozen() -> MetalTuning {
+    let mut window = probe_window().lock().unwrap_or_else(|e| e.into_inner());
+    // Another thread may have frozen while this one waited on the lock.
+    if let Some(t) = FROZEN.get() {
+        return *t;
+    }
+    let t = *window.get_or_insert_with(|| {
         RESOLVED.store(true, Ordering::Release);
         let tuning = MetalTuning::from_env_and_device();
         log::debug!("resolved Metal tuning profile: {tuning:?}");
         tuning
-    })
+    });
+    if !autotune_enabled() {
+        // Probe opted out: freeze at first read, the historical
+        // resolve-once behavior, byte for byte.
+        let _ = FROZEN.set(t);
+    }
+    t
+}
+
+/// True once the process profile is immutable.
+pub(crate) fn is_frozen() -> bool {
+    FROZEN.get().is_some()
+}
+
+/// Swap the process profile during the load-time probe window. Only the
+/// probe calls this, between fully quiesced runs; fails once frozen.
+pub(crate) fn probe_set(t: MetalTuning) -> TractResult<()> {
+    let mut window = probe_window().lock().unwrap_or_else(|e| e.into_inner());
+    if FROZEN.get().is_some() {
+        bail!("Metal tuning profile already frozen; probe window is closed");
+    }
+    RESOLVED.store(true, Ordering::Release);
+    *window = Some(t);
+    Ok(())
+}
+
+/// Close the probe window: `t` becomes the immutable process profile.
+/// Idempotent; a first freeze from a racing plain read cannot happen while
+/// the probe holds the window open (probes run single-threaded at load).
+pub(crate) fn probe_freeze(t: MetalTuning) {
+    let mut window = probe_window().lock().unwrap_or_else(|e| e.into_inner());
+    RESOLVED.store(true, Ordering::Release);
+    *window = Some(t);
+    let _ = FROZEN.set(t);
 }
 
 /// Register application tuning hints. Must be called before the first Metal
 /// dispatch of the process (i.e. before runtime prepare); fails once the
 /// profile has been resolved. Later calls merge over earlier ones field by
-/// field. Env vars still take precedence over these hints.
+/// field. Env vars still take precedence over these hints, and the
+/// load-time probe does not sweep knobs these pin.
 pub fn set_tuning_overrides(overrides: MetalTuningOverrides) -> TractResult<()> {
     let mut current = app_overrides().lock().map_err(|e| anyhow!("{e}"))?;
     if RESOLVED.load(Ordering::Acquire) {
@@ -236,23 +402,27 @@ pub fn set_tuning_overrides(overrides: MetalTuningOverrides) -> TractResult<()> 
              set_tuning_overrides must run before the first Metal dispatch"
         );
     }
-    macro_rules! merge {
-        ($($field:ident),*) => {
-            $(if let Some(v) = overrides.$field { current.$field = Some(v); })*
-        };
+    current.merge_from(&overrides);
+    Ok(())
+}
+
+/// Enable or disable the load-time autotune probe for this process (see
+/// `crate::autotune`). The probe is ON by default: at the end of the Metal
+/// runtime's `prepare`, a short budget-capped synthetic-workload probe
+/// sweeps the output-invariant scheduling knobs not already pinned by an
+/// env var or an app override, and adopts winners in-memory for the
+/// process. `set_autotune(false)` opts out; the `TRACT_METAL_AUTOTUNE` env
+/// var (0/1), when set, wins over this hint. Same contract as
+/// [`set_tuning_overrides`]: must run before the first Metal dispatch of
+/// the process, fails once the profile has been resolved.
+pub fn set_autotune(enable: bool) -> TractResult<()> {
+    if RESOLVED.load(Ordering::Acquire) {
+        bail!(
+            "Metal tuning profile already resolved; \
+             set_autotune must run before the first Metal dispatch"
+        );
     }
-    merge!(
-        flash_sdpa_min_t,
-        sdpa_prefill_block,
-        sdpa_split_k_min_t,
-        sdpa_split_k_chunk,
-        commit_every_n_dispatches,
-        max_command_buffers_in_flight,
-        moe_commit_min_routes,
-        moe_grouped_min_routes,
-        pool_max_bytes,
-        max_pooled_per_key
-    );
+    AUTOTUNE_DISABLED_HINT.store(!enable, Ordering::Release);
     Ok(())
 }
 
@@ -348,5 +518,67 @@ mod tests {
         let t = MetalTuning::resolve(&MetalTuningOverrides::default(), env);
         assert_eq!(t.max_command_buffers_in_flight, 8);
         assert_eq!(t.commit_every_n_dispatches, 0);
+    }
+
+    /// Probe polarity: ON by default, hint opts out, explicit env wins over
+    /// the hint in both directions.
+    #[test]
+    fn autotune_polarity() {
+        assert!(autotune_enabled_from(None, false), "default must be enabled");
+        assert!(!autotune_enabled_from(None, true), "hint must opt out");
+        assert!(!autotune_enabled_from(Some(false), false), "env 0 must opt out");
+        assert!(autotune_enabled_from(Some(true), true), "env 1 must win over the hint");
+    }
+
+    /// Knobs supplied by env or app override are pinned: the probe must not
+    /// spend budget on them.
+    #[test]
+    fn pinned_knobs_from_env_and_hints() {
+        // Nothing set: nothing pinned.
+        let none = PinnedKnobs::compute(&MetalTuningOverrides::default(), no_env);
+        assert_eq!(none, PinnedKnobs::default());
+        // App override pins its knob.
+        let hints =
+            MetalTuningOverrides { commit_every_n_dispatches: Some(10), ..Default::default() };
+        let p = PinnedKnobs::compute(&hints, no_env);
+        assert!(p.commit_every_n_dispatches);
+        assert!(!p.max_command_buffers_in_flight);
+        assert!(!p.moe_commit_min_routes);
+        // Env pins its knob; an out-of-domain value does not.
+        let env = |name: &str| match name {
+            "TRACT_METAL_MOE_COMMIT_MIN_ROUTES" => Some("32".to_string()),
+            "TRACT_METAL_MAX_IN_FLIGHT" => Some("0".to_string()),
+            _ => None,
+        };
+        let p = PinnedKnobs::compute(&MetalTuningOverrides::default(), env);
+        assert!(p.moe_commit_min_routes);
+        assert!(!p.max_command_buffers_in_flight);
+        assert!(!p.commit_every_n_dispatches);
+    }
+
+    /// Profile lifecycle on the real process globals: with the default-on
+    /// probe the first read leaves the window open, the probe can swap
+    /// values, and the freeze makes every mutation path fail; with the
+    /// opt-out (env) the first read froze already and only the frozen half
+    /// applies.
+    #[test]
+    fn probe_window_and_freeze_lifecycle() {
+        let first = tuning();
+        if autotune_enabled() && !is_frozen() {
+            // Probe window open: candidates can be swapped in and read back.
+            let mut probed = first;
+            probed.max_pooled_per_key = first.max_pooled_per_key + 1;
+            probe_set(probed).unwrap();
+            assert_eq!(tuning(), probed);
+            probe_freeze(first);
+        }
+        assert!(is_frozen());
+        assert_eq!(tuning(), first, "frozen profile must be stable");
+        assert!(probe_set(MetalTuning::BASELINE).is_err(), "probe window must be closed");
+        assert!(set_tuning_overrides(MetalTuningOverrides::default()).is_err());
+        assert!(set_autotune(false).is_err());
+        // Freezing again with the same value is an idempotent no-op.
+        probe_freeze(first);
+        assert_eq!(tuning(), first);
     }
 }

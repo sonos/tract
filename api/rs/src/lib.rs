@@ -337,8 +337,10 @@ impl Model {
 /// hybrid-attention models (many small dispatches per token) want ~10, while
 /// dense-KV models lose under any cadence, hence no global default. The
 /// `TRACT_METAL_COMMIT_EVERY_N_DISPATCHES` env var, when set, wins over this
-/// hint. Must be called before the runtime's first Metal dispatch (i.e.
-/// before `Runtime::prepare`); fails afterwards. No-op on non-Apple targets.
+/// hint, and the load-time autotune probe ([`hint_metal_autotune`]) does not
+/// sweep a knob this hint pins. Must be called before the runtime's first
+/// Metal dispatch (i.e. before `Runtime::prepare`); fails afterwards. No-op
+/// on non-Apple targets.
 pub fn hint_metal_commit_cadence(every_n_dispatches: usize) -> Result<()> {
     #[cfg(target_vendor = "apple")]
     {
@@ -350,6 +352,28 @@ pub fn hint_metal_commit_cadence(every_n_dispatches: usize) -> Result<()> {
     #[cfg(not(target_vendor = "apple"))]
     {
         let _ = every_n_dispatches;
+        Ok(())
+    }
+}
+
+/// Enable or disable the Metal load-time autotune probe for this process.
+/// The probe is ON by default: at the end of the Metal runtime's `prepare`,
+/// a short synthetic-workload probe (budget ~10 s,
+/// `TRACT_METAL_AUTOTUNE_BUDGET_MS` overrides) sweeps the output-invariant
+/// scheduling knobs not already pinned by an env var or a programmatic hint
+/// and adopts winners in-memory for the process; nothing is ever written to
+/// disk. `hint_metal_autotune(false)` opts out; the `TRACT_METAL_AUTOTUNE`
+/// env var (0/1), when set, wins over this hint. Must be called before the
+/// runtime's first Metal dispatch (i.e. before `Runtime::prepare`); fails
+/// afterwards. No-op on non-Apple targets.
+pub fn hint_metal_autotune(enable: bool) -> Result<()> {
+    #[cfg(target_vendor = "apple")]
+    {
+        tract_metal::set_autotune(enable)
+    }
+    #[cfg(not(target_vendor = "apple"))]
+    {
+        let _ = enable;
         Ok(())
     }
 }

@@ -1,3 +1,4 @@
+mod autotune;
 mod command_buffer;
 mod context;
 mod encoder;
@@ -20,7 +21,7 @@ pub use crate::kernels::matmul::MetalGemmImplKind;
 
 pub use crate::context::{MetalContext, MetalStream, with_metal_stream};
 pub use crate::transform::MetalTransform;
-pub use crate::tuning::{MetalTuning, MetalTuningOverrides, set_tuning_overrides};
+pub use crate::tuning::{MetalTuning, MetalTuningOverrides, set_autotune, set_tuning_overrides};
 
 #[derive(Debug)]
 struct MetalRuntime;
@@ -61,7 +62,14 @@ impl Runtime for MetalRuntime {
             runnable = runnable.with_session_handler(session_handler);
         }
 
-        Ok(Box::new(Arc::new(runnable)))
+        let runnable = Arc::new(runnable);
+        // Opt-in load-time autotune probe (TRACT_METAL_AUTOTUNE=1 /
+        // set_autotune): sweeps the output-invariant scheduling knobs on a
+        // synthetic decode-shaped workload and adopts winners in-memory.
+        // Without the opt-in this is a no-op and the tuning profile froze at
+        // its first read, the historical behavior.
+        crate::autotune::maybe_probe(&runnable);
+        Ok(Box::new(runnable))
     }
 
     fn check(&self) -> TractResult<()> {
