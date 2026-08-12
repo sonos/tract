@@ -462,6 +462,24 @@ impl DeviceContext for MetalContext {
     }
 }
 
+/// One committed-but-unawaited command buffer with everything that must
+/// stay alive (retained tensors) or stay out of the recycling pool
+/// (deferred pool pairs) until it completes.
+#[derive(Debug)]
+struct InFlightBuffer {
+    buffer: TCommandBuffer,
+    retained: Vec<DeviceTensor>,
+    /// (host allocation, MTLBuffer) pairs whose last host-side owner dropped
+    /// while GPU work was pending: recycling them into the pool is deferred
+    /// to this buffer's completion, because a buffer committed earlier (or
+    /// this one) may still read or write them. Recycling at host-drop time
+    /// raced exactly there: the pool handed the pair to a new tensor while
+    /// an in-flight command buffer still referenced it (byte-level run-to-run
+    /// nondeterminism at low in-flight depth, qwen3.5-35B, 2026-08-12).
+    recycle: Vec<(Arc<Tensor>, Buffer)>,
+    kernel_names: Vec<String>,
+}
+
 #[derive(Debug)]
 pub struct MetalStream {
     context: MetalContext,
@@ -470,7 +488,11 @@ pub struct MetalStream {
     /// Buffers committed by `commit_current` and not yet awaited, oldest
     /// first, each with the tensors that must stay alive until it completes.
     /// The queue is FIFO, so waiting on the newest implies all have completed.
-    committed_command_buffers: RefCell<VecDeque<(TCommandBuffer, Vec<DeviceTensor>, Vec<String>)>>,
+    committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
+    /// Pool pairs dropped since the last commit (see
+    /// [`InFlightBuffer::recycle`]): they move onto the next committed
+    /// buffer, or recycle directly at the next blocking wait.
+    recycle_stash: RefCell<Vec<(Arc<Tensor>, Buffer)>>,
     /// Kernel names dispatched into the current (open) command buffer, only
     /// populated under TRACT_METAL_PROFILE_KERNELS.
     pending_kernel_names: RefCell<Vec<String>>,
@@ -497,6 +519,7 @@ impl MetalStream {
             command_queue,
             command_buffer: RefCell::new(None),
             committed_command_buffers: RefCell::new(VecDeque::new()),
+            recycle_stash: RefCell::new(Vec::new()),
             pending_kernel_names: RefCell::new(Vec::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
@@ -625,15 +648,57 @@ impl MetalStream {
         command_buffer.commit();
         let retained = std::mem::take(&mut *self.retained_tensors.borrow_mut());
         let names = std::mem::take(&mut *self.pending_kernel_names.borrow_mut());
+        // Pool pairs dropped while this buffer was open may still be
+        // referenced by it (or by an earlier one, which the queue's FIFO
+        // order covers): recycle them only once this buffer has completed.
+        let recycle = std::mem::take(&mut *self.recycle_stash.borrow_mut());
         let mut committed = self.committed_command_buffers.borrow_mut();
-        committed.push_back((command_buffer, retained, names));
-        while committed.len() > Self::max_committed_in_flight() {
-            let (oldest, tensors, names) = committed.pop_front().unwrap();
-            oldest.wait_until_completed();
-            Self::log_gpu_time_named(&oldest, "segment", &names);
-            drop(tensors);
+        committed.push_back(InFlightBuffer {
+            buffer: command_buffer,
+            retained,
+            recycle,
+            kernel_names: names,
+        });
+        // Retire every already-completed buffer at the front (no wait): their
+        // recycle pairs go back to the pool at true completion time instead
+        // of pop time, keeping the pool hot within a step at deep in-flight
+        // settings. Then enforce the in-flight cap with blocking waits.
+        loop {
+            let done = committed
+                .front()
+                .is_some_and(|e| e.buffer.status() == metal::MTLCommandBufferStatus::Completed);
+            if !done && committed.len() <= Self::max_committed_in_flight() {
+                break;
+            }
+            let oldest = committed.pop_front().unwrap();
+            oldest.buffer.wait_until_completed();
+            Self::log_gpu_time_named(&oldest.buffer, "segment", &oldest.kernel_names);
+            for (host, buffer) in oldest.recycle {
+                self.context.pool_put(host, buffer);
+            }
+            // Dropping the retained tensors can fire BufferPoolGuard drops,
+            // which re-enter through the recycle stash (the committed deque
+            // is mutably borrowed here, so the guard defers): those pairs
+            // ride to the next commit or the next blocking wait.
+            drop(oldest.retained);
         }
         Ok(())
+    }
+
+    /// Recycle everything that was deferred to command-buffer completion.
+    /// Only call with the device fully quiesced (all buffers waited): pairs
+    /// go straight into the pool. Loops because dropping retained tensors
+    /// can push new pairs into the stash.
+    fn flush_recycle_stash(&self) {
+        loop {
+            let pairs = std::mem::take(&mut *self.recycle_stash.borrow_mut());
+            if pairs.is_empty() {
+                return;
+            }
+            for (host, buffer) in pairs {
+                self.context.pool_put(host, buffer);
+            }
+        }
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {
@@ -642,14 +707,20 @@ impl MetalStream {
             // flight: the host must not read results before they land. FIFO:
             // waiting on the newest is enough.
             let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-            if let Some((newest, _, _)) = drained.last() {
-                newest.wait_until_completed();
+            if let Some(newest) = drained.last() {
+                newest.buffer.wait_until_completed();
             }
-            for (buffer, _, names) in &drained {
-                Self::log_gpu_time_named(buffer, "segment-tail", names);
+            for entry in &drained {
+                Self::log_gpu_time_named(&entry.buffer, "segment-tail", &entry.kernel_names);
             }
-            drop(drained);
+            for entry in drained {
+                for (host, buffer) in entry.recycle {
+                    self.context.pool_put(host, buffer);
+                }
+                drop(entry.retained);
+            }
             self.retained_tensors.borrow_mut().clear();
+            self.flush_recycle_stash();
             return Ok(());
         };
 
@@ -672,10 +743,17 @@ impl MetalStream {
 
         // The queue is FIFO: the buffer above completing implies every buffer
         // committed earlier by commit_current has completed too.
-        self.committed_command_buffers.borrow_mut().clear();
+        let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
+        for entry in drained {
+            for (host, buffer) in entry.recycle {
+                self.context.pool_put(host, buffer);
+            }
+            drop(entry.retained);
+        }
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
+        self.flush_recycle_stash();
 
         *self.command_buffer.borrow_mut() = None;
         Ok(())
@@ -709,24 +787,27 @@ impl MetalStream {
 impl Drop for MetalStream {
     fn drop(&mut self) {
         let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-        if let Some((newest, _, _)) = drained.last() {
-            newest.wait_until_completed();
+        if let Some(newest) = drained.last() {
+            newest.buffer.wait_until_completed();
         }
         drop(drained);
-        let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
-
-        match command_buffer.status() {
-            metal::MTLCommandBufferStatus::Committed
-            | metal::MTLCommandBufferStatus::Scheduled
-            | metal::MTLCommandBufferStatus::Completed => {
-                panic!("Current Metal command buffer is already committed.")
+        if let Some(command_buffer) = self.command_buffer.borrow_mut().take() {
+            match command_buffer.status() {
+                metal::MTLCommandBufferStatus::Committed
+                | metal::MTLCommandBufferStatus::Scheduled
+                | metal::MTLCommandBufferStatus::Completed => {
+                    panic!("Current Metal command buffer is already committed.")
+                }
+                _ => {}
             }
-            _ => {}
-        }
 
-        command_buffer.encoder().end_encoding();
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
+            command_buffer.encoder().end_encoding();
+            command_buffer.commit();
+            command_buffer.wait_until_completed();
+        }
+        // Everything is waited: deferred pairs are simply released (no
+        // recycling into the process pool from a dying stream).
+        self.recycle_stash.borrow_mut().clear();
     }
 }
 
@@ -742,8 +823,32 @@ pub(crate) struct BufferPoolGuard {
 
 impl Drop for BufferPoolGuard {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.host) == 1 {
-            metal_context().pool_put(self.host.clone(), self.buffer.clone());
+        if Arc::strong_count(&self.host) != 1 || buffer_pool_disabled() {
+            return;
+        }
+        let mut pair = Some((self.host.clone(), self.buffer.clone()));
+        // Defer recycling to command-buffer completion when this thread's
+        // stream has (or may have, when a RefCell is busy because this drop
+        // runs inside commit_current/wait) GPU work in flight that could
+        // still reference the pair: recycling at host-drop time handed the
+        // buffer to a new tensor while an in-flight command buffer still
+        // read or wrote it. A thread without a stream never dispatched
+        // anything referencing the pair, so it recycles immediately (the
+        // historical behavior).
+        let _ = METAL_STREAM.try_with(|cell| {
+            let Ok(stream_ref) = cell.try_borrow() else { return };
+            let Some(stream) = stream_ref.as_ref() else { return };
+            let busy = stream.command_buffer.try_borrow().map_or(true, |cb| cb.is_some())
+                || stream
+                    .committed_command_buffers
+                    .try_borrow()
+                    .map_or(true, |committed| !committed.is_empty());
+            if busy {
+                stream.recycle_stash.borrow_mut().push(pair.take().unwrap());
+            }
+        });
+        if let Some((host, buffer)) = pair {
+            metal_context().pool_put(host, buffer);
         }
     }
 }
@@ -778,5 +883,64 @@ impl DerefMut for MetalBuffer {
 impl DeviceBuffer for MetalBuffer {
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Regression test for the transient buffer-pool recycling race: a
+    /// pooled tensor dropped while GPU work is pending (an open command
+    /// buffer, then a committed-but-unawaited one) must NOT be recyclable
+    /// until that work completes. Before the deferral fix the pair entered
+    /// the pool at host-drop time and could be handed to a new tensor while
+    /// an in-flight command buffer still referenced it (byte-level
+    /// run-to-run nondeterminism on qwen3.5-35B at in-flight depth 2,
+    /// 2026-08-12). The race itself needs GPU/CPU timing to bite, so this
+    /// tests the lifetime mechanics deterministically instead.
+    #[test]
+    fn pool_recycling_defers_to_command_buffer_completion() -> TractResult<()> {
+        crate::utils::with_borrowed_metal_stream(|stream| {
+            // A shape no other test uses, so pool state is ours alone.
+            let shape = [4099usize];
+            let dt = DatumType::F32;
+            let context = metal_context();
+            // Drain anything a previous run of this test left behind.
+            while context.pool_take(dt, &shape).is_some() {}
+
+            // Idle stream: a drop recycles immediately (historical behavior).
+            let t = unsafe { DeviceTensor::uninitialized_dt(dt, &shape)? };
+            drop(t);
+            ensure!(
+                context.pool_take(dt, &shape).is_some(),
+                "idle-stream drop must recycle immediately"
+            );
+
+            // Busy stream: with a command buffer open, the drop must defer.
+            let t = unsafe { DeviceTensor::uninitialized_dt(dt, &shape)? };
+            let _cb = stream.command_buffer();
+            drop(t);
+            ensure!(
+                context.pool_take(dt, &shape).is_none(),
+                "drop under an open command buffer must not recycle yet"
+            );
+
+            // Committed but unawaited (within the in-flight window): still
+            // deferred.
+            stream.commit_current()?;
+            ensure!(
+                context.pool_take(dt, &shape).is_none(),
+                "drop under a committed-but-unawaited buffer must not recycle yet"
+            );
+
+            // Fully waited: the deferred pair lands in the pool.
+            stream.wait_until_completed()?;
+            ensure!(
+                context.pool_take(dt, &shape).is_some(),
+                "the pair must recycle once the in-flight work completed"
+            );
+            Ok(())
+        })
     }
 }

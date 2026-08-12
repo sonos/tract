@@ -246,16 +246,18 @@ fn probe(plan: &Arc<TypedSimplePlan>, resolved: MetalTuning) -> TractResult<Meta
     // the guard cannot attribute a mismatch to a knob and stands down (the
     // scheduling knobs are still safe to tune on timings alone).
     //
-    // KNOWN NONDETERMINISM (2026-08-12, qwen3.5-35B on M4 Pro): with the
-    // buffer pool enabled and a LOW in-flight depth (2), identical runs
-    // intermittently differ at the byte level (varying output indices,
-    // logits included; too small to flip greedy ids). Pool disabled: clean.
-    // Arena disabled, pool on: still dirty. So recycled transient buffers
-    // combined with early in-flight waits expose a stale-read/recycling race
-    // in tract that predates this probe; the default depth 8 measured clean
-    // across every check. Until that bug is fixed, a guard trip here most
-    // likely means a candidate perturbed that recycling pattern; rejecting
-    // the candidate is the safe response either way.
+    // HISTORY (2026-08-12, qwen3.5-35B on M4 Pro): this pre-check caught a
+    // real race: transient (host, MTLBuffer) pairs were recycled into the
+    // buffer pool at host-drop time, while a committed-but-incomplete
+    // command buffer could still reference them (retention could be filed
+    // one buffer early when a cadence commit fired inside `command_buffer()`
+    // between a kernel's retains and its encode). At in-flight depth 2 that
+    // recycled buffers under in-flight GPU work: 5/20 identical runs dirty
+    // (logits included); depth 8 masked it. Fixed by deferring pool
+    // recycling to command-buffer completion (see `BufferPoolGuard`); both
+    // depths then measure 0/60 dirty. The pre-check stays as the regression
+    // tripwire; TRACT_METAL_DETERMINISM_PAIRS=N loops it for rate
+    // measurements.
     let reference = match host_bytes(&run_once(&mut state, &inputs)?) {
         None => {
             log::warn!(
@@ -265,19 +267,35 @@ fn probe(plan: &Arc<TypedSimplePlan>, resolved: MetalTuning) -> TractResult<Meta
             None
         }
         Some(bytes) => {
-            let again = host_bytes(&run_once(&mut state, &inputs)?);
-            match again.as_deref().and_then(|again| first_mismatch(&bytes, again)) {
-                None => Some(bytes),
-                Some(ix) => {
+            // TRACT_METAL_DETERMINISM_PAIRS=N (default 1) re-runs the
+            // pre-check N times: a diagnostic loop to measure a mismatch
+            // RATE in-process when chasing scheduling nondeterminism.
+            let pairs: usize = std::env::var("TRACT_METAL_DETERMINISM_PAIRS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(1)
+                .max(1);
+            let mut mismatches = 0usize;
+            for pair in 0..pairs {
+                let again = host_bytes(&run_once(&mut state, &inputs)?);
+                if let Some(ix) = again.as_deref().and_then(|again| first_mismatch(&bytes, again))
+                {
+                    mismatches += 1;
                     log::warn!(
-                        "Metal load-time autotune: two identical baseline runs disagree \
-                         (first mismatch: output #{ix}); outputs are not run-to-run \
-                         deterministic on this device, probing without the \
+                        "Metal load-time autotune: identical baseline runs disagree \
+                         (pair {pair}: first mismatch at output #{ix}); outputs are not \
+                         run-to-run deterministic on this device, probing without the \
                          output-invariance guard"
                     );
-                    None
                 }
             }
+            if pairs > 1 {
+                log::warn!(
+                    "Metal load-time autotune determinism loop: {mismatches}/{pairs} \
+                     runs disagreed with the reference"
+                );
+            }
+            if mismatches == 0 { Some(bytes) } else { None }
         }
     };
 
