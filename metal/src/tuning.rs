@@ -9,14 +9,33 @@
 //!    tuned on an Apple M4 Pro, 48 GB, during the 2026-08 decode-perf
 //!    campaign (models: gpt-oss-20b q40 MoE, qwen3.5-35B-A3B q40 hybrid).
 //! 2. Device-informed derivations. None exist today: no baseline value has a
-//!    principled scaling rule across device classes yet. When one does (or a
-//!    micro-autotuner lands), it belongs in [`MetalTuning::resolve`], between
-//!    the baseline and the overrides (e.g. a future
-//!    `MetalTuning::from_autotune_cache()` feeding `AppOverrides`).
-//! 3. Application overrides ([`set_tuning_overrides`]): programmatic hints an
+//!    principled scaling rule across device classes yet. When one does, it
+//!    belongs in [`MetalTuning::resolve`], between the baseline and the
+//!    autotune cache.
+//! 3. Autotune cache ([`AutotuneCache`]): a JSON file written by an OFFLINE
+//!    sweep tool (e.g. ohana's `tune_decode` example), one file per device.
+//!    Default location `~/.cache/tract/tuning/<sanitized-device-name>.json`
+//!    (see [`sanitize_device_name`]); `TRACT_METAL_TUNING_CACHE` overrides
+//!    the location and may name either a directory (the per-device file is
+//!    looked up inside it) or a file. Within the cache, the `device` section
+//!    applies first, then the model section selected via
+//!    [`set_tuning_model_key`] (if any). `TRACT_METAL_DISABLE_TUNING_CACHE=1`
+//!    skips reading it. A malformed cache file is never a session error: it
+//!    is logged (warn) and ignored, as are unknown fields (forward compat).
+//! 4. Application overrides ([`set_tuning_overrides`]): programmatic hints an
 //!    embedding application registers before the first Metal dispatch.
-//! 4. Env overrides: the historical variable names, unchanged semantics,
+//! 5. Env overrides: the historical variable names, unchanged semantics,
 //!    still highest precedence.
+//!
+//! # Offline autotuning workflow
+//!
+//! Sessions never probe at load time: tuning cost is paid once, offline.
+//! Run ohana's `tune_decode --write` once per device (optionally once per
+//! model class with `--model-key <key>`); it sweeps the output-invariant
+//! scheduling knobs against a real model and writes the cache file above.
+//! Every later tract session on that device picks the cache up
+//! automatically; apps opt a model into its section with
+//! [`set_tuning_model_key`]; env vars still win for one-off experiments.
 //!
 //! Debug/disable escape hatches (`TRACT_METAL_DISABLE_*`, `TRACT_METAL_LOG_*`,
 //! `TRACT_METAL_PROFILE_KERNELS`, `TRACT_METAL_GEMM_IMPL`, ...) are NOT part
@@ -26,6 +45,7 @@
 //! `gdn_recurrent.rs`) are also excluded: they must match `constant`
 //! declarations compiled into the shaders and cannot be tuned host-side.
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
@@ -137,6 +157,231 @@ pub struct MetalTuningOverrides {
     pub max_pooled_per_key: Option<usize>,
 }
 
+/// Names every settable field once, so the field list cannot drift between
+/// the merge logic, the cache parser and the debug formatting.
+macro_rules! for_each_tuning_field {
+    ($m:ident) => {
+        $m!(
+            flash_sdpa_min_t,
+            sdpa_prefill_block,
+            sdpa_split_k_min_t,
+            sdpa_split_k_chunk,
+            commit_every_n_dispatches,
+            max_command_buffers_in_flight,
+            moe_commit_min_routes,
+            moe_grouped_min_routes,
+            pool_max_bytes,
+            max_pooled_per_key
+        )
+    };
+}
+
+impl MetalTuningOverrides {
+    /// Merge `other` over `self`, field by field: `Some` fields of `other`
+    /// win, `None` fields keep the current value.
+    fn merge_from(&mut self, other: &MetalTuningOverrides) {
+        macro_rules! merge {
+            ($($field:ident),*) => {
+                $(if let Some(v) = other.$field { self.$field = Some(v); })*
+            };
+        }
+        for_each_tuning_field!(merge);
+    }
+
+    /// `field=value` list of the set fields, for the applied-cache debug log.
+    fn set_fields(&self) -> String {
+        let mut out = Vec::new();
+        macro_rules! fmt {
+            ($($field:ident),*) => {
+                $(if let Some(v) = self.$field {
+                    out.push(format!(concat!(stringify!($field), "={}"), v));
+                })*
+            };
+        }
+        for_each_tuning_field!(fmt);
+        if out.is_empty() { "<none>".to_string() } else { out.join(" ") }
+    }
+
+    /// Set a field by its cache-file name. `Err` on an unknown name.
+    fn set_by_name(&mut self, name: &str, value: usize) -> TractResult<()> {
+        macro_rules! set {
+            ($($field:ident),*) => {
+                match name {
+                    $(stringify!($field) => { self.$field = Some(value); Ok(()) })*
+                    _ => bail!("unknown tuning field `{name}`"),
+                }
+            };
+        }
+        for_each_tuning_field!(set)
+    }
+}
+
+/// The parsed autotune cache file: tuned values measured offline by a sweep
+/// tool (see the module docs for the workflow and the resolution order).
+///
+/// File format (JSON, one file per device):
+///
+/// ```json
+/// {
+///   "schema_version": 1,
+///   "device_name": "Apple M4 Pro",
+///   "written_by": "tune_decode (ohana)",
+///   "date": "2026-08-12T10:00:00Z",
+///   "device": { "max_command_buffers_in_flight": 8 },
+///   "models": { "hybrid-gdn": { "commit_every_n_dispatches": 10 } }
+/// }
+/// ```
+///
+/// The `device` section applies to every session on the device; a `models`
+/// section applies on top of it when the application selects its key with
+/// [`set_tuning_model_key`]. Field names are the [`MetalTuning`] field names,
+/// values are non-negative integers (`pool_max_bytes` in bytes). Unknown
+/// fields warn and are ignored (a newer tool may know fields this build does
+/// not); a malformed file warns and is ignored entirely.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AutotuneCache {
+    /// Where the cache was read from (for logs).
+    pub path: PathBuf,
+    /// Device-wide tuned values.
+    pub device: MetalTuningOverrides,
+    /// Model-keyed tuned values, applied over `device` when selected.
+    pub models: Vec<(String, MetalTuningOverrides)>,
+}
+
+/// The autotune cache schema version this build reads and writes.
+pub const AUTOTUNE_CACHE_SCHEMA_VERSION: u64 = 1;
+
+impl AutotuneCache {
+    /// Read and parse a cache file. Any problem (unreadable, malformed,
+    /// wrong schema version) is logged at warn level and yields `None`:
+    /// a bad cache must never break a session.
+    pub fn load(path: &Path) -> Option<AutotuneCache> {
+        let text = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) => {
+                log::warn!("ignoring unreadable Metal tuning cache {}: {e}", path.display());
+                return None;
+            }
+        };
+        match Self::parse(path, &text) {
+            Ok(cache) => Some(cache),
+            Err(e) => {
+                log::warn!("ignoring malformed Metal tuning cache {}: {e:?}", path.display());
+                None
+            }
+        }
+    }
+
+    fn parse(path: &Path, text: &str) -> TractResult<AutotuneCache> {
+        let root: serde_json::Value = serde_json::from_str(text)?;
+        let root = root.as_object().context("cache root must be a JSON object")?;
+        let version = root
+            .get("schema_version")
+            .and_then(|v| v.as_u64())
+            .context("missing or non-integer schema_version")?;
+        if version != AUTOTUNE_CACHE_SCHEMA_VERSION {
+            bail!("unsupported schema_version {version} (this build reads {AUTOTUNE_CACHE_SCHEMA_VERSION})");
+        }
+        let mut cache = AutotuneCache { path: path.to_path_buf(), ..Default::default() };
+        for (key, value) in root {
+            match key.as_str() {
+                // Provenance metadata: informational only.
+                "schema_version" | "device_name" | "written_by" | "date" => (),
+                "device" => {
+                    let section =
+                        value.as_object().context("`device` section must be a JSON object")?;
+                    cache.device = Self::parse_section(path, "device", section);
+                }
+                "models" => {
+                    let models =
+                        value.as_object().context("`models` section must be a JSON object")?;
+                    for (model_key, section) in models {
+                        let section = section.as_object().with_context(|| {
+                            format!("models.{model_key} section must be a JSON object")
+                        })?;
+                        let overrides =
+                            Self::parse_section(path, &format!("models.{model_key}"), section);
+                        cache.models.push((model_key.clone(), overrides));
+                    }
+                }
+                unknown => log::warn!(
+                    "Metal tuning cache {}: ignoring unknown field `{unknown}`",
+                    path.display()
+                ),
+            }
+        }
+        Ok(cache)
+    }
+
+    /// Parse one field->value section. Unknown fields and out-of-domain
+    /// values warn and are skipped, never an error (forward compat).
+    fn parse_section(
+        path: &Path,
+        section: &str,
+        obj: &serde_json::Map<String, serde_json::Value>,
+    ) -> MetalTuningOverrides {
+        let mut overrides = MetalTuningOverrides::default();
+        for (name, value) in obj {
+            let Some(value) = value.as_u64().and_then(|v| usize::try_from(v).ok()) else {
+                log::warn!(
+                    "Metal tuning cache {} [{section}]: ignoring `{name}`: \
+                     value must be a non-negative integer",
+                    path.display()
+                );
+                continue;
+            };
+            if name == "max_command_buffers_in_flight" && value < 1 {
+                log::warn!(
+                    "Metal tuning cache {} [{section}]: ignoring \
+                     max_command_buffers_in_flight=0 (must be >= 1)",
+                    path.display()
+                );
+                continue;
+            }
+            if let Err(e) = overrides.set_by_name(name, value) {
+                log::warn!("Metal tuning cache {} [{section}]: ignoring `{name}`: {e}", path.display());
+            }
+        }
+        overrides
+    }
+
+    /// The model section for `key`, if present.
+    fn model_section(&self, key: &str) -> Option<&MetalTuningOverrides> {
+        self.models.iter().find(|(k, _)| k == key).map(|(_, s)| s)
+    }
+}
+
+/// `Metal device name -> cache file stem`: lowercased, every non-alphanumeric
+/// run collapsed to a single `-` (e.g. "Apple M4 Pro" -> "apple-m4-pro").
+pub fn sanitize_device_name(name: &str) -> String {
+    let mut out = String::with_capacity(name.len());
+    for c in name.chars() {
+        if c.is_ascii_alphanumeric() {
+            out.push(c.to_ascii_lowercase());
+        } else if !out.ends_with('-') {
+            out.push('-');
+        }
+    }
+    out.trim_matches('-').to_string()
+}
+
+/// The name of the system default Metal device, if one exists.
+pub fn current_device_name() -> Option<String> {
+    metal::Device::system_default().map(|d| d.name().to_string())
+}
+
+/// The default autotune cache path for a device:
+/// `~/.cache/tract/tuning/<sanitized-device-name>.json`. `None` when `HOME`
+/// is unset or the device name sanitizes to nothing.
+pub fn autotune_cache_default_path(device_name: &str) -> Option<PathBuf> {
+    let stem = sanitize_device_name(device_name);
+    if stem.is_empty() {
+        return None;
+    }
+    let home = std::env::var_os("HOME")?;
+    Some(PathBuf::from(home).join(".cache/tract/tuning").join(format!("{stem}.json")))
+}
+
 impl MetalTuning {
     /// The hardcoded defaults, tuned on an Apple M4 Pro (48 GB) during the
     /// 2026-08 decode-perf campaign. See each field for provenance.
@@ -153,24 +398,77 @@ impl MetalTuning {
         max_pooled_per_key: 16,
     };
 
-    /// Resolve the profile from the baseline, the registered application
-    /// overrides and the process environment. Called once per process by
-    /// [`tuning`]; use that accessor instead.
+    /// Resolve the profile from the baseline, the autotune cache, the
+    /// registered application overrides and the process environment. Called
+    /// once per process by [`tuning`]; use that accessor instead.
     pub fn from_env_and_device() -> MetalTuning {
         let overrides = app_overrides().lock().map(|o| o.clone()).unwrap_or_default();
-        Self::resolve(&overrides, |name| std::env::var(name).ok())
+        let model_key = tuning_model_key().lock().map(|k| k.clone()).unwrap_or_default();
+        let env = |name: &str| std::env::var(name).ok();
+        let cache = Self::from_autotune_cache(&env);
+        if let Some(cache) = &cache {
+            let model = model_key
+                .as_deref()
+                .and_then(|key| Some((key, cache.model_section(key)?.set_fields())));
+            log::debug!(
+                "applying Metal autotune cache {}: device section: {}, model section{}",
+                cache.path.display(),
+                cache.device.set_fields(),
+                match &model {
+                    Some((key, fields)) => format!(" [{key}]: {fields}"),
+                    None => format!(": <none> (model key: {model_key:?})"),
+                }
+            );
+        }
+        Self::resolve(cache.as_ref(), model_key.as_deref(), &overrides, env)
     }
 
-    /// Pure resolution, env injected for hermetic tests.
+    /// Locate and load the autotune cache, env injected for hermetic tests.
+    /// `TRACT_METAL_DISABLE_TUNING_CACHE=1` skips it; `TRACT_METAL_TUNING_CACHE`
+    /// overrides the default per-device path and may name a directory (the
+    /// `<sanitized-device-name>.json` file is looked up inside it) or a file.
+    fn from_autotune_cache(env: &impl Fn(&str) -> Option<String>) -> Option<AutotuneCache> {
+        if env("TRACT_METAL_DISABLE_TUNING_CACHE").as_deref() == Some("1") {
+            log::debug!("Metal autotune cache disabled by TRACT_METAL_DISABLE_TUNING_CACHE");
+            return None;
+        }
+        let path = match env("TRACT_METAL_TUNING_CACHE").map(PathBuf::from) {
+            Some(path) if path.is_dir() => {
+                let stem = sanitize_device_name(&current_device_name()?);
+                path.join(format!("{stem}.json"))
+            }
+            Some(path) => path,
+            None => autotune_cache_default_path(&current_device_name()?)?,
+        };
+        if !path.is_file() {
+            return None;
+        }
+        AutotuneCache::load(&path)
+    }
+
+    /// Pure resolution, cache and env injected for hermetic tests.
     fn resolve(
+        cache: Option<&AutotuneCache>,
+        model_key: Option<&str>,
         overrides: &MetalTuningOverrides,
         env: impl Fn(&str) -> Option<String>,
     ) -> MetalTuning {
         let base = MetalTuning::BASELINE;
-        // Seam for device-informed derivations and a future
-        // `from_autotune_cache()`: adjust `base` here, between the baseline
-        // and the overrides. Nothing today has a principled cross-device
-        // scaling rule, so `base` is used as-is.
+        // Seam for device-informed derivations: adjust `base` here, between
+        // the baseline and the autotune cache. Nothing today has a principled
+        // cross-device scaling rule, so `base` is used as-is.
+        // Autotune cache and app hints collapse into one override layer:
+        // cache device section, then the selected cache model section, then
+        // the app overrides, later layers winning field by field.
+        let mut merged = MetalTuningOverrides::default();
+        if let Some(cache) = cache {
+            merged.merge_from(&cache.device);
+            if let Some(section) = model_key.and_then(|key| cache.model_section(key)) {
+                merged.merge_from(section);
+            }
+        }
+        merged.merge_from(overrides);
+        let overrides = &merged;
         let parsed = |name: &str| env(name).and_then(|v| v.parse::<usize>().ok());
         MetalTuning {
             flash_sdpa_min_t: parsed("TRACT_METAL_FLASH_SDPA_MIN_T")
@@ -209,6 +507,11 @@ fn app_overrides() -> &'static Mutex<MetalTuningOverrides> {
     O.get_or_init(|| Mutex::new(MetalTuningOverrides::default()))
 }
 
+fn tuning_model_key() -> &'static Mutex<Option<String>> {
+    static K: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+    K.get_or_init(|| Mutex::new(None))
+}
+
 static RESOLVED: AtomicBool = AtomicBool::new(false);
 
 /// The process-wide resolved tuning profile. First call resolves (and logs)
@@ -236,23 +539,25 @@ pub fn set_tuning_overrides(overrides: MetalTuningOverrides) -> TractResult<()> 
              set_tuning_overrides must run before the first Metal dispatch"
         );
     }
-    macro_rules! merge {
-        ($($field:ident),*) => {
-            $(if let Some(v) = overrides.$field { current.$field = Some(v); })*
-        };
+    current.merge_from(&overrides);
+    Ok(())
+}
+
+/// Select the autotune-cache model section this process should apply (e.g.
+/// `"hybrid-gdn"`), on top of the cache's device section. A no-op when no
+/// cache exists or it has no such section. Same contract as
+/// [`set_tuning_overrides`]: must run before the first Metal dispatch of the
+/// process, fails once the profile has been resolved; env vars and app
+/// overrides still win over the cache.
+pub fn set_tuning_model_key(key: impl Into<String>) -> TractResult<()> {
+    let mut current = tuning_model_key().lock().map_err(|e| anyhow!("{e}"))?;
+    if RESOLVED.load(Ordering::Acquire) {
+        bail!(
+            "Metal tuning profile already resolved; \
+             set_tuning_model_key must run before the first Metal dispatch"
+        );
     }
-    merge!(
-        flash_sdpa_min_t,
-        sdpa_prefill_block,
-        sdpa_split_k_min_t,
-        sdpa_split_k_chunk,
-        commit_every_n_dispatches,
-        max_command_buffers_in_flight,
-        moe_commit_min_routes,
-        moe_grouped_min_routes,
-        pool_max_bytes,
-        max_pooled_per_key
-    );
+    *current = Some(key.into());
     Ok(())
 }
 
@@ -268,7 +573,7 @@ mod tests {
     /// overrides must yield exactly the 2026-08 M4 Pro tuned values.
     #[test]
     fn default_profile_is_baseline() {
-        let t = MetalTuning::resolve(&MetalTuningOverrides::default(), no_env);
+        let t = MetalTuning::resolve(None, None, &MetalTuningOverrides::default(), no_env);
         assert_eq!(t, MetalTuning::BASELINE);
         assert_eq!(t.flash_sdpa_min_t, usize::MAX);
         assert_eq!(t.sdpa_prefill_block, 4096);
@@ -296,7 +601,7 @@ mod tests {
             commit_every_n_dispatches: Some(10),
             ..Default::default()
         };
-        let t = MetalTuning::resolve(&hints, env);
+        let t = MetalTuning::resolve(None, None, &hints, env);
         // Env beats the application hint.
         assert_eq!(t.commit_every_n_dispatches, 20);
         assert_eq!(t.max_command_buffers_in_flight, 2);
@@ -314,7 +619,7 @@ mod tests {
             commit_every_n_dispatches: Some(10),
             ..Default::default()
         };
-        let t = MetalTuning::resolve(&hints, no_env);
+        let t = MetalTuning::resolve(None, None, &hints, no_env);
         assert_eq!(t.commit_every_n_dispatches, 10);
         assert_eq!(t.max_command_buffers_in_flight, 8);
     }
@@ -325,14 +630,14 @@ mod tests {
         let legacy_only = |name: &str| {
             (name == "TRACT_METAL_GPT_OSS_FLASH_MIN_T").then(|| "4096".to_string())
         };
-        let t = MetalTuning::resolve(&MetalTuningOverrides::default(), legacy_only);
+        let t = MetalTuning::resolve(None, None, &MetalTuningOverrides::default(), legacy_only);
         assert_eq!(t.flash_sdpa_min_t, 4096);
         let both = |name: &str| match name {
             "TRACT_METAL_FLASH_SDPA_MIN_T" => Some("0".to_string()),
             "TRACT_METAL_GPT_OSS_FLASH_MIN_T" => Some("4096".to_string()),
             _ => None,
         };
-        let t = MetalTuning::resolve(&MetalTuningOverrides::default(), both);
+        let t = MetalTuning::resolve(None, None, &MetalTuningOverrides::default(), both);
         assert_eq!(t.flash_sdpa_min_t, 0);
     }
 
@@ -345,8 +650,166 @@ mod tests {
             "TRACT_METAL_COMMIT_EVERY_N_DISPATCHES" => Some("not-a-number".to_string()),
             _ => None,
         };
-        let t = MetalTuning::resolve(&MetalTuningOverrides::default(), env);
+        let t = MetalTuning::resolve(None, None, &MetalTuningOverrides::default(), env);
         assert_eq!(t.max_command_buffers_in_flight, 8);
         assert_eq!(t.commit_every_n_dispatches, 0);
+    }
+
+    fn temp_cache_file(name: &str, content: &str) -> PathBuf {
+        let path = std::env::temp_dir()
+            .join(format!("tract-metal-tuning-test-{}-{name}.json", std::process::id()));
+        std::fs::write(&path, content).unwrap();
+        path
+    }
+
+    const CACHE_JSON: &str = r#"{
+        "schema_version": 1,
+        "device_name": "Apple M4 Pro",
+        "written_by": "unit test",
+        "date": "2026-08-12",
+        "device": { "max_command_buffers_in_flight": 4, "moe_commit_min_routes": 128 },
+        "models": { "hybrid-gdn": { "commit_every_n_dispatches": 10, "moe_commit_min_routes": 32 } }
+    }"#;
+
+    #[test]
+    fn cache_device_section_applies_over_baseline() {
+        let path = temp_cache_file("device-section", CACHE_JSON);
+        let cache = AutotuneCache::load(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let t = MetalTuning::resolve(Some(&cache), None, &MetalTuningOverrides::default(), no_env);
+        assert_eq!(t.max_command_buffers_in_flight, 4);
+        assert_eq!(t.moe_commit_min_routes, 128);
+        // Model sections are inert without a selected key.
+        assert_eq!(t.commit_every_n_dispatches, 0);
+        // Untouched fields keep the baseline.
+        assert_eq!(t.pool_max_bytes, MetalTuning::BASELINE.pool_max_bytes);
+    }
+
+    #[test]
+    fn cache_model_section_applies_over_device_section() {
+        let path = temp_cache_file("model-section", CACHE_JSON);
+        let cache = AutotuneCache::load(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let t = MetalTuning::resolve(
+            Some(&cache),
+            Some("hybrid-gdn"),
+            &MetalTuningOverrides::default(),
+            no_env,
+        );
+        assert_eq!(t.commit_every_n_dispatches, 10);
+        assert_eq!(t.moe_commit_min_routes, 32); // model section beats device section
+        assert_eq!(t.max_command_buffers_in_flight, 4); // device section still applies
+        // An unknown key falls back to the device section alone.
+        let t = MetalTuning::resolve(
+            Some(&cache),
+            Some("no-such-model"),
+            &MetalTuningOverrides::default(),
+            no_env,
+        );
+        assert_eq!(t.commit_every_n_dispatches, 0);
+        assert_eq!(t.moe_commit_min_routes, 128);
+    }
+
+    #[test]
+    fn app_hint_and_env_win_over_cache() {
+        let path = temp_cache_file("precedence", CACHE_JSON);
+        let cache = AutotuneCache::load(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let hints =
+            MetalTuningOverrides { moe_commit_min_routes: Some(96), ..Default::default() };
+        // App hint beats both cache sections.
+        let t = MetalTuning::resolve(Some(&cache), Some("hybrid-gdn"), &hints, no_env);
+        assert_eq!(t.moe_commit_min_routes, 96);
+        // Env beats the app hint and the cache.
+        let env =
+            |name: &str| (name == "TRACT_METAL_MOE_COMMIT_MIN_ROUTES").then(|| "48".to_string());
+        let t = MetalTuning::resolve(Some(&cache), Some("hybrid-gdn"), &hints, env);
+        assert_eq!(t.moe_commit_min_routes, 48);
+        // Env beats a cache field no hint touches.
+        let env = |name: &str| (name == "TRACT_METAL_MAX_IN_FLIGHT").then(|| "16".to_string());
+        let t = MetalTuning::resolve(Some(&cache), None, &MetalTuningOverrides::default(), env);
+        assert_eq!(t.max_command_buffers_in_flight, 16);
+    }
+
+    #[test]
+    fn disable_flag_skips_cache() {
+        let path = temp_cache_file("disable-flag", CACHE_JSON);
+        let path_str = path.to_string_lossy().to_string();
+        let with_cache = |name: &str| match name {
+            "TRACT_METAL_TUNING_CACHE" => Some(path_str.clone()),
+            _ => None,
+        };
+        assert!(MetalTuning::from_autotune_cache(&with_cache).is_some());
+        let disabled = |name: &str| match name {
+            "TRACT_METAL_TUNING_CACHE" => Some(path_str.clone()),
+            "TRACT_METAL_DISABLE_TUNING_CACHE" => Some("1".to_string()),
+            _ => None,
+        };
+        assert!(MetalTuning::from_autotune_cache(&disabled).is_none());
+        std::fs::remove_file(&path).unwrap();
+    }
+
+    /// A malformed cache file is warn-and-ignore, never a session error.
+    #[test]
+    fn malformed_cache_is_ignored() {
+        for (name, content) in [
+            ("not-json", "{ this is not json"),
+            ("not-object", "[1, 2, 3]"),
+            ("no-version", r#"{ "device": {} }"#),
+            ("future-version", r#"{ "schema_version": 999, "device": {} }"#),
+            ("bad-device-section", r#"{ "schema_version": 1, "device": 42 }"#),
+        ] {
+            let path = temp_cache_file(name, content);
+            assert!(AutotuneCache::load(&path).is_none(), "{name} should be rejected");
+            std::fs::remove_file(&path).unwrap();
+        }
+        // Unreadable (missing) file: also None, no panic.
+        assert!(AutotuneCache::load(Path::new("/nonexistent/tuning.json")).is_none());
+    }
+
+    /// Unknown fields and out-of-domain values warn and are skipped; the
+    /// known fields of the same file still apply (forward compat).
+    #[test]
+    fn unknown_cache_fields_are_ignored_known_ones_apply() {
+        let path = temp_cache_file(
+            "unknown-fields",
+            r#"{
+                "schema_version": 1,
+                "some_future_root_field": {},
+                "device": {
+                    "max_command_buffers_in_flight": 2,
+                    "some_future_knob": 7,
+                    "commit_every_n_dispatches": "not-a-number",
+                    "moe_commit_min_routes": -1
+                }
+            }"#,
+        );
+        let cache = AutotuneCache::load(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let t = MetalTuning::resolve(Some(&cache), None, &MetalTuningOverrides::default(), no_env);
+        assert_eq!(t.max_command_buffers_in_flight, 2);
+        assert_eq!(t.commit_every_n_dispatches, 0);
+        assert_eq!(t.moe_commit_min_routes, 64);
+    }
+
+    /// In-flight 0 from a cache would deadlock the commit logic; it is
+    /// rejected at parse time like the env var's `>= 1` filter.
+    #[test]
+    fn cache_in_flight_zero_is_rejected() {
+        let path = temp_cache_file(
+            "in-flight-zero",
+            r#"{ "schema_version": 1, "device": { "max_command_buffers_in_flight": 0 } }"#,
+        );
+        let cache = AutotuneCache::load(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        let t = MetalTuning::resolve(Some(&cache), None, &MetalTuningOverrides::default(), no_env);
+        assert_eq!(t.max_command_buffers_in_flight, 8);
+    }
+
+    #[test]
+    fn sanitize_device_names() {
+        assert_eq!(sanitize_device_name("Apple M4 Pro"), "apple-m4-pro");
+        assert_eq!(sanitize_device_name("Apple M1 (Ultra) / 2022"), "apple-m1-ultra-2022");
+        assert_eq!(sanitize_device_name("---"), "");
     }
 }

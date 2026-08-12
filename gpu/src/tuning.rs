@@ -1,8 +1,8 @@
 //! Backend-agnostic GPU tuning profile.
 //!
 //! Same resolve-once design as `tract_metal::tuning` (see that module for
-//! the rationale and the seam for device-informed derivations / a future
-//! autotuner): baseline defaults, then env overrides, resolved once per
+//! the rationale, the seam for device-informed derivations and the offline
+//! autotune cache): baseline defaults, then env overrides, resolved once per
 //! process and logged at debug level. Backend-specific constants (command
 //! buffer cadence, pool caps, kernel thresholds) live in the backend crates;
 //! only values meaningful to every GPU runtime belong here.

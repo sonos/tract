@@ -4992,6 +4992,7 @@ dependencies = [
  "objc",
  "proptest",
  "rand 0.10.2",
+ "serde_json",
  "tract-core",
  "tract-gpu",
  "tract-pulse-opl",
