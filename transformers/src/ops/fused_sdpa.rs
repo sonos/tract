@@ -37,6 +37,12 @@ use crate::ops::inplace_kv_cache::InPlaceKvCache;
 /// Sequence axis of `[B, H, S, D]`.
 const SEQ_AXIS: usize = 2;
 
+/// Env flag with a legacy fallback name (from when the op was GPT-OSS
+/// specific): the new name wins, the old one keeps existing scripts working.
+fn env_flag_with_legacy(new: &str, legacy: &str) -> bool {
+    std::env::var_os(new).is_some() || std::env::var_os(legacy).is_some()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FusedSdpa {
     /// Softmax scale as f32 bits (f32 lacks Eq/Hash).
@@ -152,7 +158,7 @@ impl OpState for FusedSdpaState {
         self.k.push(&to_f32(k_new)?)?;
         self.v.push(&to_f32(v_new)?)?;
 
-        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SDPA").is_some() {
+        if env_flag_with_legacy("TRACT_DEBUG_FUSED_SDPA", "TRACT_DEBUG_GPT_OSS_SDPA") {
             let stats = |t: &TValue, tag: &str| -> TractResult<()> {
                 let h = t.cast_to::<f32>()?.into_owned();
                 let v = h.try_as_plain()?.as_slice::<f32>()?;
@@ -530,7 +536,8 @@ fn qk_branch(
 /// (full attention) when no such constant exists, which is always safe: the
 /// mask stays the semantic source of truth.
 fn extract_sliding_window(model: &TypedModel, mask_outlet: OutletId) -> u32 {
-    let debug = std::env::var_os("TRACT_DEBUG_GPT_OSS_WINDOW").is_some();
+    let debug =
+        env_flag_with_legacy("TRACT_DEBUG_FUSED_SDPA_WINDOW", "TRACT_DEBUG_GPT_OSS_WINDOW");
     let mut seen = std::collections::HashSet::new();
     let mut stack = vec![mask_outlet.node];
     let mut candidates: Vec<u32> = vec![];

@@ -41,6 +41,18 @@ use crate::kernels::moe::{
 use crate::utils::get_metal_buffer;
 
 const SEQ_AXIS: usize = 2;
+
+/// Env lookup with a legacy fallback name (from when this lowering was
+/// GPT-OSS specific): the new name wins, the old one keeps existing user
+/// scripts working.
+fn env_with_legacy(new: &str, legacy: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(new).or_else(|| std::env::var_os(legacy))
+}
+
+fn env_flag_with_legacy(new: &str, legacy: &str) -> bool {
+    env_with_legacy(new, legacy).is_some()
+}
+
 /// Step sizes up to this may run the fused flash-attention kernel; larger
 /// (prefill-sized) steps always use the batched-gemm pipeline.
 const FLASH_MAX_S: usize = 8;
@@ -49,12 +61,12 @@ const FLASH_MAX_S: usize = 8;
 /// GGML mm/gemv pipeline beat the flash kernel at every length tried (74,
 /// 2800, 5.6k, 11k ctx: e.g. 24.3 vs 21.1 tok/s at 11k), so flash is
 /// disabled by default and kept for future tuning. Enable with
-/// TRACT_METAL_GPT_OSS_FLASH_MIN_T=<t>.
+/// TRACT_METAL_FLASH_SDPA_MIN_T=<t>.
 const FLASH_MIN_T: usize = usize::MAX;
 
 fn flash_min_t() -> usize {
-    std::env::var("TRACT_METAL_GPT_OSS_FLASH_MIN_T")
-        .ok()
+    env_with_legacy("TRACT_METAL_FLASH_SDPA_MIN_T", "TRACT_METAL_GPT_OSS_FLASH_MIN_T")
+        .and_then(|v| v.into_string().ok())
         .and_then(|v| v.parse().ok())
         .unwrap_or(FLASH_MIN_T)
 }
@@ -68,7 +80,8 @@ fn kv_q8_enabled() -> bool {
     if KV_Q8_TEST_OVERRIDE.with(|c| c.get()) {
         return true;
     }
-    std::env::var("TRACT_METAL_GPT_OSS_KV_Q8").is_ok_and(|v| v == "1")
+    env_with_legacy("TRACT_METAL_SDPA_KV_Q8", "TRACT_METAL_GPT_OSS_KV_Q8")
+        .is_some_and(|v| v.to_str() == Some("1"))
 }
 
 #[cfg(test)]
@@ -502,8 +515,9 @@ impl OpState for MetalFusedSdpaState {
         // Continuation vs rebuild (fresh session / truncation / retry).
         let prev_len = if past != self.k.len { 0 } else { self.k.len };
         if past != self.k.len {
-            if std::env::var_os("TRACT_DEBUG_GPT_OSS_REBUILD").is_some() {
-                eprintln!("gptoss-rebuild: past={past} k.len={} s_len={s_len}", self.k.len);
+            if env_flag_with_legacy("TRACT_DEBUG_FUSED_SDPA_REBUILD", "TRACT_DEBUG_GPT_OSS_REBUILD")
+            {
+                eprintln!("fused-sdpa-rebuild: past={past} k.len={} s_len={s_len}", self.k.len);
             }
             self.k.reset();
             self.v.reset();
@@ -578,7 +592,10 @@ impl OpState for MetalFusedSdpaState {
             && t_len >= flash_min_t()
             && d <= 64
             && group <= 8
-            && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_FLASH").is_none();
+            && !env_flag_with_legacy(
+                "TRACT_METAL_DISABLE_FLASH_SDPA",
+                "TRACT_METAL_DISABLE_GPT_OSS_FLASH",
+            );
         let use_q8 = kv_q8_enabled() && d % Q8_BLOCK == 0;
         let use_q8_decode = use_q8 && !use_flash && s_len <= FLASH_MAX_S;
         let f16dt = f16::datum_type();
@@ -841,7 +858,10 @@ impl OpState for MetalFusedSdpaState {
             // contribute exact zeros.
             let split_k = if s_len <= FLASH_MAX_S
                 && t_eff >= SPLIT_K_MIN_T
-                && std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SPLIT_K").is_none()
+                && !env_flag_with_legacy(
+                    "TRACT_METAL_DISABLE_SDPA_SPLIT_K",
+                    "TRACT_METAL_DISABLE_GPT_OSS_SPLIT_K",
+                )
             {
                 let chunks = t_eff.div_ceil(SPLIT_K_CHUNK).clamp(2, 16);
                 let k_chunk = t_eff.div_ceil(chunks).next_multiple_of(Q8_BLOCK);
@@ -964,7 +984,8 @@ impl OpState for MetalFusedSdpaState {
             Ok(())
         })?;
 
-        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SELFCHECK").is_some() {
+        if env_flag_with_legacy("TRACT_DEBUG_FUSED_SDPA_SELFCHECK", "TRACT_DEBUG_GPT_OSS_SELFCHECK")
+        {
             crate::with_metal_stream(|stream| stream.wait_until_completed())?;
             // Rerun this step's attention on the CPU op from the SAME inputs
             // and compare: separates wrong-inputs from wrong-compute.
@@ -1013,14 +1034,14 @@ impl OpState for MetalFusedSdpaState {
                 .map(|(a, b)| (a - b).abs())
                 .fold(0f32, f32::max);
             eprintln!(
-                "gptoss-selfcheck: cosine {:.6} max_abs {:.4} (norms {:.2}/{:.2})",
+                "fused-sdpa-selfcheck: cosine {:.6} max_abs {:.4} (norms {:.2}/{:.2})",
                 dot / (nm * nw).max(f32::MIN_POSITIVE),
                 max_abs,
                 nm,
                 nw
             );
         }
-        if std::env::var_os("TRACT_DEBUG_GPT_OSS_SDPA").is_some() {
+        if env_flag_with_legacy("TRACT_DEBUG_FUSED_SDPA", "TRACT_DEBUG_GPT_OSS_SDPA") {
             crate::with_metal_stream(|stream| stream.wait_until_completed())?;
             let stats = |t: &DeviceTensor, tag: &str| -> TractResult<()> {
                 let host = t.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
@@ -1031,7 +1052,7 @@ impl OpState for MetalFusedSdpaState {
                 let mn = v.iter().cloned().fold(f32::MAX, f32::min);
                 let sum: f32 = v.iter().sum();
                 eprintln!(
-                    "gptoss-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.5} nan={nan} inf={inf}",
+                    "fused-sdpa-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.5} nan={nan} inf={inf}",
                     t.shape(),
                     sum / v.len() as f32
                 );
@@ -1044,7 +1065,7 @@ impl OpState for MetalFusedSdpaState {
                 let mn = v.iter().cloned().fold(f32::MAX, f32::min);
                 let sum: f32 = v.iter().sum();
                 eprintln!(
-                    "gptoss-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.6}",
+                    "fused-sdpa-dbg {tag}: shape={:?} min={mn:.4} max={mx:.4} mean={:.6}",
                     t.shape(),
                     sum / v.len() as f32
                 );
@@ -1059,7 +1080,7 @@ impl OpState for MetalFusedSdpaState {
             let sv = sinks_flat.to_host()?.into_tensor();
             let sv = sv.cast_to::<f32>()?.into_owned();
             eprintln!(
-                "gptoss-dbg sinks[0..6]: {:?}",
+                "fused-sdpa-dbg sinks[0..6]: {:?}",
                 &sv.try_as_plain()?.as_slice::<f32>()?[..6.min(hq)]
             );
         }
@@ -1126,7 +1147,8 @@ impl FrozenOpState for FrozenMetalFusedSdpaState {
 }
 
 crate::register_metal_op!(FusedSdpa, |_source, _node, op| {
-    if std::env::var_os("TRACT_METAL_DISABLE_GPT_OSS_SDPA").is_some() {
+    if env_flag_with_legacy("TRACT_METAL_DISABLE_FUSED_SDPA", "TRACT_METAL_DISABLE_GPT_OSS_SDPA")
+    {
         return Ok(None);
     }
     Ok(Some(Box::new(MetalFusedSdpa {
@@ -1423,10 +1445,10 @@ mod tests {
     /// Force decode steps onto the flash path regardless of context length,
     /// so the CPU-comparison tests exercise it at test-sized T. All tests
     /// setting this use the same value, so parallel execution is safe; the
-    /// gemm decode path is covered by the TRACT_METAL_DISABLE_GPT_OSS_FLASH
+    /// gemm decode path is covered by the TRACT_METAL_DISABLE_FLASH_SDPA
     /// suite run.
     fn force_flash_for_tests() {
-        unsafe { std::env::set_var("TRACT_METAL_GPT_OSS_FLASH_MIN_T", "0") };
+        unsafe { std::env::set_var("TRACT_METAL_FLASH_SDPA_MIN_T", "0") };
     }
 
     fn run_metal_vs_cpu(
