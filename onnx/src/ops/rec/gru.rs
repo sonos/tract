@@ -21,6 +21,15 @@ pub fn gru(
     Ok((expand(common), vec![]))
 }
 
+/// The fused cell only reproduces the standard ONNX activations, so the importer
+/// checks the ops it holds rather than trusting how it was built.
+fn is_element_wise<O: tract_hir::tract_core::ops::element_wise::ElementWiseMiniOp>(
+    op: &dyn TypedOp,
+) -> bool {
+    op.downcast_ref::<tract_hir::tract_core::ops::element_wise::ElementWiseOp>()
+        .is_some_and(|ew| ew.0.is::<O>())
+}
+
 #[derive(Debug, Clone)]
 pub struct GRU {
     pub f: Box<dyn TypedOp>,
@@ -60,20 +69,59 @@ impl WireBody for GRU {
 
         let h_size = body.outlet_fact(R)?.shape[1].clone();
 
-        wire!(Rz = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), R);
-        wire!(Rr = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), R);
-        wire!(Rh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
-
-        wire!(Wz = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), W);
-        wire!(Wr = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
-        wire!(Wh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), W);
-
         let dt = body.outlet_fact(Xt)?.datum_type;
         let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
 
+        wire!(Xt_WT = matmul_t.clone(), Xt, W);
+
+        // With linear_before_reset the reset gate scales the already-biased
+        // recurrent product, so the cell needs no second matmul and collapses into
+        // one op: the W-side biases fold into Xt·Wᵀ and the R-side ones into
+        // Ht-1·Rᵀ, each a single 3*h slice of b. Without it the reset gate applies
+        // to Ht-1 before that product, so the decomposed form stands, as it does
+        // for non-standard activations and a symbolic hidden size.
+        if self.linear_before_reset
+            && is_element_wise::<tract_hir::tract_core::ops::nn::Sigmoid>(self.f.as_ref())
+            && is_element_wise::<tract_hir::tract_core::ops::math::Tanh>(self.g.as_ref())
+            && let Ok(hidden) = h_size.to_usize()
+        {
+            use tract_hir::tract_core::ops::gru_cell::GruEpilogue;
+            wire!(Ht_1_RT_all = matmul_t.clone(), Ht_1, R);
+            let (xh, rh) = if let Some(b) = b {
+                wire!(Wb_all = array::Slice::new(1, 0.to_dim() * &h_size, 3.to_dim() * &h_size), b);
+                wire!(Rb_all = array::Slice::new(1, 3.to_dim() * &h_size, 6.to_dim() * &h_size), b);
+                wire!(xh = math::add(), Xt_WT, Wb_all);
+                wire!(rh = math::add(), Ht_1_RT_all, Rb_all);
+                (xh, rh)
+            } else {
+                (Xt_WT, Ht_1_RT_all)
+            };
+            let Ht = body.wire_node(
+                format!("{prefix}.gru_cell"),
+                GruEpilogue { hidden },
+                &[xh, rh, Ht_1],
+            )?[0];
+            wire!(y_h = AxisOp::Add(1), Ht);
+            body.select_output_outlets(&[y_h])?;
+            return Ok(());
+        }
+
+        // The gate weights are contiguous row blocks of W and R, so one product
+        // per operand yields all the gates' products as contiguous column blocks.
+        // Rh is excluded unless the reset gate is applied after the product, since
+        // otherwise it multiplies rt (.) Ht-1 rather than Ht-1.
+        let r_gates = if self.linear_before_reset { 3 } else { 2 };
+
+        wire!(Xt_WzT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WrT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WhT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), Xt_WT);
+
+        wire!(R_gates = array::Slice::new(0, 0.to_dim() * &h_size, r_gates.to_dim() * &h_size), R);
+        wire!(Ht_1_RT = matmul_t.clone(), Ht_1, R_gates);
+        wire!(Ht_1_RzT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Ht_1_RT);
+        wire!(Ht_1_RrT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Ht_1_RT);
+
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
-        wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);
-        wire!(Ht_1_RzT = matmul_t.clone(), Ht_1, Rz);
         wire!(zt0 = math::add(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
@@ -86,8 +134,6 @@ impl WireBody for GRU {
         wire!(zt = self.f.clone(), zt0);
 
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
-        wire!(Xt_WrT = matmul_t.clone(), Xt, Wr);
-        wire!(Ht_1_RrT = matmul_t.clone(), Ht_1, Rr);
         wire!(rt0 = math::add(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
@@ -101,10 +147,12 @@ impl WireBody for GRU {
 
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
-        wire!(Xt_WhT = matmul_t.clone(), Xt, Wh);
         let rt_Ht_1_RhT_Rbh = if self.linear_before_reset {
             // rt (.) (Ht-1*(Rh^T) + Rbh)
-            wire!(Ht_1_RhT = matmul_t, Ht_1, Rh);
+            wire!(
+                Ht_1_RhT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size),
+                Ht_1_RT
+            );
             let Ht_1_RhT_Rbh = if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * &h_size, 6.to_dim() * &h_size), b);
                 wire!(Ht_1_RhT_Rbh = math::add(), Ht_1_RhT, Rbh);
@@ -116,6 +164,7 @@ impl WireBody for GRU {
             rt_Ht_1_RhT_Rbh
         } else {
             // (rt (.) Ht-1)*(Rh^T) + Rbh
+            wire!(Rh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
             wire!(rt_Ht_1 = math::mul(), rt, Ht_1);
             wire!(rt_Ht_1_RhT = matmul_t, rt_Ht_1, Rh);
             if let Some(b) = b {
@@ -135,13 +184,12 @@ impl WireBody for GRU {
         }
         wire!(ht = self.g.clone(), ht0);
 
-        // Ht = (1 - zt) (.) ht + zt (.) Ht-1
-        let one: OutletId =
-            body.add_const("one", tensor2(&[[1f32]]).cast_to_dt(dt)?.into_owned())?;
-        wire!(one_sub_zt = math::sub(), one, zt);
-        wire!(one_sub_zt_ht = math::mul(), one_sub_zt, ht);
-        wire!(zt_Ht_1 = math::mul(), zt, Ht_1);
-        wire!(Ht = math::add(), one_sub_zt_ht, zt_Ht_1);
+        // Ht = (1 - zt) (.) ht + zt (.) Ht-1, rearranged so every operand keeps the
+        // cell shape: a literal 1 is rank-1 and would broadcast on each element-wise
+        // step.
+        wire!(Ht_1_sub_ht = math::sub(), Ht_1, ht);
+        wire!(zt_Ht_1_sub_ht = math::mul(), zt, Ht_1_sub_ht);
+        wire!(Ht = math::add(), ht, zt_Ht_1_sub_ht);
 
         wire!(y_h = AxisOp::Add(1), Ht);
         body.select_output_outlets(&[y_h])?;

@@ -21,6 +21,7 @@ pub mod downsample;
 pub mod dummy;
 pub mod einsum;
 pub mod fft;
+pub mod gru_cell;
 pub mod identity;
 pub mod konst;
 pub mod logic;

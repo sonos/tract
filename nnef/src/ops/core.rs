@@ -12,6 +12,7 @@ mod fft;
 mod gather;
 mod gelu_approximate;
 mod grid_sample;
+mod gru_cell;
 mod is_inf;
 mod lstm_cell;
 mod matmul;
@@ -58,6 +59,7 @@ pub fn register(registry: &mut Registry) {
     gather::register(registry);
     gelu_approximate::register(registry);
     grid_sample::register(registry);
+    gru_cell::register(registry);
     lstm_cell::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
