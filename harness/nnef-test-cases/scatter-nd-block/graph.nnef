@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("onnx.ir_version", tract_core_cast(8, to = "i64")), ("tract_nnef_ser_version", "0.23.5-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph network(data, updates) -> (out) {
+  data = external(shape = [2, 5, 3]);
+  updates = external(shape = [2, 3, 3]);
+  indices_0 = variable<scalar>(label = "indices.0", shape = [2, 3, 3, 3]);
+  out = tract_core_scatter_nd(data, indices_0, updates, reduction = "none");
+}
