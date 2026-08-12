@@ -60,20 +60,26 @@ impl WireBody for GRU {
 
         let h_size = body.outlet_fact(R)?.shape[1].clone();
 
-        wire!(Rz = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), R);
-        wire!(Rr = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), R);
-        wire!(Rh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
-
-        wire!(Wz = array::Slice::new(0, 0.to_dim() * &h_size, 1.to_dim() * &h_size), W);
-        wire!(Wr = array::Slice::new(0, 1.to_dim() * &h_size, 2.to_dim() * &h_size), W);
-        wire!(Wh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), W);
-
         let dt = body.outlet_fact(Xt)?.datum_type;
         let matmul_t = EinSum::new("mk,nk->mn".parse()?, dt);
 
+        // The gate weights are contiguous row blocks of W and R, so one product
+        // per operand yields all the gates' products as contiguous column blocks.
+        // Rh is excluded unless the reset gate is applied after the product, since
+        // otherwise it multiplies rt (.) Ht-1 rather than Ht-1.
+        let r_gates = if self.linear_before_reset { 3 } else { 2 };
+
+        wire!(Xt_WT = matmul_t.clone(), Xt, W);
+        wire!(Xt_WzT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WrT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Xt_WT);
+        wire!(Xt_WhT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size), Xt_WT);
+
+        wire!(R_gates = array::Slice::new(0, 0.to_dim() * &h_size, r_gates.to_dim() * &h_size), R);
+        wire!(Ht_1_RT = matmul_t.clone(), Ht_1, R_gates);
+        wire!(Ht_1_RzT = array::Slice::new(1, 0.to_dim() * &h_size, 1.to_dim() * &h_size), Ht_1_RT);
+        wire!(Ht_1_RrT = array::Slice::new(1, 1.to_dim() * &h_size, 2.to_dim() * &h_size), Ht_1_RT);
+
         // zt = f(Xt*(Wz^T) + Ht-1*(Rz^T) + Wbz + Rbz)
-        wire!(Xt_WzT = matmul_t.clone(), Xt, Wz);
-        wire!(Ht_1_RzT = matmul_t.clone(), Ht_1, Rz);
         wire!(zt0 = math::add(), Xt_WzT, Ht_1_RzT);
         let mut zt0 = zt0;
         if let Some(b) = b {
@@ -86,8 +92,6 @@ impl WireBody for GRU {
         wire!(zt = self.f.clone(), zt0);
 
         // rt = f(Xt*(Wr^T) + Ht-1*(Rr^T) + Wbr + Rbr)
-        wire!(Xt_WrT = matmul_t.clone(), Xt, Wr);
-        wire!(Ht_1_RrT = matmul_t.clone(), Ht_1, Rr);
         wire!(rt0 = math::add(), Xt_WrT, Ht_1_RrT);
         let mut rt0 = rt0;
         if let Some(b) = b {
@@ -101,10 +105,12 @@ impl WireBody for GRU {
 
         // ht = g(Xt*(Wh^T) + (rt (.) Ht-1)*(Rh^T) + Rbh + Wbh) # default, when linear_before_reset = 0
         // ht = g(Xt*(Wh^T) + (rt (.) (Ht-1*(Rh^T) + Rbh)) + Wbh) # when linear_before_reset != 0
-        wire!(Xt_WhT = matmul_t.clone(), Xt, Wh);
         let rt_Ht_1_RhT_Rbh = if self.linear_before_reset {
             // rt (.) (Ht-1*(Rh^T) + Rbh)
-            wire!(Ht_1_RhT = matmul_t, Ht_1, Rh);
+            wire!(
+                Ht_1_RhT = array::Slice::new(1, 2.to_dim() * &h_size, 3.to_dim() * &h_size),
+                Ht_1_RT
+            );
             let Ht_1_RhT_Rbh = if let Some(b) = b {
                 wire!(Rbh = array::Slice::new(1, 5.to_dim() * &h_size, 6.to_dim() * &h_size), b);
                 wire!(Ht_1_RhT_Rbh = math::add(), Ht_1_RhT, Rbh);
@@ -116,6 +122,7 @@ impl WireBody for GRU {
             rt_Ht_1_RhT_Rbh
         } else {
             // (rt (.) Ht-1)*(Rh^T) + Rbh
+            wire!(Rh = array::Slice::new(0, 2.to_dim() * &h_size, 3.to_dim() * &h_size), R);
             wire!(rt_Ht_1 = math::mul(), rt, Ht_1);
             wire!(rt_Ht_1_RhT = matmul_t, rt_Ht_1, Rh);
             if let Some(b) = b {
