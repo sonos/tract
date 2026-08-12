@@ -297,19 +297,23 @@ fn to_f32(t: &TValue) -> TractResult<Tensor> {
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(dump);
-    // Sinks variant keeps the historical primitive name so existing GPT-OSS
-    // dumps keep loading.
-    registry.register_primitive(
-        "tract_transformers_gpt_oss_sdpa",
-        &parameters(true),
-        &outputs(),
-        load_with_sinks,
-    );
+    // Primary, generic name: the trailing `sinks` tensor is optional
+    // (defaults to false = absent), so one fragment covers both variants.
+    // Serialization always emits this name.
     registry.register_primitive(
         "tract_transformers_fused_sdpa",
-        &parameters(false),
+        &parameters(SinksParam::Optional),
         &outputs(),
-        load_without_sinks,
+        load,
+    );
+    // Historical name from when the op was GPT-OSS-specific (sinks always
+    // present): kept as a deserialization alias so existing dumps keep
+    // loading.
+    registry.register_primitive(
+        "tract_transformers_gpt_oss_sdpa",
+        &parameters(SinksParam::Required),
+        &outputs(),
+        load_legacy_with_sinks,
     );
 }
 
@@ -321,7 +325,14 @@ fn outputs() -> Vec<(&'static str, tract_nnef::ast::TypeSpec)> {
     ]
 }
 
-fn parameters(with_sinks: bool) -> Vec<Parameter> {
+enum SinksParam {
+    /// Generic fragment: `sinks` defaults to false (= absent).
+    Optional,
+    /// Legacy GPT-OSS fragment: `sinks` is a required input.
+    Required,
+}
+
+fn parameters(sinks: SinksParam) -> Vec<Parameter> {
     let mut params = vec![
         TypeName::Scalar.tensor().named("q"),
         TypeName::Scalar.tensor().named("k_new"),
@@ -330,8 +341,11 @@ fn parameters(with_sinks: bool) -> Vec<Parameter> {
         TypeName::Scalar.tensor().named("v_cache"),
         TypeName::Scalar.tensor().named("mask"),
     ];
-    if with_sinks {
-        params.push(TypeName::Scalar.tensor().named("sinks"));
+    match sinks {
+        SinksParam::Optional => {
+            params.push(TypeName::Scalar.tensor().named("sinks").default(false))
+        }
+        SinksParam::Required => params.push(TypeName::Scalar.tensor().named("sinks")),
     }
     params.push(TypeName::Scalar.named("scale"));
     params.push(TypeName::Integer.named("window").default(0));
@@ -339,15 +353,12 @@ fn parameters(with_sinks: bool) -> Vec<Parameter> {
 }
 
 fn dump(ast: &mut IntoAst, node: &TypedNode, op: &FusedSdpa) -> TractResult<Option<Arc<RValue>>> {
+    // node.inputs already carries the trailing sinks tensor when has_sinks;
+    // it maps onto the fragment's optional `sinks` parameter positionally.
     let inputs: Vec<Arc<RValue>> =
         node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
-    let name = if op.has_sinks {
-        "tract_transformers_gpt_oss_sdpa"
-    } else {
-        "tract_transformers_fused_sdpa"
-    };
     Ok(Some(invocation(
-        name,
+        "tract_transformers_fused_sdpa",
         &inputs,
         &[("scale", numeric(op.scale())), ("window", numeric(op.window))],
     )))
@@ -356,7 +367,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &FusedSdpa) -> TractResult<Opti
 fn load_common(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
-    has_sinks: bool,
+    sinks: Option<OutletId>,
 ) -> TractResult<Value> {
     let mut inputs: TVec<OutletId> = tvec!(
         invocation.named_arg_as(builder, "q")?,
@@ -366,8 +377,9 @@ fn load_common(
         invocation.named_arg_as(builder, "v_cache")?,
         invocation.named_arg_as(builder, "mask")?,
     );
-    if has_sinks {
-        inputs.push(invocation.named_arg_as(builder, "sinks")?);
+    let has_sinks = sinks.is_some();
+    if let Some(sinks) = sinks {
+        inputs.push(sinks);
     }
     let scale: f32 = invocation.named_arg_as(builder, "scale")?;
     let window: i64 = invocation.named_arg_as(builder, "window")?;
@@ -377,18 +389,17 @@ fn load_common(
     )
 }
 
-fn load_with_sinks(
-    builder: &mut ModelBuilder,
-    invocation: &ResolvedInvocation,
-) -> TractResult<Value> {
-    load_common(builder, invocation, true)
+fn load(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let sinks: Option<OutletId> = invocation.optional_named_arg_as(builder, "sinks")?;
+    load_common(builder, invocation, sinks)
 }
 
-fn load_without_sinks(
+fn load_legacy_with_sinks(
     builder: &mut ModelBuilder,
     invocation: &ResolvedInvocation,
 ) -> TractResult<Value> {
-    load_common(builder, invocation, false)
+    let sinks: OutletId = invocation.named_arg_as(builder, "sinks")?;
+    load_common(builder, invocation, Some(sinks))
 }
 
 // ===================================================================================
@@ -1158,6 +1169,86 @@ mod tests {
         let want = reference(&q1, &k_ref, &v_ref, &mask, Some(&sinks), scale);
         outputs[0].clone().into_tensor().close_enough(&want, Approximation::Approximate)?;
         outputs[1].clone().into_tensor().close_enough(&k_ref, Approximation::Exact)?;
+        Ok(())
+    }
+
+    /// NNEF ser/de round-trip, both variants: the dump must carry the generic
+    /// primitive name (never the legacy GPT-OSS one) and reload to the same op.
+    #[test]
+    fn nnef_round_trip_emits_generic_name() -> TractResult<()> {
+        use crate::WithTractTransformers;
+        for has_sinks in [false, true] {
+            let (hq, hkv, d) = (4usize, 2usize, 8usize);
+            let mut model = TypedModel::default();
+            let s = model.sym("S");
+            let p = model.sym("P");
+            let q_f: TVec<TDim> = tvec![1.to_dim(), hq.to_dim(), s.clone().into(), d.to_dim()];
+            let new_f: TVec<TDim> = tvec![1.to_dim(), hkv.to_dim(), s.clone().into(), d.to_dim()];
+            let cache_f: TVec<TDim> =
+                tvec![1.to_dim(), hkv.to_dim(), p.clone().into(), d.to_dim()];
+            let mask_f: TVec<TDim> = tvec![
+                1.to_dim(),
+                1.to_dim(),
+                s.clone().into(),
+                TDim::from(s.clone()) + TDim::from(p.clone())
+            ];
+            let q = model.add_source("q", f32::fact(&q_f))?;
+            let k_new = model.add_source("k_new", f32::fact(&new_f))?;
+            let v_new = model.add_source("v_new", f32::fact(&new_f))?;
+            let k_cache = model.add_source("k_cache", f32::fact(&cache_f))?;
+            let v_cache = model.add_source("v_cache", f32::fact(&cache_f))?;
+            let mask = model.add_source("mask", f32::fact(&mask_f))?;
+            let mut inputs = tvec!(q, k_new, v_new, k_cache, v_cache, mask);
+            if has_sinks {
+                inputs.push(model.add_const("sinks", Tensor::zero::<f32>(&[hq])?)?);
+            }
+            let op = FusedSdpa { scale_bits: 0.125f32.to_bits(), window: 128, has_sinks };
+            let out = model.wire_node("sdpa", op.clone(), &inputs)?;
+            model.select_output_outlets(&out)?;
+
+            let nnef = tract_nnef::nnef().with_tract_transformers();
+            let mut buffer = vec![];
+            nnef.write_to_tar(&model, &mut buffer)?;
+            let text = String::from_utf8_lossy(&buffer);
+            assert!(
+                text.contains("tract_transformers_fused_sdpa"),
+                "dump (has_sinks={has_sinks}) must use the generic primitive name"
+            );
+            assert!(
+                !text.contains("tract_transformers_gpt_oss_sdpa"),
+                "dump (has_sinks={has_sinks}) must not use the legacy primitive name"
+            );
+
+            let reloaded = nnef.model_for_read(&mut &*buffer)?;
+            let n = reloaded
+                .nodes()
+                .iter()
+                .find(|n| n.op_is::<FusedSdpa>())
+                .context("FusedSdpa survived the round-trip")?;
+            assert_eq!(n.op_as::<FusedSdpa>().unwrap(), &op);
+
+            // The legacy name still loads (existing GPT-OSS dumps): rewrite
+            // the graph text on disk and reload through the alias.
+            if has_sinks {
+                use tract_nnef::tract_core::framework::Framework;
+                let dir = std::env::temp_dir()
+                    .join(format!("tract_fused_sdpa_legacy_alias_{}", std::process::id()));
+                let _ = std::fs::remove_dir_all(&dir);
+                nnef.write_to_dir(&model, &dir)?;
+                let graph = dir.join("graph.nnef");
+                let legacy = std::fs::read_to_string(&graph)?
+                    .replace("tract_transformers_fused_sdpa", "tract_transformers_gpt_oss_sdpa");
+                std::fs::write(&graph, legacy)?;
+                let reloaded = nnef.model_for_path(&dir)?;
+                std::fs::remove_dir_all(&dir)?;
+                let n = reloaded
+                    .nodes()
+                    .iter()
+                    .find(|n| n.op_is::<FusedSdpa>())
+                    .context("FusedSdpa loaded through the legacy alias")?;
+                assert_eq!(n.op_as::<FusedSdpa>().unwrap(), &op);
+            }
+        }
         Ok(())
     }
 }

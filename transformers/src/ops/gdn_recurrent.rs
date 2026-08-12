@@ -11,6 +11,24 @@ pub fn register(registry: &mut Registry) {
             .collect::<TractResult<TVec<_>>>()?;
         builder.wire(GatedDeltaNetRecurrent::default(), &inputs)
     }
+    fn serialize(
+        ast: &mut IntoAst,
+        node: &TypedNode,
+        op: &GatedDeltaNetRecurrent,
+    ) -> TractResult<Option<Arc<RValue>>> {
+        // sigmoid_beta is a device-transform-internal variant (the beta
+        // sigmoid folded into the kernel); it has no NNEF form.
+        ensure!(
+            !op.sigmoid_beta,
+            "GatedDeltaNetRecurrent with sigmoid_beta cannot be serialized to NNEF"
+        );
+        let inputs: Vec<Arc<RValue>> =
+            node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
+        Ok(Some(invocation("tract_transformers_gdn_recurrent", &inputs, &[])))
+    }
+    registry.register_dumper(serialize);
+    // Generic name first (primary, what serialization emits); the historical
+    // qwen35-specific name stays as a deserialization alias.
     for name in ["tract_transformers_gdn_recurrent", "tract_qwen35_gdn_recurrent"] {
         registry.register_primitive(
             name,

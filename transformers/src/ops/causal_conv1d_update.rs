@@ -11,6 +11,18 @@ pub fn register(registry: &mut Registry) {
             .collect::<TractResult<TVec<_>>>()?;
         builder.wire(CausalConv1dUpdate, &inputs)
     }
+    fn serialize(
+        ast: &mut IntoAst,
+        node: &TypedNode,
+        _op: &CausalConv1dUpdate,
+    ) -> TractResult<Option<Arc<RValue>>> {
+        let inputs: Vec<Arc<RValue>> =
+            node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
+        Ok(Some(invocation("tract_transformers_causal_conv1d_update", &inputs, &[])))
+    }
+    registry.register_dumper(serialize);
+    // Generic name first (primary, what serialization emits); the historical
+    // qwen35-specific name stays as a deserialization alias.
     for name in ["tract_transformers_causal_conv1d_update", "tract_qwen35_causal_conv1d_update"] {
         registry.register_primitive(
             name,
