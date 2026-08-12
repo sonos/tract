@@ -17,6 +17,7 @@
     dup         v5.4s, v0.s[0]              // v5 <- low, broadcasted
     dup         v6.4s, v0.s[1]              // v6 <- high, broadcasted
     dup         v7.4s, v3.s[1]              // v7 <- 0.5, broadcasted
+    movi        v4.4s, #0                   // v4 <- 0, the output floor
 
     cmp         x1, #16
     blt         .loop
@@ -135,6 +136,19 @@
     fadd        v18.4s, v18.4s, v7.4s
     fadd        v19.4s, v19.4s, v7.4s
 
+    // sigmoid is (0, 1): the fadd above cancels down to ~1e-8 on either tail, below the
+    // rounding error of the division, so the sum needs clamping to stay in range. The loop
+    // has no register free to hold the 1.0 ceiling, so it lands over the dead x^2 in v20.
+    dup         v20.4s, v3.s[0]
+    fmax        v16.4s, v16.4s, v4.4s
+    fmax        v17.4s, v17.4s, v4.4s
+    fmax        v18.4s, v18.4s, v4.4s
+    fmax        v19.4s, v19.4s, v4.4s
+    fmin        v16.4s, v16.4s, v20.4s
+    fmin        v17.4s, v17.4s, v20.4s
+    fmin        v18.4s, v18.4s, v20.4s
+    fmin        v19.4s, v19.4s, v20.4s
+
     st1         { v16.4s, v17.4s, v18.4s, v19.4s }, [x0], #64
 
     subs        x1, x1, #16
@@ -174,6 +188,10 @@
 
     fdiv        v16.4s, v16.4s, v24.4s
     fadd        v16.4s, v16.4s, v7.4s
+
+    dup         v20.4s, v3.s[0]             // v20 <- 1.0
+    fmax        v16.4s, v16.4s, v4.4s
+    fmin        v16.4s, v16.4s, v20.4s
 
     st1         { v16.4s }, [x0], #16
 
