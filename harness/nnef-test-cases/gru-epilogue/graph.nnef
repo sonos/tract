@@ -1,0 +1,42 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+fragment scan_body_0(
+    h_source: tensor<scalar>,
+    Y_extracted_Y_Xt_WT: tensor<scalar>,
+    R: tensor<scalar>,
+    Y_Rb_all: tensor<scalar>,
+    Y_Wb_all: tensor<scalar>
+) -> (Y_y_h: tensor<scalar>)
+{
+  Y_Xt_WT_prop_axis_a_output = squeeze(Y_extracted_Y_Xt_WT, axes = [0]);
+  Y_xh = add(Y_Xt_WT_prop_axis_a_output, Y_Wb_all);
+  Ht_1 = squeeze(h_source, axes = [0]);
+  Y_Ht_1_RT_all = tract_core_einsum([Ht_1, R], expr = "mk,nk->mn", acc = "f32", output = "");
+  Y_rh = add(Y_Ht_1_RT_all, Y_Rb_all);
+  Y_gru_cell = tract_core_gru_epilogue(Y_xh, Y_rh, Ht_1, hidden = 4);
+  Y_y_h = unsqueeze(Y_gru_cell, axes = [0]);
+}
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("onnx.ir_version", tract_core_cast(8, to = "i64")), ("tract_nnef_ser_version", "0.23.5-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph network(X) -> (Y, Y_h) {
+  X = external(shape = [4, 2, 5]);
+  Y_extracted_Y_Xt_WT_merge_in0 = reshape(X, shape = [8], axis_start = 0, axis_count = 2);
+  Y_extracted_Y_Xt_WT_prop_axis_a_input_1 = variable<scalar>(label = "Y.extracted.Y.Xt_WT.prop_axis.a.input_1", shape = [12, 5]);
+  Y_extracted_Y_Xt_WT = matmul(Y_extracted_Y_Xt_WT_merge_in0, Y_extracted_Y_Xt_WT_prop_axis_a_input_1, transposeA = false, transposeB = true);
+  Y_extracted_Y_Xt_WT_unmerge_out = reshape(Y_extracted_Y_Xt_WT, shape = [4, 2], axis_start = 0, axis_count = 1);
+  Y_h0 = [[[0.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0]]];
+  R = variable<scalar>(label = "R", shape = [12, 4]);
+  Y_Rb_all = variable<scalar>(label = "Y.Rb_all", shape = [1, 12]);
+  Y_Wb_all = variable<scalar>(label = "Y.Wb_all", shape = [1, 12]);
+  ( Y, Y_1 ) = tract_core_scan(body = "scan_body_0", scan = [("Y.extracted.Y.Xt_WT", Y_extracted_Y_Xt_WT_unmerge_out, 0, 1)], full = [("R", R), ("Y.Rb_all", Y_Rb_all), ("Y.Wb_all", Y_Wb_all)], state = [("h_source", Y_h0, "Y.y_h")], output = [("Y.y_h", "full", 0, 1), ("Y.y_h", "last", 0, 1)], skip = 0, reset_every_turn = false, external_state = false);
+  Y_y = unsqueeze(Y, axes = [1]);
+  Y = Y_y;
+  Y_h = Y_1;
+}
