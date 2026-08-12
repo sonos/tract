@@ -1022,6 +1022,9 @@ fn convert_q40_moe_ffn_to_metal(
     Ok(Some(tvec![output]))
 }
 
+/// Casts inserted by the Metal lowering itself (marked synthetic: they may
+/// be bypassed by precision-roundtrip rewrites). Source-graph Cast ops are
+/// converted separately in `kernels::array::cast` and stay non-synthetic.
 pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
     tract_gpu::ops::cast::GpuCast::new(
         to,
@@ -1029,6 +1032,7 @@ pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuC
         kernels::array::metal_cast_dispatch,
         kernels::array::Cast::is_supported_dt,
     )
+    .map(tract_gpu::ops::cast::GpuCast::into_synthetic)
 }
 
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {

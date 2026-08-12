@@ -94,7 +94,9 @@ pub fn cuda_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractR
 }
 
 crate::register_cuda_op!(tract_core::ops::cast::Cast, |_source, _node, op| {
-    Ok(crate::transform::cuda_cast_new(op.to).map(|c| Box::new(c) as _))
+    // Source-graph casts stay non-synthetic: their rounding is model
+    // semantics and precision-roundtrip rewrites must not bypass them.
+    Ok(crate::transform::cuda_source_cast_new(op.to).map(|c| Box::new(c) as _))
 });
 
 #[cfg(test)]

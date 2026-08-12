@@ -178,7 +178,14 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact))
 }
 
+/// Casts inserted by the cuda lowering itself (marked synthetic: they may
+/// be bypassed by precision-roundtrip rewrites). Source-graph Cast ops are
+/// converted separately in `kernels::array::cast` and stay non-synthetic.
 pub(crate) fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
+    cuda_source_cast_new(to).map(tract_gpu::ops::cast::GpuCast::into_synthetic)
+}
+
+pub(crate) fn cuda_source_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
     tract_gpu::ops::cast::GpuCast::new(
         to,
         "Cuda",

@@ -105,5 +105,13 @@ pub fn metal_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> Tract
 }
 
 crate::register_metal_op!(tract_core::ops::cast::Cast, |_source, _node, op| {
-    Ok(crate::transform::metal_cast_new(op.to).map(|c| Box::new(c) as _))
+    // Source-graph casts stay non-synthetic: their rounding is model
+    // semantics and precision-roundtrip rewrites must not bypass them.
+    Ok(tract_gpu::ops::cast::GpuCast::new(
+        op.to,
+        "Metal",
+        metal_cast_dispatch,
+        Cast::is_supported_dt,
+    )
+    .map(|c| Box::new(c) as _))
 });
