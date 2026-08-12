@@ -162,24 +162,31 @@ crate::register_cuda_op!(
         // loop and GQA-group indexing (the Metal one already has both).
         let facts = source.node_input_facts(node.id)?;
         let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
-        let s_is_one = facts[0]
-            .shape
-            .as_concrete()
-            .map(|s| s.len() == 4 && s[1] == 1)
-            .unwrap_or(false);
+        let rank_ok = facts[0].rank() == 4;
+        let s_is_one = rank_ok && facts[0].shape[1] == 1.to_dim();
+        let s_is_symbolic = rank_ok && facts[0].shape[1].as_i64().is_none();
         let ungrouped = facts[0].shape == facts[2].shape;
-        if !s_is_one
-            || !ungrouped
-            || dts
-                != [
-                    DatumType::F16,
-                    DatumType::F16,
-                    DatumType::F16,
-                    DatumType::F32,
-                    DatumType::F16,
-                    DatumType::F32,
-                ]
-        {
+        let dts_ok = dts
+            == [
+                DatumType::F16,
+                DatumType::F16,
+                DatumType::F16,
+                DatumType::F32,
+                DatumType::F16,
+                DatumType::F32,
+            ];
+        if !s_is_one || !ungrouped || !dts_ok {
+            // A decode graph carries S as a symbol that resolves to 1 at
+            // runtime; declining it silently costs orders of magnitude in
+            // decode throughput on the CPU scalar loop, so at least say so.
+            if s_is_symbolic && ungrouped && dts_ok {
+                log::warn!(
+                    "cuda GDN kernel is single-step only: node {} has symbolic sequence dim {} \
+                     and stays on the CPU op (even when S resolves to 1 at decode time)",
+                    node.name,
+                    facts[0].shape[1]
+                );
+            }
             return Ok(None);
         }
         Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {

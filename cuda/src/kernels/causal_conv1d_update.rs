@@ -93,12 +93,23 @@ crate::register_cuda_op!(
         // layout is [b, C, S]. Anything else stays on the CPU op until the
         // kernel grows an S loop (the Metal one already has it).
         let facts = source.node_input_facts(node.id)?;
-        let s_is_one = facts[0]
-            .shape
-            .as_concrete()
-            .map(|s| s.len() == 3 && s[2] == 1)
-            .unwrap_or(false);
-        if !s_is_one || facts.iter().any(|f| f.datum_type != DatumType::F16) {
+        let rank_ok = facts[0].rank() == 3;
+        let s_is_one = rank_ok && facts[0].shape[2] == 1.to_dim();
+        let s_is_symbolic = rank_ok && facts[0].shape[2].as_i64().is_none();
+        let dts_ok = facts.iter().all(|f| f.datum_type == DatumType::F16);
+        if !s_is_one || !dts_ok {
+            // A decode graph carries S as a symbol that resolves to 1 at
+            // runtime; declining it silently leaves decode on the CPU scalar
+            // loop, so at least say so.
+            if s_is_symbolic && dts_ok {
+                log::warn!(
+                    "cuda causal conv1d update kernel is single-step only: node {} has symbolic \
+                     sequence dim {} and stays on the CPU op (even when S resolves to 1 at \
+                     decode time)",
+                    node.name,
+                    facts[0].shape[2]
+                );
+            }
             return Ok(None);
         }
         Ok(Some(Box::new(tract_gpu::ops::causal_conv1d_update::GpuCausalConv1dUpdate {
