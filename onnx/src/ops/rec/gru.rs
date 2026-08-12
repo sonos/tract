@@ -85,23 +85,54 @@ impl WireBody for GRU {
             && is_element_wise::<tract_hir::tract_core::ops::math::Tanh>(self.g.as_ref())
             && let Ok(hidden) = h_size.to_usize()
         {
-            use tract_hir::tract_core::ops::gru_cell::GruEpilogue;
-            wire!(Ht_1_RT_all = matmul_t.clone(), Ht_1, R);
-            let (xh, rh) = if let Some(b) = b {
+            use tract_hir::tract_core::ops::gru_cell::{GruCell, GruEpilogue, MAX_INLINE_HIDDEN};
+            let h_source: OutletId = body.node_by_name("h_source").unwrap().id.into();
+            let xh = if let Some(b) = b {
                 wire!(Wb_all = array::Slice::new(1, 0.to_dim() * &h_size, 3.to_dim() * &h_size), b);
-                wire!(Rb_all = array::Slice::new(1, 3.to_dim() * &h_size, 6.to_dim() * &h_size), b);
                 wire!(xh = math::add(), Xt_WT, Wb_all);
-                wire!(rh = math::add(), Ht_1_RT_all, Rb_all);
-                (xh, rh)
+                xh
             } else {
-                (Xt_WT, Ht_1_RT_all)
+                Xt_WT
             };
-            let Ht = body.wire_node(
-                format!("{prefix}.gru_cell"),
-                GruEpilogue { hidden },
-                &[xh, rh, Ht_1],
-            )?[0];
-            wire!(y_h = AxisOp::Add(1), Ht);
+            // Below MAX_INLINE_HIDDEN the recurrent product is small enough that a
+            // dispatched matmul costs more than the arithmetic, so the cell carries
+            // it; above it the packed kernel wins and the product stays a node.
+            let y_h = if hidden <= MAX_INLINE_HIDDEN {
+                let rb = if let Some(b) = b {
+                    wire!(
+                        Rb_all = array::Slice::new(1, 3.to_dim() * &h_size, 6.to_dim() * &h_size),
+                        b
+                    );
+                    wire!(rb_flat = AxisOp::Rm(0), Rb_all);
+                    rb_flat
+                } else {
+                    let zero = Tensor::zero_dt(dt, &[3 * hidden])?;
+                    body.add_const(format!("{prefix}.rb_zero"), zero)?
+                };
+                // The cell sizes its rows from the state and hands back the state's
+                // own shape, so feeding it the scan state directly keeps the body
+                // free of the reshape either side of it.
+                body.wire_node(
+                    format!("{prefix}.gru_cell"),
+                    GruCell { hidden },
+                    &[xh, R, rb, h_source],
+                )?[0]
+            } else {
+                wire!(Ht_1_RT_all = matmul_t.clone(), Ht_1, R);
+                let rh = if let Some(b) = b {
+                    wire!(
+                        Rb_all = array::Slice::new(1, 3.to_dim() * &h_size, 6.to_dim() * &h_size),
+                        b
+                    );
+                    wire!(rh = math::add(), Ht_1_RT_all, Rb_all);
+                    rh
+                } else {
+                    Ht_1_RT_all
+                };
+                wire!(Ht = GruEpilogue { hidden }, xh, rh, Ht_1);
+                wire!(y_h_epilogue = AxisOp::Add(1), Ht);
+                y_h_epilogue
+            };
             body.select_output_outlets(&[y_h])?;
             return Ok(());
         }

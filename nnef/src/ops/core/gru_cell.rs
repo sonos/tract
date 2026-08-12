@@ -1,8 +1,21 @@
 use crate::internal::*;
-use tract_core::ops::gru_cell::GruEpilogue;
+use tract_core::ops::gru_cell::{GruCell, GruEpilogue};
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_gru_epilogue);
+    registry.register_dumper(ser_gru_cell);
+    registry.register_primitive(
+        "tract_core_gru_cell",
+        &[
+            TypeName::Scalar.tensor().named("xh"),
+            TypeName::Scalar.tensor().named("r"),
+            TypeName::Scalar.tensor().named("rb"),
+            TypeName::Scalar.tensor().named("h_prev"),
+            TypeName::Integer.named("hidden"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_gru_cell,
+    );
     registry.register_primitive(
         "tract_core_gru_epilogue",
         &[
@@ -25,6 +38,24 @@ fn de_gru_epilogue(
     let h_prev = invocation.named_arg_as(builder, "h_prev")?;
     let hidden: usize = invocation.named_arg_as(builder, "hidden")?;
     builder.wire(GruEpilogue { hidden }, &[xh, rh, h_prev])
+}
+
+fn de_gru_cell(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
+    let xh = invocation.named_arg_as(builder, "xh")?;
+    let r = invocation.named_arg_as(builder, "r")?;
+    let rb = invocation.named_arg_as(builder, "rb")?;
+    let h_prev = invocation.named_arg_as(builder, "h_prev")?;
+    let hidden: usize = invocation.named_arg_as(builder, "hidden")?;
+    builder.wire(GruCell { hidden }, &[xh, r, rb, h_prev])
+}
+
+fn ser_gru_cell(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &GruCell,
+) -> TractResult<Option<Arc<RValue>>> {
+    let wires: TVec<Arc<RValue>> = node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
+    Ok(Some(invocation("tract_core_gru_cell", &wires, &[("hidden", numeric(op.hidden))])))
 }
 
 fn ser_gru_epilogue(
