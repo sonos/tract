@@ -82,6 +82,8 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
             let b0 = f32x4_splat(BETA_0);
 
             let half = f32x4_splat(0.5);
+            let zero = f32x4_splat(0.0);
+            let one = f32x4_splat(1.0);
 
             let mut p = buf.as_mut_ptr();
             let end = p.add(buf.len());
@@ -106,7 +108,11 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
                 let qn = f32x4_relaxed_madd(x2, qn, b2);
                 let qn = f32x4_relaxed_madd(x2, qn, b0);
 
+                // sigmoid is (0, 1): the add below cancels down to ~1e-8 on either tail,
+                // below the rounding error of the division, so the sum needs clamping to
+                // stay in range.
                 let r = f32x4_add(f32x4_div(pn, qn), half);
+                let r = f32x4_min(one, f32x4_max(zero, r));
                 v128_store(p as *mut v128, r);
                 p = p.add(4);
             }
