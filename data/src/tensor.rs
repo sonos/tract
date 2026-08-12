@@ -263,7 +263,7 @@ impl Tensor {
         self.as_plain_mut().context("Tensor storage is not plain")
     }
 
-    /// Create an uninitialized tensor (dt as type parameter).
+    /// Create an uninitialized tensor (dt as type paramater).
     #[inline]
     pub unsafe fn uninitialized<T: Datum>(shape: &[usize]) -> TractResult<Tensor> {
         unsafe { Self::uninitialized_dt(T::datum_type(), shape) }
@@ -343,17 +343,25 @@ impl Tensor {
         shape[axis] = tensors.iter().map(|v| v.borrow().shape()[axis]).sum();
         unsafe {
             let mut result = Tensor::uninitialized_dt(dt, &shape)?;
-            if dt.is_copy() && shape[..axis].iter().all(|d| *d == 1) {
+            // Every input keeps the same trailing block, so one outer stride walks
+            // them alongside the result and each contribution stays contiguous.
+            let outer: usize = shape[..axis].iter().product();
+            let out_stride = shape[axis..].iter().product::<usize>() * dt.size_of();
+            if dt.is_copy() && tensors.iter().all(|t| t.borrow().storage.as_plain().is_some()) {
+                let out = result.plain_storage_mut().as_mut_ptr();
                 let mut offset = 0isize;
                 for v in tensors {
                     let v = v.borrow();
-                    let len = v.storage.byte_len();
-                    std::ptr::copy_nonoverlapping(
-                        v.plain_storage().as_ptr(),
-                        result.plain_storage_mut().as_mut_ptr().offset(offset),
-                        len,
-                    );
-                    offset += len as isize;
+                    let block = v.storage.byte_len() / outer;
+                    let src = v.plain_storage().as_ptr();
+                    for o in 0..outer {
+                        std::ptr::copy_nonoverlapping(
+                            src.add(o * block),
+                            out.offset(offset + (o * out_stride) as isize),
+                            block,
+                        );
+                    }
+                    offset += block as isize;
                 }
             } else {
                 let mut offset = 0;
