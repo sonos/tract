@@ -34,15 +34,23 @@ pub enum Approximation {
     SuperApproximate,
     UltraApproximate,
     Custom(f32, f32, f32),
+    /// Compare by integer ULP distance in the reference tensor's own float type,
+    /// accepting a distance up to the given bound.
+    ///
+    /// Unlike the tolerance-based variants this does not go through an f32 cast,
+    /// so an f16 comparison stays an f16 comparison. Use it to assert that two
+    /// implementations of a kernel agree to within a known number of rounding
+    /// steps.
+    Ulp(u64),
 }
 
 impl PartialEq for Approximation {
     fn eq(&self, other: &Self) -> bool {
-        use Approximation::Custom;
-        if let (Custom(aa, ar, ao), Custom(ba, br, bo)) = (self, other) {
-            aa == ba && ar == br && bo == ao
-        } else {
-            std::mem::discriminant(self) == std::mem::discriminant(other)
+        use Approximation::*;
+        match (self, other) {
+            (Custom(aa, ar, ao), Custom(ba, br, bo)) => aa == ba && ar == br && bo == ao,
+            (Ulp(a), Ulp(b)) => a == b,
+            _ => std::mem::discriminant(self) == std::mem::discriminant(other),
         }
     }
 }
@@ -69,6 +77,9 @@ impl Approximation {
             (SuperApproximate, _) => (0.1, 0.05, 0.0001),
             (UltraApproximate, _) => (0.2, 0.1, 0.0005),
             (Custom(atol, rtol, out), _) => (*atol as _, *rtol as _, *out as _),
+            // Handled by a dedicated path in `Tensor::close_enough`; these values
+            // are never consulted.
+            (Ulp(_), _) => (0.0, 0.0, 0.0),
         }
     }
 }
@@ -927,6 +938,9 @@ impl Tensor {
         if self.shape() != other.shape() {
             bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
         }
+        if let Approximation::Ulp(max_ulp) = approx {
+            return self.ulp_close_enough(other, max_ulp);
+        }
         let (atol, rtol, outliers) = approx.atol_rtol_outliers(&self.datum_type());
         let ma = self.cast_to::<f32>()?;
         let ma = ma.to_plain_array_view::<f32>()?;
@@ -951,8 +965,12 @@ impl Tensor {
             let indices = first_outlier.unwrap();
             let a = ma[&*indices];
             let b = mb[&*indices];
+            let ulp = self
+                .max_ulp_distance(other)
+                .map(|(d, _)| format!("{d}"))
+                .unwrap_or_else(|_| "n/a".to_string());
             bail!(
-                "Mismatch. First outlier: {:?} for {:?}) at {:?} {} != {}. Outliers: {} / {} = {:0.5} > {:0.5}.",
+                "Mismatch. First outlier: {:?} for {:?}) at {:?} {} != {}. Outliers: {} / {} = {:0.5} > {:0.5}. Max ULP ({:?}): {}.",
                 approx,
                 self.datum_type(),
                 indices,
@@ -961,10 +979,85 @@ impl Tensor {
                 outliers_count,
                 self.volume(),
                 outliers_count as f64 / self.volume() as f64,
-                outliers
+                outliers,
+                self.ulp_comparison_dt(),
+                ulp,
             );
         }
         Ok(())
+    }
+
+    /// The float type ULP distances against this tensor are measured in.
+    ///
+    /// Float tensors are compared in their own type, so an f16 comparison stays an
+    /// f16 comparison. Anything else falls back to f32, matching what
+    /// `close_enough` does for its tolerance check.
+    pub fn ulp_comparison_dt(&self) -> DatumType {
+        match self.datum_type() {
+            dt @ (DatumType::F16 | DatumType::F32 | DatumType::F64) => dt,
+            _ => DatumType::F32,
+        }
+    }
+
+    /// Largest integer ULP distance between `self` and `other`, and the flat index
+    /// where it occurs.
+    ///
+    /// Comparison happens in [`Self::ulp_comparison_dt`]. See [`crate::ulp`] for
+    /// the exact convention around signed zeros, infinities and NaN.
+    pub fn max_ulp_distance(&self, other: &Self) -> TractResult<(u64, Option<usize>)> {
+        if self.shape() != other.shape() {
+            bail!("Shape mismatch {:?} != {:?}", self.shape(), other.shape())
+        }
+        let dt = self.ulp_comparison_dt();
+        let a = self.cast_to_dt(dt)?;
+        let b = other.cast_to_dt(dt)?;
+        fn worst<D: Datum + crate::ulp::UlpFloat>(
+            a: &Tensor,
+            b: &Tensor,
+        ) -> TractResult<(u64, Option<usize>)> {
+            let a = a.to_plain_array_view::<D>()?;
+            let b = b.to_plain_array_view::<D>()?;
+            Ok(crate::ulp::max_ulp_distance(a.iter().copied(), b.iter().copied()))
+        }
+        match dt {
+            DatumType::F16 => worst::<f16>(&a, &b),
+            DatumType::F32 => worst::<f32>(&a, &b),
+            DatumType::F64 => worst::<f64>(&a, &b),
+            dt => bail!("No ULP comparison for {dt:?}"),
+        }
+    }
+
+    /// Compare two tensors by integer ULP distance, accepting a distance up to
+    /// `max_ulp`.
+    fn ulp_close_enough(&self, other: &Self, max_ulp: u64) -> TractResult<()> {
+        let (worst, at) = self.max_ulp_distance(other)?;
+        if worst <= max_ulp {
+            return Ok(());
+        }
+        let dt = self.ulp_comparison_dt();
+        let indices = at
+            .map(|flat| {
+                let mut rest = flat;
+                let mut indices = vec![0; self.rank()];
+                for (ix, dim) in self.shape().iter().enumerate().rev() {
+                    indices[ix] = rest % dim;
+                    rest /= dim;
+                }
+                format!("{indices:?}")
+            })
+            .unwrap_or_else(|| "?".to_string());
+        let a = self.cast_to::<f64>()?;
+        let b = other.cast_to::<f64>()?;
+        let (a, b) = (a.to_plain_array_view::<f64>()?, b.to_plain_array_view::<f64>()?);
+        let flat = at.unwrap_or(0);
+        bail!(
+            "Mismatch. Max ULP distance ({dt:?}): {} > {}, at {} ({} != {}).",
+            worst,
+            max_ulp,
+            indices,
+            a.iter().nth(flat).copied().unwrap_or(f64::NAN),
+            b.iter().nth(flat).copied().unwrap_or(f64::NAN),
+        );
     }
 
     /// Transform the tensor into a `ndarray::Array`.
@@ -2021,5 +2114,58 @@ mod tests {
         let a = symbols.sym("a");
         let t = tensor0(TDim::from(a));
         let _ = t.clone();
+    }
+
+    #[test]
+    fn ulp_approximation_accepts_within_bound() -> TractResult<()> {
+        let a = tensor1(&[1.0f32, 2.0, 3.0]);
+        let b = tensor1(&[
+            f32::from_bits(1.0f32.to_bits() + 1),
+            2.0,
+            f32::from_bits(3.0f32.to_bits() + 2),
+        ]);
+        a.close_enough(&b, Approximation::Ulp(2))?;
+        assert!(a.close_enough(&b, Approximation::Ulp(1)).is_err());
+        assert_eq!(a.max_ulp_distance(&b)?, (2, Some(2)));
+        Ok(())
+    }
+
+    #[test]
+    fn ulp_approximation_uses_the_tensor_own_float_type() -> TractResult<()> {
+        // One f16 rounding step is ~8192 f32 steps. Measuring in f32 would make an
+        // adjacent-f16 pair look wildly off, so the comparison must stay in f16.
+        let one = f16::from_f32(1.0);
+        let a = tensor1(&[one]);
+        let b = tensor1(&[f16::from_bits(one.to_bits() + 1)]);
+        assert_eq!(a.ulp_comparison_dt(), DatumType::F16);
+        assert_eq!(a.max_ulp_distance(&b)?, (1, Some(0)));
+        a.close_enough(&b, Approximation::Ulp(1))?;
+        Ok(())
+    }
+
+    #[test]
+    fn ulp_approximation_is_scale_free() -> TractResult<()> {
+        // The same relative error at wildly different magnitudes reads the same,
+        // which a shared atol cannot do.
+        let a = tensor1(&[1e-30f32, 1e30]);
+        let b = tensor1(&[
+            f32::from_bits(1e-30f32.to_bits() + 1),
+            f32::from_bits(1e30f32.to_bits() + 1),
+        ]);
+        a.close_enough(&b, Approximation::Ulp(1))?;
+        Ok(())
+    }
+
+    #[test]
+    fn ulp_approximation_rejects_shape_mismatch() {
+        let a = tensor1(&[1.0f32, 2.0]);
+        let b = tensor1(&[1.0f32]);
+        assert!(a.close_enough(&b, Approximation::Ulp(1000)).is_err());
+    }
+
+    #[test]
+    fn ulp_bounds_are_distinguished_by_equality() {
+        assert_eq!(Approximation::Ulp(1), Approximation::Ulp(1));
+        assert_ne!(Approximation::Ulp(1), Approximation::Ulp(2));
     }
 }

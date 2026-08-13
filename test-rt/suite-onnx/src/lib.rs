@@ -21,6 +21,23 @@ const MANIFEST_SIMPLE: &str = include_str!("../simple.txt");
 const MANIFEST_PYTORCH_CONVERTED: &str = include_str!("../pytorch-converted.txt");
 const MANIFEST_PYTORCH_OPERATOR: &str = include_str!("../pytorch-operator.txt");
 
+/// `TRACT_ULP=<n>` swaps the suite's tolerance-based comparison for an integer ULP
+/// bound of `n`, measured in each output's own float type.
+///
+/// The tolerance the suite ships with is deliberately loose, because it has to
+/// cover every op and every runtime at once. When the question is "did this kernel
+/// change alter the numbers at all?", running the same suite under `TRACT_ULP=0`
+/// gives a bit-exactness check, and a small bound gives a sharp regression signal
+/// that a shared atol cannot express.
+fn ulp_override() -> Option<Approximation> {
+    let raw = std::env::var("TRACT_ULP").ok()?;
+    let bound = raw
+        .trim()
+        .parse::<u64>()
+        .unwrap_or_else(|e| panic!("TRACT_ULP must be a non-negative integer, got {raw:?}: {e}"));
+    Some(Approximation::Ulp(bound))
+}
+
 #[derive(Clone, Debug)]
 struct OnnxTestCase {
     path: PathBuf,
@@ -37,6 +54,7 @@ impl Test for OnnxTestCase {
         approx: Approximation,
     ) -> TractResult<()> {
         setup_test_logger();
+        let approx = ulp_override().unwrap_or(approx);
         let model_file = self.path.join("model.onnx");
         info!("Loading {model_file:?}");
         let mut onnx = tract_onnx::onnx();

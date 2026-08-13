@@ -46,6 +46,7 @@ pub mod internal {
     pub use crate::tensor::Approximation;
     pub use crate::tensor::view::TensorView;
     pub use crate::tensor::{clip_range_bounds, vector_size};
+    pub use crate::ulp::{UlpFloat, ulp_distance};
     pub use anyhow::{Context as TractErrorContext, anyhow, bail, ensure, format_err};
     pub use ndarray as tract_ndarray;
     pub use num_integer;
@@ -65,3 +66,4 @@ mod dim;
 mod exotic;
 mod scatter;
 mod tensor;
+pub mod ulp;
