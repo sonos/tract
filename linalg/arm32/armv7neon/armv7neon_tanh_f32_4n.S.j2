@@ -128,6 +128,15 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     vmul.f32    q11, q5, q8
     vmul.f32    q12, q6, q9
 
+    vdup.32     q13, d6[1]
+    vdup.32     q14, d6[0]
+    vmax.f32    q10, q13
+    vmax.f32    q11, q13
+    vmax.f32    q12, q13
+    vmin.f32    q10, q14
+    vmin.f32    q11, q14
+    vmin.f32    q12, q14
+
     vstmia      r0!, { q10, q11, q12 }
 
     subs        r1, #12
@@ -178,6 +187,11 @@ armv7neon_tanh_f32_4n_{{suffix}}:
 
     vmul.f32    q10, q4, q7
 
+    vdup.32     q13, d6[1]
+    vdup.32     q4, d6[0]
+    vmax.f32    q10, q13
+    vmin.f32    q10, q4
+
     vstmia      r0!, { q10 }
 
     subs        r1, #4;
@@ -204,6 +218,6 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     .float 0.4641733162
 
     .float 1.0
-    .float 0                        // padding
+    .float -1.0                     // output clamp low
     .float 0                        // padding
     .float 0                        // padding
