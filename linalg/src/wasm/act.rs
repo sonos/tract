@@ -181,6 +181,9 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
             let b2 = f32x4_splat(BETA_2);
             let b0 = f32x4_splat(BETA_0);
 
+            let one = f32x4_splat(1.0);
+            let minus_one = f32x4_splat(-1.0);
+
             let mut p = buf.as_mut_ptr();
             let end = p.add(buf.len());
             while p < end {
@@ -202,7 +205,11 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
                 let qn = f32x4_relaxed_madd(x2, qn, b2);
                 let qn = f32x4_relaxed_madd(x2, qn, b0);
 
+                // tanh is (-1, 1): the quotient comes within one ulp of ±1 across the top
+                // of the input range, under the kernel's own rounding error, so it needs
+                // clamping to stay in range.
                 let r = f32x4_div(pn, qn);
+                let r = f32x4_min(one, f32x4_max(minus_one, r));
                 v128_store(p as *mut v128, r);
                 p = p.add(4);
             }
