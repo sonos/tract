@@ -2,6 +2,13 @@
 use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 
+/// f32 tanh, as a rational minimax fit of `tanh` over `[LOW, HIGH]`.
+///
+/// The quotient is clamped to `[-1, 1]` to keep the range consumers rely on. Across the
+/// top of the input range the correctly rounded result is already within one ulp of `±1`
+/// — `1 - tanh(8.9)` is `3.7e-8`, under the `2^-24` f32 step just below 1 — while the two
+/// Horner chains and the division leave a few ulps of relative error, so an upward
+/// rounding lands on `±(1 + 2^-22)`. NaN still propagates.
 pub fn stanh(x: f32) -> f32 {
     const LOW: f32 = -8.9;
     const HIGH: f32 = 8.9;
@@ -37,9 +44,13 @@ pub fn stanh(x: f32) -> f32 {
     let q = x2 * q + BETA_2;
     let q = x2 * q + BETA_0;
 
-    p / q
+    (p / q).clamp(-1.0, 1.0)
 }
 
+/// f16 tanh, as a rational minimax fit of `tanh` over `[LOW, HIGH]`.
+///
+/// Needs no output clamp, unlike [`stanh`]: `1 - tanh(3.84)` is `9.3e-4`, about two f16
+/// steps below 1, so the quotient keeps its margin for every f16 input.
 pub fn htanh(x: f16) -> f16 {
     const LOW: f16 = f16::from_f32_const(-3.84);
     const HIGH: f16 = f16::from_f32_const(3.84);
