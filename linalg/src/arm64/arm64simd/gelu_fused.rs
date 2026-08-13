@@ -56,7 +56,7 @@ ew_impl_wrap!(
             //   v7:    0.5 (broadcast of v3.s[1])
             //   v8-v11: 0.5 * original x (saved after load)
             //   v16-v19: working (load -> pre_tanh -> clamped -> numerator)
-            //   v20-v23: x² for tanh polynomial
+            //   v20-v23: x² for tanh polynomial (v20/v21 reused for the tanh clamp)
             //   v24-v27: polynomial intermediates (denominator at end)
             //   v28-v31: polynomial intermediates (also x³ temp before tanh)
             std::arch::asm!("
@@ -209,6 +209,20 @@ ew_impl_wrap!(
                     fdiv v18.4s, v18.4s, v26.4s
                     fdiv v19.4s, v19.4s, v27.4s
 
+                    // The quotient can reach ±(1 + 2^-23), which takes the 0.5*(1 + tanh)
+                    // factor out of (0, 1): below 0 it flips the result's sign, above 1 it
+                    // pushes the result past x. x² is dead here, so v20/v21 carry the bounds.
+                    fmov v20.4s, #-1.0
+                    fmov v21.4s, #1.0
+                    fmax v16.4s, v16.4s, v20.4s
+                    fmax v17.4s, v17.4s, v20.4s
+                    fmax v18.4s, v18.4s, v20.4s
+                    fmax v19.4s, v19.4s, v20.4s
+                    fmin v16.4s, v16.4s, v21.4s
+                    fmin v17.4s, v17.4s, v21.4s
+                    fmin v18.4s, v18.4s, v21.4s
+                    fmin v19.4s, v19.4s, v21.4s
+
                     // result = 0.5*x * (1 + tanh) = (0.5*x) + (0.5*x) * tanh
                     fmla v8.4s, v8.4s, v16.4s
                     fmla v9.4s, v9.4s, v17.4s
@@ -260,6 +274,11 @@ ew_impl_wrap!(
                     fmla v24.4s, v20.4s, v28.4s
 
                     fdiv v16.4s, v16.4s, v24.4s
+
+                    fmov v20.4s, #-1.0
+                    fmov v21.4s, #1.0
+                    fmax v16.4s, v16.4s, v20.4s
+                    fmin v16.4s, v16.4s, v21.4s
 
                     fmla v8.4s, v8.4s, v16.4s
 
