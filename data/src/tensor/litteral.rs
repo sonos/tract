@@ -30,7 +30,7 @@ where
 pub fn tensor0<A: Datum>(x: A) -> Tensor {
     unsafe {
         let mut tensor = Tensor::uninitialized::<A>(&[]).unwrap();
-        tensor.as_slice_mut_unchecked::<A>()[0] = x;
+        std::ptr::write(tensor.as_slice_mut_unchecked::<A>().as_mut_ptr(), x);
         tensor
     }
 }
