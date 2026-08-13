@@ -180,6 +180,17 @@ fma_tanh_f32_{{suffix}} proc
     vdivps          ymm6, ymm6, ymm14
     vdivps          ymm7, ymm7, ymm15
 
+    // ymm0 still holds beta_0, which this fit sets to 1.0; the denominator chain freed ymm1
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
+    vmaxps          ymm4, ymm4, ymm1
+    vmaxps          ymm5, ymm5, ymm1
+    vmaxps          ymm6, ymm6, ymm1
+    vmaxps          ymm7, ymm7, ymm1
+    vminps          ymm4, ymm4, ymm0
+    vminps          ymm5, ymm5, ymm0
+    vminps          ymm6, ymm6, ymm0
+    vminps          ymm7, ymm7, ymm0
+
     vmovaps [rdi], ymm4
     vmovaps [rdi + 32], ymm5
     vmovaps [rdi + 64], ymm6
@@ -231,6 +242,10 @@ fma_tanh_f32_{{suffix}} proc
     vfmadd132ps     ymm12, ymm0, ymm8
 
     vdivps          ymm4, ymm4, ymm12
+
+    vbroadcastss    ymm1, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
+    vmaxps          ymm4, ymm4, ymm1
+    vminps          ymm4, ymm4, ymm0
 
     vmovaps [rdi], ymm4
     add     rdi, 32
@@ -301,6 +316,9 @@ fma_tanh_f32_{{suffix}} proc
     {{float}} 0.4641733162
 {{L}}coeffs_num_beta_0:
     {{float}} 1.0
+
+{{L}}coeffs_num_minus_one:
+    {{float}} -1.0
 
 
 
