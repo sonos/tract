@@ -193,11 +193,16 @@ pub mod test {
     use proptest::test_runner::{TestCaseError, TestCaseResult};
     use tract_data::internal::*;
 
-    /// Every finite `f16`, or a 1/256 grid of `[-30, 30]` for wider types.
+    /// Every finite `f16`, or a 1/4096 grid of `[-30, 30]` for wider types.
     ///
-    /// The grid samples where the `f16` set is enumerated, but it reaches past the `±18.6`
-    /// input clamp the f32 kernels apply, so no input outside its bounds takes a path it
-    /// has not already exercised.
+    /// The grid samples where the `f16` set is enumerated, but it reaches past every input
+    /// clamp the f32 kernels apply, so no input outside its bounds takes a path it has not
+    /// already exercised.
+    ///
+    /// The step has to stay fine because these invariants break on value-specific
+    /// rounding, not over a contiguous region: the Tanh kernels leave `[-1, 1]` only
+    /// inside a band about 0.3 wide, and a 1/256 grid steps clean over
+    /// `arm64simd_tanh_f32_4n`'s share of it.
     fn invariant_sweep<T: LADatum>() -> Vec<T>
     where
         f32: AsPrimitive<T>,
@@ -208,7 +213,7 @@ pub mod test {
             let all = tensor1(&all).cast_to::<T>().unwrap().into_owned();
             return all.try_as_plain().unwrap().as_slice::<T>().unwrap().to_vec();
         }
-        (-30 * 256..=30 * 256).map(|i| (i as f32 / 256.).as_()).collect()
+        (-30 * 4096..=30 * 4096).map(|i| (i as f32 / 4096.).as_()).collect()
     }
 
     /// Assert `invariant` holds of every `(input, output)` pair a kernel produces over

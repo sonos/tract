@@ -69,6 +69,13 @@ pub mod test {
             }
 
             #[test]
+            fn tanh_range_on_tails() {
+                if $cond {
+                    $crate::frame::tanh::test::test_tanh_range::<$ker, $t>().unwrap()
+                }
+            }
+
+            #[test]
             fn tanh_asymptots() {
                 use tract_data::internal::*;
                 use $crate::frame::element_wise::*;
@@ -88,6 +95,19 @@ pub mod test {
                 }
             }
         };
+    }
+
+    /// Assert every output of a tanh kernel lands in `[-1, 1]`, the range its consumers
+    /// rely on and which a `p / q` kernel can step outside near its input clamp, where the
+    /// true value is already within one ulp of `±1`.
+    pub fn test_tanh_range<K: ElementWiseKer<T>, T: LADatum + Float>() -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+    {
+        crate::frame::element_wise::test::test_element_wise_invariant::<K, T>(
+            "a result in [-1, 1]",
+            |_, y| y >= -T::one() && y <= T::one(),
+        )
     }
 
     pub fn test_tanh<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult
