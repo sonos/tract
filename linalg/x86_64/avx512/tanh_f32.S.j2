@@ -184,6 +184,18 @@ avx512_tanh_f32_{{suffix}} proc
     vdivps          zmm6, zmm6, zmm14
     vdivps          zmm7, zmm7, zmm15
 
+    // This fit's beta_0 is not 1.0, so both bounds come from the table
+    vbroadcastss    zmm0, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
+    vbroadcastss    zmm1, dword ptr [{{offset}} {{L}}coeffs_num_one]
+    vmaxps          zmm4, zmm4, zmm0
+    vmaxps          zmm5, zmm5, zmm0
+    vmaxps          zmm6, zmm6, zmm0
+    vmaxps          zmm7, zmm7, zmm0
+    vminps          zmm4, zmm4, zmm1
+    vminps          zmm5, zmm5, zmm1
+    vminps          zmm6, zmm6, zmm1
+    vminps          zmm7, zmm7, zmm1
+
     vmovaps [rdi], zmm4
     vmovaps [rdi + 64], zmm5
     vmovaps [rdi + 128], zmm6
@@ -235,6 +247,11 @@ avx512_tanh_f32_{{suffix}} proc
     vfmadd132ps     zmm12, zmm0, zmm8
 
     vdivps          zmm4, zmm4, zmm12
+
+    vbroadcastss    zmm0, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
+    vbroadcastss    zmm1, dword ptr [{{offset}} {{L}}coeffs_num_one]
+    vmaxps          zmm4, zmm4, zmm0
+    vminps          zmm4, zmm4, zmm1
 
     vmovaps [rdi], zmm4
     add     rdi, 64
@@ -305,6 +322,11 @@ avx512_tanh_f32_{{suffix}} proc
     {{float}} 2.26843463243900e-03     // beta_2
 {{L}}coeffs_num_beta_0:
     {{float}} 4.89352518554385e-03     // beta_0
+
+{{L}}coeffs_num_one:
+    {{float}} 1.0
+{{L}}coeffs_num_minus_one:
+    {{float}} -1.0
 
 {% if msvc %}
 avx512_tanh_f32_{{suffix}} endp
