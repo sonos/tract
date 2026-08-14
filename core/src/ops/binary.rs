@@ -473,46 +473,42 @@ fn declutter_broadcasting_operand_1(
     Ok(None)
 }
 
+/// Shunt a binary op whose uniform input holds the op's neutral element
+/// (`x + 0`, `x * 1`, `x - 0`).
+///
+/// The neutral element is compared on dequantized values, so a quantized node
+/// can be arithmetically neutral while still re-encoding its input: `out_dt`
+/// may carry other quantization parameters than the variable input, and the
+/// same real value is then a different integer. Such a node degrades to a
+/// `Cast` instead of vanishing.
 fn declutter_neutral(
     model: &TypedModel,
     node: &TypedNode,
     mini_op: &dyn BinMiniOp,
     out_dt: DatumType,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? {
-        let is_neutral = mini_op
-            .neutral_element()
-            .map(|neutral| tensor0(neutral).close_enough(&uniform.uni, false).is_ok())
-            .unwrap_or(false);
-
-        // For some operand neural element can be the left one while for other
-        // it is not the case (neutral - 1 -> not ok, 1 - neutal -> ok)
-        let pos_checked = mini_op.is_commutative() || !uniform.left_is_uniform;
-
-        if is_neutral && pos_checked {
-            // Neutral decluttering for quant values is special.
-            // - if (fa) (a-az)*as + (fb = 0) (b-bz)*bs = (fc) (c-cz)*cs
-            // - then even if fa = fc, quant params needs to be updated (a != c).
-            // So it's not a no_op.
-            if uniform.uni.datum_type().is_quantized() {
-                return Ok(Some(TypedModelPatch::replace_single_op(
-                    model,
-                    node,
-                    &[node.inputs[0]],
-                    cast(out_dt),
-                )?));
-            // In the non quantized case, it's a no_op.
-            } else {
-                return Ok(Some(TypedModelPatch::rewire(
-                    model,
-                    &[uniform.var],
-                    &[node.id.into()],
-                    &|_, inputs| Ok(inputs.into()),
-                )?));
-            }
-        }
+    let Some(uniform) = crate::ops::binary::one_input_is_uniform(model, node)? else {
+        return Ok(None);
+    };
+    let uni_is_neutral = mini_op
+        .neutral_element()
+        .is_some_and(|neutral| tensor0(neutral).close_enough(&uniform.uni, false).is_ok());
+    // Non-commutative ops only have a right neutral: x - 0 == x, but 0 - x == -x.
+    let uniform_on_neutral_side = mini_op.is_commutative() || !uniform.left_is_uniform;
+    if !uni_is_neutral || !uniform_on_neutral_side {
+        return Ok(None);
     }
-    Ok(None)
+    if uniform.uni.datum_type().is_quantized() {
+        return Ok(Some(TypedModelPatch::replace_single_op(
+            model,
+            node,
+            &[uniform.var],
+            cast(out_dt),
+        )?));
+    }
+    Ok(Some(TypedModelPatch::rewire(model, &[uniform.var], &[node.id.into()], &|_, inputs| {
+        Ok(inputs.into())
+    })?))
 }
 
 /// When one input is the absorbing element (e.g. 0 for Mul, false for And),
@@ -1286,5 +1282,35 @@ mod tests {
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
         let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 16]);
+    }
+
+    /// A quantized uniform input that dequantizes to 0 is neutral for Add on
+    /// either side, but the node still re-encodes its variable input into the
+    /// output quantization parameters. `declutter_neutral` must therefore cast
+    /// the variable input, which is inlet 1 here, not inlet 0.
+    #[test]
+    fn q_neutral_add_requantizes_the_variable_input() -> TractResult<()> {
+        let x_dt = DatumType::QU8(QParams::ZpScale { zero_point: 10, scale: 0.02 });
+        let zero_dt = DatumType::QU8(QParams::ZpScale { zero_point: 61, scale: 1. });
+        let out_dt = DatumType::QU8(QParams::ZpScale { zero_point: 0, scale: 0.5 });
+
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", x_dt.fact([4]))?;
+        // A quantized zero tensor is filled with its zero point, so this
+        // constant dequantizes to 0.0 everywhere.
+        let zero = model.add_const("zero", Tensor::zero_dt(zero_dt, &[4])?)?;
+        let add = model.wire_node("add", TypedBinOp(Box::new(Add), Some(out_dt)), &[zero, x])?[0];
+        model.select_output_outlets(&[add])?;
+
+        let mut input = Tensor::zero_dt(x_dt, &[4])?;
+        input.try_as_plain_mut()?.as_slice_mut::<u8>()?.copy_from_slice(&[10, 35, 60, 200]);
+        let input = tvec!(input.into_tvalue());
+
+        let before = model.clone().into_runnable()?.run(input.clone())?;
+        let decluttered = model.into_decluttered()?;
+        assert!(decluttered.nodes().iter().all(|n| n.op_as::<TypedBinOp>().is_none()));
+        let after = decluttered.into_runnable()?.run(input)?;
+        assert_eq!(&*before[0], &*after[0]);
+        Ok(())
     }
 }
