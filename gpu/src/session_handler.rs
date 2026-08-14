@@ -43,6 +43,14 @@ impl SessionStateHandler for DeviceSessionHandler {
                 return Ok(());
             }
         };
+        // Arena observability: per-evaluation resolved size. Measured on
+        // qwen3.5-35B @11k context (2026-08-14) that a context-bucketed
+        // schema ladder would shave only ~0.4% off the peak arena (the
+        // largest transients sort first under any packing hint), so the
+        // single hint-built schema stays; this log is what measured it.
+        if std::env::var("TRACT_GPU_LOG_ARENA").is_ok_and(|v| v == "1") {
+            log::info!("device memory arena size: {} bytes", resolved_mem_schema.memory_size);
+        }
         // The storage cache lives in the session scratch slot, which survives
         // both plan evaluations and freeze/unfreeze cycles (the tract API
         // freezes the state between every call), so consecutive evaluations
