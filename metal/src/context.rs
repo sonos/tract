@@ -308,6 +308,7 @@ impl MetalContext {
         let mut cache_pipelines = self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?;
 
         let (library_name, func_name, constants) = key;
+        let start = std::time::Instant::now();
         let func = self.load_function(
             library_name,
             &func_name,
@@ -317,6 +318,16 @@ impl MetalContext {
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
+        // Pipeline-state creation observability (cache misses only): the
+        // basis for deciding whether plan-derived PSO warming at prepare is
+        // worth building.
+        if std::env::var("TRACT_METAL_LOG_PIPELINES").is_ok_and(|v| v == "1") {
+            log::info!(
+                "pipeline created: {:?}::{func_name} in {:.2} ms",
+                library_name,
+                start.elapsed().as_secs_f64() * 1e3
+            );
+        }
         cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
