@@ -264,6 +264,11 @@ jobs:
             rustc_triple: aarch64-unknown-linux-gnu
           - triple: armv7-unknown-linux-gnueabihf-stretch
             rustc_triple: armv7-unknown-linux-gnueabihf
+          # RISC-V boards run a fully-static musl CLI (built directly by cross.sh, no stretch
+          # container); one self-tuning build serves every rv64gc board. No RVV kernels yet, so
+          # this is the generic scalar path.
+          - triple: riscv64gc-unknown-linux-musl
+            rustc_triple: riscv64gc-unknown-linux-musl
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -314,6 +319,16 @@ jobs:
             triple: armv7-unknown-linux-gnueabihf-stretch
             runner: dinghy-sidekick-a9
             dinghy_target: dinghy-a9
+          - device: beaglev-ahead
+            triple: riscv64gc-unknown-linux-musl
+            runner: dinghy-sidekick-rv-beaglev
+            dinghy_target: dinghy-rv-beaglev
+          # Orange Pi RV2 (SpacemiT K1, RVV 1.0) — board not yet racked. Uncomment once its
+          # sidekick runner `dinghy-sidekick-rv-rv2` is registered; same riscv64 musl build.
+          # - device: orangepi-rv2
+          #   triple: riscv64gc-unknown-linux-musl
+          #   runner: dinghy-sidekick-rv-rv2
+          #   dinghy_target: dinghy-rv-rv2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -383,6 +398,10 @@ jobs:
             triple: armv7-unknown-linux-gnueabihf-stretch
           - device: cortex-a9
             triple: armv7-unknown-linux-gnueabihf-stretch
+          - device: beaglev-ahead
+            triple: riscv64gc-unknown-linux-musl
+          # - device: orangepi-rv2
+          #   triple: riscv64gc-unknown-linux-musl
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
