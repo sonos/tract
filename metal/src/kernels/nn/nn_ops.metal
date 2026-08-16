@@ -460,6 +460,57 @@ template [[host_name(
 template [[host_name(
     "nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
+// Fast path for softmax_nd3 restricted to a contiguous softmax axis
+// (strides[1]==1) whose length is a multiple of 4; the caller guarantees both
+// so the F4 loads stay in bounds and 16-byte aligned. F4 is F's 4-wide vector.
+template <typename F, typename F4>
+[[kernel]] void softmax_nd3_contig(device const void *input_b, device void *output_b,
+                                   constant const size_t shape[3],
+                                   constant const size_t strides[3],
+                                   uint3 tgpig [[threadgroup_position_in_grid]],
+                                   uint tiisg  [[thread_index_in_simdgroup]],
+                                   uint tpsg   [[threads_per_simdgroup]]) {
+    device const F *input = (device const F *)input_b;
+    device F *output = (device F *)output_b;
+    size_t dim = shape[1];
+    size_t base = tgpig.x * strides[2] + tgpig.z * strides[0];
+    device const F4 *in4 = (device const F4 *)(input + base);
+    device F4 *out4 = (device F4 *)(output + base);
+    uint vec_dim = (uint)dim >> 2;
+
+    float pmax = -INFINITY;
+    float psum = 0.0f;
+    for (uint v = tiisg; v < vec_dim; v += tpsg) {
+        float4 x = float4(in4[v]);
+        float vmax = max(max(x[0], x[1]), max(x[2], x[3]));
+        if (vmax > pmax) { psum *= fast::exp(pmax - vmax); pmax = vmax; }
+        psum += dot(fast::exp(x - pmax), float4(1.0f));
+    }
+    for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
+        float x = float(input[base + i]);
+        if (x > pmax) { psum *= fast::exp(pmax - x); pmax = x; }
+        psum += fast::exp(x - pmax);
+    }
+
+    float amax = simd_max(pmax);
+    float inv = 1.0f / simd_sum(psum * fast::exp(pmax - amax));
+
+    for (uint v = tiisg; v < vec_dim; v += tpsg) {
+        float4 x = float4(in4[v]);
+        out4[v] = F4(fast::exp(x - amax) * inv);
+    }
+    for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
+        output[base + i] = F(fast::exp(float(input[base + i]) - amax) * inv);
+    }
+}
+
+typedef decltype(softmax_nd3_contig<float, float4>) softmax_nd3_contig_f32_t;
+template [[host_name("nn_ops::softmax_nd3_contig_f32")]] [[kernel]]
+softmax_nd3_contig_f32_t softmax_nd3_contig<float, float4>;
+typedef decltype(softmax_nd3_contig<half, half4>) softmax_nd3_contig_f16_t;
+template [[host_name("nn_ops::softmax_nd3_contig_f16")]] [[kernel]]
+softmax_nd3_contig_f16_t softmax_nd3_contig<half, half4>;
+
 template <typename F>
 [[kernel]] void scaled_masked_softmax_nd5(
     device const void *input_b, device const void *mask_b,
