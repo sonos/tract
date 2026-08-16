@@ -210,6 +210,10 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/riscv64-linux-musl-cross
                 [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/riscv64-linux-musl-cross.tgz | tar zx
                 export TARGET_CC=$CUSTOM_TC/bin/riscv64-linux-musl-gcc
+                # riscv64 musl defaults to dynamic linking (unlike the aarch64/armv7 musl
+                # targets here); force a static binary so it runs on the glibc boards, which
+                # have no musl loader.
+                export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
