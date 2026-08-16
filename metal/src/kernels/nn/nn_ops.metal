@@ -25,10 +25,19 @@ METAL_FUNC uint indices_to_idx_4(uint3 indices, constant const size_t shape[4],
     return idx;
 }
 
+// simd_reduce applies any normalization and must run exactly once, on the final accumulator.
+// A multi-simdgroup reduction folds its per-simdgroup accumulators with simd_accumulate and
+// combine, which merge already-accumulated values and never normalize.
 template <typename U> struct MeanOfSquares {
+    typedef float acc_t;
+
     float simd_reduce(float val, size_t reduce_dim) {
         return simd_sum(val) / static_cast<float>(reduce_dim);
     }
+
+    float simd_accumulate(float val) { return simd_sum(val); }
+
+    float combine(float a, float b) { return a + b; }
 
     static constexpr constant float init = 0.0;
 
@@ -40,7 +49,13 @@ template <typename U> struct MeanOfSquares {
 };
 
 template <typename U> struct Sum {
+    typedef U acc_t;
+
     U simd_reduce(U val, size_t reduce_dim) { return simd_sum(val); }
+
+    U simd_accumulate(U val) { return simd_sum(val); }
+
+    U combine(U a, U b) { return a + b; }
 
     static constexpr constant U init = U(0);
 
@@ -49,9 +64,15 @@ template <typename U> struct Sum {
 };
 
 template <typename U> struct Min {
+    typedef U acc_t;
+
     template <typename T> T simd_reduce(T val, size_t reduce_dim) {
         return simd_min(val);
     }
+
+    U simd_accumulate(U val) { return simd_min(val); }
+
+    U combine(U a, U b) { return a < b ? a : b; }
 
     static constexpr constant U init = metal::numeric_limits<U>::infinity();
 
@@ -60,9 +81,15 @@ template <typename U> struct Min {
 };
 
 template <typename U> struct Max {
+    typedef U acc_t;
+
     template <typename T> T simd_reduce(T val, size_t reduce_dim) {
         return simd_max(val);
     }
+
+    U simd_accumulate(U val) { return simd_max(val); }
+
+    U combine(U a, U b) { return a > b ? a : b; }
 
     static constexpr constant U init = -metal::numeric_limits<U>::infinity();
 
@@ -71,7 +98,13 @@ template <typename U> struct Max {
 };
 
 template <typename U> struct Prod {
+    typedef U acc_t;
+
     U simd_reduce(U val, size_t reduce_dim) { return simd_product(val); }
+
+    U simd_accumulate(U val) { return simd_product(val); }
+
+    U combine(U a, U b) { return a * b; }
 
     static constexpr constant U init = U(1);
 
@@ -80,7 +113,13 @@ template <typename U> struct Prod {
 };
 
 template <typename U> struct All {
+    typedef U acc_t;
+
     U simd_reduce(U val, size_t reduce_dim) { return simd_all(val); }
+
+    U simd_accumulate(U val) { return simd_all(val); }
+
+    U combine(U a, U b) { return a && b; }
 
     static constexpr constant U init = U(1);
 
@@ -89,7 +128,13 @@ template <typename U> struct All {
 };
 
 template <typename U> struct Any {
+    typedef U acc_t;
+
     U simd_reduce(U val, size_t reduce_dim) { return simd_any(val); }
+
+    U simd_accumulate(U val) { return simd_any(val); }
+
+    U combine(U a, U b) { return a || b; }
 
     static constexpr constant U init = U(0);
 
@@ -97,46 +142,94 @@ template <typename U> struct Any {
     U operator()(U acc, U a) { return acc || a; }
 };
 
-template <typename F, typename Op>
+// IdxT is uint unless the tensor holds more than u32::MAX elements; the host picks the matching
+// instantiation. Apple GPUs emulate 64-bit integer arithmetic, so the narrow form matters for
+// reductions short enough that address computation dominates.
+template <typename F, typename Op, typename IdxT>
 [[kernel]] void reduce_nd3(device const void *input_b, device void *output_b,
                            constant const size_t input_shape[3],
                            constant const size_t input_strides[3],
                            constant const size_t output_strides[3],
                            uint3 tgpig [[threadgroup_position_in_grid]],
                            uint tiisg [[thread_index_in_simdgroup]],
-                           uint tpsg [[threads_per_simdgroup]]) {
+                           uint tpsg [[threads_per_simdgroup]],
+                           uint sgitg [[simdgroup_index_in_threadgroup]],
+                           uint3 ntg [[threads_per_threadgroup]]) {
 
     device const F *input = (device const F *)input_b;
     device F *output = (device F *)output_b;
 
     Op op = Op();
 
-    size_t reduce_dim = input_shape[1];
+    IdxT reduce_dim = input_shape[1];
+    IdxT stride = input_strides[1];
 
-    size_t out_idx = tgpig.x * output_strides[2] + tgpig.y * output_strides[1] +
-                     tgpig.z * output_strides[0];
+    IdxT out_idx = IdxT(tgpig.x) * IdxT(output_strides[2]) +
+                   IdxT(tgpig.y) * IdxT(output_strides[1]) +
+                   IdxT(tgpig.z) * IdxT(output_strides[0]);
 
-    size_t base_in_idx =
-        tgpig.x * input_strides[2] + tgpig.z * input_strides[0];
+    device const F *row = input + IdxT(tgpig.x) * IdxT(input_strides[2]) +
+                          IdxT(tgpig.z) * IdxT(input_strides[0]);
+
+    IdxT nthreads = ntg.x;
+    IdxT tid = sgitg * tpsg + tiisg;
 
     auto partial_acc = Op::init;
-    for (size_t i = tiisg; i < reduce_dim; i += tpsg) {
-        F el = input[base_in_idx + i * input_strides[1]];
-        partial_acc = op(partial_acc, el);
+    if (stride == 1 && reduce_dim >= 256) {
+        IdxT blocks = reduce_dim / 4;
+        for (IdxT b = tid; b < blocks; b += nthreads) {
+            IdxT o = b * 4;
+            partial_acc = op(partial_acc, row[o]);
+            partial_acc = op(partial_acc, row[o + 1]);
+            partial_acc = op(partial_acc, row[o + 2]);
+            partial_acc = op(partial_acc, row[o + 3]);
+        }
+        for (IdxT i = blocks * 4 + tid; i < reduce_dim; i += nthreads) {
+            partial_acc = op(partial_acc, row[i]);
+        }
+    } else {
+        for (IdxT i = tid; i < reduce_dim; i += nthreads) {
+            partial_acc = op(partial_acc, row[i * stride]);
+        }
     }
-    auto acc = op.simd_reduce(partial_acc, reduce_dim);
 
+    if (nthreads <= tpsg) {
+        auto acc = op.simd_reduce(partial_acc, reduce_dim);
+        if (tiisg == 0) {
+            output[out_idx] = acc;
+        }
+        return;
+    }
+
+    // A threadgroup holds at most 1024 threads, so at most 32 simdgroups.
+    threadgroup typename Op::acc_t partials[32];
+    auto sg_acc = op.simd_accumulate(partial_acc);
     if (tiisg == 0) {
-        output[out_idx] = acc;
+        partials[sgitg] = sg_acc;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (sgitg == 0) {
+        uint nsg = (ntg.x + tpsg - 1) / tpsg;
+        auto acc = Op::init;
+        for (uint i = tiisg; i < nsg; i += tpsg) {
+            acc = op.combine(acc, partials[i]);
+        }
+        auto total = op.simd_reduce(acc, reduce_dim);
+        if (tiisg == 0) {
+            output[out_idx] = total;
+        }
     }
 }
 
-typedef decltype(reduce_nd3<float, Prod<float>>) reduce_nd3_t;
+typedef decltype(reduce_nd3<float, Prod<float>, uint>) reduce_nd3_t;
 
 #define INSTANTIATE_REDUCE(name, op, tname, type)                              \
-    template [[host_name(                                                      \
-        "nn_ops::reduce_" #name                                                \
-        "_nd3_" #tname)]] [[kernel]] reduce_nd3_t reduce_nd3<type, op<type>>;
+    template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname)]] [[kernel]]   \
+    reduce_nd3_t reduce_nd3<type, op<type>, uint>;                             \
+    template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname                 \
+                         "_large")]] [[kernel]] reduce_nd3_t                   \
+    reduce_nd3<type, op<type>, size_t>;
 
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f32, float)
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f16, half)

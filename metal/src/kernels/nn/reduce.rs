@@ -7,10 +7,26 @@ use tract_gpu::tensor::DeviceTensor;
 
 pub use tract_gpu::ops::reduce::Reducer;
 
-pub fn kernel_name(reducer: &Reducer, dt: DatumType) -> TractResult<String> {
+/// Name of the `reduce_nd3` kernel for `reducer` over `dt`. `large` selects the variant indexing
+/// with 64-bit arithmetic, required once a tensor holds more than `u32::MAX` elements.
+pub fn kernel_name(reducer: &Reducer, dt: DatumType, large: bool) -> TractResult<String> {
     ensure!(reducer.is_supported_dt(dt), "Unsupported dt {dt:?} for metal reduceop {reducer:?}",);
     let tname = DeviceTensor::tname(dt)?;
-    Ok(format!("nn_ops::reduce_{}_nd3_{tname}", reducer))
+    let suffix = if large { "_large" } else { "" };
+    Ok(format!("nn_ops::reduce_{}_nd3_{tname}{suffix}", reducer))
+}
+
+/// Threads per threadgroup for a reduction over `shape[1]` of a rank-3 `[outer, K, inner]` view.
+///
+/// One threadgroup handles one output element, so a shape with few output elements leaves most of
+/// the GPU idle unless the threadgroup itself is widened. Only contiguous reductions benefit: with
+/// `inner > 1` the added lanes land `inner` elements apart and lose locality.
+fn threadgroup_width(shape_nd3: &[usize], max_threads: usize) -> usize {
+    let reduce_dim = shape_nd3[1];
+    if shape_nd3[2] != 1 || reduce_dim <= 512 {
+        return usize::min(32, reduce_dim);
+    }
+    reduce_dim.div_ceil(4).next_multiple_of(32).min(1024).min(max_threads)
 }
 
 pub fn metal_reduce_launch(
@@ -31,8 +47,9 @@ pub fn metal_reduce_launch(
         let output_shape_nd3 = utils::reshape_to_rank_3(output.shape(), axis);
         let output_strides_nd3 = Tensor::natural_strides(&output_shape_nd3);
 
-        let pipeline =
-            stream.load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type())?)?;
+        let large = input.shape().iter().product::<usize>() > u32::MAX as usize;
+        let pipeline = stream
+            .load_pipeline(LibraryName::NNOps, &kernel_name(reducer, input.datum_type(), large)?)?;
 
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
@@ -44,8 +61,11 @@ pub fn metal_reduce_launch(
             encoder.set_slice(4, &output_strides_nd3);
 
             let grid_size = utils::build_metal_size_for_shape(&output_shape_nd3);
-            let group_size =
-                MTLSize { width: usize::min(32, input_shape_nd3[1]) as _, height: 1, depth: 1 };
+            let width = threadgroup_width(
+                &input_shape_nd3,
+                pipeline.max_total_threads_per_threadgroup() as usize,
+            );
+            let group_size = MTLSize { width: width as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
         Ok(())
@@ -191,6 +211,34 @@ mod tests {
             2,
             1.0 / 100.0,
         )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[3, 4096],
+            1,
+            1.0 / 10000.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[3, 1029],
+            1,
+            1.0 / 10000.0,
+        )?;
+        test_case::<f16>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[3, 4096],
+            1,
+            1.0 / 100000.0,
+        )?;
+        test_case::<f32>(
+            Reducer::MeanOfSquares,
+            TractReducer::MeanOfSquares,
+            &[2, 1024, 3],
+            1,
+            1.0 / 10000.0,
+        )?;
         Ok(())
     }
 
@@ -206,6 +254,9 @@ mod tests {
         test_case::<f16>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[3, 4096], 1, 1.0 / 10000.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[3, 1029], 1, 1.0 / 10000.0)?;
+        test_case::<f32>(Reducer::Sum, TractReducer::Sum, &[2, 1024, 3], 1, 1.0 / 10000.0)?;
         Ok(())
     }
 
@@ -221,6 +272,7 @@ mod tests {
         test_case::<f16>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 2, 1.0 / 100000.0)?;
         test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[2, 2, 82, 38], 2, 1.0 / 1000.0)?;
+        test_case::<f32>(Reducer::Prod, TractReducer::Prod, &[3, 1029], 1, 1.0 / 1000000.0)?;
         Ok(())
     }
 
@@ -236,6 +288,10 @@ mod tests {
         test_case::<f16>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 2, 82, 38], 2, -1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[3, 4096], 1, 1.0 / 10000.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[3, 1029], 1, -1.0 / 10000.0)?;
+        test_case::<f16>(Reducer::Max, TractReducer::Max, &[3, 4096], 1, 1.0 / 100000.0)?;
+        test_case::<f32>(Reducer::Max, TractReducer::Max, &[2, 1024, 3], 1, 1.0 / 10000.0)?;
         Ok(())
     }
 
@@ -251,6 +307,9 @@ mod tests {
         test_case::<f16>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 1, -1.0 / 100.0)?;
         test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[3, 4096], 1, 1.0 / 10000.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[3, 1029], 1, -1.0 / 10000.0)?;
+        test_case::<f32>(Reducer::Min, TractReducer::Min, &[2, 1024, 3], 1, 1.0 / 10000.0)?;
         Ok(())
     }
 
