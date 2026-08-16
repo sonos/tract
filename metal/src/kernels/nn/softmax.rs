@@ -47,8 +47,19 @@ impl Softmax {
         let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
-        let pipeline =
-            stream.load_pipeline(LibraryName::NNOps, &self.kernel_name(input.datum_type())?)?;
+        // Fast path for contiguous last-axis softmax (strides[1]==1) whose dim is
+        // a multiple of 4 (so every row start stays 16-byte aligned for the
+        // float4/half4 loads). Falls back to the general strided kernel otherwise.
+        let dt = input.datum_type();
+        let tname = DeviceTensor::tname(dt)?;
+        let use_contig = strides_nd3[1] == 1 && shape_nd3[1].is_multiple_of(4);
+        let kernel_name = if use_contig {
+            ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal softmaxop", dt);
+            format!("nn_ops::softmax_nd3_contig_{tname}")
+        } else {
+            self.kernel_name(dt)?
+        };
+        let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
 
         let command_buffer = stream.command_buffer();
         command_buffer.encode(|encoder| {
