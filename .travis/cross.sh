@@ -138,7 +138,8 @@ case "$PLATFORM" in
         ;;
 
     "aarch64-unknown-linux-gnu" | "armv6vfp-unknown-linux-gnueabihf" | "armv7-unknown-linux-gnueabihf" | \
-        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" | "cortexa53-unknown-linux-musl" )
+        "aarch64-unknown-linux-musl" | "armv7-unknown-linux-musl" | "cortexa53-unknown-linux-musl" | \
+        "riscv64gc-unknown-linux-musl" )
 
         ensure_cargo_dinghy
         case "$PLATFORM" in
@@ -201,6 +202,14 @@ case "$PLATFORM" in
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
                 [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
+                ;;
+            "riscv64gc-unknown-linux-musl")
+                export ARCH=riscv64
+                export QEMU_ARCH=riscv64
+                export RUSTC_TRIPLE=riscv64gc-unknown-linux-musl
+                export CUSTOM_TC=`pwd`/riscv64-linux-musl-cross
+                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/riscv64-linux-musl-cross.tgz | tar zx
+                export TARGET_CC=$CUSTOM_TC/bin/riscv64-linux-musl-gcc
                 ;;
             *)
                 echo "unsupported platform $PLATFORM"
