@@ -43,3 +43,7 @@ rand.workspace = true
 name = "metal_gemm"
 harness = false
 
+
+[[bench]]
+name = "metal_reduce"
+harness = false

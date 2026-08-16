@@ -33,7 +33,11 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|op| {
                 tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt))
             })
-            .flat_map(|(op, dt)| reduce::kernel_name(&op, dt).into_iter()),
+            .flat_map(|(op, dt)| {
+                [false, true]
+                    .into_iter()
+                    .flat_map(move |large| reduce::kernel_name(&op, dt, large).into_iter())
+            }),
     );
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
