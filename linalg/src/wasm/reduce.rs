@@ -220,3 +220,55 @@ mod test_softmax {
     use super::*;
     crate::softmax_l2_frame_tests!(true, f32, wasm_softmax2_fastcompact_f32_32n);
 }
+
+/// RMS-normalises `buf` in place: each element is divided by the root of the
+/// mean square plus `eps`. The sum of squares keeps sixteen independent
+/// accumulators so the multiply-accumulate latency does not serialise, which is
+/// what the generic scalar form cannot avoid.
+pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
+    use std::arch::wasm32::*;
+    if buf.is_empty() {
+        return;
+    }
+    unsafe {
+        let len = buf.len();
+        let ptr = buf.as_mut_ptr();
+        let chunks = len / 64;
+        let mut acc = [f32x4_splat(0f32); 16];
+        for i in 0..chunks {
+            let base = ptr.add(i * 64);
+            for (j, a) in acc.iter_mut().enumerate() {
+                let v = v128_load(base.add(j * 4) as *const v128);
+                *a = madd_f32x4!(*a, v, v);
+            }
+        }
+        let mut pairs = [f32x4_splat(0f32); 8];
+        for (k, p) in pairs.iter_mut().enumerate() {
+            *p = f32x4_add(acc[2 * k], acc[2 * k + 1]);
+        }
+        let q0 = f32x4_add(f32x4_add(pairs[0], pairs[1]), f32x4_add(pairs[2], pairs[3]));
+        let q1 = f32x4_add(f32x4_add(pairs[4], pairs[5]), f32x4_add(pairs[6], pairs[7]));
+        let s = f32x4_add(q0, q1);
+        let mut sum = f32x4_extract_lane::<0>(s)
+            + f32x4_extract_lane::<1>(s)
+            + f32x4_extract_lane::<2>(s)
+            + f32x4_extract_lane::<3>(s);
+        for i in chunks * 64..len {
+            let v = *ptr.add(i);
+            sum += v * v;
+        }
+
+        let scale = 1f32 / (sum / len as f32 + eps).sqrt();
+        let scale_v = f32x4_splat(scale);
+        for i in 0..chunks {
+            let base = ptr.add(i * 64);
+            for j in 0..16 {
+                let q = base.add(j * 4);
+                v128_store(q as *mut v128, f32x4_mul(v128_load(q as *const v128), scale_v));
+            }
+        }
+        for i in chunks * 64..len {
+            *ptr.add(i) *= scale;
+        }
+    }
+}

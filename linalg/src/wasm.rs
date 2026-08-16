@@ -81,4 +81,5 @@ pub fn plug(ops: &mut Ops) {
     ops.min_f32 = Box::new(|| reduce::wasm_min_f32_32n::red());
     ops.sum_f32 = Box::new(|| reduce::wasm_sum_f32_32n::red());
     ops.softmax2_fastcompact_f32 = Box::new(|| reduce::wasm_softmax2_fastcompact_f32_32n::red());
+    ops.rms_norm_f32 = Box::new(reduce::rms_norm_f32);
 }
