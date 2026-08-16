@@ -11,6 +11,7 @@ use crate::Ops;
 
 #[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
+use crate::frame::reduce::{MapReduceKer, ReduceKer};
 
 #[macro_use]
 mod madd;
@@ -22,6 +23,7 @@ mod dispatch_tests;
 mod mmm_f32_gemm;
 mod mmm_f32_gemv;
 mod mmm_i32;
+mod reduce;
 
 #[cfg(target_feature = "relaxed-simd")]
 pub use act::*;
@@ -75,4 +77,8 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f32 = Box::new(|| WasmSigmoid4Relaxed::ew());
         ops.tanh_f32 = Box::new(|| WasmTanh4Relaxed::ew());
     }
+    ops.max_f32 = Box::new(|| reduce::wasm_max_f32_32n::red());
+    ops.min_f32 = Box::new(|| reduce::wasm_min_f32_32n::red());
+    ops.sum_f32 = Box::new(|| reduce::wasm_sum_f32_32n::red());
+    ops.softmax2_fastcompact_f32 = Box::new(|| reduce::wasm_softmax2_fastcompact_f32_32n::red());
 }
