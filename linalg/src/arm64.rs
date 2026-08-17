@@ -1,53 +1,39 @@
 #![allow(clippy::excessive_precision)]
 pub mod routines;
 
-// Everything below is native aarch64 code (asm/intrinsics/detection); it is absent
-// from a `registry-all-targets` build on a non-aarch64 host, which compiles only the
-// module shell + `routines` descriptors above.
-#[cfg(all(
-    target_arch = "aarch64",
-    any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios"))
-))]
-mod apple_amx;
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-mod apple_m1_linear;
-#[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-mod apple_m4_linear;
-#[cfg(target_arch = "aarch64")]
-mod arm64simd;
-#[cfg(target_arch = "aarch64")]
-mod cortex_a53_linear;
-#[cfg(target_arch = "aarch64")]
-mod cortex_a53_mmv_linear;
-#[cfg(target_arch = "aarch64")]
-mod cortex_a55_linear;
-#[cfg(target_arch = "aarch64")]
-mod cortex_a55_mmv_linear;
-// `tract_sme` is set by build.rs only when the assembler can assemble SME
-// (gates out e.g. the old Debian stretch aarch64 toolchain).
-#[cfg(all(target_arch = "aarch64", any(target_os = "macos", target_os = "linux"), tract_sme))]
-mod sme;
-#[cfg(target_arch = "aarch64")]
-mod sve;
-#[cfg(target_arch = "aarch64")]
-pub use arm64simd::*;
-
-#[cfg(all(target_arch = "aarch64", not(feature = "no_fp16")))]
-pub mod arm64fp16;
-#[cfg(all(target_arch = "aarch64", not(feature = "no_fp16")))]
-pub use arm64fp16::*;
-
 #[cfg(target_arch = "aarch64")]
 pub use native::*;
 
-// All native aarch64 code (detection, f16 helpers, Kind cost-model choice, mmm pool
-// `plug_mmm`) lives in this one gated module so the arm64 shell + `routines` above
-// compile on any host under `registry-all-targets`.
+// All native aarch64 code — kernel submodules (asm/intrinsics), CPU detection, and the
+// mmm-pool builder `plug_mmm` — lives in this one gated module. `#[path = "."]` roots
+// its child `mod`s in `src/arm64/` (where the kernel files are), so the arm64 shell +
+// `routines` above still compile on any host under `registry-all-targets`.
 #[cfg(target_arch = "aarch64")]
+#[path = "arm64"]
 mod native {
-    use super::*;
+    use crate::Ops;
     use crate::f16;
-    use crate::{DatumType, Ops};
+
+    #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
+    mod apple_amx;
+    #[cfg(target_os = "macos")]
+    mod apple_m1_linear;
+    #[cfg(target_os = "macos")]
+    mod apple_m4_linear;
+    mod arm64simd;
+    mod cortex_a53_linear;
+    mod cortex_a53_mmv_linear;
+    mod cortex_a55_linear;
+    mod cortex_a55_mmv_linear;
+    // `tract_sme` is set by build.rs only when the assembler can assemble SME.
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
+    mod sme;
+    mod sve;
+    pub use arm64simd::*;
+    #[cfg(not(feature = "no_fp16"))]
+    pub mod arm64fp16;
+    #[cfg(not(feature = "no_fp16"))]
+    pub use arm64fp16::*;
 
     // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
     const PART_A53: &str = "0xd03";

@@ -1,31 +1,23 @@
 pub mod routines;
 
-// Native armv7 code below (asm kernels + detection); absent from a foreign
-// `registry-all-targets` build, which compiles only the shell + `routines`.
-#[cfg(target_arch = "arm")]
-pub mod armv7neon;
-#[cfg(target_arch = "arm")]
-mod armvfpv2;
-#[cfg(target_arch = "arm")]
-mod cortex_a7_linear;
-#[cfg(target_arch = "arm")]
-mod cortex_a7_mmv_linear;
-#[cfg(target_arch = "arm")]
-mod cortex_a9_linear;
-#[cfg(target_arch = "arm")]
-mod cortex_a9_mmv_linear;
-#[cfg(target_arch = "arm")]
-use armv7neon::*;
-
 #[cfg(target_arch = "arm")]
 pub use native::*;
 
-// All native armv7 detection + mmm-pool `plug_mmm` in one gated module.
+// All native armv7 code — asm kernels, CPU detection, mmm-pool `plug_mmm` — in one
+// gated module. `#[path = "arm32"]` roots its child `mod`s in `src/arm32/`.
 #[cfg(target_arch = "arm")]
+#[path = "arm32"]
 mod native {
-    use super::*;
     use crate::Ops;
     use std::fs;
+
+    pub mod armv7neon;
+    mod armvfpv2;
+    mod cortex_a7_linear;
+    mod cortex_a7_mmv_linear;
+    mod cortex_a9_linear;
+    mod cortex_a9_mmv_linear;
+    use armv7neon::*;
 
     fn has_neon_cpuinfo() -> std::io::Result<bool> {
         let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
