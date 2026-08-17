@@ -1,7 +1,4 @@
 use crate::Ops;
-use crate::frame::reduce::{MapReduceKer, ReduceKer};
-use crate::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n;
-use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 
 pub mod mmm;
 
@@ -84,24 +81,12 @@ sigmoid_impl!(f32, avx512_sigmoid_f32, 16, 16, is_x86_feature_detected!("avx512f
 
 fn plug_avx2(_ops: &mut Ops) {}
 
-/// Reducers for AVX-capable CPUs outside the fma tier: max / min asm is plain AVX.
-/// Element-wise activations (incl. mul_by_scalar) are dispatched through the
-/// activation registry. softmax keeps its generic fallback on this tier.
-fn plug_avx(ops: &mut Ops) {
-    ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
-    ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
-
-    log::info!("max_f32, min_f32: x86_64/avx activated");
-}
+/// AVX tier. max/min/softmax and all element-wise activations are dispatched
+/// through the activation registry; nothing is plugged here.
+fn plug_avx(_ops: &mut Ops) {}
 
 fn plug_fma(ops: &mut Ops) {
     panel_extract::plug(ops);
-
-    ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
-    ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
-    ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
-
-    log::info!("max_f32, min_f32, softmax2: x86_64/fma activated");
 }
 
 /// AVX-512_FP16 tier. The activations it used to upgrade (hardswish_f16) are now
@@ -109,17 +94,8 @@ fn plug_fma(ops: &mut Ops) {
 fn plug_avx512fp16(_ops: &mut Ops) {}
 
 fn plug_avx512f(ops: &mut Ops) {
-    ops.max_f32 = Box::new(|| max::x86_64_avx512_max_f32_64n::red());
-    ops.softmax2_fastcompact_f32 =
-        Box::new(|| softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red());
-    ops.softmax2_fastcompact_f16 = Box::new(|| x86_64_avx512_softmax2_fastcompact_f16_64n::red());
-
     ops.rms_norm_f32 = Box::new(rms_norm::rms_norm_f32);
-
-    log::info!(
-        "max_f32, softmax2_fastcompact_f32, \
-         softmax2_fastcompact_f16, rms_norm_f32: x86_64/avx512f activated"
-    );
+    log::info!("rms_norm_f32: x86_64/avx512f activated");
 }
 
 pub fn plug(ops: &mut Ops) {

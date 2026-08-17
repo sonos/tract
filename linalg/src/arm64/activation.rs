@@ -3,7 +3,11 @@
 
 use crate::activation::{ActivationFn, ActivationImpl, Tier};
 #[cfg(target_arch = "aarch64")]
-use crate::{activation::ActFactory, frame::element_wise::ElementWiseKer};
+use crate::{
+    activation::ActFactory,
+    frame::element_wise::ElementWiseKer,
+    frame::reduce::{MapReduceKer, ReduceKer},
+};
 use tract_data::prelude::DatumType;
 
 #[cfg(target_arch = "aarch64")]
@@ -19,6 +23,15 @@ macro_rules! factory {
     };
     (F16Param, $k:path) => {
         Some(ActFactory::F16Param(|| <$k>::ew()))
+    };
+    (F32Reduce, $k:path) => {
+        Some(ActFactory::F32Reduce(|| <$k>::red()))
+    };
+    (F16Reduce, $k:path) => {
+        Some(ActFactory::F16Reduce(|| <$k>::red()))
+    };
+    (F32MapReduce, $k:path) => {
+        Some(ActFactory::F32MapReduce(|| <$k>::red()))
     };
 }
 #[cfg(not(target_arch = "aarch64"))]
@@ -163,5 +176,60 @@ inventory::submit! {
         kernel: "arm64fp16_mul_by_scalar_f16_32n",
         check: || check!(crate::arm64::has_fp16()),
         factory: factory!(F16Param, crate::arm64::arm64fp16_mul_by_scalar_f16_32n),
+    }
+}
+
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_max_f32_16n",
+        check: || check!(true),
+        factory: factory!(F32Reduce, crate::arm64::arm64simd_max_f32_16n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F16, target: "aarch64",
+        feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
+        kernel: "arm64fp16_max_f16_32n",
+        check: || check!(crate::arm64::has_fp16()),
+        factory: factory!(F16Reduce, crate::arm64::arm64fp16_max_f16_32n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Min, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_min_f32_16n",
+        check: || check!(true),
+        factory: factory!(F32Reduce, crate::arm64::arm64simd_min_f32_16n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Sum, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_sum_f32_16n",
+        check: || check!(true),
+        factory: factory!(F32Reduce, crate::arm64::arm64simd_sum_f32_16n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Sum, dt: DatumType::F16, target: "aarch64",
+        feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
+        kernel: "arm64fp16_sum_f16_32n",
+        check: || check!(crate::arm64::has_fp16()),
+        factory: factory!(F16Reduce, crate::arm64::arm64fp16_sum_f16_32n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_softmax2_fastcompact_f32_16n",
+        check: || check!(true),
+        factory: factory!(F32MapReduce, crate::arm64::arm64simd_softmax2_fastcompact_f32_16n),
     }
 }

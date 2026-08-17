@@ -80,22 +80,10 @@ pub struct Ops {
     qmmm_i32: MMMImpl,
     qmmv_i32: MMVImpl,
 
-    // All element-wise activations (sigmoid/silu/tanh/erf/hardswish/gelu and the
-    // parameterized leaky_relu/mul_by_scalar) are dispatched through the activation
-    // registry (`crate::activation::kernel_f32` / `kernel_f16` / `_param`), not `Ops`.
+    // All element-wise activations (sigmoid/silu/tanh/erf/hardswish/gelu, the
+    // parameterized leaky_relu/mul_by_scalar) and reducers (max/min/sum/softmax) are
+    // dispatched through the activation registry (`crate::activation::*`), not `Ops`.
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
-
-    pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
-    pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-    pub min_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-
-    pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
-    pub sum_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-
-    pub softmax2_fastcompact_f16:
-        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
-    pub softmax2_fastcompact_f32:
-        Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 
     /// Fused row-wise RmsNorm: out_i = x_i * rsqrt(mean(x_i²) + eps).
     /// Replaces a 4-call composition (MeanOfSquares + Add + Rsqrt + Mul) with
@@ -200,7 +188,6 @@ impl Ops {
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
-    use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         mmm_impls: vec![],
         panel_extractors: vec![],
@@ -213,16 +200,6 @@ pub fn generic() -> Ops {
         qmmm_i32: Box::new(|_, _, _| generic_i32_4x4.mmm()),
         qmmv_i32: Box::new(|_, _| generic_i32_4x4.mmm()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
-        max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
-        max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
-        min_f32: Box::new(|| generic::reduce::min::SMin4::red()),
-        sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
-        sum_f32: Box::new(|| generic::reduce::sum::SSum4::red()),
-        /*
-        activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
-        */
-        softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
-        softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
     crate::generic::mmm::plug(&mut ops);

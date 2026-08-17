@@ -272,7 +272,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
-        let max = (tract_linalg::ops().max_f16)().run(slice)?;
+        let max = tract_linalg::activation::reduce_f16(tract_linalg::activation::ActivationFn::Max)
+            .run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
@@ -284,8 +285,10 @@ impl Softmax {
                         });
                         s
                     }
-                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f16)()
-                        .run_with_params(slice, max)?,
+                    SoftmaxExp::FastCompact => tract_linalg::activation::map_reduce_f16(
+                        tract_linalg::activation::ActivationFn::Softmax,
+                    )
+                    .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
                 tract_linalg::activation::kernel_f16_param(
@@ -307,7 +310,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
-        let max = (tract_linalg::ops().max_f32)().run(slice)?;
+        let max = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Max)
+            .run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
@@ -319,8 +323,10 @@ impl Softmax {
                         });
                         s
                     }
-                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f32)()
-                        .run_with_params(slice, max)?,
+                    SoftmaxExp::FastCompact => tract_linalg::activation::map_reduce_f32(
+                        tract_linalg::activation::ActivationFn::Softmax,
+                    )
+                    .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
                 tract_linalg::activation::kernel_f32_param(

@@ -3,7 +3,11 @@
 
 use crate::activation::{ActivationFn, ActivationImpl, Tier};
 #[cfg(target_arch = "x86_64")]
-use crate::{activation::ActFactory, frame::element_wise::ElementWiseKer};
+use crate::{
+    activation::ActFactory,
+    frame::element_wise::ElementWiseKer,
+    frame::reduce::{MapReduceKer, ReduceKer},
+};
 use tract_data::prelude::DatumType;
 
 #[cfg(target_arch = "x86_64")]
@@ -19,6 +23,15 @@ macro_rules! factory {
     };
     (F16Param, $k:path) => {
         Some(ActFactory::F16Param(|| <$k>::ew()))
+    };
+    (F32Reduce, $k:path) => {
+        Some(ActFactory::F32Reduce(|| <$k>::red()))
+    };
+    (F32MapReduce, $k:path) => {
+        Some(ActFactory::F32MapReduce(|| <$k>::red()))
+    };
+    (F16MapReduce, $k:path) => {
+        Some(ActFactory::F16MapReduce(|| <$k>::red()))
     };
 }
 #[cfg(not(target_arch = "x86_64"))]
@@ -255,5 +268,64 @@ inventory::submit! {
         kernel: "x86_64_avx_f32_mul_by_scalar_32n",
         check: || probe::avx(),
         factory: factory!(F32Param, crate::x86_64_fma::by_scalar::x86_64_avx_f32_mul_by_scalar_32n),
+    }
+}
+
+// max / min asm is plain AVX (despite the `fma` in the symbol names); avx512 adds a
+// wider max. No x86 f16 or sum reducer — those fall to generic.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
+        kernel: "x86_64_fma_max_f32_32n",
+        check: || probe::avx(),
+        factory: factory!(F32Reduce, crate::x86_64_fma::max::x86_64_fma_max_f32_32n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_max_f32_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F32Reduce, crate::x86_64_fma::max::x86_64_avx512_max_f32_64n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Min, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
+        kernel: "x86_64_fma_min_f32_32n",
+        check: || probe::avx(),
+        factory: factory!(F32Reduce, crate::x86_64_fma::min::x86_64_fma_min_f32_32n),
+    }
+}
+
+// softmax: fma native f32, avx512 native f32 + f16.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F32, target: "x86_64",
+        feature: Some("fma"), tier: Tier::Native, isa_rank: 20,
+        kernel: "x86_64_fma_softmax2_fastcompact_f32_32n",
+        check: || probe::fma(),
+        factory: factory!(F32MapReduce, crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_softmax2_fastcompact_f32_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F32MapReduce, crate::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f32_64n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_softmax2_fastcompact_f16_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F16MapReduce, crate::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n),
     }
 }

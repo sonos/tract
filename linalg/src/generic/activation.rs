@@ -2,6 +2,7 @@
 
 use crate::activation::{ActFactory, ActivationFn, ActivationImpl, Tier};
 use crate::frame::element_wise::ElementWiseKer;
+use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use tract_data::prelude::DatumType;
 
 inventory::submit! {
@@ -122,5 +123,65 @@ inventory::submit! {
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HMulByScalar8",
         check: || true,
         factory: Some(ActFactory::F16Param(|| crate::generic::HMulByScalar8::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SMax4",
+        check: || true,
+        factory: Some(ActFactory::F32Reduce(|| crate::generic::reduce::max::SMax4::red())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Max, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HMax8",
+        check: || true,
+        factory: Some(ActFactory::F16Reduce(|| crate::generic::reduce::max::HMax8::red())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Min, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SMin4",
+        check: || true,
+        factory: Some(ActFactory::F32Reduce(|| crate::generic::reduce::min::SMin4::red())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Sum, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSum4",
+        check: || true,
+        factory: Some(ActFactory::F32Reduce(|| crate::generic::reduce::sum::SSum4::red())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Sum, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSum8",
+        check: || true,
+        factory: Some(ActFactory::F16Reduce(|| crate::generic::reduce::sum::HSum8::red())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSoftMaxL2",
+        check: || true,
+        factory: Some(ActFactory::F32MapReduce(
+            || crate::generic::reduce::softmax_l2::SSoftMaxL2::red(),
+        )),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Softmax, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSoftMaxL2",
+        check: || true,
+        factory: Some(ActFactory::F16MapReduce(
+            || crate::generic::reduce::softmax_l2::HSoftMaxL2::red(),
+        )),
     }
 }

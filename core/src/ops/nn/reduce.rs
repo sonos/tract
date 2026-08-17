@@ -217,8 +217,12 @@ impl Reducer {
                     let mut out = vec![T::zero(); n_rows];
                     let total = full.len();
                     // Reduce kernels are Send + Sync; build once and share by ref.
-                    let sum_f16 = (tract_linalg::ops().sum_f16)();
-                    let sum_f32 = (tract_linalg::ops().sum_f32)();
+                    let sum_f16 = tract_linalg::activation::reduce_f16(
+                        tract_linalg::activation::ActivationFn::Sum,
+                    );
+                    let sum_f32 = tract_linalg::activation::reduce_f32(
+                        tract_linalg::activation::ActivationFn::Sum,
+                    );
                     tract_linalg::multithread::par_chunks_mut(
                         &mut out,
                         1,
@@ -316,7 +320,9 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let max = (tract_linalg::ops().max_f32)().run(slice).unwrap();
+        let max = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Max)
+            .run(slice)
+            .unwrap();
         // SAFETY: T is f32 in this branch (checked above).
         return unsafe { std::mem::transmute_copy::<f32, T>(&max) };
     }
@@ -332,7 +338,9 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let min = (tract_linalg::ops().min_f32)().run(slice).unwrap();
+        let min = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Min)
+            .run(slice)
+            .unwrap();
         // SAFETY: T is f32 in this branch (checked above).
         return unsafe { std::mem::transmute_copy::<f32, T>(&min) };
     }

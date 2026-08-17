@@ -20,6 +20,7 @@
 //! replaces the last-writer-wins field assignments in each arch's `plug()`.
 
 use crate::frame::element_wise::ElementWise;
+use crate::frame::reduce::{MapReduce, Reduce};
 use tract_data::prelude::{DatumType, f16};
 
 /// Which activation function a kernel computes.
@@ -37,6 +38,13 @@ pub enum ActivationFn {
     /// Multiply by a runtime scalar (`ElementWise<T, T>`); param-dispatched like
     /// [`ActivationFn::LeakyRelu`].
     MulByScalar,
+    // Reductions (not activations — this enum is really "pointwise/reduce kernel id";
+    // worth renaming to a neutral `Op` once mmm joins). Dispatched via `reduce_*` /
+    // `map_reduce_*`.
+    Max,
+    Min,
+    Sum,
+    Softmax,
 }
 
 /// How directly a kernel implements its function, best first. The variant order is
@@ -64,6 +72,10 @@ pub enum ActFactory {
     F16(fn() -> Box<dyn ElementWise<f16>>),
     F32Param(fn() -> Box<dyn ElementWise<f32, f32>>),
     F16Param(fn() -> Box<dyn ElementWise<f16, f16>>),
+    F32Reduce(fn() -> Box<dyn Reduce<f32>>),
+    F16Reduce(fn() -> Box<dyn Reduce<f16>>),
+    F32MapReduce(fn() -> Box<dyn MapReduce<f32, f32>>),
+    F16MapReduce(fn() -> Box<dyn MapReduce<f16, f16>>),
 }
 
 /// One registered activation kernel. Submitted via [`inventory`] next to its kernel.
@@ -144,6 +156,38 @@ pub fn kernel_f16_param(func: ActivationFn) -> Box<dyn ElementWise<f16, f16>> {
     }
 }
 
+/// The `f32` reducer for `func` (e.g. [`ActivationFn::Max`]).
+pub fn reduce_f32(func: ActivationFn) -> Box<dyn Reduce<f32>> {
+    match pick(func, DatumType::F32).and_then(|a| a.factory) {
+        Some(ActFactory::F32Reduce(make)) => make(),
+        _ => unreachable!("no bound f32 reducer for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The `f16` reducer for `func`.
+pub fn reduce_f16(func: ActivationFn) -> Box<dyn Reduce<f16>> {
+    match pick(func, DatumType::F16).and_then(|a| a.factory) {
+        Some(ActFactory::F16Reduce(make)) => make(),
+        _ => unreachable!("no bound f16 reducer for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The `f32` map-reducer for `func` (e.g. [`ActivationFn::Softmax`]).
+pub fn map_reduce_f32(func: ActivationFn) -> Box<dyn MapReduce<f32, f32>> {
+    match pick(func, DatumType::F32).and_then(|a| a.factory) {
+        Some(ActFactory::F32MapReduce(make)) => make(),
+        _ => unreachable!("no bound f32 map-reducer for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The `f16` map-reducer for `func`.
+pub fn map_reduce_f16(func: ActivationFn) -> Box<dyn MapReduce<f16, f16>> {
+    match pick(func, DatumType::F16).and_then(|a| a.factory) {
+        Some(ActFactory::F16MapReduce(make)) => make(),
+        _ => unreachable!("no bound f16 map-reducer for {func:?} (generic tier missing?)"),
+    }
+}
+
 // Descriptors live next to their kernels, one file per backend. They are declared
 // from here — an always-compiled module — because the arch modules themselves are
 // `#[cfg(target_arch)]`-gated and so absent from a foreign-target build, which would
@@ -201,9 +245,29 @@ mod test {
         ] {
             assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
         }
-        for func in [ActivationFn::LeakyRelu, ActivationFn::MulByScalar] {
+        for func in [
+            ActivationFn::LeakyRelu,
+            ActivationFn::MulByScalar,
+            ActivationFn::Max,
+            ActivationFn::Min,
+            ActivationFn::Sum,
+            ActivationFn::Softmax,
+        ] {
             assert!(pick(func, DatumType::F32).is_some(), "no bound f32 kernel for {func:?}");
         }
+        for func in [ActivationFn::Max, ActivationFn::Sum, ActivationFn::Softmax] {
+            assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
+        }
+    }
+
+    /// The picked reducers compute the right scalar (max and sum over a slice).
+    #[test]
+    fn reducers_run() {
+        let xs = [1.0f32, -3.0, 2.5, 0.0, 4.0];
+        let max = reduce_f32(ActivationFn::Max).run(&xs).unwrap();
+        assert!((max - 4.0).abs() < 1e-5, "max={max}");
+        let sum = reduce_f32(ActivationFn::Sum).run(&xs).unwrap();
+        assert!((sum - 4.5).abs() < 1e-4, "sum={sum}");
     }
 
     /// The picked leaky-relu kernel applies `alpha` on the negative side.

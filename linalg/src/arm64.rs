@@ -26,7 +26,6 @@ use crate::f16;
 use crate::{BinOp, DatumType, LinalgRegistry, Ops};
 
 use crate::frame::by_scalar::ByScalarKer;
-use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use crate::frame::unicast::UnicastKer;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
@@ -485,16 +484,7 @@ pub fn plug(ops: &mut Ops) {
             ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen.mmm());
         }
     }
-    ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
-    ops.min_f32 = Box::new(|| arm64simd_min_f32_16n::red());
-    ops.sum_f32 = Box::new(|| arm64simd_sum_f32_16n::red());
-    ops.softmax2_fastcompact_f32 = Box::new(|| arm64simd_softmax2_fastcompact_f32_16n::red());
     ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
-    #[cfg(not(feature = "no_fp16"))]
-    if has_fp16() {
-        ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
-        ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
-    }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {
         apple_amx::plug(ops);
