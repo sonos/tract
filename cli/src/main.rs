@@ -189,6 +189,10 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
+        .subcommand(
+            Command::new("activations")
+                .about("Print the activation-function kernel matrix, by quality, across all targets"),
+        )
         .subcommand(hwbench::command())
         .subcommand(cost_model::command())
         .subcommand(
@@ -892,6 +896,166 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                         }
                     }
                 }
+            }
+            return Ok(());
+        }
+        Some(("activations", _)) => {
+            use tract_linalg::activation::{ActivationFn, ActivationImpl, Tier, all};
+
+            // Quality is the message: green = native hand-written, yellow = a known
+            // compromise (reachable, but a dedicated kernel could beat it), red =
+            // scalar fallback.
+            fn quality_color(tier: Tier) -> nu_ansi_term::Color {
+                match tier {
+                    Tier::Native => Green,
+                    Tier::ViaF32 => Yellow,
+                    Tier::Generic => LightRed,
+                }
+            }
+            fn tier_label(tier: Tier) -> &'static str {
+                match tier {
+                    Tier::Native => "native",
+                    Tier::ViaF32 => "via-f32-in-l1",
+                    Tier::Generic => "generic",
+                }
+            }
+
+            // A representative deployment target: an arch plus the cumulative CPU
+            // feature set a machine at that tier is guaranteed to have. The generic
+            // scalar floor is not a column — it is every cell's fallback.
+            struct Col {
+                name: &'static str,
+                arch: &'static str,
+                feats: &'static [&'static str],
+            }
+            let cols = [
+                Col { name: "aarch64", arch: "aarch64", feats: &["neon"] },
+                Col { name: "aarch64+fp16", arch: "aarch64", feats: &["neon", "fp16"] },
+                Col { name: "armv7/vfpv2", arch: "armv7", feats: &["vfpv2"] },
+                Col { name: "armv7/neon", arch: "armv7", feats: &["vfpv2", "neon"] },
+                Col { name: "x64/avx", arch: "x86_64", feats: &["avx"] },
+                Col { name: "x64/avx2+fma", arch: "x86_64", feats: &["avx", "avx2", "fma"] },
+                Col {
+                    name: "x64/avx512",
+                    arch: "x86_64",
+                    feats: &["avx", "avx2", "fma", "avx512f"],
+                },
+                Col {
+                    name: "x64/avx512+fp16",
+                    arch: "x86_64",
+                    feats: &["avx", "avx2", "fma", "avx512f", "avx512fp16"],
+                },
+                Col { name: "wasm/simd128", arch: "wasm", feats: &["simd128"] },
+                Col { name: "wasm/relaxed", arch: "wasm", feats: &["simd128", "relaxed-simd"] },
+            ];
+
+            let descs: Vec<&ActivationImpl> = all().collect();
+            let rows: Vec<(ActivationFn, DatumType)> = descs
+                .iter()
+                .map(|d| (d.func, d.dt))
+                .collect::<std::collections::BTreeSet<_>>()
+                .into_iter()
+                .collect();
+
+            let generic_of = |func: ActivationFn, dt: DatumType| -> Option<&ActivationImpl> {
+                descs
+                    .iter()
+                    .find(|d| d.func == func && d.dt == dt && d.target == "generic")
+                    .copied()
+            };
+            // The kernel a machine at this feature tier would dispatch to: the best
+            // (tier, isa_rank) kernel whose gating feature the tier provides, else the
+            // generic scalar floor.
+            let cell = |func: ActivationFn, dt: DatumType, col: &Col| -> Option<&ActivationImpl> {
+                descs
+                    .iter()
+                    .filter(|d| {
+                        d.func == func
+                            && d.dt == dt
+                            && d.target == col.arch
+                            && d.feature.is_none_or(|f| col.feats.contains(&f))
+                    })
+                    .max_by_key(|d| (d.tier, d.isa_rank))
+                    .copied()
+                    .or_else(|| generic_of(func, dt))
+            };
+
+            let host_arch = if cfg!(target_arch = "x86_64") {
+                "x86_64"
+            } else if cfg!(target_arch = "aarch64") {
+                "aarch64"
+            } else if cfg!(target_arch = "arm") {
+                "armv7"
+            } else if cfg!(target_family = "wasm") {
+                "wasm"
+            } else {
+                ""
+            };
+            // Does the box running this command have `feat`?
+            fn host_has(feat: &str) -> bool {
+                #[cfg(target_arch = "x86_64")]
+                match feat {
+                    "avx" => return std::is_x86_feature_detected!("avx"),
+                    "avx2" => return std::is_x86_feature_detected!("avx2"),
+                    "fma" => return std::is_x86_feature_detected!("fma"),
+                    "avx512f" => return std::is_x86_feature_detected!("avx512f"),
+                    "avx512fp16" => return std::is_x86_feature_detected!("avx512fp16"),
+                    _ => {}
+                }
+                match feat {
+                    "vfpv2" => cfg!(target_arch = "arm"),
+                    "neon" => cfg!(any(target_arch = "aarch64", target_arch = "arm")),
+                    "fp16" => tract_linalg::has_fp16(),
+                    "simd128" => cfg!(all(target_family = "wasm", target_feature = "simd128")),
+                    "relaxed-simd" => {
+                        cfg!(all(target_family = "wasm", target_feature = "relaxed-simd"))
+                    }
+                    _ => false,
+                }
+            }
+            // The column this host actually runs: the most capable tier of the host's
+            // own arch whose whole feature set it satisfies.
+            let live = cols
+                .iter()
+                .rposition(|c| c.arch == host_arch && c.feats.iter().all(|f| host_has(f)));
+
+            let col_w = 16;
+            println!();
+            println!("{}", White.bold().paint("# Activation kernels by quality"));
+            println!(
+                "  {} native   {} compromise (a dedicated kernel could be faster)   {} scalar fallback   ({} = this host)",
+                Green.paint("■"),
+                Yellow.paint("■"),
+                LightRed.paint("■"),
+                White.bold().paint("bold"),
+            );
+            println!();
+            print!("{:<14}", "");
+            for (i, c) in cols.iter().enumerate() {
+                let name = format!("{:>col_w$}", c.name);
+                if Some(i) == live {
+                    print!("{}", White.bold().paint(name));
+                } else {
+                    print!("{name}");
+                }
+            }
+            println!();
+            for (func, dt) in &rows {
+                print!("{:<14}", format!("{func:?}/{dt:?}"));
+                for (i, c) in cols.iter().enumerate() {
+                    let (text, color) = match cell(*func, *dt, c) {
+                        None => (format!("{:>col_w$}", "·"), DarkGray),
+                        Some(d) => {
+                            (format!("{:>col_w$}", tier_label(d.tier)), quality_color(d.tier))
+                        }
+                    };
+                    if Some(i) == live {
+                        print!("{}", color.bold().paint(text));
+                    } else {
+                        print!("{}", color.paint(text));
+                    }
+                }
+                println!();
             }
             return Ok(());
         }

@@ -20,6 +20,7 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
 mod frame;
+pub mod activation;
 pub mod cache;
 pub mod generic;
 pub mod knobs;
