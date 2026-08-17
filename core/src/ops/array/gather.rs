@@ -61,16 +61,30 @@ impl Gather {
             let axis_len = data_shape[data_axis];
             let input_slice = data_view.as_slice().unwrap();
             let output_slice = &mut output_view.as_slice_mut().unwrap();
+            let resolved: TVec<usize> = indices
+                .iter()
+                .map(|i| if *i < 0 { i + axis_len as i64 } else { *i } as usize)
+                .collect();
             let mut out_offset = 0;
-            for outer in 0..outer_len {
-                let input_base = outer * axis_len * block_len;
-                for index in indices.iter() {
-                    let resolved_index =
-                        if *index < 0 { index + axis_len as i64 } else { *index } as usize;
-                    let input_offset = input_base + resolved_index * block_len;
-                    output_slice[out_offset..out_offset + block_len]
-                        .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
-                    out_offset += block_len;
+            if block_len == 1 {
+                // Gathering the innermost axis: each block is one datum, so a
+                // slice copy per element costs more than the read itself.
+                for outer in 0..outer_len {
+                    let input_base = outer * axis_len;
+                    for index in &resolved {
+                        output_slice[out_offset] = input_slice[input_base + index].clone();
+                        out_offset += 1;
+                    }
+                }
+            } else {
+                for outer in 0..outer_len {
+                    let input_base = outer * axis_len * block_len;
+                    for index in &resolved {
+                        let input_offset = input_base + index * block_len;
+                        output_slice[out_offset..out_offset + block_len]
+                            .clone_from_slice(&input_slice[input_offset..input_offset + block_len]);
+                        out_offset += block_len;
+                    }
                 }
             }
         } else {
