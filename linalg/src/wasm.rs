@@ -7,26 +7,38 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
+pub mod routines;
+
+// Native wasm-simd code below; absent from a foreign `registry-all-targets` build.
+#[cfg(target_family = "wasm")]
 use crate::Ops;
 
+#[cfg(target_family = "wasm")]
 #[macro_use]
 mod madd;
 
-#[cfg(target_feature = "relaxed-simd")]
+#[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
 mod act;
-#[cfg(test)]
+#[cfg(all(target_family = "wasm", test))]
 mod dispatch_tests;
+#[cfg(target_family = "wasm")]
 mod mmm_f32_gemm;
+#[cfg(target_family = "wasm")]
 mod mmm_f32_gemv;
+#[cfg(target_family = "wasm")]
 mod mmm_i32;
 
-#[cfg(target_feature = "relaxed-simd")]
+#[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
 pub use act::*;
+#[cfg(target_family = "wasm")]
 pub use mmm_f32_gemm::*;
+#[cfg(target_family = "wasm")]
 pub use mmm_f32_gemv::*;
+#[cfg(target_family = "wasm")]
 pub use mmm_i32::*;
 
-pub fn plug(ops: &mut Ops) {
+#[cfg(target_family = "wasm")]
+pub fn plug_mmm(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_4x4.mmm());
     ops.mmm_impls.push(wasm_f32_4x1.mmm());
     ops.mmm_impls.push(wasm_f32_8x1.mmm());

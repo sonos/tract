@@ -29,12 +29,18 @@ pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
+// Arch modules compile for their own target OR under `registry-all-targets` (so a
+// dev/CI host can see every target's routine descriptors). Everything inside them
+// except `pub mod routines` is `#[cfg(target_arch)]`-gated native code.
+// NOTE: x86_64_fma is not yet all-targets-flipped (its big interleaved kernel-macro
+// body isn't verifiable off-x86 here), so its routine column shows on x86 hosts but
+// not when drawing the matrix from a non-x86 host. TODO once CI/fleet can certify it.
 #[cfg(target_arch = "x86_64")]
 pub mod x86_64_fma;
 
 pub mod hwbench;
 
-#[cfg(target_arch = "aarch64")]
+#[cfg(any(target_arch = "aarch64", feature = "registry-all-targets"))]
 pub mod arm64;
 
 #[cfg(target_arch = "aarch64")]
@@ -46,10 +52,13 @@ pub fn has_fp16() -> bool {
     false
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "armv7", target_arch = "arm"))]
+#[cfg(any(target_arch = "arm", feature = "registry-all-targets"))]
 pub mod arm32;
 
-#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
+#[cfg(any(
+    all(target_family = "wasm", target_feature = "simd128"),
+    feature = "registry-all-targets"
+))]
 pub mod wasm;
 
 pub use self::frame::*;
@@ -209,13 +218,13 @@ pub fn generic() -> Ops {
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]
-    x86_64_fma::plug(&mut ops);
+    x86_64_fma::plug_mmm(&mut ops);
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
-    arm32::plug(&mut ops);
+    arm32::plug_mmm(&mut ops);
     #[cfg(target_arch = "aarch64")]
-    arm64::plug(&mut ops);
+    arm64::plug_mmm(&mut ops);
     #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-    wasm::plug(&mut ops);
+    wasm::plug_mmm(&mut ops);
 
     ops
 }

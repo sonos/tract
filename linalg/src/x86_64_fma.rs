@@ -1,3 +1,4 @@
+pub mod routines;
 use crate::Ops;
 
 pub mod mmm;
@@ -98,7 +99,7 @@ fn plug_avx512f(ops: &mut Ops) {
     log::info!("rms_norm_f32: x86_64/avx512f activated");
 }
 
-pub fn plug(ops: &mut Ops) {
+pub fn plug_mmm(ops: &mut Ops) {
     mmm::plug(ops);
     if is_x86_feature_detected!("avx")
         && !(is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"))

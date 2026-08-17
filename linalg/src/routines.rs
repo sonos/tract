@@ -205,30 +205,11 @@ pub fn bin(func: Routine, dt: DatumType) -> Option<Box<LinalgFn>> {
     }
 }
 
-// Descriptors live next to their kernels, one file per backend. They are declared
-// from here — an always-compiled module — because the arch modules themselves are
-// `#[cfg(target_arch)]`-gated and so absent from a foreign-target build, which would
-// hide their descriptors from a host drawing the whole matrix. Each per-arch file is
-// compiled when building for its arch OR under `registry-all-targets`; its `factory`
-// is filled only in the native case, so a foreign symbol is never named.
-#[path = "generic/routines.rs"]
-mod generic_routines;
-
-#[cfg(any(target_arch = "aarch64", feature = "registry-all-targets"))]
-#[path = "arm64/routines.rs"]
-mod arm64_routines;
-
-#[cfg(any(target_arch = "arm", feature = "registry-all-targets"))]
-#[path = "arm32/routines.rs"]
-mod arm32_routines;
-
-#[cfg(any(target_arch = "x86_64", feature = "registry-all-targets"))]
-#[path = "x86_64_fma/routines.rs"]
-mod x86_64_routines;
-
-#[cfg(any(target_family = "wasm", feature = "registry-all-targets"))]
-#[path = "wasm/routines.rs"]
-mod wasm_routines;
+// Descriptors are `pub mod routines` submodules of each backend module (generic,
+// arm64, x86_64_fma, arm32, wasm) — co-located with the kernels they describe. The
+// arch module compiles for its own target OR under `registry-all-targets`, so those
+// descriptors are visible to a host drawing the whole matrix even though the arch's
+// native kernels are `#[cfg(target_arch)]`-gated out.
 
 #[cfg(test)]
 mod test {

@@ -8,6 +8,7 @@ pub mod mmm;
 pub mod reduce;
 pub mod rms_norm;
 pub mod rounding;
+pub mod routines;
 pub mod sigmoid;
 pub mod silu;
 pub mod tanh;
