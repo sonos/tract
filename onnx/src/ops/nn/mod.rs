@@ -12,6 +12,7 @@ mod attention;
 mod batch_norm;
 mod conv_transpose;
 mod dropout;
+mod gather_block_quantized;
 mod gelu;
 mod gelu_contrib;
 mod group_norm;
@@ -99,6 +100,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("BiasGelu", gelu_contrib::bias_gelu);
     reg.insert("FastGelu", gelu_contrib::fast_gelu);
     reg.insert("QuickGelu", gelu_contrib::quick_gelu);
+    reg.insert("GatherBlockQuantized", gather_block_quantized::gather_block_quantized);
     #[cfg(feature = "transformers")]
     reg.insert("GroupQueryAttention", group_query_attention::group_query_attention);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
