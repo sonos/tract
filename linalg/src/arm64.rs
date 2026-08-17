@@ -486,7 +486,6 @@ pub fn plug(ops: &mut Ops) {
             ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen.mmm());
         }
     }
-    ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
     ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
     ops.min_f32 = Box::new(|| arm64simd_min_f32_16n::red());
     ops.sum_f32 = Box::new(|| arm64simd_sum_f32_16n::red());
@@ -495,7 +494,6 @@ pub fn plug(ops: &mut Ops) {
     ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
-        ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
         ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
         ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
         ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());

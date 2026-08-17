@@ -112,9 +112,6 @@ fn plug_fma(ops: &mut Ops) {
 fn plug_avx512fp16(_ops: &mut Ops) {}
 
 fn plug_avx512f(ops: &mut Ops) {
-    ops.leaky_relu_f32 = Box::new(|| act::x86_64_avx512_leaky_relu_f32_64n::ew());
-    ops.leaky_relu_f16 = Box::new(|| act_f16::x86_64_avx512_leaky_relu_f16_64n::ew());
-
     ops.max_f32 = Box::new(|| max::x86_64_avx512_max_f32_64n::red());
     ops.softmax2_fastcompact_f32 =
         Box::new(|| softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red());
@@ -123,7 +120,7 @@ fn plug_avx512f(ops: &mut Ops) {
     ops.rms_norm_f32 = Box::new(rms_norm::rms_norm_f32);
 
     log::info!(
-        "leaky_relu_f32, leaky_relu_f16, max_f32, softmax2_fastcompact_f32, \
+        "max_f32, softmax2_fastcompact_f32, \
          softmax2_fastcompact_f16, rms_norm_f32: x86_64/avx512f activated"
     );
 }

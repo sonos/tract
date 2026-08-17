@@ -92,3 +92,19 @@ inventory::submit! {
         factory: Some(ActFactory::F16(|| crate::generic::HGelu8::ew())),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SLeakyRelu4",
+        check: || true,
+        factory: Some(ActFactory::F32Param(|| crate::generic::SLeakyRelu4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HLeakyRelu8",
+        check: || true,
+        factory: Some(ActFactory::F16Param(|| crate::generic::HLeakyRelu8::ew())),
+    }
+}

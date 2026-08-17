@@ -31,8 +31,10 @@ pub enum ActivationFn {
     Erf,
     HardSwish,
     Gelu,
-    // LeakyRelu, MulByScalar — parameterized (ElementWise<T, Params>); need an
-    // ActFactory that carries the runtime param before they can register.
+    /// Takes a runtime `alpha` param (`ElementWise<T, T>`); dispatched via
+    /// [`kernel_f32_param`] / [`kernel_f16_param`].
+    LeakyRelu,
+    // MulByScalar — also parameterized; not yet ported.
 }
 
 /// How directly a kernel implements its function, best first. The variant order is
@@ -51,11 +53,15 @@ pub enum Tier {
 }
 
 /// A boxed factory for the concrete kernel, monomorphized per element type.
-/// Present only when the descriptor's target matches the compile target.
+/// Present only when the descriptor's target matches the compile target. The
+/// `*Param` variants are for activations that take a runtime scalar param (e.g.
+/// leaky-relu's `alpha`), whose `ElementWise<T, T>` is a distinct type.
 #[derive(Clone, Copy)]
 pub enum ActFactory {
     F32(fn() -> Box<dyn ElementWise<f32>>),
     F16(fn() -> Box<dyn ElementWise<f16>>),
+    F32Param(fn() -> Box<dyn ElementWise<f32, f32>>),
+    F16Param(fn() -> Box<dyn ElementWise<f16, f16>>),
 }
 
 /// One registered activation kernel. Submitted via [`inventory`] next to its kernel.
@@ -118,6 +124,24 @@ pub fn kernel_f16(func: ActivationFn) -> Box<dyn ElementWise<f16>> {
     }
 }
 
+/// The `f32` kernel for a parameterized activation (e.g. [`ActivationFn::LeakyRelu`]),
+/// run with `run_with_params(xs, alpha)`.
+pub fn kernel_f32_param(func: ActivationFn) -> Box<dyn ElementWise<f32, f32>> {
+    match pick(func, DatumType::F32).and_then(|a| a.factory) {
+        Some(ActFactory::F32Param(make)) => make(),
+        _ => unreachable!("no bound f32 param kernel for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The `f16` kernel for a parameterized activation, run with
+/// `run_with_params(xs, alpha)`.
+pub fn kernel_f16_param(func: ActivationFn) -> Box<dyn ElementWise<f16, f16>> {
+    match pick(func, DatumType::F16).and_then(|a| a.factory) {
+        Some(ActFactory::F16Param(make)) => make(),
+        _ => unreachable!("no bound f16 param kernel for {func:?} (generic tier missing?)"),
+    }
+}
+
 // Descriptors live next to their kernels, one file per backend. They are declared
 // from here — an always-compiled module — because the arch modules themselves are
 // `#[cfg(target_arch)]`-gated and so absent from a foreign-target build, which would
@@ -170,8 +194,22 @@ mod test {
             ActivationFn::Tanh,
             ActivationFn::HardSwish,
             ActivationFn::Gelu,
+            ActivationFn::LeakyRelu,
         ] {
             assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
+        }
+        assert!(pick(ActivationFn::LeakyRelu, DatumType::F32).is_some());
+    }
+
+    /// The picked leaky-relu kernel applies `alpha` on the negative side.
+    #[test]
+    fn leaky_kernel_runs() {
+        let op = kernel_f32_param(ActivationFn::LeakyRelu);
+        let mut xs = vec![-2.0f32, -1.0, 0.0, 1.0, 2.0];
+        op.run_with_params(&mut xs, 0.1).unwrap();
+        for (x, y) in [-2.0f32, -1.0, 0.0, 1.0, 2.0].iter().zip(&xs) {
+            let want = if *x >= 0.0 { *x } else { *x * 0.1 };
+            assert!((want - y).abs() < 1e-4, "leaky_relu({x})={y} want {want}");
         }
     }
 

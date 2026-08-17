@@ -34,6 +34,6 @@ element_wise!(hard_swish, HardSwish,
                                          );
 
 element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
- [f16] => |op, xs| { (tract_linalg::ops().leaky_relu_f16)().run_with_params(xs, f16::from_f32(op.alpha)) },
- [f32] => |op, xs| { (tract_linalg::ops().leaky_relu_f32)().run_with_params(xs, op.alpha) }
+ [f16] => |op, xs| { tract_linalg::activation::kernel_f16_param(tract_linalg::activation::ActivationFn::LeakyRelu).run_with_params(xs, f16::from_f32(op.alpha)) },
+ [f32] => |op, xs| { tract_linalg::activation::kernel_f32_param(tract_linalg::activation::ActivationFn::LeakyRelu).run_with_params(xs, op.alpha) }
 );

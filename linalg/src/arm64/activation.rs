@@ -14,6 +14,12 @@ macro_rules! factory {
     (F16, $k:path) => {
         Some(ActFactory::F16(|| <$k>::ew()))
     };
+    (F32Param, $k:path) => {
+        Some(ActFactory::F32Param(|| <$k>::ew()))
+    };
+    (F16Param, $k:path) => {
+        Some(ActFactory::F16Param(|| <$k>::ew()))
+    };
 }
 #[cfg(not(target_arch = "aarch64"))]
 macro_rules! factory {
@@ -121,5 +127,23 @@ inventory::submit! {
         kernel: "arm64simd_gelu_f32_4n_fused",
         check: || check!(true),
         factory: factory!(F32, crate::arm64::arm64simd_gelu_f32_4n_fused),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_leaky_relu_f32_8n",
+        check: || check!(true),
+        factory: factory!(F32Param, crate::arm64::arm64simd_leaky_relu_f32_8n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F16, target: "aarch64",
+        feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
+        kernel: "arm64fp16_leaky_relu_f16_16n",
+        check: || check!(crate::arm64::has_fp16()),
+        factory: factory!(F16Param, crate::arm64::arm64fp16_leaky_relu_f16_16n),
     }
 }

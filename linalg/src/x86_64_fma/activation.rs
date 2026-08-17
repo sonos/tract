@@ -14,6 +14,12 @@ macro_rules! factory {
     (F16, $k:path) => {
         Some(ActFactory::F16(|| <$k>::ew()))
     };
+    (F32Param, $k:path) => {
+        Some(ActFactory::F32Param(|| <$k>::ew()))
+    };
+    (F16Param, $k:path) => {
+        Some(ActFactory::F16Param(|| <$k>::ew()))
+    };
 }
 #[cfg(not(target_arch = "x86_64"))]
 macro_rules! factory {
@@ -217,5 +223,26 @@ inventory::submit! {
         kernel: "x86_64_avx512_gelu_f16_16n",
         check: || probe::avx512f(),
         factory: factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_gelu_f16_16n),
+    }
+}
+
+// leaky-relu: avx512 native f32; f16 via-f32 (the native avx512fp16 kernel exists
+// but is a measured regression, so plug() never used it — nor does the registry).
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_leaky_relu_f32_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F32Param, crate::x86_64_fma::act::x86_64_avx512_leaky_relu_f32_64n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::LeakyRelu, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
+        kernel: "x86_64_avx512_leaky_relu_f16_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F16Param, crate::x86_64_fma::act_f16::x86_64_avx512_leaky_relu_f16_64n),
     }
 }
