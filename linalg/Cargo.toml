@@ -20,6 +20,7 @@ downcast-rs.workspace = true
 dyn-clone.workspace = true
 dyn-eq.workspace = true
 dyn-hash.workspace = true
+inventory.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 num-traits.workspace = true
@@ -58,6 +59,10 @@ proptest = { version = "1.0.0", default-features = false, features = ["std", "bi
 no_fp16 = []
 apple-amx-ios = []
 default = [ ]
+# PROTOTYPE: compile activation descriptors for every target, not just the build
+# target, so a dev/CI host can draw the full (function × target) matrix. Adds only
+# const data — foreign kernels stay behind their own target_arch gate.
+registry-all-targets = []
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
 hwbench = [ "rayon" ]
