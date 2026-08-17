@@ -60,14 +60,12 @@ impl ResolveTo<ConcreteGeometry> for SymbolicGeometry {
     type Param = [usize];
     fn resolve(&self, input_full_shape: &[usize]) -> TractResult<ConcreteGeometry> {
         let pool = self.pool_geometry.to_concrete(input_full_shape)?.into_owned();
-        let patcher = if !pool.patch.padded && pool.patch.rank() == 2 {
-            Patcher::Valid2d
-        } else if pool.patch.rank() == 2 {
-            Patcher::Padded2d
-        } else if !pool.patch.padded && pool.patch.rank() == 1 {
-            Patcher::Valid1d
-        } else {
-            Patcher::Generic
+        let patcher = match (pool.patch.rank(), pool.patch.padded) {
+            (1, false) => Patcher::Valid1d,
+            (1, true) => Patcher::Padded1d,
+            (2, false) => Patcher::Valid2d,
+            (2, true) => Patcher::Padded2d,
+            _ => Patcher::Generic,
         };
         let ci_per_group = pool.input_shape.c_dim() / self.group;
         let n = pool.output_shape.hw_dims().iter().product();
@@ -266,6 +264,7 @@ enum Patcher {
     Generic,
     Valid1d,
     Valid2d,
+    Padded1d,
     Padded2d,
 }
 
@@ -304,6 +303,13 @@ impl Patcher {
         match self {
             Patcher::Valid1d => Self::valid_1d::<T, W>(geo, input, g, writer),
             Patcher::Valid2d => Self::valid_2d::<T, W>(geo, input, g, writer),
+            Patcher::Padded1d => Self::padded_1d::<T, W>(
+                geo,
+                input,
+                g,
+                pad_value.unwrap_or(&Tensor::zero_scalar::<T>()?),
+                writer,
+            ),
             Patcher::Padded2d => Self::padded_2d::<T, W>(
                 geo,
                 input,
@@ -400,6 +406,56 @@ impl Patcher {
     }
 
     #[inline(never)]
+    fn padded_1d<T: Copy + Datum, W: PackingWriter<T>>(
+        geometry: &ConcreteGeometry,
+        input: &TensorView,
+        g: usize,
+        pad_value: &Tensor,
+        writer: &mut W,
+    ) -> TractResult<()> {
+        unsafe {
+            let pad_value = *pad_value.to_scalar_unchecked();
+            let shape = &geometry.input_shape_with_n;
+            let x_stride = geometry.pool.patch.spec.strides[0] as isize;
+            let x_stride_ptr = x_stride * *shape.h_stride() as isize;
+            let c_stride_ptr = *shape.c_stride() as isize;
+            let input_width = shape.hw_dims()[0] as isize;
+            let kernel_len = geometry.pool.patch.standard_layout_data_field.len();
+            let iptr = input.as_ptr_unchecked::<T>();
+            let iptr = iptr.add(g * geometry.ci_per_group * shape.c_stride());
+            let output_width = *geometry.pool.patch.output_shape.get_unchecked(0);
+            for ci in 0..geometry.ci_per_group {
+                let iptr = iptr.offset(ci as isize * c_stride_ptr);
+                for kitem in 0..kernel_len {
+                    let dx = *geometry.pool.patch.data_field.as_ptr().add(kitem);
+                    let valid_x_start =
+                        Integer::div_ceil(&-dx, &x_stride).max(0).min(output_width as _);
+                    let valid_x_end = Integer::div_ceil(&(input_width - dx), &x_stride)
+                        .max(0)
+                        .min(output_width as _);
+                    let iptr = iptr.offset(
+                        *geometry.pool.patch.standard_layout_data_field.get_unchecked(kitem),
+                    );
+                    Self::padded_invalid_x_loop(valid_x_start as usize, pad_value, &mut *writer);
+                    Self::padded_valid_x_loop(
+                        valid_x_start,
+                        valid_x_end,
+                        x_stride_ptr,
+                        iptr,
+                        &mut *writer,
+                    );
+                    Self::padded_invalid_x_loop(
+                        output_width - valid_x_end as usize,
+                        pad_value,
+                        &mut *writer,
+                    );
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
     fn padded_2d<T: Copy + Datum, W: PackingWriter<T>>(
         geometry: &ConcreteGeometry,
         input: &TensorView,
@@ -440,25 +496,25 @@ impl Patcher {
                         let y = yo as isize * y_stride + dy;
                         let iptr = iptr.offset(yo as isize * y_stride_ptr);
                         if y >= 0 && y < input_heigth {
-                            Self::padded_2d_invalid_x_loop(
+                            Self::padded_invalid_x_loop(
                                 valid_x_start as usize,
                                 pad_value,
                                 &mut *writer,
                             );
-                            Self::padded_2d_valid_x_loop(
+                            Self::padded_valid_x_loop(
                                 valid_x_start,
                                 valid_x_end,
                                 x_stride_ptr,
                                 iptr,
                                 &mut *writer,
                             );
-                            Self::padded_2d_invalid_x_loop(
+                            Self::padded_invalid_x_loop(
                                 output_width - valid_x_end as usize,
                                 pad_value,
                                 &mut *writer,
                             );
                         } else {
-                            Self::padded_2d_invalid_x_loop(output_width, pad_value, &mut *writer);
+                            Self::padded_invalid_x_loop(output_width, pad_value, &mut *writer);
                         }
                     }
                 }
@@ -468,7 +524,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    unsafe fn padded_2d_invalid_x_loop<T: Copy + Datum, W: PackingWriter<T>>(
+    unsafe fn padded_invalid_x_loop<T: Copy + Datum, W: PackingWriter<T>>(
         count: usize,
         pad_value: T,
         writer: &mut W,
@@ -479,7 +535,7 @@ impl Patcher {
     }
 
     #[inline(never)]
-    unsafe fn padded_2d_valid_x_loop<T: Copy + Datum, W: PackingWriter<T>>(
+    unsafe fn padded_valid_x_loop<T: Copy + Datum, W: PackingWriter<T>>(
         x_min: isize,
         x_max: isize,
         x_stride_ptr: isize,
