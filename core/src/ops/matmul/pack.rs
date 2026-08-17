@@ -8,7 +8,7 @@ use tract_linalg::block_quant::{
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::{PackedFormat, PackedI8K4};
 #[cfg(target_arch = "x86_64")]
-use tract_linalg::x86_64_fma::amx::PackedAmxA;
+use tract_linalg::x64::amx::PackedAmxA;
 
 use super::ModePicker;
 

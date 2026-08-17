@@ -671,7 +671,7 @@ mod tests {
         let panels = m / 32;
         let mut scratch = vec![0f32; k * 32];
         let packer = PackedFormat::new(f32::datum_type(), 32, 32);
-        let simd = crate::x86_64_fma::panel_extract::packed_32_q20t_to_f32.kernel;
+        let simd = crate::x64::panel_extract::packed_32_q20t_to_f32.kernel;
 
         let bytes = packed.packed.len() as f64;
         let iters = 50;

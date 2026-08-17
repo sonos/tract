@@ -32,11 +32,8 @@ use tract_data::internal::TensorView;
 // Arch modules compile for their own target OR under `registry-all-targets` (so a
 // dev/CI host can see every target's routine descriptors). Everything inside them
 // except `pub mod routines` is `#[cfg(target_arch)]`-gated native code.
-// NOTE: x86_64_fma is not yet all-targets-flipped (its big interleaved kernel-macro
-// body isn't verifiable off-x86 here), so its routine column shows on x86 hosts but
-// not when drawing the matrix from a non-x86 host. TODO once CI/fleet can certify it.
-#[cfg(target_arch = "x86_64")]
-pub mod x86_64_fma;
+#[cfg(any(target_arch = "x86_64", feature = "registry-all-targets"))]
+pub mod x64;
 
 pub mod hwbench;
 
@@ -218,7 +215,7 @@ pub fn generic() -> Ops {
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]
-    x86_64_fma::plug_mmm(&mut ops);
+    x64::plug_mmm(&mut ops);
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     arm32::plug_mmm(&mut ops);
     #[cfg(target_arch = "aarch64")]
