@@ -687,18 +687,18 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 q: [i8, u8, i32] => f32::sinh);
 
 element_wise!(tanh, Tanh,
- [f16] => |_, xs| { (tract_linalg::ops().tanh_f16)().run(xs) },
- [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
+ [f16] => |_, xs| { tract_linalg::activation::kernel_f16(tract_linalg::activation::ActivationFn::Tanh).run(xs) },
+ [f32] => |_, xs| { tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Tanh).run(xs) },
  [f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
  q: [i8, u8, i32] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
 );
 
 element_wise!(erf, Erf,
- [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) },
+ [f32] => |_, xs| { tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Erf).run(xs) },
  [f16] => |_, xs| {
      let mut f32s = xs.iter().map(|x| x.to_f32()).collect_vec();
-     (tract_linalg::ops().erf_f32)().run(&mut f32s)?;
+     tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Erf).run(&mut f32s)?;
      xs.iter_mut().zip(f32s.into_iter()).for_each(|(x, f)| *x = f16::from_f32(f));
      Ok(())
 };

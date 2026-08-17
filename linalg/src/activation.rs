@@ -100,6 +100,24 @@ pub fn pick(func: ActivationFn, dt: DatumType) -> Option<&'static ActivationImpl
         .max_by_key(|a| (a.tier, a.isa_rank))
 }
 
+/// The `f32` kernel to run for `func` on this host. The generic tier guarantees a
+/// bound kernel, so this is infallible for every registered `f32` activation.
+pub fn kernel_f32(func: ActivationFn) -> Box<dyn ElementWise<f32>> {
+    match pick(func, DatumType::F32).and_then(|a| a.factory) {
+        Some(ActFactory::F32(make)) => make(),
+        _ => unreachable!("no bound f32 kernel for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The `f16` kernel to run for `func` on this host. Infallible for every `func`
+/// that has an `f16` form registered (all but [`ActivationFn::Erf`]).
+pub fn kernel_f16(func: ActivationFn) -> Box<dyn ElementWise<f16>> {
+    match pick(func, DatumType::F16).and_then(|a| a.factory) {
+        Some(ActFactory::F16(make)) => make(),
+        _ => unreachable!("no bound f16 kernel for {func:?} (generic tier missing?)"),
+    }
+}
+
 // Descriptors live next to their kernels, one file per backend. They are declared
 // from here — an always-compiled module — because the arch modules themselves are
 // `#[cfg(target_arch)]`-gated and so absent from a foreign-target build, which would
@@ -129,31 +147,32 @@ mod wasm_activation;
 mod test {
     use super::*;
 
-    /// The registry must dispatch to the same kernel the legacy `Ops` field does.
-    /// Guards the single-source-of-truth migration: registry selection == `plug()`.
+    /// Every registered activation resolves to a bound kernel on this host — the
+    /// generic tier is the floor, so dispatch can never come up empty.
     #[test]
-    fn matches_legacy_dispatch() {
+    fn every_activation_dispatches() {
         crate::setup_test_logger();
-        let check = |func, dt, legacy: &str| {
-            let picked =
-                pick(func, dt).unwrap_or_else(|| panic!("no bound kernel for {func:?}/{dt:?}"));
-            assert_eq!(
-                picked.kernel, legacy,
-                "{func:?}/{dt:?}: registry picked {} but plug() dispatches {legacy}",
-                picked.kernel
-            );
-        };
-        check(ActivationFn::Sigmoid, DatumType::F32, (crate::ops().sigmoid_f32)().name());
-        check(ActivationFn::Sigmoid, DatumType::F16, (crate::ops().sigmoid_f16)().name());
-        check(ActivationFn::Silu, DatumType::F32, (crate::ops().silu_f32)().name());
-        check(ActivationFn::Silu, DatumType::F16, (crate::ops().silu_f16)().name());
-        check(ActivationFn::Tanh, DatumType::F32, (crate::ops().tanh_f32)().name());
-        check(ActivationFn::Tanh, DatumType::F16, (crate::ops().tanh_f16)().name());
-        check(ActivationFn::Erf, DatumType::F32, (crate::ops().erf_f32)().name());
-        check(ActivationFn::HardSwish, DatumType::F32, (crate::ops().hardswish_f32)().name());
-        check(ActivationFn::HardSwish, DatumType::F16, (crate::ops().hardswish_f16)().name());
-        check(ActivationFn::Gelu, DatumType::F32, (crate::ops().gelu_f32)().name());
-        check(ActivationFn::Gelu, DatumType::F16, (crate::ops().gelu_f16)().name());
+        let f32s = [
+            ActivationFn::Sigmoid,
+            ActivationFn::Silu,
+            ActivationFn::Tanh,
+            ActivationFn::Erf,
+            ActivationFn::HardSwish,
+            ActivationFn::Gelu,
+        ];
+        for func in f32s {
+            assert!(pick(func, DatumType::F32).is_some(), "no bound f32 kernel for {func:?}");
+        }
+        // Erf has no f16 form.
+        for func in [
+            ActivationFn::Sigmoid,
+            ActivationFn::Silu,
+            ActivationFn::Tanh,
+            ActivationFn::HardSwish,
+            ActivationFn::Gelu,
+        ] {
+            assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
+        }
     }
 
     /// The picked kernel actually computes sigmoid.

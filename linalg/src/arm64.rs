@@ -487,11 +487,6 @@ pub fn plug(ops: &mut Ops) {
         }
     }
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
-    ops.hardswish_f32 = Box::new(|| arm64simd_hardswish_f32_8n::ew());
-    ops.silu_f32 = Box::new(|| arm64simd_silu_f32_4n_fused::ew());
-    ops.gelu_f32 = Box::new(|| arm64simd_gelu_f32_4n_fused::ew());
-    ops.sigmoid_f32 = Box::new(|| arm64simd_sigmoid_f32_4n::ew());
-    ops.tanh_f32 = Box::new(|| arm64simd_tanh_f32_4n::ew());
     ops.max_f32 = Box::new(|| arm64simd_max_f32_16n::red());
     ops.min_f32 = Box::new(|| arm64simd_min_f32_16n::red());
     ops.sum_f32 = Box::new(|| arm64simd_sum_f32_16n::red());
@@ -500,19 +495,10 @@ pub fn plug(ops: &mut Ops) {
     ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
-        log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
         ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
-        ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
-        ops.sigmoid_f16 = Box::new(|| arm64fp16_sigmoid_f16_8n::ew());
         ops.max_f16 = Box::new(|| arm64fp16_max_f16_32n::red());
         ops.sum_f16 = Box::new(|| arm64fp16_sum_f16_32n::red());
         ops.mul_by_scalar_f16 = Box::new(|| arm64fp16_mul_by_scalar_f16_32n::ew());
-        // TODO: Change this SiLU kernel once we have a native-FP16 one
-        ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
-    } else {
-        log::info!("No native fp16 support; f32-roundtrip NEON sigmoid_f16 and silu_f16 activated");
-        ops.sigmoid_f16 = Box::new(|| arm64simd_sigmoid_f16_4n::ew());
-        ops.silu_f16 = Box::new(|| arm64simd_silu_f16_4n::ew());
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     {

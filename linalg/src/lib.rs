@@ -87,17 +87,8 @@ pub struct Ops {
     pub mul_by_scalar_f16:
         Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
 
-    pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub erf_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub hardswish_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub hardswish_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub silu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub silu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub gelu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub gelu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
+    // sigmoid/silu/tanh/erf/hardswish/gelu are dispatched through the activation
+    // registry (`crate::activation::kernel_f32` / `kernel_f16`), not `Ops` fields.
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 
     pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
@@ -232,17 +223,6 @@ pub fn generic() -> Ops {
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
         mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
         mul_by_scalar_f32: Box::new(|| generic::SMulByScalar4::ew()),
-        sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
-        sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
-        tanh_f16: Box::new(|| generic::HTanh8::ew()),
-        tanh_f32: Box::new(|| generic::STanh4::ew()),
-        erf_f32: Box::new(|| generic::SErf4::ew()),
-        hardswish_f16: Box::new(|| generic::HHardSwish8::ew()),
-        hardswish_f32: Box::new(|| generic::SHardSwish4::ew()),
-        silu_f16: Box::new(|| generic::HSiLU8::ew()),
-        silu_f32: Box::new(|| generic::SSiLU4::ew()),
-        gelu_f16: Box::new(|| generic::HGelu8::ew()),
-        gelu_f32: Box::new(|| generic::SGelu4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),

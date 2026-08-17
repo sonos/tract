@@ -9,9 +9,6 @@
 /// ```
 use crate::Ops;
 
-#[cfg(target_feature = "relaxed-simd")]
-use crate::frame::element_wise::ElementWiseKer;
-
 #[macro_use]
 mod madd;
 
@@ -67,12 +64,6 @@ pub fn plug(ops: &mut Ops) {
         9..=16 => wasm_f32_16x1.mmm(),
         _ => wasm_f32_32x1.mmm(),
     });
-    // Relaxed-SIMD activation kernels (FMA path). Only installed when the
-    // build has `+relaxed-simd`; otherwise the slots stay at the generic
-    // scalar polynomial.
-    #[cfg(target_feature = "relaxed-simd")]
-    {
-        ops.sigmoid_f32 = Box::new(|| WasmSigmoid4Relaxed::ew());
-        ops.tanh_f32 = Box::new(|| WasmTanh4Relaxed::ew());
-    }
+    // Relaxed-SIMD activations (WasmSigmoid4Relaxed / WasmTanh4Relaxed) are
+    // dispatched through the activation registry, not plugged here.
 }

@@ -27,7 +27,7 @@ element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
             Ok(())
         } else {
             // pow=3 canonical path: linalg NEON kernel composes with tanh.
-            (tract_linalg::ops().gelu_f32)().run(xs)
+            tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Gelu).run(xs)
         }
     };
     cost: |dt| {tvec!((Cost::FMA(dt), 15))}
