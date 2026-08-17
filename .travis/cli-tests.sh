@@ -151,7 +151,7 @@ echo
 echo $WHITE • benches on full models $NC
 echo
 
-TRACT_BENCH=$(cargo build --message-format json -p tract-cli --features bench-suite --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
+TRACT_BENCH=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --features bench-suite --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
 if "$TRACT_BENCH" bench-suite --manifest .travis/benches.toml 2> bench-suite.err
 then
     cat bench-suite.err
