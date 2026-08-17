@@ -7,7 +7,7 @@ use tract_core::ops::math::add;
 use tract_core::ops::nn::{Reduce, Reducer};
 use tract_hir::internal::*;
 use tract_hir::ops::logic::wire_with_rank_broadcast;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q2_0_T, Q4_0};
 
 // com.microsoft MatMulNBits: Y = A @ dequant(B)^T (+ bias)
 //   A:           float [.., K]
@@ -27,19 +27,23 @@ pub fn mat_mul_nbits(
     let n: usize = node.get_attr("N")?;
     let bits: usize = node.get_attr_opt("bits")?.unwrap_or(4);
     let block_size: usize = node.get_attr("block_size")?;
-    ensure!(bits == 4, "MatMulNBits: only bits=4 is supported (got {bits})");
+    ensure!(
+        bits == 4 || bits == 2,
+        "MatMulNBits: only bits=4 and bits=2 are supported (got {bits})"
+    );
     let mut opt = crate::model::optional_inputs(node).skip(3);
     let zp_input = opt.next().unwrap();
     let gidx_input = opt.next().unwrap();
     let bias_input = opt.next().unwrap();
     ensure!(gidx_input.is_none(), "MatMulNBits: g_idx (act-order) is unsupported");
-    Ok((expand(MatMulNBits { k, n, block_size, zp_input, bias_input }), vec![]))
+    Ok((expand(MatMulNBits { k, n, bits, block_size, zp_input, bias_input }), vec![]))
 }
 
 #[derive(Debug, Clone)]
 struct MatMulNBits {
     k: usize,
     n: usize,
+    bits: usize,
     block_size: usize,
     zp_input: Option<usize>,
     bias_input: Option<usize>,
@@ -76,10 +80,16 @@ impl Expansion for MatMulNBits {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        let (k, n, block_size) = (self.k, self.n, self.block_size);
+        let (k, n, bits, block_size) = (self.k, self.n, self.bits, self.block_size);
         let n_blocks = k.div_ceil(block_size);
-        let blob = block_size.div_ceil(2);
-        let zp_blob = n_blocks.div_ceil(2);
+        let per_byte = 8 / bits;
+        let blob = block_size.div_ceil(per_byte);
+        let zp_blob = n_blocks.div_ceil(per_byte);
+        let mask = ((1u16 << bits) - 1) as u8;
+        // The code that dequantizes to zero when the export is symmetric, and the base the
+        // block-quant formats bake in: 8 for Q4_0's `(code - 8) * s`, 1 for Q2_0_T's
+        // `(code - 1) * s`.
+        let (default_zero, base) = if bits == 4 { (8f32, 8f32) } else { (2f32, 1f32) };
 
         // Read the constant quantized weight, scales and (optional) zero points.
         let b_k = model
@@ -124,19 +134,19 @@ impl Expansion for MatMulNBits {
             for blk in 0..n_blocks {
                 zeros[col * n_blocks + blk] = match zp {
                     Some(zp) => {
-                        let byte = zp[col * zp_blob + blk / 2];
-                        if blk % 2 == 0 { byte & 0x0F } else { byte >> 4 }
+                        let byte = zp[col * zp_blob + blk / per_byte];
+                        ((byte >> (bits * (blk % per_byte))) & mask) as f32
                     }
-                    None => 8,
-                } as f32;
-                let base = col * n_blocks * blob + blk * blob;
+                    None => default_zero,
+                };
+                let row = col * n_blocks * blob + blk * blob;
                 for i in 0..block_size {
                     let kk = blk * block_size + i;
                     if kk >= k {
                         break;
                     }
-                    let byte = b[base + i / 2];
-                    q_logical[col * k + kk] = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 };
+                    let byte = b[row + i / per_byte];
+                    q_logical[col * k + kk] = (byte >> (bits * (i % per_byte))) & mask;
                 }
             }
         }
@@ -157,10 +167,24 @@ impl Expansion for MatMulNBits {
         // block, so it contributes `sum_b (8 - z) * s * sum_{k in b} A[k]`: the block sums of
         // the activations against a `[N, K/32]` constant. Both terms use the f16-rounded
         // scale the packer stores, so the split is exact against the rounded weight.
-        let y = if block_size == 32 && k % 32 == 0 {
-            let weights = Q4_0.pack_prequantized(&q_logical, scales, n, k)?;
-            let bqs = BlockQuantStorage::new(Box::new(Q4_0), n, k, Arc::new(weights))?;
-            let fact = Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec!(1, n, k)));
+        let y = if block_size % 32 == 0 && k % 32 == 0 && (bits == 2 || block_size == 32) {
+            // Both formats block by 32. A wider quantization block holds one scale for
+            // several of them, so it is split by repeating that scale, which changes nothing
+            // about what the weight dequantizes to.
+            let per_32: Vec<f32> = if block_size == 32 {
+                scales.to_vec()
+            } else {
+                scales.iter().flat_map(|s| std::iter::repeat_n(*s, block_size / 32)).collect()
+            };
+            let bq: Box<dyn tract_linalg::block_quant::BlockQuant> =
+                if bits == 4 { Box::new(Q4_0) } else { Box::new(Q2_0_T) };
+            let weights = if bits == 4 {
+                Q4_0.pack_prequantized(&q_logical, &per_32, n, k)?
+            } else {
+                Q2_0_T.pack_prequantized(&q_logical, &per_32, n, k)?
+            };
+            let bqs = BlockQuantStorage::new(bq.clone(), n, k, Arc::new(weights))?;
+            let fact = Box::new(BlockQuantFact::new(bq, tvec!(1, n, k)));
             let wq = model.wire_node(
                 format!("{prefix}.weight_bq"),
                 Const::new_with_exotic_fact(
@@ -178,12 +202,15 @@ impl Expansion for MatMulNBits {
                 EinSum::new(axes, f32::datum_type()),
                 &[a, wq],
             )?[0];
-            if self.zp_input.is_some() {
-                let offsets: Vec<f32> = zeros
-                    .iter()
-                    .zip(scales)
-                    .map(|(z, s)| (8. - z) * f16::from_f32(*s).to_f32())
-                    .collect();
+            let offsets: Vec<f32> = zeros
+                .iter()
+                .zip(scales)
+                .map(|(z, s)| (base - z) * f16::from_f32(*s).to_f32())
+                .collect();
+            // Zero only when the export's zero point already coincides with the format's,
+            // which a symmetric int4 export does and a 2-bit one (whose default is 2, not
+            // Q2_0_T's 1) does not.
+            if offsets.iter().any(|o| *o != 0.) {
                 let offsets = model.add_const(
                     format!("{prefix}.zp_offsets"),
                     Tensor::from_shape(&[n, n_blocks], &offsets)?,
