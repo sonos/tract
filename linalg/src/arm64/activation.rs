@@ -147,3 +147,21 @@ inventory::submit! {
         factory: factory!(F16Param, crate::arm64::arm64fp16_leaky_relu_f16_16n),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::MulByScalar, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_mul_by_scalar_f32_16n",
+        check: || check!(true),
+        factory: factory!(F32Param, crate::arm64::arm64simd_mul_by_scalar_f32_16n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::MulByScalar, dt: DatumType::F16, target: "aarch64",
+        feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
+        kernel: "arm64fp16_mul_by_scalar_f16_32n",
+        check: || check!(crate::arm64::has_fp16()),
+        factory: factory!(F16Param, crate::arm64::arm64fp16_mul_by_scalar_f16_32n),
+    }
+}

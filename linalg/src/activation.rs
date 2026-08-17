@@ -34,7 +34,9 @@ pub enum ActivationFn {
     /// Takes a runtime `alpha` param (`ElementWise<T, T>`); dispatched via
     /// [`kernel_f32_param`] / [`kernel_f16_param`].
     LeakyRelu,
-    // MulByScalar — also parameterized; not yet ported.
+    /// Multiply by a runtime scalar (`ElementWise<T, T>`); param-dispatched like
+    /// [`ActivationFn::LeakyRelu`].
+    MulByScalar,
 }
 
 /// How directly a kernel implements its function, best first. The variant order is
@@ -195,10 +197,13 @@ mod test {
             ActivationFn::HardSwish,
             ActivationFn::Gelu,
             ActivationFn::LeakyRelu,
+            ActivationFn::MulByScalar,
         ] {
             assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
         }
-        assert!(pick(ActivationFn::LeakyRelu, DatumType::F32).is_some());
+        for func in [ActivationFn::LeakyRelu, ActivationFn::MulByScalar] {
+            assert!(pick(func, DatumType::F32).is_some(), "no bound f32 kernel for {func:?}");
+        }
     }
 
     /// The picked leaky-relu kernel applies `alpha` on the negative side.

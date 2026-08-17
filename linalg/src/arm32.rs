@@ -7,8 +7,6 @@ mod cortex_a9_linear;
 mod cortex_a9_mmv_linear;
 use armv7neon::*;
 
-use crate::frame::element_wise::ElementWiseKer;
-
 use crate::Ops;
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {

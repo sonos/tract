@@ -108,3 +108,19 @@ inventory::submit! {
         factory: Some(ActFactory::F16Param(|| crate::generic::HLeakyRelu8::ew())),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::MulByScalar, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SMulByScalar4",
+        check: || true,
+        factory: Some(ActFactory::F32Param(|| crate::generic::SMulByScalar4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::MulByScalar, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HMulByScalar8",
+        check: || true,
+        factory: Some(ActFactory::F16Param(|| crate::generic::HMulByScalar8::ew())),
+    }
+}

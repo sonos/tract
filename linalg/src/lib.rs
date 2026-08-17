@@ -80,13 +80,9 @@ pub struct Ops {
     qmmm_i32: MMMImpl,
     qmmv_i32: MMVImpl,
 
-    pub mul_by_scalar_f32:
-        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
-    pub mul_by_scalar_f16:
-        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
-
-    // sigmoid/silu/tanh/erf/hardswish/gelu are dispatched through the activation
-    // registry (`crate::activation::kernel_f32` / `kernel_f16`), not `Ops` fields.
+    // All element-wise activations (sigmoid/silu/tanh/erf/hardswish/gelu and the
+    // parameterized leaky_relu/mul_by_scalar) are dispatched through the activation
+    // registry (`crate::activation::kernel_f32` / `kernel_f16` / `_param`), not `Ops`.
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 
     pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
@@ -204,7 +200,6 @@ impl Ops {
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
-    use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         mmm_impls: vec![],
@@ -217,8 +212,6 @@ pub fn generic() -> Ops {
         mmv_f16: Box::new(|_, _| generic_f16_4x1.mmm()),
         qmmm_i32: Box::new(|_, _, _| generic_i32_4x4.mmm()),
         qmmv_i32: Box::new(|_, _| generic_i32_4x4.mmm()),
-        mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
-        mul_by_scalar_f32: Box::new(|| generic::SMulByScalar4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
         max_f32: Box::new(|| generic::reduce::max::SMax4::red()),

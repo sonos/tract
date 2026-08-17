@@ -246,3 +246,14 @@ inventory::submit! {
         factory: factory!(F16Param, crate::x86_64_fma::act_f16::x86_64_avx512_leaky_relu_f16_64n),
     }
 }
+
+// mul-by-scalar: a plain-avx f32 kernel (used from the avx tier up); no f16 SIMD.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::MulByScalar, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
+        kernel: "x86_64_avx_f32_mul_by_scalar_32n",
+        check: || probe::avx(),
+        factory: factory!(F32Param, crate::x86_64_fma::by_scalar::x86_64_avx_f32_mul_by_scalar_32n),
+    }
+}

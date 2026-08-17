@@ -1,5 +1,4 @@
 use crate::Ops;
-use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use crate::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n;
 use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
@@ -85,26 +84,24 @@ sigmoid_impl!(f32, avx512_sigmoid_f32, 16, 16, is_x86_feature_detected!("avx512f
 
 fn plug_avx2(_ops: &mut Ops) {}
 
-/// Element-wise kernels for AVX-capable CPUs outside the fma tier: the
-/// mul_by_scalar / max / min asm is plain AVX. Activations are dispatched through
-/// the activation registry. softmax keeps its generic fallback on this tier.
+/// Reducers for AVX-capable CPUs outside the fma tier: max / min asm is plain AVX.
+/// Element-wise activations (incl. mul_by_scalar) are dispatched through the
+/// activation registry. softmax keeps its generic fallback on this tier.
 fn plug_avx(ops: &mut Ops) {
-    ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
 
-    log::info!("mul_by_scalar_f32, max_f32, min_f32: x86_64/avx activated");
+    log::info!("max_f32, min_f32: x86_64/avx activated");
 }
 
 fn plug_fma(ops: &mut Ops) {
     panel_extract::plug(ops);
 
-    ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
     ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
 
-    log::info!("mul_by_scalar_f32, max_f32, min_f32, softmax2: x86_64/fma activated");
+    log::info!("max_f32, min_f32, softmax2: x86_64/fma activated");
 }
 
 /// AVX-512_FP16 tier. The activations it used to upgrade (hardswish_f16) are now

@@ -288,7 +288,10 @@ impl Softmax {
                         .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
-                (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
+                tract_linalg::activation::kernel_f16_param(
+                    tract_linalg::activation::ActivationFn::MulByScalar,
+                )
+                .run_with_params(slice, rsum)?;
             }
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = f16::zero();
@@ -320,7 +323,10 @@ impl Softmax {
                         .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
-                (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
+                tract_linalg::activation::kernel_f32_param(
+                    tract_linalg::activation::ActivationFn::MulByScalar,
+                )
+                .run_with_params(slice, rsum)?;
             }
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = f32::zero();
