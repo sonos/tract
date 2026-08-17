@@ -328,6 +328,7 @@ fn cnn_pool(
     op_name: &str,
     pool_spec: &tract_core::ops::cnn::PoolSpec,
     normalize_arg: Option<(&'static str, RValue)>,
+    border: &str,
 ) -> TractResult<Option<Arc<RValue>>> {
     use tract_core::ops::cnn::PaddingSpec;
     let mut wire = ast.mapping[&node.inputs[0]].clone();
@@ -364,7 +365,7 @@ fn cnn_pool(
         ("size", ints(&size)),
         ("dilation", ints(&dilations)),
         ("stride", ints(&strides)),
-        ("border", string("ignore")),
+        ("border", string(border)),
         ("padding", padding),
     );
     if let Some(normalize_arg) = normalize_arg {
@@ -380,7 +381,7 @@ pub fn max_pool(
     node: &TypedNode,
     op: &ops::cnn::MaxPool,
 ) -> TractResult<Option<Arc<RValue>>> {
-    cnn_pool(ast, node, "max_pool", &op.pool_spec, None)
+    cnn_pool(ast, node, "max_pool", &op.pool_spec, None, "ignore")
 }
 
 pub fn sum_pool(
@@ -388,7 +389,10 @@ pub fn sum_pool(
     node: &TypedNode,
     op: &ops::cnn::SumPool,
 ) -> TractResult<Option<Arc<RValue>>> {
-    cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))))
+    // NNEF spells count_include_pad as the border: 'constant' pads with zeros that count
+    // towards the average, 'ignore' leaves them out of both sum and divisor.
+    let border = if op.count_include_pad { "constant" } else { "ignore" };
+    cnn_pool(ast, node, "box", &op.pool_spec, Some(("normalize", logical(op.normalize))), border)
 }
 
 pub fn ser_axis_op(op: &ops::change_axes::AxisOp, wire: Arc<RValue>, rank: usize) -> Arc<RValue> {
