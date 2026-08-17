@@ -213,7 +213,12 @@ impl Expansion for MatMulNBits {
                     EinSum::new(axes, f32::datum_type()),
                     &[summed, offsets],
                 )?[0];
-                model.wire_node(format!("{prefix}.unbias"), add(), &[y, correction])?[0]
+                wire_with_rank_broadcast(
+                    format!("{prefix}.unbias"),
+                    model,
+                    add(),
+                    &[y, correction],
+                )?[0]
             } else {
                 y
             }
