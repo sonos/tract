@@ -36,3 +36,59 @@ inventory::submit! {
         factory: Some(ActFactory::F16(|| crate::generic::HSiLU8::ew())),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "STanh4",
+        check: || true,
+        factory: Some(ActFactory::F32(|| crate::generic::STanh4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HTanh8",
+        check: || true,
+        factory: Some(ActFactory::F16(|| crate::generic::HTanh8::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Erf, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SErf4",
+        check: || true,
+        factory: Some(ActFactory::F32(|| crate::generic::SErf4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SHardSwish4",
+        check: || true,
+        factory: Some(ActFactory::F32(|| crate::generic::SHardSwish4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HHardSwish8",
+        check: || true,
+        factory: Some(ActFactory::F16(|| crate::generic::HHardSwish8::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Gelu, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SGelu4",
+        check: || true,
+        factory: Some(ActFactory::F32(|| crate::generic::SGelu4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Gelu, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HGelu8",
+        check: || true,
+        factory: Some(ActFactory::F16(|| crate::generic::HGelu8::ew())),
+    }
+}

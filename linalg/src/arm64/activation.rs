@@ -84,3 +84,42 @@ inventory::submit! {
         factory: factory!(F16, crate::arm64::arm64simd_silu_f16_4n),
     }
 }
+
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_tanh_f32_4n",
+        check: || check!(true),
+        factory: factory!(F32, crate::arm64::arm64simd_tanh_f32_4n),
+    }
+}
+// f16 tanh is native only with fp16; without it there is no via-f32 fallback (falls
+// to generic), matching arm64.rs which leaves tanh_f16 at generic when !has_fp16.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F16, target: "aarch64",
+        feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
+        kernel: "arm64fp16_tanh_f16_8n",
+        check: || check!(crate::arm64::has_fp16()),
+        factory: factory!(F16, crate::arm64::arm64fp16_tanh_f16_8n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_hardswish_f32_8n",
+        check: || check!(true),
+        factory: factory!(F32, crate::arm64::arm64simd_hardswish_f32_8n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Gelu, dt: DatumType::F32, target: "aarch64",
+        feature: None, tier: Tier::Native, isa_rank: 10,
+        kernel: "arm64simd_gelu_f32_4n_fused",
+        check: || check!(true),
+        factory: factory!(F32, crate::arm64::arm64simd_gelu_f32_4n_fused),
+    }
+}

@@ -49,3 +49,12 @@ inventory::submit! {
         factory: factory!(F32, crate::arm32::armv7neon::armv7neon_silu_f32_4n),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "armv7",
+        feature: Some("neon"), tier: Tier::Native, isa_rank: 10,
+        kernel: "armv7neon_tanh_f32_4n",
+        check: || check!(crate::arm32::has_neon()),
+        factory: factory!(F32, crate::arm32::armv7neon::armv7neon_tanh_f32_4n),
+    }
+}

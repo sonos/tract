@@ -11,13 +11,13 @@ use tract_data::prelude::DatumType;
 
 #[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
 macro_rules! relaxed_factory {
-    () => {
-        Some(ActFactory::F32(|| crate::wasm::WasmSigmoid4Relaxed::ew()))
+    ($k:path) => {
+        Some(ActFactory::F32(|| <$k>::ew()))
     };
 }
 #[cfg(not(all(target_family = "wasm", target_feature = "relaxed-simd")))]
 macro_rules! relaxed_factory {
-    () => {
+    ($k:path) => {
         None
     };
 }
@@ -28,6 +28,15 @@ inventory::submit! {
         feature: Some("relaxed-simd"), tier: Tier::Native, isa_rank: 10,
         kernel: "WasmSigmoid4Relaxed",
         check: || cfg!(all(target_family = "wasm", target_feature = "relaxed-simd")),
-        factory: relaxed_factory!(),
+        factory: relaxed_factory!(crate::wasm::WasmSigmoid4Relaxed),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "wasm",
+        feature: Some("relaxed-simd"), tier: Tier::Native, isa_rank: 10,
+        kernel: "WasmTanh4Relaxed",
+        check: || cfg!(all(target_family = "wasm", target_feature = "relaxed-simd")),
+        factory: relaxed_factory!(crate::wasm::WasmTanh4Relaxed),
     }
 }

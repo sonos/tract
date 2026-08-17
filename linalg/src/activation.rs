@@ -27,7 +27,12 @@ use tract_data::prelude::{DatumType, f16};
 pub enum ActivationFn {
     Sigmoid,
     Silu,
-    // Tanh, Gelu, Erf, HardSwish, LeakyRelu — added as they are ported.
+    Tanh,
+    Erf,
+    HardSwish,
+    Gelu,
+    // LeakyRelu, MulByScalar — parameterized (ElementWise<T, Params>); need an
+    // ActFactory that carries the runtime param before they can register.
 }
 
 /// How directly a kernel implements its function, best first. The variant order is
@@ -142,6 +147,13 @@ mod test {
         check(ActivationFn::Sigmoid, DatumType::F16, (crate::ops().sigmoid_f16)().name());
         check(ActivationFn::Silu, DatumType::F32, (crate::ops().silu_f32)().name());
         check(ActivationFn::Silu, DatumType::F16, (crate::ops().silu_f16)().name());
+        check(ActivationFn::Tanh, DatumType::F32, (crate::ops().tanh_f32)().name());
+        check(ActivationFn::Tanh, DatumType::F16, (crate::ops().tanh_f16)().name());
+        check(ActivationFn::Erf, DatumType::F32, (crate::ops().erf_f32)().name());
+        check(ActivationFn::HardSwish, DatumType::F32, (crate::ops().hardswish_f32)().name());
+        check(ActivationFn::HardSwish, DatumType::F16, (crate::ops().hardswish_f16)().name());
+        check(ActivationFn::Gelu, DatumType::F32, (crate::ops().gelu_f32)().name());
+        check(ActivationFn::Gelu, DatumType::F16, (crate::ops().gelu_f16)().name());
     }
 
     /// The picked kernel actually computes sigmoid.

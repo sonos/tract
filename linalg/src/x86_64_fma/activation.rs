@@ -36,6 +36,9 @@ mod probe {
     pub fn avx512f() -> bool {
         std::is_x86_feature_detected!("avx512f")
     }
+    pub fn avx512fp16() -> bool {
+        std::is_x86_feature_detected!("avx512fp16")
+    }
 }
 #[cfg(not(target_arch = "x86_64"))]
 mod probe {
@@ -46,6 +49,9 @@ mod probe {
         false
     }
     pub fn avx512f() -> bool {
+        false
+    }
+    pub fn avx512fp16() -> bool {
         false
     }
 }
@@ -113,5 +119,103 @@ inventory::submit! {
         kernel: "x86_64_avx512_silu_f16_16n",
         check: || probe::avx512f(),
         factory: factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_silu_f16_16n),
+    }
+}
+
+// tanh: avx / fma / avx512 native f32; f16 only as an avx512 via-f32 kernel.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
+        kernel: "avx_tanh_f32",
+        check: || probe::avx(),
+        factory: factory!(F32, crate::x86_64_fma::avx_tanh_f32),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "x86_64",
+        feature: Some("fma"), tier: Tier::Native, isa_rank: 20,
+        kernel: "fma_tanh_f32",
+        check: || probe::fma(),
+        factory: factory!(F32, crate::x86_64_fma::fma_tanh_f32),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "avx512_tanh_f32",
+        check: || probe::avx512f(),
+        factory: factory!(F32, crate::x86_64_fma::avx512_tanh_f32),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Tanh, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
+        kernel: "x86_64_avx512_tanh_f16_16n",
+        check: || probe::avx512f(),
+        factory: factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_tanh_f16_16n),
+    }
+}
+
+// erf: avx512 native f32 only.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Erf, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_erf_f32_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F32, crate::x86_64_fma::erf::x86_64_avx512_erf_f32_64n),
+    }
+}
+
+// hardswish: avx512 native f32; f16 has a via-f32 kernel and a native avx512fp16 one.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_hardswish_f32_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F32, crate::x86_64_fma::act::x86_64_avx512_hardswish_f32_64n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
+        kernel: "x86_64_avx512_hardswish_f16_64n",
+        check: || probe::avx512f(),
+        factory: factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_hardswish_f16_64n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::HardSwish, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512fp16"), tier: Tier::Native, isa_rank: 40,
+        kernel: "x86_64_avx512fp16_hardswish_f16_128n",
+        check: || probe::avx512fp16(),
+        factory: factory!(F16, crate::x86_64_fma::act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n),
+    }
+}
+
+// gelu: avx512 native f32; f16 via-f32.
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Gelu, dt: DatumType::F32, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+        kernel: "x86_64_avx512_gelu_f32_16n",
+        check: || probe::avx512f(),
+        factory: factory!(F32, crate::x86_64_fma::act::x86_64_avx512_gelu_f32_16n),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Gelu, dt: DatumType::F16, target: "x86_64",
+        feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
+        kernel: "x86_64_avx512_gelu_f16_16n",
+        check: || probe::avx512f(),
+        factory: factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_gelu_f16_16n),
     }
 }
