@@ -76,7 +76,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
@@ -94,7 +94,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
@@ -114,7 +114,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
@@ -131,7 +131,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
@@ -148,7 +148,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
@@ -168,7 +168,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Without default features
@@ -187,7 +187,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: With complexes
@@ -206,7 +206,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Check all targets
@@ -225,7 +225,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: C smoke tests
@@ -245,7 +245,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Setup Python
