@@ -1,11 +1,13 @@
 //! PROTOTYPE — single-source-of-truth registry for element-wise activation kernels.
 //!
 //! Each concrete kernel submits one [`ActivationImpl`] descriptor through
-//! [`inventory`]. The descriptor is pure data (function, dtype, target, tier,
-//! kernel name, feature probe) plus an optional `factory`. The factory is `Some`
-//! only in a build that targets the kernel's own architecture; a build that merely
-//! *describes* a foreign architecture (see the `registry-all-targets` feature)
-//! carries the descriptor with `factory: None`, so no foreign symbol is ever named.
+//! [`inventory`], from a per-backend `activation.rs` file that sits next to the
+//! kernels it describes. The descriptor is pure data (function, dtype, target,
+//! tier, kernel name, feature probe) plus an optional `factory`. The factory is
+//! `Some` only in a build that targets the kernel's own architecture; a build that
+//! merely *describes* a foreign architecture (see the `registry-all-targets`
+//! feature) carries the descriptor with `factory: None`, so no foreign symbol is
+//! ever named.
 //!
 //! This yields three states per cell of the (function × target) matrix:
 //! * **bound**     — descriptor present, `factory` set, feature probe passes on this host
@@ -93,386 +95,30 @@ pub fn pick(func: ActivationFn, dt: DatumType) -> Option<&'static ActivationImpl
         .max_by_key(|a| (a.tier, a.isa_rank))
 }
 
-// ---------------------------------------------------------------------------
-// Sigmoid descriptors.
-//
-// Generic is always compiled. Each arch block is compiled when we build *for*
-// that arch OR when `registry-all-targets` is on (so a dev/CI host can draw the
-// whole matrix); the `factory` is filled only in the native case, guarded by a
-// second cfg so a foreign symbol is never referenced.
-// ---------------------------------------------------------------------------
+// Descriptors live next to their kernels, one file per backend. They are declared
+// from here — an always-compiled module — because the arch modules themselves are
+// `#[cfg(target_arch)]`-gated and so absent from a foreign-target build, which would
+// hide their descriptors from a host drawing the whole matrix. Each per-arch file is
+// compiled when building for its arch OR under `registry-all-targets`; its `factory`
+// is filled only in the native case, so a foreign symbol is never named.
+#[path = "generic/activation.rs"]
+mod generic_activation;
 
-use crate::frame::element_wise::ElementWiseKer;
-
-inventory::submit! {
-    ActivationImpl {
-        func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "generic",
-        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSigmoid4",
-        check: || true,
-        factory: Some(ActFactory::F32(|| crate::generic::SSigmoid4::ew())),
-    }
-}
-inventory::submit! {
-    ActivationImpl {
-        func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "generic",
-        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSigmoid8",
-        check: || true,
-        factory: Some(ActFactory::F16(|| crate::generic::HSigmoid8::ew())),
-    }
-}
-inventory::submit! {
-    ActivationImpl {
-        func: ActivationFn::Silu, dt: DatumType::F32, target: "generic",
-        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSiLU4",
-        check: || true,
-        factory: Some(ActFactory::F32(|| crate::generic::SSiLU4::ew())),
-    }
-}
-inventory::submit! {
-    ActivationImpl {
-        func: ActivationFn::Silu, dt: DatumType::F16, target: "generic",
-        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSiLU8",
-        check: || true,
-        factory: Some(ActFactory::F16(|| crate::generic::HSiLU8::ew())),
-    }
-}
-
-// -------- aarch64 --------
 #[cfg(any(target_arch = "aarch64", feature = "registry-all-targets"))]
-mod aarch64_descriptors {
-    use super::*;
+#[path = "arm64/activation.rs"]
+mod arm64_activation;
 
-    #[cfg(target_arch = "aarch64")]
-    macro_rules! aarch64_factory {
-        (F32, $k:path) => {
-            Some(ActFactory::F32(|| <$k>::ew()))
-        };
-        (F16, $k:path) => {
-            Some(ActFactory::F16(|| <$k>::ew()))
-        };
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    macro_rules! aarch64_factory {
-        ($dt:ident, $k:path) => {
-            None
-        };
-    }
-    #[cfg(target_arch = "aarch64")]
-    macro_rules! aarch64_check {
-        ($e:expr) => {
-            $e
-        };
-    }
-    #[cfg(not(target_arch = "aarch64"))]
-    macro_rules! aarch64_check {
-        ($e:expr) => {
-            false
-        };
-    }
-
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "aarch64",
-            feature: None, tier: Tier::Native, isa_rank: 10,
-            kernel: "arm64simd_sigmoid_f32_4n",
-            check: || aarch64_check!(true),
-            factory: aarch64_factory!(F32, crate::arm64::arm64simd_sigmoid_f32_4n),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "aarch64",
-            feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
-            kernel: "arm64fp16_sigmoid_f16_8n",
-            check: || aarch64_check!(crate::arm64::has_fp16()),
-            factory: aarch64_factory!(F16, crate::arm64::arm64fp16_sigmoid_f16_8n),
-        }
-    }
-    // Always available on aarch64 (baseline NEON); when fp16 is present the native
-    // kernel above outranks it by tier, so no `!has_fp16()` gate is needed.
-    // Always available on aarch64 (baseline NEON); when fp16 is present the native
-    // kernel above outranks it by tier, so no `!has_fp16()` gate is needed.
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "aarch64",
-            feature: None, tier: Tier::Via("f32"), isa_rank: 10,
-            kernel: "arm64simd_sigmoid_f16_4n",
-            check: || aarch64_check!(true),
-            factory: aarch64_factory!(F16, crate::arm64::arm64simd_sigmoid_f16_4n),
-        }
-    }
-
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F32, target: "aarch64",
-            feature: None, tier: Tier::Native, isa_rank: 10,
-            kernel: "arm64simd_silu_f32_4n_fused",
-            check: || aarch64_check!(true),
-            factory: aarch64_factory!(F32, crate::arm64::arm64simd_silu_f32_4n_fused),
-        }
-    }
-    // No native fp16 silu kernel exists (arm64.rs uses this via-f32 kernel even with
-    // fp16 hardware), so this is the best available on aarch64 regardless of fp16.
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F16, target: "aarch64",
-            feature: None, tier: Tier::Via("f32"), isa_rank: 10,
-            kernel: "arm64simd_silu_f16_4n",
-            check: || aarch64_check!(true),
-            factory: aarch64_factory!(F16, crate::arm64::arm64simd_silu_f16_4n),
-        }
-    }
-}
-
-// -------- x86_64 --------
-#[cfg(any(target_arch = "x86_64", feature = "registry-all-targets"))]
-mod x86_64_descriptors {
-    use super::*;
-
-    #[cfg(target_arch = "x86_64")]
-    macro_rules! x86_factory {
-        (F32, $k:path) => {
-            Some(ActFactory::F32(|| <$k>::ew()))
-        };
-        (F16, $k:path) => {
-            Some(ActFactory::F16(|| <$k>::ew()))
-        };
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    macro_rules! x86_factory {
-        ($dt:ident, $k:path) => {
-            None
-        };
-    }
-    // `is_x86_feature_detected!` needs a literal argument in its own expansion; it
-    // rejects one arriving through a macro metavariable. So probe with literal calls
-    // here, and stub to `false` off-target.
-    #[cfg(target_arch = "x86_64")]
-    mod probe {
-        pub fn avx() -> bool {
-            std::is_x86_feature_detected!("avx")
-        }
-        pub fn fma() -> bool {
-            std::is_x86_feature_detected!("fma")
-        }
-        pub fn avx512f() -> bool {
-            std::is_x86_feature_detected!("avx512f")
-        }
-    }
-    #[cfg(not(target_arch = "x86_64"))]
-    mod probe {
-        pub fn avx() -> bool {
-            false
-        }
-        pub fn fma() -> bool {
-            false
-        }
-        pub fn avx512f() -> bool {
-            false
-        }
-    }
-
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "x86_64",
-            feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
-            kernel: "avx_sigmoid_f32",
-            check: || probe::avx(),
-            factory: x86_factory!(F32, crate::x86_64_fma::avx_sigmoid_f32),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "x86_64",
-            feature: Some("fma"), tier: Tier::Native, isa_rank: 20,
-            kernel: "fma_sigmoid_f32",
-            check: || probe::fma(),
-            factory: x86_factory!(F32, crate::x86_64_fma::fma_sigmoid_f32),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "x86_64",
-            feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
-            kernel: "avx512_sigmoid_f32",
-            check: || probe::avx512f(),
-            factory: x86_factory!(F32, crate::x86_64_fma::avx512_sigmoid_f32),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "x86_64",
-            feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
-            kernel: "x86_64_avx512_sigmoid_f16_16n",
-            check: || probe::avx512f(),
-            factory: x86_factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_sigmoid_f16_16n),
-        }
-    }
-
-    // silu needs FMA — there is no avx-only silu, so a plain-avx box falls to generic.
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F32, target: "x86_64",
-            feature: Some("fma"), tier: Tier::Native, isa_rank: 20,
-            kernel: "fma_silu_f32",
-            check: || probe::fma(),
-            factory: x86_factory!(F32, crate::x86_64_fma::fma_silu_f32),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F32, target: "x86_64",
-            feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
-            kernel: "x86_64_avx512_silu_f32_16n",
-            check: || probe::avx512f(),
-            factory: x86_factory!(F32, crate::x86_64_fma::act::x86_64_avx512_silu_f32_16n),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F16, target: "x86_64",
-            feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
-            kernel: "x86_64_avx512_silu_f16_16n",
-            check: || probe::avx512f(),
-            factory: x86_factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_silu_f16_16n),
-        }
-    }
-}
-
-// -------- armv7 (target_arch = "arm") --------
 #[cfg(any(target_arch = "arm", feature = "registry-all-targets"))]
-mod armv7_descriptors {
-    use super::*;
+#[path = "arm32/activation.rs"]
+mod arm32_activation;
 
-    #[cfg(target_arch = "arm")]
-    macro_rules! armv7_factory {
-        (F32, $k:path) => {
-            Some(ActFactory::F32(|| <$k>::ew()))
-        };
-    }
-    #[cfg(not(target_arch = "arm"))]
-    macro_rules! armv7_factory {
-        ($dt:ident, $k:path) => {
-            None
-        };
-    }
-    #[cfg(target_arch = "arm")]
-    macro_rules! armv7_check {
-        ($e:expr) => {
-            $e
-        };
-    }
-    #[cfg(not(target_arch = "arm"))]
-    macro_rules! armv7_check {
-        ($e:expr) => {
-            false
-        };
-    }
+#[cfg(any(target_arch = "x86_64", feature = "registry-all-targets"))]
+#[path = "x86_64_fma/activation.rs"]
+mod x86_64_activation;
 
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "armv7",
-            feature: Some("neon"), tier: Tier::Native, isa_rank: 10,
-            kernel: "armv7neon_sigmoid_f32_4n",
-            check: || armv7_check!(crate::arm32::has_neon()),
-            factory: armv7_factory!(F32, crate::arm32::armv7neon::armv7neon_sigmoid_f32_4n),
-        }
-    }
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Silu, dt: DatumType::F32, target: "armv7",
-            feature: Some("neon"), tier: Tier::Native, isa_rank: 10,
-            kernel: "armv7neon_silu_f32_4n",
-            check: || armv7_check!(crate::arm32::has_neon()),
-            factory: armv7_factory!(F32, crate::arm32::armv7neon::armv7neon_silu_f32_4n),
-        }
-    }
-}
-
-// -------- wasm --------
-// The native sigmoid is a relaxed-simd kernel, and is only compiled into a wasm
-// build with `+relaxed-simd`. Feature detection on wasm is compile-time, so the
-// runtime `check` collapses to a `cfg!`.
 #[cfg(any(target_family = "wasm", feature = "registry-all-targets"))]
-mod wasm_descriptors {
-    use super::*;
-
-    #[cfg(all(target_family = "wasm", target_feature = "relaxed-simd"))]
-    macro_rules! wasm_relaxed_factory {
-        () => {
-            Some(ActFactory::F32(|| crate::wasm::WasmSigmoid4Relaxed::ew()))
-        };
-    }
-    #[cfg(not(all(target_family = "wasm", target_feature = "relaxed-simd")))]
-    macro_rules! wasm_relaxed_factory {
-        () => {
-            None
-        };
-    }
-
-    inventory::submit! {
-        ActivationImpl {
-            func: ActivationFn::Sigmoid, dt: DatumType::F32, target: "wasm",
-            feature: Some("relaxed-simd"), tier: Tier::Native, isa_rank: 10,
-            kernel: "WasmSigmoid4Relaxed",
-            check: || cfg!(all(target_family = "wasm", target_feature = "relaxed-simd")),
-            factory: wasm_relaxed_factory!(),
-        }
-    }
-}
-
-/// Render the (function × target) matrix as text. One row per `(func, dtype)`,
-/// one column per target seen. Each cell shows the best tier for that cell and a
-/// state glyph: `●` bound (runnable here), `○` described (compiled, not runnable
-/// here), `·` absent.
-pub fn matrix() -> String {
-    use std::collections::BTreeSet;
-    let descs: Vec<_> = all().collect();
-
-    let targets: Vec<&str> =
-        descs.iter().map(|d| d.target).collect::<BTreeSet<_>>().into_iter().collect();
-    let rows: Vec<(ActivationFn, DatumType)> =
-        descs.iter().map(|d| (d.func, d.dt)).collect::<BTreeSet<_>>().into_iter().collect();
-
-    let tier_glyph = |t: Tier| match t {
-        Tier::Native => "N",
-        Tier::Via(_) => "V",
-        Tier::Generic => "G",
-    };
-
-    let mut out = String::new();
-    out.push_str(&format!("{:<16}", "func/dtype"));
-    for t in &targets {
-        out.push_str(&format!("{:>16}", t));
-    }
-    out.push('\n');
-
-    for (func, dt) in &rows {
-        out.push_str(&format!("{:<16}", format!("{func:?}/{dt:?}")));
-        for t in &targets {
-            let best = descs
-                .iter()
-                .filter(|d| d.func == *func && d.dt == *dt && d.target == *t)
-                .max_by_key(|d| (d.tier, d.isa_rank));
-            let cell = match best {
-                None => "·".to_string(),
-                Some(d) => {
-                    let glyph = if d.is_bound() {
-                        "●"
-                    } else if d.factory.is_some() {
-                        "○" // compiled here but feature absent on this host
-                    } else {
-                        "○" // described (foreign arch)
-                    };
-                    format!("{glyph} {}", tier_glyph(d.tier))
-                }
-            };
-            out.push_str(&format!("{cell:>16}"));
-        }
-        out.push('\n');
-    }
-    out
-}
+#[path = "wasm/activation.rs"]
+mod wasm_activation;
 
 #[cfg(test)]
 mod test {
@@ -509,11 +155,5 @@ mod test {
             let want = 1.0 / (1.0 + (-x).exp());
             assert!((want - y).abs() < 1e-3, "sigmoid({x})={y} want {want}");
         }
-    }
-
-    #[test]
-    fn print_matrix() {
-        crate::setup_test_logger();
-        println!("\n{}", matrix());
     }
 }
