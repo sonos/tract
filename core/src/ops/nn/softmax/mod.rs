@@ -272,8 +272,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
-        let max =
-            tract_linalg::routines::reduce_f16(tract_linalg::routines::Routine::Max).run(slice)?;
+        let max = tract_linalg::routines::reduce_f16(tract_linalg::routines::Routine::ReduceMax)
+            .run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
@@ -310,8 +310,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
-        let max =
-            tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::Max).run(slice)?;
+        let max = tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::ReduceMax)
+            .run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {

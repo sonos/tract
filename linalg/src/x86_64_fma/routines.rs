@@ -275,7 +275,7 @@ inventory::submit! {
 // wider max. No x86 f16 or sum reducer — those fall to generic.
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F32, target: "x86_64",
+        func: Routine::ReduceMax, dt: DatumType::F32, target: "x86_64",
         feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
         kernel: "x86_64_fma_max_f32_32n",
         check: || probe::avx(),
@@ -284,7 +284,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F32, target: "x86_64",
+        func: Routine::ReduceMax, dt: DatumType::F32, target: "x86_64",
         feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
         kernel: "x86_64_avx512_max_f32_64n",
         check: || probe::avx512f(),
@@ -293,7 +293,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Min, dt: DatumType::F32, target: "x86_64",
+        func: Routine::ReduceMin, dt: DatumType::F32, target: "x86_64",
         feature: Some("avx"), tier: Tier::Native, isa_rank: 10,
         kernel: "x86_64_fma_min_f32_32n",
         check: || probe::avx(),

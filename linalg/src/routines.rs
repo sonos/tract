@@ -22,6 +22,7 @@
 
 use crate::frame::element_wise::ElementWise;
 use crate::frame::reduce::{MapReduce, Reduce};
+use crate::{BinOp, LinalgFn};
 use tract_data::prelude::{DatumType, f16};
 
 /// Which activation function a kernel computes.
@@ -39,13 +40,16 @@ pub enum Routine {
     /// Multiply by a runtime scalar (`ElementWise<T, T>`); param-dispatched like
     /// [`Routine::LeakyRelu`].
     MulByScalar,
-    // Reductions (not activations — this enum is really "pointwise/reduce kernel id";
-    // worth renaming to a neutral `Op` once mmm joins). Dispatched via `reduce_*` /
-    // `map_reduce_*`.
-    Max,
-    Min,
-    Sum,
+    // Reductions. Dispatched via `reduce_*` / `map_reduce_*`. Prefixed to stay
+    // distinct from the binary `BinOp::{Max,Min}`.
+    ReduceMax,
+    ReduceMin,
+    ReduceSum,
     Softmax,
+    /// Binary op, tensor ⊙ scalar (broadcast). Dispatched via [`bin`].
+    BinByScalar(BinOp),
+    /// Binary op, elementwise tensor ⊙ tensor. Dispatched via [`bin`].
+    BinUnicast(BinOp),
 }
 
 /// How directly a kernel implements its function, best first. The variant order is
@@ -77,6 +81,8 @@ pub enum RoutineFactory {
     F16Reduce(fn() -> Box<dyn Reduce<f16>>),
     F32MapReduce(fn() -> Box<dyn MapReduce<f32, f32>>),
     F16MapReduce(fn() -> Box<dyn MapReduce<f16, f16>>),
+    /// Binary op over two tensor views (by-scalar or unicast); dtype-erased.
+    Bin(fn() -> Box<LinalgFn>),
 }
 
 /// One registered activation kernel. Submitted via [`inventory`] next to its kernel.
@@ -157,7 +163,7 @@ pub fn kernel_f16_param(func: Routine) -> Box<dyn ElementWise<f16, f16>> {
     }
 }
 
-/// The `f32` reducer for `func` (e.g. [`Routine::Max`]).
+/// The `f32` reducer for `func` (e.g. [`Routine::ReduceMax`]).
 pub fn reduce_f32(func: Routine) -> Box<dyn Reduce<f32>> {
     match pick(func, DatumType::F32).and_then(|a| a.factory) {
         Some(RoutineFactory::F32Reduce(make)) => make(),
@@ -186,6 +192,16 @@ pub fn map_reduce_f16(func: Routine) -> Box<dyn MapReduce<f16, f16>> {
     match pick(func, DatumType::F16).and_then(|a| a.factory) {
         Some(RoutineFactory::F16MapReduce(make)) => make(),
         _ => unreachable!("no bound f16 map-reducer for {func:?} (generic tier missing?)"),
+    }
+}
+
+/// The binary-op kernel for `func` (a [`Routine::BinByScalar`] / [`Routine::BinUnicast`])
+/// at `dt`, or `None` if none is bound on this host — e.g. f16 without hardware fp16,
+/// which mirrors the old `bin_by_scalar`/`bin_unicast` fallback to the scalar path.
+pub fn bin(func: Routine, dt: DatumType) -> Option<Box<LinalgFn>> {
+    match pick(func, dt).and_then(|a| a.factory) {
+        Some(RoutineFactory::Bin(make)) => Some(make()),
+        _ => None,
     }
 }
 
@@ -249,14 +265,14 @@ mod test {
         for func in [
             Routine::LeakyRelu,
             Routine::MulByScalar,
-            Routine::Max,
-            Routine::Min,
-            Routine::Sum,
+            Routine::ReduceMax,
+            Routine::ReduceMin,
+            Routine::ReduceSum,
             Routine::Softmax,
         ] {
             assert!(pick(func, DatumType::F32).is_some(), "no bound f32 kernel for {func:?}");
         }
-        for func in [Routine::Max, Routine::Sum, Routine::Softmax] {
+        for func in [Routine::ReduceMax, Routine::ReduceSum, Routine::Softmax] {
             assert!(pick(func, DatumType::F16).is_some(), "no bound f16 kernel for {func:?}");
         }
     }
@@ -265,9 +281,9 @@ mod test {
     #[test]
     fn reducers_run() {
         let xs = [1.0f32, -3.0, 2.5, 0.0, 4.0];
-        let max = reduce_f32(Routine::Max).run(&xs).unwrap();
+        let max = reduce_f32(Routine::ReduceMax).run(&xs).unwrap();
         assert!((max - 4.0).abs() < 1e-5, "max={max}");
-        let sum = reduce_f32(Routine::Sum).run(&xs).unwrap();
+        let sum = reduce_f32(Routine::ReduceSum).run(&xs).unwrap();
         assert!((sum - 4.5).abs() < 1e-4, "sum={sum}");
     }
 

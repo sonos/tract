@@ -949,13 +949,27 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 Col { name: "wasm/relaxed", arch: "wasm", feats: &["simd128", "relaxed-simd"] },
             ];
 
+            // Group rows by kernel prototype (signature family); alphabetical within.
+            fn prototype(func: Routine) -> (u8, &'static str) {
+                use Routine::*;
+                match func {
+                    Sigmoid | Silu | Tanh | Erf | HardSwish | Gelu => (0, "pointwise unary"),
+                    LeakyRelu | MulByScalar => (1, "pointwise, scalar param"),
+                    ReduceMax | ReduceMin | ReduceSum => (2, "reduction"),
+                    Softmax => (3, "map-reduction"),
+                    BinByScalar(_) => (4, "binary, tensor \u{2299} scalar"),
+                    BinUnicast(_) => (5, "binary, tensor \u{2299} tensor"),
+                }
+            }
+
             let descs: Vec<&RoutineImpl> = all().collect();
-            let rows: Vec<(Routine, DatumType)> = descs
+            let mut rows: Vec<(Routine, DatumType)> = descs
                 .iter()
                 .map(|d| (d.func, d.dt))
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect();
+            rows.sort_by_key(|(f, dt)| (prototype(*f).0, format!("{f:?}"), format!("{dt:?}")));
 
             let generic_of = |func: Routine, dt: DatumType| -> Option<&RoutineImpl> {
                 descs
@@ -1030,7 +1044,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 White.bold().paint("bold"),
             );
             println!();
-            print!("{:<14}", "");
+            print!("{:<22}", "");
             for (i, c) in cols.iter().enumerate() {
                 let name = format!("{:>col_w$}", c.name);
                 if Some(i) == live {
@@ -1040,8 +1054,14 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 }
             }
             println!();
+            let mut cur_group = "";
             for (func, dt) in &rows {
-                print!("{:<14}", format!("{func:?}/{dt:?}"));
+                let group = prototype(*func).1;
+                if group != cur_group {
+                    cur_group = group;
+                    println!("{}", DarkGray.paint(format!("── {group} ──")));
+                }
+                print!("{:<22}", format!("{func:?}/{dt:?}"));
                 for (i, c) in cols.iter().enumerate() {
                     let (text, color) = match cell(*func, *dt, c) {
                         None => (format!("{:>col_w$}", "·"), DarkGray),

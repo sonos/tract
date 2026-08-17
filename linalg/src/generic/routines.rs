@@ -1,7 +1,10 @@
 //! Portable-reference activation descriptors. Always compiled; every cell's floor.
 
+use crate::BinOp;
+use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
+use crate::frame::unicast::UnicastKer;
 use crate::routines::{Routine, RoutineFactory, RoutineImpl, Tier};
 use tract_data::prelude::DatumType;
 
@@ -127,7 +130,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F32, target: "generic",
+        func: Routine::ReduceMax, dt: DatumType::F32, target: "generic",
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SMax4",
         check: || true,
         factory: Some(RoutineFactory::F32Reduce(|| crate::generic::reduce::max::SMax4::red())),
@@ -135,7 +138,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F16, target: "generic",
+        func: Routine::ReduceMax, dt: DatumType::F16, target: "generic",
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HMax8",
         check: || true,
         factory: Some(RoutineFactory::F16Reduce(|| crate::generic::reduce::max::HMax8::red())),
@@ -143,7 +146,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Min, dt: DatumType::F32, target: "generic",
+        func: Routine::ReduceMin, dt: DatumType::F32, target: "generic",
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SMin4",
         check: || true,
         factory: Some(RoutineFactory::F32Reduce(|| crate::generic::reduce::min::SMin4::red())),
@@ -151,7 +154,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Sum, dt: DatumType::F32, target: "generic",
+        func: Routine::ReduceSum, dt: DatumType::F32, target: "generic",
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSum4",
         check: || true,
         factory: Some(RoutineFactory::F32Reduce(|| crate::generic::reduce::sum::SSum4::red())),
@@ -159,7 +162,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Sum, dt: DatumType::F16, target: "generic",
+        func: Routine::ReduceSum, dt: DatumType::F16, target: "generic",
         feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSum8",
         check: || true,
         factory: Some(RoutineFactory::F16Reduce(|| crate::generic::reduce::sum::HSum8::red())),
@@ -185,3 +188,40 @@ inventory::submit! {
         )),
     }
 }
+
+// Binary ops (by-scalar and unicast layouts), the generic scalar floor. f16 is
+// gated on `has_fp16()` to mirror the old `bin_by_scalar`/`bin_unicast` guard,
+// which fell back to the non-linalg path for f16 without hardware fp16.
+macro_rules! gbin {
+    ($op:ident, $bs32:path, $bs16:path, $uc32:path, $uc16:path) => {
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinByScalar(BinOp::$op), dt: DatumType::F32, target: "generic",
+            feature: None, tier: Tier::Generic, isa_rank: 0, kernel: stringify!($op),
+            check: || true, factory: Some(RoutineFactory::Bin(|| <$bs32>::bin())),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinByScalar(BinOp::$op), dt: DatumType::F16, target: "generic",
+            feature: None, tier: Tier::Generic, isa_rank: 0, kernel: stringify!($op),
+            check: || crate::has_fp16(), factory: Some(RoutineFactory::Bin(|| <$bs16>::bin())),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinUnicast(BinOp::$op), dt: DatumType::F32, target: "generic",
+            feature: None, tier: Tier::Generic, isa_rank: 0, kernel: stringify!($op),
+            check: || true, factory: Some(RoutineFactory::Bin(|| <$uc32>::bin())),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinUnicast(BinOp::$op), dt: DatumType::F16, target: "generic",
+            feature: None, tier: Tier::Generic, isa_rank: 0, kernel: stringify!($op),
+            check: || crate::has_fp16(), factory: Some(RoutineFactory::Bin(|| <$uc16>::bin())),
+        }}
+    };
+}
+
+use crate::generic::by_scalar as bs;
+use crate::generic::unicast as uc;
+gbin!(Mul, bs::SMulByScalar4, bs::HMulByScalar8, uc::SUnicastMul4, uc::HUnicastMul8);
+gbin!(Add, bs::SAddByScalar4, bs::HAddByScalar8, uc::SUnicastAdd4, uc::HUnicastAdd8);
+gbin!(Sub, bs::SSubByScalar4, bs::HSubByScalar8, uc::SUnicastSub4, uc::HUnicastSub8);
+gbin!(SubF, bs::SSubFByScalar4, bs::HSubFByScalar8, uc::SUnicastSubF4, uc::HUnicastSubF8);
+gbin!(Min, bs::SMinByScalar4, bs::HMinByScalar8, uc::SUnicastMin4, uc::HUnicastMin8);
+gbin!(Max, bs::SMaxByScalar4, bs::HMaxByScalar8, uc::SUnicastMax4, uc::HUnicastMax8);

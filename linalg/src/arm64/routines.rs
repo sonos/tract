@@ -1,11 +1,14 @@
 //! aarch64 activation descriptors. Compiled for aarch64, or under
 //! `registry-all-targets` on any host (with `factory: None`).
 
+use crate::BinOp;
 use crate::routines::{Routine, RoutineImpl, Tier};
 #[cfg(target_arch = "aarch64")]
 use crate::{
+    frame::by_scalar::ByScalarKer,
     frame::element_wise::ElementWiseKer,
     frame::reduce::{MapReduceKer, ReduceKer},
+    frame::unicast::UnicastKer,
     routines::RoutineFactory,
 };
 use tract_data::prelude::DatumType;
@@ -32,6 +35,9 @@ macro_rules! factory {
     };
     (F32MapReduce, $k:path) => {
         Some(RoutineFactory::F32MapReduce(|| <$k>::red()))
+    };
+    (Bin, $k:path) => {
+        Some(RoutineFactory::Bin(|| <$k>::bin()))
     };
 }
 #[cfg(not(target_arch = "aarch64"))]
@@ -181,7 +187,7 @@ inventory::submit! {
 
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F32, target: "aarch64",
+        func: Routine::ReduceMax, dt: DatumType::F32, target: "aarch64",
         feature: None, tier: Tier::Native, isa_rank: 10,
         kernel: "arm64simd_max_f32_16n",
         check: || check!(true),
@@ -190,7 +196,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Max, dt: DatumType::F16, target: "aarch64",
+        func: Routine::ReduceMax, dt: DatumType::F16, target: "aarch64",
         feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
         kernel: "arm64fp16_max_f16_32n",
         check: || check!(crate::arm64::has_fp16()),
@@ -199,7 +205,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Min, dt: DatumType::F32, target: "aarch64",
+        func: Routine::ReduceMin, dt: DatumType::F32, target: "aarch64",
         feature: None, tier: Tier::Native, isa_rank: 10,
         kernel: "arm64simd_min_f32_16n",
         check: || check!(true),
@@ -208,7 +214,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Sum, dt: DatumType::F32, target: "aarch64",
+        func: Routine::ReduceSum, dt: DatumType::F32, target: "aarch64",
         feature: None, tier: Tier::Native, isa_rank: 10,
         kernel: "arm64simd_sum_f32_16n",
         check: || check!(true),
@@ -217,7 +223,7 @@ inventory::submit! {
 }
 inventory::submit! {
     RoutineImpl {
-        func: Routine::Sum, dt: DatumType::F16, target: "aarch64",
+        func: Routine::ReduceSum, dt: DatumType::F16, target: "aarch64",
         feature: Some("fp16"), tier: Tier::Native, isa_rank: 20,
         kernel: "arm64fp16_sum_f16_32n",
         check: || check!(crate::arm64::has_fp16()),
@@ -233,3 +239,73 @@ inventory::submit! {
         factory: factory!(F32MapReduce, crate::arm64::arm64simd_softmax2_fastcompact_f32_16n),
     }
 }
+
+// Binary ops (by-scalar and unicast layouts). Native NEON on aarch64; the f16 kernels
+// need FEAT_FP16, so they are gated on `has_fp16()` (mirroring the old registry guard).
+macro_rules! abin {
+    ($op:ident, $bs32:path, $bs16:path, $uc32:path, $uc16:path) => {
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinByScalar(BinOp::$op), dt: DatumType::F32, target: "aarch64",
+            feature: None, tier: Tier::Native, isa_rank: 10, kernel: stringify!($op),
+            check: || check!(true), factory: factory!(Bin, $bs32),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinByScalar(BinOp::$op), dt: DatumType::F16, target: "aarch64",
+            feature: Some("fp16"), tier: Tier::Native, isa_rank: 10, kernel: stringify!($op),
+            check: || check!(crate::arm64::has_fp16()), factory: factory!(Bin, $bs16),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinUnicast(BinOp::$op), dt: DatumType::F32, target: "aarch64",
+            feature: None, tier: Tier::Native, isa_rank: 10, kernel: stringify!($op),
+            check: || check!(true), factory: factory!(Bin, $uc32),
+        }}
+        inventory::submit! { RoutineImpl {
+            func: Routine::BinUnicast(BinOp::$op), dt: DatumType::F16, target: "aarch64",
+            feature: Some("fp16"), tier: Tier::Native, isa_rank: 10, kernel: stringify!($op),
+            check: || check!(crate::arm64::has_fp16()), factory: factory!(Bin, $uc16),
+        }}
+    };
+}
+
+abin!(
+    Mul,
+    crate::arm64::arm64simd_mul_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_mul_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_mul_f32_16n,
+    crate::arm64::arm64fp16_unicast_mul_f16_32n
+);
+abin!(
+    Add,
+    crate::arm64::arm64simd_add_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_add_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_add_f32_16n,
+    crate::arm64::arm64fp16_unicast_add_f16_32n
+);
+abin!(
+    Sub,
+    crate::arm64::arm64simd_sub_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_sub_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_sub_f32_16n,
+    crate::arm64::arm64fp16_unicast_sub_f16_32n
+);
+abin!(
+    SubF,
+    crate::arm64::arm64simd_subf_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_subf_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_subf_f32_16n,
+    crate::arm64::arm64fp16_unicast_subf_f16_32n
+);
+abin!(
+    Min,
+    crate::arm64::arm64simd_min_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_min_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_min_f32_16n,
+    crate::arm64::arm64fp16_unicast_min_f16_32n
+);
+abin!(
+    Max,
+    crate::arm64::arm64simd_max_by_scalar_f32_16n,
+    crate::arm64::arm64fp16_max_by_scalar_f16_32n,
+    crate::arm64::arm64simd_unicast_max_f32_16n,
+    crate::arm64::arm64fp16_unicast_max_f16_32n
+);
