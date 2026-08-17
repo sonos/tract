@@ -272,8 +272,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
-        let max = tract_linalg::activation::reduce_f16(tract_linalg::activation::ActivationFn::Max)
-            .run(slice)?;
+        let max =
+            tract_linalg::routines::reduce_f16(tract_linalg::routines::Routine::Max).run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
@@ -285,14 +285,14 @@ impl Softmax {
                         });
                         s
                     }
-                    SoftmaxExp::FastCompact => tract_linalg::activation::map_reduce_f16(
-                        tract_linalg::activation::ActivationFn::Softmax,
+                    SoftmaxExp::FastCompact => tract_linalg::routines::map_reduce_f16(
+                        tract_linalg::routines::Routine::Softmax,
                     )
                     .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
-                tract_linalg::activation::kernel_f16_param(
-                    tract_linalg::activation::ActivationFn::MulByScalar,
+                tract_linalg::routines::kernel_f16_param(
+                    tract_linalg::routines::Routine::MulByScalar,
                 )
                 .run_with_params(slice, rsum)?;
             }
@@ -310,8 +310,8 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
-        let max = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Max)
-            .run(slice)?;
+        let max =
+            tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::Max).run(slice)?;
         match kind {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
@@ -323,14 +323,14 @@ impl Softmax {
                         });
                         s
                     }
-                    SoftmaxExp::FastCompact => tract_linalg::activation::map_reduce_f32(
-                        tract_linalg::activation::ActivationFn::Softmax,
+                    SoftmaxExp::FastCompact => tract_linalg::routines::map_reduce_f32(
+                        tract_linalg::routines::Routine::Softmax,
                     )
                     .run_with_params(slice, max)?,
                 };
                 let rsum = sum.recip();
-                tract_linalg::activation::kernel_f32_param(
-                    tract_linalg::activation::ActivationFn::MulByScalar,
+                tract_linalg::routines::kernel_f32_param(
+                    tract_linalg::routines::Routine::MulByScalar,
                 )
                 .run_with_params(slice, rsum)?;
             }

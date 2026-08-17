@@ -6,8 +6,8 @@ use crate::ops::nn::Sigmoid;
 use tract_data::half::f16;
 
 element_wise!(silu, Silu,
-    [f16] => |_, xs| { tract_linalg::activation::kernel_f16(tract_linalg::activation::ActivationFn::Silu).run(xs) },
-    [f32] => |_, xs| { tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Silu).run(xs) };
+    [f16] => |_, xs| { tract_linalg::routines::kernel_f16(tract_linalg::routines::Routine::Silu).run(xs) },
+    [f32] => |_, xs| { tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::Silu).run(xs) };
     cost: |dt| {tvec!((Cost::FMA(dt), 12), (Cost::Div(dt), 1))};
     declutter: detect_silu
 );

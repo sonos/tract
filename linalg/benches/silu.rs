@@ -42,9 +42,7 @@ fn rust_scalar(input: &mut [f32]) {
 
 #[inline(never)]
 fn linalg(input: &mut [f32]) {
-    tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Silu)
-        .run(input)
-        .unwrap();
+    tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::Silu).run(input).unwrap();
 }
 
 criterion_group!(benches, silu_f32);

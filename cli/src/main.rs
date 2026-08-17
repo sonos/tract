@@ -190,8 +190,8 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current plaform"))
         .subcommand(
-            Command::new("activations")
-                .about("Print the activation-function kernel matrix, by quality, across all targets"),
+            Command::new("routines")
+                .about("Print the linalg routine kernel matrix, by quality, across all targets"),
         )
         .subcommand(hwbench::command())
         .subcommand(cost_model::command())
@@ -899,8 +899,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             return Ok(());
         }
-        Some(("activations", _)) => {
-            use tract_linalg::activation::{ActivationFn, ActivationImpl, Tier, all};
+        Some(("routines", _)) => {
+            use tract_linalg::routines::{Routine, RoutineImpl, Tier, all};
 
             // Quality is the message: green = native hand-written, yellow = a known
             // compromise (reachable, but a dedicated kernel could beat it), red =
@@ -949,15 +949,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 Col { name: "wasm/relaxed", arch: "wasm", feats: &["simd128", "relaxed-simd"] },
             ];
 
-            let descs: Vec<&ActivationImpl> = all().collect();
-            let rows: Vec<(ActivationFn, DatumType)> = descs
+            let descs: Vec<&RoutineImpl> = all().collect();
+            let rows: Vec<(Routine, DatumType)> = descs
                 .iter()
                 .map(|d| (d.func, d.dt))
                 .collect::<std::collections::BTreeSet<_>>()
                 .into_iter()
                 .collect();
 
-            let generic_of = |func: ActivationFn, dt: DatumType| -> Option<&ActivationImpl> {
+            let generic_of = |func: Routine, dt: DatumType| -> Option<&RoutineImpl> {
                 descs
                     .iter()
                     .find(|d| d.func == func && d.dt == dt && d.target == "generic")
@@ -966,7 +966,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             // The kernel a machine at this feature tier would dispatch to: the best
             // (tier, isa_rank) kernel whose gating feature the tier provides, else the
             // generic scalar floor.
-            let cell = |func: ActivationFn, dt: DatumType, col: &Col| -> Option<&ActivationImpl> {
+            let cell = |func: Routine, dt: DatumType, col: &Col| -> Option<&RoutineImpl> {
                 descs
                     .iter()
                     .filter(|d| {
@@ -1021,7 +1021,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
 
             let col_w = 16;
             println!();
-            println!("{}", White.bold().paint("# Activation kernels by quality"));
+            println!("{}", White.bold().paint("# Routine kernels by quality"));
             println!(
                 "  {} native   {} compromise (a dedicated kernel could be faster)   {} scalar fallback   ({} = this host)",
                 Green.paint("■"),

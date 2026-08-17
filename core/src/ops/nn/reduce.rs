@@ -217,12 +217,10 @@ impl Reducer {
                     let mut out = vec![T::zero(); n_rows];
                     let total = full.len();
                     // Reduce kernels are Send + Sync; build once and share by ref.
-                    let sum_f16 = tract_linalg::activation::reduce_f16(
-                        tract_linalg::activation::ActivationFn::Sum,
-                    );
-                    let sum_f32 = tract_linalg::activation::reduce_f32(
-                        tract_linalg::activation::ActivationFn::Sum,
-                    );
+                    let sum_f16 =
+                        tract_linalg::routines::reduce_f16(tract_linalg::routines::Routine::Sum);
+                    let sum_f32 =
+                        tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::Sum);
                     tract_linalg::multithread::par_chunks_mut(
                         &mut out,
                         1,
@@ -320,7 +318,7 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let max = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Max)
+        let max = tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::Max)
             .run(slice)
             .unwrap();
         // SAFETY: T is f32 in this branch (checked above).
@@ -338,7 +336,7 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let min = tract_linalg::activation::reduce_f32(tract_linalg::activation::ActivationFn::Min)
+        let min = tract_linalg::routines::reduce_f32(tract_linalg::routines::Routine::Min)
             .run(slice)
             .unwrap();
         // SAFETY: T is f32 in this branch (checked above).

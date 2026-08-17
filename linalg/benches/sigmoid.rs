@@ -6,8 +6,7 @@ use criterion::Criterion;
 fn ssigmoid(c: &mut Criterion, n: usize) {
     c.bench_function(&format!("ssigmoid_tract_{n}"), move |be| {
         let mut s = (0..n).map(|i| i as f32 / 10.0).collect::<Vec<f32>>();
-        let op =
-            tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Sigmoid);
+        let op = tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::Sigmoid);
         be.iter(|| op.run(&mut s));
     });
 }

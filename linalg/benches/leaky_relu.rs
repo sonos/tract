@@ -34,7 +34,7 @@ unsafe fn rust_with_fp16(input: &mut [f16], alpha: f16) {
 
 #[inline(never)]
 fn linalg16(input: &mut [f16], alpha: f16) {
-    tract_linalg::activation::kernel_f16_param(tract_linalg::activation::ActivationFn::LeakyRelu)
+    tract_linalg::routines::kernel_f16_param(tract_linalg::routines::Routine::LeakyRelu)
         .run_with_params(input, alpha)
         .unwrap();
 }
@@ -61,7 +61,7 @@ fn rust_fp32(input: &mut [f32], alpha: f32) {
 
 #[inline(never)]
 fn linalg32(input: &mut [f32], alpha: f32) {
-    tract_linalg::activation::kernel_f32_param(tract_linalg::activation::ActivationFn::LeakyRelu)
+    tract_linalg::routines::kernel_f32_param(tract_linalg::routines::Routine::LeakyRelu)
         .run_with_params(input, alpha)
         .unwrap();
 }

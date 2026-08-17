@@ -21,8 +21,8 @@ pub use crate::internal::*;
 use tract_num_traits::AsPrimitive;
 
 element_wise!(sigmoid, Sigmoid,
- [f16] => |_, xs| { tract_linalg::activation::kernel_f16(tract_linalg::activation::ActivationFn::Sigmoid).run(xs) },
- [f32] => |_, xs| { tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::Sigmoid).run(xs) };
+ [f16] => |_, xs| { tract_linalg::routines::kernel_f16(tract_linalg::routines::Routine::Sigmoid).run(xs) },
+ [f32] => |_, xs| { tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::Sigmoid).run(xs) };
  q: [i8, u8, i32, i32] => |x: f32| 1.0 / (1.0+(-x).exp());
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
  declutter: silu::detect_silu
@@ -30,10 +30,10 @@ element_wise!(sigmoid, Sigmoid,
 
 element_wise!(hard_swish, HardSwish,
 [f16] => |_, xs| { xs.iter_mut().for_each(|x| *x = *x * f16::from_f32(0.0).max(f16::from_f32(1.0).min(f16::from_f32(1. / 6.) * *x + f16::from_f32(0.5)))); Ok(()) },
-[f32] => |_, xs| { tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::HardSwish).run(xs) }
+[f32] => |_, xs| { tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::HardSwish).run(xs) }
                                          );
 
 element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
- [f16] => |op, xs| { tract_linalg::activation::kernel_f16_param(tract_linalg::activation::ActivationFn::LeakyRelu).run_with_params(xs, f16::from_f32(op.alpha)) },
- [f32] => |op, xs| { tract_linalg::activation::kernel_f32_param(tract_linalg::activation::ActivationFn::LeakyRelu).run_with_params(xs, op.alpha) }
+ [f16] => |op, xs| { tract_linalg::routines::kernel_f16_param(tract_linalg::routines::Routine::LeakyRelu).run_with_params(xs, f16::from_f32(op.alpha)) },
+ [f32] => |op, xs| { tract_linalg::routines::kernel_f32_param(tract_linalg::routines::Routine::LeakyRelu).run_with_params(xs, op.alpha) }
 );

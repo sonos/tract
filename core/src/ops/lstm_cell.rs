@@ -47,18 +47,14 @@ impl EvalOp for LstmEpilogue {
         // whole float graph (including this op's inputs) to f16, so we must run
         // in whichever float type actually arrives — reading an f16 buffer as
         // f32 would walk off the end of the allocation.
-        use tract_linalg::activation::{ActivationFn, kernel_f16, kernel_f32};
+        use tract_linalg::routines::{Routine, kernel_f16, kernel_f32};
         match inputs[0].datum_type().unquantized() {
-            DatumType::F32 => self.eval_t::<f32>(
-                inputs,
-                kernel_f32(ActivationFn::Sigmoid),
-                kernel_f32(ActivationFn::Tanh),
-            ),
-            DatumType::F16 => self.eval_t::<f16>(
-                inputs,
-                kernel_f16(ActivationFn::Sigmoid),
-                kernel_f16(ActivationFn::Tanh),
-            ),
+            DatumType::F32 => {
+                self.eval_t::<f32>(inputs, kernel_f32(Routine::Sigmoid), kernel_f32(Routine::Tanh))
+            }
+            DatumType::F16 => {
+                self.eval_t::<f16>(inputs, kernel_f16(Routine::Sigmoid), kernel_f16(Routine::Tanh))
+            }
             dt => bail!("LstmEpilogue only supports f32 and f16 preactivations, got {dt:?}"),
         }
     }

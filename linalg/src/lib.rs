@@ -20,11 +20,11 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
 #[macro_use]
 mod frame;
-pub mod activation;
 pub mod cache;
 pub mod generic;
 pub mod knobs;
 pub mod multithread;
+pub mod routines;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
@@ -82,7 +82,7 @@ pub struct Ops {
 
     // All element-wise activations (sigmoid/silu/tanh/erf/hardswish/gelu, the
     // parameterized leaky_relu/mul_by_scalar) and reducers (max/min/sum/softmax) are
-    // dispatched through the activation registry (`crate::activation::*`), not `Ops`.
+    // dispatched through the activation registry (`crate::routines::*`), not `Ops`.
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 
     /// Fused row-wise RmsNorm: out_i = x_i * rsqrt(mean(x_i²) + eps).

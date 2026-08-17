@@ -27,7 +27,7 @@ fn rust_f32(input: &mut [f32]) {
 
 #[inline(never)]
 fn linalg32(input: &mut [f32]) {
-    tract_linalg::activation::kernel_f32(tract_linalg::activation::ActivationFn::HardSwish)
+    tract_linalg::routines::kernel_f32(tract_linalg::routines::Routine::HardSwish)
         .run(input)
         .unwrap();
 }
