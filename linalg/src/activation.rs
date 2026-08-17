@@ -24,21 +24,23 @@ use tract_data::prelude::{DatumType, f16};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ActivationFn {
     Sigmoid,
-    // Tanh, Silu, Gelu, Erf, HardSwish, LeakyRelu — added as they are ported.
+    Silu,
+    // Tanh, Gelu, Erf, HardSwish, LeakyRelu — added as they are ported.
 }
 
-/// How directly a kernel implements its function, best first. The discriminant is
-/// the primary selection key: a `Native` kernel always beats a `ViaF32` fallback,
+/// How directly a kernel implements its function, best first. The variant order is
+/// the primary selection key: a `Native` kernel always beats any `Via(_)` composition,
 /// which beats the portable `Generic` reference.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
     /// Portable reference implementation; available on every target.
-    Generic = 0,
-    /// Reachable but indirect — e.g. f16 computed by round-tripping through an f32
-    /// kernel, or `silu` built from `sigmoid`. A dedicated kernel may beat it.
-    ViaF32 = 1,
+    Generic,
+    /// Reachable but indirect, routed through the named kernel — `Via("f32")` for an
+    /// f16 kernel that round-trips through an f32 one, `Via("sigmoid")` for a silu
+    /// built from sigmoid. A dedicated kernel may beat it.
+    Via(&'static str),
     /// Hand-written kernel for exactly this (function, dtype, target).
-    Native = 2,
+    Native,
 }
 
 /// A boxed factory for the concrete kernel, monomorphized per element type.
@@ -118,6 +120,22 @@ inventory::submit! {
         factory: Some(ActFactory::F16(|| crate::generic::HSigmoid8::ew())),
     }
 }
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Silu, dt: DatumType::F32, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "SSiLU4",
+        check: || true,
+        factory: Some(ActFactory::F32(|| crate::generic::SSiLU4::ew())),
+    }
+}
+inventory::submit! {
+    ActivationImpl {
+        func: ActivationFn::Silu, dt: DatumType::F16, target: "generic",
+        feature: None, tier: Tier::Generic, isa_rank: 0, kernel: "HSiLU8",
+        check: || true,
+        factory: Some(ActFactory::F16(|| crate::generic::HSiLU8::ew())),
+    }
+}
 
 // -------- aarch64 --------
 #[cfg(any(target_arch = "aarch64", feature = "registry-all-targets"))]
@@ -170,13 +188,38 @@ mod aarch64_descriptors {
             factory: aarch64_factory!(F16, crate::arm64::arm64fp16_sigmoid_f16_8n),
         }
     }
+    // Always available on aarch64 (baseline NEON); when fp16 is present the native
+    // kernel above outranks it by tier, so no `!has_fp16()` gate is needed.
+    // Always available on aarch64 (baseline NEON); when fp16 is present the native
+    // kernel above outranks it by tier, so no `!has_fp16()` gate is needed.
     inventory::submit! {
         ActivationImpl {
             func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "aarch64",
-            feature: None, tier: Tier::ViaF32, isa_rank: 10,
+            feature: None, tier: Tier::Via("f32"), isa_rank: 10,
             kernel: "arm64simd_sigmoid_f16_4n",
-            check: || aarch64_check!(!crate::arm64::has_fp16()),
+            check: || aarch64_check!(true),
             factory: aarch64_factory!(F16, crate::arm64::arm64simd_sigmoid_f16_4n),
+        }
+    }
+
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F32, target: "aarch64",
+            feature: None, tier: Tier::Native, isa_rank: 10,
+            kernel: "arm64simd_silu_f32_4n_fused",
+            check: || aarch64_check!(true),
+            factory: aarch64_factory!(F32, crate::arm64::arm64simd_silu_f32_4n_fused),
+        }
+    }
+    // No native fp16 silu kernel exists (arm64.rs uses this via-f32 kernel even with
+    // fp16 hardware), so this is the best available on aarch64 regardless of fp16.
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F16, target: "aarch64",
+            feature: None, tier: Tier::Via("f32"), isa_rank: 10,
+            kernel: "arm64simd_silu_f16_4n",
+            check: || aarch64_check!(true),
+            factory: aarch64_factory!(F16, crate::arm64::arm64simd_silu_f16_4n),
         }
     }
 }
@@ -259,10 +302,39 @@ mod x86_64_descriptors {
     inventory::submit! {
         ActivationImpl {
             func: ActivationFn::Sigmoid, dt: DatumType::F16, target: "x86_64",
-            feature: Some("avx512f"), tier: Tier::ViaF32, isa_rank: 30,
+            feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
             kernel: "x86_64_avx512_sigmoid_f16_16n",
             check: || probe::avx512f(),
             factory: x86_factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_sigmoid_f16_16n),
+        }
+    }
+
+    // silu needs FMA — there is no avx-only silu, so a plain-avx box falls to generic.
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F32, target: "x86_64",
+            feature: Some("fma"), tier: Tier::Native, isa_rank: 20,
+            kernel: "fma_silu_f32",
+            check: || probe::fma(),
+            factory: x86_factory!(F32, crate::x86_64_fma::fma_silu_f32),
+        }
+    }
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F32, target: "x86_64",
+            feature: Some("avx512f"), tier: Tier::Native, isa_rank: 30,
+            kernel: "x86_64_avx512_silu_f32_16n",
+            check: || probe::avx512f(),
+            factory: x86_factory!(F32, crate::x86_64_fma::act::x86_64_avx512_silu_f32_16n),
+        }
+    }
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F16, target: "x86_64",
+            feature: Some("avx512f"), tier: Tier::Via("f32"), isa_rank: 30,
+            kernel: "x86_64_avx512_silu_f16_16n",
+            check: || probe::avx512f(),
+            factory: x86_factory!(F16, crate::x86_64_fma::act_f16::x86_64_avx512_silu_f16_16n),
         }
     }
 }
@@ -304,6 +376,15 @@ mod armv7_descriptors {
             kernel: "armv7neon_sigmoid_f32_4n",
             check: || armv7_check!(crate::arm32::has_neon()),
             factory: armv7_factory!(F32, crate::arm32::armv7neon::armv7neon_sigmoid_f32_4n),
+        }
+    }
+    inventory::submit! {
+        ActivationImpl {
+            func: ActivationFn::Silu, dt: DatumType::F32, target: "armv7",
+            feature: Some("neon"), tier: Tier::Native, isa_rank: 10,
+            kernel: "armv7neon_silu_f32_4n",
+            check: || armv7_check!(crate::arm32::has_neon()),
+            factory: armv7_factory!(F32, crate::arm32::armv7neon::armv7neon_silu_f32_4n),
         }
     }
 }
@@ -355,7 +436,7 @@ pub fn matrix() -> String {
 
     let tier_glyph = |t: Tier| match t {
         Tier::Native => "N",
-        Tier::ViaF32 => "F",
+        Tier::Via(_) => "V",
         Tier::Generic => "G",
     };
 
@@ -402,17 +483,19 @@ mod test {
     #[test]
     fn matches_legacy_dispatch() {
         crate::setup_test_logger();
-        let legacy_f32 = (crate::ops().sigmoid_f32)().name();
-        let picked_f32 = pick(ActivationFn::Sigmoid, DatumType::F32).expect("a bound f32 sigmoid");
-        assert_eq!(
-            picked_f32.kernel, legacy_f32,
-            "registry picked {} but plug() dispatches {legacy_f32}",
-            picked_f32.kernel
-        );
-
-        let legacy_f16 = (crate::ops().sigmoid_f16)().name();
-        let picked_f16 = pick(ActivationFn::Sigmoid, DatumType::F16).expect("a bound f16 sigmoid");
-        assert_eq!(picked_f16.kernel, legacy_f16);
+        let check = |func, dt, legacy: &str| {
+            let picked =
+                pick(func, dt).unwrap_or_else(|| panic!("no bound kernel for {func:?}/{dt:?}"));
+            assert_eq!(
+                picked.kernel, legacy,
+                "{func:?}/{dt:?}: registry picked {} but plug() dispatches {legacy}",
+                picked.kernel
+            );
+        };
+        check(ActivationFn::Sigmoid, DatumType::F32, (crate::ops().sigmoid_f32)().name());
+        check(ActivationFn::Sigmoid, DatumType::F16, (crate::ops().sigmoid_f16)().name());
+        check(ActivationFn::Silu, DatumType::F32, (crate::ops().silu_f32)().name());
+        check(ActivationFn::Silu, DatumType::F16, (crate::ops().silu_f16)().name());
     }
 
     /// The picked kernel actually computes sigmoid.

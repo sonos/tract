@@ -908,15 +908,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             fn quality_color(tier: Tier) -> nu_ansi_term::Color {
                 match tier {
                     Tier::Native => Green,
-                    Tier::ViaF32 => Yellow,
+                    Tier::Via(_) => Yellow,
                     Tier::Generic => LightRed,
                 }
             }
-            fn tier_label(tier: Tier) -> &'static str {
+            fn tier_label(tier: Tier) -> String {
                 match tier {
-                    Tier::Native => "native",
-                    Tier::ViaF32 => "via-f32-in-l1",
-                    Tier::Generic => "generic",
+                    Tier::Native => "native".to_string(),
+                    Tier::Via(through) => format!("via-{through}"),
+                    Tier::Generic => "generic".to_string(),
                 }
             }
 
