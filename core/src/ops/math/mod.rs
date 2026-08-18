@@ -488,19 +488,22 @@ fn declutter_pow(
     let b = model.outlet_fact(node.inputs[1])?;
     if let Some(b) = &b.uniform {
         let b = b.cast_to_scalar::<f32>()?;
-        if b == 2.0 {
-            return Ok(Some(TypedModelPatch::replace_single_op(
-                model,
-                node,
-                &[node.inputs[0]],
-                square(),
-            )?));
+        let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+        let unary: Option<Box<dyn TypedOp>> = if b == 2.0 {
+            Some(Box::new(square()))
         } else if b == 0.5 {
+            Some(Box::new(sqrt()))
+        } else if matches!(dt, DatumType::F16 | DatumType::F32) {
+            Some(Box::new(pow_const(b)))
+        } else {
+            None
+        };
+        if let Some(unary) = unary {
             return Ok(Some(TypedModelPatch::replace_single_op(
                 model,
                 node,
                 &[node.inputs[0]],
-                sqrt(),
+                unary,
             )?));
         }
     }
@@ -529,6 +532,22 @@ element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
 };
 q: [i8, u8, i32, i32] => f32::ln;
 validation: Validation::Rounding
+);
+
+// x^c for a constant exponent: the unary form of Pow against a uniform operand,
+// going through the same powf so results match the binary op exactly.
+element_wise!(pow_const, PowConst { exponent: f32 },
+    [f16] => |op, xs| {
+        let e = op.exponent;
+        xs.iter_mut().for_each(|x| *x = f16::from_f32(x.to_f32().powf(e)));
+        Ok(())
+    },
+    [f32] => |op, xs| {
+        let e = op.exponent;
+        xs.iter_mut().for_each(|x| *x = x.powf(e));
+        Ok(())
+    };
+    validation: Validation::Rounding
 );
 
 element_wise!(square, Square, [f16, f32, f64] => |_, xs| {
