@@ -67,9 +67,12 @@ fn main() -> anyhow::Result<()> {
     )?;
     let preprocessor = patched_preprocessor.into_runnable()?;
 
-    let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
+    let mut encoder = concretize_batch(nnef.load("assets/model/encoder.nnef.tgz")?)?;
     encoder.transform("transformers_detect_all")?;
-    let encoder = gpu.prepare(concretize_batch(encoder)?)?;
+    encoder
+        .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#)?;
+    encoder.transform(r#"{"name":"select_inputs","inputs":["audio_signal"]}"#)?;
+    let encoder = gpu.prepare(encoder)?;
 
     let decoder = gpu.prepare(concretize_batch(nnef.load("assets/model/decoder.nnef.tgz")?)?)?;
     let dec_wants_length = decoder.input_count()? == 4;
@@ -82,8 +85,8 @@ fn main() -> anyhow::Result<()> {
         .collect();
     let samples = Tensor::from_slice(&[1, wav.len()], &wav)?;
 
-    let [features, feat_len] = preprocessor.run([samples])?.try_into().unwrap();
-    let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
+    let [features, _feat_len] = preprocessor.run([samples])?.try_into().unwrap();
+    let [encoded, _lens] = encoder.run([features])?.try_into().unwrap();
 
     let encoded: ArrayD<f32> = encoded.ndarray()?.into_owned();
 

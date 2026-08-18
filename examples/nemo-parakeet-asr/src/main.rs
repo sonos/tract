@@ -50,7 +50,11 @@ fn main() -> anyhow::Result<()> {
     let preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?.into_runnable()?;
 
     let mut encoder = nnef.load("assets/model/encoder.nnef.tgz")?;
+    encoder.transform(SetSymbols::new().value("BATCH", 1))?;
     encoder.transform("transformers_detect_all")?;
+    encoder
+        .transform(r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#)?;
+    encoder.transform(r#"{"name":"select_inputs","inputs":["audio_signal"]}"#)?;
     let encoder = gpu.prepare(encoder)?;
 
     let decoder = nnef.load("assets/model/decoder.nnef.tgz")?;
@@ -67,8 +71,8 @@ fn main() -> anyhow::Result<()> {
     let samples = Tensor::from_slice(&[1, wav.len()], &wav)?;
     let len = arr1(&[wav.len() as i64]).tract()?;
 
-    let [features, feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
-    let [encoded, _lens] = encoder.run([features, feat_len])?.try_into().unwrap();
+    let [features, _feat_len] = preprocessor.run([samples, len])?.try_into().unwrap();
+    let [encoded, _lens] = encoder.run([features])?.try_into().unwrap();
 
     let encoded: ArrayD<f32> = encoded.ndarray()?.into_owned();
 
