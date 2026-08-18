@@ -5,5 +5,6 @@ pub mod ops;
 pub mod rewrite_rules;
 pub mod sync;
 pub mod tensor;
+pub mod tuning;
 pub mod turn_handler;
 pub mod utils;

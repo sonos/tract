@@ -53,6 +53,30 @@ fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a Ty
     )
 }
 
+/// Extra aliasing predicates registered by downstream crates for op types
+/// this crate cannot name (e.g. tract-metal's MetalFusedAxisOp wraps an
+/// inner op whose eval may still return a view). Missing an aliasing op
+/// here silently corrupts activations (the arena recycles a region a live
+/// view still reads), so wrapper types MUST register.
+static EXTRA_ALIAS_CHECKS: std::sync::RwLock<Vec<fn(&TypedNode) -> bool>> =
+    std::sync::RwLock::new(Vec::new());
+
+pub fn register_may_alias_check(f: fn(&TypedNode) -> bool) {
+    let mut checks = EXTRA_ALIAS_CHECKS.write().expect("alias check registry poisoned");
+    if !checks.contains(&f) {
+        checks.push(f);
+    }
+}
+
+/// True for single-input ops whose eval may return a zero-copy view of
+/// their input buffer (see `DeviceTensor::try_dense_alias`): the source
+/// buffer must then stay alive as long as the aliasing node's own output.
+fn may_alias_input(node: &TypedNode) -> bool {
+    node.op_is::<crate::ops::slice::GpuSlice>()
+        || node.op_is::<crate::ops::change_axes::GpuAxisOp>()
+        || EXTRA_ALIAS_CHECKS.read().expect("alias check registry poisoned").iter().any(|f| f(node))
+}
+
 pub fn eval_device_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
@@ -74,18 +98,75 @@ pub fn eval_device_mem_req_for_nodes(
                     .unwrap_or(false)
             })
     });
+
+    // Lifetime end per node: one past the step at which it is flushed.
+    let mut end_by_node: Vec<Option<usize>> = vec![None; model.nodes().len()];
+    let step_of: HashMap<usize, usize> =
+        order.iter().enumerate().map(|(step, n)| (*n, step)).collect();
+    for n in order {
+        end_by_node[*n] = flush_lists
+            .iter()
+            .enumerate()
+            .find(|(_step, flush_list)| flush_list.contains(n))
+            .map(|it| usize::min(it.0 + 1, order.len()));
+    }
+
+    // Aliasing ops may hand out views of their input's buffer: extend the
+    // source's lifetime to the alias's own end so the region cannot be
+    // recycled while a view of it is still read. Reverse eval order
+    // propagates through alias chains (an alias's own end is final by the
+    // time its source is visited).
+    //
+    // A view that reaches a MODEL OUTPUT escapes the evaluation entirely
+    // (e.g. a device-resident KV cache output fed back as the next call's
+    // input, read while the next evaluation already runs): its source
+    // cannot live in the arena at all, since the arena storage is reused
+    // across evaluations. Those source outlets are excluded below.
+    let output_nodes: std::collections::HashSet<usize> = outputs.iter().map(|o| o.node).collect();
+    let mut escaping: std::collections::HashSet<OutletId> = outputs.iter().cloned().collect();
+    // Lifetime extensions requested on aliasing nodes by their own aliases.
+    // Kept separate from end_by_node so an extension still propagates
+    // transitively through a mid-chain alias that has no flush entry of its
+    // own (e.g. one followed by a ToHost sync): the original source must
+    // stay alive until the LAST second-level view is done, not just until
+    // the mid-chain alias's last direct consumer.
+    let mut alias_ext: Vec<Option<usize>> = vec![None; model.nodes().len()];
+    for n in order.iter().rev() {
+        let node = model.node(*n);
+        if !may_alias_input(node) || node.inputs.is_empty() {
+            continue;
+        }
+        if output_nodes.contains(n)
+            || (0..node.outputs.len()).any(|slot| escaping.contains(&OutletId::new(*n, slot)))
+        {
+            escaping.insert(node.inputs[0]);
+        }
+        // No flush entry (e.g. followed by a ToHost sync): fall back to one
+        // past the last consumer's step.
+        let last_consumer_end = node
+            .outputs
+            .iter()
+            .flat_map(|o| o.successors.iter())
+            .filter_map(|succ| step_of.get(&succ.node))
+            .max()
+            .map(|s| s + 1);
+        let v_end = [end_by_node[*n], alias_ext[*n], last_consumer_end].into_iter().flatten().max();
+        let src = node.inputs[0].node;
+        if let Some(v_end) = v_end {
+            if let Some(src_end) = end_by_node[src].as_mut() {
+                *src_end = (*src_end).max(v_end);
+            }
+            alias_ext[src] = Some(alias_ext[src].map_or(v_end, |e| e.max(v_end)));
+        }
+    }
+
     let mut scoped_nodes = tvec![];
 
     for (step, n) in order.iter().enumerate() {
         let lifetime_start = step;
 
-        let lifetime_end = flush_lists
-            .iter()
-            .enumerate()
-            .find(|(_step, flush_list)| flush_list.contains(n))
-            .map(|it| usize::min(it.0 + 1, order.len()));
         // Ignore nodes that won't be flushed from Device.
-        let Some(lifetime_end) = lifetime_end else {
+        let Some(lifetime_end) = end_by_node[*n] else {
             continue;
         };
 
@@ -102,6 +183,9 @@ pub fn eval_device_mem_req_for_nodes(
 
         for (slot, fact) in out_device_tmp_facts.iter().enumerate() {
             let outlet_id = OutletId { node: *n, slot };
+            if escaping.contains(&outlet_id) {
+                continue;
+            }
             for buff_size in fact.buffer_sizes() {
                 scoped_nodes.push(NodeMemReq {
                     outlet_id,
@@ -258,22 +342,18 @@ impl DeviceMemSchema {
     /// Evaluate peak memory size for given symbols. The return value is lower or equal to the memory
     /// size of the schema. The difference between peak memory size and memory size represents the
     /// memory fragmentation introduced by the schema.
-    /// Per-step arena occupancy as symbolic expressions; the peak for a given
-    /// symbol assignment is the max of these evaluated. These do not depend on
-    /// symbol values, so a caller sweeping many assignments should compute them
-    /// once rather than re-summing the symbolic terms for every point.
-    pub fn peak_memory_terms(&self) -> Vec<TDim> {
-        self.by_steps
-            .iter()
-            .map(|active_nodes| active_nodes.iter().flatten().map(|it| it.mem_size.clone()).sum())
-            .collect()
-    }
-
     pub fn eval_peak_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
         Ok(self
-            .peak_memory_terms()
+            .by_steps
             .iter()
-            .map(|term| term.eval_to_i64(symbols))
+            .map(|active_nodes| {
+                active_nodes
+                    .iter()
+                    .flatten()
+                    .map(|it| it.mem_size.clone())
+                    .sum::<TDim>()
+                    .eval_to_i64(symbols)
+            })
             .collect::<TractResult<Vec<_>>>()?
             .into_iter()
             .max()
@@ -325,6 +405,11 @@ impl DeviceMemSchema {
     /// Build a memory schema for given model and execution order. The hint is used to optimize
     /// the memory schema because it is based on symbolic dimensions. That doesn't mean it will be
     /// optimal for all possible values for symbolic dimensions.
+    ///
+    /// Symbols missing from the hint fall back to a representative default
+    /// (`GpuTuning::mem_hint_default_dim`, env `TRACT_GPU_MEM_HINT_DEFAULT`):
+    /// the hint only drives the partition packing order, never correctness,
+    /// so an incomplete (or empty) hint still yields a valid schema.
     pub fn build(
         model: &TypedModel,
         order: &[usize],
@@ -333,9 +418,21 @@ impl DeviceMemSchema {
         let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
 
         let exotic_facts = collect_exotic_facts(model)?;
+        let default_dim: i64 = crate::tuning::tuning().mem_hint_default_dim;
+        let mut hint = hint.clone();
+        for node_mem in &nodes_mem_req {
+            for sym in node_mem.mem_size.symbols() {
+                if hint.get(&sym).is_none() {
+                    log::debug!(
+                        "memory schema hint missing symbol {sym}, defaulting to {default_dim}"
+                    );
+                    hint.set(&sym, default_dim);
+                }
+            }
+        }
         let hinted_mem_size = nodes_mem_req
             .iter()
-            .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(hint)?)))
+            .map(|node_mem| Ok((node_mem.outlet_id, node_mem.mem_size.eval_to_i64(&hint)?)))
             .collect::<TractResult<HashMap<OutletId, i64>>>()?;
 
         nodes_mem_req.sort_by(|lhs, rhs| {
@@ -385,6 +482,64 @@ impl DeviceMemSchema {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::slice::GpuSlice;
+    use crate::sync::{DeviceSync, DeviceSyncKind};
+    use tract_core::ops::array::Slice;
+
+    /// Alias chain A(slice) -> V1(slice) where V1 feeds both a ToHost sync
+    /// (so V1 gets no flush entry) and a second-level slice B whose own
+    /// consumers run much later. A's arena region must stay reserved until
+    /// B's end: the extension has to propagate transitively through V1 even
+    /// though end_by_node[V1] is None.
+    #[test]
+    fn test_alias_lifetime_extension_through_unflushed_mid_chain_alias() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::datum_type().fact([8, 8]))?;
+        let xd = model.wire_node("xd", DeviceSync::new(DeviceSyncKind::ToDevice), &[x])?[0];
+        let a = model.wire_node("a", GpuSlice::new(Slice::new(0, 0, 8)), &[xd])?[0];
+        let v1 = model.wire_node("v1", GpuSlice::new(Slice::new(0, 0, 4)), &[a])?[0];
+        let v1_host =
+            model.wire_node("v1_host", DeviceSync::new(DeviceSyncKind::ToHost), &[v1])?[0];
+        let b = model.wire_node("b", GpuSlice::new(Slice::new(0, 0, 2)), &[v1])?[0];
+        // Filler chain pushing B's consumer to a later step.
+        let f1 = model.wire_node("f1", GpuSlice::new(Slice::new(0, 4, 8)), &[a])?[0];
+        let f1_host =
+            model.wire_node("f1_host", DeviceSync::new(DeviceSyncKind::ToHost), &[f1])?[0];
+        let c = model.wire_node("c", GpuSlice::new(Slice::new(0, 0, 1)), &[b])?[0];
+        let c_host = model.wire_node("c_host", DeviceSync::new(DeviceSyncKind::ToHost), &[c])?[0];
+        model.select_output_outlets(&[v1_host, f1_host, c_host])?;
+
+        let order: Vec<usize> = vec![
+            x.node,
+            xd.node,
+            a.node,
+            v1.node,
+            v1_host.node,
+            b.node,
+            f1.node,
+            f1_host.node,
+            c.node,
+            c_host.node,
+        ];
+        let reqs = eval_device_mem_req_for_nodes(&model, &order)?;
+        let step_of = |n: usize| order.iter().position(|it| *it == n).unwrap();
+
+        let a_req = reqs
+            .iter()
+            .find(|r| r.outlet_id.node == a.node)
+            .context("node a should be arena-tracked")?;
+        // c (a view of b, itself a view of v1, itself a view of a) is the
+        // last second-level consumer: a must live at least until one past
+        // c's step.
+        let c_end = step_of(c.node) + 1;
+        assert!(
+            a_req.lifetime.end >= c_end,
+            "a's lifetime end {} must reach past its transitive alias consumer c (end {})",
+            a_req.lifetime.end,
+            c_end
+        );
+        Ok(())
+    }
 
     #[test]
     fn test_lifetime_is_disjoint() {

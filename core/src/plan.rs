@@ -117,6 +117,12 @@ pub struct EvalContext<'a> {
 pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
+    /// Session-lived scratch owned by the plan's session handler (e.g. the
+    /// GPU memory arena storage cache). Unlike `shared` it survives clones of
+    /// the owning [`SimpleState`] -- a state cloned across turns keeps this,
+    /// so it must be shareable: cloned states share it through the `Arc` and
+    /// the owner is responsible for interior synchronization.
+    pub session_scratch: Option<Arc<dyn std::any::Any + Send + Sync>>,
     pub values: Vec<Option<TVec<TValue>>>,
     /// Resources installed for the turn by a [`TurnStateHandler`], reachable by
     /// ops through [`EvalContext::shared`]. Entries outlive the turn --
@@ -164,6 +170,7 @@ impl Default for TurnState {
         TurnState {
             resolved_symbols: SymbolValues::default(),
             scenario: None,
+            session_scratch: None,
             values: vec![],
             shared: TurnShared::new(),
             seating: Seating::single(),
@@ -176,6 +183,7 @@ impl Clone for TurnState {
         TurnState {
             resolved_symbols: self.resolved_symbols.clone(),
             scenario: self.scenario,
+            session_scratch: self.session_scratch.clone(),
             values: vec![],
             shared: TurnShared::new(),
             seating: self.seating.clone(),
@@ -548,7 +556,10 @@ where
                     .iter()
                     .all(|s| self.turn_state.resolved_symbols.get(s).is_some());
 
+            let log_slow_nodes: Option<f64> =
+                std::env::var("TRACT_LOG_SLOW_NODES_US").ok().and_then(|v| v.parse::<f64>().ok());
             for (step, n) in self.plan.order.iter().enumerate() {
+                let slow_t0 = log_slow_nodes.map(|_| std::time::Instant::now());
                 let node = self.plan.model.node(*n);
                 trace!("Running step {step}, node {node}");
                 let mut inputs: TVec<TValue> = tvec![];
@@ -651,6 +662,12 @@ where
                 }
 
                 self.turn_state.values[node.id] = Some(vs);
+                if let (Some(t0), Some(thresh)) = (slow_t0, log_slow_nodes) {
+                    let us = t0.elapsed().as_secs_f64() * 1e6;
+                    if us >= thresh {
+                        eprintln!("slow-node {us:.0} us: {node}");
+                    }
+                }
             }
             self.plan
                 .turn_handler
