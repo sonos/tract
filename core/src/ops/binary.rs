@@ -409,7 +409,11 @@ impl TypedOp for TypedBinOp {
                         model,
                         node,
                         &inputs,
-                        OptBinByScalar { binop: actual_core_op, eval_fn },
+                        OptBinByScalar {
+                            binop: actual_core_op,
+                            eval_fn,
+                            linalg_op: actual_linalg_op,
+                        },
                     )?
                     .with_context("ByScalar"),
                 ));
@@ -433,6 +437,63 @@ impl TypedOp for TypedBinOp {
         Ok(None)
     }
     as_op!();
+}
+
+/// `a[i*period + j] = op(a[i*period + j], b[i])` in one pass, for the float types
+/// that carry a short trailing broadcast. Returns false when the datum type has
+/// no typed path here, leaving the caller on the generic route.
+fn repeat_broadcast(op: BinOp, a: &mut Tensor, b: &Tensor, period: usize) -> TractResult<bool> {
+    macro_rules! run {
+        ($t:ty) => {{
+            let bview = b.view();
+            let bs: &[$t] = bview.as_slice::<$t>()?;
+            let mut aview = a.view_mut();
+            let av: &mut [$t] = aview.as_slice_mut::<$t>()?;
+            match op {
+                BinOp::Mul => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x *= s)
+                    }
+                }
+                BinOp::Add => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x += s)
+                    }
+                }
+                BinOp::Sub => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x -= s)
+                    }
+                }
+                BinOp::SubF => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x = s - *x)
+                    }
+                }
+                BinOp::Min => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x = if *x < s { *x } else { s })
+                    }
+                }
+                BinOp::Max => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x = if *x > s { *x } else { s })
+                    }
+                }
+            }
+            return Ok(true);
+        }};
+    }
+    if a.datum_type() != b.datum_type() {
+        return Ok(false);
+    }
+    if a.datum_type() == f32::datum_type() {
+        run!(f32)
+    }
+    if a.datum_type() == f16::datum_type() {
+        run!(f16)
+    }
+    Ok(false)
 }
 
 fn core_op_for_linalg_op(linalg: &BinOp) -> Box<dyn BinMiniOp> {
@@ -602,7 +663,16 @@ fn find_most_efficient_config(
         };
 
         let min_num_elements = 32;
-        let by_scalar_should_be_efficient = gt_tdim(num_by_scalar_elements, min_num_elements);
+        // A short by-scalar group is still worth taking when the tensor is big:
+        // the eval reads b in place for those, so what pays off is the total
+        // element count, not the group. Requiring >= 2 also confirms b really has
+        // a trailing unary axis, which identical shapes satisfy only vacuously.
+        let total_elements = a_shape.iter().product::<TDim>();
+        let by_scalar_should_be_efficient =
+            gt_tdim(num_by_scalar_elements.clone(), min_num_elements)
+                || (by_scalar_is_possible
+                    && gt_tdim(num_by_scalar_elements, 2)
+                    && gt_tdim(total_elements, 256));
         let unicast_should_be_efficient = gt_tdim(num_unicast_elements, min_num_elements);
         return Ok((by_scalar_should_be_efficient, unicast_should_be_efficient));
     }
@@ -615,6 +685,7 @@ pub fn gt_tdim(x: TDim, min_val: i64) -> bool {
 
 #[derive(Clone)]
 pub struct OptBinByScalar {
+    pub linalg_op: BinOp,
     pub binop: Box<dyn BinMiniOp>,
     eval_fn: Arc<LinalgFn>,
 }
@@ -692,6 +763,12 @@ impl EvalOp for OptBinByScalar {
         let n_blocks: usize = a.shape()[..first_unary_axis].iter().product();
         // A zero-sized dim zeroes n_blocks, and par_bin no-ops on an empty a.
         let period = a.len().checked_div(n_blocks).unwrap_or(0);
+        // A short period would mean one kernel dispatch per handful of elements,
+        // which costs far more than the arithmetic. Read b's scalar straight out
+        // of place instead, one pass, no broadcast buffer.
+        if period > 1 && period < 16 && repeat_broadcast(self.linalg_op, &mut a, &b, period)? {
+            return Ok(tvec!(a.into_tvalue()));
+        }
         tract_linalg::multithread::par_bin(&*self.eval_fn, &mut a, &b, period, BShare::PerBlock)?;
         Ok(tvec!(a.into_tvalue()))
     }
@@ -1271,7 +1348,11 @@ mod tests {
         let b = Tensor::zero::<f32>(&[0, 4, 1]).unwrap();
         let linalg_fn = tract_linalg::bin_by_scalar(f32::datum_type(), BinOp::Add)
             .expect("f32 by_scalar Add kernel available");
-        let op = OptBinByScalar { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
+        let op = OptBinByScalar {
+            binop: Box::new(Add),
+            eval_fn: Arc::from(linalg_fn),
+            linalg_op: BinOp::Add,
+        };
         let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 8]);
 
