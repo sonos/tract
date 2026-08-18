@@ -69,10 +69,7 @@ impl NemotronModels {
         let blank_id = vocab.len();
 
         let nnef = tract::nnef()?.with_tract_transformers()?;
-        let runtime = ["cuda", "metal", "default"]
-            .iter()
-            .find_map(|rt| tract::runtime_for_name(rt).ok())
-            .unwrap();
+        let runtime = tract::runtime_for_name("gpu-or-cpu")?;
         eprintln!("runtime: {}", runtime.name()?);
 
         // Preprocessor: pulsify over the raw-audio time axis. Drop the `length`

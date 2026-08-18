@@ -158,11 +158,8 @@ fn main() -> Result<()> {
     eprintln!("  Scheduler: {num_steps} steps, init_sigma={init_noise_sigma:.4}");
 
     // --- Pick runtime ---
-    let gpu = ["cuda", "metal", "default"]
-        .iter()
-        .find_map(|rt| tract::runtime_for_name(rt).ok())
-        .unwrap();
-    eprintln!("Using runtime: {gpu:?}");
+    let gpu = tract::runtime_for_name("gpu-or-cpu")?;
+    eprintln!("runtime: {}", gpu.name()?);
 
     // --- Text encoding (load each encoder, run, drop to save VRAM) ---
     eprintln!("Running text encoders...");
