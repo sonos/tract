@@ -5,12 +5,7 @@ use cudarc::cudnn::{
     ConvDescriptor, ConvForward, CudnnDataType, FilterDescriptor, TensorDescriptor,
 };
 use cudarc::driver::{CudaStream, LaunchArgs, LaunchConfig, PushKernelArg};
-use std::any::Any;
-use std::cell::RefCell;
 use std::fmt::Debug;
-use std::ops::Deref;
-use std::sync::Weak;
-use std::thread::LocalKey;
 use tract_core::dyn_clone::{self, DynClone};
 use tract_core::internal::*;
 use tract_core::ops::cnn::{Conv, KernelFormat};
@@ -25,8 +20,6 @@ struct TypedDescriptors<T: CudnnDataType> {
     w: FilterDescriptor<T>,
     y: TensorDescriptor<T>,
 }
-
-unsafe impl<T: CudnnDataType> Send for TypedDescriptors<T> {}
 
 fn build_descriptors<T: CudnnDataType>(
     stream: &TractCudaStream,
