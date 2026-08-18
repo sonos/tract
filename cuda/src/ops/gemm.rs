@@ -29,7 +29,8 @@ impl CudaGgmlGemm {
         if a.datum_type.is_number() && b.datum_type.is_number() && a.is_plain() && b.is_plain() {
             ensure!(a.rank() == b.rank());
             ensure!(a.rank() >= 2);
-            ensure!(a.shape[a.rank() - 1] == b.shape[b.rank() - 1]);
+            let (ak, bk) = (&a.shape[a.rank() - 1], &b.shape[b.rank() - 1]);
+            ensure!(ak.compatible_with(bk), "Incompatible contraction dim: {ak} vs {bk}");
             let out_shape = GgmlGemm.output_shape(&a.shape, &b.shape);
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
         } else if as_quant_fact(inputs[1], &Q4_0).is_some() {
