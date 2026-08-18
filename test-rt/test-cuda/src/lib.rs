@@ -10,7 +10,7 @@ use tract_core::tract_data::itertools::Itertools;
 #[path = "../suite.rs"]
 mod suite;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct CudaTestTransformState {
     state: TypedSimpleState,
     transpose_inputs: bool,

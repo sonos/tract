@@ -62,7 +62,7 @@ mod run_as_f16 {
         }
     }
 
-    #[derive(Debug)]
+    #[derive(Clone, Debug)]
     struct StateAsF16(TypedSimpleState, TVec<DatumType>);
 
     impl State for StateAsF16 {
