@@ -2594,6 +2594,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "nemo-nemotron35-streaming-asr"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "float-ord",
+ "hound",
+ "itertools 0.15.0",
+ "ndarray",
+ "serde_json",
+ "tract",
+]
+
+[[package]]
 name = "nemo-parakeet-asr"
 version = "0.1.0"
 dependencies = [
