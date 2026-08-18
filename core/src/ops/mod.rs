@@ -99,7 +99,7 @@ pub trait OpStateFreeze {
 
 dyn_clone::clone_trait_object!(FrozenOpState);
 
-pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
+pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast + Send {
     fn load_from(
         &mut self,
         _: &mut TurnState,

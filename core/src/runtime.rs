@@ -72,7 +72,7 @@ pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
 }
 impl_downcast!(Runnable);
 
-pub trait State: Any + Downcast + Debug + 'static {
+pub trait State: Any + Downcast + Debug + Send + DynClone + 'static {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 
     fn runnable(&self) -> &dyn Runnable;
@@ -92,6 +92,7 @@ pub trait State: Any + Downcast + Debug + 'static {
     }
 }
 impl_downcast!(State);
+dyn_clone::clone_trait_object!(State);
 
 pub trait FrozenState: Any + Debug + DynClone + Send {
     fn unfreeze(&self) -> Box<dyn State>;
