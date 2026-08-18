@@ -95,11 +95,11 @@ impl ModelTransform for PatchTransform {
                 _ => continue,
             };
 
-            let is_model_input =
-                model.inputs.iter().find(|&&inp| model.node(inp.node).name == *lhs_name).copied();
+            let is_named_wire =
+                model.nodes.iter().find(|n| n.name == *lhs_name).map(|n| OutletId::new(n.id, 0));
 
-            if let Some(input_outlet) = is_model_input {
-                let expected_fact = model.outlet_fact(input_outlet)?;
+            if let Some(old_outlet) = is_named_wire {
+                let expected_fact = model.outlet_fact(old_outlet)?;
                 let mut wire = patch_outlet;
                 let patch_fact = patch.model.outlet_fact(wire)?.clone();
                 // Cast dtype if needed (e.g. TDim → I64)
@@ -123,19 +123,19 @@ impl ModelTransform for PatchTransform {
                         &[wire],
                     )?[0];
                 }
-                // Shunt consumers of the input outlet to the new wire.  Like
-                // `TypedModelPatch::shunt_outside` we do NOT touch
-                // `model.inputs` — the original input stays in the list as
-                // a disconnected Source.  Use `select_inputs(...)` after the
-                // patch to drop it explicitly.
-                patch.shunt_outside(model, input_outlet, wire)?;
+                // Shunt consumers of the old wire to the new one. If `lhs_name`
+                // was a model input, we do NOT touch `model.inputs` — like
+                // `TypedModelPatch::shunt_outside`, the original input stays in
+                // the list as a disconnected Source. Use `select_inputs(...)`
+                // after the patch to drop it explicitly.
+                patch.shunt_outside(model, old_outlet, wire)?;
             } else if self.0.new_outputs.contains(lhs_name) {
                 new_output_names.push(lhs_name.clone());
             } else {
                 let is_intermediate = i < lhs_names.len() - 1;
                 if !is_intermediate {
                     bail!(
-                        "Wire '{}' is not a model input/intermediate and not declared in new_outputs",
+                        "Wire '{}' does not name an existing node and is not declared in new_outputs",
                         lhs_name
                     );
                 }
