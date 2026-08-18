@@ -352,8 +352,7 @@ impl RunnableInterface for Runnable {
     }
 
     fn spawn_state(&self) -> Result<State> {
-        let state = self.0.spawn()?;
-        Ok(State(Some(state.freeze_into())))
+        Ok(State(Some(self.0.spawn()?)))
     }
 
     fn input_count(&self) -> Result<usize> {
@@ -424,7 +423,7 @@ impl RunnableInterface for Runnable {
 }
 
 // STATE
-pub struct State(Option<Box<dyn tract_nnef::internal::FrozenState>>);
+pub struct State(Option<Box<dyn tract_nnef::internal::State>>);
 
 impl Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -434,12 +433,9 @@ impl Debug for State {
 
 impl Clone for State {
     fn clone(&self) -> Self {
-        State(self.0.as_ref().map(|s| tract_nnef::tract_core::dyn_clone::clone_box(&**s)))
+        State(self.0.clone())
     }
 }
-
-// Safety: FrozenState is Send
-unsafe impl Send for State {}
 
 impl StateInterface for State {
     type Fact = Fact;
@@ -456,10 +452,9 @@ impl StateInterface for State {
     fn run(&mut self, inputs: impl IntoInputs<Tensor>) -> Result<Vec<Tensor>> {
         let inputs: TVec<TValue> =
             inputs.into_inputs()?.into_iter().map(|v| v.0.into_tvalue()).collect();
-        let frozen = self.0.take().context("State has been invalidated")?;
-        let mut state = frozen.unfreeze();
+        let mut state = self.0.take().context("State has been invalidated")?;
         let outputs = state.run(inputs)?;
-        self.0 = Some(state.freeze_into());
+        self.0 = Some(state);
         Ok(outputs.into_iter().map(|t| Tensor(t.into_arc_tensor())).collect())
     }
 }

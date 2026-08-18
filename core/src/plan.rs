@@ -824,4 +824,9 @@ mod test {
     fn frozen_type_state_is_send() {
         is_send::<TypedFrozenSimpleState>();
     }
+
+    #[test]
+    fn type_state_is_send() {
+        is_send::<TypedSimpleState>();
+    }
 }
