@@ -223,4 +223,25 @@ mod test {
         let table = SymbolScope::default();
         assert_eq!(parse_tdim(&table, "floor(a)").unwrap(), table.sym("a").to_dim());
     }
+
+    #[test]
+    fn parse_slash_ids() {
+        let table = SymbolScope::default();
+        assert_eq!(parse_tdim(&table, "foo/bar").unwrap(), table.sym("foo/bar").into());
+        assert_eq!(parse_tdim(&table, "foo/bar/baz").unwrap(), table.sym("foo/bar/baz").into());
+    }
+
+    #[test]
+    fn parse_slash_ids_arith() {
+        let table = SymbolScope::default();
+        assert_eq!(parse_tdim(&table, "foo/bar/2").unwrap(), table.sym("foo/bar").to_dim() / 2);
+    }
+
+    #[test]
+    fn parse_slash_display_roundtrip() {
+        let table = SymbolScope::default();
+        let original: TDim = table.sym("foo/bar").into();
+        let reparsed = parse_tdim(&table, &format!("{original}")).unwrap();
+        assert_eq!(reparsed, original);
+    }
 }
