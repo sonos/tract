@@ -42,10 +42,8 @@ fn main() -> anyhow::Result<()> {
     let vocab: Vec<&str> = vocab.iter().map(|v| v.as_str().unwrap()).collect();
 
     let nnef = tract::nnef()?.with_tract_transformers()?;
-    let gpu = ["cuda", "metal", "default"]
-        .iter()
-        .find_map(|rt| tract::runtime_for_name(rt).ok())
-        .unwrap();
+    let gpu = tract::runtime_for_name("gpu-or-cpu")?;
+    eprintln!("runtime: {}", gpu.name()?);
 
     let preprocessor = nnef.load("assets/model/preprocessor.nnef.tgz")?.into_runnable()?;
 

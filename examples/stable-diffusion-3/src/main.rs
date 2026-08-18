@@ -155,11 +155,8 @@ fn main() -> Result<()> {
     eprintln!("  Scheduler: {num_steps} steps, shift=3.0, init_sigma={init_sigma:.4}");
 
     // --- Pick runtime ---
-    let gpu = ["cuda", "metal", "default"]
-        .iter()
-        .find_map(|rt| tract::runtime_for_name(rt).ok())
-        .unwrap();
-    eprintln!("Using runtime: {gpu:?}");
+    let gpu = tract::runtime_for_name("gpu-or-cpu")?;
+    eprintln!("runtime: {}", gpu.name()?);
 
     // --- Load models ---
     // Text encoders run on CPU (T5-XXL is 18GB alone); transformer + VAE go on GPU.
