@@ -11,7 +11,7 @@ pub struct GpuDynKVCacheState {
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
-    kv_cache: Option<TValue>,
+    kv_cache: Option<Arc<Tensor>>,
 }
 
 impl OpState for GpuDynKVCacheState {
@@ -26,7 +26,7 @@ impl OpState for GpuDynKVCacheState {
             self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
-        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_tensor().into_tvalue());
+        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_tensor().into_arc_tensor());
         Ok(())
     }
 
@@ -65,7 +65,7 @@ impl OpState for GpuDynKVCacheState {
         let mut op_inputs = TVec::new();
 
         if let Some(kv_cache) = self.kv_cache.take() {
-            op_inputs.push(kv_cache);
+            op_inputs.push(kv_cache.into_tvalue());
         }
 
         op_inputs.push(inputs.into_iter().next().unwrap());
@@ -108,7 +108,7 @@ impl OpState for GpuDynKVCacheState {
         }
 
         let res = output.into_tensor().into_tvalue();
-        self.kv_cache = Some(res.clone());
+        self.kv_cache = Some(res.clone().into_arc_tensor());
         Ok(tvec!(res))
     }
 }
@@ -118,7 +118,7 @@ impl GpuDynKVCacheState {
         if let Some(v) = &mut self.kv_cache {
             let mut t: Tensor = v.to_device_tensor()?.to_host()?.into_tensor();
             t = t.slice(self.axis, 0, len)?;
-            *v = t.into_device()?.into_tensor().into_tvalue();
+            *v = t.into_device()?.into_tensor().into_arc_tensor();
         }
         Ok(())
     }
@@ -162,7 +162,7 @@ impl FrozenOpState for FrozenGpuDynKVCacheState {
             name: self.name.clone(),
             axis: self.axis,
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor().into_tvalue()),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor().into_arc_tensor()),
         })
     }
 }

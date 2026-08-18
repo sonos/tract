@@ -71,7 +71,7 @@ pub struct DynKeyValueCacheState {
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
-    kv_cache: Option<TValue>,
+    kv_cache: Option<Arc<Tensor>>,
 }
 
 impl DynKeyValueCacheState {
@@ -111,7 +111,7 @@ impl DynKeyValueCacheState {
 
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
         if let Some(t) = self.kv_cache.as_mut() {
-            *t = t.slice(self.axis, 0, len)?.into_tvalue();
+            *t = t.slice(self.axis, 0, len)?.into_arc_tensor();
         } else {
             bail!("Can not truncate a zero-len kv-cache value");
         }
@@ -128,14 +128,14 @@ impl OpState for DynKeyValueCacheState {
         // KV Cache fact is always at index 0
         let kv_cache_init = states.next().context("Not enough state initializers")?;
         Self::resolve_symbols(state, self.past_sequence_fact.clone(), Some(kv_cache_init.shape()))?;
-        self.kv_cache = Some(kv_cache_init.clone());
+        self.kv_cache = Some(kv_cache_init.into_arc_tensor());
 
         Ok(())
     }
 
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if let Some(kv_cache) = &self.kv_cache {
-            states.push(kv_cache.clone());
+            states.push(kv_cache.clone().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
@@ -164,11 +164,11 @@ impl OpState for DynKeyValueCacheState {
         let input = args_1!(inputs);
         // build output
         let output = if let Some(curr) = self.kv_cache.take() {
-            TypedConcat { axis: self.axis }.eval(tvec![curr, input])?.remove(0)
+            TypedConcat { axis: self.axis }.eval(tvec![curr.into_tvalue(), input])?.remove(0)
         } else {
             input
         };
-        self.kv_cache = Some(output.clone());
+        self.kv_cache = Some(output.clone().into_arc_tensor());
 
         Ok(tvec!(output))
     }
@@ -272,7 +272,7 @@ impl FrozenOpState for FrozenDynKeyValueCacheState {
             axis: self.axis,
             name: self.name.clone(),
             past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue()),
+            kv_cache: self.kv_cache.clone().map(|t| t.into_arc_tensor()),
         })
     }
 }

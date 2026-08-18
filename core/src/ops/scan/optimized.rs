@@ -77,7 +77,7 @@ impl EvalOp for OptScan {
 pub struct State {
     op: Arc<ScanOpParams>,
     position: usize,
-    hidden_state: TVec<TValue>,
+    hidden_state: TVec<Arc<Tensor>>,
     pub model_state: TypedSimpleState,
 }
 
@@ -114,7 +114,7 @@ impl FrozenOpState for FrozenState {
         Box::new(State {
             op: self.op.clone(),
             position: self.position,
-            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tvalue()).collect(),
+            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_arc_tensor()).collect(),
             model_state: self.model_state.unfreeze(),
         })
     }
@@ -206,7 +206,7 @@ impl OpState for State {
         if hidden_state.len() == 0 {
             for (slot, input) in op.input_mapping.iter().enumerate() {
                 if input.is_state() {
-                    hidden_state.push(inputs[slot].clone());
+                    hidden_state.push(inputs[slot].clone().into_arc_tensor());
                 }
             }
         }
@@ -252,7 +252,7 @@ impl OpState for State {
             iter_inputs.clear();
             for (slot, m) in op.input_mapping.iter().enumerate() {
                 iter_inputs.push(match m {
-                    InputMapping::State => hidden_state.pop().unwrap(),
+                    InputMapping::State => hidden_state.pop().unwrap().into_tvalue(),
                     InputMapping::Scan(info) => {
                         Self::slice_input(&inputs[slot], info.axis, i, info.chunk)?.into_tvalue()
                     }
@@ -284,7 +284,7 @@ impl OpState for State {
                     outputs[slot] = v.clone().into_tensor();
                 }
                 if mapping.state {
-                    hidden_state.push(v);
+                    hidden_state.push(v.into_arc_tensor());
                 }
             }
         }
