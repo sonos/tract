@@ -12,6 +12,28 @@ fn argmax(slice: &[f32]) -> Option<usize> {
     slice.iter().position_max_by_key(|x| FloatOrd(**x))
 }
 
+/// One prednet (decoder) step, tolerant of the split-RNNT export shape. t2n>=0.24
+/// emits a `target_length` input and a `prednet_lengths` output, but when the
+/// latter is a pass-through tract prunes both, leaving the older 3-in/3-out
+/// shape. Detect via input count; the two states are always the last outputs.
+fn run_decoder(
+    decoder: &Runnable,
+    wants_length: bool,
+    tokens: Tensor,
+    n_tokens: i32,
+    state_0: Tensor,
+    state_1: Tensor,
+) -> anyhow::Result<(Tensor, Tensor, Tensor)> {
+    let mut inputs = vec![tokens];
+    if wants_length {
+        inputs.push(Tensor::from_slice(&[1], &[n_tokens])?);
+    }
+    inputs.push(state_0);
+    inputs.push(state_1);
+    let out = decoder.run(inputs)?;
+    Ok((out[0].clone(), out[out.len() - 2].clone(), out[out.len() - 1].clone()))
+}
+
 fn concretize_batch(mut model: Model) -> anyhow::Result<Model> {
     model.transform(SetSymbols::new().value("BATCH", 1))?;
     Ok(model)
@@ -50,6 +72,7 @@ fn main() -> anyhow::Result<()> {
     let encoder = gpu.prepare(concretize_batch(encoder)?)?;
 
     let decoder = gpu.prepare(concretize_batch(nnef.load("assets/model/decoder.nnef.tgz")?)?)?;
+    let dec_wants_length = decoder.input_count()? == 4;
     let joint = gpu.prepare(concretize_batch(nnef.load("assets/model/joint.nnef.tgz")?)?)?;
 
     // soundfile (Python) normalizes i16 PCM to [-1, 1]; match that here
@@ -76,8 +99,8 @@ fn main() -> anyhow::Result<()> {
     let warmup_tokens = Tensor::from_slice(&[1, 2], &[blank_id as i32, blank_id as i32])?;
     let state_0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
     let state_1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
-    let [warmup_out, mut state_0, mut state_1] =
-        decoder.run([warmup_tokens, state_0, state_1])?.try_into().unwrap();
+    let (warmup_out, mut state_0, mut state_1) =
+        run_decoder(&decoder, dec_wants_length, warmup_tokens, 2, state_0, state_1)?;
     // warmup_out shape: [1, 640, 2] — take last timestep → [1, 640, 1]
     let warmup_out: ArrayD<f32> = warmup_out.ndarray()?.into_owned();
     let mut token = warmup_out.slice_axis(Axis(2), (1..2).into()).to_owned().tract()?;
@@ -91,8 +114,9 @@ fn main() -> anyhow::Result<()> {
             frame_ix += 1;
         } else {
             hyp.push(token_id);
-            token = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-            [token, state_0, state_1] = decoder.run([token, state_0, state_1])?.try_into().unwrap();
+            let next = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
+            (token, state_0, state_1) =
+                run_decoder(&decoder, dec_wants_length, next, 1, state_0, state_1)?;
         }
     }
 
