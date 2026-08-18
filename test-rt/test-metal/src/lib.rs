@@ -13,7 +13,7 @@ mod ggml_suite;
 #[path = "../suite.rs"]
 mod suite;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct MetalTestTransformState {
     state: TypedSimpleState,
     transpose_inputs: bool,

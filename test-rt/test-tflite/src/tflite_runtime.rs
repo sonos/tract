@@ -65,7 +65,7 @@ impl Debug for TfliteRunnable {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct TfliteState(TfliteRunnable);
 
 impl State for TfliteState {
