@@ -68,6 +68,7 @@ struct NemotronModels {
     joint: Runnable,
     vocab: Vec<String>,
     blank_id: usize,
+    dec_wants_length: bool,
     pp_delay: usize,
     pp_out_axis: usize,
     pp_out_pulse: usize,
@@ -120,7 +121,7 @@ impl NemotronModels {
         eprintln!(" done.");
 
         eprint!("Loading encoder to {}...", runtime.name()?);
-        let mut enc = nnef.load(format!("{assets}/model/encoder.p1.nnef.tgz"))?;
+        let mut enc = nnef.load(format!("{assets}/model/encoder.nnef.tgz"))?;
         enc.transform(SetSymbols::new().value("BATCH", 1))?;
         enc.transform("transformers_detect_all")?;
         enc.transform(
@@ -141,6 +142,7 @@ impl NemotronModels {
         let mut dec = nnef.load(format!("{assets}/model/decoder.nnef.tgz"))?;
         dec.transform(SetSymbols::new().value("BATCH", 1).value("TARGETS__TIME", 1))?;
         let decoder = runtime.prepare(dec)?;
+        let dec_wants_length = decoder.input_count()? == 4;
         eprintln!(" done.");
 
         eprint!("Loading joint to {}...", runtime.name()?);
@@ -166,6 +168,7 @@ impl NemotronModels {
                 joint,
                 vocab,
                 blank_id,
+                dec_wants_length,
                 pp_delay,
                 pp_out_axis,
                 pp_out_pulse,
@@ -177,6 +180,27 @@ impl NemotronModels {
             }),
             load_time,
         ))
+    }
+
+    /// One prednet (decoder) step, tolerant of the split-RNNT export shape.
+    /// t2n>=0.24 adds a `target_length` input and a `prednet_lengths` output; when
+    /// the latter is a pass-through tract prunes both back to the older 3-in/3-out
+    /// shape. States are always the last two outputs.
+    fn run_decoder(
+        &self,
+        tokens: Tensor,
+        n_tokens: i32,
+        state_0: Tensor,
+        state_1: Tensor,
+    ) -> anyhow::Result<(Tensor, Tensor, Tensor)> {
+        let mut inputs = vec![tokens];
+        if self.dec_wants_length {
+            inputs.push(Tensor::from_slice(&[1], &[n_tokens])?);
+        }
+        inputs.push(state_0);
+        inputs.push(state_1);
+        let out = self.decoder.run(inputs)?;
+        Ok((out[0].clone(), out[out.len() - 2].clone(), out[out.len() - 1].clone()))
     }
 
     fn spawn(self: &Arc<Self>) -> anyhow::Result<StreamState> {
@@ -219,9 +243,8 @@ impl StreamState {
         let blank_tok = Tensor::from_slice(&[1, 1], &[models.blank_id as i32])?;
         let s0 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
         let s1 = Array3::<f32>::zeros([2, 1, 640]).tract()?;
-        let [_out, s0, s1] = models.decoder.run([blank_tok.clone(), s0, s1])?.try_into().unwrap();
-        let [dec_token, dec_state_0, dec_state_1] =
-            models.decoder.run([blank_tok, s0, s1])?.try_into().unwrap();
+        let (_out, s0, s1) = models.run_decoder(blank_tok.clone(), 1, s0, s1)?;
+        let (dec_token, dec_state_0, dec_state_1) = models.run_decoder(blank_tok, 1, s0, s1)?;
 
         Ok(Self {
             pp_delay_remaining: models.pp_delay,
@@ -374,12 +397,12 @@ impl StreamState {
             self.show("[dec]");
             let t = Instant::now();
             let tok = Tensor::from_slice(&[1, 1], &[token_id as i32])?;
-            [self.dec_token, self.dec_state_0, self.dec_state_1] = self
-                .models
-                .decoder
-                .run([tok, self.dec_state_0.clone(), self.dec_state_1.clone()])?
-                .try_into()
-                .unwrap();
+            (self.dec_token, self.dec_state_0, self.dec_state_1) = self.models.run_decoder(
+                tok,
+                1,
+                self.dec_state_0.clone(),
+                self.dec_state_1.clone(),
+            )?;
             self.total_decoder += t.elapsed();
             self.n_decoder += 1;
             if tokens_this_frame >= 10 {
