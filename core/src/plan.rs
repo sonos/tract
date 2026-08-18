@@ -16,7 +16,7 @@ pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
-    pub scratch_extensions: anymap3::Map,
+    pub scratch_extensions: anymap3::Map<dyn std::any::Any + Send>,
     pub values: Vec<Option<TVec<TValue>>>,
 }
 
