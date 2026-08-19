@@ -9,6 +9,52 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.5 - soon
+
+### GPU
+
+- **Metal Sdpa**: fused attention via ported MLX kernels.
+- **Metal pooling**: max/average pooling kernels, including channels-first tensors.
+- **Metal Resize** runs on GPU; multi-axis `Reduce` split into single-axis reduces; `reduce_nd3` threadgroups sized from the reduced axis; missing bool `BitAnd`/`BitOr`/`BitXor` kernel instantiations added.
+- **CUDA Gated DeltaNet.** Recurrent decode kernels for Qwen3.5, shared with the Metal implementation; legacy Qwen3.5 primitive names accepted on import; example decoder runner in `examples`.
+- Fix: `CudaGgmlGemm`'s contraction-dim check relaxed from strict equality to `compatible_with`.
+- Fix: cuDNN conv scratch kept off the `Send` boundary (`State`/`OpState` are now `Send + Clone` directly).
+
+### CPU / linalg
+
+- **Matmul kernel picker replaced with a per-architecture `LinearCostModel`**, fit with non-negative least squares from on-device measurements — x86 vendor cohorts, per-Apple-chip models, and small/large seed classes for cortex-a53/a55/a7/a9. The old MLP picker is retired. New `cost-model gather/fit/regen` and `hwbench` CLI subcommands support calibrating and auditing kernel choice on new hardware; matrix-vector (n=1) dispatch gets its own dedicated cost model.
+- **New kernels**: AVX-512 and AVX2+FMA SiLU; a full AVX (no-FMA/no-AVX2) f32 tile family plus sigmoid/tanh, covering Sandy/Ivy Bridge and Bulldozer-era x86_64 (1.9–2.6x over the generic fallback); a 128-bit VEX int8 kernel for that same no-FMA tier; ARMv7 NEON fused SiLU; ARMv7 NEON int8 matmul kernels wired into the picker; NEON/generic `silu_f16` and `sigmoid_f16` fallbacks for non-fp16 aarch64; `Q4_0::w4a8_gemv` (int8-dot decode GEMV).
+- **ARMv7 NEON pack transpose** for k-contiguous tiles (skipped below a small-block threshold to avoid regressing tiny shapes).
+- **Row-major output store tile**, opt-in for aligned bulk stores and used by the Apple AMX f16 kernel.
+- Squeeze/reshape ops fuse directly into `OptMatMul`'s store instead of running as separate ops.
+- Cache-block budgets for the L2/L3 tiers now account for cluster-shared caches and are decoupled from parallel chunking; parallelized `OptBin*` binary fast paths.
+- Fix: **activation range bugs across every backend.** Tanh, Sigmoid, and the fused SiLU/GELU kernels could produce values outside their mathematical range on saturating tails — fixed on x86_64 (AVX, AVX-no-FMA), ARM32/ARM64 NEON, WASM, and the scalar generic path, with new range-assertion tests.
+
+### Transformers / LLM
+
+- **Quantized KV-cache storage** (`QuantizedDynKeyValueCache`, int8/int4 packed) with cache-cost reporting; attention-sink tokens stay unquantized.
+- Flash Sdpa (f16-accumulator) now also covers grouped-query attention, and the GQA broadcast fusion looks through cache-read `Cast`/`ApplyRope` ops instead of requiring the KV cache directly under the repeat-interleave chain.
+- `examples`: nemotron-3.5 multilingual streaming ASR example (batch encoder support, `t2n>=0.24` exports)
+
+### Core / NNEF / ONNX
+
+- **ONNX Resize**: opset 18/19 completed, opset-10 asymmetric coordinates, and the `tf_half_pixel_for_nn` coordinate mode; nearest-mode now only lowers to `Tile` when that actually replicates pixels.
+- `NonZero` moved to `onnx-opl` with NNEF serialization.
+- `GatherElements` gets a last-axis fast path; `ScatterNd` and `Gather` block-copy paths now handle a non-trivial outer dimension.
+- `nnef` patch transforms can rewire any named wire, not just graph inputs.
+- Const-fold memory budget halved to 4 MiB and is now bounded by memory rather than element count.
+- Fix: `DequantizeLinearF32` no longer leaks the input's integer constant onto the F32 output fact, which tripped the outlet fact-consistency check inside a `Scan` body.
+- Fix: quantized pointwise (1x1) convs on the Metal/CUDA exec path keep their bias — the einsum→`PrefixMatMul` fusion dropped it, so that fold is now skipped there in favour of the standard requant chain.
+- Fix: `DatumType::with_qparams` no longer flips `QU8` to `QI8`; a requantized unsigned tensor stays unsigned.
+- Fix: quantized `Sign` returns 0 at the zero point.
+- Fix: malformed ONNX `TensorProto`/`GraphProto` attributes return an error instead of panicking; minimum-arity checks for `Concat`/`Squeeze`/`Gemm`; shape inference no longer panics when operands are missing; raw tensor data whose length doesn't match its declared shape is rejected.
+
+### CLI / diagnostics
+
+- **`hwbench`**: M,K,N[,dt] matmul shape probing, `--json` output, an `--assert` gate for CI, a curated default battery, and real memory-bandwidth measurement.
+- **`cost-model gather` / `fit` / `regen`** subcommands for the new `LinearCostModel` (see CPU/linalg above).
+- **`bench-diff`** subcommand and `bench-compare.sh` for comparing two bench runs.
+
 # 0.23.4 - 2026-07-08
 
 ### Security / deps
