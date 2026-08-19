@@ -1,6 +1,7 @@
 #![allow(clippy::collapsible_if)]
 use tract_nnef::internal::*;
 
+mod affine_trim;
 pub mod concat;
 mod deconv_delay;
 mod delay;
@@ -19,6 +20,7 @@ pub mod prelude {
 }
 
 pub mod ops {
+    pub use super::affine_trim::AffineChunkTrim;
     pub use super::deconv_delay::DeconvDelay;
     pub use super::delay::{Delay, DelayState};
     pub use super::mask::PulseMask;

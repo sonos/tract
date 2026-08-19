@@ -74,11 +74,11 @@ do
 	case "$rt" in
 		--cuda)
 			pp_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
-			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,AffineChunkTrim,PulsedRange"
+			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange"
 			;;
 		--metal)
 			pp_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
-			enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,AffineChunkTrim,PulsedRange"
+			enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,PulsedRange"
 			;;
 		*) continue;;
 	esac
