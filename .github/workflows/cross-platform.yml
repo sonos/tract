@@ -80,6 +80,7 @@ jobs:
           - wasm32-wasi
 
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       id-token: write
       contents: read

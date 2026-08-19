@@ -98,6 +98,7 @@ jobs:
     needs: prepare
     if: needs.prepare.outputs.enabled == 'true'
     runs-on: ${{ matrix.host }}
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: read      # pull the prebuilt cross-build image (ghcr, private)
