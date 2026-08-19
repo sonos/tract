@@ -2,7 +2,10 @@
 
 set -ex
 
-which java || sudo apt install -y default-jdk
+ROOT=$(dirname $(dirname $(realpath $0)))
+. $ROOT/.travis/ci-system-setup.sh
+
+which java || apt_retry apt-get install -y default-jdk
 
 ANDROID_SDK=$HOME/cached/android-sdk
 if [ ! -d "$ANDROID_SDK" ]
