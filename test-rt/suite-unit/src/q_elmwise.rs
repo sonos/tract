@@ -109,6 +109,15 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     suite.add(
+        "sign_at_zero_point_case",
+        QElmWiseOpProblem {
+            operator: tract_core::ops::math::sign(),
+            tensor_input: qi8_tensor1(&[-5, 0, 5], 0, 0.5)?,
+            out_dt: qi8_dt(0, 0.01),
+        },
+    );
+
+    suite.add(
         "cos_switch_qi8_to_qu8_case",
         QElmWiseOpProblem {
             operator: tract_core::ops::math::cos(),

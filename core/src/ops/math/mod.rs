@@ -739,7 +739,7 @@ element_wise!(sign, Sign, [i8, i16, i32, i64, f16, f32, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { One::one() });
     Ok(())
 };
-q: [i8, u8, i32] => f32::signum);
+q: [i8, u8, i32] => |x: f32| if x.is_zero() { 0.0 } else { x.signum() });
 
 element_wise_oop!(is_inf, IsInf { detect_positive: bool, detect_negative: bool },
     [f32] => bool |op, xs, ys| {
