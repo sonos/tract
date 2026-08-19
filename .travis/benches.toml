@@ -275,6 +275,35 @@ model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set R=1 --set U=1"
 runtimes = ["cpu", "metal", "cuda"]
 
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_1s"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set INPUT_SIGNAL__TIME=16000"
+runtimes = ["cpu", "metal", "cuda"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_1s"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set AUDIO_SIGNAL__TIME=100"
+runtimes = ["cpu", "metal", "cuda"]
+threads = [0]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-decoder_pass"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.decoder.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set TARGETS__TIME=1"
+runtimes = ["cpu", "metal", "cuda"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-joint_pass"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.joint.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set ENCODER_OUTPUTS__BATCH=1 --set DECODER_OUTPUTS__BATCH=1 --set ENCODER_OUTPUTS__TIME=1 --set DECODER_OUTPUTS__TIME=1"
+runtimes = ["cpu", "metal", "cuda"]
+
 # GPU-only (no CPU run).
 
 [[bench]]
