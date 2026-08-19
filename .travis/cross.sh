@@ -243,7 +243,7 @@ case "$PLATFORM" in
         # The prebuilt image (TRACT_PREBUILT_CI) already carries qemu + the cross toolchains.
         if [ -z "$TRACT_PREBUILT_CI" ]
         then
-            $SUDO apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
+            apt_retry apt-get -y install --no-install-recommends qemu-system-arm qemu-user libssl-dev pkg-config $PACKAGES
         fi
         rustup target add $RUSTC_TRIPLE
         if [ -z "$SKIP_QEMU_TEST" ]

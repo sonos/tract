@@ -6,6 +6,32 @@ set -e
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
+# Defined unconditionally (not gated on the once-per-job /tmp/ci-setup-done
+# marker below) so every script that sources this file gets apt_retry, even
+# when ci-system-setup.sh's own one-time setup already ran in a parent shell.
+if [ `uname` != "Darwin" -a "$RUNNER_ENVIRONMENT" != "self-hosted" ]
+then
+    if [ `whoami` != "root" ]
+    then
+        SUDO=sudo
+    fi
+    apt_retry() {
+        tries=0
+        while [ $tries -lt 3 ]
+        do
+            timeout 150 $SUDO "$@" && return 0
+            tries=$((tries + 1))
+            # azure.archive.ubuntu.com is a known flaky mirror; after the
+            # first failure, drop it so the rest of the retries go
+            # straight to the canonical mirror instead of stalling again.
+            $SUDO sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
+            $SUDO sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+            sleep 5
+        done
+        return 1
+    }
+fi
+
 if [ -n "$CI" -a ! -e /tmp/ci-setup-done -a -z "$TRACT_PREBUILT_CI" ]
 then
     if [ `uname` = "Darwin" ]
@@ -18,25 +44,6 @@ then
     else
         if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]
         then
-            if [ `whoami` != "root" ]
-            then
-                SUDO=sudo
-            fi
-            apt_retry() {
-                tries=0
-                while [ $tries -lt 3 ]
-                do
-                    timeout 150 $SUDO "$@" && return 0
-                    tries=$((tries + 1))
-                    # azure.archive.ubuntu.com is a known flaky mirror; after the
-                    # first failure, drop it so the rest of the retries go
-                    # straight to the canonical mirror instead of stalling again.
-                    $SUDO sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
-                    $SUDO sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
-                    sleep 5
-                done
-                return 1
-            }
             apt_retry apt-get update
             # apt_retry apt-get upgrade -y
             apt_retry apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
