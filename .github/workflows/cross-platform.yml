@@ -21,6 +21,11 @@ env:
 permissions:
   contents: read
 
+concurrency:
+  # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
+  group: cross-platform-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
+
 jobs:
   prepare:
     runs-on: ubuntu-latest
