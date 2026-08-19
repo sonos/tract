@@ -213,7 +213,8 @@ impl Expansion for DynamicQuantizeLinear {
 }
 
 fn dynamic_quantize_linear_f32_u8(x: f32, scale: f32, zero_point: u8) -> u8 {
-    (((x / scale).round() as i32) + zero_point as i32).clamp(u8::MIN as i32, u8::MAX as i32) as u8
+    (((x / scale).round_ties_even() as i32) + zero_point as i32)
+        .clamp(u8::MIN as i32, u8::MAX as i32) as u8
 }
 
 fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [u8]) {
@@ -242,7 +243,7 @@ fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
     let scale = (max - min) / max_t;
 
     let zero_point = -min / scale;
-    let zero_point = zero_point.round();
+    let zero_point = zero_point.round_ties_even();
     // clipping to [0, 255]
     let zero_point = zero_point.max(min_t);
     let zero_point = zero_point.min(max_t);
@@ -361,5 +362,43 @@ mod tests {
             );
             assert_eq!(quantized.as_slice().unwrap(), *quantized_ok);
         }
+    }
+
+    // https://onnx.ai/onnx/operators/onnx__DynamicQuantizeLinear.html specifies
+    // `y = saturate(round(x / y_scale) + y_zero_point)` with rounding to nearest, ties to even.
+    // `f32::round` rounds ties away from zero, which differs on every tie whose integer part is
+    // even. Both roundings in this file are affected: the value, and the zero point itself.
+    #[test]
+    fn test_dynamic_quantize_linear_u8_rounds_ties_to_even() {
+        // The value on a tie. scale is exactly 1, so 0.5 survives the division as a tie.
+        // round_ties_even(0.5) = 0, so y = 0 + 127; rounding away from zero would give 128.
+        let v = arr1(&[-127f32, 128., 0.5]).into_dyn();
+        let (scale, zero_point) = scale_and_zero_point(v.view());
+        assert_eq!(scale, 1.0);
+        assert_eq!(zero_point, 127);
+        let mut quantized = v.mapv(|_| 0_u8);
+        dynamic_quantize_linear_u8(
+            scale,
+            zero_point,
+            v.as_slice().unwrap(),
+            quantized.as_slice_mut().unwrap(),
+        );
+        assert_eq!(quantized.as_slice().unwrap(), &[0, 255, 127]);
+
+        // The zero point on a tie: -min/scale is exactly 126.5, whose integer part is even.
+        // round_ties_even gives 126; rounding away from zero would give 127 and shift every
+        // output by one.
+        let v = arr1(&[-253f32, 257.]).into_dyn();
+        let (scale, zero_point) = scale_and_zero_point(v.view());
+        assert_eq!(scale, 2.0);
+        assert_eq!(zero_point, 126);
+        let mut quantized = v.mapv(|_| 0_u8);
+        dynamic_quantize_linear_u8(
+            scale,
+            zero_point,
+            v.as_slice().unwrap(),
+            quantized.as_slice_mut().unwrap(),
+        );
+        assert_eq!(quantized.as_slice().unwrap(), &[0, 254]);
     }
 }
