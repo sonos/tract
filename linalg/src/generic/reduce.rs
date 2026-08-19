@@ -192,6 +192,73 @@ pub mod softmax_l2 {
         }
     );
 
+    /// exp(x - max) with a Cody-Waite reduction and a degree-6 fit: accurate to
+    /// about 1e-7 relative, against [`fast_compact_exp_f32`]'s 6e-2, while still
+    /// being all FMAs so the row loop vectorizes.
+    #[inline(always)]
+    pub fn accurate_exp_f32(x: f32) -> f32 {
+        const LOG2E: f32 = 1.442_695_04;
+        const LN2_HI: f32 = 0.693_145_75;
+        const LN2_LO: f32 = 1.428_606_8e-6;
+        const MAGIC: f32 = 12_582_912.0;
+        // The argument is `v - max` over a row, so it is never positive; a
+        // positive value only arises from the f32::MIN lanes a short row is
+        // padded with, and below -103 exp underflows to zero anyway. Both
+        // comparisons are false for NaN, so a fully masked row still reduces to
+        // NaN as the scalar form does.
+        // Not a range check: `contains` is true-by-negation for NaN, which would
+        // return zero where the scalar form propagates it.
+        #[allow(clippy::manual_range_contains)]
+        if x < -103.0 || x > 0.0 {
+            return 0.0;
+        }
+        let kf = (x * LOG2E + MAGIC) - MAGIC;
+        let rr = kf.mul_add(-LN2_LO, kf.mul_add(-LN2_HI, x));
+        let mut q = 1.383684405e-03f32;
+        q = q.mul_add(rr, 8.374815793e-03);
+        q = q.mul_add(rr, 4.166822560e-02);
+        q = q.mul_add(rr, 1.666642017e-01);
+        q = q.mul_add(rr, 4.999999208e-01);
+        q = q.mul_add(rr, 1.000000036e+00);
+        q = q.mul_add(rr, 1.000000001e+00);
+        let k = kf as i32;
+        let scale = f32::from_bits(((k + 127).clamp(1, 254) as u32) << 23);
+        q * scale
+    }
+
+    map_reduce_impl_wrap!(
+        f32,
+        SSoftMaxL2Accurate,
+        4,
+        4,
+        f32,
+        f32::NEG_INFINITY,
+        0.0,
+        fn run(x: &mut [f32], max: f32) -> f32 {
+            debug_assert!(x.len() % Self::nr() == 0);
+            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+            let mut acc = [0f32; 4];
+            let mut it = x.chunks_exact_mut(4);
+            for c in &mut it {
+                for (j, v) in c.iter_mut().enumerate() {
+                    let y = accurate_exp_f32(*v - max);
+                    *v = y;
+                    acc[j] += y;
+                }
+            }
+            let mut sum = (acc[0] + acc[1]) + (acc[2] + acc[3]);
+            for v in it.into_remainder().iter_mut() {
+                let y = accurate_exp_f32(*v - max);
+                *v = y;
+                sum += y;
+            }
+            sum
+        },
+        fn reduce_two(a: f32, b: f32) -> f32 {
+            a + b
+        }
+    );
+
     // ported from https://github.com/gnuradio/volk/blob/master/kernels/volk/volk_32f_expfast_32f.h
     // probably inspired from https://nic.schraudolph.org/pubs/Schraudolph99.pdf
     // not that the cast to u32 deals with negative right, while implem in volk code are wrong in some
