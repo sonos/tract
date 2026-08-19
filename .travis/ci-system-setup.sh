@@ -26,8 +26,13 @@ then
                 tries=0
                 while [ $tries -lt 3 ]
                 do
-                    timeout 120 $SUDO "$@" && return 0
+                    timeout 150 $SUDO "$@" && return 0
                     tries=$((tries + 1))
+                    # azure.archive.ubuntu.com is a known flaky mirror; after the
+                    # first failure, drop it so the rest of the retries go
+                    # straight to the canonical mirror instead of stalling again.
+                    $SUDO sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
+                    $SUDO sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
                     sleep 5
                 done
                 return 1
