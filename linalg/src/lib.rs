@@ -108,6 +108,7 @@ pub struct Ops {
 
     pub softmax2_fastcompact_f16:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f16, f16>> + Send + Sync>,
+    pub softmax2_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
     pub softmax2_fastcompact_f32:
         Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
 
@@ -252,6 +253,7 @@ pub fn generic() -> Ops {
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
         softmax2_fastcompact_f16: Box::new(|| generic::reduce::softmax_l2::HSoftMaxL2::red()),
+        softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
         softmax2_fastcompact_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };

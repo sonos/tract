@@ -309,12 +309,7 @@ impl Softmax {
             SoftmaxKind::Softmax(exp_impl) => {
                 let sum = match exp_impl {
                     SoftmaxExp::Libc => {
-                        let mut s = f32::zero();
-                        slice.iter_mut().for_each(|x| {
-                            *x = (*x - max).exp();
-                            s += *x;
-                        });
-                        s
+                        (tract_linalg::ops().softmax2_f32)().run_with_params(slice, max)?
                     }
                     SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f32)()
                         .run_with_params(slice, max)?,
