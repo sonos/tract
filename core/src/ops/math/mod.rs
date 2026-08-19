@@ -733,7 +733,7 @@ element_wise!(neg, Neg, [i8, i16, i32, i64, f16, f32, f64, TDim] => |_, xs| {
 q: [i8, u8, i32] => |x: f32| -x);
 
 element_wise!(sign, Sign, [i8, i16, i32, i64, f16, f32, f64] => |_, xs| {
-    xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { x.signum() });
+    xs.iter_mut().for_each(|x| *x = if x.is_zero() { Zero::zero() } else { x.signum() });
     Ok(())
 }, [u8, u16, u32, u64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = if x.is_zero() { *x } else { One::one() });
@@ -827,6 +827,20 @@ mod tests {
             .downcast_ref::<TypedBinOp>()
             .unwrap();
         assert!(op.0.downcast_ref::<ShiftRight>().is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn sign_of_negative_zero_is_positive_zero() -> TractResult<()> {
+        let mut t = tensor1(&[-0.0f32, 0.0, -2.0, 2.0]);
+        Sign {}.eval_in_place(&mut t, None)?;
+        let got = unsafe { t.as_slice_unchecked::<f32>() };
+        // Compared as bit patterns: -0.0 == 0.0 is true, so an equality check on the
+        // values would pass even when -0.0 is returned.
+        assert_eq!(got[0].to_bits(), 0f32.to_bits());
+        assert_eq!(got[1].to_bits(), 0f32.to_bits());
+        assert_eq!(got[2], -1.0);
+        assert_eq!(got[3], 1.0);
         Ok(())
     }
 }
