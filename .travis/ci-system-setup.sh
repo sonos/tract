@@ -22,9 +22,19 @@ then
             then
                 SUDO=sudo
             fi
-            $SUDO apt-get update
-            # $SUDO apt-get upgrade -y
-            $SUDO apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
+            apt_retry() {
+                tries=0
+                while [ $tries -lt 3 ]
+                do
+                    timeout 120 $SUDO "$@" && return 0
+                    tries=$((tries + 1))
+                    sleep 5
+                done
+                return 1
+            }
+            apt_retry apt-get update
+            # apt_retry apt-get upgrade -y
+            apt_retry apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
         fi
     fi
 
