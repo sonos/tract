@@ -242,15 +242,15 @@
 <div class="viewcode-block" id="Model">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Model</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Main model object, central focus point of the model transformation pipeline.</span>
 
-<span class="sd">    The Model is the central point of tract model loading and &quot;model cooking&quot;. ONNX and NNEF</span>
+<span class="sd">    The Model is the central point of tract model loading and "model cooking". ONNX and NNEF</span>
 <span class="sd">    serialized models are converted to Model (more or less directly) before we can do anything</span>
 <span class="sd">    of value with them. Model can be dumped to NNEF (or tract-opl which is NNEF plus tract</span>
 <span class="sd">    proprietary extensions).</span>
 
-<span class="sd">    A Model can be ``optimize()``-d, substituting the &quot;high level&quot; operators in tract-core</span>
+<span class="sd">    A Model can be ``optimize()``-d, substituting the "high level" operators in tract-core</span>
 <span class="sd">    operator set by the best implementation available for the current system. From there it</span>
 <span class="sd">    can be transformed into a Runnable object that we will use to run.</span>
 
@@ -259,25 +259,25 @@
 <span class="sd">    Some model transformations can be performed on the Model class:</span>
 
 <span class="sd">    - declutter (getting rid of training artefacts)</span>
-<span class="sd">    - &quot;pulsification&quot; (transforming a batch-oriented model into a streaming model)</span>
+<span class="sd">    - "pulsification" (transforming a batch-oriented model into a streaming model)</span>
 <span class="sd">    - symbol substitution (make N or Batch a fixed number, unlocking potential optimisation later on)</span>
 <span class="sd">    - static cost evaluation and dynamic profiling</span>
 <span class="sd">    - ...</span>
 
-<span class="sd">    In some situations, these operations are done &quot;on-the-fly&quot; when an ONNX or NNEF model is</span>
+<span class="sd">    In some situations, these operations are done "on-the-fly" when an ONNX or NNEF model is</span>
 <span class="sd">    loaded, at start-up time. In other situations, when start-up time becomes an issue, it may</span>
-<span class="sd">    be beneficial to &quot;pre-cook&quot; the model: apply the transformations once, serialize the model</span>
+<span class="sd">    be beneficial to "pre-cook" the model: apply the transformations once, serialize the model</span>
 <span class="sd">    as NNEF (with tract-opl extension if needed). At start-up this model can be significantly</span>
-<span class="sd">    less expensive to &quot;cook&quot; for inference.</span>
+<span class="sd">    less expensive to "cook" for inference.</span>
 
 <span class="sd">    **Model and TypedModel**</span>
 
-<span class="sd">    This class is actually a wrapper around the &quot;TypedModel&quot; in Rust codebase. The &quot;Typed&quot;</span>
+<span class="sd">    This class is actually a wrapper around the "TypedModel" in Rust codebase. The "Typed"</span>
 <span class="sd">    bit means that all shapes and element types in all input, output and temporary values must</span>
 <span class="sd">    be known. There is support in tract for symbols in dimensions, with some limited computation</span>
 <span class="sd">    capabilities on symbolic expressions. For instance, it is relatively frequent to work with</span>
 <span class="sd">    a Model where all tensor shapes start with ``N`` or ``Batch``.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
@@ -288,12 +288,12 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid model (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid model (maybe already consumed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Model.input_count">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.input_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of inputs of the model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of inputs of the model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -303,7 +303,7 @@
 <div class="viewcode-block" id="Model.output_count">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.output_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of outputs of the model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of outputs of the model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -313,11 +313,11 @@
 <div class="viewcode-block" id="Model.input_name">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.input_name">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the name of the input_id-th input&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the name of the input_id-th input"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
@@ -325,7 +325,7 @@
 <div class="viewcode-block" id="Model.input_fact">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.input_fact">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_fact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fact</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the fact of the input_id-th input&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the fact of the input_id-th input"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">fact</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_input_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
@@ -335,11 +335,11 @@
 <div class="viewcode-block" id="Model.output_name">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.output_name">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_name</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the name of the output_id-th output&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the name of the output_id-th output"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
@@ -347,7 +347,7 @@
 <div class="viewcode-block" id="Model.output_fact">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.output_fact">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_fact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fact</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the fact of the output_id-th output&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the fact of the output_id-th output"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">fact</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_output_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
@@ -356,26 +356,26 @@
 
 <div class="viewcode-block" id="Model.transform">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.transform">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">transform</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">&quot;TransformSpec&quot;</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Apply a transform to the model.</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">transform</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">transform</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="s2">"TransformSpec"</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Apply a transform to the model.</span>
 
 <span class="sd">        ``transform`` can be:</span>
 
-<span class="sd">        - a plain string name (e.g. ``&quot;f32_to_f16&quot;``)</span>
-<span class="sd">        - a JSON string with a ``&quot;name&quot;`` key and parameters</span>
+<span class="sd">        - a plain string name (e.g. ``"f32_to_f16"``)</span>
+<span class="sd">        - a JSON string with a ``"name"`` key and parameters</span>
 <span class="sd">        - a :class:`TransformSpec` subclass such as :class:`SetSymbols`</span>
 <span class="sd">          or :class:`Pulse`</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">transform</span><span class="p">,</span> <span class="n">TransformSpec</span><span class="p">):</span>
             <span class="n">transform</span> <span class="o">=</span> <span class="n">transform</span><span class="o">.</span><span class="n">to_json</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_transform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">transform</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)))</span></div>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_transform</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">transform</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)))</span></div>
 
 
 <div class="viewcode-block" id="Model.into_runnable">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.into_runnable">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">into_runnable</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Runnable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Transform the model into a ready to be used Runnable model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Transform the model into a ready to be used Runnable model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">runnable</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_into_runnable</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>
@@ -386,13 +386,13 @@
     <span class="k">def</span><span class="w"> </span><span class="nf">parse_fact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fact</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">fact</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_parse_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_parse_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">spec</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Fact</span><span class="p">(</span><span class="n">fact</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Model.property_keys">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.property_keys">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">property_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Query the list of properties names of the model.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Query the list of properties names of the model."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">count</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">count</span><span class="p">)))</span>
@@ -401,7 +401,7 @@
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">cstrings</span><span class="p">))</span>
         <span class="n">names</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">count</span><span class="p">):</span>
-            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c_char_p</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c_char_p</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">))</span>
             <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
         <span class="k">return</span> <span class="n">names</span></div>
 
@@ -409,10 +409,10 @@
 <div class="viewcode-block" id="Model.property">
 <a class="viewcode-back" href="../../docs/model.html#tract.model.Model.property">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">property</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Query a property by name&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Query a property by name"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_model_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
 
 

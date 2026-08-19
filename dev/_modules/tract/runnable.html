@@ -241,7 +241,7 @@
 <div class="viewcode-block" id="Runnable">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Runnable</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    A model that has been fully optimized and is ready to perform computation.</span>
 
 <span class="sd">    This is the final stage of the model pipeline. A ``Runnable`` is obtained</span>
@@ -249,7 +249,7 @@
 <span class="sd">    ``Model`` to ``Runtime.prepare()`` for GPU-accelerated execution. Once</span>
 <span class="sd">    obtained, call :meth:`run` with numpy arrays or ``Tensor`` instances to</span>
 <span class="sd">    perform inference.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -258,12 +258,12 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid runnable (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid runnable (maybe already consumed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Runnable.input_count">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.input_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of inputs of the underlying model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of inputs of the underlying model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -273,7 +273,7 @@
 <div class="viewcode-block" id="Runnable.output_count">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.output_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of outputs of the underlying model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of outputs of the underlying model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -283,7 +283,7 @@
 <div class="viewcode-block" id="Runnable.input_fact">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.input_fact">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_fact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fact</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the fact of the input_id-th input&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the fact of the input_id-th input"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">fact</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_input_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
@@ -293,7 +293,7 @@
 <div class="viewcode-block" id="Runnable.output_fact">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.output_fact">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_fact</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">output_id</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Fact</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the fact of the output_id-th output&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the fact of the output_id-th output"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">fact</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_output_fact</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">output_id</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">fact</span><span class="p">)))</span>
@@ -303,7 +303,7 @@
 <div class="viewcode-block" id="Runnable.property_keys">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.property_keys">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">property_keys</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Query the list of properties names of the runnable model.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Query the list of properties names of the runnable model."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">count</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_property_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">count</span><span class="p">)))</span>
@@ -312,7 +312,7 @@
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_property_names</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">cstrings</span><span class="p">))</span>
         <span class="n">names</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">i</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">count</span><span class="p">):</span>
-            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c_char_p</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+            <span class="n">names</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">cast</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">],</span> <span class="n">c_char_p</span><span class="p">)</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">))</span>
             <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstrings</span><span class="p">[</span><span class="n">i</span><span class="p">])</span>
         <span class="k">return</span> <span class="n">names</span></div>
 
@@ -320,26 +320,26 @@
 <div class="viewcode-block" id="Runnable.property">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.property">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">property</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Tensor</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Query a property by name&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Query a property by name"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">value</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_property</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">value</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">value</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Runnable.run">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.run">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tensor</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Runs the model over the provided input list, and returns the model outputs.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">spawn_state</span><span class="p">()</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">inputs</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Runnable.spawn_state">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.spawn_state">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">spawn_state</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">State</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Create a new execution state for stateful (e.g. streaming) models.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Create a new execution state for stateful (e.g. streaming) models."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">state</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_spawn_state</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">state</span><span class="p">)))</span>
@@ -349,10 +349,10 @@
 <div class="viewcode-block" id="Runnable.profile_json">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.profile_json">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">profile_json</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]]])</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Profile the model. Also compute the static costs of operators.</span>
+<span class="w">        </span><span class="sd">"""Profile the model. Also compute the static costs of operators.</span>
 
 <span class="sd">        Returns is a json buffer.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
         <span class="n">input_values</span> <span class="o">=</span> <span class="p">[]</span>
@@ -364,13 +364,13 @@
                 <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
                     <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tensor</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
                 <span class="k">else</span><span class="p">:</span>
-                    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs must be of type tract.Tensor or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Inputs must be of type tract.Tensor or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
             <span class="n">input_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="nb">len</span><span class="p">(</span><span class="n">inputs</span><span class="p">))()</span>
             <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_values</span><span class="p">):</span>
                 <span class="n">input_ptrs</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span><span class="o">.</span><span class="n">ptr</span>
 
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runnable_profile_json</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">input_ptrs</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
@@ -378,14 +378,14 @@
 <div class="viewcode-block" id="Runnable.input_facts">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.input_facts">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_facts</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Fact</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the list of input facts.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the list of input facts."""</span>
         <span class="k">return</span> <span class="p">[</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_fact</span><span class="p">(</span><span class="n">ix</span><span class="p">)</span> <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">input_count</span><span class="p">())</span> <span class="p">]</span></div>
 
 
 <div class="viewcode-block" id="Runnable.output_facts">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runnable.Runnable.output_facts">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_facts</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Fact</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the list of output facts.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the list of output facts."""</span>
         <span class="k">return</span> <span class="p">[</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_fact</span><span class="p">(</span><span class="n">ix</span><span class="p">)</span> <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">output_count</span><span class="p">())</span> <span class="p">]</span></div>
 </div>
 

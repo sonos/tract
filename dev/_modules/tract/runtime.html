@@ -240,28 +240,28 @@
 <div class="viewcode-block" id="runtime_for_name">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.runtime_for_name">[docs]</a>
 <span class="k">def</span><span class="w"> </span><span class="nf">runtime_for_name</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">):</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Look up a runtime by name and return a ``Runtime`` instance.</span>
+<span class="w">    </span><span class="sd">"""Look up a runtime by name and return a ``Runtime`` instance.</span>
 
-<span class="sd">    Available runtimes depend on the build and the platform: ``&quot;default&quot;`` for</span>
-<span class="sd">    CPU, ``&quot;metal&quot;`` on Apple Silicon Macs, ``&quot;cuda&quot;`` on systems with NVIDIA</span>
+<span class="sd">    Available runtimes depend on the build and the platform: ``"default"`` for</span>
+<span class="sd">    CPU, ``"metal"`` on Apple Silicon Macs, ``"cuda"`` on systems with NVIDIA</span>
 <span class="sd">    GPUs.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="n">runtime</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_for_name</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runtime</span><span class="p">)))</span>
+    <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_for_name</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runtime</span><span class="p">)))</span>
     <span class="k">return</span> <span class="n">Runtime</span><span class="p">(</span><span class="n">runtime</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Runtime">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.Runtime">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Runtime</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    A hardware/software backend that can execute a ``Model``.</span>
 
 <span class="sd">    Calling ``Model.into_runnable()`` implicitly uses the default CPU runtime.</span>
 <span class="sd">    To run on a GPU, obtain a ``Runtime`` via :func:`runtime_for_name` —</span>
-<span class="sd">    ``&quot;metal&quot;`` on Apple Silicon Macs, ``&quot;cuda&quot;`` on NVIDIA systems — then</span>
+<span class="sd">    ``"metal"`` on Apple Silicon Macs, ``"cuda"`` on NVIDIA systems — then</span>
 <span class="sd">    call :meth:`prepare` to produce a ``Runnable`` optimized for that backend.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -270,16 +270,16 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid runtime (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid runtime (maybe already consumed ?)"</span><span class="p">)</span>
    
 <div class="viewcode-block" id="Runtime.name">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.Runtime.name">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">name</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the name of this Runtime.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the name of this Runtime."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_name</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="n">ptr</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="n">ptr</span><span class="o">.</span><span class="n">value</span><span class="o">.</span><span class="n">decode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">ptr</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
@@ -287,10 +287,10 @@
 <div class="viewcode-block" id="Runtime.prepare">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.runtime.Runtime.prepare">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">prepare</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span><span class="n">Model</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Runnable</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Prepare a model for execution on the Runtime.</span>
+<span class="w">        </span><span class="sd">"""Prepare a model for execution on the Runtime.</span>
 
 <span class="sd">        NB: The passed model is invalidated by this call.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">runnable</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_runtime_prepare</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">runnable</span><span class="p">)))</span>

@@ -291,7 +291,7 @@ will also need PIL’s Image and numpy to put the data in the form MobileNet exp
 </div>
 <p>We want to load the image, crop it into its central square, then scale this
 square to be 224x224.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">im</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;grace_hopper.jpg&quot;</span><span class="p">)</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">im</span> <span class="o">=</span> <span class="n">Image</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">"grace_hopper.jpg"</span><span class="p">)</span>
 <span class="k">if</span> <span class="n">im</span><span class="o">.</span><span class="n">height</span> <span class="o">&gt;</span> <span class="n">im</span><span class="o">.</span><span class="n">width</span><span class="p">:</span>
     <span class="n">top_crop</span> <span class="o">=</span> <span class="nb">int</span><span class="p">((</span><span class="n">im</span><span class="o">.</span><span class="n">height</span> <span class="o">-</span> <span class="n">im</span><span class="o">.</span><span class="n">width</span><span class="p">)</span> <span class="o">/</span> <span class="mi">2</span><span class="p">)</span>
     <span class="n">im</span> <span class="o">=</span> <span class="n">im</span><span class="o">.</span><span class="n">crop</span><span class="p">((</span><span class="mi">0</span><span class="p">,</span> <span class="n">top_crop</span><span class="p">,</span> <span class="n">im</span><span class="o">.</span><span class="n">width</span><span class="p">,</span> <span class="n">top_crop</span> <span class="o">+</span> <span class="n">im</span><span class="o">.</span><span class="n">width</span><span class="p">))</span>
@@ -324,7 +324,7 @@ N at the left.</p>
 <p>Loading a model is relatively simple. We need to instantiate the ONNX loader
 first, the we use it to load the model. Then we ask tract to optimize the model
 and get it ready to run.</p>
-<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;./mobilenetv2-7.onnx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">into_model</span><span class="p">()</span><span class="o">.</span><span class="n">into_runnable</span><span class="p">()</span>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"./mobilenetv2-7.onnx"</span><span class="p">)</span><span class="o">.</span><span class="n">into_model</span><span class="p">()</span><span class="o">.</span><span class="n">into_runnable</span><span class="p">()</span>
 </pre></div>
 </div>
 <p>If we wanted to process several images, this would only have to be done once
@@ -369,10 +369,10 @@ inference. The only change is in how the model is prepared: instead of calling
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">tract</span>
 
 <span class="c1"># load and type the model as before</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;./mobilenetv2-7.onnx&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">into_model</span><span class="p">()</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"./mobilenetv2-7.onnx"</span><span class="p">)</span><span class="o">.</span><span class="n">into_model</span><span class="p">()</span>
 
 <span class="c1"># prepare it for the CUDA runtime</span>
-<span class="n">cuda</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">runtime_for_name</span><span class="p">(</span><span class="s2">&quot;cuda&quot;</span><span class="p">)</span>
+<span class="n">cuda</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">runtime_for_name</span><span class="p">(</span><span class="s2">"cuda"</span><span class="p">)</span>
 <span class="n">runnable</span> <span class="o">=</span> <span class="n">cuda</span><span class="o">.</span><span class="n">prepare</span><span class="p">(</span><span class="n">model</span><span class="p">)</span>
 
 <span class="c1"># run exactly as before</span>

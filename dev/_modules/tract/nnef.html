@@ -239,7 +239,7 @@
 <div class="viewcode-block" id="Nnef">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Nnef</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Represent a NNEF context in tract.</span>
 
 <span class="sd">    NNEF is a neural model interchange format, similar to ONNX but focusing on the needs</span>
@@ -249,7 +249,7 @@
 <span class="sd">    as ``tract-opl`` models. ``tract-opl`` is a set of proprietary extensions to NNEF allowing</span>
 <span class="sd">    serialization of most of the models tract can handle. These extensions can be activated by</span>
 <span class="sd">    the ``with_*()`` methods.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
@@ -261,37 +261,37 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference model (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid inference model (maybe already consumed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Nnef.load">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.load">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">Model</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Load an NNEF model from the file or folder at ``path``.</span>
 
 <span class="sd">        .. code-block:: python</span>
 
 <span class="sd">            model = (</span>
 <span class="sd">                tract.nnef()</span>
-<span class="sd">                .load(&quot;mobilenet_v2_1.0.onnx.nnef.tgz&quot;)</span>
+<span class="sd">                .load("mobilenet_v2_1.0.onnx.nnef.tgz")</span>
 <span class="sd">                .into_runnable()</span>
 <span class="sd">            )</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">model</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_load</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">Model</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
 
 
 <div class="viewcode-block" id="Nnef.without_tract_core">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.without_tract_core">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">without_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">without_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Force the framework to emit strict NNEF instead of using the tract_core</span>
 <span class="sd">        extension. The tract_core extension is enabled by default; call this to</span>
 <span class="sd">        opt out.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_disable_tract_core</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -299,10 +299,10 @@
 
 <div class="viewcode-block" id="Nnef.with_tract_extra">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_tract_extra">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">with_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Enable tract-extra extensions to NNEF.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_extra</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -310,10 +310,10 @@
 
 <div class="viewcode-block" id="Nnef.with_tract_transformers">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_tract_transformers">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_tract_transformers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">with_tract_transformers</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Enable tract-transformers extensions to NNEF.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_tract_transformers</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -321,10 +321,10 @@
 
 <div class="viewcode-block" id="Nnef.with_onnx">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_onnx">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_onnx</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">with_onnx</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Enable tract-opl extensions to NNEF to covers (more or) ONNX operator set</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_onnx</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -332,10 +332,10 @@
 
 <div class="viewcode-block" id="Nnef.with_pulse">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_pulse">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_pulse</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">with_pulse</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Enable tract-opl extensions to NNEF for tract pulse operators (for audio streaming)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_pulse</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -343,10 +343,10 @@
 
 <div class="viewcode-block" id="Nnef.with_extended_identifier_syntax">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.with_extended_identifier_syntax">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">with_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Nnef&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">with_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Nnef"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Enable tract-opl extensions to NNEF for extended identifiers (will support PyTorch 2 path-like ids)</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_enable_extended_identifier_syntax</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="kc">True</span><span class="p">))</span>
         <span class="k">return</span> <span class="bp">self</span></div>
@@ -355,48 +355,48 @@
 <div class="viewcode-block" id="Nnef.write_model_to_dir">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.write_model_to_dir">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">write_model_to_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Save ``model`` as a NNEF directory model in ``path``.</span>
 
 <span class="sd">        tract tries to stick to strict NNEF even if extensions have been enabled.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">model</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;Expected a Model, called with &quot;</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"Expected a Model, called with "</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_dir</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="Nnef.write_model_to_tar">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.write_model_to_tar">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">write_model_to_tar</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Save ``model`` as a NNEF tar archive in ``path``.</span>
 
 <span class="sd">        tract tries to stick to strict NNEF even if extensions have been enabled.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">model</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;Expected a Model, called with &quot;</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"Expected a Model, called with "</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_tar</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span></div>
 
 
 <div class="viewcode-block" id="Nnef.write_model_to_tar_gz">
 <a class="viewcode-back" href="../../docs/nnef.html#tract.nnef.Nnef.write_model_to_tar_gz">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Model</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Save ``model`` as a NNEF tar compressed archive in ``path``.</span>
 
 <span class="sd">        tract tries to stick to strict NNEF even if extensions have been enabled.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">model</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="k">if</span> <span class="ow">not</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">model</span><span class="p">,</span> <span class="n">Model</span><span class="p">):</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;Expected a Model, called with &quot;</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
-        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"Expected a Model, called with "</span> <span class="o">+</span> <span class="n">model</span><span class="p">);</span>
+        <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_nnef_write_model_to_tar_gz</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">model</span><span class="o">.</span><span class="n">ptr</span><span class="p">))</span></div>
 </div>
 

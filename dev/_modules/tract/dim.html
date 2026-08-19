@@ -237,13 +237,13 @@
 <div class="viewcode-block" id="Dim">
 <a class="viewcode-back" href="../../docs/fact.html#tract.dim.Dim">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Dim</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    A possibly symbolic dimension of a tensor.</span>
 
 <span class="sd">    Dimensions can be concrete integers or symbolic expressions (e.g. ``N``,</span>
 <span class="sd">    ``N+1``). Use :meth:`to_int64` to extract a concrete value, or :meth:`eval`</span>
 <span class="sd">    to substitute symbols.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
@@ -260,31 +260,31 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid dim&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid dim"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Dim.dump">
 <a class="viewcode-back" href="../../docs/fact.html#tract.dim.Dim.dump">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a human-readable representation of the dimension.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a human-readable representation of the dimension."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_dim_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
 
 <div class="viewcode-block" id="Dim.eval">
 <a class="viewcode-back" href="../../docs/fact.html#tract.dim.Dim.eval">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">eval</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">&quot;Dim&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Substitute symbols by concrete values and return the resulting dimension.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">eval</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">values</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">int</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">"Dim"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Substitute symbols by concrete values and return the resulting dimension."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">nb</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">values</span><span class="p">)</span>
         <span class="n">names_str</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="n">names</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_char_p</span> <span class="o">*</span> <span class="n">nb</span><span class="p">)()</span>
         <span class="n">values_list</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_int64</span> <span class="o">*</span> <span class="n">nb</span><span class="p">)()</span>
         <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="p">(</span><span class="n">k</span><span class="p">,</span> <span class="n">v</span><span class="p">)</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">values</span><span class="o">.</span><span class="n">items</span><span class="p">()):</span>
-            <span class="n">names_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">&quot;utf-8&quot;</span><span class="p">))</span>
+            <span class="n">names_str</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">k</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">))</span>
             <span class="n">names</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">names_str</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
             <span class="n">values_list</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">v</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
@@ -295,7 +295,7 @@
 <div class="viewcode-block" id="Dim.to_int64">
 <a class="viewcode-back" href="../../docs/fact.html#tract.dim.Dim.to_int64">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_int64</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Convert to a concrete integer. Raises if the dimension is symbolic.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Convert to a concrete integer. Raises if the dimension is symbolic."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_int64</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_dim_to_int64</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>

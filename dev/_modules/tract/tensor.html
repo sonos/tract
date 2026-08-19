@@ -301,34 +301,34 @@
             <span class="k">return</span> <span class="n">c_float</span>
         <span class="k">if</span> <span class="bp">self</span> <span class="o">==</span> <span class="bp">self</span><span class="o">.</span><span class="n">F64</span><span class="p">:</span>
             <span class="k">return</span> <span class="n">c_double</span>
-        <span class="k">raise</span> <span class="s2">&quot;invalid datum type&quot;</span></div>
+        <span class="k">raise</span> <span class="s2">"invalid datum type"</span></div>
 
 
 <span class="k">def</span><span class="w"> </span><span class="nf">dt_numpy_to_tract</span><span class="p">(</span><span class="n">dt</span><span class="p">):</span>
-    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">&#39;b&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">'b'</span><span class="p">:</span>
         <span class="k">return</span> <span class="n">DatumType</span><span class="o">.</span><span class="n">BOOL</span>
-    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">&#39;u&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">'u'</span><span class="p">:</span>
         <span class="k">return</span> <span class="mh">0x10</span> <span class="o">+</span> <span class="n">dt</span><span class="o">.</span><span class="n">itemsize</span>
-    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">&#39;i&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">'i'</span><span class="p">:</span>
         <span class="k">return</span> <span class="mh">0x20</span> <span class="o">+</span> <span class="n">dt</span><span class="o">.</span><span class="n">itemsize</span>
-    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">&#39;f&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">'f'</span><span class="p">:</span>
         <span class="k">return</span> <span class="mh">0x30</span> <span class="o">+</span> <span class="n">dt</span><span class="o">.</span><span class="n">itemsize</span>
-    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">&#39;c&#39;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">dt</span><span class="o">.</span><span class="n">kind</span> <span class="o">==</span> <span class="s1">'c'</span><span class="p">:</span>
         <span class="k">return</span> <span class="mh">0x50</span> <span class="o">+</span> <span class="n">dt</span><span class="o">.</span><span class="n">itemsize</span> <span class="o">/</span> <span class="mi">2</span>
-    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;Unsupported Numpy dtype: &quot;</span> <span class="o">+</span> <span class="n">dt</span><span class="p">)</span>
+    <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"Unsupported Numpy dtype: "</span> <span class="o">+</span> <span class="n">dt</span><span class="p">)</span>
 
 
 <div class="viewcode-block" id="Tensor">
 <a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Tensor</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    A multidimensional array of typed data, the fundamental data carrier in tract.</span>
 
 <span class="sd">    Tensors flow in and out of models: they are the inputs you feed to</span>
 <span class="sd">    ``Runnable.run()`` and the outputs you get back. On the Python side,</span>
 <span class="sd">    convert to and from numpy arrays with :meth:`to_numpy` and</span>
 <span class="sd">    :func:`from_numpy`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -341,7 +341,7 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid tensor (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid tensor (maybe already consumed ?)"</span><span class="p">)</span>
 
     <span class="k">def</span><span class="w"> </span><span class="fm">__eq__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">other</span><span class="p">):</span>
         <span class="p">(</span><span class="n">self_dt</span><span class="p">,</span> <span class="n">self_shape</span><span class="p">,</span> <span class="n">self_ptr</span><span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parts</span><span class="p">()</span>
@@ -364,10 +364,10 @@
         <span class="n">shape</span> <span class="o">=</span> <span class="p">[</span> <span class="nb">int</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">ix</span><span class="p">])</span> <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rank</span><span class="p">)</span> <span class="p">]</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">DatumType</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">value</span><span class="p">),</span> <span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">from_numpy</span><span class="p">(</span><span class="n">array</span><span class="p">:</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Tensor&quot;</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">from_numpy</span><span class="p">(</span><span class="n">array</span><span class="p">:</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Tensor"</span><span class="p">:</span>
         <span class="n">array</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">array</span><span class="p">)</span>
 
-        <span class="n">data</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">__array_interface__</span><span class="p">[</span><span class="s1">&#39;data&#39;</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">__array_interface__</span><span class="p">[</span><span class="s1">'data'</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">shape_t</span> <span class="o">=</span> <span class="n">c_size_t</span> <span class="o">*</span> <span class="n">array</span><span class="o">.</span><span class="n">ndim</span>
@@ -381,7 +381,7 @@
 <div class="viewcode-block" id="Tensor.to_numpy">
 <a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.to_numpy">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">to_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Builds a numpy array equivalent to the data in this tensor.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Builds a numpy array equivalent to the data in this tensor."""</span>
         <span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_parts</span><span class="p">()</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">cast</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">ctype</span><span class="p">()))</span>
         <span class="n">array</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ctypeslib</span><span class="o">.</span><span class="n">as_array</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">shape</span><span class="p">)</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
@@ -393,7 +393,7 @@
 <div class="viewcode-block" id="Tensor.into_numpy">
 <a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.into_numpy">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">into_numpy</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Same as to_numpy(), but drop the tensor content once the numpy array is built.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Same as to_numpy(), but drop the tensor content once the numpy array is built."""</span>
         <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">result</span></div>
@@ -405,7 +405,7 @@
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_as_bytes</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">dt</span><span class="p">),</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>
         <span class="k">return</span> <span class="n">DatumType</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">value</span><span class="p">)</span>
 
-    <span class="k">def</span><span class="w"> </span><span class="nf">convert_to</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">to</span><span class="p">:</span> <span class="n">DatumType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;Tensor&quot;</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">convert_to</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">to</span><span class="p">:</span> <span class="n">DatumType</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Tensor"</span><span class="p">:</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_convert_to</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">to</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
@@ -415,7 +415,7 @@
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 

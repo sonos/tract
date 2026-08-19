@@ -237,11 +237,11 @@
 <div class="viewcode-block" id="InferenceFact">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.InferenceFact">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">InferenceFact</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Tract inference fact, to be used with InferenceModel.</span>
 
 <span class="sd">    It can represent partial type and shape information of a Tensor during model analysis.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -254,16 +254,16 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid inference fact (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid inference fact (maybe already consumed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="InferenceFact.dump">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.InferenceFact.dump">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a human-readable representation of the fact.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a human-readable representation of the fact."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_inference_fact_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
@@ -272,12 +272,12 @@
 <div class="viewcode-block" id="Fact">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">Fact</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Tract-core fact, to be used with Model.</span>
 
 <span class="sd">    It always contains the full shape (sometimes using symbolic dimensions) and item type.</span>
 <span class="sd">    In some situation it can also contain the constant value of the associated tensor.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -290,12 +290,12 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid fact (maybe already consumed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid fact (maybe already consumed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="Fact.datum_type">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact.datum_type">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">datum_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the element type of the fact as a ``DatumType`` integer.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the element type of the fact as a ``DatumType`` integer."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">dt</span> <span class="o">=</span> <span class="n">c_uint32</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_fact_datum_type</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">dt</span><span class="p">)))</span>
@@ -305,7 +305,7 @@
 <div class="viewcode-block" id="Fact.rank">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact.rank">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">rank</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of dimensions (axes) of the tensor.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of dimensions (axes) of the tensor."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">rank</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_fact_rank</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">rank</span><span class="p">)))</span>
@@ -315,7 +315,7 @@
 <div class="viewcode-block" id="Fact.dim">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact.dim">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">dim</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">axis</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Dim</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the :class:`~tract.dim.Dim` for the given axis.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the :class:`~tract.dim.Dim` for the given axis."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">();</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_fact_dim</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span>  <span class="n">c_size_t</span><span class="p">(</span><span class="n">axis</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
@@ -325,11 +325,11 @@
 <div class="viewcode-block" id="Fact.dump">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact.dump">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">dump</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a human-readable representation of the fact.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a human-readable representation of the fact."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">cstring</span> <span class="o">=</span> <span class="n">c_char_p</span><span class="p">();</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_fact_dump</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">cstring</span><span class="p">)))</span>
-        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">&quot;utf-8&quot;</span><span class="p">)</span>
+        <span class="n">result</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">cstring</span><span class="o">.</span><span class="n">value</span><span class="p">,</span> <span class="s2">"utf-8"</span><span class="p">)</span>
         <span class="n">lib</span><span class="o">.</span><span class="n">tract_free_cstring</span><span class="p">(</span><span class="n">cstring</span><span class="p">)</span>
         <span class="k">return</span> <span class="n">result</span></div>
 
@@ -337,7 +337,7 @@
 <div class="viewcode-block" id="Fact.dims">
 <a class="viewcode-back" href="../../docs/fact.html#tract.fact.Fact.dims">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">dims</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a list of :class:`~tract.dim.Dim` for all axes.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return a list of :class:`~tract.dim.Dim` for all axes."""</span>
         <span class="k">return</span> <span class="p">[</span> <span class="bp">self</span><span class="o">.</span><span class="n">dim</span><span class="p">(</span><span class="n">axis</span><span class="p">)</span> <span class="k">for</span> <span class="n">axis</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">rank</span><span class="p">())</span> <span class="p">]</span></div>
 </div>
 

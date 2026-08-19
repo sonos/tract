@@ -249,10 +249,10 @@ knownledge. In this case, it is generally sufficient to inform tract about the i
 shape and type, then let tract <em>infer</em> the rest of the missing shape information
 before converting the <code class="docutils literal notranslate"><span class="pre">InferenceModel</span></code> to a regular <code class="docutils literal notranslate"><span class="pre">Model</span></code>.</p>
 <div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># load the model as an InferenceModel</span>
-<span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">&quot;./mobilenetv2-7.onnx&quot;</span><span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"./mobilenetv2-7.onnx"</span><span class="p">)</span>
 
 <span class="c1"># set the shape and type of its first and only input</span>
-<span class="n">model</span><span class="o">.</span><span class="n">set_input_fact</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">&quot;1,3,224,224,f32&quot;</span><span class="p">)</span>
+<span class="n">model</span><span class="o">.</span><span class="n">set_input_fact</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="s2">"1,3,224,224,f32"</span><span class="p">)</span>
 
 <span class="c1"># get ready to run the model</span>
 <span class="n">model</span> <span class="o">=</span> <span class="n">model</span><span class="o">.</span><span class="n">into_model</span><span class="p">()</span><span class="o">.</span><span class="n">into_runnable</span><span class="p">()</span>

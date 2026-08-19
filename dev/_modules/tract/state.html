@@ -240,14 +240,14 @@
 <div class="viewcode-block" id="State">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.State">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">State</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">    </span><span class="sd">"""</span>
 <span class="sd">    Mutable execution state for stateful (typically streaming) models.</span>
 
 <span class="sd">    Stateful models maintain internal buffers between calls to :meth:`run`</span>
 <span class="sd">    (e.g. recurrent networks, pulsed convolutions). A ``State`` is created by</span>
 <span class="sd">    ``Runnable.spawn_state()`` and can be called repeatedly with successive</span>
 <span class="sd">    input chunks. Use :meth:`freeze` to snapshot the state for later reuse.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -256,12 +256,12 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid state (maybe already destroyed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid state (maybe already destroyed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="State.input_count">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.input_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">input_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of inputs of the underlying model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of inputs of the underlying model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_state_input_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -271,7 +271,7 @@
 <div class="viewcode-block" id="State.output_count">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.output_count">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">output_count</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">int</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return the number of outputs of the underlying model&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Return the number of outputs of the underlying model"""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">i</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_state_output_count</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">i</span><span class="p">)))</span>
@@ -281,9 +281,9 @@
 <div class="viewcode-block" id="State.run">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.run">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="n">Union</span><span class="p">[</span><span class="n">Tensor</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="n">List</span><span class="p">[</span><span class="n">Tensor</span><span class="p">]:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Runs the model over the provided input list, and returns the model outputs.</span>
-<span class="sd">        &quot;&quot;&quot;</span>
+<span class="sd">        """</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">input_values</span> <span class="o">=</span> <span class="p">[]</span>
         <span class="k">for</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">inputs</span><span class="p">:</span>
@@ -292,7 +292,7 @@
             <span class="k">elif</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">v</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">):</span>
                 <span class="n">input_values</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">Tensor</span><span class="o">.</span><span class="n">from_numpy</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
             <span class="k">else</span><span class="p">:</span>
-                <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Inputs must be of type tract.Tensor or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+                <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Inputs must be of type tract.Tensor or numpy.Array, got </span><span class="si">{</span><span class="n">v</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
         <span class="n">input_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">input_count</span><span class="p">())()</span>
         <span class="n">output_ptrs</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_void_p</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">output_count</span><span class="p">())()</span>
         <span class="k">for</span> <span class="n">ix</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">enumerate</span><span class="p">(</span><span class="n">input_values</span><span class="p">):</span>
@@ -306,8 +306,8 @@
 
 <div class="viewcode-block" id="State.freeze">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.State.freeze">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">freeze</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">&quot;FrozenState&quot;</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Freeze the state into an immutable ``FrozenState`` snapshot.&quot;&quot;&quot;</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">freeze</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"FrozenState"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Freeze the state into an immutable ``FrozenState`` snapshot."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">frozen</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_state_freeze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">frozen</span><span class="p">)))</span>
@@ -318,11 +318,11 @@
 <div class="viewcode-block" id="FrozenState">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.FrozenState">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">FrozenState</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    A frozen (immutable) snapshot of a stateful model&#39;s state.</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    A frozen (immutable) snapshot of a stateful model's state.</span>
 
 <span class="sd">    Can be unfrozen back into a mutable ``State`` with :meth:`unfreeze`.</span>
-<span class="sd">    &quot;&quot;&quot;</span>
+<span class="sd">    """</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ptr</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">=</span> <span class="n">ptr</span>
 
@@ -331,12 +331,12 @@
 
     <span class="k">def</span><span class="w"> </span><span class="nf">_valid</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">ptr</span> <span class="o">==</span> <span class="kc">None</span><span class="p">:</span>
-            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">&quot;invalid frozen state (maybe already destroyed ?)&quot;</span><span class="p">)</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="s2">"invalid frozen state (maybe already destroyed ?)"</span><span class="p">)</span>
 
 <div class="viewcode-block" id="FrozenState.unfreeze">
 <a class="viewcode-back" href="../../docs/runnable.html#tract.state.FrozenState.unfreeze">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">unfreeze</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">State</span><span class="p">:</span>
-<span class="w">        </span><span class="sd">&quot;&quot;&quot;Restore a mutable ``State`` from this frozen snapshot.&quot;&quot;&quot;</span>
+<span class="w">        </span><span class="sd">"""Restore a mutable ``State`` from this frozen snapshot."""</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
         <span class="n">state</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_frozen_state_unfreeze</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">state</span><span class="p">)))</span>
