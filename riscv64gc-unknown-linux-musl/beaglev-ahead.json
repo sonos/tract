@@ -1,0 +1,596 @@
+{
+"start_day": "2026-08-19",
+"metrics": {
+"bundle.bench_runtime": [
+1079
+],
+"net.arm_ml_kws_cnn_m.active_at_before_optimize.pass": [
+828500
+],
+"net.arm_ml_kws_cnn_m.active_at_model_ready.pass": [
+920200
+],
+"net.arm_ml_kws_cnn_m.evaltime.pass": [
+0.01098
+],
+"net.arm_ml_kws_cnn_m.rsz_at_before_optimize.pass": [
+14400000
+],
+"net.arm_ml_kws_cnn_m.rsz_at_model_ready.pass": [
+15340000
+],
+"net.arm_ml_kws_cnn_m.time_to_before_optimize.pass": [
+0.074
+],
+"net.arm_ml_kws_cnn_m.time_to_model_ready.pass": [
+0.111
+],
+"net.dummy_conmer_12M.active_at_before_optimize.pulse_120ms": [
+51690000
+],
+"net.dummy_conmer_12M.active_at_model_ready.pulse_120ms": [
+52260000
+],
+"net.dummy_conmer_12M.evaltime.pulse_120ms": [
+0.1053
+],
+"net.dummy_conmer_12M.rsz_at_before_optimize.pulse_120ms": [
+68440000
+],
+"net.dummy_conmer_12M.rsz_at_model_ready.pulse_120ms": [
+69370000
+],
+"net.dummy_conmer_12M.time_to_before_optimize.pulse_120ms": [
+5.758
+],
+"net.dummy_conmer_12M.time_to_model_ready.pulse_120ms": [
+6.454
+],
+"net.en_tdnn_15M.active_at_before_optimize.2600ms": [
+71130000
+],
+"net.en_tdnn_15M.active_at_before_optimize.pulse_120ms": [
+71140000
+],
+"net.en_tdnn_15M.active_at_before_optimize.pulse_240ms": [
+71140000
+],
+"net.en_tdnn_15M.active_at_model_ready.2600ms": [
+71480000
+],
+"net.en_tdnn_15M.active_at_model_ready.pulse_120ms": [
+71490000
+],
+"net.en_tdnn_15M.active_at_model_ready.pulse_240ms": [
+71490000
+],
+"net.en_tdnn_15M.evaltime.2600ms": [
+2.214
+],
+"net.en_tdnn_15M.evaltime.pulse_120ms": [
+0.108
+],
+"net.en_tdnn_15M.evaltime.pulse_240ms": [
+0.2122
+],
+"net.en_tdnn_15M.rsz_at_before_optimize.2600ms": [
+85940000
+],
+"net.en_tdnn_15M.rsz_at_before_optimize.pulse_120ms": [
+86960000
+],
+"net.en_tdnn_15M.rsz_at_before_optimize.pulse_240ms": [
+86920000
+],
+"net.en_tdnn_15M.rsz_at_model_ready.2600ms": [
+87080000
+],
+"net.en_tdnn_15M.rsz_at_model_ready.pulse_120ms": [
+88020000
+],
+"net.en_tdnn_15M.rsz_at_model_ready.pulse_240ms": [
+88020000
+],
+"net.en_tdnn_15M.time_to_before_optimize.2600ms": [
+1.757
+],
+"net.en_tdnn_15M.time_to_before_optimize.pulse_120ms": [
+2.046
+],
+"net.en_tdnn_15M.time_to_before_optimize.pulse_240ms": [
+2.046
+],
+"net.en_tdnn_15M.time_to_model_ready.2600ms": [
+2.112
+],
+"net.en_tdnn_15M.time_to_model_ready.pulse_120ms": [
+2.401
+],
+"net.en_tdnn_15M.time_to_model_ready.pulse_240ms": [
+2.403
+],
+"net.en_tdnn_15M_nnef.active_at_before_optimize.pulse_240ms": [
+71120000
+],
+"net.en_tdnn_15M_nnef.active_at_model_ready.pulse_240ms": [
+71470000
+],
+"net.en_tdnn_15M_nnef.evaltime.pulse_240ms": [
+0.2116
+],
+"net.en_tdnn_15M_nnef.rsz_at_before_optimize.pulse_240ms": [
+84880000
+],
+"net.en_tdnn_15M_nnef.rsz_at_model_ready.pulse_240ms": [
+86170000
+],
+"net.en_tdnn_15M_nnef.time_to_before_optimize.pulse_240ms": [
+0.724
+],
+"net.en_tdnn_15M_nnef.time_to_model_ready.pulse_240ms": [
+1.022
+],
+"net.en_tdnn_8M.active_at_before_optimize.2600ms": [
+32870000
+],
+"net.en_tdnn_8M.active_at_before_optimize.pulse_120ms": [
+32880000
+],
+"net.en_tdnn_8M.active_at_before_optimize.pulse_180ms": [
+32880000
+],
+"net.en_tdnn_8M.active_at_before_optimize.pulse_240ms": [
+32880000
+],
+"net.en_tdnn_8M.active_at_model_ready.2600ms": [
+33120000
+],
+"net.en_tdnn_8M.active_at_model_ready.pulse_120ms": [
+33130000
+],
+"net.en_tdnn_8M.active_at_model_ready.pulse_180ms": [
+33130000
+],
+"net.en_tdnn_8M.active_at_model_ready.pulse_240ms": [
+33130000
+],
+"net.en_tdnn_8M.evaltime.2600ms": [
+1.088
+],
+"net.en_tdnn_8M.evaltime.pulse_120ms": [
+0.05383
+],
+"net.en_tdnn_8M.evaltime.pulse_180ms": [
+0.0973
+],
+"net.en_tdnn_8M.evaltime.pulse_240ms": [
+0.1069
+],
+"net.en_tdnn_8M.rsz_at_before_optimize.2600ms": [
+47730000
+],
+"net.en_tdnn_8M.rsz_at_before_optimize.pulse_120ms": [
+48710000
+],
+"net.en_tdnn_8M.rsz_at_before_optimize.pulse_180ms": [
+48720000
+],
+"net.en_tdnn_8M.rsz_at_before_optimize.pulse_240ms": [
+48710000
+],
+"net.en_tdnn_8M.rsz_at_model_ready.2600ms": [
+48750000
+],
+"net.en_tdnn_8M.rsz_at_model_ready.pulse_120ms": [
+49670000
+],
+"net.en_tdnn_8M.rsz_at_model_ready.pulse_180ms": [
+49680000
+],
+"net.en_tdnn_8M.rsz_at_model_ready.pulse_240ms": [
+49680000
+],
+"net.en_tdnn_8M.time_to_before_optimize.2600ms": [
+1.341
+],
+"net.en_tdnn_8M.time_to_before_optimize.pulse_120ms": [
+1.708
+],
+"net.en_tdnn_8M.time_to_before_optimize.pulse_180ms": [
+1.699
+],
+"net.en_tdnn_8M.time_to_before_optimize.pulse_240ms": [
+1.69
+],
+"net.en_tdnn_8M.time_to_model_ready.2600ms": [
+1.576
+],
+"net.en_tdnn_8M.time_to_model_ready.pulse_120ms": [
+1.947
+],
+"net.en_tdnn_8M.time_to_model_ready.pulse_180ms": [
+1.939
+],
+"net.en_tdnn_8M.time_to_model_ready.pulse_240ms": [
+1.929
+],
+"net.en_tdnn_8M_nnef.active_at_before_optimize.pulse_240ms": [
+32870000
+],
+"net.en_tdnn_8M_nnef.active_at_model_ready.pulse_240ms": [
+33110000
+],
+"net.en_tdnn_8M_nnef.evaltime.pulse_240ms": [
+0.1044
+],
+"net.en_tdnn_8M_nnef.rsz_at_before_optimize.pulse_240ms": [
+46610000
+],
+"net.en_tdnn_8M_nnef.rsz_at_model_ready.pulse_240ms": [
+47790000
+],
+"net.en_tdnn_8M_nnef.time_to_before_optimize.pulse_240ms": [
+0.686
+],
+"net.en_tdnn_8M_nnef.time_to_model_ready.pulse_240ms": [
+0.879
+],
+"net.en_tdnn_pyt_15M.active_at_before_optimize.pulse_120ms": [
+45120000
+],
+"net.en_tdnn_pyt_15M.active_at_model_ready.pulse_120ms": [
+45430000
+],
+"net.en_tdnn_pyt_15M.evaltime.pulse_120ms": [
+0.07606
+],
+"net.en_tdnn_pyt_15M.rsz_at_before_optimize.pulse_120ms": [
+60490000
+],
+"net.en_tdnn_pyt_15M.rsz_at_model_ready.pulse_120ms": [
+61470000
+],
+"net.en_tdnn_pyt_15M.time_to_before_optimize.pulse_120ms": [
+1.915
+],
+"net.en_tdnn_pyt_15M.time_to_model_ready.pulse_120ms": [
+2.175
+],
+"net.hey_snips_v1.active_at_before_optimize.400ms": [
+1073000
+],
+"net.hey_snips_v1.active_at_model_ready.400ms": [
+1115000
+],
+"net.hey_snips_v1.evaltime.400ms": [
+0.01159
+],
+"net.hey_snips_v1.rsz_at_before_optimize.400ms": [
+13610000
+],
+"net.hey_snips_v1.rsz_at_model_ready.400ms": [
+14430000
+],
+"net.hey_snips_v1.time_to_before_optimize.400ms": [
+0.062
+],
+"net.hey_snips_v1.time_to_model_ready.400ms": [
+0.099
+],
+"net.hey_snips_v31.active_at_before_optimize.400ms": [
+892800
+],
+"net.hey_snips_v31.active_at_model_ready.400ms": [
+947600
+],
+"net.hey_snips_v31.evaltime.400ms": [
+0.006149
+],
+"net.hey_snips_v31.rsz_at_before_optimize.400ms": [
+14810000
+],
+"net.hey_snips_v31.rsz_at_model_ready.400ms": [
+15490000
+],
+"net.hey_snips_v31.time_to_before_optimize.400ms": [
+0.262
+],
+"net.hey_snips_v31.time_to_model_ready.400ms": [
+0.307
+],
+"net.hey_snips_v4_model17.active_at_before_optimize.2sec": [
+1716000
+],
+"net.hey_snips_v4_model17.active_at_before_optimize.pulse8": [
+1682000
+],
+"net.hey_snips_v4_model17.active_at_model_ready.2sec": [
+2016000
+],
+"net.hey_snips_v4_model17.active_at_model_ready.pulse8": [
+1934000
+],
+"net.hey_snips_v4_model17.evaltime.2sec": [
+0.04906
+],
+"net.hey_snips_v4_model17.evaltime.pulse8": [
+0.005717
+],
+"net.hey_snips_v4_model17.rsz_at_before_optimize.2sec": [
+16900000
+],
+"net.hey_snips_v4_model17.rsz_at_before_optimize.pulse8": [
+17900000
+],
+"net.hey_snips_v4_model17.rsz_at_model_ready.2sec": [
+18010000
+],
+"net.hey_snips_v4_model17.rsz_at_model_ready.pulse8": [
+18810000
+],
+"net.hey_snips_v4_model17.time_to_before_optimize.2sec": [
+2.571
+],
+"net.hey_snips_v4_model17.time_to_before_optimize.pulse8": [
+4.256
+],
+"net.hey_snips_v4_model17.time_to_model_ready.2sec": [
+3.004
+],
+"net.hey_snips_v4_model17.time_to_model_ready.pulse8": [
+4.697
+],
+"net.hey_snips_v4_model17_nnef.active_at_before_optimize.pulse8": [
+1686000
+],
+"net.hey_snips_v4_model17_nnef.active_at_model_ready.pulse8": [
+1941000
+],
+"net.hey_snips_v4_model17_nnef.evaltime.pulse8": [
+0.005081
+],
+"net.hey_snips_v4_model17_nnef.rsz_at_before_optimize.pulse8": [
+15070000
+],
+"net.hey_snips_v4_model17_nnef.rsz_at_model_ready.pulse8": [
+16790000
+],
+"net.hey_snips_v4_model17_nnef.time_to_before_optimize.pulse8": [
+0.76
+],
+"net.hey_snips_v4_model17_nnef.time_to_model_ready.pulse8": [
+1.161
+],
+"net.inceptionv1q.active_at_before_optimize.pass": [
+7793000
+],
+"net.inceptionv1q.active_at_model_ready.pass": [
+8978000
+],
+"net.inceptionv1q.evaltime.pass": [
+2.729
+],
+"net.inceptionv1q.rsz_at_before_optimize.pass": [
+20660000
+],
+"net.inceptionv1q.rsz_at_model_ready.pass": [
+26270000
+],
+"net.inceptionv1q.time_to_before_optimize.pass": [
+1.161
+],
+"net.inceptionv1q.time_to_model_ready.pass": [
+3.851
+],
+"net.inceptionv3.active_at_before_optimize.pass": [
+97490000
+],
+"net.inceptionv3.active_at_before_optimize.pass_mt": [
+97490000
+],
+"net.inceptionv3.active_at_model_ready.pass": [
+100100000
+],
+"net.inceptionv3.active_at_model_ready.pass_mt": [
+100100000
+],
+"net.inceptionv3.evaltime.pass": [
+7.231
+],
+"net.inceptionv3.evaltime.pass_mt": [
+2.508
+],
+"net.inceptionv3.rsz_at_before_optimize.pass": [
+113200000
+],
+"net.inceptionv3.rsz_at_before_optimize.pass_mt": [
+113200000
+],
+"net.inceptionv3.rsz_at_model_ready.pass": [
+118000000
+],
+"net.inceptionv3.rsz_at_model_ready.pass_mt": [
+118000000
+],
+"net.inceptionv3.time_to_before_optimize.pass": [
+5.076
+],
+"net.inceptionv3.time_to_before_optimize.pass_mt": [
+5.078
+],
+"net.inceptionv3.time_to_model_ready.pass": [
+8.247
+],
+"net.inceptionv3.time_to_model_ready.pass_mt": [
+8.249
+],
+"net.mobilenet_v1_1.active_at_before_optimize.pass": [
+17480000
+],
+"net.mobilenet_v1_1.active_at_model_ready.pass": [
+17910000
+],
+"net.mobilenet_v1_1.evaltime.pass": [
+0.9084
+],
+"net.mobilenet_v1_1.rsz_at_before_optimize.pass": [
+30890000
+],
+"net.mobilenet_v1_1.rsz_at_model_ready.pass": [
+32440000
+],
+"net.mobilenet_v1_1.time_to_before_optimize.pass": [
+1.039
+],
+"net.mobilenet_v1_1.time_to_model_ready.pass": [
+1.237
+],
+"net.mobilenet_v2_1.active_at_before_optimize.pass": [
+25190000
+],
+"net.mobilenet_v2_1.active_at_before_optimize.pass_mt": [
+25190000
+],
+"net.mobilenet_v2_1.active_at_model_ready.pass": [
+25820000
+],
+"net.mobilenet_v2_1.active_at_model_ready.pass_mt": [
+25820000
+],
+"net.mobilenet_v2_1.evaltime.pass": [
+1.144
+],
+"net.mobilenet_v2_1.evaltime.pass_mt": [
+0.5206
+],
+"net.mobilenet_v2_1.rsz_at_before_optimize.pass": [
+38520000
+],
+"net.mobilenet_v2_1.rsz_at_before_optimize.pass_mt": [
+38520000
+],
+"net.mobilenet_v2_1.rsz_at_model_ready.pass": [
+40550000
+],
+"net.mobilenet_v2_1.rsz_at_model_ready.pass_mt": [
+40560000
+],
+"net.mobilenet_v2_1.time_to_before_optimize.pass": [
+1.506
+],
+"net.mobilenet_v2_1.time_to_before_optimize.pass_mt": [
+1.513
+],
+"net.mobilenet_v2_1.time_to_model_ready.pass": [
+1.858
+],
+"net.mobilenet_v2_1.time_to_model_ready.pass_mt": [
+1.863
+],
+"net.speaker_id.active_at_before_optimize.pulse8": [
+976500
+],
+"net.speaker_id.active_at_model_ready.pulse8": [
+1054000
+],
+"net.speaker_id.evaltime.pulse8": [
+0.003229
+],
+"net.speaker_id.rsz_at_before_optimize.pulse8": [
+16100000
+],
+"net.speaker_id.rsz_at_model_ready.pulse8": [
+16990000
+],
+"net.speaker_id.time_to_before_optimize.pulse8": [
+0.224
+],
+"net.speaker_id.time_to_model_ready.pulse8": [
+0.286
+],
+"net.trunet.active_at_before_optimize.pulse1_f16": [
+2725000
+],
+"net.trunet.active_at_before_optimize.pulse1_f32": [
+3914000
+],
+"net.trunet.active_at_model_ready.pulse1_f16": [
+2402000
+],
+"net.trunet.active_at_model_ready.pulse1_f32": [
+4027000
+],
+"net.trunet.evaltime.pulse1_f16": [
+0.0395
+],
+"net.trunet.evaltime.pulse1_f32": [
+0.005654
+],
+"net.trunet.rsz_at_before_optimize.pulse1_f16": [
+18440000
+],
+"net.trunet.rsz_at_before_optimize.pulse1_f32": [
+19640000
+],
+"net.trunet.rsz_at_model_ready.pulse1_f16": [
+18710000
+],
+"net.trunet.rsz_at_model_ready.pulse1_f32": [
+20350000
+],
+"net.trunet.time_to_before_optimize.pulse1_f16": [
+2.388
+],
+"net.trunet.time_to_before_optimize.pulse1_f32": [
+2.246
+],
+"net.trunet.time_to_model_ready.pulse1_f16": [
+2.606
+],
+"net.trunet.time_to_model_ready.pulse1_f32": [
+2.449
+],
+"net.voicecom_fake_quant.active_at_before_optimize.2sec": [
+2822000
+],
+"net.voicecom_fake_quant.active_at_model_ready.2sec": [
+3023000
+],
+"net.voicecom_fake_quant.evaltime.2sec": [
+0.2239
+],
+"net.voicecom_fake_quant.rsz_at_before_optimize.2sec": [
+17160000
+],
+"net.voicecom_fake_quant.rsz_at_model_ready.2sec": [
+17960000
+],
+"net.voicecom_fake_quant.time_to_before_optimize.2sec": [
+0.211
+],
+"net.voicecom_fake_quant.time_to_model_ready.2sec": [
+0.31
+],
+"net.voicecom_float.active_at_before_optimize.2sec": [
+2642000
+],
+"net.voicecom_float.active_at_model_ready.2sec": [
+2845000
+],
+"net.voicecom_float.evaltime.2sec": [
+0.2185
+],
+"net.voicecom_float.rsz_at_before_optimize.2sec": [
+16520000
+],
+"net.voicecom_float.rsz_at_model_ready.2sec": [
+17340000
+],
+"net.voicecom_float.time_to_before_optimize.2sec": [
+0.141
+],
+"net.voicecom_float.time_to_model_ready.2sec": [
+0.226
+]
+}
+}
