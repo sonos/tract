@@ -834,7 +834,7 @@ mod tests {
     fn sign_of_negative_zero_is_positive_zero() -> TractResult<()> {
         let mut t = tensor1(&[-0.0f32, 0.0, -2.0, 2.0]);
         Sign {}.eval_in_place(&mut t, None)?;
-        let got = unsafe { t.as_slice_unchecked::<f32>() };
+        let got = t.try_as_plain()?.as_slice::<f32>()?;
         // Compared as bit patterns: -0.0 == 0.0 is true, so an equality check on the
         // values would pass even when -0.0 is returned.
         assert_eq!(got[0].to_bits(), 0f32.to_bits());
