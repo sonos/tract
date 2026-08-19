@@ -77,7 +77,7 @@ tract cost-model regen
 
 It (1) **detects the platform** and resolves the target `_linear.rs`/`.txt` path + device
 class; (2) **gathers** a class-appropriate dataset — the committed seed shapes for the class
-(`linalg/cost-model-seeds/<class>.txt`) unioned with a log-uniform random sweep that samples
+(`cli/cost-model-seeds/<class>.txt`) unioned with a log-uniform random sweep that samples
 small `m/k/n` densely, where kernel choice matters most; (3) **fits** with NNLS; (4)
 **validates against the currently-installed picker** — for each gathered shape it compares
 the new model's pick, the live `ops().mmm(m,k,n)` pick, and the measured oracle, and prints

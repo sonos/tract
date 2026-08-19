@@ -459,16 +459,16 @@ fn auto_platform() -> Option<Platform> {
 /// model-derived shapes when run outside a checkout.
 fn baked_seed(class: Class) -> &'static str {
     match class {
-        Class::Small32 => include_str!("../../linalg/cost-model-seeds/small32.txt"),
-        Class::Small64 => include_str!("../../linalg/cost-model-seeds/small64.txt"),
-        Class::Big64 => include_str!("../../linalg/cost-model-seeds/big64.txt"),
+        Class::Small32 => include_str!("../cost-model-seeds/small32.txt"),
+        Class::Small64 => include_str!("../cost-model-seeds/small64.txt"),
+        Class::Big64 => include_str!("../cost-model-seeds/big64.txt"),
     }
 }
 
 /// The class's seed shapes: the on-disk file if run from a checkout (so seeds can
 /// be edited without a rebuild), else the copy baked into the binary.
 fn load_seed_shapes(class: Class) -> Vec<(usize, usize, usize)> {
-    let path = format!("linalg/cost-model-seeds/{}.txt", class.tag());
+    let path = format!("cli/cost-model-seeds/{}.txt", class.tag());
     let text = std::fs::read_to_string(&path).unwrap_or_else(|_| baked_seed(class).to_string());
     text.lines()
         .filter(|l| !l.trim_start().starts_with('#') && !l.trim().is_empty())
@@ -644,7 +644,7 @@ fn regen(r: Regen) -> TractResult<()> {
     } else {
         // shape set = seed shapes (model findings) + deterministic random sweep, n >= 2 (n=1 is mmv)
         let seeds = load_seed_shapes(class);
-        eprintln!("{} seed shape(s) from linalg/cost-model-seeds/{}.txt", seeds.len(), class.tag());
+        eprintln!("{} seed shape(s) from cli/cost-model-seeds/{}.txt", seeds.len(), class.tag());
         let mut shapes: Vec<(usize, usize, usize)> =
             seeds.into_iter().filter(|&(m, k, n)| n >= 2 && m * k * n <= mkn_cap).collect();
         let mut rng = Lcg::new(r.seed);

@@ -13,7 +13,7 @@ categories = ["science"]
 autobenches = false
 edition = "2024"
 default-run = "tract"
-include = ["Cargo.toml", "src/**/*.rs", "LICENSE*"]
+include = ["Cargo.toml", "src/**/*.rs", "cost-model-seeds/*.txt", "LICENSE*"]
 
 [[bin]]
 name = "tract"
