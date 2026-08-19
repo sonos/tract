@@ -9,6 +9,6 @@ mod range;
 mod reshape;
 mod slice;
 
-pub use affine_trim::AffineChunkTrim;
+pub use tract_pulse_opl::ops::AffineChunkTrim;
 
 register_all_mod!(affine_trim, broadcast, concat, pad, range, reshape, slice);

@@ -2,11 +2,12 @@
 use crate::device::{DeviceContext, get_context};
 use crate::session_handler::make_tensor_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use crate::utils::compute_broadcast_strides;
 use std::ops::Range;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
 use tract_core::trivial_op_state_freeze;
-use tract_pulse_opl::ops::{Delay, PulsePad};
+use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulsePad};
 
 // ─── GpuDelay ────────────────────────────────────────────────────────────────
 
@@ -381,3 +382,70 @@ impl OpState for GpuPulsePadState {
 }
 
 trivial_op_state_freeze!(GpuPulsePadState);
+
+// ─── GpuAffineChunkTrim ──────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GpuAffineChunkTrim {
+    pub inner: AffineChunkTrim,
+}
+
+impl GpuAffineChunkTrim {
+    pub fn new(inner: &AffineChunkTrim) -> Self {
+        Self { inner: inner.clone() }
+    }
+}
+
+impl Op for GpuAffineChunkTrim {
+    fn name(&self) -> StaticName {
+        "GpuAffineChunkTrim".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        self.inner.info()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for GpuAffineChunkTrim {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+        &self,
+        node_id: usize,
+        session: &TurnState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let input_value = args_1!(inputs);
+        let input = input_value.to_device_tensor()?;
+        let axis = self.inner.axis;
+        let n = input.shape()[axis];
+        let take = if n.saturating_sub(self.inner.typed_trim) >= self.inner.target_per_pulse {
+            n - self.inner.typed_trim
+        } else {
+            n
+        };
+        if take == n {
+            return Ok(tvec!(input_value));
+        }
+        let mut o_shape: TVec<usize> = input.shape().into();
+        o_shape[axis] = take;
+        let output = make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
+        let broadcast_strides = compute_broadcast_strides(&o_shape, input.strides())?;
+        let ctx = get_context()?;
+        ctx.copy_nd(input, 0, &broadcast_strides, &output, 0, output.shape(), output.strides())?;
+        Ok(tvec![output.into_tensor().into_tvalue()])
+    }
+}
+
+impl TypedOp for GpuAffineChunkTrim {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        crate::utils::facts_to_device_facts(inputs, |facts| self.inner.output_facts(facts))
+            .with_context(|| format!("Error while computing output facts for {}", self.name()))
+    }
+
+    as_op!();
+}
