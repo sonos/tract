@@ -135,12 +135,13 @@ const RTF_ELIGIBLE_LABELS: &[&str] = &["evaltime", "bench wall"];
 /// self-describing `pulse_Nms`: their frame hop is a fixed external fact (from
 /// the feature front-end), not something derivable from the bench name, so it's
 /// hardcoded per model rather than guessed.
-const FRAME_HOP_MS: &[(&str, f64)] = &[("hey_snips_v4_model17", 10.0), ("speaker_id", 10.0)];
+const FRAME_HOP_MS: &[(&str, f64)] =
+    &[("hey_snips_v4_model17", 10.0), ("speaker_id", 10.0), ("trunet", 10.0)];
 
 /// Audio-ms one pulse represents, from a `..pulseN` / `..pulse_Nms` variant suffix.
 /// `pulse_Nms` names its own unit directly; a bare `pulseN` only converts for a
 /// model listed in [`FRAME_HOP_MS`] — otherwise `None` rather than a guessed
-/// conversion (e.g. `trunet`'s `pulse1_f32`/`_f16`, hop time not established here).
+/// conversion.
 fn pulse_ms(metric: &str) -> Option<String> {
     let after = metric.split("pulse").nth(1)?.trim_start_matches('_');
     let end = after.bytes().take_while(u8::is_ascii_digit).count();
@@ -800,8 +801,10 @@ mod tests {
         assert_eq!(describe("net.hey_snips_v4_model17_nnef.evaltime.pulse8").3, "rtf80");
         assert_eq!(describe("net.speaker_id.evaltime.pulse8").3, "rtf80");
 
-        // trunet's pulse count has no established frame-hop time here -> left alone.
-        assert_eq!(describe("net.trunet.evaltime.pulse1_f32").3, "s");
+        // trunet: pulse1 on a documented 10ms feature frame -> 10ms, regardless of
+        // the trailing f32/f16 precision tag.
+        assert_eq!(describe("net.trunet.evaltime.pulse1_f32").3, "rtf10");
+        assert_eq!(describe("net.trunet.evaltime.pulse1_f16").3, "rtf10");
     }
 
     fn row(device: &str, metric: &str, refv: f64, prv: f64, worse: bool, mover: bool) -> Row {
