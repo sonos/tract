@@ -131,14 +131,29 @@ const TYPE_INFO: &[(&str, &str, &str)] = &[
 /// a per-pulse processing cost.
 const RTF_ELIGIBLE_LABELS: &[&str] = &["evaltime", "bench wall"];
 
-/// Audio-ms one pulse represents, from a `..pulseN` / `..pulse_Nms` variant suffix
-/// (only the latter actually names its unit; `pulse8`, `pulse1_f32`... don't, so
-/// they return `None` rather than a guessed conversion).
-fn pulse_ms(metric: &str) -> Option<&str> {
+/// Models whose `pulseN` variant is a raw feature-frame count rather than a
+/// self-describing `pulse_Nms`: their frame hop is a fixed external fact (from
+/// the feature front-end), not something derivable from the bench name, so it's
+/// hardcoded per model rather than guessed.
+const FRAME_HOP_MS: &[(&str, f64)] = &[("hey_snips_v4_model17", 10.0), ("speaker_id", 10.0)];
+
+/// Audio-ms one pulse represents, from a `..pulseN` / `..pulse_Nms` variant suffix.
+/// `pulse_Nms` names its own unit directly; a bare `pulseN` only converts for a
+/// model listed in [`FRAME_HOP_MS`] — otherwise `None` rather than a guessed
+/// conversion (e.g. `trunet`'s `pulse1_f32`/`_f16`, hop time not established here).
+fn pulse_ms(metric: &str) -> Option<String> {
     let after = metric.split("pulse").nth(1)?.trim_start_matches('_');
     let end = after.bytes().take_while(u8::is_ascii_digit).count();
     let (digits, rest) = after.split_at(end);
-    (!digits.is_empty() && rest.starts_with("ms")).then_some(digits)
+    if digits.is_empty() {
+        return None;
+    }
+    if rest.starts_with("ms") {
+        return Some(digits.to_string());
+    }
+    let count: f64 = digits.parse().ok()?;
+    let (_, hop) = FRAME_HOP_MS.iter().find(|(name, _)| metric.contains(name))?;
+    Some(((count * hop).round() as i64).to_string())
 }
 
 /// (model, label, variant, unit) for a metric key `kind.model.type.variant`.
@@ -780,10 +795,12 @@ mod tests {
         assert_eq!(describe("net.en_tdnn_8M.time_to_model_ready.pulse_240ms").3, "s");
         assert_eq!(describe("net.en_tdnn_8M.rsz_at_model_ready.pulse_240ms").3, "mem");
 
-        // Wake-word / speaker-id / trunet pulse counts carry no ms unit in their
-        // name (`pulse8`, `pulse1_f32`) — no hop-time to convert with, so left alone.
-        assert_eq!(describe("net.hey_snips_v4_model17.evaltime.pulse8").3, "s");
-        assert_eq!(describe("net.speaker_id.evaltime.pulse8").3, "s");
+        // Wake-word / speaker-id: pulse8 on a documented 10ms feature frame -> 80ms.
+        assert_eq!(describe("net.hey_snips_v4_model17.evaltime.pulse8").3, "rtf80");
+        assert_eq!(describe("net.hey_snips_v4_model17_nnef.evaltime.pulse8").3, "rtf80");
+        assert_eq!(describe("net.speaker_id.evaltime.pulse8").3, "rtf80");
+
+        // trunet's pulse count has no established frame-hop time here -> left alone.
         assert_eq!(describe("net.trunet.evaltime.pulse1_f32").3, "s");
     }
 
