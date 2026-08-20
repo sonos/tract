@@ -6,6 +6,11 @@ on:
     - cron:  '0 3 * * *'
   workflow_dispatch:
 
+concurrency:
+  # cancel superseded PR pushes; schedule/dispatch key on run_id so they never cancel
+  group: crates-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   CARGO_INCREMENTAL: false
   CARGO_NET_RETRY: 10
