@@ -1,5 +1,6 @@
 #![allow(clippy::excessive_precision)]
 use crate::frame::element_wise::ElementWiseKer;
+use crate::generic::sigmoid::ssigmoid;
 use tract_data::internal::*;
 
 #[derive(Clone, Debug)]
@@ -25,10 +26,7 @@ impl ElementWiseKer<f32> for SSiLU4 {
     fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-        x.iter_mut().for_each(|px| {
-            let sigmoid = 1.0 / (1.0 + (-*px).exp());
-            *px *= sigmoid;
-        });
+        x.iter_mut().for_each(|px| *px *= ssigmoid(*px));
     }
 }
 
@@ -57,8 +55,7 @@ impl ElementWiseKer<f16> for HSiLU8 {
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| {
             let x_f32 = px.to_f32();
-            let sigmoid = 1.0 / (1.0 + (-x_f32).exp());
-            *px = f16::from_f32(x_f32 * sigmoid);
+            *px = f16::from_f32(x_f32 * ssigmoid(x_f32));
         });
     }
 }
