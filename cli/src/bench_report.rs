@@ -124,14 +124,36 @@ const TYPE_INFO: &[(&str, &str, &str)] = &[
     ("bench_runtime", "bench wall", "s"),
 ];
 
+/// Wall-clock-per-call labels a `pulseN` / `pulse_Nms` variant can turn into an RTF.
+/// `evaltime` is the older TDNN-era pulsed streaming benches (`pulse_240ms` etc.);
+/// `bench wall` is the `tract bench` pipeline (e.g. the nemotron pulsed benches).
+/// Excludes load-time/memory labels, which share the same variant suffix but aren't
+/// a per-pulse processing cost.
+const RTF_ELIGIBLE_LABELS: &[&str] = &["evaltime", "bench wall"];
+
+/// Audio-ms one pulse represents, from a `..pulseN` / `..pulse_Nms` variant suffix
+/// (only the latter actually names its unit; `pulse8`, `pulse1_f32`... don't, so
+/// they return `None` rather than a guessed conversion).
+fn pulse_ms(metric: &str) -> Option<&str> {
+    let after = metric.split("pulse").nth(1)?.trim_start_matches('_');
+    let end = after.bytes().take_while(u8::is_ascii_digit).count();
+    let (digits, rest) = after.split_at(end);
+    (!digits.is_empty() && rest.starts_with("ms")).then_some(digits)
+}
+
 /// (model, label, variant, unit) for a metric key `kind.model.type.variant`.
-fn describe(metric: &str) -> (String, String, String, &'static str) {
-    let (mut label, mut unit) = (None, "raw");
+fn describe(metric: &str) -> (String, String, String, String) {
+    let (mut label, mut unit) = (None, "raw".to_string());
     for (key, lbl, u) in TYPE_INFO {
         if metric.contains(key) {
             label = Some(*lbl);
-            unit = u;
+            unit = u.to_string();
             break;
+        }
+    }
+    if unit == "s" && label.is_some_and(|l| RTF_ELIGIBLE_LABELS.contains(&l)) {
+        if let Some(ms) = pulse_ms(metric) {
+            unit = format!("rtf{ms}");
         }
     }
     let p: Vec<&str> = metric.split('.').collect();
@@ -199,6 +221,18 @@ fn fmt_val(v: f64, unit: &str) -> String {
         // Stored as ms/tok (see `handle`'s inversion) so it reads lower-is-better like
         // every other metric; the native tok/s follows as a small second line.
         "tok" => format!("{} ms/tok<br><sub>{} tok/s</sub>", fmt_g(v, 3), fmt_g(1000.0 / v, 4)),
+        // rtf<N>: stored value is bench_runtime in seconds for a pulse covering N ms
+        // of audio; RTF = wall / audio, ASR convention (lower-is-better, <1 = faster
+        // than real time), shown as a small second line under the raw ms/pulse.
+        u if u.starts_with("rtf") => {
+            let audio_ms: f64 = u[3..].parse().unwrap_or(1.0);
+            let wall_ms = v * 1000.0;
+            format!(
+                "{} ms/pulse<br><sub>{} RTF</sub>",
+                fmt_g(wall_ms, 3),
+                fmt_g(wall_ms / audio_ms, 3)
+            )
+        }
         _ => fmt_g(v, 4),
     }
 }
@@ -246,8 +280,8 @@ fn to_cell(r: &Row) -> Cell {
         delta: format!("{:+.1}%", r.delta),
         cell: cell_md(&r.metric),
         device: r.device.clone(),
-        ref_fmt: fmt_val(r.refv, unit),
-        pr_fmt: fmt_val(r.prv, unit),
+        ref_fmt: fmt_val(r.refv, &unit),
+        pr_fmt: fmt_val(r.prv, &unit),
     }
 }
 
@@ -406,11 +440,12 @@ fn star_matrix_md(rows: &[Row], short_names: &toml::Table) -> String {
 const GROUP_ORDER: &[&str] = &["Speed", "Load", "Memory", "Other"];
 
 fn group_of(metric: &str) -> &'static str {
+    let unit = describe(metric).3;
     if is_speed(metric) {
         "Speed"
-    } else if describe(metric).3 == "mem" {
+    } else if unit == "mem" {
         "Memory"
-    } else if describe(metric).3 == "s" {
+    } else if unit == "s" || unit.starts_with("rtf") {
         "Load"
     } else {
         "Other"
@@ -720,6 +755,36 @@ mod tests {
         assert_eq!(col_header(1), "serial");
         assert_eq!(col_header(4), "t4");
         assert_eq!(col_header(0), "all cores");
+    }
+
+    #[test]
+    fn rtf_formatting() {
+        assert_eq!(fmt_val(0.1, "rtf100"), "100 ms/pulse<br><sub>1 RTF</sub>");
+        assert_eq!(fmt_val(0.16, "rtf320"), "160 ms/pulse<br><sub>0.5 RTF</sub>");
+        let encoder =
+            "net.nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_pulse320ms.bench_runtime.cpu";
+        let preproc =
+            "net.nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_pulse100ms.bench_runtime.cpu";
+        assert_eq!(describe(encoder).3, "rtf320");
+        assert_eq!(describe(preproc).3, "rtf100");
+        assert_eq!(group_of(encoder), "Load");
+
+        // Older TDNN-era streaming ASR benches: real key uses `evaltime`, not
+        // `bench_runtime` (see star_matrix_lamps below), and the ms is already
+        // explicit in the variant (`pulse_240ms`) rather than a hardcoded table row.
+        assert_eq!(describe("net.en_tdnn_8M.evaltime.pulse_240ms").3, "rtf240");
+        assert_eq!(describe("net.en_tdnn_15M.evaltime.pulse_120ms").3, "rtf120");
+
+        // A load-time/memory metric can share the same pulse_240ms variant suffix as
+        // its model's evaltime sibling; it must NOT get converted to an RTF.
+        assert_eq!(describe("net.en_tdnn_8M.time_to_model_ready.pulse_240ms").3, "s");
+        assert_eq!(describe("net.en_tdnn_8M.rsz_at_model_ready.pulse_240ms").3, "mem");
+
+        // Wake-word / speaker-id / trunet pulse counts carry no ms unit in their
+        // name (`pulse8`, `pulse1_f32`) — no hop-time to convert with, so left alone.
+        assert_eq!(describe("net.hey_snips_v4_model17.evaltime.pulse8").3, "s");
+        assert_eq!(describe("net.speaker_id.evaltime.pulse8").3, "s");
+        assert_eq!(describe("net.trunet.evaltime.pulse1_f32").3, "s");
     }
 
     fn row(device: &str, metric: &str, refv: f64, prv: f64, worse: bool, mover: bool) -> Row {
