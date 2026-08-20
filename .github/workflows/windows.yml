@@ -70,9 +70,9 @@ jobs:
       env:
         LIBCLANG_PATH: "C:\\Program Files\\LLVM\\bin"
     - name: data / linalg / core / nnef / onnx / onnx-opl
-      run: cargo test -p tract-data -p tract-linalg -p tract-core -p tract-nnef -p tract-onnx -p tract-onnx-opl
+      run: cargo test -q -p tract-data -p tract-linalg -p tract-core -p tract-nnef -p tract-onnx -p tract-onnx-opl
     - name: Onnx test suite
       run: |
-          cargo test --release -p test-onnx-core -p test-unit-core
+          cargo test -q --release -p test-onnx-core -p test-unit-core
       env:
         TRACT_LOG: info
