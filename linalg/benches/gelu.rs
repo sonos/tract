@@ -3,7 +3,6 @@
 use criterion::*;
 use tract_data::prelude::*;
 
-#[cfg(target_arch = "aarch64")]
 use tract_linalg::element_wise::ElementWiseKer;
 
 fn gelu_f32(c: &mut Criterion) {
