@@ -292,6 +292,37 @@ threads = [0]
 
 [[bench]]
 kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_pulse100ms"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
+args = [
+    "--nnef-tract-transformers",
+    "-t", "transformers_detect_all",
+    "-t", 'set_symbols(values: {"BATCH": 1})',
+    "-t", 'patch(body: "length = tract_core_shape_of(input_signal)[1];")',
+    "-t", 'select_inputs(inputs: ["input_signal"])',
+    "-t", 'select_outputs(outputs: ["processed_signal"])',
+    "-t", 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "1600")',
+]
+runtimes = ["cpu", "metal", "cuda"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_pulse320ms"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
+args = [
+    "--nnef-tract-transformers",
+    "-t", "transformers_detect_all",
+    "-t", 'set_symbols(values: {"BATCH": 1})',
+    "-t", 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")',
+    "-t", 'select_inputs(inputs: ["audio_signal", "lang_id"])',
+    "-t", 'select_outputs(outputs: ["outputs"])',
+    "-t", 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")',
+]
+runtimes = ["cpu", "metal", "cuda"]
+threads = [0]
+
+[[bench]]
+kind = "net"
 name = "nemotron-3_5-asr-streaming-0_6b-f32f32-decoder_pass"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.decoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set TARGETS__TIME=1"
