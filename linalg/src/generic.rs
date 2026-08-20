@@ -21,7 +21,7 @@ use crate::{BinOp, LinalgRegistry};
 
 pub use self::by_scalar::{HMulByScalar8, SMulByScalar4};
 pub use self::erf::SErf4;
-pub use self::gelu::{HGelu8, HGeluLut8, SGelu4};
+pub use self::gelu::{HGelu8, SGelu4};
 pub use self::hardswish::{HHardSwish8, SHardSwish4};
 pub use self::leaky_relu::{HLeakyRelu8, SLeakyRelu4};
 pub use self::lut::GenericLut8;

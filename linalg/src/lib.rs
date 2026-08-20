@@ -240,7 +240,7 @@ pub fn generic() -> Ops {
         hardswish_f32: Box::new(|| generic::SHardSwish4::ew()),
         silu_f16: Box::new(|| generic::HSiLU8::ew()),
         silu_f32: Box::new(|| generic::SSiLU4::ew()),
-        gelu_f16: Box::new(|| generic::HGeluLut8::ew()),
+        gelu_f16: Box::new(|| generic::HGelu8::ew()),
         gelu_f32: Box::new(|| generic::SGelu4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
