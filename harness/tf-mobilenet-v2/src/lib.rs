@@ -56,7 +56,6 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
 #[cfg(test)]
 mod tests {
     extern crate dinghy_test;
-    use tract_tensorflow::prelude::*;
 
     use super::*;
 
