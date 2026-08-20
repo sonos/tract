@@ -99,6 +99,8 @@ jobs:
     # on the runner (full toolkit available) then runs it against a tiny
     # model inside a container that only has the minimum runtime packages
     # pinned in harness/cuda-minimum-deploy/Dockerfile.
+    # Daily only: keeps this off the cuda-lovelace runner on every PR.
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
     runs-on: cuda-lovelace
     needs: prepare-matrix
     env:
