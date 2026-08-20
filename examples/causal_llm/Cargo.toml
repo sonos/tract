@@ -7,7 +7,7 @@ edition = "2024"
 anyhow.workspace = true
 float-ord = "0.3.2"
 ndarray.workspace = true
-tract.workspace = true
+tract = { workspace = true, features = ["cuda-13000"] }
 axum = "0.8.4"
 tokio = { version = "1.47.1", features = ["rt-multi-thread"] }
 clap = { version = "4", features = ["derive"] }
