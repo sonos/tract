@@ -45,7 +45,10 @@ case "$PLATFORM" in
         export RUSTC_TRIPLE=arm-unknown-linux-gnueabihf
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
-        cargo dinghy --platform $PLATFORM build --release -p tract-cli -p tract-ffi
+        cargo dinghy --platform $PLATFORM build --release -p tract-ffi --no-default-features
+        cargo dinghy --platform $PLATFORM build --release -p tract-cli \
+            --no-default-features \
+            --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra"
         ;;
 
     "aarch64-linux-android"|"armv7-linux-androideabi"|"i686-linux-android"|"x86_64-linux-android")
@@ -253,7 +256,16 @@ case "$PLATFORM" in
             cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
         fi
 
-        cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi
+        # TRACT_CUDA_FEATURE is the only signal that a leg targets a CUDA board; every
+        # other linux cross target here is GPU-less, so keep cudarc out of its binaries.
+        if [ -n "$TRACT_CUDA_FEATURE" ]
+        then
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi \
+                --no-default-features --features "$TRACT_CUDA_FEATURE"
+        else
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi \
+                --no-default-features
+        fi
         # keep lto for these two are they're going to devices.
         if [ -n "$TRACT_CUDA_FEATURE" ]
         then
@@ -267,7 +279,10 @@ case "$PLATFORM" in
                 --no-default-features --features "$TRACT_CLI_FEATURES" \
                 -p tract-cli
         else
-            cargo dinghy --platform $PLATFORM build --release -p tract-cli
+            cargo dinghy --platform $PLATFORM build --release \
+                --no-default-features \
+                --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra" \
+                -p tract-cli
         fi
         ;;
 
