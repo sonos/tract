@@ -1,0 +1,7 @@
+version 1.0;
+
+graph pow_const(input) -> (output)
+{
+    input = external<scalar>(shape = [4]);
+    output = pow(input, 2.3333);
+}

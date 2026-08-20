@@ -16,6 +16,7 @@ mod is_inf;
 mod lstm_cell;
 mod matmul;
 mod one_hot;
+mod pow_const;
 mod qconv;
 mod qmatmul;
 mod range;
@@ -57,6 +58,7 @@ pub fn register(registry: &mut Registry) {
     fft::register(registry);
     gather::register(registry);
     gelu_approximate::register(registry);
+    pow_const::register(registry);
     grid_sample::register(registry);
     lstm_cell::register(registry);
     matmul::register(registry);
