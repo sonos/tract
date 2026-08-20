@@ -155,7 +155,7 @@ jobs:
     - name: With assertions
       run: |
         rustup update
-        cargo test --features tract-core/paranoid_assertions -p test-onnx-core -p test-unit-core
+        cargo test -q --features tract-core/paranoid_assertions -p test-onnx-core -p test-unit-core
 
   without-default-features:
     runs-on: ubuntu-latest
