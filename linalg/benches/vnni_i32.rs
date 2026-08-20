@@ -46,7 +46,7 @@ fn benches(c: &mut Criterion) {
             eprintln!("avx512vnni not available, skipping");
             return;
         }
-        use tract_linalg::x86_64_fma::mmm::*;
+        use tract_linalg::x86_64::mmm::*;
         for &(m, k, n) in
             &[(64usize, 256usize, 64usize), (256, 256, 256), (512, 512, 512), (1024, 1024, 64)]
         {

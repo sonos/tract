@@ -67,8 +67,8 @@ fn benches(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     {
         enable_ftz_daz();
-        use tract_linalg::x86_64_fma::act::*;
-        use tract_linalg::x86_64_fma::{
+        use tract_linalg::x86_64::act::*;
+        use tract_linalg::x86_64::{
             avx512_sigmoid_f32, avx512_silu_f32, avx512_tanh_f32, fma_sigmoid_f32, fma_silu_f32,
             fma_tanh_f32,
         };

@@ -30,7 +30,7 @@ use lazy_static::lazy_static;
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
 #[cfg(target_arch = "x86_64")]
-pub mod x86_64_fma;
+pub mod x86_64;
 
 pub mod hwbench;
 
@@ -263,7 +263,7 @@ pub fn generic() -> Ops {
 pub fn best() -> Ops {
     let mut ops = generic();
     #[cfg(target_arch = "x86_64")]
-    x86_64_fma::plug(&mut ops);
+    x86_64::plug(&mut ops);
     #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
     arm32::plug(&mut ops);
     #[cfg(target_arch = "aarch64")]

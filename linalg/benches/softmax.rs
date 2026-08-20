@@ -63,14 +63,14 @@ fn softmax_f32(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop1/iasm", |b| {
         b.iter(|| {
-            tract_linalg::x86_64_fma::max::x86_64_fma_max_f32_32n::red().run(input).unwrap();
+            tract_linalg::x86_64::max::x86_64_fma_max_f32_32n::red().run(input).unwrap();
         })
     });
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx512f") {
         group.bench_function("loop1/avx512", |b| {
             b.iter(|| {
-                tract_linalg::x86_64_fma::max::x86_64_avx512_max_f32_64n::red().run(input).unwrap();
+                tract_linalg::x86_64::max::x86_64_avx512_max_f32_64n::red().run(input).unwrap();
             })
         });
     }
@@ -87,7 +87,7 @@ fn softmax_f32(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop2/iasm", |b| {
         b.iter(|| {
-            tract_linalg::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n::red()
+            tract_linalg::x86_64::softmax::x86_64_fma_softmax2_fastcompact_f32_32n::red()
                 .run_with_params(input, 10.)
                 .unwrap()
         });
@@ -96,7 +96,7 @@ fn softmax_f32(c: &mut Criterion) {
     if is_x86_feature_detected!("avx512f") {
         group.bench_function("loop2/avx512", |b| {
             b.iter(|| {
-                tract_linalg::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red()
+                tract_linalg::x86_64::softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red()
                     .run_with_params(input, 10.)
                     .unwrap()
             });
@@ -119,7 +119,7 @@ fn softmax_f32(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop3/iasm", |b| {
         b.iter(|| {
-            tract_linalg::x86_64_fma::by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew()
+            tract_linalg::x86_64::by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew()
                 .run_with_params(input, 0.21)
                 .unwrap()
         });
@@ -152,7 +152,7 @@ fn softmax_f16(c: &mut Criterion) {
     if std::is_x86_feature_detected!("avx512f") {
         group.bench_function("loop2/avx512", |b| {
             b.iter(|| {
-                tract_linalg::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n::red()
+                tract_linalg::x86_64::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n::red()
                     .run_with_params(input, f16::from_f32(10.0))
                     .unwrap()
             });

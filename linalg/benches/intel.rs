@@ -124,7 +124,7 @@ fn main() {
 
 // for mmv
 fn mmv_perf_m() {
-    use tract_linalg::x86_64_fma::mmm::*;
+    use tract_linalg::x86_64::mmm::*;
     let core_id = core_affinity::get_core_ids().unwrap()[0];
     core_affinity::set_for_current(core_id);
     fn bench<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: MatMatMulKer<T>>(
@@ -151,7 +151,7 @@ fn mmv_perf_m() {
 
 // output a csv file with the perf of the kernels wrt batch size
 fn mmm_perf_batch_size() {
-    use tract_linalg::x86_64_fma::mmm::*;
+    use tract_linalg::x86_64::mmm::*;
     let core_id = core_affinity::get_core_ids().unwrap()[0];
     core_affinity::set_for_current(core_id);
     fn bench<T: Datum + Copy + num_traits::Zero + tract_linalg::LADatum, K: MatMatMulKer<T>>(

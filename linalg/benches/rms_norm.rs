@@ -45,7 +45,7 @@ fn rms_norm(c: &mut Criterion) {
         #[cfg(target_arch = "x86_64")]
         if std::is_x86_feature_detected!("avx512f") {
             g.bench_function("avx512", |b| {
-                b.iter(|| tract_linalg::x86_64_fma::rms_norm::rms_norm_f32(s, 1e-5))
+                b.iter(|| tract_linalg::x86_64::rms_norm::rms_norm_f32(s, 1e-5))
             });
         }
         #[cfg(target_arch = "aarch64")]

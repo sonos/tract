@@ -319,8 +319,7 @@ fn main() {
                 if use_masm() {
                     let mut lib_exe = cc::windows_registry::find(&target, "lib.exe")
                         .expect("Could not find lib.exe");
-                    lib_exe
-                        .arg(format!("/out:{}", out_dir.join("x86_64_fma.lib").to_str().unwrap()));
+                    lib_exe.arg(format!("/out:{}", out_dir.join("x86_64.lib").to_str().unwrap()));
                     for f in files {
                         let mut obj = f.clone();
                         obj.set_extension("o");
@@ -344,13 +343,9 @@ fn main() {
                     }
                     assert!(lib_exe.status().unwrap().success());
                     println!("cargo:rustc-link-search=native={}", out_dir.to_str().unwrap());
-                    println!("cargo:rustc-link-lib=static=x86_64_fma");
+                    println!("cargo:rustc-link-lib=static=x86_64");
                 } else {
-                    cc::Build::new()
-                        .files(files)
-                        .flag("-mfma")
-                        .flag("-mf16c")
-                        .compile("x86_64_fma");
+                    cc::Build::new().files(files).flag("-mfma").flag("-mf16c").compile("x86_64");
 
                     // clang at least (dunno about gcc) outputs .asm files in the
                     // root directory that we need to clean up so we don't pollute
@@ -362,7 +357,7 @@ fn main() {
                     let _ = fs::remove_file("fma_tanh_f32.asm");
                 }
             } else {
-                cc::Build::new().files(files).flag("-mfma").compile("x86_64_fma");
+                cc::Build::new().files(files).flag("-mfma").compile("x86_64");
             }
             // VNNI kernels compiled separately so old assemblers (binutils < 2.30,
             // e.g. Debian stretch) that can't encode `vpdpbusd ymm` don't break

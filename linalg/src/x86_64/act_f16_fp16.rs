@@ -13,7 +13,7 @@
 // SuperApproximate band.
 //
 // Gated on `is_x86_feature_detected!("avx512fp16")` (the actual gating happens
-// in `plug_avx512fp16` over in `x86_64_fma.rs`). Pre-FP16 AVX-512 hosts
+// in `plug_avx512fp16` over in `x86_64.rs`). Pre-FP16 AVX-512 hosts
 // (Skylake-X, Cascade Lake, Ice Lake server prior to fp16 extension) keep
 // using `act_f16.rs`'s f32-roundtrip versions.
 
@@ -116,7 +116,7 @@ unsafe fn hardswish_f16_run(buf: &mut [f16]) {
 // vmaxph) appear not to saturate Sapphire Rapids' FP16 execution port the
 // same way f32 mul/max saturate the FP32 ports. The kernel is correct (passes
 // proptest against the f16 reference) but is NOT plugged in — see the
-// `plug_avx512fp16` comment in `x86_64_fma.rs`. Kept here in case a different
+// `plug_avx512fp16` comment in `x86_64.rs`. Kept here in case a different
 // AVX-512_FP16 uarch (Granite Rapids etc.) flips the comparison.
 ew_impl_wrap!(
     f16,

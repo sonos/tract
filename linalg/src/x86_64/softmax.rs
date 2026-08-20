@@ -127,7 +127,7 @@ mod test_x86_64_fma_softmax2_fastcompact_f32_32n {
 // lanes each). Same fast-compact-exp algorithm as the FMA kernel above:
 //   y = bitcast_u32(max(0, SLOPE*(x-max) + OFFSET))   (via vcvttps2dq)
 // then writes y back and accumulates sum(y). Runtime-gated on avx512f (see
-// x86_64_fma.rs::plug_avx512f); non-AVX512 CPUs keep using the FMA kernel.
+// x86_64.rs::plug_avx512f); non-AVX512 CPUs keep using the FMA kernel.
 // nr=64, 64-byte (16xf32) alignment.
 map_reduce_impl_wrap!(
     f32,

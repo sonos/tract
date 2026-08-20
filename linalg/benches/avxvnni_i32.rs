@@ -52,8 +52,8 @@ fn run_kernel(be: &mut Bencher, mmm: &dyn MatMatMul, m: usize, k: usize, n: usiz
 fn benches(c: &mut Criterion) {
     #[cfg(tract_avxvnni)]
     {
-        use tract_linalg::x86_64_fma::avxvnni::has_avxvnni;
-        use tract_linalg::x86_64_fma::mmm::*;
+        use tract_linalg::x86_64::avxvnni::has_avxvnni;
+        use tract_linalg::x86_64::mmm::*;
         if !has_avxvnni() {
             eprintln!("AVX-VNNI not available (CPUID leaf 7.1 EAX.4 unset), skipping");
             return;

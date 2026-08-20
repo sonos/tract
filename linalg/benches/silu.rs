@@ -27,7 +27,7 @@ fn silu_f32(c: &mut Criterion) {
     #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("fma") {
         group.bench_function("linalg-asm-fused", |b| {
-            b.iter(|| tract_linalg::x86_64_fma::fma_silu_f32::run(input, ()))
+            b.iter(|| tract_linalg::x86_64::fma_silu_f32::run(input, ()))
         });
     }
 }

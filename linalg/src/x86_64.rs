@@ -1,8 +1,8 @@
 use crate::Ops;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
-use crate::x86_64_fma::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n;
-use crate::x86_64_fma::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
+use crate::x86_64::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n;
+use crate::x86_64::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 
 pub mod mmm;
 

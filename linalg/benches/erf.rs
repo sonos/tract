@@ -31,7 +31,7 @@ fn erf_f32(c: &mut Criterion) {
             let mut ta = aligned_input();
             let sa = unsafe { ta.as_slice_mut_unchecked::<f32>() };
             g.bench_function("avx512", |b| {
-                b.iter(|| tract_linalg::x86_64_fma::erf::x86_64_avx512_erf_f32_64n::run(sa, ()))
+                b.iter(|| tract_linalg::x86_64::erf::x86_64_avx512_erf_f32_64n::run(sa, ()))
             });
         }
         g.finish();

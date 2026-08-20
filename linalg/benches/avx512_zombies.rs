@@ -31,7 +31,7 @@ fn benches(c: &mut Criterion) {
         }
 
         use tract_data::prelude::DatumType::F32;
-        use tract_linalg::x86_64_fma::mmm::*;
+        use tract_linalg::x86_64::mmm::*;
 
         // Representative large-K, square-ish M case.
         let (m, k) = (64usize, 256usize);

@@ -35,9 +35,9 @@ The per-target tables are generated Rust files with the dataset each was fit fro
 next to them:
 - **arm**: `linalg/src/arm{32,64}/cortex_<cpu>_linear.rs` (+ `cortex_<cpu>.txt`), dispatched by
   `Kind` (CPU part from `/proc/cpuinfo`) in `arm32.rs` / `arm64.rs`.
-- **x86**: `linalg/src/x86_64_fma/{intel,amd}_{avx512,fma}_linear.rs` (+ `.txt`). The cohort is
+- **x86**: `linalg/src/x86_64/{intel,amd}_{avx512,fma}_linear.rs` (+ `.txt`). The cohort is
   vendor × ISA tier: the tier is decided by which plug runs (`plug_fma` / `plug_avx512f` in
-  `x86_64_fma/mmm.rs`), the vendor by CPUID (`TRACT_X86_KIND=intel|amd|other` overrides).
+  `x86_64/mmm.rs`), the vendor by CPUID (`TRACT_X86_KIND=intel|amd|other` overrides).
   Unknown vendors keep the hand-tuned `pick_mmm` fallback.
 
 The coefficients are fit with **non-negative least squares** — times are sums of non-negative
@@ -165,7 +165,7 @@ fallback for unrecognized targets:
   to need their own model (M1 has AMX, M4 has SME).
 - **x86**: a new cohort is only needed if a vendor/tier wants materially different picks
   (e.g. an Intel-server-AVX-512 model distinct from the client one) — then key it on CPUID
-  family/model in `x86_64_fma.rs::vendor` and select it in `plug_fma` / `plug_avx512f`.
+  family/model in `x86_64.rs::vendor` and select it in `plug_fma` / `plug_avx512f`.
 
 ```rust
 // example (arm)
