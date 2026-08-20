@@ -1,7 +1,7 @@
 #[cfg(target_vendor = "apple")]
 extern crate tract_metal;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
+#[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 extern crate tract_cuda;
 extern crate tract_transformers;
 
