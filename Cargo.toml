@@ -237,7 +237,7 @@ tract-pulse = { version = "0.23.6-pre", path = 'pulse' }
 tract-tensorflow = { version = "0.23.6-pre", path = 'tensorflow' }
 tract-tflite = { version = "0.23.6-pre", path = 'tflite' }
 tract-transformers = { version = "0.23.6-pre", path = 'transformers' }
-tract = { version = "0.23.6-pre", path = 'api/rs' }
+tract = { version = "0.23.6-pre", path = 'api/rs', default-features = false }
 tract-proxy-sys = { version = "0.23.6-pre", path = 'api/proxy/sys' }
 tract-cli = { version = "0.23.6-pre", path = 'cli' }
 tract-ffi = { version = "0.23.6-pre" }

@@ -25,3 +25,23 @@ serde.workspace = true
 serde_json.workspace = true
 tract-api.workspace = true
 tract.workspace = true
+
+[features]
+default = ["cuda-13000"]
+
+# CUDA driver-API selectors, passed straight through to the tract facade
+# (linux/windows targets only). Exactly one must be active for CUDA support;
+# the default pulls cuda-13000. CPU-only cdylibs drop the backend entirely
+# with `--no-default-features`.
+cuda-12000 = ["tract/cuda-12000"]
+cuda-12010 = ["tract/cuda-12010"]
+cuda-12020 = ["tract/cuda-12020"]
+cuda-12030 = ["tract/cuda-12030"]
+cuda-12040 = ["tract/cuda-12040"]
+cuda-12050 = ["tract/cuda-12050"]
+cuda-12060 = ["tract/cuda-12060"]
+cuda-12080 = ["tract/cuda-12080"]
+cuda-12090 = ["tract/cuda-12090"]
+cuda-13000 = ["tract/cuda-13000"]
+cuda-13010 = ["tract/cuda-13010"]
+cuda-13020 = ["tract/cuda-13020"]
