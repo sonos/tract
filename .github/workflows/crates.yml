@@ -80,9 +80,9 @@ jobs:
         save-if: ${{ github.ref == 'refs/heads/main' }}
 
     - name: Cargo test
-      # tract-linalg runs thousands of tiny kernel tests; -q collapses the
-      # per-test lines to dots so the CI log stays readable.
-      run: cargo test ${{ matrix.crate == 'tract-linalg' && '-q' || '' }} -p ${{matrix.crate}}
+      # tract-linalg and the test-rt suites run thousands of tiny cases; -q
+      # collapses the per-test lines to dots so the CI log stays readable.
+      run: cargo test ${{ (matrix.crate == 'tract-linalg' || startsWith(matrix.crate, 'test-')) && '-q' || '' }} -p ${{matrix.crate}}
 
   cuda:
     runs-on: cuda-lovelace
