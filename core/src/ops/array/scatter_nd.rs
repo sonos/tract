@@ -175,30 +175,21 @@ impl TypedOp for ScatterNd {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        if self.reduction != ScatterReduction::None {
-            return Ok(None);
-        }
+        rule_if!(self.reduction == ScatterReduction::None);
         let (data, indices, updates) = args_3!(model.node_input_facts(node.id)?);
         rule_if_some!(konst = &indices.konst);
         rule_if_some!(data_shape = data.shape.as_concrete());
         rule_if_some!(updates_shape = updates.shape.as_concrete());
-        if !data.is_plain()
-            || !updates.is_plain()
-            || data.datum_type != updates.datum_type
-            || konst.rank() < 2
-            || !konst.is_plain()
-            || *konst.shape().last().unwrap() != data_shape.len()
-        {
-            return Ok(None);
-        }
+        rule_if!(data.is_plain() && updates.is_plain());
+        rule_if!(data.datum_type == updates.datum_type);
+        rule_if!(konst.rank() >= 2 && konst.is_plain());
+        rule_if!(*konst.shape().last().unwrap() == data_shape.len());
         let tuples = konst.cast_to::<i64>()?;
         let tuples = tuples.try_as_plain()?.as_slice::<i64>()?;
         rule_if_some!((axis, start, len) = scattered_block(tuples, data_shape));
         let mut block: TVec<usize> = data_shape.into();
         block[axis] = len;
-        if updates_shape != &block[..] {
-            return Ok(None);
-        }
+        rule_if!(updates_shape == &block[..]);
 
         let mut patch = TypedModelPatch::new("ScatterNd as Slice/Concat");
         let data_tap = patch.tap_model(model, node.inputs[0])?;
