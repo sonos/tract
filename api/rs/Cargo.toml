@@ -18,8 +18,6 @@ boow.workspace = true
 erased-serde.workspace = true
 flate2.workspace = true
 half.workspace = true
-icu_normalizer.workspace = true
-icu_properties.workspace = true
 tract-api.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
@@ -38,6 +36,8 @@ tract-cuda = { workspace = true, default-features = false, optional = true }
 
 
 [dev-dependencies]
+icu_normalizer.workspace = true
+icu_properties.workspace = true
 reqwest.workspace = true
 rustls.workspace = true
 tempfile.workspace = true
