@@ -50,8 +50,8 @@ fn run_kernel(be: &mut Bencher, mmm: &dyn MatMatMul, packing: usize, m: usize, k
 fn benches(c: &mut Criterion) {
     #[cfg(tract_amx_bf16)]
     {
-        use tract_linalg::x86_64_fma::amx_bf16::has_amx_bf16;
-        use tract_linalg::x86_64_fma::mmm::*;
+        use tract_linalg::x86_64::amx_bf16::has_amx_bf16;
+        use tract_linalg::x86_64::mmm::*;
         if !has_amx_bf16() {
             eprintln!("AMX bf16 not available (CPUID + arch_prctl gate failed), skipping");
             return;

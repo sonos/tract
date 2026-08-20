@@ -1,6 +1,6 @@
 // NEON (aarch64, 128-bit, 4 f32 lanes) fused row-wise RmsNorm.
 //
-// Mirrors the AVX-512 kernel structure from `x86_64_fma/rms_norm.rs`:
+// Mirrors the AVX-512 kernel structure from `x86_64/rms_norm.rs`:
 //
 //   Pass 1 (sum of squares):  acc += x² over 4 v-registers (4 lanes each →
 //                             16 f32 / iter), horizontal reduce to a scalar,

@@ -42,8 +42,8 @@ fn run_kernel(be: &mut Bencher, mmm: &dyn MatMatMul, m: usize, k: usize, n: usiz
 fn benches(c: &mut Criterion) {
     #[cfg(tract_amx_int8)]
     {
-        use tract_linalg::x86_64_fma::amx::has_amx_int8;
-        use tract_linalg::x86_64_fma::mmm::*;
+        use tract_linalg::x86_64::amx::has_amx_int8;
+        use tract_linalg::x86_64::mmm::*;
         if !has_amx_int8() {
             eprintln!("AMX int8 not available (CPUID + arch_prctl gate failed), skipping");
             return;

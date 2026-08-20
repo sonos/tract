@@ -358,7 +358,7 @@ fn platform_from_id(id: &str, cpu: String) -> TractResult<Platform> {
     } else if id.starts_with("apple_") {
         ("linalg/src/arm64", Class::Big64)
     } else if id.starts_with("intel_") || id.starts_with("amd_") {
-        ("linalg/src/x86_64_fma", Class::Big64)
+        ("linalg/src/x86_64", Class::Big64)
     } else {
         bail!("unknown platform id '{id}'");
     };

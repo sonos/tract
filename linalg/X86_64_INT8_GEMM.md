@@ -1,7 +1,7 @@
 # x86_64 int8 GEMM kernels
 
 This note documents the int8 (i32-accumulator) matrix-multiply kernel family for
-x86_64, for maintainers touching `linalg/src/x86_64_fma/mmm.rs` (Rust
+x86_64, for maintainers touching `linalg/src/x86_64/mmm.rs` (Rust
 registration + dispatch) and `linalg/x86_64/fma/*.S.j2` (assembly templates).
 
 The kernels form a throughput cascade from the portable AVX2 emulation up to

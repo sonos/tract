@@ -108,7 +108,7 @@ Only meaningful once Step 2 confirms AMX is live.
 cargo test -p tract-linalg --lib avx512amx 2>&1 | tail -30
 
 # Full x86_64 mmm suite (AMX + VNNI + AVX2 + FMA + AVX-512), for completeness.
-cargo test -p tract-linalg --lib x86_64_fma::mmm 2>&1 | tail -5
+cargo test -p tract-linalg --lib x86_64::mmm 2>&1 | tail -5
 ```
 
 **Expected:** `test result: ok. <N> passed; 0 failed`.
@@ -185,7 +185,7 @@ echo "## gate check (expect AMX columns, not a skip message):"
 cargo bench -p tract-linalg --bench amx_i32 -- --warm-up-time 0.2 --measurement-time 0.5 --sample-size 10 2>&1 | grep -iE "amx|skipping|thrpt" | head
 echo "## correctness:"
 cargo test -p tract-linalg --lib avx512amx 2>&1 | tail -3
-cargo test -p tract-linalg --lib x86_64_fma::mmm 2>&1 | tail -3
+cargo test -p tract-linalg --lib x86_64::mmm 2>&1 | tail -3
 echo "## full benches:"
 taskset -c 2 cargo bench -p tract-linalg --bench amx_i32
 taskset -c 2 cargo bench -p tract-linalg --bench amx_f32
