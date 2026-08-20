@@ -185,6 +185,33 @@ pub fn vector_size() -> usize {
     128 / 8
 }
 
+/// Copy `outer` blocks of `block` bytes from a contiguous source into a destination
+/// strided by `out_stride`, as `T`-sized items. Used for blocks too small for a
+/// `copy_nonoverlapping` call per block to pay for itself.
+///
+/// # Safety
+/// `block` and `out_stride` must be multiples of `size_of::<T>()`, both pointers must
+/// be `T`-aligned, and the two ranges must not overlap.
+#[inline]
+unsafe fn copy_blocks<T: Copy>(
+    src: *const u8,
+    dst: *mut u8,
+    outer: usize,
+    block: usize,
+    out_stride: usize,
+) {
+    unsafe {
+        let n = block / std::mem::size_of::<T>();
+        for o in 0..outer {
+            let s = src.add(o * block) as *const T;
+            let d = dst.add(o * out_stride) as *mut T;
+            for i in 0..n {
+                *d.add(i) = *s.add(i);
+            }
+        }
+    }
+}
+
 impl Tensor {
     #[inline]
     fn plain_storage(&self) -> &PlainStorage {
@@ -347,19 +374,54 @@ impl Tensor {
             // them alongside the result and each contribution stays contiguous.
             let outer: usize = shape[..axis].iter().product();
             let out_stride = shape[axis..].iter().product::<usize>() * dt.size_of();
-            if dt.is_copy() && tensors.iter().all(|t| t.borrow().storage.as_plain().is_some()) {
+            // Each contribution is `outer` blocks of `block` bytes, strided by
+            // `out_stride` in the result. At one f32 per block -- DTLN's
+            // [1, 2, 128, 2] axis-3 concat, FastEnhancer's [1, 256, 1, 2] -- a
+            // copy_nonoverlapping per block is `outer` calls to move four bytes
+            // each, and the generic strided assign below is no better. Copy those
+            // inline, typed, instead: no call, and the loop is a plain strided
+            // store LLVM can widen.
+            const SMALL_BLOCK_BYTES: usize = 64;
+            if dt.is_copy()
+                && outer > 0
+                && tensors.iter().all(|t| t.borrow().storage.as_plain().is_some())
+            {
                 let out = result.plain_storage_mut().as_mut_ptr();
                 let mut offset = 0isize;
                 for v in tensors {
                     let v = v.borrow();
                     let block = v.storage.byte_len() / outer;
                     let src = v.plain_storage().as_ptr();
-                    for o in 0..outer {
-                        std::ptr::copy_nonoverlapping(
-                            src.add(o * block),
-                            out.offset(offset + (o * out_stride) as isize),
-                            block,
-                        );
+                    let dst = out.offset(offset);
+                    if outer == 1 {
+                        std::ptr::copy_nonoverlapping(src, dst, block);
+                    } else if block >= SMALL_BLOCK_BYTES {
+                        for o in 0..outer {
+                            std::ptr::copy_nonoverlapping(
+                                src.add(o * block),
+                                dst.add(o * out_stride),
+                                block,
+                            );
+                        }
+                    } else {
+                        // `block` and both pointers are multiples of the datum size,
+                        // so the typed copy stays aligned.
+                        match dt.size_of() {
+                            1 => copy_blocks::<u8>(src, dst, outer, block, out_stride),
+                            2 => copy_blocks::<u16>(src, dst, outer, block, out_stride),
+                            4 => copy_blocks::<u32>(src, dst, outer, block, out_stride),
+                            8 => copy_blocks::<u64>(src, dst, outer, block, out_stride),
+                            16 => copy_blocks::<u128>(src, dst, outer, block, out_stride),
+                            _ => {
+                                for o in 0..outer {
+                                    std::ptr::copy_nonoverlapping(
+                                        src.add(o * block),
+                                        dst.add(o * out_stride),
+                                        block,
+                                    );
+                                }
+                            }
+                        }
                     }
                     offset += block as isize;
                 }
@@ -2169,6 +2231,84 @@ mod tests {
         let a = tensor1(&[1.0f32, 2.0]);
         let b = tensor1(&[1.0f32]);
         assert!(a.close_enough(&b, Approximation::Ulp(1000)).is_err());
+    }
+
+    // stack_tensors picks between three copy strategies by block size; they must
+    // all agree with plain index arithmetic. Sizes 1/2/4/8 cover the typed-copy
+    // dispatch, and a trailing axis of 1 gives the one-datum blocks that
+    // FastEnhancer's [1, 256, 1, 2] and DTLN's [1, 2, 128, 2] concats produce.
+    fn stack_reference<T: Datum + Copy + num_traits::Zero>(
+        axis: usize,
+        tensors: &[Tensor],
+    ) -> Tensor {
+        let mut shape: TVec<usize> = tensors[0].shape().into();
+        shape[axis] = tensors.iter().map(|t| t.shape()[axis]).sum();
+        let mut out = Tensor::zero::<T>(&shape).unwrap();
+        let outer: usize = shape[..axis].iter().product();
+        let inner: usize = shape[axis + 1..].iter().product();
+        let mid = shape[axis];
+        let ov = unsafe { out.as_slice_mut_unchecked::<T>() };
+        let mut base = 0;
+        for t in tensors {
+            let m = t.shape()[axis];
+            let tv = unsafe { t.as_slice_unchecked::<T>() };
+            for o in 0..outer {
+                for j in 0..m {
+                    for i in 0..inner {
+                        ov[(o * mid + base + j) * inner + i] = tv[(o * m + j) * inner + i];
+                    }
+                }
+            }
+            base += m;
+        }
+        out
+    }
+
+    fn ramp<T: Datum + Copy + From<u8>>(shape: &[usize], seed: u8) -> Tensor {
+        let n: usize = shape.iter().product();
+        let v: Vec<T> = (0..n).map(|i| T::from(seed.wrapping_add(i as u8))).collect();
+        Tensor::from_shape(shape, &v).unwrap()
+    }
+
+    macro_rules! stack_agrees_for {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for shape in [
+                    tvec!(1usize, 256, 1, 1),
+                    tvec!(1usize, 2, 128, 1),
+                    tvec!(1usize, 35, 35, 8),
+                    tvec!(4usize, 3),
+                    tvec!(7usize),
+                ] {
+                    for axis in 0..shape.len() {
+                        let a: Tensor = ramp::<$t>(&shape, 1);
+                        let b: Tensor = ramp::<$t>(&shape, 100);
+                        let c: Tensor = ramp::<$t>(&shape, 200);
+                        for n in 1..=3 {
+                            let ins = [a.clone(), b.clone(), c.clone()][..n].to_vec();
+                            let got = Tensor::stack_tensors(axis, &ins).unwrap();
+                            let want = stack_reference::<$t>(axis, &ins);
+                            assert_eq!(got, want, "shape {shape:?} axis {axis} n {n}");
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    stack_agrees_for!(stack_tensors_agrees_u8, u8);
+    stack_agrees_for!(stack_tensors_agrees_u16, u16);
+    stack_agrees_for!(stack_tensors_agrees_u32, u32);
+    stack_agrees_for!(stack_tensors_agrees_u64, u64);
+
+    // A zero extent before the concatenated axis makes `outer` zero; the block
+    // path divides by it, so it must not be taken.
+    #[test]
+    fn stack_tensors_tolerates_a_zero_outer_extent() {
+        let a = Tensor::zero::<f32>(&[0, 2, 3]).unwrap();
+        let stacked = Tensor::stack_tensors(2, &[a.clone(), a.clone()]).unwrap();
+        assert_eq!(stacked.shape(), &[0, 2, 6]);
     }
 
     #[test]
