@@ -3,7 +3,6 @@
 use criterion::*;
 use tract_data::prelude::*;
 
-#[cfg(target_arch = "aarch64")]
 use tract_linalg::element_wise::ElementWiseKer;
 
 fn gelu_f32(c: &mut Criterion) {
@@ -26,6 +25,24 @@ fn gelu_f32(c: &mut Criterion) {
     });
 }
 
+fn gelu_f16(c: &mut Criterion) {
+    for n in [1024usize, 65536, 1 << 20] {
+        let mut group = c.benchmark_group(format!("gelu_f16/{n}"));
+        group.throughput(Throughput::Elements(n as u64));
+        let mut input = unsafe { Tensor::uninitialized_aligned::<f16>(&[n], 16).unwrap() };
+        let input = unsafe { input.as_slice_mut_unchecked::<f16>() };
+        for (i, x) in input.iter_mut().enumerate() {
+            *x = f16::from_f32((i as f32 / 10.0).sin() * 5.0);
+        }
+        group.bench_function("generic", |b| {
+            b.iter(|| tract_linalg::generic::HGelu8::run(input, ()))
+        });
+        group
+            .bench_function("lut", |b| b.iter(|| tract_linalg::generic::HGeluLut8::run(input, ())));
+        group.finish();
+    }
+}
+
 #[inline(never)]
 fn rust_scalar(input: &mut [f32]) {
     // Match tract's GeluApproximate scalar formula (pow=3).
@@ -43,5 +60,5 @@ fn linalg(input: &mut [f32]) {
     (tract_linalg::ops().gelu_f32)().run(input).unwrap();
 }
 
-criterion_group!(benches, gelu_f32);
+criterion_group!(benches, gelu_f32, gelu_f16);
 criterion_main!(benches);
