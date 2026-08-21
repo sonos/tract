@@ -77,6 +77,14 @@ float-ord.workspace = true
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
 
+# Hosts we develop and benchmark on: there the CLI enumerates every architecture's kernels,
+# not just the ones it can run.
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+tract-linalg = { workspace = true, features = ["foreign-inventory"] }
+
+[target.'cfg(target_arch = "x86_64")'.dependencies]
+tract-linalg = { workspace = true, features = ["foreign-inventory"] }
+
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 cudarc = { workspace = true, optional = true }
 tract-cuda = { workspace = true, optional = true }
