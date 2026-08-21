@@ -433,7 +433,7 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
         float tmp = 0.0f;                                                      \
         for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
             float el = x[i * stride_1];                                        \
-            const float val = expf(el - max_val);                              \
+            const float val = __expf(el - max_val);                            \
             tmp += val;                                                        \
             dst[i * stride_1] = val;                                           \
         }                                                                      \
@@ -535,7 +535,7 @@ __device__ void scaled_masked_softmax(
             break;
         }
 
-        const float val = expf(vals[col] - max_val);
+        const float val = __expf(vals[col] - max_val);
         tmp += val;
         vals[col] = val;
     }
@@ -659,7 +659,7 @@ __device__ void scaled_bool_masked_softmax(
             break;
         }
 
-        const float val = expf(vals[col] - max_val);
+        const float val = __expf(vals[col] - max_val);
         tmp += val;
         vals[col] = val;
     }

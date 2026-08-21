@@ -549,7 +549,7 @@ template <typename F>
     // 2) exp(vals - max) and sum
     float sum = 0.0f;
     for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
-        float e = exp(vals[col] - max_val);
+        float e = fast::exp(vals[col] - max_val);
         vals[col] = e;
         sum += e;
     }
@@ -667,7 +667,7 @@ template <typename F>
     // 2) exp(vals - max) and row sum
     float sum = 0.0f;
     for (size_t col = (size_t)tid; col < cols; col += (size_t)tg_sz) {
-        float e = exp(vals[col] - max_val);
+        float e = fast::exp(vals[col] - max_val);
         vals[col] = e;
         sum += e;
     }
