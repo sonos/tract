@@ -55,6 +55,8 @@ macro_rules! MMMExternKernel {
 // whether this build compiled the kernel; the kernel fn itself is gated by its own module.
 // Without the ident it is a portable kernel, built everywhere.
 macro_rules! MMMRustKernel {
+    // Portable Rust, built and dispatchable everywhere.
+    (generic; $($rest:tt)*) => { MMMRustKernel!(@ "generic", all(); $($rest)*); };
     (arm; $($rest:tt)*) => { MMMRustKernel!(@ "arm", target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { MMMRustKernel!(@ "aarch64", target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { MMMRustKernel!(@ "x86_64", target_arch = "x86_64"; $($rest)*); };

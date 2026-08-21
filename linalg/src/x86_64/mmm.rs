@@ -14,6 +14,11 @@ use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};
 use super::avxvnni::has_avxvnni;
 #[cfg(tract_avx512vnni)]
 use super::fma_width::has_dual_avx512_fma;
+
+/// The zmm 16x16 VNNI tile only out-throughputs the ymm 8x8 on cores with two 512-bit FMA
+/// ports; elsewhere it is pure tile-padding overhead.
+#[cfg(tract_avx512vnni)]
+const AVX512VNNI_DUAL_FMA: fn() -> bool = || AVX512VNNI() && has_dual_avx512_fma();
 use super::*;
 
 #[cfg(tract_amx_int8)]
@@ -68,13 +73,13 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
 // AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
 // same tile geometries as their fma_ siblings but the inner loops use
 // vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
-MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
 
 MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -89,7 +94,7 @@ pub fn pq40_r32() -> PackedBlockQuantFormat {
 pub fn pq20t_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q2_0_T, 32, 0, false)
 }
-MMMExternKernel! { x86_64; fma_mmm_f32_32x1<f32>(32,1)@(256,4) where(FMA)
+MMMExternKernel! { x86_64; fma_mmm_f32_32x1<f32>(32,1)@(256,4) where(FMA_F16C)
     packing[1] = q40f32 => |k| k.with_packing_a(pq40_r32());
     packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), f16::packing(1));
     packing[3] = f16f16 => |k| k.with_packing(f16::packing(32), f16::packing(1));
@@ -119,7 +124,7 @@ MMMExternKernel!(x86_64; avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) where (AVX512
 // 128-bit VEX i32 sibling of avx2_mmm_i32_8x8 for the avx-without-avx2 tier:
 // same i8i8 widening scheme (i8 products computed in i16 lanes) and the same
 // quantization epilogue semantics, on 8x4 xmm column pairs.
-MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX)
+MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX_ONLY)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 4, 4));
     quality(ManuallyOptimized)
     store(i8)
@@ -165,7 +170,7 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512
 // so AMX still wins when both are present. The boost only applies on dual-FMA
 // cores because the kernel is only pushed into `mmm_impls` there.
 #[cfg(tract_avx512vnni)]
-MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI)
+MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI_DUAL_FMA)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
     quality(ManuallyOptimized)
     boost(|| 50)
@@ -285,8 +290,6 @@ pub fn plug(ops: &mut Ops) {
 
 #[cfg(tract_avx512vnni)]
 pub fn plug_avx512vnni(ops: &mut Ops) {
-    ops.mmm_impls.push(avx512vnni_mmm_i32_8x8.mmm());
-
     // The zmm 16x16 kernel does 2x the work per inner iteration as the ymm 8x8,
     // but that only becomes 2x the *throughput* on cores with two 512-bit FMA
     // ports (Cascade Lake / Cooper Lake / Ice Lake-SP and later Xeons). On a
@@ -301,7 +304,6 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     // weighted by their boost) -- on `has_dual_avx512_fma()`. Single-FMA cores
     // keep main's always-8x8 behaviour and cannot regress.
     if has_dual_avx512_fma() {
-        ops.mmm_impls.push(avx512vnni_mmm_i32_16x16.mmm());
         // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile
         // is the throughput champion when each of M and N fills at least one tile;
         // the 8x8 ymm kernel has lower per-call setup (smaller epilogue, half the
@@ -326,7 +328,6 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
 
 #[cfg(tract_avxvnni)]
 pub fn plug_avxvnni(ops: &mut Ops) {
-    ops.mmm_impls.push(avxvnni_mmm_i32_8x8.mmm());
     // On AVX-VNNI-only cores (no AVX-512) this is the int8 throughput champion;
     // replace the AVX2 emulation default. On big cores that also have
     // AVX-512-VNNI, plug_avx512vnni below runs after this and clobbers
@@ -337,7 +338,6 @@ pub fn plug_avxvnni(ops: &mut Ops) {
 
 #[cfg(tract_amx_bf16)]
 pub fn plug_avx512amx_bf16(ops: &mut Ops) {
-    ops.mmm_impls.push(avx512amx_mmm_f32_16x16.mmm());
     // Save the previously-installed f32 picker so we can defer to it when
     // the AMX kernel isn't a good fit (small M/N, or K < 32 -- one TDPBF16PS
     // consumes 32 bf16 K-lanes so the panel must have at least one full step).
@@ -368,8 +368,6 @@ pub fn plug_avx512amx_bf16(ops: &mut Ops) {
 
 #[cfg(tract_amx_int8)]
 pub fn plug_avx512amx_int8(ops: &mut Ops) {
-    ops.mmm_impls.push(avx512amx_mmm_i32_8x8.mmm());
-    ops.mmm_impls.push(avx512amx_mmm_i32_16x16.mmm());
     // Shape-adaptive dispatch:
     //   - 16x16 hits the full AMX tile (1024 B/tile, 16384 mul-adds per
     //     tdpbssd) and is the throughput champion when at least one tile
@@ -402,7 +400,6 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
 }
 
 pub fn plug_avx2(ops: &mut Ops) {
-    ops.mmm_impls.push(mmm::avx2_mmm_i32_8x8.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| mmm::avx2_mmm_i32_8x8.mmm());
     log::info!("qmmm_i32: x86_64/avx2 activated");
 }
@@ -413,18 +410,7 @@ pub fn plug_avx2(ops: &mut Ops) {
 /// fallback, not the fma_ ones. On avx2-without-fma CPUs plug_avx2 still runs
 /// afterwards and upgrades qmmm_i32 to the wider avx2 kernel.
 pub fn plug_avx(ops: &mut Ops) {
-    ops.mmm_impls.push(avx_mmm_i32_8x4.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| avx_mmm_i32_8x4.mmm());
-
-    ops.mmm_impls.extend([
-        avx_mmm_f32_8x8.mmm(),
-        avx_mmm_f32_16x5.mmm(),
-        avx_mmm_f32_16x6.mmm(),
-        avx_mmm_f32_24x4.mmm(),
-        avx_mmm_f32_32x3.mmm(),
-        avx_mmm_f32_40x2.mmm(),
-        avx_mmm_f32_64x1.mmm(), // mmv candidate (nr==1; excluded from n>=2 picks)
-    ]);
 
     ops.mmv_f32 = Box::new(|_, _| avx_mmm_f32_64x1.mmm());
 
@@ -452,21 +438,6 @@ pub fn plug_avx(ops: &mut Ops) {
 }
 
 pub fn plug_fma(ops: &mut Ops) {
-    ops.mmm_impls.extend([
-        fma_mmm_f32_8x8.mmm(),
-        fma_mmm_f32_16x5.mmm(),
-        fma_mmm_f32_16x6.mmm(),
-        fma_mmm_f32_24x4.mmm(),
-        fma_mmm_f32_32x3.mmm(),
-        fma_mmm_f32_40x2.mmm(),
-        fma_mmm_f32_64x1.mmm(),
-    ]);
-
-    if F16C() {
-        ops.mmm_impls.push(mmm::fma_mmm_f32_32x1.mmm()); // q40f32 requires f16c; also part of the pool
-        log::info!("found f16c, added fake-f16 and q40-able kernels");
-    }
-
     // Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic
     // (M, N)-aware tile-utilisation picker over the same pool.
     const FMA_CHOICES: &[KernelChoice] = &[
@@ -509,15 +480,6 @@ pub fn plug_fma(ops: &mut Ops) {
 }
 
 pub fn plug_avx512f(ops: &mut Ops) {
-    ops.mmm_impls.push(avx512_mmm_f32_128x1.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_80x2.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_48x4.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_64x3.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_32x6.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_32x5.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_16x12.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_16x8.mmm());
-    ops.mmm_impls.push(avx512_mmm_f32_16x1.mmm()); // mmv candidate (nr==1; excluded from n>=2 picks)
     // Pool spans both instruction sets: on avx512 hardware the 256-bit FMA
     // kernels reach comparable f32 throughput and win the small-N tiles the
     // avx512 kernels have no matching `nr` for (e.g. n=2 -> 40x2, n=4 -> 24x4).

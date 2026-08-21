@@ -1,4 +1,3 @@
-use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
 
@@ -26,23 +25,6 @@ MMMExternKernel!(arm;armv7neon_mmm_i32_32x1<i32>(32, 1)@(32, 4) where(NEON)
   quality(ManuallyOptimized)
   store(i8)
 );
-
-pub fn plug(ops: &mut Ops) {
-    ops.mmm_impls.extend_from_slice(&[
-        armv7neon_mmm_f32_8x4_cortexa7.mmm(),
-        armv7neon_mmm_f32_8x4_cortexa9.mmm(),
-        armv7neon_mmm_f32_8x4_generic.mmm(),
-        armv7neon_mmm_f32_8x6_cortexa7.mmm(),
-        armv7neon_mmm_f32_8x6_cortexa9.mmm(),
-        armv7neon_mmm_f32_8x6_generic.mmm(),
-        armv7neon_mmm_f32_8x1_generic.mmm(),
-        armv7neon_mmm_f32_32x1_cortexa7.mmm(),
-        armv7neon_mmm_f32_32x1_cortexa9.mmm(),
-        armv7neon_mmm_f32_32x1_generic.mmm(),
-        armv7neon_mmm_i32_8x4.mmm(),
-        armv7neon_mmm_i32_32x1.mmm(),
-    ]);
-}
 
 sigmoid_impl!(arm; f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
 silu_impl!(arm; f32, armv7neon_silu_f32_4n, 4, 4, crate::arm32::has_neon());

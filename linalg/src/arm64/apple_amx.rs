@@ -58,12 +58,6 @@ pub fn plug(ops: &mut Ops) {
             }
         });
         ops.mmv_f16 = Box::new(|_, _| apple_amx_mmm_f16_64x1.mmm());
-        ops.mmm_impls.extend_from_slice(&[
-            apple_amx_mmm_f32_32x32.mmm(),
-            apple_amx_mmm_f32_32x1.mmm(),
-            apple_amx_mmm_f16_64x32.mmm(),
-            apple_amx_mmm_f16_64x1.mmm(),
-        ]);
     } else {
         log::info!("No AMX optimisation");
     }

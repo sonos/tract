@@ -229,12 +229,6 @@ pub fn plug(ops: &mut Ops) {
             // RmsNorm: override the NEON-default plug from arm64::plug() with
             // the wider VLA SVE2 kernel. Same Box<Fn> shape as the linalg slot.
             ops.rms_norm_f32 = Box::new(sve_rms_norm_f32);
-            ops.mmm_impls.extend_from_slice(&[
-                sve_mmm_f32_8x8.mmm(),
-                sve_mmv_f32_64x1.mmm(),
-                sve_mmm_i32_8x8.mmm(),
-                sve_mmm_i32_64x1.mmm(),
-            ]);
             // f16 kernels additionally require FEAT_FP16 — and are only compiled
             // when build.rs found an accepted +fp16/+fullfp16 -march spelling
             // (tract_sve_fp16), so gate the dispatch on that too.
@@ -242,7 +236,6 @@ pub fn plug(ops: &mut Ops) {
             if crate::arm64::has_fp16() {
                 ops.mmm_f16 = Box::new(|_, _, _| sve_mmm_f16_8x8.mmm());
                 ops.mmv_f16 = Box::new(|_, _| sve_mmv_f16_64x1.mmm());
-                ops.mmm_impls.extend_from_slice(&[sve_mmm_f16_8x8.mmm(), sve_mmv_f16_64x1.mmm()]);
             }
         }
     } else if has_sve() {

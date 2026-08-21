@@ -93,6 +93,13 @@ cpu_feature!(FMA = "fma");
 cpu_feature!(AVX512F = "avx512f");
 cpu_feature!(AVX512FP16 = "avx512fp16");
 cpu_feature!(F16C = "f16c");
+
+/// The q40f16 and f16 packings of `fma_mmm_f32_32x1` need the f16 conversions on top of FMA.
+const FMA_F16C: fn() -> bool = || FMA() && F16C();
+
+/// The avx tier stands in for the fma one on cores that cannot run it; where both would work
+/// the fma kernels are strictly better, so these must not compete with them.
+const AVX_ONLY: fn() -> bool = || AVX() && !(AVX2() && FMA());
 #[cfg(tract_avx512vnni)]
 cpu_feature!(AVX512VNNI = "avx512vnni");
 

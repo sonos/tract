@@ -287,7 +287,7 @@ pub fn generic() -> Ops {
         softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
-    crate::generic::mmm::plug(&mut ops);
+    ops.mmm_impls = mmm_routines::pool();
     ops
 }
 
