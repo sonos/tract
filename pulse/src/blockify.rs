@@ -1583,8 +1583,8 @@ fn translate_body_op_axes(op: &dyn TypedOp, chunk_pos: Option<usize>) -> Box<dyn
     if let Some(softmax) = op.downcast_ref::<Softmax>() {
         let new_axes: TVec<usize> = softmax.axes.iter().map(|&a| shift(a)).collect();
         let new_softmax = match &softmax.kind {
-            SoftmaxKind::Softmax(exp) => {
-                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax(*exp))
+            SoftmaxKind::Softmax => {
+                Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::Softmax)
             }
             SoftmaxKind::LogSoftmax => {
                 Softmax::new(new_axes, softmax.quant_output_dt, SoftmaxKind::LogSoftmax)

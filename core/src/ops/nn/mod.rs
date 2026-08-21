@@ -16,7 +16,7 @@ pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
 pub use self::resize::{CoordTransformer, Interpolator, Nearest, Resize};
 pub use self::rms_norm::RmsNorm;
 pub use self::silu::Silu;
-pub use self::softmax::{Softmax, SoftmaxExp, SoftmaxKind};
+pub use self::softmax::{Softmax, SoftmaxKind};
 
 pub use crate::internal::*;
 

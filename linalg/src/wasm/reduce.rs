@@ -137,62 +137,6 @@ reduce_impl_wrap!(
     }
 );
 
-map_reduce_impl_wrap!(
-    f32,
-    wasm_softmax2_fastcompact_f32_32n,
-    32,
-    4,
-    f32,
-    f32::MIN,
-    0f32,
-    #[inline(never)]
-    fn run(buf: &mut [f32], max: f32) -> f32 {
-        use std::arch::wasm32::*;
-        const SLOPE: f32 = 8388608.0f32 / 0.6931471805f32;
-        const OFFSET: f32 = 1065353216.0f32 - 60801.0f32;
-        {
-            let sl = f32x4_splat(SLOPE);
-            let of = f32x4_splat(OFFSET);
-            let mx = f32x4_splat(max);
-            let mut acc = [f32x4_splat(0f32); 16];
-            let blocks = buf.len() / 64;
-            let mut chunks = buf.chunks_exact_mut(64);
-            for c in &mut chunks {
-                for (j, a) in acc.iter_mut().enumerate() {
-                    let k = j * 4;
-                    let d = f32x4_sub(f32x4(c[k], c[k + 1], c[k + 2], c[k + 3]), mx);
-                    let e = u32x4_trunc_sat_f32x4(madd_f32x4!(of, d, sl));
-                    c[k] = f32x4_extract_lane::<0>(e);
-                    c[k + 1] = f32x4_extract_lane::<1>(e);
-                    c[k + 2] = f32x4_extract_lane::<2>(e);
-                    c[k + 3] = f32x4_extract_lane::<3>(e);
-                    *a = f32x4_add(*a, e);
-                }
-            }
-            let h0 = f32x4_add(f32x4_add(acc[0], acc[1]), f32x4_add(acc[2], acc[3]));
-            let h1 = f32x4_add(f32x4_add(acc[4], acc[5]), f32x4_add(acc[6], acc[7]));
-            let h2 = f32x4_add(f32x4_add(acc[8], acc[9]), f32x4_add(acc[10], acc[11]));
-            let h3 = f32x4_add(f32x4_add(acc[12], acc[13]), f32x4_add(acc[14], acc[15]));
-            let s = f32x4_add(f32x4_add(h0, h1), f32x4_add(h2, h3));
-            let mut sum = f32x4_extract_lane::<0>(s)
-                + f32x4_extract_lane::<1>(s)
-                + f32x4_extract_lane::<2>(s)
-                + f32x4_extract_lane::<3>(s);
-            for v in buf[blocks * 64..].iter_mut() {
-                let y = f32::from_bits(((SLOPE * (*v - max)) + OFFSET) as u32);
-                *v = y;
-                sum += y;
-            }
-            sum
-        }
-    },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a + b
-    }
-);
-
-use crate::generic::reduce::softmax_l2::fast_compact_exp_f32;
 use std::arch::wasm32::*;
 use tract_data::internal::f16;
 
@@ -227,47 +171,6 @@ fn widen_f16(h: v128) -> v128 {
     let is_zero = u32x4_eq(v128_or(exp, man), u32x4_splat(0));
     let normal = v128_or(u32x4_shl(u32x4_add(exp, u32x4_splat(112)), 23), u32x4_shl(man, 13));
     v128_or(sign, v128_andnot(normal, is_zero))
-}
-
-const SLOPE: f32 = 8388608.0f32 / 0.6931471805f32;
-const OFFSET: f32 = 1065353216.0f32 - 60801.0f32;
-
-#[inline]
-fn expv(v: v128, mv: v128, slope: v128, off: v128) -> v128 {
-    u32x4_trunc_sat_f32x4(f32x4_add(f32x4_mul(f32x4_sub(v, mv), slope), off))
-}
-
-#[inline]
-fn narrow(y: v128) -> v128 {
-    let e32 = v128_and(u32x4_shr(y, 23), u32x4_splat(0xff));
-    let m = v128_and(y, u32x4_splat(0x7f_ffff));
-    let e = i32x4_sub(e32, u32x4_splat(112));
-    let bias = u32x4_add(u32x4_splat(0x0fff), v128_and(u32x4_shr(m, 13), u32x4_splat(1)));
-    let half = u32x4_add(u32x4_shl(e, 10), u32x4_shr(u32x4_add(m, bias), 13));
-    let dead = i32x4_le(e, u32x4_splat(0));
-    v128_andnot(half, dead)
-}
-
-#[inline]
-fn process_8(x: &mut [f16], offset: usize, mv: v128, slope: v128, off: v128) -> (v128, v128) {
-    let v = load8_f16(&x[offset..offset + 8]);
-    let ylo = expv(widen_f16(u32x4_extend_low_u16x8(v)), mv, slope, off);
-    let yhi = expv(widen_f16(u32x4_extend_high_u16x8(v)), mv, slope, off);
-    let packed = u16x8_narrow_i32x4(narrow(ylo), narrow(yhi));
-
-    let l = [
-        f16::from_bits(u16x8_extract_lane::<0>(packed)),
-        f16::from_bits(u16x8_extract_lane::<1>(packed)),
-        f16::from_bits(u16x8_extract_lane::<2>(packed)),
-        f16::from_bits(u16x8_extract_lane::<3>(packed)),
-        f16::from_bits(u16x8_extract_lane::<4>(packed)),
-        f16::from_bits(u16x8_extract_lane::<5>(packed)),
-        f16::from_bits(u16x8_extract_lane::<6>(packed)),
-        f16::from_bits(u16x8_extract_lane::<7>(packed)),
-    ];
-    x[offset..offset + 8].copy_from_slice(&l);
-
-    (ylo, yhi)
 }
 
 reduce_impl_wrap!(
@@ -363,103 +266,6 @@ reduce_impl_wrap!(
     }
 );
 
-map_reduce_impl_wrap!(
-    f16,
-    wasm_softmax2_fastcompact_f16_32n,
-    32,
-    8,
-    f16,
-    f16::MIN,
-    f16::ZERO,
-    #[inline(never)]
-    fn run(buf: &mut [f16], max: f16) -> f16 {
-        use std::arch::wasm32::*;
-        let x = buf;
-
-        let mv = f32x4_splat(max.to_f32());
-        let slope = f32x4_splat(SLOPE);
-        let off = f32x4_splat(OFFSET);
-
-        let mut a0 = f32x4_splat(0.0);
-        let mut a1 = f32x4_splat(0.0);
-        let mut a2 = f32x4_splat(0.0);
-        let mut a3 = f32x4_splat(0.0);
-        let mut a4 = f32x4_splat(0.0);
-        let mut a5 = f32x4_splat(0.0);
-        let mut a6 = f32x4_splat(0.0);
-        let mut a7 = f32x4_splat(0.0);
-
-        let n32 = x.len() / 32;
-        for c in 0..n32 {
-            let b = c * 32;
-
-            let (ylo0, yhi0) = process_8(x, b, mv, slope, off);
-            a0 = f32x4_add(a0, ylo0);
-            a1 = f32x4_add(a1, yhi0);
-
-            let (ylo1, yhi1) = process_8(x, b + 8, mv, slope, off);
-            a2 = f32x4_add(a2, ylo1);
-            a3 = f32x4_add(a3, yhi1);
-
-            let (ylo2, yhi2) = process_8(x, b + 16, mv, slope, off);
-            a4 = f32x4_add(a4, ylo2);
-            a5 = f32x4_add(a5, yhi2);
-
-            let (ylo3, yhi3) = process_8(x, b + 24, mv, slope, off);
-            a6 = f32x4_add(a6, ylo3);
-            a7 = f32x4_add(a7, yhi3);
-        }
-
-        let remainder = x.len() % 32;
-        let n16_rem = remainder / 16;
-        for i in 0..n16_rem {
-            let b = n32 * 32 + i * 16;
-
-            let (ylo0, yhi0) = process_8(x, b, mv, slope, off);
-            a0 = f32x4_add(a0, ylo0);
-            a1 = f32x4_add(a1, yhi0);
-
-            let (ylo1, yhi1) = process_8(x, b + 8, mv, slope, off);
-            a2 = f32x4_add(a2, ylo1);
-            a3 = f32x4_add(a3, yhi1);
-        }
-
-        let n8_rem = (remainder % 16) / 8;
-        for i in 0..n8_rem {
-            let b = n32 * 32 + n16_rem * 16 + i * 8;
-            let (ylo, yhi) = process_8(x, b, mv, slope, off);
-            a0 = f32x4_add(a0, ylo);
-            a1 = f32x4_add(a1, yhi);
-        }
-
-        // Tree-shaped horizontal reduction with 8 accumulators
-        let sum01 = f32x4_add(a0, a1);
-        let sum23 = f32x4_add(a2, a3);
-        let sum45 = f32x4_add(a4, a5);
-        let sum67 = f32x4_add(a6, a7);
-        let sum0123 = f32x4_add(sum01, sum23);
-        let sum4567 = f32x4_add(sum45, sum67);
-        let s = f32x4_add(sum0123, sum4567);
-
-        let mut acc = f32x4_extract_lane::<0>(s)
-            + f32x4_extract_lane::<1>(s)
-            + f32x4_extract_lane::<2>(s)
-            + f32x4_extract_lane::<3>(s);
-
-        for v in x[n32 * 32 + n16_rem * 16 + n8_rem * 8..].iter_mut() {
-            let y = fast_compact_exp_f32((*v - max).to_f32());
-            *v = f16::from_f32(y);
-            acc += v.to_f32();
-        }
-
-        f16::from_f32(acc)
-    },
-    #[inline(never)]
-    fn reduce_two(a: f16, b: f16) -> f16 {
-        a + b
-    }
-);
-
 #[cfg(test)]
 mod test_max {
     use super::*;
@@ -479,12 +285,6 @@ mod test_sum {
 }
 
 #[cfg(test)]
-mod test_softmax {
-    use super::*;
-    crate::softmax_l2_frame_tests!(true, f32, wasm_softmax2_fastcompact_f32_32n);
-}
-
-#[cfg(test)]
 mod test_max_f16 {
     use super::*;
     crate::max_frame_tests!(true, f16, wasm_max_f16_32n);
@@ -494,12 +294,6 @@ mod test_max_f16 {
 mod test_sum_f16 {
     use super::*;
     crate::sum_frame_tests!(true, f16, wasm_sum_f16_32n);
-}
-
-#[cfg(test)]
-mod test_softmax_f16 {
-    use super::*;
-    crate::softmax_l2_frame_tests!(true, f16, wasm_softmax2_fastcompact_f16_32n);
 }
 
 /// RMS-normalises `buf` in place: each element is divided by the root of the

@@ -13,24 +13,11 @@ use tract_num_traits::Zero;
 use crate::internal::*;
 use ndarray::prelude::*;
 
-#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
 pub enum SoftmaxKind {
-    Softmax(SoftmaxExp),
-    LogSoftmax,
-}
-
-impl Default for SoftmaxKind {
-    fn default() -> Self {
-        SoftmaxKind::Softmax(SoftmaxExp::default())
-    }
-}
-
-#[derive(Debug, Copy, Clone, Hash, Default, PartialEq, Eq)]
-pub enum SoftmaxExp {
     #[default]
-    Libc,
-    // https://nic.schraudolph.org/pubs/Schraudolph99.pdf
-    FastCompact,
+    Softmax,
+    LogSoftmax,
 }
 
 #[derive(Debug, Clone, new, Hash, Default, PartialEq, Eq)]
@@ -43,17 +30,13 @@ pub struct Softmax {
 impl Op for Softmax {
     fn name(&self) -> StaticName {
         match self.kind {
-            SoftmaxKind::Softmax(_) => "Softmax".into(),
+            SoftmaxKind::Softmax => "Softmax".into(),
             SoftmaxKind::LogSoftmax => "LogSoftmax".into(),
         }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        let mut infos = vec![format!("Axis: {:?}", self.axes)];
-        if let SoftmaxKind::Softmax(exp) = self.kind {
-            infos.push(format!("Exp impl: {exp:?}"))
-        };
-        Ok(infos)
+        Ok(vec![format!("Axis: {:?}", self.axes)])
     }
 
     op_as_typed_op!();
@@ -274,23 +257,17 @@ impl Softmax {
     fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f16)().run(slice)?;
         match kind {
-            SoftmaxKind::Softmax(exp_impl) => {
-                // Accumulated in f32: a row long enough for the running sum to
-                // outgrow its own terms stalls in f16, which costs double digits
-                // of relative error by a few thousand elements.
-                let sum: f32 = match exp_impl {
-                    SoftmaxExp::Libc => {
-                        let mut s = 0f32;
-                        slice.iter_mut().for_each(|x| {
-                            *x = (*x - max).exp();
-                            s += x.to_f32();
-                        });
-                        s
-                    }
-                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f16)()
-                        .run_with_params(slice, max)?
-                        .to_f32(),
-                };
+            SoftmaxKind::Softmax => {
+                // f16 softmax runs the scalar libm exp and accumulates the sum
+                // in f32: a row long enough for the running sum to outgrow its
+                // own terms stalls in f16, costing double digits of relative
+                // error by a few thousand elements. A vectorized f16 exp is not
+                // worth its fragility, f16 softmax always lands here.
+                let mut sum = 0f32;
+                slice.iter_mut().for_each(|x| {
+                    *x = (*x - max).exp();
+                    sum += x.to_f32();
+                });
                 let rsum = f16::from_f32(sum.recip());
                 (tract_linalg::ops().mul_by_scalar_f16)().run_with_params(slice, rsum)?;
             }
@@ -310,14 +287,8 @@ impl Softmax {
     fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
         let max = (tract_linalg::ops().max_f32)().run(slice)?;
         match kind {
-            SoftmaxKind::Softmax(exp_impl) => {
-                let sum = match exp_impl {
-                    SoftmaxExp::Libc => {
-                        (tract_linalg::ops().softmax2_f32)().run_with_params(slice, max)?
-                    }
-                    SoftmaxExp::FastCompact => (tract_linalg::ops().softmax2_fastcompact_f32)()
-                        .run_with_params(slice, max)?,
-                };
+            SoftmaxKind::Softmax => {
+                let sum = (tract_linalg::ops().softmax2_f32)().run_with_params(slice, max)?;
                 let rsum = sum.recip();
                 (tract_linalg::ops().mul_by_scalar_f32)().run_with_params(slice, rsum)?;
             }
@@ -344,7 +315,7 @@ fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(
     view.mapv_inplace(|x| x - max);
     let exp_sum = view.iter().map(|&x| x.exp()).sum();
     match kind {
-        SoftmaxKind::Softmax(_) => {
+        SoftmaxKind::Softmax => {
             view.mapv_inplace(|x| x.exp() / exp_sum);
         }
         SoftmaxKind::LogSoftmax => {
@@ -800,8 +771,8 @@ mod f16_accumulator {
             let logits: Vec<f32> = (0..len).map(|i| ((i as f32) * 0.7).sin() * 0.5).collect();
 
             let mut half: Vec<f16> = logits.iter().map(|v| f16::from_f32(*v)).collect();
-            Softmax::new(tvec![0], None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
-                .softmax_inner_slice_f16(&mut half, SoftmaxKind::Softmax(SoftmaxExp::Libc))?;
+            Softmax::new(tvec![0], None, SoftmaxKind::Softmax)
+                .softmax_inner_slice_f16(&mut half, SoftmaxKind::Softmax)?;
 
             let max = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
             let exps: Vec<f32> = logits.iter().map(|v| (v - max).exp()).collect();
