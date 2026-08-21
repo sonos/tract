@@ -1,4 +1,4 @@
-ew_impl_wrap!(
+ew_impl_wrap2!(aarch64;
     f32,
     arm64simd_leaky_relu_f32_8n,
     8,
@@ -46,5 +46,5 @@ ew_impl_wrap!(
 #[cfg(test)]
 pub mod test_arm64simd_leaky_relu_f32_8n {
     use super::*;
-    leaky_relu_frame_tests!(true, f32, arm64simd_leaky_relu_f32_8n);
+    leaky_relu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_leaky_relu_f32_8n);
 }

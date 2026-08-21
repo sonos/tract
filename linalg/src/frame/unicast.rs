@@ -7,6 +7,25 @@ use tract_data::internal::TensorView;
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{LADatum, LinalgFn};
 
+// Temporary: like `unicast_impl_wrap!`, but for kernels whose `run` body is inline arch asm /
+// intrinsics. Real body on the native arch, signature-matched panic stub elsewhere.
+macro_rules! unicast_impl_wrap2 {
+    (arm; $($rest:tt)*) => { unicast_impl_wrap2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { unicast_impl_wrap2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { unicast_impl_wrap2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $run:item) => {
+        #[cfg(target_arch = $arch)]
+        unicast_impl_wrap!($ti, $func, $nr, $alignment_items, $run);
+        #[cfg(not(target_arch = $arch))]
+        unicast_impl_wrap!($ti, $func, $nr, $alignment_items,
+            fn run(_a: &mut [$ti], _b: &[$ti]) {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            }
+        );
+    };
+}
+
 macro_rules! unicast_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $run: item) => {
         paste! {

@@ -1,6 +1,6 @@
 use tract_data::half::f16;
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_mul_f16_32n,
     32,
@@ -38,7 +38,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_add_f16_32n,
     32,
@@ -76,7 +76,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_sub_f16_32n,
     32,
@@ -114,7 +114,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_subf_f16_32n,
     32,
@@ -152,7 +152,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_min_f16_32n,
     32,
@@ -190,7 +190,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f16,
     arm64fp16_unicast_max_f16_32n,
     32,

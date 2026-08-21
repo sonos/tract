@@ -24,7 +24,7 @@ fn cpu_part() -> Option<usize> {
         cpuinfo
             .lines()
             .find(|line| line.starts_with("CPU part"))
-            .and_then(|s| s.trim().split_whitespace().last())
+            .and_then(|s| s.split_whitespace().last())
             .and_then(|s| s.strip_prefix("0x"))
             .and_then(|s| usize::from_str_radix(s, 16).ok())
     })

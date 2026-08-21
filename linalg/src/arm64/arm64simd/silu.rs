@@ -1,4 +1,4 @@
-ew_impl_wrap!(
+ew_impl_wrap2!(aarch64;
     f32,
     arm64simd_silu_f32_4n,
     4,
@@ -15,5 +15,5 @@ ew_impl_wrap!(
 #[cfg(test)]
 pub mod test_arm64simd_silu_f32_4n {
     use super::*;
-    silu_frame_tests!(true, f32, arm64simd_silu_f32_4n);
+    silu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_silu_f32_4n);
 }

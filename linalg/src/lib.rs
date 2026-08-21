@@ -34,17 +34,10 @@ pub mod x86_64;
 
 pub mod hwbench;
 
-#[cfg(target_arch = "aarch64")]
 pub mod arm64;
 
-#[cfg(target_arch = "aarch64")]
 pub use arm64::has_fp16;
 use tract_itertools::Itertools;
-
-#[cfg(not(target_arch = "aarch64"))]
-pub fn has_fp16() -> bool {
-    false
-}
 
 pub mod arm32;
 

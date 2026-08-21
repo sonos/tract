@@ -1,6 +1,6 @@
 use crate::num_traits::Zero;
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(aarch64;
     f32,
     arm64simd_sum_f32_16n,
     16,
@@ -55,5 +55,5 @@ reduce_impl_wrap!(
 #[cfg(test)]
 mod test_arm64simd_sum_f32_16n {
     use super::*;
-    crate::sum_frame_tests!(true, f32, arm64simd_sum_f32_16n);
+    crate::sum_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_sum_f32_16n);
 }

@@ -8,8 +8,14 @@ pub fn plug(ops: &mut Ops) {
 panel_extractor!(kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::q40p32z16se()),
     f32::packing(32).align(16)
-));
+) where(|| cfg!(target_arch = "aarch64")));
 
+#[cfg(not(target_arch = "aarch64"))]
+unsafe fn kernel_packed_32_q40_to_f32(_input: *const u8, _output: *mut u8, _k: usize) {
+    panic!("kernel_packed_32_q40_to_f32: not built for this target arch")
+}
+
+#[cfg(target_arch = "aarch64")]
 unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usize) {
     unsafe {
         if k == 0 {

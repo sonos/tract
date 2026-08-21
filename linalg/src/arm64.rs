@@ -22,12 +22,13 @@ pub mod arm64fp16;
 #[cfg(not(feature = "no_fp16"))]
 pub use arm64fp16::*;
 
+#[cfg(target_arch = "aarch64")]
 use crate::f16;
 use crate::{BinOp, DatumType, LinalgRegistry, Ops};
 
 use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
-use crate::frame::reduce::{MapReduceKer, ReduceKer};
+use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
@@ -194,14 +195,18 @@ pub fn has_fp16() -> bool {
     IPHONE_MODEL_MAJOR.map(|it| it >= 10).unwrap_or(false)
 }
 
+/// True when the running CPU implements FEAT_FP16, hence when the native f16 kernels are
+/// legal. Always false in a build that does not target aarch64: the module compiles
+/// everywhere, but its kernels are only assembled natively.
 #[inline]
 #[cfg(not(target_os = "ios"))]
 pub fn has_fp16() -> bool {
-    cfg!(target_os = "macos")
-        || cfg!(feature_cpu = "fp16")
-        || *KIND == Kind::CortexA55
-        || *KIND == Kind::CortexA75
-        || *HAS_FP16
+    cfg!(target_arch = "aarch64")
+        && (cfg!(target_os = "macos")
+            || cfg!(feature_cpu = "fp16")
+            || *KIND == Kind::CortexA55
+            || *KIND == Kind::CortexA75
+            || *HAS_FP16)
 }
 
 // FEAT_DotProd (SDOT/UDOT), ARMv8.2. TRACT_DOTPROD_DISABLE=1 forces it off so
@@ -238,6 +243,7 @@ pub fn has_dotprod() -> bool {
         && IPHONE_MODEL_MAJOR.map(|it| it >= 10).unwrap_or(false)
 }
 
+#[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
@@ -253,6 +259,7 @@ pub unsafe fn add_f16(a: f16, b: f16) -> f16 {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "fp16")]
 #[inline]
 pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
@@ -334,6 +341,9 @@ impl Kind {
     }
 }
 
+// Called only under `#[cfg(target_arch = "aarch64")]` in lib.rs; the module itself compiles
+// everywhere, so it is dead on a foreign host until the binop registry is universalised.
+#[allow(dead_code)]
 pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
     registry
         .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_unicast_mul_f32_16n::bin()));
@@ -361,6 +371,7 @@ pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
         .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_unicast_max_f16_32n::bin()));
 }
 
+#[allow(dead_code)]
 pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     registry
         .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin()));

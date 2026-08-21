@@ -164,6 +164,26 @@ macro_rules! ew_impl2 {
     };
 }
 
+// Temporary: like `ew_impl_wrap!`, but for kernels whose `run` body is inline arch asm /
+// intrinsics (which won't even compile off-arch). Emits the real body on the native arch and
+// a signature-matched panic stub elsewhere, so the kernel struct exists everywhere.
+macro_rules! ew_impl_wrap2 {
+    (arm; $($rest:tt)*) => { ew_impl_wrap2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl_wrap2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl_wrap2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
+        #[cfg(target_arch = $arch)]
+        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
+        #[cfg(not(target_arch = $arch))]
+        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
+            fn run(_vec: &mut [$ti], _params: $params) {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            }
+        );
+    };
+}
+
 pub trait ElementWise<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
 where
     Params: Copy + Send + Sync + Debug + 'static + Default,
