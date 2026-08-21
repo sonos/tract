@@ -28,6 +28,12 @@ const SILU_CHUNK: usize = 1024;
 // intrinsics directly. Both helpers process 16 lanes per iteration; the tail
 // (which only fires for the 1-15 leftover lanes inside a CHUNK-sized batch)
 // falls back to scalar.
+#[cfg(not(target_arch = "x86_64"))]
+unsafe fn cvt_f16_to_f32(_src: &[f16], _dst: &mut [f32]) {
+    panic!("cvt_f16_to_f32: not built for this target arch")
+}
+
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
     use core::arch::x86_64::*;
@@ -46,6 +52,12 @@ unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
+unsafe fn cvt_f32_to_f16(_src: &[f32], _dst: &mut [f16]) {
+    panic!("cvt_f32_to_f16: not built for this target arch")
+}
+
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
     use core::arch::x86_64::*;
@@ -77,7 +89,7 @@ ew_impl_f16_via_f32!(
     super::act::x86_64_avx512_hardswish_f32_64n
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_hardswish_f16_64n {
     use super::*;
     hardswish_frame_tests!(
@@ -100,7 +112,7 @@ ew_impl_f16_via_f32!(
     alpha => alpha.to_f32()
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_leaky_relu_f16_64n {
     use super::*;
     leaky_relu_frame_tests!(
@@ -121,7 +133,7 @@ ew_impl_f16_via_f32!(
     super::avx512_sigmoid_f32
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_sigmoid_f16_16n {
     use super::*;
     sigmoid_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_sigmoid_f16_16n);
@@ -138,7 +150,7 @@ ew_impl_f16_via_f32!(
     super::avx512_tanh_f32
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_tanh_f16_16n {
     use super::*;
     tanh_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_tanh_f16_16n);
@@ -155,7 +167,7 @@ ew_impl_f16_via_f32!(
     super::avx512_silu_f32
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_silu_f16_16n {
     use super::*;
     silu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_silu_f16_16n);
@@ -172,7 +184,7 @@ ew_impl_f16_via_f32!(
     super::act::x86_64_avx512_gelu_f32_16n
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_gelu_f16_16n {
     use super::*;
     gelu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_gelu_f16_16n);

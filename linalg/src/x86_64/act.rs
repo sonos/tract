@@ -6,7 +6,7 @@
 
 // hardswish(x) = x * relu6(x + 3) / 6
 //              = x * max(0, min(6, x + 3)) * (1/6)
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_hardswish_f32_64n,
     64,
@@ -23,6 +23,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn x86_64_avx512_hardswish_f32_64n_run(buf: &mut [f32]) {
     unsafe {
@@ -85,7 +86,7 @@ unsafe fn x86_64_avx512_hardswish_f32_64n_run(buf: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_hardswish_f32_64n {
     use super::*;
     hardswish_frame_tests!(
@@ -96,7 +97,7 @@ pub mod test_x86_64_avx512_hardswish_f32_64n {
 }
 
 // leaky_relu(x) = x > 0 ? x : alpha * x
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_leaky_relu_f32_64n,
     64,
@@ -113,6 +114,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn x86_64_avx512_leaky_relu_f32_64n_run(buf: &mut [f32], alpha: f32) {
     unsafe {
@@ -165,7 +167,7 @@ unsafe fn x86_64_avx512_leaky_relu_f32_64n_run(buf: &mut [f32], alpha: f32) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_leaky_relu_f32_64n {
     use super::*;
     leaky_relu_frame_tests!(
@@ -180,7 +182,7 @@ pub mod test_x86_64_avx512_leaky_relu_f32_64n {
 // Composed at the kernel level (mirrors arm64): save the original x, compute
 // the tanh argument in place, run the AVX-512 tanh kernel, then finish with the
 // 0.5 * x * (1 + tanh) combine.
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_gelu_f32_16n,
     16,
@@ -213,7 +215,7 @@ ew_impl_wrap!(
     }
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_gelu_f32_16n {
     use super::*;
     gelu_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_gelu_f32_16n);

@@ -37,8 +37,9 @@ mod tests {
     #[test]
     fn arch_mmm_routines_registered_everywhere() {
         // (target, minimum routines present on any host). arm32: 12 armv7neon + 1 armvfpv2.
-        // aarch64: 20 arm64simd + 8 arm64fp16 (sve/sme/apple are os/build-flag gated on top).
-        for (target, min) in [("arm", 13), ("aarch64", 28)] {
+        // aarch64: 20 arm64simd + 8 arm64fp16. x86_64: 7 avx + 8 fma + 9 avx512 + 2 i32.
+        // sve, sme, apple amx, dotprod, vnni and amx ride on os and assembler-probe cfgs.
+        for (target, min) in [("arm", 13), ("aarch64", 28), ("x86_64", 26)] {
             let routines: Vec<_> = all().filter(|r| r.target == target).collect();
             assert!(routines.len() >= min, "{target} mmm routines: {} < {min}", routines.len());
             // bound iff this build's arch is the routine's target (else it's a bail stub).

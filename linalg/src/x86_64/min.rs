@@ -1,4 +1,4 @@
-reduce_impl_wrap!(
+reduce_impl_wrap2!(x86_64;
     f32,
     x86_64_fma_min_f32_32n,
     32,
@@ -17,6 +17,7 @@ reduce_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 unsafe fn x86_64_fma_min_f32_32n_run(buf: &[f32]) -> f32 {
     unsafe {
@@ -62,7 +63,7 @@ unsafe fn x86_64_fma_min_f32_32n_run(buf: &[f32]) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_x86_64_fma_min_f32_32n {
     use super::*;
     crate::min_frame_tests!(is_x86_feature_detected!("avx"), f32, x86_64_fma_min_f32_32n);

@@ -29,7 +29,6 @@ pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
-#[cfg(target_arch = "x86_64")]
 pub mod x86_64;
 
 pub mod hwbench;

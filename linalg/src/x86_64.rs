@@ -30,6 +30,11 @@ pub(crate) fn vendor() -> Vendor {
             _ => Vendor::Other,
         };
     }
+    cpuid_vendor()
+}
+
+#[cfg(target_arch = "x86_64")]
+fn cpuid_vendor() -> Vendor {
     // `unsafe` is required on the MSRV (1.91); newer rustc deems it redundant.
     #[allow(unused_unsafe)]
     let id = unsafe { std::arch::x86_64::__cpuid(0) };
@@ -44,12 +49,22 @@ pub(crate) fn vendor() -> Vendor {
     }
 }
 
+#[cfg(not(target_arch = "x86_64"))]
+fn cpuid_vendor() -> Vendor {
+    Vendor::Other
+}
+
 pub mod act;
 pub mod act_f16;
 pub mod act_f16_fp16;
 
+// CPUID probes, tile permission syscalls and uarch burst measurements: host machinery
+// with no kernel to enumerate, and only ever consulted by `plug`.
+#[cfg(target_arch = "x86_64")]
 pub mod amx;
+#[cfg(target_arch = "x86_64")]
 pub mod amx_bf16;
+#[cfg(target_arch = "x86_64")]
 pub mod avxvnni;
 pub mod by_scalar;
 pub mod erf;
@@ -61,28 +76,41 @@ pub mod panel_extract;
 pub mod rms_norm;
 pub mod softmax;
 
-const AVX: fn() -> bool = || is_x86_feature_detected!("avx");
-const AVX2: fn() -> bool = || is_x86_feature_detected!("avx2");
-const FMA: fn() -> bool = || is_x86_feature_detected!("fma");
-const AVX512F: fn() -> bool = || is_x86_feature_detected!("avx512f");
-#[cfg(tract_avx512vnni)]
-const AVX512VNNI: fn() -> bool = || is_x86_feature_detected!("avx512vnni");
+/// A CPUID feature probe, answering false in a build that does not target x86_64: the
+/// kernels it gates are bail stubs there, so nothing may select them.
+macro_rules! cpu_feature {
+    ($id:ident = $feature:tt) => {
+        #[cfg(target_arch = "x86_64")]
+        const $id: fn() -> bool = || is_x86_feature_detected!($feature);
+        #[cfg(not(target_arch = "x86_64"))]
+        const $id: fn() -> bool = || false;
+    };
+}
 
-tanh_impl!(f32, fma_tanh_f32, 8, 8, is_x86_feature_detected!("fma"));
-sigmoid_impl!(f32, fma_sigmoid_f32, 8, 8, is_x86_feature_detected!("fma"));
-silu_impl!(f32, fma_silu_f32, 8, 8, is_x86_feature_detected!("fma"));
+cpu_feature!(AVX = "avx");
+cpu_feature!(AVX2 = "avx2");
+cpu_feature!(FMA = "fma");
+cpu_feature!(AVX512F = "avx512f");
+cpu_feature!(AVX512FP16 = "avx512fp16");
+cpu_feature!(F16C = "f16c");
+#[cfg(tract_avx512vnni)]
+cpu_feature!(AVX512VNNI = "avx512vnni");
+
+tanh_impl!(arch x86_64; f32, fma_tanh_f32, 8, 8, FMA());
+sigmoid_impl!(arch x86_64; f32, fma_sigmoid_f32, 8, 8, FMA());
+silu_impl!(arch x86_64; f32, fma_silu_f32, 8, 8, FMA());
 
 // AVX-without-FMA ports of the fma kernels above (each vfmadd132ps expanded
 // to an in-place vmulps+vaddps pair) for CPUs outside the fma tier.
-tanh_impl!(f32, avx_tanh_f32, 8, 8, is_x86_feature_detected!("avx"));
-sigmoid_impl!(f32, avx_sigmoid_f32, 8, 8, is_x86_feature_detected!("avx"));
+tanh_impl!(arch x86_64; f32, avx_tanh_f32, 8, 8, AVX());
+sigmoid_impl!(arch x86_64; f32, avx_sigmoid_f32, 8, 8, AVX());
 
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
 // nr()=16 (any multiple of 16 is safe).
-tanh_impl!(f32, avx512_tanh_f32, 16, 16, is_x86_feature_detected!("avx512f"));
-sigmoid_impl!(f32, avx512_sigmoid_f32, 16, 16, is_x86_feature_detected!("avx512f"));
-silu_impl!(f32, avx512_silu_f32, 16, 16, is_x86_feature_detected!("avx512f"));
+tanh_impl!(arch x86_64; f32, avx512_tanh_f32, 16, 16, AVX512F());
+sigmoid_impl!(arch x86_64; f32, avx512_sigmoid_f32, 16, 16, AVX512F());
+silu_impl!(arch x86_64; f32, avx512_silu_f32, 16, 16, AVX512F());
 
 fn plug_avx2(_ops: &mut Ops) {}
 
@@ -168,18 +196,16 @@ fn plug_avx512f(ops: &mut Ops) {
 
 pub fn plug(ops: &mut Ops) {
     mmm::plug(ops);
-    if is_x86_feature_detected!("avx")
-        && !(is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma"))
-    {
+    if AVX() && !(AVX2() && FMA()) {
         plug_avx(ops);
     }
-    if is_x86_feature_detected!("avx2") {
+    if AVX2() {
         plug_avx2(ops);
-        if is_x86_feature_detected!("fma") {
+        if FMA() {
             plug_fma(ops);
-            if is_x86_feature_detected!("avx512f") {
+            if AVX512F() {
                 plug_avx512f(ops);
-                if is_x86_feature_detected!("avx512fp16") {
+                if AVX512FP16() {
                     plug_avx512fp16(ops);
                 }
             }

@@ -4,7 +4,7 @@
 // underflows to zero even on a fully masked row, where the row max equals the
 // neutral.
 // nr=32 (4x ymm of 8), 32-byte aligned.
-map_reduce_impl_wrap!(
+map_reduce_impl_wrap2!(x86_64;
     f32,
     x86_64_fma_softmax2_f32_32n,
     32,
@@ -23,6 +23,7 @@ map_reduce_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn x86_64_fma_softmax2_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
     use std::arch::x86_64::*;
@@ -89,7 +90,7 @@ unsafe fn x86_64_fma_softmax2_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_x86_64_fma_softmax2_f32_32n {
     use super::*;
     crate::softmax_l2_frame_tests!(
@@ -102,7 +103,7 @@ mod test_x86_64_fma_softmax2_f32_32n {
 // AVX-512 accurate f32 softmax_l2: same arithmetic as the FMA kernel, 64 f32
 // (4x zmm of 16) per iteration. Runtime-gated on avx512f in plug_avx512f.
 // nr=64, 64-byte aligned.
-map_reduce_impl_wrap!(
+map_reduce_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_softmax2_f32_64n,
     64,
@@ -121,6 +122,7 @@ map_reduce_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn x86_64_avx512_softmax2_f32_64n_run(buf: &mut [f32], max: f32) -> f32 {
     use std::arch::x86_64::*;
@@ -178,7 +180,7 @@ unsafe fn x86_64_avx512_softmax2_f32_64n_run(buf: &mut [f32], max: f32) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_x86_64_avx512_softmax2_f32_64n {
     use super::*;
     crate::softmax_l2_frame_tests!(
