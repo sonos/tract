@@ -1,3 +1,4 @@
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
@@ -12,6 +13,7 @@ use crate::mmm::ImplementationQuality;
 /// Selection: tract-core's einsum kernel_selection::strategize() prefers
 /// kernels with nr() == 1 when op.n.is_one(), so this kernel is
 /// automatically picked for N=1 cases once registered.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -159,7 +161,9 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 // ManuallyOptimized so kernel_selection::strategize honours the M-band
 // dispatch in mmv_f32 below. See module-level comment on plug().
-MMMRustKernel!(kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_4x1(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 8x1 kernel — wider GEMV variant for matrix-vector products
 /// on large M. Uses TWO independent f32x4 accumulators (rows 0-3 in ab_top,
@@ -179,6 +183,7 @@ MMMRustKernel!(kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(Implementa
 /// ops once registered (including small-M cases where it slightly wastes
 /// rows — for M=1 lsnr_fc-style ops, that's 7-of-8 row waste, but those
 /// ops are <1% of frame so the regression is noise).
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -396,7 +401,9 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_8x1(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 16x1 kernel — wider GEMV variant for matrix-vector products
 /// on very large M. Uses FOUR independent f32x4 accumulators (rows 0-3,
@@ -405,6 +412,7 @@ MMMRustKernel!(kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(Implementa
 /// Compared to wasm_f32_8x1 (2 accumulators, 2-way ILP), this exposes more
 /// parallel work to the SIMD pipelines, beneficial on hardware with 3+
 /// SIMD execution units (most modern ARM and x86).
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -653,7 +661,9 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_16x1(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 32x1 kernel — widest GEMV variant for matrix-vector products
 /// on very large M. Uses EIGHT independent f32x4 accumulators (rows 0-3, 4-7,
@@ -668,6 +678,7 @@ MMMRustKernel!(kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(Implem
 ///
 /// Selection: `kernel_selection::strategize()` prefers max mr() for n=1
 /// cases, so this kernel automatically wins over wasm_f32_16x1 for M >= 32.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -1036,4 +1047,6 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-MMMRustKernel!(kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_32x1(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));

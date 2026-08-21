@@ -10,14 +10,15 @@ use crate::{LADatum, LinalgFn};
 // Temporary: like `unicast_impl_wrap!`, but for kernels whose `run` body is inline arch asm /
 // intrinsics. Real body on the native arch, signature-matched panic stub elsewhere.
 macro_rules! unicast_impl_wrap2 {
-    (arm; $($rest:tt)*) => { unicast_impl_wrap2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { unicast_impl_wrap2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { unicast_impl_wrap2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { unicast_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $run:item) => {
-        #[cfg(target_arch = $arch)]
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $run:item) => {
+        #[cfg($built)]
         unicast_impl_wrap!($ti, $func, $nr, $alignment_items, $run);
-        #[cfg(not(target_arch = $arch))]
+        #[cfg(not($built))]
         unicast_impl_wrap!($ti, $func, $nr, $alignment_items,
             fn run(_a: &mut [$ti], _b: &[$ti]) {
                 panic!(concat!(stringify!($func), ": kernel not built for this target arch"))

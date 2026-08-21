@@ -1,7 +1,9 @@
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
 
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -289,13 +291,16 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
 // Kept because it is the only f32 kernel besides 8x8 whose C tile is
 // two-dimensional, so the generated store and packing tests cover that layout
 // on a second shape. `dispatch_never_returns_wasm_f32_4x4` holds this in place.
-MMMRustKernel!(kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_4x4(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));
 
 /// WASM SIMD f32 8x8 kernel — wide MM tile (8 rows × 8 cols, 16 v128 accumulators).
 /// Each row uses 2 v128: cols 0-3 in `_lo`, cols 4-7 in `_hi`. 16 accumulators
 /// is at the limit of WASM's 16 logical SIMD register slots; this tests the
 /// register-pressure boundary. For DFN3 ops, all M and N are multiples of 8,
 /// so 8x8 fits cleanly with no padding waste.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
     use std::arch::wasm32::*;
 
@@ -992,4 +997,6 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
 // ManuallyOptimized so kernel_selection::strategize honours the mmm_f32
 // callback that returns it for N>1 GEMM (see the `plug` comment) — otherwise
 // strategize drops it and routes every GEMM onto the 32x1 GEMV kernel.
-MMMRustKernel!(kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::ManuallyOptimized));
+bail_stub!(wasm32; unsafe fn kernel_f32_8x8(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::ManuallyOptimized));

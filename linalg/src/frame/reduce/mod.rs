@@ -16,14 +16,15 @@ use super::element_wise_helper::{map_reduce_slice_with_alignment, reduce_slice_w
 // are inline arch asm / intrinsics. Real bodies on the native arch, signature-matched panic
 // stubs elsewhere.
 macro_rules! reduce_impl_wrap2 {
-    (arm; $($rest:tt)*) => { reduce_impl_wrap2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { reduce_impl_wrap2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { reduce_impl_wrap2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { reduce_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { reduce_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { reduce_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { reduce_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $neutral:expr, $run:item, $reduce_two:item) => {
-        #[cfg(target_arch = $arch)]
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $neutral:expr, $run:item, $reduce_two:item) => {
+        #[cfg($built)]
         reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $neutral, $run, $reduce_two);
-        #[cfg(not(target_arch = $arch))]
+        #[cfg(not($built))]
         reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $neutral,
             fn run(_vec: &[$ti], _params: $params) -> $ti {
                 panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
@@ -36,14 +37,15 @@ macro_rules! reduce_impl_wrap2 {
 }
 
 macro_rules! map_reduce_impl_wrap2 {
-    (arm; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $map_neutral:expr, $reduce_neutral:expr, $run:item, $reduce_two:item) => {
-        #[cfg(target_arch = $arch)]
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $map_neutral:expr, $reduce_neutral:expr, $run:item, $reduce_two:item) => {
+        #[cfg($built)]
         map_reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $map_neutral, $reduce_neutral, $run, $reduce_two);
-        #[cfg(not(target_arch = $arch))]
+        #[cfg(not($built))]
         map_reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $map_neutral, $reduce_neutral,
             fn run(_vec: &mut [$ti], _params: $params) -> $ti {
                 panic!(concat!(stringify!($func), ": kernel not built for this target arch"))

@@ -18,7 +18,7 @@ mod madd;
 
 #[cfg(target_feature = "relaxed-simd")]
 mod act;
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod dispatch_tests;
 mod mmm_f32_gemm;
 mod mmm_f32_gemv;

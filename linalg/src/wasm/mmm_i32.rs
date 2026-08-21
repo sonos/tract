@@ -1,3 +1,4 @@
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
 use crate::mmm::ImplementationQuality;
@@ -12,6 +13,7 @@ use crate::mmm::ImplementationQuality;
 // generic_i32_4x4; selected for i8 matmul via its ManuallyOptimized quality
 // (WASM had no int8 matmul kernel — int8 fell back to the generic scalar one).
 #[inline(never)]
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_i32_4x4(mut pnl: *const FusedKerSpec<i32>) -> isize {
     use crate::ScaleShiftAndRound;
     use std::arch::wasm32::*;
@@ -350,7 +352,9 @@ fn wasm_i8_packing() -> impl crate::mmm::MMMInputFormat {
     i8::packing(4)
 }
 
-MMMRustKernel!(kernel_i32_4x4 => wasm_i32_4x4<i32>(4,4)
+bail_stub!(wasm32; unsafe fn kernel_i32_4x4(*const FusedKerSpec<i32>) -> isize);
+
+MMMRustKernel2!(wasm32; kernel_i32_4x4 => wasm_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(wasm_i8_packing(), wasm_i8_packing());
     quality(ImplementationQuality::ManuallyOptimized)
     store(i8)

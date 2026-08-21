@@ -38,17 +38,18 @@ macro_rules! MMMExternKernel {
     };
 }
 // Temporary: like `MMMExternKernel!`, but compiles on any host and registers an
-// introspection descriptor. The leading ident names the target arch the asm was written
-// for; the extern symbol is emitted only there, replaced elsewhere by a bail stub so the
-// whole module links everywhere. The `MmmRoutine` submit is unconditional (pure data),
-// with `bound` recording whether this build actually assembled the kernel.
+// introspection descriptor. The leading ident names the arch the asm was written for; the
+// extern symbol is emitted only in builds carrying that arch's instructions, replaced
+// elsewhere by a bail stub so the whole module links everywhere. The `MmmRoutine` submit is
+// unconditional (pure data), with `bound` recording whether this build assembled the kernel.
 macro_rules! MMMExternKernel2 {
-    // Map the arch ident to its `target_arch` string literal (cfg needs a literal).
-    (arm; $($rest:tt)*)     => { MMMExternKernel2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { MMMExternKernel2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*)  => { MMMExternKernel2!(@ "x86_64"; $($rest)*); };
+    // Map the arch ident to its inventory label and to the cfg predicate for "built here".
+    (arm; $($rest:tt)*)     => { MMMExternKernel2!(@ "arm", target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { MMMExternKernel2!(@ "aarch64", target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*)  => { MMMExternKernel2!(@ "x86_64", target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*)  => { MMMExternKernel2!(@ "wasm32", all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal;
+    (@ $target:literal, $built:meta;
         $func:ident<$ti:ident>($mr:expr, $nr:expr)
         $($rest:tt)*
     ) => {
@@ -59,10 +60,10 @@ macro_rules! MMMExternKernel2 {
                 #[allow(unused_imports)]
                 use crate::frame::mmm::*;
 
-                #[cfg(target_arch = $arch)]
+                #[cfg($built)]
                 extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
 
-                #[cfg(not(target_arch = $arch))]
+                #[cfg(not($built))]
                 #[allow(dead_code)]
                 pub unsafe fn $func(_op: *const FusedKerSpec<$ti>) -> isize {
                     panic!(concat!(stringify!($func), ": mmm kernel not built for this target arch"))
@@ -75,12 +76,12 @@ macro_rules! MMMExternKernel2 {
             }
 
             MMMKernel!([<sys_ $func>]::rusty as $func<$ti>($mr, $nr)
-                bound(cfg!(target_arch = $arch)) $($rest)*);
+                bound(cfg!($built)) $($rest)*);
 
             inventory::submit! {
                 $crate::mmm_routines::MmmRoutine {
-                    target: $arch,
-                    bound: cfg!(target_arch = $arch),
+                    target: $target,
+                    bound: cfg!($built),
                     make: || $func.mmm(),
                 }
             }
@@ -92,16 +93,17 @@ macro_rules! MMMExternKernel2 {
 // registers an mmm introspection descriptor. The kernel fn itself is expected to be gated by
 // its caller (the extern block bailed on foreign arch); this only adds the `MmmRoutine` submit.
 macro_rules! MMMRustKernel2 {
-    (arm; $($rest:tt)*) => { MMMRustKernel2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { MMMRustKernel2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { MMMRustKernel2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { MMMRustKernel2!(@ "arm", target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { MMMRustKernel2!(@ "aarch64", target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { MMMRustKernel2!(@ "x86_64", target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { MMMRustKernel2!(@ "wasm32", all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $func:path => $id:ident<$ti:ident>($mr:expr, $nr:expr) $($rest:tt)*) => {
-        MMMRustKernel!($func => $id<$ti>($mr, $nr) $($rest)*);
+    (@ $target:literal, $built:meta; $func:path => $id:ident<$ti:ident>($mr:expr, $nr:expr) $($rest:tt)*) => {
+        MMMRustKernel!($func => $id<$ti>($mr, $nr) bound(cfg!($built)) $($rest)*);
         inventory::submit! {
             $crate::mmm_routines::MmmRoutine {
-                target: $arch,
-                bound: cfg!(target_arch = $arch),
+                target: $target,
+                bound: cfg!($built),
                 make: || $id.mmm(),
             }
         }
@@ -111,6 +113,7 @@ macro_rules! MMMRustKernel2 {
 macro_rules! MMMRustKernel {
     (       $func: path =>
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
+            $(bound($bound:expr))?
             $(@($align_a:expr, $align_b:expr))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
@@ -130,6 +133,7 @@ macro_rules! MMMRustKernel {
                 }
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
+                $(bound($bound))?
                 $(@($align_a, $align_b))?
                 generic(true)
                 $(where($where))?
