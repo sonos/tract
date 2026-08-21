@@ -3,7 +3,7 @@ use tract_nnef::tract_core::axes::{AxesMapping, Axis};
 use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_nnef::tract_core::ops::logic::Iff;
 use tract_nnef::tract_core::ops::math::{Add, Mul};
-use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxKind};
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
@@ -98,7 +98,7 @@ impl EvalOp for ScaledMaskedSoftmax {
             Add.eval(scaled.into(), mask.clone(), dt)?.into()
         };
 
-        let softmax_out = Softmax::new(softmax_axis, None, SoftmaxKind::Softmax(SoftmaxExp::Libc))
+        let softmax_out = Softmax::new(softmax_axis, None, SoftmaxKind::Softmax)
             .eval(tvec![pre_softmax])?[0]
             .clone();
 

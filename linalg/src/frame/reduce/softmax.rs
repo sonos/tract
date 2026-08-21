@@ -67,7 +67,6 @@ pub mod test {
         T: LADatum + Float + AsPrimitive<f32>,
         f32: AsPrimitive<T>,
     {
-        use crate::generic::reduce::softmax_l2::fast_compact_exp_f32;
         crate::setup_test_logger();
         let max = values.iter().max_by(|a, b| a.total_cmp(b)).unwrap();
         let values: Vec<T> = values.iter().copied().map(|x| x.as_()).collect();
@@ -75,8 +74,7 @@ pub mod test {
             &values,
             <T as Float>::min_value(),
             T::zero(),
-            //            |x| (x - max.as_()).exp(),
-            |x| fast_compact_exp_f32(x.as_() - max).as_(),
+            |x| (x.as_() - max).exp().as_(),
             |a, b| a + b,
             max.as_(),
         )

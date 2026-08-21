@@ -7,7 +7,7 @@ use std::fmt::Debug;
 use tract_data::TractResult;
 
 use crate::floats::FloatPrecisionTranslator;
-use crate::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind, TypedModel};
+use crate::ops::nn::TypedModel;
 
 #[macro_export]
 macro_rules! rule_if {
@@ -105,26 +105,6 @@ pub trait ModelTransform: Debug {
     fn transform_into(&self, mut model: TypedModel) -> TractResult<TypedModel> {
         self.transform(&mut model)?;
         Ok(model)
-    }
-}
-
-#[derive(Debug)]
-struct SoftmaxFastCompact;
-
-impl ModelTransform for SoftmaxFastCompact {
-    fn name(&self) -> StaticName {
-        "softmax_fast_compact".into()
-    }
-
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        for node in &mut model.nodes {
-            if let Some(softmax) = node.op_as_mut::<Softmax>()
-                && let SoftmaxKind::Softmax(kind) = &mut softmax.kind
-            {
-                *kind = SoftmaxExp::FastCompact
-            }
-        }
-        Ok(())
     }
 }
 
@@ -405,7 +385,6 @@ impl ModelTransform for ExportScanState {
 
 register_simple_model_transform!("export_scan_state", ExportScanState);
 
-register_simple_model_transform!("softmax_fast_compact", SoftmaxFastCompact);
 register_simple_model_transform!("block_quant", BlockQuantTransform);
 
 #[derive(Debug, serde::Deserialize, Default)]

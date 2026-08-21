@@ -2,9 +2,7 @@ use crate::Ops;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::{MapReduceKer, ReduceKer};
 use crate::x86_64::softmax::x86_64_avx512_softmax2_f32_64n;
-use crate::x86_64::softmax::x86_64_avx512_softmax2_fastcompact_f16_64n;
 use crate::x86_64::softmax::x86_64_fma_softmax2_f32_32n;
-use crate::x86_64::softmax::x86_64_fma_softmax2_fastcompact_f32_32n;
 
 pub mod mmm;
 
@@ -113,7 +111,6 @@ fn plug_fma(ops: &mut Ops) {
     ops.mul_by_scalar_f32 = Box::new(|| by_scalar::x86_64_avx_f32_mul_by_scalar_32n::ew());
     ops.max_f32 = Box::new(|| max::x86_64_fma_max_f32_32n::red());
     ops.min_f32 = Box::new(|| min::x86_64_fma_min_f32_32n::red());
-    ops.softmax2_fastcompact_f32 = Box::new(|| x86_64_fma_softmax2_fastcompact_f32_32n::red());
     ops.softmax2_f32 = Box::new(|| x86_64_fma_softmax2_f32_32n::red());
 
     log::info!("sigmoid_f32, tanh_f32, silu_f32: x86_64/fma activated");
@@ -153,9 +150,6 @@ fn plug_avx512f(ops: &mut Ops) {
     ops.gelu_f16 = Box::new(|| act_f16::x86_64_avx512_gelu_f16_16n::ew());
 
     ops.max_f32 = Box::new(|| max::x86_64_avx512_max_f32_64n::red());
-    ops.softmax2_fastcompact_f32 =
-        Box::new(|| softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red());
-    ops.softmax2_fastcompact_f16 = Box::new(|| x86_64_avx512_softmax2_fastcompact_f16_64n::red());
     ops.softmax2_f32 = Box::new(|| x86_64_avx512_softmax2_f32_64n::red());
 
     ops.erf_f32 = Box::new(|| erf::x86_64_avx512_erf_f32_64n::ew());
@@ -167,7 +161,7 @@ fn plug_avx512f(ops: &mut Ops) {
          silu_f32, gelu_f32, \
          sigmoid_f16, tanh_f16, hardswish_f16, leaky_relu_f16, \
          silu_f16, gelu_f16, \
-         max_f32, softmax2_fastcompact_f32, softmax2_fastcompact_f16, erf_f32, \
+         max_f32, softmax2_f32, erf_f32, \
          rms_norm_f32: x86_64/avx512f activated"
     );
 }

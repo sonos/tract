@@ -25,7 +25,6 @@ pub use self::gelu::{HGelu8, SGelu4};
 pub use self::hardswish::{HHardSwish8, SHardSwish4};
 pub use self::leaky_relu::{HLeakyRelu8, SLeakyRelu4};
 pub use self::lut::GenericLut8;
-pub use self::reduce::softmax_l2::SSoftMaxL2;
 pub use self::rounding::{ScaleShiftAndRound, Scaler};
 pub use self::sigmoid::{HSigmoid8, SSigmoid4};
 pub use self::silu::{HSiLU8, SSiLU4};

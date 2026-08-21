@@ -8,7 +8,7 @@ use tract_core::ops::{change_axes, math};
 use tract_nnef::internal::*;
 use tract_nnef::ser::datum_type;
 use tract_nnef::tract_core::ops::math::mul;
-use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
+use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxKind};
 
 use crate::ops::dyn_kv_cache::DynKeyValueCache;
 use crate::ops::flash_sdpa::FlashSdpaOp;
@@ -121,7 +121,7 @@ impl Sdpa {
             graph
                 .wire_node(
                     "att_softmax",
-                    Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
+                    Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax),
                     &[scaled_scores],
                 )
                 .map(|o| o[0])

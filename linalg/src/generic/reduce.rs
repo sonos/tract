@@ -136,65 +136,9 @@ pub mod sum {
 
 // Softmax generic implementation
 pub mod softmax_l2 {
-    use crate::num_traits::Zero;
-    use tract_data::internal::f16;
-
-    map_reduce_impl_wrap!(
-        f32,
-        SSoftMaxL2,
-        4,
-        4,
-        f32,
-        f32::MIN,
-        0.0,
-        fn run(x: &mut [f32], max: f32) -> f32 {
-            debug_assert!(x.len() % Self::nr() == 0);
-            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-            let mut sum = 0.;
-            for v in x.iter_mut() {
-                let y = *v - max;
-                let y = fast_compact_exp_f32(y);
-                *v = y;
-                sum += y;
-            }
-            sum
-        },
-        fn reduce_two(a: f32, b: f32) -> f32 {
-            a + b
-        }
-    );
-
-    map_reduce_impl_wrap!(
-        f16,
-        HSoftMaxL2,
-        8,
-        8,
-        f16,
-        f16::MIN,
-        f16::zero(),
-        fn run(x: &mut [f16], max: f16) -> f16 {
-            debug_assert!(x.len() % Self::nr() == 0);
-            debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
-            // f32 accumulator: a row long enough for the running sum to outgrow
-            // its own terms stalls in f16, matching what the AVX-512 f16 kernel
-            // already does.
-            let mut sum = 0f32;
-            for v in x.iter_mut() {
-                let y = *v - max;
-                let y = f16::from_f32(fast_compact_exp_f32(y.to_f32()));
-                *v = y;
-                sum += y.to_f32();
-            }
-            f16::from_f32(sum)
-        },
-        fn reduce_two(a: f16, b: f16) -> f16 {
-            a + b
-        }
-    );
 
     /// exp(x - max) with a Cody-Waite reduction and a degree-6 fit: accurate to
-    /// about 1e-7 relative, against [`fast_compact_exp_f32`]'s 6e-2, while still
-    /// being all FMAs so the row loop vectorizes.
+    /// about 1e-7 relative while still being all FMAs so the row loop vectorizes.
     #[inline(always)]
     pub fn accurate_exp_f32(x: f32) -> f32 {
         const LOG2E: f32 = 1.442_695_04;
@@ -371,38 +315,17 @@ pub mod softmax_l2 {
         }
     );
 
-    // ported from https://github.com/gnuradio/volk/blob/master/kernels/volk/volk_32f_expfast_32f.h
-    // probably inspired from https://nic.schraudolph.org/pubs/Schraudolph99.pdf
-    // not that the cast to u32 deals with negative right, while implem in volk code are wrong in some
-    // corner cases (need a max(0,x) before the u32 conversion)
-    pub fn fast_compact_exp_f32(v: f32) -> f32 {
-        const MLN2: f32 = 0.6931471805f32;
-        const A: f32 = 8388608.0f32;
-        const B: f32 = 1065353216.0f32;
-        const C: f32 = 60801.0f32;
-        const SLOPE: f32 = A / MLN2;
-        const OFFSET: f32 = B - C;
-        f32::from_bits(((SLOPE * v) + OFFSET) as u32)
-    }
-
     #[cfg(test)]
     #[macro_use]
     pub mod s {
-        crate::softmax_l2_frame_tests!(true, f32, super::SSoftMaxL2);
-    }
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod h {
-        use super::*;
-        crate::softmax_l2_frame_tests!(true, f16, HSoftMaxL2);
+        crate::softmax_l2_frame_tests!(true, f32, super::SSoftMaxL2Accurate);
     }
 }
 
 #[cfg(test)]
 mod f16_accumulators {
     use super::*;
-    use crate::frame::reduce::{MapReduceKer, ReduceKer};
+    use crate::frame::reduce::ReduceKer;
     use tract_data::internal::f16;
 
     /// The returned row sum must stay close to the same sum taken in f32. A row
@@ -415,19 +338,6 @@ mod f16_accumulators {
             let got = sum::HSum8::red().run(&row).unwrap().to_f32();
             let err = (got - len as f32).abs() / len as f32;
             assert!(err < 0.01, "len {len}: summed to {got}, rel {err}");
-        }
-    }
-
-    #[test]
-    fn long_rows_keep_their_sum() {
-        for len in [1024usize, 4096, 8192] {
-            let max = f16::from_f32(0.0);
-            let mut row: Vec<f16> = vec![f16::from_f32(0.0); len];
-            let got = softmax_l2::HSoftMaxL2::red().run_with_params(&mut row, max).unwrap();
-
-            let want: f32 = row.iter().map(|v| v.to_f32()).sum();
-            let err = (got.to_f32() - want).abs() / want;
-            assert!(err < 0.01, "len {len}: kernel returned {got}, row sums to {want}, rel {err}");
         }
     }
 }
