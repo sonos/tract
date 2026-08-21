@@ -59,8 +59,6 @@ pub fn load_image<P: AsRef<path::Path>>(p: P) -> Tensor {
 #[cfg(test)]
 mod tests {
     extern crate dinghy_test;
-    use tract_tflite::prelude::*;
-
     use super::*;
 
     fn mobilenet_v2() -> path::PathBuf {
