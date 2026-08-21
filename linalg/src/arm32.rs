@@ -5,13 +5,10 @@ mod cortex_a7_linear;
 mod cortex_a7_mmv_linear;
 mod cortex_a9_linear;
 mod cortex_a9_mmv_linear;
-#[cfg(target_arch = "arm")]
 use armv7neon::*;
 
-#[cfg(target_arch = "arm")]
 use crate::frame::element_wise::ElementWiseKer;
 
-#[cfg(target_arch = "arm")]
 use crate::Ops;
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -22,7 +19,6 @@ fn has_neon_cpuinfo() -> std::io::Result<bool> {
     Ok(neon)
 }
 
-#[cfg(target_arch = "arm")]
 fn cpu_part() -> Option<usize> {
     fs::read_to_string("/proc/cpuinfo").ok().and_then(|cpuinfo| {
         cpuinfo
@@ -42,10 +38,6 @@ pub(crate) fn has_neon() -> bool {
     *NEON.get_or_init(|| has_neon_cpuinfo().unwrap_or(false))
 }
 
-// Gated for now: `plug` installs the runtime selection + activation kernels, which still
-// reference asm externs. mmm kernels themselves compile everywhere (see MMMExternKernel2);
-// step 3 moves this selection into a `PlatformSelector` fed by the mmm inventory.
-#[cfg(target_arch = "arm")]
 pub fn plug(ops: &mut Ops) {
     if has_neon() {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");

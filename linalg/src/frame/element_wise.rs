@@ -130,6 +130,40 @@ macro_rules! ew_impl {
     };
 }
 
+// Temporary: like `ew_impl!` (no-params arm), but compiles on any host. The asm extern is
+// emitted only on its native target_arch; elsewhere a bail stub of the same signature takes
+// its place so the module links everywhere. Leading ident names the target arch (mapped to
+// the `target_arch` literal that cfg requires).
+macro_rules! ew_impl2 {
+    (arm; $($rest:tt)*) => { ew_impl2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+
+                #[cfg(target_arch = $arch)]
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+
+                #[cfg(not(target_arch = $arch))]
+                #[allow(dead_code)]
+                pub unsafe fn $func(_ptr: *mut $ti, _count: usize) {
+                    panic!(concat!(stringify!($func), ": activation kernel not built for this target arch"))
+                }
+            }
+            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
+                #[inline(never)]
+                fn run(buf: &mut [$ti], _params: ()) {
+                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
+                }
+            );
+        }
+    };
+}
+
 pub trait ElementWise<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
 where
     Params: Copy + Send + Sync + Debug + 'static + Default,

@@ -10,6 +10,16 @@ macro_rules! silu_impl {
             }
         }
     };
+    (arch $arch: ident; $ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
+        ew_impl2!($arch; $ti, $func, $nr, $alignment_items);
+        #[cfg(test)]
+        paste! {
+            mod [<test_ $func>] {
+                use super::*;
+                silu_frame_tests!($cond, $ti, $func);
+            }
+        }
+    };
 }
 
 #[cfg(test)]

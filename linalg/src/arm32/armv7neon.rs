@@ -44,11 +44,6 @@ pub fn plug(ops: &mut Ops) {
     ]);
 }
 
-// TODO: activation kernels are still asm externs (`ew_impl!` → `extern_kernel!`); give
-// them the same bail treatment as mmm in the activation step, then drop these gates.
-#[cfg(target_arch = "arm")]
-sigmoid_impl!(f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
-#[cfg(target_arch = "arm")]
-silu_impl!(f32, armv7neon_silu_f32_4n, 4, 4, crate::arm32::has_neon());
-#[cfg(target_arch = "arm")]
-tanh_impl!(f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());
+sigmoid_impl!(arch arm; f32, armv7neon_sigmoid_f32_4n, 4, 4, crate::arm32::has_neon());
+silu_impl!(arch arm; f32, armv7neon_silu_f32_4n, 4, 4, crate::arm32::has_neon());
+tanh_impl!(arch arm; f32, armv7neon_tanh_f32_4n, 4, 4, crate::arm32::has_neon());
