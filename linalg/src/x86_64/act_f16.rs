@@ -28,11 +28,6 @@ const SILU_CHUNK: usize = 1024;
 // intrinsics directly. Both helpers process 16 lanes per iteration; the tail
 // (which only fires for the 1-15 leftover lanes inside a CHUNK-sized batch)
 // falls back to scalar.
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn cvt_f16_to_f32(_src: &[f16], _dst: &mut [f32]) {
-    panic!("cvt_f16_to_f32: not built for this target arch")
-}
-
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
@@ -52,10 +47,7 @@ unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
     }
 }
 
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn cvt_f32_to_f16(_src: &[f32], _dst: &mut [f16]) {
-    panic!("cvt_f32_to_f16: not built for this target arch")
-}
+bail_stub!(x86_64; unsafe fn cvt_f16_to_f32(&[f16], &mut [f32]));
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
@@ -76,6 +68,8 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
         }
     }
 }
+
+bail_stub!(x86_64; unsafe fn cvt_f32_to_f16(&[f32], &mut [f16]));
 
 // hardswish_f16
 ew_impl_f16_via_f32!(

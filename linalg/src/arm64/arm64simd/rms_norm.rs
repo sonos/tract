@@ -104,10 +104,7 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     unsafe { rms_norm_f32_inner(buf, eps) }
 }
 
-#[cfg(not(target_arch = "aarch64"))]
-pub fn rms_norm_f32(_buf: &mut [f32], _eps: f32) {
-    panic!("arm64simd_rms_norm_f32: kernel not built for this target arch")
-}
+bail_stub!(aarch64; pub fn rms_norm_f32(&mut [f32], f32));
 
 #[cfg(all(test, target_arch = "aarch64"))]
 mod tests {

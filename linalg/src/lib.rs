@@ -18,6 +18,31 @@ extern crate proptest;
 
 include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
+/// Stands in for a function whose body only compiles on `$arch` — an asm block, an
+/// intrinsic, a CPUID probe — in builds targeting anything else, taking the argument types
+/// of the real item and bailing when called. Needed only where something names the function
+/// on every arch: a codegen macro, or a `plug` the arch tree compiles everywhere but
+/// nothing but the native host ever calls. A plain `#[cfg]` covers the rest.
+macro_rules! bail_stub {
+    (arm; $($rest:tt)*) => { bail_stub!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { bail_stub!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { bail_stub!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $vis:vis unsafe fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
+        #[cfg(not(target_arch = $arch))]
+        $vis unsafe fn $name($(_: $ty),*) $(-> $ret)? {
+            panic!(concat!(stringify!($name), ": not built for this target arch"))
+        }
+    };
+
+    (@ $arch:literal; $vis:vis fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
+        #[cfg(not(target_arch = $arch))]
+        $vis fn $name($(_: $ty),*) $(-> $ret)? {
+            panic!(concat!(stringify!($name), ": not built for this target arch"))
+        }
+    };
+}
+
 #[macro_use]
 mod frame;
 pub mod cache;

@@ -121,10 +121,7 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     unsafe { rms_norm_f32_inner(buf, eps) }
 }
 
-#[cfg(not(target_arch = "x86_64"))]
-pub fn rms_norm_f32(_buf: &mut [f32], _eps: f32) {
-    panic!("x86_64_avx512_rms_norm_f32: kernel not built for this target arch")
-}
+bail_stub!(x86_64; pub fn rms_norm_f32(&mut [f32], f32));
 
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
