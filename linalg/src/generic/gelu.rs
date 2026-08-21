@@ -1,5 +1,6 @@
 #![allow(clippy::excessive_precision)]
 use crate::frame::element_wise::ElementWiseKer;
+use crate::generic::tanh::stanh;
 use tract_data::internal::*;
 
 // Tanh-form GELU approximation matching tract's GeluApproximate (pow=3, the
@@ -39,7 +40,7 @@ impl ElementWiseKer<f32> for SGelu4 {
         x.iter_mut().for_each(|px| {
             let v = *px;
             let inner = SQRT_2_OVER_PI * (v + COEF * v * v * v);
-            *px = 0.5 * v * (1.0 + inner.tanh());
+            *px = 0.5 * v * (1.0 + stanh(inner));
         });
     }
 }
@@ -70,7 +71,7 @@ impl ElementWiseKer<f16> for HGelu8 {
         x.iter_mut().for_each(|px| {
             let v = px.to_f32();
             let inner = SQRT_2_OVER_PI * (v + COEF * v * v * v);
-            *px = f16::from_f32(0.5 * v * (1.0 + inner.tanh()));
+            *px = f16::from_f32(0.5 * v * (1.0 + stanh(inner)));
         });
     }
 }
