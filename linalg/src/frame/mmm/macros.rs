@@ -37,6 +37,56 @@ macro_rules! MMMExternKernel {
         }
     };
 }
+// Temporary: like `MMMExternKernel!`, but compiles on any host and registers an
+// introspection descriptor. The leading ident names the target arch the asm was written
+// for; the extern symbol is emitted only there, replaced elsewhere by a bail stub so the
+// whole module links everywhere. The `MmmRoutine` submit is unconditional (pure data),
+// with `bound` recording whether this build actually assembled the kernel.
+macro_rules! MMMExternKernel2 {
+    // Map the arch ident to its `target_arch` string literal (cfg needs a literal).
+    (arm; $($rest:tt)*)     => { MMMExternKernel2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { MMMExternKernel2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*)  => { MMMExternKernel2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal;
+        $func:ident<$ti:ident>($mr:expr, $nr:expr)
+        $($rest:tt)*
+    ) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use super::*;
+                #[allow(unused_imports)]
+                use crate::frame::mmm::*;
+
+                #[cfg(target_arch = $arch)]
+                extern_kernel!(fn $func(op: *const FusedKerSpec<$ti>) -> isize);
+
+                #[cfg(not(target_arch = $arch))]
+                #[allow(dead_code)]
+                pub unsafe fn $func(_op: *const FusedKerSpec<$ti>) -> isize {
+                    panic!(concat!(stringify!($func), ": mmm kernel not built for this target arch"))
+                }
+
+                #[inline]
+                pub unsafe fn rusty(op: &[FusedKerSpec<$ti>]) -> isize {
+                    unsafe { $func(op.as_ptr()) }
+                }
+            }
+
+            MMMKernel!([<sys_ $func>]::rusty as $func<$ti>($mr, $nr) $($rest)*);
+
+            inventory::submit! {
+                $crate::mmm_routines::MmmRoutine {
+                    target: $arch,
+                    bound: cfg!(target_arch = $arch),
+                    make: || $func.mmm(),
+                }
+            }
+        }
+    };
+}
+
 macro_rules! MMMRustKernel {
     (       $func: path =>
             $id:ident<$ti:ident>($mr: expr, $nr: expr)

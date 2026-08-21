@@ -46,11 +46,12 @@ pub fn has_fp16() -> bool {
     false
 }
 
-#[cfg(any(target_arch = "arm", target_arch = "armv7", target_arch = "arm"))]
 pub mod arm32;
 
 #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 pub mod wasm;
+
+pub mod mmm_routines;
 
 pub use self::frame::*;
 

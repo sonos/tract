@@ -1,9 +1,11 @@
+#[cfg(target_arch = "arm")]
 use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::frame::mmm::*;
 
-MMMExternKernel!(armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized));
+MMMExternKernel2!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized));
 
+#[cfg(target_arch = "arm")]
 pub fn plug(ops: &mut Ops) {
     log::info!("armvfpv2 activated for smmm");
     ops.mmm_f32 = Box::new(|_, _, _| armvfpv2_mmm_f32_4x4.mmm());

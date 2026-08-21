@@ -4973,6 +4973,7 @@ dependencies = [
  "dyn-hash",
  "env_logger",
  "half",
+ "inventory",
  "lazy_static",
  "libc",
  "log",
