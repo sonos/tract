@@ -550,3 +550,10 @@ pub fn plug(ops: &mut Ops) {
         }
     }
 }
+
+inventory::submit! {
+    crate::platform::PlatformSelector {
+        target: crate::platform::Target::Aarch64,
+        plug,
+    }
+}

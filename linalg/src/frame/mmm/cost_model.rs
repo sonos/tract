@@ -63,6 +63,14 @@ impl LinearCostModel<'_> {
                 return best;
             }
         }
-        impls.iter().find(|k| k.name() == self.default_kernel).unwrap().clone()
+        // Unknown dims, or none of the pool's kernels fitted: the model's own fallback, and
+        // failing that whatever the pool offers — a pool without the fitted kernels is not a
+        // reason to refuse an answer.
+        impls
+            .iter()
+            .find(|k| k.name() == self.default_kernel)
+            .or_else(|| impls.first())
+            .expect("no mmm kernel to pick from")
+            .clone()
     }
 }
