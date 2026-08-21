@@ -18,27 +18,31 @@ extern crate proptest;
 
 include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 
-/// Stands in for a function whose body only compiles on `$arch` — an asm block, an
-/// intrinsic, a CPUID probe — in builds targeting anything else, taking the argument types
-/// of the real item and bailing when called. Needed only where something names the function
-/// on every arch: a codegen macro, or a `plug` the arch tree compiles everywhere but
-/// nothing but the native host ever calls. A plain `#[cfg]` covers the rest.
+/// Stands in for a function whose body only compiles in builds carrying the leading arch's
+/// instructions — an asm block, an intrinsic, a CPUID probe — taking the argument types of
+/// the real item and bailing when called. `wasm32` means wasm32 *with* `simd128`, the two
+/// conditions the wasm kernels need. Needed only where something names the function on every
+/// arch: a codegen macro, or a `plug` the arch tree compiles everywhere but nothing except
+/// the native host ever calls. A plain `#[cfg]` covers the rest.
 macro_rules! bail_stub {
-    (arm; $($rest:tt)*) => { bail_stub!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { bail_stub!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { bail_stub!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { bail_stub!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { bail_stub!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { bail_stub!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => {
+        bail_stub!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
 
-    (@ $arch:literal; $vis:vis unsafe fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
-        #[cfg(not(target_arch = $arch))]
+    (@ $built:meta; $vis:vis unsafe fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
+        #[cfg(not($built))]
         $vis unsafe fn $name($(_: $ty),*) $(-> $ret)? {
-            panic!(concat!(stringify!($name), ": not built for this target arch"))
+            panic!(concat!(stringify!($name), ": not built for this target"))
         }
     };
 
-    (@ $arch:literal; $vis:vis fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
-        #[cfg(not(target_arch = $arch))]
+    (@ $built:meta; $vis:vis fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
+        #[cfg(not($built))]
         $vis fn $name($(_: $ty),*) $(-> $ret)? {
-            panic!(concat!(stringify!($name), ": not built for this target arch"))
+            panic!(concat!(stringify!($name), ": not built for this target"))
         }
     };
 }
@@ -65,7 +69,6 @@ use tract_itertools::Itertools;
 
 pub mod arm32;
 
-#[cfg(all(target_family = "wasm", target_feature = "simd128"))]
 pub mod wasm;
 
 pub mod mmm_routines;

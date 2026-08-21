@@ -135,20 +135,21 @@ macro_rules! ew_impl {
 // its place so the module links everywhere. Leading ident names the target arch (mapped to
 // the `target_arch` literal that cfg requires).
 macro_rules! ew_impl2 {
-    (arm; $($rest:tt)*) => { ew_impl2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { ew_impl2!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl2!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl2!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_impl2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
         paste! {
             mod [<sys_ $func>] {
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
 
-                #[cfg(target_arch = $arch)]
+                #[cfg($built)]
                 extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
 
-                #[cfg(not(target_arch = $arch))]
+                #[cfg(not($built))]
                 #[allow(dead_code)]
                 pub unsafe fn $func(_ptr: *mut $ti, _count: usize) {
                     panic!(concat!(stringify!($func), ": activation kernel not built for this target arch"))
@@ -168,14 +169,15 @@ macro_rules! ew_impl2 {
 // intrinsics (which won't even compile off-arch). Emits the real body on the native arch and
 // a signature-matched panic stub elsewhere, so the kernel struct exists everywhere.
 macro_rules! ew_impl_wrap2 {
-    (arm; $($rest:tt)*) => { ew_impl_wrap2!(@ "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl_wrap2!(@ "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl_wrap2!(@ "x86_64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
-    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
-        #[cfg(target_arch = $arch)]
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
+        #[cfg($built)]
         ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
-        #[cfg(not(target_arch = $arch))]
+        #[cfg(not($built))]
         ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
             fn run(_vec: &mut [$ti], _params: $params) {
                 panic!(concat!(stringify!($func), ": kernel not built for this target arch"))

@@ -5,7 +5,7 @@
 // combined with `total_cmp` so the result matches the generic kernels exactly,
 // NaN ordering included.
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(wasm32;
     f32,
     wasm_max_f32_32n,
     32,
@@ -51,7 +51,7 @@ reduce_impl_wrap!(
     }
 );
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(wasm32;
     f32,
     wasm_min_f32_32n,
     32,
@@ -97,7 +97,7 @@ reduce_impl_wrap!(
     }
 );
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(wasm32;
     f32,
     wasm_sum_f32_32n,
     32,
@@ -137,16 +137,19 @@ reduce_impl_wrap!(
     }
 );
 
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use std::arch::wasm32::*;
 use tract_data::internal::f16;
 
 // f16 orders correctly as sign-magnitude, so this monotone integer mapping lets i16x8_max
 // reduce the lanes without any conversion to f32.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[inline]
 fn mono(v: v128) -> v128 {
     v128_xor(v, v128_and(i16x8_shr(v, 15), u16x8_splat(0x7fff)))
 }
 
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[inline]
 fn load8_f16(c: &[f16]) -> v128 {
     i16x8(
@@ -163,6 +166,7 @@ fn load8_f16(c: &[f16]) -> v128 {
 
 // f16 lanes widened to f32 by bit surgery; wasm32 has no f16 conversion instruction and the
 // f16x8 proposal is not exposed by stable Rust.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[inline]
 fn widen_f16(h: v128) -> v128 {
     let sign = v128_and(u32x4_shl(h, 16), u32x4_splat(0x8000_0000));
@@ -173,7 +177,7 @@ fn widen_f16(h: v128) -> v128 {
     v128_or(sign, v128_andnot(normal, is_zero))
 }
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(wasm32;
     f16,
     wasm_max_f16_32n,
     32,
@@ -220,7 +224,7 @@ reduce_impl_wrap!(
     }
 );
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(wasm32;
     f16,
     wasm_sum_f16_32n,
     32,
@@ -266,31 +270,31 @@ reduce_impl_wrap!(
     }
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod test_max {
     use super::*;
     crate::max_frame_tests!(true, f32, wasm_max_f32_32n);
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod test_min {
     use super::*;
     crate::min_frame_tests!(true, f32, wasm_min_f32_32n);
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod test_sum {
     use super::*;
     crate::sum_frame_tests!(true, f32, wasm_sum_f32_32n);
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod test_max_f16 {
     use super::*;
     crate::max_frame_tests!(true, f16, wasm_max_f16_32n);
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod test_sum_f16 {
     use super::*;
     crate::sum_frame_tests!(true, f16, wasm_sum_f16_32n);
@@ -300,6 +304,7 @@ mod test_sum_f16 {
 /// mean square plus `eps`. The sum of squares keeps sixteen independent
 /// accumulators so the multiply-accumulate latency does not serialise, which is
 /// what the generic scalar form cannot avoid.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     use std::arch::wasm32::*;
     if buf.is_empty() {
@@ -349,3 +354,5 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
         }
     }
 }
+
+bail_stub!(wasm32; pub fn rms_norm_f32(&mut [f32], f32));
