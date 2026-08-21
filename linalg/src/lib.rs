@@ -181,44 +181,42 @@ impl Ops {
             .dedup()
     }
 
-    pub fn filter_impls<'o>(
-        &'o self,
-        weight: &'o dyn MMMInputFormat,
-        acc: &[DatumType],
-        act: DatumType,
-        store: DatumType,
-    ) -> impl Iterator<
-        Item = (
-            &'o dyn MatMatMul,
-            usize,
-            &'o dyn MMMInputFormat,
-            Option<&'o PanelExtractor>,
-            &'o dyn MMMInputFormat,
-        ),
-    > {
-        let acc = acc.to_vec();
+    /// Every way this build can compute a matmul with `weight` on the left and `activation`
+    /// on the right: a kernel, which of its packings to use, and the panel extractor to
+    /// reach that packing when the weights are not already in it. `accumulators` are the
+    /// internal types the caller accepts; `store` the datum type the kernel must be able to
+    /// write, when the caller constrains it.
+    ///
+    /// The one enumeration behind both matmul lowerings — how a candidate is *chosen* from
+    /// the list is the caller's business.
+    pub fn candidates(
+        &self,
+        weight: &WeightType,
+        activation: DatumType,
+        accumulators: &[DatumType],
+        store: Option<DatumType>,
+    ) -> Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)> {
         self.mmm_impls
             .iter()
-            .filter(move |mmm| acc.contains(&mmm.internal_type()) && mmm.stores().contains(&store))
-            .flat_map(|mmm| {
-                mmm.packings()
-                    .iter()
-                    .enumerate()
-                    .map(|(pack_ix, (a, b))| (&**mmm, pack_ix, &**a, &**b))
+            .filter(|mmm| {
+                accumulators.contains(&mmm.internal_type())
+                    && store.is_none_or(|s| mmm.stores().contains(&s))
             })
-            .filter_map(|(mmm, ix, a, b)| {
-                if a.dyn_eq(weight) {
-                    Some((mmm, ix, a, None, b))
+            .flat_map(|mmm| mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, p)))
+            .filter(|(_, _, (_, b))| {
+                b.precursor().as_dt().is_some_and(|dt| dt == activation.unquantized())
+            })
+            .filter_map(|(mmm, ix, (a, _))| {
+                if a.precursor() == *weight {
+                    Some((mmm.clone(), ix, None))
                 } else {
                     self.panel_extractors
                         .iter()
-                        .find(|pe| pe.from.dyn_eq(weight) && pe.to.dyn_eq(a))
-                        .map(|pe| (mmm, ix, a, Some(pe), b))
+                        .find(|pe| pe.from.precursor() == *weight && pe.to.dyn_eq(&**a))
+                        .map(|pe| (mmm.clone(), ix, Some(pe.clone())))
                 }
             })
-            .filter(move |(_mmm, _ix, _a, _pe, b)| {
-                b.precursor().as_dt().is_some_and(|dt| dt == act)
-            })
+            .collect()
     }
 
     pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {

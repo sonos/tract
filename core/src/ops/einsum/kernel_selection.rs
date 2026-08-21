@@ -1,7 +1,6 @@
 #![allow(clippy::type_complexity)]
 
 use dyn_clone::clone_box;
-use dyn_eq::DynEq;
 use tract_itertools::Itertools;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
@@ -133,34 +132,10 @@ pub fn list_impls(
         a_dt.into()
     };
 
-    let impls = tract_linalg::ops()
-        .mmm_impls()
-        .iter()
-        .filter(|mmm| {
-            // Only consider kernels runnable on this CPU: e.g. the SDOT i8 kernel
-            // carries a FEAT_DotProd platform predicate, and must not be selected on
-            // a CPU that would trap on the instruction.
-            mmm.is_supported_here()
-                && op.acceptable_accumulators().contains(&mmm.internal_type())
-                && mmm.stores().contains(&op.operating_dt.unquantized())
-        })
-        .flat_map(move |mmm| {
-            mmm.packings().iter().enumerate().map(|(ix, p)| (mmm.clone(), ix, &p.0, &p.1))
-        })
-        .filter_map(|(m, p, pa, pb)| {
-            if pb.precursor().as_dt().is_none_or(|dt| dt != b_dt.unquantized()) {
-                return None;
-            }
-            if pa.precursor() == a_weight {
-                Some((m, p, None))
-            } else {
-                tract_linalg::ops()
-                    .panel_extractors()
-                    .iter()
-                    .find(|pe| pe.from.precursor() == a_weight && pe.to.dyn_eq(&**pa))
-                    .map(|pe| (m, p, Some(pe.clone())))
-            }
-        })
-        .collect_vec();
-    Ok(impls)
+    Ok(tract_linalg::ops().candidates(
+        &a_weight,
+        b_dt,
+        &op.acceptable_accumulators(),
+        Some(op.operating_dt.unquantized()),
+    ))
 }
