@@ -22,7 +22,7 @@
 // ceiling — the sigmoid kernel clamps at 1 to keep its own range, but here an overshoot of one
 // ulp only scales f by 1 + 2^-23, and SiLU has no upper bound to violate.
 
-ew_impl_wrap2!(aarch64;
+ew_impl_wrap!(aarch64;
     f32,
     arm64simd_silu_f32_4n_fused,
     4,

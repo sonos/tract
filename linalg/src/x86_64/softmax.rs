@@ -4,7 +4,7 @@
 // underflows to zero even on a fully masked row, where the row max equals the
 // neutral.
 // nr=32 (4x ymm of 8), 32-byte aligned.
-map_reduce_impl_wrap2!(x86_64;
+map_reduce_impl_wrap!(x86_64;
     f32,
     x86_64_fma_softmax2_f32_32n,
     32,
@@ -103,7 +103,7 @@ mod test_x86_64_fma_softmax2_f32_32n {
 // AVX-512 accurate f32 softmax_l2: same arithmetic as the FMA kernel, 64 f32
 // (4x zmm of 16) per iteration. Runtime-gated on avx512f in plug_avx512f.
 // nr=64, 64-byte aligned.
-map_reduce_impl_wrap2!(x86_64;
+map_reduce_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_softmax2_f32_64n,
     64,

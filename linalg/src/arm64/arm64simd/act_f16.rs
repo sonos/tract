@@ -213,7 +213,7 @@ fn silu_lut() -> &'static [u16; 1 << 16] {
     })
 }
 
-ew_impl_wrap2!(aarch64;
+ew_impl_wrap!(aarch64;
     f16,
     arm64simd_silu_f16_lut_8n,
     8,

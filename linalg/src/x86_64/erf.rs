@@ -19,7 +19,7 @@
 //   y = 1 - y
 //   result = copysign(y, x)
 
-ew_impl_wrap2!(x86_64;
+ew_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_erf_f32_64n,
     64,

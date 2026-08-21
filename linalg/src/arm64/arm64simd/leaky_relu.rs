@@ -1,4 +1,4 @@
-ew_impl_wrap2!(aarch64;
+ew_impl_wrap!(aarch64;
     f32,
     arm64simd_leaky_relu_f32_8n,
     8,

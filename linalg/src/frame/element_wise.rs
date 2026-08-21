@@ -7,7 +7,26 @@ use crate::LADatum;
 
 use super::element_wise_helper::map_slice_with_alignment;
 
+// An element-wise kernel from a `run` body. A leading arch ident is for bodies that are
+// inline arch asm or intrinsics, which will not even compile elsewhere: those builds get a
+// signature-matched panic stub instead, so the kernel struct exists everywhere.
 macro_rules! ew_impl_wrap {
+    (arm; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
+        #[cfg($built)]
+        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
+        #[cfg(not($built))]
+        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
+            fn run(_vec: &mut [$ti], _params: $params) {
+                panic!(concat!(stringify!($func), ": kernel not built for this target"))
+            }
+        );
+    };
+
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $run: item) => {
         paste! {
             #[derive(Copy, Clone, Debug)]
@@ -97,7 +116,39 @@ macro_rules! ew_impl_f16_via_f32 {
     };
 }
 
+// An element-wise kernel whose body is an asm extern. A leading arch ident emits that extern
+// only in builds carrying the arch's instructions, replaced elsewhere by a bail stub of the
+// same signature, so the module links everywhere.
 macro_rules! ew_impl {
+    (arm; $($rest:tt)*) => { ew_impl!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_impl!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_impl!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_impl!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+
+    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
+        paste! {
+            mod [<sys_ $func>] {
+                #[allow(unused_imports)]
+                use tract_data::prelude::f16;
+
+                #[cfg($built)]
+                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
+
+                #[cfg(not($built))]
+                #[allow(dead_code)]
+                pub unsafe fn $func(_ptr: *mut $ti, _count: usize) {
+                    panic!(concat!(stringify!($func), ": activation kernel not built for this target"))
+                }
+            }
+            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
+                #[inline(never)]
+                fn run(buf: &mut [$ti], _params: ()) {
+                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
+                }
+            );
+        }
+    };
+
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
         paste! {
             mod [<sys_ $func>] {
@@ -127,62 +178,6 @@ macro_rules! ew_impl {
                 }
             );
         }
-    };
-}
-
-// Temporary: like `ew_impl!` (no-params arm), but compiles on any host. The asm extern is
-// emitted only on its native target_arch; elsewhere a bail stub of the same signature takes
-// its place so the module links everywhere. Leading ident names the target arch (mapped to
-// the `target_arch` literal that cfg requires).
-macro_rules! ew_impl2 {
-    (arm; $($rest:tt)*) => { ew_impl2!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl2!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl2!(@ target_arch = "x86_64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { ew_impl2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
-
-    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
-        paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-
-                #[cfg($built)]
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
-
-                #[cfg(not($built))]
-                #[allow(dead_code)]
-                pub unsafe fn $func(_ptr: *mut $ti, _count: usize) {
-                    panic!(concat!(stringify!($func), ": activation kernel not built for this target arch"))
-                }
-            }
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
-                #[inline(never)]
-                fn run(buf: &mut [$ti], _params: ()) {
-                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
-                }
-            );
-        }
-    };
-}
-
-// Temporary: like `ew_impl_wrap!`, but for kernels whose `run` body is inline arch asm /
-// intrinsics (which won't even compile off-arch). Emits the real body on the native arch and
-// a signature-matched panic stub elsewhere, so the kernel struct exists everywhere.
-macro_rules! ew_impl_wrap2 {
-    (arm; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { ew_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
-
-    (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
-        #[cfg($built)]
-        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
-        #[cfg(not($built))]
-        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
-            fn run(_vec: &mut [$ti], _params: $params) {
-                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
-            }
-        );
     };
 }
 

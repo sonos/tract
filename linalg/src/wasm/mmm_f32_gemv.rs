@@ -163,7 +163,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 // dispatch in mmv_f32 below. See module-level comment on plug().
 bail_stub!(wasm32; unsafe fn kernel_f32_4x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel2!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 8x1 kernel — wider GEMV variant for matrix-vector products
 /// on large M. Uses TWO independent f32x4 accumulators (rows 0-3 in ab_top,
@@ -403,7 +403,7 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_8x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel2!(wasm32; kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 16x1 kernel — wider GEMV variant for matrix-vector products
 /// on very large M. Uses FOUR independent f32x4 accumulators (rows 0-3,
@@ -663,7 +663,7 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_16x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel2!(wasm32; kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
 
 /// WASM SIMD f32 32x1 kernel — widest GEMV variant for matrix-vector products
 /// on very large M. Uses EIGHT independent f32x4 accumulators (rows 0-3, 4-7,
@@ -1049,4 +1049,4 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_32x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel2!(wasm32; kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));

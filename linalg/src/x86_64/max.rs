@@ -1,4 +1,4 @@
-reduce_impl_wrap2!(x86_64;
+reduce_impl_wrap!(x86_64;
     f32,
     x86_64_fma_max_f32_32n,
     32,
@@ -73,7 +73,7 @@ mod test_x86_64_fma_max_f32_32n {
 // lanes each). Runtime-gated on avx512f (see x86_64.rs::plug_avx512f); on
 // non-AVX512 CPUs this kernel is never registered and the FMA path above stays
 // in use. nr=64, 64-byte (16xf32) alignment.
-reduce_impl_wrap2!(x86_64;
+reduce_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_max_f32_64n,
     64,

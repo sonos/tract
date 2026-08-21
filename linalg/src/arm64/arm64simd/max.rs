@@ -1,7 +1,7 @@
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::{float32x4_t, vdupq_n_f32, vgetq_lane_f32};
 
-reduce_impl_wrap2!(aarch64;
+reduce_impl_wrap!(aarch64;
     f32,
     arm64simd_max_f32_16n,
     16,

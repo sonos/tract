@@ -1,4 +1,4 @@
-reduce_impl_wrap2!(x86_64;
+reduce_impl_wrap!(x86_64;
     f32,
     x86_64_fma_min_f32_32n,
     32,

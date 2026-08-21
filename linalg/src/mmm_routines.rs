@@ -1,8 +1,9 @@
 //! Cross-arch introspection registry for mmm kernels.
 //!
-//! Every `MMMExternKernel2!` invocation submits one [`MmmRoutine`] handle to the `inventory`
-//! collection, regardless of the build's target arch, so the full function × target matrix
-//! is enumerable on any host. The handle carries only what the kernel object cannot: which
+//! Every arch-prefixed `MMMExternKernel!` / `MMMRustKernel!` invocation submits one
+//! [`MmmRoutine`] handle to the `inventory` collection, regardless of the build's target
+//! arch, so the full function × target matrix is enumerable on any host. The handle carries
+//! only what the kernel object cannot: which
 //! arch it belongs to, and whether this build actually assembled it. All other metadata
 //! (name, tile, quality, datum type, support) is read from the [`MatMatMul`] that `make`
 //! builds — the single source of truth — so nothing here duplicates `DynKernel`.

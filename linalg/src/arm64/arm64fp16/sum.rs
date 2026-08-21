@@ -1,7 +1,7 @@
 use crate::num_traits::Zero;
 use tract_data::half::f16;
 
-reduce_impl_wrap2!(aarch64;
+reduce_impl_wrap!(aarch64;
     f16,
     arm64fp16_sum_f16_32n,
     32,

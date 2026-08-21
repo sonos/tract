@@ -6,7 +6,7 @@
 
 // hardswish(x) = x * relu6(x + 3) / 6
 //              = x * max(0, min(6, x + 3)) * (1/6)
-ew_impl_wrap2!(x86_64;
+ew_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_hardswish_f32_64n,
     64,
@@ -97,7 +97,7 @@ pub mod test_x86_64_avx512_hardswish_f32_64n {
 }
 
 // leaky_relu(x) = x > 0 ? x : alpha * x
-ew_impl_wrap2!(x86_64;
+ew_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_leaky_relu_f32_64n,
     64,
@@ -182,7 +182,7 @@ pub mod test_x86_64_avx512_leaky_relu_f32_64n {
 // Composed at the kernel level (mirrors arm64): save the original x, compute
 // the tanh argument in place, run the AVX-512 tanh kernel, then finish with the
 // 0.5 * x * (1 + tanh) combine.
-ew_impl_wrap2!(x86_64;
+ew_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_gelu_f32_16n,
     16,
