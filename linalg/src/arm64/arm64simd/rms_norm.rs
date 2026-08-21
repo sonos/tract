@@ -13,6 +13,7 @@
 // dispatcher in `core::ops::nn::RmsNorm::eval` is already arch-neutral and
 // will pick this up automatically.
 
+#[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "neon")]
 unsafe fn rms_norm_f32_inner(buf: &mut [f32], eps: f32) {
     use std::arch::aarch64::*;
@@ -95,6 +96,7 @@ unsafe fn rms_norm_f32_inner(buf: &mut [f32], eps: f32) {
     }
 }
 
+#[cfg(target_arch = "aarch64")]
 pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     if buf.is_empty() {
         return;
@@ -102,7 +104,12 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     unsafe { rms_norm_f32_inner(buf, eps) }
 }
 
-#[cfg(test)]
+#[cfg(not(target_arch = "aarch64"))]
+pub fn rms_norm_f32(_buf: &mut [f32], _eps: f32) {
+    panic!("arm64simd_rms_norm_f32: kernel not built for this target arch")
+}
+
+#[cfg(all(test, target_arch = "aarch64"))]
 mod tests {
     use super::*;
 

@@ -1,4 +1,4 @@
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_mul_f32_16n,
     16,
@@ -35,7 +35,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_add_f32_16n,
     16,
@@ -72,7 +72,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_sub_f32_16n,
     16,
@@ -109,7 +109,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_subf_f32_16n,
     16,
@@ -146,7 +146,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_max_f32_16n,
     16,
@@ -183,7 +183,7 @@ unicast_impl_wrap!(
     }
 );
 
-unicast_impl_wrap!(
+unicast_impl_wrap2!(aarch64;
     f32,
     arm64simd_unicast_min_f32_16n,
     16,
@@ -224,10 +224,40 @@ unicast_impl_wrap!(
 mod test_arm64simd_unicast_mul_f32_16n {
     use super::*;
     use proptest::strategy::Strategy;
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_mul_f32_16n, |a, b| a * b);
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_add_f32_16n, |a, b| a + b);
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_sub_f32_16n, |a, b| a - b);
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_subf_f32_16n, |a, b| b - a);
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_min_f32_16n, |a, b| a.min(b));
-    crate::unicast_frame_tests!(true, f32, arm64simd_unicast_max_f32_16n, |a, b| a.max(b));
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_mul_f32_16n,
+        |a, b| a * b
+    );
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_add_f32_16n,
+        |a, b| a + b
+    );
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_sub_f32_16n,
+        |a, b| a - b
+    );
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_subf_f32_16n,
+        |a, b| b - a
+    );
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_min_f32_16n,
+        |a, b| a.min(b)
+    );
+    crate::unicast_frame_tests!(
+        cfg!(target_arch = "aarch64"),
+        f32,
+        arm64simd_unicast_max_f32_16n,
+        |a, b| a.max(b)
+    );
 }

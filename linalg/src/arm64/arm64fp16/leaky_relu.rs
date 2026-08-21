@@ -1,6 +1,6 @@
 use tract_data::internal::f16;
 
-ew_impl_wrap!(
+ew_impl_wrap2!(aarch64;
     f16,
     arm64fp16_leaky_relu_f16_16n,
     16,

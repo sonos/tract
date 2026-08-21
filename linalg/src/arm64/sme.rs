@@ -22,7 +22,7 @@ const SME2: fn() -> bool = has_sme2;
 // / ShiftLeft) bit-exactly; only LeakyRelu is unsupported (kernel returns 1).
 const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
 
-MMMExternKernel!(sme_qmmm_i32_32x32<i32>(32,32)@(128,128) where(SME2) can_fuse(CAN_FUSE_I32)
+MMMExternKernel2!(aarch64; sme_qmmm_i32_32x32<i32>(32,32)@(128,128) where(SME2) can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(32), crate::pack::PackedI8K4::new(32));
     quality(ManuallyOptimized) store(i8));
 
@@ -58,14 +58,14 @@ fn sme_geometry_supported() -> bool {
     unsafe { streaming_vector_bytes() == 64 }
 }
 
-MMMExternKernel!(
+MMMExternKernel2!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     where(SME)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
 
-MMMExternKernel!(
+MMMExternKernel2!(aarch64;
     sme_mmv_f32_64x1<f32>(64, 1)@(128, 128)
     where(SME2)
     can_fuse(CAN_FUSE)

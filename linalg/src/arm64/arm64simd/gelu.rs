@@ -5,7 +5,7 @@
 // argument, call tract's NEON tanh kernel in place, then finish with the
 // 0.5 * x * (1 + tanh) multiply. Chunked to keep the scratch buffer L1-resident.
 
-ew_impl_wrap!(
+ew_impl_wrap2!(aarch64;
     f32,
     arm64simd_gelu_f32_4n,
     4,
@@ -22,5 +22,5 @@ ew_impl_wrap!(
 #[cfg(test)]
 pub mod test_arm64simd_gelu_f32_4n {
     use super::*;
-    gelu_frame_tests!(true, f32, arm64simd_gelu_f32_4n);
+    gelu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_gelu_f32_4n);
 }

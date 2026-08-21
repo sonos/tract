@@ -47,6 +47,10 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub quality: ImplementationQuality,
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub stores: Vec<DatumType>,
+    /// False when this build did not assemble the kernel's asm, its arch not being the one the
+    /// kernel was written for. The kernel struct still exists, so it stays introspectable, but
+    /// it is never supported here and calling it bails.
+    pub bound: bool,
     pub supported_predicate: fn() -> bool,
     pub boost: fn() -> isize,
     pub can_fuse: fn(&FusedSpec) -> bool,
@@ -67,6 +71,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             quality,
             packings: vec![],
             stores: vec![Acc::datum_type()],
+            bound: true,
             supported_predicate: || true,
             boost: || 0,
             can_fuse: |_| true,
@@ -142,7 +147,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
     }
 
     fn is_supported_here(&self) -> bool {
-        (self.supported_predicate)()
+        self.bound && (self.supported_predicate)()
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {

@@ -1,6 +1,7 @@
+#[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::{float32x4_t, vdupq_n_f32, vgetq_lane_f32};
 
-reduce_impl_wrap!(
+reduce_impl_wrap2!(aarch64;
     f32,
     arm64simd_min_f32_16n,
     16,
@@ -48,5 +49,5 @@ reduce_impl_wrap!(
 #[cfg(test)]
 mod test_arm64simd_min_f32_16n {
     use super::*;
-    crate::min_frame_tests!(true, f32, arm64simd_min_f32_16n);
+    crate::min_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_min_f32_16n);
 }

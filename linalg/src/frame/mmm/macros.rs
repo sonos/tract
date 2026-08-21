@@ -74,7 +74,8 @@ macro_rules! MMMExternKernel2 {
                 }
             }
 
-            MMMKernel!([<sys_ $func>]::rusty as $func<$ti>($mr, $nr) $($rest)*);
+            MMMKernel!([<sys_ $func>]::rusty as $func<$ti>($mr, $nr)
+                bound(cfg!(target_arch = $arch)) $($rest)*);
 
             inventory::submit! {
                 $crate::mmm_routines::MmmRoutine {
@@ -82,6 +83,26 @@ macro_rules! MMMExternKernel2 {
                     bound: cfg!(target_arch = $arch),
                     make: || $func.mmm(),
                 }
+            }
+        }
+    };
+}
+
+// Temporary: like `MMMRustKernel!` (a Rust/extern-block-backed kernel, e.g. SVE), but also
+// registers an mmm introspection descriptor. The kernel fn itself is expected to be gated by
+// its caller (the extern block bailed on foreign arch); this only adds the `MmmRoutine` submit.
+macro_rules! MMMRustKernel2 {
+    (arm; $($rest:tt)*) => { MMMRustKernel2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { MMMRustKernel2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { MMMRustKernel2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $func:path => $id:ident<$ti:ident>($mr:expr, $nr:expr) $($rest:tt)*) => {
+        MMMRustKernel!($func => $id<$ti>($mr, $nr) $($rest)*);
+        inventory::submit! {
+            $crate::mmm_routines::MmmRoutine {
+                target: $arch,
+                bound: cfg!(target_arch = $arch),
+                make: || $id.mmm(),
             }
         }
     };
@@ -126,6 +147,7 @@ macro_rules! MMMKernel {
     (
             $func: path as
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
+            $(bound($bound:expr))?
             $(@($align_a:expr, $align_b:expr))?
             $(generic($generic:expr))?
             $(where($where:expr))?
@@ -151,6 +173,7 @@ macro_rules! MMMKernel {
                     )?
                     #[allow(unused_mut)]
                     let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b, $crate::frame::mmm::ImplementationQuality::Dreadful);
+                    $(k.bound = $bound;)?
                     $(k = k.with_platform_condition($where);)?
                     $(
                         assert!(k.packings.len() == $pnum);

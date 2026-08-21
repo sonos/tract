@@ -12,6 +12,49 @@ use crate::LADatum;
 
 use super::element_wise_helper::{map_reduce_slice_with_alignment, reduce_slice_with_alignment};
 
+// Temporary: like `reduce_impl_wrap!` / `map_reduce_impl_wrap!`, but for kernels whose bodies
+// are inline arch asm / intrinsics. Real bodies on the native arch, signature-matched panic
+// stubs elsewhere.
+macro_rules! reduce_impl_wrap2 {
+    (arm; $($rest:tt)*) => { reduce_impl_wrap2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { reduce_impl_wrap2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { reduce_impl_wrap2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $neutral:expr, $run:item, $reduce_two:item) => {
+        #[cfg(target_arch = $arch)]
+        reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $neutral, $run, $reduce_two);
+        #[cfg(not(target_arch = $arch))]
+        reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $neutral,
+            fn run(_vec: &[$ti], _params: $params) -> $ti {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            },
+            fn reduce_two(_a: $ti, _b: $ti) -> $ti {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            }
+        );
+    };
+}
+
+macro_rules! map_reduce_impl_wrap2 {
+    (arm; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { map_reduce_impl_wrap2!(@ "x86_64"; $($rest)*); };
+
+    (@ $arch:literal; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $map_neutral:expr, $reduce_neutral:expr, $run:item, $reduce_two:item) => {
+        #[cfg(target_arch = $arch)]
+        map_reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $map_neutral, $reduce_neutral, $run, $reduce_two);
+        #[cfg(not(target_arch = $arch))]
+        map_reduce_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $map_neutral, $reduce_neutral,
+            fn run(_vec: &mut [$ti], _params: $params) -> $ti {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            },
+            fn reduce_two(_a: $ti, _b: $ti) -> $ti {
+                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+            }
+        );
+    };
+}
+
 macro_rules! reduce_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $neutral: expr, $run: item, $reduce_two: item) => {
         paste! {

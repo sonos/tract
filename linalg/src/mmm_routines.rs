@@ -35,15 +35,19 @@ mod tests {
     use super::*;
 
     #[test]
-    fn arm32_routines_are_registered_everywhere() {
-        let arm32: Vec<_> = all().filter(|r| r.target == "arm").collect();
-        // 12 armv7neon + 1 armvfpv2.
-        assert_eq!(arm32.len(), 13, "arm32 mmm routines: {}", arm32.len());
-        let bound_expected = cfg!(target_arch = "arm");
-        for r in &arm32 {
-            // Metadata is readable on any host (the stub only bails when *run*).
-            let ker = (r.make)();
-            assert_eq!(r.bound, bound_expected, "{} bound flag", ker.name());
+    fn arch_mmm_routines_registered_everywhere() {
+        // (target, minimum routines present on any host). arm32: 12 armv7neon + 1 armvfpv2.
+        // aarch64: 20 arm64simd + 8 arm64fp16 (sve/sme/apple are os/build-flag gated on top).
+        for (target, min) in [("arm", 13), ("aarch64", 28)] {
+            let routines: Vec<_> = all().filter(|r| r.target == target).collect();
+            assert!(routines.len() >= min, "{target} mmm routines: {} < {min}", routines.len());
+            // bound iff this build's arch is the routine's target (else it's a bail stub).
+            let bound_expected = target == std::env::consts::ARCH;
+            for r in &routines {
+                // Metadata is readable on any host (the stub only bails when *run*).
+                let ker = (r.make)();
+                assert_eq!(r.bound, bound_expected, "{target}/{} bound flag", ker.name());
+            }
         }
     }
 }

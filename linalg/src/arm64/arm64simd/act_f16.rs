@@ -18,6 +18,12 @@ const CHUNK: usize = 256;
 /// 32-lane unrolled main loop, an 8-lane fallback loop, then a scalar-step
 /// FCVT loop for the final <8 elements — all in asm, no Rust tail. NEON and
 /// scalar FCVT are baseline on aarch64, so no target-feature gate is needed.
+#[cfg(not(target_arch = "aarch64"))]
+unsafe fn cvt_f16_to_f32(_src: &[f16], _dst: &mut [f32]) {
+    panic!("cvt_f16_to_f32: not built for this target arch")
+}
+
+#[cfg(target_arch = "aarch64")]
 #[inline]
 unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
     let n = src.len();
@@ -81,6 +87,12 @@ unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
 /// FCVT loop for the final <8 elements — all in asm, no Rust tail. FCVTN and
 /// scalar FCVT round to nearest-even under the default FPCR, matching
 /// `f16::from_f32`.
+#[cfg(not(target_arch = "aarch64"))]
+unsafe fn cvt_f32_to_f16(_src: &[f32], _dst: &mut [f16]) {
+    panic!("cvt_f32_to_f16: not built for this target arch")
+}
+
+#[cfg(target_arch = "aarch64")]
 #[inline]
 unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
     let n = src.len();
@@ -153,7 +165,7 @@ ew_impl_f16_via_f32!(
 #[cfg(test)]
 pub mod test_arm64simd_sigmoid_f16_4n {
     use super::*;
-    sigmoid_frame_tests!(true, f16, arm64simd_sigmoid_f16_4n);
+    sigmoid_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_sigmoid_f16_4n);
 }
 
 // f32-roundtrip f16 SiLU for arm64 cores without FEAT_FP16.
@@ -171,7 +183,7 @@ ew_impl_f16_via_f32!(
 #[cfg(test)]
 pub mod test_arm64simd_silu_f16_4n {
     use super::*;
-    silu_frame_tests!(true, f16, arm64simd_silu_f16_4n);
+    silu_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_silu_f16_4n);
 }
 
 /// Every f16 bit pattern mapped through the NEON f32 SiLU kernel and rounded
@@ -183,6 +195,7 @@ pub mod test_arm64simd_silu_f16_4n {
 /// the kernel raw rather than through the frame also keeps this off the frame's
 /// thread-local scratch, which is already borrowed whenever a kernel runs.
 /// 128 KiB, built on first use.
+#[cfg(target_arch = "aarch64")]
 fn silu_lut() -> &'static [u16; 1 << 16] {
     use crate::frame::element_wise::ElementWiseKer;
     use tract_data::prelude::Tensor;
@@ -206,7 +219,7 @@ fn silu_lut() -> &'static [u16; 1 << 16] {
     })
 }
 
-ew_impl_wrap!(
+ew_impl_wrap2!(aarch64;
     f16,
     arm64simd_silu_f16_lut_8n,
     8,
@@ -219,7 +232,7 @@ ew_impl_wrap!(
     }
 );
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "aarch64"))]
 mod silu_f16_agreement {
     use super::*;
     use crate::frame::element_wise::ElementWiseKer;
@@ -255,5 +268,5 @@ ew_impl_f16_via_f32!(
 #[cfg(test)]
 pub mod test_arm64simd_tanh_f16_4n {
     use super::*;
-    tanh_frame_tests!(true, f16, arm64simd_tanh_f16_4n);
+    tanh_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_tanh_f16_4n);
 }
