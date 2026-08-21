@@ -30,3 +30,13 @@ inventory::collect!(MmmRoutine);
 pub fn all() -> impl Iterator<Item = &'static MmmRoutine> {
     inventory::iter::<MmmRoutine>()
 }
+
+/// Every kernel this machine can run: what the dispatch pool holds, whichever selection
+/// policy is plugged over it. Sorted by name, because `inventory` yields link order, which
+/// is not stable across builds, while pool position still breaks ties in selection.
+pub fn pool() -> Vec<Box<dyn MatMatMul>> {
+    let mut pool: Vec<Box<dyn MatMatMul>> =
+        all().filter(|r| r.bound).map(|r| (r.make)()).filter(|k| k.is_supported_here()).collect();
+    pool.sort_by(|a, b| a.name().cmp(b.name()));
+    pool
+}

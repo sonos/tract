@@ -190,13 +190,11 @@ pub fn plug(ops: &mut Ops) {
     if has_sme() {
         log::info!("SME optimisation activated");
         ops.mmm_f32 = Box::new(|_, _, _| sme_mmm_f32_32x32.mmm());
-        ops.mmm_impls.extend_from_slice(&[sme_mmm_f32_32x32.mmm()]);
     }
     if has_sme2() {
         log::info!("SME2 GEMV optimisation activated");
         ops.mmv_f32 = Box::new(|_, _| sme_mmv_f32_64x1.mmm());
         ops.qmmm_i32 = Box::new(|_, _, _| sme_qmmm_i32_32x32.mmm());
-        ops.mmm_impls.extend_from_slice(&[sme_mmv_f32_64x1.mmm(), sme_qmmm_i32_32x32.mmm()]);
     }
     if !has_sme() && !has_sme2() {
         log::info!("No SME optimisation");

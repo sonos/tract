@@ -9,7 +9,7 @@ use crate::frame::block_quant::{
     BlockQuant, CrumbReader, NibbleReader, PackedBlockQuantFormat, Q2_0_T, Q4_0,
 };
 use crate::frame::mmm::*;
-use crate::{LADatum, Ops, has_fp16};
+use crate::{LADatum, has_fp16};
 
 macro_rules! scalar {
     ($ab: expr, $m: expr, $f: expr) => {
@@ -397,7 +397,7 @@ fn pq20t_r4() -> PackedBlockQuantFormat {
 }
 
 // f16 kernels
-MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
+MMMRustKernel!(generic; kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
     packing[1] = f16f16bis => |k| k.with_packing(f16::packing(4), f16::packing(4));
     packing[2] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(4));
     packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(4));
@@ -411,7 +411,7 @@ MMMRustKernel!(kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
     store(f32, f64)
 );
 
-MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
+MMMRustKernel! { generic; kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[1] = f16f16bis => |k| k.with_packing(f16::packing(4), f16::packing(1));
     packing[2] = f32f32 => |k| k.with_packing(f32::packing(4), f32::packing(1));
     packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(1));
@@ -426,7 +426,7 @@ MMMRustKernel! {kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
 }
 
 // f32 kernels
-MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
+MMMRustKernel!(generic; kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(4));
     packing[2] = f32f32bis => |k| k.with_packing(f32::packing(4), f32::packing(4));
     packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(4));
@@ -439,7 +439,7 @@ MMMRustKernel!(kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     quality(ImplementationQuality::Generic)
     store(f16, f64)
 );
-MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
+MMMRustKernel! { generic; kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[1] = f16f16 => |k| k.with_packing(f16::packing(4), f16::packing(1));
     packing[2] = f32f32bis => |k| k.with_packing(f32::packing(4), f32::packing(1));
     packing[3] = f16f32 => |k| k.with_packing(f16::packing(4), f32::packing(1));
@@ -454,21 +454,21 @@ MMMRustKernel! {kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
 }
 
 // f64 kernels
-MMMRustKernel!(kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4)
+MMMRustKernel!(generic; kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4)
     quality(ImplementationQuality::Generic)
     store(f16, f32));
-MMMRustKernel!(kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)
+MMMRustKernel!(generic; kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)
     quality(ImplementationQuality::Generic)
     store(f16, f32));
 
 // I32 kernels
-MMMRustKernel! {kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
+MMMRustKernel! { generic; kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(4));
     quality(ImplementationQuality::Generic)
     store(i8)
 }
 
-MMMRustKernel! {kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
+MMMRustKernel! { generic; kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(1));
     quality(ImplementationQuality::Generic)
     store(i8)
@@ -484,23 +484,11 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     store(i8)
 }
 
-pub fn plug(ops: &mut Ops) {
-    ops.mmm_impls.push(generic_f16_4x4.mmm());
-    ops.mmm_impls.push(generic_f16_4x1.mmm());
-    ops.mmm_impls.push(generic_f32_4x4.mmm());
-    ops.mmm_impls.push(generic_f32_4x1.mmm());
-    ops.mmm_impls.push(generic_f64_4x4.mmm());
-    ops.mmm_impls.push(generic_f64_4x1.mmm());
-    ops.mmm_impls.push(generic_i32_4x4.mmm());
-    ops.mmm_impls.push(generic_i32_4x1.mmm());
-}
-
 #[cfg(test)]
 mod test {
 
     #[test]
     fn kits() {
-        let mut ops = crate::generic();
-        super::plug(&mut ops);
+        crate::generic();
     }
 }

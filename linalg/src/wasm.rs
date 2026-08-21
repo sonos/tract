@@ -32,15 +32,8 @@ pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
 
 pub fn plug(ops: &mut Ops) {
-    ops.mmm_impls.push(wasm_f32_4x4.mmm());
-    ops.mmm_impls.push(wasm_f32_4x1.mmm());
-    ops.mmm_impls.push(wasm_f32_8x1.mmm());
-    ops.mmm_impls.push(wasm_f32_16x1.mmm());
-    ops.mmm_impls.push(wasm_f32_32x1.mmm());
-    ops.mmm_impls.push(wasm_f32_8x8.mmm());
     // int8 -> i32 matmul: SIMD kernel (was generic scalar). ManuallyOptimized so
     // strategize's retain() keeps it over generic_i32_4x4 for i8 packing.
-    ops.mmm_impls.push(wasm_i32_4x4.mmm());
     ops.qmmm_i32 = Box::new(|_, _, _| wasm_i32_4x4.mmm());
     // Selection paths. Both rely on kernel_selection::strategize honouring
     // the mmm_f32 / mmv_f32 callback, which it only does when the callback's
