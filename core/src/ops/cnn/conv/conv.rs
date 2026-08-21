@@ -555,16 +555,12 @@ impl Conv {
                 .unwrap();
             let weight_type = WeightType::BlockQuant(bqf.format.clone());
             tract_linalg::ops()
-                .mmm_impls()
-                .iter()
-                .filter(|mmm| mmm.internal_type() == acc)
-                .flat_map(|mmm| {
-                    mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, &p.0, &p.1))
-                })
-                .filter(|(_, _, pa, pb)| {
-                    pb.precursor() == x_dt.into() && pa.precursor() == weight_type
-                })
-                .map(|(mmm, p, _, _)| (mmm.clone(), p))
+                .candidates(&weight_type, x_dt, &[acc], None)
+                .into_iter()
+                // The weights are packed once, ahead of time, so a candidate reached through
+                // a panel extractor would pay it on every panel of every call.
+                .filter(|(_, _, pe)| pe.is_none())
+                .map(|(mmm, p, _)| (mmm, p))
                 .min_by_key(|(mmm, _)| {
                     mmm.quality().cost() as isize * 1000 - (mmm.mr() * mmm.nr()) as isize
                 })
