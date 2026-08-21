@@ -1,4 +1,4 @@
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f32,
     x86_64_avx_f32_mul_by_scalar_32n,
     32,
@@ -11,6 +11,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
     unsafe {
@@ -45,7 +46,7 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 #[macro_use]
 pub mod test_x86_64_avx_f32_mul_by_scalar_32n {
     use super::*;

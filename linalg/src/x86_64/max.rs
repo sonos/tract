@@ -1,4 +1,4 @@
-reduce_impl_wrap!(
+reduce_impl_wrap2!(x86_64;
     f32,
     x86_64_fma_max_f32_32n,
     32,
@@ -17,6 +17,7 @@ reduce_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
 unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
     unsafe {
@@ -62,7 +63,7 @@ unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_x86_64_fma_max_f32_32n {
     use super::*;
     crate::max_frame_tests!(is_x86_feature_detected!("avx"), f32, x86_64_fma_max_f32_32n);
@@ -72,7 +73,7 @@ mod test_x86_64_fma_max_f32_32n {
 // lanes each). Runtime-gated on avx512f (see x86_64.rs::plug_avx512f); on
 // non-AVX512 CPUs this kernel is never registered and the FMA path above stays
 // in use. nr=64, 64-byte (16xf32) alignment.
-reduce_impl_wrap!(
+reduce_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_max_f32_64n,
     64,
@@ -91,6 +92,7 @@ reduce_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn x86_64_avx512_max_f32_64n_run(buf: &[f32]) -> f32 {
     unsafe {
@@ -131,7 +133,7 @@ unsafe fn x86_64_avx512_max_f32_64n_run(buf: &[f32]) -> f32 {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 mod test_x86_64_avx512_max_f32_64n {
     use super::*;
     crate::max_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_max_f32_64n);

@@ -24,7 +24,7 @@ const FP16_TARGETS: &str = "avx512f,avx512fp16,avx512bw";
 // hardswish(x) = x * clamp(x + 3, 0, 6) * (1/6).
 // 128 f16 per iter (4 zmm × 32 lanes), 256 bytes / iter — same memory throughput
 // as the f32 kernel's 64 f32 / iter.
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f16,
     x86_64_avx512fp16_hardswish_f16_128n,
     128,
@@ -41,6 +41,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f,avx512fp16,avx512bw")]
 unsafe fn hardswish_f16_run(buf: &mut [f16]) {
     let len = buf.len();
@@ -118,7 +119,7 @@ unsafe fn hardswish_f16_run(buf: &mut [f16]) {
 // proptest against the f16 reference) but is NOT plugged in — see the
 // `plug_avx512fp16` comment in `x86_64.rs`. Kept here in case a different
 // AVX-512_FP16 uarch (Granite Rapids etc.) flips the comparison.
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f16,
     x86_64_avx512fp16_leaky_relu_f16_128n,
     128,
@@ -135,6 +136,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f,avx512fp16,avx512bw")]
 unsafe fn leaky_relu_f16_run(buf: &mut [f16], alpha: f16) {
     let len = buf.len();
@@ -178,7 +180,7 @@ unsafe fn leaky_relu_f16_run(buf: &mut [f16], alpha: f16) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512fp16_hardswish {
     use super::*;
     crate::hardswish_frame_tests!(
@@ -188,7 +190,7 @@ pub mod test_x86_64_avx512fp16_hardswish {
     );
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512fp16_leaky_relu {
     use super::*;
     crate::leaky_relu_frame_tests!(

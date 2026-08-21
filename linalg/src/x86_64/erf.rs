@@ -19,7 +19,7 @@
 //   y = 1 - y
 //   result = copysign(y, x)
 
-ew_impl_wrap!(
+ew_impl_wrap2!(x86_64;
     f32,
     x86_64_avx512_erf_f32_64n,
     64,
@@ -36,6 +36,7 @@ ew_impl_wrap!(
     }
 );
 
+#[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f")]
 unsafe fn x86_64_avx512_erf_f32_64n_run(buf: &mut [f32]) {
     unsafe {
@@ -197,7 +198,7 @@ unsafe fn x86_64_avx512_erf_f32_64n_run(buf: &mut [f32]) {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, target_arch = "x86_64"))]
 pub mod test_x86_64_avx512_erf_f32_64n {
     use super::*;
     crate::erf_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_erf_f32_64n);
