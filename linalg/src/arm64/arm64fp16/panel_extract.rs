@@ -13,11 +13,6 @@ panel_extractor!(kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
     f16::packing(64).align(16)
 ) where(FP16));
 
-#[cfg(not(target_arch = "aarch64"))]
-unsafe fn kernel_packed_64_q40_to_f16(_input: *const u8, _output: *mut u8, _k: usize) {
-    panic!("kernel_packed_64_q40_to_f16: not built for this target arch")
-}
-
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "fp16")]
 unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usize) {
@@ -98,3 +93,5 @@ unsafe fn kernel_packed_64_q40_to_f16(input: *const u8, output: *mut u8, k: usiz
         );
     }
 }
+
+bail_stub!(aarch64; unsafe fn kernel_packed_64_q40_to_f16(*const u8, *mut u8, usize));

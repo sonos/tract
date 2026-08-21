@@ -18,11 +18,6 @@ const CHUNK: usize = 256;
 /// 32-lane unrolled main loop, an 8-lane fallback loop, then a scalar-step
 /// FCVT loop for the final <8 elements — all in asm, no Rust tail. NEON and
 /// scalar FCVT are baseline on aarch64, so no target-feature gate is needed.
-#[cfg(not(target_arch = "aarch64"))]
-unsafe fn cvt_f16_to_f32(_src: &[f16], _dst: &mut [f32]) {
-    panic!("cvt_f16_to_f32: not built for this target arch")
-}
-
 #[cfg(target_arch = "aarch64")]
 #[inline]
 unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
@@ -82,16 +77,13 @@ unsafe fn cvt_f16_to_f32(src: &[f16], dst: &mut [f32]) {
     }
 }
 
+bail_stub!(aarch64; unsafe fn cvt_f16_to_f32(&[f16], &mut [f32]));
+
 /// Convert `src` (f32) into `dst` (f16) via FCVTN/FCVTN2 for any length: a
 /// 32-lane unrolled main loop, an 8-lane fallback loop, then a scalar-step
 /// FCVT loop for the final <8 elements — all in asm, no Rust tail. FCVTN and
 /// scalar FCVT round to nearest-even under the default FPCR, matching
 /// `f16::from_f32`.
-#[cfg(not(target_arch = "aarch64"))]
-unsafe fn cvt_f32_to_f16(_src: &[f32], _dst: &mut [f16]) {
-    panic!("cvt_f32_to_f16: not built for this target arch")
-}
-
 #[cfg(target_arch = "aarch64")]
 #[inline]
 unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
@@ -150,6 +142,8 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
         );
     }
 }
+
+bail_stub!(aarch64; unsafe fn cvt_f32_to_f16(&[f32], &mut [f16]));
 
 ew_impl_f16_via_f32!(
     arm64simd_sigmoid_f16_4n,

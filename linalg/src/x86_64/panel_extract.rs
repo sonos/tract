@@ -26,11 +26,6 @@ panel_extractor!(kernel_packed_32_q20t_to_f32 as packed_32_q20t_to_f32(
 // (8 bytes). For a position, lane `row` wants `(byte[row/4] >> 2*(row%4)) & 3` which the
 // per-lane variable shift (vpsrlvd) computes directly after spreading each byte across
 // four lanes; then `(code - 1) * scale`.
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn kernel_packed_32_q20t_to_f32(_input: *const u8, _output: *mut u8, _k: usize) {
-    panic!("kernel_packed_32_q20t_to_f32: not built for this target arch")
-}
-
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2,f16c")]
 unsafe fn kernel_packed_32_q20t_to_f32(input: *const u8, output: *mut u8, k: usize) {
@@ -152,15 +147,12 @@ unsafe fn kernel_packed_32_q20t_to_f32(input: *const u8, output: *mut u8, k: usi
     }
 }
 
+bail_stub!(x86_64; unsafe fn kernel_packed_32_q20t_to_f32(*const u8, *mut u8, usize));
+
 panel_extractor!(kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
     Box::new(PackedFormat::new(f16::datum_type(), 32, 32)),
     f32::packing(32).align(32)
 ) where(AVX2));
-
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn kernel_packed_32_q40_to_f32(_input: *const u8, _output: *mut u8, _k: usize) {
-    panic!("kernel_packed_32_q40_to_f32: not built for this target arch")
-}
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
@@ -243,10 +235,7 @@ unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usiz
     }
 }
 
-#[cfg(not(target_arch = "x86_64"))]
-unsafe fn kernel_packed_32_f16_to_f32(_input: *const u8, _output: *mut u8, _k: usize) {
-    panic!("kernel_packed_32_f16_to_f32: not built for this target arch")
-}
+bail_stub!(x86_64; unsafe fn kernel_packed_32_q40_to_f32(*const u8, *mut u8, usize));
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]
@@ -286,3 +275,5 @@ unsafe fn kernel_packed_32_f16_to_f32(input: *const u8, output: *mut u8, k: usiz
         );
     }
 }
+
+bail_stub!(x86_64; unsafe fn kernel_packed_32_f16_to_f32(*const u8, *mut u8, usize));
