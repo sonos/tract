@@ -1,4 +1,4 @@
-ew_impl_wrap2!(x86_64;
+ew_impl_wrap!(x86_64;
     f32,
     x86_64_avx_f32_mul_by_scalar_32n,
     32,

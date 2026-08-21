@@ -5,7 +5,7 @@
 // combined with `total_cmp` so the result matches the generic kernels exactly,
 // NaN ordering included.
 
-reduce_impl_wrap2!(wasm32;
+reduce_impl_wrap!(wasm32;
     f32,
     wasm_max_f32_32n,
     32,
@@ -51,7 +51,7 @@ reduce_impl_wrap2!(wasm32;
     }
 );
 
-reduce_impl_wrap2!(wasm32;
+reduce_impl_wrap!(wasm32;
     f32,
     wasm_min_f32_32n,
     32,
@@ -97,7 +97,7 @@ reduce_impl_wrap2!(wasm32;
     }
 );
 
-reduce_impl_wrap2!(wasm32;
+reduce_impl_wrap!(wasm32;
     f32,
     wasm_sum_f32_32n,
     32,
@@ -177,7 +177,7 @@ fn widen_f16(h: v128) -> v128 {
     v128_or(sign, v128_andnot(normal, is_zero))
 }
 
-reduce_impl_wrap2!(wasm32;
+reduce_impl_wrap!(wasm32;
     f16,
     wasm_max_f16_32n,
     32,
@@ -224,7 +224,7 @@ reduce_impl_wrap2!(wasm32;
     }
 );
 
-reduce_impl_wrap2!(wasm32;
+reduce_impl_wrap!(wasm32;
     f16,
     wasm_sum_f16_32n,
     32,

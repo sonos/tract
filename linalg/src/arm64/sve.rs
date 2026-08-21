@@ -77,7 +77,7 @@ pub fn sve_rms_norm_f32(buf: &mut [f32], eps: f32) {
 }
 
 #[cfg(tract_sve)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
+MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
     where(SVE2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
@@ -86,7 +86,7 @@ MMMRustKernel2!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 
 // The VLA SVE f32 GEMV kernel (arm64/sve/sve_mmv_f32_64x1.c), MR=64 NR=1,
 // dispatched when N == 1 (matrix x f32 column vector). Wired to ops.mmv_f32.
 #[cfg(tract_sve)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
+MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
     where(SVE2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
@@ -96,7 +96,7 @@ MMMRustKernel2!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f3
 // tract's native i8i8 K-major packing via the widening rank-1 update (svld1sb +
 // svmla), and supports the i32 quantization fuse ops. Wired to ops.qmmm_i32.
 #[cfg(tract_sve)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
+MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
     where(SVE2)
     can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(
@@ -111,7 +111,7 @@ MMMRustKernel2!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 
 // NR=1, dispatched when N == 1. Same widening update vectorized over M. Wired to
 // ops.qmmv_i32.
 #[cfg(tract_sve)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
+MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
     where(SVE2)
     can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(
@@ -125,7 +125,7 @@ MMMRustKernel2!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i3
 // The VLA SVE f16 GEMM kernel (arm64/sve/sve_mmm_f16.c), native f16 FMA, gated on
 // SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
 #[cfg(tract_sve_fp16)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
+MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
     where(SVE2_FP16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
@@ -134,7 +134,7 @@ MMMRustKernel2!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 
 // The VLA SVE f16 GEMV kernel (arm64/sve/sve_mmv_f16_64x1.c), MR=64 NR=1,
 // dispatched when N == 1. Wired to ops.mmv_f16 when has_fp16().
 #[cfg(tract_sve_fp16)]
-MMMRustKernel2!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
+MMMRustKernel!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
     where(SVE2_FP16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)

@@ -1,6 +1,6 @@
 use crate::num_traits::Zero;
 
-reduce_impl_wrap2!(aarch64;
+reduce_impl_wrap!(aarch64;
     f32,
     arm64simd_sum_f32_16n,
     16,

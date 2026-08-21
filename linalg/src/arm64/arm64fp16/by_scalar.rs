@@ -1,6 +1,6 @@
 use crate::f16;
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_mul_by_scalar_f16_32n,
     32,
@@ -36,7 +36,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_add_by_scalar_f16_32n,
     32,
@@ -72,7 +72,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_sub_by_scalar_f16_32n,
     32,
@@ -108,7 +108,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_subf_by_scalar_f16_32n,
     32,
@@ -144,7 +144,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_min_by_scalar_f16_32n,
     32,
@@ -180,7 +180,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f16,
     arm64fp16_max_by_scalar_f16_32n,
     32,

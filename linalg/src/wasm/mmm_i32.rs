@@ -354,7 +354,7 @@ fn wasm_i8_packing() -> impl crate::mmm::MMMInputFormat {
 
 bail_stub!(wasm32; unsafe fn kernel_i32_4x4(*const FusedKerSpec<i32>) -> isize);
 
-MMMRustKernel2!(wasm32; kernel_i32_4x4 => wasm_i32_4x4<i32>(4,4)
+MMMRustKernel!(wasm32; kernel_i32_4x4 => wasm_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(wasm_i8_packing(), wasm_i8_packing());
     quality(ImplementationQuality::ManuallyOptimized)
     store(i8)

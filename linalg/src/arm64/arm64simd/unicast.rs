@@ -1,4 +1,4 @@
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_mul_f32_16n,
     16,
@@ -35,7 +35,7 @@ unicast_impl_wrap2!(aarch64;
     }
 );
 
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_add_f32_16n,
     16,
@@ -72,7 +72,7 @@ unicast_impl_wrap2!(aarch64;
     }
 );
 
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_sub_f32_16n,
     16,
@@ -109,7 +109,7 @@ unicast_impl_wrap2!(aarch64;
     }
 );
 
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_subf_f32_16n,
     16,
@@ -146,7 +146,7 @@ unicast_impl_wrap2!(aarch64;
     }
 );
 
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_max_f32_16n,
     16,
@@ -183,7 +183,7 @@ unicast_impl_wrap2!(aarch64;
     }
 );
 
-unicast_impl_wrap2!(aarch64;
+unicast_impl_wrap!(aarch64;
     f32,
     arm64simd_unicast_min_f32_16n,
     16,

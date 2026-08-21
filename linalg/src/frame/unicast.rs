@@ -7,13 +7,14 @@ use tract_data::internal::TensorView;
 use crate::frame::element_wise_helper::TempBuffer;
 use crate::{LADatum, LinalgFn};
 
-// Temporary: like `unicast_impl_wrap!`, but for kernels whose `run` body is inline arch asm /
-// intrinsics. Real body on the native arch, signature-matched panic stub elsewhere.
-macro_rules! unicast_impl_wrap2 {
-    (arm; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { unicast_impl_wrap2!(@ target_arch = "x86_64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { unicast_impl_wrap2!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+// A unicast binary kernel from a `run` body. A leading arch ident is for bodies that are
+// inline arch asm or intrinsics, which will not even compile elsewhere: those builds get a
+// signature-matched panic stub instead, so the kernel struct exists everywhere.
+macro_rules! unicast_impl_wrap {
+    (arm; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { unicast_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $run:item) => {
         #[cfg($built)]
@@ -21,13 +22,11 @@ macro_rules! unicast_impl_wrap2 {
         #[cfg(not($built))]
         unicast_impl_wrap!($ti, $func, $nr, $alignment_items,
             fn run(_a: &mut [$ti], _b: &[$ti]) {
-                panic!(concat!(stringify!($func), ": kernel not built for this target arch"))
+                panic!(concat!(stringify!($func), ": kernel not built for this target"))
             }
         );
     };
-}
 
-macro_rules! unicast_impl_wrap {
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $run: item) => {
         paste! {
             #[derive(Copy, Clone, Debug)]

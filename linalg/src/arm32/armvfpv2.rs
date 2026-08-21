@@ -2,7 +2,7 @@ use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::frame::mmm::*;
 
-MMMExternKernel2!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized));
+MMMExternKernel!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized));
 
 pub fn plug(ops: &mut Ops) {
     log::info!("armvfpv2 activated for smmm");

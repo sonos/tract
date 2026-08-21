@@ -1,4 +1,4 @@
-ew_impl_wrap2!(aarch64;
+ew_impl_wrap!(aarch64;
     f32,
     arm64simd_silu_f32_4n,
     4,

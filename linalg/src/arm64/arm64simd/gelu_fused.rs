@@ -6,7 +6,7 @@
 // computation up front and the final 0.5*x*(1+tanh) combined via fmla.
 // Single memory pass (load + store), no scratch buffer.
 
-ew_impl_wrap2!(aarch64;
+ew_impl_wrap!(aarch64;
     f32,
     arm64simd_gelu_f32_4n_fused,
     4,

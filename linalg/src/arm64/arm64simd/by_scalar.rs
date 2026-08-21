@@ -1,4 +1,4 @@
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_mul_by_scalar_f32_16n,
     16,
@@ -30,7 +30,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_add_by_scalar_f32_16n,
     16,
@@ -62,7 +62,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_sub_by_scalar_f32_16n,
     16,
@@ -94,7 +94,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_subf_by_scalar_f32_16n,
     16,
@@ -126,7 +126,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_min_by_scalar_f32_16n,
     16,
@@ -158,7 +158,7 @@ by_scalar_impl_wrap2!(aarch64;
     }
 );
 
-by_scalar_impl_wrap2!(aarch64;
+by_scalar_impl_wrap!(aarch64;
     f32,
     arm64simd_max_by_scalar_f32_16n,
     16,

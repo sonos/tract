@@ -96,21 +96,21 @@ cpu_feature!(F16C = "f16c");
 #[cfg(tract_avx512vnni)]
 cpu_feature!(AVX512VNNI = "avx512vnni");
 
-tanh_impl!(arch x86_64; f32, fma_tanh_f32, 8, 8, FMA());
-sigmoid_impl!(arch x86_64; f32, fma_sigmoid_f32, 8, 8, FMA());
-silu_impl!(arch x86_64; f32, fma_silu_f32, 8, 8, FMA());
+tanh_impl!(x86_64; f32, fma_tanh_f32, 8, 8, FMA());
+sigmoid_impl!(x86_64; f32, fma_sigmoid_f32, 8, 8, FMA());
+silu_impl!(x86_64; f32, fma_silu_f32, 8, 8, FMA());
 
 // AVX-without-FMA ports of the fma kernels above (each vfmadd132ps expanded
 // to an in-place vmulps+vaddps pair) for CPUs outside the fma tier.
-tanh_impl!(arch x86_64; f32, avx_tanh_f32, 8, 8, AVX());
-sigmoid_impl!(arch x86_64; f32, avx_sigmoid_f32, 8, 8, AVX());
+tanh_impl!(x86_64; f32, avx_tanh_f32, 8, 8, AVX());
+sigmoid_impl!(x86_64; f32, avx_sigmoid_f32, 8, 8, AVX());
 
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
 // nr()=16 (any multiple of 16 is safe).
-tanh_impl!(arch x86_64; f32, avx512_tanh_f32, 16, 16, AVX512F());
-sigmoid_impl!(arch x86_64; f32, avx512_sigmoid_f32, 16, 16, AVX512F());
-silu_impl!(arch x86_64; f32, avx512_silu_f32, 16, 16, AVX512F());
+tanh_impl!(x86_64; f32, avx512_tanh_f32, 16, 16, AVX512F());
+sigmoid_impl!(x86_64; f32, avx512_sigmoid_f32, 16, 16, AVX512F());
+silu_impl!(x86_64; f32, avx512_silu_f32, 16, 16, AVX512F());
 
 fn plug_avx2(_ops: &mut Ops) {}
 
