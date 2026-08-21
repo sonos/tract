@@ -1338,11 +1338,19 @@ impl TypedOp for Conv {
 ///
 /// LazyIm2col has per-output-position gather indirection overhead; eager Im2col has
 /// materialisation overhead (one big alloc + strided memcpy). For tiny kernels the
-/// indirection wins; for bigger kernels the materialisation cost dominates. This default
-/// is conservative — empirically lazy already wins for kernel volumes ≥ 4 on Apple AMX
-/// (and likely lower on memory-constrained targets like embedded ARM). Override via
-/// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
-const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
+/// indirection wins; for bigger kernels the materialisation cost dominates.
+///
+/// Measured on a speech-enhancement set (five FastEnhancer variants, GTCRN, two DTLN
+/// submodels, three DeepFilterNet3 submodels), aarch64 and wasm32 simd128, five
+/// interleaved rounds with one binary and this threshold as the only variable:
+/// dropping it from 6 to 3 is worth 2-4% natively on every FastEnhancer variant and on
+/// DeepFilterNet3's erb_dec, 1-2% on wasm, and leaves the models with no kernel volume
+/// in [3, 6) where they were. A kernel volume of 3 is common in this family (1-D
+/// convolutions over time, and 3x1/1x3 factorisations), and at 6 those all took the
+/// eager path.
+///
+/// Override via the `TRACT_LAZY_IM2COL_MIN_KERNEL` env var.
+const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 3;
 
 crate::declare_knob!(
     TRACT_ENABLE_BLOCKED_CONV,
