@@ -3,7 +3,6 @@
 use criterion::*;
 use tract_data::prelude::*;
 
-#[cfg(target_arch = "aarch64")]
 use tract_linalg::element_wise::ElementWiseKer;
 
 fn gelu_f32(c: &mut Criterion) {
@@ -15,6 +14,7 @@ fn gelu_f32(c: &mut Criterion) {
         *x = (i as f32 / 10.0).sin() * 5.0;
     }
     group.bench_function("rust_scalar", |b| b.iter(|| rust_scalar(input)));
+    group.bench_function("generic", |b| b.iter(|| tract_linalg::generic::SGelu4::run(input, ())));
     group.bench_function("linalg", |b| b.iter(|| linalg(input)));
     #[cfg(target_arch = "aarch64")]
     group.bench_function("linalg-asm-compose", |b| {
