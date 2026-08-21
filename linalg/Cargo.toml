@@ -58,6 +58,11 @@ proptest = { version = "1.0.0", default-features = false, features = ["std", "bi
 # preferred.
 no_fp16 = []
 apple-amx-ios = []
+# Compile the kernel trees of the other architectures too, so their routines can be
+# enumerated from this host. They contribute nothing to a run: their asm is not assembled
+# here and no pool draws from them. Off by default — a build for one target has no reason
+# to carry three more trees.
+foreign-inventory = []
 default = [ ]
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]

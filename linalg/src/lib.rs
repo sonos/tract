@@ -58,17 +58,32 @@ pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
 use tract_data::internal::TensorView;
+// An arch tree compiles when this build can run its kernels, and — for enumeration only —
+// when `foreign-inventory` asks for the others as well.
+#[cfg(any(target_arch = "x86_64", feature = "foreign-inventory"))]
 pub mod x86_64;
 
 pub mod hwbench;
 
+#[cfg(any(target_arch = "aarch64", feature = "foreign-inventory"))]
 pub mod arm64;
 
+#[cfg(any(target_arch = "aarch64", feature = "foreign-inventory"))]
 pub use arm64::has_fp16;
+
+/// True when the running CPU implements FEAT_FP16. No arm64 tree in this build, hence no
+/// kernel that could use it.
+#[cfg(not(any(target_arch = "aarch64", feature = "foreign-inventory")))]
+pub fn has_fp16() -> bool {
+    false
+}
+
 use tract_itertools::Itertools;
 
+#[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
 pub mod arm32;
 
+#[cfg(any(all(target_arch = "wasm32", target_feature = "simd128"), feature = "foreign-inventory"))]
 pub mod wasm;
 
 pub mod mmm_routines;
