@@ -87,6 +87,7 @@ pub mod arm32;
 pub mod wasm;
 
 pub mod mmm_routines;
+pub mod platform;
 
 pub use self::frame::*;
 
@@ -289,18 +290,11 @@ pub fn generic() -> Ops {
     ops
 }
 
-#[allow(unreachable_code, unused_mut, unexpected_cfgs)]
 pub fn best() -> Ops {
     let mut ops = generic();
-    #[cfg(target_arch = "x86_64")]
-    x86_64::plug(&mut ops);
-    #[cfg(any(target_arch = "arm", target_arch = "armv7"))]
-    arm32::plug(&mut ops);
-    #[cfg(target_arch = "aarch64")]
-    arm64::plug(&mut ops);
-    #[cfg(all(target_family = "wasm", target_feature = "simd128"))]
-    wasm::plug(&mut ops);
-
+    for selector in platform::all().filter(|s| s.target.is_native()) {
+        (selector.plug)(&mut ops);
+    }
     ops
 }
 

@@ -77,3 +77,10 @@ pub fn plug(ops: &mut Ops) {
     ops.max_f16 = Box::new(|| reduce::wasm_max_f16_32n::red());
     ops.sum_f16 = Box::new(|| reduce::wasm_sum_f16_32n::red());
 }
+
+inventory::submit! {
+    crate::platform::PlatformSelector {
+        target: crate::platform::Target::Wasm32Simd128,
+        plug,
+    }
+}

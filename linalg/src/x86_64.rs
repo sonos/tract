@@ -219,3 +219,10 @@ pub fn plug(ops: &mut Ops) {
         }
     }
 }
+
+inventory::submit! {
+    crate::platform::PlatformSelector {
+        target: crate::platform::Target::X86_64,
+        plug,
+    }
+}

@@ -119,3 +119,10 @@ mod tests {
         }
     }
 }
+
+inventory::submit! {
+    crate::platform::PlatformSelector {
+        target: crate::platform::Target::Arm,
+        plug,
+    }
+}
