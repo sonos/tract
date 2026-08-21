@@ -500,3 +500,260 @@ impl_eval! {
 #[cfg(target_arch = "aarch64")]
         aarch64fp16
     }
+
+crate::declare_knob!(
+    TRACT_DISABLE_DEPTHWISE_DECONV,
+    bool,
+    false,
+    "Disable the fused depthwise-deconvolution path, falling back to einsum + DeconvSum."
+);
+
+/// Fused depthwise deconvolution: `kernel * input` accumulated straight into the
+/// output, instead of `EinSum` materialising `[N, C, HkWk, HW]` for `DeconvSum` to
+/// scatter.
+///
+/// For a depthwise ConvTranspose the einsum's contraction dim is 1, so it degenerates
+/// to an outer product whose result is larger than either operand — and most of it is
+/// discarded: GTCRN materialises `[1, 16, 9, 363]` (3267 products per channel) to
+/// produce `[1, 16, 1, 33]` (33 per channel). Roughly 91% of those products fall
+/// outside the output and are thrown away. Folding the multiply inside the bounds test
+/// skips them and never allocates the intermediate.
+///
+/// Inputs: `kernel` `[C, HkWk, 1]`, `input` `[N, C, 1, HW]`, `bias` (output-shaped).
+#[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
+pub struct DepthwiseDeconvSum {
+    pub pool_spec: PoolSpec,
+    pub kernel_format: KernelFormat,
+    pub input_shape: ShapeFact,
+    pub adjustments: TVec<usize>,
+    pub group: usize,
+}
+
+impl Op for DepthwiseDeconvSum {
+    fn name(&self) -> StaticName {
+        "DepthwiseDeconvSum".into()
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for DepthwiseDeconvSum {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_session(
+        &self,
+        _node_id: usize,
+        session: &TurnState,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let (kernel, input, bias) = args_3!(inputs);
+        let input_shape = self.input_shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
+        let input_shape = self.pool_spec.data_format.shape(input_shape)?;
+        let output_shape =
+            super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;
+        let output_shape = self.pool_spec.data_format.shape(output_shape)?;
+        let spatial_output_details = self.pool_spec.padding.compute_for_deconv(
+            input_shape.hw_dims(),
+            &self.pool_spec.kernel_shape,
+            &self.pool_spec.dilations(),
+            &self.pool_spec.strides(),
+            &self.adjustments,
+        )?;
+        let mut tensor = bias.into_tensor();
+        if !self.pool_spec.data_format.has_n() {
+            tensor.insert_axis(0)?;
+        }
+        dispatch_floatlike!(Self::eval_t(tensor.datum_type())(
+            self,
+            &input_shape,
+            &output_shape,
+            &spatial_output_details,
+            &kernel,
+            &input,
+            &mut tensor
+        ))?;
+        if !self.pool_spec.data_format.has_n() {
+            tensor.remove_axis(0)?;
+        }
+        Ok(tvec!(tensor.into_tvalue()))
+    }
+}
+
+impl DepthwiseDeconvSum {
+    /// Rank-2 fused path, mirroring `main_loop_2d`'s pointer walk: the geometry
+    /// bounds are tested once per (kx, ix, ky, iy) as there, and the innermost loop
+    /// runs over channels, where kernel and input are both contiguous.
+    #[allow(clippy::too_many_arguments)]
+    unsafe fn eval_t_2d<T: Datum + Float + Copy + AddAssign<T>>(
+        &self,
+        input_shape: &DataShape,
+        output_shape: &DataShape,
+        spatial_output_details: &[ComputedPaddedDim<usize>],
+        kernel: &[T],
+        input: &[T],
+        output: &mut Tensor,
+    ) -> TractResult<()> {
+        let n_batch = *output_shape.n().unwrap_or(&1);
+        let x_stride = self.pool_spec.strides().as_ref()[0];
+        let y_stride = self.pool_spec.strides().as_ref()[1];
+        let x_dil = self.pool_spec.dilations().as_ref()[0];
+        let y_dil = self.pool_spec.dilations().as_ref()[1];
+        let x_pad = spatial_output_details[0].pad_before as isize;
+        let y_pad = spatial_output_details[1].pad_before as isize;
+        let output_c = *output_shape.c();
+        let output_c_stride = *output_shape.c_stride() as isize;
+        let output_x_stride = output_shape.hw_strides()[0] as isize;
+        let output_y_stride = output_shape.hw_strides()[1] as isize;
+        let ox_len = output_shape.hw_dims()[0];
+        let oy_len = output_shape.hw_dims()[1];
+        let ix_len = input_shape.hw_dims()[0];
+        let iy_len = input_shape.hw_dims()[1];
+        let kx_len = self.pool_spec.kernel_shape[0];
+        let ky_len = self.pool_spec.kernel_shape[1];
+        let kvol = kx_len * ky_len;
+        let ihw = ix_len * iy_len;
+        let mut output_view = output.to_plain_array_view_mut::<T>()?;
+        let out_base = output_view.as_mut_ptr();
+        unsafe {
+            for n in 0..n_batch {
+                let out_n = out_base.add(n * *output_shape.n_stride().unwrap_or(&0));
+                let in_n = input.as_ptr().add(n * output_c * ihw);
+                for kx in 0..kx_len {
+                    for ix in 0..ix_len {
+                        let ox = (kx * x_dil + ix * x_stride) as isize - x_pad;
+                        if ox < 0 || ox >= ox_len as isize {
+                            continue;
+                        }
+                        let out_x = out_n.offset(ox * output_x_stride);
+                        for ky in 0..ky_len {
+                            let kix = kx * ky_len + ky;
+                            let oy0 = (ky * y_dil) as isize - y_pad;
+                            // Channels outer, the contiguous axis inner. The output's
+                            // channel stride is the whole spatial plane (12.8 KB on
+                            // DeepFilterNet3's [1, 64, 100, 32]), so a channel-innermost
+                            // loop walks past L1 on every step; oy is stride-1.
+                            for c in 0..output_c {
+                                let kv = *kernel.get_unchecked(c * kvol + kix);
+                                let in_c = in_n.add(c * ihw + ix * iy_len);
+                                let out_c = out_x.offset(c as isize * output_c_stride);
+                                for iy in 0..iy_len {
+                                    let oy = oy0 + (iy * y_stride) as isize;
+                                    if oy < 0 || oy >= oy_len as isize {
+                                        continue;
+                                    }
+                                    *out_c.offset(oy * output_y_stride) += kv * *in_c.add(iy);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn eval_t<T: Datum + Float + Copy + AddAssign<T>>(
+        &self,
+        input_shape: &DataShape,
+        output_shape: &DataShape,
+        spatial_output_details: &[ComputedPaddedDim<usize>],
+        kernel: &TValue,
+        input: &TValue,
+        output: &mut Tensor,
+    ) -> TractResult<()> {
+        let c = *output_shape.c();
+        let hw: usize = input_shape.hw_dims().iter().product();
+        let kernel_vol: usize = self.pool_spec.kernel_shape.iter().product();
+        let kernel = kernel.to_plain_array_view::<T>()?;
+        let kernel = kernel.as_slice().context("depthwise deconv kernel must be contiguous")?;
+        let input = input.to_plain_array_view::<T>()?;
+        let input = input.as_slice().context("depthwise deconv input must be contiguous")?;
+        ensure!(kernel.len() == c * kernel_vol);
+        let n = *output_shape.n().unwrap_or(&1);
+        ensure!(input.len() == n * c * hw);
+        // The wiring only selects this op at rank 2 (see wire_with_deconv_sum); the
+        // generic loop below stays as a reference implementation for the tests.
+        if input_shape.hw_rank() == 2 {
+            return unsafe {
+                self.eval_t_2d::<T>(
+                    input_shape,
+                    output_shape,
+                    spatial_output_details,
+                    kernel,
+                    input,
+                    output,
+                )
+            };
+        }
+        let strides = self.pool_spec.strides();
+        let dilations = self.pool_spec.dilations();
+        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output = output_plain.to_array_view_mut::<T>()?;
+        for n in 0..n {
+            for o in 0..c {
+                for (kix, kcoords) in
+                    tract_ndarray::indices(&*self.pool_spec.kernel_shape).into_iter().enumerate()
+                {
+                    // Hoisted out of the geometry loop: one load per (channel, tap).
+                    let kv = kernel[o * kernel_vol + kix];
+                    for (gix, gcoords) in
+                        tract_ndarray::indices(input_shape.hw_dims()).into_iter().enumerate()
+                    {
+                        let ocoord: TVec<isize> = tract_itertools::izip!(
+                            kcoords.slice(),
+                            gcoords.slice(),
+                            strides.as_ref(),
+                            dilations.as_ref(),
+                            spatial_output_details
+                        )
+                        .map(|(k, g, s, d, details)| {
+                            (k * d + g * s) as isize - details.pad_before as isize
+                        })
+                        .collect();
+                        if ocoord
+                            .iter()
+                            .zip(output_shape.hw_dims().iter())
+                            .all(|(x, dim)| *x >= 0 && (*x as usize) < *dim)
+                        {
+                            // The multiply lives here, inside the bounds test, so the
+                            // ~91% of products that fall outside are never computed.
+                            let value = kv * input[(n * c + o) * hw + gix];
+                            let ocoord = ocoord.iter().map(|x| *x as usize).collect::<TVec<_>>();
+                            let ocoord =
+                                self.pool_spec.data_format.with_n().from_n_c_hw(n, o, ocoord)?;
+                            output[&*ocoord.shape] += value;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl TypedOp for DepthwiseDeconvSum {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 3);
+        let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
+        ensure!(*inputs[2].shape == *shape);
+        Ok(tvec!(inputs[1].datum_type.fact(shape)))
+    }
+
+    fn set_symbols(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+        subs: &HashMap<Symbol, TDim>,
+    ) -> TractResult<TVec<OutletId>> {
+        target.wire_node(
+            &node.name,
+            Self { input_shape: self.input_shape.substitute(subs)?.into_owned(), ..self.clone() },
+            &[mapping[&node.inputs[0]], mapping[&node.inputs[1]], mapping[&node.inputs[2]]],
+        )
+    }
+
+    as_op!();
+}

@@ -75,6 +75,50 @@ impl Deconv {
         if self.group == 1 {
             kernel = target.wire_node(format!("{name}.kernel.rm_g"), AxisOp::Rm(0), &kernel)?;
         }
+        // Depthwise deconvolution: the einsum's contraction dim is I/G == 1, so it
+        // degenerates to an outer product that materialises `[N, C, HkWk, HW]` for
+        // DeconvSum to scatter -- and most of it lands out of bounds and is discarded
+        // (GTCRN: 3267 products per channel for 33 outputs). Fold the multiply into the
+        // accumulation instead.
+        // Rank 2 only: that is the path with the specialised pointer walk. The generic
+        // fused loop builds a coordinate per output element and is far slower than the
+        // einsum it would replace, so anything else keeps the existing lowering.
+        let is_depthwise = self.group > 1
+            && self.group == self.pool_spec.input_channels
+            && self.group == self.pool_spec.output_channels
+            && self.pool_spec.rank() == 2;
+        if is_depthwise
+            && !self.pool_spec.data_format.c_is_last()
+            && !super::deconv_sum::TRACT_DISABLE_DEPTHWISE_DECONV.get()
+        {
+            let mut bias = wire_reshape_bias_for_bin(
+                target,
+                format!("{name}.reshape_bias"),
+                inputs[2],
+                shape.rank(),
+                shape.c_axis(),
+                self.pool_spec.output_channels,
+            )?[0];
+            let output_shape =
+                super::output_shape(&self.pool_spec, &shape.shape, &self.adjustments)?;
+            bias = target.wire_node(
+                format!("{name}.broadcast_bias"),
+                MultiBroadcastTo { shape: output_shape.into() },
+                &[bias],
+            )?[0];
+            return target.wire_node(
+                format!("{name}.depthwise_deconv_sum"),
+                super::deconv_sum::DepthwiseDeconvSum::new(
+                    self.pool_spec.clone(),
+                    self.kernel_format,
+                    input_shape,
+                    self.adjustments.clone(),
+                    self.group,
+                ),
+                &[kernel[0], input[0], bias],
+            );
+        }
+
         let mut expr = if self.pool_spec.data_format.c_is_last() {
             "gmk,Ngnk->Ngmn".to_string()
         } else {
