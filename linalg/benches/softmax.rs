@@ -1,7 +1,7 @@
 use criterion::*;
 use tract_data::prelude::*;
 use tract_linalg::element_wise::ElementWiseKer;
-use tract_linalg::generic::reduce::softmax_l2::{HSoftMaxL2, SSoftMaxL2};
+use tract_linalg::generic::reduce::softmax_l2::{HSoftMaxL2, SSoftMaxL2, SSoftMaxL2Accurate};
 use tract_linalg::reduce::{MapReduceKer, ReduceKer};
 
 #[inline(never)]
@@ -84,6 +84,9 @@ fn softmax_f32(c: &mut Criterion) {
     group.bench_function("loop2/generic", |b| {
         b.iter(|| SSoftMaxL2::red().run_with_params(input, 10.))
     });
+    group.bench_function("loop2/generic-accurate", |b| {
+        b.iter(|| SSoftMaxL2Accurate::red().run_with_params(input, 10.))
+    });
     #[cfg(target_arch = "x86_64")]
     group.bench_function("loop2/iasm", |b| {
         b.iter(|| {
@@ -93,10 +96,25 @@ fn softmax_f32(c: &mut Criterion) {
         });
     });
     #[cfg(target_arch = "x86_64")]
+    group.bench_function("loop2/iasm-accurate", |b| {
+        b.iter(|| {
+            tract_linalg::x86_64::softmax::x86_64_fma_softmax2_f32_32n::red()
+                .run_with_params(input, 10.)
+                .unwrap()
+        });
+    });
+    #[cfg(target_arch = "x86_64")]
     if is_x86_feature_detected!("avx512f") {
         group.bench_function("loop2/avx512", |b| {
             b.iter(|| {
                 tract_linalg::x86_64::softmax::x86_64_avx512_softmax2_fastcompact_f32_64n::red()
+                    .run_with_params(input, 10.)
+                    .unwrap()
+            });
+        });
+        group.bench_function("loop2/avx512-accurate", |b| {
+            b.iter(|| {
+                tract_linalg::x86_64::softmax::x86_64_avx512_softmax2_f32_64n::red()
                     .run_with_params(input, 10.)
                     .unwrap()
             });
