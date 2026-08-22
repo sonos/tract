@@ -75,12 +75,19 @@ MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) isa(Avx) quality(Ma
 MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) isa(Avx) quality(ManuallyOptimized));
 MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(Avx) quality(ManuallyOptimized));
 
-MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; fma_mmm_f32_16x5<f32>(16,5)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; fma_mmm_f32_24x4<f32>(24,4)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; fma_mmm_f32_40x2<f32>(40,2)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; fma_mmm_f32_64x1<f32>(64,1)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized));
+/// The 256-bit fma f32 kernels are not superseded by the avx512 ones, so they cancel the
+/// ladder's default and rank as peers. Both x86 avx512 cost models score them alongside the
+/// avx512 kernels; they cover the small-`n` tiles avx512 has no matching `nr` for (n=2 -> 40x2,
+/// n=4 -> 24x4); and avx512 has no 64x1 at all, so a pool without them loses the whole r=64
+/// packing group -- which costs 23% at n=8, the group's 64x3 being the best matrix kernel there.
+const FMA_F32_PEER: fn() -> isize = || crate::isa::TIER_BOOST;
+
+MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_16x5<f32>(16,5)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_24x4<f32>(24,4)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_40x2<f32>(40,2)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_64x1<f32>(64,1)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
 
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
@@ -95,6 +102,7 @@ MMMExternKernel! { x86_64; fma_mmm_f32_32x1<f32>(32,1)@(256,4) isa(Avx, Fma, F16
     packing[4] = f16f32 => |k| k.with_packing(f16::packing(32), f32::packing(1));
     packing[5] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(1));
     quality(ManuallyOptimized)
+    boost(FMA_F32_PEER)
     store(f16)
 }
 MMMExternKernel!(x86_64; fma_mmm_f32_32x3<f32>(32,3)@(256,4) isa(Avx, Fma)
@@ -102,6 +110,7 @@ MMMExternKernel!(x86_64; fma_mmm_f32_32x3<f32>(32,3)@(256,4) isa(Avx, Fma)
  packing[2] = f16f32 => |k| k.with_packing(f16::packing(32).align(256), f32::packing(3));
  packing[3] = f16f16 => |k| k.with_packing(f16::packing(32).align(256), f16::packing(3));
  quality(ManuallyOptimized)
+ boost(FMA_F32_PEER)
  store(f16)
 );
 
