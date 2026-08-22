@@ -100,24 +100,25 @@ pub type MMMImpl = Box<
     dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync,
 >;
 
-type MMVImpl = Box<dyn Fn(Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync>;
+/// What a platform would run for an accumulator type and a shape, `None` for an accumulator it
+/// has no kernel family for. A `None` dim is one the caller could not pin.
+pub type MmmPolicy = Box<
+    dyn Fn(
+            DatumType,
+            Option<usize>,
+            Option<usize>,
+            Option<usize>,
+        ) -> Option<Box<dyn mmm::MatMatMul>>
+        + Send
+        + Sync,
+>;
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
     mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
 
-    mmm_f64: MMMImpl,
-    mmv_f64: MMVImpl,
-
-    mmm_f32: MMMImpl,
-    mmv_f32: MMVImpl,
-
-    mmm_f16: MMMImpl,
-    mmv_f16: MMVImpl,
-
-    qmmm_i32: MMMImpl,
-    qmmv_i32: MMVImpl,
+    mmm_policy: MmmPolicy,
 
     pub leaky_relu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
     pub leaky_relu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
@@ -228,7 +229,7 @@ impl Ops {
         if weight.unquantized() != query.activation.unquantized() {
             return None;
         }
-        let mmm = self.mmm(*query.accumulators.first()?, query.m, query.k, query.n)?;
+        let mmm = (self.mmm_policy)(*query.accumulators.first()?, query.m, query.k, query.n)?;
         if mmm.quality() != ImplementationQuality::ManuallyOptimized {
             return None;
         }
@@ -265,23 +266,31 @@ impl Ops {
         &self.panel_extractors
     }
 
-    pub fn mmm(
-        &self,
-        accumulator: DatumType,
-        m: Option<usize>,
-        k: Option<usize>,
-        n: Option<usize>,
-    ) -> Option<Box<dyn mmm::MatMatMul>> {
-        use DatumType::*;
-        match accumulator {
-            F64 => Some(if n == Some(1) { (self.mmv_f64)(m, k) } else { (self.mmm_f64)(m, k, n) }),
-            F32 => Some(if n == Some(1) { (self.mmv_f32)(m, k) } else { (self.mmm_f32)(m, k, n) }),
-            F16 => Some(if n == Some(1) { (self.mmv_f16)(m, k) } else { (self.mmm_f16)(m, k, n) }),
-            I32 => {
-                Some(if n == Some(1) { (self.qmmv_i32)(m, k) } else { (self.qmmm_i32)(m, k, n) })
-            }
-            _ => None,
-        }
+    /// This platform's policy, for a caller introspecting dispatch rather than performing it.
+    /// Selection itself goes through [`Ops::rank`] and [`Ops::pick`], which hold the policy to
+    /// the candidates it is allowed to name.
+    pub fn mmm_policy(&self) -> &MmmPolicy {
+        &self.mmm_policy
+    }
+
+    /// Put `f` in front of the policy: it answers the accumulators and shapes it claims, and
+    /// defers everything else to what was there before. This is how an arch tier layers over
+    /// the tiers below it, and how a tier that speaks for one accumulator leaves the others be.
+    pub fn overlay_mmm_policy(
+        &mut self,
+        f: impl Fn(
+            &MmmPolicy,
+            DatumType,
+            Option<usize>,
+            Option<usize>,
+            Option<usize>,
+        ) -> Option<Box<dyn mmm::MatMatMul>>
+        + Send
+        + Sync
+        + 'static,
+    ) {
+        let prev = std::mem::replace(&mut self.mmm_policy, Box::new(|_, _, _, _| None));
+        self.mmm_policy = Box::new(move |dt, m, k, n| f(&prev, dt, m, k, n));
     }
 }
 
@@ -292,14 +301,19 @@ pub fn generic() -> Ops {
     let mut ops = Ops {
         mmm_impls: vec![],
         panel_extractors: vec![],
-        mmm_f64: Box::new(|_, _, _| generic_f64_4x4.mmm()),
-        mmv_f64: Box::new(|_, _| generic_f64_4x1.mmm()),
-        mmm_f32: Box::new(|_, _, _| generic_f32_4x4.mmm()),
-        mmv_f32: Box::new(|_, _| generic_f32_4x1.mmm()),
-        mmm_f16: Box::new(|_, _, _| generic_f16_4x4.mmm()),
-        mmv_f16: Box::new(|_, _| generic_f16_4x1.mmm()),
-        qmmm_i32: Box::new(|_, _, _| generic_i32_4x4.mmm()),
-        qmmv_i32: Box::new(|_, _| generic_i32_4x4.mmm()),
+        mmm_policy: Box::new(|dt, _, _, n| {
+            let vec = n == Some(1);
+            match dt {
+                DatumType::F64 if vec => Some(generic_f64_4x1.mmm()),
+                DatumType::F64 => Some(generic_f64_4x4.mmm()),
+                DatumType::F32 if vec => Some(generic_f32_4x1.mmm()),
+                DatumType::F32 => Some(generic_f32_4x4.mmm()),
+                DatumType::F16 if vec => Some(generic_f16_4x1.mmm()),
+                DatumType::F16 => Some(generic_f16_4x4.mmm()),
+                DatumType::I32 => Some(generic_i32_4x4.mmm()),
+                _ => None,
+            }
+        }),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
         mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),

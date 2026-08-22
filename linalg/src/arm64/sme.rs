@@ -189,12 +189,20 @@ pub fn has_sme2() -> bool {
 pub fn plug(ops: &mut Ops) {
     if has_sme() {
         log::info!("SME optimisation activated");
-        ops.mmm_f32 = Box::new(|_, _, _| sme_mmm_f32_32x32.mmm());
+        ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+            (DatumType::F32, Some(1)) => prev(dt, m, k, n),
+            (DatumType::F32, _) => Some(sme_mmm_f32_32x32.mmm()),
+            _ => prev(dt, m, k, n),
+        });
     }
     if has_sme2() {
         log::info!("SME2 GEMV optimisation activated");
-        ops.mmv_f32 = Box::new(|_, _| sme_mmv_f32_64x1.mmm());
-        ops.qmmm_i32 = Box::new(|_, _, _| sme_qmmm_i32_32x32.mmm());
+        ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+            (DatumType::F32, Some(1)) => Some(sme_mmv_f32_64x1.mmm()),
+            (DatumType::I32, Some(1)) => prev(dt, m, k, n),
+            (DatumType::I32, _) => Some(sme_qmmm_i32_32x32.mmm()),
+            _ => prev(dt, m, k, n),
+        });
     }
     if !has_sme() && !has_sme2() {
         log::info!("No SME optimisation");

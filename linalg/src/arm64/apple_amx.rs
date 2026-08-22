@@ -37,27 +37,29 @@ pub fn plug(ops: &mut Ops) {
         //   inception_v3 1.43× SLOWER      sam2_tiny    1.54× SLOWER
         // The shape-aware predicate keeps the AMX wins for the heavy models
         // (Inception, YOLO, SAM2) while routing small shapes to NEON.
-        ops.mmm_f32 = Box::new(|m, _, n| {
-            let big_enough = m.is_some_and(|m| m >= 32) && n.is_some_and(|n| n >= 32);
-            if big_enough { apple_amx_mmm_f32_32x32.mmm() } else { arm64simd_mmm_f32_8x8_gen.mmm() }
-        });
-        // mmv (n=1) f32: AMX 32x1 is dominated by NEON 64x1 across the entire
-        // shape sweep — confirmed by canary deltas on DFN3 (which is mmv-heavy).
-        // Always use NEON.
-        ops.mmv_f32 = Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm());
-
-        // ----- f16 paths kept conservative for now -----
-        //
-        // We didn't run the f16 microbench yet, so retain the original logic
-        // and the previous low-M-routes-to-NEON heuristic.
-        ops.mmm_f16 = Box::new(|m, _, _| {
-            if m.is_some_and(|m| m <= 16) {
+        // f16 paths are kept conservative: no f16 microbench yet, so the previous
+        // low-M-routes-to-NEON heuristic stands.
+        ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+            // mmv (n=1) f32: AMX 32x1 is dominated by NEON 64x1 across the entire
+            // shape sweep — confirmed by canary deltas on DFN3 (which is mmv-heavy).
+            // Always use NEON.
+            (crate::DatumType::F32, Some(1)) => Some(arm64simd_mmm_f32_64x1_gen.mmm()),
+            (crate::DatumType::F32, _) => {
+                let big_enough = m.is_some_and(|m| m >= 32) && n.is_some_and(|n| n >= 32);
+                Some(if big_enough {
+                    apple_amx_mmm_f32_32x32.mmm()
+                } else {
+                    arm64simd_mmm_f32_8x8_gen.mmm()
+                })
+            }
+            (crate::DatumType::F16, Some(1)) => Some(apple_amx_mmm_f16_64x1.mmm()),
+            (crate::DatumType::F16, _) => Some(if m.is_some_and(|m| m <= 16) {
                 arm64fp16_mmm_f16_16x8_gen.mmm()
             } else {
                 apple_amx_mmm_f16_64x32.mmm()
-            }
+            }),
+            _ => prev(dt, m, k, n),
         });
-        ops.mmv_f16 = Box::new(|_, _| apple_amx_mmm_f16_64x1.mmm());
     } else {
         log::info!("No AMX optimisation");
     }

@@ -7,7 +7,7 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
-use crate::Ops;
+use crate::{DatumType, Ops};
 
 #[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
@@ -32,35 +32,27 @@ pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
 
 pub fn plug(ops: &mut Ops) {
-    // int8 -> i32 matmul: SIMD kernel (was generic scalar). ManuallyOptimized so
-    // retain_best_quality keeps it over generic_i32_4x4 for i8 packing.
-    ops.qmmm_i32 = Box::new(|_, _, _| wasm_i32_4x4.mmm());
-    // Selection paths. Both rely on kernel_selection::strategize honouring
-    // the mmm_f32 / mmv_f32 callback, which it only does when the callback's
-    // kernel is tagged ManuallyOptimized. Otherwise strategize falls through
-    // to the candidate list, where retain_best_quality keeps only the top
-    // ImplementationQuality and drops every TargetOptimized kernel.
-    //   - N>1 (GEMM): mmm_f32 returns 8x8, so 8x8 MUST be ManuallyOptimized.
-    //     If it were TargetOptimized it would be dropped there, and the
-    //     N>1 branch's max(nr*mr) over the surviving (ManuallyOptimized) GEMV
-    //     kernels would pick wasm_f32_32x1 — a matrix×vector kernel — for
-    //     every GEMM.
-    //   - N=1 (GEMV): mmv_f32 routes by M-band to the kernel whose MR fits.
-    //     The four GEMV kernels are ManuallyOptimized for the same reason —
-    //     without the tag strategize discards the callback and picks
-    //     max(mr)=32x1 for every M, leaving up to ~37% on the table for
-    //     small-M GEMV.
-    ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_8x8.mmm());
-    // Bands derived from benches/wasm.rs. At each band edge, using
-    // the next-larger kernel beats halving outer iterations of the smaller
-    // one (1 outer with ILP-absorbed padding > 2 outer with kernel preamble
-    // doubled). M=4/8/16 are exact tile fits at the lower edges; M=17/9/5
-    // are the first values where the next-larger kernel wins.
-    ops.mmv_f32 = Box::new(|m, _k| match m.unwrap_or(0) {
-        0..=4 => wasm_f32_4x1.mmm(),
-        5..=8 => wasm_f32_8x1.mmm(),
-        9..=16 => wasm_f32_16x1.mmm(),
-        _ => wasm_f32_32x1.mmm(),
+    // Every kernel this policy names must be ManuallyOptimized: `rank` hands the answer to
+    // the candidate list, and a lesser tier would be dropped by retain_best_quality, leaving
+    // the N>1 rule to pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1,
+    // a matrix×vector kernel, for every GEMM.
+    ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+        // int8 -> i32 matmul: SIMD kernel (was generic scalar).
+        (DatumType::I32, Some(1)) => prev(dt, m, k, n),
+        (DatumType::I32, _) => Some(wasm_i32_4x4.mmm()),
+        // GEMV routes by M-band to the kernel whose MR fits. Bands derived from
+        // benches/wasm.rs: at each edge, using the next-larger kernel beats halving outer
+        // iterations of the smaller one (1 outer with ILP-absorbed padding > 2 outer with the
+        // kernel preamble doubled). M=4/8/16 are exact tile fits at the lower edges; M=17/9/5
+        // are the first values where the next-larger kernel wins.
+        (DatumType::F32, Some(1)) => Some(match m.unwrap_or(0) {
+            0..=4 => wasm_f32_4x1.mmm(),
+            5..=8 => wasm_f32_8x1.mmm(),
+            9..=16 => wasm_f32_16x1.mmm(),
+            _ => wasm_f32_32x1.mmm(),
+        }),
+        (DatumType::F32, _) => Some(wasm_f32_8x8.mmm()),
+        _ => prev(dt, m, k, n),
     });
     // Relaxed-SIMD activation kernels (FMA path). Only installed when the
     // build has `+relaxed-simd`; otherwise the slots stay at the generic
