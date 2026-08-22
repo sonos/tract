@@ -590,8 +590,14 @@ pub fn mm_report(
         "| count |     |     m |     k |     n | iters | {:^mmm_width$} | {:^pa_width$} | {:^panel_width$} | {:^pb_width$} |",
         "kernels", "packing a", "panel", "packing b",
     );
+    // The whole config breaks ties, so that two reports of the same model are diffable: the
+    // count and m alone leave rows in `HashMap` order, which varies from run to run.
     for (config, count) in opt_mat_muls.iter().sorted_by_key(|(conf, count)| {
-        (-(count.to_isize().unwrap_or_default()), -(conf.0.as_i64().unwrap_or(0)))
+        (
+            -(count.to_isize().unwrap_or_default()),
+            -(conf.0.as_i64().unwrap_or(0)),
+            format!("{conf:?}"),
+        )
     }) {
         let (m, k, n, iters, w, mmm, pa, panel, pb) = config;
         println!(
@@ -606,9 +612,9 @@ pub fn mm_report(
     }
     if einsums.len() > 0 {
         println!("{}", Red.bold().paint("# 💩💩💩 Unoptimized Einsums 💩💩💩"));
-        for ((axes, ifacts, ofacts), count) in
-            einsums.iter().sorted_by_key(|(_conf, count)| -count.as_i64().unwrap_or_default())
-        {
+        for ((axes, ifacts, ofacts), count) in einsums.iter().sorted_by_key(|(conf, count)| {
+            (-count.as_i64().unwrap_or_default(), format!("{conf:?}"))
+        }) {
             println!(
                 "{}",
                 Red.bold().paint(format!(
