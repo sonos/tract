@@ -298,9 +298,13 @@ fn dispatch_never_returns_wasm_f32_4x4() {
     for m in [1usize, 3, 4, 5, 8, 9, 16, 17, 32, 64, 256, 1024] {
         for n in [1usize, 2, 4, 8, 10, 64, 256] {
             for k in [1usize, 64, 576] {
-                let mmm = ops
-                    .mmm(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
-                    .unwrap();
+                let mmm = (ops.mmm_policy())(
+                    tract_data::prelude::DatumType::F32,
+                    Some(m),
+                    Some(k),
+                    Some(n),
+                )
+                .unwrap();
                 assert_ne!(
                     mmm.name(),
                     "wasm_f32_4x4",

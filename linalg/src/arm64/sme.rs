@@ -1,6 +1,6 @@
-use crate::Ops;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
+use crate::{DatumType, Ops};
 
 // CAN_FUSE: everything except LeakyRelu / QScale / RoundingShiftRight /
 // ShiftLeft. LoadTile, AddUnicast, AddRowColProducts, per-row/col/scalar

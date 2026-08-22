@@ -544,7 +544,11 @@ pub fn plug(ops: &mut Ops) {
         if let Some(model) = model {
             log::info!("Apple per-chip matmul LinearCostModel activated");
             let impls = ops.mmm_impls.clone();
-            ops.mmm_f32 = Box::new(move |m, k, n| model.pick(&impls, m, k, n));
+            ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
+                (DatumType::F32, Some(1)) => prev(dt, m, k, n),
+                (DatumType::F32, _) => Some(model.pick(&impls, m, k, n)),
+                _ => prev(dt, m, k, n),
+            });
         }
     }
 }
