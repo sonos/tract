@@ -58,46 +58,9 @@ impl Header {
     }
 }
 
-pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
-    let header = Header::read(&mut reader)?;
-    let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
-    let Some(len) = shape.iter().try_fold(1usize, |acc, &d| acc.checked_mul(d)) else {
-        bail!("Tensor shape product overflows usize: {:?}", shape);
-    };
-
-    if header.item_type == 5 {
-        let expected_bit_size = len.checked_mul(header.bits_per_item as usize);
-        let real_bit_size = header.data_size_bytes as usize * 8;
-        if expected_bit_size.is_none_or(|e| !(real_bit_size - 8 <= e && e <= real_bit_size)) {
-            bail!(
-                "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
-                shape,
-                header.bits_per_item,
-                header.data_size_bytes
-            );
-        }
-    } else if header.bits_per_item != u32::MAX
-        && len.checked_mul(header.bits_per_item as usize / 8)
-            != Some(header.data_size_bytes as usize)
-    {
-        bail!(
-            "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
-            shape,
-            header.bits_per_item,
-            header.data_size_bytes
-        );
-    }
-    if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
-        bail!("Unknownn item type vendor {}", header.item_type_vendor);
-    }
-
-    // last checked with spec 1.0.5: https://registry.khronos.org/NNEF/specs/1.0/nnef-1.0.5.html
-    //
-    // Quantized types are not instanciated as DatumType::Q* here since
-    // quant infos are joined later from .quant file (
-    //  see: ops/nnef/deser.rs
-    // )
-    let dt = match (header.item_type_vendor, header.item_type, header.bits_per_item) {
+/// The datum type a plain (non block-quant) header declares.
+fn plain_datum_type(header: &Header) -> TractResult<DatumType> {
+    Ok(match (header.item_type_vendor, header.item_type, header.bits_per_item) {
         // 0 - 0b0000 - float values in IEEE format, valid bits per item is 16, 32, 64
         (0, 0, 16) => DatumType::F16,
         (0, 0, 32) => DatumType::F32,
@@ -142,17 +105,115 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         (TRACT_ITEM_TYPE_VENDOR, 4, 64) => DatumType::ComplexI32,
         #[cfg(feature = "complex")]
         (TRACT_ITEM_TYPE_VENDOR, 4, 128) => DatumType::ComplexI64,
-        (TRACT_ITEM_TYPE_VENDOR, it, _)
-            if ((it & 0x2000) == 0x2000) || ((it & 0x3000) == 0x3000) =>
-        {
-            return read_block_quant_value(&mut reader, &header);
-        }
         _ => bail!(
             "Unsupported type in tensor type:{} bits_per_item:{}",
             header.item_type,
             header.bits_per_item
         ),
+    })
+}
+
+/// What a `.dat` file declares about its tensor, without reading the tensor.
+///
+/// The NNEF header is a fixed 128 bytes and fully describes the value that follows, so a
+/// caller that only needs a fact — to type a graph before deciding which weights are worth
+/// reading — can stop here. `block_quant` is set when the payload is packed rather than
+/// plain, in which case `datum_type` is the dequantized type the graph sees.
+#[derive(Debug, Clone)]
+pub struct TensorHeader {
+    pub datum_type: DatumType,
+    pub shape: TVec<usize>,
+    /// Payload bytes following the header.
+    pub body_bytes: usize,
+    pub block_quant: Option<Box<dyn BlockQuant>>,
+}
+
+impl TensorHeader {
+    /// The fact this tensor will have once read.
+    pub fn to_fact(&self) -> TypedFact {
+        TypedFact::dt_shape(
+            self.datum_type,
+            ShapeFact::from_dims(self.shape.iter().map(|d| TDim::from(*d as i64))),
+        )
+    }
+}
+
+/// Read a `.dat`'s 128-byte header and stop, leaving `reader` positioned on the payload.
+pub fn read_tensor_header(mut reader: impl Read) -> TractResult<TensorHeader> {
+    let header = Header::read(&mut reader)?;
+    let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
+    let body_bytes = header.data_size_bytes as usize;
+    if let Some(format) = block_quant_format(&header)? {
+        return Ok(TensorHeader {
+            datum_type: f32::datum_type(),
+            shape,
+            body_bytes,
+            block_quant: Some(format),
+        });
+    }
+    let datum_type = plain_datum_type(&header)?;
+    Ok(TensorHeader { datum_type, shape, body_bytes, block_quant: None })
+}
+
+/// The block-quant format this header declares, or `None` if the payload is plain.
+fn block_quant_format(header: &Header) -> TractResult<Option<Box<dyn BlockQuant>>> {
+    if header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
+        return Ok(None);
+    }
+    let it = header.item_type;
+    if (it & 0x2000) != 0x2000 && (it & 0x3000) != 0x3000 {
+        return Ok(None);
+    }
+    Ok(Some(match it {
+        0x2040 | 0x3040 => Box::new(Q4_0),
+        0x3080 => Box::new(Q8_1),
+        _ => bail!("Unexpected block quant format"),
+    }))
+}
+
+pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
+    let header = Header::read(&mut reader)?;
+    let shape: TVec<usize> = header.dims[0..header.rank as usize].iter().map(|d| *d as _).collect();
+    let Some(len) = shape.iter().try_fold(1usize, |acc, &d| acc.checked_mul(d)) else {
+        bail!("Tensor shape product overflows usize: {:?}", shape);
     };
+
+    if header.item_type == 5 {
+        let expected_bit_size = len.checked_mul(header.bits_per_item as usize);
+        let real_bit_size = header.data_size_bytes as usize * 8;
+        if expected_bit_size.is_none_or(|e| !(real_bit_size - 8 <= e && e <= real_bit_size)) {
+            bail!(
+                "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
+                shape,
+                header.bits_per_item,
+                header.data_size_bytes
+            );
+        }
+    } else if header.bits_per_item != u32::MAX
+        && len.checked_mul(header.bits_per_item as usize / 8)
+            != Some(header.data_size_bytes as usize)
+    {
+        bail!(
+            "Shape and len mismatch: shape:{:?}, bits_per_item:{}, bytes:{} ",
+            shape,
+            header.bits_per_item,
+            header.data_size_bytes
+        );
+    }
+    if header.item_type_vendor != 0 && header.item_type_vendor != TRACT_ITEM_TYPE_VENDOR {
+        bail!("Unknownn item type vendor {}", header.item_type_vendor);
+    }
+
+    // last checked with spec 1.0.5: https://registry.khronos.org/NNEF/specs/1.0/nnef-1.0.5.html
+    //
+    // Quantized types are not instanciated as DatumType::Q* here since
+    // quant infos are joined later from .quant file (
+    //  see: ops/nnef/deser.rs
+    // )
+    if block_quant_format(&header)?.is_some() {
+        return read_block_quant_value(&mut reader, &header);
+    }
+    let dt = plain_datum_type(&header)?;
     if dt.is_copy() {
         let mut tensor = unsafe { Tensor::uninitialized_dt(dt, &shape)? };
         let mut plain = tensor.try_as_plain_mut()?;
@@ -334,6 +395,60 @@ mod test {
     #[test]
     fn header_is_128_bytes() {
         assert_eq!(std::mem::size_of::<Header>(), 128);
+    }
+
+    /// The header alone must describe the tensor that follows: a lazy loader types a graph
+    /// from it and only later decides whether the payload is worth reading.
+    #[test]
+    fn header_describes_the_tensor_without_reading_it() -> TractResult<()> {
+        let cases: Vec<Tensor> = vec![
+            tensor2(&[[1.0f32, 2.0], [3.0, 4.0]]),
+            tensor1(&[f16::from_f32(1.0), f16::from_f32(2.0), f16::from_f32(3.0)]),
+            tensor1(&[1.0f64, 2.0]),
+            tensor2(&[[1i8, 2], [3, 4]]),
+            tensor1(&[1i32, 2, 3, 4, 5]),
+            tensor1(&[1i64]),
+            tensor1(&[1u8, 2, 3]),
+            tensor1(&[true, false, true]),
+        ];
+        for t in cases {
+            let mut buf = vec![];
+            write_tensor(&mut buf, &t)?;
+            let head = read_tensor_header(&mut &*buf)?;
+            assert_eq!(head.datum_type, t.datum_type(), "dtype for {t:?}");
+            assert_eq!(&*head.shape, t.shape(), "shape for {t:?}");
+            assert!(head.block_quant.is_none(), "unexpected block quant for {t:?}");
+            // The header plus the payload it declares is the whole file.
+            assert_eq!(128 + head.body_bytes, buf.len(), "body length for {t:?}");
+            // And it agrees with a full read.
+            let full = read_tensor(&mut &*buf)?;
+            assert_eq!(full.datum_type(), head.datum_type);
+            assert_eq!(full.shape(), &*head.shape);
+        }
+        Ok(())
+    }
+
+    /// A block-quant payload declares its format in the header too, and reports the
+    /// dequantized type the graph sees rather than the packing.
+    #[test]
+    fn header_describes_a_block_quant_tensor() -> TractResult<()> {
+        let weights = Tensor::zero::<f32>(&[32, 64])?;
+        let quantized = Q4_0.quant_f32(weights.try_as_plain()?.as_slice::<f32>()?)?;
+        let t = BlockQuantStorage::new(Box::new(Q4_0), 32, 64, Arc::new(quantized))?
+            .into_tensor_with_shape(f32::datum_type(), &[32, 64]);
+        let mut buf = vec![];
+        write_tensor(&mut buf, &t)?;
+
+        let head = read_tensor_header(&mut &*buf)?;
+        assert_eq!(head.datum_type, f32::datum_type());
+        assert_eq!(&*head.shape, &[32, 64]);
+        assert!(head.block_quant.is_some(), "block quant format not reported");
+        assert_eq!(128 + head.body_bytes, buf.len());
+
+        let full = read_tensor(&mut &*buf)?;
+        assert_eq!(full.shape(), &*head.shape);
+        assert!(full.is_exotic(), "block quant tensor should not be plain");
+        Ok(())
     }
 
     #[test]

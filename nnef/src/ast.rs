@@ -10,6 +10,10 @@ pub mod quant;
 pub struct ProtoModel {
     pub doc: Document,
     pub tensors: HashMap<Identifier, Arc<Tensor>>,
+    /// Tensors whose header has been read but whose payload has not. A `variable`
+    /// resolving here becomes a `LazyConst`, so the graph can be typed and pruned before
+    /// deciding which weights are worth reading. Empty on an ordinary eager load.
+    pub lazy_tensors: HashMap<Identifier, Arc<crate::resource::LazyDat>>,
     pub quantization: Option<HashMap<Identifier, QuantFormat>>,
     pub resources: HashMap<String, Arc<dyn Resource>>,
 }

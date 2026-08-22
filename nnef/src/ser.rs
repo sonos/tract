@@ -232,7 +232,13 @@ impl<'a> IntoAst<'a> {
             graph_def: GraphDef { id: Identifier("network".into()), parameters, results, body },
         };
         let quantization = if self.quantization.len() > 0 { Some(self.quantization) } else { None };
-        Ok(ProtoModel { doc, tensors, quantization, resources: self.resources })
+        Ok(ProtoModel {
+            doc,
+            tensors,
+            lazy_tensors: Default::default(),
+            quantization,
+            resources: self.resources,
+        })
     }
 
     fn node(&mut self, node: &TypedNode) -> TractResult<TVec<Arc<RValue>>> {
