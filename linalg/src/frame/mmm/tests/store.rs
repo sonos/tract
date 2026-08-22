@@ -15,39 +15,49 @@ macro_rules! mmm_store_test {
             mod [<store_$tc>] {
                 #[allow(unused_imports)]
                 use tract_data::prelude::f16;
-                use $crate::frame::mmm::tests::store::StoreLayout;
+                use $crate::frame::mmm::tests::store::*;
 
-                #[test] fn store_zeros() {
-                    $crate::frame::mmm::tests::store::store_zeros::<_,$tc,_>($ker);
-                }
+                const FAMILY: &str = concat!("store_", stringify!($tc));
 
-                #[test] fn store_col_major() {
-                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::ColMajor);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "store_zeros", {
+                    store_zeros::<_, $tc, _>($ker);
+                    Ok(())
+                });
 
-                #[test] fn store_row_major() {
-                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::RowMajor);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "store_col_major", {
+                    store_pattern::<_, $tc, _>($ker, StoreLayout::ColMajor);
+                    Ok(())
+                });
 
-                #[test] fn store_arbitrary() {
-                    $crate::frame::mmm::tests::store::store_pattern::<_,$tc,_>($ker, StoreLayout::Arbitrary);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "store_row_major", {
+                    store_pattern::<_, $tc, _>($ker, StoreLayout::RowMajor);
+                    Ok(())
+                });
 
-                #[test] fn add_unicast_dt() {
+                $crate::mmm_test_case!($ker, FAMILY, "store_arbitrary", {
+                    store_pattern::<_, $tc, _>($ker, StoreLayout::Arbitrary);
+                    Ok(())
+                });
+
+                $crate::mmm_test_case!($ker, FAMILY, "add_unicast_dt", {
                     $crate::frame::mmm::tests::fuse::return_c_plus_d::<_, _, $tc>($ker);
-                }
+                    Ok(())
+                });
 
-                #[test] fn add_unicast_col_major() {
-                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::ColMajor);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "add_unicast_col_major", {
+                    add_unicast_pattern::<_, $tc, _>($ker, StoreLayout::ColMajor);
+                    Ok(())
+                });
 
-                #[test] fn add_unicast_row_major() {
-                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::RowMajor);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "add_unicast_row_major", {
+                    add_unicast_pattern::<_, $tc, _>($ker, StoreLayout::RowMajor);
+                    Ok(())
+                });
 
-                #[test] fn add_unicast_arbitrary() {
-                    $crate::frame::mmm::tests::store::add_unicast_pattern::<_,$tc,_>($ker, StoreLayout::Arbitrary);
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "add_unicast_arbitrary", {
+                    add_unicast_pattern::<_, $tc, _>($ker, StoreLayout::Arbitrary);
+                    Ok(())
+                });
             }
         }
     };
@@ -68,9 +78,6 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let v = vec![TC::max_value(); ker.mr() * ker.nr()];
     let c = mmm_stride_storage(&v, ker.nr());
     let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
@@ -93,9 +100,6 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let (mr, nr) = (ker.mr(), ker.nr());
     let pattern = tensor1(&(0..).take(mr * nr).collect_vec())
         .cast_to::<TI>()
@@ -164,9 +168,6 @@ where
     TI: LADatum + Bounded + PartialEq,
     usize: AsPrimitive<TC>,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let (mr, nr) = (ker.mr(), ker.nr());
     let size_of_tc = std::mem::size_of::<TC>();
     let (row_stride, col_stride, operand_size) = match layout {

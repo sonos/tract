@@ -28,6 +28,10 @@ pastey.workspace = true
 rayon = { workspace = true, optional = true }
 scan_fmt.workspace = true
 tract-data.workspace = true
+# Enabled by the `test-kernels` feature only: the mmm kernel test bodies live in the lib so
+# an out-of-lib harness can drive them.
+env_logger = { workspace = true, optional = true }
+nu-ansi-term = { workspace = true, optional = true }
 
 [build-dependencies]
 cc.workspace = true
@@ -36,10 +40,20 @@ minijinja.workspace = true
 walkdir.workspace = true
 
 [dev-dependencies]
+# Self-dependency so the `mmm_kernels` harness target sees the kernel test bodies.
+tract-linalg = { path = ".", features = ["test-kernels"] }
+libtest-mimic.workspace = true
 env_logger.workspace = true
 libc.workspace = true
 nu-ansi-term.workspace = true
 core_affinity.workspace = true
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+proptest = { workspace = true, optional = true }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+# Wasm doesn't support the `fork` feature of proptest.
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"], optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion.workspace = true
@@ -63,10 +77,16 @@ apple-amx-ios = []
 # here and no pool draws from them. Off by default — a build for one target has no reason
 # to carry three more trees.
 foreign-inventory = []
+# Compile the mmm kernel test bodies into the lib, for the `mmm_kernels` harness.
+test-kernels = [ "dep:proptest", "dep:nu-ansi-term", "dep:env_logger" ]
 default = [ ]
 multithread-mm = [ "rayon" ]
 complex = [ "tract-data/complex" ]
 hwbench = [ "rayon" ]
+
+[[test]]
+name = "mmm_kernels"
+harness = false
 
 [[bench]]
 bench = false

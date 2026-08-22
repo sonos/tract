@@ -13,7 +13,7 @@ extern crate log;
 extern crate num_traits;
 #[macro_use]
 extern crate pastey;
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 extern crate proptest;
 
 include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
@@ -56,6 +56,8 @@ pub mod knobs;
 pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
+#[doc(hidden)]
+pub use inventory;
 use lazy_static::lazy_static;
 use mmm::{
     Candidate, ImplementationQuality, MMMInputFormat, Query, pick_by_shape, retain_best_quality,
@@ -451,56 +453,56 @@ pub trait LADatum:
     + Bounded
     + tract_data::prelude::Datum
 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> proptest::prelude::BoxedStrategy<Self>;
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 use proptest::prelude::*;
 
 impl LADatum for f16 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         f32::strat().prop_map(|f| f.as_()).boxed()
     }
 }
 
 impl LADatum for f32 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         (-1000isize..1000).prop_map(|i| i as f32 / 1000.0).boxed()
     }
 }
 
 impl LADatum for f64 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         (-1000isize..1000).prop_map(|i| i as f64 / 1000.0).boxed()
     }
 }
 
 impl LADatum for u8 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         any::<u8>().boxed()
     }
 }
 
 impl LADatum for i8 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         any::<i8>().boxed()
     }
 }
 
 impl LADatum for i32 {
-    #[cfg(test)]
+    #[cfg(feature = "test-kernels")]
     fn strat() -> BoxedStrategy<Self> {
         any::<i32>().boxed()
     }
 }
 
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 #[allow(dead_code)]
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();

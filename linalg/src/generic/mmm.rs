@@ -475,10 +475,10 @@ MMMRustKernel! { generic; kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
 }
 
 // extra tests kernels
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 MMMRustKernel!(kernel::<f32, 3, 2> => generic_f32_3x2<f32>(3,2) store(f16, f64));
 
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(3), i8::packing(2));
     store(i8)

@@ -157,7 +157,7 @@ macro_rules! MMMKernel {
                 };
             }
 
-            #[cfg(test)]
+            #[cfg(feature = "test-kernels")]
             mod [<test_$id>] {
                 use super::$id;
                 test_mmm_kernel!($ti, &*super::$id);

@@ -20,26 +20,27 @@ macro_rules! mmm_kernel_fuse_tests {
             #[allow(unused_imports)]
             use $crate::frame::mmm::tests::fuse::*;
 
-            #[test]
-            fn return_zeros() {
-                test::return_zeros::<_, $tc, $ti>($ker)
-            }
+            $crate::mmm_test_case!($ker, "fuse", "return_zeros", {
+                test::return_zeros::<_, $tc, $ti>($ker);
+                Ok(())
+            });
 
-            #[test]
-            fn store_non_contiguous() {
-                test::store_non_contiguous::<_, $tc, $ti>($ker)
-            }
+            $crate::mmm_test_case!($ker, "fuse", "store_non_contiguous", {
+                test::store_non_contiguous::<_, $tc, $ti>($ker);
+                Ok(())
+            });
 
-            #[test]
-            fn add_unicast_non_contiguous() {
-                test::add_unicast_non_contiguous::<_, $ti>($ker)
-            }
-            proptest::proptest! {
-                #[test]
-                fn return_c_prop(c in tile::<_, $ti>($ker)) {
-                    test::return_c::<_, $ti>($ker, &c)
-                }
-            }
+            $crate::mmm_test_case!($ker, "fuse", "add_unicast_non_contiguous", {
+                test::add_unicast_non_contiguous::<_, $ti>($ker);
+                Ok(())
+            });
+
+            $crate::mmm_test_case!($ker, "fuse", "return_c_prop", {
+                $crate::mmm::tests::run_proptest(file!(), tile::<_, $ti>($ker), |c| {
+                    test::return_c::<_, $ti>($ker, &c);
+                    Ok(())
+                })
+            });
 
             fn fmin<T: PartialOrd>(a: T, b: T) -> T {
                 if a < b { a } else { b }
@@ -50,60 +51,57 @@ macro_rules! mmm_kernel_fuse_tests {
             }
 
             macro_rules! bin {
-                ($FKS:ident, $geo:expr, $f:expr, $extra_cond:expr) => {
-                    paste! {
-                        #[test]
-                        fn [<$FKS:snake>]() {
-                            if ($ker).is_supported_here() && $extra_cond {
+                        ($FKS:ident, $case:expr, $geo:ident, $f:expr, $extra_cond:expr) => {
+                            $crate::mmm_test_case!($ker, "fuse", $case, if($extra_cond), {
                                 test::$geo::<_, $ti>($ker, $crate::mmm::FusedKerSpec::$FKS, $f);
-                            }
-                        }
+                                Ok(())
+                            });
+                        };
                     }
-                };
-            }
 
-            bin!(PerColMin, per_col, fmin, true);
-            bin!(PerColMax, per_col, fmax, true);
-            bin!(PerColAdd, per_col, |a, b| a + b, true);
-            bin!(PerColMul, per_col, |a, b| a * b, true);
-            bin!(PerColSub, per_col, |a, b| a - b, true);
-            bin!(PerColSubF, per_col, |a, b| b - a, true);
+            bin!(PerColMin, "per_col_min", per_col, fmin, true);
+            bin!(PerColMax, "per_col_max", per_col, fmax, true);
+            bin!(PerColAdd, "per_col_add", per_col, |a, b| a + b, true);
+            bin!(PerColMul, "per_col_mul", per_col, |a, b| a * b, true);
+            bin!(PerColSub, "per_col_sub", per_col, |a, b| a - b, true);
+            bin!(PerColSubF, "per_col_sub_f", per_col, |a, b| b - a, true);
 
-            bin!(PerRowMin, per_row, fmin, true);
-            bin!(PerRowMax, per_row, fmax, true);
-            bin!(PerRowAdd, per_row, |a, b| a + b, true);
-            bin!(PerRowMul, per_row, |a, b| a * b, true);
-            bin!(PerRowSub, per_row, |a, b| a - b, true);
-            bin!(PerRowSubF, per_row, |a, b| b - a, true);
+            bin!(PerRowMin, "per_row_min", per_row, fmin, true);
+            bin!(PerRowMax, "per_row_max", per_row, fmax, true);
+            bin!(PerRowAdd, "per_row_add", per_row, |a, b| a + b, true);
+            bin!(PerRowMul, "per_row_mul", per_row, |a, b| a * b, true);
+            bin!(PerRowSub, "per_row_sub", per_row, |a, b| a - b, true);
+            bin!(PerRowSubF, "per_row_sub_f", per_row, |a, b| b - a, true);
 
-            bin!(ScalarMin, scalar, fmin, true);
-            bin!(ScalarMax, scalar, fmax, true);
-            bin!(ScalarAdd, scalar, |a, b| a + b, true);
-            bin!(ScalarMul, scalar, |a, b| a * b, true);
-            bin!(ScalarSub, scalar, |a, b| a - b, true);
-            bin!(ScalarSubF, scalar, |a, b| b - a, true);
+            bin!(ScalarMin, "scalar_min", scalar, fmin, true);
+            bin!(ScalarMax, "scalar_max", scalar, fmax, true);
+            bin!(ScalarAdd, "scalar_add", scalar, |a, b| a + b, true);
+            bin!(ScalarMul, "scalar_mul", scalar, |a, b| a * b, true);
+            bin!(ScalarSub, "scalar_sub", scalar, |a, b| a - b, true);
+            bin!(ScalarSubF, "scalar_sub_f", scalar, |a, b| b - a, true);
 
             bin!(
                 LeakyRelu,
+                "leaky_relu",
                 scalar,
                 |a, b| if b > <$ti>::zero() { b } else { a * b },
                 ($ker).can_fuse(&$crate::mmm::FusedSpec::LeakyRelu(&tensor0(<$ti>::from(1_u8))))
             );
 
-            #[test]
-            fn return_c_add_row_col_product() {
-                test::return_c_add_row_col_product::<_, $ti>($ker)
-            }
+            $crate::mmm_test_case!($ker, "fuse", "return_c_add_row_col_product", {
+                test::return_c_add_row_col_product::<_, $ti>($ker);
+                Ok(())
+            });
 
-            #[test]
-            fn return_c_plus_d() {
-                test::return_c_plus_d::<_, $ti, $ti>($ker)
-            }
+            $crate::mmm_test_case!($ker, "fuse", "return_c_plus_d", {
+                test::return_c_plus_d::<_, $ti, $ti>($ker);
+                Ok(())
+            });
 
-            #[test]
-            fn return_c_clear() {
-                test::return_c_clear::<_, $ti>($ker)
-            }
+            $crate::mmm_test_case!($ker, "fuse", "return_c_clear", {
+                test::return_c_clear::<_, $ti>($ker);
+                Ok(())
+            });
         }
     };
 }
@@ -115,9 +113,6 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let v = vec![TC::max_value(); ker.mr() * ker.nr()];
     let c = mmm_stride_storage(&v, ker.nr());
     let non_linear = tvec![FusedKerSpec::Clear, FusedKerSpec::Store(c), FusedKerSpec::Done];
@@ -134,9 +129,6 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let v = vec![TC::max_value(); ker.mr() * 5 * ker.nr() * 3];
     let c = OutputStoreKer {
         ptr: v.as_ptr() as _,
@@ -166,9 +158,6 @@ where
     TI: LADatum + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     let item = std::mem::size_of::<TI>();
     let row_stride_items = 3 * ker.nr() * 5;
     let col_stride_items = 3;
@@ -213,9 +202,6 @@ where
     TI: LADatum,
     E: Fn(usize, usize, TI) -> TI,
 {
-    if !ker.is_supported_here() {
-        return;
-    }
     assert!(c.len() == ker.mr() * ker.nr());
     let v = c.to_vec();
     let c = mmm_stride_storage(&v, ker.nr());

@@ -9,58 +9,22 @@ use tract_data::internal::*;
 macro_rules! mmm_frame_tests {
     ($ker:expr, $ta:ty, $tb:ty, $tc:ty, $ti:ty) => {
         mod frame {
-            use tract_data::internal::*;
             #[allow(unused_imports)]
-            use $crate::frame::mmm::tests::frame::*;
-
-            #[test]
-            fn row_mul_2_1_3() -> TractResult<()> {
-                unsafe { row_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn row_add_2_1_3() -> TractResult<()> {
-                unsafe { row_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn col_mul_2_1_3() -> TractResult<()> {
-                unsafe { col_mul::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn col_add_2_1_3() -> TractResult<()> {
-                unsafe { col_add::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn max_2_1_3() -> TractResult<()> {
-                unsafe { max::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn min_2_1_3() -> TractResult<()> {
-                unsafe { min::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn add_d_2_1_3() -> TractResult<()> {
-                unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 2, 3)? }
-                Ok(())
-            }
-
-            #[test]
-            fn add_d_big() -> TractResult<()> {
-                unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 197, 1)? }
-                Ok(())
-            }
+            use tract_data::internal::*;
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, row_mul, row_mul_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, row_add, row_add_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, col_mul, col_mul_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, col_add, col_add_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, max, max_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, min, min_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, add_d, add_d_2_1_3, 2, 3);
+            mmm_frame_tests!(@ $ker, $ta, $tb, $tc, $ti, add_d, add_d_big, 197, 1);
         }
+    };
+    (@ $ker:expr, $ta:ty, $tb:ty, $tc:ty, $ti:ty, $body:ident, $case:ident, $m:expr, $n:expr) => {
+        $crate::mmm_test_case!($ker, "frame", stringify!($case), unsafe {
+            $crate::mmm::tests::frame::$body::<_, $ta, $tb, $tc, $ti>($ker, $m, $n)
+        });
     };
 }
 
@@ -86,9 +50,6 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    if !ker.is_supported_here() {
-        return Ok(());
-    };
     crate::setup_test_logger();
 
     let mut found = Tensor::zero::<TC>(&[m, n])?;

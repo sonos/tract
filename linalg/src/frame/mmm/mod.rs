@@ -12,7 +12,7 @@ mod scratch;
 mod select;
 mod storage;
 
-#[cfg(test)]
+#[cfg(feature = "test-kernels")]
 #[macro_use]
 pub mod tests;
 

@@ -24,99 +24,81 @@ macro_rules! mmm_packed_packed_tests {
             mod fuse {
                 use super::*;
 
-                proptest::proptest! {
-                    #[test]
-                    fn prop(pb in arbitrary_problem(false, $ker, $packing)) {
-                        pb.check().unwrap()
-                    }
-                }
+                const FAMILY: &str = concat!(stringify!($packing_id), "::fuse");
 
                 fn t(a: impl Into<Vec<f32>>, b: impl Into<Vec<f32>>) -> TractResult<()> {
                     PackedPackedProblem::kernel($ker, $packing, a, b).check()
                 }
 
-                #[test]
-                fn packed_packed_1() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "prop", {
+                    $crate::mmm::tests::run_proptest(
+                        file!(),
+                        arbitrary_problem(false, $ker, $packing),
+                        |pb| pb.check(),
+                    )
+                });
+
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_1", {
                     t(vec![1f32; $ker.mr()], vec![1f32; $ker.nr()])
-                }
+                });
 
-                #[test]
-                fn packed_packed_2() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_2", {
                     t(vec![1f32; $ker.mr() * 2], vec![1f32; $ker.nr() * 2])
-                }
+                });
 
-                #[test]
-                fn packed_packed_13() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_13", {
                     t(vec![1f32; $ker.mr() * 13], vec![1f32; $ker.nr() * 13])
-                }
+                });
 
-                #[test]
-                fn packed_packed_a_scale() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_a_scale", {
                     t((1..=$ker.mr() as i64).map(|x| x as f32).collect_vec(), vec![1f32; $ker.nr()])
-                }
+                });
 
-                #[test]
-                fn packed_packed_a_scale_times_2() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_a_scale_times_2", {
                     t(
                         (1..=2 * $ker.mr() as i64).map(|x| x as f32).collect_vec(),
                         vec![1f32; $ker.nr() * 2],
                     )
-                }
+                });
 
-                #[test]
-                fn packed_packed_empty() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_empty", {
                     t(vec![0f32; 0], vec![0f32; 0])
-                }
+                });
 
-                #[test]
-                fn packed_packed_bug_1() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_bug_1", {
                     t(vec![0f32; $ker.mr()], vec![0f32; $ker.nr()])
-                }
+                });
 
-                #[test]
-                fn packed_packed_bug_2() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_bug_2", {
                     let mut a = vec![0f32; $ker.mr()];
                     a[0] = 1.;
                     let mut b = vec![0f32; $ker.nr()];
                     b[0] = 1.;
                     t(a, b)
-                }
+                });
 
-                #[test]
-                fn packed_packed_bug_3() -> TractResult<()> {
-                    if $ker.mr() >= 4 {
-                        let mut a = vec![0f32; 2 * $ker.mr()];
-                        let mut b = vec![0f32; 2 * $ker.nr()];
-                        a[2] = -0.7548828f32;
-                        a[3] = 0.23547363f32;
-                        b[2 * $ker.nr() - 1] = 0.93603516;
-                        t(a, b)?;
-                    }
-                    Ok(())
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_bug_3", if($ker.mr() >= 4), {
+                    let mut a = vec![0f32; 2 * $ker.mr()];
+                    let mut b = vec![0f32; 2 * $ker.nr()];
+                    a[2] = -0.7548828f32;
+                    a[3] = 0.23547363f32;
+                    b[2 * $ker.nr() - 1] = 0.93603516;
+                    t(a, b)
+                });
 
-                #[test]
-                fn packed_packed_bug_4() -> TractResult<()> {
-                    if $ker.mr() > 16 {
-                        let mut a = vec![0f32; $ker.mr()];
-                        let mut b = vec![0f32; $ker.nr()];
-                        a[16] = 1.;
-                        b[0] = 1.;
-                        t(a, b)?;
-                    }
-                    Ok(())
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_bug_4", if($ker.mr() > 16), {
+                    let mut a = vec![0f32; $ker.mr()];
+                    let mut b = vec![0f32; $ker.nr()];
+                    a[16] = 1.;
+                    b[0] = 1.;
+                    t(a, b)
+                });
             }
 
             mod frame {
                 use super::*;
 
-                proptest::proptest! {
-                    #[test]
-                    fn prop(pb in arbitrary_problem(true, $ker, $packing)) {
-                        pb.check().unwrap()
-                    }
-                }
+                const FAMILY: &str = concat!(stringify!($packing_id), "::frame");
 
                 fn t(
                     m: usize,
@@ -138,30 +120,31 @@ macro_rules! mmm_packed_packed_tests {
                     t(m, n, a, b)
                 }
 
-                #[test]
-                fn trivial_1x2() -> TractResult<()> {
-                    ti(1, 2, [0], [0, 0])
-                }
+                $crate::mmm_test_case!($ker, FAMILY, "prop", {
+                    $crate::mmm::tests::run_proptest(
+                        file!(),
+                        arbitrary_problem(true, $ker, $packing),
+                        |pb| pb.check(),
+                    )
+                });
 
-                #[test]
-                fn packed_packed_empty() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "trivial_1x2", { ti(1, 2, [0], [0, 0]) });
+
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_empty", {
                     t($ker.mr(), $ker.nr(), [], [])
-                }
+                });
 
-                #[test]
-                fn packed_packed_empty_2() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "packed_packed_empty_2", {
                     t(2 * $ker.mr(), 2 * $ker.nr(), [], [])
-                }
+                });
 
-                #[test]
-                fn mat_mul_1() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "mat_mul_1", {
                     ti(3, 2, [-3, 3, 5, -5, 6, 0, -6, -5, 0, 0, 9, 7], [-8, 5, 5, -3, 5, 7, -8, -1])
-                }
+                });
 
-                #[test]
-                fn mat_mul_2() -> TractResult<()> {
+                $crate::mmm_test_case!($ker, FAMILY, "mat_mul_2", {
                     ti(1, 3, [122, 82], [0, 0, 37, 0, 0, 57])
-                }
+                });
             }
         }
     };
@@ -357,9 +340,6 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 
     pub fn check(&self) -> TractResult<()> {
-        if !self.ker.is_supported_here() {
-            return Ok(());
-        }
         let expected = self.reference()?;
         let found = self.run()?;
         let app = if K::Acc::datum_type() == f16::datum_type() {

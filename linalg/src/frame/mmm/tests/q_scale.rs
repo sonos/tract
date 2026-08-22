@@ -51,9 +51,6 @@ where
     K: MatMatMulKer<Acc = i32>,
 {
     pub fn run(&self) {
-        if !self.ker.is_supported_here() {
-            return;
-        }
         if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {
             fused_ops::<K, i32, _>(
                 &self.ker,
@@ -94,83 +91,63 @@ where
 #[macro_export]
 macro_rules! mmm_q_scale_tests {
     ($ker:expr) => {
-        use $crate::frame::mmm::fuse::RoundingPolicy;
-        use $crate::frame::mmm::tests::q_scale::arbitrary_qscale_problem;
-        use $crate::frame::mmm::tests::q_scale::QScaleProblem;
         use $crate::frame::mmm::MatMatMulKer;
+        use $crate::frame::mmm::fuse::RoundingPolicy;
+        use $crate::frame::mmm::tests::q_scale::QScaleProblem;
+        use $crate::frame::mmm::tests::q_scale::arbitrary_qscale_problem;
         use $crate::generic::Scaler;
+
         // FIXME: Scaler should be arbitrary
-        macro_rules! test_q_scale {
-            ($policy: ident) => {
-                paste! {
-                    #[test]
-                    fn [<return_q_scale_halfpos_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(0.5f32, RoundingPolicy::$policy)).run()
-                    }
+        $crate::mmm_q_scale_policy_tests!($ker, Zero, zero);
+        $crate::mmm_q_scale_policy_tests!($ker, Away, away);
+        $crate::mmm_q_scale_policy_tests!($ker, MinusInf, minusinf);
+        $crate::mmm_q_scale_policy_tests!($ker, PlusInf, plusinf);
+        $crate::mmm_q_scale_policy_tests!($ker, Even, even);
+        $crate::mmm_q_scale_policy_tests!($ker, Odd, odd);
 
-                    #[test]
-                    fn [<return_q_scale_halfneg_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(-0.5f32, RoundingPolicy::$policy)).run()
-                    }
+        $crate::mmm_test_case!($ker, "q_scale", "return_q_scale_prop", {
+            $crate::mmm::tests::run_proptest(file!(), arbitrary_qscale_problem($ker), |pb| {
+                pb.run();
+                Ok(())
+            })
+        });
 
-                    #[test]
-                    fn [<return_q_scale_pot_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(0.25f32, RoundingPolicy::$policy)).run()
-                    }
+        $crate::mmm_test_case!($ker, "q_scale", "return_c_scale_bigpot", {
+            $crate::frame::mmm::tests::q_scale::return_c_scale_bigpot::<_>($ker);
+            Ok(())
+        });
+    };
+}
 
-                    #[test]
-                    fn [<return_q_scale_nonpot_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(1f32 / 5., RoundingPolicy::$policy)).run()
-                    }
+/// The scale ladder every rounding policy is tested over. Kept out of
+/// [`mmm_q_scale_tests`] so neither macro nests inside the other.
+#[macro_export]
+macro_rules! mmm_q_scale_policy_tests {
+    ($ker:expr, $policy:ident, $lower:ident) => {
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "halfpos", 0.5f32);
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "halfneg", -0.5f32);
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "pot", 0.25f32);
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "nonpot", 1f32 / 5.);
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "bigpot", 4f32);
+        $crate::mmm_q_scale_case!($ker, $policy, $lower, "bignonpot", 14.);
+    };
+}
 
-                    #[test]
-                    fn [<return_q_scale_bigpot_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(4f32, RoundingPolicy::$policy)).run()
-                    }
-
-                    #[test]
-                    fn [<return_q_scale_bignonpot_ $policy:lower>]() {
-                        let ker = $ker;
-                        let len = (ker.mr() * ker.nr()) as i64;
-                        let v = (0..len).map(|i| (i - len / 2) as i32).collect();
-                        QScaleProblem::new(ker.clone(), v, Scaler::new(14., RoundingPolicy::$policy)).run()
-                    }
-                }
+#[macro_export]
+macro_rules! mmm_q_scale_case {
+    ($ker:expr, $policy:ident, $lower:ident, $kind:expr, $scale:expr) => {
+        $crate::mmm_test_case!(
+            $ker,
+            "q_scale",
+            concat!("return_q_scale_", $kind, "_", stringify!($lower)),
+            {
+                let ker = $ker;
+                let len = (ker.mr() * ker.nr()) as i64;
+                let v = (0..len).map(|i| (i - len / 2) as i32).collect();
+                let scaler = Scaler::new($scale, RoundingPolicy::$policy);
+                QScaleProblem::new(ker.clone(), v, scaler).run();
+                Ok(())
             }
-        }
-
-        test_q_scale!(Zero);
-        test_q_scale!(Away);
-        test_q_scale!(MinusInf);
-        test_q_scale!(PlusInf);
-        test_q_scale!(Even);
-        test_q_scale!(Odd);
-
-        proptest::proptest! {
-            #[test]
-            fn return_q_scale_prop(pb in arbitrary_qscale_problem($ker)) {
-                pb.run()
-            }
-        }
-
-        #[test]
-        fn return_c_scale_bigpot() {
-            $crate::frame::mmm::tests::q_scale::return_c_scale_bigpot::<_>($ker)
-        }
+        );
     };
 }
