@@ -10,10 +10,10 @@ use crate::Ops;
 /// A platform tract names, after its `target_arch`.
 ///
 /// Naming one is not having kernels for it: [`RiscV64`](Target::RiscV64) has no tree yet, so a
-/// riscv64 build is portable-only even though it knows what it is running on, and
-/// [`Target::native`] answers `None` on an architecture tract does not name at all. Only the
-/// wasm tree hinges on a build feature — hence the variant naming that feature; the others
-/// exist on their arch and gate individual kernels on runtime probes instead.
+/// riscv64 build is portable-only even though it knows what it is running on, and an
+/// architecture tract does not name at all has no variant here. Only the wasm tree hinges on a
+/// build feature — hence the variant naming that feature; the others exist on their arch and
+/// gate individual kernels on runtime probes instead.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
@@ -26,14 +26,6 @@ pub enum Target {
 }
 
 impl Target {
-    pub const ALL: [Target; 5] =
-        [Target::Arm, Target::Aarch64, Target::X86_64, Target::RiscV64, Target::Wasm32Simd128];
-
-    /// The platform this build runs on, when tract names it.
-    pub fn native() -> Option<Target> {
-        Self::ALL.into_iter().find(|t| t.is_native())
-    }
-
     pub fn is_native(&self) -> bool {
         match self {
             Target::Arm => cfg!(target_arch = "arm"),
