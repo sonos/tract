@@ -9,6 +9,7 @@ pub(crate) mod kernel;
 #[macro_use]
 pub(crate) mod panel_extract;
 mod scratch;
+mod select;
 mod storage;
 
 #[cfg(test)]
@@ -28,6 +29,7 @@ pub use input_store::*;
 pub use kernel::*;
 pub use panel_extract::*;
 pub use scratch::*;
+pub use select::*;
 pub use storage::*;
 
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}

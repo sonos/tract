@@ -4,14 +4,14 @@ use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
-use tract_linalg::mmm::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
+use tract_linalg::mmm::{Candidate, ImplementationQuality, MMMInputFormat, MatMatMul, Query};
 
 use crate::internal::*;
 use crate::ops::matmul::ModePicker;
 
 use super::einsum_matmul::EinSumMatMul;
 
-pub type Impl = (Box<dyn MatMatMul>, usize, Option<PanelExtractor>);
+pub type Impl = Candidate;
 pub type Strat = (ModePicker, Box<dyn MMMInputFormat>, Vec<Impl>);
 
 fn single_strat(it: Impl) -> Strat {
@@ -132,10 +132,13 @@ pub fn list_impls(
         a_dt.into()
     };
 
-    Ok(tract_linalg::ops().candidates(
-        &a_weight,
-        b_dt,
-        &op.acceptable_accumulators(),
-        Some(op.operating_dt.unquantized()),
-    ))
+    Ok(tract_linalg::ops().candidates(&Query {
+        weight: a_weight,
+        activation: b_dt,
+        accumulators: op.acceptable_accumulators(),
+        store: Some(op.operating_dt.unquantized()),
+        m: op.m.as_i64().map(|d| d as usize),
+        k: op.k.as_i64().map(|d| d as usize),
+        n: op.n.as_i64().map(|d| d as usize),
+    }))
 }

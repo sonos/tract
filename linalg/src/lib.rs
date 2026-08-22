@@ -57,7 +57,7 @@ pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
-use mmm::{MMMInputFormat, MatMatMul, PanelExtractor};
+use mmm::{Candidate, MMMInputFormat, Query};
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
@@ -183,38 +183,31 @@ impl Ops {
             .dedup()
     }
 
-    /// Every way this build can compute a matmul with `weight` on the left and `activation`
-    /// on the right: a kernel, which of its packings to use, and the panel extractor to
-    /// reach that packing when the weights are not already in it. `accumulators` are the
-    /// internal types the caller accepts; `store` the datum type the kernel must be able to
-    /// write, when the caller constrains it.
+    /// Every way this build can compute the queried matmul: a kernel, which of its packings
+    /// to use, and the panel extractor to reach that packing when the weights are not
+    /// already in it. The query's dims are not consulted — a candidate is legal or not
+    /// whatever the shape.
     ///
     /// The one enumeration behind both matmul lowerings — how a candidate is *chosen* from
     /// the list is the caller's business.
-    pub fn candidates(
-        &self,
-        weight: &WeightType,
-        activation: DatumType,
-        accumulators: &[DatumType],
-        store: Option<DatumType>,
-    ) -> Vec<(Box<dyn MatMatMul>, usize, Option<PanelExtractor>)> {
+    pub fn candidates(&self, query: &Query) -> Vec<Candidate> {
         self.mmm_impls
             .iter()
             .filter(|mmm| {
-                accumulators.contains(&mmm.internal_type())
-                    && store.is_none_or(|s| mmm.stores().contains(&s))
+                query.accumulators.contains(&mmm.internal_type())
+                    && query.store.is_none_or(|s| mmm.stores().contains(&s))
             })
             .flat_map(|mmm| mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, p)))
             .filter(|(_, _, (_, b))| {
-                b.precursor().as_dt().is_some_and(|dt| dt == activation.unquantized())
+                b.precursor().as_dt().is_some_and(|dt| dt == query.activation.unquantized())
             })
             .filter_map(|(mmm, ix, (a, _))| {
-                if a.precursor() == *weight {
+                if a.precursor() == query.weight {
                     Some((mmm.clone(), ix, None))
                 } else {
                     self.panel_extractors
                         .iter()
-                        .find(|pe| pe.from.precursor() == *weight && pe.to.dyn_eq(&**a))
+                        .find(|pe| pe.from.precursor() == query.weight && pe.to.dyn_eq(&**a))
                         .map(|pe| (mmm.clone(), ix, Some(pe.clone())))
                 }
             })
