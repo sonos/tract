@@ -211,13 +211,13 @@ pub fn has_fp16() -> bool {
 
 // FEAT_DotProd (SDOT/UDOT), ARMv8.2. TRACT_DOTPROD_DISABLE=1 forces it off so
 // callers can A/B the SDOT kernel against the SMLAL 8x8 fallback on one binary.
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 pub fn has_dotprod() -> bool {
     // Every Apple arm64 CPU (M1+/A11+) implements FEAT_DotProd.
     !crate::knobs::TRACT_DOTPROD_DISABLE.get()
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 pub fn has_dotprod() -> bool {
     if crate::knobs::TRACT_DOTPROD_DISABLE.get() {
         return false;
@@ -231,12 +231,15 @@ pub fn has_dotprod() -> bool {
     unsafe { (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0 }
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "ios")))]
+#[cfg(not(all(
+    any(target_os = "macos", target_os = "linux", target_os = "ios"),
+    target_arch = "aarch64"
+)))]
 pub fn has_dotprod() -> bool {
     false
 }
 
-#[cfg(target_os = "ios")]
+#[cfg(all(target_os = "ios", target_arch = "aarch64"))]
 pub fn has_dotprod() -> bool {
     // A11+ (iPhone10,1+) implement FEAT_DotProd.
     !crate::knobs::TRACT_DOTPROD_DISABLE.get()

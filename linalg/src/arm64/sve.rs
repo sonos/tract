@@ -155,7 +155,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16
 // optional VL-matched dispatch (selecting a wider-tiled variant when the
 // hardware VL is large), not for correctness.
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 pub fn has_sve() -> bool {
     if crate::knobs::TRACT_SVE_DISABLE.get() {
         return false;
@@ -169,13 +169,13 @@ pub fn has_sve() -> bool {
     unsafe { (getauxval(AT_HWCAP) & HWCAP_SVE) != 0 }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 pub fn has_sve() -> bool {
     // No Apple silicon implements SVE; no SVE on non-Linux targets we support.
     false
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(all(target_os = "linux", target_arch = "aarch64"))]
 pub fn has_sve2() -> bool {
     if crate::knobs::TRACT_SVE_DISABLE.get() {
         return false;
@@ -189,7 +189,7 @@ pub fn has_sve2() -> bool {
     unsafe { (getauxval(AT_HWCAP2) & HWCAP2_SVE2) != 0 }
 }
 
-#[cfg(not(target_os = "linux"))]
+#[cfg(not(all(target_os = "linux", target_arch = "aarch64")))]
 pub fn has_sve2() -> bool {
     false
 }

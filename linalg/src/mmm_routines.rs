@@ -10,6 +10,11 @@
 //!
 //! A foreign tree's kernels are bail stubs; such routines have `bound == false`, and their
 //! `make()` object is metadata-only and must never be executed.
+//!
+//! Enumeration is complete across *architectures* but conditional on the *toolchain*: a kernel
+//! whose asm this build could not assemble at all — SVE and SME behind their build.rs assembler
+//! probes, the fp16 tree under `no_fp16` — is not declared here, so its absence means "this
+//! toolchain cannot build it", not "no such kernel exists".
 use crate::mmm::MatMatMul;
 
 /// One mmm kernel, enumerable uniformly on every host.
