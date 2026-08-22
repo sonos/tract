@@ -34,6 +34,50 @@ pub fn mat_mul_nbits(
     Ok((expand(MatMulNBits { k, n, block_size, zp_input, bias_input }), vec![]))
 }
 
+/// Evaluates the constant cone feeding `outlet`, so a weight reachable only through constant
+/// ops reads back as a constant. `None` when the cone is not entirely constant: a node that is
+/// not stateless, or one whose inputs are not themselves constant, stops the walk.
+///
+/// This reads the graph and never edits it. A `ModelPatch` would be the idiomatic edit, but it
+/// cannot be applied from here: `wire` runs mid-translation, and `ModelPatch::apply` finishes
+/// by collecting every node the shunt left without a successor. Against a model that has no
+/// outputs yet, nothing anchors a constant whose remaining consumers are still to be
+/// translated -- the shared lookup table of a sub-4-bit export is collected while folding the
+/// first layer's weight, and the next layer then wires from a retired outlet. Leaving the cone
+/// in place costs nothing: it is dead once the weight is read, and the compaction after
+/// translation drops it.
+fn fold_const_cone(model: &TypedModel, outlet: OutletId) -> TractResult<Option<Arc<Tensor>>> {
+    let order =
+        tract_core::model::order::eval_order_for_nodes(&model.nodes, &[], &[outlet.node], &[])?;
+    let mut values: HashMap<OutletId, Arc<Tensor>> = HashMap::default();
+    for n in order {
+        let node = model.node(n);
+        for (slot, o) in node.outputs.iter().enumerate() {
+            if let Some(k) = o.fact.konst.as_ref().filter(|k| k.is_plain()) {
+                values.insert(OutletId::new(n, slot), k.clone());
+            }
+        }
+        if !node.op.is_stateless() || node.inputs.is_empty() {
+            continue;
+        }
+        let Some(inputs) = node
+            .inputs
+            .iter()
+            .map(|i| values.get(i).cloned().map(|t| t.into_tvalue()))
+            .collect::<Option<TVec<_>>>()
+        else {
+            continue;
+        };
+        let Ok(res) = node.op.eval_with_session(n, &TurnState::default(), inputs) else {
+            continue;
+        };
+        for (slot, output) in res.into_iter().enumerate() {
+            values.insert(OutletId::new(n, slot), output.into_arc_tensor());
+        }
+    }
+    Ok(values.remove(&outlet))
+}
+
 #[derive(Debug, Clone)]
 struct MatMulNBits {
     k: usize,
@@ -79,12 +123,16 @@ impl Expansion for MatMulNBits {
         let blob = block_size.div_ceil(2);
         let zp_blob = n_blocks.div_ceil(2);
 
-        // Read the constant quantized weight, scales and (optional) zero points.
-        let b_k = model
-            .outlet_fact(inputs[1])?
-            .konst
-            .clone()
-            .context("MatMulNBits: quantized weight B must be a constant")?;
+        // Read the constant quantized weight, scales and (optional) zero points. The weight
+        // need not be an initializer: tied-embedding exports reach it through a reshape, and
+        // 2-bit ones through a lookup table, both constant. The model is still being
+        // translated, so it has no outputs to drive a whole-graph fold; patch this input's
+        // own cone instead.
+        let b_k = match model.outlet_fact(inputs[1])?.konst.clone() {
+            Some(k) => k,
+            None => fold_const_cone(model, inputs[1])?
+                .context("MatMulNBits: quantized weight B must be a constant")?,
+        };
         let b_plain = b_k.try_as_plain()?;
         let b: &[u8] = b_plain.as_slice()?;
         let scales_k = model
@@ -194,5 +242,112 @@ impl Expansion for MatMulNBits {
                 [0];
         }
         Ok(tvec!(y))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn packed_weight(n: usize, n_blocks: usize, blob: usize) -> TractResult<Tensor> {
+        let mut t = Tensor::zero::<u8>(&[n, n_blocks, blob])?;
+        for (ix, b) in t.try_as_plain_mut()?.as_slice_mut::<u8>()?.iter_mut().enumerate() {
+            *b = (ix % 251) as u8;
+        }
+        Ok(t)
+    }
+
+    /// The weight reaches `wire` through a constant expression instead of an initializer, as
+    /// it does in a tied-embedding or sub-4-bit export. On a real model the analyser gives up
+    /// on a cone over `CONST_FOLD_MEM_BUDGET`, which would mean shipping megabytes of weights
+    /// to reproduce; a hand-built typed model arrives with the same unresolved fact for any
+    /// cone over sixteen elements, and — as during translation — has no outputs yet.
+    #[test]
+    fn weight_behind_a_constant_expression() -> TractResult<()> {
+        let (k, n, block_size) = (32usize, 8usize, 32usize);
+        let (n_blocks, blob) = (k.div_ceil(block_size), block_size.div_ceil(2));
+        let op = MatMulNBits { k, n, block_size, zp_input: None, bias_input: None };
+        let weight = packed_weight(n, n_blocks, blob)?;
+        let scales = Tensor::from_shape(
+            &[n * n_blocks],
+            &(0..n * n_blocks).map(|i| 0.1 + i as f32 / 32.).collect::<Vec<f32>>(),
+        )?;
+
+        let run = |through_a_cone: bool| -> TractResult<Tensor> {
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", f32::fact([2, k]))?;
+            let b = if through_a_cone {
+                let flat = model
+                    .add_const("b.flat", weight.clone().into_shape(&[n * n_blocks * blob])?)?;
+                let wire = model.wire_node(
+                    "b",
+                    AxisOp::Reshape(
+                        0,
+                        tvec![(n * n_blocks * blob).to_dim()],
+                        tvec![n.to_dim(), n_blocks.to_dim(), blob.to_dim()],
+                    ),
+                    &[flat],
+                )?[0];
+                assert!(model.outlet_fact(wire)?.konst.is_none(), "cone folded too early");
+                wire
+            } else {
+                model.add_const("b", weight.clone())?
+            };
+            let s = model.add_const("scales", scales.clone())?;
+            let y = op.wire("mmnb", &mut model, &[a, b, s])?;
+            model.select_output_outlets(&y)?;
+            let input = Tensor::from_shape(
+                &[2, k],
+                &(0..2 * k).map(|i| (i as f32 / 7.).sin()).collect::<Vec<f32>>(),
+            )?;
+            let mut out = model.into_optimized()?.into_runnable()?.run(tvec!(input.into()))?;
+            Ok(out.remove(0).into_tensor())
+        };
+
+        let expected = run(false)?;
+        let folded = run(true)?;
+        expected.close_enough(&folded, false)?;
+        Ok(())
+    }
+
+    /// Two weights folded off one shared constant, the second wired only after the first has
+    /// been folded -- the topology of a sub-4-bit export, where every layer unpacks through the
+    /// same lookup table and the later layers are still untranslated when the first one folds.
+    ///
+    /// This is why the fold reads the graph instead of patching it. `ModelPatch::apply` ends by
+    /// collecting every node its shunt left without a successor, and mid-translation the model
+    /// has no outputs to anchor anything, so folding the first weight retires the shared table
+    /// and the next layer wires from a dead outlet.
+    #[test]
+    fn shared_cone_source_survives_the_fold() -> TractResult<()> {
+        let (k, n, block_size) = (32usize, 8usize, 32usize);
+        let (n_blocks, blob) = (k.div_ceil(block_size), block_size.div_ceil(2));
+        let op = MatMulNBits { k, n, block_size, zp_input: None, bias_input: None };
+        let weight = packed_weight(n, n_blocks, blob)?;
+        let flat_shape = n * n_blocks * blob;
+
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([2, k]))?;
+        let flat = model.add_const("b.flat", weight.clone().into_shape(&[flat_shape])?)?;
+        let scales = model.add_const(
+            "scales",
+            Tensor::from_shape(&[n * n_blocks], &vec![0.25f32; n * n_blocks])?,
+        )?;
+        let reshape = || {
+            AxisOp::Reshape(
+                0,
+                tvec![flat_shape.to_dim()],
+                tvec![n.to_dim(), n_blocks.to_dim(), blob.to_dim()],
+            )
+        };
+
+        // first consumer: folds, and its patch retires the cone
+        let b0 = model.wire_node("b0", reshape(), &[flat])?[0];
+        op.wire("mmnb0", &mut model, &[a, b0, scales])?;
+
+        // second consumer, translated only now, still needs the shared constant
+        let b1 = model.wire_node("b1", reshape(), &[flat])?[0];
+        op.wire("mmnb1", &mut model, &[a, b1, scales])?;
+        Ok(())
     }
 }
