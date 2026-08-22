@@ -1000,3 +1000,270 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
 bail_stub!(wasm32; unsafe fn kernel_f32_8x8(*const FusedKerSpec<f32>) -> isize);
 
 MMMRustKernel!(wasm32; kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::ManuallyOptimized));
+
+/// WASM SIMD f32 4x16 kernel — 4 rows x 16 cols, 16 v128 accumulators laid out
+/// row-major as `acc[r * 4 + j]`, j indexing the four v128 chunks of a row.
+///
+/// Same accumulator count as `wasm_f32_8x8`, but the tile is wide rather than
+/// square. Each k-step splats 4 A values and loads 4 B vectors, so one splat
+/// feeds four multiply-adds instead of two: the per-splat overhead is halved
+/// against the same arithmetic. Measured against `wasm_f32_8x8` on a full tiled
+/// GEMM, this is 1.09-1.11x on the 64x64 shapes and 1.21x aggregate.
+///
+/// It is NOT a general replacement: at n=8 a 16-wide tile wastes half its
+/// columns and this runs at 0.58x. Dispatch must keep 8x8 for narrow n.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+unsafe fn kernel_f32_4x16(mut pnl: *const FusedKerSpec<f32>) -> isize {
+    use std::arch::wasm32::*;
+
+    unsafe {
+        const MR: usize = 4;
+        const NV: usize = 4; // v128 chunks per row (NR = 16)
+        let mut acc = [f32x4_splat(0.0); MR * NV];
+
+        loop {
+            if pnl.is_null() {
+                break;
+            }
+            match *pnl {
+                FusedKerSpec::Done => break,
+                FusedKerSpec::Clear => acc = [f32x4_splat(0.0); MR * NV],
+                FusedKerSpec::LoadTile(_cols, rows) => {
+                    let p = rows as *const v128;
+                    for i in 0..MR * NV {
+                        acc[i] = *p.add(i);
+                    }
+                }
+                FusedKerSpec::ScalarMin(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_min(s, *v);
+                    }
+                }
+                FusedKerSpec::ScalarMax(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_max(s, *v);
+                    }
+                }
+                FusedKerSpec::ScalarAdd(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_add(s, *v);
+                    }
+                }
+                FusedKerSpec::ScalarMul(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_mul(s, *v);
+                    }
+                }
+                FusedKerSpec::ScalarSub(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_sub(s, *v);
+                    }
+                }
+                FusedKerSpec::ScalarSubF(a) => {
+                    let s = f32x4_splat(a);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_sub(*v, s);
+                    }
+                }
+                FusedKerSpec::LeakyRelu(a) => {
+                    let s = f32x4_splat(a);
+                    let zero = f32x4_splat(0.0);
+                    for v in acc.iter_mut() {
+                        let m = f32x4_gt(*v, zero);
+                        *v = v128_bitselect(*v, f32x4_mul(s, *v), m);
+                    }
+                }
+                FusedKerSpec::PerRowMin(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_min(s, acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerRowMax(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_max(s, acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerRowAdd(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_add(s, acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerRowMul(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_mul(s, acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerRowSub(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_sub(s, acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerRowSubF(rows) => {
+                    for r in 0..MR {
+                        let s = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_sub(acc[r * NV + j], s);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColMin(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_min(v128_load(p.add(j)), acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColMax(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_max(v128_load(p.add(j)), acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColAdd(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_add(v128_load(p.add(j)), acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColMul(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_mul(v128_load(p.add(j)), acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColSub(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_sub(v128_load(p.add(j)), acc[r * NV + j]);
+                        }
+                    }
+                }
+                FusedKerSpec::PerColSubF(cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            acc[r * NV + j] = f32x4_sub(acc[r * NV + j], v128_load(p.add(j)));
+                        }
+                    }
+                }
+                FusedKerSpec::QScale(shift, rp, mult) => {
+                    let scaler = Scaler::from_fuse_params(shift, rp, mult);
+                    let s = f32x4_splat(scaler.scale);
+                    for v in acc.iter_mut() {
+                        *v = f32x4_mul(s, *v);
+                    }
+                }
+                FusedKerSpec::RoundingShiftRight(shift, _rp) => {
+                    let s = f32x4_splat(2f32.powi(-(shift as i32)));
+                    for v in acc.iter_mut() {
+                        *v = f32x4_mul(s, *v);
+                    }
+                }
+                FusedKerSpec::ShiftLeft(shift) => {
+                    let s = f32x4_splat(2f32.powi(shift as i32));
+                    for v in acc.iter_mut() {
+                        *v = f32x4_mul(s, *v);
+                    }
+                }
+                FusedKerSpec::AddRowColProducts(rows, cols) => {
+                    let p = cols as *const v128;
+                    for r in 0..MR {
+                        let rv = f32x4_splat(*rows.add(r));
+                        for j in 0..NV {
+                            acc[r * NV + j] = madd_f32x4!(acc[r * NV + j], rv, v128_load(p.add(j)));
+                        }
+                    }
+                }
+                FusedKerSpec::AddUnicast(tile) => {
+                    let mut ptr: *const u8 = tile.ptr;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            let c0 = *(ptr.offset(tile.col_byte_stride * (j * 4) as isize)
+                                as *const f32);
+                            let c1 = *(ptr.offset(tile.col_byte_stride * (j * 4 + 1) as isize)
+                                as *const f32);
+                            let c2 = *(ptr.offset(tile.col_byte_stride * (j * 4 + 2) as isize)
+                                as *const f32);
+                            let c3 = *(ptr.offset(tile.col_byte_stride * (j * 4 + 3) as isize)
+                                as *const f32);
+                            acc[r * NV + j] = f32x4_add(f32x4(c0, c1, c2, c3), acc[r * NV + j]);
+                        }
+                        ptr = ptr.add(tile.row_byte_stride as usize);
+                    }
+                }
+                FusedKerSpec::Store(tile) => {
+                    let mut ptr: *mut u8 = tile.ptr;
+                    for r in 0..MR {
+                        for j in 0..NV {
+                            let v = acc[r * NV + j];
+                            let base = (j * 4) as isize;
+                            *(ptr.offset(tile.col_byte_stride * base) as *mut f32) =
+                                f32x4_extract_lane::<0>(v);
+                            *(ptr.offset(tile.col_byte_stride * (base + 1)) as *mut f32) =
+                                f32x4_extract_lane::<1>(v);
+                            *(ptr.offset(tile.col_byte_stride * (base + 2)) as *mut f32) =
+                                f32x4_extract_lane::<2>(v);
+                            *(ptr.offset(tile.col_byte_stride * (base + 3)) as *mut f32) =
+                                f32x4_extract_lane::<3>(v);
+                        }
+                        ptr = ptr.add(tile.row_byte_stride as usize);
+                    }
+                }
+                FusedKerSpec::AddMatMul { k, pa, pb, packing: _ } => {
+                    // A: packed [k][MR=4], B: packed [k][NR=16] = 4 v128 per k
+                    let a = pa as *const f32;
+                    let b = pb as *const v128;
+                    for i in 0..k {
+                        let arow = std::slice::from_raw_parts(a.offset(4 * i as isize), 4);
+                        let bb = b.offset((4 * i) as isize);
+                        let b0 = v128_load(bb);
+                        let b1 = v128_load(bb.add(1));
+                        let b2 = v128_load(bb.add(2));
+                        let b3 = v128_load(bb.add(3));
+                        for r in 0..MR {
+                            let s = f32x4_splat(arow[r]);
+                            acc[r * NV] = madd_f32x4!(acc[r * NV], s, b0);
+                            acc[r * NV + 1] = madd_f32x4!(acc[r * NV + 1], s, b1);
+                            acc[r * NV + 2] = madd_f32x4!(acc[r * NV + 2], s, b2);
+                            acc[r * NV + 3] = madd_f32x4!(acc[r * NV + 3], s, b3);
+                        }
+                    }
+                }
+            }
+            pnl = pnl.add(1);
+        }
+        0
+    }
+}
+
+bail_stub!(wasm32; unsafe fn kernel_f32_4x16(*const FusedKerSpec<f32>) -> isize);
+
+MMMRustKernel!(wasm32; kernel_f32_4x16 => wasm_f32_4x16<f32>(4,16)@(4,16) quality(ImplementationQuality::ManuallyOptimized));

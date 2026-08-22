@@ -38,6 +38,7 @@ pub fn plug(ops: &mut Ops) {
     ops.mmm_impls.push(wasm_f32_16x1.mmm());
     ops.mmm_impls.push(wasm_f32_32x1.mmm());
     ops.mmm_impls.push(wasm_f32_8x8.mmm());
+    ops.mmm_impls.push(wasm_f32_4x16.mmm());
     // int8 -> i32 matmul: SIMD kernel (was generic scalar). ManuallyOptimized so
     // strategize's retain() keeps it over generic_i32_4x4 for i8 packing.
     ops.mmm_impls.push(wasm_i32_4x4.mmm());
@@ -57,7 +58,20 @@ pub fn plug(ops: &mut Ops) {
     //     without the tag strategize discards the callback and picks
     //     max(mr)=32x1 for every M, leaving up to ~37% on the table for
     //     small-M GEMV.
-    ops.mmm_f32 = Box::new(|_m, _k, _n| wasm_f32_8x8.mmm());
+    // GEMM kernel by N. 4x16 splats one A value into four multiply-adds where
+    // 8x8 gets two, so it is 1.09-1.11x on the 64-wide shapes and 1.21x
+    // aggregate over a realistic shape mix. It only pays when N fills the tile:
+    // it only pays when N is a MULTIPLE of 16: at N=8 a 16-wide tile wastes half
+    // its columns (0.58x), and an N of 24 pays that on its second tile -- gating on
+    // N>=16 rather than N%16==0 cost fe-tiny and fe-base 4% each. Measured on a full tiled GEMM -- a single-tile
+    // benchmark ranks these wrong, because halving MR doubles B-panel re-reads.
+    ops.mmm_f32 = Box::new(|_m, _k, n| {
+        if n.map(|n| n % 16 == 0).unwrap_or(false) {
+            wasm_f32_4x16.mmm()
+        } else {
+            wasm_f32_8x8.mmm()
+        }
+    });
     // Bands derived from benches/wasm.rs. At each band edge, using
     // the next-larger kernel beats halving outer iterations of the smaller
     // one (1 outer with ILP-absorbed padding > 2 outer with kernel preamble

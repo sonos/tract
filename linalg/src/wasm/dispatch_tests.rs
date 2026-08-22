@@ -309,3 +309,25 @@ fn dispatch_never_returns_wasm_f32_4x4() {
         }
     }
 }
+
+#[cfg(test)]
+mod fastenhancer_gate {
+    // The n % 16 == 0 gate: which GEMM kernel do the speech-enhancement shapes
+    // actually land on? n is the conv's output-column count.
+    fn pick(m: usize, k: usize, n: usize) -> String {
+        let mut ops = crate::generic();
+        crate::wasm::plug(&mut ops);
+        let mmm = ops.mmm(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+        format!("{} (mr={} nr={})", mmm.name(), mmm.mr(), mmm.nr())
+    }
+
+    #[test]
+    fn gate_picks_4x16_only_on_multiples_of_16() {
+        for (m, k, n) in [(64, 192, 64), (64, 128, 64), (64, 64, 32), (64, 64, 48)] {
+            eprintln!("m={m} k={k} n={n} -> {}", pick(m, k, n));
+        }
+        for (m, k, n) in [(64, 64, 8), (64, 64, 12), (64, 64, 24), (36, 36, 36)] {
+            eprintln!("m={m} k={k} n={n} -> {}", pick(m, k, n));
+        }
+    }
+}
