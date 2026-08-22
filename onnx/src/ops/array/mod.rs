@@ -32,7 +32,11 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("OneHot", one_hot::one_hot);
     reg.insert("Range", |_, _| Ok((expand(array::Range), vec![])));
     reg.insert("Pad", pad::pad);
-    reg.insert("Reshape", |_, _| Ok((expand(array::Reshape::default()), vec![])));
+    reg.insert("Reshape", |_, node| {
+        // allowzero was added in opset 14; absent, it defaults to 0.
+        let allowzero = node.get_attr_opt::<i64>("allowzero")?.unwrap_or(0) != 0;
+        Ok((expand(array::Reshape::new(allowzero)), vec![]))
+    });
     reg.insert("Scatter", scatter_elements);
     reg.insert("ScatterElements", scatter_elements);
     reg.insert("ScatterND", |_, node| {

@@ -24,7 +24,7 @@ pub fn register_all_ops(reg: &mut TfOpRegister) {
     reg.insert("Pack", pack::pack);
     reg.insert("Pad", pad::pad);
     reg.insert("Range", |_, _| Ok(expand(tract_hir::ops::array::Range)));
-    reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new())));
+    reg.insert("Reshape", |_, _| Ok(expand(tract_hir::ops::array::Reshape::new(false))));
     reg.insert("Shape", |_, _| Ok(expand(tract_hir::ops::array::Shape::new(DatumType::TDim))));
     reg.insert("Slice", slice);
     reg.insert("Squeeze", squeeze::squeeze);

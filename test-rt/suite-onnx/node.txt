@@ -478,6 +478,7 @@ test_reduce_sum_square_negative_axes_keepdims_random input:data
 test_reflect_pad input:x
 test_relu
 test_relu_expanded_ver18
+test_reshape_allowzero_reordered input:data
 test_reshape_extended_dims input:data
 test_reshape_negative_dim input:data
 test_reshape_negative_extended_dims input:data
