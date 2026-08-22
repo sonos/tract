@@ -52,8 +52,9 @@ mod dispatch_trace {
     ///
     /// `kernel_selection::strategize` honours the `mmm_f32` / `mmv_f32`
     /// callback only when the returned kernel is `ManuallyOptimized`;
-    /// otherwise it falls through to `list_impls`, whose `retain()` drops
-    /// every `TargetOptimized` kernel, and for N>1 then picks `max(nr*mr)`
+    /// otherwise it falls through to the candidate list, where
+    /// `retain_best_quality` drops every `TargetOptimized` kernel, and for
+    /// N>1 then picks `max(nr*mr)`
     /// over the surviving `ManuallyOptimized` GEMV kernels — i.e.
     /// `wasm_f32_32x1`, a matrix×vector kernel, for every GEMM. So every
     /// kernel reachable through the dispatch callbacks must be
