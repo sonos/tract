@@ -131,3 +131,10 @@ inventory::submit! {
         plug,
     }
 }
+
+/// What this core has, in the shared vocabulary.
+pub fn isa_set() -> crate::isa::IsaSet {
+    use crate::isa::{Isa, IsaSet};
+    let set = IsaSet::empty();
+    if has_neon() { set.with(Isa::Neon) } else { set }
+}

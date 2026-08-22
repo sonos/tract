@@ -14,7 +14,16 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn nr(&self) -> usize;
 
     fn quality(&self) -> ImplementationQuality;
-    fn dynamic_boost(&self) -> isize;
+
+    /// The preference its author spelled out for this kernel, before the instruction-set
+    /// default is added in. Zero for a kernel that claims nothing.
+    fn declared_boost(&self) -> isize;
+
+    /// [`Self::declared_boost`] plus the default owed to the instruction set the kernel was
+    /// written for, [`crate::isa::TIER_BOOST`] per tier. Ranking reads this one.
+    fn dynamic_boost(&self) -> isize {
+        self.declared_boost() + self.isa().tier() as isize * crate::isa::TIER_BOOST
+    }
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -28,6 +37,11 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     #[allow(unused_variables)]
     fn is_supported_here(&self) -> bool {
         true
+    }
+
+    /// What the instruction set must offer for this kernel to run here.
+    fn isa(&self) -> crate::isa::IsaReq {
+        crate::isa::IsaReq::ANY
     }
 
     /// Whether the border-tile store scratch should be laid out row-major
@@ -51,7 +65,8 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     /// kernel was written for. The kernel struct still exists, so it stays introspectable, but
     /// it is never supported here and calling it bails.
     pub bound: bool,
-    pub supported_predicate: fn() -> bool,
+    /// What the instruction set must offer for this kernel to run here at all.
+    pub isa: crate::isa::IsaReq,
     pub boost: fn() -> isize,
     pub can_fuse: fn(&FusedSpec) -> bool,
     pub row_major_store: bool,
@@ -72,7 +87,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             packings: vec![],
             stores: vec![Acc::datum_type()],
             bound: true,
-            supported_predicate: || true,
+            isa: crate::isa::IsaReq::ANY,
             boost: || 0,
             can_fuse: |_| true,
             row_major_store: false,
@@ -80,11 +95,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         kernel.with_packing(packing_a, packing_b)
     }
 
-    /// Sets the runnability probe behind [`MatMatMulKer::is_supported_here`] — the `where(..)`
-    /// of the kernel macros. A hardware feature the asm needs, and nothing else: a preference
-    /// spelled here also skips the kernel's tests. Use [`Self::with_boost`] for that.
-    pub fn with_platform_condition(mut self, f: fn() -> bool) -> Self {
-        self.supported_predicate = f;
+    /// Sets what the instruction set must offer for this kernel to run here — the `isa(..)` and
+    /// `where(..)` of the kernel macros. Runnability only: a preference spelled here also skips
+    /// the kernel's tests. Use [`Self::with_boost`] for that.
+    pub fn with_isa(mut self, isa: crate::isa::IsaReq) -> Self {
+        self.isa = isa;
         self
     }
 
@@ -152,7 +167,11 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
     }
 
     fn is_supported_here(&self) -> bool {
-        self.bound && (self.supported_predicate)()
+        self.bound && self.isa.satisfied_by(crate::isa::native())
+    }
+
+    fn isa(&self) -> crate::isa::IsaReq {
+        self.isa
     }
 
     fn can_fuse(&self, spec: &FusedSpec) -> bool {
@@ -172,7 +191,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         Cow::Borrowed(&self.stores)
     }
 
-    fn dynamic_boost(&self) -> isize {
+    fn declared_boost(&self) -> isize {
         (self.boost)()
     }
 

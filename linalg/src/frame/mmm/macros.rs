@@ -77,6 +77,7 @@ macro_rules! MMMRustKernel {
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
             $(bound($bound:expr))?
             $(@($align_a:expr, $align_b:expr))?
+            $(isa($($isa:ident),+))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
@@ -98,6 +99,7 @@ macro_rules! MMMRustKernel {
                 $(bound($bound))?
                 $(@($align_a, $align_b))?
                 generic(true)
+                $(isa($($isa),+))?
                 $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
@@ -116,6 +118,7 @@ macro_rules! MMMKernel {
             $(bound($bound:expr))?
             $(@($align_a:expr, $align_b:expr))?
             $(generic($generic:expr))?
+            $(isa($($isa:ident),+))?
             $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
@@ -140,7 +143,11 @@ macro_rules! MMMKernel {
                     #[allow(unused_mut)]
                     let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b, $crate::frame::mmm::ImplementationQuality::Dreadful);
                     $(k.bound = $bound;)?
-                    $(k = k.with_platform_condition($where);)?
+                    k = k.with_isa(
+                        $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            $(.probe($where))?,
+                    );
                     $(
                         assert!(k.packings.len() == $pnum);
                         let f: fn(DynKernel<$mr, $nr, $ti>) -> DynKernel<$mr, $nr, $ti> = $packing;

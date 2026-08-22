@@ -78,11 +78,15 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
 
     fn quality(&self) -> ImplementationQuality;
 
+    /// The preference this kernel's author spelled out, before the instruction-set default.
+    fn declared_boost(&self) -> isize;
+
     /// Where this kernel ranks against its equally-qualified siblings, breaking ties inside a
-    /// quality tier ([`retain_best_quality`]). This is the *only* place a runtime preference
-    /// belongs: positive to prefer a kernel where a probe says it pays off, negative to stand
-    /// down in favour of a better sibling. Never encode a preference in
-    /// [`Self::is_supported_here`] — that silently skips the kernel's tests as well.
+    /// quality tier ([`retain_best_quality`]). A kernel written for a more capable instruction
+    /// set outranks one written for a less capable one by default; a declared boost is how an
+    /// exception to that is spelled, and must be big enough to cross the tiers it disagrees
+    /// with. Never encode a preference in [`Self::is_supported_here`] — that silently skips the
+    /// kernel's tests as well.
     fn dynamic_boost(&self) -> isize;
 
     /// Whether this kernel is runnable on the current CPU (platform feature
@@ -93,6 +97,9 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// all on the hosts it lies on. Say a kernel is worse than its sibling with
     /// [`Self::dynamic_boost`] instead.
     fn is_supported_here(&self) -> bool;
+
+    /// What the instruction set must offer for this kernel to run here.
+    fn isa(&self) -> crate::isa::IsaReq;
 
     #[allow(clippy::type_complexity)]
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)];
@@ -159,12 +166,20 @@ impl<K: MatMatMulKer> MatMatMul for K {
         MatMatMulKer::quality(self)
     }
 
+    fn declared_boost(&self) -> isize {
+        MatMatMulKer::declared_boost(self)
+    }
+
     fn dynamic_boost(&self) -> isize {
         MatMatMulKer::dynamic_boost(self)
     }
 
     fn is_supported_here(&self) -> bool {
         MatMatMulKer::is_supported_here(self)
+    }
+
+    fn isa(&self) -> crate::isa::IsaReq {
+        MatMatMulKer::isa(self)
     }
 
     fn packings(&self) -> &[(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)] {

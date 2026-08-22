@@ -89,6 +89,7 @@ pub mod arm32;
 #[cfg(any(all(target_arch = "wasm32", target_feature = "simd128"), feature = "foreign-inventory"))]
 pub mod wasm;
 
+pub mod isa;
 pub mod mmm_routines;
 pub mod platform;
 

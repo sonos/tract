@@ -835,7 +835,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 format!(
                     "{} {}",
                     QUALITY_COLORS[m.quality().cost()].paint(m.name()),
-                    match m.dynamic_boost().signum() {
+                    match m.declared_boost().signum() {
                         1 => Green.paint("●"),
                         -1 => Red.paint("●"),
                         _ => "-".to_string().into(),
@@ -845,7 +845,14 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             println!("{}", White.bold().paint("# By implementation"));
             println!();
             for m in tract_linalg::ops().mmm_impls() {
-                println!("{} -> {:?}", colored_name(&**m), m.stores());
+                println!(
+                    "{} · {:?} tier {} boost {} -> {:?}",
+                    colored_name(&**m),
+                    m.isa(),
+                    m.isa().tier(),
+                    m.declared_boost(),
+                    m.stores()
+                );
                 for packings in m.packings() {
                     println!("   - {:?} • {:?}", packings.0, packings.1);
                 }

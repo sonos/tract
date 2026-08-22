@@ -59,3 +59,10 @@ tract_data::declare_knob!(
     false,
     "x86_64: opt in to the lossy AMX bf16 kernel for f32 matmul (operands truncated to bf16, ~1/2^8 relative error per multiply). Off by default."
 );
+
+tract_data::declare_knob!(
+    TRACT_CPU_ISA,
+    Option<String>,
+    None,
+    "Edit the detected instruction-set features, comma-separated with +/- (e.g. '-sve2,+fp16'). Applies to every architecture; a removed feature takes its kernels out of dispatch."
+);
