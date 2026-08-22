@@ -4,9 +4,7 @@ use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
-use tract_linalg::mmm::{
-    Candidate, ImplementationQuality, MMMInputFormat, Query, pick_by_shape, retain_best_quality,
-};
+use tract_linalg::mmm::{Candidate, MMMInputFormat, Query, pick_by_shape, retain_best_quality};
 
 use crate::internal::*;
 use crate::ops::matmul::ModePicker;
@@ -21,26 +19,16 @@ fn single_strat(it: Impl) -> Strat {
 }
 
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
-    let input_facts = model.node_input_facts(node.id)?;
-    if let (Some(m), Some(k), Some(n)) = (op.m.as_i64(), op.k.as_i64(), op.n.as_i64())
-        && input_facts[0].is_plain()
-        && input_facts[1].is_plain()
-        && op.op.operating_dt == input_facts[0].datum_type
-        && op.op.operating_dt == input_facts[1].datum_type
-        && let Some(mmm) = tract_linalg::ops().mmm(
-            op.operating_dt,
-            Some(m as usize),
-            Some(k as usize),
-            Some(n as usize),
-        )
-        && mmm.quality() == ImplementationQuality::ManuallyOptimized
-    {
-        return Ok((ModePicker::Single, mmm.packings()[0].0.clone(), vec![(mmm, 0, None)]));
-    };
-
     let query = query(model, node, op)?;
     let mut impls = tract_linalg::ops().candidates(&query);
     ensure!(impls.len() > 0);
+    // Only with `n` in hand: a symbolic `n` is what the packing-group reasoning below is for,
+    // and it serves both roles at once, which a single pick cannot.
+    if query.n.is_some()
+        && let Some(ix) = tract_linalg::ops().rank(&query, &impls)
+    {
+        return Ok(single_strat(impls.swap_remove(ix)));
+    }
     retain_best_quality(&mut impls);
     if impls.len() == 1 {
         return Ok(single_strat(impls.remove(0)));
@@ -121,6 +109,7 @@ pub fn query(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractRe
         activation: b_dt,
         accumulators: op.acceptable_accumulators(),
         store: Some(op.operating_dt.unquantized()),
+        allow_extractor: true,
         m: op.m.as_i64().map(|d| d as usize),
         k: op.k.as_i64().map(|d| d as usize),
         n: op.n.as_i64().map(|d| d as usize),

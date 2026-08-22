@@ -547,43 +547,38 @@ impl Conv {
         let x_dt = input_fact.datum_type;
 
         let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
+        // The weights are packed once, ahead of time, so a candidate reached through a panel
+        // extractor would pay it on every panel of every call.
+        let query = Query {
+            weight: if weight_fact.is_exotic() {
+                let bqf = weight_fact
+                    .exotic_fact
+                    .as_ref()
+                    .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                    .unwrap();
+                WeightType::BlockQuant(bqf.format.clone())
+            } else {
+                w_dt.into()
+            },
+            activation: x_dt,
+            accumulators: tvec!(acc),
+            store: None,
+            allow_extractor: false,
+            m: Some(m),
+            k: Some(k),
+            n: n.as_usize(),
+        };
         if weight_fact.is_exotic() {
-            let bqf = weight_fact
-                .exotic_fact
-                .as_ref()
-                .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-                .unwrap();
             tract_linalg::ops()
-                .candidates(&Query {
-                    weight: WeightType::BlockQuant(bqf.format.clone()),
-                    activation: x_dt,
-                    accumulators: tvec!(acc),
-                    store: None,
-                    m: Some(m),
-                    k: Some(k),
-                    n: n.as_usize(),
-                })
+                .candidates(&query)
                 .into_iter()
-                // The weights are packed once, ahead of time, so a candidate reached through
-                // a panel extractor would pay it on every panel of every call.
-                .filter(|(_, _, pe)| pe.is_none())
                 .map(|(mmm, p, _)| (mmm, p))
                 .min_by_key(|(mmm, _)| {
                     mmm.quality().cost() as isize * 1000 - (mmm.mr() * mmm.nr()) as isize
                 })
                 .context("Not matmu found")
         } else {
-            let mmm = tract_linalg::ops()
-                .mmm(acc, Some(m), Some(k), n.as_usize())
-                .context("No matmul found")?;
-            let packing = mmm
-                .packings()
-                .iter()
-                .position(|p| {
-                    p.0.precursor() == w_dt.unquantized().into()
-                        && p.1.precursor() == x_dt.unquantized().into()
-                })
-                .context("No packing found")?;
+            let (mmm, packing, _) = tract_linalg::ops().pick(&query).context("No matmul found")?;
             Ok((mmm, packing))
         }
     }

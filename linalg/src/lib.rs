@@ -57,7 +57,9 @@ pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
-use mmm::{Candidate, MMMInputFormat, Query};
+use mmm::{
+    Candidate, ImplementationQuality, MMMInputFormat, Query, pick_by_shape, retain_best_quality,
+};
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
@@ -204,14 +206,59 @@ impl Ops {
             .filter_map(|(mmm, ix, (a, _))| {
                 if a.precursor() == query.weight {
                     Some((mmm.clone(), ix, None))
-                } else {
+                } else if query.allow_extractor {
                     self.panel_extractors
                         .iter()
                         .find(|pe| pe.from.precursor() == query.weight && pe.to.dyn_eq(&**a))
                         .map(|pe| (mmm.clone(), ix, Some(pe.clone())))
+                } else {
+                    None
                 }
             })
             .collect()
+    }
+
+    /// The platform policy's choice among `candidates`, or `None` when it has no opinion —
+    /// no arch plug claimed this accumulator, the query is not the plain fully-pinned matmul
+    /// the policies reason about, or their answer is not on the list. A generic answer counts
+    /// as no opinion: `generic()` installs fixed kernels, so getting one back means no arch
+    /// plug ever overwrote that slot.
+    pub fn rank(&self, query: &Query, candidates: &[Candidate]) -> Option<usize> {
+        let WeightType::Plain(weight) = &query.weight else { return None };
+        if weight.unquantized() != query.activation.unquantized() {
+            return None;
+        }
+        let mmm = self.mmm(*query.accumulators.first()?, query.m, query.k, query.n)?;
+        if mmm.quality() != ImplementationQuality::ManuallyOptimized {
+            return None;
+        }
+        candidates.iter().position(|(candidate, _, _)| candidate.name() == mmm.name())
+    }
+
+    /// One kernel for the query, for a caller that needs an answer now: the platform policy's
+    /// pick where it has an opinion, then the portable rules, then the widest extractor-free
+    /// tile. That last resort is what a caller with no fallback of its own needs when `n` is
+    /// unknown or degenerate — a caller that can do better with the whole list, as einsum can
+    /// for a symbolic `n`, should walk the candidates itself. `None` only when nothing legal
+    /// exists at all.
+    pub fn pick(&self, query: &Query) -> Option<Candidate> {
+        let mut candidates = self.candidates(query);
+        if let Some(ix) = self.rank(query, &candidates) {
+            return Some(candidates.swap_remove(ix));
+        }
+        retain_best_quality(&mut candidates);
+        if candidates.len() == 1 {
+            return Some(candidates.remove(0));
+        }
+        if let Some(ix) = pick_by_shape(query, &candidates) {
+            return Some(candidates.swap_remove(ix));
+        }
+        let ix = candidates
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, (mmm, _, pe))| (pe.is_none(), mmm.nr() > 1, mmm.nr() * mmm.mr()))
+            .map(|(ix, _)| ix)?;
+        Some(candidates.swap_remove(ix))
     }
 
     pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
