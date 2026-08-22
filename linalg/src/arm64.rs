@@ -415,25 +415,22 @@ pub fn plug(ops: &mut Ops) {
     // The SDOT kernel only exists when the assembler could encode `sdot`
     // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
     #[cfg(tract_arm64_dotprod)]
-    if has_dotprod() {
-        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8_dot.mmm());
+    let qmmm_i32: crate::MMMImpl = if has_dotprod() {
+        Box::new(|_, _, _| arm64simd_mmm_i32_8x8_dot.mmm())
     } else {
-        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
-    }
+        Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm())
+    };
     #[cfg(not(tract_arm64_dotprod))]
-    {
-        ops.qmmm_i32 = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
-    }
-    ops.qmmv_i32 = Box::new(|_, _| arm64simd_mmm_i32_64x1.mmm());
+    let qmmm_i32: crate::MMMImpl = Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm());
     let impls = ops.mmm_impls.clone();
     // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
     // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
     // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
-    ops.mmv_f32 = match *KIND {
+    let mmv_f32: crate::MMMImpl = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_mmv_linear::linear_model();
             let impls = impls.clone();
-            Box::new(move |m, k| match m {
+            Box::new(move |m, k, _| match m {
                 Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
                 _ => arm64simd_mmm_f32_64x1_a53.mmm(),
             })
@@ -441,14 +438,14 @@ pub fn plug(ops: &mut Ops) {
         Kind::CortexA55 => {
             let model = cortex_a55_mmv_linear::linear_model();
             let impls = impls.clone();
-            Box::new(move |m, k| match m {
+            Box::new(move |m, k, _| match m {
                 Some(m) if m < 64 => model.pick(&impls, Some(m), k, Some(1)),
                 _ => arm64simd_mmm_f32_64x1_a55.mmm(),
             })
         }
-        _ => Box::new(|_, _| arm64simd_mmm_f32_64x1_gen.mmm()),
+        _ => Box::new(|_, _, _| arm64simd_mmm_f32_64x1_gen.mmm()),
     };
-    ops.mmm_f32 = match *KIND {
+    let mmm_f32: crate::MMMImpl = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_linear::linear_model();
             Box::new(move |m, k, n| model.pick(&impls, m, k, n))
@@ -465,6 +462,13 @@ pub fn plug(ops: &mut Ops) {
             }
         }),
     };
+    ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
+        (DatumType::F32, Some(1)) => Some(mmv_f32(m, k, n)),
+        (DatumType::F32, _) => Some(mmm_f32(m, k, n)),
+        (DatumType::I32, Some(1)) => Some(arm64simd_mmm_i32_64x1.mmm()),
+        (DatumType::I32, _) => Some(qmmm_i32(m, k, n)),
+        _ => prev(dt, m, k, n),
+    });
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
         log::warn!(
@@ -473,29 +477,23 @@ pub fn plug(ops: &mut Ops) {
     }
     #[cfg(not(feature = "no_fp16"))]
     if has_fp16() {
-        if *KIND == Kind::CortexA55 {
-            log::info!("Cortex-A55 mmm_f16 and mmv_f16 activated");
-            ops.mmm_f16 = Box::new(|_, _, n| {
+        let a55 = *KIND == Kind::CortexA55;
+        log::info!("{} f16 matmul activated", if a55 { "Cortex-A55" } else { "ARMv8.2" });
+        ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
+            (DatumType::F16, Some(1)) if a55 => Some(arm64fp16_mmm_f16_128x1_a55.mmm()),
+            (DatumType::F16, Some(1)) => Some(arm64fp16_mmm_f16_128x1_gen.mmm()),
+            (DatumType::F16, _) => {
                 use tract_data::internal::DimLike;
-                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                    arm64fp16_mmm_f16_32x4_a55.mmm()
-                } else {
-                    arm64fp16_mmm_f16_16x8_a55.mmm()
-                }
-            });
-            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_a55.mmm());
-        } else {
-            log::info!("ARMv8.2 mmm_f16 and mmv_f16 activated");
-            ops.mmm_f16 = Box::new(|_, _, n| {
-                use tract_data::internal::DimLike;
-                if n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8 {
-                    arm64fp16_mmm_f16_32x4_gen.mmm()
-                } else {
-                    arm64fp16_mmm_f16_16x8_gen.mmm()
-                }
-            });
-            ops.mmv_f16 = Box::new(|_, _| arm64fp16_mmm_f16_128x1_gen.mmm());
-        }
+                let narrow = n.unwrap_or(1024).divceil(4) * 4 < n.unwrap_or(1024).divceil(8) * 8;
+                Some(match (a55, narrow) {
+                    (true, true) => arm64fp16_mmm_f16_32x4_a55.mmm(),
+                    (true, false) => arm64fp16_mmm_f16_16x8_a55.mmm(),
+                    (false, true) => arm64fp16_mmm_f16_32x4_gen.mmm(),
+                    (false, false) => arm64fp16_mmm_f16_16x8_gen.mmm(),
+                })
+            }
+            _ => prev(dt, m, k, n),
+        });
     }
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
     ops.hardswish_f32 = Box::new(|| arm64simd_hardswish_f32_8n::ew());

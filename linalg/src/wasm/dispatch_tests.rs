@@ -3,7 +3,7 @@ mod dispatch_trace {
     fn trace_one(label: &str, m: Option<usize>, k: Option<usize>, n: Option<usize>) {
         let mut ops = crate::generic();
         crate::wasm::plug(&mut ops);
-        let mmm = ops.mmm(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
+        let mmm = (ops.mmm_policy())(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
         eprintln!(
             "DFN3 {} (m={:?} k={:?} n={:?}) => {}  [mr={}, nr={}]",
             label,
@@ -72,7 +72,8 @@ mod dispatch_trace {
             ("GEMV m=256 k=256 n=1", 256, 256, 1),
         ] {
             let mmm =
-                ops.mmm(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n)).unwrap();
+                (ops.mmm_policy())(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                    .unwrap();
             assert_eq!(
                 mmm.quality(),
                 ManuallyOptimized,

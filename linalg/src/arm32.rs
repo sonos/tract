@@ -9,7 +9,7 @@ use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
 
-use crate::Ops;
+use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
@@ -60,11 +60,11 @@ pub fn plug(ops: &mut Ops) {
         // The mmv model picks over the full pool (it needs the nr==1 matvec kernels, which the
         // mmm cost_managed pool omits); consulted only for small m (see arm64 for the rationale).
         let mmv_impls = ops.mmm_impls.clone();
-        ops.mmv_f32 = match cpu {
+        let mmv_f32: crate::MMMImpl = match cpu {
             0xc07 => {
                 let model = cortex_a7_mmv_linear::linear_model();
                 let impls = mmv_impls.clone();
-                Box::new(move |m, k| match m {
+                Box::new(move |m, k, _| match m {
                     Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
                     _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm(),
                 })
@@ -72,15 +72,15 @@ pub fn plug(ops: &mut Ops) {
             0xc09 => {
                 let model = cortex_a9_mmv_linear::linear_model();
                 let impls = mmv_impls.clone();
-                Box::new(move |m, k| match m {
+                Box::new(move |m, k, _| match m {
                     Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
                     _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm(),
                 })
             }
-            _ => Box::new(|_, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
+            _ => Box::new(|_, _, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
         };
 
-        ops.mmm_f32 = match cpu {
+        let mmm_f32: crate::MMMImpl = match cpu {
             0xc07 => {
                 let model = cortex_a7_linear::linear_model();
                 Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
@@ -97,8 +97,13 @@ pub fn plug(ops: &mut Ops) {
                 }
             }),
         };
-        ops.qmmm_i32 = Box::new(|_, _, _| armv7neon::armv7neon_mmm_i32_8x4.mmm());
-        ops.qmmv_i32 = Box::new(|_, _| armv7neon::armv7neon_mmm_i32_32x1.mmm());
+        ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
+            (DatumType::F32, Some(1)) => Some(mmv_f32(m, k, n)),
+            (DatumType::F32, _) => Some(mmm_f32(m, k, n)),
+            (DatumType::I32, Some(1)) => Some(armv7neon::armv7neon_mmm_i32_32x1.mmm()),
+            (DatumType::I32, _) => Some(armv7neon::armv7neon_mmm_i32_8x4.mmm()),
+            _ => prev(dt, m, k, n),
+        });
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
         ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());

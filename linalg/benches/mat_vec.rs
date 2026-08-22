@@ -14,7 +14,8 @@ fn mat_vec_mul(c: &mut Criterion) {
                 BenchmarkId::from_parameter(format!("{m}x{k}")),
                 &(m, k),
                 |be, &(&m, &k)| {
-                    let mmm = tract_linalg::ops().mmm(F32, Some(m), Some(k), Some(1)).unwrap();
+                    let mmm =
+                        (tract_linalg::ops().mmm_policy())(F32, Some(m), Some(k), Some(1)).unwrap();
                     let packing = &mmm.packings()[0];
                     let a = Tensor::zero::<f32>(&[m, k]).unwrap();
                     let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
