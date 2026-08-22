@@ -562,3 +562,32 @@ inventory::submit! {
         plug,
     }
 }
+
+/// What this core has, in the shared vocabulary.
+pub fn isa_set() -> crate::isa::IsaSet {
+    use crate::isa::{Isa, IsaSet};
+    let mut set = IsaSet::empty();
+    if has_fp16() {
+        set = set.with(Isa::Fp16);
+    }
+    if has_dotprod() {
+        set = set.with(Isa::DotProd);
+    }
+    if sve::has_sve2() {
+        set = set.with(Isa::Sve2);
+    }
+    #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
+    {
+        if sme::has_sme() {
+            set = set.with(Isa::Sme);
+        }
+        if sme::has_sme2() {
+            set = set.with(Isa::Sme2);
+        }
+    }
+    #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
+    if has_amx() {
+        set = set.with(Isa::AppleAmx);
+    }
+    set
+}

@@ -94,9 +94,6 @@ cpu_feature!(AVX512F = "avx512f");
 cpu_feature!(AVX512FP16 = "avx512fp16");
 cpu_feature!(F16C = "f16c");
 
-/// The q40f16 and f16 packings of `fma_mmm_f32_32x1` need the f16 conversions on top of FMA.
-const FMA_F16C: fn() -> bool = || FMA() && F16C();
-
 #[cfg(tract_avx512vnni)]
 cpu_feature!(AVX512VNNI = "avx512vnni");
 
@@ -222,4 +219,38 @@ inventory::submit! {
         target: crate::platform::Target::X86_64,
         plug,
     }
+}
+
+/// What CPUID says this core has, in the shared vocabulary.
+pub fn isa_set() -> crate::isa::IsaSet {
+    use crate::isa::{Isa, IsaSet};
+    let mut set = IsaSet::empty();
+    for (isa, probe) in [
+        (Isa::Avx, AVX),
+        (Isa::Avx2, AVX2),
+        (Isa::Fma, FMA),
+        (Isa::F16c, F16C),
+        (Isa::Avx512f, AVX512F),
+    ] {
+        if probe() {
+            set = set.with(isa);
+        }
+    }
+    #[cfg(tract_avx512vnni)]
+    if AVX512VNNI() {
+        set = set.with(Isa::Avx512Vnni);
+    }
+    #[cfg(tract_avxvnni)]
+    if avxvnni::has_avxvnni() {
+        set = set.with(Isa::AvxVnni);
+    }
+    #[cfg(tract_amx_int8)]
+    if amx::has_amx_int8() {
+        set = set.with(Isa::AmxInt8);
+    }
+    #[cfg(tract_amx_bf16)]
+    if amx_bf16::has_amx_bf16() {
+        set = set.with(Isa::AmxBf16);
+    }
+    set
 }
