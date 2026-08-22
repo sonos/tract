@@ -2,10 +2,12 @@ use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::frame::mmm::*;
 use crate::{DatumType, Ops};
 
-// The NEON kernels cover every core that has NEON; this one is what is left for the others.
-const NO_NEON: fn() -> bool = || !crate::arm32::has_neon();
+/// Baseline VFP asm, so it runs on every armv7 core, NEON or not — hence no `where`. The NEON
+/// kernels cover every core that has NEON and are better there, so this one must lose every tie
+/// against them.
+const NO_NEON_TIER: fn() -> isize = || if crate::arm32::has_neon() { -1 } else { 0 };
 
-MMMExternKernel!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) where(NO_NEON) quality(ManuallyOptimized));
+MMMExternKernel!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOptimized) boost(NO_NEON_TIER));
 
 pub fn plug(ops: &mut Ops) {
     log::info!("armvfpv2 activated for smmm");
