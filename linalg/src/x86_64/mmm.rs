@@ -74,16 +74,21 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
     (best.ctor)()
 }
 
+/// The avx tier stands in for the fma one on cores that cannot run it; where both work the fma
+/// kernels are strictly better, so the avx ones must lose every tie against them. They stay
+/// supported wherever their instructions run, so that their tests run there too.
+const AVX_TIER: fn() -> isize = || if AVX2() && FMA() { -1 } else { 0 };
+
 // AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
 // same tile geometries as their fma_ siblings but the inner loops use
 // vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
-MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
 
 MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -128,9 +133,10 @@ MMMExternKernel!(x86_64; avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) where (AVX512
 // 128-bit VEX i32 sibling of avx2_mmm_i32_8x8 for the avx-without-avx2 tier:
 // same i8i8 widening scheme (i8 products computed in i16 lanes) and the same
 // quantization epilogue semantics, on 8x4 xmm column pairs.
-MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX_ONLY)
+MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 4, 4));
     quality(ManuallyOptimized)
+    boost(AVX_TIER)
     store(i8)
 }
 
