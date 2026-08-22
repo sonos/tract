@@ -16,9 +16,10 @@ use super::avxvnni::has_avxvnni;
 use super::fma_width::has_dual_avx512_fma;
 
 /// The zmm 16x16 VNNI tile only out-throughputs the ymm 8x8 on cores with two 512-bit FMA
-/// ports; elsewhere it is pure tile-padding overhead.
+/// ports; elsewhere it is pure tile-padding overhead, so there it must lose every tie to the
+/// 8x8. It stays supported on every VNNI core, so that its tests run there too.
 #[cfg(tract_avx512vnni)]
-const AVX512VNNI_DUAL_FMA: fn() -> bool = || AVX512VNNI() && has_dual_avx512_fma();
+const AVX512VNNI_WIDE_TILE: fn() -> isize = || if has_dual_avx512_fma() { 50 } else { -1 };
 use super::*;
 
 #[cfg(tract_amx_int8)]
@@ -171,15 +172,15 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512
 // client cores (Ice Lake-U / Tiger Lake / Rocket Lake) get no gain and stay on
 // the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `plug_avx512vnni`.
 //
-// boost(50) lifts it above the 8x8 VNNI candidate in the einsum kernel-selection
-// scorer for unknown shapes, while staying below the AMX 16x16 kernels' boost(100)
-// so AMX still wins when both are present. The boost only applies on dual-FMA
-// cores because the kernel is only pushed into `mmm_impls` there.
+// On dual-FMA cores the boost lifts it above the 8x8 VNNI candidate in the einsum
+// kernel-selection scorer for unknown shapes, while staying below the AMX 16x16
+// kernels' boost(100) so AMX still wins when both are present; on single-FMA cores
+// it goes negative so the 8x8 wins instead.
 #[cfg(tract_avx512vnni)]
-MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI_DUAL_FMA)
+MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
     quality(ManuallyOptimized)
-    boost(|| 50)
+    boost(AVX512VNNI_WIDE_TILE)
     store(i8)
 }
 
@@ -305,10 +306,9 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     // 16-column +128 bias correction, a bigger epilogue) and regresses real
     // matmuls -- e.g. -4..-11% on int8 LLM/TDNN prefill on an i9-11900KB.
     //
-    // So gate the whole 16x16 candidate -- both the runtime `qmmm_i32` picker
-    // AND the einsum scorer (which only sees kernels pushed into `mmm_impls`,
-    // weighted by their boost) -- on `has_dual_avx512_fma()`. Single-FMA cores
-    // keep main's always-8x8 behaviour and cannot regress.
+    // So the runtime `qmmm_i32` picker names the 16x16 only on dual-FMA cores; the
+    // einsum scorer is held off it by `AVX512VNNI_WIDE_TILE` going negative
+    // elsewhere. Single-FMA cores are always on the 8x8 and cannot regress.
     if has_dual_avx512_fma() {
         // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile
         // is the throughput champion when each of M and N fills at least one tile;
