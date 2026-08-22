@@ -77,10 +77,21 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn nr(&self) -> usize;
 
     fn quality(&self) -> ImplementationQuality;
+
+    /// Where this kernel ranks against its equally-qualified siblings, breaking ties inside a
+    /// quality tier ([`retain_best_quality`]). This is the *only* place a runtime preference
+    /// belongs: positive to prefer a kernel where a probe says it pays off, negative to stand
+    /// down in favour of a better sibling. Never encode a preference in
+    /// [`Self::is_supported_here`] — that silently skips the kernel's tests as well.
     fn dynamic_boost(&self) -> isize;
 
     /// Whether this kernel is runnable on the current CPU (platform feature
     /// gate, e.g. FEAT_DotProd for the SDOT i8 kernel).
+    ///
+    /// Runnability only, never preference: this answers "would executing the kernel fault",
+    /// and the mmm test bodies gate on it, so a kernel that lies here has no test coverage at
+    /// all on the hosts it lies on. Say a kernel is worse than its sibling with
+    /// [`Self::dynamic_boost`] instead.
     fn is_supported_here(&self) -> bool;
 
     #[allow(clippy::type_complexity)]

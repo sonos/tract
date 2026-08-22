@@ -80,11 +80,16 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         kernel.with_packing(packing_a, packing_b)
     }
 
+    /// Sets the runnability probe behind [`MatMatMulKer::is_supported_here`] — the `where(..)`
+    /// of the kernel macros. A hardware feature the asm needs, and nothing else: a preference
+    /// spelled here also skips the kernel's tests. Use [`Self::with_boost`] for that.
     pub fn with_platform_condition(mut self, f: fn() -> bool) -> Self {
         self.supported_predicate = f;
         self
     }
 
+    /// Sets the tie-break behind [`MatMatMulKer::dynamic_boost`] — the `boost(..)` of the kernel
+    /// macros, and the one place a runtime preference belongs.
     pub fn with_boost(mut self, f: fn() -> isize) -> Self {
         self.boost = f;
         self
