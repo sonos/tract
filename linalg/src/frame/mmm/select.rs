@@ -20,6 +20,10 @@ pub struct Query {
     pub accumulators: TVec<DatumType>,
     /// The datum type the kernel must be able to store, when the caller constrains it.
     pub store: Option<DatumType>,
+    /// Whether a kernel reached through a panel extractor is acceptable. It is not for a
+    /// caller that packs its weights once, ahead of time: the extractor would then run on
+    /// every panel of every call.
+    pub allow_extractor: bool,
     pub m: Option<usize>,
     pub k: Option<usize>,
     pub n: Option<usize>,
