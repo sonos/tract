@@ -50,6 +50,14 @@ fn preferred(
             9..=16 => &wasm_f32_16x1.name,
             _ => &wasm_f32_32x1.name,
         }),
+        // GEMM by N: a k-step of 4x16 splats one A value into four multiply-adds where 8x8
+        // gets two, so it is 1.09-1.11x on the 64-wide shapes and 1.21x aggregate. It only
+        // pays when N is a multiple of 16: at N=8 a 16-wide tile wastes half its columns
+        // (0.58x) and N=24 pays that on its second tile, and gating on N>=16 instead cost
+        // fastenhancer tiny and base 4% each. An N unknown at optimisation time stays on 8x8.
+        // Rank the two on a full tiled GEMM: over a single tile the wider tile's doubled
+        // B-panel re-reads do not show.
+        (DatumType::F32, Some(n)) if n % 16 == 0 => Some(wasm_f32_4x16.name.as_str()),
         (DatumType::F32, _) => Some(wasm_f32_8x8.name.as_str()),
         _ => None,
     }

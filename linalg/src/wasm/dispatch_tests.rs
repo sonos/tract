@@ -281,6 +281,7 @@ fn add_row_col_products_and_add_mat_mul_agree_on_fusion() {
     check_madd_pairing(&*crate::wasm::wasm_f32_16x1);
     check_madd_pairing(&*crate::wasm::wasm_f32_32x1);
     check_madd_pairing(&*crate::wasm::wasm_f32_8x8);
+    check_madd_pairing(&*crate::wasm::wasm_f32_4x16);
 }
 
 /// `wasm_f32_4x4` is registered at `TargetOptimized` while every other kernel
@@ -310,5 +311,49 @@ fn dispatch_never_returns_wasm_f32_4x4() {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod fastenhancer_gate {
+    // The n % 16 == 0 gate: which GEMM kernel do the speech-enhancement shapes
+    // actually land on? n is the conv's output-column count.
+    //
+    // This declaration gets rebased and ported whenever linalg moves, and a port
+    // that drops the guarded arm is invisible: every GEMM quietly falls back to
+    // 8x8, the 1.09-1.11x goes away, and every other test in this file still
+    // passes. So assert the picks rather than only tracing them.
+    fn pick(m: usize, k: usize, n: Option<usize>) -> String {
+        let ops = crate::MmmDispatch::native();
+        let mmm =
+            ops.preferred_kernel(tract_data::prelude::DatumType::F32, Some(m), Some(k), n).unwrap();
+        eprintln!("m={m} k={k} n={n:?} -> {} (mr={} nr={})", mmm.name(), mmm.mr(), mmm.nr());
+        mmm.name().to_string()
+    }
+
+    #[test]
+    fn gate_picks_4x16_only_on_multiples_of_16() {
+        for (m, k, n) in [(64, 192, 64), (64, 128, 64), (64, 64, 32), (64, 64, 48)] {
+            assert_eq!(
+                pick(m, k, Some(n)),
+                "wasm_f32_4x16",
+                "m={m} k={k} n={n}: n fills the 16-wide tile, so the wide kernel should win"
+            );
+        }
+        for (m, k, n) in [(64, 64, 8), (64, 64, 12), (64, 64, 24), (36, 36, 36)] {
+            assert_eq!(
+                pick(m, k, Some(n)),
+                "wasm_f32_8x8",
+                "m={m} k={k} n={n}: a 16-wide tile wastes columns here — n=8 runs at 0.58x, \
+                 and n=24 pays that on its second tile"
+            );
+        }
+    }
+
+    /// An n unknown at optimisation time stays on 8x8: the gate cannot know the
+    /// tile would be filled, and guessing wrong costs 0.58x at n=8.
+    #[test]
+    fn unknown_n_stays_on_8x8() {
+        assert_eq!(pick(64, 64, None), "wasm_f32_8x8");
     }
 }
