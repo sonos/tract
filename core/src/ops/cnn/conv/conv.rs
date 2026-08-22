@@ -33,7 +33,7 @@ use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
 use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
 use crate::ops::nn::{BaseDataShape, DataFormat, DataShape};
 
-use tract_linalg::mmm::{MMMInputFormat, MatMatMul};
+use tract_linalg::mmm::{MMMInputFormat, MatMatMul, Query};
 use tract_linalg::pack::{PackedFormat, PackedI8K4};
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
@@ -553,9 +553,16 @@ impl Conv {
                 .as_ref()
                 .and_then(|of| of.downcast_ref::<BlockQuantFact>())
                 .unwrap();
-            let weight_type = WeightType::BlockQuant(bqf.format.clone());
             tract_linalg::ops()
-                .candidates(&weight_type, x_dt, &[acc], None)
+                .candidates(&Query {
+                    weight: WeightType::BlockQuant(bqf.format.clone()),
+                    activation: x_dt,
+                    accumulators: tvec!(acc),
+                    store: None,
+                    m: Some(m),
+                    k: Some(k),
+                    n: n.as_usize(),
+                })
                 .into_iter()
                 // The weights are packed once, ahead of time, so a candidate reached through
                 // a panel extractor would pay it on every panel of every call.
