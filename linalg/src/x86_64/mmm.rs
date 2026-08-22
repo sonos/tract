@@ -16,9 +16,10 @@ use super::avxvnni::has_avxvnni;
 use super::fma_width::has_dual_avx512_fma;
 
 /// The zmm 16x16 VNNI tile only out-throughputs the ymm 8x8 on cores with two 512-bit FMA
-/// ports; elsewhere it is pure tile-padding overhead.
+/// ports; elsewhere it is pure tile-padding overhead, so there it must lose every tie to the
+/// 8x8. It stays supported on every VNNI core, so that its tests run there too.
 #[cfg(tract_avx512vnni)]
-const AVX512VNNI_DUAL_FMA: fn() -> bool = || AVX512VNNI() && has_dual_avx512_fma();
+const AVX512VNNI_WIDE_TILE: fn() -> isize = || if has_dual_avx512_fma() { 50 } else { -1 };
 use super::*;
 
 #[cfg(tract_amx_int8)]
@@ -70,16 +71,21 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
     (best.ctor)()
 }
 
+/// The avx tier stands in for the fma one on cores that cannot run it; where both work the fma
+/// kernels are strictly better, so the avx ones must lose every tie against them. They stay
+/// supported wherever their instructions run, so that their tests run there too.
+const AVX_TIER: fn() -> isize = || if AVX2() && FMA() { -1 } else { 0 };
+
 // AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
 // same tile geometries as their fma_ siblings but the inner loops use
 // vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
-MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX_ONLY) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
+MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) where(AVX) quality(ManuallyOptimized) boost(AVX_TIER));
 
 MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) where(FMA) quality(ManuallyOptimized));
 MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) where(FMA) quality(ManuallyOptimized));
@@ -124,9 +130,10 @@ MMMExternKernel!(x86_64; avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) where (AVX512
 // 128-bit VEX i32 sibling of avx2_mmm_i32_8x8 for the avx-without-avx2 tier:
 // same i8i8 widening scheme (i8 products computed in i16 lanes) and the same
 // quantization epilogue semantics, on 8x4 xmm column pairs.
-MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX_ONLY)
+MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) where(AVX)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 4, 4));
     quality(ManuallyOptimized)
+    boost(AVX_TIER)
     store(i8)
 }
 
@@ -165,15 +172,15 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512
 // client cores (Ice Lake-U / Tiger Lake / Rocket Lake) get no gain and stay on
 // the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `plug_avx512vnni`.
 //
-// boost(50) lifts it above the 8x8 VNNI candidate in the einsum kernel-selection
-// scorer for unknown shapes, while staying below the AMX 16x16 kernels' boost(100)
-// so AMX still wins when both are present. The boost only applies on dual-FMA
-// cores because the kernel is only pushed into `mmm_impls` there.
+// On dual-FMA cores the boost lifts it above the 8x8 VNNI candidate in the einsum
+// kernel-selection scorer for unknown shapes, while staying below the AMX 16x16
+// kernels' boost(100) so AMX still wins when both are present; on single-FMA cores
+// it goes negative so the 8x8 wins instead.
 #[cfg(tract_avx512vnni)]
-MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI_DUAL_FMA)
+MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
     quality(ManuallyOptimized)
-    boost(|| 50)
+    boost(AVX512VNNI_WIDE_TILE)
     store(i8)
 }
 
@@ -299,10 +306,9 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
     // 16-column +128 bias correction, a bigger epilogue) and regresses real
     // matmuls -- e.g. -4..-11% on int8 LLM/TDNN prefill on an i9-11900KB.
     //
-    // So gate the whole 16x16 candidate -- both the runtime `qmmm_i32` picker
-    // AND the einsum scorer (which only sees kernels pushed into `mmm_impls`,
-    // weighted by their boost) -- on `has_dual_avx512_fma()`. Single-FMA cores
-    // keep main's always-8x8 behaviour and cannot regress.
+    // So the runtime `qmmm_i32` picker names the 16x16 only on dual-FMA cores; the
+    // einsum scorer is held off it by `AVX512VNNI_WIDE_TILE` going negative
+    // elsewhere. Single-FMA cores are always on the 8x8 and cannot regress.
     if has_dual_avx512_fma() {
         // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile
         // is the throughput champion when each of M and N fills at least one tile;
