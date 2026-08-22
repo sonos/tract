@@ -7,29 +7,31 @@
 
 use crate::Ops;
 
-/// A platform tract ships a kernel tree for, named after its `target_arch`.
+/// A platform tract names, after its `target_arch`.
 ///
-/// Not every build has one: [`Target::native`] answers `None` when tract carries no kernels for
-/// the target — riscv, or wasm32 without `simd128` — and such a build runs the portable kernels
-/// alone. Only the wasm tree hinges on a build feature that way, hence the variant naming it;
-/// the others exist on their arch and gate individual kernels on runtime probes instead.
+/// Naming one is not having kernels for it: [`RiscV64`](Target::RiscV64) has no tree yet, so a
+/// riscv64 build is portable-only even though it knows what it is running on, and
+/// [`Target::native`] answers `None` on an architecture tract does not name at all. Only the
+/// wasm tree hinges on a build feature — hence the variant naming that feature; the others
+/// exist on their arch and gate individual kernels on runtime probes instead.
 #[allow(non_camel_case_types)]
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Target {
     Arm,
     Aarch64,
     X86_64,
+    RiscV64,
     /// The only tree gated at build time rather than probed at runtime.
     Wasm32Simd128,
 }
 
 impl Target {
-    /// The platform this build runs on, when tract has a kernel tree for it, `None` when the
-    /// build gets the portable kernels alone.
+    pub const ALL: [Target; 5] =
+        [Target::Arm, Target::Aarch64, Target::X86_64, Target::RiscV64, Target::Wasm32Simd128];
+
+    /// The platform this build runs on, when tract names it.
     pub fn native() -> Option<Target> {
-        [Target::Arm, Target::Aarch64, Target::X86_64, Target::Wasm32Simd128]
-            .into_iter()
-            .find(|t| t.is_native())
+        Self::ALL.into_iter().find(|t| t.is_native())
     }
 
     pub fn is_native(&self) -> bool {
@@ -37,6 +39,7 @@ impl Target {
             Target::Arm => cfg!(target_arch = "arm"),
             Target::Aarch64 => cfg!(target_arch = "aarch64"),
             Target::X86_64 => cfg!(target_arch = "x86_64"),
+            Target::RiscV64 => cfg!(target_arch = "riscv64"),
             Target::Wasm32Simd128 => {
                 cfg!(all(target_arch = "wasm32", target_feature = "simd128"))
             }
@@ -50,6 +53,7 @@ impl std::fmt::Display for Target {
             Target::Arm => "arm",
             Target::Aarch64 => "aarch64",
             Target::X86_64 => "x86_64",
+            Target::RiscV64 => "riscv64",
             Target::Wasm32Simd128 => "wasm32+simd128",
         };
         write!(f, "{s}")

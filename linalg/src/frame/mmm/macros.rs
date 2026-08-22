@@ -8,6 +8,7 @@ macro_rules! MMMExternKernel {
     (arm; $($rest:tt)*)     => { MMMExternKernel!(@ Some($crate::platform::Target::Arm), target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { MMMExternKernel!(@ Some($crate::platform::Target::Aarch64), target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*)  => { MMMExternKernel!(@ Some($crate::platform::Target::X86_64), target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { MMMExternKernel!(@ Some($crate::platform::Target::RiscV64), target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*)  => { MMMExternKernel!(@ Some($crate::platform::Target::Wasm32Simd128), all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $target:expr, $built:meta;
@@ -59,6 +60,7 @@ macro_rules! MMMRustKernel {
     (arm; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::platform::Target::Arm), target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::platform::Target::Aarch64), target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::platform::Target::X86_64), target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::platform::Target::RiscV64), target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::platform::Target::Wasm32Simd128), all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $target:expr, $built:meta; $func:path => $id:ident<$ti:ident>($mr:expr, $nr:expr) $($rest:tt)*) => {

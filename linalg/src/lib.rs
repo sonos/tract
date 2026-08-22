@@ -28,6 +28,7 @@ macro_rules! bail_stub {
     (arm; $($rest:tt)*) => { bail_stub!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { bail_stub!(@ target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { bail_stub!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { bail_stub!(@ target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => {
         bail_stub!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };

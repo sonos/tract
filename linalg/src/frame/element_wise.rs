@@ -14,6 +14,7 @@ macro_rules! ew_impl_wrap {
     (arm; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => { ew_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
@@ -123,6 +124,7 @@ macro_rules! ew_impl {
     (arm; $($rest:tt)*) => { ew_impl!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { ew_impl!(@ target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { ew_impl!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { ew_impl!(@ target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => { ew_impl!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
