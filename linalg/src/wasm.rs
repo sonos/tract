@@ -33,15 +33,15 @@ pub use mmm_i32::*;
 
 pub fn plug(ops: &mut Ops) {
     // int8 -> i32 matmul: SIMD kernel (was generic scalar). ManuallyOptimized so
-    // strategize's retain() keeps it over generic_i32_4x4 for i8 packing.
+    // retain_best_quality keeps it over generic_i32_4x4 for i8 packing.
     ops.qmmm_i32 = Box::new(|_, _, _| wasm_i32_4x4.mmm());
     // Selection paths. Both rely on kernel_selection::strategize honouring
     // the mmm_f32 / mmv_f32 callback, which it only does when the callback's
     // kernel is tagged ManuallyOptimized. Otherwise strategize falls through
-    // to list_impls, whose retain() keeps only the top ImplementationQuality
-    // and drops every TargetOptimized kernel.
+    // to the candidate list, where retain_best_quality keeps only the top
+    // ImplementationQuality and drops every TargetOptimized kernel.
     //   - N>1 (GEMM): mmm_f32 returns 8x8, so 8x8 MUST be ManuallyOptimized.
-    //     If it were TargetOptimized it would be dropped by retain(), and the
+    //     If it were TargetOptimized it would be dropped there, and the
     //     N>1 branch's max(nr*mr) over the surviving (ManuallyOptimized) GEMV
     //     kernels would pick wasm_f32_32x1 — a matrix×vector kernel — for
     //     every GEMM.
