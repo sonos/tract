@@ -22,6 +22,7 @@ pub mod dummy;
 pub mod einsum;
 pub mod fft;
 pub mod gru_cell;
+pub mod gru_seq;
 pub mod identity;
 pub mod konst;
 pub mod logic;
