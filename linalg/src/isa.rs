@@ -154,7 +154,7 @@ impl fmt::Debug for IsaSet {
 
 /// What a kernel needs from the instruction set to be able to run at all. Whether it is the
 /// *best* thing that can run is a different question, and not this type's business.
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash)]
 pub struct IsaReq {
     /// Every one of these must be present.
     pub needs: &'static [Isa],

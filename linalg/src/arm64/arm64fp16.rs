@@ -17,8 +17,6 @@ use crate::block_quant::PackedBlockQuantFormat;
 use crate::block_quant::Q4_0;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 
-const FP16: fn() -> bool = crate::arm64::has_fp16;
-
 MMMExternKernel!(aarch64; arm64fp16_mmm_f16_16x8_gen<f16>(16, 8)@(16, 16) isa(Fp16) quality(ManuallyOptimized));
 MMMExternKernel!(aarch64; arm64fp16_mmm_f16_16x8_a55<f16>(16, 8)@(16, 16) isa(Fp16) quality(ManuallyOptimized));
 MMMExternKernel!(aarch64; arm64fp16_mmm_f16_32x4_gen<f16>(32, 4)@(16, 16) isa(Fp16) quality(ManuallyOptimized));
