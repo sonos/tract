@@ -16,8 +16,6 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
     )
 };
 
-const SME: fn() -> bool = has_sme;
-const SME2: fn() -> bool = has_sme2;
 // The SMOPA i32 kernel implements the quant fuse ops (QScale / RoundingShiftRight
 // / ShiftLeft) bit-exactly; only LeakyRelu is unsupported (kernel returns 1).
 const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
@@ -187,7 +185,8 @@ pub fn has_sme2() -> bool {
 }
 
 pub fn plug(ops: &mut Ops) {
-    if has_sme() {
+    let isa = crate::isa::native();
+    if isa.has(crate::isa::Isa::Sme) {
         log::info!("SME optimisation activated");
         ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
             (DatumType::F32, Some(1)) => prev(dt, m, k, n),
@@ -195,7 +194,7 @@ pub fn plug(ops: &mut Ops) {
             _ => prev(dt, m, k, n),
         });
     }
-    if has_sme2() {
+    if isa.has(crate::isa::Isa::Sme2) {
         log::info!("SME2 GEMV optimisation activated");
         ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
             (DatumType::F32, Some(1)) => Some(sme_mmv_f32_64x1.mmm()),
@@ -204,7 +203,7 @@ pub fn plug(ops: &mut Ops) {
             _ => prev(dt, m, k, n),
         });
     }
-    if !has_sme() && !has_sme2() {
+    if !isa.has(crate::isa::Isa::Sme) && !isa.has(crate::isa::Isa::Sme2) {
         log::info!("No SME optimisation");
     }
 }

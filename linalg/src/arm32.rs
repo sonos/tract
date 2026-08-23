@@ -39,7 +39,7 @@ pub(crate) fn has_neon() -> bool {
 }
 
 pub fn plug(ops: &mut Ops) {
-    if has_neon() {
+    if crate::isa::native().has(crate::isa::Isa::Neon) {
         log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
 
         let cpu = cpu_part().unwrap_or(0);

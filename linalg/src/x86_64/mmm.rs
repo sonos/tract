@@ -8,11 +8,9 @@ use crate::pack::PackedI8K4;
 use crate::{DatumType, Ops};
 
 #[cfg(tract_amx_int8)]
-use super::amx::{PackedAmxA, has_amx_int8};
+use super::amx::PackedAmxA;
 #[cfg(tract_amx_bf16)]
-use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2, has_amx_bf16};
-#[cfg(tract_avxvnni)]
-use super::avxvnni::has_avxvnni;
+use super::amx_bf16::{PackedAmxBf16A, PackedBf16K2};
 #[cfg(tract_avx512vnni)]
 use super::fma_width::has_dual_avx512_fma;
 
@@ -256,40 +254,43 @@ MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(Avx512
     boost(AMX_BF16_OPT_IN)
 }
 
+/// Installs the f32 and i32 dispatch policies this host's instruction set earns. The pool is
+/// filtered against the same set, so reading it here is what keeps a policy from naming a
+/// kernel the pool does not hold — under `TRACT_CPU_ISA` as much as on bare hardware.
 pub fn plug(ops: &mut Ops) {
+    let isa = crate::isa::native();
     // The fma f32 tier below needs avx2 (vgatherdps) on top of fma; whenever it
     // can't plug, cover every avx-capable CPU (Sandy/Ivy Bridge without fma,
     // AMD Bulldozer-family with fma but no avx2) with the mul+add tier.
-    if AVX() && !(AVX2() && FMA()) {
+    if isa.has(Isa::Avx) && !(isa.has(Isa::Avx2) && isa.has(Isa::Fma)) {
         plug_avx(ops);
     }
-    if AVX2() {
+    if isa.has(Isa::Avx2) {
         plug_avx2(ops);
         // AVX-VNNI runs on AVX2-only Atom-class cores (Alder Lake-E, Sierra
         // Forest, Clearwater Forest / Darkmont). Plug it here so big cores
         // can overlay AVX-512-VNNI / AMX on top below.
         #[cfg(tract_avxvnni)]
-        if has_avxvnni() {
+        if isa.has(Isa::AvxVnni) {
             plug_avxvnni(ops);
         }
-        if FMA() {
+        if isa.has(Isa::Fma) {
             plug_fma(ops);
-            if AVX512F() {
+            if isa.has(Isa::Avx512f) {
                 plug_avx512f(ops);
                 #[cfg(tract_avx512vnni)]
-                if AVX512VNNI() {
+                if isa.has(Isa::Avx512Vnni) {
                     plug_avx512vnni(ops);
-                    // AMX int8 preferred over VNNI when both available AND the OS
-                    // has granted XSAVE tile-data permission (see `has_amx_int8`).
+                    // AMX int8 preferred over VNNI when both are present.
                     #[cfg(tract_amx_int8)]
-                    if has_amx_int8() {
+                    if isa.has(Isa::AmxInt8) {
                         plug_avx512amx_int8(ops);
                     }
                 }
                 // The policy must not name a kernel the caller has not opted into; see
                 // `AMX_BF16_OPT_IN`, which keeps it out of every unforced tie.
                 #[cfg(tract_amx_bf16)]
-                if crate::knobs::TRACT_AMX_BF16.get() && has_amx_bf16() {
+                if crate::knobs::TRACT_AMX_BF16.get() && isa.has(Isa::AmxBf16) {
                     plug_avx512amx_bf16(ops);
                 }
             }

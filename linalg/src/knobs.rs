@@ -64,5 +64,5 @@ tract_data::declare_knob!(
     TRACT_CPU_ISA,
     Option<String>,
     None,
-    "Edit the detected instruction-set features, comma-separated with +/- (e.g. '-sve2,+fp16'). Applies to every architecture; a removed feature takes its kernels out of dispatch."
+    "Edit the detected instruction-set features, comma-separated with +/- (e.g. '-sve2,+fp16'). Applies to every architecture; a removed feature takes its kernels out of the pool and the dispatch policies that would have named them."
 );

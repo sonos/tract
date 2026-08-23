@@ -30,6 +30,7 @@ use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
+use crate::isa::Isa;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -407,10 +408,11 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 }
 
 pub fn plug(ops: &mut Ops) {
+    let isa = crate::isa::native();
     arm64simd::plug(ops);
 
     #[cfg(not(feature = "no_fp16"))]
-    if has_fp16() {
+    if isa.has(Isa::Fp16) {
         arm64fp16::plug(ops);
     }
 
@@ -418,7 +420,7 @@ pub fn plug(ops: &mut Ops) {
     // The SDOT kernel only exists when the assembler could encode `sdot`
     // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
     #[cfg(tract_arm64_dotprod)]
-    let qmmm_i32: crate::MMMImpl = if has_dotprod() {
+    let qmmm_i32: crate::MMMImpl = if isa.has(Isa::DotProd) {
         Box::new(|_, _, _| arm64simd_mmm_i32_8x8_dot.mmm())
     } else {
         Box::new(|_, _, _| arm64simd_mmm_i32_8x8.mmm())
@@ -479,7 +481,7 @@ pub fn plug(ops: &mut Ops) {
         );
     }
     #[cfg(not(feature = "no_fp16"))]
-    if has_fp16() {
+    if isa.has(Isa::Fp16) {
         let a55 = *KIND == Kind::CortexA55;
         log::info!("{} f16 matmul activated", if a55 { "Cortex-A55" } else { "ARMv8.2" });
         ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
@@ -511,7 +513,7 @@ pub fn plug(ops: &mut Ops) {
     ops.mul_by_scalar_f32 = Box::new(|| arm64simd_mul_by_scalar_f32_16n::ew());
     ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
     #[cfg(not(feature = "no_fp16"))]
-    if has_fp16() {
+    if isa.has(Isa::Fp16) {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
         ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
@@ -565,7 +567,7 @@ inventory::submit! {
 
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
-    use crate::isa::{Isa, IsaSet};
+    use crate::isa::IsaSet;
     let mut set = IsaSet::empty();
     if has_fp16() {
         set = set.with(Isa::Fp16);
