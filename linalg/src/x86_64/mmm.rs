@@ -1,4 +1,5 @@
 use crate::block_quant::*;
+use crate::isa::Isa;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
 use crate::pack::PackedFormat;
@@ -24,16 +25,10 @@ const AVX512VNNI_WIDE_TILE: fn() -> isize = || if has_dual_avx512_fma() { 50 } e
 /// The AMX bf16 kernel truncates its f32 operands to bf16 (~1/2^8 relative error per multiply),
 /// so it is opt-in through TRACT_AMX_BF16 and off by default even where the hardware has it.
 /// Being off is a preference, not a capability: the kernel stays supported wherever the ISA is,
-/// so that its tests run there, and instead loses every tie by more than the top of the tier
-/// ladder can give it back.
+/// so that its tests run there, and instead loses every tie no tier can win back.
 #[cfg(tract_amx_bf16)]
-const AMX_BF16_OPT_IN: fn() -> isize = || {
-    if crate::knobs::TRACT_AMX_BF16.get() {
-        100
-    } else {
-        -(crate::isa::TIER_BOOST * crate::isa::MAX_TIER as isize) - 1
-    }
-};
+const AMX_BF16_OPT_IN: fn() -> isize =
+    || if crate::knobs::TRACT_AMX_BF16.get() { 100 } else { crate::isa::NEVER_PREFERRED };
 use super::*;
 
 /// One candidate kernel in a dispatcher's pool, with its tile geometry
@@ -89,12 +84,12 @@ MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) isa(Avx) quality(Ma
 MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) isa(Avx) quality(ManuallyOptimized));
 MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(Avx) quality(ManuallyOptimized));
 
-/// The 256-bit fma f32 kernels are not superseded by the avx512 ones, so they cancel the
-/// ladder's default and rank as peers. Both x86 avx512 cost models score them alongside the
+/// The 256-bit fma f32 kernels are not superseded by the avx512 ones, so they cancel the ladder
+/// step between the two and rank as peers. Both x86 avx512 cost models score them alongside the
 /// avx512 kernels; they cover the small-`n` tiles avx512 has no matching `nr` for (n=2 -> 40x2,
 /// n=4 -> 24x4); and avx512 has no 64x1 at all, so a pool without them loses the whole r=64
-/// packing group -- which costs 23% at n=8, the group's 64x3 being the best matrix kernel there.
-const FMA_F32_PEER: fn() -> isize = || crate::isa::TIER_BOOST;
+/// packing group, whose 64x3 is the best matrix kernel at small `n`.
+const FMA_F32_PEER: fn() -> isize = || crate::isa::peer_of(Isa::Fma, Isa::Avx512f);
 
 MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
 MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) isa(Avx, Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));

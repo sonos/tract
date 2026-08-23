@@ -90,7 +90,7 @@ impl Isa {
     /// The two architectures share the scale without meeting on it — no host offers features
     /// from both — so `Neon` and `Avx` both sitting at 1 says nothing about each other.
     /// Widening the scale means revisiting [`MAX_TIER`].
-    pub fn tier(&self) -> u8 {
+    pub const fn tier(&self) -> u8 {
         match self {
             // x86: each generation subsumes the last, AMX above the VNNI it needs alongside it.
             Isa::Avx => 1,
@@ -183,14 +183,26 @@ impl IsaReq {
 /// written against a more capable set is assumed better than one written against a less capable
 /// one; this is the size of that assumption, in the same units as a declared `boost`.
 ///
-/// It has to stay well under the smallest declared boost, because a declaration is how an
-/// exception to the assumption is spelled and it must outweigh every tier it disagrees with:
-/// `TIER_BOOST * MAX_TIER` is the widest disagreement a declaration ever has to cross, so
-/// keeping it below the smallest declared value in the tree is what makes exceptions win.
+/// A declared boost is how an exception to that assumption is spelled, so it has to cover the
+/// ladder steps it disagrees with -- and only those: a kernel whose competition sits in its own
+/// tier disagrees with no step and needs no magnitude at all. Spell the ones that do cross tiers
+/// with [`peer_of`] instead of a literal, so the claim survives a ladder that grows a step;
+/// [`NEVER_PREFERRED`] is the far end of the range, for a kernel that must lose every tie.
 pub const TIER_BOOST: isize = 10;
 
-/// The deepest step in the ladder, for the bound above.
+/// The deepest step any ladder reaches, bounding what a boost has to be able to cross.
 pub const MAX_TIER: u8 = 5;
+
+/// A boost that cancels the ladder between two steps, for a kernel written for `mine` but
+/// measured as a peer of the kernels written for `theirs`. The relation is the claim; the
+/// number is derived from it, and stays right when a step is inserted between the two.
+pub const fn peer_of(mine: Isa, theirs: Isa) -> isize {
+    (theirs.tier() as isize - mine.tier() as isize) * TIER_BOOST
+}
+
+/// A boost no tier can make up for, for a kernel that is runnable here but must never be
+/// chosen unless something outside the ranking asks for it by name.
+pub const NEVER_PREFERRED: isize = -(TIER_BOOST * MAX_TIER as isize) - 1;
 
 impl fmt::Debug for IsaReq {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -251,4 +263,29 @@ fn forced(mut set: IsaSet) -> IsaSet {
         }
     }
     set
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `MAX_TIER` bounds what a declared boost has to be able to cross, so a ladder step added
+    /// beyond it would make [`NEVER_PREFERRED`] and every [`peer_of`] claim too small.
+    #[test]
+    fn ladder_stays_within_the_bound() {
+        for isa in Isa::ALL {
+            assert!(
+                isa.tier() <= MAX_TIER,
+                "{isa} is tier {}, past MAX_TIER {MAX_TIER}",
+                isa.tier()
+            );
+        }
+    }
+
+    #[test]
+    fn peer_of_cancels_the_steps_between() {
+        assert_eq!(peer_of(Isa::Fma, Isa::Avx512f), TIER_BOOST);
+        assert_eq!(peer_of(Isa::Avx, Isa::Avx512Vnni), 3 * TIER_BOOST);
+        assert_eq!(peer_of(Isa::Avx512f, Isa::AvxVnni), 0);
+    }
 }
