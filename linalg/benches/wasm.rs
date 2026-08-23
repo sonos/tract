@@ -35,6 +35,10 @@ fn main() {
     eprintln!("=== int8 (i8->i32) 4x4 GEMM: wasm SIMD vs generic scalar ({target}) ===");
     bench_i8_4x4::run();
 
+    eprintln!();
+    eprintln!("=== int8 matvec (n=1): wasm_i32_4x4 vs generic_i32_4x1 ({target}) ===");
+    bench_i8_matvec::run();
+
     #[cfg(target_feature = "relaxed-simd")]
     {
         eprintln!();
@@ -708,5 +712,77 @@ mod util {
             }
         }
         panic!("kernel {name} not registered")
+    }
+}
+
+// int8 matrix-VECTOR (n=1): `wasm_i32_4x4` pays a 4x N-padding to use its SIMD tile, while
+// `generic_i32_4x1` is a scalar loop with no waste. Both expose the i8i8 packing (index 1) and
+// share a packing group, so a caller with a symbolic `n` picks between exactly these two.
+#[cfg(target_arch = "wasm32")]
+mod bench_i8_matvec {
+    use std::time::Instant;
+    use tract_data::internal::*;
+    use tract_linalg::mmm::{AsInputValue, FusedSpec, MatMatMul};
+
+    const I8I8: usize = 1;
+
+    fn run_one(kernel: &dyn MatMatMul, m: usize, k: usize, n: usize, iters: usize) -> f64 {
+        let packing = &kernel.packings()[I8I8];
+        let a = Tensor::zero::<i8>(&[m, k]).unwrap();
+        let pa = packing.0.prepare_one(&a, 1, 0).unwrap();
+        let b = Tensor::zero::<i8>(&[k, n]).unwrap();
+        let pb = packing.1.prepare_one(&b, 0, 1).unwrap();
+        let mut c = Tensor::zero::<i32>(&[m, n]).unwrap();
+        let mut go = || unsafe {
+            kernel
+                .run(
+                    m,
+                    n,
+                    &[
+                        FusedSpec::AddMatMul {
+                            a: AsInputValue::Borrowed(&*pa),
+                            b: AsInputValue::Borrowed(&*pb),
+                            packing: I8I8,
+                        },
+                        FusedSpec::Store(kernel.c_view(Some(0), Some(1)).wrap(&c.view_mut())),
+                    ],
+                )
+                .unwrap();
+        };
+        for _ in 0..50 {
+            go();
+        }
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            go();
+        }
+        t0.elapsed().as_secs_f64() / iters as f64 * 1e9
+    }
+
+    fn min_of_n(k: &dyn MatMatMul, m: usize, kk: usize, n: usize, i: usize, reps: usize) -> f64 {
+        let mut s: Vec<f64> = (0..reps).map(|_| run_one(k, m, kk, n, i)).collect();
+        s.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        s[0]
+    }
+
+    fn bench(m: usize, k: usize, iters: usize) {
+        let wasm = crate::util::pick("wasm_i32_4x4");
+        let generic = crate::util::pick("generic_i32_4x1");
+        let w = min_of_n(&*wasm, m, k, 1, iters, 8);
+        let g = min_of_n(&*generic, m, k, 1, iters, 8);
+        eprintln!(
+            "m={m:<5} k={k:<5} n=1: wasm_i32_4x4={w:>9.0} generic_i32_4x1={g:>9.0} ns/call  \
+             the 4x4 costs {:.2}x the generic",
+            w / g
+        );
+    }
+
+    pub fn run() {
+        bench(16, 96, 20_000);
+        bench(64, 64, 20_000);
+        bench(64, 256, 5_000);
+        bench(256, 256, 2_000);
+        bench(256, 1536, 300);
+        bench(1024, 256, 300);
     }
 }
