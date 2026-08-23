@@ -78,7 +78,6 @@ macro_rules! MMMRustKernel {
             $(bound($bound:expr))?
             $(@($align_a:expr, $align_b:expr))?
             $(isa($($isa:ident),+))?
-            $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(quality($quality:expr))?
@@ -100,7 +99,6 @@ macro_rules! MMMRustKernel {
                 $(@($align_a, $align_b))?
                 generic(true)
                 $(isa($($isa),+))?
-                $(where($where))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
                 $(quality($quality))?
@@ -119,7 +117,6 @@ macro_rules! MMMKernel {
             $(@($align_a:expr, $align_b:expr))?
             $(generic($generic:expr))?
             $(isa($($isa:ident),+))?
-            $(where($where:expr))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
             $(quality($quality:expr))?
@@ -146,7 +143,6 @@ macro_rules! MMMKernel {
                     k = k.with_isa(
                         $crate::isa::IsaReq::ANY
                             $(.needing(&[$($crate::isa::Isa::$isa),+]))?
-                            $(.probe($where))?,
                     );
                     $(
                         assert!(k.packings.len() == $pnum);
