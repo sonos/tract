@@ -3,7 +3,8 @@
 //! A kernel's requirement is a set rather than a closure: it can be printed, enumerated, and
 //! evaluated against a machine other than this one, which is what makes another cohort's
 //! dispatch inspectable. Micro-architecture is deliberately not in here — how many 512-bit FMA
-//! ports a core has is not an instruction set; see [`IsaReq::probe`].
+//! ports a core has is not an instruction set, and preferring a kernel is not the same as being
+//! able to run it: that belongs in [`crate::mmm::MatMatMulKer::dynamic_boost`].
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -157,25 +158,18 @@ impl fmt::Debug for IsaSet {
 pub struct IsaReq {
     /// Every one of these must be present.
     pub needs: &'static [Isa],
-    /// A condition the instruction set cannot express, today only the 512-bit FMA port count.
-    /// Whatever hides in here is invisible to enumeration, so it should stay rare.
-    pub probe: Option<fn() -> bool>,
 }
 
 impl IsaReq {
     /// Runs anywhere its arch does.
-    pub const ANY: IsaReq = IsaReq { needs: &[], probe: None };
+    pub const ANY: IsaReq = IsaReq { needs: &[] };
 
     pub const fn needing(self, needs: &'static [Isa]) -> IsaReq {
-        IsaReq { needs, ..self }
-    }
-
-    pub const fn probe(self, probe: fn() -> bool) -> IsaReq {
-        IsaReq { probe: Some(probe), ..self }
+        IsaReq { needs }
     }
 
     pub fn satisfied_by(&self, set: IsaSet) -> bool {
-        self.needs.iter().all(|i| set.has(*i)) && self.probe.is_none_or(|p| p())
+        self.needs.iter().all(|i| set.has(*i))
     }
 
     /// The most capable lineage step this kernel sits in, feeding the default half of
@@ -205,9 +199,6 @@ impl fmt::Debug for IsaReq {
             f.write_str("any")?;
         } else {
             f.write_str(&needs)?;
-        }
-        if self.probe.is_some() {
-            f.write_str(" +probe")?;
         }
         Ok(())
     }

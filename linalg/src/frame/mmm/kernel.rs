@@ -95,9 +95,9 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         kernel.with_packing(packing_a, packing_b)
     }
 
-    /// Sets what the instruction set must offer for this kernel to run here — the `isa(..)` and
-    /// `where(..)` of the kernel macros. Runnability only: a preference spelled here also skips
-    /// the kernel's tests. Use [`Self::with_boost`] for that.
+    /// Sets what the instruction set must offer for this kernel to run here — the `isa(..)` of
+    /// the kernel macros. Runnability only, and it is a set of declared tokens, nothing runtime:
+    /// a preference spelled here would also skip the kernel's tests. Use [`Self::with_boost`].
     pub fn with_isa(mut self, isa: crate::isa::IsaReq) -> Self {
         self.isa = isa;
         self
