@@ -1,6 +1,7 @@
 use tract_data::itertools::izip;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
+use tract_linalg::mmm::retain_best_quality;
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -569,14 +570,13 @@ impl Conv {
             n: n.as_usize(),
         };
         if weight_fact.is_exotic() {
-            tract_linalg::ops()
-                .candidates(&query)
+            let mut candidates = tract_linalg::ops().candidates(&query);
+            retain_best_quality(&mut candidates);
+            candidates
                 .into_iter()
                 .map(|(mmm, p, _)| (mmm, p))
-                .min_by_key(|(mmm, _)| {
-                    mmm.quality().cost() as isize * 1000 - (mmm.mr() * mmm.nr()) as isize
-                })
-                .context("Not matmu found")
+                .max_by_key(|(mmm, _)| mmm.mr() * mmm.nr())
+                .context("No matmul found")
         } else {
             let (mmm, packing, _) = tract_linalg::ops().pick(&query).context("No matmul found")?;
             Ok((mmm, packing))
