@@ -3,12 +3,6 @@
 WHITE='\033[1;37m'
 NC='\033[0m' # No Color
 
-if [ -e /proc/cpuinfo ]
-then
-    grep "^flags" /proc/cpuinfo | head -1 | \
-        grep --color=always '\(s\?sse[0-9_]*\|fma\|f16c\|avx[^ ]*\)'
-fi
-
 set -x
 
 ROOT=$(dirname $0)/..

@@ -79,6 +79,9 @@ jobs:
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
 
+    - name: CPU features
+      run: .travis/cpu-features.sh
+
     - name: Cargo test
       # tract-linalg and the test-rt suites run thousands of tiny cases; -q
       # collapses the per-test lines to dots so the CI log stays readable.
