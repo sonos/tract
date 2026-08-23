@@ -3,6 +3,8 @@ set -e
 
 [ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
+sh $ROOT/.travis/cpu-features.sh
+
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
 
@@ -36,7 +38,6 @@ if [ -n "$CI" -a ! -e /tmp/ci-setup-done -a -z "$TRACT_PREBUILT_CI" ]
 then
     if [ `uname` = "Darwin" ]
     then
-        sysctl -n machdep.cpu.brand_string
         python3 --version
         brew install coreutils numpy python-setuptools jshon
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"

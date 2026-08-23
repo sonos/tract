@@ -97,6 +97,9 @@ jobs:
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
+    - name: CPU features
+      run: .travis/cpu-features.sh
+
     - name: example tests
       env:
         MATRIX_EX: ${{matrix.ex}}
