@@ -34,8 +34,12 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
         true
     }
 
-    #[allow(unused_variables)]
     fn is_supported_here(&self) -> bool {
+        self.built() && self.isa().satisfied_by(crate::isa::native())
+    }
+
+    /// Whether this build compiled the kernel's body at all.
+    fn built(&self) -> bool {
         true
     }
 
@@ -64,7 +68,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     /// False when this build did not assemble the kernel's asm, its arch not being the one the
     /// kernel was written for. The kernel struct still exists, so it stays introspectable, but
     /// it is never supported here and calling it bails.
-    pub bound: bool,
+    pub built: bool,
     /// What the instruction set must offer for this kernel to run here at all.
     pub isa: crate::isa::IsaReq,
     pub boost: fn() -> isize,
@@ -86,7 +90,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
             quality,
             packings: vec![],
             stores: vec![Acc::datum_type()],
-            bound: true,
+            built: true,
             isa: crate::isa::IsaReq::ANY,
             boost: || 0,
             can_fuse: |_| true,
@@ -166,8 +170,8 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         self.quality
     }
 
-    fn is_supported_here(&self) -> bool {
-        self.bound && self.isa.satisfied_by(crate::isa::native())
+    fn built(&self) -> bool {
+        self.built
     }
 
     fn isa(&self) -> crate::isa::IsaReq {

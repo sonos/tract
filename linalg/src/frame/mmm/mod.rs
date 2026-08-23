@@ -89,14 +89,19 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// kernel's tests as well.
     fn dynamic_boost(&self) -> isize;
 
-    /// Whether this kernel is runnable on the current CPU (platform feature
-    /// gate, e.g. FEAT_DotProd for the SDOT i8 kernel).
+    /// Whether this kernel can be executed here at all: this build compiled it
+    /// ([`Self::built`]) and the running CPU has the instruction set it declares
+    /// ([`Self::isa`]).
     ///
     /// Runnability only, never preference: this answers "would executing the kernel fault",
     /// and the mmm test bodies gate on it, so a kernel that lies here has no test coverage at
     /// all on the hosts it lies on. Say a kernel is worse than its sibling with
     /// [`Self::dynamic_boost`] instead.
     fn is_supported_here(&self) -> bool;
+
+    /// Whether this build compiled the kernel's body at all. False for a foreign arch's
+    /// kernel, which is metadata around a stub that bails when called.
+    fn built(&self) -> bool;
 
     /// What the instruction set must offer for this kernel to run here.
     fn isa(&self) -> crate::isa::IsaReq;
@@ -176,6 +181,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
 
     fn is_supported_here(&self) -> bool {
         MatMatMulKer::is_supported_here(self)
+    }
+
+    fn built(&self) -> bool {
+        MatMatMulKer::built(self)
     }
 
     fn isa(&self) -> crate::isa::IsaReq {
