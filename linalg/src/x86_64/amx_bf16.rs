@@ -166,13 +166,13 @@ impl MMMInputFormat for PackedAmxBf16A {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn k_alignment(&self) -> usize {
         // tdpbf16ps consumes 32 bf16 per K-step.
@@ -297,13 +297,13 @@ impl MMMInputFormat for PackedBf16K2 {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn k_alignment(&self) -> usize {
         2
@@ -331,5 +331,23 @@ impl MMMInputFormat for PackedBf16K2 {
     }
     fn extract_at_mn_f32(&self, _: &EagerPackedInput, _: usize, _: &mut [f32]) -> TractResult<()> {
         bail!("no f32 extract")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::frame::mmm::input_store::view_check::view_matches_tensor;
+
+    #[test]
+    fn packed_amx_bf16_a_view() -> TractResult<()> {
+        view_matches_tensor(&PackedAmxBf16A::new(16), 64, 48)?;
+        view_matches_tensor(&PackedAmxBf16A::new(16), 5, 7)
+    }
+
+    #[test]
+    fn packed_bf16_k2_view() -> TractResult<()> {
+        view_matches_tensor(&PackedBf16K2::new(16), 64, 48)?;
+        view_matches_tensor(&PackedBf16K2::new(16), 5, 7)
     }
 }

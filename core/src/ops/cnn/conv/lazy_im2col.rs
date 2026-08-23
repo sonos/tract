@@ -51,6 +51,15 @@ impl MMMInputFormat for LazyIm2colParams {
         unimplemented!()
     }
 
+    fn prepare_one_view(
+        &self,
+        _t: &TensorView,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        bail!("Unexpected call to prepare_one_view on LazyIm2Col")
+    }
+
     fn prepare_one(
         &self,
         _t: &Tensor,

@@ -226,13 +226,13 @@ impl MMMInputFormat for PackedAmxA {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(i8::datum_type())
@@ -260,5 +260,17 @@ impl MMMInputFormat for PackedAmxA {
     }
     fn extract_at_mn_f32(&self, _: &EagerPackedInput, _: usize, _: &mut [f32]) -> TractResult<()> {
         bail!("no f32 extract")
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::frame::mmm::input_store::view_check::view_matches_tensor;
+
+    #[test]
+    fn packed_amx_a_view() -> TractResult<()> {
+        view_matches_tensor(&PackedAmxA::new(16), 64, 48)?;
+        view_matches_tensor(&PackedAmxA::new(16), 5, 7)
     }
 }
