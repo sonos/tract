@@ -83,7 +83,7 @@ the value (a tensor) of each wire in the graph,
 
 tract actually does much more than running the network as described in previous
 section. It is capable of performing several optimisations, at the single node
-or at the graph level. It can also perfom specific transformation, like
+or at the graph level. It can also perform specific transformation, like
 converting a streaming network to a pulsing network.
 
 In order to perform these network rewrites, tract needs to be able to reason

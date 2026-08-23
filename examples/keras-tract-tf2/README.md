@@ -14,7 +14,7 @@ pip install -r requirements.txt
 python example.py
 ```
 
-(Outputs are commited to git, you don't need to run the python step at all.)
+(Outputs are committed to git, you don't need to run the python step at all.)
 
 # Rust side inference
 
