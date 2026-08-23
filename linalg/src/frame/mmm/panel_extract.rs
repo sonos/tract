@@ -105,6 +105,10 @@ macro_rules! panel_extractor {
     (arm; $($rest:tt)*) => { panel_extractor!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "aarch64"; $($rest)*); };
     (x86_64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => {
+        panel_extractor!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
 
     ( @ $built:meta;
         $func:path as $id:ident($from:expr, $to: expr)
