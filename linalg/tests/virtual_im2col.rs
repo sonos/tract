@@ -294,9 +294,9 @@ impl MMMInputFormat for EagerIm2colSpec {
         todo!();
     }
 
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        _t: &Tensor,
+        _t: &TensorView,
         _k_axis: usize,
         _mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
@@ -417,9 +417,9 @@ impl MMMInputFormat for LazyIm2colSpec {
     fn prepare_tensor(&self, _t: &Tensor, _k_axis: usize, _mn_axis: usize) -> TractResult<Tensor> {
         todo!();
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        _t: &Tensor,
+        _t: &TensorView,
         _k_axis: usize,
         _mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {

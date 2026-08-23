@@ -14,12 +14,23 @@ pub trait MMMInputFormat:
     Downcast + Debug + DynHash + dyn_eq::DynEq + DynClone + Send + Sync + Display
 {
     fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor>;
+    /// Pack one matmul out of a possibly strided view — one batch of a batched input, which a
+    /// `&Tensor` cannot name. A format whose input is not a strided array of numbers (block
+    /// quant, lazy im2col) says so here rather than being silently unreachable.
+    fn prepare_one_view(
+        &self,
+        t: &TensorView,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>>;
     fn prepare_one(
         &self,
         t: &Tensor,
         k_axis: usize,
         mn_axis: usize,
-    ) -> TractResult<Box<dyn MMMInputValue>>;
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        self.prepare_one_view(&t.view(), k_axis, mn_axis)
+    }
     fn precursor(&self) -> WeightType;
     /// Round `tensor` through the numeric precision this format stores its data
     /// in, so a reference matmul can reproduce the kernel's pack-time precision
@@ -151,5 +162,42 @@ impl Display for EagerPackedInput {
 impl Debug for EagerPackedInput {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         <Self as Display>::fmt(self, f)
+    }
+}
+
+#[cfg(test)]
+pub mod view_check {
+    use super::*;
+
+    /// Packing one batch of a batched tensor through a strided view must give the same bytes as
+    /// packing that batch alone: what a dynamic packing op relies on, and what an unimplemented
+    /// [`MMMInputFormat::prepare_one_view`] used to break.
+    pub fn view_matches_tensor(
+        format: &dyn MMMInputFormat,
+        k: usize,
+        mn: usize,
+    ) -> TractResult<()> {
+        let WeightType::Plain(dt) = format.precursor() else {
+            bail!("{format} does not pack a plain tensor")
+        };
+        let mut parent = Tensor::zero_dt(dt, &[2, k, mn])?;
+        parent.as_bytes_mut().iter_mut().enumerate().for_each(|(ix, b)| *b = (ix % 101) as u8 + 1);
+        let batch = parent.slice(0, 1, 2)?.into_shape(&[k, mn])?;
+        let from_tensor = format.prepare_one(&batch, 0, 1)?;
+        let offset = parent.strides()[0] * dt.size_of() as isize;
+        let view =
+            unsafe { TensorView::from_bytes(&parent, offset, parent.shape(), parent.strides()) };
+        let from_view = format.prepare_one_view(&view, 1, 2)?;
+        let bytes = |v: &dyn MMMInputValue| -> TractResult<Arc<Blob>> {
+            Ok(v.downcast_ref::<EagerPackedInput>()
+                .with_context(|| format!("{format} did not pack to an EagerPackedInput"))?
+                .packed
+                .clone())
+        };
+        ensure!(
+            *bytes(&*from_tensor)? == *bytes(&*from_view)?,
+            "{format}: packing k={k} mn={mn} from a view differs from packing it from a tensor"
+        );
+        Ok(())
     }
 }

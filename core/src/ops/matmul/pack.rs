@@ -1,39 +1,12 @@
 use crate::axes::Axis;
 use crate::internal::*;
 use ndarray::*;
-use tract_linalg::WeightType;
 use tract_linalg::block_quant::{
     BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat, block_quant_slice,
 };
 use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
-use tract_linalg::pack::{PackedFormat, PackedI8K4};
-#[cfg(target_arch = "x86_64")]
-use tract_linalg::x86_64::amx::PackedAmxA;
 
 use super::ModePicker;
-
-// Pack one (possibly strided) view with a dynamic packing format. Keeps the
-// PackedFormat fast path byte-identical; routes the K=4-inner SMOPA packer
-// (PackedI8K4) and the AMX A-side packer (PackedAmxA) through their view
-// packers. Other formats are unsupported here.
-fn pack_view_with(
-    packer: &dyn MMMInputFormat,
-    t: &TensorView,
-    k_axis: usize,
-    mn_axis: usize,
-) -> TractResult<Box<dyn MMMInputValue>> {
-    if let Some(pf) = packer.downcast_ref::<PackedFormat>() {
-        return pf.pack_tensor_view(t, k_axis, mn_axis);
-    }
-    if let Some(p4) = packer.downcast_ref::<PackedI8K4>() {
-        return p4.pack_view(t, k_axis, mn_axis);
-    }
-    #[cfg(target_arch = "x86_64")]
-    if let Some(pa) = packer.downcast_ref::<PackedAmxA>() {
-        return pa.pack_view(t, k_axis, mn_axis);
-    }
-    bail!("OptMatMulPack does not support packing format {packer:?}")
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptMatMulPack {
@@ -114,7 +87,7 @@ impl OptMatMulPack {
             let packer = &self.packers[mode];
             let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
-                let packed = pack_view_with(&**packer, &input.view(), self.k_axis, self.mn_axis)?;
+                let packed = packer.prepare_one_view(&input.view(), self.k_axis, self.mn_axis)?;
                 PackedMatrixStorage::new_batched(&output_shape, tvec![packed])
                     .into_tensor(input.datum_type())
             } else {
@@ -132,12 +105,9 @@ impl OptMatMulPack {
                         .map(|(x, s)| *x as isize * s)
                         .sum::<isize>()
                         * input.datum_type().size_of() as isize;
-                    values.push(pack_view_with(
-                        &**packer,
-                        &TensorView::from_bytes(&input, offset, input.shape(), input.strides()),
-                        self.k_axis,
-                        self.mn_axis,
-                    )?);
+                    let view =
+                        TensorView::from_bytes(&input, offset, input.shape(), input.strides());
+                    values.push(packer.prepare_one_view(&view, self.k_axis, self.mn_axis)?);
                 }
                 PackedMatrixStorage::new_batched(&output_shape, values)
                     .into_tensor(input.datum_type())
@@ -163,12 +133,7 @@ pub struct DynPackedExoticFact {
 
 impl ExoticFact for DynPackedExoticFact {
     fn buffer_sizes(&self) -> TVec<TDim> {
-        let elem_bytes = match self.packers[0].precursor() {
-            WeightType::Plain(dt) => dt.size_of(),
-            // OptMatMulPack only ever carries plain (PackedFormat / PackedI8K4) packers.
-            WeightType::BlockQuant(_) => 1,
-        };
-        tvec!(self.k.clone() * &self.mn * elem_bytes)
+        tvec!(self.packers[0].mem_size(self.k.clone(), self.mn.clone()))
     }
 }
 

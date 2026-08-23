@@ -272,6 +272,15 @@ impl MMMInputFormat for PackedBlockQuantFormat {
             .into_tensor(t.datum_type()))
     }
 
+    fn prepare_one_view(
+        &self,
+        _t: &TensorView,
+        _k_axis: usize,
+        _mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        bail!("{self} packs from block-quant storage, which a strided view cannot address")
+    }
+
     fn prepare_one(
         &self,
         t: &Tensor,

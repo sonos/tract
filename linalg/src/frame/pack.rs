@@ -23,6 +23,14 @@ impl MMMInputFormat for PackedFormat {
         let packed = PackedFormat::pack_tensor(self, t, k_axis, mn_axis)?;
         Ok(PackedMatrixStorage::new(packed).into_tensor(t.datum_type()))
     }
+    fn prepare_one_view(
+        &self,
+        t: &TensorView,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<Box<dyn MMMInputValue>> {
+        PackedFormat::pack_tensor_view(self, t, k_axis, mn_axis)
+    }
 
     fn prepare_one(
         &self,
@@ -186,46 +194,7 @@ impl PackedFormat {
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
         ensure!(t.datum_type().is_copy());
-        ensure!(
-            t.datum_type().unquantized() == self.dt.unquantized(),
-            "Attempting to pack for {self} tensor {t:?}"
-        );
-        let k = t.shape()[k_axis];
-        let mn = t.shape()[mn_axis];
-        let packed_len = self.len(k, mn);
-        let panel_len = self.single_panel_len(k);
-        let panel_bytes = panel_len * t.datum_type().size_of();
-        let strides = t.strides();
-        unsafe {
-            let mut packed = Blob::new_for_size_and_align(
-                t.datum_type().size_of() * packed_len,
-                self.alignment_bytes,
-            );
-            if cfg!(debug_assertions) {
-                packed.as_bytes_mut().fill(0u8);
-            } else if mn % self.r != 0 {
-                // The kernel computes on the last panel's padding lanes before
-                // their results are discarded; garbage bytes there decode to
-                // denormals and stall the fp pipeline. Zero the partial panel.
-                packed.as_bytes_mut()[(mn / self.r) * panel_bytes..].fill(0u8);
-            }
-            dispatch_copy!(Self::pack_t(t.datum_type())(
-                self,
-                packed.as_mut_ptr() as _,
-                t.as_ptr_unchecked(),
-                mn,
-                strides[k_axis],
-                strides[mn_axis],
-                0..k,
-                0..mn
-            ));
-            Ok(Box::new(EagerPackedInput {
-                fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
-                packed: packed.into(),
-                panel_bytes,
-                mn,
-            }))
-        }
+        self.pack_tensor_view(&t.view(), k_axis, mn_axis)
     }
 
     pub fn pack_tensor_view(
@@ -1187,13 +1156,13 @@ impl MMMInputFormat for PackedI8K4 {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(i8::datum_type())
