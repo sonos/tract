@@ -26,7 +26,6 @@ maintenance = { status = "actively-developed" }
 box_drawing.workspace = true
 clap.workspace = true
 erased-serde.workspace = true
-criterion.workspace = true
 colorous.workspace = true
 env_logger.workspace = true
 flate2.workspace = true
@@ -47,9 +46,6 @@ py_literal.workspace = true
 readings-probe.workspace = true
 ron.workspace = true
 regex.workspace = true
-reqwest.workspace = true
-rustls.workspace = true
-webpki-roots.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -73,6 +69,15 @@ tract-tflite = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
 zerofrom.workspace = true
 float-ord.workspace = true
+
+# Neither the criterion harness (rayon) nor reqwest's transport (tokio/socket2)
+# builds for wasm, so the `criterion` subcommand and HTTP model loading are
+# native-only.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+criterion.workspace = true
+reqwest.workspace = true
+rustls.workspace = true
+webpki-roots.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 tract-metal.workspace = true
