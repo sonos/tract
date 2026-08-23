@@ -556,6 +556,88 @@ jobs:
           chmod +x tract-cli/tract
           tract-cli/tract hwbench --no-cache --no-memory --assert --tolerance 20
 
+  # --- daily wasm kernel-pick gate. The wasm kernels and their packings are picked at
+  # compile time on simd128 / relaxed-simd, so no native cohort exercises that half of
+  # the dispatcher, and without either the pool is portable Rust alone. Build the CLI for
+  # wasm32-wasip1 in each configuration on a hosted runner, then assert the picks under
+  # wasmtime on the bench box. Self-referential (picked vs best in pool), so there is
+  # nothing to keep in bench-data.
+  build-wasm:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - config: no-simd
+            rustflags: ""
+          - config: simd128
+            rustflags: -C target-feature=+simd128
+          - config: relaxed-simd
+            rustflags: -C target-feature=+simd128,+relaxed-simd
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: wasm32-wasip1-${{ matrix.config }}
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      # hwbench needs no model loader, so the featureless CLI keeps the build small.
+      - env:
+          RUSTFLAGS: ${{ matrix.rustflags }}
+        run: |
+          rustup target add wasm32-wasip1
+          cargo build -p tract-cli --release --target wasm32-wasip1 --no-default-features
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tract-wasm-${{ matrix.config }}
+          path: target/wasm32-wasip1/release/tract.wasm
+
+  hwbench-wasm:
+    needs: [ prepare, build-wasm ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    # The x86 bench box, not a hosted runner: the pick ratios are stable to ~2 points
+    # there and swing by 2x when something else is compiling on the machine.
+    runs-on: cuda-lovelace
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ no-simd, simd128, relaxed-simd ]
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-wasm-${{ matrix.config }}
+          path: tract-wasm
+      # Pinned: a wasmtime bump changes Cranelift's codegen and can reorder the pool,
+      # so it is a deliberate step, not whatever the box picked up last.
+      - name: Setup wasmtime
+        env:
+          WASMTIME_VERSION: v48.0.0
+        run: |
+          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
+          echo "$PWD/wasmtime-$WASMTIME_VERSION-x86_64-linux" >> "$GITHUB_PATH"
+      # The bandwidth probes are threaded and wasip1 has no threads, hence --no-cache
+      # --no-memory: the matmul battery is the whole point here anyway. --include-generic
+      # because autovectorised Rust is a real contender here, and the only pool at all
+      # without simd128.
+      - name: Report the whole battery
+        run: |
+          wasmtime run tract-wasm/tract.wasm hwbench --no-cache --no-memory --include-generic
+      # Gated on the f32 shapes only. wasm has no real f16 kernel, so f16 runs on the
+      # portable pool, where the dispatcher takes generic_f32_4x4 at 63-76% of
+      # generic_f32_4x1 — a live mispick, reported by the step above but not gated until
+      # it is fixed. Then this list goes away and the whole battery gates.
+      - name: Assert kernel picks under wasmtime
+        run: |
+          wasmtime run tract-wasm/tract.wasm hwbench \
+            512,512,120,f32 256,256,256,f32 192,288,1225,f32 64,64,64,f32 \
+            --no-cache --no-memory --include-generic --assert --tolerance 20
+
   # --- daily load-and-run gate: every model in the bench manifest must load,
   # optimize and run once on each runtime the box offers (CPU + accelerator).
   # Reuses the bench binaries; no golden numbers, just exit status. Nightly only,
