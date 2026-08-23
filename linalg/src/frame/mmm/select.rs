@@ -141,16 +141,26 @@ mod tests {
     /// matvec kernel for the pulses where `n` is 1 and a matrix kernel for the rest. Ranking a
     /// group's matvec away while keeping its matrix kernel leaves that caller a group it cannot
     /// use for both, and it silently falls back on a narrower group instead.
+    ///
+    /// Only the boost is held to this. A *quality* tier dropping the matvec is that tier working
+    /// as intended — a scalar fallback has no business ranking beside a hand-written kernel, and
+    /// a group whose only matvec is a lesser implementation is a group the caller is right to
+    /// treat as matrix-only.
     #[test]
     fn the_ranking_keeps_a_kept_group_usable() {
         let ops = crate::ops();
         for operands in operands() {
             let query = query(operands, None, None, None);
             let all = ops.candidates(&query);
-            let mut kept = all.clone();
+            let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
+                continue;
+            };
+            let peers: Vec<Candidate> =
+                all.iter().filter(|(mmm, _, _)| mmm.quality().cost() == best).cloned().collect();
+            let mut kept = peers.clone();
             retain_best_quality(&mut kept);
             let kept: Vec<&str> = kept.iter().map(|(mmm, _, _)| mmm.name()).collect();
-            for group in packing_groups(&all) {
+            for group in packing_groups(&peers) {
                 let matvecs: Vec<&str> =
                     group.iter().filter(|c| c.0.nr() == 1).map(|c| c.0.name()).collect();
                 if matvecs.is_empty() || !group.iter().any(|c| kept.contains(&c.0.name())) {
