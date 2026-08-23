@@ -23,8 +23,12 @@ use super::*;
 
 #[cfg(tract_amx_int8)]
 const AVX512AMX: fn() -> bool = has_amx_int8;
+// AMX bf16 for f32 matmul truncates operands f32 -> bf16, so it is lossy (~1/2^8 relative
+// error per multiply) and opt-in via TRACT_AMX_BF16, off by default even where the hardware
+// supports it. The knob belongs here rather than in `plug`: this predicate is what decides
+// pool membership, and a kernel in the pool is a candidate whether or not a policy names it.
 #[cfg(tract_amx_bf16)]
-const AVX512AMX_BF16: fn() -> bool = has_amx_bf16;
+const AVX512AMX_BF16: fn() -> bool = || crate::knobs::TRACT_AMX_BF16.get() && has_amx_bf16();
 #[cfg(tract_avxvnni)]
 const AVXVNNI: fn() -> bool = has_avxvnni;
 
@@ -167,8 +171,8 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) where(AVX512
 //
 // boost(50) lifts it above the 8x8 VNNI candidate in the einsum kernel-selection
 // scorer for unknown shapes, while staying below the AMX 16x16 kernels' boost(100)
-// so AMX still wins when both are present. The boost only applies on dual-FMA
-// cores because the kernel is only pushed into `mmm_impls` there.
+// so AMX still wins when both are present. The boost only applies on dual-FMA cores because
+// `AVX512VNNI_DUAL_FMA` keeps the kernel out of the pool elsewhere.
 #[cfg(tract_avx512vnni)]
 MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) where(AVX512VNNI_DUAL_FMA)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
@@ -276,11 +280,8 @@ pub fn plug(ops: &mut Ops) {
                         plug_avx512amx_int8(ops);
                     }
                 }
-                // AMX bf16 for f32 matmul truncates operands f32 -> bf16, so it is
-                // lossy (~1/2^8 relative error per multiply) and opt-in via
-                // TRACT_AMX_BF16, off by default even where the hardware supports it.
                 #[cfg(tract_amx_bf16)]
-                if crate::knobs::TRACT_AMX_BF16.get() && has_amx_bf16() {
+                if AVX512AMX_BF16() {
                     plug_avx512amx_bf16(ops);
                 }
             }
