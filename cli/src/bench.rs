@@ -1,10 +1,13 @@
 use crate::Parameters;
 use std::time::Duration;
 use tract_hir::internal::*;
-use tract_libcli::profile::{BenchLimits, BenchResult, run_one_step};
+#[cfg(not(target_family = "wasm"))]
+use tract_libcli::profile::run_one_step;
+use tract_libcli::profile::{BenchLimits, BenchResult};
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
+#[cfg(not(target_family = "wasm"))]
 pub fn criterion(
     params: &Parameters,
     _matches: &clap::ArgMatches,

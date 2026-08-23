@@ -251,10 +251,13 @@ fn main() -> TractResult<()> {
     let bench = assertions_options(bench);
     app = app.subcommand(bench);
 
-    let criterion = clap::Command::new("criterion")
-        .long_about("Benchmarks tract on randomly generated input using criterion.");
-    let criterion = run_options(criterion);
-    app = app.subcommand(criterion);
+    #[cfg(not(target_family = "wasm"))]
+    {
+        let criterion = clap::Command::new("criterion")
+            .long_about("Benchmarks tract on randomly generated input using criterion.");
+        let criterion = run_options(criterion);
+        app = app.subcommand(criterion);
+    }
 
     #[cfg(feature = "bench-suite")]
     {
@@ -395,6 +398,7 @@ fn main() -> TractResult<()> {
     env_logger::Builder::from_env(env).format_timestamp_nanos().init();
     info_usage("init", probe.as_ref());
 
+    #[cfg(not(target_family = "wasm"))]
     rustls::crypto::ring::default_provider()
         .install_default()
         .expect("failed to install ring provider");
@@ -963,6 +967,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             bench::handle(&params, m, &params::bench_limits_from_clap(m)?)
         }
 
+        #[cfg(not(target_family = "wasm"))]
         Some(("criterion", m)) => {
             need_optimisations = true;
             bench::criterion(&params, &matches, m)

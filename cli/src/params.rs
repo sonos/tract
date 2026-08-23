@@ -1,4 +1,5 @@
 use fs_err as fs;
+#[cfg(not(target_family = "wasm"))]
 use reqwest::Url;
 use scan_fmt::scan_fmt;
 use std::io::Cursor;
@@ -40,6 +41,7 @@ use std::convert::*;
 #[derive(Debug)]
 enum Location {
     Fs(PathBuf),
+    #[cfg(not(target_family = "wasm"))]
     Http(Url),
 }
 
@@ -47,17 +49,23 @@ impl Location {
     fn path(&self) -> Cow<'_, std::path::Path> {
         match self {
             Location::Fs(p) => p.into(),
+            #[cfg(not(target_family = "wasm"))]
             Location::Http(u) => std::path::Path::new(u.path()).into(),
         }
     }
 
     fn is_dir(&self) -> bool {
-        if let &Location::Fs(p) = &self { p.is_dir() } else { false }
+        match self {
+            Location::Fs(p) => p.is_dir(),
+            #[cfg(not(target_family = "wasm"))]
+            Location::Http(_) => false,
+        }
     }
 
     fn read(&self) -> TractResult<Box<dyn Read>> {
         match self {
             Location::Fs(p) => Ok(Box::new(fs::File::open(p)?)),
+            #[cfg(not(target_family = "wasm"))]
             Location::Http(u) => Ok(Box::new(http_client()?.get(u.clone()).send()?)),
         }
     }
@@ -72,6 +80,9 @@ impl Location {
         let s = s.as_ref();
         let path = std::path::PathBuf::from(s);
         if s.starts_with("http://") || s.starts_with("https://") {
+            #[cfg(target_family = "wasm")]
+            bail!("this build has no HTTP client, fetch the model first: {s}");
+            #[cfg(not(target_family = "wasm"))]
             return Ok(Location::Http(s.parse()?));
         } else if path.exists() {
             return Ok(Location::Fs(path));
@@ -193,10 +204,10 @@ impl Parameters {
             "nnef" => {
                 let nnef = super::nnef(matches);
                 let mut proto_model = if location.is_dir() {
-                    if let Location::Fs(dir) = location {
-                        nnef.proto_model_for_path(dir)?
-                    } else {
-                        unreachable!();
+                    match location {
+                        Location::Fs(dir) => nnef.proto_model_for_path(dir)?,
+                        #[cfg(not(target_family = "wasm"))]
+                        _ => unreachable!(),
                     }
                 } else if location
                     .path()
@@ -1212,6 +1223,7 @@ impl Assertions {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub(crate) fn http_client() -> TractResult<reqwest::blocking::Client> {
     use rustls::{ClientConfig, RootCertStore};
     use std::sync::Arc;
