@@ -90,6 +90,10 @@ pub(crate) struct HwbenchParams {
     /// Tolerance percent a pick may lag the fastest kernel under --assert
     #[arg(long, default_value_t = 5.0)]
     tolerance: f64,
+    /// Also bench the portable Rust kernels. Their speed is whatever the compiler
+    /// autovectorises, which on wasm rivals the hand-written pool.
+    #[arg(long)]
+    include_generic: bool,
 }
 
 pub(crate) fn command() -> clap::Command {
@@ -201,7 +205,7 @@ pub(crate) fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             params.shapes.iter().map(|s| parse_shape(s)).flatten_ok().collect::<TractResult<_>>()?
         };
         for (dt, m, k, n, gated) in requests {
-            let shape = bench_shape(dt, m, k, n, gated, false, false)?;
+            let shape = bench_shape(dt, m, k, n, gated, false, false, params.include_generic)?;
             if !params.json {
                 print_shape(&shape);
             }
@@ -356,7 +360,7 @@ pub(crate) fn kernel_times(
     n: usize,
     cold: bool,
 ) -> TractResult<Vec<(String, f64)>> {
-    Ok(bench_shape(dt, m, k, n, false, true, cold)?
+    Ok(bench_shape(dt, m, k, n, false, true, cold, false)?
         .kernels
         .into_iter()
         .map(|k| (k.kernel, k.flop_per_s))
@@ -389,6 +393,7 @@ fn bench_shape(
     gated: bool,
     fast: bool,
     cold: bool,
+    include_generic: bool,
 ) -> TractResult<ShapeResult> {
     let a = Tensor::zero_dt(dt, &[m, k])?;
     let b = Tensor::zero_dt(dt, &[k, n])?;
@@ -397,16 +402,15 @@ fn bench_shape(
     let mmms = tract_linalg::ops().mmm_impls();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
-            // Skip fallback kernels: Dreadful emulates the datatype op-by-op
-            // (f16->f32->f16), Generic is unvectorised scalar. Both are last-resort,
-            // 100-500x off a real kernel, and only ever the pick when no real kernel
-            // exists for this dtype on this target (e.g. armv7 f16) — where the pick
-            // among equally-useless fallbacks is noise, not a regression to gate on.
+            // Dreadful emulates the datatype op-by-op (f16->f32->f16), 100-500x off a
+            // real kernel and only ever the pick when the target has none for this
+            // dtype (e.g. armv7 f16) — the pick among fallbacks is noise, not a
+            // regression to gate on. Generic is portable Rust, so how close it comes
+            // depends on the compiler: off by default, --include-generic on targets
+            // where it is a real contender.
             .filter(|mmm| {
-                !matches!(
-                    mmm.quality(),
-                    ImplementationQuality::Dreadful | ImplementationQuality::Generic
-                )
+                mmm.quality() != ImplementationQuality::Dreadful
+                    && (include_generic || mmm.quality() != ImplementationQuality::Generic)
             })
             .flat_map(|mmm| {
                 mmm.packings().iter().enumerate().map(move |(pix, (pa, pb))| (mmm, pix, pa, pb))
