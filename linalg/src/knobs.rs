@@ -50,7 +50,7 @@ tract_data::declare_knob!(
     TRACT_AVX512_FMA_UNITS,
     Option<String>,
     None,
-    "x86_64: force the 512-bit FMA-port count (1 or 2) instead of runtime-probing; gates the zmm VNNI 16x16 kernel."
+    "x86_64: force the 512-bit FMA-port count (1 or 2) instead of runtime-probing. The zmm VNNI 16x16 kernel is preferred over the ymm 8x8 only where there are two; both are available either way."
 );
 
 tract_data::declare_knob!(
