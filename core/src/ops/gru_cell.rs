@@ -57,6 +57,51 @@ impl EvalOp for GruEpilogue {
     }
 }
 
+/// The GRU cell's row loop, over plain slices.
+///
+/// Exposed so a whole-sequence op can run the same arithmetic per timestep without
+/// paying a tensor box per gate: `xh` is consumed in place as the accumulator, and
+/// `h_out` receives the new hidden state. Keeping one implementation is what makes
+/// the fused form bit-identical to the `Scan` it replaces.
+#[allow(clippy::too_many_arguments)]
+pub fn gru_cell_rows<T>(
+    h: usize,
+    rows: usize,
+    xh: &mut [T],
+    rh: &[T],
+    h_prev: &[T],
+    h_out: &mut [T],
+    sigmoid: &dyn ElementWise<T>,
+    tanh: &dyn ElementWise<T>,
+) -> TractResult<()>
+where
+    T: Datum
+        + Copy
+        + std::ops::Mul<Output = T>
+        + std::ops::Add<Output = T>
+        + std::ops::Sub<Output = T>,
+{
+    for row in 0..rows {
+        let gb = row * 3 * h;
+        let hb = row * h;
+        let g = &mut xh[gb..gb + 3 * h];
+        let r = &rh[gb..gb + 3 * h];
+        for j in 0..2 * h {
+            g[j] = g[j] + r[j];
+        }
+        sigmoid.run(&mut g[0..2 * h])?;
+        for j in 0..h {
+            g[2 * h + j] = g[2 * h + j] + g[h + j] * r[2 * h + j];
+        }
+        tanh.run(&mut g[2 * h..3 * h])?;
+        for j in 0..h {
+            let cand = g[2 * h + j];
+            h_out[hb + j] = cand + g[j] * (h_prev[hb + j] - cand);
+        }
+    }
+    Ok(())
+}
+
 impl GruEpilogue {
     fn eval_t<T>(
         &self,
@@ -89,24 +134,7 @@ impl GruEpilogue {
         let mut ht = unsafe { Tensor::uninitialized_dt(T::datum_type(), h_prev.shape())? };
         {
             let hs = unsafe { ht.as_slice_mut_unchecked::<T>() };
-            for row in 0..rows {
-                let gb = row * 3 * h;
-                let hb = row * h;
-                let g = &mut acc[gb..gb + 3 * h];
-                let r = &rh[gb..gb + 3 * h];
-                for j in 0..2 * h {
-                    g[j] = g[j] + r[j];
-                }
-                sigmoid.run(&mut g[0..2 * h])?;
-                for j in 0..h {
-                    g[2 * h + j] = g[2 * h + j] + g[h + j] * r[2 * h + j];
-                }
-                tanh.run(&mut g[2 * h..3 * h])?;
-                for j in 0..h {
-                    let cand = g[2 * h + j];
-                    hs[hb + j] = cand + g[j] * (hp[hb + j] - cand);
-                }
-            }
+            gru_cell_rows(h, rows, acc, rh, hp, hs, &*sigmoid, &*tanh)?;
         }
         Ok(tvec!(ht.into_tvalue()))
     }

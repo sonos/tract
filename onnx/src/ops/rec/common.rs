@@ -10,6 +10,19 @@ pub trait WireBody: Debug + DynClone + Send + Sync {
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()>;
     fn w_b_multipliers(&self) -> (usize, usize);
     fn have_extra_c_state(&self) -> bool;
+    /// A whole-sequence op equivalent to this body, when one exists. Returning it
+    /// lets the recurrence run as a single op instead of a `Scan` that dispatches
+    /// its body once per timestep -- worth about 6x per iteration, see GruSeq.
+    /// `None` keeps the `Scan` lowering.
+    fn fused_sequence_op(
+        &self,
+        _hidden: usize,
+        _has_bias: bool,
+        _chunk: isize,
+        _seq_len: usize,
+    ) -> Option<Box<dyn TypedOp>> {
+        None
+    }
 }
 
 clone_trait_object!(WireBody);
@@ -246,8 +259,40 @@ impl CommonRec {
             });
         }
 
-        let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
-        let scan_outputs = target.wire_node(prefix, scan, &outer_inputs)?;
+        // A fused whole-sequence op, when the body has one and the scan carries
+        // nothing it cannot express: no peepholes, no extra cell state, no
+        // sequence_lens, and a concrete hidden size.
+        let fused = (self.optional_p_input.is_none()
+            && !self.body.have_extra_c_state()
+            && self.optional_sequence_lens_input.is_none())
+        .then(|| h_size.to_usize().ok())
+        .flatten()
+        .and_then(|h| {
+            // Only worth it when the loop actually iterates. At one timestep the
+            // Scan is already collapsed to a plain body (#2606), which beats any
+            // whole-sequence op; FastEnhancer's GRUs are exactly that case.
+            let seq_len = x_fact.shape[self.batch_first as usize].to_usize().ok()?;
+            self.body.fused_sequence_op(h, self.optional_bias_input.is_some(), chunk, seq_len)
+        });
+
+        let scan_outputs = if let Some(op) = fused {
+            let outs = target.wire_node(prefix, op, &outer_inputs)?;
+            // GruSeq yields (Y, Y_h); place them where the scan's mapping would.
+            let mut slots: TVec<OutletId> = tvec!();
+            for slot in 0..self.nboutputs()? {
+                if Some(slot) == self.optional_y_output {
+                    slots.push(outs[0]);
+                } else if Some(slot) == self.optional_y_h_output {
+                    slots.push(outs[1]);
+                } else {
+                    slots.push(outs[1]);
+                }
+            }
+            slots
+        } else {
+            let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+            target.wire_node(prefix, scan, &outer_inputs)?
+        };
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {
