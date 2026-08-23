@@ -159,7 +159,6 @@ macro_rules! panel_extractor {
 pub mod test {
     use crate::frame::block_quant::PackedBlockQuantFormat;
     use crate::mmm::PackedMatrixStorage;
-    use tract_data::internal::*;
     use tract_ndarray::Array2;
 
     use super::*;

@@ -1,6 +1,5 @@
 use proptest::proptest;
 use proptest::test_runner::TestCaseResult;
-use proptest::*;
 
 use super::*;
 
