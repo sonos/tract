@@ -303,4 +303,3 @@ pub mod test {
         assert_eq!(tested_panel, reference_panel);
     }
 }
-

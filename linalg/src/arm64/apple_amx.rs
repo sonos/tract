@@ -3,10 +3,8 @@ use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
 use tract_data::prelude::*;
 
-use super::has_amx;
 use super::{arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm_f32_64x1_gen};
 
-const AMX: fn() -> bool = crate::arm64::has_amx;
 const CAN_FUSE: fn(&FusedSpec) -> bool = |f| !matches!(f, &FusedSpec::LeakyRelu(_));
 
 MMMExternKernel!(aarch64; apple_amx_mmm_f32_32x32<f32>(32, 32)@(128, 128) isa(AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized) row_major_store(true));
@@ -15,34 +13,17 @@ MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x32<f16>(64, 32)@(128, 128) isa(Ap
 MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x1<f16>(64, 1)@(128, 128) isa(AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized));
 
 pub fn plug(ops: &mut Ops) {
-    if has_amx() {
+    if crate::isa::native().has(crate::isa::Isa::AppleAmx) {
         log::info!(
-            "AMX optimisation activated (A7v2: AMX only for f32 mmm with M>=32 AND N>=32; \
-             smaller shapes + all f32 mmv route to NEON kernels)"
+            "AMX optimisation activated (f32 mmm from M>=32 and N>=32; smaller f32 mmm and \
+             every f32 mmv route to NEON)"
         );
-        // ----- A7v2 dispatch logic (data-driven) -----
-        //
-        // Empirical finding from /tmp/amx_vs_neon.md microbench (Apple M1 Pro):
-        // the AMX 32x32 kernel beats NEON 8x8 only when BOTH M and N are at
-        // least 32 — the AMX tile dimensions. At smaller shapes the per-tile
-        // padding waste + AMX dispatch overhead make NEON faster.
-        //
-        // Predicate validation: 88.3% accuracy on 512-shape sweep.
-        //
-        // Canary impact (measured 2026-05-13, see notes/tract-amx-low-m-investigation.md):
-        // turning AMX off entirely yielded:
-        //   df_dec       1.55× faster      mobilenetv2  1.59× faster
-        //   erb_dec      1.49×             squeezenet   1.22×
-        //   enc          1.17×             yolov8n      1.15× SLOWER
-        //   inception_v3 1.43× SLOWER      sam2_tiny    1.54× SLOWER
-        // The shape-aware predicate keeps the AMX wins for the heavy models
-        // (Inception, YOLO, SAM2) while routing small shapes to NEON.
-        // f16 paths are kept conservative: no f16 microbench yet, so the previous
-        // low-M-routes-to-NEON heuristic stands.
+        // The AMX tile is 32x32, and it only pays once both M and N fill one: below that the
+        // tile padding and the AMX dispatch cost more than the NEON kernel's whole call. The
+        // f16 side keeps a low-M NEON route on the same reasoning, at a threshold its own
+        // kernels' 16-row tile sets.
         ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
-            // mmv (n=1) f32: AMX 32x1 is dominated by NEON 64x1 across the entire
-            // shape sweep — confirmed by canary deltas on DFN3 (which is mmv-heavy).
-            // Always use NEON.
+            // The AMX 32x1 is dominated by the NEON 64x1 at every shape.
             (crate::DatumType::F32, Some(1)) => Some(arm64simd_mmm_f32_64x1_gen.mmm()),
             (crate::DatumType::F32, _) => {
                 let big_enough = m.is_some_and(|m| m >= 32) && n.is_some_and(|n| n >= 32);

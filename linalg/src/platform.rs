@@ -69,9 +69,10 @@ pub fn all() -> impl Iterator<Item = &'static PlatformSelector> {
 
 /// `Ops` as `target` sees them: its kernels, from [`crate::mmm_routines::pool_for`], under its
 /// own policy. Answers which kernel that platform would choose for a shape, from any host —
-/// what it cannot reproduce is a hardware probe, so a cohort behind one (fp16, dotprod, SVE)
-/// needs its `TRACT_CPU_*` knob set to be reached. `None` when the target's tree was not
-/// compiled in; see the `foreign-inventory` feature.
+/// what it cannot reproduce is a hardware probe, so a cohort behind a feature this host lacks
+/// (fp16, dotprod, sve2) is reached by adding that feature with `TRACT_CPU_ISA`, which the pool
+/// and the policies both read. `None` when the target's tree was not compiled in; see the
+/// `foreign-inventory` feature.
 pub fn inspect(target: Target) -> Option<Ops> {
     let selector = all().find(|s| s.target == target)?;
     let mut ops = crate::generic();

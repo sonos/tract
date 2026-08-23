@@ -34,13 +34,6 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 #[cfg(tract_sve)]
 const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
 
-#[cfg(tract_sve)]
-const SVE2: fn() -> bool = has_sve2;
-
-// The f16 kernels need FEAT_SVE2 AND FEAT_FP16 (native f16 arithmetic).
-#[cfg(tract_sve_fp16)]
-const SVE2_FP16: fn() -> bool = || has_sve2() && crate::arm64::has_fp16();
-
 // The VLA SVE f32 GEMM kernel, implemented in C (arm64/sve/sve_mmm_f32.c) since
 // Rust has no stable SVE intrinsics. Broadcast-A rank-1 update, N-tile walked in
 // svcntw() chunks → correct and full-width at any VL.
@@ -214,7 +207,7 @@ pub fn rdvl_bytes() -> u64 {
 
 pub fn plug(ops: &mut Ops) {
     let _ = ops;
-    if has_sve2() {
+    if crate::isa::native().has(crate::isa::Isa::Sve2) {
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
         log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
         #[cfg(tract_sve)]
@@ -236,7 +229,7 @@ pub fn plug(ops: &mut Ops) {
             // when build.rs found an accepted +fp16/+fullfp16 -march spelling
             // (tract_sve_fp16), so gate the dispatch on that too.
             #[cfg(tract_sve_fp16)]
-            if crate::arm64::has_fp16() {
+            if crate::isa::native().has(crate::isa::Isa::Fp16) {
                 ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
                     (crate::DatumType::F16, Some(1)) => Some(sve_mmv_f16_64x1.mmm()),
                     (crate::DatumType::F16, _) => Some(sve_mmm_f16_8x8.mmm()),

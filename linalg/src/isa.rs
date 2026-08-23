@@ -247,7 +247,9 @@ fn probe() -> IsaSet {
 }
 
 /// `TRACT_CPU_ISA=+sve2,-fp16` edits the probed set, so one knob covers every feature and a
-/// cohort this machine is not can be asked what it would dispatch.
+/// cohort this machine is not can be asked what it would dispatch. Nothing checks that the
+/// result is a CPU that could exist: asking for avx512f without fma describes no hardware, and
+/// dispatch will answer for it anyway.
 fn forced(mut set: IsaSet) -> IsaSet {
     let Some(spec) = crate::knobs::TRACT_CPU_ISA.get() else { return set };
     for token in spec.split(',').map(str::trim).filter(|t| !t.is_empty()) {
