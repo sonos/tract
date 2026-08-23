@@ -20,6 +20,20 @@ use super::fma_width::has_dual_avx512_fma;
 /// 8x8. It stays supported on every VNNI core, so that its tests run there too.
 #[cfg(tract_avx512vnni)]
 const AVX512VNNI_WIDE_TILE: fn() -> isize = || if has_dual_avx512_fma() { 50 } else { -1 };
+
+/// The AMX bf16 kernel truncates its f32 operands to bf16 (~1/2^8 relative error per multiply),
+/// so it is opt-in through TRACT_AMX_BF16 and off by default even where the hardware has it.
+/// Being off is a preference, not a capability: the kernel stays supported wherever the ISA is,
+/// so that its tests run there, and instead loses every tie by more than the top of the tier
+/// ladder can give it back.
+#[cfg(tract_amx_bf16)]
+const AMX_BF16_OPT_IN: fn() -> isize = || {
+    if crate::knobs::TRACT_AMX_BF16.get() {
+        100
+    } else {
+        -(crate::isa::TIER_BOOST * crate::isa::MAX_TIER as isize) - 1
+    }
+};
 use super::*;
 
 /// One candidate kernel in a dispatcher's pool, with its tile geometry
@@ -237,16 +251,14 @@ MMMExternKernel! { x86_64; avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) isa(Avx512
 // Default packing[0] (the framework's PackedFormat<f32>) is retained so the
 // kernel can still be selected for f32 paths even when the BF16 packer
 // isn't a precursor match; packing[1] is the fast bf16-from-f32 path.
-// boost(100) puts this AMX kernel above the AVX-512 f32 / FMA f32 kernels at
-// the same ManuallyOptimized tier so the einsum scorer prefers it whenever
-// supported, mirroring the i32 16x16 behaviour. The bf16 vs f32 precision
-// trade is intentional and amortised over the same call sites that already
-// use bf16-via-`dotbf16ps`-style fast-math elsewhere in the stack.
+// Once opted in, the boost puts this kernel above the AVX-512 f32 / FMA f32 kernels at the
+// same ManuallyOptimized tier so the einsum scorer prefers it, mirroring the i32 16x16
+// behaviour; see `AMX_BF16_OPT_IN` for the default-off half.
 #[cfg(tract_amx_bf16)]
 MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(Avx512f, AmxBf16)
     packing[1] = f32f32_bf16 => |k| k.with_packing(PackedAmxBf16A::new(16), PackedBf16K2::new(16));
     quality(ManuallyOptimized)
-    boost(|| 100)
+    boost(AMX_BF16_OPT_IN)
 }
 
 pub fn plug(ops: &mut Ops) {
@@ -279,9 +291,8 @@ pub fn plug(ops: &mut Ops) {
                         plug_avx512amx_int8(ops);
                     }
                 }
-                // AMX bf16 for f32 matmul truncates operands f32 -> bf16, so it is
-                // lossy (~1/2^8 relative error per multiply) and opt-in via
-                // TRACT_AMX_BF16, off by default even where the hardware supports it.
+                // The policy must not name a kernel the caller has not opted into; see
+                // `AMX_BF16_OPT_IN`, which keeps it out of every unforced tie.
                 #[cfg(tract_amx_bf16)]
                 if crate::knobs::TRACT_AMX_BF16.get() && has_amx_bf16() {
                     plug_avx512amx_bf16(ops);
