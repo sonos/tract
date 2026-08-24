@@ -7,6 +7,7 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
+use crate::mmm::candidate_named;
 use crate::{DatumType, Ops};
 
 #[cfg(target_feature = "relaxed-simd")]
@@ -36,23 +37,26 @@ pub fn plug(ops: &mut Ops) {
     // the candidate list, and a lesser tier would be dropped by retain_best_quality, leaving
     // the N>1 rule to pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1,
     // a matrix×vector kernel, for every GEMM.
-    ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+    ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
         // int8 -> i32 matmul: SIMD kernel (was generic scalar).
-        (DatumType::I32, Some(1)) => prev(dt, m, k, n),
-        (DatumType::I32, _) => Some(wasm_i32_4x4.mmm()),
+        (DatumType::I32, Some(1)) => prev(dt, query, candidates),
+        (DatumType::I32, _) => candidate_named(candidates, &wasm_i32_4x4.name),
         // GEMV routes by M-band to the kernel whose MR fits. Bands derived from
         // benches/wasm.rs: at each edge, using the next-larger kernel beats halving outer
         // iterations of the smaller one (1 outer with ILP-absorbed padding > 2 outer with the
         // kernel preamble doubled). M=4/8/16 are exact tile fits at the lower edges; M=17/9/5
         // are the first values where the next-larger kernel wins.
-        (DatumType::F32, Some(1)) => Some(match m.unwrap_or(0) {
-            0..=4 => wasm_f32_4x1.mmm(),
-            5..=8 => wasm_f32_8x1.mmm(),
-            9..=16 => wasm_f32_16x1.mmm(),
-            _ => wasm_f32_32x1.mmm(),
-        }),
-        (DatumType::F32, _) => Some(wasm_f32_8x8.mmm()),
-        _ => prev(dt, m, k, n),
+        (DatumType::F32, Some(1)) => candidate_named(
+            candidates,
+            match query.m.unwrap_or(0) {
+                0..=4 => &wasm_f32_4x1.name,
+                5..=8 => &wasm_f32_8x1.name,
+                9..=16 => &wasm_f32_16x1.name,
+                _ => &wasm_f32_32x1.name,
+            },
+        ),
+        (DatumType::F32, _) => candidate_named(candidates, &wasm_f32_8x8.name),
+        _ => prev(dt, query, candidates),
     });
     // Relaxed-SIMD activation kernels (FMA path). Only installed when the
     // build has `+relaxed-simd`; otherwise the slots stay at the generic

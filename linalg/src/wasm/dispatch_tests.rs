@@ -3,7 +3,7 @@ mod dispatch_trace {
     fn trace_one(label: &str, m: Option<usize>, k: Option<usize>, n: Option<usize>) {
         let mut ops = crate::generic();
         crate::wasm::plug(&mut ops);
-        let mmm = (ops.mmm_policy())(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
+        let mmm = ops.policy_pick(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
         eprintln!(
             "DFN3 {} (m={:?} k={:?} n={:?}) => {}  [mr={}, nr={}]",
             label,
@@ -71,9 +71,9 @@ mod dispatch_trace {
             ("GEMV m=1 k=512 n=1", 1, 512, 1),
             ("GEMV m=256 k=256 n=1", 256, 256, 1),
         ] {
-            let mmm =
-                (ops.mmm_policy())(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
-                    .unwrap();
+            let mmm = ops
+                .policy_pick(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                .unwrap();
             assert_eq!(
                 mmm.quality(),
                 ManuallyOptimized,
@@ -298,13 +298,9 @@ fn dispatch_never_returns_wasm_f32_4x4() {
     for m in [1usize, 3, 4, 5, 8, 9, 16, 17, 32, 64, 256, 1024] {
         for n in [1usize, 2, 4, 8, 10, 64, 256] {
             for k in [1usize, 64, 576] {
-                let mmm = (ops.mmm_policy())(
-                    tract_data::prelude::DatumType::F32,
-                    Some(m),
-                    Some(k),
-                    Some(n),
-                )
-                .unwrap();
+                let mmm = ops
+                    .policy_pick(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                    .unwrap();
                 assert_ne!(
                     mmm.name(),
                     "wasm_f32_4x4",

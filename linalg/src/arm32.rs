@@ -9,6 +9,7 @@ use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
 
+use crate::mmm::candidate_named;
 use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -48,61 +49,63 @@ pub fn plug(ops: &mut Ops) {
             n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
         }
 
-        let cost_managed_impls = vec![
-            armv7neon_mmm_f32_8x4_cortexa7.mmm(),
-            armv7neon_mmm_f32_8x6_cortexa7.mmm(),
-            armv7neon_mmm_f32_8x4_cortexa9.mmm(),
-            armv7neon_mmm_f32_8x6_cortexa9.mmm(),
-            armv7neon_mmm_f32_8x4_generic.mmm(),
-            armv7neon_mmm_f32_8x6_generic.mmm(),
-            crate::generic::mmm::generic_f32_4x4.mmm(),
-        ];
-        // The mmv model picks over the full pool (it needs the nr==1 matvec kernels, which the
-        // mmm cost_managed pool omits); consulted only for small m (see arm64 for the rationale).
-        let mmv_impls = ops.mmm_impls.clone();
-        let mmv_f32: crate::MMMImpl = match cpu {
+        // Consulted only for small m (see arm64 for the rationale).
+        let mmv_f32: crate::MmmSelector = match cpu {
             0xc07 => {
                 let model = cortex_a7_mmv_linear::linear_model();
-                let impls = mmv_impls.clone();
-                Box::new(move |m, k, _| match m {
-                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
-                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa7.mmm(),
+                Box::new(move |candidates, query| match query.m {
+                    Some(m) if m < 32 => model.pick(candidates, Some(m), query.k, Some(1)),
+                    _ => candidate_named(
+                        candidates,
+                        &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name,
+                    ),
                 })
             }
             0xc09 => {
                 let model = cortex_a9_mmv_linear::linear_model();
-                let impls = mmv_impls.clone();
-                Box::new(move |m, k, _| match m {
-                    Some(m) if m < 32 => model.pick(&impls, Some(m), k, Some(1)),
-                    _ => armv7neon::armv7neon_mmm_f32_32x1_cortexa9.mmm(),
+                Box::new(move |candidates, query| match query.m {
+                    Some(m) if m < 32 => model.pick(candidates, Some(m), query.k, Some(1)),
+                    _ => candidate_named(
+                        candidates,
+                        &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name,
+                    ),
                 })
             }
-            _ => Box::new(|_, _, _| armv7neon::armv7neon_mmm_f32_32x1_generic.mmm()),
+            _ => Box::new(|candidates, _| {
+                candidate_named(candidates, &armv7neon::armv7neon_mmm_f32_32x1_generic.name)
+            }),
         };
 
-        let mmm_f32: crate::MMMImpl = match cpu {
+        let mmm_f32: crate::MmmSelector = match cpu {
             0xc07 => {
                 let model = cortex_a7_linear::linear_model();
-                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
+                Box::new(move |candidates, query| model.pick(candidates, query.m, query.k, query.n))
             }
             0xc09 => {
                 let model = cortex_a9_linear::linear_model();
-                Box::new(move |m, k, n| model.pick(&cost_managed_impls, m, k, n))
+                Box::new(move |candidates, query| model.pick(candidates, query.m, query.k, query.n))
             }
-            _ => Box::new(|m, k, n| {
-                if prefer_8x4(m, k, n) {
-                    armv7neon::armv7neon_mmm_f32_8x4_generic.mmm()
-                } else {
-                    armv7neon::armv7neon_mmm_f32_8x6_generic.mmm()
-                }
+            _ => Box::new(|candidates, query| {
+                candidate_named(
+                    candidates,
+                    if prefer_8x4(query.m, query.k, query.n) {
+                        &armv7neon::armv7neon_mmm_f32_8x4_generic.name
+                    } else {
+                        &armv7neon::armv7neon_mmm_f32_8x6_generic.name
+                    },
+                )
             }),
         };
-        ops.overlay_mmm_policy(move |prev, dt, m, k, n| match (dt, n) {
-            (DatumType::F32, Some(1)) => Some(mmv_f32(m, k, n)),
-            (DatumType::F32, _) => Some(mmm_f32(m, k, n)),
-            (DatumType::I32, Some(1)) => Some(armv7neon::armv7neon_mmm_i32_32x1.mmm()),
-            (DatumType::I32, _) => Some(armv7neon::armv7neon_mmm_i32_8x4.mmm()),
-            _ => prev(dt, m, k, n),
+        ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
+            (DatumType::F32, Some(1)) => mmv_f32(candidates, query),
+            (DatumType::F32, _) => mmm_f32(candidates, query),
+            (DatumType::I32, Some(1)) => {
+                candidate_named(candidates, &armv7neon::armv7neon_mmm_i32_32x1.name)
+            }
+            (DatumType::I32, _) => {
+                candidate_named(candidates, &armv7neon::armv7neon_mmm_i32_8x4.name)
+            }
+            _ => prev(dt, query, candidates),
         });
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());

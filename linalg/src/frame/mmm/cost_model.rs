@@ -1,4 +1,4 @@
-use super::MatMatMul;
+use super::{Candidate, candidate_named};
 
 fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
     if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
@@ -18,7 +18,7 @@ fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
 /// cannot keep a packed `A` resident even in a warm loop: there `A` streams from memory in
 /// isolation too, so no gap remains to correct and a cold calibration yields 0 — this is the
 /// case for the small-cache LITTLE aarch64/arm32 cohorts, so their `0e0` is a measured no-op,
-/// not a missing calibration. `pick` returns the argmin over the impls.
+/// not a missing calibration. `pick` returns the argmin over the candidates it is given.
 #[derive(Debug)]
 pub struct LinearCostModel<'a> {
     pub default_kernel: &'a str,
@@ -38,39 +38,35 @@ impl LinearCostModel<'_> {
 
     pub fn pick(
         &self,
-        impls: &[Box<dyn MatMatMul>],
+        candidates: &[Candidate],
         m: Option<usize>,
         k: Option<usize>,
         n: Option<usize>,
-    ) -> Box<dyn MatMatMul> {
+    ) -> Option<usize> {
         if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-            let best = impls
+            let best = candidates
                 .iter()
-                .filter_map(|imp| {
+                .enumerate()
+                .filter_map(|(cix, (mmm, _, _))| {
                     // nr==1 (matrix-vector) kernels are candidates only for the mmv path
                     // (n==1). For n>=2 they are excluded, else a degenerate shape can be
                     // handed a nr==1 kernel that pads N catastrophically.
-                    if imp.nr() == 1 && n != 1 {
+                    if mmm.nr() == 1 && n != 1 {
                         return None;
                     }
-                    let ix = self.kernels.iter().position(|name| *name == imp.name())?;
-                    let t = self.predicted(ix, m, k, n, imp.mr(), imp.nr());
-                    Some((t, imp))
+                    let ix = self.kernels.iter().position(|name| *name == mmm.name())?;
+                    let t = self.predicted(ix, m, k, n, mmm.mr(), mmm.nr());
+                    Some((t, cix))
                 })
                 .min_by(|a, b| order_f(a.0, b.0))
-                .map(|(_, imp)| imp.clone());
-            if let Some(best) = best {
+                .map(|(_, cix)| cix);
+            if best.is_some() {
                 return best;
             }
         }
-        // Unknown dims, or none of the pool's kernels fitted: the model's own fallback, and
-        // failing that whatever the pool offers — a pool without the fitted kernels is not a
-        // reason to refuse an answer.
-        impls
-            .iter()
-            .find(|k| k.name() == self.default_kernel)
-            .or_else(|| impls.first())
-            .expect("no mmm kernel to pick from")
-            .clone()
+        // A dim the caller could not pin leaves the shape terms nothing to say, so all that is
+        // left is the kernel the model was fitted around. Where the candidates do not offer it
+        // the model has no opinion at all, and the portable rules answer instead.
+        candidate_named(candidates, self.default_kernel)
     }
 }
