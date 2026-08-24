@@ -218,7 +218,12 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
         }
 },
 q_op_on_f32: |a: f32, b: f32| a / b,
-[f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() / b
+// Rust checks division overflow in every profile, not just where overflow-checks is on, so
+// `MIN / -1` panics even in release. Wrap it, as Mul above already does with wrapping_mul, and
+// as onnx.reference and ONNX Runtime both do. A zero divisor still panics; the references
+// disagree on what it should produce, so that is left alone.
+[i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = a.wrapping_div(*b),
+[f32, f16, f64] => |c, a, b| *c = a.clone() / b
 );
 
 bin_to_super_type!(rem, Rem,
@@ -254,7 +259,9 @@ bin_to_super_type!(rem, Rem,
                                                   Ok(false)
                                               }
                                       },
-                                      [f32, i8, i16, i32, i64, u8, u16, u32, u64, f16, f64] => |c, a, b| *c = a.clone() % b);
+                                      // As for Div: `MIN % -1` panics in every profile without this.
+                                      [i8, i16, i32, i64, u8, u16, u32, u64] => |c, a, b| *c = a.wrapping_rem(*b),
+                                      [f32, f16, f64] => |c, a, b| *c = a.clone() % b);
 
 bin_to_super_type!(min, Min, linalg:Min,
                    q: [i8, u8, i32] => |c, a, b, _, _| *c = if a < b { *a } else { *b };
@@ -804,6 +811,87 @@ mod tests {
 
     use super::*;
     use ndarray::arr2;
+
+    // Rust checks integer division and remainder overflow in every profile, not only where
+    // overflow-checks is on, so `MIN / -1` panicked even in a release build. These pin the
+    // wrapping result, which is what onnx.reference and ONNX Runtime both produce.
+
+    #[test]
+    fn integer_div_wraps_at_min_over_minus_one() {
+        assert_eq!(
+            div()
+                .0
+                .eval(tensor1(&[i32::MIN]).into(), tensor1(&[-1i32]).into(), i32::datum_type())
+                .unwrap(),
+            tensor1(&[i32::MIN])
+        );
+        assert_eq!(
+            div()
+                .0
+                .eval(tensor1(&[i8::MIN]).into(), tensor1(&[-1i8]).into(), i8::datum_type())
+                .unwrap(),
+            tensor1(&[i8::MIN])
+        );
+        assert_eq!(
+            div()
+                .0
+                .eval(tensor1(&[i64::MIN]).into(), tensor1(&[-1i64]).into(), i64::datum_type())
+                .unwrap(),
+            tensor1(&[i64::MIN])
+        );
+    }
+
+    #[test]
+    fn integer_rem_wraps_at_min_over_minus_one() {
+        assert_eq!(
+            rem()
+                .0
+                .eval(tensor1(&[i32::MIN]).into(), tensor1(&[-1i32]).into(), i32::datum_type())
+                .unwrap(),
+            tensor1(&[0i32])
+        );
+        assert_eq!(
+            rem()
+                .0
+                .eval(tensor1(&[i16::MIN]).into(), tensor1(&[-1i16]).into(), i16::datum_type())
+                .unwrap(),
+            tensor1(&[0i16])
+        );
+    }
+
+    #[test]
+    fn integer_div_and_rem_are_otherwise_unchanged() {
+        // Controls: wrapping only differs from `/` and `%` at MIN over -1.
+        assert_eq!(
+            div()
+                .0
+                .eval(
+                    tensor1(&[-7i32, 7, 9]).into(),
+                    tensor1(&[2i32, -2, 4]).into(),
+                    i32::datum_type()
+                )
+                .unwrap(),
+            tensor1(&[-3i32, -3, 2])
+        );
+        assert_eq!(
+            rem()
+                .0
+                .eval(
+                    tensor1(&[-7i32, 7, 9]).into(),
+                    tensor1(&[2i32, -2, 4]).into(),
+                    i32::datum_type()
+                )
+                .unwrap(),
+            tensor1(&[-1i32, 1, 1])
+        );
+        assert_eq!(
+            div()
+                .0
+                .eval(tensor1(&[255u8]).into(), tensor1(&[2u8]).into(), u8::datum_type())
+                .unwrap(),
+            tensor1(&[127u8])
+        );
+    }
 
     #[test]
     fn test_mul() {
