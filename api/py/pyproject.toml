@@ -3,7 +3,7 @@ requires = [
     "setuptools >=80, <83; python_version < '3.10'",
     "setuptools >=84.0.0, <85; python_version >= '3.10'",
     "setuptools_rust >=1.13.0, <1.14",
-    "wheel >=0.47.0, <0.48",
+    "wheel >=0.48.0, <0.49",
     "toml >=0.10, <0.11"
 ]
 
