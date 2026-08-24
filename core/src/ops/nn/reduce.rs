@@ -10,6 +10,7 @@ use std::iter::Sum;
 use std::mem::transmute;
 use tract_data::internal::ClampCast;
 use tract_data::itertools::Itertools;
+use tract_linalg::routines::{Func, reduce_f16, reduce_f32};
 use tract_ndarray::prelude::*;
 use tract_num_traits::{AsPrimitive, Bounded};
 
@@ -217,8 +218,8 @@ impl Reducer {
                     let mut out = vec![T::zero(); n_rows];
                     let total = full.len();
                     // Reduce kernels are Send + Sync; build once and share by ref.
-                    let sum_f16 = (tract_linalg::ops().sum_f16)();
-                    let sum_f32 = (tract_linalg::ops().sum_f32)();
+                    let sum_f16 = reduce_f16(Func::ReduceSum).unwrap();
+                    let sum_f32 = reduce_f32(Func::ReduceSum).unwrap();
                     tract_linalg::multithread::par_chunks_mut(
                         &mut out,
                         1,
@@ -316,7 +317,7 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let max = (tract_linalg::ops().max_f32)().run(slice).unwrap();
+        let max = reduce_f32(Func::ReduceMax).unwrap().run(slice).unwrap();
         // SAFETY: T is f32 in this branch (checked above).
         return unsafe { std::mem::transmute_copy::<f32, T>(&max) };
     }
@@ -332,7 +333,7 @@ where
         && !slice.is_empty()
     {
         let slice = unsafe { transmute::<&[T], &[f32]>(slice) };
-        let min = (tract_linalg::ops().min_f32)().run(slice).unwrap();
+        let min = reduce_f32(Func::ReduceMin).unwrap().run(slice).unwrap();
         // SAFETY: T is f32 in this branch (checked above).
         return unsafe { std::mem::transmute_copy::<f32, T>(&min) };
     }

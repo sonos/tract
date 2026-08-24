@@ -40,7 +40,7 @@ fn rust_scalar(input: &mut [f32]) {
 
 #[inline(never)]
 fn linalg(input: &mut [f32]) {
-    (tract_linalg::ops().gelu_f32)().run(input).unwrap();
+    tract_linalg::routines::ew_f32(tract_linalg::routines::Func::Gelu).unwrap().run(input).unwrap();
 }
 
 criterion_group!(benches, gelu_f32);

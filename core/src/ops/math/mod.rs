@@ -18,6 +18,7 @@ use tract_num_traits::AsPrimitive;
 mod complex;
 #[cfg(feature = "complex")]
 pub use complex::{ComplexToInnerDim, InnerDimToComplex};
+use tract_linalg::routines::{Func, ew_f16, ew_f32};
 
 bin_to_super_type!(add, Add,
                    linalg: Add,
@@ -712,8 +713,8 @@ element_wise!(sinh, Sinh, [f16, f32, f64] => |_, xs| {
 q: [i8, u8, i32] => f32::sinh);
 
 element_wise!(tanh, Tanh,
- [f16] => |_, xs| { (tract_linalg::ops().tanh_f16)().run(xs) },
- [f32] => |_, xs| { (tract_linalg::ops().tanh_f32)().run(xs) },
+ [f16] => |_, xs| { ew_f16(Func::Tanh)?.run(xs) },
+ [f32] => |_, xs| { ew_f32(Func::Tanh)?.run(xs) },
  [f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
  q: [i8, u8, i32] => f32::tanh;
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
@@ -728,7 +729,8 @@ fn erf_f16_lut() -> &'static [u16; 1 << 16] {
     LUT.get_or_init(|| {
         let mut values: Vec<f32> =
             (0..=u16::MAX).map(|bits| f16::from_bits(bits).to_f32()).collect();
-        (tract_linalg::ops().erf_f32)()
+        ew_f32(Func::Erf)
+            .expect("no erf kernel to build the f16 lookup table with")
             .run(&mut values)
             .expect("erf kernel failed on the lookup table domain");
         let mut lut = Box::new([0u16; 1 << 16]);
@@ -738,7 +740,7 @@ fn erf_f16_lut() -> &'static [u16; 1 << 16] {
 }
 
 element_wise!(erf, Erf,
- [f32] => |_, xs| { (tract_linalg::ops().erf_f32)().run(xs) },
+ [f32] => |_, xs| { ew_f32(Func::Erf)?.run(xs) },
  [f16] => |_, xs| {
      let lut = erf_f16_lut();
      xs.iter_mut().for_each(|x| *x = f16::from_bits(lut[x.to_bits() as usize]));
@@ -905,7 +907,7 @@ mod tests {
         let all: Vec<f16> = (0..=u16::MAX).map(f16::from_bits).collect();
 
         let mut reference: Vec<f32> = all.iter().map(|x| x.to_f32()).collect();
-        (tract_linalg::ops().erf_f32)().run(&mut reference).unwrap();
+        ew_f32(Func::Erf).unwrap().run(&mut reference).unwrap();
         let reference: Vec<f16> = reference.into_iter().map(f16::from_f32).collect();
 
         let mut lut = Tensor::from_shape(&[all.len()], &all).unwrap();

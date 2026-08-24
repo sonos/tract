@@ -270,11 +270,6 @@ pub fn plug(ops: &mut Ops) {
     if crate::isa::native().has(crate::isa::Isa::Aarch64Sve2) {
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
         log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
-        // RmsNorm: override the NEON default from arm64::plug() with the wider VLA SVE2 kernel.
-        #[cfg(tract_sve)]
-        {
-            ops.rms_norm_f32 = Box::new(sve_rms_norm_f32);
-        }
     } else if has_sve() {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");
     } else {

@@ -5,13 +5,9 @@ mod cortex_a7_linear;
 mod cortex_a7_mmv_linear;
 mod cortex_a9_linear;
 mod cortex_a9_mmv_linear;
-use armv7neon::*;
-
-use crate::frame::element_wise::ElementWiseKer;
-
+use crate::DatumType;
 use crate::isa::IsaSet;
 use crate::mmm::{Query, Suitable};
-use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
     let cpu_info = fs::read_to_string("/proc/cpuinfo")?;
@@ -100,13 +96,11 @@ inventory::submit! {
     }
 }
 
-pub fn plug(ops: &mut Ops) {
-    if crate::isa::native().has(crate::isa::Isa::ArmNeon) {
-        log::info!("armv7neon activated (ssigmoid, ssilu, stanh)");
-        ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
-        ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
-        ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
-    }
+/// What this core has, in the shared vocabulary.
+pub fn isa_set() -> crate::isa::IsaSet {
+    use crate::isa::{Isa, IsaSet};
+    let set = IsaSet::of_arch(crate::isa::Arch::Arm);
+    if has_neon() { set.with(Isa::ArmNeon) } else { set }
 }
 
 #[cfg(test)]
@@ -120,18 +114,4 @@ mod tests {
             assert_eq!(neon == "true", has_neon());
         }
     }
-}
-
-inventory::submit! {
-    crate::ArchPlug {
-        arch: crate::isa::Arch::Arm,
-        plug,
-    }
-}
-
-/// What this core has, in the shared vocabulary.
-pub fn isa_set() -> crate::isa::IsaSet {
-    use crate::isa::{Isa, IsaSet};
-    let set = IsaSet::of_arch(crate::isa::Arch::Arm);
-    if has_neon() { set.with(Isa::ArmNeon) } else { set }
 }

@@ -4,6 +4,7 @@ use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::{Add, Mul, Pow, Tanh};
 
 use tract_data::half::f16;
+use tract_linalg::routines::{Func, ew_f32};
 
 fn gelu_approx_f32(x: f32, pow: i32) -> f32 {
     let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
@@ -27,7 +28,7 @@ element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
             Ok(())
         } else {
             // pow=3 canonical path: linalg NEON kernel composes with tanh.
-            (tract_linalg::ops().gelu_f32)().run(xs)
+            ew_f32(Func::Gelu)?.run(xs)
         }
     };
     cost: |dt| {tvec!((Cost::FMA(dt), 15))}

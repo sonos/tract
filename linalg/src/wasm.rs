@@ -7,11 +7,7 @@
 //! CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
 //! cargo test --target wasm32-wasip1 -p tract-linalg
 //! ```
-use crate::{DatumType, Ops};
-
-#[cfg(target_feature = "relaxed-simd")]
-use crate::frame::element_wise::ElementWiseKer;
-use crate::frame::reduce::ReduceKer;
+use crate::DatumType;
 
 #[macro_use]
 mod madd;
@@ -71,30 +67,6 @@ inventory::submit! {
 
 routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
 routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
-
-pub fn plug(ops: &mut Ops) {
-    // Relaxed-SIMD activation kernels (FMA path). Only installed when the
-    // build has `+relaxed-simd`; otherwise the slots stay at the generic
-    // scalar polynomial.
-    #[cfg(target_feature = "relaxed-simd")]
-    {
-        ops.sigmoid_f32 = Box::new(|| WasmSigmoid4Relaxed::ew());
-        ops.tanh_f32 = Box::new(|| WasmTanh4Relaxed::ew());
-    }
-    ops.max_f32 = Box::new(|| reduce::wasm_max_f32_32n::red());
-    ops.min_f32 = Box::new(|| reduce::wasm_min_f32_32n::red());
-    ops.sum_f32 = Box::new(|| reduce::wasm_sum_f32_32n::red());
-    ops.rms_norm_f32 = Box::new(reduce::rms_norm_f32);
-    ops.max_f16 = Box::new(|| reduce::wasm_max_f16_32n::red());
-    ops.sum_f16 = Box::new(|| reduce::wasm_sum_f16_32n::red());
-}
-
-inventory::submit! {
-    crate::ArchPlug {
-        arch: crate::isa::Arch::Wasm32Simd128,
-        plug,
-    }
-}
 
 /// What this build offers, in the shared vocabulary. Unlike the other trees this is a build
 /// question rather than a probe: wasm features are enabled at compile time and a module cannot
