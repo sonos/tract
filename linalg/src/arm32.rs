@@ -9,7 +9,8 @@ use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
 
-use crate::mmm::suitable_named;
+use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm_tiers::Platform;
 use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -39,75 +40,77 @@ pub(crate) fn has_neon() -> bool {
     *NEON.get_or_init(|| has_neon_cpuinfo().unwrap_or(false))
 }
 
+fn prefer_8x4(n: Option<usize>) -> bool {
+    n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
+}
+
+/// Consulted only for small m (see arm64 for the rationale).
+fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match cpu_part().unwrap_or(0) {
+        0xc07 => match query.m {
+            Some(m) if m < 32 => {
+                cortex_a7_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
+            }
+            _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name),
+        },
+        0xc09 => match query.m {
+            Some(m) if m < 32 => {
+                cortex_a9_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
+            }
+            _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name),
+        },
+        _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_generic.name),
+    }
+}
+
+fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match cpu_part().unwrap_or(0) {
+        0xc07 => cortex_a7_linear::linear_model().preferred(suitable, query.m, query.k, query.n),
+        0xc09 => cortex_a9_linear::linear_model().preferred(suitable, query.m, query.k, query.n),
+        _ => suitable_named(
+            suitable,
+            if prefer_8x4(query.n) {
+                &armv7neon::armv7neon_mmm_f32_8x4_generic.name
+            } else {
+                &armv7neon::armv7neon_mmm_f32_8x6_generic.name
+            },
+        ),
+    }
+}
+
+fn preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
+        (DatumType::F32, _) => neon_mmm_f32(suitable, query),
+        (DatumType::I32, Some(1)) => {
+            suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_32x1.name)
+        }
+        (DatumType::I32, _) => suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_8x4.name),
+        _ => None,
+    }
+}
+
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Arm),
+        precedence: 2,
+        name: "armv7neon",
+        applies: |p| p.isa.has(crate::isa::Isa::Neon),
+        preferred,
+    }
+}
+
 pub fn plug(ops: &mut Ops) {
     if crate::isa::native().has(crate::isa::Isa::Neon) {
-        log::info!("armv7neon activated (smmm, ssigmoid), stanh)");
-
-        let cpu = cpu_part().unwrap_or(0);
-
-        fn prefer_8x4(_m: Option<usize>, _k: Option<usize>, n: Option<usize>) -> bool {
-            n.map(|n| n % 4 == 0 && n % 6 != 0 && n <= 12).unwrap_or(false)
-        }
-
-        // Consulted only for small m (see arm64 for the rationale).
-        let mmv_f32: crate::MmmPreference = match cpu {
-            0xc07 => {
-                let model = cortex_a7_mmv_linear::linear_model();
-                Box::new(move |suitable, query| match query.m {
-                    Some(m) if m < 32 => model.preferred(suitable, Some(m), query.k, Some(1)),
-                    _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name),
-                })
-            }
-            0xc09 => {
-                let model = cortex_a9_mmv_linear::linear_model();
-                Box::new(move |suitable, query| match query.m {
-                    Some(m) if m < 32 => model.preferred(suitable, Some(m), query.k, Some(1)),
-                    _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name),
-                })
-            }
-            _ => Box::new(|suitable, _| {
-                suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_generic.name)
-            }),
-        };
-
-        let mmm_f32: crate::MmmPreference = match cpu {
-            0xc07 => {
-                let model = cortex_a7_linear::linear_model();
-                Box::new(move |suitable, query| {
-                    model.preferred(suitable, query.m, query.k, query.n)
-                })
-            }
-            0xc09 => {
-                let model = cortex_a9_linear::linear_model();
-                Box::new(move |suitable, query| {
-                    model.preferred(suitable, query.m, query.k, query.n)
-                })
-            }
-            _ => Box::new(|suitable, query| {
-                suitable_named(
-                    suitable,
-                    if prefer_8x4(query.m, query.k, query.n) {
-                        &armv7neon::armv7neon_mmm_f32_8x4_generic.name
-                    } else {
-                        &armv7neon::armv7neon_mmm_f32_8x6_generic.name
-                    },
-                )
-            }),
-        };
-        ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
-            (DatumType::F32, _) => mmm_f32(suitable, query),
-            (DatumType::I32, Some(1)) => {
-                suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_32x1.name)
-            }
-            (DatumType::I32, _) => suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_8x4.name),
-            _ => prev(dt, query, suitable),
-        });
+        log::info!("armv7neon activated (ssigmoid, ssilu, stanh)");
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
         ops.tanh_f32 = Box::new(|| armv7neon_tanh_f32_4n::ew());
-    } else {
-        armvfpv2::plug(ops);
     }
 }
 

@@ -1,12 +1,14 @@
+use crate::DatumType;
 use crate::block_quant::*;
 use crate::isa::Isa;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
-use crate::mmm::suitable_named;
+use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm_tiers::{MmmTier, Platform};
 use crate::pack::PackedFormat;
 #[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
 use crate::pack::PackedI8K4;
-use crate::{DatumType, Ops};
+use crate::platform::Target;
 
 #[cfg(tract_amx_int8)]
 use super::amx::PackedAmxA;
@@ -255,162 +257,143 @@ MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(Avx512
     boost(AMX_BF16_OPT_IN)
 }
 
-/// Installs the f32 and i32 dispatch policies this host's instruction set earns. The runnable set is
-/// filtered against the same set, so reading it here is what keeps a policy from naming a
-/// kernel the runnable set does not hold — under `TRACT_CPU_ISA` as much as on bare hardware.
-pub fn plug(ops: &mut Ops) {
-    let isa = crate::isa::native();
-    // The fma f32 tier below needs avx2 (vgatherdps) on top of fma; whenever it
-    // can't plug, cover every avx-capable CPU (Sandy/Ivy Bridge without fma,
-    // AMD Bulldozer-family with fma but no avx2) with the mul+add tier.
-    if isa.has(Isa::Avx) && !(isa.has(Isa::Avx2) && isa.has(Isa::Fma)) {
-        plug_avx(ops);
-    }
-    if isa.has(Isa::Avx2) {
-        plug_avx2(ops);
-        // AVX-VNNI runs on AVX2-only Atom-class cores (Alder Lake-E, Sierra
-        // Forest, Clearwater Forest / Darkmont). Plug it here so big cores
-        // can overlay AVX-512-VNNI / AMX on top below.
-        #[cfg(tract_avxvnni)]
-        if isa.has(Isa::AvxVnni) {
-            plug_avxvnni(ops);
+/// The zmm 16x16 kernel does 2x the work per inner iteration as the ymm 8x8, but that only
+/// becomes 2x the *throughput* on cores with two 512-bit FMA ports (Cascade Lake / Cooper Lake /
+/// Ice Lake-SP and later Xeons). On a single-512-FMA client core (Ice Lake-U / Tiger Lake /
+/// Rocket Lake) one 512-bit VPDPBUSD/cycle delivers the same MAC/s as two 256-bit
+/// VPDPBUSD/cycle, so the wider tile is pure overhead (extra A-packing, the 16-column +128 bias
+/// correction, a bigger epilogue) and regresses real matmuls -- e.g. -4..-11% on int8 LLM/TDNN
+/// prefill on an i9-11900KB. So this tier names the 16x16 only on dual-FMA cores; the einsum
+/// scorer is held off it by `AVX512VNNI_WIDE_TILE` going negative elsewhere.
+///
+/// Where it does name the wide tile the dispatch is shape-adaptive, mirroring the AMX int8 path:
+/// the 16x16 is the throughput champion when each of M and N fills at least one tile, and the
+/// 8x8 has lower per-call setup and wins on small problems where tile padding dominates. Unknown
+/// dims default to the champion. (No K gate: one VPDPBUSD step is only 4 K-bytes, so any K is
+/// fine; the choice is about filling the 16-wide M/N tile.)
+#[cfg(tract_avx512vnni)]
+fn avx512vnni_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::I32, Some(1)) => None,
+        (DatumType::I32, _) if !has_dual_avx512_fma() => {
+            suitable_named(suitable, &avx512vnni_mmm_i32_8x8.name)
         }
-        if isa.has(Isa::Fma) {
-            plug_fma(ops);
-            if isa.has(Isa::Avx512f) {
-                plug_avx512f(ops);
-                #[cfg(tract_avx512vnni)]
-                if isa.has(Isa::Avx512Vnni) {
-                    plug_avx512vnni(ops);
-                    // AMX int8 preferred over VNNI when both are present.
-                    #[cfg(tract_amx_int8)]
-                    if isa.has(Isa::AmxInt8) {
-                        plug_avx512amx_int8(ops);
-                    }
-                }
-                // The policy must not name a kernel the caller has not opted into; see
-                // `AMX_BF16_OPT_IN`, which keeps it out of every unforced tie.
-                #[cfg(tract_amx_bf16)]
-                if crate::knobs::TRACT_AMX_BF16.get() && isa.has(Isa::AmxBf16) {
-                    plug_avx512amx_bf16(ops);
-                }
-            }
+        (DatumType::I32, _) => {
+            let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+            suitable_named(
+                suitable,
+                if big(query.m, 16) && big(query.n, 16) {
+                    &avx512vnni_mmm_i32_16x16.name
+                } else {
+                    &avx512vnni_mmm_i32_8x8.name
+                },
+            )
         }
+        _ => None,
     }
 }
 
 #[cfg(tract_avx512vnni)]
-pub fn plug_avx512vnni(ops: &mut Ops) {
-    // The zmm 16x16 kernel does 2x the work per inner iteration as the ymm 8x8,
-    // but that only becomes 2x the *throughput* on cores with two 512-bit FMA
-    // ports (Cascade Lake / Cooper Lake / Ice Lake-SP and later Xeons). On a
-    // single-512-FMA client core (Ice Lake-U / Tiger Lake / Rocket Lake) one
-    // 512-bit VPDPBUSD/cycle delivers the same MAC/s as two 256-bit
-    // VPDPBUSD/cycle, so the wider tile is pure overhead (extra A-packing, the
-    // 16-column +128 bias correction, a bigger epilogue) and regresses real
-    // matmuls -- e.g. -4..-11% on int8 LLM/TDNN prefill on an i9-11900KB.
-    //
-    // So the runtime `qmmm_i32` picker names the 16x16 only on dual-FMA cores; the
-    // einsum scorer is held off it by `AVX512VNNI_WIDE_TILE` going negative
-    // elsewhere. Single-FMA cores are always on the 8x8 and cannot regress.
-    if has_dual_avx512_fma() {
-        // Shape-adaptive dispatch mirroring the AMX int8 path: the zmm 16x16 tile
-        // is the throughput champion when each of M and N fills at least one tile;
-        // the 8x8 ymm kernel has lower per-call setup (smaller epilogue, half the
-        // accumulator file) and wins on small problems where the 16x16
-        // tile-padding overhead dominates. Unknown dims default to the 16x16
-        // champion. (No K gate: one VPDPBUSD step is only 4 K-bytes, so any K is
-        // fine; the choice is about filling the 16-wide M/N tile.)
-        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
-            (DatumType::I32, _) => {
-                let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-                suitable_named(
-                    suitable,
-                    if big(query.m, 16) && big(query.n, 16) {
-                        &avx512vnni_mmm_i32_16x16.name
-                    } else {
-                        &avx512vnni_mmm_i32_8x8.name
-                    },
-                )
-            }
-            _ => prev(dt, query, suitable),
-        });
-        log::info!("qmmm_i32: x86_64/avx512vnni (16x16 + 8x8 adaptive, dual-FMA) activated");
-    } else {
-        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
-            (DatumType::I32, _) => suitable_named(suitable, &avx512vnni_mmm_i32_8x8.name),
-            _ => prev(dt, query, suitable),
-        });
-        log::info!("qmmm_i32: x86_64/avx512vnni (8x8, single-512-FMA core) activated");
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 6,
+        name: "avx512vnni",
+        applies: |p| {
+            p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma) && p.isa.has(Isa::Avx512f)
+                && p.isa.has(Isa::Avx512Vnni)
+        },
+        preferred: avx512vnni_preferred,
+    }
+}
+
+/// On AVX-VNNI-only cores (no AVX-512) this is the int8 throughput champion, over the AVX2
+/// emulation below it. Big cores that also have AVX-512-VNNI answer from the higher tier.
+#[cfg(tract_avxvnni)]
+fn avxvnni_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::I32, Some(1)) => None,
+        (DatumType::I32, _) => suitable_named(suitable, &avxvnni_mmm_i32_8x8.name),
+        _ => None,
     }
 }
 
 #[cfg(tract_avxvnni)]
-pub fn plug_avxvnni(ops: &mut Ops) {
-    // On AVX-VNNI-only cores (no AVX-512) this is the int8 throughput champion;
-    // replace the AVX2 emulation default. On big cores that also have
-    // AVX-512-VNNI, plug_avx512vnni below runs after this and clobbers
-    // qmmm_i32 again with the EVEX kernel.
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
-        (DatumType::I32, _) => suitable_named(suitable, &avxvnni_mmm_i32_8x8.name),
-        _ => prev(dt, query, suitable),
-    });
-    log::info!("qmmm_i32: x86_64/avxvnni (VEX-encoded VPDPBUSD) activated");
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 3,
+        name: "avxvnni",
+        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::AvxVnni),
+        preferred: avxvnni_preferred,
+    }
+}
+
+/// The AMX bf16 tile, where it is a good fit: not at small M/N, and not below K 32 — one
+/// TDPBF16PS consumes 32 bf16 K-lanes so the panel must have at least one full step. The
+/// threshold matches `PackedAmxBf16A::k_alignment()`; below it the AVX-512 / FMA tiers' smaller
+/// tiles waste less work, and this tier declines so they answer.
+#[cfg(tract_amx_bf16)]
+fn amx_bf16_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    if dt != DatumType::F32 || query.n == Some(1) {
+        return None;
+    }
+    let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
+    if big(query.m, 16) && big(query.n, 16) && big(query.k, 32) {
+        suitable_named(suitable, &avx512amx_mmm_f32_16x16.name)
+    } else {
+        None
+    }
 }
 
 #[cfg(tract_amx_bf16)]
-pub fn plug_avx512amx_bf16(ops: &mut Ops) {
-    // Save the previously-installed f32 picker so we can defer to it when
-    // the AMX kernel isn't a good fit (small M/N, or K < 32 -- one TDPBF16PS
-    // consumes 32 bf16 K-lanes so the panel must have at least one full step).
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| {
-        if dt != DatumType::F32 || query.n == Some(1) {
-            return prev(dt, query, suitable);
-        }
-        let (m, k, n) = (query.m, query.k, query.n);
-        let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-        // Same dispatch shape as the int8 16x16/8x8 split: hand off to AMX
-        // only when each axis comfortably fills at least one tile. The 32-K
-        // threshold matches PackedAmxBf16A::k_alignment() (one tdpbf16ps =
-        // 32 bf16 K-lanes); below that, the AVX-512 / FMA path's smaller
-        // tiles waste less work.
-        if big(m, 16) && big(n, 16) && big(k, 32) {
-            suitable_named(suitable, &avx512amx_mmm_f32_16x16.name)
-        } else {
-            prev(dt, query, suitable)
-        }
-    });
-    let c = super::amx::cache_sizes();
-    log::info!(
-        "mmm_f32: x86_64/avx512amx_bf16 (16x16) overlay activated; \
-         L1d={} KB, L2={} KB, L3={} KB",
-        c.l1d_bytes / 1024,
-        c.l2_bytes / 1024,
-        c.l3_bytes / 1024,
-    );
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 8,
+        name: "avx512amx-bf16",
+        applies: |p| {
+            crate::knobs::TRACT_AMX_BF16.get()
+                && p.isa.has(Isa::Avx2)
+                && p.isa.has(Isa::Fma)
+                && p.isa.has(Isa::Avx512f)
+                && p.isa.has(Isa::AmxBf16)
+        },
+        preferred: amx_bf16_preferred,
+    }
 }
 
+/// Shape-adaptive AMX int8: the 16x16 hits the full tile (1024 B/tile, 16384 mul-adds per
+/// tdpbssd) and is the throughput champion when at least one tile of each dim is fully utilised;
+/// the 8x8 has lower per-call setup (1/4 the tile-store scratch, half the prefetch budget,
+/// smaller epilogue) and beats it on small problems where tile padding dominates. An unknown dim
+/// defaults to the champion. The exact crossover should be re-validated on AMX HW; oneDNN uses
+/// similar shape-based MR/NR selection for its BRGEMM ukernel variants.
 #[cfg(tract_amx_int8)]
-pub fn plug_avx512amx_int8(ops: &mut Ops) {
-    // Shape-adaptive dispatch:
-    //   - 16x16 hits the full AMX tile (1024 B/tile, 16384 mul-adds per
-    //     tdpbssd) and is the throughput champion when at least one tile
-    //     of each dim is fully utilised.
-    //   - 8x8 has lower per-call setup cost (1/4 the tile-store scratch,
-    //     half the prefetch budget, smaller epilogue) and beats 16x16 on
-    //     small problems where the framework's tile-padding overhead
-    //     dominates.
-    // The exact crossover should be re-validated on AMX HW; oneDNN uses
-    // similar shape-based MR/NR selection for its BRGEMM ukernel variants.
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+fn amx_int8_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::I32, Some(1)) => None,
         (DatumType::I32, _) => {
-            // m, k, n are Option<usize> -- None means "unknown / streaming dim".
-            // For unknown dims default to the throughput champion (16x16); only
-            // fall back to 8x8 when a static dim is known to be tiny.
             let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
             suitable_named(
                 suitable,
@@ -421,43 +404,71 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
                 },
             )
         }
-        _ => prev(dt, query, suitable),
-    });
-    let c = super::amx::cache_sizes();
-    log::info!(
-        "qmmm_i32: x86_64/avx512amx_int8 (16x16 + 8x8 adaptive) activated; \
-         L1d={} KB, L2={} KB, L3={} KB",
-        c.l1d_bytes / 1024,
-        c.l2_bytes / 1024,
-        c.l3_bytes / 1024,
-    );
+        _ => None,
+    }
 }
 
-pub fn plug_avx2(ops: &mut Ops) {
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+#[cfg(tract_amx_int8)]
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 7,
+        name: "avx512amx-int8",
+        applies: |p| {
+            p.isa.has(Isa::Avx2)
+                && p.isa.has(Isa::Fma)
+                && p.isa.has(Isa::Avx512f)
+                && p.isa.has(Isa::Avx512Vnni)
+                && p.isa.has(Isa::AmxInt8)
+        },
+        preferred: amx_int8_preferred,
+    }
+}
+
+fn avx2_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::I32, Some(1)) => None,
         (DatumType::I32, _) => suitable_named(suitable, &mmm::avx2_mmm_i32_8x8.name),
-        _ => prev(dt, query, suitable),
-    });
-    log::info!("qmmm_i32: x86_64/avx2 activated");
+        _ => None,
+    }
 }
 
-/// f32 and i32 kernels for AVX-capable CPUs that can't run the fma tier
-/// (Sandy/Ivy Bridge without fma; AMD Bulldozer-family with fma but no avx2).
-/// Never active alongside plug_fma: these kernels replace the generic
-/// fallback, not the fma_ ones. On avx2-without-fma CPUs plug_avx2 still runs
-/// afterwards and upgrades qmmm_i32 to the wider avx2 kernel.
-pub fn plug_avx(ops: &mut Ops) {
-    const AVX_CHOICES: &[KernelChoice] = &[
-        KernelChoice { mr: 16, nr: 6, scale: 1.0, ctor: || avx_mmm_f32_16x6.mmm() },
-        KernelChoice { mr: 16, nr: 5, scale: 0.98, ctor: || avx_mmm_f32_16x5.mmm() },
-        KernelChoice { mr: 24, nr: 4, scale: 0.95, ctor: || avx_mmm_f32_24x4.mmm() },
-        KernelChoice { mr: 32, nr: 3, scale: 0.93, ctor: || avx_mmm_f32_32x3.mmm() },
-        KernelChoice { mr: 40, nr: 2, scale: 0.90, ctor: || avx_mmm_f32_40x2.mmm() },
-        KernelChoice { mr: 8, nr: 8, scale: 0.80, ctor: || avx_mmm_f32_8x8.mmm() },
-    ];
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 2,
+        name: "avx2",
+        applies: |p| p.isa.has(Isa::Avx2),
+        preferred: avx2_preferred,
+    }
+}
+
+const AVX_CHOICES: &[KernelChoice] = &[
+    KernelChoice { mr: 16, nr: 6, scale: 1.0, ctor: || avx_mmm_f32_16x6.mmm() },
+    KernelChoice { mr: 16, nr: 5, scale: 0.98, ctor: || avx_mmm_f32_16x5.mmm() },
+    KernelChoice { mr: 24, nr: 4, scale: 0.95, ctor: || avx_mmm_f32_24x4.mmm() },
+    KernelChoice { mr: 32, nr: 3, scale: 0.93, ctor: || avx_mmm_f32_32x3.mmm() },
+    KernelChoice { mr: 40, nr: 2, scale: 0.90, ctor: || avx_mmm_f32_40x2.mmm() },
+    KernelChoice { mr: 8, nr: 8, scale: 0.80, ctor: || avx_mmm_f32_8x8.mmm() },
+];
+
+/// f32 and i32 kernels for AVX-capable CPUs that can't run the fma tier (Sandy/Ivy Bridge
+/// without fma; AMD Bulldozer-family with fma but no avx2). It sits at the bottom of the x86
+/// ladder, so wherever the fma tier can answer it does, and this one is only reached when it
+/// cannot.
+fn avx_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::I32, Some(1)) => None,
         (DatumType::I32, _) => suitable_named(suitable, &avx_mmm_i32_8x4.name),
         (DatumType::F32, _) => match query.n {
             None => suitable_named(suitable, &avx_mmm_f32_16x6.name),
@@ -470,118 +481,159 @@ pub fn plug_avx(ops: &mut Ops) {
             Some(8) => suitable_named(suitable, &avx_mmm_f32_8x8.name),
             Some(_) => suitable_named(suitable, pick_mmm(AVX_CHOICES, query.m, query.n).name()),
         },
-        _ => prev(dt, query, suitable),
-    });
-
-    log::info!("f32, i32 matmul: x86_64/avx (no fma) activated");
+        _ => None,
+    }
 }
 
-pub fn plug_fma(ops: &mut Ops) {
-    // Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic
-    // (M, N)-aware tile-utilisation picker over the same kernels.
-    const FMA_CHOICES: &[KernelChoice] = &[
-        KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
-        KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
-        KernelChoice { mr: 16, nr: 5, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x5.mmm() },
-        KernelChoice { mr: 24, nr: 4, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_24x4.mmm() },
-        KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_32x3.mmm() },
-        KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
-    ];
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 1,
+        name: "avx",
+        applies: |p| p.isa.has(Isa::Avx),
+        preferred: avx_preferred,
+    }
+}
 
-    let mmm_f32: crate::MmmPreference = match super::vendor() {
+/// Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic (M, N)-aware
+/// tile-utilisation picker over the same kernels.
+const FMA_CHOICES: &[KernelChoice] = &[
+    KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
+    KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
+    KernelChoice { mr: 16, nr: 5, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x5.mmm() },
+    KernelChoice { mr: 24, nr: 4, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_24x4.mmm() },
+    KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_32x3.mmm() },
+    KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
+];
+
+fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match super::vendor() {
         super::Vendor::Intel => {
-            let mdl = super::intel_fma_linear::linear_model();
-            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
+            super::intel_fma_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
         }
         super::Vendor::Amd => {
-            let mdl = super::amd_fma_linear::linear_model();
-            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
+            super::amd_fma_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
         }
-        super::Vendor::Other => Box::new(|c, q| match q.n {
-            None => suitable_named(c, &fma_mmm_f32_16x6.name),
+        super::Vendor::Other => match query.n {
+            None => suitable_named(suitable, &fma_mmm_f32_16x6.name),
             Some(1) => unreachable!("n == 1 answered above"),
-            Some(2) => suitable_named(c, &fma_mmm_f32_40x2.name),
-            Some(3) => suitable_named(c, &fma_mmm_f32_32x3.name),
-            Some(4) => suitable_named(c, &fma_mmm_f32_24x4.name),
-            Some(5) => suitable_named(c, &fma_mmm_f32_16x5.name),
-            Some(6) => suitable_named(c, &fma_mmm_f32_16x6.name),
-            Some(8) => suitable_named(c, &fma_mmm_f32_8x8.name),
-            Some(_) => suitable_named(c, pick_mmm(FMA_CHOICES, q.m, q.n).name()),
-        }),
-    };
-    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
+            Some(2) => suitable_named(suitable, &fma_mmm_f32_40x2.name),
+            Some(3) => suitable_named(suitable, &fma_mmm_f32_32x3.name),
+            Some(4) => suitable_named(suitable, &fma_mmm_f32_24x4.name),
+            Some(5) => suitable_named(suitable, &fma_mmm_f32_16x5.name),
+            Some(6) => suitable_named(suitable, &fma_mmm_f32_16x6.name),
+            Some(8) => suitable_named(suitable, &fma_mmm_f32_8x8.name),
+            Some(_) => suitable_named(suitable, pick_mmm(FMA_CHOICES, query.m, query.n).name()),
+        },
+    }
+}
+
+fn fma_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
         // n == 1 has no dedicated n=1-calibrated model on the fma-only path yet; keep the
         // fixed matvec kernel. Routing n==1 through the n>=2-fit mmm model mispicks (matvec
         // kernels are only ever run at n==1, so their mmm coeffs are unrepresentative).
         (DatumType::F32, Some(1)) => suitable_named(suitable, &fma_mmm_f32_64x1.name),
-        (DatumType::F32, _) => mmm_f32(suitable, query),
-        _ => prev(dt, query, suitable),
-    });
-    log::info!("f32 matmul: x86_64/fma activated");
+        (DatumType::F32, _) => fma_mmm_f32(suitable, query),
+        _ => None,
+    }
 }
 
-pub fn plug_avx512f(ops: &mut Ops) {
-    // Pool spans both instruction sets: on avx512 hardware the 256-bit FMA
-    // kernels reach comparable f32 throughput and win the small-N tiles the
-    // avx512 kernels have no matching `nr` for (e.g. n=2 -> 40x2, n=4 -> 24x4).
-    // `scale` is relative throughput at full tile fill, measured together with
-    // `tract hwbench 3840,256,120,f32` (M,N divide every mr/nr) and normalised
-    // to the fastest kernel.
-    const X86_F32_CHOICES: &[KernelChoice] = &[
-        KernelChoice { mr: 16, nr: 12, scale: 1.000, ctor: || avx512_mmm_f32_16x12.mmm() },
-        KernelChoice { mr: 16, nr: 8, scale: 0.995, ctor: || avx512_mmm_f32_16x8.mmm() },
-        KernelChoice { mr: 32, nr: 5, scale: 0.992, ctor: || avx512_mmm_f32_32x5.mmm() },
-        KernelChoice { mr: 32, nr: 6, scale: 0.990, ctor: || avx512_mmm_f32_32x6.mmm() },
-        KernelChoice { mr: 48, nr: 4, scale: 0.978, ctor: || avx512_mmm_f32_48x4.mmm() },
-        KernelChoice { mr: 16, nr: 6, scale: 0.964, ctor: || fma_mmm_f32_16x6.mmm() },
-        KernelChoice { mr: 24, nr: 4, scale: 0.948, ctor: || fma_mmm_f32_24x4.mmm() },
-        KernelChoice { mr: 16, nr: 5, scale: 0.935, ctor: || fma_mmm_f32_16x5.mmm() },
-        KernelChoice { mr: 32, nr: 3, scale: 0.919, ctor: || fma_mmm_f32_32x3.mmm() },
-        KernelChoice { mr: 64, nr: 3, scale: 0.895, ctor: || avx512_mmm_f32_64x3.mmm() },
-        KernelChoice { mr: 40, nr: 2, scale: 0.842, ctor: || fma_mmm_f32_40x2.mmm() },
-        KernelChoice { mr: 8, nr: 8, scale: 0.788, ctor: || fma_mmm_f32_8x8.mmm() },
-        KernelChoice { mr: 80, nr: 2, scale: 0.766, ctor: || avx512_mmm_f32_80x2.mmm() },
-        KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
-    ];
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 4,
+        name: "fma",
+        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma),
+        preferred: fma_preferred,
+    }
+}
 
-    let mmv_f32: crate::MmmPreference = match super::vendor() {
-        // n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting
-        // kernel (16x1/32x1); at or above it the 128x1 is already optimal, so keep it.
-        super::Vendor::Intel => {
-            let mdl = super::intel_avx512_mmv_linear::linear_model();
-            Box::new(move |c, q| match q.m {
-                Some(m) if m < 128 => mdl.preferred(c, Some(m), q.k, Some(1)),
-                _ => suitable_named(c, &avx512_mmm_f32_128x1.name),
-            })
-        }
-        // amd has no n=1-calibrated mmv model yet; keep the fixed matvec dispatch.
-        _ => Box::new(|c, q| match q.m {
-            Some(m) if m < 31 => suitable_named(c, &avx512_mmm_f32_16x1.name),
-            _ => suitable_named(c, &avx512_mmm_f32_128x1.name),
-        }),
-    };
-    let mmm_f32: crate::MmmPreference = match super::vendor() {
-        super::Vendor::Intel => {
-            let mdl = super::intel_avx512_linear::linear_model();
-            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
-        }
+/// The choices span both instruction sets: on avx512 hardware the 256-bit FMA kernels reach
+/// comparable f32 throughput and win the small-N tiles the avx512 kernels have no matching `nr`
+/// for (e.g. n=2 -> 40x2, n=4 -> 24x4). `scale` is relative throughput at full tile fill,
+/// measured together with `tract hwbench 3840,256,120,f32` (M,N divide every mr/nr) and
+/// normalised to the fastest kernel.
+const X86_F32_CHOICES: &[KernelChoice] = &[
+    KernelChoice { mr: 16, nr: 12, scale: 1.000, ctor: || avx512_mmm_f32_16x12.mmm() },
+    KernelChoice { mr: 16, nr: 8, scale: 0.995, ctor: || avx512_mmm_f32_16x8.mmm() },
+    KernelChoice { mr: 32, nr: 5, scale: 0.992, ctor: || avx512_mmm_f32_32x5.mmm() },
+    KernelChoice { mr: 32, nr: 6, scale: 0.990, ctor: || avx512_mmm_f32_32x6.mmm() },
+    KernelChoice { mr: 48, nr: 4, scale: 0.978, ctor: || avx512_mmm_f32_48x4.mmm() },
+    KernelChoice { mr: 16, nr: 6, scale: 0.964, ctor: || fma_mmm_f32_16x6.mmm() },
+    KernelChoice { mr: 24, nr: 4, scale: 0.948, ctor: || fma_mmm_f32_24x4.mmm() },
+    KernelChoice { mr: 16, nr: 5, scale: 0.935, ctor: || fma_mmm_f32_16x5.mmm() },
+    KernelChoice { mr: 32, nr: 3, scale: 0.919, ctor: || fma_mmm_f32_32x3.mmm() },
+    KernelChoice { mr: 64, nr: 3, scale: 0.895, ctor: || avx512_mmm_f32_64x3.mmm() },
+    KernelChoice { mr: 40, nr: 2, scale: 0.842, ctor: || fma_mmm_f32_40x2.mmm() },
+    KernelChoice { mr: 8, nr: 8, scale: 0.788, ctor: || fma_mmm_f32_8x8.mmm() },
+    KernelChoice { mr: 80, nr: 2, scale: 0.766, ctor: || avx512_mmm_f32_80x2.mmm() },
+    KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
+];
+
+/// n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting kernel
+/// (16x1/32x1); at or above it the 128x1 is already optimal, so keep it. AMD has no
+/// n=1-calibrated mmv model yet, and keeps the fixed matvec dispatch.
+fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match super::vendor() {
+        super::Vendor::Intel => match query.m {
+            Some(m) if m < 128 => super::intel_avx512_mmv_linear::linear_model().preferred(
+                suitable,
+                Some(m),
+                query.k,
+                Some(1),
+            ),
+            _ => suitable_named(suitable, &avx512_mmm_f32_128x1.name),
+        },
+        _ => match query.m {
+            Some(m) if m < 31 => suitable_named(suitable, &avx512_mmm_f32_16x1.name),
+            _ => suitable_named(suitable, &avx512_mmm_f32_128x1.name),
+        },
+    }
+}
+
+fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match super::vendor() {
+        super::Vendor::Intel => super::intel_avx512_linear::linear_model()
+            .preferred(suitable, query.m, query.k, query.n),
         super::Vendor::Amd => {
-            let mdl = super::amd_avx512_linear::linear_model();
-            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
+            super::amd_avx512_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
         }
-        super::Vendor::Other => Box::new(|c, q| {
-            if let Some(1) = q.n {
+        super::Vendor::Other => {
+            if let Some(1) = query.n {
                 unreachable!("n == 1 answered above");
             }
-            suitable_named(c, pick_mmm(X86_F32_CHOICES, q.m, q.n).name())
-        }),
-    };
-    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
-        (DatumType::F32, _) => mmm_f32(suitable, query),
-        _ => prev(dt, query, suitable),
-    });
-    log::info!("f32 matmul: x86_64/avx512f activated");
+            suitable_named(suitable, pick_mmm(X86_F32_CHOICES, query.m, query.n).name())
+        }
+    }
+}
+
+fn avx512f_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::F32, Some(1)) => avx512_mmv_f32(suitable, query),
+        (DatumType::F32, _) => avx512_mmm_f32(suitable, query),
+        _ => None,
+    }
+}
+
+inventory::submit! {
+    MmmTier {
+        target: Some(Target::X86_64),
+        precedence: 5,
+        name: "avx512f",
+        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma) && p.isa.has(Isa::Avx512f),
+        preferred: avx512f_preferred,
+    }
 }
 
 #[cfg(all(test, target_arch = "x86_64"))]

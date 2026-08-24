@@ -60,6 +60,7 @@ use lazy_static::lazy_static;
 use mmm::{
     ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
 };
+use mmm_tiers::{MmmTier, Platform};
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
@@ -91,27 +92,22 @@ pub mod wasm;
 
 pub mod isa;
 pub mod mmm_routines;
+pub mod mmm_tiers;
 pub mod platform;
 
 pub use self::frame::*;
 
 use tract_data::prelude::*;
 
-/// One tier’s answer within a policy: which of the suitable kernels it would run, `None` to leave the
-/// query to the tier below.
-pub type MmmPreference = Box<dyn Fn(&[Suitable], &Query) -> Option<usize> + Send + Sync>;
-
-/// Which of the suitable kernels a platform would run for a query, `None` for a query it has no
-/// opinion on — an accumulator no arch plug claimed, or a shape whose kernel this build does not
-/// offer. The answer is an index, so a policy can only ever name one the query reached.
-pub type MmmPolicy = Box<dyn Fn(DatumType, &Query, &[Suitable]) -> Option<usize> + Send + Sync>;
-
 #[allow(clippy::type_complexity)]
 pub struct Ops {
+    /// Whose kernels these are and what their instruction set offers. Everything mmm selection
+    /// needs is a function of it: the runnable set, and which tiers speak.
+    platform: Platform,
+    /// The applicable tiers, highest precedence first, resolved once from [`Self::platform`].
+    tiers: Vec<&'static MmmTier>,
     runnable: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
-
-    mmm_policy: MmmPolicy,
 
     pub leaky_relu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
     pub leaky_relu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
@@ -214,16 +210,22 @@ impl Ops {
             .collect()
     }
 
-    /// The platform policy's choice among `suitable`, or `None` when it has no opinion —
-    /// no arch plug claimed this accumulator, or the query is not the plain matmul the policies
-    /// reason about. A generic answer counts as no opinion: `generic()` installs fixed kernels,
-    /// so getting one back means no arch plug ever overwrote that slot.
+    /// This platform’s tiers, highest precedence first: the ladder [`Self::preferred`] walks.
+    pub fn tiers(&self) -> &[&'static MmmTier] {
+        &self.tiers
+    }
+
+    /// The platform's choice among `suitable`, or `None` when no tier has an opinion — none
+    /// claimed this accumulator, or the query is not the plain matmul the tiers reason about.
+    /// A generic answer counts as no opinion: the precedence-0 tier answers for every platform, so
+    /// getting one of its kernels back means no arch tier claimed the query.
     pub fn preferred(&self, query: &Query, suitable: &[Suitable]) -> Option<usize> {
         let WeightType::Plain(weight) = &query.weight else { return None };
         if weight.unquantized() != query.activation.unquantized() {
             return None;
         }
-        let ix = (self.mmm_policy)(*query.accumulators.first()?, query, suitable)?;
+        let acc = *query.accumulators.first()?;
+        let ix = mmm_tiers::preferred(&self.platform, &self.tiers, acc, query, suitable)?;
         let quality = suitable[ix].0.quality();
         (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
     }
@@ -258,10 +260,10 @@ impl Ops {
         &self.panel_extractors
     }
 
-    /// The kernel this platform's policy would run for a plain matmul of these dims, for a
-    /// caller introspecting dispatch rather than performing it. Unlike [`Ops::preferred`] it reports
-    /// the policy's answer whatever its quality tier, and it never falls back on the portable
-    /// rules: `None` means the policy itself had nothing to say.
+    /// The kernel this platform would run for a plain matmul of these dims, for a caller
+    /// introspecting dispatch rather than performing it. Unlike [`Ops::preferred`] it reports
+    /// the tiers' answer whatever its quality, and it never falls back on the portable rules:
+    /// `None` means no tier had anything to say.
     pub fn preferred_kernel(
         &self,
         accumulator: DatumType,
@@ -271,44 +273,55 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         let query = Query::plain(accumulator, m, k, n);
         let suitable = self.suitable(&query);
-        let ix = (self.mmm_policy)(accumulator, &query, &suitable)?;
+        let ix = mmm_tiers::preferred(&self.platform, &self.tiers, accumulator, &query, &suitable)?;
         Some(suitable[ix].0.clone())
-    }
-
-    /// Put `f` in front of the policy: it answers the accumulators and shapes it claims, and
-    /// defers everything else to what was there before. This is how an arch tier layers over
-    /// the tiers below it, and how a tier that speaks for one accumulator leaves the others be.
-    pub fn overlay_mmm_policy(
-        &mut self,
-        f: impl Fn(&MmmPolicy, DatumType, &Query, &[Suitable]) -> Option<usize> + Send + Sync + 'static,
-    ) {
-        let prev = std::mem::replace(&mut self.mmm_policy, Box::new(|_, _, _| None));
-        self.mmm_policy = Box::new(move |dt, query, suitable| f(&prev, dt, query, suitable));
     }
 }
 
-pub fn generic() -> Ops {
+/// The portable rules, the tier every platform ends on: fixed generic kernels, in the tile the
+/// shape asks for. Rank 0, so any arch tier that claims the query answers before it.
+fn generic_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
     use crate::generic::mmm::*;
-    use crate::mmm::suitable_named;
+    let vec = query.n == Some(1);
+    let name = match dt {
+        DatumType::F64 if vec => &generic_f64_4x1.name,
+        DatumType::F64 => &generic_f64_4x4.name,
+        DatumType::F32 if vec => &generic_f32_4x1.name,
+        DatumType::F32 => &generic_f32_4x4.name,
+        DatumType::F16 if vec => &generic_f16_4x1.name,
+        DatumType::F16 => &generic_f16_4x4.name,
+        DatumType::I32 => &generic_i32_4x4.name,
+        _ => return None,
+    };
+    mmm::suitable_named(suitable, name)
+}
+
+inventory::submit! {
+    MmmTier {
+        target: None,
+        precedence: 0,
+        name: "generic",
+        applies: |_| true,
+        preferred: generic_preferred,
+    }
+}
+
+/// The portable `Ops`, on the platform it is asked for: its runnable kernels and the tiers that
+/// speak for it. Both are functions of the platform, so mmm dispatch is settled here; what an
+/// arch `plug` still adds is the non-mmm kernel slots.
+pub fn generic_for(platform: Platform) -> Ops {
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
+        platform,
+        tiers: mmm_tiers::for_platform(&platform),
         runnable: vec![],
         panel_extractors: vec![],
-        mmm_policy: Box::new(|dt, query, suitable| {
-            let vec = query.n == Some(1);
-            let name = match dt {
-                DatumType::F64 if vec => &generic_f64_4x1.name,
-                DatumType::F64 => &generic_f64_4x4.name,
-                DatumType::F32 if vec => &generic_f32_4x1.name,
-                DatumType::F32 => &generic_f32_4x4.name,
-                DatumType::F16 if vec => &generic_f16_4x1.name,
-                DatumType::F16 => &generic_f16_4x4.name,
-                DatumType::I32 => &generic_i32_4x4.name,
-                _ => return None,
-            };
-            suitable_named(suitable, name)
-        }),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
         mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
@@ -336,8 +349,16 @@ pub fn generic() -> Ops {
         softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
-    ops.runnable = mmm_routines::runnable();
+    ops.runnable = match platform.target {
+        Some(target) => mmm_routines::runnable_for(target),
+        None => mmm_routines::runnable(),
+    };
     ops
+}
+
+/// The portable `Ops` for this host.
+pub fn generic() -> Ops {
+    generic_for(Platform::native())
 }
 
 pub fn best() -> Ops {

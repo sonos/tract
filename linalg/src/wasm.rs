@@ -32,14 +32,19 @@ pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
 
-pub fn plug(ops: &mut Ops) {
-    // Every kernel this policy names must be ManuallyOptimized: `preferred` hands the answer to
-    // the suitable list, and a lesser tier would be dropped by retain_best_quality, leaving
-    // the N>1 rule to pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1,
-    // a matrix×vector kernel, for every GEMM.
-    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-        // int8 -> i32 matmul: SIMD kernel (was generic scalar).
-        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+/// Every kernel this tier names must be ManuallyOptimized: its answer is held to the suitable
+/// list, and a lesser quality would be dropped by retain_best_quality, leaving the N>1 rule to
+/// pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1, a matrix×vector
+/// kernel, for every GEMM.
+fn preferred(
+    _platform: &crate::mmm_tiers::Platform,
+    dt: DatumType,
+    query: &crate::mmm::Query,
+    suitable: &[crate::mmm::Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        // int8 -> i32 matmul: SIMD kernel (the generic scalar is the tier below).
+        (DatumType::I32, Some(1)) => None,
         (DatumType::I32, _) => suitable_named(suitable, &wasm_i32_4x4.name),
         // GEMV routes by M-band to the kernel whose MR fits. Bands derived from
         // benches/wasm.rs: at each edge, using the next-larger kernel beats halving outer
@@ -56,8 +61,21 @@ pub fn plug(ops: &mut Ops) {
             },
         ),
         (DatumType::F32, _) => suitable_named(suitable, &wasm_f32_8x8.name),
-        _ => prev(dt, query, suitable),
-    });
+        _ => None,
+    }
+}
+
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Wasm32Simd128),
+        precedence: 1,
+        name: "wasm-simd128",
+        applies: |_| true,
+        preferred,
+    }
+}
+
+pub fn plug(ops: &mut Ops) {
     // Relaxed-SIMD activation kernels (FMA path). Only installed when the
     // build has `+relaxed-simd`; otherwise the slots stay at the generic
     // scalar polynomial.

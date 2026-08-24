@@ -31,7 +31,8 @@ use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
 use crate::isa::Isa;
-use crate::mmm::suitable_named;
+use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm_tiers::Platform;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -408,6 +409,127 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
         .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_max_by_scalar_f16_32n::bin()));
 }
 
+/// SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback. The SDOT
+/// kernel only exists when the assembler could encode `sdot` (`tract_arm64_dotprod`, set by
+/// build.rs); otherwise always use the SMLAL 8x8.
+fn neon_qmmm_i32(platform: &Platform, suitable: &[Suitable]) -> Option<usize> {
+    let _ = platform;
+    #[cfg(tract_arm64_dotprod)]
+    if platform.isa.has(Isa::DotProd) {
+        return suitable_named(suitable, &arm64simd_mmm_i32_8x8_dot.name);
+    }
+    suitable_named(suitable, &arm64simd_mmm_i32_8x8.name)
+}
+
+/// n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays full
+/// mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already optimal and
+/// the model only second-guesses it into knife-edge mispicks, so keep it.
+fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match *KIND {
+        Kind::CortexA53 => match query.m {
+            Some(m) if m < 64 => {
+                cortex_a53_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
+            }
+            _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_a53.name),
+        },
+        Kind::CortexA55 => match query.m {
+            Some(m) if m < 64 => {
+                cortex_a55_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
+            }
+            _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_a55.name),
+        },
+        _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_gen.name),
+    }
+}
+
+fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+    match *KIND {
+        Kind::CortexA53 => {
+            cortex_a53_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
+        }
+        Kind::CortexA55 => {
+            cortex_a55_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
+        }
+        _ => suitable_named(
+            suitable,
+            if query.n.unwrap_or(8) < 8 {
+                &arm64simd_mmm_f32_16x4_gen.name
+            } else {
+                &arm64simd_mmm_f32_8x8_gen.name
+            },
+        ),
+    }
+}
+
+/// Baseline aarch64: NEON is always there, so this tier always applies and every extension above
+/// it answers first.
+fn neon_preferred(
+    platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
+        (DatumType::F32, _) => neon_mmm_f32(suitable, query),
+        (DatumType::I32, Some(1)) => suitable_named(suitable, &arm64simd_mmm_i32_64x1.name),
+        (DatumType::I32, _) => neon_qmmm_i32(platform, suitable),
+        _ => None,
+    }
+}
+
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 1,
+        name: "arm64simd",
+        applies: |_| true,
+        preferred: neon_preferred,
+    }
+}
+
+#[cfg(not(feature = "no_fp16"))]
+fn fp16_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    let a55 = *KIND == Kind::CortexA55;
+    match (dt, query.n) {
+        (DatumType::F16, Some(1)) if a55 => {
+            suitable_named(suitable, &arm64fp16_mmm_f16_128x1_a55.name)
+        }
+        (DatumType::F16, Some(1)) => suitable_named(suitable, &arm64fp16_mmm_f16_128x1_gen.name),
+        (DatumType::F16, _) => {
+            use tract_data::internal::DimLike;
+            let n = query.n.unwrap_or(1024);
+            let narrow = n.divceil(4) * 4 < n.divceil(8) * 8;
+            suitable_named(
+                suitable,
+                match (a55, narrow) {
+                    (true, true) => &arm64fp16_mmm_f16_32x4_a55.name,
+                    (true, false) => &arm64fp16_mmm_f16_16x8_a55.name,
+                    (false, true) => &arm64fp16_mmm_f16_32x4_gen.name,
+                    (false, false) => &arm64fp16_mmm_f16_16x8_gen.name,
+                },
+            )
+        }
+        _ => None,
+    }
+}
+
+#[cfg(not(feature = "no_fp16"))]
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 2,
+        name: "arm64fp16",
+        applies: |p| p.isa.has(Isa::Fp16),
+        preferred: fp16_preferred,
+    }
+}
+
 pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     arm64simd::plug(ops);
@@ -417,98 +539,11 @@ pub fn plug(ops: &mut Ops) {
         arm64fp16::plug(ops);
     }
 
-    // SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback.
-    // The SDOT kernel only exists when the assembler could encode `sdot`
-    // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
-    #[cfg(tract_arm64_dotprod)]
-    let qmmm_i32: crate::MmmPreference = if isa.has(Isa::DotProd) {
-        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8_dot.name))
-    } else {
-        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8.name))
-    };
-    #[cfg(not(tract_arm64_dotprod))]
-    let qmmm_i32: crate::MmmPreference =
-        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8.name));
-    // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
-    // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
-    // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
-    let mmv_f32: crate::MmmPreference = match *KIND {
-        Kind::CortexA53 => {
-            let model = cortex_a53_mmv_linear::linear_model();
-            Box::new(move |c, q| match q.m {
-                Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
-                _ => suitable_named(c, &arm64simd_mmm_f32_64x1_a53.name),
-            })
-        }
-        Kind::CortexA55 => {
-            let model = cortex_a55_mmv_linear::linear_model();
-            Box::new(move |c, q| match q.m {
-                Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
-                _ => suitable_named(c, &arm64simd_mmm_f32_64x1_a55.name),
-            })
-        }
-        _ => Box::new(|c, _| suitable_named(c, &arm64simd_mmm_f32_64x1_gen.name)),
-    };
-    let mmm_f32: crate::MmmPreference = match *KIND {
-        Kind::CortexA53 => {
-            let model = cortex_a53_linear::linear_model();
-            Box::new(move |c, q| model.preferred(c, q.m, q.k, q.n))
-        }
-        Kind::CortexA55 => {
-            let model = cortex_a55_linear::linear_model();
-            Box::new(move |c, q| model.preferred(c, q.m, q.k, q.n))
-        }
-        _ => Box::new(move |c, q| {
-            suitable_named(
-                c,
-                if q.n.unwrap_or(8) < 8 {
-                    &arm64simd_mmm_f32_16x4_gen.name
-                } else {
-                    &arm64simd_mmm_f32_8x8_gen.name
-                },
-            )
-        }),
-    };
-    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
-        (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
-        (DatumType::F32, _) => mmm_f32(suitable, query),
-        (DatumType::I32, Some(1)) => suitable_named(suitable, &arm64simd_mmm_i32_64x1.name),
-        (DatumType::I32, _) => qmmm_i32(suitable, query),
-        _ => prev(dt, query, suitable),
-    });
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
         log::warn!(
             "This is a build with fp16 disabled, while your platform CPU seems to support it."
         );
-    }
-    #[cfg(not(feature = "no_fp16"))]
-    if isa.has(Isa::Fp16) {
-        let a55 = *KIND == Kind::CortexA55;
-        log::info!("{} f16 matmul activated", if a55 { "Cortex-A55" } else { "ARMv8.2" });
-        ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::F16, Some(1)) if a55 => {
-                suitable_named(suitable, &arm64fp16_mmm_f16_128x1_a55.name)
-            }
-            (DatumType::F16, Some(1)) => {
-                suitable_named(suitable, &arm64fp16_mmm_f16_128x1_gen.name)
-            }
-            (DatumType::F16, _) => {
-                use tract_data::internal::DimLike;
-                let n = query.n.unwrap_or(1024);
-                let narrow = n.divceil(4) * 4 < n.divceil(8) * 8;
-                suitable_named(
-                    suitable,
-                    match (a55, narrow) {
-                        (true, true) => &arm64fp16_mmm_f16_32x4_a55.name,
-                        (true, false) => &arm64fp16_mmm_f16_16x8_a55.name,
-                        (false, true) => &arm64fp16_mmm_f16_32x4_gen.name,
-                        (false, false) => &arm64fp16_mmm_f16_16x8_gen.name,
-                    },
-                )
-            }
-            _ => prev(dt, query, suitable),
-        });
     }
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
     ops.hardswish_f32 = Box::new(|| arm64simd_hardswish_f32_8n::ew());
@@ -536,44 +571,45 @@ pub fn plug(ops: &mut Ops) {
         ops.sigmoid_f16 = Box::new(|| arm64simd_sigmoid_f16_4n::ew());
         ops.tanh_f16 = Box::new(|| arm64simd_tanh_f16_4n::ew());
     }
-    #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
-    {
-        apple_amx::plug(ops);
-    }
-    #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
-    {
-        sme::plug(ops);
-    }
     sve::plug(ops);
+}
 
-    // Per-chip Apple f32 matmul cost model, installed last so it refines the apple_amx
-    // heuristic and the always-SME default wherever the shape is pinned. Which chip this is
-    // and what the chip can run are separate questions: the model is fitted per
-    // microarchitecture, and whether its AMX or SME cohort is runnable here is the instruction
-    // set's business — on a virtualised host the same model still speaks for the NEON kernels
-    // it was fitted over.
-    #[cfg(target_os = "macos")]
-    {
-        let model = match apple_chip() {
-            Some("m1") => Some(apple_m1_linear::linear_model()),
-            Some("m4") => Some(apple_m4_linear::linear_model()),
-            _ => None,
-        };
-        if let Some(model) = model {
-            log::info!("Apple per-chip matmul LinearCostModel activated");
-            ops.overlay_mmm_policy(move |prev, dt, query, suitable| {
-                // Every term the model weighs is a shape term, so a dim the caller could not
-                // pin leaves it nothing to say. The tier below states what a wide AMX or SME
-                // tile is worth at an unknown shape — that answer is the one to keep.
-                let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
-                if dt != DatumType::F32 || query.n == Some(1) || !pinned {
-                    return prev(dt, query, suitable);
-                }
-                model
-                    .preferred(suitable, query.m, query.k, query.n)
-                    .or_else(|| prev(dt, query, suitable))
-            });
-        }
+/// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
+/// always-SME default wherever the shape is pinned. Which chip this is and what the chip can run
+/// are separate questions — the model is fitted per microarchitecture, and whether its AMX or SME
+/// cohort is runnable is the instruction set's business, so on a virtualised host the same model
+/// still speaks for the NEON kernels it was fitted over.
+///
+/// Every term it weighs is a shape term, so a dim the caller could not pin leaves it nothing to
+/// say: it declines, and the tier below states what a wide AMX or SME tile is worth at an unknown
+/// shape.
+#[cfg(target_os = "macos")]
+fn apple_chip_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
+    if dt != DatumType::F32 || query.n == Some(1) || !pinned {
+        return None;
+    }
+    let model = match apple_chip()? {
+        "m1" => apple_m1_linear::linear_model(),
+        "m4" => apple_m4_linear::linear_model(),
+        _ => return None,
+    };
+    model.preferred(suitable, query.m, query.k, query.n)
+}
+
+#[cfg(target_os = "macos")]
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 8,
+        name: "apple-chip-model",
+        applies: |_| matches!(apple_chip(), Some("m1") | Some("m4")),
+        preferred: apple_chip_preferred,
     }
 }
 
