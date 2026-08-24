@@ -1,17 +1,3 @@
-#[allow(unused_macros)]
-macro_rules! leaky_relu_impl {
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $cond: expr) => {
-        ew_impl!($ti, $func, $nr, $alignment_items, $ti);
-        #[cfg(test)]
-        paste! {
-            mod [<test_ $func>] {
-                use super::*;
-                leaky_relu_frame_tests!($cond, $ti, $func);
-            }
-        }
-    };
-}
-
 #[cfg(test)]
 #[macro_use]
 pub mod test {

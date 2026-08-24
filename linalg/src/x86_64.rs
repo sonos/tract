@@ -97,43 +97,33 @@ cpu_feature!(F16C = "f16c");
 #[cfg(tract_avx512vnni)]
 cpu_feature!(AVX512VNNI = "avx512vnni");
 
-tanh_impl!(x86_64; f32, fma_tanh_f32, 8, 8, FMA());
-sigmoid_impl!(x86_64; f32, fma_sigmoid_f32, 8, 8, FMA());
-silu_impl!(x86_64; f32, fma_silu_f32, 8, 8, FMA());
+ew_routine!(x86_64; Tanh, f32, fma_tanh_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
+ew_routine!(x86_64; Sigmoid, f32, fma_sigmoid_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
+ew_routine!(x86_64; Silu, f32, fma_silu_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
 
 // AVX-without-FMA ports of the fma kernels above (each vfmadd132ps expanded
 // to an in-place vmulps+vaddps pair) for CPUs outside the fma tier.
-tanh_impl!(x86_64; f32, avx_tanh_f32, 8, 8, AVX());
-sigmoid_impl!(x86_64; f32, avx_sigmoid_f32, 8, 8, AVX());
+ew_routine!(x86_64; Tanh, f32, avx_tanh_f32, 8, 8, isa(X86_64Avx));
+ew_routine!(x86_64; Sigmoid, f32, avx_sigmoid_f32, 8, 8, isa(X86_64Avx));
 
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
 // nr()=16 (any multiple of 16 is safe).
-tanh_impl!(x86_64; f32, avx512_tanh_f32, 16, 16, AVX512F());
-sigmoid_impl!(x86_64; f32, avx512_sigmoid_f32, 16, 16, AVX512F());
-silu_impl!(x86_64; f32, avx512_silu_f32, 16, 16, AVX512F());
+ew_routine!(x86_64; Tanh, f32, avx512_tanh_f32, 16, 16, isa(X86_64Avx512f));
+ew_routine!(x86_64; Sigmoid, f32, avx512_sigmoid_f32, 16, 16, isa(X86_64Avx512f));
+ew_routine!(x86_64; Silu, f32, avx512_silu_f32, 16, 16, isa(X86_64Avx512f));
 
-routine!(x86_64; F32, Sigmoid, avx_sigmoid_f32, isa(X86_64Avx));
-routine!(x86_64; F32, Tanh, avx_tanh_f32, isa(X86_64Avx));
-
-routine!(x86_64; F32, Sigmoid, fma_sigmoid_f32, isa(X86_64Avx2, X86_64Fma));
-routine!(x86_64; F32, Tanh, fma_tanh_f32, isa(X86_64Avx2, X86_64Fma));
-routine!(x86_64; F32, Silu, fma_silu_f32, isa(X86_64Avx2, X86_64Fma));
-
-routine!(x86_64; F32, Sigmoid, avx512_sigmoid_f32, isa(X86_64Avx512f));
-routine!(x86_64; F32, Tanh, avx512_tanh_f32, isa(X86_64Avx512f));
-routine!(x86_64; F32, Silu, avx512_silu_f32, isa(X86_64Avx512f));
 routine!(x86_64; F32, Gelu, act::x86_64_avx512_gelu_f32_16n, isa(X86_64Avx512f));
 routine!(x86_64; F32, Erf, erf::x86_64_avx512_erf_f32_64n, isa(X86_64Avx512f));
-routine!(x86_64; F32, HardSwish, act::x86_64_avx512_hardswish_f32_64n, isa(X86_64Avx512f));
+routine!(x86_64; F32, Hardswish, act::x86_64_avx512_hardswish_f32_64n, isa(X86_64Avx512f));
 
 routine!(x86_64; F16, Sigmoid, act_f16::x86_64_avx512_sigmoid_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Tanh, act_f16::x86_64_avx512_tanh_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Silu, act_f16::x86_64_avx512_silu_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Gelu, act_f16::x86_64_avx512_gelu_f16_16n, isa(X86_64Avx512f));
-routine!(x86_64; F16, HardSwish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X86_64Avx512f));
+routine!(x86_64; F16, Hardswish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X86_64Avx512f));
 
-routine!(x86_64; F16, HardSwish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
+routine!(x86_64; F16, Hardswish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
     isa(X86_64Avx512Fp16));
 
 routine!(x86_64; F32Param, MulByScalar, by_scalar::x86_64_avx_f32_mul_by_scalar_32n, isa(X86_64Avx));

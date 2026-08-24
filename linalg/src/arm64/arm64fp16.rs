@@ -37,8 +37,8 @@ pub fn plug(ops: &mut Ops) {
     panel_extract::plug(ops);
 }
 
-tanh_impl!(aarch64; f16, arm64fp16_tanh_f16_8n, 8, 8, crate::arm64::has_fp16());
-sigmoid_impl!(aarch64; f16, arm64fp16_sigmoid_f16_8n, 8, 8, crate::arm64::has_fp16());
+ew_routine!(aarch64; Tanh, f16, arm64fp16_tanh_f16_8n, 8, 8, isa(Aarch64Fp16));
+ew_routine!(aarch64; Sigmoid, f16, arm64fp16_sigmoid_f16_8n, 8, 8, isa(Aarch64Fp16));
 
 #[cfg(test)]
 mod test {

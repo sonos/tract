@@ -116,5 +116,5 @@ pub fn plug(ops: &mut Ops) {
     panel_extract::plug(ops);
 }
 
-tanh_impl!(aarch64; f32, arm64simd_tanh_f32_4n, 4, 4, cfg!(target_arch = "aarch64"));
-sigmoid_impl!(aarch64; f32, arm64simd_sigmoid_f32_4n, 4, 4, cfg!(target_arch = "aarch64"));
+ew_routine!(aarch64; Tanh, f32, arm64simd_tanh_f32_4n, 4, 4);
+ew_routine!(aarch64; Sigmoid, f32, arm64simd_sigmoid_f32_4n, 4, 4);
