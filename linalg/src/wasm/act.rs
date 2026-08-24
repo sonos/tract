@@ -148,8 +148,8 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
         debug_assert!(buf.len() % Self::nr() == 0);
         debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
 
-        const LOW: f32 = -8.9;
-        const HIGH: f32 = 8.9;
+        const LOW: f32 = -7.5;
+        const HIGH: f32 = 7.5;
 
         const ALPHA_13: f32 = -8.488492677e-14;
         const ALPHA_11: f32 = 5.277853000e-11;
@@ -181,9 +181,6 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
             let b2 = f32x4_splat(BETA_2);
             let b0 = f32x4_splat(BETA_0);
 
-            let one = f32x4_splat(1.0);
-            let minus_one = f32x4_splat(-1.0);
-
             let mut p = buf.as_mut_ptr();
             let end = p.add(buf.len());
             while p < end {
@@ -205,11 +202,10 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
                 let qn = f32x4_relaxed_madd(x2, qn, b2);
                 let qn = f32x4_relaxed_madd(x2, qn, b0);
 
-                // tanh is (-1, 1): the quotient comes within one ulp of ±1 across the top
-                // of the input range, under the kernel's own rounding error, so it needs
-                // clamping to stay in range.
+                // The clamp keeps tanh inside (-1, 1) with no clamp on the quotient:
+                // the largest quotient it admits stays seven f32 steps under 1, whether
+                // `relaxed_madd` fuses on this host or not.
                 let r = f32x4_div(pn, qn);
-                let r = f32x4_min(one, f32x4_max(minus_one, r));
                 v128_store(p as *mut v128, r);
                 p = p.add(4);
             }
