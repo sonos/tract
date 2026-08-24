@@ -136,6 +136,16 @@ routine!(x86_64; F16, HardSwish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X
 routine!(x86_64; F16, HardSwish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
     isa(X86_64Avx512Fp16));
 
+routine!(x86_64; F32Param, MulByScalar, by_scalar::x86_64_avx_f32_mul_by_scalar_32n, isa(X86_64Avx));
+routine!(x86_64; F32Param, LeakyRelu, act::x86_64_avx512_leaky_relu_f32_64n, isa(X86_64Avx512f));
+routine!(x86_64; F16Param, LeakyRelu, act_f16::x86_64_avx512_leaky_relu_f16_64n, isa(X86_64Avx512f));
+
+// Correct, and slower than the f32 round-trip above on every AVX-512_FP16 part measured, so it
+// is declared to keep its tests running and never preferred. A part where fp16 mul and max
+// saturate their ports would want the boost dropped.
+routine!(x86_64; F16Param, LeakyRelu, act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
+    isa(X86_64Avx512Fp16), boost(crate::isa::NEVER_PREFERRED));
+
 fn plug_avx2(_ops: &mut Ops) {}
 
 /// Element-wise kernels for AVX-capable CPUs outside the fma tier: the

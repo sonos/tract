@@ -9,6 +9,7 @@
 /// ```
 use crate::{DatumType, Ops};
 
+#[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 
