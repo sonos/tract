@@ -196,29 +196,29 @@ mod tests {
     fn picks_what_plug_installed() {
         let ops = crate::ops();
         for (func, plugged) in [
-            (Func::Sigmoid, (ops.sigmoid_f32)().name()),
-            (Func::Tanh, (ops.tanh_f32)().name()),
-            (Func::Silu, (ops.silu_f32)().name()),
-            (Func::Gelu, (ops.gelu_f32)().name()),
-            (Func::Erf, (ops.erf_f32)().name()),
-            (Func::HardSwish, (ops.hardswish_f32)().name()),
+            (Func::Sigmoid, format!("{:?}", (ops.sigmoid_f32)())),
+            (Func::Tanh, format!("{:?}", (ops.tanh_f32)())),
+            (Func::Silu, format!("{:?}", (ops.silu_f32)())),
+            (Func::Gelu, format!("{:?}", (ops.gelu_f32)())),
+            (Func::Erf, format!("{:?}", (ops.erf_f32)())),
+            (Func::HardSwish, format!("{:?}", (ops.hardswish_f32)())),
         ] {
             assert_eq!(
-                ew_f32(func).map(|k| k.name()),
+                ew_f32(func).map(|k| format!("{k:?}")),
                 Some(plugged),
                 "{} f32 disagrees with plug",
                 func.name()
             );
         }
         for (func, plugged) in [
-            (Func::Sigmoid, (ops.sigmoid_f16)().name()),
-            (Func::Tanh, (ops.tanh_f16)().name()),
-            (Func::Silu, (ops.silu_f16)().name()),
-            (Func::Gelu, (ops.gelu_f16)().name()),
-            (Func::HardSwish, (ops.hardswish_f16)().name()),
+            (Func::Sigmoid, format!("{:?}", (ops.sigmoid_f16)())),
+            (Func::Tanh, format!("{:?}", (ops.tanh_f16)())),
+            (Func::Silu, format!("{:?}", (ops.silu_f16)())),
+            (Func::Gelu, format!("{:?}", (ops.gelu_f16)())),
+            (Func::HardSwish, format!("{:?}", (ops.hardswish_f16)())),
         ] {
             assert_eq!(
-                ew_f16(func).map(|k| k.name()),
+                ew_f16(func).map(|k| format!("{k:?}")),
                 Some(plugged),
                 "{} f16 disagrees with plug",
                 func.name()
@@ -249,6 +249,88 @@ mod tests {
                     );
                 }
             }
+        }
+    }
+
+    /// What each aarch64 generation runs. Which kernel a machine picks is a function of its
+    /// instruction set and not of the machine asking, so these answers are checked from any host
+    /// that compiled the tree -- including for hardware nobody here has.
+    #[cfg(any(target_arch = "aarch64", feature = "foreign-inventory"))]
+    #[test]
+    fn the_aarch64_ladder_picks_what_its_plug_installs() {
+        let neon = IsaSet::of_arch(Arch::Aarch64);
+        for (func, dt, expected) in [
+            (Func::Sigmoid, DatumType::F32, Some("arm64simd_sigmoid_f32_4n")),
+            (Func::Tanh, DatumType::F32, Some("arm64simd_tanh_f32_4n")),
+            (Func::Silu, DatumType::F32, Some("arm64simd_silu_f32_4n_fused")),
+            (Func::Gelu, DatumType::F32, Some("arm64simd_gelu_f32_4n_fused")),
+            (Func::HardSwish, DatumType::F32, Some("arm64simd_hardswish_f32_8n")),
+            (Func::Erf, DatumType::F32, Some("generic")),
+            (Func::Sigmoid, DatumType::F16, Some("arm64simd_sigmoid_f16_4n")),
+            (Func::Tanh, DatumType::F16, Some("arm64simd_tanh_f16_4n")),
+            (Func::Silu, DatumType::F16, Some("arm64simd_silu_f16_lut_8n")),
+            (Func::Gelu, DatumType::F16, Some("generic")),
+            (Func::HardSwish, DatumType::F16, Some("generic")),
+            (Func::Erf, DatumType::F16, None),
+        ] {
+            assert_eq!(
+                best_for(func, dt, &neon).map(|r| r.name()),
+                expected,
+                "{} {dt:?} on plain aarch64",
+                func.name()
+            );
+        }
+        // The fp16 tree speaks for the two functions it has kernels for and no more: the NEON
+        // look-up-table silu stays ahead on fp16 hardware, having no fp16 rival at all.
+        #[cfg(not(feature = "no_fp16"))]
+        {
+            let fp16 = neon.with(crate::isa::Isa::Aarch64Fp16);
+            for (func, dt, expected) in [
+                (Func::Sigmoid, DatumType::F16, "arm64fp16_sigmoid_f16_8n"),
+                (Func::Tanh, DatumType::F16, "arm64fp16_tanh_f16_8n"),
+                (Func::Silu, DatumType::F16, "arm64simd_silu_f16_lut_8n"),
+                (Func::Sigmoid, DatumType::F32, "arm64simd_sigmoid_f32_4n"),
+            ] {
+                assert_eq!(
+                    best_for(func, dt, &fp16).map(|r| r.name()),
+                    Some(expected),
+                    "{} {dt:?} on aarch64+fp16",
+                    func.name()
+                );
+            }
+        }
+    }
+
+    /// What armv7 runs, with and without NEON: three f32 kernels, and the portable floor for
+    /// everything else. The f16 side has no armv7 kernel at all.
+    #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
+    #[test]
+    fn the_armv7_ladder_picks_what_its_plug_installs() {
+        let vfp = IsaSet::of_arch(Arch::Arm);
+        let neon = vfp.with(crate::isa::Isa::ArmNeon);
+        for (func, expected) in [
+            (Func::Sigmoid, "armv7neon_sigmoid_f32_4n"),
+            (Func::Tanh, "armv7neon_tanh_f32_4n"),
+            (Func::Silu, "armv7neon_silu_f32_4n"),
+        ] {
+            assert_eq!(
+                best_for(func, DatumType::F32, &vfp).map(|r| r.name()),
+                Some("generic"),
+                "{} f32 on armv7 without neon",
+                func.name()
+            );
+            assert_eq!(
+                best_for(func, DatumType::F32, &neon).map(|r| r.name()),
+                Some(expected),
+                "{} f32 on armv7+neon",
+                func.name()
+            );
+            assert_eq!(
+                best_for(func, DatumType::F16, &neon).map(|r| r.name()),
+                Some("generic"),
+                "{} f16 on armv7+neon",
+                func.name()
+            );
         }
     }
 }

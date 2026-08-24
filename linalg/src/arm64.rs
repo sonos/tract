@@ -522,6 +522,21 @@ inventory::submit! {
     }
 }
 
+routine!(aarch64; F32, Sigmoid, arm64simd_sigmoid_f32_4n);
+routine!(aarch64; F32, Tanh, arm64simd_tanh_f32_4n);
+routine!(aarch64; F32, Silu, arm64simd_silu_f32_4n_fused);
+routine!(aarch64; F32, Gelu, arm64simd_gelu_f32_4n_fused);
+routine!(aarch64; F32, HardSwish, arm64simd_hardswish_f32_8n);
+
+routine!(aarch64; F16, Sigmoid, arm64simd_sigmoid_f16_4n);
+routine!(aarch64; F16, Tanh, arm64simd_tanh_f16_4n);
+routine!(aarch64; F16, Silu, arm64simd_silu_f16_lut_8n);
+
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16, Sigmoid, arm64fp16_sigmoid_f16_8n, isa(Aarch64Fp16));
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16, Tanh, arm64fp16_tanh_f16_8n, isa(Aarch64Fp16));
+
 pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     arm64simd::plug(ops);
