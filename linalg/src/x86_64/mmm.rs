@@ -2,7 +2,7 @@ use crate::block_quant::*;
 use crate::isa::Isa;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
-use crate::mmm::candidate_named;
+use crate::mmm::suitable_named;
 use crate::pack::PackedFormat;
 #[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
 use crate::pack::PackedI8K4;
@@ -57,7 +57,7 @@ fn tile_util(d: usize, tile: usize) -> f32 {
 /// overhead), then in favour of larger `nr` (more K-loop amortisation
 /// per inner iteration). An unknown M or N is treated as
 /// "large enough" — its utilisation contribution is 1.0.
-fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> Box<dyn MatMatMul> {
+fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> Box<dyn MatMatMul> {
     let key = |c: &KernelChoice| -> (f32, i32, i32) {
         let m_u = m.map(|m| tile_util(m, c.mr)).unwrap_or(1.0);
         let n_u = n.map(|n| tile_util(n, c.nr)).unwrap_or(1.0);
@@ -65,7 +65,7 @@ fn pick_mmm(candidates: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> 
         let n_b = n.map(|n| n.div_ceil(c.nr)).unwrap_or(1) as i32;
         (c.scale * m_u * n_u, -(m_b * n_b), c.nr as i32)
     };
-    let best = candidates
+    let best = choices
         .iter()
         .max_by(|a, b| key(a).partial_cmp(&key(b)).unwrap())
         .expect("non-empty kernel pool");
@@ -176,7 +176,7 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(Avx512f,
 // client cores (Ice Lake-U / Tiger Lake / Rocket Lake) get no gain and stay on
 // the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `plug_avx512vnni`.
 //
-// On dual-FMA cores the boost lifts it above the 8x8 VNNI candidate in the einsum
+// On dual-FMA cores the boost lifts it above the 8x8 VNNI kernel in the einsum
 // kernel-selection scorer for unknown shapes, while staying below the AMX 16x16
 // kernels' boost(100) so AMX still wins when both are present; on single-FMA cores
 // it goes negative so the 8x8 wins instead.
@@ -222,7 +222,7 @@ MMMExternKernel! { x86_64; avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) isa(Avx512f, A
 // Store) needs no transpose.
 //
 // boost(100) pushes this kernel above the equally-ManuallyOptimized AVX-512-VNNI
-// and AMX 8x8 candidates in the einsum kernel-selection scorer (which uses
+// and AMX 8x8 kernels in the einsum kernel-selection scorer (which uses
 // `-quality_cost*1000 + boost` per kernel). When more than one dim is symbolic
 // the shape-adaptive `qmmm_i32` picker isn't invoked, so the boost is what
 // causes the optimizer to prefer the 16x16 tile for unknown-shape matmuls.
@@ -321,12 +321,12 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
         // tile-padding overhead dominates. Unknown dims default to the 16x16
         // champion. (No K gate: one VPDPBUSD step is only 4 K-bytes, so any K is
         // fine; the choice is about filling the 16-wide M/N tile.)
-        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-            (DatumType::I32, Some(1)) => prev(dt, query, candidates),
+        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
             (DatumType::I32, _) => {
                 let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-                candidate_named(
-                    candidates,
+                suitable_named(
+                    suitable,
                     if big(query.m, 16) && big(query.n, 16) {
                         &avx512vnni_mmm_i32_16x16.name
                     } else {
@@ -334,14 +334,14 @@ pub fn plug_avx512vnni(ops: &mut Ops) {
                     },
                 )
             }
-            _ => prev(dt, query, candidates),
+            _ => prev(dt, query, suitable),
         });
         log::info!("qmmm_i32: x86_64/avx512vnni (16x16 + 8x8 adaptive, dual-FMA) activated");
     } else {
-        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-            (DatumType::I32, Some(1)) => prev(dt, query, candidates),
-            (DatumType::I32, _) => candidate_named(candidates, &avx512vnni_mmm_i32_8x8.name),
-            _ => prev(dt, query, candidates),
+        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+            (DatumType::I32, _) => suitable_named(suitable, &avx512vnni_mmm_i32_8x8.name),
+            _ => prev(dt, query, suitable),
         });
         log::info!("qmmm_i32: x86_64/avx512vnni (8x8, single-512-FMA core) activated");
     }
@@ -353,10 +353,10 @@ pub fn plug_avxvnni(ops: &mut Ops) {
     // replace the AVX2 emulation default. On big cores that also have
     // AVX-512-VNNI, plug_avx512vnni below runs after this and clobbers
     // qmmm_i32 again with the EVEX kernel.
-    ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, candidates),
-        (DatumType::I32, _) => candidate_named(candidates, &avxvnni_mmm_i32_8x8.name),
-        _ => prev(dt, query, candidates),
+    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+        (DatumType::I32, _) => suitable_named(suitable, &avxvnni_mmm_i32_8x8.name),
+        _ => prev(dt, query, suitable),
     });
     log::info!("qmmm_i32: x86_64/avxvnni (VEX-encoded VPDPBUSD) activated");
 }
@@ -366,9 +366,9 @@ pub fn plug_avx512amx_bf16(ops: &mut Ops) {
     // Save the previously-installed f32 picker so we can defer to it when
     // the AMX kernel isn't a good fit (small M/N, or K < 32 -- one TDPBF16PS
     // consumes 32 bf16 K-lanes so the panel must have at least one full step).
-    ops.overlay_mmm_policy(|prev, dt, query, candidates| {
+    ops.overlay_mmm_policy(|prev, dt, query, suitable| {
         if dt != DatumType::F32 || query.n == Some(1) {
-            return prev(dt, query, candidates);
+            return prev(dt, query, suitable);
         }
         let (m, k, n) = (query.m, query.k, query.n);
         let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
@@ -378,9 +378,9 @@ pub fn plug_avx512amx_bf16(ops: &mut Ops) {
         // 32 bf16 K-lanes); below that, the AVX-512 / FMA path's smaller
         // tiles waste less work.
         if big(m, 16) && big(n, 16) && big(k, 32) {
-            candidate_named(candidates, &avx512amx_mmm_f32_16x16.name)
+            suitable_named(suitable, &avx512amx_mmm_f32_16x16.name)
         } else {
-            prev(dt, query, candidates)
+            prev(dt, query, suitable)
         }
     });
     let c = super::amx::cache_sizes();
@@ -405,15 +405,15 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
     //     dominates.
     // The exact crossover should be re-validated on AMX HW; oneDNN uses
     // similar shape-based MR/NR selection for its BRGEMM ukernel variants.
-    ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, candidates),
+    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
         (DatumType::I32, _) => {
             // m, k, n are Option<usize> -- None means "unknown / streaming dim".
             // For unknown dims default to the throughput champion (16x16); only
             // fall back to 8x8 when a static dim is known to be tiny.
             let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-            candidate_named(
-                candidates,
+            suitable_named(
+                suitable,
                 if big(query.m, 16) && big(query.n, 16) && big(query.k, 64) {
                     &avx512amx_mmm_i32_16x16.name
                 } else {
@@ -421,7 +421,7 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
                 },
             )
         }
-        _ => prev(dt, query, candidates),
+        _ => prev(dt, query, suitable),
     });
     let c = super::amx::cache_sizes();
     log::info!(
@@ -434,10 +434,10 @@ pub fn plug_avx512amx_int8(ops: &mut Ops) {
 }
 
 pub fn plug_avx2(ops: &mut Ops) {
-    ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, candidates),
-        (DatumType::I32, _) => candidate_named(candidates, &mmm::avx2_mmm_i32_8x8.name),
-        _ => prev(dt, query, candidates),
+    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+        (DatumType::I32, _) => suitable_named(suitable, &mmm::avx2_mmm_i32_8x8.name),
+        _ => prev(dt, query, suitable),
     });
     log::info!("qmmm_i32: x86_64/avx2 activated");
 }
@@ -456,21 +456,21 @@ pub fn plug_avx(ops: &mut Ops) {
         KernelChoice { mr: 40, nr: 2, scale: 0.90, ctor: || avx_mmm_f32_40x2.mmm() },
         KernelChoice { mr: 8, nr: 8, scale: 0.80, ctor: || avx_mmm_f32_8x8.mmm() },
     ];
-    ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::I32, Some(1)) => prev(dt, query, candidates),
-        (DatumType::I32, _) => candidate_named(candidates, &avx_mmm_i32_8x4.name),
+    ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+        (DatumType::I32, _) => suitable_named(suitable, &avx_mmm_i32_8x4.name),
         (DatumType::F32, _) => match query.n {
-            None => candidate_named(candidates, &avx_mmm_f32_16x6.name),
-            Some(1) => candidate_named(candidates, &avx_mmm_f32_64x1.name),
-            Some(2) => candidate_named(candidates, &avx_mmm_f32_40x2.name),
-            Some(3) => candidate_named(candidates, &avx_mmm_f32_32x3.name),
-            Some(4) => candidate_named(candidates, &avx_mmm_f32_24x4.name),
-            Some(5) => candidate_named(candidates, &avx_mmm_f32_16x5.name),
-            Some(6) => candidate_named(candidates, &avx_mmm_f32_16x6.name),
-            Some(8) => candidate_named(candidates, &avx_mmm_f32_8x8.name),
-            Some(_) => candidate_named(candidates, pick_mmm(AVX_CHOICES, query.m, query.n).name()),
+            None => suitable_named(suitable, &avx_mmm_f32_16x6.name),
+            Some(1) => suitable_named(suitable, &avx_mmm_f32_64x1.name),
+            Some(2) => suitable_named(suitable, &avx_mmm_f32_40x2.name),
+            Some(3) => suitable_named(suitable, &avx_mmm_f32_32x3.name),
+            Some(4) => suitable_named(suitable, &avx_mmm_f32_24x4.name),
+            Some(5) => suitable_named(suitable, &avx_mmm_f32_16x5.name),
+            Some(6) => suitable_named(suitable, &avx_mmm_f32_16x6.name),
+            Some(8) => suitable_named(suitable, &avx_mmm_f32_8x8.name),
+            Some(_) => suitable_named(suitable, pick_mmm(AVX_CHOICES, query.m, query.n).name()),
         },
-        _ => prev(dt, query, candidates),
+        _ => prev(dt, query, suitable),
     });
 
     log::info!("f32, i32 matmul: x86_64/avx (no fma) activated");
@@ -498,24 +498,24 @@ pub fn plug_fma(ops: &mut Ops) {
             Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
         }
         super::Vendor::Other => Box::new(|c, q| match q.n {
-            None => candidate_named(c, &fma_mmm_f32_16x6.name),
+            None => suitable_named(c, &fma_mmm_f32_16x6.name),
             Some(1) => unreachable!("n == 1 answered above"),
-            Some(2) => candidate_named(c, &fma_mmm_f32_40x2.name),
-            Some(3) => candidate_named(c, &fma_mmm_f32_32x3.name),
-            Some(4) => candidate_named(c, &fma_mmm_f32_24x4.name),
-            Some(5) => candidate_named(c, &fma_mmm_f32_16x5.name),
-            Some(6) => candidate_named(c, &fma_mmm_f32_16x6.name),
-            Some(8) => candidate_named(c, &fma_mmm_f32_8x8.name),
-            Some(_) => candidate_named(c, pick_mmm(FMA_CHOICES, q.m, q.n).name()),
+            Some(2) => suitable_named(c, &fma_mmm_f32_40x2.name),
+            Some(3) => suitable_named(c, &fma_mmm_f32_32x3.name),
+            Some(4) => suitable_named(c, &fma_mmm_f32_24x4.name),
+            Some(5) => suitable_named(c, &fma_mmm_f32_16x5.name),
+            Some(6) => suitable_named(c, &fma_mmm_f32_16x6.name),
+            Some(8) => suitable_named(c, &fma_mmm_f32_8x8.name),
+            Some(_) => suitable_named(c, pick_mmm(FMA_CHOICES, q.m, q.n).name()),
         }),
     };
-    ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
+    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
         // n == 1 has no dedicated n=1-calibrated model on the fma-only path yet; keep the
         // fixed matvec kernel. Routing n==1 through the n>=2-fit mmm model mispicks (matvec
         // kernels are only ever run at n==1, so their mmm coeffs are unrepresentative).
-        (DatumType::F32, Some(1)) => candidate_named(candidates, &fma_mmm_f32_64x1.name),
-        (DatumType::F32, _) => mmm_f32(candidates, query),
-        _ => prev(dt, query, candidates),
+        (DatumType::F32, Some(1)) => suitable_named(suitable, &fma_mmm_f32_64x1.name),
+        (DatumType::F32, _) => mmm_f32(suitable, query),
+        _ => prev(dt, query, suitable),
     });
     log::info!("f32 matmul: x86_64/fma activated");
 }
@@ -551,13 +551,13 @@ pub fn plug_avx512f(ops: &mut Ops) {
             let mdl = super::intel_avx512_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
                 Some(m) if m < 128 => mdl.preferred(c, Some(m), q.k, Some(1)),
-                _ => candidate_named(c, &avx512_mmm_f32_128x1.name),
+                _ => suitable_named(c, &avx512_mmm_f32_128x1.name),
             })
         }
         // amd has no n=1-calibrated mmv model yet; keep the fixed matvec dispatch.
         _ => Box::new(|c, q| match q.m {
-            Some(m) if m < 31 => candidate_named(c, &avx512_mmm_f32_16x1.name),
-            _ => candidate_named(c, &avx512_mmm_f32_128x1.name),
+            Some(m) if m < 31 => suitable_named(c, &avx512_mmm_f32_16x1.name),
+            _ => suitable_named(c, &avx512_mmm_f32_128x1.name),
         }),
     };
     let mmm_f32: crate::MmmPreference = match super::vendor() {
@@ -573,13 +573,13 @@ pub fn plug_avx512f(ops: &mut Ops) {
             if let Some(1) = q.n {
                 unreachable!("n == 1 answered above");
             }
-            candidate_named(c, pick_mmm(X86_F32_CHOICES, q.m, q.n).name())
+            suitable_named(c, pick_mmm(X86_F32_CHOICES, q.m, q.n).name())
         }),
     };
-    ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::F32, Some(1)) => mmv_f32(candidates, query),
-        (DatumType::F32, _) => mmm_f32(candidates, query),
-        _ => prev(dt, query, candidates),
+    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
+        (DatumType::F32, _) => mmm_f32(suitable, query),
+        _ => prev(dt, query, suitable),
     });
     log::info!("f32 matmul: x86_64/avx512f activated");
 }

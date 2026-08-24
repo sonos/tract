@@ -22,16 +22,16 @@ pub fn plug(ops: &mut Ops) {
         // tile padding and the AMX dispatch cost more than the NEON kernel's whole call. The
         // f16 side keeps a low-M NEON route on the same reasoning, at a threshold its own
         // kernels' 16-row tile sets.
-        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
+        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
             // The AMX 32x1 is dominated by the NEON 64x1 at every shape.
             (crate::DatumType::F32, Some(1)) => {
-                candidate_named(candidates, &arm64simd_mmm_f32_64x1_gen.name)
+                suitable_named(suitable, &arm64simd_mmm_f32_64x1_gen.name)
             }
             (crate::DatumType::F32, _) => {
                 let big_enough =
                     query.m.is_some_and(|m| m >= 32) && query.n.is_some_and(|n| n >= 32);
-                candidate_named(
-                    candidates,
+                suitable_named(
+                    suitable,
                     if big_enough {
                         &apple_amx_mmm_f32_32x32.name
                     } else {
@@ -40,17 +40,17 @@ pub fn plug(ops: &mut Ops) {
                 )
             }
             (crate::DatumType::F16, Some(1)) => {
-                candidate_named(candidates, &apple_amx_mmm_f16_64x1.name)
+                suitable_named(suitable, &apple_amx_mmm_f16_64x1.name)
             }
-            (crate::DatumType::F16, _) => candidate_named(
-                candidates,
+            (crate::DatumType::F16, _) => suitable_named(
+                suitable,
                 if query.m.is_some_and(|m| m <= 16) {
                     &arm64fp16_mmm_f16_16x8_gen.name
                 } else {
                     &apple_amx_mmm_f16_64x32.name
                 },
             ),
-            _ => prev(dt, query, candidates),
+            _ => prev(dt, query, suitable),
         });
     } else {
         log::info!("No AMX optimisation");

@@ -213,18 +213,18 @@ pub fn plug(ops: &mut Ops) {
         #[cfg(tract_sve)]
         {
             // Force the SVE kernels for f32 mmm and i32 quantized mmm (mirrors the
-            // SME backend) and also register them as candidates. TRACT_SVE_DISABLE=1
+            // SME backend). TRACT_SVE_DISABLE=1
             // already turns the whole thing off via has_sve2().
-            ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
+            ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
                 (crate::DatumType::F32, Some(1)) => {
-                    candidate_named(candidates, &sve_mmv_f32_64x1.name)
+                    suitable_named(suitable, &sve_mmv_f32_64x1.name)
                 }
-                (crate::DatumType::F32, _) => candidate_named(candidates, &sve_mmm_f32_8x8.name),
+                (crate::DatumType::F32, _) => suitable_named(suitable, &sve_mmm_f32_8x8.name),
                 (crate::DatumType::I32, Some(1)) => {
-                    candidate_named(candidates, &sve_mmm_i32_64x1.name)
+                    suitable_named(suitable, &sve_mmm_i32_64x1.name)
                 }
-                (crate::DatumType::I32, _) => candidate_named(candidates, &sve_mmm_i32_8x8.name),
-                _ => prev(dt, query, candidates),
+                (crate::DatumType::I32, _) => suitable_named(suitable, &sve_mmm_i32_8x8.name),
+                _ => prev(dt, query, suitable),
             });
             // RmsNorm: override the NEON-default plug from arm64::plug() with
             // the wider VLA SVE2 kernel. Same Box<Fn> shape as the linalg slot.
@@ -234,14 +234,12 @@ pub fn plug(ops: &mut Ops) {
             // (tract_sve_fp16), so gate the dispatch on that too.
             #[cfg(tract_sve_fp16)]
             if crate::isa::native().has(crate::isa::Isa::Fp16) {
-                ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
+                ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
                     (crate::DatumType::F16, Some(1)) => {
-                        candidate_named(candidates, &sve_mmv_f16_64x1.name)
+                        suitable_named(suitable, &sve_mmv_f16_64x1.name)
                     }
-                    (crate::DatumType::F16, _) => {
-                        candidate_named(candidates, &sve_mmm_f16_8x8.name)
-                    }
-                    _ => prev(dt, query, candidates),
+                    (crate::DatumType::F16, _) => suitable_named(suitable, &sve_mmm_f16_8x8.name),
+                    _ => prev(dt, query, suitable),
                 });
             }
         }

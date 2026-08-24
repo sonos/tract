@@ -1,4 +1,4 @@
-use super::{Candidate, candidate_named};
+use super::{Suitable, suitable_named};
 
 fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
     if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
@@ -18,7 +18,7 @@ fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
 /// cannot keep a packed `A` resident even in a warm loop: there `A` streams from memory in
 /// isolation too, so no gap remains to correct and a cold calibration yields 0 — this is the
 /// case for the small-cache LITTLE aarch64/arm32 cohorts, so their `0e0` is a measured no-op,
-/// not a missing calibration. `pick` returns the argmin over the candidates it is given.
+/// not a missing calibration. `preferred` returns the argmin over the suitable kernels it is given.
 #[derive(Debug)]
 pub struct LinearCostModel<'a> {
     pub default_kernel: &'a str,
@@ -38,17 +38,17 @@ impl LinearCostModel<'_> {
 
     pub fn preferred(
         &self,
-        candidates: &[Candidate],
+        suitable: &[Suitable],
         m: Option<usize>,
         k: Option<usize>,
         n: Option<usize>,
     ) -> Option<usize> {
         if let (Some(m), Some(k), Some(n)) = (m, k, n) {
-            let best = candidates
+            let best = suitable
                 .iter()
                 .enumerate()
                 .filter_map(|(cix, (mmm, _, _))| {
-                    // nr==1 (matrix-vector) kernels are candidates only for the mmv path
+                    // nr==1 (matrix-vector) kernels are weighed only for the mmv path
                     // (n==1). For n>=2 they are excluded, else a degenerate shape can be
                     // handed a nr==1 kernel that pads N catastrophically.
                     if mmm.nr() == 1 && n != 1 {
@@ -65,8 +65,8 @@ impl LinearCostModel<'_> {
             }
         }
         // A dim the caller could not pin leaves the shape terms nothing to say, so all that is
-        // left is the kernel the model was fitted around. Where the candidates do not offer it
+        // left is the kernel the model was fitted around. Where the suitable kernels do not include it
         // the model has no opinion at all, and the portable rules answer instead.
-        candidate_named(candidates, self.default_kernel)
+        suitable_named(suitable, self.default_kernel)
     }
 }

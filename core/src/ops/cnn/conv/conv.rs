@@ -548,7 +548,7 @@ impl Conv {
         let x_dt = input_fact.datum_type;
 
         let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
-        // The weights are packed once, ahead of time, so a candidate reached through a panel
+        // The weights are packed once, ahead of time, so a kernel reached through a panel
         // extractor would pay it on every panel of every call.
         let query = Query {
             weight: if weight_fact.is_exotic() {
@@ -570,9 +570,9 @@ impl Conv {
             n: n.as_usize(),
         };
         if weight_fact.is_exotic() {
-            let mut candidates = tract_linalg::ops().suitable(&query);
-            retain_best_quality(&mut candidates);
-            candidates
+            let mut suitable = tract_linalg::ops().suitable(&query);
+            retain_best_quality(&mut suitable);
+            suitable
                 .into_iter()
                 .map(|(mmm, p, _)| (mmm, p))
                 .max_by_key(|(mmm, _)| mmm.mr() * mmm.nr())

@@ -188,19 +188,19 @@ pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     if isa.has(crate::isa::Isa::Sme) {
         log::info!("SME optimisation activated");
-        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => prev(dt, query, candidates),
-            (DatumType::F32, _) => candidate_named(candidates, &sme_mmm_f32_32x32.name),
-            _ => prev(dt, query, candidates),
+        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+            (DatumType::F32, Some(1)) => prev(dt, query, suitable),
+            (DatumType::F32, _) => suitable_named(suitable, &sme_mmm_f32_32x32.name),
+            _ => prev(dt, query, suitable),
         });
     }
     if isa.has(crate::isa::Isa::Sme2) {
         log::info!("SME2 GEMV optimisation activated");
-        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => candidate_named(candidates, &sme_mmv_f32_64x1.name),
-            (DatumType::I32, Some(1)) => prev(dt, query, candidates),
-            (DatumType::I32, _) => candidate_named(candidates, &sme_qmmm_i32_32x32.name),
-            _ => prev(dt, query, candidates),
+        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
+            (DatumType::F32, Some(1)) => suitable_named(suitable, &sme_mmv_f32_64x1.name),
+            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
+            (DatumType::I32, _) => suitable_named(suitable, &sme_qmmm_i32_32x32.name),
+            _ => prev(dt, query, suitable),
         });
     }
     if !isa.has(crate::isa::Isa::Sme) && !isa.has(crate::isa::Isa::Sme2) {

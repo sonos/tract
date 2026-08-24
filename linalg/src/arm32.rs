@@ -9,7 +9,7 @@ use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
 
-use crate::mmm::candidate_named;
+use crate::mmm::suitable_named;
 use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -53,45 +53,39 @@ pub fn plug(ops: &mut Ops) {
         let mmv_f32: crate::MmmPreference = match cpu {
             0xc07 => {
                 let model = cortex_a7_mmv_linear::linear_model();
-                Box::new(move |candidates, query| match query.m {
-                    Some(m) if m < 32 => model.preferred(candidates, Some(m), query.k, Some(1)),
-                    _ => candidate_named(
-                        candidates,
-                        &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name,
-                    ),
+                Box::new(move |suitable, query| match query.m {
+                    Some(m) if m < 32 => model.preferred(suitable, Some(m), query.k, Some(1)),
+                    _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name),
                 })
             }
             0xc09 => {
                 let model = cortex_a9_mmv_linear::linear_model();
-                Box::new(move |candidates, query| match query.m {
-                    Some(m) if m < 32 => model.preferred(candidates, Some(m), query.k, Some(1)),
-                    _ => candidate_named(
-                        candidates,
-                        &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name,
-                    ),
+                Box::new(move |suitable, query| match query.m {
+                    Some(m) if m < 32 => model.preferred(suitable, Some(m), query.k, Some(1)),
+                    _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name),
                 })
             }
-            _ => Box::new(|candidates, _| {
-                candidate_named(candidates, &armv7neon::armv7neon_mmm_f32_32x1_generic.name)
+            _ => Box::new(|suitable, _| {
+                suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_generic.name)
             }),
         };
 
         let mmm_f32: crate::MmmPreference = match cpu {
             0xc07 => {
                 let model = cortex_a7_linear::linear_model();
-                Box::new(move |candidates, query| {
-                    model.preferred(candidates, query.m, query.k, query.n)
+                Box::new(move |suitable, query| {
+                    model.preferred(suitable, query.m, query.k, query.n)
                 })
             }
             0xc09 => {
                 let model = cortex_a9_linear::linear_model();
-                Box::new(move |candidates, query| {
-                    model.preferred(candidates, query.m, query.k, query.n)
+                Box::new(move |suitable, query| {
+                    model.preferred(suitable, query.m, query.k, query.n)
                 })
             }
-            _ => Box::new(|candidates, query| {
-                candidate_named(
-                    candidates,
+            _ => Box::new(|suitable, query| {
+                suitable_named(
+                    suitable,
                     if prefer_8x4(query.m, query.k, query.n) {
                         &armv7neon::armv7neon_mmm_f32_8x4_generic.name
                     } else {
@@ -100,16 +94,14 @@ pub fn plug(ops: &mut Ops) {
                 )
             }),
         };
-        ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => mmv_f32(candidates, query),
-            (DatumType::F32, _) => mmm_f32(candidates, query),
+        ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
+            (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
+            (DatumType::F32, _) => mmm_f32(suitable, query),
             (DatumType::I32, Some(1)) => {
-                candidate_named(candidates, &armv7neon::armv7neon_mmm_i32_32x1.name)
+                suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_32x1.name)
             }
-            (DatumType::I32, _) => {
-                candidate_named(candidates, &armv7neon::armv7neon_mmm_i32_8x4.name)
-            }
-            _ => prev(dt, query, candidates),
+            (DatumType::I32, _) => suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_8x4.name),
+            _ => prev(dt, query, suitable),
         });
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
