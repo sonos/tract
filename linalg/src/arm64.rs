@@ -415,7 +415,7 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 fn neon_qmmm_i32(isa: &IsaSet, suitable: &[Suitable]) -> Option<usize> {
     let _ = isa;
     #[cfg(tract_arm64_dotprod)]
-    if platform.isa.has(Isa::DotProd) {
+    if platform.isa.has(Isa::Aarch64DotProd) {
         return suitable_named(suitable, &arm64simd_mmm_i32_8x8_dot.name);
     }
     suitable_named(suitable, &arm64simd_mmm_i32_8x8.name)
@@ -525,7 +525,7 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Aarch64),
         precedence: 2,
         name: "arm64fp16",
-        applies: |isa| isa.has(Isa::Fp16),
+        applies: |isa| isa.has(Isa::Aarch64Fp16),
         preferred: fp16_preferred,
     }
 }
@@ -535,7 +535,7 @@ pub fn plug(ops: &mut Ops) {
     arm64simd::plug(ops);
 
     #[cfg(not(feature = "no_fp16"))]
-    if isa.has(Isa::Fp16) {
+    if isa.has(Isa::Aarch64Fp16) {
         arm64fp16::plug(ops);
     }
 
@@ -558,7 +558,7 @@ pub fn plug(ops: &mut Ops) {
     ops.mul_by_scalar_f32 = Box::new(|| arm64simd_mul_by_scalar_f32_16n::ew());
     ops.rms_norm_f32 = Box::new(arm64simd_rms_norm_f32);
     #[cfg(not(feature = "no_fp16"))]
-    if isa.has(Isa::Fp16) {
+    if isa.has(Isa::Aarch64Fp16) {
         log::info!("ARMv8.2 tanh_f16 and sigmoid_f16 activated");
         ops.leaky_relu_f16 = Box::new(|| arm64fp16_leaky_relu_f16_16n::ew());
         ops.tanh_f16 = Box::new(|| arm64fp16_tanh_f16_8n::ew());
@@ -625,26 +625,26 @@ pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::IsaSet;
     let mut set = IsaSet::of_arch(crate::platform::Arch::Aarch64);
     if has_fp16() {
-        set = set.with(Isa::Fp16);
+        set = set.with(Isa::Aarch64Fp16);
     }
     if has_dotprod() {
-        set = set.with(Isa::DotProd);
+        set = set.with(Isa::Aarch64DotProd);
     }
     if sve::has_sve2() {
-        set = set.with(Isa::Sve2);
+        set = set.with(Isa::Aarch64Sve2);
     }
     #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
     {
         if sme::has_sme() {
-            set = set.with(Isa::Sme);
+            set = set.with(Isa::Aarch64Sme);
         }
         if sme::has_sme2() {
-            set = set.with(Isa::Sme2);
+            set = set.with(Isa::Aarch64Sme2);
         }
     }
     #[cfg(any(target_os = "macos", all(target_os = "ios", feature = "apple-amx-ios")))]
     if has_amx() {
-        set = set.with(Isa::AppleAmx);
+        set = set.with(Isa::Aarch64AppleAmx);
     }
     set
 }

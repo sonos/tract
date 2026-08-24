@@ -21,25 +21,24 @@ pub enum Isa {
     X86_64,
     RiscV64,
     Wasm32,
-    /// armv7. On aarch64 NEON is baseline, hence unnamed there.
-    Neon,
-    Fp16,
-    DotProd,
-    Sve2,
-    Sme,
-    Sme2,
-    /// Apple's AMX coprocessor, which is not the x86 extension of the same name.
-    AppleAmx,
-    Avx,
-    Avx2,
-    Fma,
-    F16c,
-    Avx512f,
-    Avx512Vnni,
-    AvxVnni,
-    AmxInt8,
-    AmxBf16,
-    Simd128,
+    /// A step on armv7 only: on aarch64 Advanced SIMD is baseline, hence unnamed there.
+    ArmNeon,
+    Aarch64Fp16,
+    Aarch64DotProd,
+    Aarch64Sve2,
+    Aarch64Sme,
+    Aarch64Sme2,
+    Aarch64AppleAmx,
+    X86_64Avx,
+    X86_64Avx2,
+    X86_64Fma,
+    X86_64F16c,
+    X86_64Avx512f,
+    X86_64Avx512Vnni,
+    X86_64AvxVnni,
+    X86_64AmxInt8,
+    X86_64AmxBf16,
+    Wasm32Simd128,
 }
 
 impl Isa {
@@ -49,23 +48,23 @@ impl Isa {
         Isa::X86_64,
         Isa::RiscV64,
         Isa::Wasm32,
-        Isa::Neon,
-        Isa::Fp16,
-        Isa::DotProd,
-        Isa::Sve2,
-        Isa::Sme,
-        Isa::Sme2,
-        Isa::AppleAmx,
-        Isa::Avx,
-        Isa::Avx2,
-        Isa::Fma,
-        Isa::F16c,
-        Isa::Avx512f,
-        Isa::Avx512Vnni,
-        Isa::AvxVnni,
-        Isa::AmxInt8,
-        Isa::AmxBf16,
-        Isa::Simd128,
+        Isa::ArmNeon,
+        Isa::Aarch64Fp16,
+        Isa::Aarch64DotProd,
+        Isa::Aarch64Sve2,
+        Isa::Aarch64Sme,
+        Isa::Aarch64Sme2,
+        Isa::Aarch64AppleAmx,
+        Isa::X86_64Avx,
+        Isa::X86_64Avx2,
+        Isa::X86_64Fma,
+        Isa::X86_64F16c,
+        Isa::X86_64Avx512f,
+        Isa::X86_64Avx512Vnni,
+        Isa::X86_64AvxVnni,
+        Isa::X86_64AmxInt8,
+        Isa::X86_64AmxBf16,
+        Isa::Wasm32Simd128,
     ];
 
     /// The token as it appears in a report and in `TRACT_CPU_ISA`.
@@ -76,23 +75,23 @@ impl Isa {
             Isa::X86_64 => "x86_64",
             Isa::RiscV64 => "riscv64",
             Isa::Wasm32 => "wasm32",
-            Isa::Neon => "neon",
-            Isa::Fp16 => "fp16",
-            Isa::DotProd => "dotprod",
-            Isa::Sve2 => "sve2",
-            Isa::Sme => "sme",
-            Isa::Sme2 => "sme2",
-            Isa::AppleAmx => "apple-amx",
-            Isa::Avx => "avx",
-            Isa::Avx2 => "avx2",
-            Isa::Fma => "fma",
-            Isa::F16c => "f16c",
-            Isa::Avx512f => "avx512f",
-            Isa::Avx512Vnni => "avx512vnni",
-            Isa::AvxVnni => "avxvnni",
-            Isa::AmxInt8 => "amx-int8",
-            Isa::AmxBf16 => "amx-bf16",
-            Isa::Simd128 => "simd128",
+            Isa::ArmNeon => "neon",
+            Isa::Aarch64Fp16 => "fp16",
+            Isa::Aarch64DotProd => "dotprod",
+            Isa::Aarch64Sve2 => "sve2",
+            Isa::Aarch64Sme => "sme",
+            Isa::Aarch64Sme2 => "sme2",
+            Isa::Aarch64AppleAmx => "apple-amx",
+            Isa::X86_64Avx => "avx",
+            Isa::X86_64Avx2 => "avx2",
+            Isa::X86_64Fma => "fma",
+            Isa::X86_64F16c => "f16c",
+            Isa::X86_64Avx512f => "avx512f",
+            Isa::X86_64Avx512Vnni => "avx512vnni",
+            Isa::X86_64AvxVnni => "avxvnni",
+            Isa::X86_64AmxInt8 => "amx-int8",
+            Isa::X86_64AmxBf16 => "amx-bf16",
+            Isa::Wasm32Simd128 => "simd128",
         }
     }
 
@@ -118,20 +117,20 @@ impl Isa {
             // The plain architecture is the floor every ladder rises from.
             Isa::Arm | Isa::Aarch64 | Isa::X86_64 | Isa::RiscV64 | Isa::Wasm32 => 0,
             // x86: each generation subsumes the last, AMX above the VNNI it needs alongside it.
-            Isa::Avx => 1,
-            Isa::Avx2 | Isa::Fma | Isa::F16c => 2,
-            Isa::Avx512f | Isa::AvxVnni => 3,
-            Isa::Avx512Vnni => 4,
-            Isa::AmxInt8 | Isa::AmxBf16 => 5,
+            Isa::X86_64Avx => 1,
+            Isa::X86_64Avx2 | Isa::X86_64Fma | Isa::X86_64F16c => 2,
+            Isa::X86_64Avx512f | Isa::X86_64AvxVnni => 3,
+            Isa::X86_64Avx512Vnni => 4,
+            Isa::X86_64AmxInt8 | Isa::X86_64AmxBf16 => 5,
             // arm: NEON is the armv7 step above bare VFP, and baseline on aarch64 where the
             // ladder continues through the matrix extensions.
-            Isa::Neon => 1,
-            Isa::Fp16 | Isa::DotProd => 2,
-            Isa::Sve2 => 3,
-            Isa::Sme | Isa::Sme2 => 4,
-            Isa::AppleAmx => 5,
+            Isa::ArmNeon => 1,
+            Isa::Aarch64Fp16 | Isa::Aarch64DotProd => 2,
+            Isa::Aarch64Sve2 => 3,
+            Isa::Aarch64Sme | Isa::Aarch64Sme2 => 4,
+            Isa::Aarch64AppleAmx => 5,
             // wasm has one feature and nothing to outrank.
-            Isa::Simd128 => 0,
+            Isa::Wasm32Simd128 => 0,
         }
     }
 
@@ -140,26 +139,26 @@ impl Isa {
     /// and what lets `TRACT_CPU_ISA` reject a feature the architecture cannot have.
     pub const fn arch(&self) -> Arch {
         match self {
-            Isa::Arm | Isa::Neon => Arch::Arm,
+            Isa::Arm | Isa::ArmNeon => Arch::Arm,
             Isa::Aarch64
-            | Isa::Fp16
-            | Isa::DotProd
-            | Isa::Sve2
-            | Isa::Sme
-            | Isa::Sme2
-            | Isa::AppleAmx => Arch::Aarch64,
+            | Isa::Aarch64Fp16
+            | Isa::Aarch64DotProd
+            | Isa::Aarch64Sve2
+            | Isa::Aarch64Sme
+            | Isa::Aarch64Sme2
+            | Isa::Aarch64AppleAmx => Arch::Aarch64,
             Isa::X86_64
-            | Isa::Avx
-            | Isa::Avx2
-            | Isa::Fma
-            | Isa::F16c
-            | Isa::Avx512f
-            | Isa::Avx512Vnni
-            | Isa::AvxVnni
-            | Isa::AmxInt8
-            | Isa::AmxBf16 => Arch::X86_64,
+            | Isa::X86_64Avx
+            | Isa::X86_64Avx2
+            | Isa::X86_64Fma
+            | Isa::X86_64F16c
+            | Isa::X86_64Avx512f
+            | Isa::X86_64Avx512Vnni
+            | Isa::X86_64AvxVnni
+            | Isa::X86_64AmxInt8
+            | Isa::X86_64AmxBf16 => Arch::X86_64,
             Isa::RiscV64 => Arch::RiscV64,
-            Isa::Wasm32 | Isa::Simd128 => Arch::Wasm32Simd128,
+            Isa::Wasm32 | Isa::Wasm32Simd128 => Arch::Wasm32Simd128,
         }
     }
 
@@ -319,7 +318,7 @@ fn probe() -> IsaSet {
     #[cfg(target_arch = "x86_64")]
     return crate::x86_64::isa_set();
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-    return IsaSet::of_arch(crate::platform::Arch::Wasm32Simd128).with(Isa::Simd128);
+    return IsaSet::of_arch(crate::platform::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
     // An architecture with no kernel tree, or wasm without simd128: nothing to declare, and no
     // architecture to name either, since none of its kernels would be reachable anyway.
     #[cfg(not(any(
@@ -383,8 +382,8 @@ mod tests {
 
     #[test]
     fn peer_of_cancels_the_steps_between() {
-        assert_eq!(peer_of(Isa::Fma, Isa::Avx512f), LEVEL_BOOST);
-        assert_eq!(peer_of(Isa::Avx, Isa::Avx512Vnni), 3 * LEVEL_BOOST);
-        assert_eq!(peer_of(Isa::Avx512f, Isa::AvxVnni), 0);
+        assert_eq!(peer_of(Isa::X86_64Fma, Isa::X86_64Avx512f), LEVEL_BOOST);
+        assert_eq!(peer_of(Isa::X86_64Avx, Isa::X86_64Avx512Vnni), 3 * LEVEL_BOOST);
+        assert_eq!(peer_of(Isa::X86_64Avx512f, Isa::X86_64AvxVnni), 0);
     }
 }

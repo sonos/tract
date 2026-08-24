@@ -10,7 +10,7 @@ pub fn plug(ops: &mut Ops) {
 panel_extractor!(aarch64; kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
     Box::new(PackedBlockQuantFormat::new(&Q4_0, 64, 16, true)),
     f16::packing(64).align(16)
-) isa(Fp16));
+) isa(Aarch64Fp16));
 
 #[cfg(target_arch = "aarch64")]
 #[target_feature(enable = "fp16")]

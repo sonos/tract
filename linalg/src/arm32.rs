@@ -95,13 +95,13 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Arm),
         precedence: 2,
         name: "armv7neon",
-        applies: |isa| isa.has(crate::isa::Isa::Neon),
+        applies: |isa| isa.has(crate::isa::Isa::ArmNeon),
         preferred,
     }
 }
 
 pub fn plug(ops: &mut Ops) {
-    if crate::isa::native().has(crate::isa::Isa::Neon) {
+    if crate::isa::native().has(crate::isa::Isa::ArmNeon) {
         log::info!("armv7neon activated (ssigmoid, ssilu, stanh)");
         ops.sigmoid_f32 = Box::new(|| armv7neon_sigmoid_f32_4n::ew());
         ops.silu_f32 = Box::new(|| armv7neon_silu_f32_4n::ew());
@@ -133,5 +133,5 @@ inventory::submit! {
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
     let set = IsaSet::of_arch(crate::platform::Arch::Arm);
-    if has_neon() { set.with(Isa::Neon) } else { set }
+    if has_neon() { set.with(Isa::ArmNeon) } else { set }
 }
