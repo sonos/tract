@@ -191,10 +191,10 @@ fn sme_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => None,
-        (DatumType::F32, _) => suitable_named(suitable, &sme_mmm_f32_32x32.name),
+        (DatumType::F32, _) => Some(sme_mmm_f32_32x32.name.as_str()),
         _ => None,
     }
 }
@@ -204,11 +204,11 @@ fn sme2_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     match (dt, query.n) {
-        (DatumType::F32, Some(1)) => suitable_named(suitable, &sme_mmv_f32_64x1.name),
+        (DatumType::F32, Some(1)) => Some(sme_mmv_f32_64x1.name.as_str()),
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) => suitable_named(suitable, &sme_qmmm_i32_32x32.name),
+        (DatumType::I32, _) => Some(sme_qmmm_i32_32x32.name.as_str()),
         _ => None,
     }
 }

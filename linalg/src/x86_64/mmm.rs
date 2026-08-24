@@ -3,8 +3,7 @@ use crate::block_quant::*;
 use crate::isa::Isa;
 use crate::isa::IsaSet;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
-use crate::mmm::MatMatMul;
-use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm::{Query, Suitable};
 use crate::mmm_tiers::MmmTier;
 use crate::pack::PackedFormat;
 #[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
@@ -41,7 +40,7 @@ struct KernelChoice {
     mr: usize,
     nr: usize,
     scale: f32,
-    ctor: fn() -> Box<dyn MatMatMul>,
+    name: fn() -> &'static str,
 }
 
 /// Fraction of the M-or-N axis covered by useful work after rounding up
@@ -60,7 +59,7 @@ fn tile_util(d: usize, tile: usize) -> f32 {
 /// overhead), then in favour of larger `nr` (more K-loop amortisation
 /// per inner iteration). An unknown M or N is treated as
 /// "large enough" — its utilisation contribution is 1.0.
-fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> Box<dyn MatMatMul> {
+fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> &'static str {
     let key = |c: &KernelChoice| -> (f32, i32, i32) {
         let m_u = m.map(|m| tile_util(m, c.mr)).unwrap_or(1.0);
         let n_u = n.map(|n| tile_util(n, c.nr)).unwrap_or(1.0);
@@ -72,7 +71,7 @@ fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> Box
         .iter()
         .max_by(|a, b| key(a).partial_cmp(&key(b)).unwrap())
         .expect("non-empty kernel pool");
-    (best.ctor)()
+    (best.name)()
 }
 
 // AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
@@ -277,23 +276,18 @@ fn avx512vnni_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) if !has_dual_avx512_fma() => {
-            suitable_named(suitable, &avx512vnni_mmm_i32_8x8.name)
-        }
+        (DatumType::I32, _) if !has_dual_avx512_fma() => Some(avx512vnni_mmm_i32_8x8.name.as_str()),
         (DatumType::I32, _) => {
             let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-            suitable_named(
-                suitable,
-                if big(query.m, 16) && big(query.n, 16) {
-                    &avx512vnni_mmm_i32_16x16.name
-                } else {
-                    &avx512vnni_mmm_i32_8x8.name
-                },
-            )
+            Some(if big(query.m, 16) && big(query.n, 16) {
+                avx512vnni_mmm_i32_16x16.name.as_str()
+            } else {
+                avx512vnni_mmm_i32_8x8.name.as_str()
+            })
         }
         _ => None,
     }
@@ -320,11 +314,11 @@ fn avxvnni_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) => suitable_named(suitable, &avxvnni_mmm_i32_8x8.name),
+        (DatumType::I32, _) => Some(avxvnni_mmm_i32_8x8.name.as_str()),
         _ => None,
     }
 }
@@ -349,14 +343,14 @@ fn amx_bf16_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     if dt != DatumType::F32 || query.n == Some(1) {
         return None;
     }
     let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
     if big(query.m, 16) && big(query.n, 16) && big(query.k, 32) {
-        suitable_named(suitable, &avx512amx_mmm_f32_16x16.name)
+        Some(avx512amx_mmm_f32_16x16.name.as_str())
     } else {
         None
     }
@@ -390,20 +384,17 @@ fn amx_int8_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::I32, Some(1)) => None,
         (DatumType::I32, _) => {
             let big = |o: Option<usize>, t: usize| o.is_none_or(|v| v >= t);
-            suitable_named(
-                suitable,
-                if big(query.m, 16) && big(query.n, 16) && big(query.k, 64) {
-                    &avx512amx_mmm_i32_16x16.name
-                } else {
-                    &avx512amx_mmm_i32_8x8.name
-                },
-            )
+            Some(if big(query.m, 16) && big(query.n, 16) && big(query.k, 64) {
+                avx512amx_mmm_i32_16x16.name.as_str()
+            } else {
+                avx512amx_mmm_i32_8x8.name.as_str()
+            })
         }
         _ => None,
     }
@@ -430,11 +421,11 @@ fn avx2_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) => suitable_named(suitable, &mmm::avx2_mmm_i32_8x8.name),
+        (DatumType::I32, _) => Some(&mmm::avx2_mmm_i32_8x8.name.as_str()),
         _ => None,
     }
 }
@@ -450,12 +441,12 @@ inventory::submit! {
 }
 
 const AVX_CHOICES: &[KernelChoice] = &[
-    KernelChoice { mr: 16, nr: 6, scale: 1.0, ctor: || avx_mmm_f32_16x6.mmm() },
-    KernelChoice { mr: 16, nr: 5, scale: 0.98, ctor: || avx_mmm_f32_16x5.mmm() },
-    KernelChoice { mr: 24, nr: 4, scale: 0.95, ctor: || avx_mmm_f32_24x4.mmm() },
-    KernelChoice { mr: 32, nr: 3, scale: 0.93, ctor: || avx_mmm_f32_32x3.mmm() },
-    KernelChoice { mr: 40, nr: 2, scale: 0.90, ctor: || avx_mmm_f32_40x2.mmm() },
-    KernelChoice { mr: 8, nr: 8, scale: 0.80, ctor: || avx_mmm_f32_8x8.mmm() },
+    KernelChoice { mr: 16, nr: 6, scale: 1.0, name: || avx_mmm_f32_16x6.name.as_str() },
+    KernelChoice { mr: 16, nr: 5, scale: 0.98, name: || avx_mmm_f32_16x5.name.as_str() },
+    KernelChoice { mr: 24, nr: 4, scale: 0.95, name: || avx_mmm_f32_24x4.name.as_str() },
+    KernelChoice { mr: 32, nr: 3, scale: 0.93, name: || avx_mmm_f32_32x3.name.as_str() },
+    KernelChoice { mr: 40, nr: 2, scale: 0.90, name: || avx_mmm_f32_40x2.name.as_str() },
+    KernelChoice { mr: 8, nr: 8, scale: 0.80, name: || avx_mmm_f32_8x8.name.as_str() },
 ];
 
 /// f32 and i32 kernels for AVX-capable CPUs that can't run the fma tier (Sandy/Ivy Bridge
@@ -466,21 +457,21 @@ fn avx_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) => suitable_named(suitable, &avx_mmm_i32_8x4.name),
+        (DatumType::I32, _) => Some(avx_mmm_i32_8x4.name.as_str()),
         (DatumType::F32, _) => match query.n {
-            None => suitable_named(suitable, &avx_mmm_f32_16x6.name),
-            Some(1) => suitable_named(suitable, &avx_mmm_f32_64x1.name),
-            Some(2) => suitable_named(suitable, &avx_mmm_f32_40x2.name),
-            Some(3) => suitable_named(suitable, &avx_mmm_f32_32x3.name),
-            Some(4) => suitable_named(suitable, &avx_mmm_f32_24x4.name),
-            Some(5) => suitable_named(suitable, &avx_mmm_f32_16x5.name),
-            Some(6) => suitable_named(suitable, &avx_mmm_f32_16x6.name),
-            Some(8) => suitable_named(suitable, &avx_mmm_f32_8x8.name),
-            Some(_) => suitable_named(suitable, pick_mmm(AVX_CHOICES, query.m, query.n).name()),
+            None => Some(avx_mmm_f32_16x6.name.as_str()),
+            Some(1) => Some(avx_mmm_f32_64x1.name.as_str()),
+            Some(2) => Some(avx_mmm_f32_40x2.name.as_str()),
+            Some(3) => Some(avx_mmm_f32_32x3.name.as_str()),
+            Some(4) => Some(avx_mmm_f32_24x4.name.as_str()),
+            Some(5) => Some(avx_mmm_f32_16x5.name.as_str()),
+            Some(6) => Some(avx_mmm_f32_16x6.name.as_str()),
+            Some(8) => Some(avx_mmm_f32_8x8.name.as_str()),
+            Some(_) => Some(pick_mmm(AVX_CHOICES, query.m, query.n)),
         },
         _ => None,
     }
@@ -499,15 +490,15 @@ inventory::submit! {
 /// Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic (M, N)-aware
 /// tile-utilisation picker over the same kernels.
 const FMA_CHOICES: &[KernelChoice] = &[
-    KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
-    KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
-    KernelChoice { mr: 16, nr: 5, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x5.mmm() },
-    KernelChoice { mr: 24, nr: 4, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_24x4.mmm() },
-    KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_32x3.mmm() },
-    KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
+    KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, name: || fma_mmm_f32_8x8.name.as_str() },
+    KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, name: || fma_mmm_f32_16x6.name.as_str() },
+    KernelChoice { mr: 16, nr: 5, scale: 54.0 / 60.0, name: || fma_mmm_f32_16x5.name.as_str() },
+    KernelChoice { mr: 24, nr: 4, scale: 54.0 / 60.0, name: || fma_mmm_f32_24x4.name.as_str() },
+    KernelChoice { mr: 32, nr: 3, scale: 54.0 / 60.0, name: || fma_mmm_f32_32x3.name.as_str() },
+    KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, name: || fma_mmm_f32_40x2.name.as_str() },
 ];
 
-fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match super::vendor() {
         super::Vendor::Intel => {
             super::intel_fma_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
@@ -516,15 +507,15 @@ fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
             super::amd_fma_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
         }
         super::Vendor::Other => match query.n {
-            None => suitable_named(suitable, &fma_mmm_f32_16x6.name),
+            None => Some(fma_mmm_f32_16x6.name.as_str()),
             Some(1) => unreachable!("n == 1 answered above"),
-            Some(2) => suitable_named(suitable, &fma_mmm_f32_40x2.name),
-            Some(3) => suitable_named(suitable, &fma_mmm_f32_32x3.name),
-            Some(4) => suitable_named(suitable, &fma_mmm_f32_24x4.name),
-            Some(5) => suitable_named(suitable, &fma_mmm_f32_16x5.name),
-            Some(6) => suitable_named(suitable, &fma_mmm_f32_16x6.name),
-            Some(8) => suitable_named(suitable, &fma_mmm_f32_8x8.name),
-            Some(_) => suitable_named(suitable, pick_mmm(FMA_CHOICES, query.m, query.n).name()),
+            Some(2) => Some(fma_mmm_f32_40x2.name.as_str()),
+            Some(3) => Some(fma_mmm_f32_32x3.name.as_str()),
+            Some(4) => Some(fma_mmm_f32_24x4.name.as_str()),
+            Some(5) => Some(fma_mmm_f32_16x5.name.as_str()),
+            Some(6) => Some(fma_mmm_f32_16x6.name.as_str()),
+            Some(8) => Some(fma_mmm_f32_8x8.name.as_str()),
+            Some(_) => Some(pick_mmm(FMA_CHOICES, query.m, query.n)),
         },
     }
 }
@@ -534,12 +525,12 @@ fn fma_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     match (dt, query.n) {
         // n == 1 has no dedicated n=1-calibrated model on the fma-only path yet; keep the
         // fixed matvec kernel. Routing n==1 through the n>=2-fit mmm model mispicks (matvec
         // kernels are only ever run at n==1, so their mmm coeffs are unrepresentative).
-        (DatumType::F32, Some(1)) => suitable_named(suitable, &fma_mmm_f32_64x1.name),
+        (DatumType::F32, Some(1)) => Some(fma_mmm_f32_64x1.name.as_str()),
         (DatumType::F32, _) => fma_mmm_f32(suitable, query),
         _ => None,
     }
@@ -561,26 +552,26 @@ inventory::submit! {
 /// measured together with `tract hwbench 3840,256,120,f32` (M,N divide every mr/nr) and
 /// normalised to the fastest kernel.
 const X86_F32_CHOICES: &[KernelChoice] = &[
-    KernelChoice { mr: 16, nr: 12, scale: 1.000, ctor: || avx512_mmm_f32_16x12.mmm() },
-    KernelChoice { mr: 16, nr: 8, scale: 0.995, ctor: || avx512_mmm_f32_16x8.mmm() },
-    KernelChoice { mr: 32, nr: 5, scale: 0.992, ctor: || avx512_mmm_f32_32x5.mmm() },
-    KernelChoice { mr: 32, nr: 6, scale: 0.990, ctor: || avx512_mmm_f32_32x6.mmm() },
-    KernelChoice { mr: 48, nr: 4, scale: 0.978, ctor: || avx512_mmm_f32_48x4.mmm() },
-    KernelChoice { mr: 16, nr: 6, scale: 0.964, ctor: || fma_mmm_f32_16x6.mmm() },
-    KernelChoice { mr: 24, nr: 4, scale: 0.948, ctor: || fma_mmm_f32_24x4.mmm() },
-    KernelChoice { mr: 16, nr: 5, scale: 0.935, ctor: || fma_mmm_f32_16x5.mmm() },
-    KernelChoice { mr: 32, nr: 3, scale: 0.919, ctor: || fma_mmm_f32_32x3.mmm() },
-    KernelChoice { mr: 64, nr: 3, scale: 0.895, ctor: || avx512_mmm_f32_64x3.mmm() },
-    KernelChoice { mr: 40, nr: 2, scale: 0.842, ctor: || fma_mmm_f32_40x2.mmm() },
-    KernelChoice { mr: 8, nr: 8, scale: 0.788, ctor: || fma_mmm_f32_8x8.mmm() },
-    KernelChoice { mr: 80, nr: 2, scale: 0.766, ctor: || avx512_mmm_f32_80x2.mmm() },
-    KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
+    KernelChoice { mr: 16, nr: 12, scale: 1.000, name: || avx512_mmm_f32_16x12.name.as_str() },
+    KernelChoice { mr: 16, nr: 8, scale: 0.995, name: || avx512_mmm_f32_16x8.name.as_str() },
+    KernelChoice { mr: 32, nr: 5, scale: 0.992, name: || avx512_mmm_f32_32x5.name.as_str() },
+    KernelChoice { mr: 32, nr: 6, scale: 0.990, name: || avx512_mmm_f32_32x6.name.as_str() },
+    KernelChoice { mr: 48, nr: 4, scale: 0.978, name: || avx512_mmm_f32_48x4.name.as_str() },
+    KernelChoice { mr: 16, nr: 6, scale: 0.964, name: || fma_mmm_f32_16x6.name.as_str() },
+    KernelChoice { mr: 24, nr: 4, scale: 0.948, name: || fma_mmm_f32_24x4.name.as_str() },
+    KernelChoice { mr: 16, nr: 5, scale: 0.935, name: || fma_mmm_f32_16x5.name.as_str() },
+    KernelChoice { mr: 32, nr: 3, scale: 0.919, name: || fma_mmm_f32_32x3.name.as_str() },
+    KernelChoice { mr: 64, nr: 3, scale: 0.895, name: || avx512_mmm_f32_64x3.name.as_str() },
+    KernelChoice { mr: 40, nr: 2, scale: 0.842, name: || fma_mmm_f32_40x2.name.as_str() },
+    KernelChoice { mr: 8, nr: 8, scale: 0.788, name: || fma_mmm_f32_8x8.name.as_str() },
+    KernelChoice { mr: 80, nr: 2, scale: 0.766, name: || avx512_mmm_f32_80x2.name.as_str() },
+    KernelChoice { mr: 128, nr: 1, scale: 0.378, name: || avx512_mmm_f32_128x1.name.as_str() },
 ];
 
 /// n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting kernel
 /// (16x1/32x1); at or above it the 128x1 is already optimal, so keep it. AMD has no
 /// n=1-calibrated mmv model yet, and keeps the fixed matvec dispatch.
-fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match super::vendor() {
         super::Vendor::Intel => match query.m {
             Some(m) if m < 128 => super::intel_avx512_mmv_linear::linear_model().preferred(
@@ -589,16 +580,16 @@ fn avx512_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
                 query.k,
                 Some(1),
             ),
-            _ => suitable_named(suitable, &avx512_mmm_f32_128x1.name),
+            _ => Some(avx512_mmm_f32_128x1.name.as_str()),
         },
         _ => match query.m {
-            Some(m) if m < 31 => suitable_named(suitable, &avx512_mmm_f32_16x1.name),
-            _ => suitable_named(suitable, &avx512_mmm_f32_128x1.name),
+            Some(m) if m < 31 => Some(avx512_mmm_f32_16x1.name.as_str()),
+            _ => Some(avx512_mmm_f32_128x1.name.as_str()),
         },
     }
 }
 
-fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match super::vendor() {
         super::Vendor::Intel => super::intel_avx512_linear::linear_model()
             .preferred(suitable, query.m, query.k, query.n),
@@ -609,7 +600,7 @@ fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
             if let Some(1) = query.n {
                 unreachable!("n == 1 answered above");
             }
-            suitable_named(suitable, pick_mmm(X86_F32_CHOICES, query.m, query.n).name())
+            Some(pick_mmm(X86_F32_CHOICES, query.m, query.n))
         }
     }
 }
@@ -619,7 +610,7 @@ fn avx512f_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => avx512_mmv_f32(suitable, query),
         (DatumType::F32, _) => avx512_mmm_f32(suitable, query),

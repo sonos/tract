@@ -285,21 +285,21 @@ fn generic_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     use crate::generic::mmm::*;
     let vec = query.n == Some(1);
     let name = match dt {
-        DatumType::F64 if vec => &generic_f64_4x1.name,
-        DatumType::F64 => &generic_f64_4x4.name,
-        DatumType::F32 if vec => &generic_f32_4x1.name,
-        DatumType::F32 => &generic_f32_4x4.name,
-        DatumType::F16 if vec => &generic_f16_4x1.name,
-        DatumType::F16 => &generic_f16_4x4.name,
-        DatumType::I32 => &generic_i32_4x4.name,
+        DatumType::F64 if vec => generic_f64_4x1.name.as_str(),
+        DatumType::F64 => generic_f64_4x4.name.as_str(),
+        DatumType::F32 if vec => generic_f32_4x1.name.as_str(),
+        DatumType::F32 => generic_f32_4x4.name.as_str(),
+        DatumType::F16 if vec => generic_f16_4x1.name.as_str(),
+        DatumType::F16 => generic_f16_4x4.name.as_str(),
+        DatumType::I32 => generic_i32_4x4.name.as_str(),
         _ => return None,
     };
-    mmm::suitable_named(suitable, name)
+    Some(name)
 }
 
 inventory::submit! {
