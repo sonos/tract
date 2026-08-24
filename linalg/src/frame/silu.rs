@@ -56,10 +56,17 @@ pub mod test {
             }
 
             #[test]
+            fn sign_on_saturating_tail_sweep() {
+                if $cond {
+                    $crate::frame::silu::test::test_silu_sign_exhaustive_tail::<$ker, $t>().unwrap()
+                }
+            }
+
+            #[test]
             fn tails() {
                 if $cond {
                     $crate::frame::silu::test::test_silu::<$ker, $t>(&[
-                        -100.0, -30.0, -18.6, -15.0, 15.0, 18.6, 30.0, 100.0,
+                        -100.0, -30.0, -14.5, -12.0, 12.0, 14.5, 30.0, 100.0,
                     ])
                     .unwrap();
                 }
@@ -78,6 +85,51 @@ pub mod test {
             "the sign of the input",
             |x, y| if x < T::zero() { y <= T::zero() } else { y >= T::zero() },
         )
+    }
+
+    /// Assert the same sign over every `f32` of the saturating tail, `[13, 18]` and its
+    /// negation.
+    ///
+    /// A kernel that carries no floor on its sigmoid factor holds the sign only because
+    /// the argument clamp stops short of where that factor's `+ 0.5` runs under the
+    /// rounding error of `p / q`. The inputs that cross sit a few `1e-7` apart, so the
+    /// grid [`test_silu_sign`] sweeps steps over them: only enumerating the tail pins the
+    /// clamp down. `f16` is already enumerated whole, and skips this.
+    pub fn test_silu_sign_exhaustive_tail<K: ElementWiseKer<T>, T: LADatum + Float>()
+    -> TestCaseResult
+    where
+        f32: AsPrimitive<T>,
+    {
+        if T::datum_type() != <f32 as tract_data::prelude::Datum>::datum_type() {
+            return Ok(());
+        }
+        crate::setup_test_logger();
+        const CHUNK: usize = 1 << 16;
+        let end = 18f32.to_bits();
+        for sign in [1f32, -1f32] {
+            let mut inputs: Vec<T> = Vec::with_capacity(CHUNK);
+            let mut outputs: Vec<T> = Vec::with_capacity(CHUNK);
+            let mut bits = 13f32.to_bits();
+            while bits <= end {
+                inputs.clear();
+                while bits <= end && inputs.len() < CHUNK {
+                    inputs.push((sign * f32::from_bits(bits)).as_());
+                    bits += 1;
+                }
+                outputs.clear();
+                outputs.extend_from_slice(&inputs);
+                K::ew().run(&mut outputs).unwrap();
+                for (x, y) in inputs.iter().zip(outputs.iter()) {
+                    let signed = if *x < T::zero() { *y <= T::zero() } else { *y >= T::zero() };
+                    proptest::prop_assert!(
+                        signed,
+                        "{}({x:?}) returned {y:?}, expected the sign of the input",
+                        K::name()
+                    );
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn test_silu<K: ElementWiseKer<T>, T: LADatum + Float>(values: &[f32]) -> TestCaseResult

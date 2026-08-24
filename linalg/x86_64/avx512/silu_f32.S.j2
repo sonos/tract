@@ -3,24 +3,25 @@
 
 AVX-512 (zmm, 16-wide) fused SiLU.
 
-Per element (z = clamp(x, -18, 18), w = z^2):
-    SiLU(x) = f * max(0.5 + z * P(w) / Q(w), 0)
+Per element (z = clamp(x, -14.5, 14.5), w = z^2):
+    SiLU(x) = f * (0.5 + z * P(w) / Q(w))
 where P is the degree-4 Horner polynomial over the numerator coeffs, Q the
-degree-5 Horner polynomial over the denominator coeffs, and f = max(x, -18) the
-factor the sigmoid multiplies. Reuses the coefficients and the rational
-approximation of sigmoid_f32.S.j2, so the clamp bounds must stay equal to that
-kernel's.
+degree-5 Horner polynomial over the denominator coeffs, and f = max(x, -14.5)
+the factor the sigmoid multiplies. Reuses the coefficients and the rational
+approximation of sigmoid_f32.S.j2, whose own bound is derived from the same
+error, so the two land on the same number rather than one tracking the other.
 
-f is clamped below at -18 but left unclamped above: the upper clamp only keeps
+f is clamped below at -14.5 but left unclamped above: the upper clamp only keeps
 the sigmoid polynomial argument z in range, whereas SiLU(x) ~ x as x -> +inf so
 the factor must stay unbounded above. The lower clamp keeps the negative tail
-bounded: x < -18 saturates at -18 * sigmoid(-18), which the true SiLU
+bounded: x < -14.5 saturates at -14.5 * sigmoid(-14.5), which the true SiLU
 approaches from below as x -> -inf.
 
-The sigmoid factor is floored at 0 before it multiplies f: the final `+ 0.5`
-cancels to -2^-24 at the clamp point, so without the floor the entire negative
-tail comes back with the wrong sign. It needs no matching ceiling: an overshoot
-of one ulp only scales f by 1 + 2^-23, and SiLU has no upper bound to violate.
+The sigmoid needs no floor before it multiplies f: 14.5 is low enough that the
+final `+ 0.5` stays six f32 steps above 0, which is what the argument clamp buys
+here and not merely a bound the sigmoid polynomial needs. Nor does it need a
+ceiling: an overshoot of one ulp would only scale f by 1 + 2^-23, and SiLU has no
+upper bound to violate.
 
 Holding f costs nothing here: it lives in zmm16-19, which are volatile under
 both ABIs, so the 4-group (64 lanes) unrolling of the sigmoid kernel is kept
@@ -209,15 +210,6 @@ avx512_silu_f32_{{suffix}} proc
     vaddps          zmm6, zmm6, zmm1
     vaddps          zmm7, zmm7, zmm1        // zmm4..7 <- sigmoid
 
-    // The vaddps above lands on -2^-24 at the -18.0 clamp point, so the whole negative
-    // tail comes out with a sigmoid below zero, which would flip the sign of the SiLU.
-    // vpxord rather than vxorps: the latter needs AVX512DQ, this kernel only AVX512F.
-    vpxord          zmm0, zmm0, zmm0
-    vmaxps          zmm4, zmm4, zmm0
-    vmaxps          zmm5, zmm5, zmm0
-    vmaxps          zmm6, zmm6, zmm0
-    vmaxps          zmm7, zmm7, zmm0        // zmm4..7 <- sigmoid, floored at 0
-
     vmulps          zmm4, zmm4, zmm16
     vmulps          zmm5, zmm5, zmm17
     vmulps          zmm6, zmm6, zmm18
@@ -277,9 +269,6 @@ avx512_silu_f32_{{suffix}} proc
     vdivps          zmm4, zmm4, zmm12
     vaddps          zmm4, zmm4, zmm1        // zmm4 <- sigmoid
 
-    vpxord          zmm0, zmm0, zmm0
-    vmaxps          zmm4, zmm4, zmm0        // zmm4 <- sigmoid, floored at 0
-
     vmulps          zmm4, zmm4, zmm16       // zmm4 <- SiLU
 
     vmovaps [rdi], zmm4
@@ -324,9 +313,9 @@ avx512_silu_f32_{{suffix}} proc
 {% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
 
 {{L}}coeffs_num_low:
-    {{float}} -18.0                    // low
+    {{float}} -14.5                    // low
 {{L}}coeffs_num_high:
-    {{float}} 18.0                     // high
+    {{float}} 14.5                     // high
 
 {{L}}coeffs_num_alpha_9:
     {{float}} 4.37031012579801e-11     // alpha_9

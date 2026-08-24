@@ -48,7 +48,7 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
 
         // Coefficients match generic/sigmoid.rs::ssigmoid bit-for-bit.
         // Output may differ by ≤1 ulp from scalar on FMA hosts (more accurate).
-        const LOW: f32 = -18.6;
+        const LOW: f32 = -14.5;
         const HIGH: f32 = -LOW;
 
         const ALPHA_13: f32 = -4.433153405e-18;
@@ -82,8 +82,6 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
             let b0 = f32x4_splat(BETA_0);
 
             let half = f32x4_splat(0.5);
-            let zero = f32x4_splat(0.0);
-            let one = f32x4_splat(1.0);
 
             let mut p = buf.as_mut_ptr();
             let end = p.add(buf.len());
@@ -108,11 +106,10 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
                 let qn = f32x4_relaxed_madd(x2, qn, b2);
                 let qn = f32x4_relaxed_madd(x2, qn, b0);
 
-                // sigmoid is (0, 1): the add below cancels down to ~1e-8 on either tail,
-                // below the rounding error of the division, so the sum needs clamping to
-                // stay in range.
+                // The clamp keeps sigmoid inside (0, 1) with no clamp on the sum: at
+                // 14.5 the cancellation below still leaves six f32 steps of margin at
+                // both ends, whether `relaxed_madd` fuses on this host or not.
                 let r = f32x4_add(f32x4_div(pn, qn), half);
-                let r = f32x4_min(one, f32x4_max(zero, r));
                 v128_store(p as *mut v128, r);
                 p = p.add(4);
             }

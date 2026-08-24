@@ -2,8 +2,14 @@
 // vim: set syntax=asm :
 
 // AVX-512 (zmm, 16-wide) sigmoid. Uses a rational (Padé-style) approximation
-// of sigmoid clamped to [-18, 18]. Validated against the generic scalar
+// of sigmoid clamped to [-14.5, 14.5]. Validated against the generic scalar
 // reference via sigmoid_frame_tests! (see x86_64.rs).
+//
+// The coefficients are this kernel's own, not the fit the other f32 sigmoid kernels
+// share, so its clamp answers to its own error. That clamp alone holds the result
+// in [0, 1], so the sum carries none: raising it voids the range, as the sum
+// crosses 1 from 15.91 up, where 1 - sigmoid(x) has fallen under the fmadd chains'
+// rounding error.
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -189,20 +195,6 @@ avx512_sigmoid_f32_{{suffix}} proc
     vaddps          zmm6, zmm6, zmm1
     vaddps          zmm7, zmm7, zmm1
 
-    // sigmoid is (0, 1): the vaddps above cancels down to ~1e-8 on either tail, below the
-    // rounding error of the division, so the sum needs clamping to stay in range. vpxord
-    // rather than vxorps: the latter needs AVX512DQ, this kernel only requires AVX512F.
-    vpxord          zmm0, zmm0, zmm0
-    vbroadcastss    zmm2, dword ptr [{{offset}} {{L}}coeffs_num_one]
-    vmaxps          zmm4, zmm4, zmm0
-    vmaxps          zmm5, zmm5, zmm0
-    vmaxps          zmm6, zmm6, zmm0
-    vmaxps          zmm7, zmm7, zmm0
-    vminps          zmm4, zmm4, zmm2
-    vminps          zmm5, zmm5, zmm2
-    vminps          zmm6, zmm6, zmm2
-    vminps          zmm7, zmm7, zmm2
-
     vmovaps [rdi], zmm4
     vmovaps [rdi + 64], zmm5
     vmovaps [rdi + 128], zmm6
@@ -257,11 +249,6 @@ avx512_sigmoid_f32_{{suffix}} proc
     vdivps          zmm4, zmm4, zmm12
     vaddps          zmm4, zmm4, zmm1
 
-    vpxord          zmm0, zmm0, zmm0
-    vbroadcastss    zmm2, dword ptr [{{offset}} {{L}}coeffs_num_one]
-    vmaxps          zmm4, zmm4, zmm0
-    vminps          zmm4, zmm4, zmm2
-
     vmovaps [rdi], zmm4
     add     rdi, 64
     sub     rsi, 16
@@ -304,9 +291,9 @@ avx512_sigmoid_f32_{{suffix}} proc
 {% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
 
 {{L}}coeffs_num_low:
-    {{float}} -18.0                    // low
+    {{float}} -14.5                    // low
 {{L}}coeffs_num_high:
-    {{float}} 18.0                     // high
+    {{float}} 14.5                     // high
 
 {{L}}coeffs_num_alpha_9:
     {{float}} 4.37031012579801e-11     // alpha_9
@@ -334,9 +321,6 @@ avx512_sigmoid_f32_{{suffix}} proc
 
 {{L}}coeffs_num_half:
     {{float}} 0.5
-
-{{L}}coeffs_num_one:
-    {{float}} 1.0
 
 {% if msvc %}
 avx512_sigmoid_f32_{{suffix}} endp
