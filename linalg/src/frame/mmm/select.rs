@@ -1,6 +1,6 @@
 //! What a caller needs a matmul for, and what it can be given in return.
 
-use tract_data::prelude::{DatumType, TVec};
+use tract_data::prelude::{DatumType, TVec, tvec};
 
 use super::{MatMatMul, PanelExtractor};
 use crate::WeightType;
@@ -27,6 +27,38 @@ pub struct Query {
     pub m: Option<usize>,
     pub k: Option<usize>,
     pub n: Option<usize>,
+}
+
+impl Query {
+    /// The plain matmul a platform policy reasons about: operands in the accumulator's own type,
+    /// `i8` operands for an integer accumulator, no store constraint and extractors allowed.
+    /// Mixed precision — f16 operands accumulated in f32 — is not one of these, so a policy
+    /// never speaks for it.
+    pub fn plain(
+        accumulator: DatumType,
+        m: Option<usize>,
+        k: Option<usize>,
+        n: Option<usize>,
+    ) -> Query {
+        let operand = if accumulator == DatumType::I32 { DatumType::I8 } else { accumulator };
+        Query {
+            weight: operand.into(),
+            activation: operand,
+            accumulators: tvec!(accumulator),
+            store: None,
+            allow_extractor: true,
+            m,
+            k,
+            n,
+        }
+    }
+}
+
+/// The candidate offering the kernel called `name`, or `None` when the enumeration does not offer
+/// it for this query. This is how a policy tier answers: naming a kernel the query cannot reach
+/// defers to the tier below instead of going unheard.
+pub fn candidate_named(candidates: &[Candidate], name: &str) -> Option<usize> {
+    candidates.iter().position(|(mmm, _, _)| mmm.name() == name)
 }
 
 /// Keep only the candidates in the best implementation tier: quality dominates, and a
@@ -68,73 +100,13 @@ pub fn pick_by_shape(query: &Query, candidates: &[Candidate]) -> Option<usize> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mmm::{ImplementationQuality, MMMInputFormat};
-    use tract_data::prelude::{Datum, f16, tvec};
+    use crate::mmm::MMMInputFormat;
+    use tract_data::prelude::{Datum, f16};
 
-    /// The plain queries a platform policy reasons about, as (weight and activation,
-    /// accumulator). A mixed-precision query -- f16 operands accumulated in f32 -- is not one of
-    /// them: the policy is only handed the accumulator, so it cannot name a kernel that packs
-    /// f16, and [`crate::Ops::rank`] takes its unreachable answer as no opinion.
-    fn operands() -> Vec<(DatumType, DatumType)> {
-        vec![
-            (f32::datum_type(), f32::datum_type()),
-            (f16::datum_type(), f16::datum_type()),
-            (i8::datum_type(), i32::datum_type()),
-        ]
-    }
-
-    /// Shapes spanning the tile sizes in the pools, plus the `None` a symbolic dim leaves.
-    const DIMS: &[Option<usize>] =
-        &[None, Some(1), Some(2), Some(4), Some(8), Some(15), Some(64), Some(512)];
-
-    fn query(
-        operands: (DatumType, DatumType),
-        m: Option<usize>,
-        k: Option<usize>,
-        n: Option<usize>,
-    ) -> Query {
-        Query {
-            weight: operands.0.into(),
-            activation: operands.0,
-            accumulators: tvec!(operands.1),
-            store: None,
-            allow_extractor: true,
-            m,
-            k,
-            n,
-        }
-    }
-
-    /// [`crate::Ops::rank`] honours the platform policy by finding its answer in the candidate
-    /// list, and silently falls back on the portable rules when it is not there. A policy that
-    /// names a kernel the enumeration does not offer for that query is therefore inert, and
-    /// nothing else says so.
-    #[test]
-    fn the_policy_only_names_kernels_the_pool_offers() {
-        let ops = crate::ops();
-        for operands in operands() {
-            for m in DIMS {
-                for k in DIMS {
-                    for n in DIMS {
-                        let query = query(operands, *m, *k, *n);
-                        let Some(named) = (ops.mmm_policy())(operands.1, *m, *k, *n) else {
-                            continue;
-                        };
-                        if named.quality() != ImplementationQuality::ManuallyOptimized {
-                            continue;
-                        }
-                        let candidates = ops.candidates(&query);
-                        assert!(
-                            candidates.iter().any(|(mmm, _, _)| mmm.name() == named.name()),
-                            "policy names {} for {operands:?} m={m:?} k={k:?} n={n:?}, \
-                             which the enumeration does not offer: {:?}",
-                            named.name(),
-                            candidates.iter().map(|(mmm, _, _)| mmm.name()).collect::<Vec<_>>()
-                        );
-                    }
-                }
-            }
-        }
+    /// The accumulators a platform policy speaks for, each standing for the plain query
+    /// [`Query::plain`] builds from it.
+    fn accumulators() -> Vec<DatumType> {
+        vec![f32::datum_type(), f16::datum_type(), i32::datum_type()]
     }
 
     /// A caller facing a symbolic `n` picks a packing group and needs both roles out of it: a
@@ -149,8 +121,8 @@ mod tests {
     #[test]
     fn the_ranking_keeps_a_kept_group_usable() {
         let ops = crate::ops();
-        for operands in operands() {
-            let query = query(operands, None, None, None);
+        for acc in accumulators() {
+            let query = Query::plain(acc, None, None, None);
             let all = ops.candidates(&query);
             let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
                 continue;
@@ -168,7 +140,7 @@ mod tests {
                 }
                 assert!(
                     matvecs.iter().any(|name| kept.contains(name)),
-                    "ranking kept {:?} of the {operands:?} packing group {:?} but dropped its \
+                    "ranking kept {:?} of the {acc:?} packing group {:?} but dropped its \
                      matvec kernels {matvecs:?}",
                     group
                         .iter()

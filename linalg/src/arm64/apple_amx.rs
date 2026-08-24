@@ -22,24 +22,35 @@ pub fn plug(ops: &mut Ops) {
         // tile padding and the AMX dispatch cost more than the NEON kernel's whole call. The
         // f16 side keeps a low-M NEON route on the same reasoning, at a threshold its own
         // kernels' 16-row tile sets.
-        ops.overlay_mmm_policy(|prev, dt, m, k, n| match (dt, n) {
+        ops.overlay_mmm_policy(|prev, dt, query, candidates| match (dt, query.n) {
             // The AMX 32x1 is dominated by the NEON 64x1 at every shape.
-            (crate::DatumType::F32, Some(1)) => Some(arm64simd_mmm_f32_64x1_gen.mmm()),
-            (crate::DatumType::F32, _) => {
-                let big_enough = m.is_some_and(|m| m >= 32) && n.is_some_and(|n| n >= 32);
-                Some(if big_enough {
-                    apple_amx_mmm_f32_32x32.mmm()
-                } else {
-                    arm64simd_mmm_f32_8x8_gen.mmm()
-                })
+            (crate::DatumType::F32, Some(1)) => {
+                candidate_named(candidates, &arm64simd_mmm_f32_64x1_gen.name)
             }
-            (crate::DatumType::F16, Some(1)) => Some(apple_amx_mmm_f16_64x1.mmm()),
-            (crate::DatumType::F16, _) => Some(if m.is_some_and(|m| m <= 16) {
-                arm64fp16_mmm_f16_16x8_gen.mmm()
-            } else {
-                apple_amx_mmm_f16_64x32.mmm()
-            }),
-            _ => prev(dt, m, k, n),
+            (crate::DatumType::F32, _) => {
+                let big_enough =
+                    query.m.is_some_and(|m| m >= 32) && query.n.is_some_and(|n| n >= 32);
+                candidate_named(
+                    candidates,
+                    if big_enough {
+                        &apple_amx_mmm_f32_32x32.name
+                    } else {
+                        &arm64simd_mmm_f32_8x8_gen.name
+                    },
+                )
+            }
+            (crate::DatumType::F16, Some(1)) => {
+                candidate_named(candidates, &apple_amx_mmm_f16_64x1.name)
+            }
+            (crate::DatumType::F16, _) => candidate_named(
+                candidates,
+                if query.m.is_some_and(|m| m <= 16) {
+                    &arm64fp16_mmm_f16_16x8_gen.name
+                } else {
+                    &apple_amx_mmm_f16_64x32.name
+                },
+            ),
+            _ => prev(dt, query, candidates),
         });
     } else {
         log::info!("No AMX optimisation");

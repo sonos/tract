@@ -97,22 +97,14 @@ pub use self::frame::*;
 
 use tract_data::prelude::*;
 
-pub type MMMImpl = Box<
-    dyn Fn(Option<usize>, Option<usize>, Option<usize>) -> Box<dyn mmm::MatMatMul> + Send + Sync,
->;
+/// One tier's answer within a policy: which of the candidates it would run, `None` to leave the
+/// query to the tier below.
+pub type MmmSelector = Box<dyn Fn(&[Candidate], &Query) -> Option<usize> + Send + Sync>;
 
-/// What a platform would run for an accumulator type and a shape, `None` for an accumulator it
-/// has no kernel family for. A `None` dim is one the caller could not pin.
-pub type MmmPolicy = Box<
-    dyn Fn(
-            DatumType,
-            Option<usize>,
-            Option<usize>,
-            Option<usize>,
-        ) -> Option<Box<dyn mmm::MatMatMul>>
-        + Send
-        + Sync,
->;
+/// Which of the candidates a platform would run for a query, `None` for a query it has no
+/// opinion on — an accumulator no arch plug claimed, or a shape whose kernel this build does not
+/// offer. The answer is an index, so a policy can only ever name a candidate the query reached.
+pub type MmmPolicy = Box<dyn Fn(DatumType, &Query, &[Candidate]) -> Option<usize> + Send + Sync>;
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
@@ -221,20 +213,17 @@ impl Ops {
     }
 
     /// The platform policy's choice among `candidates`, or `None` when it has no opinion —
-    /// no arch plug claimed this accumulator, the query is not the plain fully-pinned matmul
-    /// the policies reason about, or their answer is not on the list. A generic answer counts
-    /// as no opinion: `generic()` installs fixed kernels, so getting one back means no arch
-    /// plug ever overwrote that slot.
+    /// no arch plug claimed this accumulator, or the query is not the plain matmul the policies
+    /// reason about. A generic answer counts as no opinion: `generic()` installs fixed kernels,
+    /// so getting one back means no arch plug ever overwrote that slot.
     pub fn rank(&self, query: &Query, candidates: &[Candidate]) -> Option<usize> {
         let WeightType::Plain(weight) = &query.weight else { return None };
         if weight.unquantized() != query.activation.unquantized() {
             return None;
         }
-        let mmm = (self.mmm_policy)(*query.accumulators.first()?, query.m, query.k, query.n)?;
-        if mmm.quality() != ImplementationQuality::ManuallyOptimized {
-            return None;
-        }
-        candidates.iter().position(|(candidate, _, _)| candidate.name() == mmm.name())
+        let ix = (self.mmm_policy)(*query.accumulators.first()?, query, candidates)?;
+        let quality = candidates[ix].0.quality();
+        (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
     }
 
     /// One kernel for the query, for a caller that needs an answer now: the platform policy's
@@ -267,11 +256,21 @@ impl Ops {
         &self.panel_extractors
     }
 
-    /// This platform's policy, for a caller introspecting dispatch rather than performing it.
-    /// Selection itself goes through [`Ops::rank`] and [`Ops::pick`], which hold the policy to
-    /// the candidates it is allowed to name.
-    pub fn mmm_policy(&self) -> &MmmPolicy {
-        &self.mmm_policy
+    /// The kernel this platform's policy would run for a plain matmul of these dims, for a
+    /// caller introspecting dispatch rather than performing it. Unlike [`Ops::rank`] it reports
+    /// the policy's answer whatever its quality tier, and it never falls back on the portable
+    /// rules: `None` means the policy itself had nothing to say.
+    pub fn policy_pick(
+        &self,
+        accumulator: DatumType,
+        m: Option<usize>,
+        k: Option<usize>,
+        n: Option<usize>,
+    ) -> Option<Box<dyn mmm::MatMatMul>> {
+        let query = Query::plain(accumulator, m, k, n);
+        let candidates = self.candidates(&query);
+        let ix = (self.mmm_policy)(accumulator, &query, &candidates)?;
+        Some(candidates[ix].0.clone())
     }
 
     /// Put `f` in front of the policy: it answers the accumulators and shapes it claims, and
@@ -279,41 +278,34 @@ impl Ops {
     /// the tiers below it, and how a tier that speaks for one accumulator leaves the others be.
     pub fn overlay_mmm_policy(
         &mut self,
-        f: impl Fn(
-            &MmmPolicy,
-            DatumType,
-            Option<usize>,
-            Option<usize>,
-            Option<usize>,
-        ) -> Option<Box<dyn mmm::MatMatMul>>
-        + Send
-        + Sync
-        + 'static,
+        f: impl Fn(&MmmPolicy, DatumType, &Query, &[Candidate]) -> Option<usize> + Send + Sync + 'static,
     ) {
-        let prev = std::mem::replace(&mut self.mmm_policy, Box::new(|_, _, _, _| None));
-        self.mmm_policy = Box::new(move |dt, m, k, n| f(&prev, dt, m, k, n));
+        let prev = std::mem::replace(&mut self.mmm_policy, Box::new(|_, _, _| None));
+        self.mmm_policy = Box::new(move |dt, query, candidates| f(&prev, dt, query, candidates));
     }
 }
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
+    use crate::mmm::candidate_named;
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         mmm_impls: vec![],
         panel_extractors: vec![],
-        mmm_policy: Box::new(|dt, _, _, n| {
-            let vec = n == Some(1);
-            match dt {
-                DatumType::F64 if vec => Some(generic_f64_4x1.mmm()),
-                DatumType::F64 => Some(generic_f64_4x4.mmm()),
-                DatumType::F32 if vec => Some(generic_f32_4x1.mmm()),
-                DatumType::F32 => Some(generic_f32_4x4.mmm()),
-                DatumType::F16 if vec => Some(generic_f16_4x1.mmm()),
-                DatumType::F16 => Some(generic_f16_4x4.mmm()),
-                DatumType::I32 => Some(generic_i32_4x4.mmm()),
-                _ => None,
-            }
+        mmm_policy: Box::new(|dt, query, candidates| {
+            let vec = query.n == Some(1);
+            let name = match dt {
+                DatumType::F64 if vec => &generic_f64_4x1.name,
+                DatumType::F64 => &generic_f64_4x4.name,
+                DatumType::F32 if vec => &generic_f32_4x1.name,
+                DatumType::F32 => &generic_f32_4x4.name,
+                DatumType::F16 if vec => &generic_f16_4x1.name,
+                DatumType::F16 => &generic_f16_4x4.name,
+                DatumType::I32 => &generic_i32_4x4.name,
+                _ => return None,
+            };
+            candidate_named(candidates, name)
         }),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),

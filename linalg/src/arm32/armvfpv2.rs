@@ -8,8 +8,8 @@ MMMExternKernel!(arm; armvfpv2_mmm_f32_4x4<f32>(4, 4)@(4, 4) quality(ManuallyOpt
 
 pub fn plug(ops: &mut Ops) {
     log::info!("armvfpv2 activated for smmm");
-    ops.overlay_mmm_policy(|prev, dt, m, k, n| match dt {
-        DatumType::F32 => Some(armvfpv2_mmm_f32_4x4.mmm()),
-        _ => prev(dt, m, k, n),
+    ops.overlay_mmm_policy(|prev, dt, query, candidates| match dt {
+        DatumType::F32 => candidate_named(candidates, &armvfpv2_mmm_f32_4x4.name),
+        _ => prev(dt, query, candidates),
     });
 }

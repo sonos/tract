@@ -758,7 +758,7 @@ fn regen(r: Regen) -> TractResult<()> {
         new_sum += km[newk];
         new_orc += oracle;
         worst_new = worst_new.max(km[newk] / oracle);
-        match (tract_linalg::ops().mmm_policy())(dt, Some(m), Some(k), Some(n)) {
+        match tract_linalg::ops().policy_pick(dt, Some(m), Some(k), Some(n)) {
             Some(cur) if km.contains_key(cur.name()) => {
                 let cd = km[cur.name()];
                 cur_sum += cd;
