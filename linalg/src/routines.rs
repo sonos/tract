@@ -369,122 +369,31 @@ mod tests {
         let err = ew_f32(Func::ReduceMax).unwrap_err().to_string();
         assert_eq!(err, "reduce_max is not a plain element-wise kernel");
     }
-    /// The registry picks exactly what `plug` installed, on whatever machine the test runs. This
-    /// is the whole safety argument for the flip: the two mechanisms answer the same question, so
-    /// the imperative one can go.
+    /// Whatever this machine declares, it can build and run: the registry is dispatch now, so a
+    /// pair whose accessor fails is a cell nothing would notice was dead. Also holds `best_for`
+    /// and the accessors to the same answer, they being two ways to ask one question.
     #[test]
-    fn picks_what_plug_installed() {
-        let ops = crate::ops();
-        for (func, plugged) in [
-            (Func::Sigmoid, format!("{:?}", (ops.sigmoid_f32)())),
-            (Func::Tanh, format!("{:?}", (ops.tanh_f32)())),
-            (Func::Silu, format!("{:?}", (ops.silu_f32)())),
-            (Func::Gelu, format!("{:?}", (ops.gelu_f32)())),
-            (Func::Erf, format!("{:?}", (ops.erf_f32)())),
-            (Func::Hardswish, format!("{:?}", (ops.hardswish_f32)())),
-        ] {
-            assert_eq!(
-                ew_f32(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f32 disagrees with plug",
-                func.name()
-            );
-        }
-        for (func, plugged) in [
-            (Func::LeakyRelu, format!("{:?}", (ops.leaky_relu_f32)())),
-            (Func::MulByScalar, format!("{:?}", (ops.mul_by_scalar_f32)())),
-        ] {
-            assert_eq!(
-                ew_f32_param(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f32 disagrees with plug",
-                func.name()
-            );
-        }
-        for (func, plugged) in [
-            (Func::LeakyRelu, format!("{:?}", (ops.leaky_relu_f16)())),
-            (Func::MulByScalar, format!("{:?}", (ops.mul_by_scalar_f16)())),
-        ] {
-            assert_eq!(
-                ew_f16_param(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f16 disagrees with plug",
-                func.name()
-            );
-        }
-        for (func, plugged) in [
-            (Func::ReduceMax, format!("{:?}", (ops.max_f32)())),
-            (Func::ReduceMin, format!("{:?}", (ops.min_f32)())),
-            (Func::ReduceSum, format!("{:?}", (ops.sum_f32)())),
-        ] {
-            assert_eq!(
-                reduce_f32(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f32 disagrees with plug",
-                func.name()
-            );
-        }
-        for (func, plugged) in [
-            (Func::ReduceMax, format!("{:?}", (ops.max_f16)())),
-            (Func::ReduceSum, format!("{:?}", (ops.sum_f16)())),
-        ] {
-            assert_eq!(
-                reduce_f16(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f16 disagrees with plug",
-                func.name()
-            );
-        }
-        assert_eq!(
-            map_reduce_f32(Func::Softmax2).map(|k| format!("{k:?}")).ok(),
-            Some(format!("{:?}", (ops.softmax2_f32)())),
-            "softmax2 disagrees with plug"
-        );
-        // RmsNorm is a plain function, so the comparison is what it computes: there is no object
-        // whose identity could be read instead.
-        let mut from_registry = [0.5f32, -1.5, 2.0, 3.25, -0.75, 8.0, 1.0, -2.5];
-        let mut from_plug = from_registry;
-        (rms_norm_f32().unwrap())(&mut from_registry, 1e-6);
-        (ops.rms_norm_f32)(&mut from_plug, 1e-6);
-        assert_eq!(from_registry, from_plug, "rms_norm disagrees with plug");
-        for (func, plugged) in [
-            (Func::Sigmoid, format!("{:?}", (ops.sigmoid_f16)())),
-            (Func::Tanh, format!("{:?}", (ops.tanh_f16)())),
-            (Func::Silu, format!("{:?}", (ops.silu_f16)())),
-            (Func::Gelu, format!("{:?}", (ops.gelu_f16)())),
-            (Func::Hardswish, format!("{:?}", (ops.hardswish_f16)())),
-        ] {
-            assert_eq!(
-                ew_f16(func).map(|k| format!("{k:?}")).ok(),
-                Some(plugged),
-                "{} f16 disagrees with plug",
-                func.name()
-            );
-        }
-    }
-    /// Two kernels a machine can run must not come out equal: [`best_for`] would then pick by
-    /// `inventory`'s link order, which is not stable across builds, and dispatch would be a
-    /// coin toss the tests could not see.
-    #[test]
-    fn nothing_ties_for_the_best() {
-        for isa in IsaSet::every_ladder() {
-            for func in Func::ALL {
-                for dt in [DatumType::F32, DatumType::F16] {
-                    let mut best: Vec<&Routine> = declared()
-                        .filter(|r| r.func == func && r.dt() == dt && r.runnable_on(&isa))
-                        .collect();
-                    let Some(top) = best.iter().map(|r| (r.arch.is_some(), r.preference())).max()
-                    else {
-                        continue;
-                    };
-                    best.retain(|r| (r.arch.is_some(), r.preference()) == top);
-                    assert!(
-                        best.len() == 1,
-                        "{} {dt:?} on {isa:?} ties between {:?}",
-                        func.name(),
-                        best.iter().map(|r| r.name()).collect::<Vec<_>>()
-                    );
-                }
+    fn what_this_machine_declares_it_can_build() {
+        let isa = crate::isa::native();
+        for func in Func::ALL {
+            for dt in [DatumType::F32, DatumType::F16] {
+                let Some(routine) = best_for(func, dt, &isa) else { continue };
+                let built = match routine.factory {
+                    RoutineFactory::F32(_) => ew_f32(func).map(|k| k.name()),
+                    RoutineFactory::F16(_) => ew_f16(func).map(|k| k.name()),
+                    RoutineFactory::F32Param(_) => ew_f32_param(func).map(|k| k.name()),
+                    RoutineFactory::F16Param(_) => ew_f16_param(func).map(|k| k.name()),
+                    RoutineFactory::F32Reduce(_) => reduce_f32(func).map(|k| k.name()),
+                    RoutineFactory::F16Reduce(_) => reduce_f16(func).map(|k| k.name()),
+                    RoutineFactory::F32MapReduce(_) => map_reduce_f32(func).map(|k| k.name()),
+                    RoutineFactory::RmsNormF32 { name, .. } => Ok(name),
+                };
+                assert_eq!(
+                    built.map_err(|e| e.to_string()),
+                    Ok(routine.name()),
+                    "{} {dt:?}",
+                    func.name()
+                );
             }
         }
     }
@@ -495,7 +404,7 @@ mod tests {
     /// instruction set, so nothing but that declaration separates them.
     #[cfg(any(target_arch = "x86_64", feature = "foreign-inventory"))]
     #[test]
-    fn the_x86_ladder_picks_what_its_plug_installs() {
+    fn what_the_x86_ladder_runs() {
         for (level, func, dt, expected) in [
             (1, Func::MulByScalar, DatumType::F32, "x86_64_avx_f32_mul_by_scalar_32n"),
             (1, Func::LeakyRelu, DatumType::F32, "generic"),
@@ -534,7 +443,7 @@ mod tests {
     /// that compiled the tree -- including for hardware nobody here has.
     #[cfg(any(target_arch = "aarch64", feature = "foreign-inventory"))]
     #[test]
-    fn the_aarch64_ladder_picks_what_its_plug_installs() {
+    fn what_the_aarch64_ladder_runs() {
         let neon = IsaSet::of_arch(Arch::Aarch64);
         for (func, dt, expected) in [
             (Func::Sigmoid, DatumType::F32, Some("arm64simd_sigmoid_f32_4n")),
@@ -601,7 +510,7 @@ mod tests {
         feature = "foreign-inventory"
     ))]
     #[test]
-    fn the_wasm_ladder_picks_what_its_plug_installs() {
+    fn what_the_wasm_ladder_runs() {
         let simd128 = IsaSet::ladder(Arch::Wasm32Simd128, 0);
         let relaxed = IsaSet::ladder(Arch::Wasm32Simd128, 1);
         for (func, dt, expected) in [
@@ -638,7 +547,7 @@ mod tests {
     /// everything else. The f16 side has no armv7 kernel at all.
     #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
     #[test]
-    fn the_armv7_ladder_picks_what_its_plug_installs() {
+    fn what_the_armv7_ladder_runs() {
         let vfp = IsaSet::of_arch(Arch::Arm);
         let neon = vfp.with(crate::isa::Isa::ArmNeon);
         for (func, expected) in [

@@ -4,10 +4,11 @@ use crate::ops::math::Mul;
 use crate::ops::nn::Sigmoid;
 
 use tract_data::half::f16;
+use tract_linalg::routines::{Func, ew_f16, ew_f32};
 
 element_wise!(silu, Silu,
-    [f16] => |_, xs| { (tract_linalg::ops().silu_f16)().run(xs) },
-    [f32] => |_, xs| { (tract_linalg::ops().silu_f32)().run(xs) };
+    [f16] => |_, xs| { ew_f16(Func::Silu)?.run(xs) },
+    [f32] => |_, xs| { ew_f32(Func::Silu)?.run(xs) };
     cost: |dt| {tvec!((Cost::FMA(dt), 12), (Cost::Div(dt), 1))};
     declutter: detect_silu
 );

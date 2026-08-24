@@ -50,7 +50,7 @@ impl EvalOp for RmsNorm {
             let row_len = buf.shape()[self.axis];
             if row_len > 0 {
                 let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
-                let rms_norm = &tract_linalg::ops().rms_norm_f32;
+                let rms_norm = tract_linalg::routines::rms_norm_f32()?;
                 let total = data.len();
                 tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
                     for row in chunk.chunks_mut(row_len) {
@@ -249,7 +249,7 @@ mod tests {
     }
 
     /// Slow path: when the normalised axis is NOT the trailing one, the fast
-    /// path in `eval` (which dispatches to `tract_linalg::ops().rms_norm_f32`)
+    /// path in `eval` (which dispatches to `tract_linalg::routines::rms_norm_f32`)
     /// is skipped and the original 4-call `MeanOfSquares` + `Add` + `Rsqrt` +
     /// `Mul` composition runs. Asserts the result is identical to a hand-
     /// computed reference, so the slow path stays correct after the fast-path

@@ -111,40 +111,7 @@ pub struct Ops {
     runnable: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
 
-    pub leaky_relu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
-    pub leaky_relu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
-    pub mul_by_scalar_f32:
-        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32, f32>> + Send + Sync>,
-    pub mul_by_scalar_f16:
-        Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16, f16>> + Send + Sync>,
-
-    pub sigmoid_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub sigmoid_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub tanh_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub tanh_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub erf_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub hardswish_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub hardswish_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub silu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub silu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
-    pub gelu_f16: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f16>> + Send + Sync>,
-    pub gelu_f32: Box<dyn Fn() -> Box<dyn element_wise::ElementWise<f32>> + Send + Sync>,
     pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
-
-    pub max_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
-    pub max_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-    pub min_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-
-    pub sum_f16: Box<dyn Fn() -> Box<dyn reduce::Reduce<f16>> + Send + Sync>,
-    pub sum_f32: Box<dyn Fn() -> Box<dyn reduce::Reduce<f32>> + Send + Sync>,
-
-    pub softmax2_f32: Box<dyn Fn() -> Box<dyn reduce::MapReduce<f32, f32>> + Send + Sync>,
-
-    /// Fused row-wise RmsNorm: out_i = x_i * rsqrt(mean(x_i²) + eps).
-    /// Replaces a 4-call composition (MeanOfSquares + Add + Rsqrt + Mul) with
-    /// a single 2-pass kernel. Called once per row by `core::ops::nn::RmsNorm`
-    /// when the input is f32 and the axis is the last (contiguous) one.
-    pub rms_norm_f32: Box<dyn Fn(&mut [f32], f32) + Send + Sync>,
 }
 
 impl Ops {
@@ -317,39 +284,15 @@ inventory::submit! {
 /// speak for it. Both are functions of the platform, so mmm dispatch is settled here; what an
 /// arch `plug` still adds is the non-mmm kernel slots.
 pub fn generic_for(isa: IsaSet) -> Ops {
-    use element_wise::ElementWiseKer;
-    use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         isa,
         tiers: mmm_tiers::for_isa(&isa),
         runnable: vec![],
         panel_extractors: vec![],
-        leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
-        leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),
-        mul_by_scalar_f16: Box::new(|| generic::HMulByScalar8::ew()),
-        mul_by_scalar_f32: Box::new(|| generic::SMulByScalar4::ew()),
-        sigmoid_f16: Box::new(|| generic::HSigmoid8::ew()),
-        sigmoid_f32: Box::new(|| generic::SSigmoid4::ew()),
-        tanh_f16: Box::new(|| generic::HTanh8::ew()),
-        tanh_f32: Box::new(|| generic::STanh4::ew()),
-        erf_f32: Box::new(|| generic::SErf4::ew()),
-        hardswish_f16: Box::new(|| generic::HHardSwish8::ew()),
-        hardswish_f32: Box::new(|| generic::SHardSwish4::ew()),
-        silu_f16: Box::new(|| generic::HSiLU8::ew()),
-        silu_f32: Box::new(|| generic::SSiLU4::ew()),
-        gelu_f16: Box::new(|| generic::HGelu8::ew()),
-        gelu_f32: Box::new(|| generic::SGelu4::ew()),
         lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
-        max_f16: Box::new(|| generic::reduce::max::HMax8::red()),
-        max_f32: Box::new(|| generic::reduce::max::SMax4::red()),
-        min_f32: Box::new(|| generic::reduce::min::SMin4::red()),
-        sum_f16: Box::new(|| generic::reduce::sum::HSum8::red()),
-        sum_f32: Box::new(|| generic::reduce::sum::SSum4::red()),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
-        softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
-        rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
     ops.runnable = match isa.arch() {
         Some(target) => mmm_routines::runnable_for(target),
@@ -395,10 +338,14 @@ pub fn best() -> Ops {
 /// `TRACT_CPU_ISA`, which is checked against this architecture rather than the host's. `None` when
 /// the architecture's tree was not compiled in; see the `foreign-inventory` feature.
 pub fn inspect(arch: Arch) -> Option<Ops> {
-    let plug = arch_plugs().find(|p| p.arch == arch)?;
+    if !mmm_routines::declared().any(|r| r.target == Some(arch)) {
+        return None;
+    }
     let isa = if arch.is_native() { isa::native() } else { isa::forced(IsaSet::of_arch(arch)) };
     let mut ops = generic_for(isa);
-    (plug.plug)(&mut ops);
+    for plug in arch_plugs().filter(|p| p.arch == arch) {
+        (plug.plug)(&mut ops);
+    }
     Some(ops)
 }
 

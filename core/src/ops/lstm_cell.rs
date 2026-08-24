@@ -1,5 +1,6 @@
 use crate::internal::*;
 use tract_linalg::element_wise::ElementWise;
+use tract_linalg::routines::{Func, ew_f16, ew_f32};
 
 /// Fused LSTM cell epilogue.
 ///
@@ -47,10 +48,13 @@ impl EvalOp for LstmEpilogue {
         // whole float graph (including this op's inputs) to f16, so we must run
         // in whichever float type actually arrives — reading an f16 buffer as
         // f32 would walk off the end of the allocation.
-        let ops = tract_linalg::ops();
         match inputs[0].datum_type().unquantized() {
-            DatumType::F32 => self.eval_t::<f32>(inputs, (ops.sigmoid_f32)(), (ops.tanh_f32)()),
-            DatumType::F16 => self.eval_t::<f16>(inputs, (ops.sigmoid_f16)(), (ops.tanh_f16)()),
+            DatumType::F32 => {
+                self.eval_t::<f32>(inputs, ew_f32(Func::Sigmoid)?, ew_f32(Func::Tanh)?)
+            }
+            DatumType::F16 => {
+                self.eval_t::<f16>(inputs, ew_f16(Func::Sigmoid)?, ew_f16(Func::Tanh)?)
+            }
             dt => bail!("LstmEpilogue only supports f32 and f16 preactivations, got {dt:?}"),
         }
     }
