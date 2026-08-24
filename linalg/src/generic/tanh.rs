@@ -4,14 +4,16 @@ use tract_data::internal::*;
 
 /// f32 tanh, as a rational minimax fit of `tanh` over `[LOW, HIGH]`.
 ///
-/// The quotient is clamped to `[-1, 1]` to keep the range consumers rely on. Across the
-/// top of the input range the correctly rounded result is already within one ulp of `±1`
-/// — `1 - tanh(8.9)` is `3.7e-8`, under the `2^-24` f32 step just below 1 — while the two
-/// Horner chains and the division leave a few ulps of relative error, so an upward
-/// rounding lands on `±(1 + 2^-22)`. NaN still propagates.
+/// The clamp keeps the `[-1, 1]` range consumers rely on without an output clamp: the two
+/// Horner chains and the division leave a few ulps of relative error, and the largest
+/// quotient any f32 input produces stays seven f32 steps under 1. It costs the tails their
+/// last few ulps — a saturated input returns `±(1 - 6.1e-7)`, not `±1`. NaN propagates.
+///
+/// Raising the clamp voids this: `1 - tanh(8.18)` is already under the rounding error, so
+/// the quotient crosses 1 at scattered inputs from there up.
 pub fn stanh(x: f32) -> f32 {
-    const LOW: f32 = -8.9;
-    const HIGH: f32 = 8.9;
+    const LOW: f32 = -7.5;
+    const HIGH: f32 = 7.5;
 
     const ALPHA_13: f32 = -8.488492677e-14;
     const ALPHA_11: f32 = 5.277853000e-11;
@@ -44,13 +46,13 @@ pub fn stanh(x: f32) -> f32 {
     let q = x2 * q + BETA_2;
     let q = x2 * q + BETA_0;
 
-    (p / q).clamp(-1.0, 1.0)
+    p / q
 }
 
 /// f16 tanh, as a rational minimax fit of `tanh` over `[LOW, HIGH]`.
 ///
-/// Needs no output clamp, unlike [`stanh`]: `1 - tanh(3.84)` is `9.3e-4`, about two f16
-/// steps below 1, so the quotient keeps its margin for every f16 input.
+/// Needs no output clamp, like [`stanh`]: `1 - tanh(3.84)` is `9.3e-4`, about two
+/// f16 steps below 1, so the quotient keeps its margin for every f16 input.
 pub fn htanh(x: f16) -> f16 {
     const LOW: f16 = f16::from_f32_const(-3.84);
     const HIGH: f16 = f16::from_f32_const(3.84);
