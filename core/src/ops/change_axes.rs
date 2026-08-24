@@ -1094,6 +1094,14 @@ pub fn compute_shape_with_onnx_rules(
             );
         }
     }
+    // Neither branch above rules a negative out: -1 resolves only the first, and comparing
+    // volumes accepts one when a dimension is zero, as -2 * 0 == 3 * 0.
+    if let Some(bad) = shape.iter().position(|d| d.as_i64().map(|d| d < 0).unwrap_or(false)) {
+        bail!(
+            "Reshape: dimension {bad} of target shape {shape_spec:?} is still negative after \
+             inference (resolved to {shape:?}); at most one dimension may be -1"
+        )
+    }
     Ok(shape)
 }
 
@@ -1739,6 +1747,41 @@ mod proptests {
             &*compute_shape_with_onnx_rules(s![0, 3, 4], s!(3, 4, 0), true).unwrap(),
             s![3, 4, 0]
         )
+    }
+
+    #[test]
+    fn compute_rejects_two_inferred_dims() {
+        assert!(compute_shape_with_tf_rules(s![2, 3, 4], s!(-1, -1)).is_err())
+    }
+
+    #[test]
+    fn compute_rejects_three_inferred_dims() {
+        assert!(compute_shape_with_tf_rules(s![2, 3, 4], s!(-1, -1, -1)).is_err())
+    }
+
+    #[test]
+    fn compute_rejects_inferred_dim_beside_other_negative() {
+        assert!(compute_shape_with_tf_rules(s![2, 3, 4], s!(-1, -2)).is_err());
+        assert!(compute_shape_with_tf_rules(s![2, 3, 4], s!(-2, -1)).is_err())
+    }
+
+    #[test]
+    fn compute_rejects_negative_that_survives_the_volume_check() {
+        assert!(compute_shape_with_tf_rules(s![3, 0], s!(-2, 0)).is_err())
+    }
+
+    #[test]
+    fn compute_still_infers_a_single_dim() {
+        assert_eq!(&*compute_shape_with_tf_rules(s![2, 3, 4], s!(-1)).unwrap(), s![24]);
+        assert_eq!(&*compute_shape_with_tf_rules(s![2, 3, 4], s!(2, -1)).unwrap(), s![2, 12]);
+        assert_eq!(&*compute_shape_with_tf_rules(s![3, 0], s!(-1)).unwrap(), s![0]);
+    }
+
+    #[test]
+    fn compute_leaves_symbolic_dims_alone() {
+        let table = SymbolScope::default();
+        let s = table.new_with_prefix("S");
+        assert_eq!(&*compute_shape_with_tf_rules(s![s, 2, 128], s!(0, -1)).unwrap(), s![s, 256]);
     }
 
     #[test]
