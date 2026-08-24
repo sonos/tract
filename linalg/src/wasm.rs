@@ -37,7 +37,7 @@ pub use mmm_i32::*;
 /// pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1, a matrix×vector
 /// kernel, for every GEMM.
 fn preferred(
-    _platform: &crate::mmm_tiers::Platform,
+    _isa: &crate::isa::IsaSet,
     dt: DatumType,
     query: &crate::mmm::Query,
     suitable: &[crate::mmm::Suitable],
@@ -67,7 +67,7 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Wasm32Simd128),
+        arch: Some(crate::platform::Arch::Wasm32Simd128),
         precedence: 1,
         name: "wasm-simd128",
         applies: |_| true,
@@ -93,8 +93,8 @@ pub fn plug(ops: &mut Ops) {
 }
 
 inventory::submit! {
-    crate::platform::PlatformSelector {
-        target: crate::platform::Target::Wasm32Simd128,
+    crate::platform::ArchPlug {
+        arch: crate::platform::Arch::Wasm32Simd128,
         plug,
     }
 }

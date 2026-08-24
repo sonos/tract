@@ -210,7 +210,7 @@ pub fn rdvl_bytes() -> u64 {
 /// reads through the instruction set.
 #[cfg(tract_sve)]
 fn sve2_preferred(
-    _platform: &crate::mmm_tiers::Platform,
+    _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
     query: &crate::mmm::Query,
     suitable: &[crate::mmm::Suitable],
@@ -227,10 +227,10 @@ fn sve2_preferred(
 #[cfg(tract_sve)]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 6,
         name: "sve2",
-        applies: |p| p.isa.has(crate::isa::Isa::Sve2),
+        applies: |isa| isa.has(crate::isa::Isa::Sve2),
         preferred: sve2_preferred,
     }
 }
@@ -239,7 +239,7 @@ inventory::submit! {
 /// an accepted +fp16/+fullfp16 -march spelling (tract_sve_fp16).
 #[cfg(tract_sve_fp16)]
 fn sve2_fp16_preferred(
-    _platform: &crate::mmm_tiers::Platform,
+    _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
     query: &crate::mmm::Query,
     suitable: &[crate::mmm::Suitable],
@@ -254,10 +254,10 @@ fn sve2_fp16_preferred(
 #[cfg(tract_sve_fp16)]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 7,
         name: "sve2-fp16",
-        applies: |p| p.isa.has(crate::isa::Isa::Sve2) && p.isa.has(crate::isa::Isa::Fp16),
+        applies: |isa| isa.has(crate::isa::Isa::Sve2) && isa.has(crate::isa::Isa::Fp16),
         preferred: sve2_fp16_preferred,
     }
 }

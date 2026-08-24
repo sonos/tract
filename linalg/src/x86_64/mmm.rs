@@ -1,14 +1,15 @@
 use crate::DatumType;
 use crate::block_quant::*;
 use crate::isa::Isa;
+use crate::isa::IsaSet;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::MatMatMul;
 use crate::mmm::{Query, Suitable, suitable_named};
-use crate::mmm_tiers::{MmmTier, Platform};
+use crate::mmm_tiers::MmmTier;
 use crate::pack::PackedFormat;
 #[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
 use crate::pack::PackedI8K4;
-use crate::platform::Target;
+use crate::platform::Arch;
 
 #[cfg(tract_amx_int8)]
 use super::amx::PackedAmxA;
@@ -273,7 +274,7 @@ MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(Avx512
 /// fine; the choice is about filling the 16-wide M/N tile.)
 #[cfg(tract_avx512vnni)]
 fn avx512vnni_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -301,12 +302,12 @@ fn avx512vnni_preferred(
 #[cfg(tract_avx512vnni)]
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 6,
         name: "avx512vnni",
-        applies: |p| {
-            p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma) && p.isa.has(Isa::Avx512f)
-                && p.isa.has(Isa::Avx512Vnni)
+        applies: |isa| {
+            isa.has(Isa::Avx2) && isa.has(Isa::Fma) && isa.has(Isa::Avx512f)
+                && isa.has(Isa::Avx512Vnni)
         },
         preferred: avx512vnni_preferred,
     }
@@ -316,7 +317,7 @@ inventory::submit! {
 /// emulation below it. Big cores that also have AVX-512-VNNI answer from the higher tier.
 #[cfg(tract_avxvnni)]
 fn avxvnni_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -331,10 +332,10 @@ fn avxvnni_preferred(
 #[cfg(tract_avxvnni)]
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 3,
         name: "avxvnni",
-        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::AvxVnni),
+        applies: |isa| isa.has(Isa::Avx2) && isa.has(Isa::AvxVnni),
         preferred: avxvnni_preferred,
     }
 }
@@ -345,7 +346,7 @@ inventory::submit! {
 /// tiles waste less work, and this tier declines so they answer.
 #[cfg(tract_amx_bf16)]
 fn amx_bf16_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -364,15 +365,15 @@ fn amx_bf16_preferred(
 #[cfg(tract_amx_bf16)]
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 8,
         name: "avx512amx-bf16",
-        applies: |p| {
+        applies: |isa| {
             crate::knobs::TRACT_AMX_BF16.get()
-                && p.isa.has(Isa::Avx2)
-                && p.isa.has(Isa::Fma)
-                && p.isa.has(Isa::Avx512f)
-                && p.isa.has(Isa::AmxBf16)
+                && isa.has(Isa::Avx2)
+                && isa.has(Isa::Fma)
+                && isa.has(Isa::Avx512f)
+                && isa.has(Isa::AmxBf16)
         },
         preferred: amx_bf16_preferred,
     }
@@ -386,7 +387,7 @@ inventory::submit! {
 /// similar shape-based MR/NR selection for its BRGEMM ukernel variants.
 #[cfg(tract_amx_int8)]
 fn amx_int8_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -411,22 +412,22 @@ fn amx_int8_preferred(
 #[cfg(tract_amx_int8)]
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 7,
         name: "avx512amx-int8",
-        applies: |p| {
-            p.isa.has(Isa::Avx2)
-                && p.isa.has(Isa::Fma)
-                && p.isa.has(Isa::Avx512f)
-                && p.isa.has(Isa::Avx512Vnni)
-                && p.isa.has(Isa::AmxInt8)
+        applies: |isa| {
+            isa.has(Isa::Avx2)
+                && isa.has(Isa::Fma)
+                && isa.has(Isa::Avx512f)
+                && isa.has(Isa::Avx512Vnni)
+                && isa.has(Isa::AmxInt8)
         },
         preferred: amx_int8_preferred,
     }
 }
 
 fn avx2_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -440,10 +441,10 @@ fn avx2_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 2,
         name: "avx2",
-        applies: |p| p.isa.has(Isa::Avx2),
+        applies: |isa| isa.has(Isa::Avx2),
         preferred: avx2_preferred,
     }
 }
@@ -462,7 +463,7 @@ const AVX_CHOICES: &[KernelChoice] = &[
 /// ladder, so wherever the fma tier can answer it does, and this one is only reached when it
 /// cannot.
 fn avx_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -487,10 +488,10 @@ fn avx_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 1,
         name: "avx",
-        applies: |p| p.isa.has(Isa::Avx),
+        applies: |isa| isa.has(Isa::Avx),
         preferred: avx_preferred,
     }
 }
@@ -529,7 +530,7 @@ fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
 }
 
 fn fma_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -546,10 +547,10 @@ fn fma_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 4,
         name: "fma",
-        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma),
+        applies: |isa| isa.has(Isa::Avx2) && isa.has(Isa::Fma),
         preferred: fma_preferred,
     }
 }
@@ -614,7 +615,7 @@ fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
 }
 
 fn avx512f_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -628,10 +629,10 @@ fn avx512f_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: Some(Target::X86_64),
+        arch: Some(Arch::X86_64),
         precedence: 5,
         name: "avx512f",
-        applies: |p| p.isa.has(Isa::Avx2) && p.isa.has(Isa::Fma) && p.isa.has(Isa::Avx512f),
+        applies: |isa| isa.has(Isa::Avx2) && isa.has(Isa::Fma) && isa.has(Isa::Avx512f),
         preferred: avx512f_preferred,
     }
 }
