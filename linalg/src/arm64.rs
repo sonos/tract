@@ -546,9 +546,12 @@ pub fn plug(ops: &mut Ops) {
     }
     sve::plug(ops);
 
-    // Per-chip Apple f32 matmul cost model, installed last so it takes precedence
-    // over the apple_amx heuristic and the always-SME default. Only chips with a
-    // fitted model override; others keep the dispatch set above.
+    // Per-chip Apple f32 matmul cost model, installed last so it refines the apple_amx
+    // heuristic and the always-SME default wherever the shape is pinned. Which chip this is
+    // and what the chip can run are separate questions: the model is fitted per
+    // microarchitecture, and whether its AMX or SME cohort is runnable here is the instruction
+    // set's business — on a virtualised host the same model still speaks for the NEON kernels
+    // it was fitted over.
     #[cfg(target_os = "macos")]
     {
         let model = match apple_chip() {
@@ -558,12 +561,17 @@ pub fn plug(ops: &mut Ops) {
         };
         if let Some(model) = model {
             log::info!("Apple per-chip matmul LinearCostModel activated");
-            ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
-                (DatumType::F32, Some(1)) => prev(dt, query, candidates),
-                (DatumType::F32, _) => model
+            ops.overlay_mmm_policy(move |prev, dt, query, candidates| {
+                // Every term the model weighs is a shape term, so a dim the caller could not
+                // pin leaves it nothing to say. The tier below states what a wide AMX or SME
+                // tile is worth at an unknown shape — that answer is the one to keep.
+                let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
+                if dt != DatumType::F32 || query.n == Some(1) || !pinned {
+                    return prev(dt, query, candidates);
+                }
+                model
                     .preferred(candidates, query.m, query.k, query.n)
-                    .or_else(|| prev(dt, query, candidates)),
-                _ => prev(dt, query, candidates),
+                    .or_else(|| prev(dt, query, candidates))
             });
         }
     }
