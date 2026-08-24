@@ -415,7 +415,7 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 fn neon_qmmm_i32(isa: &IsaSet, _suitable: &[Suitable]) -> Option<&'static str> {
     let _ = isa;
     #[cfg(tract_arm64_dotprod)]
-    if platform.isa.has(Isa::Aarch64DotProd) {
+    if isa.has(Isa::Aarch64DotProd) {
         return Some(arm64simd_mmm_i32_8x8_dot.name.as_str());
     }
     Some(arm64simd_mmm_i32_8x8.name.as_str())
