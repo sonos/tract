@@ -31,11 +31,21 @@ pub enum Func {
     Gelu,
     Erf,
     HardSwish,
+    LeakyRelu,
+    MulByScalar,
 }
 
 impl Func {
-    pub const ALL: [Func; 6] =
-        [Func::Sigmoid, Func::Tanh, Func::Silu, Func::Gelu, Func::Erf, Func::HardSwish];
+    pub const ALL: [Func; 8] = [
+        Func::Sigmoid,
+        Func::Tanh,
+        Func::Silu,
+        Func::Gelu,
+        Func::Erf,
+        Func::HardSwish,
+        Func::LeakyRelu,
+        Func::MulByScalar,
+    ];
 
     /// The name the matrix and the logs use.
     pub fn name(&self) -> &'static str {
@@ -46,6 +56,8 @@ impl Func {
             Func::Gelu => "gelu",
             Func::Erf => "erf",
             Func::HardSwish => "hardswish",
+            Func::LeakyRelu => "leaky_relu",
+            Func::MulByScalar => "mul_by_scalar",
         }
     }
 }
@@ -56,6 +68,9 @@ impl Func {
 pub enum RoutineFactory {
     F32(fn() -> Box<dyn ElementWise<f32>>),
     F16(fn() -> Box<dyn ElementWise<f16>>),
+    /// A kernel taking one scalar of its own datum type, applied to every element.
+    F32Param(fn() -> Box<dyn ElementWise<f32, f32>>),
+    F16Param(fn() -> Box<dyn ElementWise<f16, f16>>),
 }
 
 /// One kernel, enumerable uniformly on every host.
@@ -79,8 +94,8 @@ inventory::collect!(Routine);
 impl Routine {
     pub fn dt(&self) -> DatumType {
         match self.factory {
-            RoutineFactory::F32(_) => DatumType::F32,
-            RoutineFactory::F16(_) => DatumType::F16,
+            RoutineFactory::F32(_) | RoutineFactory::F32Param(_) => DatumType::F32,
+            RoutineFactory::F16(_) | RoutineFactory::F16Param(_) => DatumType::F16,
         }
     }
 
@@ -91,6 +106,8 @@ impl Routine {
         match self.factory {
             RoutineFactory::F32(f) => f().name(),
             RoutineFactory::F16(f) => f().name(),
+            RoutineFactory::F32Param(f) => f().name(),
+            RoutineFactory::F16Param(f) => f().name(),
         }
     }
 
@@ -136,8 +153,10 @@ fn best_here(func: Func, dt: DatumType) -> TractResult<&'static Routine> {
 pub fn ew_f32(func: Func) -> TractResult<Box<dyn ElementWise<f32>>> {
     match best_here(func, DatumType::F32)?.factory {
         RoutineFactory::F32(f) => Ok(f()),
-        // `Routine::dt` reads the arm, and `best_for` filtered on it.
-        RoutineFactory::F16(_) => unreachable!(),
+        // `Routine::dt` reads the arm, so `best_for` already filtered the datum type. The
+        // shape it cannot filter: asking a scalar-parameter routine for a plain one is a
+        // caller's mistake, not a missing kernel.
+        _ => bail!("{} takes a scalar parameter", func.name()),
     }
 }
 
@@ -145,7 +164,23 @@ pub fn ew_f32(func: Func) -> TractResult<Box<dyn ElementWise<f32>>> {
 pub fn ew_f16(func: Func) -> TractResult<Box<dyn ElementWise<f16>>> {
     match best_here(func, DatumType::F16)?.factory {
         RoutineFactory::F16(f) => Ok(f()),
-        RoutineFactory::F32(_) => unreachable!(),
+        _ => bail!("{} takes a scalar parameter", func.name()),
+    }
+}
+
+/// The f32 kernel this host runs for `func`, which takes a scalar parameter.
+pub fn ew_f32_param(func: Func) -> TractResult<Box<dyn ElementWise<f32, f32>>> {
+    match best_here(func, DatumType::F32)?.factory {
+        RoutineFactory::F32Param(f) => Ok(f()),
+        _ => bail!("{} takes no scalar parameter", func.name()),
+    }
+}
+
+/// The f16 kernel this host runs for `func`, which takes a scalar parameter.
+pub fn ew_f16_param(func: Func) -> TractResult<Box<dyn ElementWise<f16, f16>>> {
+    match best_here(func, DatumType::F16)?.factory {
+        RoutineFactory::F16Param(f) => Ok(f()),
+        _ => bail!("{} takes no scalar parameter", func.name()),
     }
 }
 
@@ -179,7 +214,7 @@ macro_rules! routine {
                     boost
                 },
                 factory: $crate::routines::RoutineFactory::$factory(|| {
-                    $crate::routines::factory_of::<$ker, _>()
+                    $crate::routines::factory_of::<$ker, _, _>()
                 }),
             }
         }
@@ -187,10 +222,11 @@ macro_rules! routine {
 }
 
 /// The `ew()` of a kernel, as the factory arms want it: a fresh box, no argument.
-pub fn factory_of<K, T>() -> Box<dyn ElementWise<T>>
+pub fn factory_of<K, T, P>() -> Box<dyn ElementWise<T, P>>
 where
     T: crate::LADatum,
-    K: ElementWiseKer<T> + Clone,
+    P: Copy + Send + Sync + std::fmt::Debug + 'static + Default,
+    K: ElementWiseKer<T, P> + Clone,
 {
     K::ew()
 }
@@ -225,6 +261,28 @@ mod tests {
                 ew_f32(func).map(|k| format!("{k:?}")).ok(),
                 Some(plugged),
                 "{} f32 disagrees with plug",
+                func.name()
+            );
+        }
+        for (func, plugged) in [
+            (Func::LeakyRelu, format!("{:?}", (ops.leaky_relu_f32)())),
+            (Func::MulByScalar, format!("{:?}", (ops.mul_by_scalar_f32)())),
+        ] {
+            assert_eq!(
+                ew_f32_param(func).map(|k| format!("{k:?}")).ok(),
+                Some(plugged),
+                "{} f32 disagrees with plug",
+                func.name()
+            );
+        }
+        for (func, plugged) in [
+            (Func::LeakyRelu, format!("{:?}", (ops.leaky_relu_f16)())),
+            (Func::MulByScalar, format!("{:?}", (ops.mul_by_scalar_f16)())),
+        ] {
+            assert_eq!(
+                ew_f16_param(func).map(|k| format!("{k:?}")).ok(),
+                Some(plugged),
+                "{} f16 disagrees with plug",
                 func.name()
             );
         }
@@ -270,6 +328,35 @@ mod tests {
         }
     }
 
+    /// What each x86 generation runs, for the two f16 kernels the AVX-512_FP16 tier has: the
+    /// native hardswish wins on its ladder step, and the native leaky_relu loses every tie to the
+    /// f32 round-trip it was measured against, by the boost it declares. Both are the same
+    /// instruction set, so nothing but that declaration separates them.
+    #[cfg(any(target_arch = "x86_64", feature = "foreign-inventory"))]
+    #[test]
+    fn the_x86_ladder_picks_what_its_plug_installs() {
+        for (level, func, dt, expected) in [
+            (1, Func::MulByScalar, DatumType::F32, "x86_64_avx_f32_mul_by_scalar_32n"),
+            (1, Func::LeakyRelu, DatumType::F32, "generic"),
+            (1, Func::Sigmoid, DatumType::F32, "avx_sigmoid_f32"),
+            (2, Func::Sigmoid, DatumType::F32, "fma_sigmoid_f32"),
+            (3, Func::Sigmoid, DatumType::F32, "avx512_sigmoid_f32"),
+            (3, Func::LeakyRelu, DatumType::F32, "x86_64_avx512_leaky_relu_f32_64n"),
+            (3, Func::LeakyRelu, DatumType::F16, "x86_64_avx512_leaky_relu_f16_64n"),
+            (3, Func::HardSwish, DatumType::F16, "x86_64_avx512_hardswish_f16_64n"),
+            (4, Func::LeakyRelu, DatumType::F16, "x86_64_avx512_leaky_relu_f16_64n"),
+            (4, Func::HardSwish, DatumType::F16, "x86_64_avx512fp16_hardswish_f16_128n"),
+        ] {
+            let isa = IsaSet::ladder(Arch::X86_64, level);
+            assert_eq!(
+                best_for(func, dt, &isa).map(|r| r.name()),
+                Some(expected),
+                "{} {dt:?} on the x86 ladder at level {level}",
+                func.name()
+            );
+        }
+    }
+
     /// What each aarch64 generation runs. Which kernel a machine picks is a function of its
     /// instruction set and not of the machine asking, so these answers are checked from any host
     /// that compiled the tree -- including for hardware nobody here has.
@@ -290,6 +377,10 @@ mod tests {
             (Func::Gelu, DatumType::F16, Some("generic")),
             (Func::HardSwish, DatumType::F16, Some("generic")),
             (Func::Erf, DatumType::F16, None),
+            (Func::LeakyRelu, DatumType::F32, Some("arm64simd_leaky_relu_f32_8n")),
+            (Func::MulByScalar, DatumType::F32, Some("arm64simd_mul_by_scalar_f32_16n")),
+            (Func::LeakyRelu, DatumType::F16, Some("generic")),
+            (Func::MulByScalar, DatumType::F16, Some("HMulByScalar8")),
         ] {
             assert_eq!(
                 best_for(func, dt, &neon).map(|r| r.name()),
@@ -308,6 +399,8 @@ mod tests {
                 (Func::Tanh, DatumType::F16, "arm64fp16_tanh_f16_8n"),
                 (Func::Silu, DatumType::F16, "arm64simd_silu_f16_lut_8n"),
                 (Func::Sigmoid, DatumType::F32, "arm64simd_sigmoid_f32_4n"),
+                (Func::LeakyRelu, DatumType::F16, "arm64fp16_leaky_relu_f16_16n"),
+                (Func::MulByScalar, DatumType::F16, "arm64fp16_mul_by_scalar_f16_32n"),
             ] {
                 assert_eq!(
                     best_for(func, dt, &fp16).map(|r| r.name()),

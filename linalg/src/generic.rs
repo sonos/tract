@@ -71,3 +71,7 @@ routine!(F16, Gelu, gelu::HGelu8);
 routine!(F32, Erf, erf::SErf4);
 routine!(F32, HardSwish, hardswish::SHardSwish4);
 routine!(F16, HardSwish, hardswish::HHardSwish8);
+routine!(F32Param, LeakyRelu, leaky_relu::SLeakyRelu4);
+routine!(F16Param, LeakyRelu, leaky_relu::HLeakyRelu8);
+routine!(F32Param, MulByScalar, by_scalar::SMulByScalar4);
+routine!(F16Param, MulByScalar, by_scalar::HMulByScalar8);

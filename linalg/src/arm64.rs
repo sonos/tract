@@ -537,6 +537,13 @@ routine!(aarch64; F16, Sigmoid, arm64fp16_sigmoid_f16_8n, isa(Aarch64Fp16));
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16, Tanh, arm64fp16_tanh_f16_8n, isa(Aarch64Fp16));
 
+routine!(aarch64; F32Param, LeakyRelu, arm64simd_leaky_relu_f32_8n);
+routine!(aarch64; F32Param, MulByScalar, arm64simd_mul_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16Param, LeakyRelu, arm64fp16_leaky_relu_f16_16n, isa(Aarch64Fp16));
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16Param, MulByScalar, arm64fp16_mul_by_scalar_f16_32n, isa(Aarch64Fp16));
+
 pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     arm64simd::plug(ops);
