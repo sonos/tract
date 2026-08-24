@@ -319,6 +319,32 @@ mod tests {
         }
     }
 
+    /// What wasm runs. Its two steps are a build question rather than a probe, but they rank
+    /// like any other ladder: the relaxed kernels, which have the fused multiply-add, sit above a
+    /// baseline simd128 build that has no activation kernel of its own at all.
+    #[cfg(any(
+        all(target_arch = "wasm32", target_feature = "simd128"),
+        feature = "foreign-inventory"
+    ))]
+    #[test]
+    fn the_wasm_ladder_picks_what_its_plug_installs() {
+        let simd128 = IsaSet::ladder(Arch::Wasm32Simd128, 0);
+        let relaxed = IsaSet::ladder(Arch::Wasm32Simd128, 1);
+        for func in [Func::Sigmoid, Func::Tanh] {
+            assert_eq!(
+                best_for(func, DatumType::F32, &simd128).map(|r| r.name()),
+                Some("generic"),
+                "{} f32 on plain simd128",
+                func.name()
+            );
+            assert_eq!(
+                best_for(func, DatumType::F32, &relaxed).map(|r| r.name()),
+                Some("wasm_relaxed_simd"),
+                "{} f32 on wasm+relaxed-simd",
+                func.name()
+            );
+        }
+    }
     /// What armv7 runs, with and without NEON: three f32 kernels, and the portable floor for
     /// everything else. The f16 side has no armv7 kernel at all.
     #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
