@@ -184,18 +184,6 @@ fma_sigmoid_f32_{{suffix}} proc
     vaddps          ymm6, ymm6, ymm1
     vaddps          ymm7, ymm7, ymm1
 
-    // sigmoid is (0, 1): the vaddps above cancels down to ~1e-8 on either tail, below the
-    // rounding error of the division, so the sum needs clamping to stay in range.
-    vxorps          ymm2, ymm2, ymm2
-    vmaxps          ymm4, ymm4, ymm2
-    vmaxps          ymm5, ymm5, ymm2
-    vmaxps          ymm6, ymm6, ymm2
-    vmaxps          ymm7, ymm7, ymm2
-    vminps          ymm4, ymm4, ymm0        // ymm0 still holds beta_0 = 1.0
-    vminps          ymm5, ymm5, ymm0
-    vminps          ymm6, ymm6, ymm0
-    vminps          ymm7, ymm7, ymm0
-
     vmovaps [rdi], ymm4
     vmovaps [rdi + 32], ymm5
     vmovaps [rdi + 64], ymm6
@@ -250,10 +238,6 @@ fma_sigmoid_f32_{{suffix}} proc
     vdivps          ymm4, ymm4, ymm12
     vaddps          ymm4, ymm4, ymm1
 
-    vxorps          ymm2, ymm2, ymm2
-    vmaxps          ymm4, ymm4, ymm2
-    vminps          ymm4, ymm4, ymm0        // ymm0 still holds beta_0 = 1.0
-
     vmovaps [rdi], ymm4
     add     rdi, 32
     sub     rsi, 8
@@ -295,9 +279,9 @@ fma_sigmoid_f32_{{suffix}} proc
 {% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
 
 {{L}}coeffs_num_low:
-    {{float}} -18.6                   // low
+    {{float}} -14.5                    // low
 {{L}}coeffs_num_high:
-    {{float}} 18.6                     // high         
+    {{float}} 14.5                     // high
 
 {{L}}coeffs_num_alpha_13:
     {{float}} -4.433153405e-18

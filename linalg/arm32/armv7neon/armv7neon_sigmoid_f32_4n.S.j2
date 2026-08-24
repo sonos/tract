@@ -8,6 +8,13 @@
 /*
     s16–s31 (d8–d15, q4–q7) must be preserved
     s0–s15 (d0–d7, q0–q3) and d16–d31 (q8–q15) do not need to be preserved
+
+    The input clamp alone holds the result in [0, 1], so the sum carries none.
+    Its bound is this kernel's own: the reciprocal here is a vrecpe estimate
+    refined by two Newton steps rather than a divide, which lands two f32 steps
+    off it and leaves the sum nearer the bounds than the dividing kernels at the
+    same clamp. Raising it voids the range, as the sum crosses 1 from 15.92 up —
+    the lowest crossing of any f32 sigmoid kernel, and so what fixes 14.5.
 */
 
 armv7neon_sigmoid_f32_4n_{{suffix}}:
@@ -132,17 +139,6 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     vmla.f32    q11, q5, q8
     vmla.f32    q12, q6, q9
 
-    // sigmoid is (0, 1): the vmla above cancels down to ~1e-8 on either tail, below the
-    // rounding error of the reciprocal, so the sum needs clamping to stay in range.
-    vmov.i32    q13, #0
-    vdup.32     q14, d6[0]
-    vmax.f32    q10, q13
-    vmax.f32    q11, q13
-    vmax.f32    q12, q13
-    vmin.f32    q10, q14
-    vmin.f32    q11, q14
-    vmin.f32    q12, q14
-
     vstmia      r0!, { q10, q11, q12 }
 
     subs        r1, #12
@@ -194,11 +190,6 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     vdup.32     q10, d6[1]
     vmla.f32    q10, q4, q7
 
-    vmov.i32    q13, #0
-    vdup.32     q14, d6[0]
-    vmax.f32    q10, q13
-    vmin.f32    q10, q14
-
     vstmia      r0!, { q10 }
 
     subs        r1, #4;
@@ -209,8 +200,8 @@ armv7neon_sigmoid_f32_4n_{{suffix}}:
     bx          lr
 
 .coeffs_num:
-    .float -18.6                    // low
-    .float 18.6                     // high
+    .float -14.5                    // low
+    .float 14.5                     // high
     .float -4.433153405e-18         // alpha_13
     .float 1.169974371e-14
 

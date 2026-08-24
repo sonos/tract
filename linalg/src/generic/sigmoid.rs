@@ -2,14 +2,27 @@
 use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 
+/// The input clamp of the f32 sigmoid fit, shared by [`ssigmoid`] and by the SiLU kernels
+/// built on the same coefficients.
+///
+/// It alone holds the result inside `[0, 1]`, so a SiLU kernel needs it as the floor of
+/// the factor its sigmoid multiplies. See [`ssigmoid`] for what fixes its value.
+pub const LOW: f32 = -14.5;
+
 /// f32 sigmoid, as a rational minimax fit of `sigmoid(x) - 0.5` over `[LOW, HIGH]`.
 ///
-/// The sum is clamped to `[0, 1]` to keep the range consumers rely on: on either tail
-/// `p / q` approaches ±0.5 and the final `+ 0.5` cancels down to ~1e-8, below the ~6e-8
-/// f32 rounding error of `p / q` itself, so the sum can land just outside the interval.
-/// NaN still propagates.
+/// The clamp keeps the `[0, 1]` range consumers rely on without an output clamp: on either
+/// tail `p / q` approaches ±0.5 and the `+ 0.5` cancels against it, so the cancellation
+/// has to stay above the ~6e-8 f32 rounding error of `p / q` rather than run down to zero.
+/// At `±14.5` the sum keeps six f32 steps of margin at both ends for every f32 input. It
+/// costs the tails their last few ulps — a saturated input returns `1 - 4.8e-7` or
+/// `4.8e-7`, not exactly 1 or 0. NaN propagates.
+///
+/// Raising the clamp voids this: `1 - sigmoid(16.29)` is already under the rounding error,
+/// so the sum crosses 1 at scattered inputs from there up. `14.5` rather than something
+/// nearer 16 because the value is shared, and `armv7neon_sigmoid_f32_4n` crosses from
+/// 15.92 — it refines a `vrecpe` estimate instead of dividing.
 pub fn ssigmoid(x: f32) -> f32 {
-    const LOW: f32 = -18.6;
     const HIGH: f32 = -LOW;
 
     const ALPHA_13: f32 = -4.433153405e-18;
@@ -42,13 +55,13 @@ pub fn ssigmoid(x: f32) -> f32 {
     let q = x2 * q + BETA_2;
     let q = x2 * q + BETA_0;
 
-    (p / q + 0.5).clamp(0.0, 1.0)
+    p / q + 0.5
 }
 
 /// f16 sigmoid, as a rational minimax fit of `sigmoid(x) - 0.5` over `[LOW, HIGH]`.
 ///
-/// Needs no output clamp, unlike [`ssigmoid`]: the `+ 0.5` cancellation stays inside
-/// (0, 1) for every non-NaN f16 input.
+/// Needs no output clamp, like [`ssigmoid`]: the `+ 0.5` cancellation stays inside
+/// (0, 1) for every non-NaN f16 input, whatever the clamp.
 pub fn hsigmoid(x: f16) -> f16 {
     /*
      * (x (0.249895 + x^2 (0.00400222 - 0.0000124702 x^2)))
