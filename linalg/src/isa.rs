@@ -30,6 +30,9 @@ pub enum Arch {
 }
 
 impl Arch {
+    pub const ALL: [Arch; 5] =
+        [Arch::Arm, Arch::Aarch64, Arch::X86_64, Arch::RiscV64, Arch::Wasm32Simd128];
+
     pub fn is_native(&self) -> bool {
         match self {
             Arch::Arm => cfg!(target_arch = "arm"),
@@ -80,6 +83,7 @@ pub enum Isa {
     X86_64F16c,
     X86_64Avx512f,
     X86_64Avx512Vnni,
+    X86_64Avx512Fp16,
     X86_64AvxVnni,
     X86_64AmxInt8,
     X86_64AmxBf16,
@@ -87,7 +91,7 @@ pub enum Isa {
 }
 
 impl Isa {
-    pub const ALL: [Isa; 22] = [
+    pub const ALL: [Isa; 23] = [
         Isa::Arm,
         Isa::Aarch64,
         Isa::X86_64,
@@ -106,6 +110,7 @@ impl Isa {
         Isa::X86_64F16c,
         Isa::X86_64Avx512f,
         Isa::X86_64Avx512Vnni,
+        Isa::X86_64Avx512Fp16,
         Isa::X86_64AvxVnni,
         Isa::X86_64AmxInt8,
         Isa::X86_64AmxBf16,
@@ -133,6 +138,7 @@ impl Isa {
             Isa::X86_64F16c => "f16c",
             Isa::X86_64Avx512f => "avx512f",
             Isa::X86_64Avx512Vnni => "avx512vnni",
+            Isa::X86_64Avx512Fp16 => "avx512fp16",
             Isa::X86_64AvxVnni => "avxvnni",
             Isa::X86_64AmxInt8 => "amx-int8",
             Isa::X86_64AmxBf16 => "amx-bf16",
@@ -166,6 +172,9 @@ impl Isa {
             Isa::X86_64Avx2 | Isa::X86_64Fma | Isa::X86_64F16c => 2,
             Isa::X86_64Avx512f | Isa::X86_64AvxVnni => 3,
             Isa::X86_64Avx512Vnni => 4,
+            // A native-f16 kernel beats the f32 round-trip a plain AVX-512 core is left with,
+            // so this sits a step above the set it extends.
+            Isa::X86_64Avx512Fp16 => 4,
             Isa::X86_64AmxInt8 | Isa::X86_64AmxBf16 => 5,
             // arm: NEON is the armv7 step above bare VFP, and baseline on aarch64 where the
             // ladder continues through the matrix extensions.
@@ -199,6 +208,7 @@ impl Isa {
             | Isa::X86_64F16c
             | Isa::X86_64Avx512f
             | Isa::X86_64Avx512Vnni
+            | Isa::X86_64Avx512Fp16
             | Isa::X86_64AvxVnni
             | Isa::X86_64AmxInt8
             | Isa::X86_64AmxBf16 => Arch::X86_64,
@@ -265,6 +275,27 @@ impl IsaSet {
         self.0 & (1 << isa as u32) != 0
     }
 
+    /// The machine an architecture's ladder reaches at `level`: that architecture, plus every
+    /// feature of it at or below the step. Not every real part is one of these -- a feature can
+    /// ship without its level-mates -- but these are the generations a kernel set is written
+    /// against, so they are what a matrix column, and a test asking "on which machines", mean by
+    /// a machine.
+    pub fn ladder(arch: Arch, level: u8) -> IsaSet {
+        let mut set = IsaSet::of_arch(arch);
+        for isa in Isa::ALL {
+            if isa.arch() == arch && isa.level() > 0 && isa.level() <= level {
+                set = set.with(isa);
+            }
+        }
+        set
+    }
+
+    /// Every generation of every architecture tract has a kernel tree for, as
+    /// [`IsaSet::ladder`] defines one. What a matrix enumerates, and what a question about all
+    /// machines at once ranges over.
+    pub fn every_ladder() -> impl Iterator<Item = IsaSet> {
+        Arch::ALL.into_iter().flat_map(|arch| (0..=MAX_LEVEL).map(move |l| IsaSet::ladder(arch, l)))
+    }
     pub fn iter(self) -> impl Iterator<Item = Isa> {
         Isa::ALL.into_iter().filter(move |i| self.has(*i))
     }

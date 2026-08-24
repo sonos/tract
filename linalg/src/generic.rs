@@ -59,3 +59,15 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
     registry.insert((BinOp::Max, DatumType::F32), Box::new(|| by_scalar::SMaxByScalar4::bin()));
     registry.insert((BinOp::Max, DatumType::F16), Box::new(|| by_scalar::HMaxByScalar8::bin()));
 }
+
+routine!(F32, Sigmoid, sigmoid::SSigmoid4);
+routine!(F16, Sigmoid, sigmoid::HSigmoid8);
+routine!(F32, Tanh, tanh::STanh4);
+routine!(F16, Tanh, tanh::HTanh8);
+routine!(F32, Silu, silu::SSiLU4);
+routine!(F16, Silu, silu::HSiLU8);
+routine!(F32, Gelu, gelu::SGelu4);
+routine!(F16, Gelu, gelu::HGelu8);
+routine!(F32, Erf, erf::SErf4);
+routine!(F32, HardSwish, hardswish::SHardSwish4);
+routine!(F16, HardSwish, hardswish::HHardSwish8);
