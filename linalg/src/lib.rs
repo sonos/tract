@@ -56,11 +56,12 @@ pub mod knobs;
 pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
+use isa::IsaSet;
 use lazy_static::lazy_static;
 use mmm::{
     ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
 };
-use mmm_tiers::{MmmTier, Platform};
+use mmm_tiers::MmmTier;
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
@@ -101,10 +102,10 @@ use tract_data::prelude::*;
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
-    /// Whose kernels these are and what their instruction set offers. Everything mmm selection
-    /// needs is a function of it: the runnable set, and which tiers speak.
-    platform: Platform,
-    /// The applicable tiers, highest precedence first, resolved once from [`Self::platform`].
+    /// The architecture these kernels are for and what its instruction set offers. Everything mmm
+    /// selection is a function of it: the runnable set, and which tiers speak.
+    isa: IsaSet,
+    /// The applicable tiers, highest precedence first, resolved once from [`Self::isa`].
     tiers: Vec<&'static MmmTier>,
     runnable: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
@@ -225,7 +226,7 @@ impl Ops {
             return None;
         }
         let acc = *query.accumulators.first()?;
-        let ix = mmm_tiers::preferred(&self.platform, &self.tiers, acc, query, suitable)?;
+        let ix = mmm_tiers::preferred(&self.isa, &self.tiers, acc, query, suitable)?;
         let quality = suitable[ix].0.quality();
         (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
     }
@@ -273,7 +274,7 @@ impl Ops {
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         let query = Query::plain(accumulator, m, k, n);
         let suitable = self.suitable(&query);
-        let ix = mmm_tiers::preferred(&self.platform, &self.tiers, accumulator, &query, &suitable)?;
+        let ix = mmm_tiers::preferred(&self.isa, &self.tiers, accumulator, &query, &suitable)?;
         Some(suitable[ix].0.clone())
     }
 }
@@ -281,7 +282,7 @@ impl Ops {
 /// The portable rules, the tier every platform ends on: fixed generic kernels, in the tile the
 /// shape asks for. Rank 0, so any arch tier that claims the query answers before it.
 fn generic_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -303,7 +304,7 @@ fn generic_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: None,
+        arch: None,
         precedence: 0,
         name: "generic",
         applies: |_| true,
@@ -314,12 +315,12 @@ inventory::submit! {
 /// The portable `Ops`, on the platform it is asked for: its runnable kernels and the tiers that
 /// speak for it. Both are functions of the platform, so mmm dispatch is settled here; what an
 /// arch `plug` still adds is the non-mmm kernel slots.
-pub fn generic_for(platform: Platform) -> Ops {
+pub fn generic_for(isa: IsaSet) -> Ops {
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
-        platform,
-        tiers: mmm_tiers::for_platform(&platform),
+        isa,
+        tiers: mmm_tiers::for_isa(&isa),
         runnable: vec![],
         panel_extractors: vec![],
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
@@ -349,7 +350,7 @@ pub fn generic_for(platform: Platform) -> Ops {
         softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
-    ops.runnable = match platform.target {
+    ops.runnable = match isa.arch() {
         Some(target) => mmm_routines::runnable_for(target),
         None => mmm_routines::runnable(),
     };
@@ -358,13 +359,13 @@ pub fn generic_for(platform: Platform) -> Ops {
 
 /// The portable `Ops` for this host.
 pub fn generic() -> Ops {
-    generic_for(Platform::native())
+    generic_for(isa::native())
 }
 
 pub fn best() -> Ops {
     let mut ops = generic();
-    for selector in platform::all().filter(|s| s.target.is_native()) {
-        (selector.plug)(&mut ops);
+    for plug in platform::all().filter(|s| s.arch.is_native()) {
+        (plug.plug)(&mut ops);
     }
     ops
 }

@@ -16,7 +16,7 @@ MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x1<f16>(64, 1)@(128, 128) isa(Appl
 /// padding and the AMX dispatch cost more than the NEON kernel's whole call. The f16 side keeps
 /// a low-M NEON route on the same reasoning, at a threshold its own kernels' 16-row tile sets.
 fn preferred(
-    _platform: &crate::mmm_tiers::Platform,
+    _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -52,10 +52,10 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 3,
         name: "apple-amx",
-        applies: |p| p.isa.has(crate::isa::Isa::AppleAmx),
+        applies: |isa| isa.has(crate::isa::Isa::AppleAmx),
         preferred,
     }
 }

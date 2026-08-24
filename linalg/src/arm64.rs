@@ -31,8 +31,8 @@ use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
 use crate::isa::Isa;
+use crate::isa::IsaSet;
 use crate::mmm::{Query, Suitable, suitable_named};
-use crate::mmm_tiers::Platform;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -412,8 +412,8 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 /// SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback. The SDOT
 /// kernel only exists when the assembler could encode `sdot` (`tract_arm64_dotprod`, set by
 /// build.rs); otherwise always use the SMLAL 8x8.
-fn neon_qmmm_i32(platform: &Platform, suitable: &[Suitable]) -> Option<usize> {
-    let _ = platform;
+fn neon_qmmm_i32(isa: &IsaSet, suitable: &[Suitable]) -> Option<usize> {
+    let _ = isa;
     #[cfg(tract_arm64_dotprod)]
     if platform.isa.has(Isa::DotProd) {
         return suitable_named(suitable, &arm64simd_mmm_i32_8x8_dot.name);
@@ -464,7 +464,7 @@ fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
 /// Baseline aarch64: NEON is always there, so this tier always applies and every extension above
 /// it answers first.
 fn neon_preferred(
-    platform: &Platform,
+    isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -473,14 +473,14 @@ fn neon_preferred(
         (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
         (DatumType::F32, _) => neon_mmm_f32(suitable, query),
         (DatumType::I32, Some(1)) => suitable_named(suitable, &arm64simd_mmm_i32_64x1.name),
-        (DatumType::I32, _) => neon_qmmm_i32(platform, suitable),
+        (DatumType::I32, _) => neon_qmmm_i32(isa, suitable),
         _ => None,
     }
 }
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 1,
         name: "arm64simd",
         applies: |_| true,
@@ -490,7 +490,7 @@ inventory::submit! {
 
 #[cfg(not(feature = "no_fp16"))]
 fn fp16_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -522,10 +522,10 @@ fn fp16_preferred(
 #[cfg(not(feature = "no_fp16"))]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 2,
         name: "arm64fp16",
-        applies: |p| p.isa.has(Isa::Fp16),
+        applies: |isa| isa.has(Isa::Fp16),
         preferred: fp16_preferred,
     }
 }
@@ -585,7 +585,7 @@ pub fn plug(ops: &mut Ops) {
 /// shape.
 #[cfg(target_os = "macos")]
 fn apple_chip_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -605,7 +605,7 @@ fn apple_chip_preferred(
 #[cfg(target_os = "macos")]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 8,
         name: "apple-chip-model",
         applies: |_| matches!(apple_chip(), Some("m1") | Some("m4")),
@@ -614,8 +614,8 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    crate::platform::PlatformSelector {
-        target: crate::platform::Target::Aarch64,
+    crate::platform::ArchPlug {
+        arch: crate::platform::Arch::Aarch64,
         plug,
     }
 }
@@ -623,7 +623,7 @@ inventory::submit! {
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::IsaSet;
-    let mut set = IsaSet::empty();
+    let mut set = IsaSet::of_arch(crate::platform::Arch::Aarch64);
     if has_fp16() {
         set = set.with(Isa::Fp16);
     }

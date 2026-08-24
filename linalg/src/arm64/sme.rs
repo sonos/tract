@@ -1,7 +1,8 @@
 use crate::DatumType;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
+use crate::isa::IsaSet;
 use crate::mmm::*;
-use crate::mmm_tiers::{MmmTier, Platform};
+use crate::mmm_tiers::MmmTier;
 
 // CAN_FUSE: everything except LeakyRelu / QScale / RoundingShiftRight /
 // ShiftLeft. LoadTile, AddUnicast, AddRowColProducts, per-row/col/scalar
@@ -186,7 +187,7 @@ pub fn has_sme2() -> bool {
 }
 
 fn sme_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -199,7 +200,7 @@ fn sme_preferred(
 }
 
 fn sme2_preferred(
-    _platform: &Platform,
+    _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
@@ -214,20 +215,20 @@ fn sme2_preferred(
 
 inventory::submit! {
     MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 4,
         name: "sme",
-        applies: |p| p.isa.has(crate::isa::Isa::Sme),
+        applies: |isa| isa.has(crate::isa::Isa::Sme),
         preferred: sme_preferred,
     }
 }
 
 inventory::submit! {
     MmmTier {
-        target: Some(crate::platform::Target::Aarch64),
+        arch: Some(crate::platform::Arch::Aarch64),
         precedence: 5,
         name: "sme2",
-        applies: |p| p.isa.has(crate::isa::Isa::Sme2),
+        applies: |isa| isa.has(crate::isa::Isa::Sme2),
         preferred: sme2_preferred,
     }
 }

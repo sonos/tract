@@ -21,7 +21,7 @@ use crate::mmm::MatMatMul;
 pub struct MmmRoutine {
     /// Arch the kernel is written for, or `None` when it is portable Rust that
     /// every target builds.
-    pub target: Option<crate::platform::Target>,
+    pub target: Option<crate::platform::Arch>,
     /// Builds the type-erased kernel. Reading its metadata is always safe; *running* it is
     /// only safe when the kernel answers [`MatMatMul::built`] with true.
     pub make: fn() -> Box<dyn MatMatMul>,
@@ -39,7 +39,7 @@ pub fn declared() -> impl Iterator<Item = &'static MmmRoutine> {
 /// the running host, so reaching a cohort behind a feature this host lacks (fp16, dotprod,
 /// sve2) means adding it with `TRACT_CPU_ISA` — and anything this returns unbuilt will panic
 /// if actually called.
-pub fn runnable_for(target: crate::platform::Target) -> Vec<Box<dyn MatMatMul>> {
+pub fn runnable_for(target: crate::platform::Arch) -> Vec<Box<dyn MatMatMul>> {
     let mut pool: Vec<Box<dyn MatMatMul>> = declared()
         .filter(|r| r.target.is_none_or(|t| t == target))
         .map(|r| (r.make)())

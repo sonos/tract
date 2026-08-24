@@ -9,8 +9,8 @@ use armv7neon::*;
 
 use crate::frame::element_wise::ElementWiseKer;
 
+use crate::isa::IsaSet;
 use crate::mmm::{Query, Suitable, suitable_named};
-use crate::mmm_tiers::Platform;
 use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -78,12 +78,7 @@ fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
     }
 }
 
-fn preferred(
-    _platform: &Platform,
-    dt: DatumType,
-    query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+fn preferred(_isa: &IsaSet, dt: DatumType, query: &Query, suitable: &[Suitable]) -> Option<usize> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
         (DatumType::F32, _) => neon_mmm_f32(suitable, query),
@@ -97,10 +92,10 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        target: Some(crate::platform::Target::Arm),
+        arch: Some(crate::platform::Arch::Arm),
         precedence: 2,
         name: "armv7neon",
-        applies: |p| p.isa.has(crate::isa::Isa::Neon),
+        applies: |isa| isa.has(crate::isa::Isa::Neon),
         preferred,
     }
 }
@@ -128,8 +123,8 @@ mod tests {
 }
 
 inventory::submit! {
-    crate::platform::PlatformSelector {
-        target: crate::platform::Target::Arm,
+    crate::platform::ArchPlug {
+        arch: crate::platform::Arch::Arm,
         plug,
     }
 }
@@ -137,6 +132,6 @@ inventory::submit! {
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
-    let set = IsaSet::empty();
+    let set = IsaSet::of_arch(crate::platform::Arch::Arm);
     if has_neon() { set.with(Isa::Neon) } else { set }
 }

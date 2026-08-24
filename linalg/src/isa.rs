@@ -6,12 +6,21 @@
 //! ports a core has is not an instruction set, and preferring a kernel is not the same as being
 //! able to run it: that belongs in [`crate::mmm::MatMatMulKer::dynamic_boost`].
 
+use crate::platform::Arch;
 use std::fmt;
 use std::sync::OnceLock;
 
-/// One instruction-set feature a kernel can need.
+/// One instruction-set feature a kernel can need, or — at level 0 — the plain architecture
+/// underneath them all.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum Isa {
+    /// The plain architectures. One belongs in every set, and it is what says whose kernels the
+    /// set is talking about; two is a contradiction, since no machine implements both.
+    Arm,
+    Aarch64,
+    X86_64,
+    RiscV64,
+    Wasm32,
     /// armv7. On aarch64 NEON is baseline, hence unnamed there.
     Neon,
     Fp16,
@@ -34,7 +43,12 @@ pub enum Isa {
 }
 
 impl Isa {
-    pub const ALL: [Isa; 17] = [
+    pub const ALL: [Isa; 22] = [
+        Isa::Arm,
+        Isa::Aarch64,
+        Isa::X86_64,
+        Isa::RiscV64,
+        Isa::Wasm32,
         Isa::Neon,
         Isa::Fp16,
         Isa::DotProd,
@@ -57,6 +71,11 @@ impl Isa {
     /// The token as it appears in a report and in `TRACT_CPU_ISA`.
     pub fn name(&self) -> &'static str {
         match self {
+            Isa::Arm => "arm",
+            Isa::Aarch64 => "aarch64",
+            Isa::X86_64 => "x86_64",
+            Isa::RiscV64 => "riscv64",
+            Isa::Wasm32 => "wasm32",
             Isa::Neon => "neon",
             Isa::Fp16 => "fp16",
             Isa::DotProd => "dotprod",
@@ -96,6 +115,8 @@ impl Isa {
     /// borrowed, never the numbering.
     pub const fn level(&self) -> u8 {
         match self {
+            // The plain architecture is the floor every ladder rises from.
+            Isa::Arm | Isa::Aarch64 | Isa::X86_64 | Isa::RiscV64 | Isa::Wasm32 => 0,
             // x86: each generation subsumes the last, AMX above the VNNI it needs alongside it.
             Isa::Avx => 1,
             Isa::Avx2 | Isa::Fma | Isa::F16c => 2,
@@ -113,6 +134,50 @@ impl Isa {
             Isa::Simd128 => 0,
         }
     }
+
+    /// Whose instruction set this belongs to. Every feature belongs to exactly one architecture —
+    /// that is what makes a set holding two of them a contradiction rather than a rich machine,
+    /// and what lets `TRACT_CPU_ISA` reject a feature the architecture cannot have.
+    pub const fn arch(&self) -> Arch {
+        match self {
+            Isa::Arm | Isa::Neon => Arch::Arm,
+            Isa::Aarch64
+            | Isa::Fp16
+            | Isa::DotProd
+            | Isa::Sve2
+            | Isa::Sme
+            | Isa::Sme2
+            | Isa::AppleAmx => Arch::Aarch64,
+            Isa::X86_64
+            | Isa::Avx
+            | Isa::Avx2
+            | Isa::Fma
+            | Isa::F16c
+            | Isa::Avx512f
+            | Isa::Avx512Vnni
+            | Isa::AvxVnni
+            | Isa::AmxInt8
+            | Isa::AmxBf16 => Arch::X86_64,
+            Isa::RiscV64 => Arch::RiscV64,
+            Isa::Wasm32 | Isa::Simd128 => Arch::Wasm32Simd128,
+        }
+    }
+
+    /// Whether this is a plain architecture rather than a feature on top of one.
+    pub const fn is_arch(&self) -> bool {
+        matches!(self, Isa::Arm | Isa::Aarch64 | Isa::X86_64 | Isa::RiscV64 | Isa::Wasm32)
+    }
+
+    /// The set member that stands for `arch` itself.
+    pub const fn of_arch(arch: Arch) -> Isa {
+        match arch {
+            Arch::Arm => Isa::Arm,
+            Arch::Aarch64 => Isa::Aarch64,
+            Arch::X86_64 => Isa::X86_64,
+            Arch::RiscV64 => Isa::RiscV64,
+            Arch::Wasm32Simd128 => Isa::Wasm32,
+        }
+    }
 }
 
 impl fmt::Display for Isa {
@@ -121,13 +186,27 @@ impl fmt::Display for Isa {
     }
 }
 
-/// The features one machine has.
+/// What one machine offers: the architecture it is, and the features it adds on top. A set is
+/// well formed when it holds exactly one architecture — [`IsaSet::of_arch`] is how to start one,
+/// and [`IsaSet::arch`] reads it back.
 #[derive(Copy, Clone, Default, PartialEq, Eq)]
 pub struct IsaSet(u32);
 
 impl IsaSet {
     pub const fn empty() -> IsaSet {
         IsaSet(0)
+    }
+
+    /// The plain architecture, with none of its features yet.
+    pub const fn of_arch(arch: Arch) -> IsaSet {
+        IsaSet::empty().with(Isa::of_arch(arch))
+    }
+
+    /// The architecture this set speaks for, `None` for the empty set. Two architectures in one
+    /// set is a contradiction no machine can be, so the first one found wins and the set should
+    /// never have been built that way — see [`IsaSet::of_arch`].
+    pub fn arch(self) -> Option<Arch> {
+        self.iter().find(|i| i.is_arch()).map(|i| i.arch())
     }
 
     pub const fn with(self, isa: Isa) -> IsaSet {
@@ -240,7 +319,9 @@ fn probe() -> IsaSet {
     #[cfg(target_arch = "x86_64")]
     return crate::x86_64::isa_set();
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-    return IsaSet::empty().with(Isa::Simd128);
+    return IsaSet::of_arch(crate::platform::Arch::Wasm32Simd128).with(Isa::Simd128);
+    // An architecture with no kernel tree, or wasm without simd128: nothing to declare, and no
+    // architecture to name either, since none of its kernels would be reachable anyway.
     #[cfg(not(any(
         target_arch = "arm",
         target_arch = "aarch64",
@@ -254,7 +335,11 @@ fn probe() -> IsaSet {
 /// cohort this machine is not can be asked what it would dispatch. Nothing checks that the
 /// result is a CPU that could exist: asking for avx512f without fma describes no hardware, and
 /// dispatch will answer for it anyway.
-fn forced(mut set: IsaSet) -> IsaSet {
+/// Apply `TRACT_CPU_ISA` to `set`. A token naming another architecture's feature is a hard error
+/// rather than a warning: it cannot do what it asks for, and silently doing nothing has it look
+/// like the feature was tried and made no difference. To reason about another architecture, start
+/// from its own set — [`IsaSet::of_arch`], which is what [`crate::platform::inspect`] does.
+pub(crate) fn forced(mut set: IsaSet) -> IsaSet {
     let Some(spec) = crate::knobs::TRACT_CPU_ISA.get() else { return set };
     for token in spec.split(',').map(str::trim).filter(|t| !t.is_empty()) {
         let (add, name) = match token.split_at(1) {
@@ -262,11 +347,19 @@ fn forced(mut set: IsaSet) -> IsaSet {
             ("-", name) => (false, name),
             _ => (true, token),
         };
-        match Isa::from_name(name) {
-            Some(isa) if add => set = set.with(isa),
-            Some(isa) => set = set.without(isa),
-            None => log::warn!("TRACT_CPU_ISA: unknown feature {name:?}, ignored"),
+        let Some(isa) = Isa::from_name(name) else {
+            log::warn!("TRACT_CPU_ISA: unknown feature {name:?}, ignored");
+            continue;
+        };
+        if let Some(arch) = set.arch() {
+            assert!(
+                isa.arch() == arch,
+                "TRACT_CPU_ISA: {name} belongs to {}, and this set is {arch} — a machine is one \
+                 architecture, so the token cannot apply",
+                isa.arch()
+            );
         }
+        set = if add { set.with(isa) } else { set.without(isa) };
     }
     set
 }
