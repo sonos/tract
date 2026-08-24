@@ -31,7 +31,7 @@ use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
 use crate::isa::Isa;
-use crate::mmm::candidate_named;
+use crate::mmm::suitable_named;
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -422,13 +422,13 @@ pub fn plug(ops: &mut Ops) {
     // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
     #[cfg(tract_arm64_dotprod)]
     let qmmm_i32: crate::MmmPreference = if isa.has(Isa::DotProd) {
-        Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8_dot.name))
+        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8_dot.name))
     } else {
-        Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8.name))
+        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8.name))
     };
     #[cfg(not(tract_arm64_dotprod))]
     let qmmm_i32: crate::MmmPreference =
-        Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8.name));
+        Box::new(|c, _| suitable_named(c, &arm64simd_mmm_i32_8x8.name));
     // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
     // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
     // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
@@ -437,17 +437,17 @@ pub fn plug(ops: &mut Ops) {
             let model = cortex_a53_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
                 Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
-                _ => candidate_named(c, &arm64simd_mmm_f32_64x1_a53.name),
+                _ => suitable_named(c, &arm64simd_mmm_f32_64x1_a53.name),
             })
         }
         Kind::CortexA55 => {
             let model = cortex_a55_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
                 Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
-                _ => candidate_named(c, &arm64simd_mmm_f32_64x1_a55.name),
+                _ => suitable_named(c, &arm64simd_mmm_f32_64x1_a55.name),
             })
         }
-        _ => Box::new(|c, _| candidate_named(c, &arm64simd_mmm_f32_64x1_gen.name)),
+        _ => Box::new(|c, _| suitable_named(c, &arm64simd_mmm_f32_64x1_gen.name)),
     };
     let mmm_f32: crate::MmmPreference = match *KIND {
         Kind::CortexA53 => {
@@ -459,7 +459,7 @@ pub fn plug(ops: &mut Ops) {
             Box::new(move |c, q| model.preferred(c, q.m, q.k, q.n))
         }
         _ => Box::new(move |c, q| {
-            candidate_named(
+            suitable_named(
                 c,
                 if q.n.unwrap_or(8) < 8 {
                     &arm64simd_mmm_f32_16x4_gen.name
@@ -469,12 +469,12 @@ pub fn plug(ops: &mut Ops) {
             )
         }),
     };
-    ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
-        (DatumType::F32, Some(1)) => mmv_f32(candidates, query),
-        (DatumType::F32, _) => mmm_f32(candidates, query),
-        (DatumType::I32, Some(1)) => candidate_named(candidates, &arm64simd_mmm_i32_64x1.name),
-        (DatumType::I32, _) => qmmm_i32(candidates, query),
-        _ => prev(dt, query, candidates),
+    ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
+        (DatumType::F32, Some(1)) => mmv_f32(suitable, query),
+        (DatumType::F32, _) => mmm_f32(suitable, query),
+        (DatumType::I32, Some(1)) => suitable_named(suitable, &arm64simd_mmm_i32_64x1.name),
+        (DatumType::I32, _) => qmmm_i32(suitable, query),
+        _ => prev(dt, query, suitable),
     });
     #[cfg(feature = "no_fp16")]
     if has_fp16() {
@@ -486,19 +486,19 @@ pub fn plug(ops: &mut Ops) {
     if isa.has(Isa::Fp16) {
         let a55 = *KIND == Kind::CortexA55;
         log::info!("{} f16 matmul activated", if a55 { "Cortex-A55" } else { "ARMv8.2" });
-        ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
+        ops.overlay_mmm_policy(move |prev, dt, query, suitable| match (dt, query.n) {
             (DatumType::F16, Some(1)) if a55 => {
-                candidate_named(candidates, &arm64fp16_mmm_f16_128x1_a55.name)
+                suitable_named(suitable, &arm64fp16_mmm_f16_128x1_a55.name)
             }
             (DatumType::F16, Some(1)) => {
-                candidate_named(candidates, &arm64fp16_mmm_f16_128x1_gen.name)
+                suitable_named(suitable, &arm64fp16_mmm_f16_128x1_gen.name)
             }
             (DatumType::F16, _) => {
                 use tract_data::internal::DimLike;
                 let n = query.n.unwrap_or(1024);
                 let narrow = n.divceil(4) * 4 < n.divceil(8) * 8;
-                candidate_named(
-                    candidates,
+                suitable_named(
+                    suitable,
                     match (a55, narrow) {
                         (true, true) => &arm64fp16_mmm_f16_32x4_a55.name,
                         (true, false) => &arm64fp16_mmm_f16_16x8_a55.name,
@@ -507,7 +507,7 @@ pub fn plug(ops: &mut Ops) {
                     },
                 )
             }
-            _ => prev(dt, query, candidates),
+            _ => prev(dt, query, suitable),
         });
     }
     ops.leaky_relu_f32 = Box::new(|| arm64simd_leaky_relu_f32_8n::ew());
@@ -561,17 +561,17 @@ pub fn plug(ops: &mut Ops) {
         };
         if let Some(model) = model {
             log::info!("Apple per-chip matmul LinearCostModel activated");
-            ops.overlay_mmm_policy(move |prev, dt, query, candidates| {
+            ops.overlay_mmm_policy(move |prev, dt, query, suitable| {
                 // Every term the model weighs is a shape term, so a dim the caller could not
                 // pin leaves it nothing to say. The tier below states what a wide AMX or SME
                 // tile is worth at an unknown shape — that answer is the one to keep.
                 let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
                 if dt != DatumType::F32 || query.n == Some(1) || !pinned {
-                    return prev(dt, query, candidates);
+                    return prev(dt, query, suitable);
                 }
                 model
-                    .preferred(candidates, query.m, query.k, query.n)
-                    .or_else(|| prev(dt, query, candidates))
+                    .preferred(suitable, query.m, query.k, query.n)
+                    .or_else(|| prev(dt, query, suitable))
             });
         }
     }

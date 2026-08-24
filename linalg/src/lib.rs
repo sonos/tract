@@ -58,7 +58,7 @@ pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use lazy_static::lazy_static;
 use mmm::{
-    Candidate, ImplementationQuality, MMMInputFormat, Query, pick_by_shape, retain_best_quality,
+    ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
 };
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
@@ -97,14 +97,14 @@ pub use self::frame::*;
 
 use tract_data::prelude::*;
 
-/// One tier's answer within a policy: which of the candidates it would run, `None` to leave the
+/// One tier’s answer within a policy: which of the suitable kernels it would run, `None` to leave the
 /// query to the tier below.
-pub type MmmPreference = Box<dyn Fn(&[Candidate], &Query) -> Option<usize> + Send + Sync>;
+pub type MmmPreference = Box<dyn Fn(&[Suitable], &Query) -> Option<usize> + Send + Sync>;
 
-/// Which of the candidates a platform would run for a query, `None` for a query it has no
+/// Which of the suitable kernels a platform would run for a query, `None` for a query it has no
 /// opinion on — an accumulator no arch plug claimed, or a shape whose kernel this build does not
-/// offer. The answer is an index, so a policy can only ever name a candidate the query reached.
-pub type MmmPolicy = Box<dyn Fn(DatumType, &Query, &[Candidate]) -> Option<usize> + Send + Sync>;
+/// offer. The answer is an index, so a policy can only ever name one the query reached.
+pub type MmmPolicy = Box<dyn Fn(DatumType, &Query, &[Suitable]) -> Option<usize> + Send + Sync>;
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
@@ -183,12 +183,12 @@ impl Ops {
 
     /// Every way this build can compute the queried matmul: a kernel, which of its packings
     /// to use, and the panel extractor to reach that packing when the weights are not
-    /// already in it. The query's dims are not consulted — a candidate is legal or not
+    /// already in it. The query’s dims are not consulted — a kernel is suitable or not
     /// whatever the shape.
     ///
-    /// The one enumeration behind both matmul lowerings — how a candidate is *chosen* from
+    /// The one enumeration behind both matmul lowerings — how one is *chosen* from
     /// the list is the caller's business.
-    pub fn suitable(&self, query: &Query) -> Vec<Candidate> {
+    pub fn suitable(&self, query: &Query) -> Vec<Suitable> {
         self.runnable
             .iter()
             .filter(|mmm| {
@@ -214,17 +214,17 @@ impl Ops {
             .collect()
     }
 
-    /// The platform policy's choice among `candidates`, or `None` when it has no opinion —
+    /// The platform policy's choice among `suitable`, or `None` when it has no opinion —
     /// no arch plug claimed this accumulator, or the query is not the plain matmul the policies
     /// reason about. A generic answer counts as no opinion: `generic()` installs fixed kernels,
     /// so getting one back means no arch plug ever overwrote that slot.
-    pub fn preferred(&self, query: &Query, candidates: &[Candidate]) -> Option<usize> {
+    pub fn preferred(&self, query: &Query, suitable: &[Suitable]) -> Option<usize> {
         let WeightType::Plain(weight) = &query.weight else { return None };
         if weight.unquantized() != query.activation.unquantized() {
             return None;
         }
-        let ix = (self.mmm_policy)(*query.accumulators.first()?, query, candidates)?;
-        let quality = candidates[ix].0.quality();
+        let ix = (self.mmm_policy)(*query.accumulators.first()?, query, suitable)?;
+        let quality = suitable[ix].0.quality();
         (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
     }
 
@@ -232,26 +232,26 @@ impl Ops {
     /// pick where it has an opinion, then the portable rules, then the widest extractor-free
     /// tile. That last resort is what a caller with no fallback of its own needs when `n` is
     /// unknown or degenerate — a caller that can do better with the whole list, as einsum can
-    /// for a symbolic `n`, should walk the candidates itself. `None` only when nothing legal
+    /// for a symbolic `n`, should walk the suitable kernels itself. `None` only when nothing suitable
     /// exists at all.
-    pub fn pick(&self, query: &Query) -> Option<Candidate> {
-        let mut candidates = self.suitable(query);
-        if let Some(ix) = self.preferred(query, &candidates) {
-            return Some(candidates.swap_remove(ix));
+    pub fn pick(&self, query: &Query) -> Option<Suitable> {
+        let mut suitable = self.suitable(query);
+        if let Some(ix) = self.preferred(query, &suitable) {
+            return Some(suitable.swap_remove(ix));
         }
-        retain_best_quality(&mut candidates);
-        if candidates.len() == 1 {
-            return Some(candidates.remove(0));
+        retain_best_quality(&mut suitable);
+        if suitable.len() == 1 {
+            return Some(suitable.remove(0));
         }
-        if let Some(ix) = pick_by_shape(query, &candidates) {
-            return Some(candidates.swap_remove(ix));
+        if let Some(ix) = pick_by_shape(query, &suitable) {
+            return Some(suitable.swap_remove(ix));
         }
-        let ix = candidates
+        let ix = suitable
             .iter()
             .enumerate()
             .max_by_key(|(_, (mmm, _, pe))| (pe.is_none(), mmm.nr() > 1, mmm.nr() * mmm.mr()))
             .map(|(ix, _)| ix)?;
-        Some(candidates.swap_remove(ix))
+        Some(suitable.swap_remove(ix))
     }
 
     pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
@@ -270,9 +270,9 @@ impl Ops {
         n: Option<usize>,
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         let query = Query::plain(accumulator, m, k, n);
-        let candidates = self.suitable(&query);
-        let ix = (self.mmm_policy)(accumulator, &query, &candidates)?;
-        Some(candidates[ix].0.clone())
+        let suitable = self.suitable(&query);
+        let ix = (self.mmm_policy)(accumulator, &query, &suitable)?;
+        Some(suitable[ix].0.clone())
     }
 
     /// Put `f` in front of the policy: it answers the accumulators and shapes it claims, and
@@ -280,22 +280,22 @@ impl Ops {
     /// the tiers below it, and how a tier that speaks for one accumulator leaves the others be.
     pub fn overlay_mmm_policy(
         &mut self,
-        f: impl Fn(&MmmPolicy, DatumType, &Query, &[Candidate]) -> Option<usize> + Send + Sync + 'static,
+        f: impl Fn(&MmmPolicy, DatumType, &Query, &[Suitable]) -> Option<usize> + Send + Sync + 'static,
     ) {
         let prev = std::mem::replace(&mut self.mmm_policy, Box::new(|_, _, _| None));
-        self.mmm_policy = Box::new(move |dt, query, candidates| f(&prev, dt, query, candidates));
+        self.mmm_policy = Box::new(move |dt, query, suitable| f(&prev, dt, query, suitable));
     }
 }
 
 pub fn generic() -> Ops {
     use crate::generic::mmm::*;
-    use crate::mmm::candidate_named;
+    use crate::mmm::suitable_named;
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
         runnable: vec![],
         panel_extractors: vec![],
-        mmm_policy: Box::new(|dt, query, candidates| {
+        mmm_policy: Box::new(|dt, query, suitable| {
             let vec = query.n == Some(1);
             let name = match dt {
                 DatumType::F64 if vec => &generic_f64_4x1.name,
@@ -307,7 +307,7 @@ pub fn generic() -> Ops {
                 DatumType::I32 => &generic_i32_4x4.name,
                 _ => return None,
             };
-            candidate_named(candidates, name)
+            suitable_named(suitable, name)
         }),
         leaky_relu_f16: Box::new(|| generic::HLeakyRelu8::ew()),
         leaky_relu_f32: Box::new(|| generic::SLeakyRelu4::ew()),

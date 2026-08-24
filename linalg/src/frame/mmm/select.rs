@@ -8,8 +8,8 @@
 //!
 //! The last step is not a filter but a choice, so it has no set of its own: *preference* is the
 //! ordering a platform imposes over the suitable ones ([`crate::Ops::preferred`]), and it is a
-//! property of the platform, never of a kernel. A [`Candidate`] is one suitable way to compute
-//! the matmul — kernel, packing, extractor — named for the choice it stands in.
+//! property of the platform, never of a kernel. A [`Suitable`] is one way to compute
+//! the matmul that fits the query — kernel, packing, extractor.
 
 use tract_data::prelude::{DatumType, TVec, tvec};
 
@@ -18,7 +18,7 @@ use crate::WeightType;
 
 /// One way to compute a matmul: a kernel, which of its packings to use, and the panel
 /// extractor to reach that packing when the weights are not already in it.
-pub type Candidate = (Box<dyn MatMatMul>, usize, Option<PanelExtractor>);
+pub type Suitable = (Box<dyn MatMatMul>, usize, Option<PanelExtractor>);
 
 /// A matmul as kernel selection sees it: the operand types a kernel must handle, and the
 /// shape where the caller knows it. A `None` dim is one the caller cannot pin — a streaming
@@ -65,32 +65,32 @@ impl Query {
     }
 }
 
-/// The candidate holding the kernel called `name`, or `None` when it is not suitable for this
+/// Where the kernel called `name` sits in `suitable`, or `None` when it is not suitable for this
 /// query. This is how a policy tier answers: naming a kernel the query never reached defers to
 /// the tier below instead of going unheard.
-pub fn candidate_named(candidates: &[Candidate], name: &str) -> Option<usize> {
-    candidates.iter().position(|(mmm, _, _)| mmm.name() == name)
+pub fn suitable_named(suitable: &[Suitable], name: &str) -> Option<usize> {
+    suitable.iter().position(|(mmm, _, _)| mmm.name() == name)
 }
 
-/// Keep only the candidates of the best quality: quality dominates, and a
-/// kernel's dynamic boost breaks ties within a tier. First rung of the portable policy,
+/// Keep only the suitable kernels of the best quality: quality dominates, and a
+/// kernel's dynamic boost breaks ties within it. First rung of the portable policy,
 /// applied before any shape reasoning.
-pub fn retain_best_quality(candidates: &mut Vec<Candidate>) {
+pub fn retain_best_quality(suitable: &mut Vec<Suitable>) {
     fn score(mmm: &dyn MatMatMul) -> isize {
         -(mmm.quality().cost() as isize * 1000) + mmm.dynamic_boost()
     }
-    if let Some(best) = candidates.iter().map(|(mmm, _, _)| score(&**mmm)).max() {
-        candidates.retain(|(mmm, _, _)| score(&**mmm) == best);
+    if let Some(best) = suitable.iter().map(|(mmm, _, _)| score(&**mmm)).max() {
+        suitable.retain(|(mmm, _, _)| score(&**mmm) == best);
     }
 }
 
-/// The portable policy's shape rules: which candidate to use once the query pins `n`, and
+/// The portable policy’s shape rules: which suitable kernel to use once the query pins `n`, and
 /// `None` when it does not — a caller facing a symbolic `n` has to decide for itself. Ties
-/// go to the last candidate, so the order of the suitable list breaks them.
-pub fn pick_by_shape(query: &Query, candidates: &[Candidate]) -> Option<usize> {
+/// go to the last one, so the order of the suitable list breaks them.
+pub fn pick_by_shape(query: &Query, suitable: &[Suitable]) -> Option<usize> {
     match query.n {
         // A true GEMV first, then no extractor to pay for, then the widest tile.
-        Some(1) => candidates
+        Some(1) => suitable
             .iter()
             .enumerate()
             .max_by_key(|(_, (mmm, _, pe))| (mmm.nr() == 1, pe.is_none(), mmm.mr()))
@@ -99,7 +99,7 @@ pub fn pick_by_shape(query: &Query, candidates: &[Candidate]) -> Option<usize> {
         // column per pass. Demote it so it never wins the `nr * mr` tie against a square
         // tile (i8 64x1 and 8x8 both have nr * mr == 64). Ordering among nr > 1 kernels is
         // left untouched.
-        Some(n) if n > 1 => candidates
+        Some(n) if n > 1 => suitable
             .iter()
             .enumerate()
             .max_by_key(|(_, (mmm, _, pe))| (pe.is_none(), mmm.nr() > 1, mmm.nr() * mmm.mr()))
@@ -138,7 +138,7 @@ mod tests {
             let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
                 continue;
             };
-            let peers: Vec<Candidate> =
+            let peers: Vec<Suitable> =
                 all.iter().filter(|(mmm, _, _)| mmm.quality().cost() == best).cloned().collect();
             let mut kept = peers.clone();
             retain_best_quality(&mut kept);
@@ -164,22 +164,22 @@ mod tests {
         }
     }
 
-    /// The candidates a caller with a symbolic `n` has to choose between, grouped by the weight
+    /// The suitable kernels a caller with a symbolic `n` has to choose between, grouped by the weight
     /// packing it would have to commit to, as `kernel_selection::strategize` groups them.
-    fn packing_groups(candidates: &[Candidate]) -> Vec<Vec<&Candidate>> {
-        let mut groups: Vec<(&dyn MMMInputFormat, Vec<&Candidate>)> = vec![];
-        'candidate: for candidate in candidates {
-            let (mmm, packing, extractor) = candidate;
+    fn packing_groups(suitable: &[Suitable]) -> Vec<Vec<&Suitable>> {
+        let mut groups: Vec<(&dyn MMMInputFormat, Vec<&Suitable>)> = vec![];
+        'entry: for entry in suitable {
+            let (mmm, packing, extractor) = entry;
             let left: &dyn MMMInputFormat =
                 extractor.as_ref().map(|pe| &*pe.from).unwrap_or(&*mmm.packings()[*packing].0);
             for group in &mut groups {
                 if let Some(merged) = group.0.merge_with(left) {
                     group.0 = merged;
-                    group.1.push(candidate);
-                    continue 'candidate;
+                    group.1.push(entry);
+                    continue 'entry;
                 }
             }
-            groups.push((left, vec![candidate]));
+            groups.push((left, vec![entry]));
         }
         groups.into_iter().map(|(_, group)| group).collect()
     }
