@@ -10,7 +10,7 @@ use armv7neon::*;
 use crate::frame::element_wise::ElementWiseKer;
 
 use crate::isa::IsaSet;
-use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm::{Query, Suitable};
 use crate::{DatumType, Ops};
 
 fn has_neon_cpuinfo() -> std::io::Result<bool> {
@@ -45,47 +45,47 @@ fn prefer_8x4(n: Option<usize>) -> bool {
 }
 
 /// Consulted only for small m (see arm64 for the rationale).
-fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match cpu_part().unwrap_or(0) {
         0xc07 => match query.m {
             Some(m) if m < 32 => {
                 cortex_a7_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
             }
-            _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name),
+            _ => Some(&armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name.as_str()),
         },
         0xc09 => match query.m {
             Some(m) if m < 32 => {
                 cortex_a9_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
             }
-            _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name),
+            _ => Some(&armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name.as_str()),
         },
-        _ => suitable_named(suitable, &armv7neon::armv7neon_mmm_f32_32x1_generic.name),
+        _ => Some(&armv7neon::armv7neon_mmm_f32_32x1_generic.name.as_str()),
     }
 }
 
-fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match cpu_part().unwrap_or(0) {
         0xc07 => cortex_a7_linear::linear_model().preferred(suitable, query.m, query.k, query.n),
         0xc09 => cortex_a9_linear::linear_model().preferred(suitable, query.m, query.k, query.n),
-        _ => suitable_named(
-            suitable,
-            if prefer_8x4(query.n) {
-                &armv7neon::armv7neon_mmm_f32_8x4_generic.name
-            } else {
-                &armv7neon::armv7neon_mmm_f32_8x6_generic.name
-            },
-        ),
+        _ => Some(if prefer_8x4(query.n) {
+            &armv7neon::armv7neon_mmm_f32_8x4_generic.name
+        } else {
+            &armv7neon::armv7neon_mmm_f32_8x6_generic.name
+        }),
     }
 }
 
-fn preferred(_isa: &IsaSet, dt: DatumType, query: &Query, suitable: &[Suitable]) -> Option<usize> {
+fn preferred(
+    _isa: &IsaSet,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
         (DatumType::F32, _) => neon_mmm_f32(suitable, query),
-        (DatumType::I32, Some(1)) => {
-            suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_32x1.name)
-        }
-        (DatumType::I32, _) => suitable_named(suitable, &armv7neon::armv7neon_mmm_i32_8x4.name),
+        (DatumType::I32, Some(1)) => Some(&armv7neon::armv7neon_mmm_i32_32x1.name.as_str()),
+        (DatumType::I32, _) => Some(&armv7neon::armv7neon_mmm_i32_8x4.name.as_str()),
         _ => None,
     }
 }

@@ -7,7 +7,6 @@
 /// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
 /// > cargo test --target=wasm32-wasi
 /// ```
-use crate::mmm::suitable_named;
 use crate::{DatumType, Ops};
 
 #[cfg(target_feature = "relaxed-simd")]
@@ -40,27 +39,24 @@ fn preferred(
     _isa: &crate::isa::IsaSet,
     dt: DatumType,
     query: &crate::mmm::Query,
-    suitable: &[crate::mmm::Suitable],
-) -> Option<usize> {
+    _suitable: &[crate::mmm::Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
         // int8 -> i32 matmul: SIMD kernel (the generic scalar is the tier below).
         (DatumType::I32, Some(1)) => None,
-        (DatumType::I32, _) => suitable_named(suitable, &wasm_i32_4x4.name),
+        (DatumType::I32, _) => Some(wasm_i32_4x4.name.as_str()),
         // GEMV routes by M-band to the kernel whose MR fits. Bands derived from
         // benches/wasm.rs: at each edge, using the next-larger kernel beats halving outer
         // iterations of the smaller one (1 outer with ILP-absorbed padding > 2 outer with the
         // kernel preamble doubled). M=4/8/16 are exact tile fits at the lower edges; M=17/9/5
         // are the first values where the next-larger kernel wins.
-        (DatumType::F32, Some(1)) => suitable_named(
-            suitable,
-            match query.m.unwrap_or(0) {
-                0..=4 => &wasm_f32_4x1.name,
-                5..=8 => &wasm_f32_8x1.name,
-                9..=16 => &wasm_f32_16x1.name,
-                _ => &wasm_f32_32x1.name,
-            },
-        ),
-        (DatumType::F32, _) => suitable_named(suitable, &wasm_f32_8x8.name),
+        (DatumType::F32, Some(1)) => Some(match query.m.unwrap_or(0) {
+            0..=4 => &wasm_f32_4x1.name,
+            5..=8 => &wasm_f32_8x1.name,
+            9..=16 => &wasm_f32_16x1.name,
+            _ => &wasm_f32_32x1.name,
+        }),
+        (DatumType::F32, _) => Some(wasm_f32_8x8.name.as_str()),
         _ => None,
     }
 }

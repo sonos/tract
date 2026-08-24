@@ -32,7 +32,7 @@ use crate::frame::reduce::ReduceKer;
 use crate::frame::unicast::UnicastKer;
 use crate::isa::Isa;
 use crate::isa::IsaSet;
-use crate::mmm::{Query, Suitable, suitable_named};
+use crate::mmm::{Query, Suitable};
 
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
@@ -412,37 +412,37 @@ pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
 /// SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback. The SDOT
 /// kernel only exists when the assembler could encode `sdot` (`tract_arm64_dotprod`, set by
 /// build.rs); otherwise always use the SMLAL 8x8.
-fn neon_qmmm_i32(isa: &IsaSet, suitable: &[Suitable]) -> Option<usize> {
+fn neon_qmmm_i32(isa: &IsaSet, _suitable: &[Suitable]) -> Option<&'static str> {
     let _ = isa;
     #[cfg(tract_arm64_dotprod)]
     if platform.isa.has(Isa::Aarch64DotProd) {
-        return suitable_named(suitable, &arm64simd_mmm_i32_8x8_dot.name);
+        return Some(arm64simd_mmm_i32_8x8_dot.name.as_str());
     }
-    suitable_named(suitable, &arm64simd_mmm_i32_8x8.name)
+    Some(arm64simd_mmm_i32_8x8.name.as_str())
 }
 
 /// n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays full
 /// mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already optimal and
 /// the model only second-guesses it into knife-edge mispicks, so keep it.
-fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn neon_mmv_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match *KIND {
         Kind::CortexA53 => match query.m {
             Some(m) if m < 64 => {
                 cortex_a53_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
             }
-            _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_a53.name),
+            _ => Some(arm64simd_mmm_f32_64x1_a53.name.as_str()),
         },
         Kind::CortexA55 => match query.m {
             Some(m) if m < 64 => {
                 cortex_a55_mmv_linear::linear_model().preferred(suitable, Some(m), query.k, Some(1))
             }
-            _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_a55.name),
+            _ => Some(arm64simd_mmm_f32_64x1_a55.name.as_str()),
         },
-        _ => suitable_named(suitable, &arm64simd_mmm_f32_64x1_gen.name),
+        _ => Some(arm64simd_mmm_f32_64x1_gen.name.as_str()),
     }
 }
 
-fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
+fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
     match *KIND {
         Kind::CortexA53 => {
             cortex_a53_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
@@ -450,14 +450,11 @@ fn neon_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<usize> {
         Kind::CortexA55 => {
             cortex_a55_linear::linear_model().preferred(suitable, query.m, query.k, query.n)
         }
-        _ => suitable_named(
-            suitable,
-            if query.n.unwrap_or(8) < 8 {
-                &arm64simd_mmm_f32_16x4_gen.name
-            } else {
-                &arm64simd_mmm_f32_8x8_gen.name
-            },
-        ),
+        _ => Some(if query.n.unwrap_or(8) < 8 {
+            arm64simd_mmm_f32_16x4_gen.name.as_str()
+        } else {
+            arm64simd_mmm_f32_8x8_gen.name.as_str()
+        }),
     }
 }
 
@@ -468,11 +465,11 @@ fn neon_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => neon_mmv_f32(suitable, query),
         (DatumType::F32, _) => neon_mmm_f32(suitable, query),
-        (DatumType::I32, Some(1)) => suitable_named(suitable, &arm64simd_mmm_i32_64x1.name),
+        (DatumType::I32, Some(1)) => Some(arm64simd_mmm_i32_64x1.name.as_str()),
         (DatumType::I32, _) => neon_qmmm_i32(isa, suitable),
         _ => None,
     }
@@ -493,27 +490,22 @@ fn fp16_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
-) -> Option<usize> {
+    _suitable: &[Suitable],
+) -> Option<&'static str> {
     let a55 = *KIND == Kind::CortexA55;
     match (dt, query.n) {
-        (DatumType::F16, Some(1)) if a55 => {
-            suitable_named(suitable, &arm64fp16_mmm_f16_128x1_a55.name)
-        }
-        (DatumType::F16, Some(1)) => suitable_named(suitable, &arm64fp16_mmm_f16_128x1_gen.name),
+        (DatumType::F16, Some(1)) if a55 => Some(arm64fp16_mmm_f16_128x1_a55.name.as_str()),
+        (DatumType::F16, Some(1)) => Some(arm64fp16_mmm_f16_128x1_gen.name.as_str()),
         (DatumType::F16, _) => {
             use tract_data::internal::DimLike;
             let n = query.n.unwrap_or(1024);
             let narrow = n.divceil(4) * 4 < n.divceil(8) * 8;
-            suitable_named(
-                suitable,
-                match (a55, narrow) {
-                    (true, true) => &arm64fp16_mmm_f16_32x4_a55.name,
-                    (true, false) => &arm64fp16_mmm_f16_16x8_a55.name,
-                    (false, true) => &arm64fp16_mmm_f16_32x4_gen.name,
-                    (false, false) => &arm64fp16_mmm_f16_16x8_gen.name,
-                },
-            )
+            Some(match (a55, narrow) {
+                (true, true) => &arm64fp16_mmm_f16_32x4_a55.name,
+                (true, false) => &arm64fp16_mmm_f16_16x8_a55.name,
+                (false, true) => &arm64fp16_mmm_f16_32x4_gen.name,
+                (false, false) => &arm64fp16_mmm_f16_16x8_gen.name,
+            })
         }
         _ => None,
     }
@@ -589,7 +581,7 @@ fn apple_chip_preferred(
     dt: DatumType,
     query: &Query,
     suitable: &[Suitable],
-) -> Option<usize> {
+) -> Option<&'static str> {
     let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
     if dt != DatumType::F32 || query.n == Some(1) || !pinned {
         return None;

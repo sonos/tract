@@ -1,4 +1,4 @@
-use super::{Suitable, suitable_named};
+use super::Suitable;
 
 fn order_f(a: f32, b: f32) -> std::cmp::Ordering {
     if a < b { std::cmp::Ordering::Less } else { std::cmp::Ordering::Greater }
@@ -27,7 +27,7 @@ pub struct LinearCostModel<'a> {
     pub restream: f32,
 }
 
-impl LinearCostModel<'_> {
+impl<'a> LinearCostModel<'a> {
     fn predicted(&self, ix: usize, m: usize, k: usize, n: usize, mr: usize, nr: usize) -> f32 {
         let coeffs = &self.coeffs[ix];
         let padded_work = (m.div_ceil(mr) * mr * n.div_ceil(nr) * nr * k) as f32;
@@ -36,18 +36,19 @@ impl LinearCostModel<'_> {
         coeffs[0] * padded_work + coeffs[1] * n_tiles + coeffs[2] + self.restream * a_restream
     }
 
+    /// The fitted kernel this model predicts fastest among `suitable`, by name. The name comes
+    /// from the model's own table rather than the list, so a tier can pass it on as its answer.
     pub fn preferred(
         &self,
         suitable: &[Suitable],
         m: Option<usize>,
         k: Option<usize>,
         n: Option<usize>,
-    ) -> Option<usize> {
+    ) -> Option<&'a str> {
         if let (Some(m), Some(k), Some(n)) = (m, k, n) {
             let best = suitable
                 .iter()
-                .enumerate()
-                .filter_map(|(cix, (mmm, _, _))| {
+                .filter_map(|(mmm, _, _)| {
                     // nr==1 (matrix-vector) kernels are weighed only for the mmv path
                     // (n==1). For n>=2 they are excluded, else a degenerate shape can be
                     // handed a nr==1 kernel that pads N catastrophically.
@@ -56,17 +57,17 @@ impl LinearCostModel<'_> {
                     }
                     let ix = self.kernels.iter().position(|name| *name == mmm.name())?;
                     let t = self.predicted(ix, m, k, n, mmm.mr(), mmm.nr());
-                    Some((t, cix))
+                    Some((t, self.kernels[ix]))
                 })
                 .min_by(|a, b| order_f(a.0, b.0))
-                .map(|(_, cix)| cix);
+                .map(|(_, name)| name);
             if best.is_some() {
                 return best;
             }
         }
         // A dim the caller could not pin leaves the shape terms nothing to say, so all that is
-        // left is the kernel the model was fitted around. Where the suitable kernels do not include it
-        // the model has no opinion at all, and the portable rules answer instead.
-        suitable_named(suitable, self.default_kernel)
+        // left is the kernel the model was fitted around. Whether the suitable kernels include it
+        // is the caller's business, and where they do not the portable rules answer instead.
+        Some(self.default_kernel)
     }
 }

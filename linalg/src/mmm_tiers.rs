@@ -5,9 +5,10 @@
 //! host and its precedence is a field rather than the order some `plug` happened to run in.
 //!
 //! [`preferred`] asks the applicable tiers in descending [`MmmTier::precedence`] and takes the
-//! first answer. A tier that returns `None` has no opinion on that query and the next one down is
-//! asked, so "only when nothing better answered" needs no condition of its own — the portable
-//! rules at precedence 0 are simply the last tier every machine ends on.
+//! first answer that the query can actually reach. A tier with no opinion, or one naming a kernel
+//! this query has no suitable entry for, leaves it to the next tier down — so "only when nothing
+//! better answered" needs no condition of its own, and the portable rules at precedence 0 are
+//! simply the last tier every machine ends on.
 #[cfg(test)]
 use crate::isa::Isa;
 use crate::isa::IsaSet;
@@ -29,8 +30,12 @@ pub struct MmmTier {
     /// or chip it was measured on. Never a shape or an accumulator — those belong to
     /// [`Self::preferred`], which can decline by answering `None`.
     pub applies: fn(&IsaSet) -> bool,
-    /// Which of the suitable kernels this tier would run, `None` for a query it does not claim.
-    pub preferred: fn(&IsaSet, DatumType, &Query, &[Suitable]) -> Option<usize>,
+    /// Which kernel this tier would run, by name, `None` for a query it does not claim. A tier
+    /// answers with the kernel it wants and [`preferred`] holds that answer to the suitable list,
+    /// so naming one the query cannot reach is the same as having no opinion: the next tier down
+    /// is asked. Only a tier picking *from* the list — a cost model weighing candidates — needs
+    /// to read `suitable` at all.
+    pub preferred: fn(&IsaSet, DatumType, &Query, &[Suitable]) -> Option<&'static str>,
 }
 
 inventory::collect!(MmmTier);
@@ -65,7 +70,10 @@ pub fn preferred(
     query: &Query,
     suitable: &[Suitable],
 ) -> Option<usize> {
-    tiers.iter().find_map(|t| (t.preferred)(isa, accumulator, query, suitable))
+    tiers.iter().find_map(|t| {
+        let name = (t.preferred)(isa, accumulator, query, suitable)?;
+        crate::mmm::suitable_named(suitable, name)
+    })
 }
 
 #[cfg(test)]

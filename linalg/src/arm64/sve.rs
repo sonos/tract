@@ -213,13 +213,13 @@ fn sve2_preferred(
     _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
     query: &crate::mmm::Query,
-    suitable: &[crate::mmm::Suitable],
-) -> Option<usize> {
+    _suitable: &[crate::mmm::Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
-        (crate::DatumType::F32, Some(1)) => suitable_named(suitable, &sve_mmv_f32_64x1.name),
-        (crate::DatumType::F32, _) => suitable_named(suitable, &sve_mmm_f32_8x8.name),
-        (crate::DatumType::I32, Some(1)) => suitable_named(suitable, &sve_mmm_i32_64x1.name),
-        (crate::DatumType::I32, _) => suitable_named(suitable, &sve_mmm_i32_8x8.name),
+        (crate::DatumType::F32, Some(1)) => Some(sve_mmv_f32_64x1.name.as_str()),
+        (crate::DatumType::F32, _) => Some(sve_mmm_f32_8x8.name.as_str()),
+        (crate::DatumType::I32, Some(1)) => Some(sve_mmm_i32_64x1.name.as_str()),
+        (crate::DatumType::I32, _) => Some(sve_mmm_i32_8x8.name.as_str()),
         _ => None,
     }
 }
@@ -242,11 +242,11 @@ fn sve2_fp16_preferred(
     _isa: &crate::isa::IsaSet,
     dt: crate::DatumType,
     query: &crate::mmm::Query,
-    suitable: &[crate::mmm::Suitable],
-) -> Option<usize> {
+    _suitable: &[crate::mmm::Suitable],
+) -> Option<&'static str> {
     match (dt, query.n) {
-        (crate::DatumType::F16, Some(1)) => suitable_named(suitable, &sve_mmv_f16_64x1.name),
-        (crate::DatumType::F16, _) => suitable_named(suitable, &sve_mmm_f16_8x8.name),
+        (crate::DatumType::F16, Some(1)) => Some(sve_mmv_f16_64x1.name.as_str()),
+        (crate::DatumType::F16, _) => Some(sve_mmm_f16_8x8.name.as_str()),
         _ => None,
     }
 }
