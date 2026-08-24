@@ -13,12 +13,12 @@ pub fn plug(ops: &mut Ops) {
 panel_extractor!(x86_64; kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::mmm::pq40_r32()),
     f32::packing(32).align(32)
-) isa(Avx2, F16c));
+) isa(X86_64Avx2, X86_64F16c));
 
 panel_extractor!(x86_64; kernel_packed_32_q20t_to_f32 as packed_32_q20t_to_f32(
     Box::new(super::mmm::pq20t_r32()),
     f32::packing(32).align(32)
-) isa(Avx2, F16c));
+) isa(X86_64Avx2, X86_64F16c));
 
 // AVX2 unpack of a ternary (Q2_0_T) r=32, zip=0 panel into an f32 packing(32) panel.
 // Per 32-block: 32 f16 row-scales then 32 k-positions, each with 32 rows of 2-bit codes
@@ -151,7 +151,7 @@ bail_stub!(x86_64; unsafe fn kernel_packed_32_q20t_to_f32(*const u8, *mut u8, us
 panel_extractor!(x86_64; kernel_packed_32_f16_to_f32 as packed_32_f16_to_f32(
     Box::new(PackedFormat::new(f16::datum_type(), 32, 32)),
     f32::packing(32).align(32)
-) isa(Avx2, F16c));
+) isa(X86_64Avx2, X86_64F16c));
 
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx2")]

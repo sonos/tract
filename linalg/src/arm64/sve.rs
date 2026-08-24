@@ -71,7 +71,7 @@ pub fn sve_rms_norm_f32(buf: &mut [f32], eps: f32) {
 
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
-    isa(Sve2)
+    isa(Aarch64Sve2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -80,7 +80,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8
 // dispatched when N == 1 (matrix x f32 column vector). Wired to ops.mmv_f32.
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
-    isa(Sve2)
+    isa(Aarch64Sve2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -90,7 +90,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32
 // svmla), and supports the i32 quantization fuse ops. Wired to ops.qmmm_i32.
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
-    isa(Sve2)
+    isa(Aarch64Sve2)
     can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(
         PackedFormat::new(DatumType::I8, 8, 16),
@@ -105,7 +105,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8
 // ops.qmmv_i32.
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32>(64, 1)
-    isa(Sve2)
+    isa(Aarch64Sve2)
     can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(
         PackedFormat::new(DatumType::I8, 64, 16),
@@ -119,7 +119,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32
 // SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
 #[cfg(tract_sve_fp16)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
-    isa(Sve2, Fp16)
+    isa(Aarch64Sve2, Aarch64Fp16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -128,7 +128,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8
 // dispatched when N == 1. Wired to ops.mmv_f16 when has_fp16().
 #[cfg(tract_sve_fp16)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
-    isa(Sve2, Fp16)
+    isa(Aarch64Sve2, Aarch64Fp16)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -230,7 +230,7 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Aarch64),
         precedence: 6,
         name: "sve2",
-        applies: |isa| isa.has(crate::isa::Isa::Sve2),
+        applies: |isa| isa.has(crate::isa::Isa::Aarch64Sve2),
         preferred: sve2_preferred,
     }
 }
@@ -257,14 +257,14 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Aarch64),
         precedence: 7,
         name: "sve2-fp16",
-        applies: |isa| isa.has(crate::isa::Isa::Sve2) && isa.has(crate::isa::Isa::Fp16),
+        applies: |isa| isa.has(crate::isa::Isa::Aarch64Sve2) && isa.has(crate::isa::Isa::Aarch64Fp16),
         preferred: sve2_fp16_preferred,
     }
 }
 
 pub fn plug(ops: &mut Ops) {
     let _ = ops;
-    if crate::isa::native().has(crate::isa::Isa::Sve2) {
+    if crate::isa::native().has(crate::isa::Isa::Aarch64Sve2) {
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
         log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
         // RmsNorm: override the NEON default from arm64::plug() with the wider VLA SVE2 kernel.

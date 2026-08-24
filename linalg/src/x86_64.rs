@@ -225,11 +225,11 @@ pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
     let mut set = IsaSet::of_arch(crate::platform::Arch::X86_64);
     for (isa, probe) in [
-        (Isa::Avx, AVX),
-        (Isa::Avx2, AVX2),
-        (Isa::Fma, FMA),
-        (Isa::F16c, F16C),
-        (Isa::Avx512f, AVX512F),
+        (Isa::X86_64Avx, AVX),
+        (Isa::X86_64Avx2, AVX2),
+        (Isa::X86_64Fma, FMA),
+        (Isa::X86_64F16c, F16C),
+        (Isa::X86_64Avx512f, AVX512F),
     ] {
         if probe() {
             set = set.with(isa);
@@ -237,19 +237,19 @@ pub fn isa_set() -> crate::isa::IsaSet {
     }
     #[cfg(tract_avx512vnni)]
     if AVX512VNNI() {
-        set = set.with(Isa::Avx512Vnni);
+        set = set.with(Isa::X86_64Avx512Vnni);
     }
     #[cfg(tract_avxvnni)]
     if avxvnni::has_avxvnni() {
-        set = set.with(Isa::AvxVnni);
+        set = set.with(Isa::X86_64AvxVnni);
     }
     #[cfg(tract_amx_int8)]
     if amx::has_amx_int8() {
-        set = set.with(Isa::AmxInt8);
+        set = set.with(Isa::X86_64AmxInt8);
     }
     #[cfg(tract_amx_bf16)]
     if amx_bf16::has_amx_bf16() {
-        set = set.with(Isa::AmxBf16);
+        set = set.with(Isa::X86_64AmxBf16);
     }
     set
 }

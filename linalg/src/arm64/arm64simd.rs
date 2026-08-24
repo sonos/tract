@@ -100,7 +100,7 @@ MMMExternKernel!(aarch64; arm64simd_mmm_i32_8x8<i32>(8, 8)@(16, 16)
 // dispatch falls back to the SMLAL 8x8 i32 kernel.
 #[cfg(tract_arm64_dotprod)]
 MMMExternKernel!(aarch64; arm64simd_mmm_i32_8x8_dot<i32>(8, 8)@(16, 16)
-   isa(DotProd)
+   isa(Aarch64DotProd)
    packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(8), crate::pack::PackedI8K4::new(8));
    quality(ManuallyOptimized)
    store(i8)

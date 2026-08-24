@@ -22,7 +22,7 @@ const CAN_FUSE: fn(&FusedSpec) -> bool = |f| {
 // / ShiftLeft) bit-exactly; only LeakyRelu is unsupported (kernel returns 1).
 const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRelu(_));
 
-MMMExternKernel!(aarch64; sme_qmmm_i32_32x32<i32>(32,32)@(128,128) isa(Sme2) can_fuse(CAN_FUSE_I32)
+MMMExternKernel!(aarch64; sme_qmmm_i32_32x32<i32>(32,32)@(128,128) isa(Aarch64Sme2) can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(32), crate::pack::PackedI8K4::new(32));
     quality(ManuallyOptimized) store(i8));
 
@@ -60,14 +60,14 @@ fn sme_geometry_supported() -> bool {
 
 MMMExternKernel!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
-    isa(Sme)
+    isa(Aarch64Sme)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
 
 MMMExternKernel!(aarch64;
     sme_mmv_f32_64x1<f32>(64, 1)@(128, 128)
-    isa(Sme2)
+    isa(Aarch64Sme2)
     can_fuse(CAN_FUSE)
     quality(ManuallyOptimized)
 );
@@ -218,7 +218,7 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Aarch64),
         precedence: 4,
         name: "sme",
-        applies: |isa| isa.has(crate::isa::Isa::Sme),
+        applies: |isa| isa.has(crate::isa::Isa::Aarch64Sme),
         preferred: sme_preferred,
     }
 }
@@ -228,7 +228,7 @@ inventory::submit! {
         arch: Some(crate::platform::Arch::Aarch64),
         precedence: 5,
         name: "sme2",
-        applies: |isa| isa.has(crate::isa::Isa::Sme2),
+        applies: |isa| isa.has(crate::isa::Isa::Aarch64Sme2),
         preferred: sme2_preferred,
     }
 }
