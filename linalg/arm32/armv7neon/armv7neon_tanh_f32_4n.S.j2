@@ -8,6 +8,12 @@
 /*
     s16–s31 (d8–d15, q4–q7) must be preserved
     s0–s15 (d0–d7, q0–q3) and d16–d31 (q8–q15) do not need to be preserved
+
+    The input clamp alone holds the result in [-1, 1], so the quotient carries
+    none. Its bound is this kernel's own: the reciprocal here is a vrecpe
+    estimate refined by two Newton steps rather than a divide, which leaves the
+    quotient two f32 steps nearer 1 than the dividing kernels at the same clamp.
+    Raising it voids the range, as the quotient crosses 1 from 8.06 up.
 */
 
 armv7neon_tanh_f32_4n_{{suffix}}:
@@ -17,7 +23,7 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     vpush       { q4-q7 }
 
     adr         r2, .coeffs_num
-    vldmia      r2!, { s0-s13 }
+    vldmia      r2!, { s0-s12 }
 
 // q4 -> q4,5,6
 // q5 -> q7,8,9
@@ -128,15 +134,6 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     vmul.f32    q11, q5, q8
     vmul.f32    q12, q6, q9
 
-    vdup.32     q13, d6[1]
-    vdup.32     q14, d6[0]
-    vmax.f32    q10, q13
-    vmax.f32    q11, q13
-    vmax.f32    q12, q13
-    vmin.f32    q10, q14
-    vmin.f32    q11, q14
-    vmin.f32    q12, q14
-
     vstmia      r0!, { q10, q11, q12 }
 
     subs        r1, #12
@@ -187,11 +184,6 @@ armv7neon_tanh_f32_4n_{{suffix}}:
 
     vmul.f32    q10, q4, q7
 
-    vdup.32     q13, d6[1]
-    vdup.32     q4, d6[0]
-    vmax.f32    q10, q13
-    vmin.f32    q10, q4
-
     vstmia      r0!, { q10 }
 
     subs        r1, #4;
@@ -202,8 +194,8 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     bx          lr
 
 .coeffs_num:
-    .float -8.9                     // low
-    .float 8.9                      // high
+    .float -7.5                     // low
+    .float 7.5                      // high
     .float -8.488492677e-14         // alpha_13
     .float 5.277853000e-11
 
@@ -218,6 +210,6 @@ armv7neon_tanh_f32_4n_{{suffix}}:
     .float 0.4641733162
 
     .float 1.0
-    .float -1.0                     // output clamp low
+    .float 0                        // padding
     .float 0                        // padding
     .float 0                        // padding

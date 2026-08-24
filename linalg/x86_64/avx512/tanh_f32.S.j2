@@ -2,8 +2,14 @@
 // vim: set syntax=asm :
 
 // AVX-512 (zmm, 16-wide) tanh. Polynomial-numerator / polynomial-denominator
-// rational approximation of tanh clamped to [-9, 9]. Validated against the
+// rational approximation of tanh clamped to [-7.5, 7.5]. Validated against the
 // generic scalar reference via tanh_frame_tests! (see x86_64.rs).
+//
+// The coefficients are this kernel's own, not the fit the other f32 tanh kernels
+// share, so its clamp answers to its own error. That clamp alone holds the result
+// in [-1, 1], so the quotient carries none: raising it voids the range, as the
+// quotient crosses 1 from 8.13 up, where 1 - tanh(x) has fallen under the fmadd
+// chains' rounding error.
 
 System V ABI:
     args: rdi, rsi, rdx, rcx, r8, r9
@@ -184,18 +190,6 @@ avx512_tanh_f32_{{suffix}} proc
     vdivps          zmm6, zmm6, zmm14
     vdivps          zmm7, zmm7, zmm15
 
-    // This fit's beta_0 is not 1.0, so both bounds come from the table
-    vbroadcastss    zmm0, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
-    vbroadcastss    zmm1, dword ptr [{{offset}} {{L}}coeffs_num_one]
-    vmaxps          zmm4, zmm4, zmm0
-    vmaxps          zmm5, zmm5, zmm0
-    vmaxps          zmm6, zmm6, zmm0
-    vmaxps          zmm7, zmm7, zmm0
-    vminps          zmm4, zmm4, zmm1
-    vminps          zmm5, zmm5, zmm1
-    vminps          zmm6, zmm6, zmm1
-    vminps          zmm7, zmm7, zmm1
-
     vmovaps [rdi], zmm4
     vmovaps [rdi + 64], zmm5
     vmovaps [rdi + 128], zmm6
@@ -248,11 +242,6 @@ avx512_tanh_f32_{{suffix}} proc
 
     vdivps          zmm4, zmm4, zmm12
 
-    vbroadcastss    zmm0, dword ptr [{{offset}} {{L}}coeffs_num_minus_one]
-    vbroadcastss    zmm1, dword ptr [{{offset}} {{L}}coeffs_num_one]
-    vmaxps          zmm4, zmm4, zmm0
-    vminps          zmm4, zmm4, zmm1
-
     vmovaps [rdi], zmm4
     add     rdi, 64
     sub     rsi, 16
@@ -295,9 +284,9 @@ avx512_tanh_f32_{{suffix}} proc
 {% set float %}{% if msvc %} real4 {%else%} .float {%endif%}{% endset %}
 
 {{L}}coeffs_num_low:
-    {{float}} -9.0                     // low
+    {{float}} -7.5                     // low
 {{L}}coeffs_num_high:
-    {{float}} 9.0                      // high
+    {{float}} 7.5                      // high
 
 {{L}}coeffs_num_alpha_13:
     {{float}} -2.76076847742355e-16    // alpha_13
@@ -322,11 +311,6 @@ avx512_tanh_f32_{{suffix}} proc
     {{float}} 2.26843463243900e-03     // beta_2
 {{L}}coeffs_num_beta_0:
     {{float}} 4.89352518554385e-03     // beta_0
-
-{{L}}coeffs_num_one:
-    {{float}} 1.0
-{{L}}coeffs_num_minus_one:
-    {{float}} -1.0
 
 {% if msvc %}
 avx512_tanh_f32_{{suffix}} endp
