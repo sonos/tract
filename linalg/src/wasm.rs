@@ -1,12 +1,12 @@
-/// Wasm SIMD implementation of `MatMatMulKer<f32>`
-///
-/// To run test, you need to install `wasmtime`
-/// and export the following environment variables:
-/// ```
-/// > export RUSTFLAGS='-C target-feature=+simd128'
-/// > export CARGO_TARGET_WASM32_WASI_RUNNER=wasmtime
-/// > cargo test --target=wasm32-wasi
-/// ```
+//! The wasm kernel tree, behind `simd128` and — for the activations — `relaxed-simd`.
+//!
+//! Running its tests needs `wasmtime` and the wasi target:
+//!
+//! ```text
+//! RUSTFLAGS='-C target-feature=+simd128,+relaxed-simd' \
+//! CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
+//! cargo test --target wasm32-wasip1 -p tract-linalg
+//! ```
 use crate::{DatumType, Ops};
 
 #[cfg(target_feature = "relaxed-simd")]

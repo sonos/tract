@@ -120,6 +120,49 @@ macro_rules! ew_impl_f16_via_f32 {
 // An element-wise kernel whose body is an asm extern. A leading arch ident emits that extern
 // only in builds carrying the arch's instructions, replaced elsewhere by a bail stub of the
 // same signature, so the module links everywhere.
+
+/// Declare an element-wise routine: the kernel, the registry descriptor, and the accuracy tests,
+/// from one statement. The leading architecture ident is the one every kernel-declaration macro
+/// takes, omitted for portable Rust; `isa` names what the architecture must offer beyond
+/// itself.
+///
+/// The instruction set is declared once and answers both questions it used to be asked twice:
+/// which machines may select the kernel, and which machines may test it. A kernel whose tests
+/// are skipped everywhere it could run has nothing left to say, so the two must not be able to
+/// disagree.
+macro_rules! ew_routine {
+    (arm; $($rest:tt)*) => { ew_routine!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_routine!(@ aarch64, target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_routine!(@ x86_64, target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { ew_routine!(@ riscv64, target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => {
+        ew_routine!(@ wasm32,
+            all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
+
+    (@ $arch:ident, $built:meta; $func:ident, $ti:ident, $ker:ident,
+     $nr:expr, $alignment_items:expr $(, isa($($isa:ident),+))?) => {
+        ew_impl!($arch; $ti, $ker, $nr, $alignment_items);
+        paste! {
+            routine!($arch; [<$ti:upper>], $func, $ker $(, isa($($isa),+))?);
+        }
+        #[cfg(test)]
+        paste! {
+            mod [<test_ $ker>] {
+                use super::*;
+                [<$func:snake _frame_tests>]!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    $ti,
+                    $ker
+                );
+            }
+        }
+    };
+}
+
 macro_rules! ew_impl {
     (arm; $($rest:tt)*) => { ew_impl!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { ew_impl!(@ target_arch = "aarch64"; $($rest)*); };
@@ -151,36 +194,6 @@ macro_rules! ew_impl {
         }
     };
 
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr) => {
-        paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize) -> ());
-            }
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
-                #[inline(never)]
-                fn run(buf: &mut [$ti], _params: ()) {
-                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }
-                }
-            );
-        }
-    };
-    ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty) => {
-        paste! {
-            mod [<sys_ $func>] {
-                #[allow(unused_imports)]
-                use tract_data::prelude::f16;
-                extern_kernel!(fn $func(ptr: *mut $ti, count: usize, params: $params) -> ());
-            }
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
-                #[inline(never)]
-                fn run(buf: &mut [$ti], params: $params) {
-                    unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len(), params) }
-                }
-            );
-        }
-    };
 }
 
 pub trait ElementWise<T, Params = ()>: Send + Sync + Debug + dyn_clone::DynClone
