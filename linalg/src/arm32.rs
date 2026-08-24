@@ -100,6 +100,10 @@ inventory::submit! {
     }
 }
 
+routine!(arm; F32, Sigmoid, armv7neon_sigmoid_f32_4n, isa(ArmNeon));
+routine!(arm; F32, Tanh, armv7neon_tanh_f32_4n, isa(ArmNeon));
+routine!(arm; F32, Silu, armv7neon_silu_f32_4n, isa(ArmNeon));
+
 pub fn plug(ops: &mut Ops) {
     if crate::isa::native().has(crate::isa::Isa::ArmNeon) {
         log::info!("armv7neon activated (ssigmoid, ssilu, stanh)");
