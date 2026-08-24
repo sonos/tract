@@ -68,7 +68,7 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let v = vec![TC::max_value(); ker.mr() * ker.nr()];
@@ -93,7 +93,7 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let (mr, nr) = (ker.mr(), ker.nr());
@@ -164,7 +164,7 @@ where
     TI: LADatum + Bounded + PartialEq,
     usize: AsPrimitive<TC>,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let (mr, nr) = (ker.mr(), ker.nr());

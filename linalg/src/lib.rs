@@ -99,7 +99,7 @@ use tract_data::prelude::*;
 
 /// One tier's answer within a policy: which of the candidates it would run, `None` to leave the
 /// query to the tier below.
-pub type MmmSelector = Box<dyn Fn(&[Candidate], &Query) -> Option<usize> + Send + Sync>;
+pub type MmmPreference = Box<dyn Fn(&[Candidate], &Query) -> Option<usize> + Send + Sync>;
 
 /// Which of the candidates a platform would run for a query, `None` for a query it has no
 /// opinion on — an accumulator no arch plug claimed, or a shape whose kernel this build does not
@@ -108,7 +108,7 @@ pub type MmmPolicy = Box<dyn Fn(DatumType, &Query, &[Candidate]) -> Option<usize
 
 #[allow(clippy::type_complexity)]
 pub struct Ops {
-    mmm_impls: Vec<Box<dyn mmm::MatMatMul>>,
+    runnable: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
 
     mmm_policy: MmmPolicy,
@@ -150,8 +150,10 @@ pub struct Ops {
 }
 
 impl Ops {
-    pub fn mmm_impls(&self) -> &[Box<dyn mmm::MatMatMul>] {
-        &self.mmm_impls
+    /// Every kernel this host can execute: built into this build, and declaring an instruction
+    /// set the CPU has. What selection narrows down from.
+    pub fn runnable(&self) -> &[Box<dyn mmm::MatMatMul>] {
+        &self.runnable
     }
 
     pub fn all_possible_packing(
@@ -159,7 +161,7 @@ impl Ops {
         weight_type: impl Into<WeightType>,
     ) -> impl Iterator<Item = &dyn MMMInputFormat> {
         let weight_type = weight_type.into();
-        self.mmm_impls
+        self.runnable
             .iter()
             .flat_map(|m| m.packings())
             .map(|p| &*p.0)
@@ -186,8 +188,8 @@ impl Ops {
     ///
     /// The one enumeration behind both matmul lowerings — how a candidate is *chosen* from
     /// the list is the caller's business.
-    pub fn candidates(&self, query: &Query) -> Vec<Candidate> {
-        self.mmm_impls
+    pub fn suitable(&self, query: &Query) -> Vec<Candidate> {
+        self.runnable
             .iter()
             .filter(|mmm| {
                 query.accumulators.contains(&mmm.internal_type())
@@ -216,7 +218,7 @@ impl Ops {
     /// no arch plug claimed this accumulator, or the query is not the plain matmul the policies
     /// reason about. A generic answer counts as no opinion: `generic()` installs fixed kernels,
     /// so getting one back means no arch plug ever overwrote that slot.
-    pub fn rank(&self, query: &Query, candidates: &[Candidate]) -> Option<usize> {
+    pub fn preferred(&self, query: &Query, candidates: &[Candidate]) -> Option<usize> {
         let WeightType::Plain(weight) = &query.weight else { return None };
         if weight.unquantized() != query.activation.unquantized() {
             return None;
@@ -233,8 +235,8 @@ impl Ops {
     /// for a symbolic `n`, should walk the candidates itself. `None` only when nothing legal
     /// exists at all.
     pub fn pick(&self, query: &Query) -> Option<Candidate> {
-        let mut candidates = self.candidates(query);
-        if let Some(ix) = self.rank(query, &candidates) {
+        let mut candidates = self.suitable(query);
+        if let Some(ix) = self.preferred(query, &candidates) {
             return Some(candidates.swap_remove(ix));
         }
         retain_best_quality(&mut candidates);
@@ -257,10 +259,10 @@ impl Ops {
     }
 
     /// The kernel this platform's policy would run for a plain matmul of these dims, for a
-    /// caller introspecting dispatch rather than performing it. Unlike [`Ops::rank`] it reports
+    /// caller introspecting dispatch rather than performing it. Unlike [`Ops::preferred`] it reports
     /// the policy's answer whatever its quality tier, and it never falls back on the portable
     /// rules: `None` means the policy itself had nothing to say.
-    pub fn policy_pick(
+    pub fn preferred_kernel(
         &self,
         accumulator: DatumType,
         m: Option<usize>,
@@ -268,7 +270,7 @@ impl Ops {
         n: Option<usize>,
     ) -> Option<Box<dyn mmm::MatMatMul>> {
         let query = Query::plain(accumulator, m, k, n);
-        let candidates = self.candidates(&query);
+        let candidates = self.suitable(&query);
         let ix = (self.mmm_policy)(accumulator, &query, &candidates)?;
         Some(candidates[ix].0.clone())
     }
@@ -291,7 +293,7 @@ pub fn generic() -> Ops {
     use element_wise::ElementWiseKer;
     use reduce::{MapReduceKer, ReduceKer};
     let mut ops = Ops {
-        mmm_impls: vec![],
+        runnable: vec![],
         panel_extractors: vec![],
         mmm_policy: Box::new(|dt, query, candidates| {
             let vec = query.n == Some(1);
@@ -334,7 +336,7 @@ pub fn generic() -> Ops {
         softmax2_f32: Box::new(|| generic::reduce::softmax_l2::SSoftMaxL2Accurate::red()),
         rms_norm_f32: Box::new(generic::rms_norm::rms_norm_f32),
     };
-    ops.mmm_impls = mmm_routines::pool();
+    ops.runnable = mmm_routines::runnable();
     ops
 }
 

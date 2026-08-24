@@ -83,9 +83,9 @@ impl Isa {
 
     /// Where this feature sits in its architecture's ladder, each step meaning "a kernel
     /// written for this needs nothing a kernel written for the step below has, and can do
-    /// more". Steps are compared across an architecture's whole kernel pool, so every feature
+    /// more". Steps are compared across an architecture's whole kernel set, so every feature
     /// a kernel can declare has to be placed: an unplaced feature reads as the baseline and
-    /// would quietly demote its kernels below every ranked sibling.
+    /// would quietly demote its kernels below every sibling in the preference order.
     ///
     /// The two architectures share the scale without meeting on it — no host offers features
     /// from both — so `Neon` and `Avx` both sitting at 1 says nothing about each other.
@@ -201,7 +201,7 @@ pub const fn peer_of(mine: Isa, theirs: Isa) -> isize {
 }
 
 /// A boost no tier can make up for, for a kernel that is runnable here but must never be
-/// chosen unless something outside the ranking asks for it by name.
+/// chosen unless something outside the preference order asks for it by name.
 pub const NEVER_PREFERRED: isize = -(TIER_BOOST * MAX_TIER as isize) - 1;
 
 impl fmt::Debug for IsaReq {

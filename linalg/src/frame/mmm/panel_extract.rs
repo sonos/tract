@@ -15,7 +15,7 @@ pub struct PanelExtractor {
     pub kernel: Kernel,
     /// False when this build did not compile the extractor's body, its arch not being the one
     /// it was written for. The struct still exists, so it stays enumerable, but it is never
-    /// supported here and calling it bails.
+    /// runnable here and calling it bails.
     pub built: bool,
     /// What the instruction set must offer for this extractor to run here at all. Runnability
     /// only: a preference spelled here would also skip the extractor's tests.
@@ -42,7 +42,7 @@ impl PartialEq for PanelExtractor {
 impl Eq for PanelExtractor {}
 
 impl PanelExtractor {
-    pub fn is_supported_here(&self) -> bool {
+    pub fn runnable(&self) -> bool {
         self.built && self.isa.satisfied_by(crate::isa::native())
     }
 }
@@ -182,7 +182,7 @@ pub mod test {
         blocks: usize,
         panels: usize,
     ) -> TractResult<()> {
-        if !extractor.is_supported_here() {
+        if !extractor.runnable() {
             return Ok(());
         }
         assert!(extractor.from.r() == extractor.to.r());

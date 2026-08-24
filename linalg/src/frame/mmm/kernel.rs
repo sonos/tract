@@ -20,7 +20,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn declared_boost(&self) -> isize;
 
     /// [`Self::declared_boost`] plus the default owed to the instruction set the kernel was
-    /// written for, [`crate::isa::TIER_BOOST`] per tier. Ranking reads this one.
+    /// written for, [`crate::isa::TIER_BOOST`] per tier. Preference reads this one.
     fn dynamic_boost(&self) -> isize {
         self.declared_boost() + self.isa().tier() as isize * crate::isa::TIER_BOOST
     }
@@ -34,7 +34,7 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
         true
     }
 
-    fn is_supported_here(&self) -> bool {
+    fn runnable(&self) -> bool {
         self.built() && self.isa().satisfied_by(crate::isa::native())
     }
 
@@ -67,7 +67,7 @@ pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub stores: Vec<DatumType>,
     /// False when this build did not assemble the kernel's asm, its arch not being the one the
     /// kernel was written for. The kernel struct still exists, so it stays introspectable, but
-    /// it is never supported here and calling it bails.
+    /// it is never runnable here and calling it bails.
     pub built: bool,
     /// What the instruction set must offer for this kernel to run here at all.
     pub isa: crate::isa::IsaReq,

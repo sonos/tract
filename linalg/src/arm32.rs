@@ -50,11 +50,11 @@ pub fn plug(ops: &mut Ops) {
         }
 
         // Consulted only for small m (see arm64 for the rationale).
-        let mmv_f32: crate::MmmSelector = match cpu {
+        let mmv_f32: crate::MmmPreference = match cpu {
             0xc07 => {
                 let model = cortex_a7_mmv_linear::linear_model();
                 Box::new(move |candidates, query| match query.m {
-                    Some(m) if m < 32 => model.pick(candidates, Some(m), query.k, Some(1)),
+                    Some(m) if m < 32 => model.preferred(candidates, Some(m), query.k, Some(1)),
                     _ => candidate_named(
                         candidates,
                         &armv7neon::armv7neon_mmm_f32_32x1_cortexa7.name,
@@ -64,7 +64,7 @@ pub fn plug(ops: &mut Ops) {
             0xc09 => {
                 let model = cortex_a9_mmv_linear::linear_model();
                 Box::new(move |candidates, query| match query.m {
-                    Some(m) if m < 32 => model.pick(candidates, Some(m), query.k, Some(1)),
+                    Some(m) if m < 32 => model.preferred(candidates, Some(m), query.k, Some(1)),
                     _ => candidate_named(
                         candidates,
                         &armv7neon::armv7neon_mmm_f32_32x1_cortexa9.name,
@@ -76,14 +76,18 @@ pub fn plug(ops: &mut Ops) {
             }),
         };
 
-        let mmm_f32: crate::MmmSelector = match cpu {
+        let mmm_f32: crate::MmmPreference = match cpu {
             0xc07 => {
                 let model = cortex_a7_linear::linear_model();
-                Box::new(move |candidates, query| model.pick(candidates, query.m, query.k, query.n))
+                Box::new(move |candidates, query| {
+                    model.preferred(candidates, query.m, query.k, query.n)
+                })
             }
             0xc09 => {
                 let model = cortex_a9_linear::linear_model();
-                Box::new(move |candidates, query| model.pick(candidates, query.m, query.k, query.n))
+                Box::new(move |candidates, query| {
+                    model.preferred(candidates, query.m, query.k, query.n)
+                })
             }
             _ => Box::new(|candidates, query| {
                 candidate_named(

@@ -33,7 +33,7 @@ pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
 
 pub fn plug(ops: &mut Ops) {
-    // Every kernel this policy names must be ManuallyOptimized: `rank` hands the answer to
+    // Every kernel this policy names must be ManuallyOptimized: `preferred` hands the answer to
     // the candidate list, and a lesser tier would be dropped by retain_best_quality, leaving
     // the N>1 rule to pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1,
     // a matrix×vector kernel, for every GEMM.

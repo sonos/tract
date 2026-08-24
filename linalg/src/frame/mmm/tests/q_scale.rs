@@ -51,7 +51,7 @@ where
     K: MatMatMulKer<Acc = i32>,
 {
     pub fn run(&self) {
-        if !self.ker.is_supported_here() {
+        if !self.ker.runnable() {
             return;
         }
         if let FusedSpec::QScale(shift, policy, mult) = self.scaler.as_fused_spec() {

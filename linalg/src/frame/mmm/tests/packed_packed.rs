@@ -357,7 +357,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     }
 
     pub fn check(&self) -> TractResult<()> {
-        if !self.ker.is_supported_here() {
+        if !self.ker.runnable() {
             return Ok(());
         }
         let expected = self.reference()?;

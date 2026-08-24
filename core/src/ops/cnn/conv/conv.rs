@@ -570,7 +570,7 @@ impl Conv {
             n: n.as_usize(),
         };
         if weight_fact.is_exotic() {
-            let mut candidates = tract_linalg::ops().candidates(&query);
+            let mut candidates = tract_linalg::ops().suitable(&query);
             retain_best_quality(&mut candidates);
             candidates
                 .into_iter()

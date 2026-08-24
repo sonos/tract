@@ -20,24 +20,24 @@ fn single_strat(it: Impl) -> Strat {
 
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
     let query = query(model, node, op)?;
-    let mut impls = tract_linalg::ops().candidates(&query);
-    ensure!(impls.len() > 0);
+    let mut candidates = tract_linalg::ops().suitable(&query);
+    ensure!(candidates.len() > 0);
     // Only with `n` in hand: a symbolic `n` is what the packing-group reasoning below is for,
     // and it serves both roles at once, which a single pick cannot.
     if query.n.is_some()
-        && let Some(ix) = tract_linalg::ops().rank(&query, &impls)
+        && let Some(ix) = tract_linalg::ops().preferred(&query, &candidates)
     {
-        return Ok(single_strat(impls.swap_remove(ix)));
+        return Ok(single_strat(candidates.swap_remove(ix)));
     }
-    retain_best_quality(&mut impls);
-    if impls.len() == 1 {
-        return Ok(single_strat(impls.remove(0)));
+    retain_best_quality(&mut candidates);
+    if candidates.len() == 1 {
+        return Ok(single_strat(candidates.remove(0)));
     }
-    if let Some(ix) = pick_by_shape(&query, &impls) {
-        return Ok(single_strat(impls.swap_remove(ix)));
+    if let Some(ix) = pick_by_shape(&query, &candidates) {
+        return Ok(single_strat(candidates.swap_remove(ix)));
     }
     let mut grouped_by_left_packing = Vec::<(&dyn MMMInputFormat, Vec<_>)>::new();
-    'mmm: for (m, p, pe) in &impls {
+    'mmm: for (m, p, pe) in &candidates {
         let left_packing: &dyn MMMInputFormat =
             pe.as_ref().map(|pe| &*pe.from).unwrap_or(&*m.packings()[*p].0);
         for kit in &mut grouped_by_left_packing {
