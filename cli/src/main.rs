@@ -850,10 +850,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             println!();
             for m in tract_linalg::ops().runnable() {
                 println!(
-                    "{} · {:?} tier {} boost {} -> {:?}",
+                    "{} · {:?} level {} boost {} -> {:?}",
                     colored_name(&**m),
                     m.isa(),
-                    m.isa().tier(),
+                    m.isa().level(),
                     m.declared_boost(),
                     m.stores()
                 );

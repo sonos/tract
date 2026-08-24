@@ -20,9 +20,9 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn declared_boost(&self) -> isize;
 
     /// [`Self::declared_boost`] plus the default owed to the instruction set the kernel was
-    /// written for, [`crate::isa::TIER_BOOST`] per tier. Preference reads this one.
+    /// written for, [`crate::isa::LEVEL_BOOST`] per level. Preference reads this one.
     fn dynamic_boost(&self) -> isize {
-        self.declared_boost() + self.isa().tier() as isize * crate::isa::TIER_BOOST
+        self.declared_boost() + self.isa().level() as isize * crate::isa::LEVEL_BOOST
     }
 
     #[allow(clippy::type_complexity)]

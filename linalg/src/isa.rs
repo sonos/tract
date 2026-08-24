@@ -89,8 +89,12 @@ impl Isa {
     ///
     /// The two architectures share the scale without meeting on it — no host offers features
     /// from both — so `Neon` and `Avx` both sitting at 1 says nothing about each other.
-    /// Widening the scale means revisiting [`MAX_TIER`].
-    pub const fn tier(&self) -> u8 {
+    /// Widening the scale means revisiting [`MAX_LEVEL`].
+    ///
+    /// This is tract's own ladder, one step per feature it dispatches on; it is not the psABI's
+    /// `x86-64-v1..v4`, which bundles features into four named levels. Only the word is
+    /// borrowed, never the numbering.
+    pub const fn level(&self) -> u8 {
         match self {
             // x86: each generation subsumes the last, AMX above the VNNI it needs alongside it.
             Isa::Avx => 1,
@@ -174,8 +178,8 @@ impl IsaReq {
 
     /// The most capable lineage step this kernel sits in, feeding the default half of
     /// [`crate::mmm::MatMatMulKer::dynamic_boost`].
-    pub fn tier(&self) -> u8 {
-        self.needs.iter().map(|i| i.tier()).max().unwrap_or(0)
+    pub fn level(&self) -> u8 {
+        self.needs.iter().map(|i| i.level()).max().unwrap_or(0)
     }
 }
 
@@ -185,24 +189,24 @@ impl IsaReq {
 ///
 /// A declared boost is how an exception to that assumption is spelled, so it has to cover the
 /// ladder steps it disagrees with -- and only those: a kernel whose competition sits in its own
-/// tier disagrees with no step and needs no magnitude at all. Spell the ones that do cross tiers
+/// level disagrees with no step and needs no magnitude at all. Spell the ones that do cross levels
 /// with [`peer_of`] instead of a literal, so the claim survives a ladder that grows a step;
 /// [`NEVER_PREFERRED`] is the far end of the range, for a kernel that must lose every tie.
-pub const TIER_BOOST: isize = 10;
+pub const LEVEL_BOOST: isize = 10;
 
 /// The deepest step any ladder reaches, bounding what a boost has to be able to cross.
-pub const MAX_TIER: u8 = 5;
+pub const MAX_LEVEL: u8 = 5;
 
 /// A boost that cancels the ladder between two steps, for a kernel written for `mine` but
 /// measured as a peer of the kernels written for `theirs`. The relation is the claim; the
 /// number is derived from it, and stays right when a step is inserted between the two.
 pub const fn peer_of(mine: Isa, theirs: Isa) -> isize {
-    (theirs.tier() as isize - mine.tier() as isize) * TIER_BOOST
+    (theirs.level() as isize - mine.level() as isize) * LEVEL_BOOST
 }
 
-/// A boost no tier can make up for, for a kernel that is runnable here but must never be
+/// A boost no level can make up for, for a kernel that is runnable here but must never be
 /// chosen unless something outside the preference order asks for it by name.
-pub const NEVER_PREFERRED: isize = -(TIER_BOOST * MAX_TIER as isize) - 1;
+pub const NEVER_PREFERRED: isize = -(LEVEL_BOOST * MAX_LEVEL as isize) - 1;
 
 impl fmt::Debug for IsaReq {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -271,23 +275,23 @@ fn forced(mut set: IsaSet) -> IsaSet {
 mod tests {
     use super::*;
 
-    /// `MAX_TIER` bounds what a declared boost has to be able to cross, so a ladder step added
+    /// `MAX_LEVEL` bounds what a declared boost has to be able to cross, so a ladder step added
     /// beyond it would make [`NEVER_PREFERRED`] and every [`peer_of`] claim too small.
     #[test]
     fn ladder_stays_within_the_bound() {
         for isa in Isa::ALL {
             assert!(
-                isa.tier() <= MAX_TIER,
-                "{isa} is tier {}, past MAX_TIER {MAX_TIER}",
-                isa.tier()
+                isa.level() <= MAX_LEVEL,
+                "{isa} is level {}, past MAX_LEVEL {MAX_LEVEL}",
+                isa.level()
             );
         }
     }
 
     #[test]
     fn peer_of_cancels_the_steps_between() {
-        assert_eq!(peer_of(Isa::Fma, Isa::Avx512f), TIER_BOOST);
-        assert_eq!(peer_of(Isa::Avx, Isa::Avx512Vnni), 3 * TIER_BOOST);
+        assert_eq!(peer_of(Isa::Fma, Isa::Avx512f), LEVEL_BOOST);
+        assert_eq!(peer_of(Isa::Avx, Isa::Avx512Vnni), 3 * LEVEL_BOOST);
         assert_eq!(peer_of(Isa::Avx512f, Isa::AvxVnni), 0);
     }
 }
