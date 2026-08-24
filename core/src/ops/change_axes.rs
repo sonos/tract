@@ -1081,6 +1081,14 @@ pub fn compute_shape_with_onnx_rules(
             )
         }
         let shape_vol: TDim = shape.iter().filter(|d| **d != (-1).into()).product();
+        // Dividing by a zero remainder leaves -1 undetermined rather than wrong: every value
+        // satisfies the element count.
+        if shape_vol == 0.into() {
+            bail!(
+                "Reshape: -1 in target shape {shape_spec:?} cannot be inferred, because the other \
+                 dimensions of {shape:?} leave a volume of zero"
+            )
+        }
         let div = input_vol.maybe_div(&shape_vol)?;
         if div.1 != 1 {
             bail!("invalid")
@@ -1768,6 +1776,12 @@ mod proptests {
     #[test]
     fn compute_rejects_negative_that_survives_the_volume_check() {
         assert!(compute_shape_with_tf_rules(s![3, 0], s!(-2, 0)).is_err())
+    }
+
+    #[test]
+    fn compute_rejects_inferred_dim_with_zero_volume_remainder() {
+        assert!(compute_shape_with_tf_rules(s![3, 0], s!(-1, 0)).is_err());
+        assert!(compute_shape_with_tf_rules(s![0, 3], s!(0, -1)).is_err())
     }
 
     #[test]
