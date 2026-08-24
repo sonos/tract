@@ -20,8 +20,8 @@ ew_impl_wrap!(aarch64;
         //   index 14: sqrt(2/pi)              ≈ 0.7978846
         //   index 15: 0.044715 * sqrt(2/pi)   ≈ 0.0356774
         static COEFFS: [f32; 16] = [
-            -8.9,
-            8.9,
+            -7.5,
+            7.5,
             -8.488492677e-14,
             5.277853000e-11,
             -2.022500419e-8,
@@ -51,12 +51,12 @@ ew_impl_wrap!(aarch64;
             // Register layout (loop4):
             //   v0-v3: coefficients
             //   v4:    sqrt(2/pi)  (broadcast of v3.s[2])
-            //   v5:    tanh clamp low (-8.9, dup v0.s[0])
-            //   v6:    tanh clamp high (8.9, dup v0.s[1])
+            //   v5:    tanh clamp low (-7.5, dup v0.s[0])
+            //   v6:    tanh clamp high (7.5, dup v0.s[1])
             //   v7:    0.5 (broadcast of v3.s[1])
             //   v8-v11: 0.5 * original x (saved after load)
             //   v16-v19: working (load -> pre_tanh -> clamped -> numerator)
-            //   v20-v23: x² for tanh polynomial (v20/v21 reused for the tanh clamp)
+            //   v20-v23: x² for tanh polynomial
             //   v24-v27: polynomial intermediates (denominator at end)
             //   v28-v31: polynomial intermediates (also x³ temp before tanh)
             std::arch::asm!("
@@ -209,21 +209,9 @@ ew_impl_wrap!(aarch64;
                     fdiv v18.4s, v18.4s, v26.4s
                     fdiv v19.4s, v19.4s, v27.4s
 
-                    // The quotient can reach ±(1 + 2^-23), which takes the 0.5*(1 + tanh)
-                    // factor out of (0, 1): below 0 it flips the result's sign, above 1 it
-                    // pushes the result past x. x² is dead here, so v20/v21 carry the bounds.
-                    fmov v20.4s, #-1.0
-                    fmov v21.4s, #1.0
-                    fmax v16.4s, v16.4s, v20.4s
-                    fmax v17.4s, v17.4s, v20.4s
-                    fmax v18.4s, v18.4s, v20.4s
-                    fmax v19.4s, v19.4s, v20.4s
-                    fmin v16.4s, v16.4s, v21.4s
-                    fmin v17.4s, v17.4s, v21.4s
-                    fmin v18.4s, v18.4s, v21.4s
-                    fmin v19.4s, v19.4s, v21.4s
-
-                    // result = 0.5*x * (1 + tanh) = (0.5*x) + (0.5*x) * tanh
+                    // result = 0.5*x * (1 + tanh) = (0.5*x) + (0.5*x) * tanh, one
+                    // rounding, so the sign holds as long as the quotient holds [-1, 1] —
+                    // which is what keeps the argument clamp at 7.5 and not higher.
                     fmla v8.4s, v8.4s, v16.4s
                     fmla v9.4s, v9.4s, v17.4s
                     fmla v10.4s, v10.4s, v18.4s
@@ -274,11 +262,6 @@ ew_impl_wrap!(aarch64;
                     fmla v24.4s, v20.4s, v28.4s
 
                     fdiv v16.4s, v16.4s, v24.4s
-
-                    fmov v20.4s, #-1.0
-                    fmov v21.4s, #1.0
-                    fmax v16.4s, v16.4s, v20.4s
-                    fmin v16.4s, v16.4s, v21.4s
 
                     fmla v8.4s, v8.4s, v16.4s
 
