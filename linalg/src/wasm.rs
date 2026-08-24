@@ -107,3 +107,10 @@ pub fn isa_set() -> crate::isa::IsaSet {
     }
     set
 }
+
+routine!(wasm32; F32Reduce, ReduceMax, reduce::wasm_max_f32_32n);
+routine!(wasm32; F32Reduce, ReduceMin, reduce::wasm_min_f32_32n);
+routine!(wasm32; F32Reduce, ReduceSum, reduce::wasm_sum_f32_32n);
+routine!(wasm32; F16Reduce, ReduceMax, reduce::wasm_max_f16_32n);
+routine!(wasm32; F16Reduce, ReduceSum, reduce::wasm_sum_f16_32n);
+routine!(wasm32; RmsNormF32, RmsNorm, "wasm_rms_norm_f32", reduce::rms_norm_f32);

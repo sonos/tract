@@ -287,3 +287,13 @@ pub fn isa_set() -> crate::isa::IsaSet {
     }
     set
 }
+
+routine!(x86_64; F32Reduce, ReduceMax, max::x86_64_fma_max_f32_32n, isa(X86_64Avx));
+routine!(x86_64; F32Reduce, ReduceMin, min::x86_64_fma_min_f32_32n, isa(X86_64Avx));
+routine!(x86_64; F32Reduce, ReduceMax, max::x86_64_avx512_max_f32_64n, isa(X86_64Avx512f));
+routine!(x86_64; F32MapReduce, Softmax2, softmax::x86_64_fma_softmax2_f32_32n,
+    isa(X86_64Avx2, X86_64Fma));
+routine!(x86_64; F32MapReduce, Softmax2, softmax::x86_64_avx512_softmax2_f32_64n,
+    isa(X86_64Avx512f));
+routine!(x86_64; RmsNormF32, RmsNorm, "x86_64_avx512_rms_norm_f32", rms_norm::rms_norm_f32,
+    isa(X86_64Avx512f));
