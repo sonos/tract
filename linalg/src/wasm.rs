@@ -9,14 +9,12 @@
 /// ```
 use crate::{DatumType, Ops};
 
-#[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
 use crate::frame::reduce::ReduceKer;
 
 #[macro_use]
 mod madd;
 
-#[cfg(target_feature = "relaxed-simd")]
 mod act;
 #[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod dispatch_tests;
@@ -25,7 +23,6 @@ mod mmm_f32_gemv;
 mod mmm_i32;
 mod reduce;
 
-#[cfg(target_feature = "relaxed-simd")]
 pub use act::*;
 pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
@@ -71,6 +68,9 @@ inventory::submit! {
     }
 }
 
+routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
+routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
+
 pub fn plug(ops: &mut Ops) {
     // Relaxed-SIMD activation kernels (FMA path). Only installed when the
     // build has `+relaxed-simd`; otherwise the slots stay at the generic
@@ -93,4 +93,16 @@ inventory::submit! {
         arch: crate::isa::Arch::Wasm32Simd128,
         plug,
     }
+}
+
+/// What this build offers, in the shared vocabulary. Unlike the other trees this is a build
+/// question rather than a probe: wasm features are enabled at compile time and a module cannot
+/// ask the engine what it got.
+pub fn isa_set() -> crate::isa::IsaSet {
+    use crate::isa::{Isa, IsaSet};
+    let mut set = IsaSet::of_arch(crate::isa::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
+    if cfg!(target_feature = "relaxed-simd") {
+        set = set.with(Isa::Wasm32RelaxedSimd);
+    }
+    set
 }

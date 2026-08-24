@@ -88,10 +88,11 @@ pub enum Isa {
     X86_64AmxInt8,
     X86_64AmxBf16,
     Wasm32Simd128,
+    Wasm32RelaxedSimd,
 }
 
 impl Isa {
-    pub const ALL: [Isa; 23] = [
+    pub const ALL: [Isa; 24] = [
         Isa::Arm,
         Isa::Aarch64,
         Isa::X86_64,
@@ -115,6 +116,7 @@ impl Isa {
         Isa::X86_64AmxInt8,
         Isa::X86_64AmxBf16,
         Isa::Wasm32Simd128,
+        Isa::Wasm32RelaxedSimd,
     ];
 
     /// The token as it appears in a report and in `TRACT_CPU_ISA`.
@@ -143,6 +145,7 @@ impl Isa {
             Isa::X86_64AmxInt8 => "amx-int8",
             Isa::X86_64AmxBf16 => "amx-bf16",
             Isa::Wasm32Simd128 => "simd128",
+            Isa::Wasm32RelaxedSimd => "relaxed-simd",
         }
     }
 
@@ -183,8 +186,9 @@ impl Isa {
             Isa::Aarch64Sve2 => 3,
             Isa::Aarch64Sme | Isa::Aarch64Sme2 => 4,
             Isa::Aarch64AppleAmx => 5,
-            // wasm has one feature and nothing to outrank.
+            // relaxed-simd brings the fused multiply-add the baseline proposal lacks.
             Isa::Wasm32Simd128 => 0,
+            Isa::Wasm32RelaxedSimd => 1,
         }
     }
 
@@ -213,7 +217,7 @@ impl Isa {
             | Isa::X86_64AmxInt8
             | Isa::X86_64AmxBf16 => Arch::X86_64,
             Isa::RiscV64 => Arch::RiscV64,
-            Isa::Wasm32 | Isa::Wasm32Simd128 => Arch::Wasm32Simd128,
+            Isa::Wasm32 | Isa::Wasm32Simd128 | Isa::Wasm32RelaxedSimd => Arch::Wasm32Simd128,
         }
     }
 
@@ -283,7 +287,7 @@ impl IsaSet {
     pub fn ladder(arch: Arch, level: u8) -> IsaSet {
         let mut set = IsaSet::of_arch(arch);
         for isa in Isa::ALL {
-            if isa.arch() == arch && isa.level() > 0 && isa.level() <= level {
+            if isa.arch() == arch && isa.level() <= level {
                 set = set.with(isa);
             }
         }
@@ -394,7 +398,7 @@ fn probe() -> IsaSet {
     #[cfg(target_arch = "x86_64")]
     return crate::x86_64::isa_set();
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-    return IsaSet::of_arch(crate::isa::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
+    return crate::wasm::isa_set();
     // An architecture with no kernel tree, or wasm without simd128: nothing to declare, and no
     // architecture to name either, since none of its kernels would be reachable anyway.
     #[cfg(not(any(

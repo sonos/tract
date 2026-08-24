@@ -1,4 +1,3 @@
-#[cfg(target_feature = "relaxed-simd")]
 use crate::frame::element_wise::ElementWiseKer;
 
 // Relaxed-SIMD activation kernels (f32, FMA path).
@@ -18,11 +17,9 @@ use crate::frame::element_wise::ElementWiseKer;
 // requires the relaxed-simd proposal to be enabled at compile time.
 // ---------------------------------------------------------------------------
 
-#[cfg(target_feature = "relaxed-simd")]
 #[derive(Clone, Debug)]
 pub struct WasmSigmoid4Relaxed;
 
-#[cfg(target_feature = "relaxed-simd")]
 impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
     fn name() -> &'static str {
         "wasm_relaxed_simd"
@@ -40,6 +37,7 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
         4
     }
 
+    #[cfg(target_feature = "relaxed-simd")]
     fn run(buf: &mut [f32], _: ()) {
         use std::arch::wasm32::*;
 
@@ -115,13 +113,15 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
             }
         }
     }
+    #[cfg(not(target_feature = "relaxed-simd"))]
+    fn run(_buf: &mut [f32], _: ()) {
+        panic!("WasmSigmoid4Relaxed: kernel not built for this target")
+    }
 }
 
-#[cfg(target_feature = "relaxed-simd")]
 #[derive(Clone, Debug)]
 pub struct WasmTanh4Relaxed;
 
-#[cfg(target_feature = "relaxed-simd")]
 impl ElementWiseKer<f32> for WasmTanh4Relaxed {
     fn name() -> &'static str {
         "wasm_relaxed_simd"
@@ -139,6 +139,7 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
         4
     }
 
+    #[cfg(target_feature = "relaxed-simd")]
     fn run(buf: &mut [f32], _: ()) {
         use std::arch::wasm32::*;
 
@@ -207,6 +208,10 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
                 p = p.add(4);
             }
         }
+    }
+    #[cfg(not(target_feature = "relaxed-simd"))]
+    fn run(_buf: &mut [f32], _: ()) {
+        panic!("WasmTanh4Relaxed: kernel not built for this target")
     }
 }
 
