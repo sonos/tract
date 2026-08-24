@@ -1,0 +1,254 @@
+//! Cross-arch registry of the single-winner kernels: one function, one datum type, one best
+//! implementation per machine.
+//!
+//! Every element-wise activation, scalar-parameter kernel and reduction declares itself here as
+//! data, so the whole function x target matrix is enumerable on any host -- with the
+//! `foreign-inventory` feature, including the trees this build cannot run. [`best_for`] answers
+//! which one a machine would use, and it takes the machine as an argument rather than reading
+//! the host, so the same query serves dispatch and introspection.
+//!
+//! This is deliberately not the model [`crate::mmm_routines`] uses. A matmul has many co-valid
+//! kernels per machine and the winner depends on the shape, so mmm keeps a pool and a tier
+//! ladder. These have no shape to weigh: one kernel wins outright, by what it is written
+//! against.
+//!
+//! A tree's kernels are declared whether or not this build compiled their bodies, so a
+//! descriptor being here means "such a kernel exists", not "it runs here". Only [`best_for`]'s
+//! answer for the *native* machine may be executed; anything else is metadata and would bail.
+//! What a build could not assemble at all is not declared, so an absent descriptor means "no
+//! such kernel", never "this toolchain skipped it".
+use crate::element_wise::{ElementWise, ElementWiseKer};
+use crate::isa::{Arch, IsaReq, IsaSet, LEVEL_BOOST};
+use tract_data::prelude::{DatumType, f16};
+
+/// A function a routine computes. One variant per function, whatever the datum types or the
+/// number of implementations behind it.
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug, PartialOrd, Ord)]
+pub enum Func {
+    Sigmoid,
+    Tanh,
+    Silu,
+    Gelu,
+    Erf,
+    HardSwish,
+}
+
+impl Func {
+    pub const ALL: [Func; 6] =
+        [Func::Sigmoid, Func::Tanh, Func::Silu, Func::Gelu, Func::Erf, Func::HardSwish];
+
+    /// The name the matrix and the logs use.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Func::Sigmoid => "sigmoid",
+            Func::Tanh => "tanh",
+            Func::Silu => "silu",
+            Func::Gelu => "gelu",
+            Func::Erf => "erf",
+            Func::HardSwish => "hardswish",
+        }
+    }
+}
+
+/// Builds the kernel behind a descriptor. The arm is what says which datum type the descriptor
+/// is for, so nothing repeats it as a field.
+#[allow(clippy::type_complexity)]
+pub enum RoutineFactory {
+    F32(fn() -> Box<dyn ElementWise<f32>>),
+    F16(fn() -> Box<dyn ElementWise<f16>>),
+}
+
+/// One kernel, enumerable uniformly on every host.
+pub struct Routine {
+    pub func: Func,
+    /// Architecture the kernel is written for, `None` for portable Rust every target builds.
+    pub arch: Option<Arch>,
+    /// What the instruction set must offer for this kernel to run at all. Runnability only:
+    /// a preference spelled here would also move the kernel in the matrix.
+    pub isa: IsaReq,
+    /// Where this kernel sits against its siblings, when the instruction set it needs does not
+    /// say it. Zero for the kernels whose ladder step already ranks them correctly; a measured
+    /// exception spells the steps it disagrees with, via [`crate::isa::peer_of`] or
+    /// [`crate::isa::NEVER_PREFERRED`].
+    pub boost: isize,
+    pub factory: RoutineFactory,
+}
+
+inventory::collect!(Routine);
+
+impl Routine {
+    pub fn dt(&self) -> DatumType {
+        match self.factory {
+            RoutineFactory::F32(_) => DatumType::F32,
+            RoutineFactory::F16(_) => DatumType::F16,
+        }
+    }
+
+    /// The kernel's own name. Read from the built object rather than declared, so it cannot
+    /// disagree with the kernel it names. Building is metadata-only work and safe anywhere;
+    /// running what it builds is not.
+    pub fn name(&self) -> &'static str {
+        match self.factory {
+            RoutineFactory::F32(f) => f().name(),
+            RoutineFactory::F16(f) => f().name(),
+        }
+    }
+
+    /// Whether `isa` describes a machine this kernel runs on: its architecture, and every
+    /// feature it needs.
+    pub fn runnable_on(&self, isa: &IsaSet) -> bool {
+        self.arch.is_none_or(|a| Some(a) == isa.arch()) && self.isa.satisfied_by(*isa)
+    }
+
+    /// What this kernel is worth on a machine that can run it: its ladder step, plus whatever
+    /// a measurement said the step gets wrong. An arch kernel always outranks a portable one,
+    /// which is a different question and is compared before this.
+    fn preference(&self) -> isize {
+        self.isa.level() as isize * LEVEL_BOOST + self.boost
+    }
+}
+
+/// Every routine this build compiled, whichever architecture it speaks for.
+pub fn declared() -> impl Iterator<Item = &'static Routine> {
+    inventory::iter::<Routine>()
+}
+
+/// The kernel `isa` would run for this function and datum type: an architecture kernel over a
+/// portable one, then the most capable instruction set, then the name, which only settles ties
+/// `inventory`'s link order would otherwise settle differently between builds. `None` when
+/// nothing is declared for the pair at all.
+pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Routine> {
+    declared()
+        .filter(|r| r.func == func && r.dt() == dt && r.runnable_on(isa))
+        .max_by_key(|r| (r.arch.is_some(), r.preference(), r.name()))
+}
+
+/// The f32 kernel this host runs for `func`.
+pub fn ew_f32(func: Func) -> Option<Box<dyn ElementWise<f32>>> {
+    match best_for(func, DatumType::F32, &crate::isa::native())?.factory {
+        RoutineFactory::F32(f) => Some(f()),
+        RoutineFactory::F16(_) => None,
+    }
+}
+
+/// The f16 kernel this host runs for `func`.
+pub fn ew_f16(func: Func) -> Option<Box<dyn ElementWise<f16>>> {
+    match best_for(func, DatumType::F16, &crate::isa::native())?.factory {
+        RoutineFactory::F16(f) => Some(f()),
+        RoutineFactory::F32(_) => None,
+    }
+}
+
+/// Declare one kernel, under the leading architecture ident the kernel-declaration macros take,
+/// or with no ident at all for portable Rust every target builds. `isa` is omitted for a kernel
+/// whose architecture needs nothing extra to run it, `boost` for one its ladder step already
+/// ranks right.
+macro_rules! routine {
+    (arm; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Arm); $($rest)*); };
+    (aarch64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Aarch64); $($rest)*); };
+    (x86_64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::X86_64); $($rest)*); };
+    (riscv64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::RiscV64); $($rest)*); };
+    (wasm32; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Wasm32Simd128); $($rest)*); };
+
+    ($factory:ident, $func:ident, $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@ None; $factory, $func, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+
+    (@ $arch:expr; $factory:ident, $func:ident, $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        inventory::submit! {
+            $crate::routines::Routine {
+                func: $crate::routines::Func::$func,
+                arch: $arch,
+                isa: $crate::isa::IsaReq::ANY $(.needing(&[$($crate::isa::Isa::$isa),+]))?,
+                boost: {
+                    #[allow(unused_mut, unused_assignments)]
+                    let mut boost = 0;
+                    $(boost = $boost;)?
+                    boost
+                },
+                factory: $crate::routines::RoutineFactory::$factory(|| {
+                    $crate::routines::factory_of::<$ker, _>()
+                }),
+            }
+        }
+    };
+}
+
+/// The `ew()` of a kernel, as the factory arms want it: a fresh box, no argument.
+pub fn factory_of<K, T>() -> Box<dyn ElementWise<T>>
+where
+    T: crate::LADatum,
+    K: ElementWiseKer<T> + Clone,
+{
+    K::ew()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The registry picks exactly what `plug` installed, on whatever machine the test runs. This
+    /// is the whole safety argument for the flip: the two mechanisms answer the same question, so
+    /// the imperative one can go.
+    #[test]
+    fn picks_what_plug_installed() {
+        let ops = crate::ops();
+        for (func, plugged) in [
+            (Func::Sigmoid, (ops.sigmoid_f32)().name()),
+            (Func::Tanh, (ops.tanh_f32)().name()),
+            (Func::Silu, (ops.silu_f32)().name()),
+            (Func::Gelu, (ops.gelu_f32)().name()),
+            (Func::Erf, (ops.erf_f32)().name()),
+            (Func::HardSwish, (ops.hardswish_f32)().name()),
+        ] {
+            assert_eq!(
+                ew_f32(func).map(|k| k.name()),
+                Some(plugged),
+                "{} f32 disagrees with plug",
+                func.name()
+            );
+        }
+        for (func, plugged) in [
+            (Func::Sigmoid, (ops.sigmoid_f16)().name()),
+            (Func::Tanh, (ops.tanh_f16)().name()),
+            (Func::Silu, (ops.silu_f16)().name()),
+            (Func::Gelu, (ops.gelu_f16)().name()),
+            (Func::HardSwish, (ops.hardswish_f16)().name()),
+        ] {
+            assert_eq!(
+                ew_f16(func).map(|k| k.name()),
+                Some(plugged),
+                "{} f16 disagrees with plug",
+                func.name()
+            );
+        }
+    }
+    /// Two kernels a machine can run must not come out equal: [`best_for`] would then pick by
+    /// `inventory`'s link order, which is not stable across builds, and dispatch would be a
+    /// coin toss the tests could not see.
+    #[test]
+    fn nothing_ties_for_the_best() {
+        for isa in IsaSet::every_ladder() {
+            for func in Func::ALL {
+                for dt in [DatumType::F32, DatumType::F16] {
+                    let mut best: Vec<&Routine> = declared()
+                        .filter(|r| r.func == func && r.dt() == dt && r.runnable_on(&isa))
+                        .collect();
+                    let Some(top) = best.iter().map(|r| (r.arch.is_some(), r.preference())).max()
+                    else {
+                        continue;
+                    };
+                    best.retain(|r| (r.arch.is_some(), r.preference()) == top);
+                    assert!(
+                        best.len() == 1,
+                        "{} {dt:?} on {isa:?} ties between {:?}",
+                        func.name(),
+                        best.iter().map(|r| r.name()).collect::<Vec<_>>()
+                    );
+                }
+            }
+        }
+    }
+}

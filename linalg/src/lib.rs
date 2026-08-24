@@ -50,6 +50,8 @@ macro_rules! bail_stub {
 
 #[macro_use]
 mod frame;
+#[macro_use]
+pub mod routines;
 pub mod cache;
 pub mod generic;
 pub mod knobs;

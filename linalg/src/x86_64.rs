@@ -113,6 +113,29 @@ tanh_impl!(x86_64; f32, avx512_tanh_f32, 16, 16, AVX512F());
 sigmoid_impl!(x86_64; f32, avx512_sigmoid_f32, 16, 16, AVX512F());
 silu_impl!(x86_64; f32, avx512_silu_f32, 16, 16, AVX512F());
 
+routine!(x86_64; F32, Sigmoid, avx_sigmoid_f32, isa(X86_64Avx));
+routine!(x86_64; F32, Tanh, avx_tanh_f32, isa(X86_64Avx));
+
+routine!(x86_64; F32, Sigmoid, fma_sigmoid_f32, isa(X86_64Avx2, X86_64Fma));
+routine!(x86_64; F32, Tanh, fma_tanh_f32, isa(X86_64Avx2, X86_64Fma));
+routine!(x86_64; F32, Silu, fma_silu_f32, isa(X86_64Avx2, X86_64Fma));
+
+routine!(x86_64; F32, Sigmoid, avx512_sigmoid_f32, isa(X86_64Avx512f));
+routine!(x86_64; F32, Tanh, avx512_tanh_f32, isa(X86_64Avx512f));
+routine!(x86_64; F32, Silu, avx512_silu_f32, isa(X86_64Avx512f));
+routine!(x86_64; F32, Gelu, act::x86_64_avx512_gelu_f32_16n, isa(X86_64Avx512f));
+routine!(x86_64; F32, Erf, erf::x86_64_avx512_erf_f32_64n, isa(X86_64Avx512f));
+routine!(x86_64; F32, HardSwish, act::x86_64_avx512_hardswish_f32_64n, isa(X86_64Avx512f));
+
+routine!(x86_64; F16, Sigmoid, act_f16::x86_64_avx512_sigmoid_f16_16n, isa(X86_64Avx512f));
+routine!(x86_64; F16, Tanh, act_f16::x86_64_avx512_tanh_f16_16n, isa(X86_64Avx512f));
+routine!(x86_64; F16, Silu, act_f16::x86_64_avx512_silu_f16_16n, isa(X86_64Avx512f));
+routine!(x86_64; F16, Gelu, act_f16::x86_64_avx512_gelu_f16_16n, isa(X86_64Avx512f));
+routine!(x86_64; F16, HardSwish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X86_64Avx512f));
+
+routine!(x86_64; F16, HardSwish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
+    isa(X86_64Avx512Fp16));
+
 fn plug_avx2(_ops: &mut Ops) {}
 
 /// Element-wise kernels for AVX-capable CPUs outside the fma tier: the
@@ -230,6 +253,7 @@ pub fn isa_set() -> crate::isa::IsaSet {
         (Isa::X86_64Fma, FMA),
         (Isa::X86_64F16c, F16C),
         (Isa::X86_64Avx512f, AVX512F),
+        (Isa::X86_64Avx512Fp16, AVX512FP16),
     ] {
         if probe() {
             set = set.with(isa);
