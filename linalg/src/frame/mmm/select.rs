@@ -1,4 +1,15 @@
 //! What a caller needs a matmul for, and what it can be given in return.
+//!
+//! Selection narrows one set of kernels, and each rung is named after the property it tests:
+//! *declared* is every kernel the inventory knows ([`crate::mmm_routines::declared`]), *built*
+//! those whose body this build compiled ([`MatMatMul::built`]), *runnable* those the host can
+//! also execute ([`MatMatMul::runnable`], collected as [`crate::Ops::runnable`]), *suitable*
+//! those that can answer a given [`Query`] ([`crate::Ops::suitable`]).
+//!
+//! The last step is not a filter but a choice, so it has no set of its own: *preference* is the
+//! ordering a platform imposes over the suitable ones ([`crate::Ops::preferred`]), and it is a
+//! property of the platform, never of a kernel. A [`Candidate`] is one suitable way to compute
+//! the matmul — kernel, packing, extractor — named for the choice it stands in.
 
 use tract_data::prelude::{DatumType, TVec, tvec};
 
@@ -54,14 +65,14 @@ impl Query {
     }
 }
 
-/// The candidate offering the kernel called `name`, or `None` when the enumeration does not offer
-/// it for this query. This is how a policy tier answers: naming a kernel the query cannot reach
-/// defers to the tier below instead of going unheard.
+/// The candidate holding the kernel called `name`, or `None` when it is not suitable for this
+/// query. This is how a policy tier answers: naming a kernel the query never reached defers to
+/// the tier below instead of going unheard.
 pub fn candidate_named(candidates: &[Candidate], name: &str) -> Option<usize> {
     candidates.iter().position(|(mmm, _, _)| mmm.name() == name)
 }
 
-/// Keep only the candidates in the best implementation tier: quality dominates, and a
+/// Keep only the candidates of the best quality: quality dominates, and a
 /// kernel's dynamic boost breaks ties within a tier. First rung of the portable policy,
 /// applied before any shape reasoning.
 pub fn retain_best_quality(candidates: &mut Vec<Candidate>) {
@@ -75,7 +86,7 @@ pub fn retain_best_quality(candidates: &mut Vec<Candidate>) {
 
 /// The portable policy's shape rules: which candidate to use once the query pins `n`, and
 /// `None` when it does not — a caller facing a symbolic `n` has to decide for itself. Ties
-/// go to the last candidate, so pool order breaks them.
+/// go to the last candidate, so the order of the suitable list breaks them.
 pub fn pick_by_shape(query: &Query, candidates: &[Candidate]) -> Option<usize> {
     match query.n {
         // A true GEMV first, then no extractor to pay for, then the widest tile.
@@ -110,20 +121,20 @@ mod tests {
     }
 
     /// A caller facing a symbolic `n` picks a packing group and needs both roles out of it: a
-    /// matvec kernel for the pulses where `n` is 1 and a matrix kernel for the rest. Ranking a
-    /// group's matvec away while keeping its matrix kernel leaves that caller a group it cannot
-    /// use for both, and it silently falls back on a narrower group instead.
+    /// matvec kernel for the pulses where `n` is 1 and a matrix kernel for the rest. A preference
+    /// that drops a group's matvec while keeping its matrix kernel leaves that caller a group it
+    /// cannot use for both, and it silently falls back on a narrower group instead.
     ///
-    /// Only the boost is held to this. A *quality* tier dropping the matvec is that tier working
-    /// as intended — a scalar fallback has no business ranking beside a hand-written kernel, and
-    /// a group whose only matvec is a lesser implementation is a group the caller is right to
-    /// treat as matrix-only.
+    /// Only the boost is held to this. The quality filter dropping the matvec is it working as
+    /// intended — a scalar fallback has no business being preferred beside a hand-written
+    /// kernel, and a group whose only matvec is a lesser implementation is a group the caller is
+    /// right to treat as matrix-only.
     #[test]
-    fn the_ranking_keeps_a_kept_group_usable() {
+    fn the_preference_keeps_a_kept_group_usable() {
         let ops = crate::ops();
         for acc in accumulators() {
             let query = Query::plain(acc, None, None, None);
-            let all = ops.candidates(&query);
+            let all = ops.suitable(&query);
             let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
                 continue;
             };
@@ -140,7 +151,7 @@ mod tests {
                 }
                 assert!(
                     matvecs.iter().any(|name| kept.contains(name)),
-                    "ranking kept {:?} of the {acc:?} packing group {:?} but dropped its \
+                    "preference kept {:?} of the {acc:?} packing group {:?} but dropped its \
                      matvec kernels {matvecs:?}",
                     group
                         .iter()

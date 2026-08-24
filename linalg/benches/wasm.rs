@@ -706,7 +706,7 @@ mod util {
     pub fn pick(name: &str) -> Box<dyn MatMatMul> {
         let mut ops = tract_linalg::generic();
         tract_linalg::wasm::plug(&mut ops);
-        for impl_ in ops.mmm_impls() {
+        for impl_ in ops.runnable() {
             if impl_.name() == name {
                 return impl_.clone();
             }

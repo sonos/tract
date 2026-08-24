@@ -36,7 +36,7 @@ impl LinearCostModel<'_> {
         coeffs[0] * padded_work + coeffs[1] * n_tiles + coeffs[2] + self.restream * a_restream
     }
 
-    pub fn pick(
+    pub fn preferred(
         &self,
         candidates: &[Candidate],
         m: Option<usize>,

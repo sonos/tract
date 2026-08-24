@@ -17,20 +17,20 @@ use super::fma_width::has_dual_avx512_fma;
 
 /// The zmm 16x16 VNNI tile only out-throughputs the ymm 8x8 on cores with two 512-bit FMA
 /// ports; elsewhere it is pure tile-padding overhead, so there it must lose every tie to the
-/// 8x8. It stays supported on every VNNI core, so that its tests run there too.
+/// 8x8. It stays runnable on every VNNI core, so that its tests run there too.
 #[cfg(tract_avx512vnni)]
 const AVX512VNNI_WIDE_TILE: fn() -> isize = || if has_dual_avx512_fma() { 50 } else { -1 };
 
 /// The AMX bf16 kernel truncates its f32 operands to bf16 (~1/2^8 relative error per multiply),
 /// so it is opt-in through TRACT_AMX_BF16 and off by default even where the hardware has it.
-/// Being off is a preference, not a capability: the kernel stays supported wherever the ISA is,
+/// Being off is a preference, not a capability: the kernel stays runnable wherever the ISA is,
 /// so that its tests run there, and instead loses every tie no tier can win back.
 #[cfg(tract_amx_bf16)]
 const AMX_BF16_OPT_IN: fn() -> isize =
     || if crate::knobs::TRACT_AMX_BF16.get() { 100 } else { crate::isa::NEVER_PREFERRED };
 use super::*;
 
-/// One candidate kernel in a dispatcher's pool, with its tile geometry
+/// One kernel in a dispatcher’s preference table, with its tile geometry
 /// and a relative-throughput scale (1.0 = baseline, used to break
 /// near-ties between kernels with similar tile waste).
 #[derive(Clone, Copy)]
@@ -84,9 +84,9 @@ MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) isa(Avx) quality(Ma
 MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(Avx) quality(ManuallyOptimized));
 
 /// The 256-bit fma f32 kernels are not superseded by the avx512 ones, so they cancel the ladder
-/// step between the two and rank as peers. Both x86 avx512 cost models score them alongside the
+/// step between the two and are preferred as peers. Both x86 avx512 cost models score them alongside the
 /// avx512 kernels; they cover the small-`n` tiles avx512 has no matching `nr` for (n=2 -> 40x2,
-/// n=4 -> 24x4); and avx512 has no 64x1 at all, so a pool without them loses the whole r=64
+/// n=4 -> 24x4); and avx512 has no 64x1 at all, so a runnable set without them loses the whole r=64
 /// packing group, whose 64x3 is the best matrix kernel at small `n`.
 const FMA_F32_PEER: fn() -> isize = || crate::isa::peer_of(Isa::Fma, Isa::Avx512f);
 
@@ -255,9 +255,9 @@ MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(Avx512
     boost(AMX_BF16_OPT_IN)
 }
 
-/// Installs the f32 and i32 dispatch policies this host's instruction set earns. The pool is
+/// Installs the f32 and i32 dispatch policies this host's instruction set earns. The runnable set is
 /// filtered against the same set, so reading it here is what keeps a policy from naming a
-/// kernel the pool does not hold — under `TRACT_CPU_ISA` as much as on bare hardware.
+/// kernel the runnable set does not hold — under `TRACT_CPU_ISA` as much as on bare hardware.
 pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     // The fma f32 tier below needs avx2 (vgatherdps) on top of fma; whenever it
@@ -478,7 +478,7 @@ pub fn plug_avx(ops: &mut Ops) {
 
 pub fn plug_fma(ops: &mut Ops) {
     // Fallback for non-Intel/AMD x86: hand-tuned low-N choices, then a generic
-    // (M, N)-aware tile-utilisation picker over the same pool.
+    // (M, N)-aware tile-utilisation picker over the same kernels.
     const FMA_CHOICES: &[KernelChoice] = &[
         KernelChoice { mr: 8, nr: 8, scale: 44.0 / 60.0, ctor: || fma_mmm_f32_8x8.mmm() },
         KernelChoice { mr: 16, nr: 6, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_16x6.mmm() },
@@ -488,14 +488,14 @@ pub fn plug_fma(ops: &mut Ops) {
         KernelChoice { mr: 40, nr: 2, scale: 54.0 / 60.0, ctor: || fma_mmm_f32_40x2.mmm() },
     ];
 
-    let mmm_f32: crate::MmmSelector = match super::vendor() {
+    let mmm_f32: crate::MmmPreference = match super::vendor() {
         super::Vendor::Intel => {
             let mdl = super::intel_fma_linear::linear_model();
-            Box::new(move |c, q| mdl.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
         }
         super::Vendor::Amd => {
             let mdl = super::amd_fma_linear::linear_model();
-            Box::new(move |c, q| mdl.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
         }
         super::Vendor::Other => Box::new(|c, q| match q.n {
             None => candidate_named(c, &fma_mmm_f32_16x6.name),
@@ -544,13 +544,13 @@ pub fn plug_avx512f(ops: &mut Ops) {
         KernelChoice { mr: 128, nr: 1, scale: 0.378, ctor: || avx512_mmm_f32_128x1.mmm() },
     ];
 
-    let mmv_f32: crate::MmmSelector = match super::vendor() {
+    let mmv_f32: crate::MmmPreference = match super::vendor() {
         // n==1: below the widest matvec kernel's mr (128) the cost model picks a better-fitting
         // kernel (16x1/32x1); at or above it the 128x1 is already optimal, so keep it.
         super::Vendor::Intel => {
             let mdl = super::intel_avx512_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
-                Some(m) if m < 128 => mdl.pick(c, Some(m), q.k, Some(1)),
+                Some(m) if m < 128 => mdl.preferred(c, Some(m), q.k, Some(1)),
                 _ => candidate_named(c, &avx512_mmm_f32_128x1.name),
             })
         }
@@ -560,14 +560,14 @@ pub fn plug_avx512f(ops: &mut Ops) {
             _ => candidate_named(c, &avx512_mmm_f32_128x1.name),
         }),
     };
-    let mmm_f32: crate::MmmSelector = match super::vendor() {
+    let mmm_f32: crate::MmmPreference = match super::vendor() {
         super::Vendor::Intel => {
             let mdl = super::intel_avx512_linear::linear_model();
-            Box::new(move |c, q| mdl.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
         }
         super::Vendor::Amd => {
             let mdl = super::amd_avx512_linear::linear_model();
-            Box::new(move |c, q| mdl.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| mdl.preferred(c, q.m, q.k, q.n))
         }
         super::Vendor::Other => Box::new(|c, q| {
             if let Some(1) = q.n {

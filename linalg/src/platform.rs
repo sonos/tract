@@ -1,7 +1,7 @@
 //! Per-platform dispatch policy, enumerable like the kernels themselves.
 //!
 //! Each arch tree submits one [`PlatformSelector`]: the function installing the closures that
-//! answer "which kernel for this shape" over the pool. Every tree the build compiled
+//! answer "which kernel for this shape" over the runnable set. Every tree the build compiled
 //! contributes one, so the policies are enumerable on any host, while [`Target::is_native`]
 //! says which one this build actually runs — the only one [`crate::best`] applies.
 
@@ -67,16 +67,16 @@ pub fn all() -> impl Iterator<Item = &'static PlatformSelector> {
     inventory::iter::<PlatformSelector>()
 }
 
-/// `Ops` as `target` sees them: its kernels, from [`crate::mmm_routines::pool_for`], under its
+/// `Ops` as `target` sees them: its kernels, from [`crate::mmm_routines::runnable_for`], under its
 /// own policy. Answers which kernel that platform would choose for a shape, from any host —
 /// what it cannot reproduce is a hardware probe, so a cohort behind a feature this host lacks
-/// (fp16, dotprod, sve2) is reached by adding that feature with `TRACT_CPU_ISA`, which the pool
+/// (fp16, dotprod, sve2) is reached by adding that feature with `TRACT_CPU_ISA`, which the runnable set
 /// and the policies both read. `None` when the target's tree was not compiled in; see the
 /// `foreign-inventory` feature.
 pub fn inspect(target: Target) -> Option<Ops> {
     let selector = all().find(|s| s.target == target)?;
     let mut ops = crate::generic();
-    ops.mmm_impls = crate::mmm_routines::pool_for(target);
+    ops.runnable = crate::mmm_routines::runnable_for(target);
     (selector.plug)(&mut ops);
     Some(ops)
 }

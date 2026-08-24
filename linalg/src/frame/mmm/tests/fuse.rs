@@ -54,7 +54,7 @@ macro_rules! mmm_kernel_fuse_tests {
                     paste! {
                         #[test]
                         fn [<$FKS:snake>]() {
-                            if ($ker).is_supported_here() && $extra_cond {
+                            if ($ker).runnable() && $extra_cond {
                                 test::$geo::<_, $ti>($ker, $crate::mmm::FusedKerSpec::$FKS, $f);
                             }
                         }
@@ -115,7 +115,7 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let v = vec![TC::max_value(); ker.mr() * ker.nr()];
@@ -134,7 +134,7 @@ where
     TC: LADatum,
     TI: LADatum + Bounded + PartialEq,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let v = vec![TC::max_value(); ker.mr() * 5 * ker.nr() * 3];
@@ -166,7 +166,7 @@ where
     TI: LADatum + AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let item = std::mem::size_of::<TI>();
@@ -213,7 +213,7 @@ where
     TI: LADatum,
     E: Fn(usize, usize, TI) -> TI,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     assert!(c.len() == ker.mr() * ker.nr());

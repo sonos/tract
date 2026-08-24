@@ -421,42 +421,42 @@ pub fn plug(ops: &mut Ops) {
     // The SDOT kernel only exists when the assembler could encode `sdot`
     // (`tract_arm64_dotprod`, set by build.rs); otherwise always use the SMLAL 8x8.
     #[cfg(tract_arm64_dotprod)]
-    let qmmm_i32: crate::MmmSelector = if isa.has(Isa::DotProd) {
+    let qmmm_i32: crate::MmmPreference = if isa.has(Isa::DotProd) {
         Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8_dot.name))
     } else {
         Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8.name))
     };
     #[cfg(not(tract_arm64_dotprod))]
-    let qmmm_i32: crate::MmmSelector =
+    let qmmm_i32: crate::MmmPreference =
         Box::new(|c, _| candidate_named(c, &arm64simd_mmm_i32_8x8.name));
     // n==1: below the fixed kernel's mr, a narrower/better-fitting kernel wins (the 64x1 pays
     // full mr-padding), so consult the cost model; at or above mr the fixed 64x1 is already
     // optimal and the model only second-guesses it into knife-edge mispicks, so keep it.
-    let mmv_f32: crate::MmmSelector = match *KIND {
+    let mmv_f32: crate::MmmPreference = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
-                Some(m) if m < 64 => model.pick(c, Some(m), q.k, Some(1)),
+                Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
                 _ => candidate_named(c, &arm64simd_mmm_f32_64x1_a53.name),
             })
         }
         Kind::CortexA55 => {
             let model = cortex_a55_mmv_linear::linear_model();
             Box::new(move |c, q| match q.m {
-                Some(m) if m < 64 => model.pick(c, Some(m), q.k, Some(1)),
+                Some(m) if m < 64 => model.preferred(c, Some(m), q.k, Some(1)),
                 _ => candidate_named(c, &arm64simd_mmm_f32_64x1_a55.name),
             })
         }
         _ => Box::new(|c, _| candidate_named(c, &arm64simd_mmm_f32_64x1_gen.name)),
     };
-    let mmm_f32: crate::MmmSelector = match *KIND {
+    let mmm_f32: crate::MmmPreference = match *KIND {
         Kind::CortexA53 => {
             let model = cortex_a53_linear::linear_model();
-            Box::new(move |c, q| model.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| model.preferred(c, q.m, q.k, q.n))
         }
         Kind::CortexA55 => {
             let model = cortex_a55_linear::linear_model();
-            Box::new(move |c, q| model.pick(c, q.m, q.k, q.n))
+            Box::new(move |c, q| model.preferred(c, q.m, q.k, q.n))
         }
         _ => Box::new(move |c, q| {
             candidate_named(
@@ -561,7 +561,7 @@ pub fn plug(ops: &mut Ops) {
             ops.overlay_mmm_policy(move |prev, dt, query, candidates| match (dt, query.n) {
                 (DatumType::F32, Some(1)) => prev(dt, query, candidates),
                 (DatumType::F32, _) => model
-                    .pick(candidates, query.m, query.k, query.n)
+                    .preferred(candidates, query.m, query.k, query.n)
                     .or_else(|| prev(dt, query, candidates)),
                 _ => prev(dt, query, candidates),
             });

@@ -81,11 +81,11 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// The preference this kernel's author spelled out, before the instruction-set default.
     fn declared_boost(&self) -> isize;
 
-    /// Where this kernel ranks against its equally-qualified siblings, breaking ties inside a
+    /// How strongly this kernel is preferred over its equally-qualified siblings, breaking ties inside a
     /// quality tier ([`retain_best_quality`]). A kernel written for a more capable instruction
     /// set outranks one written for a less capable one by default; a declared boost is how an
     /// exception to that is spelled, and must be big enough to cross the tiers it disagrees
-    /// with. Never encode a preference in [`Self::is_supported_here`] — that silently skips the
+    /// with. Never encode a preference in [`Self::runnable`] — that silently skips the
     /// kernel's tests as well.
     fn dynamic_boost(&self) -> isize;
 
@@ -97,7 +97,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// and the mmm test bodies gate on it, so a kernel that lies here has no test coverage at
     /// all on the hosts it lies on. Say a kernel is worse than its sibling with
     /// [`Self::dynamic_boost`] instead.
-    fn is_supported_here(&self) -> bool;
+    fn runnable(&self) -> bool;
 
     /// Whether this build compiled the kernel's body at all. False for a foreign arch's
     /// kernel, which is metadata around a stub that bails when called.
@@ -179,8 +179,8 @@ impl<K: MatMatMulKer> MatMatMul for K {
         MatMatMulKer::dynamic_boost(self)
     }
 
-    fn is_supported_here(&self) -> bool {
-        MatMatMulKer::is_supported_here(self)
+    fn runnable(&self) -> bool {
+        MatMatMulKer::runnable(self)
     }
 
     fn built(&self) -> bool {

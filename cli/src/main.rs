@@ -848,7 +848,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             println!("{}", White.bold().paint("# By implementation"));
             println!();
-            for m in tract_linalg::ops().mmm_impls() {
+            for m in tract_linalg::ops().runnable() {
                 println!(
                     "{} · {:?} tier {} boost {} -> {:?}",
                     colored_name(&**m),
@@ -878,7 +878,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                     .dedup()
                 {
                     println!("  * {packing:?}");
-                    for mmm in tract_linalg::ops().mmm_impls() {
+                    for mmm in tract_linalg::ops().runnable() {
                         for (ix, p) in mmm.packings().iter().enumerate() {
                             if p.0.dyn_eq(packing) {
                                 println!(

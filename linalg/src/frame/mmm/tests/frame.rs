@@ -86,7 +86,7 @@ where
     i32: AsPrimitive<TI>,
     usize: AsPrimitive<TI>,
 {
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return Ok(());
     };
     crate::setup_test_logger();

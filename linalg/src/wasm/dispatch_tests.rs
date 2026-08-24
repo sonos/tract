@@ -3,7 +3,7 @@ mod dispatch_trace {
     fn trace_one(label: &str, m: Option<usize>, k: Option<usize>, n: Option<usize>) {
         let mut ops = crate::generic();
         crate::wasm::plug(&mut ops);
-        let mmm = ops.policy_pick(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
+        let mmm = ops.preferred_kernel(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
         eprintln!(
             "DFN3 {} (m={:?} k={:?} n={:?}) => {}  [mr={}, nr={}]",
             label,
@@ -72,7 +72,7 @@ mod dispatch_trace {
             ("GEMV m=256 k=256 n=1", 256, 256, 1),
         ] {
             let mmm = ops
-                .policy_pick(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                .preferred_kernel(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
                 .unwrap();
             assert_eq!(
                 mmm.quality(),
@@ -91,7 +91,7 @@ use tract_data::internal::*;
 fn pick(name: &str) -> Box<dyn crate::mmm::MatMatMul> {
     let mut ops = crate::generic();
     crate::wasm::plug(&mut ops);
-    for impl_ in ops.mmm_impls() {
+    for impl_ in ops.runnable() {
         if impl_.name() == name {
             return impl_.clone();
         }
@@ -215,7 +215,7 @@ fn numerical_consistency_16x1_vs_32x1() {
 fn check_madd_pairing<K: crate::mmm::MatMatMulKer<Acc = f32>>(ker: &K) {
     use crate::mmm::{FusedKerSpec, OutputStoreKer};
 
-    if !ker.is_supported_here() {
+    if !ker.runnable() {
         return;
     }
     let (mr, nr) = (ker.mr(), ker.nr());
@@ -299,7 +299,12 @@ fn dispatch_never_returns_wasm_f32_4x4() {
         for n in [1usize, 2, 4, 8, 10, 64, 256] {
             for k in [1usize, 64, 576] {
                 let mmm = ops
-                    .policy_pick(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
+                    .preferred_kernel(
+                        tract_data::prelude::DatumType::F32,
+                        Some(m),
+                        Some(k),
+                        Some(n),
+                    )
                     .unwrap();
                 assert_ne!(
                     mmm.name(),
