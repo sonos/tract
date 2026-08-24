@@ -1,8 +1,11 @@
 use crate::internal::*;
-use crate::ops::gru_cell::GruEpilogue;
 use crate::ops::{FrozenOpState, OpStateFreeze};
 use tract_linalg::mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul};
 use tract_ndarray::prelude::*;
+
+/// The recurrent weight `R`, packed once and reused for every timestep of every
+/// later call — see [`GruSeqState::packed_r`].
+type PackedR = (Box<dyn MatMatMul>, Box<dyn MMMInputValue>);
 
 /// Whole-sequence GRU: the ONNX GRU with `linear_before_reset != 0`, run as one op
 /// instead of a `Scan` that dispatches its body once per timestep.
@@ -37,7 +40,7 @@ struct GruSeqState {
     /// model load via `OpKernel::PrePack` + `MlasGemmPackB`; packing per call is
     /// what makes an in-op loop lose to the Scan's already-packed kernels once the
     /// hidden size is large enough for the GEMM to dominate.
-    packed_r: Option<(Box<dyn MatMatMul>, Box<dyn MMMInputValue>)>,
+    packed_r: Option<PackedR>,
 }
 
 impl std::fmt::Debug for GruSeqState {
@@ -109,7 +112,7 @@ impl GruSeq {
     fn eval_with(
         &self,
         carry: &mut Option<Tensor>,
-        packed_r: &mut Option<(Box<dyn MatMatMul>, Box<dyn MMMInputValue>)>,
+        packed_r: &mut Option<PackedR>,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (x, w, r) = (&inputs[0], &inputs[1], &inputs[2]);
@@ -163,7 +166,7 @@ impl GruSeq {
             )
             .context("no matmul kernel for the recurrent product")?;
             let (pack_a, _) = &mmm.packings()[0];
-            let r_t = inputs[2].clone().into_tensor();
+            let r_t = r.clone().into_tensor();
             let pa = pack_a.prepare_one(&r_t, 1, 0)?;
             *packed_r = Some((mmm, pa));
         }
@@ -267,6 +270,7 @@ impl TypedOp for GruSeq {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::gru_cell::GruEpilogue;
 
     /// The fused op must reproduce the per-timestep recurrence exactly: same gate
     /// maths, same order, so the only difference from a `Scan` is how often tract

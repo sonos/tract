@@ -282,8 +282,6 @@ impl CommonRec {
             for slot in 0..self.nboutputs()? {
                 if Some(slot) == self.optional_y_output {
                     slots.push(outs[0]);
-                } else if Some(slot) == self.optional_y_h_output {
-                    slots.push(outs[1]);
                 } else {
                     slots.push(outs[1]);
                 }
