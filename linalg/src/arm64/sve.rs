@@ -262,6 +262,9 @@ inventory::submit! {
     }
 }
 
+#[cfg(tract_sve)]
+routine!(aarch64; RmsNormF32, RmsNorm, "sve_rms_norm_f32", sve_rms_norm_f32, isa(Aarch64Sve2));
+
 pub fn plug(ops: &mut Ops) {
     let _ = ops;
     if crate::isa::native().has(crate::isa::Isa::Aarch64Sve2) {

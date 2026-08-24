@@ -544,6 +544,15 @@ routine!(aarch64; F16Param, LeakyRelu, arm64fp16_leaky_relu_f16_16n, isa(Aarch64
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Param, MulByScalar, arm64fp16_mul_by_scalar_f16_32n, isa(Aarch64Fp16));
 
+routine!(aarch64; F32Reduce, ReduceMax, arm64simd_max_f32_16n);
+routine!(aarch64; F32Reduce, ReduceMin, arm64simd_min_f32_16n);
+routine!(aarch64; F32Reduce, ReduceSum, arm64simd_sum_f32_16n);
+routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_norm_f32);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16Reduce, ReduceMax, arm64fp16_max_f16_32n, isa(Aarch64Fp16));
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; F16Reduce, ReduceSum, arm64fp16_sum_f16_32n, isa(Aarch64Fp16));
+
 pub fn plug(ops: &mut Ops) {
     let isa = crate::isa::native();
     arm64simd::plug(ops);
