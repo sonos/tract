@@ -4,8 +4,23 @@ fn var(k: &str) -> String {
     env::var(k).unwrap()
 }
 
+fn target_is_windows_arm64_msvc() -> bool {
+    env::var("CARGO_CFG_TARGET_ARCH") == Ok("aarch64".to_string())
+        && env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string())
+}
+
 fn use_masm() -> bool {
-    env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string()) && var("HOST").contains("-windows-")
+    env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string())
+        && var("HOST").contains("-windows-")
+        && !target_is_windows_arm64_msvc()
+}
+
+fn arm64_cc() -> cc::Build {
+    let mut build = cc::Build::new();
+    if target_is_windows_arm64_msvc() {
+        build.compiler("clang");
+    }
+    build
 }
 
 fn include_amx() -> bool {
@@ -44,7 +59,7 @@ fn assembler_supports_sme() -> bool {
 // SDOT kernel and the `tract_arm64_dotprod` cfg; the runtime falls back to the
 // SMLAL 8x8 i32 kernel.
 fn assembler_supports_dotprod() -> bool {
-    cc::Build::new()
+    arm64_cc()
         .file("arm64/arm64simd/dummy_dotprod.S")
         .cargo_metadata(false)
         .cargo_warnings(false)
@@ -206,7 +221,7 @@ impl ConfigForHalf {
     }
 
     fn cc(&self) -> cc::Build {
-        let mut cc = cc::Build::new();
+        let mut cc = arm64_cc();
         for flag in &self.extra_flags {
             cc.flag(flag);
         }
@@ -436,7 +451,7 @@ fn main() {
             files.retain(|f| {
                 !f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains("_dot"))
             });
-            cc::Build::new().files(files).compile("arm64simd");
+            arm64_cc().files(files).compile("arm64simd");
             // The template stays in arm64/arm64simd/ (alongside the jinja partials
             // it includes) so the env can resolve its includes. The
             // `tract_arm64_dotprod` cfg gates the matching Rust extern + dispatch.
@@ -444,7 +459,7 @@ fn main() {
                 let tmpl = path::Path::new("arm64/arm64simd/arm64simd_mmm_i32_8x8_dot.S.j2");
                 let out = out_dir.join(format!("arm64simd_mmm_i32_8x8_dot_{suffix}.S"));
                 preprocess_file(tmpl, &out, &[], &suffix, false);
-                cc::Build::new().file(&out).compile("arm64simd_dot");
+                arm64_cc().file(&out).compile("arm64simd_dot");
                 println!("cargo:rustc-cfg=tract_arm64_dotprod");
             }
             if include_amx() {
