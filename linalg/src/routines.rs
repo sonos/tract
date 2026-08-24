@@ -19,7 +19,7 @@
 //! such kernel", never "this toolchain skipped it".
 use crate::element_wise::{ElementWise, ElementWiseKer};
 use crate::isa::{Arch, IsaReq, IsaSet, LEVEL_BOOST};
-use tract_data::prelude::{DatumType, f16};
+use tract_data::internal::*;
 
 /// A function a routine computes. One variant per function, whatever the datum types or the
 /// number of implementations behind it.
@@ -123,19 +123,29 @@ pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Rout
         .max_by_key(|r| (r.arch.is_some(), r.preference(), r.name()))
 }
 
+/// The kernel this host runs for a function and datum type. An unfilled pair is an error rather
+/// than a substitution: what a machine has no kernel for is what the matrix is there to show, and
+/// a caller that quietly computed something else would hide it.
+fn best_here(func: Func, dt: DatumType) -> TractResult<&'static Routine> {
+    let isa = crate::isa::native();
+    best_for(func, dt, &isa)
+        .with_context(|| format!("No {} kernel for {dt:?} on {isa:?}", func.name()))
+}
+
 /// The f32 kernel this host runs for `func`.
-pub fn ew_f32(func: Func) -> Option<Box<dyn ElementWise<f32>>> {
-    match best_for(func, DatumType::F32, &crate::isa::native())?.factory {
-        RoutineFactory::F32(f) => Some(f()),
-        RoutineFactory::F16(_) => None,
+pub fn ew_f32(func: Func) -> TractResult<Box<dyn ElementWise<f32>>> {
+    match best_here(func, DatumType::F32)?.factory {
+        RoutineFactory::F32(f) => Ok(f()),
+        // `Routine::dt` reads the arm, and `best_for` filtered on it.
+        RoutineFactory::F16(_) => unreachable!(),
     }
 }
 
 /// The f16 kernel this host runs for `func`.
-pub fn ew_f16(func: Func) -> Option<Box<dyn ElementWise<f16>>> {
-    match best_for(func, DatumType::F16, &crate::isa::native())?.factory {
-        RoutineFactory::F16(f) => Some(f()),
-        RoutineFactory::F32(_) => None,
+pub fn ew_f16(func: Func) -> TractResult<Box<dyn ElementWise<f16>>> {
+    match best_here(func, DatumType::F16)?.factory {
+        RoutineFactory::F16(f) => Ok(f()),
+        RoutineFactory::F32(_) => unreachable!(),
     }
 }
 
@@ -189,6 +199,14 @@ where
 mod tests {
     use super::*;
 
+    /// A pair with no kernel fails rather than falling back on something that computes a
+    /// different thing. f16 erf is the standing example: no tree has one, and core builds a
+    /// look-up table from the f32 kernel instead of asking for it.
+    #[test]
+    fn an_unfilled_pair_fails() {
+        let err = ew_f16(Func::Erf).unwrap_err().to_string();
+        assert!(err.starts_with("No erf kernel for F16 on "), "{err}");
+    }
     /// The registry picks exactly what `plug` installed, on whatever machine the test runs. This
     /// is the whole safety argument for the flip: the two mechanisms answer the same question, so
     /// the imperative one can go.
@@ -204,7 +222,7 @@ mod tests {
             (Func::HardSwish, format!("{:?}", (ops.hardswish_f32)())),
         ] {
             assert_eq!(
-                ew_f32(func).map(|k| format!("{k:?}")),
+                ew_f32(func).map(|k| format!("{k:?}")).ok(),
                 Some(plugged),
                 "{} f32 disagrees with plug",
                 func.name()
@@ -218,7 +236,7 @@ mod tests {
             (Func::HardSwish, format!("{:?}", (ops.hardswish_f16)())),
         ] {
             assert_eq!(
-                ew_f16(func).map(|k| format!("{k:?}")),
+                ew_f16(func).map(|k| format!("{k:?}")).ok(),
                 Some(plugged),
                 "{} f16 disagrees with plug",
                 func.name()
