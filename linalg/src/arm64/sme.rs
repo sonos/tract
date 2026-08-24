@@ -190,7 +190,7 @@ fn sme_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
+    _suitable: &[Suitable],
 ) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => None,
@@ -203,7 +203,7 @@ fn sme2_preferred(
     _isa: &IsaSet,
     dt: DatumType,
     query: &Query,
-    suitable: &[Suitable],
+    _suitable: &[Suitable],
 ) -> Option<&'static str> {
     match (dt, query.n) {
         (DatumType::F32, Some(1)) => Some(sme_mmv_f32_64x1.name.as_str()),
