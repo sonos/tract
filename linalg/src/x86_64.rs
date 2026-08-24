@@ -196,7 +196,6 @@ fn plug_avx512f(ops: &mut Ops) {
 }
 
 pub fn plug(ops: &mut Ops) {
-    mmm::plug(ops);
     if AVX() && !(AVX2() && FMA()) {
         plug_avx(ops);
     }

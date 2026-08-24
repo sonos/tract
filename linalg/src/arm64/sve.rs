@@ -205,43 +205,72 @@ pub fn rdvl_bytes() -> u64 {
     vl
 }
 
+/// The SVE kernels for f32 mmm and i32 quantized mmm, mirroring the SME backend.
+/// TRACT_SVE_DISABLE=1 turns the whole thing off via has_sve2(), which the tier's `applies`
+/// reads through the instruction set.
+#[cfg(tract_sve)]
+fn sve2_preferred(
+    _platform: &crate::mmm_tiers::Platform,
+    dt: crate::DatumType,
+    query: &crate::mmm::Query,
+    suitable: &[crate::mmm::Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (crate::DatumType::F32, Some(1)) => suitable_named(suitable, &sve_mmv_f32_64x1.name),
+        (crate::DatumType::F32, _) => suitable_named(suitable, &sve_mmm_f32_8x8.name),
+        (crate::DatumType::I32, Some(1)) => suitable_named(suitable, &sve_mmm_i32_64x1.name),
+        (crate::DatumType::I32, _) => suitable_named(suitable, &sve_mmm_i32_8x8.name),
+        _ => None,
+    }
+}
+
+#[cfg(tract_sve)]
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 6,
+        name: "sve2",
+        applies: |p| p.isa.has(crate::isa::Isa::Sve2),
+        preferred: sve2_preferred,
+    }
+}
+
+/// The f16 SVE kernels additionally require FEAT_FP16, and are only compiled when build.rs found
+/// an accepted +fp16/+fullfp16 -march spelling (tract_sve_fp16).
+#[cfg(tract_sve_fp16)]
+fn sve2_fp16_preferred(
+    _platform: &crate::mmm_tiers::Platform,
+    dt: crate::DatumType,
+    query: &crate::mmm::Query,
+    suitable: &[crate::mmm::Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (crate::DatumType::F16, Some(1)) => suitable_named(suitable, &sve_mmv_f16_64x1.name),
+        (crate::DatumType::F16, _) => suitable_named(suitable, &sve_mmm_f16_8x8.name),
+        _ => None,
+    }
+}
+
+#[cfg(tract_sve_fp16)]
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 7,
+        name: "sve2-fp16",
+        applies: |p| p.isa.has(crate::isa::Isa::Sve2) && p.isa.has(crate::isa::Isa::Fp16),
+        preferred: sve2_fp16_preferred,
+    }
+}
+
 pub fn plug(ops: &mut Ops) {
     let _ = ops;
     if crate::isa::native().has(crate::isa::Isa::Sve2) {
         #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
         log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
+        // RmsNorm: override the NEON default from arm64::plug() with the wider VLA SVE2 kernel.
         #[cfg(tract_sve)]
         {
-            // Force the SVE kernels for f32 mmm and i32 quantized mmm (mirrors the
-            // SME backend). TRACT_SVE_DISABLE=1
-            // already turns the whole thing off via has_sve2().
-            ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-                (crate::DatumType::F32, Some(1)) => {
-                    suitable_named(suitable, &sve_mmv_f32_64x1.name)
-                }
-                (crate::DatumType::F32, _) => suitable_named(suitable, &sve_mmm_f32_8x8.name),
-                (crate::DatumType::I32, Some(1)) => {
-                    suitable_named(suitable, &sve_mmm_i32_64x1.name)
-                }
-                (crate::DatumType::I32, _) => suitable_named(suitable, &sve_mmm_i32_8x8.name),
-                _ => prev(dt, query, suitable),
-            });
-            // RmsNorm: override the NEON-default plug from arm64::plug() with
-            // the wider VLA SVE2 kernel. Same Box<Fn> shape as the linalg slot.
             ops.rms_norm_f32 = Box::new(sve_rms_norm_f32);
-            // f16 kernels additionally require FEAT_FP16 — and are only compiled
-            // when build.rs found an accepted +fp16/+fullfp16 -march spelling
-            // (tract_sve_fp16), so gate the dispatch on that too.
-            #[cfg(tract_sve_fp16)]
-            if crate::isa::native().has(crate::isa::Isa::Fp16) {
-                ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-                    (crate::DatumType::F16, Some(1)) => {
-                        suitable_named(suitable, &sve_mmv_f16_64x1.name)
-                    }
-                    (crate::DatumType::F16, _) => suitable_named(suitable, &sve_mmm_f16_8x8.name),
-                    _ => prev(dt, query, suitable),
-                });
-            }
         }
     } else if has_sve() {
         log::info!("SVE (v1) present; SVE2 kernels not enabled");

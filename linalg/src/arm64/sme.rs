@@ -1,6 +1,7 @@
+use crate::DatumType;
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
-use crate::{DatumType, Ops};
+use crate::mmm_tiers::{MmmTier, Platform};
 
 // CAN_FUSE: everything except LeakyRelu / QScale / RoundingShiftRight /
 // ShiftLeft. LoadTile, AddUnicast, AddRowColProducts, per-row/col/scalar
@@ -184,27 +185,50 @@ pub fn has_sme2() -> bool {
     false
 }
 
-pub fn plug(ops: &mut Ops) {
-    let isa = crate::isa::native();
-    if isa.has(crate::isa::Isa::Sme) {
-        log::info!("SME optimisation activated");
-        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => prev(dt, query, suitable),
-            (DatumType::F32, _) => suitable_named(suitable, &sme_mmm_f32_32x32.name),
-            _ => prev(dt, query, suitable),
-        });
+fn sme_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::F32, Some(1)) => None,
+        (DatumType::F32, _) => suitable_named(suitable, &sme_mmm_f32_32x32.name),
+        _ => None,
     }
-    if isa.has(crate::isa::Isa::Sme2) {
-        log::info!("SME2 GEMV optimisation activated");
-        ops.overlay_mmm_policy(|prev, dt, query, suitable| match (dt, query.n) {
-            (DatumType::F32, Some(1)) => suitable_named(suitable, &sme_mmv_f32_64x1.name),
-            (DatumType::I32, Some(1)) => prev(dt, query, suitable),
-            (DatumType::I32, _) => suitable_named(suitable, &sme_qmmm_i32_32x32.name),
-            _ => prev(dt, query, suitable),
-        });
+}
+
+fn sme2_preferred(
+    _platform: &Platform,
+    dt: DatumType,
+    query: &Query,
+    suitable: &[Suitable],
+) -> Option<usize> {
+    match (dt, query.n) {
+        (DatumType::F32, Some(1)) => suitable_named(suitable, &sme_mmv_f32_64x1.name),
+        (DatumType::I32, Some(1)) => None,
+        (DatumType::I32, _) => suitable_named(suitable, &sme_qmmm_i32_32x32.name),
+        _ => None,
     }
-    if !isa.has(crate::isa::Isa::Sme) && !isa.has(crate::isa::Isa::Sme2) {
-        log::info!("No SME optimisation");
+}
+
+inventory::submit! {
+    MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 4,
+        name: "sme",
+        applies: |p| p.isa.has(crate::isa::Isa::Sme),
+        preferred: sme_preferred,
+    }
+}
+
+inventory::submit! {
+    MmmTier {
+        target: Some(crate::platform::Target::Aarch64),
+        precedence: 5,
+        name: "sme2",
+        applies: |p| p.isa.has(crate::isa::Isa::Sme2),
+        preferred: sme2_preferred,
     }
 }
 

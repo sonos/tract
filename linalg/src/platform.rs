@@ -75,8 +75,8 @@ pub fn all() -> impl Iterator<Item = &'static PlatformSelector> {
 /// `foreign-inventory` feature.
 pub fn inspect(target: Target) -> Option<Ops> {
     let selector = all().find(|s| s.target == target)?;
-    let mut ops = crate::generic();
-    ops.runnable = crate::mmm_routines::runnable_for(target);
+    let platform = crate::mmm_tiers::Platform { target: Some(target), isa: crate::isa::native() };
+    let mut ops = crate::generic_for(platform);
     (selector.plug)(&mut ops);
     Some(ops)
 }
