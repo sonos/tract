@@ -25,7 +25,7 @@ fn preferred(
 
 inventory::submit! {
     MmmTier {
-        arch: Some(crate::platform::Arch::Arm),
+        arch: Some(crate::isa::Arch::Arm),
         precedence: 1,
         name: "armvfpv2",
         applies: |_| true,

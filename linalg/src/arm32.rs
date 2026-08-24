@@ -92,7 +92,7 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Arm),
+        arch: Some(crate::isa::Arch::Arm),
         precedence: 2,
         name: "armv7neon",
         applies: |isa| isa.has(crate::isa::Isa::ArmNeon),
@@ -123,8 +123,8 @@ mod tests {
 }
 
 inventory::submit! {
-    crate::platform::ArchPlug {
-        arch: crate::platform::Arch::Arm,
+    crate::ArchPlug {
+        arch: crate::isa::Arch::Arm,
         plug,
     }
 }
@@ -132,6 +132,6 @@ inventory::submit! {
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
-    let set = IsaSet::of_arch(crate::platform::Arch::Arm);
+    let set = IsaSet::of_arch(crate::isa::Arch::Arm);
     if has_neon() { set.with(Isa::ArmNeon) } else { set }
 }

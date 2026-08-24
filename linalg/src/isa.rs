@@ -6,9 +6,54 @@
 //! ports a core has is not an instruction set, and preferring a kernel is not the same as being
 //! able to run it: that belongs in [`crate::mmm::MatMatMulKer::dynamic_boost`].
 
-use crate::platform::Arch;
 use std::fmt;
 use std::sync::OnceLock;
+
+/// An architecture tract has a kernel tree for, after its `target_arch`. It is the identity a
+/// kernel tree and a dispatch tier are keyed on; [`Isa::of_arch`] is the same thing as a set
+/// member, and [`IsaSet::arch`] reads it back out of a machine's features.
+///
+/// Naming one is not having kernels for it: [`RiscV64`](Arch::RiscV64) has no tree yet, so a
+/// riscv64 build is portable-only even though it knows what it is running on, and an
+/// architecture tract does not name at all has no variant here. Only the wasm tree hinges on a
+/// build feature — hence the variant naming that feature; the others exist on their arch and
+/// gate individual kernels on runtime probes instead.
+#[allow(non_camel_case_types)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
+pub enum Arch {
+    Arm,
+    Aarch64,
+    X86_64,
+    RiscV64,
+    /// The only tree gated at build time rather than probed at runtime.
+    Wasm32Simd128,
+}
+
+impl Arch {
+    pub fn is_native(&self) -> bool {
+        match self {
+            Arch::Arm => cfg!(target_arch = "arm"),
+            Arch::Aarch64 => cfg!(target_arch = "aarch64"),
+            Arch::X86_64 => cfg!(target_arch = "x86_64"),
+            Arch::RiscV64 => cfg!(target_arch = "riscv64"),
+            Arch::Wasm32Simd128 => {
+                cfg!(all(target_arch = "wasm32", target_feature = "simd128"))
+            }
+        }
+    }
+}
+
+impl fmt::Display for Arch {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str(match self {
+            Arch::Arm => "arm",
+            Arch::Aarch64 => "aarch64",
+            Arch::X86_64 => "x86_64",
+            Arch::RiscV64 => "riscv64",
+            Arch::Wasm32Simd128 => "wasm32+simd128",
+        })
+    }
+}
 
 /// One instruction-set feature a kernel can need, or — at level 0 — the plain architecture
 /// underneath them all.
@@ -318,7 +363,7 @@ fn probe() -> IsaSet {
     #[cfg(target_arch = "x86_64")]
     return crate::x86_64::isa_set();
     #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
-    return IsaSet::of_arch(crate::platform::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
+    return IsaSet::of_arch(crate::isa::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
     // An architecture with no kernel tree, or wasm without simd128: nothing to declare, and no
     // architecture to name either, since none of its kernels would be reachable anyway.
     #[cfg(not(any(

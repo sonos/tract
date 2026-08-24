@@ -477,7 +477,7 @@ fn neon_preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 1,
         name: "arm64simd",
         applies: |_| true,
@@ -514,7 +514,7 @@ fn fp16_preferred(
 #[cfg(not(feature = "no_fp16"))]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 2,
         name: "arm64fp16",
         applies: |isa| isa.has(Isa::Aarch64Fp16),
@@ -597,7 +597,7 @@ fn apple_chip_preferred(
 #[cfg(target_os = "macos")]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 8,
         name: "apple-chip-model",
         applies: |_| matches!(apple_chip(), Some("m1") | Some("m4")),
@@ -606,8 +606,8 @@ inventory::submit! {
 }
 
 inventory::submit! {
-    crate::platform::ArchPlug {
-        arch: crate::platform::Arch::Aarch64,
+    crate::ArchPlug {
+        arch: crate::isa::Arch::Aarch64,
         plug,
     }
 }
@@ -615,7 +615,7 @@ inventory::submit! {
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::IsaSet;
-    let mut set = IsaSet::of_arch(crate::platform::Arch::Aarch64);
+    let mut set = IsaSet::of_arch(crate::isa::Arch::Aarch64);
     if has_fp16() {
         set = set.with(Isa::Aarch64Fp16);
     }

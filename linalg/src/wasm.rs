@@ -63,7 +63,7 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Wasm32Simd128),
+        arch: Some(crate::isa::Arch::Wasm32Simd128),
         precedence: 1,
         name: "wasm-simd128",
         applies: |_| true,
@@ -89,8 +89,8 @@ pub fn plug(ops: &mut Ops) {
 }
 
 inventory::submit! {
-    crate::platform::ArchPlug {
-        arch: crate::platform::Arch::Wasm32Simd128,
+    crate::ArchPlug {
+        arch: crate::isa::Arch::Wasm32Simd128,
         plug,
     }
 }

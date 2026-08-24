@@ -56,7 +56,7 @@ pub mod knobs;
 pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
-use isa::IsaSet;
+use isa::{Arch, IsaSet};
 use lazy_static::lazy_static;
 use mmm::{
     ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
@@ -94,7 +94,6 @@ pub mod wasm;
 pub mod isa;
 pub mod mmm_routines;
 pub mod mmm_tiers;
-pub mod platform;
 
 pub use self::frame::*;
 
@@ -362,12 +361,43 @@ pub fn generic() -> Ops {
     generic_for(isa::native())
 }
 
+/// What an arch tree still installs by hand: the non-mmm kernel slots. mmm dispatch needs none of
+/// this — it is a function of the instruction set, through [`mmm_tiers`] and [`mmm_routines`].
+pub struct ArchPlug {
+    /// Arch the slots are written for. Not an `Option`, unlike
+    /// [`mmm_routines::MmmRoutine::target`]: a kernel can be portable, a tree is always
+    /// somebody's.
+    pub arch: Arch,
+    pub plug: fn(&mut Ops),
+}
+
+inventory::collect!(ArchPlug);
+
+/// Every arch tree compiled into this build, native or not.
+pub fn arch_plugs() -> impl Iterator<Item = &'static ArchPlug> {
+    inventory::iter::<ArchPlug>()
+}
+
 pub fn best() -> Ops {
     let mut ops = generic();
-    for plug in platform::all().filter(|s| s.arch.is_native()) {
+    for plug in arch_plugs().filter(|p| p.arch.is_native()) {
         (plug.plug)(&mut ops);
     }
     ops
+}
+
+/// `Ops` as `arch` sees them: its kernels, from [`mmm_routines::runnable_for`], under its own
+/// tiers. Answers which kernel that architecture would choose for a shape, from any host. What it
+/// cannot reproduce is a hardware probe, so for a foreign arch it starts from the plain
+/// architecture and nothing else: a cohort behind a feature is reached by naming that feature in
+/// `TRACT_CPU_ISA`, which is checked against this architecture rather than the host's. `None` when
+/// the architecture's tree was not compiled in; see the `foreign-inventory` feature.
+pub fn inspect(arch: Arch) -> Option<Ops> {
+    let plug = arch_plugs().find(|p| p.arch == arch)?;
+    let isa = if arch.is_native() { isa::native() } else { isa::forced(IsaSet::of_arch(arch)) };
+    let mut ops = generic_for(isa);
+    (plug.plug)(&mut ops);
+    Some(ops)
 }
 
 lazy_static::lazy_static! {

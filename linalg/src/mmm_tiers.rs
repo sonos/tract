@@ -9,11 +9,11 @@
 //! this query has no suitable entry for, leaves it to the next tier down — so "only when nothing
 //! better answered" needs no condition of its own, and the portable rules at precedence 0 are
 //! simply the last tier every machine ends on.
+use crate::isa::Arch;
 #[cfg(test)]
 use crate::isa::Isa;
 use crate::isa::IsaSet;
 use crate::mmm::{Query, Suitable};
-use crate::platform::Arch;
 use tract_data::prelude::DatumType;
 
 /// One rung of a machine's dispatch ladder.

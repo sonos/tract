@@ -214,8 +214,8 @@ pub fn plug(ops: &mut Ops) {
 }
 
 inventory::submit! {
-    crate::platform::ArchPlug {
-        arch: crate::platform::Arch::X86_64,
+    crate::ArchPlug {
+        arch: crate::isa::Arch::X86_64,
         plug,
     }
 }
@@ -223,7 +223,7 @@ inventory::submit! {
 /// What CPUID says this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
-    let mut set = IsaSet::of_arch(crate::platform::Arch::X86_64);
+    let mut set = IsaSet::of_arch(crate::isa::Arch::X86_64);
     for (isa, probe) in [
         (Isa::X86_64Avx, AVX),
         (Isa::X86_64Avx2, AVX2),
