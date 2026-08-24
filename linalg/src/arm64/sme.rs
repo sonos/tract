@@ -215,7 +215,7 @@ fn sme2_preferred(
 
 inventory::submit! {
     MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 4,
         name: "sme",
         applies: |isa| isa.has(crate::isa::Isa::Aarch64Sme),
@@ -225,7 +225,7 @@ inventory::submit! {
 
 inventory::submit! {
     MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 5,
         name: "sme2",
         applies: |isa| isa.has(crate::isa::Isa::Aarch64Sme2),

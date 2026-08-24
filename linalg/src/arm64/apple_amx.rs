@@ -43,7 +43,7 @@ fn preferred(
 
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 3,
         name: "apple-amx",
         applies: |isa| isa.has(crate::isa::Isa::Aarch64AppleAmx),

@@ -227,7 +227,7 @@ fn sve2_preferred(
 #[cfg(tract_sve)]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 6,
         name: "sve2",
         applies: |isa| isa.has(crate::isa::Isa::Aarch64Sve2),
@@ -254,7 +254,7 @@ fn sve2_fp16_preferred(
 #[cfg(tract_sve_fp16)]
 inventory::submit! {
     crate::mmm_tiers::MmmTier {
-        arch: Some(crate::platform::Arch::Aarch64),
+        arch: Some(crate::isa::Arch::Aarch64),
         precedence: 7,
         name: "sve2-fp16",
         applies: |isa| isa.has(crate::isa::Isa::Aarch64Sve2) && isa.has(crate::isa::Isa::Aarch64Fp16),

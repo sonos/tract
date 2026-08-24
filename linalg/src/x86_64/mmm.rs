@@ -1,5 +1,6 @@
 use crate::DatumType;
 use crate::block_quant::*;
+use crate::isa::Arch;
 use crate::isa::Isa;
 use crate::isa::IsaSet;
 use crate::mmm::ImplementationQuality::ManuallyOptimized;
@@ -8,7 +9,6 @@ use crate::mmm_tiers::MmmTier;
 use crate::pack::PackedFormat;
 #[cfg(any(tract_avx512vnni, tract_avxvnni, tract_amx_int8))]
 use crate::pack::PackedI8K4;
-use crate::platform::Arch;
 
 #[cfg(tract_amx_int8)]
 use super::amx::PackedAmxA;
