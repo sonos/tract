@@ -408,7 +408,7 @@ macro_rules! submit_routine {
     (x86_64; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::X86_64); $($rest)*); };
     (riscv64; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::RiscV64); $($rest)*); };
     (wasm32; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::Wasm32Simd128); $($rest)*); };
-    (portable; $($rest:tt)*) => { submit_routine!(@ None; $($rest)*); };
+    (generic; $($rest:tt)*) => { submit_routine!(@ None; $($rest)*); };
 
     ($factory:ident, $($rest:tt)*) => { submit_routine!(@ None; $factory, $($rest)*); };
 

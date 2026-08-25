@@ -7,7 +7,7 @@
 //! [`preferred`] asks the applicable tiers in descending [`MmmTier::precedence`] and takes the
 //! first answer that the query can actually reach. A tier with no opinion, or one naming a kernel
 //! this query has no suitable entry for, leaves it to the next tier down — so "only when nothing
-//! better answered" needs no condition of its own, and the portable rules at precedence 0 are
+//! better answered" needs no condition of its own, and the generic rules at precedence 0 are
 //! simply the last tier every machine ends on.
 use crate::isa::Arch;
 #[cfg(test)]
@@ -18,7 +18,7 @@ use tract_data::prelude::DatumType;
 
 /// One rung of a machine's dispatch ladder.
 pub struct MmmTier {
-    /// Architecture the tier belongs to, `None` for the portable rules every machine ends on.
+    /// Architecture the tier belongs to, `None` for the generic rules every machine ends on.
     pub arch: Option<Arch>,
     /// Where this tier sits among the tiers of one architecture: they are asked in descending
     /// order and the first answer wins. It needs only be right between tiers that speak for the

@@ -484,7 +484,7 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     store(i8)
 }
 
-/// The portable rules, the tier every platform ends on: fixed generic kernels, in the tile the
+/// The generic rules, the tier every platform ends on: fixed kernels, in the tile the
 /// shape asks for. Rank 0, so any arch tier that claims the query answers before it.
 fn generic_preferred(
     _isa: &crate::isa::IsaSet,

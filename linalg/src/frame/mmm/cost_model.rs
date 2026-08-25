@@ -67,7 +67,7 @@ impl<'a> LinearCostModel<'a> {
         }
         // A dim the caller could not pin leaves the shape terms nothing to say, so all that is
         // left is the kernel the model was fitted around. Whether the suitable kernels include it
-        // is the caller's business, and where they do not the portable rules answer instead.
+        // is the caller's business, and where they do not the generic rules answer instead.
         Some(self.default_kernel)
     }
 }

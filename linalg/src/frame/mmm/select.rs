@@ -75,7 +75,7 @@ pub fn suitable_named(suitable: &[Suitable], name: &str) -> Option<usize> {
 }
 
 /// Keep only the suitable kernels of the best quality: quality dominates, and a
-/// kernel's dynamic boost breaks ties within it. First rung of the portable policy,
+/// kernel's dynamic boost breaks ties within it. First rung of the generic policy,
 /// applied before any shape reasoning.
 pub fn retain_best_quality(suitable: &mut Vec<Suitable>) {
     fn score(mmm: &dyn MatMatMul) -> isize {
@@ -86,7 +86,7 @@ pub fn retain_best_quality(suitable: &mut Vec<Suitable>) {
     }
 }
 
-/// The portable policy’s shape rules: which suitable kernel to use once the query pins `n`, and
+/// The generic policy’s shape rules: which suitable kernel to use once the query pins `n`, and
 /// `None` when it does not — a caller facing a symbolic `n` has to decide for itself. Ties
 /// go to the last one, so the order of the suitable list breaks them.
 pub fn pick_by_shape(query: &Query, suitable: &[Suitable]) -> Option<usize> {
@@ -235,7 +235,7 @@ impl MmmDispatch {
     }
 
     /// One kernel for the query, for a caller that needs an answer now: the platform policy's
-    /// pick where it has an opinion, then the portable rules, then the widest extractor-free
+    /// pick where it has an opinion, then the generic rules, then the widest extractor-free
     /// tile. That last resort is what a caller with no fallback of its own needs when `n` is
     /// unknown or degenerate — a caller that can do better with the whole list, as einsum can
     /// for a symbolic `n`, should walk the suitable kernels itself. `None` only when nothing suitable
@@ -266,7 +266,7 @@ impl MmmDispatch {
 
     /// The kernel this platform would run for a plain matmul of these dims, for a caller
     /// introspecting dispatch rather than performing it. Unlike [`MmmDispatch::preferred`] it reports
-    /// the tiers' answer whatever its quality, and it never falls back on the portable rules:
+    /// the tiers' answer whatever its quality, and it never falls back on the generic rules:
     /// `None` means no tier had anything to say.
     pub fn preferred_kernel(
         &self,

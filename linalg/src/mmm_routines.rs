@@ -19,7 +19,7 @@ use crate::mmm::MatMatMul;
 
 /// One mmm kernel, enumerable uniformly on every host.
 pub struct MmmRoutine {
-    /// Arch the kernel is written for, or `None` when it is portable Rust that
+    /// Arch the kernel is written for, or `None` when it is generic Rust that
     /// every target builds.
     pub target: Option<crate::isa::Arch>,
     /// Builds the type-erased kernel. Reading its metadata is always safe; *running* it is
@@ -63,7 +63,7 @@ pub fn declared() -> impl Iterator<Item = &'static MmmRoutine> {
     inventory::iter::<MmmRoutine>()
 }
 
-/// The runnable set as `target` would see it: that target’s kernels plus the portable ones, whether
+/// The runnable set as `target` would see it: that target’s kernels plus the generic ones, whether
 /// or not this build assembled them. Instruction-set requirements are still answered against
 /// the running host, so reaching a cohort behind a feature this host lacks (fp16, dotprod,
 /// sve2) means adding it with `TRACT_CPU_ISA` — and anything this returns unbuilt will panic

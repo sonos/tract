@@ -26,7 +26,7 @@ macro_rules! routine_ew_rust {
         routine_ew_rust!(@ wasm32, all(target_arch = "wasm32", target_feature = "simd128");
             $($rest)*);
     };
-    (portable; $($rest:tt)*) => { routine_ew_rust!(@ portable, all(); $($rest)*); };
+    (generic; $($rest:tt)*) => { routine_ew_rust!(@ generic, all(); $($rest)*); };
 
     // A scalar-parameter kernel takes its own datum type as the parameter, and answers in the
     // parameter shape; a plain one takes nothing.
@@ -235,7 +235,7 @@ macro_rules! ew_kernel_via_f32 {
 
 /// Declare an element-wise routine: the kernel, the registry descriptor, and the accuracy tests,
 /// from one statement. The leading architecture ident is the one every kernel-declaration macro
-/// takes, omitted for portable Rust; `isa` names what the architecture must offer beyond
+/// takes, omitted for generic Rust; `isa` names what the architecture must offer beyond
 /// itself.
 ///
 /// The instruction set is declared once and answers both questions it used to be asked twice:

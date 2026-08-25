@@ -65,7 +65,7 @@ macro_rules! routine_by_scalar_rust {
         routine_by_scalar_rust!(@ wasm32,
             all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
-    (portable; $($rest:tt)*) => { routine_by_scalar_rust!(@ portable, all(); $($rest)*); };
+    (generic; $($rest:tt)*) => { routine_by_scalar_rust!(@ generic, all(); $($rest)*); };
 
     // Each descriptor clause adds its own and hands the rest on, so the kernel and its tests are
     // written once and no clause has to be spelled inside another.

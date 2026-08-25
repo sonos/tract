@@ -28,7 +28,7 @@ macro_rules! routine_unicast_rust {
         routine_unicast_rust!(@ wasm32,
             all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
-    (portable; $($rest:tt)*) => { routine_unicast_rust!(@ portable, all(); $($rest)*); };
+    (generic; $($rest:tt)*) => { routine_unicast_rust!(@ generic, all(); $($rest)*); };
 
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op($op:ident) $(, isa($($isa:ident),+))?) => {

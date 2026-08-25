@@ -2,7 +2,7 @@
 pub mod max {
     pub use tract_data::internal::f16;
 
-    routine_reduce_rust!(portable;
+    routine_reduce_rust!(generic;
         f32,
         SMax4,
         4,
@@ -15,7 +15,7 @@ pub mod max {
         op(Max)
     );
 
-    routine_reduce_rust!(portable;
+    routine_reduce_rust!(generic;
         f16,
         HMax8,
         8,
@@ -33,7 +33,7 @@ pub mod max {
 pub mod min {
     pub use tract_data::internal::f16;
 
-    routine_reduce_rust!(portable;
+    routine_reduce_rust!(generic;
         f32,
         SMin4,
         4,
@@ -51,7 +51,7 @@ pub mod min {
 pub mod sum {
     pub use tract_data::internal::f16;
 
-    routine_reduce_rust!(portable;
+    routine_reduce_rust!(generic;
         f32,
         SSum4,
         4,
@@ -64,7 +64,7 @@ pub mod sum {
         op(Sum)
     );
 
-    routine_reduce_rust!(portable;
+    routine_reduce_rust!(generic;
         f16,
         HSum8,
         8,
@@ -244,7 +244,7 @@ pub mod softmax_l2 {
         sum
     }
 
-    routine_map_reduce_rust!(portable;
+    routine_map_reduce_rust!(generic;
         f32,
         SSoftMaxL2Accurate,
         4,
