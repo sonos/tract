@@ -848,7 +848,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             }
             println!("{}", White.bold().paint("# By implementation"));
             println!();
-            for m in tract_linalg::mmm_dispatch().runnable() {
+            for m in tract_linalg::MmmDispatch::native().runnable() {
                 println!(
                     "{} · {:?} level {} boost {} -> {:?}",
                     colored_name(&**m),
@@ -872,13 +872,13 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 WeightType::from(Q4_0),
             ] {
                 println!("{}", White.bold().paint(format!("{w:?}")));
-                for packing in tract_linalg::mmm_dispatch()
+                for packing in tract_linalg::MmmDispatch::native()
                     .all_possible_packing(w)
                     .sorted_by_key(|f| format!("{f:?}"))
                     .dedup()
                 {
                     println!("  * {packing:?}");
-                    for mmm in tract_linalg::mmm_dispatch().runnable() {
+                    for mmm in tract_linalg::MmmDispatch::native().runnable() {
                         for (ix, p) in mmm.packings().iter().enumerate() {
                             if p.0.dyn_eq(packing) {
                                 println!(
@@ -887,7 +887,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                                     p.0,
                                     p.1
                                 );
-                            } else if let Some(pe) = tract_linalg::mmm_dispatch()
+                            } else if let Some(pe) = tract_linalg::MmmDispatch::native()
                                 .panel_extractors()
                                 .iter()
                                 .find(|pe| pe.from.dyn_eq(packing) && p.0.dyn_eq(&pe.to))

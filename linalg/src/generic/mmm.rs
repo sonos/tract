@@ -483,3 +483,35 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(3), i8::packing(2));
     store(i8)
 }
+
+/// The portable rules, the tier every platform ends on: fixed generic kernels, in the tile the
+/// shape asks for. Rank 0, so any arch tier that claims the query answers before it.
+fn generic_preferred(
+    _isa: &crate::isa::IsaSet,
+    dt: DatumType,
+    query: &crate::mmm::Query,
+    _suitable: &[crate::mmm::Suitable],
+) -> Option<&'static str> {
+    let vec = query.n == Some(1);
+    let name = match dt {
+        DatumType::F64 if vec => generic_f64_4x1.name.as_str(),
+        DatumType::F64 => generic_f64_4x4.name.as_str(),
+        DatumType::F32 if vec => generic_f32_4x1.name.as_str(),
+        DatumType::F32 => generic_f32_4x4.name.as_str(),
+        DatumType::F16 if vec => generic_f16_4x1.name.as_str(),
+        DatumType::F16 => generic_f16_4x4.name.as_str(),
+        DatumType::I32 => generic_i32_4x4.name.as_str(),
+        _ => return None,
+    };
+    Some(name)
+}
+
+inventory::submit! {
+    crate::mmm_tiers::MmmTier {
+        arch: None,
+        precedence: 0,
+        name: "generic",
+        applies: |_| true,
+        preferred: generic_preferred,
+    }
+}

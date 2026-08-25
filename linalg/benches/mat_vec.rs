@@ -14,7 +14,7 @@ fn mat_vec_mul(c: &mut Criterion) {
                 BenchmarkId::from_parameter(format!("{m}x{k}")),
                 &(m, k),
                 |be, &(&m, &k)| {
-                    let mmm = tract_linalg::mmm_dispatch()
+                    let mmm = tract_linalg::MmmDispatch::native()
                         .preferred_kernel(F32, Some(m), Some(k), Some(1))
                         .unwrap();
                     let packing = &mmm.packings()[0];

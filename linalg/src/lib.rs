@@ -58,11 +58,6 @@ pub mod knobs;
 pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
-use isa::{Arch, IsaSet};
-use mmm::{
-    ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
-};
-use mmm_tiers::MmmTier;
 use tract_data::internal::TensorView;
 // An arch tree compiles when this build can run its kernels, and — for enumeration only —
 // when `foreign-inventory` asks for the others as well.
@@ -84,8 +79,6 @@ pub fn has_fp16() -> bool {
     false
 }
 
-use tract_itertools::Itertools;
-
 #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
 pub mod arm32;
 
@@ -96,240 +89,11 @@ pub mod isa;
 pub mod mmm_routines;
 pub mod mmm_tiers;
 
+pub use self::frame::mmm::MmmDispatch;
 pub use self::frame::*;
+pub use self::routines::Func;
 
 use tract_data::prelude::*;
-
-/// Everything this platform brings to a matrix multiplication: the kernels it can run, the tiers
-/// that rank them, and the panel extractors that reach a kernel's packing from a foreign one.
-/// Nothing else lives here -- the single-winner kernels are [`routines`].
-pub struct MmmDispatch {
-    /// The architecture these kernels are for and what its instruction set offers. Everything mmm
-    /// selection is a function of it: the runnable set, and which tiers speak.
-    isa: IsaSet,
-    /// The applicable tiers, highest precedence first, resolved once from [`Self::isa`].
-    tiers: Vec<&'static MmmTier>,
-    runnable: Vec<Box<dyn mmm::MatMatMul>>,
-    panel_extractors: Vec<mmm::PanelExtractor>,
-}
-
-impl MmmDispatch {
-    /// What a platform runs: its runnable kernels, the tiers that speak for it, and the panel
-    /// extractors it can reach. All three are functions of the instruction set, so this is the
-    /// whole of it -- nothing is installed by hand afterwards.
-    pub fn for_isa(isa: IsaSet) -> MmmDispatch {
-        let mut dispatch = MmmDispatch {
-            isa,
-            tiers: mmm_tiers::for_isa(&isa),
-            runnable: vec![],
-            panel_extractors: mmm_routines::extractors_for(&isa),
-        };
-        dispatch.runnable = match isa.arch() {
-            Some(target) => mmm_routines::runnable_for(target),
-            None => mmm_routines::runnable(),
-        };
-        dispatch
-    }
-
-    /// What this host runs.
-    pub fn native() -> MmmDispatch {
-        Self::for_isa(isa::native())
-    }
-
-    /// Every kernel this host can execute: built into this build, and declaring an instruction
-    /// set the CPU has. What selection narrows down from.
-    pub fn runnable(&self) -> &[Box<dyn mmm::MatMatMul>] {
-        &self.runnable
-    }
-
-    pub fn all_possible_packing(
-        &self,
-        weight_type: impl Into<WeightType>,
-    ) -> impl Iterator<Item = &dyn MMMInputFormat> {
-        let weight_type = weight_type.into();
-        self.runnable
-            .iter()
-            .flat_map(|m| m.packings())
-            .map(|p| &*p.0)
-            .flat_map(move |p| {
-                let mut packs: Vec<&dyn MMMInputFormat> = vec![];
-                if p.precursor() == weight_type {
-                    packs.push(p)
-                };
-                for pe in &self.panel_extractors {
-                    if pe.from.precursor() == weight_type && pe.to.dyn_eq(p) {
-                        packs.push(&*pe.from);
-                    }
-                }
-                packs.into_iter()
-            })
-            .sorted_by_key(|p| p.to_string())
-            .dedup()
-    }
-
-    /// Every way this build can compute the queried matmul: a kernel, which of its packings
-    /// to use, and the panel extractor to reach that packing when the weights are not
-    /// already in it. The query’s dims are not consulted — a kernel is suitable or not
-    /// whatever the shape.
-    ///
-    /// The one enumeration behind both matmul lowerings — how one is *chosen* from
-    /// the list is the caller's business.
-    pub fn suitable(&self, query: &Query) -> Vec<Suitable> {
-        self.runnable
-            .iter()
-            .filter(|mmm| {
-                query.accumulators.contains(&mmm.internal_type())
-                    && query.store.is_none_or(|s| mmm.stores().contains(&s))
-            })
-            .flat_map(|mmm| mmm.packings().iter().enumerate().map(move |(ix, p)| (mmm, ix, p)))
-            .filter(|(_, _, (_, b))| {
-                b.precursor().as_dt().is_some_and(|dt| dt == query.activation.unquantized())
-            })
-            .filter_map(|(mmm, ix, (a, _))| {
-                if a.precursor() == query.weight {
-                    Some((mmm.clone(), ix, None))
-                } else if query.allow_extractor {
-                    self.panel_extractors
-                        .iter()
-                        .find(|pe| pe.from.precursor() == query.weight && pe.to.dyn_eq(&**a))
-                        .map(|pe| (mmm.clone(), ix, Some(pe.clone())))
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    /// This platform’s tiers, highest precedence first: the ladder [`Self::preferred`] walks.
-    pub fn tiers(&self) -> &[&'static MmmTier] {
-        &self.tiers
-    }
-
-    /// The platform's choice among `suitable`, or `None` when no tier has an opinion — none
-    /// claimed this accumulator, or the query is not the plain matmul the tiers reason about.
-    /// A generic answer counts as no opinion: the precedence-0 tier answers for every platform, so
-    /// getting one of its kernels back means no arch tier claimed the query.
-    pub fn preferred(&self, query: &Query, suitable: &[Suitable]) -> Option<usize> {
-        let WeightType::Plain(weight) = &query.weight else { return None };
-        if weight.unquantized() != query.activation.unquantized() {
-            return None;
-        }
-        let acc = *query.accumulators.first()?;
-        let ix = mmm_tiers::preferred(&self.isa, &self.tiers, acc, query, suitable)?;
-        let quality = suitable[ix].0.quality();
-        (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
-    }
-
-    /// One kernel for the query, for a caller that needs an answer now: the platform policy's
-    /// pick where it has an opinion, then the portable rules, then the widest extractor-free
-    /// tile. That last resort is what a caller with no fallback of its own needs when `n` is
-    /// unknown or degenerate — a caller that can do better with the whole list, as einsum can
-    /// for a symbolic `n`, should walk the suitable kernels itself. `None` only when nothing suitable
-    /// exists at all.
-    pub fn pick(&self, query: &Query) -> Option<Suitable> {
-        let mut suitable = self.suitable(query);
-        if let Some(ix) = self.preferred(query, &suitable) {
-            return Some(suitable.swap_remove(ix));
-        }
-        retain_best_quality(&mut suitable);
-        if suitable.len() == 1 {
-            return Some(suitable.remove(0));
-        }
-        if let Some(ix) = pick_by_shape(query, &suitable) {
-            return Some(suitable.swap_remove(ix));
-        }
-        let ix = suitable
-            .iter()
-            .enumerate()
-            .max_by_key(|(_, (mmm, _, pe))| (pe.is_none(), mmm.nr() > 1, mmm.nr() * mmm.mr()))
-            .map(|(ix, _)| ix)?;
-        Some(suitable.swap_remove(ix))
-    }
-
-    pub fn panel_extractors(&self) -> &[mmm::panel_extract::PanelExtractor] {
-        &self.panel_extractors
-    }
-
-    /// The kernel this platform would run for a plain matmul of these dims, for a caller
-    /// introspecting dispatch rather than performing it. Unlike [`MmmDispatch::preferred`] it reports
-    /// the tiers' answer whatever its quality, and it never falls back on the portable rules:
-    /// `None` means no tier had anything to say.
-    pub fn preferred_kernel(
-        &self,
-        accumulator: DatumType,
-        m: Option<usize>,
-        k: Option<usize>,
-        n: Option<usize>,
-    ) -> Option<Box<dyn mmm::MatMatMul>> {
-        let query = Query::plain(accumulator, m, k, n);
-        let suitable = self.suitable(&query);
-        let ix = mmm_tiers::preferred(&self.isa, &self.tiers, accumulator, &query, &suitable)?;
-        Some(suitable[ix].0.clone())
-    }
-}
-
-/// The portable rules, the tier every platform ends on: fixed generic kernels, in the tile the
-/// shape asks for. Rank 0, so any arch tier that claims the query answers before it.
-fn generic_preferred(
-    _isa: &IsaSet,
-    dt: DatumType,
-    query: &Query,
-    _suitable: &[Suitable],
-) -> Option<&'static str> {
-    use crate::generic::mmm::*;
-    let vec = query.n == Some(1);
-    let name = match dt {
-        DatumType::F64 if vec => generic_f64_4x1.name.as_str(),
-        DatumType::F64 => generic_f64_4x4.name.as_str(),
-        DatumType::F32 if vec => generic_f32_4x1.name.as_str(),
-        DatumType::F32 => generic_f32_4x4.name.as_str(),
-        DatumType::F16 if vec => generic_f16_4x1.name.as_str(),
-        DatumType::F16 => generic_f16_4x4.name.as_str(),
-        DatumType::I32 => generic_i32_4x4.name.as_str(),
-        _ => return None,
-    };
-    Some(name)
-}
-
-inventory::submit! {
-    MmmTier {
-        arch: None,
-        precedence: 0,
-        name: "generic",
-        applies: |_| true,
-        preferred: generic_preferred,
-    }
-}
-
-/// Dispatch as `arch` sees it: its kernels, from [`mmm_routines::runnable_for`], under its own
-/// tiers. Answers which kernel that architecture would choose for a shape, from any host. What it
-/// cannot reproduce is a hardware probe, so for a foreign arch it starts from the plain
-/// architecture and nothing else: a cohort behind a feature is reached by naming that feature in
-/// `TRACT_CPU_ISA`, which is checked against this architecture rather than the host's. `None` when
-/// the architecture's tree was not compiled in; see the `foreign-inventory` feature.
-pub fn inspect(arch: Arch) -> Option<MmmDispatch> {
-    if !mmm_routines::declared().any(|r| r.target == Some(arch)) {
-        return None;
-    }
-    let isa = if arch.is_native() { isa::native() } else { isa::forced(IsaSet::of_arch(arch)) };
-    Some(MmmDispatch::for_isa(isa))
-}
-
-#[cfg(test)]
-mod tests {
-    /// Every kernel and extractor this host offers can be built. Construction is where the
-    /// packing and panel-extractor invariants are asserted, so this fails on a declaration that
-    /// does not hold together -- with its own name, rather than inside whatever test happened to
-    /// dispatch first.
-    #[test]
-    fn what_this_host_offers_builds() {
-        super::MmmDispatch::native();
-    }
-}
-
-lazy_static::lazy_static! {
-    static ref DISPATCH: MmmDispatch = MmmDispatch::native();
-}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BinOp {
@@ -353,12 +117,6 @@ impl BinOp {
 }
 
 pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
-/// The matmul dispatch for this host: which kernels it can run, and how it chooses among them.
-pub fn mmm_dispatch() -> &'static MmmDispatch {
-    &DISPATCH
-}
-
-use dyn_eq::DynEq;
 use num_traits::*;
 use std::fmt::Debug;
 use std::ops::*;

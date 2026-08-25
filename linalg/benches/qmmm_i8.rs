@@ -9,8 +9,9 @@ use DatumType::I32;
 
 fn qmmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mmm =
-            tract_linalg::mmm_dispatch().preferred_kernel(I32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::MmmDispatch::native()
+            .preferred_kernel(I32, Some(m), Some(k), Some(n))
+            .unwrap();
         // packing index 1 == i8i8 for both sme_qmmm_i32_32x32 and arm64simd_mmm_i32_8x8.
         let a = Tensor::zero::<i8>(&[m, k]).unwrap();
         let b = Tensor::zero::<i8>(&[k, n]).unwrap();

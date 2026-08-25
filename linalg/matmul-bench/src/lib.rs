@@ -377,7 +377,7 @@ pub fn tract(m: usize, k: usize, n: usize, a: &[f32], b: &[f32], c: &mut [f32]) 
     use tract_data::internal::*;
     use tract_linalg::frame::mmm::FusedSpec;
     unsafe {
-        let mmm = tract_linalg::mmm_dispatch()
+        let mmm = tract_linalg::MmmDispatch::native()
             .mmm(DatumType::F32, DatumType::F32, DatumType::F32, Some(m), Some(k), Some(n))
             .unwrap();
 

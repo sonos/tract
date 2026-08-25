@@ -52,7 +52,7 @@ fn benches(c: &mut Criterion) {
         // is healthy these match the zombie numbers above, kernel name printed
         // to stderr at startup.
         for n in [5usize, 6, 8] {
-            let mmm = tract_linalg::mmm_dispatch()
+            let mmm = tract_linalg::MmmDispatch::native()
                 .preferred_kernel(F32, Some(m), Some(k), Some(n))
                 .unwrap();
             eprintln!("dispatcher@m={m},k={k},n={n} picked {}", mmm.name());
@@ -63,7 +63,7 @@ fn benches(c: &mut Criterion) {
         // picker was high. We expect the M-aware picker to pick smaller-mr
         // kernels here.
         for (m, n) in [(20usize, 2), (33, 3), (50, 4), (17, 5), (1000, 64)] {
-            let mmm = tract_linalg::mmm_dispatch()
+            let mmm = tract_linalg::MmmDispatch::native()
                 .preferred_kernel(F32, Some(m), Some(k), Some(n))
                 .unwrap();
             eprintln!("dispatcher@m={m},k={k},n={n} picked {}", mmm.name());
