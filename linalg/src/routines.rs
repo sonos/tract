@@ -19,6 +19,7 @@
 //! such kernel", never "this toolchain skipped it".
 use crate::element_wise::{ElementWise, ElementWiseKer};
 use crate::isa::{Arch, IsaReq, IsaSet, LEVEL_BOOST};
+use crate::lut::Lut;
 use crate::reduce::{MapReduce, MapReduceKer, Reduce, ReduceKer};
 use tract_data::internal::*;
 
@@ -39,10 +40,11 @@ pub enum Func {
     ReduceSum,
     Softmax2,
     RmsNorm,
+    Lut,
 }
 
 impl Func {
-    pub const ALL: [Func; 13] = [
+    pub const ALL: [Func; 14] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
@@ -54,6 +56,7 @@ impl Func {
         Func::ReduceSum,
         Func::Softmax2,
         Func::RmsNorm,
+        Func::Lut,
         Func::LeakyRelu,
         Func::MulByScalar,
     ];
@@ -74,6 +77,7 @@ impl Func {
             Func::ReduceSum => "reduce_sum",
             Func::Softmax2 => "softmax2",
             Func::RmsNorm => "rms_norm",
+            Func::Lut => "lut",
         }
     }
 }
@@ -97,6 +101,11 @@ pub enum RoutineFactory {
     RmsNormF32 {
         name: &'static str,
         run: fn(&mut [f32], f32),
+    },
+    /// A kernel built around a table, which the caller owns and hands over per op.
+    LutU8 {
+        name: fn() -> &'static str,
+        make: fn(&[u8]) -> Box<dyn Lut>,
     },
 }
 
@@ -129,6 +138,7 @@ impl Routine {
             RoutineFactory::F16(_) | RoutineFactory::F16Param(_) | RoutineFactory::F16Reduce(_) => {
                 DatumType::F16
             }
+            RoutineFactory::LutU8 { .. } => DatumType::U8,
         }
     }
 
@@ -145,6 +155,7 @@ impl Routine {
             RoutineFactory::F16Reduce(f) => f().name(),
             RoutineFactory::F32MapReduce(f) => f().name(),
             RoutineFactory::RmsNormF32 { name, .. } => name,
+            RoutineFactory::LutU8 { name, .. } => name(),
         }
     }
 
@@ -253,6 +264,14 @@ pub fn rms_norm_f32() -> TractResult<fn(&mut [f32], f32)> {
     }
 }
 
+/// The look-up table kernel this host runs, over the table the caller owns.
+pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
+    match best_here(Func::Lut, DatumType::U8)?.factory {
+        RoutineFactory::LutU8 { make, .. } => Ok(make(table)),
+        _ => bail!("lut is not a table kernel"),
+    }
+}
+
 /// Declare one kernel, under the leading architecture ident the kernel-declaration macros take,
 /// or with no ident at all for portable Rust every target builds. The first argument names the
 /// factory arm, which is what says the kernel's shape and datum type; `isa` is omitted for a
@@ -274,6 +293,15 @@ macro_rules! routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::RmsNormF32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; LutU8, $func:ident, $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::LutU8 {
+                name: <$ker as $crate::lut::LutKer>::name,
+                make: |table| $crate::routines::lut_of::<$ker>(table),
+            }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; F32Reduce, $func:ident, $ker:path
@@ -322,6 +350,11 @@ macro_rules! routine {
             }
         }
     };
+}
+
+/// A look-up table kernel over `table`, as its factory arm wants it.
+pub fn lut_of<K: crate::lut::LutKer + 'static>(table: &[u8]) -> Box<dyn Lut> {
+    Box::new(crate::lut::LutImpl::<K>::new(table))
 }
 
 /// The `red()` of a reduction kernel, as its factory arm wants it.
@@ -376,7 +409,7 @@ mod tests {
     fn what_this_machine_declares_it_can_build() {
         let isa = crate::isa::native();
         for func in Func::ALL {
-            for dt in [DatumType::F32, DatumType::F16] {
+            for dt in [DatumType::F32, DatumType::F16, DatumType::U8] {
                 let Some(routine) = best_for(func, dt, &isa) else { continue };
                 let built = match routine.factory {
                     RoutineFactory::F32(_) => ew_f32(func).map(|k| k.name()),
@@ -387,6 +420,7 @@ mod tests {
                     RoutineFactory::F16Reduce(_) => reduce_f16(func).map(|k| k.name()),
                     RoutineFactory::F32MapReduce(_) => map_reduce_f32(func).map(|k| k.name()),
                     RoutineFactory::RmsNormF32 { name, .. } => Ok(name),
+                    RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
                 };
                 assert_eq!(
                     built.map_err(|e| e.to_string()),
