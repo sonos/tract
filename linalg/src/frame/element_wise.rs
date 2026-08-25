@@ -10,6 +10,63 @@ use super::element_wise_helper::map_slice_with_alignment;
 // An element-wise kernel from a `run` body. A leading arch ident is for bodies that are
 // inline arch asm or intrinsics, which will not even compile elsewhere: those builds get a
 // signature-matched panic stub instead, so the kernel struct exists everywhere.
+/// Declare an element-wise routine whose body is written here: the kernel, its registry descriptor
+/// and its accuracy tests, from one statement. `func` says which cell of the registry it fills and
+/// which tests it answers to; `param` marks a kernel taking a scalar of its own type; `isa` says
+/// which machines may run it, and therefore which may test it; `boost` is for a kernel that must
+/// never be chosen.
+macro_rules! routine_ew_rust {
+    (arm; $($rest:tt)*) => { routine_ew_rust!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { routine_ew_rust!(@ aarch64, target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { routine_ew_rust!(@ x86_64, target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => {
+        routine_ew_rust!(@ riscv64, target_arch = "riscv64"; $($rest)*);
+    };
+    (wasm32; $($rest:tt)*) => {
+        routine_ew_rust!(@ wasm32, all(target_arch = "wasm32", target_feature = "simd128");
+            $($rest)*);
+    };
+    (portable; $($rest:tt)*) => { routine_ew_rust!(@ portable, all(); $($rest)*); };
+
+    // A scalar-parameter kernel takes its own datum type as the parameter, and answers in the
+    // parameter shape; a plain one takes nothing.
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, func($f:ident), param $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        paste! {
+            routine_ew_rust!(@@ $arch, $built; $ti, $ker, $nr, $alignment_items, $ti, $run, $f,
+                [<$ti:upper Param>] $(, isa($($isa),+))? $(, boost($boost))?);
+        }
+    };
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, func($f:ident) $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        paste! {
+            routine_ew_rust!(@@ $arch, $built; $ti, $ker, $nr, $alignment_items, (), $run, $f,
+                [<$ti:upper>] $(, isa($($isa),+))? $(, boost($boost))?);
+        }
+    };
+
+    (@@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $params:ty, $run:item, $f:ident, $factory:ident
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        ew_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $params, $run);
+        paste! {
+            routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+            #[cfg(test)]
+            mod [<test_ $ker:snake>] {
+                use super::*;
+                crate::[<$f:snake _frame_tests>]!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    $ti,
+                    $ker
+                );
+            }
+        }
+    };
+}
+
 macro_rules! ew_impl_wrap {
     (arm; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };

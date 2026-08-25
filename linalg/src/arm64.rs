@@ -447,18 +447,8 @@ inventory::submit! {
     }
 }
 
-routine!(aarch64; F32, Silu, arm64simd_silu_f32_4n_fused);
-routine!(aarch64; F32, Gelu, arm64simd_gelu_f32_4n_fused);
-routine!(aarch64; F32, Hardswish, arm64simd_hardswish_f32_8n);
-
 routine!(aarch64; F16, Sigmoid, arm64simd_sigmoid_f16_4n);
 routine!(aarch64; F16, Tanh, arm64simd_tanh_f16_4n);
-routine!(aarch64; F16, Silu, arm64simd_silu_f16_lut_8n);
-
-routine!(aarch64; F32Param, LeakyRelu, arm64simd_leaky_relu_f32_8n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; F16Param, LeakyRelu, arm64fp16_leaky_relu_f16_16n, isa(Aarch64Fp16));
-
 routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_norm_f32);
 
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the

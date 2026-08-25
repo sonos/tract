@@ -6,12 +6,11 @@
 
 // hardswish(x) = x * relu6(x + 3) / 6
 //              = x * max(0, min(6, x + 3)) * (1/6)
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f32,
     x86_64_avx512_hardswish_f32_64n,
     64,
     16,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -20,7 +19,9 @@ ew_impl_wrap!(x86_64;
             return;
         }
         unsafe { x86_64_avx512_hardswish_f32_64n_run(buf) }
-    }
+    },
+    func(Hardswish),
+    isa(X86_64Avx512f)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -86,23 +87,12 @@ unsafe fn x86_64_avx512_hardswish_f32_64n_run(buf: &mut [f32]) {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_hardswish_f32_64n {
-    use super::*;
-    hardswish_frame_tests!(
-        is_x86_feature_detected!("avx512f"),
-        f32,
-        x86_64_avx512_hardswish_f32_64n
-    );
-}
-
 // leaky_relu(x) = x > 0 ? x : alpha * x
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f32,
     x86_64_avx512_leaky_relu_f32_64n,
     64,
     16,
-    f32,
     #[inline(never)]
     fn run(buf: &mut [f32], alpha: f32) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -111,7 +101,10 @@ ew_impl_wrap!(x86_64;
             return;
         }
         unsafe { x86_64_avx512_leaky_relu_f32_64n_run(buf, alpha) }
-    }
+    },
+    func(LeakyRelu),
+    param,
+    isa(X86_64Avx512f)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -167,27 +160,16 @@ unsafe fn x86_64_avx512_leaky_relu_f32_64n_run(buf: &mut [f32], alpha: f32) {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_leaky_relu_f32_64n {
-    use super::*;
-    leaky_relu_frame_tests!(
-        is_x86_feature_detected!("avx512f"),
-        f32,
-        x86_64_avx512_leaky_relu_f32_64n
-    );
-}
-
 // Tanh-form GELU (pow=3) matching tract's GeluApproximate:
 //   gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
 // Composed at the kernel level (mirrors arm64): save the original x, compute
 // the tanh argument in place, run the AVX-512 tanh kernel, then finish with the
 // 0.5 * x * (1 + tanh) combine.
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f32,
     x86_64_avx512_gelu_f32_16n,
     16,
     16,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -212,11 +194,7 @@ ew_impl_wrap!(x86_64;
             }
             start = end;
         }
-    }
+    },
+    func(Gelu),
+    isa(X86_64Avx512f)
 );
-
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_gelu_f32_16n {
-    use super::*;
-    gelu_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_gelu_f32_16n);
-}

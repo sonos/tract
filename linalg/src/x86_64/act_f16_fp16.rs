@@ -22,12 +22,11 @@ use tract_data::internal::f16;
 // hardswish(x) = x * clamp(x + 3, 0, 6) * (1/6).
 // 128 f16 per iter (4 zmm × 32 lanes), 256 bytes / iter — same memory throughput
 // as the f32 kernel's 64 f32 / iter.
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f16,
     x86_64_avx512fp16_hardswish_f16_128n,
     128,
     32,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f16], _: ()) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -36,7 +35,9 @@ ew_impl_wrap!(x86_64;
             return;
         }
         unsafe { hardswish_f16_run(buf) }
-    }
+    },
+    func(Hardswish),
+    isa(X86_64Avx512Fp16)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -117,12 +118,11 @@ unsafe fn hardswish_f16_run(buf: &mut [f16]) {
 // proptest against the f16 reference) but declares a boost that keeps it
 // behind the round-trip on every tie. Kept here in case a different
 // AVX-512_FP16 uarch (Granite Rapids etc.) flips the comparison.
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f16,
     x86_64_avx512fp16_leaky_relu_f16_128n,
     128,
     32,
-    f16,
     #[inline(never)]
     fn run(buf: &mut [f16], alpha: f16) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -131,7 +131,11 @@ ew_impl_wrap!(x86_64;
             return;
         }
         unsafe { leaky_relu_f16_run(buf, alpha) }
-    }
+    },
+    func(LeakyRelu),
+    param,
+    isa(X86_64Avx512Fp16),
+    boost(crate::isa::NEVER_PREFERRED)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -176,24 +180,4 @@ unsafe fn leaky_relu_f16_run(buf: &mut [f16], alpha: f16) {
             out("zmm8") _, out("zmm9") _, out("zmm10") _, out("zmm11") _,
         );
     }
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512fp16_hardswish {
-    use super::*;
-    crate::hardswish_frame_tests!(
-        is_x86_feature_detected!("avx512fp16"),
-        f16,
-        x86_64_avx512fp16_hardswish_f16_128n
-    );
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512fp16_leaky_relu {
-    use super::*;
-    crate::leaky_relu_frame_tests!(
-        is_x86_feature_detected!("avx512fp16"),
-        f16,
-        x86_64_avx512fp16_leaky_relu_f16_128n
-    );
 }

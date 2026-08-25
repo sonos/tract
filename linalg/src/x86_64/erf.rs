@@ -19,12 +19,11 @@
 //   y = 1 - y
 //   result = copysign(y, x)
 
-ew_impl_wrap!(x86_64;
+routine_ew_rust!(x86_64;
     f32,
     x86_64_avx512_erf_f32_64n,
     64,
     16,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         debug_assert!(buf.len() % Self::nr() == 0);
@@ -33,7 +32,9 @@ ew_impl_wrap!(x86_64;
             return;
         }
         unsafe { x86_64_avx512_erf_f32_64n_run(buf) }
-    }
+    },
+    func(Erf),
+    isa(X86_64Avx512f)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -196,10 +197,4 @@ unsafe fn x86_64_avx512_erf_f32_64n_run(buf: &mut [f32]) {
             out("zmm21") _, out("zmm22") _, out("zmm23") _, out("zmm24") _,
         );
     }
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_erf_f32_64n {
-    use super::*;
-    crate::erf_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_erf_f32_64n);
 }

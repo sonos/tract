@@ -1,11 +1,10 @@
 use tract_data::internal::f16;
 
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f16,
     arm64fp16_leaky_relu_f16_16n,
     16,
     8,
-    f16,
     #[inline(never)]
     fn run(buf: &mut [f16], alpha: f16) {
         assert!(buf.len() % 8 == 0);
@@ -46,11 +45,8 @@ ew_impl_wrap!(aarch64;
             }
         }
         unsafe { run(buf, alpha) }
-    }
+    },
+    func(LeakyRelu),
+    param,
+    isa(Aarch64Fp16)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_leaky_relu_f16_16n {
-    use super::*;
-    leaky_relu_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_leaky_relu_f16_16n);
-}

@@ -5,22 +5,17 @@
 // argument, call tract's NEON tanh kernel in place, then finish with the
 // 0.5 * x * (1 + tanh) multiply. Chunked to keep the scratch buffer L1-resident.
 
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f32,
     arm64simd_gelu_f32_4n,
     4,
     4,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         // Keep the composed symbol but route to the single-pass fused kernel:
         // same approximation, less memory traffic (no scratch copy).
         super::arm64simd_gelu_f32_4n_fused::run(buf, ());
-    }
+    },
+    func(Gelu),
+    boost(crate::isa::NEVER_PREFERRED)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_gelu_f32_4n {
-    use super::*;
-    gelu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_gelu_f32_4n);
-}
