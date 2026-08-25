@@ -122,4 +122,38 @@ mod tests {
             }
         }
     }
+    /// A tier that names a kernel must somewhere name one the query can reach. Naming an
+    /// unreachable kernel is how a tier defers to the one below, so a tier doing it at every step
+    /// and for every accumulator is dead dispatch that no pick can expose: the machine falls
+    /// through and still runs something. A tier gated on a knob that is off never answers here at
+    /// all, and is not held to this; setting the knob brings it in.
+    ///
+    /// Only the steps this host can execute, unlike the questions asked of the routine registry:
+    /// the mmm pool holds a compiled kernel only where the CPU can run it, so a step above this
+    /// machine has an empty pool and nothing there is reachable by construction.
+    #[test]
+    fn a_tier_that_answers_names_a_reachable_kernel() {
+        let mut answered = std::collections::HashSet::new();
+        let mut reached = std::collections::HashSet::new();
+        let native = crate::isa::native();
+        for isa in IsaSet::every_ladder().filter(|l| l.iter().all(|i| native.has(i))) {
+            let dispatch = crate::MmmDispatch::for_isa(isa);
+            for acc in [DatumType::F32, DatumType::F16, DatumType::I32] {
+                let query = Query::plain(acc, None, None, None);
+                let suitable = dispatch.suitable(&query);
+                for tier in dispatch.tiers() {
+                    let Some(name) = (tier.preferred)(&isa, acc, &query, &suitable) else {
+                        continue;
+                    };
+                    answered.insert(tier.name);
+                    if crate::mmm::suitable_named(&suitable, name).is_some() {
+                        reached.insert(tier.name);
+                    }
+                }
+            }
+        }
+        let unheard: Vec<&str> =
+            answered.iter().copied().filter(|name| !reached.contains(name)).collect();
+        assert!(unheard.is_empty(), "these tiers name a kernel no machine can reach: {unheard:?}");
+    }
 }
