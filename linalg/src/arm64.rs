@@ -447,7 +447,7 @@ inventory::submit! {
     }
 }
 
-routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_norm_f32);
+submit_routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_norm_f32);
 
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
 /// always-SME default wherever the shape is pinned. Which chip this is and what the chip can run

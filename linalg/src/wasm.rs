@@ -65,8 +65,8 @@ inventory::submit! {
     }
 }
 
-routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
-routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
+submit_routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
+submit_routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
 
 /// What this build offers, in the shared vocabulary. Unlike the other trees this is a build
 /// question rather than a probe: wasm features are enabled at compile time and a module cannot
@@ -80,4 +80,4 @@ pub fn isa_set() -> crate::isa::IsaSet {
     set
 }
 
-routine!(wasm32; RmsNormF32, RmsNorm, "wasm_rms_norm_f32", reduce::rms_norm_f32);
+submit_routine!(wasm32; RmsNormF32, RmsNorm, "wasm_rms_norm_f32", reduce::rms_norm_f32);

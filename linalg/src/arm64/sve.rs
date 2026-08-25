@@ -261,7 +261,7 @@ inventory::submit! {
 }
 
 #[cfg(tract_sve)]
-routine!(aarch64; RmsNormF32, RmsNorm, "sve_rms_norm_f32", sve_rms_norm_f32, isa(Aarch64Sve2));
+submit_routine!(aarch64; RmsNormF32, RmsNorm, "sve_rms_norm_f32", sve_rms_norm_f32, isa(Aarch64Sve2));
 
 #[cfg(all(test, tract_sve))]
 mod rms_norm_tests {

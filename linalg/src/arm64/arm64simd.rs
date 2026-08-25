@@ -111,5 +111,5 @@ MMMExternKernel!(aarch64; arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
    store(i8)
 );
 
-ew_routine!(aarch64; Tanh, f32, arm64simd_tanh_f32_4n, 4, 4);
-ew_routine!(aarch64; Sigmoid, f32, arm64simd_sigmoid_f32_4n, 4, 4);
+routine_ew_extern!(aarch64; Tanh, f32, arm64simd_tanh_f32_4n, 4, 4);
+routine_ew_extern!(aarch64; Sigmoid, f32, arm64simd_sigmoid_f32_4n, 4, 4);

@@ -32,9 +32,9 @@ macro_rules! routine_unicast_rust {
 
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op($op:ident) $(, isa($($isa:ident),+))?) => {
-        unicast_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $run);
+        unicast_kernel!(@ $built; $ti, $ker, $nr, $alignment_items, $run);
         paste! {
-            routine!($arch; [<Bin $ti:upper>], BinUnicast($op), $ker $(, isa($($isa),+))?);
+            submit_routine!($arch; [<Bin $ti:upper>], BinUnicast($op), $ker $(, isa($($isa),+))?);
             #[cfg(test)]
             mod [<test_ $ker:snake>] {
                 use super::*;
@@ -52,18 +52,18 @@ macro_rules! routine_unicast_rust {
     };
 }
 
-macro_rules! unicast_impl_wrap {
-    (arm; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "riscv64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { unicast_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+macro_rules! unicast_kernel {
+    (arm; $($rest:tt)*) => { unicast_kernel!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { unicast_kernel!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { unicast_kernel!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { unicast_kernel!(@ target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { unicast_kernel!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $run:item) => {
         #[cfg($built)]
-        unicast_impl_wrap!($ti, $func, $nr, $alignment_items, $run);
+        unicast_kernel!($ti, $func, $nr, $alignment_items, $run);
         #[cfg(not($built))]
-        unicast_impl_wrap!($ti, $func, $nr, $alignment_items,
+        unicast_kernel!($ti, $func, $nr, $alignment_items,
             fn run(_a: &mut [$ti], _b: &[$ti]) {
                 panic!(concat!(stringify!($func), ": kernel not built for this target"))
             }

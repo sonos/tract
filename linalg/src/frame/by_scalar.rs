@@ -72,7 +72,7 @@ macro_rules! routine_by_scalar_rust {
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op($op:ident), bin $(, param($param:ident))? $(, isa($($isa:ident),+))?) => {
         paste! {
-            routine!($arch; [<Bin $ti:upper>], BinByScalar($op), $ker $(, isa($($isa),+))?);
+            submit_routine!($arch; [<Bin $ti:upper>], BinByScalar($op), $ker $(, isa($($isa),+))?);
         }
         routine_by_scalar_rust!(@ $arch, $built; $ti, $ker, $nr, $alignment_items, $run,
             op($op) $(, param($param))? $(, isa($($isa),+))?);
@@ -81,7 +81,7 @@ macro_rules! routine_by_scalar_rust {
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op($op:ident), param($param:ident) $(, isa($($isa:ident),+))?) => {
         paste! {
-            routine!($arch; [<$ti:upper Param>], $param, $ker $(, isa($($isa),+))?);
+            submit_routine!($arch; [<$ti:upper Param>], $param, $ker $(, isa($($isa),+))?);
         }
         routine_by_scalar_rust!(@ $arch, $built; $ti, $ker, $nr, $alignment_items, $run,
             op($op) $(, isa($($isa),+))?);
@@ -89,7 +89,7 @@ macro_rules! routine_by_scalar_rust {
 
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op($op:ident) $(, isa($($isa:ident),+))?) => {
-        by_scalar_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $ti, $run);
+        by_scalar_kernel!(@ $built; $ti, $ker, $nr, $alignment_items, $ti, $run);
         paste! {
             #[cfg(test)]
             mod [<test_ $ker:snake>] {
@@ -108,18 +108,18 @@ macro_rules! routine_by_scalar_rust {
     };
 }
 
-macro_rules! by_scalar_impl_wrap {
-    (arm; $($rest:tt)*) => { by_scalar_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { by_scalar_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { by_scalar_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { by_scalar_impl_wrap!(@ target_arch = "riscv64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { by_scalar_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+macro_rules! by_scalar_kernel {
+    (arm; $($rest:tt)*) => { by_scalar_kernel!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { by_scalar_kernel!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { by_scalar_kernel!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { by_scalar_kernel!(@ target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { by_scalar_kernel!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
         #[cfg($built)]
-        by_scalar_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
+        by_scalar_kernel!($ti, $func, $nr, $alignment_items, $params, $run);
         #[cfg(not($built))]
-        by_scalar_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
+        by_scalar_kernel!($ti, $func, $nr, $alignment_items, $params,
             fn run(_vec: &mut [$ti], _params: $params) {
                 panic!(concat!(stringify!($func), ": kernel not built for this target"))
             }
@@ -128,7 +128,7 @@ macro_rules! by_scalar_impl_wrap {
 
     ($ti: ident, $func: ident, $nr: expr, $alignment_items: expr, $params: ty, $run: item) => {
         paste! {
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, $ti, $run);
+            ew_kernel!($ti, $func, $nr, $alignment_items, $ti, $run);
 
             impl crate::frame::by_scalar::ByScalarKer<$ti> for $func {}
         }
