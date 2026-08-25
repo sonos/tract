@@ -110,8 +110,6 @@ pub struct Ops {
     tiers: Vec<&'static MmmTier>,
     runnable: Vec<Box<dyn mmm::MatMatMul>>,
     panel_extractors: Vec<mmm::PanelExtractor>,
-
-    pub lut_u8: Box<dyn Fn(&[u8]) -> Box<dyn lut::Lut> + Send + Sync>,
 }
 
 impl Ops {
@@ -289,7 +287,6 @@ pub fn generic_for(isa: IsaSet) -> Ops {
         tiers: mmm_tiers::for_isa(&isa),
         runnable: vec![],
         panel_extractors: vec![],
-        lut_u8: Box::new(|table: &[u8]| Box::new(lut::LutImpl::<generic::GenericLut8>::new(table))),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */

@@ -228,7 +228,7 @@ impl TypedOp for DequantizeLinearF32 {
                         DatumType::U8 => output.try_as_plain()?.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };
-                    let op = lookup_table((tract_linalg::ops().lut_u8)(table));
+                    let op = lookup_table(tract_linalg::routines::lut_u8(table)?);
                     let mut patch = TypedModelPatch::default();
                     let mut wire: OutletId = patch.tap_model(model, dequant.inputs[0])?;
 

@@ -82,3 +82,4 @@ routine!(F32Reduce, ReduceSum, reduce::sum::SSum4);
 routine!(F16Reduce, ReduceSum, reduce::sum::HSum8);
 routine!(F32MapReduce, Softmax2, reduce::softmax_l2::SSoftMaxL2Accurate);
 routine!(RmsNormF32, RmsNorm, "generic", rms_norm::rms_norm_f32);
+routine!(LutU8, Lut, lut::GenericLut8);
