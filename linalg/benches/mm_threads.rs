@@ -51,7 +51,7 @@ fn bench_shape(c: &mut Criterion, dt: DatumType, label: &str, m: usize, k: usize
     let mut group = c.benchmark_group(format!("{label}/{m}x{k}x{n}"));
     group.throughput(Throughput::Elements((m * k * n) as u64));
 
-    let mmm = tract_linalg::ops().preferred_kernel(dt, Some(m), Some(k), Some(n)).unwrap();
+    let mmm = tract_linalg::mmm_dispatch().preferred_kernel(dt, Some(m), Some(k), Some(n)).unwrap();
     let a = Tensor::zero_dt(dt, &[m, k]).unwrap();
     let b = Tensor::zero_dt(dt, &[k, n]).unwrap();
     let packing = &mmm.packings()[0];

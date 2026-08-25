@@ -100,8 +100,10 @@ pub use self::frame::*;
 
 use tract_data::prelude::*;
 
-#[allow(clippy::type_complexity)]
-pub struct Ops {
+/// Everything this platform brings to a matrix multiplication: the kernels it can run, the tiers
+/// that rank them, and the panel extractors that reach a kernel's packing from a foreign one.
+/// Nothing else lives here -- the single-winner kernels are [`routines`].
+pub struct MmmDispatch {
     /// The architecture these kernels are for and what its instruction set offers. Everything mmm
     /// selection is a function of it: the runnable set, and which tiers speak.
     isa: IsaSet,
@@ -111,7 +113,29 @@ pub struct Ops {
     panel_extractors: Vec<mmm::PanelExtractor>,
 }
 
-impl Ops {
+impl MmmDispatch {
+    /// What a platform runs: its runnable kernels, the tiers that speak for it, and the panel
+    /// extractors it can reach. All three are functions of the instruction set, so this is the
+    /// whole of it -- nothing is installed by hand afterwards.
+    pub fn for_isa(isa: IsaSet) -> MmmDispatch {
+        let mut dispatch = MmmDispatch {
+            isa,
+            tiers: mmm_tiers::for_isa(&isa),
+            runnable: vec![],
+            panel_extractors: mmm_routines::extractors_for(&isa),
+        };
+        dispatch.runnable = match isa.arch() {
+            Some(target) => mmm_routines::runnable_for(target),
+            None => mmm_routines::runnable(),
+        };
+        dispatch
+    }
+
+    /// What this host runs.
+    pub fn native() -> MmmDispatch {
+        Self::for_isa(isa::native())
+    }
+
     /// Every kernel this host can execute: built into this build, and declaring an instruction
     /// set the CPU has. What selection narrows down from.
     pub fn runnable(&self) -> &[Box<dyn mmm::MatMatMul>] {
@@ -227,7 +251,7 @@ impl Ops {
     }
 
     /// The kernel this platform would run for a plain matmul of these dims, for a caller
-    /// introspecting dispatch rather than performing it. Unlike [`Ops::preferred`] it reports
+    /// introspecting dispatch rather than performing it. Unlike [`MmmDispatch::preferred`] it reports
     /// the tiers' answer whatever its quality, and it never falls back on the portable rules:
     /// `None` means no tier had anything to say.
     pub fn preferred_kernel(
@@ -277,43 +301,18 @@ inventory::submit! {
     }
 }
 
-/// The `Ops` a platform runs: its runnable kernels, the tiers that speak for it, and the panel
-/// extractors it can reach. All three are functions of the instruction set, so this is the whole
-/// of it -- nothing is installed by hand afterwards.
-pub fn for_isa(isa: IsaSet) -> Ops {
-    let mut ops = Ops {
-        isa,
-        tiers: mmm_tiers::for_isa(&isa),
-        runnable: vec![],
-        panel_extractors: mmm_routines::extractors_for(&isa),
-        /*
-        activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
-        */
-    };
-    ops.runnable = match isa.arch() {
-        Some(target) => mmm_routines::runnable_for(target),
-        None => mmm_routines::runnable(),
-    };
-    ops
-}
-
-/// The `Ops` this host runs.
-pub fn native_ops() -> Ops {
-    for_isa(isa::native())
-}
-
-/// `Ops` as `arch` sees them: its kernels, from [`mmm_routines::runnable_for`], under its own
+/// Dispatch as `arch` sees it: its kernels, from [`mmm_routines::runnable_for`], under its own
 /// tiers. Answers which kernel that architecture would choose for a shape, from any host. What it
 /// cannot reproduce is a hardware probe, so for a foreign arch it starts from the plain
 /// architecture and nothing else: a cohort behind a feature is reached by naming that feature in
 /// `TRACT_CPU_ISA`, which is checked against this architecture rather than the host's. `None` when
 /// the architecture's tree was not compiled in; see the `foreign-inventory` feature.
-pub fn inspect(arch: Arch) -> Option<Ops> {
+pub fn inspect(arch: Arch) -> Option<MmmDispatch> {
     if !mmm_routines::declared().any(|r| r.target == Some(arch)) {
         return None;
     }
     let isa = if arch.is_native() { isa::native() } else { isa::forced(IsaSet::of_arch(arch)) };
-    Some(for_isa(isa))
+    Some(MmmDispatch::for_isa(isa))
 }
 
 #[cfg(test)]
@@ -324,12 +323,12 @@ mod tests {
     /// dispatch first.
     #[test]
     fn what_this_host_offers_builds() {
-        super::native_ops();
+        super::MmmDispatch::native();
     }
 }
 
 lazy_static::lazy_static! {
-    static ref OPS: Ops = native_ops();
+    static ref DISPATCH: MmmDispatch = MmmDispatch::native();
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -354,8 +353,9 @@ impl BinOp {
 }
 
 pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
-pub fn ops() -> &'static Ops {
-    &OPS
+/// The matmul dispatch for this host: which kernels it can run, and how it chooses among them.
+pub fn mmm_dispatch() -> &'static MmmDispatch {
+    &DISPATCH
 }
 
 use dyn_eq::DynEq;

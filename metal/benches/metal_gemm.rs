@@ -23,7 +23,7 @@ pub fn tract_with_packing(
 
     // mk,kn -> mn
     unsafe {
-        let mmm = tract_linalg::ops().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::mmm_dispatch().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
 
         let c_storage = mmm.c_view(Some(0), Some(1));
 

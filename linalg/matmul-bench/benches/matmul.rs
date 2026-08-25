@@ -43,7 +43,7 @@ pub fn tract_blaslike(
     let mut c = Tensor::zero_dt(dt, &[m, n]).unwrap();
 
     unsafe {
-        let mmm = tract_linalg::ops().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::mmm_dispatch().mmm(dt, dt, dt, Some(m), Some(k), Some(n)).unwrap();
 
         let c_storage = mmm.c_view(0, 1);
 
