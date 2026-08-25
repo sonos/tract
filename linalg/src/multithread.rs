@@ -11,7 +11,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 use tract_data::internal::vector_size;
 use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
 
-use crate::LinalgFn;
+use crate::BinFn;
 
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
@@ -213,7 +213,7 @@ pub enum BShare {
 /// These kernels are pure elementwise, so no chunk boundary can change a result:
 /// the output is bit-identical to the serial path at any thread count.
 pub fn par_bin(
-    eval_fn: &LinalgFn,
+    eval_fn: &BinFn,
     a: &mut Tensor,
     b: &Tensor,
     period: usize,

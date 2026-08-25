@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 
 use crate::element_wise::{ElementWise, ElementWiseKer};
 use crate::element_wise_helper::map_slice_with_alignment;
-use crate::{LADatum, LinalgFn};
+use crate::{BinFn, LADatum};
 use tract_data::internal::*;
 
 /// Generic implementation struct that unify all by scalar kernels.
@@ -34,7 +34,7 @@ pub trait ByScalarKer<T>: ElementWiseKer<T, T>
 where
     T: LADatum,
 {
-    fn bin() -> Box<LinalgFn> {
+    fn bin() -> Box<BinFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b = b.as_slice()?[0];

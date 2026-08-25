@@ -203,7 +203,7 @@ impl Func {
     /// The binary kernel this host runs for `func` and datum type, `None` when it has none. Unlike
     /// the other accessors this one is optional rather than fallible: its callers rewrite a model
     /// only when a kernel exists, and having none is an ordinary answer rather than a failure.
-    pub fn bin(self, dt: DatumType) -> Option<Box<crate::LinalgFn>> {
+    pub fn bin(self, dt: DatumType) -> Option<Box<crate::BinFn>> {
         match best_for(self, dt, &crate::isa::native())?.factory {
             RoutineFactory::BinF32 { make, .. } | RoutineFactory::BinF16 { make, .. } => {
                 Some(make())
@@ -242,11 +242,11 @@ pub enum RoutineFactory {
     /// datum type is the arm and the name a field.
     BinF32 {
         name: fn() -> &'static str,
-        make: fn() -> Box<crate::LinalgFn>,
+        make: fn() -> Box<crate::BinFn>,
     },
     BinF16 {
         name: fn() -> &'static str,
-        make: fn() -> Box<crate::LinalgFn>,
+        make: fn() -> Box<crate::BinFn>,
     },
 }
 
