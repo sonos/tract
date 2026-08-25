@@ -201,6 +201,49 @@ where
 
 #[allow(unused_macros)]
 // A map-reduce kernel from a `run` body, arch ident as in `reduce_impl_wrap!`.
+/// Declare a map-reduction routine: the kernel, its registry descriptor and its accuracy tests,
+/// from one statement. One arm per operation, naming the two identities it starts from and how two
+/// answers combine, which is the only place those follow from the operation.
+macro_rules! routine_map_reduce_rust {
+    (arm; $($rest:tt)*) => { routine_map_reduce_rust!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => {
+        routine_map_reduce_rust!(@ aarch64, target_arch = "aarch64"; $($rest)*);
+    };
+    (x86_64; $($rest:tt)*) => {
+        routine_map_reduce_rust!(@ x86_64, target_arch = "x86_64"; $($rest)*);
+    };
+    (riscv64; $($rest:tt)*) => {
+        routine_map_reduce_rust!(@ riscv64, target_arch = "riscv64"; $($rest)*);
+    };
+    (wasm32; $($rest:tt)*) => {
+        routine_map_reduce_rust!(@ wasm32,
+            all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
+    (portable; $($rest:tt)*) => { routine_map_reduce_rust!(@ portable, all(); $($rest)*); };
+
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, op(Softmax2) $(, isa($($isa:ident),+))?) => {
+        map_reduce_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $ti,
+            <$ti>::NEG_INFINITY, <$ti as num_traits::Zero>::zero(), $run,
+            fn reduce_two(a: $ti, b: $ti) -> $ti { a + b });
+        paste! {
+            routine!($arch; [<$ti:upper MapReduce>], Softmax2, $ker $(, isa($($isa),+))?);
+            #[cfg(test)]
+            mod [<test_ $ker:snake>] {
+                use super::*;
+                crate::softmax_l2_frame_tests!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    $ti,
+                    $ker
+                );
+            }
+        }
+    };
+}
+
 macro_rules! map_reduce_impl_wrap {
     (arm; $($rest:tt)*) => { map_reduce_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { map_reduce_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };

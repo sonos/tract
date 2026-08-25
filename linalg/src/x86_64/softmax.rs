@@ -4,23 +4,18 @@
 // underflows to zero even on a fully masked row, where the row max equals the
 // neutral.
 // nr=32 (4x ymm of 8), 32-byte aligned.
-map_reduce_impl_wrap!(x86_64;
+routine_map_reduce_rust!(x86_64;
     f32,
     x86_64_fma_softmax2_f32_32n,
     32,
     8,
-    f32,
-    f32::NEG_INFINITY,
-    0f32,
     #[inline(never)]
     fn run(buf: &mut [f32], max: f32) -> f32 {
         assert!(buf.len() % 32 == 0);
         unsafe { x86_64_fma_softmax2_f32_32n_run(buf, max) }
     },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a + b
-    }
+    op(Softmax2),
+    isa(X86_64Avx2, X86_64Fma)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -90,36 +85,21 @@ unsafe fn x86_64_fma_softmax2_f32_32n_run(buf: &mut [f32], max: f32) -> f32 {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
-mod test_x86_64_fma_softmax2_f32_32n {
-    use super::*;
-    crate::softmax_l2_frame_tests!(
-        is_x86_feature_detected!("fma"),
-        f32,
-        x86_64_fma_softmax2_f32_32n
-    );
-}
-
 // AVX-512 accurate f32 softmax_l2: same arithmetic as the FMA kernel, 64 f32
 // (4x zmm of 16) per iteration. Declares avx512f.
 // nr=64, 64-byte aligned.
-map_reduce_impl_wrap!(x86_64;
+routine_map_reduce_rust!(x86_64;
     f32,
     x86_64_avx512_softmax2_f32_64n,
     64,
     16,
-    f32,
-    f32::NEG_INFINITY,
-    0f32,
     #[inline(never)]
     fn run(buf: &mut [f32], max: f32) -> f32 {
         assert!(buf.len() % 64 == 0);
         unsafe { x86_64_avx512_softmax2_f32_64n_run(buf, max) }
     },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a + b
-    }
+    op(Softmax2),
+    isa(X86_64Avx512f)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -178,14 +158,4 @@ unsafe fn x86_64_avx512_softmax2_f32_64n_run(buf: &mut [f32], max: f32) -> f32 {
         }
         _mm512_reduce_add_ps(_mm512_add_ps(_mm512_add_ps(a0, a1), _mm512_add_ps(a2, a3)))
     }
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-mod test_x86_64_avx512_softmax2_f32_64n {
-    use super::*;
-    crate::softmax_l2_frame_tests!(
-        is_x86_feature_detected!("avx512f"),
-        f32,
-        x86_64_avx512_softmax2_f32_64n
-    );
 }
