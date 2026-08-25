@@ -7,8 +7,9 @@ use DatumType::F32;
 
 fn mat_mul_smmm(be: &mut criterion::Bencher, &(m, k, n): &(usize, usize, usize)) {
     unsafe {
-        let mmm =
-            tract_linalg::mmm_dispatch().preferred_kernel(F32, Some(m), Some(k), Some(n)).unwrap();
+        let mmm = tract_linalg::MmmDispatch::native()
+            .preferred_kernel(F32, Some(m), Some(k), Some(n))
+            .unwrap();
         let a = Tensor::zero::<f32>(&[m, k]).unwrap();
         let b = Tensor::zero::<f32>(&[k, n]).unwrap();
         let packing = &mmm.packings()[0];

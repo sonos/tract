@@ -570,7 +570,7 @@ impl Conv {
             n: n.as_usize(),
         };
         if weight_fact.is_exotic() {
-            let mut suitable = tract_linalg::mmm_dispatch().suitable(&query);
+            let mut suitable = tract_linalg::MmmDispatch::native().suitable(&query);
             retain_best_quality(&mut suitable);
             suitable
                 .into_iter()
@@ -579,7 +579,7 @@ impl Conv {
                 .context("No matmul found")
         } else {
             let (mmm, packing, _) =
-                tract_linalg::mmm_dispatch().pick(&query).context("No matmul found")?;
+                tract_linalg::MmmDispatch::native().pick(&query).context("No matmul found")?;
             Ok((mmm, packing))
         }
     }

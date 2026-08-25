@@ -20,12 +20,12 @@ fn single_strat(it: Impl) -> Strat {
 
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
     let query = query(model, node, op)?;
-    let mut suitable = tract_linalg::mmm_dispatch().suitable(&query);
+    let mut suitable = tract_linalg::MmmDispatch::native().suitable(&query);
     ensure!(suitable.len() > 0);
     // Only with `n` in hand: a symbolic `n` is what the packing-group reasoning below is for,
     // and it serves both roles at once, which a single pick cannot.
     if query.n.is_some()
-        && let Some(ix) = tract_linalg::mmm_dispatch().preferred(&query, &suitable)
+        && let Some(ix) = tract_linalg::MmmDispatch::native().preferred(&query, &suitable)
     {
         return Ok(single_strat(suitable.swap_remove(ix)));
     }
