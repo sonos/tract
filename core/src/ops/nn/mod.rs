@@ -20,12 +20,12 @@ pub use self::softmax::{Softmax, SoftmaxKind};
 
 pub use crate::internal::*;
 
-use tract_linalg::routines::{Func, ew_f16, ew_f16_param, ew_f32, ew_f32_param};
+use tract_linalg::routines::Func;
 use tract_num_traits::AsPrimitive;
 
 element_wise!(sigmoid, Sigmoid,
- [f16] => |_, xs| { ew_f16(Func::Sigmoid)?.run(xs) },
- [f32] => |_, xs| { ew_f32(Func::Sigmoid)?.run(xs) };
+ [f16] => |_, xs| { Func::Sigmoid.ew_f16()?.run(xs) },
+ [f32] => |_, xs| { Func::Sigmoid.ew_f32()?.run(xs) };
  q: [i8, u8, i32, i32] => |x: f32| 1.0 / (1.0+(-x).exp());
  cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
  declutter: silu::detect_silu
@@ -33,10 +33,10 @@ element_wise!(sigmoid, Sigmoid,
 
 element_wise!(hard_swish, HardSwish,
 [f16] => |_, xs| { xs.iter_mut().for_each(|x| *x = *x * f16::from_f32(0.0).max(f16::from_f32(1.0).min(f16::from_f32(1. / 6.) * *x + f16::from_f32(0.5)))); Ok(()) },
-[f32] => |_, xs| { ew_f32(Func::Hardswish)?.run(xs) }
+[f32] => |_, xs| { Func::Hardswish.ew_f32()?.run(xs) }
                                          );
 
 element_wise!(leaky_relu, LeakyRelu { alpha: f32 },
- [f16] => |op, xs| { ew_f16_param(Func::LeakyRelu)?.run_with_params(xs, f16::from_f32(op.alpha)) },
- [f32] => |op, xs| { ew_f32_param(Func::LeakyRelu)?.run_with_params(xs, op.alpha) }
+ [f16] => |op, xs| { Func::LeakyRelu.ew_f16_param()?.run_with_params(xs, f16::from_f32(op.alpha)) },
+ [f32] => |op, xs| { Func::LeakyRelu.ew_f32_param()?.run_with_params(xs, op.alpha) }
 );

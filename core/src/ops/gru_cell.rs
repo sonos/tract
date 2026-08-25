@@ -1,6 +1,6 @@
 use crate::internal::*;
 use tract_linalg::element_wise::ElementWise;
-use tract_linalg::routines::{Func, ew_f16, ew_f32};
+use tract_linalg::routines::Func;
 
 /// Fused GRU cell epilogue.
 ///
@@ -51,10 +51,10 @@ impl EvalOp for GruEpilogue {
     fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         match inputs[0].datum_type().unquantized() {
             DatumType::F32 => {
-                self.eval_t::<f32>(inputs, ew_f32(Func::Sigmoid)?, ew_f32(Func::Tanh)?)
+                self.eval_t::<f32>(inputs, Func::Sigmoid.ew_f32()?, Func::Tanh.ew_f32()?)
             }
             DatumType::F16 => {
-                self.eval_t::<f16>(inputs, ew_f16(Func::Sigmoid)?, ew_f16(Func::Tanh)?)
+                self.eval_t::<f16>(inputs, Func::Sigmoid.ew_f16()?, Func::Tanh.ew_f16()?)
             }
             dt => bail!("GruEpilogue only supports f32 and f16 preactivations, got {dt:?}"),
         }

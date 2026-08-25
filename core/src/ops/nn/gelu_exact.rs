@@ -1,7 +1,7 @@
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::math::{Add, Mul};
-use tract_linalg::routines::{Func, ew_f32};
+use tract_linalg::routines::Func;
 
 const CHUNK: usize = 1024;
 
@@ -11,7 +11,7 @@ fn inv_sqrt2() -> f32 {
 
 crate::element_wise!(gelu_exact, GeluExact,
     [f16] => |_, xs| {
-        let erf = ew_f32(Func::Erf)?;
+        let erf = Func::Erf.ew_f32()?;
         let c = f16::from_f32(inv_sqrt2());
         let half = f16::from_f32(0.5);
         let one = f16::from_f32(1.0);
@@ -27,7 +27,7 @@ crate::element_wise!(gelu_exact, GeluExact,
         Ok(())
     },
     [f32] => |_, xs| {
-        let erf = ew_f32(Func::Erf)?;
+        let erf = Func::Erf.ew_f32()?;
         let c = inv_sqrt2();
         let mut scratch = vec![0f32; xs.len().min(CHUNK)];
         for chunk in xs.chunks_mut(CHUNK) {

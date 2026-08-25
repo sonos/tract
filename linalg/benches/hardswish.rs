@@ -28,10 +28,7 @@ fn rust_f32(input: &mut [f32]) {
 
 #[inline(never)]
 fn linalg32(input: &mut [f32]) {
-    tract_linalg::routines::ew_f32(tract_linalg::routines::Func::Hardswish)
-        .unwrap()
-        .run(input)
-        .unwrap();
+    tract_linalg::routines::Func::Hardswish.ew_f32().unwrap().run(input).unwrap();
 }
 
 criterion_group!(benches, hardswish_f32);
