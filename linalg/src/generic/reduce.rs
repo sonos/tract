@@ -2,111 +2,73 @@
 pub mod max {
     pub use tract_data::internal::f16;
 
-    reduce_impl_wrap!(
+    routine_reduce_rust!(portable;
         f32,
         SMax4,
         4,
         4,
-        (),
-        f32::MIN,
         fn run(x: &[f32], _: ()) -> f32 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
             *x.iter().max_by(|a, b| a.total_cmp(b)).unwrap()
         },
-        fn reduce_two(a: f32, b: f32) -> f32 {
-            a.max(b)
-        }
+        op(Max)
     );
 
-    reduce_impl_wrap!(
+    routine_reduce_rust!(portable;
         f16,
         HMax8,
         8,
         8,
-        (),
-        f16::MIN,
         fn run(x: &[f16], _: ()) -> f16 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
             *x.iter().max_by(|a, b| a.total_cmp(b)).unwrap()
         },
-        fn reduce_two(a: f16, b: f16) -> f16 {
-            a.max(b)
-        }
+        op(Max)
     );
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod s {
-        crate::max_frame_tests!(true, f32, crate::generic::reduce::max::SMax4);
-    }
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod h {
-        use super::*;
-        crate::max_frame_tests!(true, f16, crate::generic::reduce::max::HMax8);
-    }
 }
 
 // Reduce<min> generic implementation
 pub mod min {
     pub use tract_data::internal::f16;
 
-    reduce_impl_wrap!(
+    routine_reduce_rust!(portable;
         f32,
         SMin4,
         4,
         4,
-        (),
-        f32::MAX,
         fn run(x: &[f32], _: ()) -> f32 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
             *x.iter().min_by(|a, b| a.total_cmp(b)).unwrap()
         },
-        fn reduce_two(a: f32, b: f32) -> f32 {
-            a.min(b)
-        }
+        op(Min)
     );
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod s {
-        crate::min_frame_tests!(true, f32, crate::generic::reduce::min::SMin4);
-    }
 }
 
 // Reduce<sum> generic implementation
 pub mod sum {
-    use crate::num_traits::Zero;
     pub use tract_data::internal::f16;
 
-    reduce_impl_wrap!(
+    routine_reduce_rust!(portable;
         f32,
         SSum4,
         4,
         4,
-        (),
-        0.0,
         fn run(x: &[f32], _: ()) -> f32 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
             x.iter().sum::<f32>()
         },
-        fn reduce_two(a: f32, b: f32) -> f32 {
-            a + b
-        }
+        op(Sum)
     );
 
-    reduce_impl_wrap!(
+    routine_reduce_rust!(portable;
         f16,
         HSum8,
         8,
         8,
-        (),
-        f16::zero(),
         fn run(x: &[f16], _: ()) -> f16 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
@@ -115,23 +77,8 @@ pub mod sum {
             // holding one partial per lane; this one is not.
             f16::from_f32(x.iter().map(|v| v.to_f32()).sum::<f32>())
         },
-        fn reduce_two(a: f16, b: f16) -> f16 {
-            a + b
-        }
+        op(Sum)
     );
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod s {
-        crate::sum_frame_tests!(true, f32, crate::generic::reduce::sum::SSum4);
-    }
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod h {
-        use super::*;
-        crate::sum_frame_tests!(true, f16, crate::generic::reduce::sum::HSum8);
-    }
 }
 
 // Softmax generic implementation
@@ -297,29 +244,18 @@ pub mod softmax_l2 {
         sum
     }
 
-    map_reduce_impl_wrap!(
+    routine_map_reduce_rust!(portable;
         f32,
         SSoftMaxL2Accurate,
         4,
         4,
-        f32,
-        f32::NEG_INFINITY,
-        0.0,
         fn run(x: &mut [f32], max: f32) -> f32 {
             debug_assert!(x.len() % Self::nr() == 0);
             debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
             exp_sum_impl(x, max)
         },
-        fn reduce_two(a: f32, b: f32) -> f32 {
-            a + b
-        }
+        op(Softmax2)
     );
-
-    #[cfg(test)]
-    #[macro_use]
-    pub mod s {
-        crate::softmax_l2_frame_tests!(true, f32, super::SSoftMaxL2Accurate);
-    }
 }
 
 #[cfg(test)]
