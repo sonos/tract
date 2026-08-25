@@ -67,6 +67,9 @@ impl ElementWiseKer<f16> for HSiLU8 {
     }
 }
 
+submit_routine!(F32, Silu, SSiLU4);
+submit_routine!(F16, Silu, HSiLU8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {

@@ -148,6 +148,9 @@ impl ElementWiseKer<f16> for HSigmoid8 {
     }
 }
 
+submit_routine!(F32, Sigmoid, SSigmoid4);
+submit_routine!(F16, Sigmoid, HSigmoid8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {

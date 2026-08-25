@@ -144,6 +144,3 @@ pub fn isa_set() -> crate::isa::IsaSet {
     }
     set
 }
-
-submit_routine!(x86_64; RmsNormF32, RmsNorm, "x86_64_avx512_rms_norm_f32", rms_norm::rms_norm_f32,
-    isa(X86_64Avx512f));

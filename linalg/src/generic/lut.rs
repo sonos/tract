@@ -40,6 +40,8 @@ impl LutKer for GenericLut8 {
     }
 }
 
+submit_routine!(LutU8, Lut, GenericLut8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod test {

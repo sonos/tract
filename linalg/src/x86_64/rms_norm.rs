@@ -123,6 +123,10 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
 
 bail_stub!(x86_64; pub fn rms_norm_f32(&mut [f32], f32));
 
+submit_routine!(x86_64; RmsNormF32, RmsNorm, "x86_64_avx512_rms_norm_f32", rms_norm_f32,
+
+    isa(X86_64Avx512f));
+
 #[cfg(all(test, target_arch = "x86_64"))]
 mod tests {
     use super::*;

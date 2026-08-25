@@ -76,6 +76,9 @@ impl ElementWiseKer<f16> for HGelu8 {
     }
 }
 
+submit_routine!(F32, Gelu, SGelu4);
+submit_routine!(F16, Gelu, HGelu8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {

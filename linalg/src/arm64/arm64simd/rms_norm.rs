@@ -106,6 +106,8 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
 
 bail_stub!(aarch64; pub fn rms_norm_f32(&mut [f32], f32));
 
+submit_routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", rms_norm_f32);
+
 #[cfg(all(test, target_arch = "aarch64"))]
 mod tests {
     use super::*;

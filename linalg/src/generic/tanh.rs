@@ -106,6 +106,9 @@ impl ElementWiseKer<f32> for STanh4 {
     }
 }
 
+submit_routine!(F32, Tanh, STanh4);
+submit_routine!(F16, Tanh, HTanh8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {
