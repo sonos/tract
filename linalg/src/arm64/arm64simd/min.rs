@@ -1,13 +1,11 @@
 #[cfg(target_arch = "aarch64")]
 use std::arch::aarch64::{float32x4_t, vdupq_n_f32, vgetq_lane_f32};
 
-reduce_impl_wrap!(aarch64;
+routine_reduce_rust!(aarch64;
     f32,
     arm64simd_min_f32_16n,
     16,
     4,
-    (),
-    f32::MAX,
     #[inline(never)]
     fn run(buf: &[f32], _: ()) -> f32 {
         assert!(buf.len() % 16 == 0);
@@ -40,14 +38,5 @@ reduce_impl_wrap!(aarch64;
             vgetq_lane_f32(out, 0)
         }
     },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a.min(b)
-    }
+    op(Min)
 );
-
-#[cfg(test)]
-mod test_arm64simd_min_f32_16n {
-    use super::*;
-    crate::min_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_min_f32_16n);
-}

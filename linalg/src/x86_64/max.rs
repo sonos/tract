@@ -1,20 +1,16 @@
-reduce_impl_wrap!(x86_64;
+routine_reduce_rust!(x86_64;
     f32,
     x86_64_fma_max_f32_32n,
     32,
     8,
-    (),
-    f32::MIN,
     #[inline(never)]
     fn run(buf: &[f32], _: ()) -> f32 {
         assert!(buf.len() % 32 == 0);
         assert!(buf.len() > 0);
         unsafe { x86_64_fma_max_f32_32n_run(buf) }
     },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a.max(b)
-    }
+    op(Max),
+    isa(X86_64Avx)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -63,32 +59,22 @@ unsafe fn x86_64_fma_max_f32_32n_run(buf: &[f32]) -> f32 {
     }
 }
 
-#[cfg(all(test, target_arch = "x86_64"))]
-mod test_x86_64_fma_max_f32_32n {
-    use super::*;
-    crate::max_frame_tests!(is_x86_feature_detected!("avx"), f32, x86_64_fma_max_f32_32n);
-}
-
 // AVX-512 version: processes 64 f32 per loop iteration (4 zmm registers of 16
 // lanes each). It declares avx512f, so on a core without it the AVX path above is what the
 // registry offers. nr=64, 64-byte (16xf32) alignment.
-reduce_impl_wrap!(x86_64;
+routine_reduce_rust!(x86_64;
     f32,
     x86_64_avx512_max_f32_64n,
     64,
     16,
-    (),
-    f32::MIN,
     #[inline(never)]
     fn run(buf: &[f32], _: ()) -> f32 {
         assert!(buf.len() % 64 == 0);
         assert!(buf.len() > 0);
         unsafe { x86_64_avx512_max_f32_64n_run(buf) }
     },
-    #[inline(never)]
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a.max(b)
-    }
+    op(Max),
+    isa(X86_64Avx512f)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -130,10 +116,4 @@ unsafe fn x86_64_avx512_max_f32_64n_run(buf: &[f32]) -> f32 {
         );
         acc
     }
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-mod test_x86_64_avx512_max_f32_64n {
-    use super::*;
-    crate::max_frame_tests!(is_x86_feature_detected!("avx512f"), f32, x86_64_avx512_max_f32_64n);
 }

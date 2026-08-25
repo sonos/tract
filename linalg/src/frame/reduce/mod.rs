@@ -15,6 +15,69 @@ use super::element_wise_helper::{map_reduce_slice_with_alignment, reduce_slice_w
 // A reduction kernel from a `run` body. A leading arch ident is for bodies that are inline
 // arch asm or intrinsics, which will not even compile elsewhere: those builds get
 // signature-matched panic stubs instead, so the kernel struct exists everywhere.
+/// Declare a reduction routine: the kernel, its registry descriptor and its accuracy tests, from
+/// one statement. `op` is what the kernel folds, which gives the descriptor's function, the tests'
+/// reference, the identity to start from and how two answers combine; `isa` says which machines
+/// may run it, and therefore which may test it.
+macro_rules! routine_reduce_rust {
+    (arm; $($rest:tt)*) => { routine_reduce_rust!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => {
+        routine_reduce_rust!(@ aarch64, target_arch = "aarch64"; $($rest)*);
+    };
+    (x86_64; $($rest:tt)*) => {
+        routine_reduce_rust!(@ x86_64, target_arch = "x86_64"; $($rest)*);
+    };
+    (riscv64; $($rest:tt)*) => {
+        routine_reduce_rust!(@ riscv64, target_arch = "riscv64"; $($rest)*);
+    };
+    (wasm32; $($rest:tt)*) => {
+        routine_reduce_rust!(@ wasm32,
+            all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
+    (portable; $($rest:tt)*) => { routine_reduce_rust!(@ portable, all(); $($rest)*); };
+
+    // One arm per operation, each naming the identity it starts from and how two answers combine,
+    // then handing the rest on. That is the only place those two facts are written.
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, op(Max) $(, isa($($isa:ident),+))?) => {
+        routine_reduce_rust!(@@ $arch, $built; $ti, $ker, $nr, $alignment_items, $run, Max,
+            <$ti>::MIN, fn reduce_two(a: $ti, b: $ti) -> $ti { a.max(b) }
+            $(, isa($($isa),+))?);
+    };
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, op(Min) $(, isa($($isa:ident),+))?) => {
+        routine_reduce_rust!(@@ $arch, $built; $ti, $ker, $nr, $alignment_items, $run, Min,
+            <$ti>::MAX, fn reduce_two(a: $ti, b: $ti) -> $ti { a.min(b) }
+            $(, isa($($isa),+))?);
+    };
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, op(Sum) $(, isa($($isa:ident),+))?) => {
+        routine_reduce_rust!(@@ $arch, $built; $ti, $ker, $nr, $alignment_items, $run, Sum,
+            <$ti as num_traits::Zero>::zero(), fn reduce_two(a: $ti, b: $ti) -> $ti { a + b }
+            $(, isa($($isa),+))?);
+    };
+
+    (@@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, $op:ident, $neutral:expr, $fold:item $(, isa($($isa:ident),+))?) => {
+        reduce_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, (), $neutral, $run, $fold);
+        paste! {
+            routine!($arch; [<$ti:upper Reduce>], [<Reduce $op>], $ker $(, isa($($isa),+))?);
+            #[cfg(test)]
+            mod [<test_ $ker:snake>] {
+                use super::*;
+                crate::[<$op:snake _frame_tests>]!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    $ti,
+                    $ker
+                );
+            }
+        }
+    };
+}
+
 macro_rules! reduce_impl_wrap {
     (arm; $($rest:tt)*) => { reduce_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { reduce_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
