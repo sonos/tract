@@ -145,7 +145,7 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
 
 bail_stub!(aarch64; unsafe fn cvt_f32_to_f16(&[f32], &mut [f16]));
 
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(aarch64;
     arm64simd_sigmoid_f16_4n,
     4,
     4,
@@ -153,17 +153,12 @@ ew_impl_f16_via_f32!(
     16,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::arm64simd_sigmoid_f32_4n
+    super::arm64simd_sigmoid_f32_4n,
+    func(Sigmoid)
 );
 
-#[cfg(test)]
-pub mod test_arm64simd_sigmoid_f16_4n {
-    use super::*;
-    sigmoid_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_sigmoid_f16_4n);
-}
-
 // f32-roundtrip f16 SiLU for arm64 cores without FEAT_FP16.
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(aarch64;
     arm64simd_silu_f16_4n,
     4,
     4,
@@ -171,14 +166,10 @@ ew_impl_f16_via_f32!(
     16,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::arm64simd_silu_f32_4n_fused
+    super::arm64simd_silu_f32_4n_fused,
+    func(Silu),
+    boost(crate::isa::NEVER_PREFERRED)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_silu_f16_4n {
-    use super::*;
-    silu_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_silu_f16_4n);
-}
 
 /// Every f16 bit pattern mapped through the NEON f32 SiLU kernel and rounded
 /// back, so the activation is one load per element.
@@ -248,7 +239,7 @@ mod silu_f16_agreement {
 }
 
 // f32-roundtrip f16 tanh for arm64 cores without FEAT_FP16.
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(aarch64;
     arm64simd_tanh_f16_4n,
     4,
     4,
@@ -256,11 +247,6 @@ ew_impl_f16_via_f32!(
     16,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::arm64simd_tanh_f32_4n
+    super::arm64simd_tanh_f32_4n,
+    func(Tanh)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_tanh_f16_4n {
-    use super::*;
-    tanh_frame_tests!(cfg!(target_arch = "aarch64"), f16, arm64simd_tanh_f16_4n);
-}

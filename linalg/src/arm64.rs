@@ -447,8 +447,6 @@ inventory::submit! {
     }
 }
 
-routine!(aarch64; F16, Sigmoid, arm64simd_sigmoid_f16_4n);
-routine!(aarch64; F16, Tanh, arm64simd_tanh_f16_4n);
 routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_norm_f32);
 
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
