@@ -12,9 +12,7 @@ use tract_num_traits::Zero;
 
 use crate::internal::*;
 use ndarray::prelude::*;
-use tract_linalg::routines::{
-    Func, ew_f16_param, ew_f32_param, map_reduce_f32, reduce_f16, reduce_f32,
-};
+use tract_linalg::routines::Func;
 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq, Default)]
 pub enum SoftmaxKind {
@@ -258,7 +256,7 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f16(&self, slice: &mut [f16], kind: SoftmaxKind) -> TractResult<()> {
-        let max = reduce_f16(Func::ReduceMax)?.run(slice)?;
+        let max = Func::ReduceMax.reduce_f16()?.run(slice)?;
         match kind {
             SoftmaxKind::Softmax => {
                 // f16 softmax runs the scalar libm exp and accumulates the sum
@@ -272,7 +270,7 @@ impl Softmax {
                     sum += x.to_f32();
                 });
                 let rsum = f16::from_f32(sum.recip());
-                ew_f16_param(Func::MulByScalar)?.run_with_params(slice, rsum)?;
+                Func::MulByScalar.ew_f16_param()?.run_with_params(slice, rsum)?;
             }
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = 0f32;
@@ -288,12 +286,12 @@ impl Softmax {
     }
 
     fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
-        let max = reduce_f32(Func::ReduceMax)?.run(slice)?;
+        let max = Func::ReduceMax.reduce_f32()?.run(slice)?;
         match kind {
             SoftmaxKind::Softmax => {
-                let sum = map_reduce_f32(Func::Softmax2)?.run_with_params(slice, max)?;
+                let sum = Func::Softmax2.map_reduce_f32()?.run_with_params(slice, max)?;
                 let rsum = sum.recip();
-                ew_f32_param(Func::MulByScalar)?.run_with_params(slice, rsum)?;
+                Func::MulByScalar.ew_f32_param()?.run_with_params(slice, rsum)?;
             }
             SoftmaxKind::LogSoftmax => {
                 let mut exp_sum = f32::zero();

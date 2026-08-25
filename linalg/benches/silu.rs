@@ -42,7 +42,7 @@ fn rust_scalar(input: &mut [f32]) {
 
 #[inline(never)]
 fn linalg(input: &mut [f32]) {
-    tract_linalg::routines::ew_f32(tract_linalg::routines::Func::Silu).unwrap().run(input).unwrap();
+    tract_linalg::routines::Func::Silu.ew_f32().unwrap().run(input).unwrap();
 }
 
 #[cfg(target_arch = "aarch64")]

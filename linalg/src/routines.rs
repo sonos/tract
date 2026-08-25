@@ -131,6 +131,86 @@ impl Func {
             },
         }
     }
+
+    /// The kernel this host runs for a function and datum type. An unfilled pair is an error rather
+    /// than a substitution: what a machine has no kernel for is what the matrix is there to show, and
+    /// a caller that quietly computed something else would hide it.
+    fn best_here(self, dt: DatumType) -> TractResult<&'static Routine> {
+        let isa = crate::isa::native();
+        best_for(self, dt, &isa)
+            .with_context(|| format!("No {} kernel for {dt:?} on {isa:?}", self.name()))
+    }
+
+    /// The f32 kernel this host runs for `func`.
+    pub fn ew_f32(self) -> TractResult<Box<dyn ElementWise<f32>>> {
+        match self.best_here(DatumType::F32)?.factory {
+            RoutineFactory::F32(f) => Ok(f()),
+            // `Routine::dt` reads the arm, so `best_for` already filtered the datum type. The
+            // shape it cannot filter: asking a scalar-parameter routine for a plain one is a
+            // caller's mistake, not a missing kernel.
+            _ => bail!("{} is not a plain element-wise kernel", self.name()),
+        }
+    }
+
+    /// The f16 kernel this host runs for `func`.
+    pub fn ew_f16(self) -> TractResult<Box<dyn ElementWise<f16>>> {
+        match self.best_here(DatumType::F16)?.factory {
+            RoutineFactory::F16(f) => Ok(f()),
+            _ => bail!("{} is not a plain element-wise kernel", self.name()),
+        }
+    }
+
+    /// The f32 kernel this host runs for `func`, which takes a scalar parameter.
+    pub fn ew_f32_param(self) -> TractResult<Box<dyn ElementWise<f32, f32>>> {
+        match self.best_here(DatumType::F32)?.factory {
+            RoutineFactory::F32Param(f) => Ok(f()),
+            _ => bail!("{} is not a scalar-parameter kernel", self.name()),
+        }
+    }
+
+    /// The f16 kernel this host runs for `func`, which takes a scalar parameter.
+    pub fn ew_f16_param(self) -> TractResult<Box<dyn ElementWise<f16, f16>>> {
+        match self.best_here(DatumType::F16)?.factory {
+            RoutineFactory::F16Param(f) => Ok(f()),
+            _ => bail!("{} is not a scalar-parameter kernel", self.name()),
+        }
+    }
+
+    /// The f32 reduction this host runs for `func`.
+    pub fn reduce_f32(self) -> TractResult<Box<dyn Reduce<f32>>> {
+        match self.best_here(DatumType::F32)?.factory {
+            RoutineFactory::F32Reduce(f) => Ok(f()),
+            _ => bail!("{} is not a reduction", self.name()),
+        }
+    }
+
+    /// The f16 reduction this host runs for `func`.
+    pub fn reduce_f16(self) -> TractResult<Box<dyn Reduce<f16>>> {
+        match self.best_here(DatumType::F16)?.factory {
+            RoutineFactory::F16Reduce(f) => Ok(f()),
+            _ => bail!("{} is not a reduction", self.name()),
+        }
+    }
+
+    /// The f32 map-reduction this host runs for `func`.
+    pub fn map_reduce_f32(self) -> TractResult<Box<dyn MapReduce<f32, f32>>> {
+        match self.best_here(DatumType::F32)?.factory {
+            RoutineFactory::F32MapReduce(f) => Ok(f()),
+            _ => bail!("{} is not a map-reduction", self.name()),
+        }
+    }
+
+    /// The binary kernel this host runs for `func` and datum type, `None` when it has none. Unlike
+    /// the other accessors this one is optional rather than fallible: its callers rewrite a model
+    /// only when a kernel exists, and having none is an ordinary answer rather than a failure.
+    pub fn bin(self, dt: DatumType) -> Option<Box<crate::LinalgFn>> {
+        match best_for(self, dt, &crate::isa::native())?.factory {
+            RoutineFactory::BinF32 { make, .. } | RoutineFactory::BinF16 { make, .. } => {
+                Some(make())
+            }
+            _ => None,
+        }
+    }
 }
 
 /// Builds the kernel behind a descriptor. The arm is what says which datum type the descriptor
@@ -252,77 +332,9 @@ pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Rout
         .max_by_key(|r| (r.arch.is_some(), r.preference(), r.name()))
 }
 
-/// The kernel this host runs for a function and datum type. An unfilled pair is an error rather
-/// than a substitution: what a machine has no kernel for is what the matrix is there to show, and
-/// a caller that quietly computed something else would hide it.
-fn best_here(func: Func, dt: DatumType) -> TractResult<&'static Routine> {
-    let isa = crate::isa::native();
-    best_for(func, dt, &isa)
-        .with_context(|| format!("No {} kernel for {dt:?} on {isa:?}", func.name()))
-}
-
-/// The f32 kernel this host runs for `func`.
-pub fn ew_f32(func: Func) -> TractResult<Box<dyn ElementWise<f32>>> {
-    match best_here(func, DatumType::F32)?.factory {
-        RoutineFactory::F32(f) => Ok(f()),
-        // `Routine::dt` reads the arm, so `best_for` already filtered the datum type. The
-        // shape it cannot filter: asking a scalar-parameter routine for a plain one is a
-        // caller's mistake, not a missing kernel.
-        _ => bail!("{} is not a plain element-wise kernel", func.name()),
-    }
-}
-
-/// The f16 kernel this host runs for `func`.
-pub fn ew_f16(func: Func) -> TractResult<Box<dyn ElementWise<f16>>> {
-    match best_here(func, DatumType::F16)?.factory {
-        RoutineFactory::F16(f) => Ok(f()),
-        _ => bail!("{} is not a plain element-wise kernel", func.name()),
-    }
-}
-
-/// The f32 kernel this host runs for `func`, which takes a scalar parameter.
-pub fn ew_f32_param(func: Func) -> TractResult<Box<dyn ElementWise<f32, f32>>> {
-    match best_here(func, DatumType::F32)?.factory {
-        RoutineFactory::F32Param(f) => Ok(f()),
-        _ => bail!("{} is not a scalar-parameter kernel", func.name()),
-    }
-}
-
-/// The f16 kernel this host runs for `func`, which takes a scalar parameter.
-pub fn ew_f16_param(func: Func) -> TractResult<Box<dyn ElementWise<f16, f16>>> {
-    match best_here(func, DatumType::F16)?.factory {
-        RoutineFactory::F16Param(f) => Ok(f()),
-        _ => bail!("{} is not a scalar-parameter kernel", func.name()),
-    }
-}
-
-/// The f32 reduction this host runs for `func`.
-pub fn reduce_f32(func: Func) -> TractResult<Box<dyn Reduce<f32>>> {
-    match best_here(func, DatumType::F32)?.factory {
-        RoutineFactory::F32Reduce(f) => Ok(f()),
-        _ => bail!("{} is not a reduction", func.name()),
-    }
-}
-
-/// The f16 reduction this host runs for `func`.
-pub fn reduce_f16(func: Func) -> TractResult<Box<dyn Reduce<f16>>> {
-    match best_here(func, DatumType::F16)?.factory {
-        RoutineFactory::F16Reduce(f) => Ok(f()),
-        _ => bail!("{} is not a reduction", func.name()),
-    }
-}
-
-/// The f32 map-reduction this host runs for `func`.
-pub fn map_reduce_f32(func: Func) -> TractResult<Box<dyn MapReduce<f32, f32>>> {
-    match best_here(func, DatumType::F32)?.factory {
-        RoutineFactory::F32MapReduce(f) => Ok(f()),
-        _ => bail!("{} is not a map-reduction", func.name()),
-    }
-}
-
 /// The fused row-wise RmsNorm this host runs: the row and the epsilon, in place.
 pub fn rms_norm_f32() -> TractResult<fn(&mut [f32], f32)> {
-    match best_here(Func::RmsNorm, DatumType::F32)?.factory {
+    match Func::RmsNorm.best_here(DatumType::F32)?.factory {
         RoutineFactory::RmsNormF32 { run, .. } => Ok(run),
         _ => bail!("rms_norm is not a plain function"),
     }
@@ -330,30 +342,10 @@ pub fn rms_norm_f32() -> TractResult<fn(&mut [f32], f32)> {
 
 /// The look-up table kernel this host runs, over the table the caller owns.
 pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
-    match best_here(Func::Lut, DatumType::U8)?.factory {
+    match Func::Lut.best_here(DatumType::U8)?.factory {
         RoutineFactory::LutU8 { make, .. } => Ok(make(table)),
         _ => bail!("lut is not a table kernel"),
     }
-}
-
-/// The binary kernel this host runs for `func` and datum type, `None` when it has none. Unlike
-/// the other accessors this one is optional rather than fallible: its callers rewrite a model
-/// only when a kernel exists, and having none is an ordinary answer rather than a failure.
-pub fn bin(func: Func, dt: DatumType) -> Option<Box<crate::LinalgFn>> {
-    match best_for(func, dt, &crate::isa::native())?.factory {
-        RoutineFactory::BinF32 { make, .. } | RoutineFactory::BinF16 { make, .. } => Some(make()),
-        _ => None,
-    }
-}
-
-/// The by-scalar kernel for `op`, broadcasting one scalar over a slice.
-pub fn bin_by_scalar(dt: DatumType, op: crate::BinOp) -> Option<Box<crate::LinalgFn>> {
-    bin(Func::BinByScalar(op), dt)
-}
-
-/// The unicast kernel for `op`, over two slices of the same length.
-pub fn bin_unicast(dt: DatumType, op: crate::BinOp) -> Option<Box<crate::LinalgFn>> {
-    bin(Func::BinUnicast(op), dt)
 }
 
 /// Declare one kernel, under the leading architecture ident the kernel-declaration macros take,
@@ -513,13 +505,13 @@ mod tests {
     /// look-up table from the f32 kernel instead of asking for it.
     #[test]
     fn an_unfilled_pair_fails() {
-        let err = ew_f16(Func::Erf).unwrap_err().to_string();
+        let err = Func::Erf.ew_f16().unwrap_err().to_string();
         assert!(err.starts_with("No erf kernel for F16 on "), "{err}");
         // No tree has an f16 minimum either, and no consumer asks for one.
-        let err = reduce_f16(Func::ReduceMin).unwrap_err().to_string();
+        let err = Func::ReduceMin.reduce_f16().unwrap_err().to_string();
         assert!(err.starts_with("No reduce_min kernel for F16 on "), "{err}");
         // Asking for the wrong shape is a caller's mistake, and says so.
-        let err = ew_f32(Func::ReduceMax).unwrap_err().to_string();
+        let err = Func::ReduceMax.ew_f32().unwrap_err().to_string();
         assert_eq!(err, "reduce_max is not a plain element-wise kernel");
     }
     /// Whatever this machine declares, it can build and run: the registry is dispatch now, so a
@@ -532,17 +524,17 @@ mod tests {
             for dt in [DatumType::F32, DatumType::F16, DatumType::U8] {
                 let Some(routine) = best_for(func, dt, &isa) else { continue };
                 let built = match routine.factory {
-                    RoutineFactory::F32(_) => ew_f32(func).map(|k| k.name()),
-                    RoutineFactory::F16(_) => ew_f16(func).map(|k| k.name()),
-                    RoutineFactory::F32Param(_) => ew_f32_param(func).map(|k| k.name()),
-                    RoutineFactory::F16Param(_) => ew_f16_param(func).map(|k| k.name()),
-                    RoutineFactory::F32Reduce(_) => reduce_f32(func).map(|k| k.name()),
-                    RoutineFactory::F16Reduce(_) => reduce_f16(func).map(|k| k.name()),
-                    RoutineFactory::F32MapReduce(_) => map_reduce_f32(func).map(|k| k.name()),
+                    RoutineFactory::F32(_) => func.ew_f32().map(|k| k.name()),
+                    RoutineFactory::F16(_) => func.ew_f16().map(|k| k.name()),
+                    RoutineFactory::F32Param(_) => func.ew_f32_param().map(|k| k.name()),
+                    RoutineFactory::F16Param(_) => func.ew_f16_param().map(|k| k.name()),
+                    RoutineFactory::F32Reduce(_) => func.reduce_f32().map(|k| k.name()),
+                    RoutineFactory::F16Reduce(_) => func.reduce_f16().map(|k| k.name()),
+                    RoutineFactory::F32MapReduce(_) => func.map_reduce_f32().map(|k| k.name()),
                     RoutineFactory::RmsNormF32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
                     RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => {
-                        bin(func, dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))
+                        func.bin(dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))
                     }
                 };
                 assert_eq!(
