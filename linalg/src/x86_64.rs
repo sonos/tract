@@ -91,21 +91,21 @@ cpu_feature!(F16C = "f16c");
 #[cfg(tract_avx512vnni)]
 cpu_feature!(AVX512VNNI = "avx512vnni");
 
-ew_routine!(x86_64; Tanh, f32, fma_tanh_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
-ew_routine!(x86_64; Sigmoid, f32, fma_sigmoid_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
-ew_routine!(x86_64; Silu, f32, fma_silu_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
+routine_ew_extern!(x86_64; Tanh, f32, fma_tanh_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
+routine_ew_extern!(x86_64; Sigmoid, f32, fma_sigmoid_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
+routine_ew_extern!(x86_64; Silu, f32, fma_silu_f32, 8, 8, isa(X86_64Avx2, X86_64Fma));
 
 // AVX-without-FMA ports of the fma kernels above (each vfmadd132ps expanded
 // to an in-place vmulps+vaddps pair) for CPUs outside the fma tier.
-ew_routine!(x86_64; Tanh, f32, avx_tanh_f32, 8, 8, isa(X86_64Avx));
-ew_routine!(x86_64; Sigmoid, f32, avx_sigmoid_f32, 8, 8, isa(X86_64Avx));
+routine_ew_extern!(x86_64; Tanh, f32, avx_tanh_f32, 8, 8, isa(X86_64Avx));
+routine_ew_extern!(x86_64; Sigmoid, f32, avx_sigmoid_f32, 8, 8, isa(X86_64Avx));
 
 // AVX-512 (zmm, 16-wide) variants. The assembly lives in x86_64/avx512/; the
 // main loop handles 64 lanes (4 zmm) per iteration with a 16-lane tail, so
 // nr()=16 (any multiple of 16 is safe).
-ew_routine!(x86_64; Tanh, f32, avx512_tanh_f32, 16, 16, isa(X86_64Avx512f));
-ew_routine!(x86_64; Sigmoid, f32, avx512_sigmoid_f32, 16, 16, isa(X86_64Avx512f));
-ew_routine!(x86_64; Silu, f32, avx512_silu_f32, 16, 16, isa(X86_64Avx512f));
+routine_ew_extern!(x86_64; Tanh, f32, avx512_tanh_f32, 16, 16, isa(X86_64Avx512f));
+routine_ew_extern!(x86_64; Sigmoid, f32, avx512_sigmoid_f32, 16, 16, isa(X86_64Avx512f));
+routine_ew_extern!(x86_64; Silu, f32, avx512_silu_f32, 16, 16, isa(X86_64Avx512f));
 
 // Correct, and slower than the f32 round-trip above on every AVX-512_FP16 part measured, so it
 // is declared to keep its tests running and never preferred. A part where fp16 mul and max
@@ -145,5 +145,5 @@ pub fn isa_set() -> crate::isa::IsaSet {
     set
 }
 
-routine!(x86_64; RmsNormF32, RmsNorm, "x86_64_avx512_rms_norm_f32", rms_norm::rms_norm_f32,
+submit_routine!(x86_64; RmsNormF32, RmsNorm, "x86_64_avx512_rms_norm_f32", rms_norm::rms_norm_f32,
     isa(X86_64Avx512f));

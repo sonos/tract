@@ -48,9 +48,9 @@ macro_rules! routine_ew_rust {
     (@@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $params:ty, $run:item, $f:ident, $factory:ident
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        ew_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $params, $run);
+        ew_kernel!(@ $built; $ti, $ker, $nr, $alignment_items, $params, $run);
         paste! {
-            routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+            submit_routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
             #[cfg(test)]
             mod [<test_ $ker:snake>] {
                 use super::*;
@@ -67,18 +67,18 @@ macro_rules! routine_ew_rust {
     };
 }
 
-macro_rules! ew_impl_wrap {
-    (arm; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { ew_impl_wrap!(@ target_arch = "riscv64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { ew_impl_wrap!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+macro_rules! ew_kernel {
+    (arm; $($rest:tt)*) => { ew_kernel!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_kernel!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_kernel!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { ew_kernel!(@ target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_kernel!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr, $params:ty, $run:item) => {
         #[cfg($built)]
-        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params, $run);
+        ew_kernel!($ti, $func, $nr, $alignment_items, $params, $run);
         #[cfg(not($built))]
-        ew_impl_wrap!($ti, $func, $nr, $alignment_items, $params,
+        ew_kernel!($ti, $func, $nr, $alignment_items, $params,
             fn run(_vec: &mut [$ti], _params: $params) {
                 panic!(concat!(stringify!($func), ": kernel not built for this target"))
             }
@@ -119,7 +119,7 @@ macro_rules! ew_impl_wrap {
 /// f32 kernel to reuse, the f32-scratch `CHUNK`, and the scratch alignment (must
 /// satisfy the f32 kernel's input-alignment contract, since `run` is called
 /// directly, bypassing `map_slice_with_alignment`). The remaining arguments match
-/// `ew_impl_wrap!`.
+/// `ew_kernel!`.
 ///
 /// `CHUNK` must be a multiple of `nr`: the f32 kernel steps `nr` lanes with no
 /// tail, and each chunk length passed to it is a multiple of `nr` only because
@@ -147,7 +147,7 @@ macro_rules! routine_ew_via_f32 {
     (@ $arch:ident, $built:meta; $ker:ident, $nr:expr, $alignment_items:expr, $chunk:expr,
      $scratch_align:literal, $cvt_in:path, $cvt_out:path, $f32_kernel:ty, func($f:ident),
      param($pname:ident => $pconv:expr) $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        ew_impl_f16_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
+        ew_kernel_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
             $cvt_in, $cvt_out, $f32_kernel, f16, $pname => $pconv);
         routine_ew_via_f32!(@@ $arch, $built; $ker, $f, F16Param
             $(, isa($($isa),+))? $(, boost($boost))?);
@@ -156,7 +156,7 @@ macro_rules! routine_ew_via_f32 {
     (@ $arch:ident, $built:meta; $ker:ident, $nr:expr, $alignment_items:expr, $chunk:expr,
      $scratch_align:literal, $cvt_in:path, $cvt_out:path, $f32_kernel:ty, func($f:ident)
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        ew_impl_f16_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
+        ew_kernel_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
             $cvt_in, $cvt_out, $f32_kernel);
         routine_ew_via_f32!(@@ $arch, $built; $ker, $f, F16
             $(, isa($($isa),+))? $(, boost($boost))?);
@@ -164,7 +164,7 @@ macro_rules! routine_ew_via_f32 {
 
     (@@ $arch:ident, $built:meta; $ker:ident, $f:ident, $factory:ident
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+        submit_routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
         paste! {
             #[cfg(test)]
             mod [<test_ $ker:snake>] {
@@ -182,20 +182,20 @@ macro_rules! routine_ew_via_f32 {
     };
 }
 
-macro_rules! ew_impl_f16_via_f32 {
+macro_rules! ew_kernel_via_f32 {
     ($func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
      $cvt_in:path, $cvt_out:path, $f32_kernel:ty) => {
-        ew_impl_f16_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
+        ew_kernel_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
             $cvt_in, $cvt_out, $f32_kernel, (), _params, ());
     };
     ($func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
      $cvt_in:path, $cvt_out:path, $f32_kernel:ty, $params:ty, $pname:ident => $pconv:expr) => {
-        ew_impl_f16_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
+        ew_kernel_via_f32!(@build $func, $nr, $alignment_items, $chunk, $scratch_align,
             $cvt_in, $cvt_out, $f32_kernel, $params, $pname, $pconv);
     };
     (@build $func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
      $cvt_in:path, $cvt_out:path, $f32_kernel:ty, $params:ty, $pname:ident, $pconv:expr) => {
-        ew_impl_wrap!(
+        ew_kernel!(
             f16, $func, $nr, $alignment_items, $params,
             #[inline(never)]
             fn run(buf: &mut [f16], $pname: $params) {
@@ -242,21 +242,21 @@ macro_rules! ew_impl_f16_via_f32 {
 /// which machines may select the kernel, and which machines may test it. A kernel whose tests
 /// are skipped everywhere it could run has nothing left to say, so the two must not be able to
 /// disagree.
-macro_rules! ew_routine {
-    (arm; $($rest:tt)*) => { ew_routine!(@ arm, target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_routine!(@ aarch64, target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_routine!(@ x86_64, target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { ew_routine!(@ riscv64, target_arch = "riscv64"; $($rest)*); };
+macro_rules! routine_ew_extern {
+    (arm; $($rest:tt)*) => { routine_ew_extern!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { routine_ew_extern!(@ aarch64, target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { routine_ew_extern!(@ x86_64, target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { routine_ew_extern!(@ riscv64, target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => {
-        ew_routine!(@ wasm32,
+        routine_ew_extern!(@ wasm32,
             all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
 
     (@ $arch:ident, $built:meta; $func:ident, $ti:ident, $ker:ident,
      $nr:expr, $alignment_items:expr $(, isa($($isa:ident),+))?) => {
-        ew_impl!($arch; $ti, $ker, $nr, $alignment_items);
+        ew_kernel_extern!($arch; $ti, $ker, $nr, $alignment_items);
         paste! {
-            routine!($arch; [<$ti:upper>], $func, $ker $(, isa($($isa),+))?);
+            submit_routine!($arch; [<$ti:upper>], $func, $ker $(, isa($($isa),+))?);
         }
         #[cfg(test)]
         paste! {
@@ -275,12 +275,12 @@ macro_rules! ew_routine {
     };
 }
 
-macro_rules! ew_impl {
-    (arm; $($rest:tt)*) => { ew_impl!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { ew_impl!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { ew_impl!(@ target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { ew_impl!(@ target_arch = "riscv64"; $($rest)*); };
-    (wasm32; $($rest:tt)*) => { ew_impl!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
+macro_rules! ew_kernel_extern {
+    (arm; $($rest:tt)*) => { ew_kernel_extern!(@ target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { ew_kernel_extern!(@ target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { ew_kernel_extern!(@ target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { ew_kernel_extern!(@ target_arch = "riscv64"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => { ew_kernel_extern!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $built:meta; $ti:ident, $func:ident, $nr:expr, $alignment_items:expr) => {
         paste! {
@@ -297,7 +297,7 @@ macro_rules! ew_impl {
                     panic!(concat!(stringify!($func), ": activation kernel not built for this target"))
                 }
             }
-            ew_impl_wrap!($ti, $func, $nr, $alignment_items, (),
+            ew_kernel!($ti, $func, $nr, $alignment_items, (),
                 #[inline(never)]
                 fn run(buf: &mut [$ti], _params: ()) {
                     unsafe { [<sys_ $func>]::$func(buf.as_mut_ptr(), buf.len()) }

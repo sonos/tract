@@ -32,5 +32,5 @@ MMMExternKernel! { aarch64; arm64fp16_mmm_f16_64x1_gen<f16>(64, 1)@(16, 16) isa(
     quality(ManuallyOptimized)
 }
 
-ew_routine!(aarch64; Tanh, f16, arm64fp16_tanh_f16_8n, 8, 8, isa(Aarch64Fp16));
-ew_routine!(aarch64; Sigmoid, f16, arm64fp16_sigmoid_f16_8n, 8, 8, isa(Aarch64Fp16));
+routine_ew_extern!(aarch64; Tanh, f16, arm64fp16_tanh_f16_8n, 8, 8, isa(Aarch64Fp16));
+routine_ew_extern!(aarch64; Sigmoid, f16, arm64fp16_sigmoid_f16_8n, 8, 8, isa(Aarch64Fp16));

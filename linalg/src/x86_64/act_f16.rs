@@ -1,7 +1,7 @@
 //! AVX-512 f16 element-wise activations for cores without native f16 arithmetic.
 //!
 //! Each kernel round-trips through the matching f32 AVX-512 kernel via
-//! `ew_impl_f16_via_f32!`: convert an f16 chunk into a 64-byte-aligned f32 scratch
+//! `ew_kernel_via_f32!`: convert an f16 chunk into a 64-byte-aligned f32 scratch
 //! (the f32 kernels assume 64-byte-aligned input), run the f32 kernel, convert
 //! back.
 //! Conversion is driven through `std::arch` intrinsics directly (see the

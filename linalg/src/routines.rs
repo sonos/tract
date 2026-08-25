@@ -396,33 +396,34 @@ pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
     }
 }
 
-/// Declare one kernel, under the leading architecture ident the kernel-declaration macros take,
-/// or with no ident at all for portable Rust every target builds. The first argument names the
-/// factory arm, which is what says the kernel's shape and datum type; `isa` is omitted for a
-/// kernel whose architecture needs nothing extra to run it, `boost` for one its ladder step
-/// already ranks right.
-macro_rules! routine {
-    (arm; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Arm); $($rest)*); };
-    (aarch64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Aarch64); $($rest)*); };
-    (x86_64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::X86_64); $($rest)*); };
-    (riscv64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::RiscV64); $($rest)*); };
-    (wasm32; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Wasm32Simd128); $($rest)*); };
-    (portable; $($rest:tt)*) => { routine!(@ None; $($rest)*); };
+/// File the descriptor of a kernel declared elsewhere, under the leading architecture ident the
+/// `routine_*` declaration macros take, or with no ident at all for portable Rust every target
+/// builds. Those macros end here; write it directly for a kernel no shape macro emits, and it
+/// carries no test module of its own. The first argument names the factory arm, which is what
+/// says the kernel's shape and datum type; `isa` is omitted for a kernel whose architecture
+/// needs nothing extra to run it, `boost` for one its ladder step already ranks right.
+macro_rules! submit_routine {
+    (arm; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::Arm); $($rest)*); };
+    (aarch64; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::Aarch64); $($rest)*); };
+    (x86_64; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::X86_64); $($rest)*); };
+    (riscv64; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::RiscV64); $($rest)*); };
+    (wasm32; $($rest:tt)*) => { submit_routine!(@ Some($crate::isa::Arch::Wasm32Simd128); $($rest)*); };
+    (portable; $($rest:tt)*) => { submit_routine!(@ None; $($rest)*); };
 
-    ($factory:ident, $($rest:tt)*) => { routine!(@ None; $factory, $($rest)*); };
+    ($factory:ident, $($rest:tt)*) => { submit_routine!(@ None; $factory, $($rest)*); };
 
     // One arm per kernel shape: the trait a kernel implements decides how it is built, and
     // nothing else here varies. The clauses are spelled out rather than forwarded as tokens
     // because a `path` fragment may only be followed by a comma.
     (@ $arch:expr; RmsNormF32, $func:ident, $name:literal, $run:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::RmsNormF32 { name: $name, run: $run }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; BinF32, BinByScalar($op:ident), $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
+        submit_routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
             $crate::routines::RoutineFactory::BinF32 {
                 name: <$ker as $crate::element_wise::ElementWiseKer<f32, f32>>::name,
                 make: <$ker as $crate::by_scalar::ByScalarKer<f32>>::bin,
@@ -431,7 +432,7 @@ macro_rules! routine {
     };
     (@ $arch:expr; BinF16, BinByScalar($op:ident), $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
+        submit_routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
             $crate::routines::RoutineFactory::BinF16 {
                 name: <$ker as $crate::element_wise::ElementWiseKer<$crate::f16, $crate::f16>>::name,
                 make: <$ker as $crate::by_scalar::ByScalarKer<$crate::f16>>::bin,
@@ -440,7 +441,7 @@ macro_rules! routine {
     };
     (@ $arch:expr; BinF32, BinUnicast($op:ident), $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
+        submit_routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
             $crate::routines::RoutineFactory::BinF32 {
                 name: <$ker as $crate::unicast::UnicastKer<f32>>::name,
                 make: <$ker as $crate::unicast::UnicastKer<f32>>::bin,
@@ -449,7 +450,7 @@ macro_rules! routine {
     };
     (@ $arch:expr; BinF16, BinUnicast($op:ident), $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
+        submit_routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
             $crate::routines::RoutineFactory::BinF16 {
                 name: <$ker as $crate::unicast::UnicastKer<$crate::f16>>::name,
                 make: <$ker as $crate::unicast::UnicastKer<$crate::f16>>::bin,
@@ -458,7 +459,7 @@ macro_rules! routine {
     };
     (@ $arch:expr; LutU8, $func:ident, $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::LutU8 {
                 name: <$ker as $crate::lut::LutKer>::name,
                 make: |table| $crate::routines::lut_of::<$ker>(table),
@@ -467,19 +468,19 @@ macro_rules! routine {
     };
     (@ $arch:expr; F32Reduce, $func:ident, $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::F32Reduce(|| $crate::routines::reduce_of::<$ker, _>())
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; F16Reduce, $func:ident, $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::F16Reduce(|| $crate::routines::reduce_of::<$ker, _>())
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; F32MapReduce, $func:ident, $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::F32MapReduce(
                 || $crate::routines::map_reduce_of::<$ker, _>()
             )
@@ -487,7 +488,7 @@ macro_rules! routine {
     };
     (@ $arch:expr; $factory:ident, $func:ident, $ker:path
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        routine!(@@ $arch, $func,
+        submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::$factory(
                 || $crate::routines::factory_of::<$ker, _, _>()
             )

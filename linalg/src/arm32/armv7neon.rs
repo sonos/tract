@@ -24,6 +24,6 @@ MMMExternKernel!(arm;armv7neon_mmm_i32_32x1<i32>(32, 1)@(32, 4) isa(ArmNeon)
   store(i8)
 );
 
-ew_routine!(arm; Sigmoid, f32, armv7neon_sigmoid_f32_4n, 4, 4, isa(ArmNeon));
-ew_routine!(arm; Silu, f32, armv7neon_silu_f32_4n, 4, 4, isa(ArmNeon));
-ew_routine!(arm; Tanh, f32, armv7neon_tanh_f32_4n, 4, 4, isa(ArmNeon));
+routine_ew_extern!(arm; Sigmoid, f32, armv7neon_sigmoid_f32_4n, 4, 4, isa(ArmNeon));
+routine_ew_extern!(arm; Silu, f32, armv7neon_silu_f32_4n, 4, 4, isa(ArmNeon));
+routine_ew_extern!(arm; Tanh, f32, armv7neon_tanh_f32_4n, 4, 4, isa(ArmNeon));
