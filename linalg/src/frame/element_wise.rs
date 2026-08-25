@@ -127,6 +127,61 @@ macro_rules! ew_impl_wrap {
 ///
 /// The param arm converts the f16-side param into the f32 kernel's param via
 /// `$pname => $pconv` (e.g. `f16, alpha => alpha.to_f32()`), computed once per call.
+/// Declare an element-wise routine whose body round-trips through an f32 kernel: the kernel, its
+/// registry descriptor and its accuracy tests, from one statement. The arguments after the
+/// alignment are the round-trip's -- scratch length, scratch alignment, the two conversions and
+/// the f32 kernel to reuse -- and `param` names the f16 parameter and how it converts.
+macro_rules! routine_ew_via_f32 {
+    (aarch64; $($rest:tt)*) => {
+        routine_ew_via_f32!(@ aarch64, target_arch = "aarch64"; $($rest)*);
+    };
+    (x86_64; $($rest:tt)*) => {
+        routine_ew_via_f32!(@ x86_64, target_arch = "x86_64"; $($rest)*);
+    };
+    (arm; $($rest:tt)*) => { routine_ew_via_f32!(@ arm, target_arch = "arm"; $($rest)*); };
+    (wasm32; $($rest:tt)*) => {
+        routine_ew_via_f32!(@ wasm32, all(target_arch = "wasm32", target_feature = "simd128");
+            $($rest)*);
+    };
+
+    (@ $arch:ident, $built:meta; $ker:ident, $nr:expr, $alignment_items:expr, $chunk:expr,
+     $scratch_align:literal, $cvt_in:path, $cvt_out:path, $f32_kernel:ty, func($f:ident),
+     param($pname:ident => $pconv:expr) $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        ew_impl_f16_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
+            $cvt_in, $cvt_out, $f32_kernel, f16, $pname => $pconv);
+        routine_ew_via_f32!(@@ $arch, $built; $ker, $f, F16Param
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+
+    (@ $arch:ident, $built:meta; $ker:ident, $nr:expr, $alignment_items:expr, $chunk:expr,
+     $scratch_align:literal, $cvt_in:path, $cvt_out:path, $f32_kernel:ty, func($f:ident)
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        ew_impl_f16_via_f32!($ker, $nr, $alignment_items, $chunk, $scratch_align,
+            $cvt_in, $cvt_out, $f32_kernel);
+        routine_ew_via_f32!(@@ $arch, $built; $ker, $f, F16
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+
+    (@@ $arch:ident, $built:meta; $ker:ident, $f:ident, $factory:ident
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+        paste! {
+            #[cfg(test)]
+            mod [<test_ $ker:snake>] {
+                use super::*;
+                crate::[<$f:snake _frame_tests>]!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    f16,
+                    $ker
+                );
+            }
+        }
+    };
+}
+
 macro_rules! ew_impl_f16_via_f32 {
     ($func:ident, $nr:expr, $alignment_items:expr, $chunk:expr, $scratch_align:literal,
      $cvt_in:path, $cvt_out:path, $f32_kernel:ty) => {

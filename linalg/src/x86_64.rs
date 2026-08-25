@@ -107,14 +107,6 @@ ew_routine!(x86_64; Tanh, f32, avx512_tanh_f32, 16, 16, isa(X86_64Avx512f));
 ew_routine!(x86_64; Sigmoid, f32, avx512_sigmoid_f32, 16, 16, isa(X86_64Avx512f));
 ew_routine!(x86_64; Silu, f32, avx512_silu_f32, 16, 16, isa(X86_64Avx512f));
 
-routine!(x86_64; F16, Sigmoid, act_f16::x86_64_avx512_sigmoid_f16_16n, isa(X86_64Avx512f));
-routine!(x86_64; F16, Tanh, act_f16::x86_64_avx512_tanh_f16_16n, isa(X86_64Avx512f));
-routine!(x86_64; F16, Silu, act_f16::x86_64_avx512_silu_f16_16n, isa(X86_64Avx512f));
-routine!(x86_64; F16, Gelu, act_f16::x86_64_avx512_gelu_f16_16n, isa(X86_64Avx512f));
-routine!(x86_64; F16, Hardswish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X86_64Avx512f));
-
-routine!(x86_64; F16Param, LeakyRelu, act_f16::x86_64_avx512_leaky_relu_f16_64n, isa(X86_64Avx512f));
-
 // Correct, and slower than the f32 round-trip above on every AVX-512_FP16 part measured, so it
 // is declared to keep its tests running and never preferred. A part where fp16 mul and max
 // saturate their ports would want the boost dropped.

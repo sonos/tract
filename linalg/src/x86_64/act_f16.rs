@@ -72,7 +72,7 @@ unsafe fn cvt_f32_to_f16(src: &[f32], dst: &mut [f16]) {
 bail_stub!(x86_64; unsafe fn cvt_f32_to_f16(&[f32], &mut [f16]));
 
 // hardswish_f16
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_hardswish_f16_64n,
     64,
     32,
@@ -80,20 +80,12 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::act::x86_64_avx512_hardswish_f32_64n
+    super::act::x86_64_avx512_hardswish_f32_64n,
+    func(Hardswish),
+    isa(X86_64Avx512f)
 );
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_hardswish_f16_64n {
-    use super::*;
-    hardswish_frame_tests!(
-        is_x86_feature_detected!("avx512f"),
-        f16,
-        x86_64_avx512_hardswish_f16_64n
-    );
-}
-
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_leaky_relu_f16_64n,
     64,
     32,
@@ -102,21 +94,12 @@ ew_impl_f16_via_f32!(
     cvt_f16_to_f32,
     cvt_f32_to_f16,
     super::act::x86_64_avx512_leaky_relu_f32_64n,
-    f16,
-    alpha => alpha.to_f32()
+    func(LeakyRelu),
+    param(alpha => alpha.to_f32()),
+    isa(X86_64Avx512f)
 );
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_leaky_relu_f16_64n {
-    use super::*;
-    leaky_relu_frame_tests!(
-        is_x86_feature_detected!("avx512f"),
-        f16,
-        x86_64_avx512_leaky_relu_f16_64n
-    );
-}
-
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_sigmoid_f16_16n,
     16,
     16,
@@ -124,16 +107,12 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::avx512_sigmoid_f32
+    super::avx512_sigmoid_f32,
+    func(Sigmoid),
+    isa(X86_64Avx512f)
 );
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_sigmoid_f16_16n {
-    use super::*;
-    sigmoid_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_sigmoid_f16_16n);
-}
-
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_tanh_f16_16n,
     16,
     16,
@@ -141,16 +120,12 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::avx512_tanh_f32
+    super::avx512_tanh_f32,
+    func(Tanh),
+    isa(X86_64Avx512f)
 );
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_tanh_f16_16n {
-    use super::*;
-    tanh_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_tanh_f16_16n);
-}
-
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_silu_f16_16n,
     16,
     16,
@@ -158,16 +133,12 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::avx512_silu_f32
+    super::avx512_silu_f32,
+    func(Silu),
+    isa(X86_64Avx512f)
 );
 
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_silu_f16_16n {
-    use super::*;
-    silu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_silu_f16_16n);
-}
-
-ew_impl_f16_via_f32!(
+routine_ew_via_f32!(x86_64;
     x86_64_avx512_gelu_f16_16n,
     16,
     16,
@@ -175,11 +146,7 @@ ew_impl_f16_via_f32!(
     64,
     cvt_f16_to_f32,
     cvt_f32_to_f16,
-    super::act::x86_64_avx512_gelu_f32_16n
+    super::act::x86_64_avx512_gelu_f32_16n,
+    func(Gelu),
+    isa(X86_64Avx512f)
 );
-
-#[cfg(all(test, target_arch = "x86_64"))]
-pub mod test_x86_64_avx512_gelu_f16_16n {
-    use super::*;
-    gelu_frame_tests!(is_x86_feature_detected!("avx512f"), f16, x86_64_avx512_gelu_f16_16n);
-}
