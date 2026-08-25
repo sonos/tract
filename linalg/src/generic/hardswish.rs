@@ -1,28 +1,12 @@
 #![allow(clippy::excessive_precision)]
-use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 use tract_num_traits::Zero;
 
-#[derive(Clone, Debug)]
-pub struct SHardSwish4;
-
-impl ElementWiseKer<f32> for SHardSwish4 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn alignment_items() -> usize {
-        4
-    }
-
-    fn nr() -> usize {
-        4
-    }
-
+routine_ew_rust!(generic;
+    f32,
+    generic_hardswish_f32_4n,
+    4,
+    4,
     fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
@@ -31,29 +15,15 @@ impl ElementWiseKer<f32> for SHardSwish4 {
             let relu6 = (*px + 3.0).clamp(0.0, 6.0);
             *px = *px * relu6 * INV6;
         });
-    }
-}
+    },
+    func(Hardswish)
+);
 
-#[derive(Clone, Debug)]
-pub struct HHardSwish8;
-
-impl ElementWiseKer<f16> for HHardSwish8 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn alignment_items() -> usize {
-        4
-    }
-
-    fn nr() -> usize {
-        8
-    }
-
+routine_ew_rust!(generic;
+    f16,
+    generic_hardswish_f16_8n,
+    8,
+    8,
     fn run(x: &mut [f16], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
@@ -64,20 +34,6 @@ impl ElementWiseKer<f16> for HHardSwish8 {
             let relu6 = ((*px + three).min(six)).max(f16::zero());
             *px = *px * relu6 * inv6;
         });
-    }
-}
-
-submit_routine!(F32, Hardswish, SHardSwish4);
-submit_routine!(F16, Hardswish, HHardSwish8);
-
-#[cfg(test)]
-#[macro_use]
-pub mod s {
-    hardswish_frame_tests!(true, f32, crate::generic::hardswish::SHardSwish4);
-}
-
-#[cfg(test)]
-#[macro_use]
-pub mod h {
-    hardswish_frame_tests!(true, tract_data::internal::f16, crate::generic::hardswish::HHardSwish8);
-}
+    },
+    func(Hardswish)
+);

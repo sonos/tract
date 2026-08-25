@@ -1,5 +1,3 @@
-use crate::element_wise::ElementWiseKer;
-
 #[allow(non_upper_case_globals)]
 #[allow(clippy::excessive_precision)]
 fn serf(x: &mut f32) {
@@ -23,37 +21,15 @@ fn serf(x: &mut f32) {
     *x = y.copysign(signum)
 }
 
-#[derive(Clone, Debug)]
-pub struct SErf4;
-
-impl ElementWiseKer<f32> for SErf4 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_items() -> usize {
-        16
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn nr() -> usize {
-        4
-    }
-
+routine_ew_rust!(generic;
+    f32,
+    generic_erf_f32_4n,
+    4,
+    4,
     fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(serf)
-    }
-}
-
-submit_routine!(F32, Erf, SErf4);
-
-#[cfg(test)]
-mod test_serf4 {
-    use super::*;
-    crate::erf_frame_tests!(true, f32, SErf4);
-}
+    },
+    func(Erf)
+);

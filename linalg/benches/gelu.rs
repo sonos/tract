@@ -15,7 +15,7 @@ fn gelu_f32(c: &mut Criterion) {
     }
     group.bench_function("rust_scalar", |b| b.iter(|| rust_scalar(input)));
     group.bench_function("generic", |b| {
-        b.iter(|| tract_linalg::generic::gelu::SGelu4::run(input, ()))
+        b.iter(|| tract_linalg::generic::gelu::generic_gelu_f32_4n::run(input, ()))
     });
     group.bench_function("linalg", |b| b.iter(|| linalg(input)));
     #[cfg(target_arch = "aarch64")]

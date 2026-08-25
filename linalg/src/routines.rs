@@ -275,7 +275,7 @@ pub enum RoutineFactory {
 /// One kernel, enumerable uniformly on every host.
 pub struct Routine {
     pub func: Func,
-    /// Architecture the kernel is written for, `None` for portable Rust every target builds.
+    /// Architecture the kernel is written for, `None` for generic Rust every target builds.
     pub arch: Option<Arch>,
     /// What the instruction set must offer for this kernel to run at all. Runnability only:
     /// a preference spelled here would also move the kernel in the matrix.
@@ -332,7 +332,7 @@ impl Routine {
     }
 
     /// What this kernel is worth on a machine that can run it: its ladder step, plus whatever
-    /// a measurement said the step gets wrong. An arch kernel always outranks a portable one,
+    /// a measurement said the step gets wrong. An arch kernel always outranks a generic one,
     /// which is a different question and is compared before this.
     fn preference(&self) -> isize {
         self.isa.level() as isize * LEVEL_BOOST + self.boost
@@ -345,7 +345,7 @@ pub fn declared() -> impl Iterator<Item = &'static Routine> {
 }
 
 /// The kernel `isa` would run for this function and datum type: an architecture kernel over a
-/// portable one, then the most capable instruction set, then the name, which only settles ties
+/// generic one, then the most capable instruction set, then the name, which only settles ties
 /// `inventory`'s link order would otherwise settle differently between builds. `None` when
 /// nothing is declared for the pair at all.
 pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Routine> {
@@ -397,7 +397,7 @@ pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
 }
 
 /// File the descriptor of a kernel declared elsewhere, under the leading architecture ident the
-/// `routine_*` declaration macros take, or with no ident at all for portable Rust every target
+/// `routine_*` declaration macros take, or with no ident at all for generic Rust every target
 /// builds. Those macros end here; write it directly for a kernel no shape macro emits, and it
 /// carries no test module of its own. The first argument names the factory arm, which is what
 /// says the kernel's shape and datum type; `isa` is omitted for a kernel whose architecture
@@ -655,7 +655,7 @@ mod tests {
     fn what_the_x86_ladder_runs() {
         for (level, func, dt, expected) in [
             (1, Func::MulByScalar, DatumType::F32, "x86_64_avx_f32_mul_by_scalar_32n"),
-            (1, Func::LeakyRelu, DatumType::F32, "generic"),
+            (1, Func::LeakyRelu, DatumType::F32, "generic_leaky_relu_f32_4n"),
             (1, Func::Sigmoid, DatumType::F32, "avx_sigmoid_f32"),
             (2, Func::Sigmoid, DatumType::F32, "fma_sigmoid_f32"),
             (3, Func::Sigmoid, DatumType::F32, "avx512_sigmoid_f32"),
@@ -665,7 +665,7 @@ mod tests {
             (4, Func::LeakyRelu, DatumType::F16, "x86_64_avx512_leaky_relu_f16_64n"),
             (4, Func::Hardswish, DatumType::F16, "x86_64_avx512fp16_hardswish_f16_128n"),
             // The two reductions x86 has are plain AVX whatever their names say, and nothing
-            // here sums: that column is portable on every x86 part.
+            // here sums: that column is generic on every x86 part.
             (1, Func::ReduceMax, DatumType::F32, "x86_64_fma_max_f32_32n"),
             (1, Func::ReduceMin, DatumType::F32, "x86_64_fma_min_f32_32n"),
             (1, Func::ReduceSum, DatumType::F32, "SSum4"),
@@ -675,7 +675,7 @@ mod tests {
             (3, Func::Softmax2, DatumType::F32, "x86_64_avx512_softmax2_f32_64n"),
             (1, Func::RmsNorm, DatumType::F32, "generic"),
             (3, Func::RmsNorm, DatumType::F32, "x86_64_avx512_rms_norm_f32"),
-            // No binary kernel at any x86 tier: both layouts are portable everywhere.
+            // No binary kernel at any x86 tier: both layouts are generic everywhere.
             (3, Func::BinByScalar(crate::BinOp::Mul), DatumType::F32, "SMulByScalar4"),
             (3, Func::BinUnicast(crate::BinOp::Add), DatumType::F32, "SUnicastAdd4"),
         ] {
@@ -702,16 +702,16 @@ mod tests {
             (Func::Silu, DatumType::F32, Some("arm64simd_silu_f32_4n_fused")),
             (Func::Gelu, DatumType::F32, Some("arm64simd_gelu_f32_4n_fused")),
             (Func::Hardswish, DatumType::F32, Some("arm64simd_hardswish_f32_8n")),
-            (Func::Erf, DatumType::F32, Some("generic")),
+            (Func::Erf, DatumType::F32, Some("generic_erf_f32_4n")),
             (Func::Sigmoid, DatumType::F16, Some("arm64simd_sigmoid_f16_4n")),
             (Func::Tanh, DatumType::F16, Some("arm64simd_tanh_f16_4n")),
             (Func::Silu, DatumType::F16, Some("arm64simd_silu_f16_lut_8n")),
-            (Func::Gelu, DatumType::F16, Some("generic")),
-            (Func::Hardswish, DatumType::F16, Some("generic")),
+            (Func::Gelu, DatumType::F16, Some("generic_gelu_f16_8n")),
+            (Func::Hardswish, DatumType::F16, Some("generic_hardswish_f16_8n")),
             (Func::Erf, DatumType::F16, None),
             (Func::LeakyRelu, DatumType::F32, Some("arm64simd_leaky_relu_f32_8n")),
             (Func::MulByScalar, DatumType::F32, Some("arm64simd_mul_by_scalar_f32_16n")),
-            (Func::LeakyRelu, DatumType::F16, Some("generic")),
+            (Func::LeakyRelu, DatumType::F16, Some("generic_leaky_relu_f16_8n")),
             (Func::MulByScalar, DatumType::F16, Some("HMulByScalar8")),
             (Func::ReduceMax, DatumType::F32, Some("arm64simd_max_f32_16n")),
             (Func::ReduceMin, DatumType::F32, Some("arm64simd_min_f32_16n")),
@@ -730,7 +730,7 @@ mod tests {
                 DatumType::F32,
                 Some("arm64simd_unicast_add_f32_16n"),
             ),
-            // Nothing computes an f16 binary op without the fp16 tree: the portable kernels for
+            // Nothing computes an f16 binary op without the fp16 tree: the generic kernels for
             // these were deleted, nothing having been able to reach them.
             (Func::BinByScalar(crate::BinOp::Mul), DatumType::F16, None),
             (Func::BinUnicast(crate::BinOp::Add), DatumType::F16, None),
@@ -803,10 +803,12 @@ mod tests {
                 func.name()
             );
         }
-        for func in [Func::Sigmoid, Func::Tanh] {
+        for (func, generic) in
+            [(Func::Sigmoid, "generic_sigmoid_f32_4n"), (Func::Tanh, "generic_tanh_f32_4n")]
+        {
             assert_eq!(
                 best_for(func, DatumType::F32, &simd128).map(|r| r.name()),
-                Some("generic"),
+                Some(generic),
                 "{} f32 on plain simd128",
                 func.name()
             );
@@ -818,21 +820,26 @@ mod tests {
             );
         }
     }
-    /// What armv7 runs, with and without NEON: three f32 kernels, and the portable floor for
+    /// What armv7 runs, with and without NEON: three f32 kernels, and the generic floor for
     /// everything else. The f16 side has no armv7 kernel at all.
     #[cfg(any(target_arch = "arm", feature = "foreign-inventory"))]
     #[test]
     fn what_the_armv7_ladder_runs() {
         let vfp = IsaSet::of_arch(Arch::Arm);
         let neon = vfp.with(crate::isa::Isa::ArmNeon);
-        for (func, expected) in [
-            (Func::Sigmoid, "armv7neon_sigmoid_f32_4n"),
-            (Func::Tanh, "armv7neon_tanh_f32_4n"),
-            (Func::Silu, "armv7neon_silu_f32_4n"),
+        for (func, expected, generic_f32_name, generic_f16_name) in [
+            (
+                Func::Sigmoid,
+                "armv7neon_sigmoid_f32_4n",
+                "generic_sigmoid_f32_4n",
+                "generic_sigmoid_f16_8n",
+            ),
+            (Func::Tanh, "armv7neon_tanh_f32_4n", "generic_tanh_f32_4n", "generic_tanh_f16_8n"),
+            (Func::Silu, "armv7neon_silu_f32_4n", "generic_silu_f32_4n", "generic_silu_f16_8n"),
         ] {
             assert_eq!(
                 best_for(func, DatumType::F32, &vfp).map(|r| r.name()),
-                Some("generic"),
+                Some(generic_f32_name),
                 "{} f32 on armv7 without neon",
                 func.name()
             );
@@ -844,7 +851,7 @@ mod tests {
             );
             assert_eq!(
                 best_for(func, DatumType::F16, &neon).map(|r| r.name()),
-                Some("generic"),
+                Some(generic_f16_name),
                 "{} f16 on armv7+neon",
                 func.name()
             );

@@ -1,5 +1,4 @@
 #![allow(clippy::excessive_precision)]
-use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 
 /// The input clamp of the f32 sigmoid fit, shared by [`ssigmoid`] and by the SiLU kernels
@@ -94,71 +93,28 @@ pub fn hsigmoid(x: f16) -> f16 {
     p / q + f16::from_f32_const(0.5)
 }
 
-#[derive(Clone, Debug)]
-pub struct SSigmoid4;
-
-impl ElementWiseKer<f32> for SSigmoid4 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn alignment_items() -> usize {
-        4
-    }
-
-    fn nr() -> usize {
-        4
-    }
-
+routine_ew_rust!(generic;
+    f32,
+    generic_sigmoid_f32_4n,
+    4,
+    4,
     fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = ssigmoid(*px))
-    }
-}
+    },
+    func(Sigmoid)
+);
 
-#[derive(Clone, Debug)]
-pub struct HSigmoid8;
-
-impl ElementWiseKer<f16> for HSigmoid8 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn alignment_items() -> usize {
-        4
-    }
-
-    fn nr() -> usize {
-        8
-    }
-
+routine_ew_rust!(generic;
+    f16,
+    generic_sigmoid_f16_8n,
+    8,
+    8,
     fn run(x: &mut [f16], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = hsigmoid(*px))
-    }
-}
-
-submit_routine!(F32, Sigmoid, SSigmoid4);
-submit_routine!(F16, Sigmoid, HSigmoid8);
-
-#[cfg(test)]
-#[macro_use]
-pub mod s {
-    sigmoid_frame_tests!(true, f32, crate::generic::sigmoid::SSigmoid4);
-}
-
-#[cfg(test)]
-#[macro_use]
-pub mod h {
-    sigmoid_frame_tests!(true, tract_data::internal::f16, crate::generic::sigmoid::HSigmoid8);
-}
+    },
+    func(Sigmoid)
+);

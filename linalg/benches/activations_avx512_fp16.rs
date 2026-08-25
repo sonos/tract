@@ -53,14 +53,14 @@ fn benches(c: &mut Criterion) {
         bench_triple!(
             c,
             "hardswish_f16",
-            tract_linalg::generic::hardswish::HHardSwish8,
+            tract_linalg::generic::hardswish::generic_hardswish_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_hardswish_f16_64n,
             tract_linalg::x86_64::act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n
         );
         bench_triple!(
             c,
             "leaky_relu_f16",
-            tract_linalg::generic::leaky_relu::HLeakyRelu8,
+            tract_linalg::generic::leaky_relu::generic_leaky_relu_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_leaky_relu_f16_64n,
             tract_linalg::x86_64::act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
             f16::from_f32(0.1)
