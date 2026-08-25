@@ -50,7 +50,7 @@ mod sve_sys {
         #[cfg(tract_sve_fp16)]
         pub fn sve_mmv_f16_64x1_kernel(ops: *const FusedKerSpec<f16>) -> isize;
         // VLA SVE2 fused row-wise RmsNorm (arm64/sve/sve_rms_norm.c). Plugged
-        // into Ops::rms_norm_f32 when FEAT_SVE2 is present, overriding the
+        // the RmsNorm routine when FEAT_SVE2 is present, outranking the
         // NEON 4-lane kernel with wider lanes (vl-dependent) and a predicated
         // tail (no scalar epilogue).
         pub fn sve_rms_norm_f32_kernel(buf: *mut f32, n: i64, eps: f32);
@@ -58,7 +58,7 @@ mod sve_sys {
 }
 
 /// Public Rust wrapper for the VLA SVE2 RmsNorm kernel. Matches the
-/// `Box<dyn Fn(&mut [f32], f32)>` shape of `Ops::rms_norm_f32`.
+/// `fn(&mut [f32], f32)` shape the RmsNorm routine declares.
 #[cfg(tract_sve)]
 pub fn sve_rms_norm_f32(buf: &mut [f32], eps: f32) {
     if buf.is_empty() {
@@ -75,7 +75,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8
 );
 
 // The VLA SVE f32 GEMV kernel (arm64/sve/sve_mmv_f32_64x1.c), MR=64 NR=1,
-// dispatched when N == 1 (matrix x f32 column vector). Wired to ops.mmv_f32.
+// dispatched when N == 1 (matrix x f32 column vector).
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
     isa(Aarch64Sve2)
@@ -85,7 +85,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32
 
 // The VLA SVE int8 -> int32 GEMM kernel (arm64/sve/sve_mmm_i32.c). Consumes
 // tract's native i8i8 K-major packing via the widening rank-1 update (svld1sb +
-// svmla), and supports the i32 quantization fuse ops. Wired to ops.qmmm_i32.
+// svmla), and supports the i32 quantization fuse ops.
 #[cfg(tract_sve)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8)
     isa(Aarch64Sve2)
@@ -114,7 +114,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32
 );
 
 // The VLA SVE f16 GEMM kernel (arm64/sve/sve_mmm_f16.c), native f16 FMA, gated on
-// SVE2 + FP16. Wired to ops.mmm_f16 when has_fp16().
+// SVE2 + FP16, which its declared instruction set asks for.
 #[cfg(tract_sve_fp16)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
     isa(Aarch64Sve2, Aarch64Fp16)
@@ -123,7 +123,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8
 );
 
 // The VLA SVE f16 GEMV kernel (arm64/sve/sve_mmv_f16_64x1.c), MR=64 NR=1,
-// dispatched when N == 1. Wired to ops.mmv_f16 when has_fp16().
+// dispatched when N == 1.
 #[cfg(tract_sve_fp16)]
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
     isa(Aarch64Sve2, Aarch64Fp16)

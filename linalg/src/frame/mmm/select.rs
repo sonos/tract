@@ -3,11 +3,11 @@
 //! Selection narrows one set of kernels, and each rung is named after the property it tests:
 //! *declared* is every kernel the inventory knows ([`crate::mmm_routines::declared`]), *built*
 //! those whose body this build compiled ([`MatMatMul::built`]), *runnable* those the host can
-//! also execute ([`MatMatMul::runnable`], collected as [`crate::Ops::runnable`]), *suitable*
-//! those that can answer a given [`Query`] ([`crate::Ops::suitable`]).
+//! also execute ([`MatMatMul::runnable`], collected as [`crate::MmmDispatch::runnable`]), *suitable*
+//! those that can answer a given [`Query`] ([`crate::MmmDispatch::suitable`]).
 //!
 //! The last step is not a filter but a choice, so it has no set of its own: *preference* is the
-//! ordering a platform imposes over the suitable ones ([`crate::Ops::preferred`]), and it is a
+//! ordering a platform imposes over the suitable ones ([`crate::MmmDispatch::preferred`]), and it is a
 //! property of the platform, never of a kernel. A [`Suitable`] is one way to compute
 //! the matmul that fits the query — kernel, packing, extractor.
 
@@ -131,10 +131,10 @@ mod tests {
     /// right to treat as matrix-only.
     #[test]
     fn the_preference_keeps_a_kept_group_usable() {
-        let ops = crate::ops();
+        let dispatch = crate::mmm_dispatch();
         for acc in accumulators() {
             let query = Query::plain(acc, None, None, None);
-            let all = ops.suitable(&query);
+            let all = dispatch.suitable(&query);
             let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
                 continue;
             };

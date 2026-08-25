@@ -399,7 +399,7 @@ fn bench_shape(
     let b = Tensor::zero_dt(dt, &[k, n])?;
     let mut c = Tensor::zero_dt(dt, &[m, n])?;
     let pick = planned_pick(dt, m, k, n)?;
-    let mmms = tract_linalg::ops().runnable();
+    let mmms = tract_linalg::mmm_dispatch().runnable();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
             // Dreadful emulates the datatype op-by-op (f16->f32->f16), 100-500x off a

@@ -9,7 +9,7 @@
 //                             4-v-register chunk in place.
 //   Scalar tail handles the (len % 16 != 0) remainder.
 //
-// Drops into `Ops::rms_norm_f32` (added by the parent PR) — the core-side
+// Drops into `routines::rms_norm_f32` — the core-side
 // dispatcher in `core::ops::nn::RmsNorm::eval` is already arch-neutral and
 // will pick this up automatically.
 

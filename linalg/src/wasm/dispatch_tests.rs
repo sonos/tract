@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod dispatch_trace {
     fn trace_one(label: &str, m: Option<usize>, k: Option<usize>, n: Option<usize>) {
-        let ops = crate::native_ops();
+        let ops = crate::MmmDispatch::native();
         let mmm = ops.preferred_kernel(tract_data::prelude::DatumType::F32, m, k, n).unwrap();
         eprintln!(
             "DFN3 {} (m={:?} k={:?} n={:?}) => {}  [mr={}, nr={}]",
@@ -61,7 +61,7 @@ mod dispatch_trace {
     #[test]
     fn dispatch_kernels_are_manually_optimized() {
         use crate::mmm::ImplementationQuality::ManuallyOptimized;
-        let ops = crate::native_ops();
+        let ops = crate::MmmDispatch::native();
         for (label, m, k, n) in [
             ("GEMM m=64 k=64 n=8", 64, 64, 8),
             ("GEMM m=256 k=256 n=256", 256, 256, 256),
@@ -87,7 +87,7 @@ use crate::mmm::{AsInputValue, FusedSpec};
 use tract_data::internal::*;
 
 fn pick(name: &str) -> Box<dyn crate::mmm::MatMatMul> {
-    let ops = crate::native_ops();
+    let ops = crate::MmmDispatch::native();
     for impl_ in ops.runnable() {
         if impl_.name() == name {
             return impl_.clone();
@@ -290,7 +290,7 @@ fn add_row_col_products_and_add_mat_mul_agree_on_fusion() {
 /// front of shapes the 8x8 and the GEMV kernels currently own.
 #[test]
 fn dispatch_never_returns_wasm_f32_4x4() {
-    let ops = crate::native_ops();
+    let ops = crate::MmmDispatch::native();
     for m in [1usize, 3, 4, 5, 8, 9, 16, 17, 32, 64, 256, 1024] {
         for n in [1usize, 2, 4, 8, 10, 64, 256] {
             for k in [1usize, 64, 576] {
