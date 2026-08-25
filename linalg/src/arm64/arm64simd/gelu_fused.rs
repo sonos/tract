@@ -6,12 +6,11 @@
 // computation up front and the final 0.5*x*(1+tanh) combined via fmla.
 // Single memory pass (load + store), no scratch buffer.
 
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f32,
     arm64simd_gelu_f32_4n_fused,
     4,
     4,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         // Tanh Padé coefficients (matches arm64simd_tanh_f32_4n.S.j2) +
@@ -284,11 +283,6 @@ ew_impl_wrap!(aarch64;
             options(nostack),
             );
         }
-    }
+    },
+    func(Gelu)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_gelu_f32_4n_fused {
-    use super::*;
-    gelu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_gelu_f32_4n_fused);
-}

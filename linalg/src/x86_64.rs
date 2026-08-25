@@ -107,28 +107,17 @@ ew_routine!(x86_64; Tanh, f32, avx512_tanh_f32, 16, 16, isa(X86_64Avx512f));
 ew_routine!(x86_64; Sigmoid, f32, avx512_sigmoid_f32, 16, 16, isa(X86_64Avx512f));
 ew_routine!(x86_64; Silu, f32, avx512_silu_f32, 16, 16, isa(X86_64Avx512f));
 
-routine!(x86_64; F32, Gelu, act::x86_64_avx512_gelu_f32_16n, isa(X86_64Avx512f));
-routine!(x86_64; F32, Erf, erf::x86_64_avx512_erf_f32_64n, isa(X86_64Avx512f));
-routine!(x86_64; F32, Hardswish, act::x86_64_avx512_hardswish_f32_64n, isa(X86_64Avx512f));
-
 routine!(x86_64; F16, Sigmoid, act_f16::x86_64_avx512_sigmoid_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Tanh, act_f16::x86_64_avx512_tanh_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Silu, act_f16::x86_64_avx512_silu_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Gelu, act_f16::x86_64_avx512_gelu_f16_16n, isa(X86_64Avx512f));
 routine!(x86_64; F16, Hardswish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X86_64Avx512f));
 
-routine!(x86_64; F16, Hardswish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
-    isa(X86_64Avx512Fp16));
-
-routine!(x86_64; F32Param, LeakyRelu, act::x86_64_avx512_leaky_relu_f32_64n, isa(X86_64Avx512f));
 routine!(x86_64; F16Param, LeakyRelu, act_f16::x86_64_avx512_leaky_relu_f16_64n, isa(X86_64Avx512f));
 
 // Correct, and slower than the f32 round-trip above on every AVX-512_FP16 part measured, so it
 // is declared to keep its tests running and never preferred. A part where fp16 mul and max
 // saturate their ports would want the boost dropped.
-routine!(x86_64; F16Param, LeakyRelu, act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
-    isa(X86_64Avx512Fp16), boost(crate::isa::NEVER_PREFERRED));
-
 /// What CPUID says this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};

@@ -21,12 +21,11 @@
 // here and not merely a bound the sigmoid polynomial needs. Nor does it need a ceiling: an
 // overshoot of one ulp would only scale f by 1 + 2^-23, and SiLU has no upper bound to violate.
 
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f32,
     arm64simd_silu_f32_4n_fused,
     4,
     4,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f32], _: ()) {
         static COEFFS: [f32; 16] = [
@@ -246,11 +245,6 @@ ew_impl_wrap!(aarch64;
             options(nostack),
             );
         }
-    }
+    },
+    func(Silu)
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_silu_f32_4n_fused {
-    use super::*;
-    silu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_silu_f32_4n_fused);
-}

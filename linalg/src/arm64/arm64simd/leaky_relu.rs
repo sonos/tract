@@ -1,9 +1,8 @@
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f32,
     arm64simd_leaky_relu_f32_8n,
     8,
     4,
-    f32,
     #[inline(never)]
     fn run(buf: &mut [f32], alpha: f32) {
         assert!(buf.len() % 8 == 0);
@@ -40,11 +39,7 @@ ew_impl_wrap!(aarch64;
             out("q6") _,
             );
         }
-    }
+    },
+    func(LeakyRelu),
+    param
 );
-
-#[cfg(test)]
-pub mod test_arm64simd_leaky_relu_f32_8n {
-    use super::*;
-    leaky_relu_frame_tests!(cfg!(target_arch = "aarch64"), f32, arm64simd_leaky_relu_f32_8n);
-}

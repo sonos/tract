@@ -213,17 +213,17 @@ fn silu_lut() -> &'static [u16; 1 << 16] {
     })
 }
 
-ew_impl_wrap!(aarch64;
+routine_ew_rust!(aarch64;
     f16,
     arm64simd_silu_f16_lut_8n,
     8,
     4,
-    (),
     #[inline(never)]
     fn run(buf: &mut [f16], _params: ()) {
         let lut = silu_lut();
         buf.iter_mut().for_each(|x| *x = f16::from_bits(lut[x.to_bits() as usize]));
-    }
+    },
+    func(Silu)
 );
 
 #[cfg(all(test, target_arch = "aarch64"))]
