@@ -119,6 +119,8 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
     }
 }
 
+submit_routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
+
 #[derive(Clone, Debug)]
 pub struct WasmTanh4Relaxed;
 
@@ -214,6 +216,8 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
         panic!("WasmTanh4Relaxed: kernel not built for this target")
     }
 }
+
+submit_routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
 
 #[cfg(all(test, target_feature = "relaxed-simd"))]
 #[macro_use]

@@ -17,6 +17,8 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
     }
 }
 
+submit_routine!(RmsNormF32, RmsNorm, "generic", rms_norm_f32);
+
 #[cfg(test)]
 mod tests {
     use super::*;

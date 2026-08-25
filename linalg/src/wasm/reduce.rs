@@ -306,3 +306,5 @@ pub fn rms_norm_f32(buf: &mut [f32], eps: f32) {
 }
 
 bail_stub!(wasm32; pub fn rms_norm_f32(&mut [f32], f32));
+
+submit_routine!(wasm32; RmsNormF32, RmsNorm, "wasm_rms_norm_f32", rms_norm_f32);

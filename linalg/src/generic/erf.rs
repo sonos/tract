@@ -50,6 +50,8 @@ impl ElementWiseKer<f32> for SErf4 {
     }
 }
 
+submit_routine!(F32, Erf, SErf4);
+
 #[cfg(test)]
 mod test_serf4 {
     use super::*;

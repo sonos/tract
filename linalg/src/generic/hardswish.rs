@@ -67,6 +67,9 @@ impl ElementWiseKer<f16> for HHardSwish8 {
     }
 }
 
+submit_routine!(F32, Hardswish, SHardSwish4);
+submit_routine!(F16, Hardswish, HHardSwish8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {

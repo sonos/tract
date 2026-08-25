@@ -57,6 +57,9 @@ impl ElementWiseKer<f16, f16> for HLeakyRelu8 {
     }
 }
 
+submit_routine!(F32Param, LeakyRelu, SLeakyRelu4);
+submit_routine!(F16Param, LeakyRelu, HLeakyRelu8);
+
 #[cfg(test)]
 #[macro_use]
 pub mod s {
