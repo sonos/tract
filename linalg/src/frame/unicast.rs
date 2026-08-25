@@ -5,7 +5,7 @@ use tract_data::TractResult;
 use tract_data::internal::TensorView;
 
 use crate::frame::element_wise_helper::TempBuffer;
-use crate::{LADatum, LinalgFn};
+use crate::{BinFn, LADatum};
 
 // A unicast binary kernel from a `run` body. A leading arch ident is for bodies that are
 // inline arch asm or intrinsics, which will not even compile elsewhere: those builds get a
@@ -102,7 +102,7 @@ where
     fn alignment_items() -> usize;
     fn nr() -> usize;
     fn run(a: &mut [T], b: &[T]);
-    fn bin() -> Box<LinalgFn> {
+    fn bin() -> Box<BinFn> {
         Box::new(|a: &mut TensorView, b: &TensorView| {
             let a_slice = a.as_slice_mut()?;
             let b_slice = b.as_slice()?;

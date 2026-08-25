@@ -116,7 +116,11 @@ impl BinOp {
     }
 }
 
-pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
+/// A binary operation over two tensor views, writing its result over the left one. What the two
+/// binary layouts erase to -- [`by_scalar::ByScalarKer::bin`] broadcasts a one-element right
+/// operand, [`unicast::UnicastKer::bin`] walks a right operand of the same length -- so a caller
+/// holding one needs to know neither which layout nor which kernel answered.
+pub type BinFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
 use num_traits::*;
 use std::fmt::Debug;
 use std::ops::*;

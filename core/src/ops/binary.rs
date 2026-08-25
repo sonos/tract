@@ -5,7 +5,7 @@ use std::fmt::{self, Debug};
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::multithread::BShare;
-use tract_linalg::{BinOp, LinalgFn};
+use tract_linalg::{BinFn, BinOp};
 
 use super::math::{Add, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
@@ -688,7 +688,7 @@ pub fn gt_tdim(x: TDim, min_val: i64) -> bool {
 pub struct OptBinByScalar {
     pub linalg_op: BinOp,
     pub binop: Box<dyn BinMiniOp>,
-    eval_fn: Arc<LinalgFn>,
+    eval_fn: Arc<BinFn>,
 }
 
 impl Debug for OptBinByScalar {
@@ -799,7 +799,7 @@ impl TypedOp for OptBinByScalar {
 #[derive(Clone)]
 pub struct OptBinUnicast {
     pub binop: Box<dyn BinMiniOp>,
-    eval_fn: Arc<LinalgFn>,
+    eval_fn: Arc<BinFn>,
 }
 
 impl Debug for OptBinUnicast {
