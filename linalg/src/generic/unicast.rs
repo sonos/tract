@@ -1,5 +1,5 @@
 pub use tract_data::internal::f16;
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastMul4,
     4,
@@ -14,7 +14,7 @@ routine_unicast_rust!(portable;
     op(Mul)
 );
 
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastAdd4,
     4,
@@ -29,7 +29,7 @@ routine_unicast_rust!(portable;
     op(Add)
 );
 
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastSub4,
     4,
@@ -44,7 +44,7 @@ routine_unicast_rust!(portable;
     op(Sub)
 );
 
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastSubF4,
     4,
@@ -59,7 +59,7 @@ routine_unicast_rust!(portable;
     op(SubF)
 );
 
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastMin4,
     4,
@@ -74,7 +74,7 @@ routine_unicast_rust!(portable;
     op(Min)
 );
 
-routine_unicast_rust!(portable;
+routine_unicast_rust!(generic;
     f32,
     SUnicastMax4,
     4,

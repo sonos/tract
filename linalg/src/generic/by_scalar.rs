@@ -1,6 +1,6 @@
 use tract_data::internal::f16;
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SMulByScalar4,
     4,
@@ -15,7 +15,7 @@ routine_by_scalar_rust!(portable;
     param(MulByScalar)
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SAddByScalar4,
     4,
@@ -29,7 +29,7 @@ routine_by_scalar_rust!(portable;
     bin
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SSubByScalar4,
     4,
@@ -43,7 +43,7 @@ routine_by_scalar_rust!(portable;
     bin
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SSubFByScalar4,
     4,
@@ -57,7 +57,7 @@ routine_by_scalar_rust!(portable;
     bin
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SMinByScalar4,
     4,
@@ -71,7 +71,7 @@ routine_by_scalar_rust!(portable;
     bin
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f32,
     SMaxByScalar4,
     4,
@@ -85,7 +85,7 @@ routine_by_scalar_rust!(portable;
     bin
 );
 
-routine_by_scalar_rust!(portable;
+routine_by_scalar_rust!(generic;
     f16,
     HMulByScalar8,
     8,

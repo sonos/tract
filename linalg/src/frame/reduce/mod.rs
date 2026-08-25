@@ -34,7 +34,7 @@ macro_rules! routine_reduce_rust {
         routine_reduce_rust!(@ wasm32,
             all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
-    (portable; $($rest:tt)*) => { routine_reduce_rust!(@ portable, all(); $($rest)*); };
+    (generic; $($rest:tt)*) => { routine_reduce_rust!(@ generic, all(); $($rest)*); };
 
     // One arm per operation, each naming the identity it starts from and how two answers combine,
     // then handing the rest on. That is the only place those two facts are written.
@@ -219,7 +219,7 @@ macro_rules! routine_map_reduce_rust {
         routine_map_reduce_rust!(@ wasm32,
             all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
-    (portable; $($rest:tt)*) => { routine_map_reduce_rust!(@ portable, all(); $($rest)*); };
+    (generic; $($rest:tt)*) => { routine_map_reduce_rust!(@ generic, all(); $($rest)*); };
 
     (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
      $run:item, op(Softmax2) $(, isa($($isa:ident),+))?) => {

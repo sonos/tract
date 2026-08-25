@@ -53,9 +53,9 @@ macro_rules! MMMExternKernel {
 // An mmm kernel whose inner loop is Rust — intrinsics, or a C extern block like SVE's.
 // Given a leading arch ident it also registers an introspection descriptor; whether this build
 // compiled the kernel is the kernel's own `built`, and the kernel fn is gated by its module.
-// Without the ident it is a portable kernel, built everywhere.
+// Without the ident it is a generic kernel, built everywhere.
 macro_rules! MMMRustKernel {
-    // Portable Rust, built and dispatchable everywhere.
+    // Generic Rust, built and dispatchable everywhere.
     (generic; $($rest:tt)*) => { MMMRustKernel!(@ None, all(); $($rest)*); };
     (arm; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::isa::Arch::Arm), target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::isa::Arch::Aarch64), target_arch = "aarch64"; $($rest)*); };

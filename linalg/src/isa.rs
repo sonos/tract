@@ -14,7 +14,7 @@ use std::sync::OnceLock;
 /// member, and [`IsaSet::arch`] reads it back out of a machine's features.
 ///
 /// Naming one is not having kernels for it: [`RiscV64`](Arch::RiscV64) has no tree yet, so a
-/// riscv64 build is portable-only even though it knows what it is running on, and an
+/// riscv64 build is generic-only even though it knows what it is running on, and an
 /// architecture tract does not name at all has no variant here. Only the wasm tree hinges on a
 /// build feature — hence the variant naming that feature; the others exist on their arch and
 /// gate individual kernels on runtime probes instead.
