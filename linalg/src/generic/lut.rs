@@ -45,5 +45,5 @@ submit_routine!(LutU8, Lut, GenericLut8);
 #[cfg(test)]
 #[macro_use]
 pub mod test {
-    lut_frame_tests!(true, crate::generic::GenericLut8);
+    lut_frame_tests!(true, crate::generic::lut::GenericLut8);
 }

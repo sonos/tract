@@ -26,7 +26,7 @@ fn erf_f32(c: &mut Criterion) {
         g.throughput(Throughput::Elements(N as u64));
         let mut tp = aligned_input();
         let sp = unsafe { tp.as_slice_mut_unchecked::<f32>() };
-        g.bench_function("generic", |b| b.iter(|| tract_linalg::generic::SErf4::run(sp, ())));
+        g.bench_function("generic", |b| b.iter(|| tract_linalg::generic::erf::SErf4::run(sp, ())));
         if std::is_x86_feature_detected!("avx512f") {
             let mut ta = aligned_input();
             let sa = unsafe { ta.as_slice_mut_unchecked::<f32>() };
