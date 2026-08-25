@@ -318,7 +318,7 @@ mod bench_16x1 {
     }
 
     pub fn run() {
-        // 16x1's natural band per plug()'s mmv_f32 closure: M ∈ 9..=16
+        // 16x1's natural band as the mmv tiers rank it: M ∈ 9..=16
         bench_min_of_n("M=9 k=256", 9, 256, 30_000, 10);
         bench_min_of_n("M=12 k=256", 12, 256, 30_000, 10);
         bench_min_of_n("M=16 k=96", 16, 96, 30_000, 10);
@@ -704,8 +704,7 @@ mod util {
     use tract_linalg::mmm::MatMatMul;
 
     pub fn pick(name: &str) -> Box<dyn MatMatMul> {
-        let mut ops = tract_linalg::MmmDispatch::native();
-        tract_linalg::wasm::plug(&mut ops);
+        let ops = tract_linalg::MmmDispatch::native();
         for impl_ in ops.runnable() {
             if impl_.name() == name {
                 return impl_.clone();
