@@ -223,15 +223,15 @@ impl MmmDispatch {
     /// claimed this accumulator, or the query is not the plain matmul the tiers reason about.
     /// A generic answer counts as no opinion: the precedence-0 tier answers for every platform, so
     /// getting one of its kernels back means no arch tier claimed the query.
-    pub fn preferred(&self, query: &Query, suitable: &[Suitable]) -> Option<usize> {
+    pub fn preferred(&self, query: &Query, suitable: &[Suitable]) -> Option<Suitable> {
         let crate::WeightType::Plain(weight) = &query.weight else { return None };
         if weight.unquantized() != query.activation.unquantized() {
             return None;
         }
         let acc = *query.accumulators.first()?;
         let ix = crate::mmm_tiers::preferred(&self.isa, &self.tiers, acc, query, suitable)?;
-        let quality = suitable[ix].0.quality();
-        (quality == ImplementationQuality::ManuallyOptimized).then_some(ix)
+        let chosen = &suitable[ix];
+        (chosen.0.quality() == ImplementationQuality::ManuallyOptimized).then(|| chosen.clone())
     }
 
     /// One kernel for the query, for a caller that needs an answer now: the platform policy's
@@ -242,8 +242,8 @@ impl MmmDispatch {
     /// exists at all.
     pub fn pick(&self, query: &Query) -> Option<Suitable> {
         let mut suitable = self.suitable(query);
-        if let Some(ix) = self.preferred(query, &suitable) {
-            return Some(suitable.swap_remove(ix));
+        if let Some(chosen) = self.preferred(query, &suitable) {
+            return Some(chosen);
         }
         retain_best_quality(&mut suitable);
         if suitable.len() == 1 {
