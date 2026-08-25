@@ -483,12 +483,3 @@ MMMRustKernel! {kernel::<i32, 3, 2> => generic_i32_3x2<i32>(3,2)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(3), i8::packing(2));
     store(i8)
 }
-
-#[cfg(test)]
-mod test {
-
-    #[test]
-    fn kits() {
-        crate::native_ops();
-    }
-}

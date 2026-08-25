@@ -40,10 +40,10 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     'mmm: for (m, p, pe) in &suitable {
         let left_packing: &dyn MMMInputFormat =
             pe.as_ref().map(|pe| &*pe.from).unwrap_or(&*m.packings()[*p].0);
-        for kit in &mut grouped_by_left_packing {
-            if let Some(merged) = kit.0.merge_with(left_packing) {
-                kit.0 = merged;
-                kit.1.push((m, p, pe));
+        for group in &mut grouped_by_left_packing {
+            if let Some(merged) = group.0.merge_with(left_packing) {
+                group.0 = merged;
+                group.1.push((m, p, pe));
                 continue 'mmm;
             }
         }
@@ -51,10 +51,10 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     }
     let (p, mmv, mmm) = grouped_by_left_packing
         .iter()
-        .map(|(p, kit)| {
+        .map(|(p, group)| {
             let best_for_mmv =
-                kit.iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none())).unwrap();
-            let best_for_mmm = kit.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
+                group.iter().max_by_key(|(m, _, pe)| (m.nr() == 1, pe.is_none())).unwrap();
+            let best_for_mmm = group.iter().max_by_key(|(m, _, _)| m.nr()).unwrap();
             (p, best_for_mmv, best_for_mmm)
         })
         .max_by_key(|(_, mmv, mmm)| {

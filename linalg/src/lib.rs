@@ -317,6 +317,18 @@ pub fn inspect(arch: Arch) -> Option<Ops> {
     Some(for_isa(isa))
 }
 
+#[cfg(test)]
+mod tests {
+    /// Every kernel and extractor this host offers can be built. Construction is where the
+    /// packing and panel-extractor invariants are asserted, so this fails on a declaration that
+    /// does not hold together -- with its own name, rather than inside whatever test happened to
+    /// dispatch first.
+    #[test]
+    fn what_this_host_offers_builds() {
+        super::native_ops();
+    }
+}
+
 lazy_static::lazy_static! {
     static ref OPS: Ops = native_ops();
 }
