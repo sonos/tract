@@ -24,7 +24,7 @@ pub use arm64fp16::*;
 
 #[cfg(target_arch = "aarch64")]
 use crate::f16;
-use crate::{BinOp, DatumType, LinalgRegistry, Ops};
+use crate::{BinOp, DatumType, LinalgRegistry};
 
 use crate::frame::by_scalar::ByScalarKer;
 use crate::frame::unicast::UnicastKer;
@@ -544,24 +544,6 @@ routine!(aarch64; F16Reduce, ReduceMax, arm64fp16_max_f16_32n, isa(Aarch64Fp16))
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Reduce, ReduceSum, arm64fp16_sum_f16_32n, isa(Aarch64Fp16));
 
-pub fn plug(ops: &mut Ops) {
-    let isa = crate::isa::native();
-    arm64simd::plug(ops);
-
-    #[cfg(not(feature = "no_fp16"))]
-    if isa.has(Isa::Aarch64Fp16) {
-        arm64fp16::plug(ops);
-    }
-
-    #[cfg(feature = "no_fp16")]
-    if has_fp16() {
-        log::warn!(
-            "This is a build with fp16 disabled, while your platform CPU seems to support it."
-        );
-    }
-    sve::plug(ops);
-}
-
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
 /// always-SME default wherever the shape is pinned. Which chip this is and what the chip can run
 /// are separate questions — the model is fitted per microarchitecture, and whether its AMX or SME
@@ -601,25 +583,26 @@ inventory::submit! {
     }
 }
 
-inventory::submit! {
-    crate::ArchPlug {
-        arch: crate::isa::Arch::Aarch64,
-        plug,
-    }
-}
-
 /// What this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::IsaSet;
     let mut set = IsaSet::of_arch(crate::isa::Arch::Aarch64);
     if has_fp16() {
         set = set.with(Isa::Aarch64Fp16);
+        #[cfg(feature = "no_fp16")]
+        log::warn!(
+            "This is a build with fp16 disabled, while your platform CPU seems to support it."
+        );
     }
     if has_dotprod() {
         set = set.with(Isa::Aarch64DotProd);
     }
     if sve::has_sve2() {
         set = set.with(Isa::Aarch64Sve2);
+        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
+        log::info!("SVE2 available, VL = {} bytes", sve::rdvl_bytes());
+    } else if sve::has_sve() {
+        log::info!("SVE (v1) present; SVE2 kernels not enabled");
     }
     #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
     {

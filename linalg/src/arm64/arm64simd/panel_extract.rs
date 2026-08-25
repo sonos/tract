@@ -1,9 +1,4 @@
-use crate::Ops;
 use crate::pack::Packing;
-
-pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(packed_32_q40_to_f32.clone());
-}
 
 panel_extractor!(aarch64; kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::q40p32z16se()),

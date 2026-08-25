@@ -176,7 +176,7 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Av
 // 2x work/iteration only turns into 2x throughput when the core has two
 // 512-bit FMA units to retire two VPDPBUSD/zmm per cycle; single-512-FMA
 // client cores (Ice Lake-U / Tiger Lake / Rocket Lake) get no gain and stay on
-// the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `plug_avx512vnni`.
+// the 8x8 ymm kernel -- see `has_dual_avx512_fma()` in `fma_width.rs`.
 //
 // On dual-FMA cores the boost lifts it above the 8x8 VNNI kernel in the einsum
 // kernel-selection scorer for unknown shapes, while staying below the AMX 16x16

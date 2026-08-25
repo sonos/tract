@@ -70,9 +70,8 @@ mod test_x86_64_fma_max_f32_32n {
 }
 
 // AVX-512 version: processes 64 f32 per loop iteration (4 zmm registers of 16
-// lanes each). Runtime-gated on avx512f (see x86_64.rs::plug_avx512f); on
-// non-AVX512 CPUs this kernel is never registered and the FMA path above stays
-// in use. nr=64, 64-byte (16xf32) alignment.
+// lanes each). It declares avx512f, so on a core without it the AVX path above is what the
+// registry offers. nr=64, 64-byte (16xf32) alignment.
 reduce_impl_wrap!(x86_64;
     f32,
     x86_64_avx512_max_f32_64n,

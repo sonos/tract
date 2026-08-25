@@ -30,7 +30,6 @@ pub use silu_fused::arm64simd_silu_f32_4n_fused;
 pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
-use crate::Ops;
 use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::pack::PackedFormat;
@@ -111,10 +110,6 @@ MMMExternKernel!(aarch64; arm64simd_mmm_i32_64x1<i32>(64, 1)@(16, 1)
    quality(ManuallyOptimized)
    store(i8)
 );
-
-pub fn plug(ops: &mut Ops) {
-    panel_extract::plug(ops);
-}
 
 ew_routine!(aarch64; Tanh, f32, arm64simd_tanh_f32_4n, 4, 4);
 ew_routine!(aarch64; Sigmoid, f32, arm64simd_sigmoid_f32_4n, 4, 4);

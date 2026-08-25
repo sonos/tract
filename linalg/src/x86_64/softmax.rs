@@ -101,7 +101,7 @@ mod test_x86_64_fma_softmax2_f32_32n {
 }
 
 // AVX-512 accurate f32 softmax_l2: same arithmetic as the FMA kernel, 64 f32
-// (4x zmm of 16) per iteration. Runtime-gated on avx512f in plug_avx512f.
+// (4x zmm of 16) per iteration. Declares avx512f.
 // nr=64, 64-byte aligned.
 map_reduce_impl_wrap!(x86_64;
     f32,

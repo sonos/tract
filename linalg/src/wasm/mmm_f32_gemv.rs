@@ -160,7 +160,7 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 }
 
 // ManuallyOptimized so kernel_selection::strategize honours the M-band
-// dispatch in mmv_f32 below. See module-level comment on plug().
+// dispatch in mmv_f32 below. See the tier in `wasm.rs`.
 bail_stub!(wasm32; unsafe fn kernel_f32_4x1(*const FusedKerSpec<f32>) -> isize);
 
 MMMRustKernel!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));

@@ -489,6 +489,6 @@ mod test {
 
     #[test]
     fn kits() {
-        crate::generic();
+        crate::native_ops();
     }
 }

@@ -1,5 +1,3 @@
-use crate::Ops;
-
 pub mod mmm;
 
 mod amd_avx512_linear;
@@ -8,7 +6,7 @@ mod intel_avx512_linear;
 mod intel_avx512_mmv_linear;
 mod intel_fma_linear;
 
-/// CPU vendor, the axis (with the AVX-512-vs-FMA tier, decided by which plug runs)
+/// CPU vendor, the axis (with the AVX-512-vs-FMA tier, read from the instruction set)
 /// that selects a per-target `LinearCostModel`. `TRACT_X86_KIND=intel|amd|other`
 /// overrides the CPUID probe (for forcing a cohort under emulation or in CI).
 #[derive(PartialEq, Clone, Copy)]
@@ -55,7 +53,7 @@ pub mod act_f16;
 pub mod act_f16_fp16;
 
 // CPUID probes, tile permission syscalls and uarch burst measurements: host machinery
-// with no kernel to enumerate, and only ever consulted by `plug`.
+// with no kernel to enumerate, and only ever consulted by `isa_set`.
 #[cfg(target_arch = "x86_64")]
 pub mod amx;
 #[cfg(target_arch = "x86_64")]
@@ -131,20 +129,6 @@ routine!(x86_64; F16Param, LeakyRelu, act_f16::x86_64_avx512_leaky_relu_f16_64n,
 // saturate their ports would want the boost dropped.
 routine!(x86_64; F16Param, LeakyRelu, act_f16_fp16::x86_64_avx512fp16_leaky_relu_f16_128n,
     isa(X86_64Avx512Fp16), boost(crate::isa::NEVER_PREFERRED));
-
-/// What the x86 tree still installs by hand: the panel extractors, whose asm needs AVX2.
-pub fn plug(ops: &mut Ops) {
-    if AVX2() && FMA() {
-        panel_extract::plug(ops);
-    }
-}
-
-inventory::submit! {
-    crate::ArchPlug {
-        arch: crate::isa::Arch::X86_64,
-        plug,
-    }
-}
 
 /// What CPUID says this core has, in the shared vocabulary.
 pub fn isa_set() -> crate::isa::IsaSet {
