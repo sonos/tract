@@ -468,25 +468,6 @@ routine!(aarch64; F16Reduce, ReduceMax, arm64fp16_max_f16_32n, isa(Aarch64Fp16))
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Reduce, ReduceSum, arm64fp16_sum_f16_32n, isa(Aarch64Fp16));
 
-routine!(aarch64; BinF32, BinUnicast(Mul), arm64simd_unicast_mul_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(Mul), arm64fp16_unicast_mul_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinUnicast(Add), arm64simd_unicast_add_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(Add), arm64fp16_unicast_add_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinUnicast(Sub), arm64simd_unicast_sub_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(Sub), arm64fp16_unicast_sub_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinUnicast(SubF), arm64simd_unicast_subf_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(SubF), arm64fp16_unicast_subf_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinUnicast(Min), arm64simd_unicast_min_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(Min), arm64fp16_unicast_min_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinUnicast(Max), arm64simd_unicast_max_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinUnicast(Max), arm64fp16_unicast_max_f16_32n, isa(Aarch64Fp16));
-
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
 /// always-SME default wherever the shape is pinned. Which chip this is and what the chip can run
 /// are separate questions — the model is fitted per microarchitecture, and whether its AMX or SME

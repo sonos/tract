@@ -1,4 +1,4 @@
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_mul_f32_16n,
     16,
@@ -32,10 +32,11 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Mul)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_add_f32_16n,
     16,
@@ -69,10 +70,11 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Add)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_sub_f32_16n,
     16,
@@ -106,10 +108,11 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Sub)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_subf_f32_16n,
     16,
@@ -143,10 +146,11 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(SubF)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_max_f32_16n,
     16,
@@ -180,10 +184,11 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Max)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f32,
     arm64simd_unicast_min_f32_16n,
     16,
@@ -217,47 +222,6 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Min)
 );
-
-#[cfg(test)]
-mod test_arm64simd_unicast_mul_f32_16n {
-    use super::*;
-    use proptest::strategy::Strategy;
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_mul_f32_16n,
-        |a, b| a * b
-    );
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_add_f32_16n,
-        |a, b| a + b
-    );
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_sub_f32_16n,
-        |a, b| a - b
-    );
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_subf_f32_16n,
-        |a, b| b - a
-    );
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_min_f32_16n,
-        |a, b| a.min(b)
-    );
-    crate::unicast_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_unicast_max_f32_16n,
-        |a, b| a.max(b)
-    );
-}
