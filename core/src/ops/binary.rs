@@ -402,7 +402,7 @@ impl TypedOp for TypedBinOp {
 
             let dt = model.node_input_facts(node.id)?[0].datum_type;
             if by_scalar_should_be_efficient & can_eval_in_a & !op_is_quant {
-                rule_if_some!(func = tract_linalg::bin_by_scalar(dt, actual_linalg_op));
+                rule_if_some!(func = tract_linalg::routines::bin_by_scalar(dt, actual_linalg_op));
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(
@@ -420,7 +420,7 @@ impl TypedOp for TypedBinOp {
             }
 
             if unicast_should_be_efficient & can_eval_in_a & !op_is_quant {
-                rule_if_some!(func = tract_linalg::bin_unicast(dt, actual_linalg_op));
+                rule_if_some!(func = tract_linalg::routines::bin_unicast(dt, actual_linalg_op));
                 let eval_fn = Arc::from(func);
                 return Ok(Some(
                     TypedModelPatch::replace_single_op(
@@ -1323,7 +1323,7 @@ mod tests {
         // and let the b-side go through cleanly.
         b = b.into_shape(&[1, 1, 640]).unwrap();
 
-        let linalg_fn = tract_linalg::bin_unicast(f32::datum_type(), BinOp::Add)
+        let linalg_fn = tract_linalg::routines::bin_unicast(f32::datum_type(), BinOp::Add)
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
 
@@ -1346,7 +1346,7 @@ mod tests {
     fn zero_sized_outer_dim_is_a_noop() {
         let a = Tensor::zero::<f32>(&[0, 4, 8]).unwrap();
         let b = Tensor::zero::<f32>(&[0, 4, 1]).unwrap();
-        let linalg_fn = tract_linalg::bin_by_scalar(f32::datum_type(), BinOp::Add)
+        let linalg_fn = tract_linalg::routines::bin_by_scalar(f32::datum_type(), BinOp::Add)
             .expect("f32 by_scalar Add kernel available");
         let op = OptBinByScalar {
             binop: Box::new(Add),
@@ -1358,7 +1358,7 @@ mod tests {
 
         let a = Tensor::zero::<f32>(&[0, 4, 16]).unwrap();
         let b = Tensor::zero::<f32>(&[1, 4, 16]).unwrap();
-        let linalg_fn = tract_linalg::bin_unicast(f32::datum_type(), BinOp::Add)
+        let linalg_fn = tract_linalg::routines::bin_unicast(f32::datum_type(), BinOp::Add)
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
         let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
