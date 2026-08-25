@@ -120,7 +120,6 @@ routine!(x86_64; F16, Hardswish, act_f16::x86_64_avx512_hardswish_f16_64n, isa(X
 routine!(x86_64; F16, Hardswish, act_f16_fp16::x86_64_avx512fp16_hardswish_f16_128n,
     isa(X86_64Avx512Fp16));
 
-routine!(x86_64; F32Param, MulByScalar, by_scalar::x86_64_avx_f32_mul_by_scalar_32n, isa(X86_64Avx));
 routine!(x86_64; F32Param, LeakyRelu, act::x86_64_avx512_leaky_relu_f32_64n, isa(X86_64Avx512f));
 routine!(x86_64; F16Param, LeakyRelu, act_f16::x86_64_avx512_leaky_relu_f16_64n, isa(X86_64Avx512f));
 

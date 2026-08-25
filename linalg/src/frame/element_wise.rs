@@ -148,7 +148,7 @@ macro_rules! ew_routine {
         }
         #[cfg(test)]
         paste! {
-            mod [<test_ $ker>] {
+            mod [<test_ $ker:snake>] {
                 use super::*;
                 [<$func:snake _frame_tests>]!(
                     cfg!($built)

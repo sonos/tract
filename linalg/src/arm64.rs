@@ -456,11 +456,8 @@ routine!(aarch64; F16, Tanh, arm64simd_tanh_f16_4n);
 routine!(aarch64; F16, Silu, arm64simd_silu_f16_lut_8n);
 
 routine!(aarch64; F32Param, LeakyRelu, arm64simd_leaky_relu_f32_8n);
-routine!(aarch64; F32Param, MulByScalar, arm64simd_mul_by_scalar_f32_16n);
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Param, LeakyRelu, arm64fp16_leaky_relu_f16_16n, isa(Aarch64Fp16));
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; F16Param, MulByScalar, arm64fp16_mul_by_scalar_f16_32n, isa(Aarch64Fp16));
 
 routine!(aarch64; F32Reduce, ReduceMax, arm64simd_max_f32_16n);
 routine!(aarch64; F32Reduce, ReduceMin, arm64simd_min_f32_16n);
@@ -471,24 +468,6 @@ routine!(aarch64; F16Reduce, ReduceMax, arm64fp16_max_f16_32n, isa(Aarch64Fp16))
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Reduce, ReduceSum, arm64fp16_sum_f16_32n, isa(Aarch64Fp16));
 
-routine!(aarch64; BinF32, BinByScalar(Mul), arm64simd_mul_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(Mul), arm64fp16_mul_by_scalar_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinByScalar(Add), arm64simd_add_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(Add), arm64fp16_add_by_scalar_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinByScalar(Sub), arm64simd_sub_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(Sub), arm64fp16_sub_by_scalar_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinByScalar(SubF), arm64simd_subf_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(SubF), arm64fp16_subf_by_scalar_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinByScalar(Min), arm64simd_min_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(Min), arm64fp16_min_by_scalar_f16_32n, isa(Aarch64Fp16));
-routine!(aarch64; BinF32, BinByScalar(Max), arm64simd_max_by_scalar_f32_16n);
-#[cfg(not(feature = "no_fp16"))]
-routine!(aarch64; BinF16, BinByScalar(Max), arm64fp16_max_by_scalar_f16_32n, isa(Aarch64Fp16));
 routine!(aarch64; BinF32, BinUnicast(Mul), arm64simd_unicast_mul_f32_16n);
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; BinF16, BinUnicast(Mul), arm64fp16_unicast_mul_f16_32n, isa(Aarch64Fp16));
