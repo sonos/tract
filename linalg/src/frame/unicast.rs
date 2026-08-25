@@ -10,6 +10,48 @@ use crate::{BinFn, LADatum};
 // A unicast binary kernel from a `run` body. A leading arch ident is for bodies that are
 // inline arch asm or intrinsics, which will not even compile elsewhere: those builds get a
 // signature-matched panic stub instead, so the kernel struct exists everywhere.
+/// Declare a unicast routine: the kernel, its registry descriptor and its accuracy tests, from one
+/// statement. `op` is what the kernel computes, which is what the tests compare against, and `isa`
+/// says which machines may run it, and therefore which may test it.
+macro_rules! routine_unicast_rust {
+    (arm; $($rest:tt)*) => { routine_unicast_rust!(@ arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => {
+        routine_unicast_rust!(@ aarch64, target_arch = "aarch64"; $($rest)*);
+    };
+    (x86_64; $($rest:tt)*) => {
+        routine_unicast_rust!(@ x86_64, target_arch = "x86_64"; $($rest)*);
+    };
+    (riscv64; $($rest:tt)*) => {
+        routine_unicast_rust!(@ riscv64, target_arch = "riscv64"; $($rest)*);
+    };
+    (wasm32; $($rest:tt)*) => {
+        routine_unicast_rust!(@ wasm32,
+            all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+    };
+    (portable; $($rest:tt)*) => { routine_unicast_rust!(@ portable, all(); $($rest)*); };
+
+    (@ $arch:ident, $built:meta; $ti:ident, $ker:ident, $nr:expr, $alignment_items:expr,
+     $run:item, op($op:ident) $(, isa($($isa:ident),+))?) => {
+        unicast_impl_wrap!(@ $built; $ti, $ker, $nr, $alignment_items, $run);
+        paste! {
+            routine!($arch; [<Bin $ti:upper>], BinUnicast($op), $ker $(, isa($($isa),+))?);
+            #[cfg(test)]
+            mod [<test_ $ker:snake>] {
+                use super::*;
+                unicast_frame_tests!(
+                    cfg!($built)
+                        && $crate::isa::IsaReq::ANY
+                            $(.needing(&[$($crate::isa::Isa::$isa),+]))?
+                            .satisfied_by($crate::isa::native()),
+                    $ti,
+                    $ker,
+                    bin_reference!($op)
+                );
+            }
+        }
+    };
+}
+
 macro_rules! unicast_impl_wrap {
     (arm; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { unicast_impl_wrap!(@ target_arch = "aarch64"; $($rest)*); };
@@ -233,7 +275,10 @@ pub mod test {
                 proptest::proptest! {
                     #[test]
                     fn [<prop_ $ker:snake>](
-                        (a, b) in (0..100_usize).prop_flat_map(|len| (vec![-25f32..25.0; len], vec![-25f32..25.0; len]))
+                        (a, b) in proptest::strategy::Strategy::prop_flat_map(
+                            0..100_usize,
+                            |len| (vec![-25f32..25.0; len], vec![-25f32..25.0; len])
+                        )
                     ) {
                         if $cond {
                             $crate::frame::unicast::test::test_unicast_t::<$ker, $t>(&*a, &*b, $func).unwrap()

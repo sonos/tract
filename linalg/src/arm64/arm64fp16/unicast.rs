@@ -1,6 +1,6 @@
 use tract_data::half::f16;
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_mul_f16_32n,
     32,
@@ -35,10 +35,12 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Mul),
+    isa(Aarch64Fp16)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_add_f16_32n,
     32,
@@ -73,10 +75,12 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Add),
+    isa(Aarch64Fp16)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_sub_f16_32n,
     32,
@@ -111,10 +115,12 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Sub),
+    isa(Aarch64Fp16)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_subf_f16_32n,
     32,
@@ -149,10 +155,12 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(SubF),
+    isa(Aarch64Fp16)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_min_f16_32n,
     32,
@@ -187,10 +195,12 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Min),
+    isa(Aarch64Fp16)
 );
 
-unicast_impl_wrap!(aarch64;
+routine_unicast_rust!(aarch64;
     f16,
     arm64fp16_unicast_max_f16_32n,
     32,
@@ -225,47 +235,7 @@ unicast_impl_wrap!(aarch64;
             }
         }
         unsafe { run(a, b) }
-    }
+    },
+    op(Max),
+    isa(Aarch64Fp16)
 );
-
-#[cfg(test)]
-mod test_arm64fp16_unicast_mul_f16_32n {
-    use super::*;
-    use proptest::strategy::Strategy;
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_mul_f16_32n,
-        |a, b| a * b
-    );
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_add_f16_32n,
-        |a, b| a + b
-    );
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_sub_f16_32n,
-        |a, b| a - b
-    );
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_subf_f16_32n,
-        |a, b| b - a
-    );
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_min_f16_32n,
-        |a, b| a.min(b)
-    );
-    crate::unicast_frame_tests!(
-        crate::arm64::has_fp16(),
-        f16,
-        arm64fp16_unicast_max_f16_32n,
-        |a, b| a.max(b)
-    );
-}
