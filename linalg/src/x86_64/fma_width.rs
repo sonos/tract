@@ -60,7 +60,7 @@ fn detect_fma_units() -> u8 {
         }
     }
     // VPDPBUSD (and the zmm 16x16 kernel) require AVX-512-VNNI; without it the
-    // wide kernel is never plugged, so the safe single-FMA answer is correct.
+    // wide kernel is never selected, so the safe single-FMA answer is correct.
     if !std::is_x86_feature_detected!("avx512vnni") {
         return 1;
     }

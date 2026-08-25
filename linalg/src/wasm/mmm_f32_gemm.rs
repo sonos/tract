@@ -995,7 +995,7 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
 }
 
 // ManuallyOptimized so kernel_selection::strategize honours the mmm_f32
-// callback that returns it for N>1 GEMM (see the `plug` comment) — otherwise
+// callback that returns it for N>1 GEMM (see the tier in `wasm.rs`) — otherwise
 // strategize drops it and routes every GEMM onto the 32x1 GEMV kernel.
 bail_stub!(wasm32; unsafe fn kernel_f32_8x8(*const FusedKerSpec<f32>) -> isize);
 

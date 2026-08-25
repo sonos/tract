@@ -102,15 +102,16 @@ impl Debug for PanelExtractInput {
 // the instruction set has to offer on top, in the same vocabulary as the mmm kernels.
 #[macro_export]
 macro_rules! panel_extractor {
-    (arm; $($rest:tt)*) => { panel_extractor!(@ target_arch = "arm"; $($rest)*); };
-    (aarch64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "aarch64"; $($rest)*); };
-    (x86_64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "x86_64"; $($rest)*); };
-    (riscv64; $($rest:tt)*) => { panel_extractor!(@ target_arch = "riscv64"; $($rest)*); };
+    (arm; $($rest:tt)*) => { panel_extractor!(@ Arm, target_arch = "arm"; $($rest)*); };
+    (aarch64; $($rest:tt)*) => { panel_extractor!(@ Aarch64, target_arch = "aarch64"; $($rest)*); };
+    (x86_64; $($rest:tt)*) => { panel_extractor!(@ X86_64, target_arch = "x86_64"; $($rest)*); };
+    (riscv64; $($rest:tt)*) => { panel_extractor!(@ RiscV64, target_arch = "riscv64"; $($rest)*); };
     (wasm32; $($rest:tt)*) => {
-        panel_extractor!(@ all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
+        panel_extractor!(@ Wasm32Simd128,
+            all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*);
     };
 
-    ( @ $built:meta;
+    ( @ $arch:ident, $built:meta;
         $func:path as $id:ident($from:expr, $to: expr)
             $(isa($($isa:ident),+))?
      ) => {
@@ -130,6 +131,13 @@ macro_rules! panel_extractor {
                             $(.needing(&[$($crate::isa::Isa::$isa),+]))?,
                     }
                 };
+            }
+
+            inventory::submit! {
+                $crate::mmm_routines::MmmExtractor {
+                    target: $crate::isa::Arch::$arch,
+                    make: || $id.clone(),
+                }
             }
 
             #[cfg(test)]

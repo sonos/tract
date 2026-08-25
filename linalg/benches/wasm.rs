@@ -704,7 +704,7 @@ mod util {
     use tract_linalg::mmm::MatMatMul;
 
     pub fn pick(name: &str) -> Box<dyn MatMatMul> {
-        let mut ops = tract_linalg::generic();
+        let mut ops = tract_linalg::native_ops();
         tract_linalg::wasm::plug(&mut ops);
         for impl_ in ops.runnable() {
             if impl_.name() == name {

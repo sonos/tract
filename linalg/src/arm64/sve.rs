@@ -1,5 +1,3 @@
-use crate::Ops;
-
 // `tract_sve` is set by build.rs only on aarch64-linux when the C compiler
 // supports SVE intrinsics. The kernel registration + extern live behind it so
 // non-SVE builds never reference the (absent) C symbol.
@@ -264,18 +262,6 @@ inventory::submit! {
 
 #[cfg(tract_sve)]
 routine!(aarch64; RmsNormF32, RmsNorm, "sve_rms_norm_f32", sve_rms_norm_f32, isa(Aarch64Sve2));
-
-pub fn plug(ops: &mut Ops) {
-    let _ = ops;
-    if crate::isa::native().has(crate::isa::Isa::Aarch64Sve2) {
-        #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-        log::info!("SVE2 optimisation available (VL = {} bytes)", rdvl_bytes());
-    } else if has_sve() {
-        log::info!("SVE (v1) present; SVE2 kernels not enabled");
-    } else {
-        log::info!("No SVE optimisation");
-    }
-}
 
 #[cfg(all(test, tract_sve))]
 mod rms_norm_tests {

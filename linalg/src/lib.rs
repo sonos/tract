@@ -22,8 +22,8 @@ include!(concat!(env!("OUT_DIR"), "/extern_kernel_macro.rs"));
 /// instructions — an asm block, an intrinsic, a CPUID probe — taking the argument types of
 /// the real item and bailing when called. `wasm32` means wasm32 *with* `simd128`, the two
 /// conditions the wasm kernels need. Needed only where something names the function on every
-/// arch: a codegen macro, or a `plug` the arch tree compiles everywhere but nothing except
-/// the native host ever calls. A plain `#[cfg]` covers the rest.
+/// arch: a codegen macro, or a descriptor the arch tree declares everywhere while only the
+/// native host ever calls what it names. A plain `#[cfg]` covers the rest.
 macro_rules! bail_stub {
     (arm; $($rest:tt)*) => { bail_stub!(@ target_arch = "arm"; $($rest)*); };
     (aarch64; $($rest:tt)*) => { bail_stub!(@ target_arch = "aarch64"; $($rest)*); };
@@ -278,15 +278,15 @@ inventory::submit! {
     }
 }
 
-/// The portable `Ops`, on the platform it is asked for: its runnable kernels and the tiers that
-/// speak for it. Both are functions of the platform, so mmm dispatch is settled here; what an
-/// arch `plug` still adds is the non-mmm kernel slots.
-pub fn generic_for(isa: IsaSet) -> Ops {
+/// The `Ops` a platform runs: its runnable kernels, the tiers that speak for it, and the panel
+/// extractors it can reach. All three are functions of the instruction set, so this is the whole
+/// of it -- nothing is installed by hand afterwards.
+pub fn for_isa(isa: IsaSet) -> Ops {
     let mut ops = Ops {
         isa,
         tiers: mmm_tiers::for_isa(&isa),
         runnable: vec![],
-        panel_extractors: vec![],
+        panel_extractors: mmm_routines::extractors_for(&isa),
         /*
         activation_f32: Box::new(|microcode| generic::SActivation::new(microcode))
         */
@@ -298,34 +298,9 @@ pub fn generic_for(isa: IsaSet) -> Ops {
     ops
 }
 
-/// The portable `Ops` for this host.
-pub fn generic() -> Ops {
-    generic_for(isa::native())
-}
-
-/// What an arch tree still installs by hand: the non-mmm kernel slots. mmm dispatch needs none of
-/// this — it is a function of the instruction set, through [`mmm_tiers`] and [`mmm_routines`].
-pub struct ArchPlug {
-    /// Arch the slots are written for. Not an `Option`, unlike
-    /// [`mmm_routines::MmmRoutine::target`]: a kernel can be portable, a tree is always
-    /// somebody's.
-    pub arch: Arch,
-    pub plug: fn(&mut Ops),
-}
-
-inventory::collect!(ArchPlug);
-
-/// Every arch tree compiled into this build, native or not.
-pub fn arch_plugs() -> impl Iterator<Item = &'static ArchPlug> {
-    inventory::iter::<ArchPlug>()
-}
-
-pub fn best() -> Ops {
-    let mut ops = generic();
-    for plug in arch_plugs().filter(|p| p.arch.is_native()) {
-        (plug.plug)(&mut ops);
-    }
-    ops
+/// The `Ops` this host runs.
+pub fn native_ops() -> Ops {
+    for_isa(isa::native())
 }
 
 /// `Ops` as `arch` sees them: its kernels, from [`mmm_routines::runnable_for`], under its own
@@ -339,17 +314,11 @@ pub fn inspect(arch: Arch) -> Option<Ops> {
         return None;
     }
     let isa = if arch.is_native() { isa::native() } else { isa::forced(IsaSet::of_arch(arch)) };
-    let mut ops = generic_for(isa);
-    for plug in arch_plugs().filter(|p| p.arch == arch) {
-        (plug.plug)(&mut ops);
-    }
-    Some(ops)
+    Some(for_isa(isa))
 }
 
 lazy_static::lazy_static! {
-    static ref OPS: Ops = {
-        best()
-    };
+    static ref OPS: Ops = native_ops();
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

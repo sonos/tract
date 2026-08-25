@@ -29,6 +29,35 @@ pub struct MmmRoutine {
 
 inventory::collect!(MmmRoutine);
 
+/// One panel extractor, enumerable uniformly on every host. Like [`MmmRoutine`] it carries only
+/// what the extractor cannot: which arch it belongs to. Whether this build compiled its body, and
+/// what the instruction set must offer, are fields of the [`PanelExtractor`] itself.
+pub struct MmmExtractor {
+    pub target: crate::isa::Arch,
+    pub make: fn() -> crate::mmm::PanelExtractor,
+}
+
+inventory::collect!(MmmExtractor);
+
+/// Every panel extractor this build compiled, whichever architecture it belongs to.
+pub fn declared_extractors() -> impl Iterator<Item = &'static MmmExtractor> {
+    inventory::iter::<MmmExtractor>()
+}
+
+/// The extractors a machine can run: its architecture's, needing nothing its instruction set
+/// lacks. An extractor this build did not compile stays out -- unlike a kernel, an extractor is
+/// only ever called, never enumerated for its metadata.
+pub fn extractors_for(isa: &crate::isa::IsaSet) -> Vec<crate::mmm::PanelExtractor> {
+    let Some(arch) = isa.arch() else { return vec![] };
+    let mut pool: Vec<crate::mmm::PanelExtractor> = declared_extractors()
+        .filter(|e| e.target == arch)
+        .map(|e| (e.make)())
+        .filter(|e| e.built && e.isa.satisfied_by(*isa))
+        .collect();
+    pool.sort_by(|a, b| a.name.cmp(&b.name));
+    pool
+}
+
 /// All registered mmm routines across every compiled-in target.
 pub fn declared() -> impl Iterator<Item = &'static MmmRoutine> {
     inventory::iter::<MmmRoutine>()
@@ -52,7 +81,7 @@ pub fn runnable_for(target: crate::isa::Arch) -> Vec<Box<dyn MatMatMul>> {
 }
 
 /// Every kernel this machine can run: what dispatch chooses from, whichever selection
-/// policy is plugged over it. Sorted by name, because `inventory` yields link order, which
+/// policy runs over it. Sorted by name, because `inventory` yields link order, which
 /// is not stable across builds, while position in the set still breaks ties in selection.
 pub fn runnable() -> Vec<Box<dyn MatMatMul>> {
     let mut pool: Vec<Box<dyn MatMatMul>> =

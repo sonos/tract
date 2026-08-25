@@ -1,14 +1,5 @@
-use crate::Ops;
 use crate::pack::{PackedFormat, Packing};
 use tract_data::internal::*;
-
-pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.extend([
-        packed_32_q40_to_f32.clone(),
-        packed_32_q20t_to_f32.clone(),
-        packed_32_f16_to_f32.clone(),
-    ]);
-}
 
 panel_extractor!(x86_64; kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::mmm::pq40_r32()),

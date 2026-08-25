@@ -2,7 +2,7 @@
 //!
 //! A tier is one architecture's opinion about which suitable kernel to run, for the accumulators
 //! and shapes it claims. Every tier is declared as data, so the whole ladder is enumerable on any
-//! host and its precedence is a field rather than the order some `plug` happened to run in.
+//! host and its precedence is a field rather than an order of registration.
 //!
 //! [`preferred`] asks the applicable tiers in descending [`MmmTier::precedence`] and takes the
 //! first answer that the query can actually reach. A tier with no opinion, or one naming a kernel

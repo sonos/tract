@@ -1,11 +1,6 @@
-use crate::Ops;
 use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
 use crate::pack::Packing;
 use tract_data::internal::*;
-
-pub fn plug(ops: &mut Ops) {
-    ops.panel_extractors.push(packed_64_q40_to_f16.clone());
-}
 
 panel_extractor!(aarch64; kernel_packed_64_q40_to_f16 as packed_64_q40_to_f16(
     Box::new(PackedBlockQuantFormat::new(&Q4_0, 64, 16, true)),
