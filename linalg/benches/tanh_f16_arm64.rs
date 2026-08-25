@@ -12,7 +12,9 @@ fn bench(c: &mut Criterion) {
         }
         let mut g = c.benchmark_group(format!("tanh_f16/{n}"));
         g.throughput(Throughput::Elements(n as u64));
-        g.bench_function("generic", |b| b.iter(|| tract_linalg::generic::HTanh8::run(input, ())));
+        g.bench_function("generic", |b| {
+            b.iter(|| tract_linalg::generic::tanh::HTanh8::run(input, ()))
+        });
         #[cfg(target_arch = "aarch64")]
         g.bench_function("f32-roundtrip", |b| {
             b.iter(|| tract_linalg::arm64::arm64simd_tanh_f16_4n::run(input, ()))
