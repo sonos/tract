@@ -676,11 +676,13 @@ mod bench_activations {
         let make = || (0..n).map(|i| ((i % 37) as f32 - 18.0) * 0.5).collect::<Vec<f32>>();
 
         let mut buf = make();
-        let scalar_sig = ns_per_call::<tract_linalg::generic::sigmoid::SSigmoid4>(&mut buf, iters);
+        let scalar_sig =
+            ns_per_call::<tract_linalg::generic::sigmoid::generic_sigmoid_f32_4n>(&mut buf, iters);
         let mut buf = make();
         let simd_sig = ns_per_call::<tract_linalg::wasm::WasmSigmoid4Relaxed>(&mut buf, iters);
         let mut buf = make();
-        let scalar_tanh = ns_per_call::<tract_linalg::generic::tanh::STanh4>(&mut buf, iters);
+        let scalar_tanh =
+            ns_per_call::<tract_linalg::generic::tanh::generic_tanh_f32_4n>(&mut buf, iters);
         let mut buf = make();
         let simd_tanh = ns_per_call::<tract_linalg::wasm::WasmTanh4Relaxed>(&mut buf, iters);
 

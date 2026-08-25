@@ -80,14 +80,14 @@ fn benches(c: &mut Criterion) {
             c,
             "hardswish_f32",
             "generic",
-            tract_linalg::generic::hardswish::SHardSwish4,
+            tract_linalg::generic::hardswish::generic_hardswish_f32_4n,
             x86_64_avx512_hardswish_f32_64n
         );
         bench_pair!(
             c,
             "leaky_relu_f32",
             "generic",
-            tract_linalg::generic::leaky_relu::SLeakyRelu4,
+            tract_linalg::generic::leaky_relu::generic_leaky_relu_f32_4n,
             x86_64_avx512_leaky_relu_f32_64n,
             0.1f32
         );
@@ -95,7 +95,7 @@ fn benches(c: &mut Criterion) {
             c,
             "gelu_f32",
             "generic",
-            tract_linalg::generic::gelu::SGelu4,
+            tract_linalg::generic::gelu::generic_gelu_f32_4n,
             x86_64_avx512_gelu_f32_16n
         );
     }

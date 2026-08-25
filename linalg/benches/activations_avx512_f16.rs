@@ -46,38 +46,38 @@ fn benches(c: &mut Criterion) {
         bench_pair!(
             c,
             "sigmoid_f16",
-            tract_linalg::generic::sigmoid::HSigmoid8,
+            tract_linalg::generic::sigmoid::generic_sigmoid_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_sigmoid_f16_16n
         );
         bench_pair!(
             c,
             "tanh_f16",
-            tract_linalg::generic::tanh::HTanh8,
+            tract_linalg::generic::tanh::generic_tanh_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_tanh_f16_16n
         );
         bench_pair!(
             c,
             "hardswish_f16",
-            tract_linalg::generic::hardswish::HHardSwish8,
+            tract_linalg::generic::hardswish::generic_hardswish_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_hardswish_f16_64n
         );
         bench_pair!(
             c,
             "leaky_relu_f16",
-            tract_linalg::generic::leaky_relu::HLeakyRelu8,
+            tract_linalg::generic::leaky_relu::generic_leaky_relu_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_leaky_relu_f16_64n,
             f16::from_f32(0.1)
         );
         bench_pair!(
             c,
             "silu_f16",
-            tract_linalg::generic::silu::HSiLU8,
+            tract_linalg::generic::silu::generic_silu_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_silu_f16_16n
         );
         bench_pair!(
             c,
             "gelu_f16",
-            tract_linalg::generic::gelu::HGelu8,
+            tract_linalg::generic::gelu::generic_gelu_f16_8n,
             tract_linalg::x86_64::act_f16::x86_64_avx512_gelu_f16_16n
         );
     }

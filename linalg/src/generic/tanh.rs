@@ -1,5 +1,4 @@
 #![allow(clippy::excessive_precision)]
-use crate::frame::element_wise::ElementWiseKer;
 use tract_data::internal::*;
 
 /// f32 tanh, as a rational minimax fit of `tanh` over `[LOW, HIGH]`.
@@ -79,71 +78,28 @@ pub fn htanh(x: f16) -> f16 {
     p / q
 }
 
-#[derive(Clone, Debug)]
-pub struct STanh4;
-
-impl ElementWiseKer<f32> for STanh4 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_items() -> usize {
-        16
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn nr() -> usize {
-        4
-    }
-
+routine_ew_rust!(generic;
+    f32,
+    generic_tanh_f32_4n,
+    4,
+    4,
     fn run(x: &mut [f32], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = stanh(*px))
-    }
-}
+    },
+    func(Tanh)
+);
 
-submit_routine!(F32, Tanh, STanh4);
-submit_routine!(F16, Tanh, HTanh8);
-
-#[cfg(test)]
-#[macro_use]
-pub mod s {
-    tanh_frame_tests!(true, f32, crate::generic::tanh::STanh4);
-}
-
-#[derive(Clone, Debug)]
-pub struct HTanh8;
-
-impl ElementWiseKer<f16> for HTanh8 {
-    fn name() -> &'static str {
-        "generic"
-    }
-
-    fn alignment_items() -> usize {
-        16
-    }
-
-    fn alignment_bytes() -> usize {
-        16
-    }
-
-    fn nr() -> usize {
-        8
-    }
-
+routine_ew_rust!(generic;
+    f16,
+    generic_tanh_f16_8n,
+    8,
+    8,
     fn run(x: &mut [f16], _: ()) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         x.iter_mut().for_each(|px| *px = htanh(*px))
-    }
-}
-
-#[cfg(test)]
-#[macro_use]
-pub mod h {
-    tanh_frame_tests!(true, tract_data::internal::f16, crate::generic::tanh::HTanh8);
-}
+    },
+    func(Tanh)
+);

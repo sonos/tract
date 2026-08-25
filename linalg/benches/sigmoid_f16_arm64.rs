@@ -29,7 +29,7 @@ fn sigmoid_f16(c: &mut Criterion) {
         let mut tg = aligned_input(n);
         let sg = unsafe { tg.as_slice_mut_unchecked::<f16>() };
         group.bench_with_input(BenchmarkId::new("generic", n), &(), |b, _| {
-            b.iter(|| tract_linalg::generic::sigmoid::HSigmoid8::run(sg, ()))
+            b.iter(|| tract_linalg::generic::sigmoid::generic_sigmoid_f16_8n::run(sg, ()))
         });
 
         let mut tf = aligned_input(n);
