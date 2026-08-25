@@ -33,23 +33,14 @@ use crate::mmm::{Query, Suitable};
 // https://en.wikipedia.org/wiki/Comparison_of_ARMv8-A_cores
 const PART_A53: &str = "0xd03";
 const PART_A55: &str = "0xd05";
-#[allow(dead_code)]
 const PART_A72: &str = "0xd08";
-#[allow(dead_code)]
 const PART_A73: &str = "0xd09";
-#[allow(dead_code)]
 const PART_A75: &str = "0xd0a";
-#[allow(dead_code)]
 const PART_NEOVERSE_N1: &str = "0xd0c";
-#[allow(dead_code)]
 const PART_NEOVERSE_N2: &str = "0xd49";
-#[allow(dead_code)]
 const PART_NEOVERSE_N3: &str = "0xd8e";
-#[allow(dead_code)]
 const PART_NEOVERSE_V1: &str = "0xd40";
-#[allow(dead_code)]
 const PART_NEOVERSE_V2: &str = "0xd4f";
-#[allow(dead_code)]
 const PART_NEOVERSE_V3: &str = "0xd83";
 
 fn max_cpuid() -> std::io::Result<String> {

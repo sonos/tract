@@ -500,6 +500,32 @@ where
 mod tests {
     use super::*;
 
+    /// A declared kernel no machine would ever choose is either a mistake -- the wrong instruction
+    /// set, or a sibling that dominates it -- or one kept for its tests, which says so by
+    /// declining. Nothing else is reachable, and nothing would notice.
+    #[test]
+    fn a_kernel_nothing_can_choose_says_so() {
+        let mut chosen = std::collections::HashSet::new();
+        for isa in IsaSet::every_ladder() {
+            for func in Func::ALL {
+                for dt in [DatumType::F32, DatumType::F16, DatumType::U8] {
+                    if let Some(r) = best_for(func, dt, &isa) {
+                        chosen.insert((func, dt, r.name()));
+                    }
+                }
+            }
+        }
+        for r in declared() {
+            assert!(
+                chosen.contains(&(r.func, r.dt(), r.name())) || r.boost < 0,
+                "{} {:?} {} can never be chosen, and does not decline",
+                r.func.name(),
+                r.dt(),
+                r.name()
+            );
+        }
+    }
+
     /// A pair with no kernel fails rather than falling back on something that computes a
     /// different thing. f16 erf is the standing example: no tree has one, and core builds a
     /// look-up table from the f32 kernel instead of asking for it.

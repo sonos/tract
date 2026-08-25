@@ -19,8 +19,6 @@
 
 use tract_data::internal::f16;
 
-const FP16_TARGETS: &str = "avx512f,avx512fp16,avx512bw";
-
 // hardswish(x) = x * clamp(x + 3, 0, 6) * (1/6).
 // 128 f16 per iter (4 zmm × 32 lanes), 256 bytes / iter — same memory throughput
 // as the f32 kernel's 64 f32 / iter.
@@ -199,7 +197,3 @@ pub mod test_x86_64_avx512fp16_leaky_relu {
         x86_64_avx512fp16_leaky_relu_f16_128n
     );
 }
-
-// Suppress unused-const lint until we expand to more kernels.
-#[allow(dead_code)]
-const _UNUSED: &str = FP16_TARGETS;
