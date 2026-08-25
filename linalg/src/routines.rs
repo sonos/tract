@@ -96,6 +96,28 @@ impl Func {
         Func::BIN[11],
     ];
 
+    /// Where this function sits in [`Self::ALL`], which is what indexes the dispatch table.
+    fn slot(self) -> usize {
+        match self {
+            Func::Sigmoid => 0,
+            Func::Tanh => 1,
+            Func::Silu => 2,
+            Func::Gelu => 3,
+            Func::Erf => 4,
+            Func::Hardswish => 5,
+            Func::ReduceMax => 6,
+            Func::ReduceMin => 7,
+            Func::ReduceSum => 8,
+            Func::Softmax2 => 9,
+            Func::RmsNorm => 10,
+            Func::Lut => 11,
+            Func::LeakyRelu => 12,
+            Func::MulByScalar => 13,
+            Func::BinByScalar(op) => 14 + op as usize,
+            Func::BinUnicast(op) => 20 + op as usize,
+        }
+    }
+
     /// The name the matrix and the logs use.
     pub fn name(&self) -> &'static str {
         match self {
@@ -136,9 +158,9 @@ impl Func {
     /// than a substitution: what a machine has no kernel for is what the matrix is there to show, and
     /// a caller that quietly computed something else would hide it.
     fn best_here(self, dt: DatumType) -> TractResult<&'static Routine> {
-        let isa = crate::isa::native();
-        best_for(self, dt, &isa)
-            .with_context(|| format!("No {} kernel for {dt:?} on {isa:?}", self.name()))
+        native_best(self, dt).with_context(|| {
+            format!("No {} kernel for {dt:?} on {:?}", self.name(), crate::isa::native())
+        })
     }
 
     /// The f32 kernel this host runs for `func`.
@@ -204,7 +226,7 @@ impl Func {
     /// the other accessors this one is optional rather than fallible: its callers rewrite a model
     /// only when a kernel exists, and having none is an ordinary answer rather than a failure.
     pub fn bin(self, dt: DatumType) -> Option<Box<crate::BinFn>> {
-        match best_for(self, dt, &crate::isa::native())?.factory {
+        match native_best(self, dt)?.factory {
             RoutineFactory::BinF32 { make, .. } | RoutineFactory::BinF16 { make, .. } => {
                 Some(make())
             }
@@ -330,6 +352,32 @@ pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Rout
     declared()
         .filter(|r| r.func == func && r.dt() == dt && r.runnable_on(isa))
         .max_by_key(|r| (r.arch.is_some(), r.preference(), r.name()))
+}
+
+/// The kernel this host runs for a function and datum type, resolved once. Dispatch happens per
+/// eval, so the scan over every declared routine runs at first use and the answers are kept in a
+/// flat table nothing has to hash.
+fn native_best(func: Func, dt: DatumType) -> Option<&'static Routine> {
+    const SLOTS: usize = Func::ALL.len() * 3;
+    static NATIVE: std::sync::OnceLock<[Option<&'static Routine>; SLOTS]> =
+        std::sync::OnceLock::new();
+    let dt_slot = match dt {
+        DatumType::F32 => 0,
+        DatumType::F16 => 1,
+        DatumType::U8 => 2,
+        _ => return None,
+    };
+    NATIVE.get_or_init(|| {
+        let isa = crate::isa::native();
+        let mut table = [None; SLOTS];
+        for func in Func::ALL {
+            for (dt_slot, dt) in [DatumType::F32, DatumType::F16, DatumType::U8].iter().enumerate()
+            {
+                table[func.slot() * 3 + dt_slot] = best_for(func, *dt, &isa);
+            }
+        }
+        table
+    })[func.slot() * 3 + dt_slot]
 }
 
 /// The fused row-wise RmsNorm this host runs: the row and the epsilon, in place.
@@ -499,6 +547,29 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The dispatch table is indexed by [`Func::slot`], so every function must own one slot
+    /// inside it, and the cache must answer what a fresh scan would.
+    #[test]
+    fn every_func_owns_a_slot() {
+        let mut slots = std::collections::HashSet::new();
+        for func in Func::ALL {
+            assert!(func.slot() < Func::ALL.len(), "{} is out of the table", func.name());
+            assert!(slots.insert(func.slot()), "{} shares a slot", func.name());
+        }
+        assert_eq!(slots.len(), Func::ALL.len());
+        let isa = crate::isa::native();
+        for func in Func::ALL {
+            for dt in [DatumType::F32, DatumType::F16, DatumType::U8] {
+                assert_eq!(
+                    native_best(func, dt).map(|r| r.name()),
+                    best_for(func, dt, &isa).map(|r| r.name()),
+                    "{} {dt:?}",
+                    func.name()
+                );
+            }
+        }
+    }
 
     /// A declared kernel no machine would ever choose is either a mistake -- the wrong instruction
     /// set, or a sibling that dominates it -- or one kept for its tests, which says so by
