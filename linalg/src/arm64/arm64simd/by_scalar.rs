@@ -1,9 +1,8 @@
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_mul_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -27,15 +26,17 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(Mul),
+    bin,
+    param(MulByScalar)
 );
 
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_add_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -59,15 +60,16 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(Add),
+    bin
 );
 
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_sub_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -91,15 +93,16 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(Sub),
+    bin
 );
 
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_subf_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -123,15 +126,16 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(SubF),
+    bin
 );
 
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_min_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -155,15 +159,16 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(Min),
+    bin
 );
 
-by_scalar_impl_wrap!(aarch64;
+routine_by_scalar_rust!(aarch64;
     f32,
     arm64simd_max_by_scalar_f32_16n,
     16,
     4,
-    f32,
     fn run(buf: &mut [f32], s: f32) {
         assert!(buf.len() % 16 == 0);
         assert!(buf.len() > 0);
@@ -187,46 +192,7 @@ by_scalar_impl_wrap!(aarch64;
             in("v0") s,
             out("v4") _, out("v5") _, out("v6") _, out("v7") _,);
         }
-    }
+    },
+    op(Max),
+    bin
 );
-
-#[cfg(test)]
-mod test_arm64simd_mul_by_scalar_f32_16n {
-    use super::*;
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_mul_by_scalar_f32_16n,
-        |a, b| a * b
-    );
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_add_by_scalar_f32_16n,
-        |a, b| a + b
-    );
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_sub_by_scalar_f32_16n,
-        |a, b| a - b
-    );
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_subf_by_scalar_f32_16n,
-        |a, b| b - a
-    );
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_min_by_scalar_f32_16n,
-        |a, b| a.min(b)
-    );
-    by_scalar_frame_tests!(
-        cfg!(target_arch = "aarch64"),
-        f32,
-        arm64simd_max_by_scalar_f32_16n,
-        |a, b| a.max(b)
-    );
-}

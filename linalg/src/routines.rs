@@ -407,6 +407,7 @@ macro_rules! routine {
     (x86_64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::X86_64); $($rest)*); };
     (riscv64; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::RiscV64); $($rest)*); };
     (wasm32; $($rest:tt)*) => { routine!(@ Some($crate::isa::Arch::Wasm32Simd128); $($rest)*); };
+    (portable; $($rest:tt)*) => { routine!(@ None; $($rest)*); };
 
     ($factory:ident, $($rest:tt)*) => { routine!(@ None; $factory, $($rest)*); };
 

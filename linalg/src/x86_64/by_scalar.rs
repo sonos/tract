@@ -1,14 +1,16 @@
-ew_impl_wrap!(x86_64;
+routine_by_scalar_rust!(x86_64;
     f32,
     x86_64_avx_f32_mul_by_scalar_32n,
     32,
     8,
-    f32,
     fn run(x: &mut [f32], s: f32) {
         debug_assert!(x.len() % Self::nr() == 0);
         debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
         unsafe { x86_64_avx_f32_mul_by_scalar_32n_run(x, s) }
-    }
+    },
+    op(Mul),
+    param(MulByScalar),
+    isa(X86_64Avx)
 );
 
 #[cfg(target_arch = "x86_64")]
@@ -44,16 +46,4 @@ unsafe fn x86_64_avx_f32_mul_by_scalar_32n_run(buf: &mut [f32], scalar: f32) {
         out("ymm4") _, out("ymm5") _, out("ymm6") _, out("ymm7") _
         );
     }
-}
-
-#[cfg(all(test, target_arch = "x86_64"))]
-#[macro_use]
-pub mod test_x86_64_avx_f32_mul_by_scalar_32n {
-    use super::*;
-    by_scalar_frame_tests!(
-        is_x86_feature_detected!("avx"),
-        f32,
-        x86_64_avx_f32_mul_by_scalar_32n,
-        |a, b| a * b
-    );
 }
