@@ -41,10 +41,33 @@ pub enum Func {
     Softmax2,
     RmsNorm,
     Lut,
+    /// A binary operation with the scalar broadcast over the whole slice.
+    BinByScalar(crate::BinOp),
+    /// A binary operation between two slices of the same length.
+    BinUnicast(crate::BinOp),
 }
 
 impl Func {
-    pub const ALL: [Func; 14] = [
+    /// Every binary operation, in both layouts: what [`Self::ALL`] ends with.
+    const BIN: [Func; 12] = {
+        use crate::BinOp::*;
+        [
+            Func::BinByScalar(Min),
+            Func::BinByScalar(Max),
+            Func::BinByScalar(Add),
+            Func::BinByScalar(Mul),
+            Func::BinByScalar(Sub),
+            Func::BinByScalar(SubF),
+            Func::BinUnicast(Min),
+            Func::BinUnicast(Max),
+            Func::BinUnicast(Add),
+            Func::BinUnicast(Mul),
+            Func::BinUnicast(Sub),
+            Func::BinUnicast(SubF),
+        ]
+    };
+
+    pub const ALL: [Func; 26] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
@@ -59,6 +82,18 @@ impl Func {
         Func::Lut,
         Func::LeakyRelu,
         Func::MulByScalar,
+        Func::BIN[0],
+        Func::BIN[1],
+        Func::BIN[2],
+        Func::BIN[3],
+        Func::BIN[4],
+        Func::BIN[5],
+        Func::BIN[6],
+        Func::BIN[7],
+        Func::BIN[8],
+        Func::BIN[9],
+        Func::BIN[10],
+        Func::BIN[11],
     ];
 
     /// The name the matrix and the logs use.
@@ -78,6 +113,22 @@ impl Func {
             Func::Softmax2 => "softmax2",
             Func::RmsNorm => "rms_norm",
             Func::Lut => "lut",
+            Func::BinByScalar(op) => match op {
+                crate::BinOp::Min => "by_scalar_min",
+                crate::BinOp::Max => "by_scalar_max",
+                crate::BinOp::Add => "by_scalar_add",
+                crate::BinOp::Mul => "by_scalar_mul",
+                crate::BinOp::Sub => "by_scalar_sub",
+                crate::BinOp::SubF => "by_scalar_subf",
+            },
+            Func::BinUnicast(op) => match op {
+                crate::BinOp::Min => "unicast_min",
+                crate::BinOp::Max => "unicast_max",
+                crate::BinOp::Add => "unicast_add",
+                crate::BinOp::Mul => "unicast_mul",
+                crate::BinOp::Sub => "unicast_sub",
+                crate::BinOp::SubF => "unicast_subf",
+            },
         }
     }
 }
@@ -106,6 +157,16 @@ pub enum RoutineFactory {
     LutU8 {
         name: fn() -> &'static str,
         make: fn(&[u8]) -> Box<dyn Lut>,
+    },
+    /// A binary kernel, over two tensor views. Type-erased like the views themselves, so the
+    /// datum type is the arm and the name a field.
+    BinF32 {
+        name: fn() -> &'static str,
+        make: fn() -> Box<crate::LinalgFn>,
+    },
+    BinF16 {
+        name: fn() -> &'static str,
+        make: fn() -> Box<crate::LinalgFn>,
     },
 }
 
@@ -139,6 +200,8 @@ impl Routine {
                 DatumType::F16
             }
             RoutineFactory::LutU8 { .. } => DatumType::U8,
+            RoutineFactory::BinF32 { .. } => DatumType::F32,
+            RoutineFactory::BinF16 { .. } => DatumType::F16,
         }
     }
 
@@ -156,6 +219,7 @@ impl Routine {
             RoutineFactory::F32MapReduce(f) => f().name(),
             RoutineFactory::RmsNormF32 { name, .. } => name,
             RoutineFactory::LutU8 { name, .. } => name(),
+            RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => name(),
         }
     }
 
@@ -272,6 +336,26 @@ pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
     }
 }
 
+/// The binary kernel this host runs for `func` and datum type, `None` when it has none. Unlike
+/// the other accessors this one is optional rather than fallible: its callers rewrite a model
+/// only when a kernel exists, and having none is an ordinary answer rather than a failure.
+pub fn bin(func: Func, dt: DatumType) -> Option<Box<crate::LinalgFn>> {
+    match best_for(func, dt, &crate::isa::native())?.factory {
+        RoutineFactory::BinF32 { make, .. } | RoutineFactory::BinF16 { make, .. } => Some(make()),
+        _ => None,
+    }
+}
+
+/// The by-scalar kernel for `op`, broadcasting one scalar over a slice.
+pub fn bin_by_scalar(dt: DatumType, op: crate::BinOp) -> Option<Box<crate::LinalgFn>> {
+    bin(Func::BinByScalar(op), dt)
+}
+
+/// The unicast kernel for `op`, over two slices of the same length.
+pub fn bin_unicast(dt: DatumType, op: crate::BinOp) -> Option<Box<crate::LinalgFn>> {
+    bin(Func::BinUnicast(op), dt)
+}
+
 /// Declare one kernel, under the leading architecture ident the kernel-declaration macros take,
 /// or with no ident at all for portable Rust every target builds. The first argument names the
 /// factory arm, which is what says the kernel's shape and datum type; `isa` is omitted for a
@@ -293,6 +377,42 @@ macro_rules! routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::RmsNormF32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; BinF32, BinByScalar($op:ident), $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
+            $crate::routines::RoutineFactory::BinF32 {
+                name: <$ker as $crate::element_wise::ElementWiseKer<f32, f32>>::name,
+                make: <$ker as $crate::by_scalar::ByScalarKer<f32>>::bin,
+            }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; BinF16, BinByScalar($op:ident), $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@@ $arch, BinByScalar($crate::BinOp::$op),
+            $crate::routines::RoutineFactory::BinF16 {
+                name: <$ker as $crate::element_wise::ElementWiseKer<$crate::f16, $crate::f16>>::name,
+                make: <$ker as $crate::by_scalar::ByScalarKer<$crate::f16>>::bin,
+            }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; BinF32, BinUnicast($op:ident), $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
+            $crate::routines::RoutineFactory::BinF32 {
+                name: <$ker as $crate::unicast::UnicastKer<f32>>::name,
+                make: <$ker as $crate::unicast::UnicastKer<f32>>::bin,
+            }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; BinF16, BinUnicast($op:ident), $ker:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        routine!(@@ $arch, BinUnicast($crate::BinOp::$op),
+            $crate::routines::RoutineFactory::BinF16 {
+                name: <$ker as $crate::unicast::UnicastKer<$crate::f16>>::name,
+                make: <$ker as $crate::unicast::UnicastKer<$crate::f16>>::bin,
+            }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; LutU8, $func:ident, $ker:path
@@ -333,11 +453,11 @@ macro_rules! routine {
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
 
-    (@@ $arch:expr, $func:ident, $factory:expr
+    (@@ $arch:expr, $func:ident $(($($payload:tt)*))?, $factory:expr
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         inventory::submit! {
             $crate::routines::Routine {
-                func: $crate::routines::Func::$func,
+                func: $crate::routines::Func::$func $(($($payload)*))?,
                 arch: $arch,
                 isa: $crate::isa::IsaReq::ANY $(.needing(&[$($crate::isa::Isa::$isa),+]))?,
                 boost: {
@@ -421,6 +541,9 @@ mod tests {
                     RoutineFactory::F32MapReduce(_) => map_reduce_f32(func).map(|k| k.name()),
                     RoutineFactory::RmsNormF32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
+                    RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => {
+                        bin(func, dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))
+                    }
                 };
                 assert_eq!(
                     built.map_err(|e| e.to_string()),
@@ -461,6 +584,9 @@ mod tests {
             (3, Func::Softmax2, DatumType::F32, "x86_64_avx512_softmax2_f32_64n"),
             (1, Func::RmsNorm, DatumType::F32, "generic"),
             (3, Func::RmsNorm, DatumType::F32, "x86_64_avx512_rms_norm_f32"),
+            // No binary kernel at any x86 tier: both layouts are portable everywhere.
+            (3, Func::BinByScalar(crate::BinOp::Mul), DatumType::F32, "SMulByScalar4"),
+            (3, Func::BinUnicast(crate::BinOp::Add), DatumType::F32, "SUnicastAdd4"),
         ] {
             let isa = IsaSet::ladder(Arch::X86_64, level);
             assert_eq!(
@@ -503,6 +629,20 @@ mod tests {
             // No arm64 softmax2 kernel, and no f16 reduction below fp16.
             (Func::Softmax2, DatumType::F32, Some("SSoftMaxL2Accurate")),
             (Func::ReduceMax, DatumType::F16, Some("HMax8")),
+            (
+                Func::BinByScalar(crate::BinOp::Mul),
+                DatumType::F32,
+                Some("arm64simd_mul_by_scalar_f32_16n"),
+            ),
+            (
+                Func::BinUnicast(crate::BinOp::Add),
+                DatumType::F32,
+                Some("arm64simd_unicast_add_f32_16n"),
+            ),
+            // Nothing computes an f16 binary op without the fp16 tree: the portable kernels for
+            // these were deleted, nothing having been able to reach them.
+            (Func::BinByScalar(crate::BinOp::Mul), DatumType::F16, None),
+            (Func::BinUnicast(crate::BinOp::Add), DatumType::F16, None),
         ] {
             assert_eq!(
                 best_for(func, dt, &neon).map(|r| r.name()),
@@ -525,6 +665,16 @@ mod tests {
                 (Func::MulByScalar, DatumType::F16, "arm64fp16_mul_by_scalar_f16_32n"),
                 (Func::ReduceMax, DatumType::F16, "arm64fp16_max_f16_32n"),
                 (Func::ReduceSum, DatumType::F16, "arm64fp16_sum_f16_32n"),
+                (
+                    Func::BinByScalar(crate::BinOp::Mul),
+                    DatumType::F16,
+                    "arm64fp16_mul_by_scalar_f16_32n",
+                ),
+                (
+                    Func::BinUnicast(crate::BinOp::Add),
+                    DatumType::F16,
+                    "arm64fp16_unicast_add_f16_32n",
+                ),
             ] {
                 assert_eq!(
                     best_for(func, dt, &fp16).map(|r| r.name()),

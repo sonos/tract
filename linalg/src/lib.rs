@@ -59,7 +59,6 @@ pub mod multithread;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use isa::{Arch, IsaSet};
-use lazy_static::lazy_static;
 use mmm::{
     ImplementationQuality, MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality,
 };
@@ -333,7 +332,7 @@ lazy_static::lazy_static! {
     static ref OPS: Ops = native_ops();
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum BinOp {
     Min,
     Max,
@@ -354,59 +353,15 @@ impl BinOp {
     }
 }
 
-fn register_all_unicast(registry: &mut LinalgRegistry) {
-    generic::register_all_unicast(registry);
-    #[cfg(target_arch = "aarch64")]
-    arm64::register_all_unicast(registry);
-}
-
-fn register_all_by_scalar(registry: &mut LinalgRegistry) {
-    generic::register_all_by_scalar(registry);
-    #[cfg(target_arch = "aarch64")]
-    arm64::register_all_by_scalar(registry);
-}
-
 pub type LinalgFn = dyn Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync;
-type LinalgRegistry = HashMap<(BinOp, DatumType), Box<dyn Fn() -> Box<LinalgFn> + Send + Sync>>;
-lazy_static! {
-    static ref BIN_UNICAST_OPS: Mutex<LinalgRegistry> = {
-        let mut registry = HashMap::default();
-        register_all_unicast(&mut registry);
-        Mutex::new(registry)
-    };
-    static ref BIN_BY_SCALAR_OPS: Mutex<LinalgRegistry> = {
-        let mut registry = HashMap::default();
-        register_all_by_scalar(&mut registry);
-        Mutex::new(registry)
-    };
-}
-
-pub fn bin_by_scalar(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
-    let map = BIN_BY_SCALAR_OPS.lock().unwrap();
-    if (dt == DatumType::F16) && !has_fp16() {
-        return None;
-    }
-    map.get(&(bin, dt)).map(|it| (it)())
-}
-
-pub fn bin_unicast(dt: DatumType, bin: BinOp) -> Option<Box<LinalgFn>> {
-    let map = BIN_UNICAST_OPS.lock().unwrap();
-    if (dt == DatumType::F16) && !has_fp16() {
-        return None;
-    }
-    map.get(&(bin, dt)).map(|it| (it)())
-}
-
 pub fn ops() -> &'static Ops {
     &OPS
 }
 
 use dyn_eq::DynEq;
 use num_traits::*;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::ops::*;
-use std::sync::Mutex;
 
 pub trait LADatum:
     Sized

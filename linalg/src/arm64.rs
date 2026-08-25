@@ -22,12 +22,10 @@ pub mod arm64fp16;
 #[cfg(not(feature = "no_fp16"))]
 pub use arm64fp16::*;
 
+use crate::DatumType;
 #[cfg(target_arch = "aarch64")]
 use crate::f16;
-use crate::{BinOp, DatumType, LinalgRegistry};
 
-use crate::frame::by_scalar::ByScalarKer;
-use crate::frame::unicast::UnicastKer;
 use crate::isa::Isa;
 use crate::isa::IsaSet;
 use crate::mmm::{Query, Suitable};
@@ -345,68 +343,6 @@ impl Kind {
     }
 }
 
-// Called only under `#[cfg(target_arch = "aarch64")]` in lib.rs; the module itself compiles
-// everywhere, so it is dead on a foreign host until the binop registry is universalised.
-#[allow(dead_code)]
-pub(crate) fn register_all_unicast(registry: &mut LinalgRegistry) {
-    registry
-        .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_unicast_mul_f32_16n::bin()));
-    registry
-        .insert((BinOp::Mul, DatumType::F16), Box::new(|| arm64fp16_unicast_mul_f16_32n::bin()));
-    registry
-        .insert((BinOp::Add, DatumType::F32), Box::new(|| arm64simd_unicast_add_f32_16n::bin()));
-    registry
-        .insert((BinOp::Add, DatumType::F16), Box::new(|| arm64fp16_unicast_add_f16_32n::bin()));
-    registry
-        .insert((BinOp::Sub, DatumType::F32), Box::new(|| arm64simd_unicast_sub_f32_16n::bin()));
-    registry
-        .insert((BinOp::Sub, DatumType::F16), Box::new(|| arm64fp16_unicast_sub_f16_32n::bin()));
-    registry
-        .insert((BinOp::SubF, DatumType::F32), Box::new(|| arm64simd_unicast_subf_f32_16n::bin()));
-    registry
-        .insert((BinOp::SubF, DatumType::F16), Box::new(|| arm64fp16_unicast_subf_f16_32n::bin()));
-    registry
-        .insert((BinOp::Min, DatumType::F32), Box::new(|| arm64simd_unicast_min_f32_16n::bin()));
-    registry
-        .insert((BinOp::Min, DatumType::F16), Box::new(|| arm64fp16_unicast_min_f16_32n::bin()));
-    registry
-        .insert((BinOp::Max, DatumType::F32), Box::new(|| arm64simd_unicast_max_f32_16n::bin()));
-    registry
-        .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_unicast_max_f16_32n::bin()));
-}
-
-#[allow(dead_code)]
-pub(crate) fn register_all_by_scalar(registry: &mut LinalgRegistry) {
-    registry
-        .insert((BinOp::Mul, DatumType::F32), Box::new(|| arm64simd_mul_by_scalar_f32_16n::bin()));
-    registry
-        .insert((BinOp::Mul, DatumType::F16), Box::new(|| arm64fp16_mul_by_scalar_f16_32n::bin()));
-    registry
-        .insert((BinOp::Add, DatumType::F32), Box::new(|| arm64simd_add_by_scalar_f32_16n::bin()));
-    registry
-        .insert((BinOp::Add, DatumType::F16), Box::new(|| arm64fp16_add_by_scalar_f16_32n::bin()));
-    registry
-        .insert((BinOp::Sub, DatumType::F32), Box::new(|| arm64simd_sub_by_scalar_f32_16n::bin()));
-    registry
-        .insert((BinOp::Sub, DatumType::F16), Box::new(|| arm64fp16_sub_by_scalar_f16_32n::bin()));
-    registry.insert(
-        (BinOp::SubF, DatumType::F32),
-        Box::new(|| arm64simd_subf_by_scalar_f32_16n::bin()),
-    );
-    registry.insert(
-        (BinOp::SubF, DatumType::F16),
-        Box::new(|| arm64fp16_subf_by_scalar_f16_32n::bin()),
-    );
-    registry
-        .insert((BinOp::Min, DatumType::F32), Box::new(|| arm64simd_min_by_scalar_f32_16n::bin()));
-    registry
-        .insert((BinOp::Min, DatumType::F16), Box::new(|| arm64fp16_min_by_scalar_f16_32n::bin()));
-    registry
-        .insert((BinOp::Max, DatumType::F32), Box::new(|| arm64simd_max_by_scalar_f32_16n::bin()));
-    registry
-        .insert((BinOp::Max, DatumType::F16), Box::new(|| arm64fp16_max_by_scalar_f16_32n::bin()));
-}
-
 /// SDOT (~4x the SMLAL 8x8) when FEAT_DotProd is present, else the SMLAL 8x8 fallback. The SDOT
 /// kernel only exists when the assembler could encode `sdot` (`tract_arm64_dotprod`, set by
 /// build.rs); otherwise always use the SMLAL 8x8.
@@ -543,6 +479,43 @@ routine!(aarch64; RmsNormF32, RmsNorm, "arm64simd_rms_norm_f32", arm64simd_rms_n
 routine!(aarch64; F16Reduce, ReduceMax, arm64fp16_max_f16_32n, isa(Aarch64Fp16));
 #[cfg(not(feature = "no_fp16"))]
 routine!(aarch64; F16Reduce, ReduceSum, arm64fp16_sum_f16_32n, isa(Aarch64Fp16));
+
+routine!(aarch64; BinF32, BinByScalar(Mul), arm64simd_mul_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(Mul), arm64fp16_mul_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinByScalar(Add), arm64simd_add_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(Add), arm64fp16_add_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinByScalar(Sub), arm64simd_sub_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(Sub), arm64fp16_sub_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinByScalar(SubF), arm64simd_subf_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(SubF), arm64fp16_subf_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinByScalar(Min), arm64simd_min_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(Min), arm64fp16_min_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinByScalar(Max), arm64simd_max_by_scalar_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinByScalar(Max), arm64fp16_max_by_scalar_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(Mul), arm64simd_unicast_mul_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(Mul), arm64fp16_unicast_mul_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(Add), arm64simd_unicast_add_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(Add), arm64fp16_unicast_add_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(Sub), arm64simd_unicast_sub_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(Sub), arm64fp16_unicast_sub_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(SubF), arm64simd_unicast_subf_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(SubF), arm64fp16_unicast_subf_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(Min), arm64simd_unicast_min_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(Min), arm64fp16_unicast_min_f16_32n, isa(Aarch64Fp16));
+routine!(aarch64; BinF32, BinUnicast(Max), arm64simd_unicast_max_f32_16n);
+#[cfg(not(feature = "no_fp16"))]
+routine!(aarch64; BinF16, BinUnicast(Max), arm64fp16_unicast_max_f16_32n, isa(Aarch64Fp16));
 
 /// The per-chip Apple f32 cost model, the top rung: it refines the AMX heuristic and the
 /// always-SME default wherever the shape is pinned. Which chip this is and what the chip can run
