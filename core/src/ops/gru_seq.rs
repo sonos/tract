@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ops::{FrozenOpState, OpStateFreeze};
 use tract_linalg::mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul};
+use tract_linalg::pack::PackedFormat;
 use tract_ndarray::prelude::*;
 
 /// The recurrent weight `R`, packed once and reused for every timestep of every
@@ -173,7 +174,7 @@ impl GruSeq {
         let (mmm, pa) = packed_r.as_ref().unwrap();
         let (_, pack_b) = &mmm.packings()[0];
 
-        let mut ht: Array2<f32> = match carry.as_ref() {
+        let mut ht: Tensor = match carry.as_ref() {
             Some(c) => squeeze_state(c, h)?,
             None => squeeze_state(h0, h)?,
         };
@@ -182,10 +183,18 @@ impl GruSeq {
         let sigmoid = (ops.sigmoid_f32)();
         let tanh = (ops.tanh_f32)();
 
-        // Everything the loop needs, allocated once.
-        let mut rh = Array2::<f32>::zeros((batch, 3 * h));
-        let mut rh_t = unsafe { Tensor::uninitialized_dt(f32::datum_type(), &[3 * h, batch])? };
-        let mut h_next = Array2::<f32>::zeros((batch, h));
+        // Everything the loop needs, allocated once -- including the packed form of
+        // the per-step state. `prepare_one` would allocate a fresh panel buffer on
+        // every timestep; the buffer's size depends only on `h` and `batch`, so it
+        // is built here and refilled in place instead.
+        let pf = pack_b
+            .downcast_ref::<PackedFormat>()
+            .context("recurrent product expects a plainly packed B side")?;
+        let mut packed_ht = pf.new_packed_buffer(h, batch)?;
+        // The recurrent product is stored straight into its [batch, 3*h] layout by
+        // stride, so the step needs no transposing copy out of a [3*h, batch] temp.
+        let mut rh = Tensor::zero::<f32>(&[batch, 3 * h])?;
+        let mut h_next = Tensor::zero::<f32>(&[batch, h])?;
         let mut y = Array3::<f32>::zeros((batch, t_len, h));
 
         for step in 0..t_len {
@@ -193,33 +202,33 @@ impl GruSeq {
 
             // rh = h_prev . R^T (+ R-side bias), written into the same buffer each step.
             {
-                // h_prev as [h, batch] for the transposed product.
-                let ht_t = ht.t().as_standard_layout().to_owned().into_tensor();
-                let pb = pack_b.prepare_one(&ht_t, 0, 1)?;
+                // ht is [batch, h]; the product wants [h, batch], which the packer
+                // reaches by stride, so the state never needs transposing into a
+                // temporary.
+                pf.repack_tensor_view(&mut packed_ht, &ht.view(), 1, 0)?;
+                let pb = &packed_ht;
                 unsafe {
-                    let c = mmm.c_view(Some(0), Some(1)).wrap(&rh_t.view_mut());
+                    let c = mmm.c_view(Some(1), Some(0)).wrap(&rh.view_mut());
                     mmm.run(
                         3 * h,
                         batch,
                         &[
                             FusedSpec::AddMatMul {
                                 a: AsInputValue::Borrowed(&**pa),
-                                b: AsInputValue::Borrowed(&*pb),
+                                b: AsInputValue::Borrowed(pb),
                                 packing: 0,
                             },
                             FusedSpec::Store(c),
                         ],
                     )?;
                 }
-                let rh_v = rh_t.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?;
-                for bi in 0..batch {
-                    let mut out = rh.row_mut(bi);
-                    for j in 0..3 * h {
-                        out[j] = rh_v[[j, bi]];
-                    }
-                }
                 if let Some(rb) = &rb {
-                    rh += &rb.view().insert_axis(Axis(0));
+                    let rb = rb.as_slice().context("R-side bias not contiguous")?;
+                    for row in rh.try_as_plain_mut()?.as_slice_mut::<f32>()?.chunks_mut(3 * h) {
+                        for (o, b) in row.iter_mut().zip(rb) {
+                            *o += b;
+                        }
+                    }
                 }
             }
 
@@ -229,29 +238,30 @@ impl GruSeq {
                 h,
                 batch,
                 xh_row,
-                rh.as_slice().context("rh not contiguous")?,
-                ht.as_slice().context("ht not contiguous")?,
-                h_next.as_slice_mut().context("h_next not contiguous")?,
+                rh.try_as_plain()?.as_slice::<f32>()?,
+                ht.try_as_plain()?.as_slice::<f32>()?,
+                h_next.try_as_plain_mut()?.as_slice_mut::<f32>()?,
                 &*sigmoid,
                 &*tanh,
             )?;
             std::mem::swap(&mut ht, &mut h_next);
-            y.slice_mut(s![.., t, ..]).assign(&ht);
+            y.slice_mut(s![.., t, ..])
+                .assign(&ht.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?);
         }
 
-        *carry = Some(ht.clone().into_tensor());
-        let h_out = ht.insert_axis(Axis(1)); // back to [batch, 1, hidden]
-        Ok(tvec!(y.into_tensor().into(), h_out.into_tensor().into()))
+        *carry = Some(ht.clone());
+        let mut h_out = ht;
+        h_out.insert_axis(1)?; // back to [batch, 1, hidden]
+        Ok(tvec!(y.into_tensor().into(), h_out.into()))
     }
 }
 
 /// initial_h and the state slot are chunk-shaped [batch, 1, hidden].
-fn squeeze_state(t: &Tensor, _h: usize) -> TractResult<Array2<f32>> {
-    let v = t.to_plain_array_view::<f32>()?;
-    Ok(match v.ndim() {
-        3 => v.into_dimensionality::<Ix3>()?.index_axis_move(Axis(1), 0).to_owned(),
-        _ => v.into_dimensionality::<Ix2>()?.to_owned(),
-    })
+fn squeeze_state(t: &Tensor, h: usize) -> TractResult<Tensor> {
+    let mut t = t.clone().into_tensor();
+    let batch = t.len() / h.max(1);
+    t.set_shape(&[batch, h])?;
+    Ok(t)
 }
 
 impl TypedOp for GruSeq {

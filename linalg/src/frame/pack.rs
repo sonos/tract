@@ -2,6 +2,7 @@ use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
 use std::ops::Range;
+use std::sync::Arc;
 use tract_data::internal::*;
 
 use crate::mmm::{
@@ -243,6 +244,71 @@ impl PackedFormat {
                 mn,
             }))
         }
+    }
+
+    /// Allocate a packed buffer for a `k` x `mn` operand, to be refilled by
+    /// [`Self::repack_tensor_view`] on each use instead of reallocated.
+    ///
+    /// An operand that changes every call but keeps its shape -- a recurrent
+    /// state stepped through a sequence, say -- would otherwise pay a fresh
+    /// allocation per step for a buffer whose size never changes.
+    pub fn new_packed_buffer(&self, k: usize, mn: usize) -> TractResult<EagerPackedInput> {
+        ensure!(self.dt.is_copy());
+        let packed_len = self.len(k, mn);
+        let packed = unsafe {
+            let mut blob =
+                Blob::new_for_size_and_align(self.dt.size_of() * packed_len, self.alignment_bytes);
+            blob.as_bytes_mut().fill(0u8);
+            blob
+        };
+        Ok(EagerPackedInput {
+            fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
+            packed: packed.into(),
+            panel_bytes: self.single_panel_len(k) * self.dt.size_of(),
+            mn,
+        })
+    }
+
+    /// Refill a buffer from [`Self::new_packed_buffer`] with `t`, in place.
+    ///
+    /// `dst` must have been built by this format for the same `k` and `mn` as
+    /// `t` presents on `k_axis` and `mn_axis`, and must not be shared -- a
+    /// second holder of its panels would see them change underneath.
+    pub fn repack_tensor_view(
+        &self,
+        dst: &mut EagerPackedInput,
+        t: &TensorView,
+        k_axis: usize,
+        mn_axis: usize,
+    ) -> TractResult<()> {
+        ensure!(
+            t.datum_type().unquantized() == self.dt.unquantized(),
+            "Attempting to pack for {self} tensor view {t:?}"
+        );
+        let k = t.shape()[k_axis];
+        let mn = t.shape()[mn_axis];
+        ensure!(
+            dst.fact.k == k && dst.mn == mn && dst.fact.format.dyn_eq(self),
+            "Packed buffer is {:?} for k={} mn={}, repacking a k={k} mn={mn} view",
+            dst.fact.format,
+            dst.fact.k,
+            dst.mn
+        );
+        let strides = t.strides();
+        let packed = Arc::get_mut(&mut dst.packed).context("Packed buffer is shared")?;
+        unsafe {
+            dispatch_copy!(Self::pack_t(t.datum_type())(
+                self,
+                packed.as_mut_ptr() as _,
+                t.as_ptr_unchecked(),
+                mn,
+                strides[k_axis],
+                strides[mn_axis],
+                0..k,
+                0..mn
+            ));
+        }
+        Ok(())
     }
 
     pub unsafe fn pack<'a, 'b>(
