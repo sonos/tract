@@ -1,12 +1,10 @@
 use tract_data::half::f16;
 
-reduce_impl_wrap!(aarch64;
+routine_reduce_rust!(aarch64;
     f16,
     arm64fp16_max_f16_32n,
     32,
     8,
-    (),
-    f16::MIN,
     #[inline(never)]
     fn run(buf: &[f16], _: ()) -> f16 {
         assert!(buf.len() % 32 == 0);
@@ -50,14 +48,6 @@ reduce_impl_wrap!(aarch64;
         }
         unsafe { run(buf) }
     },
-    #[inline(never)]
-    fn reduce_two(a: f16, b: f16) -> f16 {
-        a.max(b)
-    }
+    op(Max),
+    isa(Aarch64Fp16)
 );
-
-#[cfg(test)]
-mod test_arm64fp16_max_f16_32n {
-    use super::*;
-    crate::max_frame_tests!(crate::arm64::has_fp16(), f16, arm64fp16_max_f16_32n);
-}

@@ -5,13 +5,11 @@
 // combined with `total_cmp` so the result matches the generic kernels exactly,
 // NaN ordering included.
 
-reduce_impl_wrap!(wasm32;
+routine_reduce_rust!(wasm32;
     f32,
     wasm_max_f32_32n,
     32,
     4,
-    (),
-    f32::MIN,
     #[inline(never)]
     fn run(x: &[f32], _: ()) -> f32 {
         use std::arch::wasm32::*;
@@ -46,18 +44,14 @@ reduce_impl_wrap!(wasm32;
             m
         }
     },
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        if a.total_cmp(&b) == std::cmp::Ordering::Greater { a } else { b }
-    }
+    op(Max)
 );
 
-reduce_impl_wrap!(wasm32;
+routine_reduce_rust!(wasm32;
     f32,
     wasm_min_f32_32n,
     32,
     4,
-    (),
-    f32::MAX,
     #[inline(never)]
     fn run(x: &[f32], _: ()) -> f32 {
         use std::arch::wasm32::*;
@@ -92,18 +86,14 @@ reduce_impl_wrap!(wasm32;
             m
         }
     },
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        if a.total_cmp(&b) == std::cmp::Ordering::Less { a } else { b }
-    }
+    op(Min)
 );
 
-reduce_impl_wrap!(wasm32;
+routine_reduce_rust!(wasm32;
     f32,
     wasm_sum_f32_32n,
     32,
     4,
-    (),
-    0f32,
     #[inline(never)]
     fn run(x: &[f32], _: ()) -> f32 {
         use std::arch::wasm32::*;
@@ -132,9 +122,7 @@ reduce_impl_wrap!(wasm32;
             sum
         }
     },
-    fn reduce_two(a: f32, b: f32) -> f32 {
-        a + b
-    }
+    op(Sum)
 );
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
@@ -177,13 +165,11 @@ fn widen_f16(h: v128) -> v128 {
     v128_or(sign, v128_andnot(normal, is_zero))
 }
 
-reduce_impl_wrap!(wasm32;
+routine_reduce_rust!(wasm32;
     f16,
     wasm_max_f16_32n,
     32,
     8,
-    (),
-    f16::MIN,
     #[inline(never)]
     fn run(x: &[f16], _: ()) -> f16 {
         use std::arch::wasm32::*;
@@ -219,18 +205,14 @@ reduce_impl_wrap!(wasm32;
         }
         out
     },
-    fn reduce_two(a: f16, b: f16) -> f16 {
-        if a.total_cmp(&b) == std::cmp::Ordering::Greater { a } else { b }
-    }
+    op(Max)
 );
 
-reduce_impl_wrap!(wasm32;
+routine_reduce_rust!(wasm32;
     f16,
     wasm_sum_f16_32n,
     32,
     8,
-    (),
-    f16::ZERO,
     #[inline(never)]
     fn run(x: &[f16], _: ()) -> f16 {
         use std::arch::wasm32::*;
@@ -265,40 +247,8 @@ reduce_impl_wrap!(wasm32;
         }
         f16::from_f32(out)
     },
-    fn reduce_two(a: f16, b: f16) -> f16 {
-        a + b
-    }
+    op(Sum)
 );
-
-#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
-mod test_max {
-    use super::*;
-    crate::max_frame_tests!(true, f32, wasm_max_f32_32n);
-}
-
-#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
-mod test_min {
-    use super::*;
-    crate::min_frame_tests!(true, f32, wasm_min_f32_32n);
-}
-
-#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
-mod test_sum {
-    use super::*;
-    crate::sum_frame_tests!(true, f32, wasm_sum_f32_32n);
-}
-
-#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
-mod test_max_f16 {
-    use super::*;
-    crate::max_frame_tests!(true, f16, wasm_max_f16_32n);
-}
-
-#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
-mod test_sum_f16 {
-    use super::*;
-    crate::sum_frame_tests!(true, f16, wasm_sum_f16_32n);
-}
 
 /// RMS-normalises `buf` in place: each element is divided by the root of the
 /// mean square plus `eps`. The sum of squares keeps sixteen independent
