@@ -413,3 +413,94 @@ fn test_tensor_methods() -> anyhow::Result<()> {
     assert_eq!(floats, same);
     Ok(())
 }
+
+fn options(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
+    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+#[test]
+fn test_onnx_load_with_options_ignoring_value_info() -> anyhow::Result<()> {
+    ensure_models()?;
+    let model = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUE_INFO", "true")]))?
+        .into_model()?
+        .into_runnable()?;
+    let result = model.run([grace_hopper()])?;
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_assertions() -> anyhow::Result<()> {
+    ensure_models()?;
+    let model = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", &options(&[("ASSERTIONS", "n>=0; m>=0")]))?
+        .into_model()?
+        .into_runnable()?;
+    let result = model.run([grace_hopper()])?;
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_buffer_with_options() -> anyhow::Result<()> {
+    ensure_models()?;
+    let buffer = std::fs::read("mobilenetv2-7.onnx")?;
+    let model = onnx()?
+        .load_buffer_with_options(&buffer, &options(&[("ONNX_IGNORE_VALUE_INFO", "1")]))?
+        .into_model()?
+        .into_runnable()?;
+    let result = model.run([grace_hopper()])?;
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_unknown_key() -> anyhow::Result<()> {
+    ensure_models()?;
+    // A key that is nearly right is the case that matters: it must not be
+    // silently ignored, or a misspelling looks exactly like an option that took
+    // effect.
+    let err = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUEINFO", "1")]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("ONNX_IGNORE_VALUEINFO"), "{err}");
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_unparsable_value() -> anyhow::Result<()> {
+    ensure_models()?;
+    let err = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUE_INFO", "maybe")]))
+        .unwrap_err()
+        .to_string();
+    assert!(err.contains("maybe"), "{err}");
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_malformed_assertion() -> anyhow::Result<()> {
+    ensure_models()?;
+    let err = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", &options(&[("ASSERTIONS", "n >>>")]))
+        .unwrap_err()
+        .to_string();
+    assert!(!err.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_accepts_booleans_in_any_case() -> anyhow::Result<()> {
+    ensure_models()?;
+    for value in ["1", "yes", "TRUE", "On", "0", "no", "False", "OFF"] {
+        onnx()?
+            .load_with_options(
+                "mobilenetv2-7.onnx",
+                &options(&[("ONNX_IGNORE_VALUE_INFO", value)]),
+            )
+            .unwrap_or_else(|e| panic!("{value:?} should parse as a boolean: {e}"));
+    }
+    Ok(())
+}

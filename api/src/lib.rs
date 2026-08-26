@@ -1,5 +1,6 @@
 use anyhow::{Result, ensure};
 use boow::Bow;
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 
@@ -99,9 +100,42 @@ pub trait NnefInterface: Debug + Sized {
 
 pub trait OnnxInterface: Debug {
     type InferenceModel: InferenceModelInterface;
-    fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel>;
+
+    /// Load a ONNX model from a file into an InferenceModel.
+    fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
+        self.load_with_options(path, &HashMap::new())
+    }
+
     /// Load a ONNX model from a buffer into an InferenceModel.
-    fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel>;
+    fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel> {
+        self.load_buffer_with_options(data, &HashMap::new())
+    }
+
+    /// Load a ONNX model from a file, configuring the loader with `options`.
+    ///
+    /// An unknown key, or a value that can not be parsed, is an error instead of
+    /// being ignored, so a misspelled key can not look like one that worked.
+    ///
+    /// * `ONNX_IGNORE_VALUE_INFO`: discard the shapes the model file declares and
+    ///   let tract infer them instead. `1`, `yes`, `true` and `on` are true, `0`,
+    ///   `no`, `false` and `off` are false, in any case.
+    /// * `ASSERTIONS`: `;`-separated assertions over the model symbols, applied
+    ///   once the model is parsed, for instance `h>=0; w>=0`. Each one goes to
+    ///   tract's assertion parser unchanged.
+    fn load_with_options(
+        &self,
+        path: impl AsRef<Path>,
+        options: &HashMap<String, String>,
+    ) -> Result<Self::InferenceModel>;
+
+    /// Load a ONNX model from a buffer, configuring the loader with `options`.
+    ///
+    /// See [`OnnxInterface::load_with_options`] for the accepted keys.
+    fn load_buffer_with_options(
+        &self,
+        data: &[u8],
+        options: &HashMap<String, String>,
+    ) -> Result<Self::InferenceModel>;
 }
 
 pub trait InferenceModelInterface: Debug + Sized {

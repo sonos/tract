@@ -2,6 +2,7 @@
 
 use anyhow::{Context, Result};
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ffi::{CStr, CString, c_char, c_void};
 use tract::{State, Tensor};
 use tract_api::{
@@ -309,6 +310,81 @@ pub unsafe extern "C" fn tract_onnx_load(
         *model = std::ptr::null_mut();
         let path = CStr::from_ptr(path).to_str()?;
         let m = Box::new(TractInferenceModel((*onnx).0.load(path)?));
+        *model = Box::into_raw(m);
+        Ok(())
+    })
+}
+
+/// Read `len` key and value pairs from two parallel arrays of null-terminated
+/// utf-8 strings.
+unsafe fn read_options(
+    keys: *const *const c_char,
+    values: *const *const c_char,
+    len: usize,
+) -> Result<HashMap<String, String>> {
+    if len == 0 {
+        return Ok(HashMap::new());
+    }
+    check_not_null!(keys, values);
+    let mut options = HashMap::new();
+    for i in 0..len {
+        unsafe {
+            let key = *keys.add(i);
+            let value = *values.add(i);
+            check_not_null!(key, value);
+            options.insert(
+                CStr::from_ptr(key).to_str()?.to_string(),
+                CStr::from_ptr(value).to_str()?.to_string(),
+            );
+        }
+    }
+    Ok(options)
+}
+
+/// Parse and load an ONNX model as a tract InferenceModel, with loader options.
+///
+/// `option_keys` and `option_values` are two parallel arrays of `option_len`
+/// null-terminated utf-8 strings. See `OnnxInterface::load_with_options` in the
+/// Rust API for the keys. An unknown key is an error.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_onnx_load_with_options(
+    onnx: *const TractOnnx,
+    path: *const c_char,
+    option_keys: *const *const c_char,
+    option_values: *const *const c_char,
+    option_len: usize,
+    model: *mut *mut TractInferenceModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(onnx, path, model);
+        *model = std::ptr::null_mut();
+        let path = CStr::from_ptr(path).to_str()?;
+        let options = read_options(option_keys, option_values, option_len)?;
+        let m = Box::new(TractInferenceModel((*onnx).0.load_with_options(path, &options)?));
+        *model = Box::into_raw(m);
+        Ok(())
+    })
+}
+
+/// Parse and load an ONNX buffer as a tract InferenceModel, with loader options.
+///
+/// See `tract_onnx_load_with_options` for the option arrays.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_onnx_load_buffer_with_options(
+    onnx: *const TractOnnx,
+    data: *const c_void,
+    len: usize,
+    option_keys: *const *const c_char,
+    option_values: *const *const c_char,
+    option_len: usize,
+    model: *mut *mut TractInferenceModel,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(onnx, data, model);
+        *model = std::ptr::null_mut();
+        let data = std::slice::from_raw_parts(data as *const u8, len);
+        let options = read_options(option_keys, option_values, option_len)?;
+        let m = Box::new(TractInferenceModel((*onnx).0.load_buffer_with_options(data, &options)?));
         *model = Box::into_raw(m);
         Ok(())
     })

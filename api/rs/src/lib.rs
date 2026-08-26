@@ -5,12 +5,13 @@ extern crate tract_metal;
 extern crate tract_cuda;
 extern crate tract_transformers;
 
+use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use tract_extra::WithTractExtra;
 use tract_libcli::annotations::Annotations;
 use tract_libcli::profile::BenchLimits;
@@ -148,15 +149,79 @@ impl Debug for Onnx {
     }
 }
 
-impl OnnxInterface for Onnx {
-    type InferenceModel = InferenceModel;
-    fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
-        Ok(InferenceModel(self.0.model_for_path(path)?))
+/// The parsed form of the option map `OnnxInterface::load_with_options` accepts.
+#[derive(Default)]
+struct OnnxOptions {
+    ignore_value_info: bool,
+    assertions: Vec<String>,
+}
+
+impl OnnxOptions {
+    /// An unknown key, or a value that does not parse, is refused. Ignoring one
+    /// would make a misspelled key behave exactly like a key that worked.
+    fn parse(options: &HashMap<String, String>) -> Result<OnnxOptions> {
+        let mut parsed = OnnxOptions::default();
+        for (key, value) in options {
+            match &**key {
+                "ONNX_IGNORE_VALUE_INFO" => {
+                    parsed.ignore_value_info = match &*value.to_lowercase() {
+                        "1" | "yes" | "true" | "on" => true,
+                        "0" | "no" | "false" | "off" => false,
+                        _ => bail!("Expected a boolean for {key}, got {value:?}"),
+                    }
+                }
+                "ASSERTIONS" => {
+                    parsed.assertions = value
+                        .split(';')
+                        .map(str::trim)
+                        .filter(|it| !it.is_empty())
+                        .map(String::from)
+                        .collect()
+                }
+                _ => bail!("Unknown ONNX loading option {key:?}"),
+            }
+        }
+        Ok(parsed)
     }
 
-    fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel> {
-        let m = self.0.model_for_read(&mut Cursor::new(data))?;
-        Ok(InferenceModel(m))
+    /// Assertions are applied once the model is parsed. They only need to hold
+    /// before shapes are unified, which happens later.
+    fn apply(&self, model: &tract_onnx::prelude::InferenceModel) -> Result<()> {
+        for assertion in &self.assertions {
+            model
+                .symbols
+                .add_assertion(assertion)
+                .with_context(|| format!("Adding assertion {assertion:?}"))?;
+        }
+        Ok(())
+    }
+}
+
+impl OnnxInterface for Onnx {
+    type InferenceModel = InferenceModel;
+
+    fn load_with_options(
+        &self,
+        path: impl AsRef<Path>,
+        options: &HashMap<String, String>,
+    ) -> Result<Self::InferenceModel> {
+        let options = OnnxOptions::parse(options)?;
+        let onnx = self.0.clone().with_ignore_value_info(options.ignore_value_info);
+        let model = onnx.model_for_path(path)?;
+        options.apply(&model)?;
+        Ok(InferenceModel(model))
+    }
+
+    fn load_buffer_with_options(
+        &self,
+        data: &[u8],
+        options: &HashMap<String, String>,
+    ) -> Result<Self::InferenceModel> {
+        let options = OnnxOptions::parse(options)?;
+        let onnx = self.0.clone().with_ignore_value_info(options.ignore_value_info);
+        let model = onnx.model_for_read(&mut Cursor::new(data))?;
+        options.apply(&model)?;
+        Ok(InferenceModel(model))
     }
 }
 
