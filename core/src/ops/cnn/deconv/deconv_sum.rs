@@ -521,7 +521,7 @@ crate::declare_knob!(
 ///
 /// Inputs: `kernel` `[C, HkWk, 1]`, `input` `[N, C, 1, HW]`, `bias` (output-shaped).
 #[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
-pub struct DepthwiseDeconvSum {
+pub struct DepthwiseDeconv {
     pub pool_spec: PoolSpec,
     pub kernel_format: KernelFormat,
     pub input_shape: ShapeFact,
@@ -529,14 +529,14 @@ pub struct DepthwiseDeconvSum {
     pub group: usize,
 }
 
-impl Op for DepthwiseDeconvSum {
+impl Op for DepthwiseDeconv {
     fn name(&self) -> StaticName {
-        "DepthwiseDeconvSum".into()
+        "DepthwiseDeconv".into()
     }
     op_as_typed_op!();
 }
 
-impl EvalOp for DepthwiseDeconvSum {
+impl EvalOp for DepthwiseDeconv {
     fn is_stateless(&self) -> bool {
         true
     }
@@ -580,7 +580,7 @@ impl EvalOp for DepthwiseDeconvSum {
     }
 }
 
-impl DepthwiseDeconvSum {
+impl DepthwiseDeconv {
     /// Rank-2 fused path, mirroring `main_loop_2d`'s pointer walk: the geometry
     /// bounds are tested once per (kx, ix, ky, iy) as there, and the innermost loop
     /// runs over channels, where kernel and input are both contiguous.
@@ -732,7 +732,7 @@ impl DepthwiseDeconvSum {
     }
 }
 
-impl TypedOp for DepthwiseDeconvSum {
+impl TypedOp for DepthwiseDeconv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 3);
         let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
