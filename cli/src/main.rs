@@ -44,6 +44,7 @@ mod llm;
 mod memory_arena;
 mod params;
 mod plan_options;
+mod routines;
 mod run;
 mod selection;
 mod tensor;
@@ -188,6 +189,16 @@ fn main() -> TractResult<()> {
         .subcommand(Command::new("list-ops").about("List ops in TF/ONNX frameworks"))
         .subcommand(Command::new("list-runtimes").about("List runtimes"))
         .subcommand(Command::new("kernels").about("Print kernels for the current platform"))
+        .subcommand(
+            Command::new("routines")
+                .about("Print the single-winner kernel matrix: every function by every machine")
+                .arg(
+                    Arg::new("names")
+                        .long("names")
+                        .num_args(0)
+                        .help("Name the kernel in each cell instead of what it needs to run"),
+                ),
+        )
         .subcommand(Command::new("selection").about(
             "Dump what mmm selection answers for every machine, as one diffable sweep",
         ))
@@ -835,6 +846,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-report", m)) => return bench_report::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-mt-report", m)) => return bench_report::handle_mt(m),
+        Some(("routines", m)) => return routines::dump(m.get_flag("names")),
         Some(("selection", _)) => return selection::dump(),
         Some(("kernels", _)) => {
             println!();

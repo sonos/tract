@@ -82,6 +82,16 @@ Nothing conjures a kernel this toolchain never assembled: SVE and SME sit behind
 was only declared — which is why the aarch64 rows above sve2 offer nothing new on
 a host whose assembler refused it.
 
+`tract routines` does the same for the single-winner kernels — the element-wise
+functions, reductions and binaries, which have no shape to weigh and so pick one
+implementation per machine. It draws the function × machine grid, green where a
+machine runs a kernel written for its architecture and red where it falls back on
+portable Rust, with a column for the host and a gap list of what this machine runs
+portably that another machine has a real kernel for. Cells name what the winning
+kernel needs from the instruction set; `--names` names the kernel instead, which
+also shows which of several fallbacks a cell got — a look-up table, a fused
+variant, the vector width — at the cost of a much wider terminal.
+
 ## Tuning knobs
 
 A handful of `TRACT_*` env vars steer kernel selection and CPU detection

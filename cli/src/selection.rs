@@ -40,7 +40,7 @@ fn dim(d: Option<usize>) -> String {
 /// Every distinct machine the ladders describe, in a fixed order. Consecutive rungs that add no
 /// feature tract has a kernel behind collapse, so an architecture contributes one entry per
 /// cohort that actually differs rather than one per level.
-fn machines() -> Vec<IsaSet> {
+pub(crate) fn machines() -> Vec<IsaSet> {
     let mut machines: Vec<IsaSet> = vec![];
     for isa in IsaSet::every_ladder() {
         if machines.last() != Some(&isa) {
