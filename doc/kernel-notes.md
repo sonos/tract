@@ -45,6 +45,35 @@ Populate `scale` from an `hwbench` run at a padding-neutral `N` (one divisible b
 every `nr`, e.g. `120` — the default `512` unfairly favours power-of-two `nr`):
 `tract hwbench 512,512,120`, then normalise the column to the fastest kernel.
 
+## Inspecting dispatch
+
+`tract selection` dumps what mmm selection answers for every machine, not just
+this one: the declared kernels, each architecture's runnable set, the resolved
+tier ladder, and per accumulator and shape the tier's answer, the answer
+selection honours, the pick, and the set that survives `retain_best`. The shape
+sweep is hard-coded so that two dumps always compare, which is the point — dump
+before and after a dispatch change on the same host and diff it, rather than
+arguing about what moved.
+
+It is not a golden file. A few tiers read the machine rather than the instruction
+set — the Apple chip generation, the Cortex model behind the a53/a55 boosts, the
+AMX virtualisation heuristic, `TRACT_AMX_BF16` — so one revision dumps
+differently on two hosts. Diff two builds on one host, and run it on the board
+when the board is the question.
+
+The sweep is synthetic, so it covers every cohort with no knob set — but for the
+architecture this host actually is, a built kernel is kept only when the host's own
+instruction set can run it (`runnable` reads the probed set, not the row's). The
+native rows therefore describe machines no smaller than this host, and
+`TRACT_CPU_ISA` (`+sve2`, `-avx512f`, …) is how to shrink it: it edits the probed
+set and moves the picks as lesser hardware would. Foreign rows are unaffected,
+their kernels being unbuilt metadata. Either way the effect is the same in two
+dumps from one host, so it cancels in a diff.
+
+Nothing conjures a kernel this toolchain never assembled: SVE and SME sit behind
+`build.rs` assembler probes, and the `DECL` rows say `built=false` for a tree that
+was only declared.
+
 ## Tuning knobs
 
 A handful of `TRACT_*` env vars steer kernel selection and CPU detection
