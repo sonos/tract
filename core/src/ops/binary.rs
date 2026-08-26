@@ -909,7 +909,117 @@ impl EvalOp for OptBinUnicast {
     }
 }
 
+/// `a * b + c` in one pass, where `b` and `c` are unicast operands sharing a
+/// period: each has leading unit axes that `a` repeats over, and matches `a`
+/// past them. Formed by [`OptBinUnicast::fuse`] from a `Mul` feeding an `Add`,
+/// which would otherwise walk `a` twice.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OptMulAddUnicast;
+
+impl Op for OptMulAddUnicast {
+    fn name(&self) -> StaticName {
+        "OptMulAddUnicast".into()
+    }
+    op_as_typed_op!();
+}
+
+impl OptMulAddUnicast {
+    fn eval_t<T>(a: &mut Tensor, b: &Tensor, c: &Tensor) -> TractResult<()>
+    where
+        T: Datum + Copy + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
+    {
+        let b = b.try_as_plain()?;
+        let b = b.as_slice::<T>()?;
+        let c = c.try_as_plain()?;
+        let c = c.as_slice::<T>()?;
+        let mut a = a.try_as_plain_mut()?;
+        for chunk in a.as_slice_mut::<T>()?.chunks_mut(b.len()) {
+            for ((v, b), c) in chunk.iter_mut().zip(b).zip(c) {
+                *v = *v * *b + *c;
+            }
+        }
+        Ok(())
+    }
+
+    fn natural(t: &Tensor) -> bool {
+        t.len() == t.shape().iter().product::<usize>()
+            && t.strides() == &*Tensor::natural_strides(t.shape())
+    }
+}
+
+impl EvalOp for OptMulAddUnicast {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let (a, b, c) = args_3!(inputs);
+        // Same natural-strides contract as OptBinUnicast: the chunked walk sizes
+        // its slices from the declared shape, which only matches the storage
+        // when the strides are C-order.
+        if !Self::natural(&a) || !Self::natural(&b) || !Self::natural(&c) {
+            let dt = a.datum_type();
+            let m = Mul.eval(a, b, dt)?;
+            return Ok(tvec!(Add.eval(m.into_tvalue(), c, dt)?.into_tvalue()));
+        }
+        let mut a = a.into_tensor();
+        let dt = a.datum_type();
+        dispatch_floatlike!(Self::eval_t(dt)(&mut a, &b, &c))?;
+        Ok(tvec!(a.into_tvalue()))
+    }
+}
+
+impl TypedOp for OptMulAddUnicast {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 3);
+        ensure!(OptBinUnicast::check_input_shapes(&inputs[0].shape, &inputs[1].shape));
+        ensure!(OptBinUnicast::check_input_shapes(&inputs[0].shape, &inputs[2].shape));
+        Ok(tvec!(inputs[0].datum_type.fact(inputs[0].shape.clone())))
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let count: TDim = inputs[0].shape.iter().product();
+        Ok(tvec!((Cost::FMA(inputs[0].datum_type), count)))
+    }
+
+    as_op!();
+}
+
 impl TypedOp for OptBinUnicast {
+    /// Absorb a `Mul` feeding an `Add` into [`OptMulAddUnicast`]. Both unicast
+    /// operands must share a period, so one walk of the accumulator covers them
+    /// together.
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if !self.binop.is::<Mul>() {
+            return Ok(None);
+        }
+        rule_if!(node.outputs.len() == 1);
+        rule_if!(node.outputs[0].successors.len() == 1);
+        rule_if!(!model.output_outlets()?.contains(&node.id.into()));
+        let succ = model.node(node.outputs[0].successors[0].node);
+        rule_if_some!(add = succ.op_as::<OptBinUnicast>());
+        rule_if!(add.binop.is::<Add>());
+        let acc = model.outlet_fact(node.inputs[0])?;
+        let scale = model.outlet_fact(node.inputs[1])?;
+        let other_slot = 1 - succ.inputs.iter().position(|i| i.node == node.id).unwrap();
+        let other = model.outlet_fact(succ.inputs[other_slot])?;
+        // Add is commutative, so which slot the product landed in does not
+        // matter; the product's own accumulator stays the one written into.
+        rule_if!(acc.datum_type == scale.datum_type && acc.datum_type == other.datum_type);
+        rule_if!(acc.datum_type.is_float());
+        rule_if_some!(scale_len = scale.shape.as_concrete().map(|s| s.iter().product::<usize>()));
+        rule_if_some!(other_len = other.shape.as_concrete().map(|s| s.iter().product::<usize>()));
+        rule_if!(scale_len == other_len);
+        rule_if!(Self::check_input_shapes(&acc.shape, &other.shape));
+        let mut patch = TypedModelPatch::new("fusing Mul and Add");
+        let a = patch.tap_model(model, node.inputs[0])?;
+        let b = patch.tap_model(model, node.inputs[1])?;
+        let c = patch.tap_model(model, succ.inputs[other_slot])?;
+        let wire = patch.wire_node(&succ.name, OptMulAddUnicast, &[a, b, c])?[0];
+        patch.shunt_outside(model, succ.id.into(), wire)?;
+        Ok(Some(patch))
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(Self::check_input_shapes(&inputs[0].shape, &inputs[1].shape));
         let out_dt = self.binop.result_datum_type(inputs[0].datum_type, inputs[1].datum_type)?;
