@@ -14,11 +14,6 @@
 //! the AMX virtualisation heuristic, the `TRACT_AMX_BF16` knob — so the same revision dumps
 //! differently on different hosts. Diff two builds on one host, and run it on the board when the
 //! board is what the question is about.
-//!
-//! One row is not the whole truth either: for the architecture this host is, a built kernel stays
-//! in the set only if the host's own instruction set can run it, so a native row describes no
-//! machine smaller than this host and `TRACT_CPU_ISA` is what shrinks it. That skew is the same
-//! on both sides of a diff, which is what the dump is for.
 
 use tract_core::internal::*;
 use tract_data::prelude::{Datum, f16};
@@ -83,19 +78,15 @@ pub fn dump() -> TractResult<()> {
     rows.sort();
     rows.iter().for_each(|r| println!("{r}"));
 
-    for arch in Arch::ALL {
-        let mut names: Vec<String> =
-            runnable_for(arch).iter().map(|k| k.name().to_string()).collect();
-        names.sort();
-        println!("RUNNABLE\t{arch}\t{}\t{}", names.len(), names.join(","));
-    }
-
     for isa in machines() {
         let dispatch = MmmDispatch::for_isa(isa);
         println!(
             "LADDER\t{isa:?}\t{}",
             dispatch.tiers().iter().map(|t| t.name).collect::<Vec<_>>().join(" > ")
         );
+        let runnable = runnable_for(&isa);
+        let names: Vec<&str> = runnable.iter().map(|k| k.name()).collect();
+        println!("RUNNABLE\t{isa:?}\t{}\t{}", names.len(), names.join(","));
         for acc in [f32::datum_type(), f16::datum_type(), i32::datum_type()] {
             for m in DIMS {
                 for k in DIMS {

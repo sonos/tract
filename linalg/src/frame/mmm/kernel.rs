@@ -45,8 +45,16 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
         true
     }
 
+    /// Whether a machine with this instruction set can execute the kernel: its architecture is
+    /// the one the kernel is written for (or the kernel is generic), and the set offers every
+    /// feature the kernel declares. Takes the machine rather than reading the host, so one
+    /// predicate serves dispatch and the cross-architecture audits.
+    fn runnable_on(&self, isa: &crate::isa::IsaSet) -> bool {
+        self.arch().is_none_or(|a| Some(a) == isa.arch()) && self.isa().satisfied_by(*isa)
+    }
+
     fn runnable(&self) -> bool {
-        self.built() && self.isa().satisfied_by(crate::isa::native())
+        self.built() && self.runnable_on(&crate::isa::native())
     }
 
     /// Whether this build compiled the kernel's body at all.

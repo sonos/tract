@@ -61,9 +61,18 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// silently skips the kernel's tests as well.
     fn preference(&self) -> isize;
 
+    /// Whether a machine with this instruction set could execute the kernel: the architecture is
+    /// the one it is written for, and the set offers every feature it declares. Takes the machine
+    /// rather than reading the host, so the same question serves dispatch and an audit of what
+    /// another architecture would run.
+    ///
+    /// It says nothing about whether this build assembled the body — see [`Self::built`]. A
+    /// kernel can be runnable on a machine and still be a stub here.
+    fn runnable_on(&self, isa: &crate::isa::IsaSet) -> bool;
+
     /// Whether this kernel can be executed here at all: this build compiled it
     /// ([`Self::built`]) and the running CPU has the instruction set it declares
-    /// ([`Self::isa`]).
+    /// ([`Self::runnable_on`] against the probed set).
     ///
     /// Runnability only, never preference: this answers "would executing the kernel fault",
     /// and the mmm test bodies gate on it, so a kernel that lies here has no test coverage at
@@ -153,6 +162,10 @@ impl<K: MatMatMulKer> MatMatMul for K {
 
     fn preference(&self) -> isize {
         MatMatMulKer::preference(self)
+    }
+
+    fn runnable_on(&self, isa: &crate::isa::IsaSet) -> bool {
+        MatMatMulKer::runnable_on(self, isa)
     }
 
     fn runnable(&self) -> bool {

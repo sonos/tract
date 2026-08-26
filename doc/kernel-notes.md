@@ -73,18 +73,14 @@ AMX virtualisation heuristic, `TRACT_AMX_BF16` — so one revision dumps
 differently on two hosts. Diff two builds on one host, and run it on the board
 when the board is the question.
 
-The sweep is synthetic, so it covers every cohort with no knob set — but for the
-architecture this host actually is, a built kernel is kept only when the host's own
-instruction set can run it (`runnable` reads the probed set, not the row's). The
-native rows therefore describe machines no smaller than this host, and
-`TRACT_CPU_ISA` (`+sve2`, `-avx512f`, …) is how to shrink it: it edits the probed
-set and moves the picks as lesser hardware would. Foreign rows are unaffected,
-their kernels being unbuilt metadata. Either way the effect is the same in two
-dumps from one host, so it cancels in a diff.
+The sweep is synthetic and each row is filtered by its own instruction set, so it covers every
+cohort with no knob set — including features this host lacks, which is the point of auditing from
+a dev machine. `TRACT_CPU_ISA` steers what a *run* or an `hwbench` uses, not this dump.
 
 Nothing conjures a kernel this toolchain never assembled: SVE and SME sit behind
 `build.rs` assembler probes, and the `DECL` rows say `built=false` for a tree that
-was only declared.
+was only declared — which is why the aarch64 rows above sve2 offer nothing new on
+a host whose assembler refused it.
 
 ## Tuning knobs
 
