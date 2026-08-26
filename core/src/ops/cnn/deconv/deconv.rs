@@ -108,7 +108,7 @@ impl Deconv {
             )?[0];
             return target.wire_node(
                 format!("{name}.depthwise_deconv_sum"),
-                super::deconv_sum::DepthwiseDeconvSum::new(
+                super::deconv_sum::DepthwiseDeconv::new(
                     self.pool_spec.clone(),
                     self.kernel_format,
                     input_shape,
