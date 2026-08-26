@@ -32,6 +32,13 @@ do
     cargo -q test $CARGO_EXTRA -q -p tract-$c
 done
 
+# The registry declares every architecture's kernels, and its tests -- what each machine picks,
+# and which cells a settlement speaks for -- only see the trees this feature compiles in.
+echo
+echo "$WHITE ### linalg, every tree ### $NC"
+echo
+cargo -q test $CARGO_EXTRA -q -p tract-linalg --features foreign-inventory
+
 if [ `uname` = "Darwin" -a -z "$CI" ]
 then
     echo
