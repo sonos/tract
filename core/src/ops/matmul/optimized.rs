@@ -19,6 +19,18 @@ use super::ModePicker;
 /// If `new` is `old` with only size-1 axes dropped (non-unit axes untouched, in
 /// order, nothing added or merged), return the removed axis indices; otherwise
 /// `None`. Such a reshape is a pure metadata squeeze the matmul store can absorb.
+/// Track an output axis index across the removal of a unit axis. The removed
+/// axis can be the m or n axis itself, which is only ever unit-sized here: the
+/// store then reads a zero stride for that side, the extent the kernel is given
+/// falls back to 1, and both are what a squeezed unit axis means.
+fn squeeze_c_axis(current: Option<usize>, removed: usize) -> Option<usize> {
+    match current {
+        Some(ax) if ax == removed => None,
+        Some(ax) => Some(ax - (ax > removed) as usize),
+        None => None,
+    }
+}
+
 fn pure_squeeze_removed(old: &[usize], new: &[usize]) -> Option<TVec<usize>> {
     let mut removed: TVec<usize> = tvec!();
     let mut j = 0;
@@ -321,25 +333,26 @@ impl ProtoFusedSpec {
             }
             BinScalar(..) | Scaler(..) | AddRowColProducts(_, _) | LeakyRelu(_) => {}
             BinPerRow(_, _, map) | BinPerCol(_, _, map) => map.rm_c_axis(axis),
-            AddUnicast(_, _, map) => {
+            AddUnicast(oss, _, map) => {
                 map.rm_c_axis(axis);
+                rm_store_c_axis(oss, axis);
             }
             Store(oss, ..) => {
                 for oss in oss {
-                    match oss {
-                        OutputStoreSpec::View { m_axis, n_axis, .. } => {
-                            if let Some(m) = m_axis {
-                                *m -= (*m > axis) as usize
-                            };
-                            if let Some(n) = n_axis {
-                                *n -= (*n > axis) as usize
-                            }
-                        }
-                        OutputStoreSpec::Strides { .. } => {}
-                    }
+                    rm_store_c_axis(oss, axis);
                 }
             }
         }
+    }
+}
+
+fn rm_store_c_axis(oss: &mut OutputStoreSpec, axis: usize) {
+    match oss {
+        OutputStoreSpec::View { m_axis, n_axis, .. } => {
+            *m_axis = squeeze_c_axis(*m_axis, axis);
+            *n_axis = squeeze_c_axis(*n_axis, axis);
+        }
+        OutputStoreSpec::Strides { .. } => {}
     }
 }
 
@@ -812,18 +825,16 @@ impl OptMatMul {
         self.trivial_path = self.can_use_trivial_path();
     }
 
-    /// If `into` is a pure unit-axis squeeze of this op's (concrete) output that
-    /// leaves the m/n axes intact, return a clone whose store produces the
-    /// squeezed shape directly. `None` when the reshape can't be absorbed.
+    /// If `into` is a pure unit-axis squeeze of this op's (concrete) output,
+    /// return a clone whose store produces the squeezed shape directly. A
+    /// squeezed m or n axis becomes `None` on the clone. `None` when the reshape
+    /// can't be absorbed.
     fn absorb_squeeze(&self, into: &IntoShape) -> Option<Self> {
         if into.strides != Tensor::natural_strides(&into.dims) {
             return None;
         }
         let old = self.c_fact.shape.as_concrete()?;
         let removed = pure_squeeze_removed(old, &into.dims)?;
-        if removed.iter().any(|ax| Some(*ax) == self.c_m_axis || Some(*ax) == self.c_n_axis) {
-            return None;
-        }
         // A non-unit matmul batch axis (e.g. grouped conv) makes the packed
         // inputs per-batch; folding any axis then desyncs that batch indexing.
         // Only fuse when every batch axis is trivial (size 1).
@@ -835,12 +846,8 @@ impl OptMatMul {
         let mut new_op = self.clone();
         for axis in removed.iter().rev() {
             new_op.c_fact.shape.remove_axis(*axis).ok()?;
-            if let Some(c_m_axis) = &mut new_op.c_m_axis {
-                *c_m_axis -= (*c_m_axis > *axis) as usize;
-            }
-            if let Some(c_n_axis) = &mut new_op.c_n_axis {
-                *c_n_axis -= (*c_n_axis > *axis) as usize;
-            }
+            new_op.c_m_axis = squeeze_c_axis(new_op.c_m_axis, *axis);
+            new_op.c_n_axis = squeeze_c_axis(new_op.c_n_axis, *axis);
             for uop in &mut new_op.micro_ops {
                 uop.rm_c_axis(*axis);
             }
