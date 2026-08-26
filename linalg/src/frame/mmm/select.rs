@@ -136,10 +136,7 @@ impl MmmDispatch {
             runnable: vec![],
             panel_extractors: crate::mmm_routines::extractors_for(&isa),
         };
-        dispatch.runnable = match isa.arch() {
-            Some(target) => crate::mmm_routines::runnable_for(target),
-            None => crate::mmm_routines::runnable(),
-        };
+        dispatch.runnable = crate::mmm_routines::runnable_for(&isa);
         dispatch
     }
 
@@ -286,7 +283,7 @@ impl MmmDispatch {
 }
 
 impl crate::isa::Arch {
-    /// Dispatch as `arch` sees it: its kernels, from [`crate::mmm_routines::runnable_for`], under its own
+    /// Dispatch as `arch` sees it: the kernels a plain machine of that architecture can run, under its own
     /// tiers. Answers which kernel that architecture would choose for a shape, from any host. What it
     /// cannot reproduce is a hardware probe, so for a foreign arch it starts from the plain
     /// architecture and nothing else: a cohort behind a feature is reached by naming that feature in
@@ -315,6 +312,36 @@ mod tests {
     /// [`Query::plain`] builds from it.
     fn accumulators() -> Vec<DatumType> {
         vec![f32::datum_type(), f16::datum_type(), i32::datum_type()]
+    }
+
+    /// A machine is only ever offered kernels its instruction set can run, which is the property
+    /// [`crate::mmm_routines::runnable_for`] is named after. Held over every ladder, because an
+    /// audit of what another architecture would pick is worthless if the set it picks from holds
+    /// kernels that architecture would fault on — and the set used to be filtered against the
+    /// host instead, so every row described a machine no smaller than this one.
+    #[test]
+    fn no_machine_is_offered_a_kernel_it_cannot_run() {
+        for isa in crate::isa::IsaSet::every_ladder() {
+            for mmm in crate::MmmDispatch::for_isa(isa).runnable() {
+                assert!(
+                    mmm.runnable_on(&isa),
+                    "{} needs {:?}, offered to {isa:?}",
+                    mmm.name(),
+                    mmm.isa()
+                );
+            }
+        }
+    }
+
+    /// Dispatch calls what it selects, so the host's own set must hold nothing this build left as
+    /// a stub. Nothing filters for it: a kernel is unbuilt only when its architecture is not this
+    /// one, and then it is not runnable here either. Worth stating because `runnable_for`
+    /// deliberately keeps unbuilt kernels, which is what makes the other architectures auditable.
+    #[test]
+    fn the_host_set_holds_nothing_unbuilt() {
+        for mmm in crate::MmmDispatch::native().runnable() {
+            assert!(mmm.built(), "{} is in the host's set unbuilt", mmm.name());
+        }
     }
 
     /// A caller facing a symbolic `n` picks a packing group and needs both roles out of it: a

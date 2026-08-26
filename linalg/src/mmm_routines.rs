@@ -60,29 +60,15 @@ pub fn declared() -> impl Iterator<Item = &'static MmmRoutine> {
     inventory::iter::<MmmRoutine>()
 }
 
-/// The runnable set as `target` would see it: that target’s kernels plus the generic ones, whether
-/// or not this build assembled them. Instruction-set requirements are still answered against
-/// the running host, so reaching a cohort behind a feature this host lacks (fp16, dotprod,
-/// sve2) means adding it with `TRACT_CPU_ISA` — and anything this returns unbuilt will panic
-/// if actually called.
-pub fn runnable_for(target: crate::isa::Arch) -> Vec<Box<dyn MatMatMul>> {
-    let mut pool: Vec<Box<dyn MatMatMul>> = declared()
-        .map(|r| (r.make)())
-        .filter(|kernel| kernel.arch().is_none_or(|a| a == target))
-        // A kernel this build compiled has to be runnable here to be in the set; one it did
-        // not compile cannot answer that, so it stays as metadata.
-        .filter(|kernel| !kernel.built() || kernel.runnable())
-        .collect();
-    pool.sort_by(|a, b| a.name().cmp(b.name()));
-    pool
-}
-
-/// Every kernel this machine can run: what dispatch chooses from, whichever selection
-/// policy runs over it. Sorted by name, because `inventory` yields link order, which
-/// is not stable across builds, while position in the set still breaks ties in selection.
-pub fn runnable() -> Vec<Box<dyn MatMatMul>> {
-    let mut pool: Vec<Box<dyn MatMatMul>> =
-        declared().map(|r| (r.make)()).filter(|k| k.runnable()).collect();
-    pool.sort_by(|a, b| a.name().cmp(b.name()));
-    pool
+/// The kernels a machine with this instruction set can run: its architecture's, plus the generic
+/// ones, needing nothing the set lacks. Whether this build assembled a kernel is a separate
+/// question and not asked here — a foreign architecture's kernels are metadata around a stub, and
+/// anything this returns unbuilt will panic if actually called. Sorted by name, because
+/// `inventory` yields link order, which is not stable across builds, while position in the set
+/// still breaks ties in selection.
+pub fn runnable_for(isa: &crate::isa::IsaSet) -> Vec<Box<dyn MatMatMul>> {
+    let mut set: Vec<Box<dyn MatMatMul>> =
+        declared().map(|r| (r.make)()).filter(|kernel| kernel.runnable_on(isa)).collect();
+    set.sort_by(|a, b| a.name().cmp(b.name()));
+    set
 }
