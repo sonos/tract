@@ -138,6 +138,15 @@ routine_ew_rust!(x86_64;
     boost(crate::isa::NEVER_PREFERRED)
 );
 
+settled!(
+    X86_64Avx512Fp16,
+    LeakyRelu,
+    F16,
+    x86_64_avx512_leaky_relu_f16_64n,
+    "the native fp16 kernel above is the slower of the two on Sapphire Rapids: two f16 ops per \
+     element do not saturate its fp16 port the way f32 mul and max saturate the f32 ones"
+);
+
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx512f,avx512fp16,avx512bw")]
 unsafe fn leaky_relu_f16_run(buf: &mut [f16], alpha: f16) {

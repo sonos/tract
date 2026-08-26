@@ -120,6 +120,14 @@ impl ElementWiseKer<f32> for WasmSigmoid4Relaxed {
 }
 
 submit_routine!(wasm32; F32, Sigmoid, WasmSigmoid4Relaxed, isa(Wasm32RelaxedSimd));
+settled!(
+    Wasm32Simd128,
+    Sigmoid,
+    F32,
+    generic_sigmoid_f32_4n,
+    "an explicit simd128 kernel measured slower than the portable polynomial, which V8 \
+     auto-vectorises; only the relaxed-simd madd chain beats it"
+);
 
 #[derive(Clone, Debug)]
 pub struct WasmTanh4Relaxed;
@@ -218,6 +226,14 @@ impl ElementWiseKer<f32> for WasmTanh4Relaxed {
 }
 
 submit_routine!(wasm32; F32, Tanh, WasmTanh4Relaxed, isa(Wasm32RelaxedSimd));
+settled!(
+    Wasm32Simd128,
+    Tanh,
+    F32,
+    generic_tanh_f32_4n,
+    "an explicit simd128 kernel measured slower than the portable polynomial, which V8 \
+     auto-vectorises; only the relaxed-simd madd chain beats it"
+);
 
 #[cfg(all(test, target_feature = "relaxed-simd"))]
 #[macro_use]

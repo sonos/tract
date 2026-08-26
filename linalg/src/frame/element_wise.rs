@@ -164,7 +164,8 @@ macro_rules! routine_ew_via_f32 {
 
     (@@ $arch:ident, $built:meta; $ker:ident, $f:ident, $factory:ident
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
-        submit_routine!($arch; $factory, $f, $ker $(, isa($($isa),+))? $(, boost($boost))?);
+        submit_routine!($arch; $factory, $f, $ker
+            $(, isa($($isa),+))? $(, boost($boost))?, round_trip(true));
         paste! {
             #[cfg(test)]
             mod [<test_ $ker:snake>] {

@@ -18,7 +18,7 @@
 //! What a build could not assemble at all is not declared, so an absent descriptor means "no
 //! such kernel", never "this toolchain skipped it".
 use crate::element_wise::{ElementWise, ElementWiseKer};
-use crate::isa::{Arch, IsaReq, IsaSet, LEVEL_BOOST};
+use crate::isa::{Arch, Isa, IsaReq, IsaSet, LEVEL_BOOST};
 use crate::lut::Lut;
 use crate::reduce::{MapReduce, MapReduceKer, Reduce, ReduceKer};
 use tract_data::internal::*;
@@ -285,6 +285,10 @@ pub struct Routine {
     /// exception spells the steps it disagrees with, via [`crate::isa::peer_of`] or
     /// [`crate::isa::NEVER_PREFERRED`].
     pub boost: isize,
+    /// Whether it reaches an f16 answer by converting a chunk to f32, running an f32 kernel over
+    /// it and converting it back. Set by the declaration that writes the round trip, never by
+    /// hand.
+    pub round_trip: bool,
     pub factory: RoutineFactory,
 }
 
@@ -352,6 +356,102 @@ pub fn best_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Rout
     declared()
         .filter(|r| r.func == func && r.dt() == dt && r.runnable_on(isa))
         .max_by_key(|r| (r.arch.is_some(), r.preference(), r.name()))
+}
+
+/// A cell of the matrix closed on purpose: on machines offering `isa`, this pair runs the kernel
+/// named here, and a kernel written for that instruction set would not be an improvement.
+///
+/// Declared beside the kernels of the tree it speaks for, so a build carries it exactly when it
+/// carries them, and it pins its winner by name: a machine that resolves the pair to something
+/// else is a different verdict, and needs its own settlement or none.
+pub struct Settled {
+    /// The rung this speaks for, which is also the column the matrix draws it under.
+    pub isa: Isa,
+    pub func: Func,
+    pub dt: DatumType,
+    /// The winner this keeps, by the name the kernel answers with.
+    pub kernel: &'static str,
+    /// One line, in the terms someone would need to disagree with it.
+    pub why: &'static str,
+}
+
+inventory::collect!(Settled);
+
+impl Settled {
+    /// Whether this speaks for `isa`: a machine of its architecture, offering what it names, and
+    /// resolving its pair to the kernel it pins.
+    pub fn covers(&self, isa: &IsaSet) -> bool {
+        Some(self.isa.arch()) == isa.arch()
+            && isa.has(self.isa)
+            && best_for(self.func, self.dt, isa).is_some_and(|r| r.name() == self.kernel)
+    }
+}
+
+/// Every settlement this build compiled, whichever architecture it speaks for.
+pub fn settlements() -> impl Iterator<Item = &'static Settled> {
+    inventory::iter::<Settled>()
+}
+
+/// Why what `isa` runs for this pair is the answer we mean, when a settlement says so. `None`
+/// when nothing settles it, which is what leaves such a cell a gap.
+pub fn settled_for(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static Settled> {
+    settlements().find(|s| s.func == func && s.dt == dt && s.covers(isa))
+}
+
+/// What a machine's answer for one pair amounts to, which is what the matrix colours and what
+/// says whether a kernel is left to write.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Standing {
+    /// Nothing this build declares serves the pair here.
+    Missing,
+    /// A kernel written for this machine's own rung of the ladder.
+    Dedicated,
+    /// Correct code that was not written for this machine: portable Rust, or an architecture
+    /// kernel from a rung below it.
+    Unspecialized,
+    /// Portable f16 code, whose every operation converts to f32 and back: the right answer at a
+    /// per-element cost no machine has to pay.
+    Emulated,
+    /// Whatever it runs, declared as the answer we mean. [`settled_for`] says why.
+    Settled,
+}
+
+/// What `isa` amounts to for this pair before any settlement speaks for it, which is the question
+/// a settlement answers.
+fn unsettled(func: Func, dt: DatumType, isa: &IsaSet) -> Standing {
+    let Some(routine) = best_for(func, dt, isa) else { return Standing::Missing };
+    // Portable f16 arithmetic goes through `f16`'s operators, which convert to f32 and back
+    // around every single one, whatever the machine underneath. A conversion-free portable f16
+    // kernel -- a table, or bit work -- would need saying so here.
+    if routine.arch.is_none() && dt == DatumType::F16 {
+        Standing::Emulated
+    } else if routine.round_trip && !isa.fp16_arithmetic() {
+        Standing::Settled
+    } else if routine.arch.is_some() && routine.isa.level() == isa.level() {
+        Standing::Dedicated
+    } else {
+        Standing::Unspecialized
+    }
+}
+
+/// What this machine's answer for the pair amounts to.
+pub fn standing(func: Func, dt: DatumType, isa: &IsaSet) -> Standing {
+    let answer = unsettled(func, dt, isa);
+    let settleable = matches!(answer, Standing::Unspecialized | Standing::Emulated);
+    if settleable && settled_for(func, dt, isa).is_some() { Standing::Settled } else { answer }
+}
+
+/// What every chunked round trip answers for on a machine with no f16 arithmetic: converting a
+/// chunk, computing it in f32 and converting it back is the technique, not a compromise.
+const NO_FP16_ARITHMETIC: &str = "no f16 arithmetic here: a chunk through an f32 kernel is it";
+
+/// Why this cell is closed, when it is: what a settlement declared, or the standing answer every
+/// f32 round trip carries on a machine that cannot compute in f16.
+pub fn settled_why(func: Func, dt: DatumType, isa: &IsaSet) -> Option<&'static str> {
+    if standing(func, dt, isa) != Standing::Settled {
+        return None;
+    }
+    Some(settled_for(func, dt, isa).map_or(NO_FP16_ARITHMETIC, |settled| settled.why))
 }
 
 /// The kernel this host runs for a function and datum type, resolved once. Dispatch happens per
@@ -487,16 +587,16 @@ macro_rules! submit_routine {
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; $factory:ident, $func:ident, $ker:path
-     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))? $(, round_trip($round_trip:expr))?) => {
         submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::$factory(
                 || $crate::routines::factory_of::<$ker, _, _>()
             )
-            $(, isa($($isa),+))? $(, boost($boost))?);
+            $(, isa($($isa),+))? $(, boost($boost))? $(, round_trip($round_trip))?);
     };
 
     (@@ $arch:expr, $func:ident $(($($payload:tt)*))?, $factory:expr
-     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))? $(, round_trip($round_trip:expr))?) => {
         inventory::submit! {
             $crate::routines::Routine {
                 func: $crate::routines::Func::$func $(($($payload)*))?,
@@ -508,7 +608,30 @@ macro_rules! submit_routine {
                     $(boost = $boost;)?
                     boost
                 },
+                round_trip: {
+                    #[allow(unused_mut, unused_assignments)]
+                    let mut round_trip = false;
+                    $(round_trip = $round_trip;)?
+                    round_trip
+                },
                 factory: $factory,
+            }
+        }
+    };
+}
+
+/// Close one cell of the matrix on purpose: the machines offering `$isa` run `$kernel` for this
+/// pair, and that is the answer we mean. Write it beside the kernels of the tree it speaks for,
+/// and say in `$why` what a kernel written for the instruction set would have to beat.
+macro_rules! settled {
+    ($isa:ident, $func:ident $(($op:ident))?, $dt:ident, $kernel:ident, $why:literal) => {
+        inventory::submit! {
+            $crate::routines::Settled {
+                isa: $crate::isa::Isa::$isa,
+                func: $crate::routines::Func::$func $(($crate::BinOp::$op))?,
+                dt: tract_data::prelude::DatumType::$dt,
+                kernel: stringify!($kernel),
+                why: $why,
             }
         }
     };
@@ -642,6 +765,47 @@ mod tests {
                     "{} {dt:?}",
                     func.name()
                 );
+            }
+        }
+    }
+
+    /// A settlement answers for a cell the matrix would otherwise read as an invitation, so one
+    /// closing no such cell is either wrong about its machine or has outlived the kernel it
+    /// pinned -- someone wrote the kernel it says nobody should.
+    #[test]
+    fn every_settlement_closes_a_cell() {
+        for s in settlements() {
+            assert!(
+                IsaSet::every_ladder().any(|m| s.covers(&m)
+                    && matches!(
+                        unsettled(s.func, s.dt, &m),
+                        Standing::Unspecialized | Standing::Emulated
+                    )),
+                "{} {:?} on {} settles nothing, {} being what it keeps",
+                s.func.name(),
+                s.dt,
+                s.isa,
+                s.kernel
+            );
+        }
+    }
+
+    /// Two settlements over one cell would each answer for it, and the matrix would print
+    /// whichever `inventory` happened to link first.
+    #[test]
+    fn a_cell_is_settled_once() {
+        for isa in IsaSet::every_ladder() {
+            for func in Func::ALL {
+                for dt in [DatumType::F32, DatumType::F16, DatumType::U8] {
+                    let count = settlements()
+                        .filter(|s| s.func == func && s.dt == dt && s.covers(&isa))
+                        .count();
+                    assert!(
+                        count <= 1,
+                        "{} {dt:?} on {isa:?} is settled {count} times",
+                        func.name()
+                    );
+                }
             }
         }
     }
