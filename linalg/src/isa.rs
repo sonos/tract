@@ -4,7 +4,7 @@
 //! evaluated against a machine other than this one, which is what makes another cohort's
 //! dispatch inspectable. Micro-architecture is deliberately not in here — how many 512-bit FMA
 //! ports a core has is not an instruction set, and preferring a kernel is not the same as being
-//! able to run it: that belongs in [`crate::mmm::MatMatMulKer::dynamic_boost`].
+//! able to run it: that belongs in [`crate::mmm::MatMatMulKer::preference`].
 
 use std::fmt;
 use std::sync::OnceLock;
@@ -335,7 +335,7 @@ impl IsaReq {
     }
 
     /// The most capable lineage step this kernel sits in, feeding the default half of
-    /// [`crate::mmm::MatMatMulKer::dynamic_boost`].
+    /// [`crate::mmm::MatMatMulKer::preference`].
     pub fn level(&self) -> u8 {
         self.needs.iter().map(|i| i.level()).max().unwrap_or(0)
     }

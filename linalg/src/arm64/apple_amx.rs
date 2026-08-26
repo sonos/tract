@@ -1,4 +1,3 @@
-use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::*;
 use tract_data::prelude::*;
 
@@ -6,10 +5,10 @@ use super::{arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm
 
 const CAN_FUSE: fn(&FusedSpec) -> bool = |f| !matches!(f, &FusedSpec::LeakyRelu(_));
 
-MMMExternKernel!(aarch64; apple_amx_mmm_f32_32x32<f32>(32, 32)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized) row_major_store(true));
-MMMExternKernel!(aarch64; apple_amx_mmm_f32_32x1<f32>(32, 1)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized));
-MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x32<f16>(64, 32)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized) row_major_store(true));
-MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x1<f16>(64, 1)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) quality(ManuallyOptimized));
+MMMExternKernel!(aarch64; apple_amx_mmm_f32_32x32<f32>(32, 32)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) row_major_store(true));
+MMMExternKernel!(aarch64; apple_amx_mmm_f32_32x1<f32>(32, 1)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE));
+MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x32<f16>(64, 32)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE) row_major_store(true));
+MMMExternKernel!(aarch64; apple_amx_mmm_f16_64x1<f16>(64, 1)@(128, 128) isa(Aarch64AppleAmx) can_fuse(CAN_FUSE));
 
 /// The AMX tile is 32x32, and it only pays once both M and N fill one: below that the tile
 /// padding and the AMX dispatch cost more than the NEON kernel's whole call. The f16 side keeps

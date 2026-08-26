@@ -2,7 +2,6 @@
 // supports SVE intrinsics. The kernel registration + extern live behind it so
 // non-SVE builds never reference the (absent) C symbol.
 #[cfg(tract_sve)]
-use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 #[cfg(tract_sve)]
 use crate::mmm::*;
 #[cfg(tract_sve)]
@@ -71,7 +70,7 @@ pub fn sve_rms_norm_f32(buf: &mut [f32], eps: f32) {
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8)
     isa(Aarch64Sve2)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 // The VLA SVE f32 GEMV kernel (arm64/sve/sve_mmv_f32_64x1.c), MR=64 NR=1,
@@ -80,7 +79,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f32_kernel => sve_mmm_f32_8x8<f32>(8, 8
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f32_64x1_kernel => sve_mmv_f32_64x1<f32>(64, 1)
     isa(Aarch64Sve2)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 // The VLA SVE int8 -> int32 GEMM kernel (arm64/sve/sve_mmm_i32.c). Consumes
@@ -94,7 +93,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_kernel => sve_mmm_i32_8x8<i32>(8, 8
         PackedFormat::new(DatumType::I8, 8, 16),
         PackedFormat::new(DatumType::I8, 8, 16),
     );
-    quality(ManuallyOptimized)
+
     store(i8)
 );
 
@@ -109,7 +108,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32
         PackedFormat::new(DatumType::I8, 64, 16),
         PackedFormat::new(DatumType::I8, 1, 1),
     );
-    quality(ManuallyOptimized)
+
     store(i8)
 );
 
@@ -119,7 +118,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_i32_64x1_kernel => sve_mmm_i32_64x1<i32
 MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8)
     isa(Aarch64Sve2, Aarch64Fp16)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 // The VLA SVE f16 GEMV kernel (arm64/sve/sve_mmv_f16_64x1.c), MR=64 NR=1,
@@ -128,7 +127,7 @@ MMMRustKernel!(aarch64; sve_sys::sve_mmm_f16_kernel => sve_mmm_f16_8x8<f16>(8, 8
 MMMRustKernel!(aarch64; sve_sys::sve_mmv_f16_64x1_kernel => sve_mmv_f16_64x1<f16>(64, 1)
     isa(Aarch64Sve2, Aarch64Fp16)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 // SVE / SVE2 backend.

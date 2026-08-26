@@ -7,7 +7,7 @@ use tract_core::tract_data::itertools::Itertools;
 use tract_libcli::terminal::si_prefix;
 use tract_linalg::hwbench::bandwidth::{l1_bandwidth_seq, main_memory_bandwith_seq};
 use tract_linalg::hwbench::runner::{run_bench, run_bench_fitting};
-use tract_linalg::mmm::{AsInputValue, FusedSpec, ImplementationQuality};
+use tract_linalg::mmm::{AsInputValue, FusedSpec};
 
 #[derive(serde::Serialize)]
 struct Bandwidth {
@@ -233,7 +233,7 @@ fn assert_picks(shapes: &[ShapeResult], tolerance: f64) -> TractResult<()> {
             continue;
         }
         // No viable kernel for this dtype on this target (e.g. armv7 f16 has only the
-        // emulated Dreadful kernel, which the bench skips) — nothing to assert.
+        // emulated kernel, which the bench skips) — nothing to assert.
         if shape.kernels.is_empty() {
             continue;
         }
@@ -402,16 +402,13 @@ fn bench_shape(
     let mmms = tract_linalg::MmmDispatch::native().runnable();
     let mut kernels: Vec<KernelResult> = unsafe {
         mmms.iter()
-            // Dreadful emulates the datatype op-by-op (f16->f32->f16), 100-500x off a
-            // real kernel and only ever the pick when the target has none for this
-            // dtype (e.g. armv7 f16) — the pick among fallbacks is noise, not a
-            // regression to gate on. Generic is portable Rust, so how close it comes
-            // depends on the compiler: off by default, --include-generic on targets
-            // where it is a real contender.
-            .filter(|mmm| {
-                mmm.quality() != ImplementationQuality::Dreadful
-                    && (include_generic || mmm.quality() != ImplementationQuality::Generic)
-            })
+            // An emulated kernel converts the datatype op by op (f16->f32->f16), 100-500x off
+            // a real kernel and only ever the pick when the target has none for this dtype
+            // (e.g. armv7 f16) — the pick among fallbacks is noise, not a regression to gate
+            // on. A generic kernel is portable Rust, so how close it comes depends on the
+            // compiler: off by default, --include-generic on targets where it is a real
+            // contender.
+            .filter(|mmm| !mmm.emulated() && (include_generic || mmm.arch().is_some()))
             .flat_map(|mmm| {
                 mmm.packings().iter().enumerate().map(move |(pix, (pa, pb))| (mmm, pix, pa, pb))
             })

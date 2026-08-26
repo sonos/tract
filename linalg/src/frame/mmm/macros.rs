@@ -38,13 +38,10 @@ macro_rules! MMMExternKernel {
             }
 
             MMMKernel!([<sys_ $func>]::rusty as $func<$ti>($mr, $nr)
-                built(cfg!($built)) $($rest)*);
+                built(cfg!($built)) arch($target) $($rest)*);
 
             inventory::submit! {
-                $crate::mmm_routines::MmmRoutine {
-                    target: $target,
-                    make: || $func.mmm(),
-                }
+                $crate::mmm_routines::MmmRoutine { make: || $func.mmm() }
             }
         }
     };
@@ -64,23 +61,22 @@ macro_rules! MMMRustKernel {
     (wasm32; $($rest:tt)*) => { MMMRustKernel!(@ Some($crate::isa::Arch::Wasm32Simd128), all(target_arch = "wasm32", target_feature = "simd128"); $($rest)*); };
 
     (@ $target:expr, $built:meta; $func:path => $id:ident<$ti:ident>($mr:expr, $nr:expr) $($rest:tt)*) => {
-        MMMRustKernel!($func => $id<$ti>($mr, $nr) built(cfg!($built)) $($rest)*);
+        MMMRustKernel!($func => $id<$ti>($mr, $nr) built(cfg!($built)) arch($target) $($rest)*);
         inventory::submit! {
-            $crate::mmm_routines::MmmRoutine {
-                target: $target,
-                make: || $id.mmm(),
-            }
+            $crate::mmm_routines::MmmRoutine { make: || $id.mmm() }
         }
     };
 
     (       $func: path =>
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
             $(built($built_here:expr))?
+            $(arch($arch:expr))?
             $(@($align_a:expr, $align_b:expr))?
             $(isa($($isa:ident),+))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
-            $(quality($quality:expr))?
+            $(emulated($emulated:expr))?
+            $(boost($boost:expr))?
             $(store($($store:ty),*))?
             $(row_major_store($rms:expr))?
      ) => {
@@ -96,12 +92,13 @@ macro_rules! MMMRustKernel {
             }
             MMMKernel!([<sys_$id>]::rusty as $id<$ti>($mr, $nr)
                 $(built($built_here))?
+                $(arch($arch))?
                 $(@($align_a, $align_b))?
-                generic(true)
                 $(isa($($isa),+))?
                 $(can_fuse($can_fuse))?
                 $(packing[$pnum] = $pid => $packing;)*
-                $(quality($quality))?
+                $(emulated($emulated))?
+                $(boost($boost))?
                 $(store($($store),*))?
                 $(row_major_store($rms))?
             );
@@ -114,12 +111,12 @@ macro_rules! MMMKernel {
             $func: path as
             $id:ident<$ti:ident>($mr: expr, $nr: expr)
             $(built($built_here:expr))?
+            $(arch($arch:expr))?
             $(@($align_a:expr, $align_b:expr))?
-            $(generic($generic:expr))?
             $(isa($($isa:ident),+))?
             $(can_fuse($can_fuse:expr))?
             $(packing[$pnum:literal] = $pid:ident => $packing:expr;)*
-            $(quality($quality:expr))?
+            $(emulated($emulated:expr))?
             $(boost($boost:expr))?
             $(store($($store:ty),*))?
             $(row_major_store($rms:expr))?
@@ -138,8 +135,9 @@ macro_rules! MMMKernel {
                         packing_b = packing_b.align($align_b);
                     )?
                     #[allow(unused_mut)]
-                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b, $crate::frame::mmm::ImplementationQuality::Dreadful);
+                    let mut k = DynKernel::<$mr, $nr, $ti>::new(stringify!($id), $func, packing_a, packing_b);
                     $(k.built = $built_here;)?
+                    $(k.arch = $arch;)?
                     k = k.with_isa(
                         $crate::isa::IsaReq::ANY
                             $(.needing(&[$($crate::isa::Isa::$isa),+]))?
@@ -153,7 +151,7 @@ macro_rules! MMMKernel {
                         k.stores.push(<$store>::datum_type());
                     )*)?
                     $(k.can_fuse = $can_fuse;)?
-                    $(k.quality = $quality;)?
+                    $(k.emulated = $emulated;)?
                     $(k = k.with_boost($boost);)?
                     $(k.row_major_store = $rms;)?
                     k

@@ -3,10 +3,9 @@
 //! Every arch-prefixed `MMMExternKernel!` / `MMMRustKernel!` invocation submits one
 //! [`MmmRoutine`] handle to the `inventory` collection, so every kernel tree this build
 //! compiled is enumerable: the full function × target matrix under the `foreign-inventory`
-//! feature, this arch's own share without it. The handle carries only what the kernel object
-//! cannot: which arch it belongs to. Everything else — name, tile, quality, datum type, whether
-//! this build compiled it, whether it runs here — is read from the [`MatMatMul`] that `make`
-//! builds, so nothing here duplicates `DynKernel`.
+//! feature, this arch's own share without it. The handle carries nothing but the constructor:
+//! arch, name, tile, datum type, whether this build compiled it and whether it runs here are
+//! all read from the [`MatMatMul`] that `make` builds, so nothing here duplicates `DynKernel`.
 //!
 //! A foreign tree's kernels are bail stubs; they answer [`MatMatMul::built`] with false, and
 //! their `make()` object is metadata-only and must never be executed.
@@ -19,9 +18,6 @@ use crate::mmm::MatMatMul;
 
 /// One mmm kernel, enumerable uniformly on every host.
 pub struct MmmRoutine {
-    /// Arch the kernel is written for, or `None` when it is generic Rust that
-    /// every target builds.
-    pub target: Option<crate::isa::Arch>,
     /// Builds the type-erased kernel. Reading its metadata is always safe; *running* it is
     /// only safe when the kernel answers [`MatMatMul::built`] with true.
     pub make: fn() -> Box<dyn MatMatMul>,
@@ -29,9 +25,10 @@ pub struct MmmRoutine {
 
 inventory::collect!(MmmRoutine);
 
-/// One panel extractor, enumerable uniformly on every host. Like [`MmmRoutine`] it carries only
-/// what the extractor cannot: which arch it belongs to. Whether this build compiled its body, and
-/// what the instruction set must offer, are fields of the [`PanelExtractor`] itself.
+/// One panel extractor, enumerable uniformly on every host. Unlike [`MmmRoutine`] the handle does
+/// carry its arch, an extractor being only ever called and never enumerated for its metadata, so
+/// nothing builds one to ask. Whether this build compiled its body, and what the instruction set
+/// must offer, are fields of the [`PanelExtractor`] itself.
 pub struct MmmExtractor {
     pub target: crate::isa::Arch,
     pub make: fn() -> crate::mmm::PanelExtractor,
@@ -70,8 +67,8 @@ pub fn declared() -> impl Iterator<Item = &'static MmmRoutine> {
 /// if actually called.
 pub fn runnable_for(target: crate::isa::Arch) -> Vec<Box<dyn MatMatMul>> {
     let mut pool: Vec<Box<dyn MatMatMul>> = declared()
-        .filter(|r| r.target.is_none_or(|t| t == target))
         .map(|r| (r.make)())
+        .filter(|kernel| kernel.arch().is_none_or(|a| a == target))
         // A kernel this build compiled has to be runnable here to be in the set; one it did
         // not compile cannot answer that, so it stays as metadata.
         .filter(|kernel| !kernel.built() || kernel.runnable())

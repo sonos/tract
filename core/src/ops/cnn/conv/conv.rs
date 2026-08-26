@@ -1,7 +1,7 @@
 use tract_data::itertools::izip;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
-use tract_linalg::mmm::retain_best_quality;
+use tract_linalg::mmm::retain_best;
 use tract_num_traits::Zero;
 
 use crate::internal::*;
@@ -571,7 +571,7 @@ impl Conv {
         };
         if weight_fact.is_exotic() {
             let mut suitable = tract_linalg::MmmDispatch::native().suitable(&query);
-            retain_best_quality(&mut suitable);
+            retain_best(&mut suitable);
             suitable
                 .into_iter()
                 .map(|(mmm, p, _)| (mmm, p))

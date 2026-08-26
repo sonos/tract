@@ -55,8 +55,6 @@ use tract_linalg::mmm::MatMatMul;
 
 readings_probe::instrumented_allocator!();
 
-pub const QUALITY_COLORS: [nu_ansi_term::Color; 5] = [LightGreen, Green, White, Yellow, LightRed];
-
 fn info_usage(stage: &str, probe: Option<&Probe>) {
     if let Some(mon) = probe {
         let _ = mon.log_event(stage);
@@ -836,10 +834,17 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("kernels", _)) => {
             println!();
             fn colored_name(m: &dyn MatMatMul) -> String {
+                let color = if m.emulated() {
+                    LightRed
+                } else if m.arch().is_some() {
+                    Green
+                } else {
+                    White
+                };
                 format!(
                     "{} {}",
-                    QUALITY_COLORS[m.quality().cost()].paint(m.name()),
-                    match m.declared_boost().signum() {
+                    color.paint(m.name()),
+                    match m.boost().signum() {
                         1 => Green.paint("●"),
                         -1 => Red.paint("●"),
                         _ => "-".to_string().into(),
@@ -854,7 +859,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                     colored_name(&**m),
                     m.isa(),
                     m.isa().level(),
-                    m.declared_boost(),
+                    m.boost(),
                     m.stores()
                 );
                 for packings in m.packings() {

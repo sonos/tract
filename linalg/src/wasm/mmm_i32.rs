@@ -1,7 +1,6 @@
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
-use crate::mmm::ImplementationQuality;
 
 // Wasm SIMD int8 -> i32 matmul kernel (4x4). Under +relaxed-simd the AddMatMul
 // K-loop uses i32x4.relaxed_dot_i8x16_i7x16_add with B sign-split so both dot
@@ -10,8 +9,8 @@ use crate::mmm::ImplementationQuality;
 // (an extmul/SMLAL-style outer product). The quant epilogue + fuse ops reuse
 // the bit-exact scalar path (q_scale/q_shr/q_shl), which is O(MR*NR) and
 // negligible vs the O(MR*NR*K) inner loop. Both paths are bit-identical to
-// generic_i32_4x4; selected for i8 matmul via its ManuallyOptimized quality
-// (WASM had no int8 matmul kernel — int8 fell back to the generic scalar one).
+// generic_i32_4x4; selected for i8 matmul because it is written for wasm and the generic
+// scalar kernel is not (WASM had no int8 matmul kernel before this one).
 #[inline(never)]
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_i32_4x4(mut pnl: *const FusedKerSpec<i32>) -> isize {
@@ -356,6 +355,6 @@ bail_stub!(wasm32; unsafe fn kernel_i32_4x4(*const FusedKerSpec<i32>) -> isize);
 
 MMMRustKernel!(wasm32; kernel_i32_4x4 => wasm_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(wasm_i8_packing(), wasm_i8_packing());
-    quality(ImplementationQuality::ManuallyOptimized)
+
     store(i8)
 );

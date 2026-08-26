@@ -1,5 +1,4 @@
 use crate::DatumType;
-use crate::frame::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::isa::IsaSet;
 use crate::mmm::*;
 use crate::mmm_tiers::MmmTier;
@@ -24,7 +23,7 @@ const CAN_FUSE_I32: fn(&FusedSpec) -> bool = |f| !matches!(f, FusedSpec::LeakyRe
 
 MMMExternKernel!(aarch64; sme_qmmm_i32_32x32<i32>(32,32)@(128,128) isa(Aarch64Sme2) can_fuse(CAN_FUSE_I32)
     packing[1] = i8i8 => |k| k.with_packing(crate::pack::PackedI8K4::new(32), crate::pack::PackedI8K4::new(32));
-    quality(ManuallyOptimized) store(i8));
+    store(i8));
 
 // Streaming vector length in bytes, read via `RDSVL x0, #1` (encoding
 // 0x04bf5820). RDSVL is legal in non-streaming mode, but is UNDEFINED
@@ -62,14 +61,14 @@ MMMExternKernel!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     isa(Aarch64Sme)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 MMMExternKernel!(aarch64;
     sme_mmv_f32_64x1<f32>(64, 1)@(128, 128)
     isa(Aarch64Sme2)
     can_fuse(CAN_FUSE)
-    quality(ManuallyOptimized)
+
 );
 
 #[cfg(target_os = "macos")]

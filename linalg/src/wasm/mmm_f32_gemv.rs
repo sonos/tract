@@ -1,7 +1,6 @@
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
-use crate::mmm::ImplementationQuality;
 
 /// WASM SIMD f32 4x1 kernel — GEMV-shaped variant for matrix-vector products
 /// (single-column outputs, e.g., streaming-RNN inference where each frame's
@@ -159,11 +158,9 @@ unsafe fn kernel_f32_4x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-// ManuallyOptimized so kernel_selection::strategize honours the M-band
-// dispatch in mmv_f32 below. See the tier in `wasm.rs`.
 bail_stub!(wasm32; unsafe fn kernel_f32_4x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_4x1 => wasm_f32_4x1<f32>(4,1)@(4,1));
 
 /// WASM SIMD f32 8x1 kernel — wider GEMV variant for matrix-vector products
 /// on large M. Uses TWO independent f32x4 accumulators (rows 0-3 in ab_top,
@@ -403,7 +400,7 @@ unsafe fn kernel_f32_8x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_8x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_8x1 => wasm_f32_8x1<f32>(8,1)@(8,1));
 
 /// WASM SIMD f32 16x1 kernel — wider GEMV variant for matrix-vector products
 /// on very large M. Uses FOUR independent f32x4 accumulators (rows 0-3,
@@ -663,7 +660,7 @@ unsafe fn kernel_f32_16x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_16x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_16x1 => wasm_f32_16x1<f32>(16,1)@(16,1));
 
 /// WASM SIMD f32 32x1 kernel — widest GEMV variant for matrix-vector products
 /// on very large M. Uses EIGHT independent f32x4 accumulators (rows 0-3, 4-7,
@@ -1049,4 +1046,4 @@ unsafe fn kernel_f32_32x1(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_32x1(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_32x1 => wasm_f32_32x1<f32>(32,1)@(32,1));

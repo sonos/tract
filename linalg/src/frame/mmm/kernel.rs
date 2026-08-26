@@ -13,16 +13,27 @@ pub trait MatMatMulKer: Clone + Debug + Send + Sync + 'static {
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn quality(&self) -> ImplementationQuality;
+    /// Architecture this kernel is written for, `None` for the generic Rust every target
+    /// builds. Declared by the leading arch ident of the kernel macros, the same ident that
+    /// decides whether this build compiled the body.
+    fn arch(&self) -> Option<crate::isa::Arch> {
+        None
+    }
+
+    /// Whether the kernel computes its accumulator type by converting every operation to
+    /// another type, for a machine whose hardware has none.
+    fn emulated(&self) -> bool {
+        false
+    }
 
     /// The preference its author spelled out for this kernel, before the instruction-set
     /// default is added in. Zero for a kernel that claims nothing.
-    fn declared_boost(&self) -> isize;
+    fn boost(&self) -> isize;
 
-    /// [`Self::declared_boost`] plus the default owed to the instruction set the kernel was
-    /// written for, [`crate::isa::LEVEL_BOOST`] per level. Preference reads this one.
-    fn dynamic_boost(&self) -> isize {
-        self.declared_boost() + self.isa().level() as isize * crate::isa::LEVEL_BOOST
+    /// [`Self::boost`] plus the default owed to the instruction set the kernel was written
+    /// for, [`crate::isa::LEVEL_BOOST`] per level. Selection reads this one.
+    fn preference(&self) -> isize {
+        self.boost() + self.isa().level() as isize * crate::isa::LEVEL_BOOST
     }
 
     #[allow(clippy::type_complexity)]
@@ -62,7 +73,12 @@ type Kernel<Acc> = unsafe fn(&[FusedKerSpec<Acc>]) -> isize;
 pub struct DynKernel<const MR: usize, const NR: usize, Acc: LADatum> {
     pub name: String,
     pub kernel: Kernel<Acc>,
-    pub quality: ImplementationQuality,
+    /// Arch this kernel is written for, `None` for the generic Rust every target builds.
+    pub arch: Option<crate::isa::Arch>,
+    /// Reads true when the kernel emulates its accumulator type op by op, which is a fact
+    /// about the running machine rather than the declaration: the generic f16 kernels are a
+    /// real implementation on hardware that has f16 and an emulation on hardware that does not.
+    pub emulated: fn() -> bool,
     pub packings: Vec<(Box<dyn MMMInputFormat>, Box<dyn MMMInputFormat>)>,
     pub stores: Vec<DatumType>,
     /// False when this build did not assemble the kernel's asm, its arch not being the one the
@@ -82,12 +98,12 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         kernel: Kernel<Acc>,
         packing_a: PackedFormat,
         packing_b: PackedFormat,
-        quality: ImplementationQuality,
     ) -> Self {
         let kernel = DynKernel {
             name: name.to_string(),
             kernel,
-            quality,
+            arch: None,
+            emulated: || false,
             packings: vec![],
             stores: vec![Acc::datum_type()],
             built: true,
@@ -107,7 +123,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> DynKernel<MR, NR, Acc> {
         self
     }
 
-    /// Sets the tie-break behind [`MatMatMulKer::dynamic_boost`] — the `boost(..)` of the kernel
+    /// Sets the tie-break behind [`MatMatMulKer::preference`] — the `boost(..)` of the kernel
     /// macros, and the one place a runtime preference belongs.
     pub fn with_boost(mut self, f: fn() -> isize) -> Self {
         self.boost = f;
@@ -166,8 +182,12 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         NR
     }
 
-    fn quality(&self) -> ImplementationQuality {
-        self.quality
+    fn arch(&self) -> Option<crate::isa::Arch> {
+        self.arch
+    }
+
+    fn emulated(&self) -> bool {
+        (self.emulated)()
     }
 
     fn built(&self) -> bool {
@@ -195,7 +215,7 @@ impl<const MR: usize, const NR: usize, Acc: LADatum> MatMatMulKer for DynKernel<
         Cow::Borrowed(&self.stores)
     }
 
-    fn declared_boost(&self) -> isize {
+    fn boost(&self) -> isize {
         (self.boost)()
     }
 
