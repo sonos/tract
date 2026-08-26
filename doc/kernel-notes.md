@@ -84,13 +84,17 @@ a host whose assembler refused it.
 
 `tract routines` does the same for the single-winner kernels — the element-wise
 functions, reductions and binaries, which have no shape to weigh and so pick one
-implementation per machine. It draws the function × machine grid, green where a
-machine runs a kernel written for its architecture and red where it falls back on
-portable Rust, with a column for the host and a gap list of what this machine runs
-portably that another machine has a real kernel for. Cells name what the winning
-kernel needs from the instruction set; `--names` names the kernel instead, which
-also shows which of several fallbacks a cell got — a look-up table, a fused
-variant, the vector width — at the cost of a much wider terminal.
+implementation per machine. It draws the function × machine grid as one coloured
+cell each: green where the machine runs a kernel written for its own rung of the
+ladder, white where it runs correct code written for something else — portable
+Rust, or an architecture kernel from a rung below — red where a portable f16
+kernel converts to f32 and back around every operation, blue where a settlement
+declares the cell closed on purpose, and a dot where nothing implements the pair.
+Columns are one per rung of every architecture's ladder, named by the rung's
+nickname under its architecture — `fma`, `avx512`, `fp16`, `sme`, `relaxed` — plus
+the host. Which kernel each cell means is the list under the grid, naming every
+kernel the host runs and what closed the cells that are closed; `--isa` takes any
+machine named above the grid and lists that one instead.
 
 ## Tuning knobs
 

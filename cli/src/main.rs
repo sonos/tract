@@ -193,10 +193,10 @@ fn main() -> TractResult<()> {
             Command::new("routines")
                 .about("Print the single-winner kernel matrix: every function by every machine")
                 .arg(
-                    Arg::new("names")
-                        .long("names")
-                        .num_args(0)
-                        .help("Name the kernel in each cell instead of what it needs to run"),
+                    Arg::new("isa")
+                        .long("isa")
+                        .num_args(1)
+                        .help("List the kernels of this machine instead of the host's"),
                 ),
         )
         .subcommand(Command::new("selection").about(
@@ -846,7 +846,9 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-report", m)) => return bench_report::handle(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-mt-report", m)) => return bench_report::handle_mt(m),
-        Some(("routines", m)) => return routines::dump(m.get_flag("names")),
+        Some(("routines", m)) => {
+            return routines::dump(m.get_one::<String>("isa").map(String::as_str));
+        }
         Some(("selection", _)) => return selection::dump(),
         Some(("kernels", _)) => {
             println!();
