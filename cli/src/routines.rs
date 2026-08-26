@@ -1,37 +1,46 @@
 //! The single-winner kernel matrix: which implementation every machine would run for every
-//! function, as one grid.
+//! function, as one grid of coloured cells, with the whole list for one machine underneath.
 //!
-//! A column is a deployment target, a row is a function and datum type. The colour is the
-//! message: a cell served by a kernel written for that architecture is green, one falling back on
-//! portable Rust is red, and a pair no tree implements at all is a dot. A red cell on a column
-//! whose hardware could do better is an optimisation waiting to be written, which is what the
-//! trailing gap list collects.
+//! A column is a deployment target, a row is a function and datum type, and the colour is the
+//! whole message: green for a kernel written for that machine's own rung of the instruction-set
+//! ladder, white for correct code that was not written for it -- portable Rust, or an architecture
+//! kernel from a rung below -- red for portable f16 code, which converts to f32 and back around
+//! every single operation, blue for a cell closed on purpose, and a dot for a pair nothing
+//! implements. Red is the cost no machine has to pay.
 //!
-//! The cell text names what the winning kernel needs from the instruction set, so it also shows
-//! the subtler gap: an f16 row answering `aarch64` on a column that has `fp16` is served by the
-//! baseline NEON tree, which means an f32 round trip where a native f16 kernel could run.
+//! Columns come from the instruction-set ladders rather than a hand-kept list, one per rung under
+//! its architecture, plus one for the host, which is exact rather than the nearest rung: a machine
+//! can have `avx512f` without the `avx-vnni` its ladder step bundles, and then no rung describes
+//! it. A rung whose answers repeat the rung below still earns a column, because a step with
+//! nothing written for it yet is what a reader is looking for.
 //!
-//! Columns come from the instruction-set ladders rather than a hand-kept list — a rung whose
-//! answers are identical to the rung below it earns no column and is named in the footer instead
-//! — plus one for the host, which is exact rather than the nearest rung: a machine can have
-//! `avx512f` without the `avx-vnni` its ladder step bundles, and then no rung describes it.
+//! Which kernel a cell stands for is the list under the grid, for the host or for whatever
+//! `--isa` names, along with what closed a blue one. Machines are named above the grid in the form
+//! `--isa` reads back, so a column can be pasted in.
 //!
 //! Only [`crate::selection`] speaks for matmul. These are the kernels chosen once per function,
 //! with no shape to weigh.
 
+use nu_ansi_term::Color;
 use nu_ansi_term::Color::*;
 use tract_core::internal::*;
 use tract_data::prelude::DatumType;
 use tract_linalg::isa::IsaSet;
-use tract_linalg::routines::{Func, Routine, RoutineFactory, best_for, declared};
+use tract_linalg::routines::{
+    Func, RoutineFactory, Standing, best_for, declared, settled_why, standing,
+};
 
-/// Width of one machine column, wider when cells carry kernel names. Anything longer is elided
-/// here and, for a machine, spelled in full by the key above the grid.
-static W: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(16);
+/// Width of one machine column. A cell is one character; the header labels want the rest.
+const COLUMN: usize = 9;
 
-fn width() -> usize {
-    W.load(std::sync::atomic::Ordering::Relaxed)
-}
+/// What a cell is drawn with: enough ink for its colour to register at a glance, and the same
+/// disc left open where nothing is implemented at all. One character each, so a font that draws
+/// them wide shifts every cell alike.
+const FILLED: &str = "⬤";
+const HOLLOW: &str = "◯";
+
+/// Width of the function-and-datum-type label opening a row.
+const ROW: usize = 20;
 
 /// The shape of kernel a descriptor is, which is what its factory arm already says. Rows are
 /// grouped by it so a reader compares like with like.
@@ -49,59 +58,43 @@ fn family(factory: &RoutineFactory) -> (u8, &'static str) {
     }
 }
 
-/// The features a set offers beyond its bare architecture, which is what distinguishes one
-/// machine from another.
-fn features(isa: &IsaSet) -> Vec<&'static str> {
-    isa.iter().filter(|i| !i.is_arch()).map(|i| i.name()).collect()
-}
-
+/// The architecture a column belongs to, short enough for a column: what the tree is named after,
+/// without the baseline feature the wasm tree carries in its own name.
 fn arch_name(isa: &IsaSet) -> String {
-    isa.arch().map(|a| a.to_string()).unwrap_or_else(|| "no tree".to_string())
+    isa.arch()
+        .map(|a| a.to_string().split('+').next().unwrap_or_default().to_string())
+        .unwrap_or_else(|| "none".to_string())
 }
 
-/// The whole machine, for the key. Rendered as `tract selection` renders it, so one machine reads
-/// the same in both.
+/// The whole machine, in the form `--isa` reads back. Rendered as `tract selection` renders it,
+/// so one machine reads the same in both.
 fn machine_name(isa: &IsaSet) -> String {
     format!("{isa:?}")
 }
 
-/// What the kernel serving a cell needs to run: the features it declares beyond its
-/// architecture, or the architecture alone when it declares none. A portable kernel needs
-/// nothing and says so.
-fn needs_label(routine: &Routine) -> String {
-    let Some(arch) = routine.arch else { return "generic".to_string() };
-    let needs: Vec<&str> =
-        routine.isa.needs.iter().filter(|i| !i.is_arch()).map(|i| i.name()).collect();
-    if needs.is_empty() { arch.to_string() } else { needs.join("+") }
+/// The colour a standing is drawn in. It carries the verdict, so a cell itself only has to say
+/// whether anything is there at all.
+fn ink(standing: Standing) -> Color {
+    match standing {
+        Standing::Missing => DarkGray,
+        Standing::Dedicated => Green,
+        Standing::Unspecialized => White,
+        Standing::Emulated => LightRed,
+        Standing::Settled => Blue,
+    }
 }
 
-/// The kernel's own name, minus what the row already says: the function and the datum type. What
-/// survives is the tree it lives in and how it is built — `_lut`, `_fused`, the vector width — so
-/// two machines running the same tree can still be told apart.
-fn name_label(routine: &Routine, func: Func, dt: DatumType) -> String {
-    let spent: Vec<String> = func
-        .name()
-        .split('_')
-        .map(str::to_string)
-        .chain(std::iter::once(format!("{dt:?}").to_lowercase()))
-        .collect();
-    let kept: Vec<&str> =
-        routine.name().split('_').filter(|t| !spent.iter().any(|s| s == t)).collect();
-    kept.join("_")
-}
-
-/// Right-align inside one column, always leaving a space so two full cells never run together.
-/// Truncation counts characters rather than bytes: the ellipsis is not ASCII even when the names
+/// Centre inside `w` characters, always leaving a space so two full labels never run together.
+/// Truncation counts characters rather than bytes: the ellipsis is not ASCII even when the labels
 /// are.
-fn elide(text: &str) -> String {
-    let w = width();
+fn centre_in(text: &str, w: usize) -> String {
     let room = w - 1;
     let text: String = if text.chars().count() <= room {
         text.to_string()
     } else {
         text.chars().take(room - 1).chain(std::iter::once('…')).collect()
     };
-    format!("{text:>w$}")
+    format!("{text:^w$}")
 }
 
 /// Every distinct pair a tree implements, grouped by kernel shape then named in a stable order.
@@ -117,128 +110,109 @@ fn rows() -> Vec<(Func, DatumType, u8, &'static str)> {
     rows
 }
 
-/// The machines worth a column, and the ones folded into the rung below them. A rung earns its
-/// width by changing an answer; the host is always shown, whether or not a rung matches it.
-fn columns(rows: &[(Func, DatumType, u8, &'static str)]) -> (Vec<(String, IsaSet)>, Vec<String>) {
-    let answers = |isa: &IsaSet| -> Vec<Option<&'static str>> {
-        rows.iter().map(|(f, dt, ..)| best_for(*f, *dt, isa).map(|r| r.name())).collect()
-    };
-    let mut cols: Vec<(String, IsaSet)> = vec![];
-    let mut folded: Vec<String> = vec![];
-    let mut last: Option<(IsaSet, Vec<Option<&'static str>>)> = None;
-    for isa in crate::selection::machines() {
-        let mine = answers(&isa);
-        if let Some((prev, ref theirs)) = last
-            && prev.arch() == isa.arch()
-            && *theirs == mine
-        {
-            folded.push(machine_name(&isa));
-            continue;
-        }
-        let previous: Vec<&str> = match last {
-            Some((prev, _)) if prev.arch() == isa.arch() => features(&prev),
-            _ => vec![],
-        };
-        let added: Vec<&str> =
-            features(&isa).into_iter().filter(|f| !previous.contains(f)).collect();
-        let label =
-            if added.is_empty() { arch_name(&isa) } else { format!("+{}", added.join("+")) };
-        cols.push((label, isa));
-        last = Some((isa, mine));
-    }
-    cols.push(("this host".to_string(), tract_linalg::isa::native()));
-    (cols, folded)
+/// One column per rung of every architecture's ladder, by the rung's nickname, plus the host,
+/// which is exact rather than the nearest rung.
+fn columns() -> Vec<(String, IsaSet)> {
+    let mut cols: Vec<(String, IsaSet)> = crate::selection::machines()
+        .into_iter()
+        .map(|isa| (isa.nickname().to_string(), isa))
+        .collect();
+    cols.push(("host".to_string(), tract_linalg::isa::native()));
+    cols
 }
 
-pub fn dump(names: bool) -> TractResult<()> {
-    if names {
-        W.store(23, std::sync::atomic::Ordering::Relaxed);
+/// What each column stands for, in the form `--isa` takes.
+fn key(cols: &[(String, IsaSet)]) {
+    for (label, isa) in cols {
+        println!("  {}   {}", centre_in(label, COLUMN), DarkGray.paint(machine_name(isa)));
     }
+}
+
+/// The architecture over every column, then the rung. Two lines, so a column is only as wide as
+/// one rung's nickname.
+fn header(cols: &[(String, IsaSet)], chosen: usize) {
+    print!("{:<ROW$}", "");
+    for (_, isa) in cols {
+        print!("{}", DarkGray.paint(centre_in(&arch_name(isa), COLUMN)));
+    }
+    println!();
+    print!("{:<ROW$}", "");
+    for (i, (label, _)) in cols.iter().enumerate() {
+        let label = centre_in(label, COLUMN);
+        if i == chosen { print!("{}", White.bold().paint(label)) } else { print!("{label}") }
+    }
+    println!();
+}
+
+pub fn dump(isa: Option<&str>) -> TractResult<()> {
+    let machine = match isa {
+        Some(spec) => spec.parse::<IsaSet>()?,
+        None => tract_linalg::isa::native(),
+    };
     let rows = rows();
-    let (cols, folded) = columns(&rows);
-    let host = cols.len() - 1;
+    let cols = columns();
+    let chosen = cols.iter().position(|(_, isa)| *isa == machine).unwrap_or(cols.len());
 
     println!();
     println!("{}", White.bold().paint("# Routine kernels by machine"));
     println!(
-        "  {} written for the architecture   {} portable Rust   {} nothing implements it",
-        Green.paint("■"),
-        LightRed.paint("■"),
-        DarkGray.paint("·"),
+        "  {} written for this machine   {} not written for it   {} f16 converted per operation   {} settled on purpose   {} nothing implements it",
+        Green.paint(FILLED),
+        White.paint(FILLED),
+        LightRed.paint(FILLED),
+        Blue.paint(FILLED),
+        DarkGray.paint(HOLLOW),
     );
     println!();
-    for (label, isa) in &cols {
-        println!("  {}   {}", elide(label), DarkGray.paint(machine_name(isa)));
-    }
+    key(&cols);
     println!();
-
-    print!("{:<26}", "");
-    for (i, (label, _)) in cols.iter().enumerate() {
-        let head = elide(label);
-        if i == host { print!("{}", White.bold().paint(head)) } else { print!("{head}") }
-    }
-    println!();
+    header(&cols, chosen);
 
     let mut group = "";
-    let mut gaps: Vec<String> = vec![];
     for (func, dt, _, this_group) in &rows {
         if *this_group != group {
             group = this_group;
             println!("{}", DarkGray.paint(format!("── {group} ──")));
         }
-        print!("{:<26}", format!("{}/{dt:?}", func.name()));
+        print!("{:<ROW$}", format!("{}/{dt:?}", func.name()));
         for (i, (_, isa)) in cols.iter().enumerate() {
-            let answer = best_for(*func, *dt, isa);
-            let (text, color) = match answer {
-                None => ("·".to_string(), DarkGray),
-                Some(r) => {
-                    let text = if names { name_label(r, *func, *dt) } else { needs_label(r) };
-                    (text, if r.arch.is_some() { Green } else { LightRed })
-                }
-            };
-            // Only the host earns a gap list. Every column has portable cells, but a baseline
-            // machine is portable almost throughout and nobody writes VFP or SSE2 kernels to fix
-            // that, so listing them all would bury the one list a reader can act on.
-            if i == host
-                && answer.is_some_and(|r| r.arch.is_none())
-                && cols
-                    .iter()
-                    .any(|(_, other)| best_for(*func, *dt, other).is_some_and(|r| r.arch.is_some()))
-            {
-                gaps.push(format!("{}/{dt:?}", func.name()));
-            }
-            let text = elide(&text);
-            if i == host {
-                print!("{}", color.bold().paint(text))
+            let standing = standing(*func, *dt, isa);
+            let cell =
+                centre_in(if standing == Standing::Missing { HOLLOW } else { FILLED }, COLUMN);
+            if i == chosen {
+                print!("{}", ink(standing).bold().paint(cell))
             } else {
-                print!("{}", color.paint(text))
+                print!("{}", ink(standing).paint(cell))
             }
         }
         println!();
     }
 
-    if !folded.is_empty() {
-        println!();
-        println!(
-            "{}",
-            DarkGray.paint(format!("changes nothing, so has no column: {}", folded.join(", ")))
-        );
-    }
-    report_gaps(gaps);
+    machine_list(&machine, &rows);
     Ok(())
 }
 
-/// What this machine runs portable Rust for while another machine has a real kernel: the ports
-/// worth writing here. Only the host, because the grid already shows every column in colour and
-/// a baseline machine is portable nearly throughout.
-fn report_gaps(gaps: Vec<String>) {
-    if gaps.is_empty() {
-        return;
-    }
+/// Every kernel one machine runs, named, and what closed the cells that are closed.
+fn machine_list(machine: &IsaSet, rows: &[(Func, DatumType, u8, &'static str)]) {
     println!();
-    println!("{}", White.bold().paint("# Gaps on this host"));
-    println!("  {}", DarkGray.paint("portable Rust here, hand-written on some other machine"));
-    for gap in &gaps {
-        println!("  {gap}");
+    println!("{}", White.bold().paint(format!("# {}", machine_name(machine))));
+    println!("  {}", DarkGray.paint("--isa takes any machine named above"));
+    let mut group = "";
+    for (func, dt, _, this_group) in rows {
+        if *this_group != group {
+            group = this_group;
+            println!("{}", DarkGray.paint(format!("── {group} ──")));
+        }
+        let standing = standing(*func, *dt, machine);
+        let kernel = best_for(*func, *dt, machine).map_or("—", |r| r.name());
+        let pair = format!("{}/{dt:?}", func.name());
+        match settled_why(*func, *dt, machine) {
+            Some(why) => println!(
+                "  {pair:<ROW$}{} {}",
+                ink(standing).paint(format!("{kernel:<38}")),
+                DarkGray.paint(why)
+            ),
+            None => println!("  {pair:<ROW$}{}", ink(standing).paint(kernel)),
+        }
     }
 }
