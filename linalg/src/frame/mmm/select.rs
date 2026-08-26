@@ -15,7 +15,7 @@ use dyn_eq::DynEq;
 use tract_data::itertools::Itertools;
 use tract_data::prelude::{DatumType, TVec, tvec};
 
-use super::{ImplementationQuality, MMMInputFormat, MatMatMul, PanelExtractor};
+use super::{MMMInputFormat, MatMatMul, PanelExtractor};
 use crate::WeightType;
 
 /// One way to compute a matmul: a kernel, which of its packings to use, and the panel
@@ -74,15 +74,17 @@ pub fn suitable_named(suitable: &[Suitable], name: &str) -> Option<usize> {
     suitable.iter().position(|(mmm, _, _)| mmm.name() == name)
 }
 
-/// Keep only the suitable kernels of the best quality: quality dominates, and a
-/// kernel's dynamic boost breaks ties within it. First rung of the generic policy,
-/// applied before any shape reasoning.
-pub fn retain_best_quality(suitable: &mut Vec<Suitable>) {
-    fn score(mmm: &dyn MatMatMul) -> isize {
-        -(mmm.quality().cost() as isize * 1000) + mmm.dynamic_boost()
+/// Keep only the suitable kernels nothing supersedes: a kernel written for this architecture
+/// beats portable Rust whatever their instruction sets, and among kernels of one kind the
+/// instruction-set level and the declared boost decide. Everything tied at the top is kept —
+/// the shape rules run over what is left. First rung of the generic policy, applied before any
+/// shape reasoning.
+pub fn retain_best(suitable: &mut Vec<Suitable>) {
+    fn key(mmm: &dyn MatMatMul) -> (bool, isize) {
+        (mmm.arch().is_some(), mmm.preference())
     }
-    if let Some(best) = suitable.iter().map(|(mmm, _, _)| score(&**mmm)).max() {
-        suitable.retain(|(mmm, _, _)| score(&**mmm) == best);
+    if let Some(best) = suitable.iter().map(|(mmm, _, _)| key(&**mmm)).max() {
+        suitable.retain(|(mmm, _, _)| key(&**mmm) == best);
     }
 }
 
@@ -231,7 +233,7 @@ impl MmmDispatch {
         let acc = *query.accumulators.first()?;
         let ix = crate::mmm_tiers::preferred(&self.isa, &self.tiers, acc, query, suitable)?;
         let chosen = &suitable[ix];
-        (chosen.0.quality() == ImplementationQuality::ManuallyOptimized).then(|| chosen.clone())
+        chosen.0.arch().is_some().then(|| chosen.clone())
     }
 
     /// One kernel for the query, for a caller that needs an answer now: the platform policy's
@@ -245,7 +247,7 @@ impl MmmDispatch {
         if let Some(chosen) = self.preferred(query, &suitable) {
             return Some(chosen);
         }
-        retain_best_quality(&mut suitable);
+        retain_best(&mut suitable);
         if suitable.len() == 1 {
             return Some(suitable.remove(0));
         }
@@ -266,7 +268,7 @@ impl MmmDispatch {
 
     /// The kernel this platform would run for a plain matmul of these dims, for a caller
     /// introspecting dispatch rather than performing it. Unlike [`MmmDispatch::preferred`] it reports
-    /// the tiers' answer whatever its quality, and it never falls back on the generic rules:
+    /// the tiers' answer whatever kind of kernel it is, and it never falls back on the generic rules:
     /// `None` means no tier had anything to say.
     pub fn preferred_kernel(
         &self,
@@ -291,7 +293,7 @@ impl crate::isa::Arch {
     /// `TRACT_CPU_ISA`, which is checked against this architecture rather than the host's. `None` when
     /// the architecture's tree was not compiled in; see the `foreign-inventory` feature.
     pub fn inspect(self) -> Option<MmmDispatch> {
-        if !crate::mmm_routines::declared().any(|r| r.target == Some(self)) {
+        if !crate::mmm_routines::declared().any(|r| (r.make)().arch() == Some(self)) {
             return None;
         }
         let isa = if self.is_native() {
@@ -320,23 +322,23 @@ mod tests {
     /// that drops a group's matvec while keeping its matrix kernel leaves that caller a group it
     /// cannot use for both, and it silently falls back on a narrower group instead.
     ///
-    /// Only the boost is held to this. The quality filter dropping the matvec is it working as
-    /// intended — a scalar fallback has no business being preferred beside a hand-written
-    /// kernel, and a group whose only matvec is a lesser implementation is a group the caller is
-    /// right to treat as matrix-only.
+    /// Only the boost is held to this. The architecture key dropping the matvec is it working as
+    /// intended — portable Rust has no business being preferred beside a kernel written for
+    /// this machine, and a group whose only matvec is generic is a group the caller is right to
+    /// treat as matrix-only.
     #[test]
     fn the_preference_keeps_a_kept_group_usable() {
         let dispatch = crate::MmmDispatch::native();
         for acc in accumulators() {
             let query = Query::plain(acc, None, None, None);
             let all = dispatch.suitable(&query);
-            let Some(best) = all.iter().map(|(mmm, _, _)| mmm.quality().cost()).min() else {
+            let Some(best) = all.iter().map(|(mmm, _, _)| mmm.arch().is_some()).max() else {
                 continue;
             };
             let peers: Vec<Suitable> =
-                all.iter().filter(|(mmm, _, _)| mmm.quality().cost() == best).cloned().collect();
+                all.iter().filter(|(mmm, _, _)| mmm.arch().is_some() == best).cloned().collect();
             let mut kept = peers.clone();
-            retain_best_quality(&mut kept);
+            retain_best(&mut kept);
             let kept: Vec<&str> = kept.iter().map(|(mmm, _, _)| mmm.name()).collect();
             for group in packing_groups(&peers) {
                 let matvecs: Vec<&str> =

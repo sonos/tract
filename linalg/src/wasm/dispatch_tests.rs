@@ -50,17 +50,14 @@ mod dispatch_trace {
     /// Regression guard for the GEMM/GEMV dispatch.
     ///
     /// `kernel_selection::strategize` honours the `mmm_f32` / `mmv_f32`
-    /// callback only when the returned kernel is `ManuallyOptimized`;
-    /// otherwise it falls through to the suitable list, where
-    /// `retain_best_quality` drops every `TargetOptimized` kernel, and for
-    /// N>1 then picks `max(nr*mr)`
-    /// over the surviving `ManuallyOptimized` GEMV kernels — i.e.
-    /// `wasm_f32_32x1`, a matrix×vector kernel, for every GEMM. So every
-    /// kernel reachable through the dispatch callbacks must be
-    /// `ManuallyOptimized`.
+    /// callback only when the returned kernel is one written for wasm; a
+    /// generic one counts as no opinion, and it then falls through to the
+    /// suitable list, where the N>1 rule picks `max(nr*mr)` over the wasm
+    /// GEMV kernels — i.e. `wasm_f32_32x1`, a matrix-vector kernel, for
+    /// every GEMM. So every kernel reachable through the dispatch callbacks
+    /// must be a wasm kernel.
     #[test]
-    fn dispatch_kernels_are_manually_optimized() {
-        use crate::mmm::ImplementationQuality::ManuallyOptimized;
+    fn dispatch_kernels_are_wasm_kernels() {
         let ops = crate::MmmDispatch::native();
         for (label, m, k, n) in [
             ("GEMM m=64 k=64 n=8", 64, 64, 8),
@@ -72,13 +69,11 @@ mod dispatch_trace {
             let mmm = ops
                 .preferred_kernel(tract_data::prelude::DatumType::F32, Some(m), Some(k), Some(n))
                 .unwrap();
-            assert_eq!(
-                mmm.quality(),
-                ManuallyOptimized,
-                "{label}: dispatch returned {} tagged {:?} — strategize would \
+            assert!(
+                mmm.arch().is_some(),
+                "{label}: dispatch returned the generic {} — strategize would \
                  discard it and reroute onto a GEMV kernel",
                 mmm.name(),
-                mmm.quality(),
             );
         }
     }
@@ -284,11 +279,10 @@ fn add_row_col_products_and_add_mat_mul_agree_on_fusion() {
     check_madd_pairing(&*crate::wasm::wasm_f32_4x16);
 }
 
-/// `wasm_f32_4x4` is registered at `TargetOptimized` while every other kernel
-/// is `ManuallyOptimized`, so `strategize`'s `retain()` drops it before
-/// selection and neither `mmm_f32` nor `mmv_f32` ever names it. Promoting it
-/// without also giving it a dispatch band would silently put a 4-wide tile in
-/// front of shapes the 8x8 and the GEMV kernels currently own.
+/// `wasm_f32_4x4` declares `NEVER_PREFERRED`, so `retain_best` drops it before selection and
+/// neither `mmm_f32` nor `mmv_f32` ever names it. Promoting it without also giving it a
+/// dispatch band would silently put a 4-wide tile in front of shapes the 8x8 and the GEMV
+/// kernels currently own.
 #[test]
 fn dispatch_never_returns_wasm_f32_4x4() {
     let ops = crate::MmmDispatch::native();
@@ -307,7 +301,7 @@ fn dispatch_never_returns_wasm_f32_4x4() {
                     mmm.name(),
                     "wasm_f32_4x4",
                     "m={m} k={k} n={n} dispatched to wasm_f32_4x4, which is registered \
-                     TargetOptimized and has no dispatch band"
+                     NEVER_PREFERRED and has no dispatch band"
                 );
             }
         }

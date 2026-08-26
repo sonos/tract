@@ -1,7 +1,6 @@
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 use crate::Scaler;
 use crate::mmm::FusedKerSpec;
-use crate::mmm::ImplementationQuality;
 
 #[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
@@ -286,14 +285,14 @@ unsafe fn kernel_f32_4x4(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-// Reachable only by name, never through dispatch: it is the one kernel left at
-// TargetOptimized, and strategize's retain() keeps only the top quality tier.
-// Kept because it is the only f32 kernel besides 8x8 whose C tile is
-// two-dimensional, so the generated store and packing tests cover that layout
-// on a second shape. `dispatch_never_returns_wasm_f32_4x4` holds this in place.
+// Reachable only by name, never through dispatch: it declares NEVER_PREFERRED, so every
+// other wasm f32 kernel outranks it. Kept because it is the only f32 kernel besides 8x8
+// whose C tile is two-dimensional, so the generated store and packing tests cover that
+// layout on a second shape. `dispatch_never_returns_wasm_f32_4x4` holds this in place.
 bail_stub!(wasm32; unsafe fn kernel_f32_4x4(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4) quality(ImplementationQuality::TargetOptimized));
+MMMRustKernel!(wasm32; kernel_f32_4x4 => wasm_f32_4x4<f32>(4,4)@(4,4)
+    boost(|| crate::isa::NEVER_PREFERRED));
 
 /// WASM SIMD f32 8x8 kernel — wide MM tile (8 rows × 8 cols, 16 v128 accumulators).
 /// Each row uses 2 v128: cols 0-3 in `_lo`, cols 4-7 in `_hi`. 16 accumulators
@@ -994,12 +993,9 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
     }
 }
 
-// ManuallyOptimized so kernel_selection::strategize honours the mmm_f32
-// callback that returns it for N>1 GEMM (see the tier in `wasm.rs`) — otherwise
-// strategize drops it and routes every GEMM onto the 32x1 GEMV kernel.
 bail_stub!(wasm32; unsafe fn kernel_f32_8x8(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_8x8 => wasm_f32_8x8<f32>(8,8)@(8,8));
 
 /// WASM SIMD f32 4x16 kernel — 4 rows x 16 cols, 16 v128 accumulators laid out
 /// row-major as `acc[r * 4 + j]`, j indexing the four v128 chunks of a row.
@@ -1266,4 +1262,4 @@ unsafe fn kernel_f32_4x16(mut pnl: *const FusedKerSpec<f32>) -> isize {
 
 bail_stub!(wasm32; unsafe fn kernel_f32_4x16(*const FusedKerSpec<f32>) -> isize);
 
-MMMRustKernel!(wasm32; kernel_f32_4x16 => wasm_f32_4x16<f32>(4,16)@(4,16) quality(ImplementationQuality::ManuallyOptimized));
+MMMRustKernel!(wasm32; kernel_f32_4x16 => wasm_f32_4x16<f32>(4,16)@(4,16));

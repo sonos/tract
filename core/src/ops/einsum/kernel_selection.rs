@@ -4,7 +4,7 @@ use dyn_clone::clone_box;
 use tract_itertools::Itertools;
 use tract_linalg::WeightType;
 use tract_linalg::block_quant::BlockQuantFact;
-use tract_linalg::mmm::{MMMInputFormat, Query, Suitable, pick_by_shape, retain_best_quality};
+use tract_linalg::mmm::{MMMInputFormat, Query, Suitable, pick_by_shape, retain_best};
 
 use crate::internal::*;
 use crate::ops::matmul::ModePicker;
@@ -29,7 +29,7 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     {
         return Ok(single_strat(chosen));
     }
-    retain_best_quality(&mut suitable);
+    retain_best(&mut suitable);
     if suitable.len() == 1 {
         return Ok(single_strat(suitable.remove(0)));
     }

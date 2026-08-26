@@ -3,7 +3,6 @@ use crate::block_quant::*;
 use crate::isa::Arch;
 use crate::isa::Isa;
 use crate::isa::IsaSet;
-use crate::mmm::ImplementationQuality::ManuallyOptimized;
 use crate::mmm::{Query, Suitable};
 use crate::mmm_tiers::MmmTier;
 use crate::pack::PackedFormat;
@@ -77,13 +76,13 @@ fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> &'s
 // AVX-without-FMA f32 tier for pre-Haswell CPUs (Sandy Bridge / Ivy Bridge):
 // same tile geometries as their fma_ siblings but the inner loops use
 // vmulps+vaddps, and add_unicast avoids the avx2-only vgatherdps.
-MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(X86_64Avx) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x5<f32>(16,5)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_16x6<f32>(16,6)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_24x4<f32>(24,4)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_32x3<f32>(32,3)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_40x2<f32>(40,2)@(256,4) isa(X86_64Avx));
+MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(X86_64Avx));
 
 /// The 256-bit fma f32 kernels are not superseded by the avx512 ones, so they cancel the ladder
 /// step between the two and are preferred as peers. Both x86 avx512 cost models score them alongside the
@@ -92,12 +91,12 @@ MMMExternKernel!(x86_64; avx_mmm_f32_64x1<f32>(64,1)@(256,4) isa(X86_64Avx) qual
 /// packing group, whose 64x3 is the best matrix kernel at small `n`.
 const FMA_F32_PEER: fn() -> isize = || crate::isa::peer_of(Isa::X86_64Fma, Isa::X86_64Avx512f);
 
-MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
-MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
-MMMExternKernel!(x86_64; fma_mmm_f32_16x5<f32>(16,5)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
-MMMExternKernel!(x86_64; fma_mmm_f32_24x4<f32>(24,4)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
-MMMExternKernel!(x86_64; fma_mmm_f32_40x2<f32>(40,2)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
-MMMExternKernel!(x86_64; fma_mmm_f32_64x1<f32>(64,1)@(256,4) isa(X86_64Avx, X86_64Fma) quality(ManuallyOptimized) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_8x8 <f32>(8, 8)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_16x6<f32>(16,6)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_16x5<f32>(16,5)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_24x4<f32>(24,4)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_40x2<f32>(40,2)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
+MMMExternKernel!(x86_64; fma_mmm_f32_64x1<f32>(64,1)@(256,4) isa(X86_64Avx, X86_64Fma) boost(FMA_F32_PEER));
 
 pub fn pq40_r32() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, false)
@@ -111,7 +110,7 @@ MMMExternKernel! { x86_64; fma_mmm_f32_32x1<f32>(32,1)@(256,4) isa(X86_64Avx, X8
     packing[3] = f16f16 => |k| k.with_packing(f16::packing(32), f16::packing(1));
     packing[4] = f16f32 => |k| k.with_packing(f16::packing(32), f32::packing(1));
     packing[5] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(1));
-    quality(ManuallyOptimized)
+
     boost(FMA_F32_PEER)
     store(f16)
 }
@@ -119,33 +118,33 @@ MMMExternKernel!(x86_64; fma_mmm_f32_32x3<f32>(32,3)@(256,4) isa(X86_64Avx, X86_
  packing[1] = f32f16 => |k| k.with_packing(f32::packing(32).align(256), f16::packing(3));
  packing[2] = f16f32 => |k| k.with_packing(f16::packing(32).align(256), f32::packing(3));
  packing[3] = f16f16 => |k| k.with_packing(f16::packing(32).align(256), f16::packing(3));
- quality(ManuallyOptimized)
+
  boost(FMA_F32_PEER)
  store(f16)
 );
 
-MMMExternKernel!(x86_64; avx512_mmm_f32_128x1<f32>(128, 1)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_16x1 <f32>( 16, 1)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_16x12<f32>( 16,12)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_16x8 <f32>( 16, 8)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_32x6 <f32>( 32, 6)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_32x5 <f32>( 32, 5)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_48x4 <f32>( 48, 4)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_64x3 <f32>( 64, 3)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
-MMMExternKernel!(x86_64; avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) isa(X86_64Avx512f) quality(ManuallyOptimized));
+MMMExternKernel!(x86_64; avx512_mmm_f32_128x1<f32>(128, 1)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_16x1 <f32>( 16, 1)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_16x12<f32>( 16,12)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_16x8 <f32>( 16, 8)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_32x6 <f32>( 32, 6)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_32x5 <f32>( 32, 5)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_48x4 <f32>( 48, 4)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_64x3 <f32>( 64, 3)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_80x2 <f32>( 80, 2)@(512,4) isa(X86_64Avx512f));
 
 // 128-bit VEX i32 sibling of avx2_mmm_i32_8x8 for the avx-without-avx2 tier:
 // same i8i8 widening scheme (i8 products computed in i16 lanes) and the same
 // quantization epilogue semantics, on 8x4 xmm column pairs.
 MMMExternKernel! { x86_64; avx_mmm_i32_8x4<i32>(8,4)@(256,4) isa(X86_64Avx)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 4, 4));
-    quality(ManuallyOptimized)
+
     store(i8)
 }
 
 MMMExternKernel! { x86_64; avx2_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Avx2)
     packing[1] = i8i8 => |k| k.with_packing(PackedFormat::new(DatumType::I8, 8, 256), PackedFormat::new(DatumType::I8, 8, 4));
-    quality(ManuallyOptimized)
+
     store(i8)
 }
 
@@ -161,7 +160,7 @@ MMMExternKernel! { x86_64; avx2_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Avx2)
 #[cfg(tract_avx512vnni)]
 MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Avx512f, X86_64Avx512Vnni)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(8), PackedI8K4::new(8));
-    quality(ManuallyOptimized)
+
     store(i8)
 }
 
@@ -185,7 +184,7 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Av
 #[cfg(tract_avx512vnni)]
 MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) isa(X86_64Avx512f, X86_64Avx512Vnni)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
-    quality(ManuallyOptimized)
+
     boost(AVX512VNNI_WIDE_TILE)
     store(i8)
 }
@@ -200,7 +199,7 @@ MMMExternKernel! { x86_64; avx512vnni_mmm_i32_16x16<i32>(16,16)@(64,4) isa(X86_6
 #[cfg(tract_avxvnni)]
 MMMExternKernel! { x86_64; avxvnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Avx2, X86_64AvxVnni)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(8), PackedI8K4::new(8));
-    quality(ManuallyOptimized)
+
     store(i8)
 }
 
@@ -214,7 +213,7 @@ MMMExternKernel! { x86_64; avxvnni_mmm_i32_8x8<i32>(8,8)@(256,4) isa(X86_64Avx2,
 #[cfg(tract_amx_int8)]
 MMMExternKernel! { x86_64; avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) isa(X86_64Avx512f, X86_64AmxInt8)
     packing[1] = i8i8 => |k| k.with_packing(PackedAmxA::new(8), PackedI8K4::new(8));
-    quality(ManuallyOptimized)
+
     store(i8)
 }
 
@@ -223,15 +222,15 @@ MMMExternKernel! { x86_64; avx512amx_mmm_i32_8x8<i32>(8,8)@(64,4) isa(X86_64Avx5
 // accumulators (zmm{m} = row m of C) so the hot path (Clear -> AddMatMul ->
 // Store) needs no transpose.
 //
-// boost(100) pushes this kernel above the equally-ManuallyOptimized AVX-512-VNNI
-// and AMX 8x8 kernels in the einsum kernel-selection scorer (which uses
-// `-quality_cost*1000 + boost` per kernel). When more than one dim is symbolic
-// the shape-adaptive `qmmm_i32` picker isn't invoked, so the boost is what
-// causes the optimizer to prefer the 16x16 tile for unknown-shape matmuls.
+// boost(100) pushes this kernel above the AMX 8x8 kernel it shares an instruction-set level
+// with, and above the AVX-512-VNNI 8x8 a level below it, when einsum picks among the suitable
+// kernels. When more than one dim is symbolic the shape-adaptive `qmmm_i32` picker isn't
+// invoked, so the boost is what causes the optimizer to prefer the 16x16 tile for
+// unknown-shape matmuls.
 #[cfg(tract_amx_int8)]
 MMMExternKernel! { x86_64; avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) isa(X86_64Avx512f, X86_64AmxInt8)
     packing[1] = i8i8 => |k| k.with_packing(PackedAmxA::new(16), PackedI8K4::new(16));
-    quality(ManuallyOptimized)
+
     boost(|| 100)
     store(i8)
 }
@@ -247,13 +246,13 @@ MMMExternKernel! { x86_64; avx512amx_mmm_i32_16x16<i32>(16,16)@(64,4) isa(X86_64
 // Default packing[0] (the framework's PackedFormat<f32>) is retained so the
 // kernel can still be selected for f32 paths even when the BF16 packer
 // isn't a precursor match; packing[1] is the fast bf16-from-f32 path.
-// Once opted in, the boost puts this kernel above the AVX-512 f32 / FMA f32 kernels at the
-// same ManuallyOptimized tier so the einsum scorer prefers it, mirroring the i32 16x16
-// behaviour; see `AMX_BF16_OPT_IN` for the default-off half.
+// Once opted in, the boost puts this kernel above the AVX-512 f32 and FMA f32 kernels so the
+// einsum prefers it, mirroring the i32 16x16 behaviour; see `AMX_BF16_OPT_IN` for the
+// default-off half.
 #[cfg(tract_amx_bf16)]
 MMMExternKernel! { x86_64; avx512amx_mmm_f32_16x16<f32>(16,16)@(64,4) isa(X86_64Avx512f, X86_64AmxBf16)
     packing[1] = f32f32_bf16 => |k| k.with_packing(PackedAmxBf16A::new(16), PackedBf16K2::new(16));
-    quality(ManuallyOptimized)
+
     boost(AMX_BF16_OPT_IN)
 }
 

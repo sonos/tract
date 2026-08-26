@@ -407,7 +407,7 @@ MMMRustKernel!(generic; kernel::<f16, 4, 4> => generic_f16_4x4<f16>(4,4)
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
     packing[8] = q20tf16 => |k| k.with_packing(pq20t_r4(), f16::packing(4));
     packing[9] = q20tf32 => |k| k.with_packing(pq20t_r4(), f32::packing(4));
-    quality(if has_fp16() { ImplementationQuality::Generic } else { ImplementationQuality::Dreadful })
+    emulated(|| !has_fp16())
     store(f32, f64)
 );
 
@@ -421,7 +421,7 @@ MMMRustKernel! { generic; kernel::<f16, 4, 1> => generic_f16_4x1<f16>(4,1)
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
     packing[8] = q20tf16 => |k| k.with_packing(pq20t_r4(), f16::packing(1));
     packing[9] = q20tf32 => |k| k.with_packing(pq20t_r4(), f32::packing(1));
-    quality(if has_fp16() { ImplementationQuality::Generic } else { ImplementationQuality::Dreadful })
+    emulated(|| !has_fp16())
     store(f32, f64)
 }
 
@@ -436,7 +436,6 @@ MMMRustKernel!(generic; kernel::<f32, 4, 4> => generic_f32_4x4<f32>(4,4)
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(4));
     packing[8] = q20tf16 => |k| k.with_packing(pq20t_r4(), f16::packing(4));
     packing[9] = q20tf32 => |k| k.with_packing(pq20t_r4(), f32::packing(4));
-    quality(ImplementationQuality::Generic)
     store(f16, f64)
 );
 MMMRustKernel! { generic; kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
@@ -449,28 +448,23 @@ MMMRustKernel! { generic; kernel::<f32, 4, 1> => generic_f32_4x1<f32>(4,1)
     packing[7] = q40f32 => |k| k.with_packing(pq40_r4(), f32::packing(1));
     packing[8] = q20tf16 => |k| k.with_packing(pq20t_r4(), f16::packing(1));
     packing[9] = q20tf32 => |k| k.with_packing(pq20t_r4(), f32::packing(1));
-    quality(ImplementationQuality::Generic)
     store(f16, f64)
 }
 
 // f64 kernels
 MMMRustKernel!(generic; kernel::<f64, 4, 4> => generic_f64_4x4<f64>(4,4)
-    quality(ImplementationQuality::Generic)
     store(f16, f32));
 MMMRustKernel!(generic; kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)
-    quality(ImplementationQuality::Generic)
     store(f16, f32));
 
 // I32 kernels
 MMMRustKernel! { generic; kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(4));
-    quality(ImplementationQuality::Generic)
     store(i8)
 }
 
 MMMRustKernel! { generic; kernel::<i32, 4, 1> => generic_i32_4x1<i32>(4,1)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(1));
-    quality(ImplementationQuality::Generic)
     store(i8)
 }
 

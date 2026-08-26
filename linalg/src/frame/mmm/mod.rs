@@ -18,7 +18,6 @@ pub mod tests;
 
 use crate::multithread::Executor;
 use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::fmt::Debug;
 use std::ops::Range;
 use tract_data::internal::*;
@@ -34,60 +33,33 @@ pub use storage::*;
 
 pub fn no_prefetch(_ptr: *const u8, _len: usize) {}
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub enum ImplementationQuality {
-    /// Individual operations are emulated by individual conversion (f16->f32->f16)
-    Dreadful,
-    /// Rust scalar operation (with whatever optimisation the compiler manages)
-    Generic,
-    /// Implicit vectorization (e.g. Rust code, some unrolled loops, explicit template instantiations for small constant)
-    RustOptimized,
-    /// Explicit vectorization (e.g. intrinsics vector code)
-    TargetOptimized,
-    /// Hand optimized (assembly)
-    ManuallyOptimized,
-}
-
-impl ImplementationQuality {
-    pub fn best_to_worst() -> &'static [ImplementationQuality] {
-        use ImplementationQuality::*;
-        &[ManuallyOptimized, TargetOptimized, RustOptimized, Generic, Dreadful]
-    }
-
-    pub fn cost(&self) -> usize {
-        ImplementationQuality::best_to_worst().iter().position(|x| x == self).unwrap()
-    }
-}
-
-impl PartialOrd for ImplementationQuality {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(usize::from(*self).cmp(&usize::from(*other)))
-    }
-}
-
-impl From<ImplementationQuality> for usize {
-    fn from(value: ImplementationQuality) -> Self {
-        value.cost()
-    }
-}
-
 pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     fn name(&self) -> &str;
     fn mr(&self) -> usize;
     fn nr(&self) -> usize;
 
-    fn quality(&self) -> ImplementationQuality;
+    /// Architecture this kernel is written for, `None` for the generic Rust every target
+    /// builds. What [`retain_best`] compares before anything else: a kernel written for the
+    /// machine at hand supersedes a portable one whatever their instruction sets.
+    fn arch(&self) -> Option<crate::isa::Arch>;
+
+    /// Whether the kernel computes its accumulator type by converting every operation to
+    /// another type, for a machine whose hardware has none. Orders of magnitude off a real
+    /// kernel, and always the only thing on offer where it is declared, so selection ignores
+    /// it and benches skip it.
+    fn emulated(&self) -> bool;
 
     /// The preference this kernel's author spelled out, before the instruction-set default.
-    fn declared_boost(&self) -> isize;
+    fn boost(&self) -> isize;
 
-    /// How strongly this kernel is preferred over its equally-qualified siblings, breaking ties inside a
-    /// quality tier ([`retain_best_quality`]). A kernel written for a more capable instruction
-    /// set outranks one written for a less capable one by default; a declared boost is how an
-    /// exception to that is spelled, and must be big enough to cross the tiers it disagrees
-    /// with. Never encode a preference in [`Self::runnable`] — that silently skips the
-    /// kernel's tests as well.
-    fn dynamic_boost(&self) -> isize;
+    /// Where this kernel sits against the siblings of its own kind, which [`retain_best`]
+    /// weighs once [`Self::arch`] has not separated them: the level of the instruction set it
+    /// is written for, plus whatever a measurement said that level gets wrong. A kernel
+    /// written for a more capable set outranks one written for a less capable one by default;
+    /// a declared boost is how an exception is spelled, and must be big enough to cross the
+    /// levels it disagrees with. Never encode a preference in [`Self::runnable`] — that
+    /// silently skips the kernel's tests as well.
+    fn preference(&self) -> isize;
 
     /// Whether this kernel can be executed here at all: this build compiled it
     /// ([`Self::built`]) and the running CPU has the instruction set it declares
@@ -96,7 +68,7 @@ pub trait MatMatMul: Debug + dyn_clone::DynClone + Send + Sync + std::any::Any {
     /// Runnability only, never preference: this answers "would executing the kernel fault",
     /// and the mmm test bodies gate on it, so a kernel that lies here has no test coverage at
     /// all on the hosts it lies on. Say a kernel is worse than its sibling with
-    /// [`Self::dynamic_boost`] instead.
+    /// [`Self::preference`] instead.
     fn runnable(&self) -> bool;
 
     /// Whether this build compiled the kernel's body at all. False for a foreign arch's
@@ -167,16 +139,20 @@ impl<K: MatMatMulKer> MatMatMul for K {
         self.nr()
     }
 
-    fn quality(&self) -> ImplementationQuality {
-        MatMatMulKer::quality(self)
+    fn arch(&self) -> Option<crate::isa::Arch> {
+        MatMatMulKer::arch(self)
     }
 
-    fn declared_boost(&self) -> isize {
-        MatMatMulKer::declared_boost(self)
+    fn emulated(&self) -> bool {
+        MatMatMulKer::emulated(self)
     }
 
-    fn dynamic_boost(&self) -> isize {
-        MatMatMulKer::dynamic_boost(self)
+    fn boost(&self) -> isize {
+        MatMatMulKer::boost(self)
+    }
+
+    fn preference(&self) -> isize {
+        MatMatMulKer::preference(self)
     }
 
     fn runnable(&self) -> bool {

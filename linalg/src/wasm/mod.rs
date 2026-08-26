@@ -25,10 +25,9 @@ pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
 
-/// Every kernel this tier names must be ManuallyOptimized: its answer is held to the suitable
-/// list, and a lesser quality would be dropped by retain_best_quality, leaving the N>1 rule to
-/// pick max(nr*mr) among the surviving GEMV kernels — i.e. wasm_f32_32x1, a matrix×vector
-/// kernel, for every GEMM.
+/// Every kernel this tier names must be one written for wasm: its answer is held to the suitable
+/// list, and a generic kernel counts as no opinion, leaving the N>1 rule to pick max(nr*mr) among
+/// the surviving GEMV kernels — i.e. wasm_f32_32x1, a matrix-vector kernel, for every GEMM.
 fn preferred(
     _isa: &crate::isa::IsaSet,
     dt: DatumType,
