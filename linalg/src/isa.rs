@@ -192,6 +192,12 @@ impl Isa {
         }
     }
 
+    /// Whether the feature brings f16 arithmetic, rather than the f16 conversions an f32 round
+    /// trip needs. Only on such a machine is a round trip second best.
+    pub const fn fp16_arithmetic(&self) -> bool {
+        matches!(self, Isa::Aarch64Fp16 | Isa::X86_64Avx512Fp16)
+    }
+
     /// Whose instruction set this belongs to. Every feature belongs to exactly one architecture —
     /// that is what makes a set holding two of them a contradiction rather than a rich machine,
     /// and what lets `TRACT_CPU_ISA` reject a feature the architecture cannot have.
@@ -284,6 +290,43 @@ impl IsaSet {
     /// ship without its level-mates -- but these are the generations a kernel set is written
     /// against, so they are what a matrix column, and a test asking "on which machines", mean by
     /// a machine.
+    /// Whether this machine computes in f16 at all, which is what says whether an f32 round trip
+    /// is a compromise or simply what there is.
+    pub fn fp16_arithmetic(self) -> bool {
+        self.iter().any(|i| i.fp16_arithmetic())
+    }
+
+    /// The one word a report calls this rung by: the step, not the features it bundles, so
+    /// `avx2,fma,f16c` is `fma` and the aarch64 baseline is `neon`. Two architectures may share a
+    /// nickname -- what tells them apart is the architecture printed beside it.
+    pub fn nickname(self) -> &'static str {
+        let Some(arch) = self.arch() else { return "none" };
+        match (arch, self.level()) {
+            (Arch::Arm, 0) => "vfp",
+            (Arch::Arm, _) => "neon",
+            (Arch::Aarch64, 0 | 1) => "neon",
+            (Arch::Aarch64, 2) => "fp16",
+            (Arch::Aarch64, 3) => "sve2",
+            (Arch::Aarch64, 4) => "sme",
+            (Arch::Aarch64, _) => "amx",
+            (Arch::X86_64, 0) => "sse2",
+            (Arch::X86_64, 1) => "avx",
+            (Arch::X86_64, 2) => "fma",
+            (Arch::X86_64, 3) => "avx512",
+            (Arch::X86_64, 4) => "fp16",
+            (Arch::X86_64, _) => "amx",
+            (Arch::RiscV64, _) => "rv64",
+            (Arch::Wasm32Simd128, 0) => "simd",
+            (Arch::Wasm32Simd128, _) => "relaxed",
+        }
+    }
+
+    /// The rung of its architecture's ladder this machine sits on: the most capable feature it
+    /// offers, whether or not any kernel is written against it.
+    pub fn level(self) -> u8 {
+        self.iter().map(|i| i.level()).max().unwrap_or(0)
+    }
+
     pub fn ladder(arch: Arch, level: u8) -> IsaSet {
         let mut set = IsaSet::of_arch(arch);
         for isa in Isa::ALL {
@@ -408,6 +451,36 @@ fn probe() -> IsaSet {
         all(target_arch = "wasm32", target_feature = "simd128")
     )))]
     IsaSet::empty()
+}
+
+impl std::str::FromStr for IsaSet {
+    type Err = tract_data::internal::TractError;
+
+    /// The comma-separated form a machine prints itself as, so a machine named in a report can be
+    /// pasted back in. The architecture token comes along with any feature that implies it, so
+    /// `avx512f` alone names an x86_64 machine with `avx512f` and nothing else.
+    fn from_str(spec: &str) -> tract_data::internal::TractResult<IsaSet> {
+        let mut set = IsaSet::empty();
+        for token in spec.split(',').map(str::trim).filter(|t| !t.is_empty()) {
+            let Some(isa) = Isa::from_name(token) else {
+                tract_data::internal::bail!("{token:?} is no instruction set tract knows")
+            };
+            if let Some(arch) = set.arch()
+                && isa.arch() != arch
+            {
+                tract_data::internal::bail!(
+                    "{token} belongs to {}, and this machine is {arch}: a machine is one \
+                     architecture",
+                    isa.arch()
+                )
+            }
+            set = set.with(Isa::of_arch(isa.arch())).with(isa);
+        }
+        if set == IsaSet::empty() {
+            tract_data::internal::bail!("{spec:?} names no instruction set")
+        }
+        Ok(set)
+    }
 }
 
 /// `TRACT_CPU_ISA=+sve2,-fp16` edits the probed set, so one knob covers every feature and a
