@@ -208,6 +208,25 @@ macro_rules! impl_eval {
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
+                        #[cfg(target_arch = "aarch64")]
+                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                            && visitor.inner_loop_output_stride == 1
+                            && visitor.inner_loop_input_full_stride >= 1
+                        {
+                            let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
+                            let bias_f32 = *(&bias as *const T as *const f32);
+                            neon_depthwise_w_f32::<N>(
+                                iptr as *const f32,
+                                optr as *mut f32,
+                                &k_f32,
+                                &ioffset,
+                                bias_f32,
+                                visitor.inner_loop_len,
+                                visitor.inner_loop_input_full_stride,
+                            );
+                            visitor.next_non_inner_axis();
+                            continue;
+                        }
                         let mut i = 0isize;
                         while i + (UNROLL as isize) < visitor.inner_loop_len as isize {
                             let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
@@ -309,6 +328,113 @@ impl_eval! {
 #[target_feature(enable = "fp16")]
 #[cfg(target_arch = "aarch64")]
 aarch64fp16
+}
+
+/// Depthwise along an output-contiguous spatial axis (`output_stride == 1`).
+/// Vectorise over consecutive output points. Input may be contiguous (stride 1)
+/// or strided: DPDFNet 48 kHz encoder DW is NCHW `kw=3` with W-stride 2 or 3,
+/// which `vld2q`/`vld3q` de-interleave. Scalar `process_zone_n` stays for
+/// padded / non-unit output-stride zones. Does not touch `BlockedConv`.
+#[cfg(target_arch = "aarch64")]
+unsafe fn neon_depthwise_w_f32<const N: usize>(
+    iptr: *const f32,
+    optr: *mut f32,
+    k: &[f32; N],
+    ioffset: &[isize; N],
+    bias: f32,
+    len: usize,
+    in_stride: isize,
+) {
+    unsafe {
+        use std::arch::aarch64::*;
+        let biasv = vdupq_n_f32(bias);
+        let mut i = 0usize;
+        if in_stride == 1 {
+            while i + 8 <= len {
+                let mut acc0 = biasv;
+                let mut acc1 = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    let p = iptr.offset(ioffset[n]).add(i);
+                    acc0 = vfmaq_f32(acc0, vld1q_f32(p), kn);
+                    acc1 = vfmaq_f32(acc1, vld1q_f32(p.add(4)), kn);
+                }
+                vst1q_f32(optr.add(i), acc0);
+                vst1q_f32(optr.add(i + 4), acc1);
+                i += 8;
+            }
+            while i + 4 <= len {
+                let mut acc = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    acc = vfmaq_f32(acc, vld1q_f32(iptr.offset(ioffset[n]).add(i)), kn);
+                }
+                vst1q_f32(optr.add(i), acc);
+                i += 4;
+            }
+        } else if in_stride == 2 {
+            while i + 8 <= len {
+                let mut acc0 = biasv;
+                let mut acc1 = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    let p = iptr.offset(ioffset[n]).offset(i as isize * 2);
+                    // vld2 de-interleaves even/odd; even lanes are stride-2 samples.
+                    let a = vld2q_f32(p);
+                    let b = vld2q_f32(p.add(8));
+                    acc0 = vfmaq_f32(acc0, a.0, kn);
+                    acc1 = vfmaq_f32(acc1, b.0, kn);
+                }
+                vst1q_f32(optr.add(i), acc0);
+                vst1q_f32(optr.add(i + 4), acc1);
+                i += 8;
+            }
+            while i + 4 <= len {
+                let mut acc = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    let a = vld2q_f32(iptr.offset(ioffset[n]).offset(i as isize * 2));
+                    acc = vfmaq_f32(acc, a.0, kn);
+                }
+                vst1q_f32(optr.add(i), acc);
+                i += 4;
+            }
+        } else if in_stride == 3 {
+            while i + 8 <= len {
+                let mut acc0 = biasv;
+                let mut acc1 = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    let p = iptr.offset(ioffset[n]).offset(i as isize * 3);
+                    let a = vld3q_f32(p);
+                    let b = vld3q_f32(p.add(12));
+                    acc0 = vfmaq_f32(acc0, a.0, kn);
+                    acc1 = vfmaq_f32(acc1, b.0, kn);
+                }
+                vst1q_f32(optr.add(i), acc0);
+                vst1q_f32(optr.add(i + 4), acc1);
+                i += 8;
+            }
+            while i + 4 <= len {
+                let mut acc = biasv;
+                for n in 0..N {
+                    let kn = vdupq_n_f32(k[n]);
+                    let a = vld3q_f32(iptr.offset(ioffset[n]).offset(i as isize * 3));
+                    acc = vfmaq_f32(acc, a.0, kn);
+                }
+                vst1q_f32(optr.add(i), acc);
+                i += 4;
+            }
+        }
+        while i < len {
+            let mut sum = bias;
+            for n in 0..N {
+                sum += k[n] * *iptr.offset(ioffset[n]).offset(i as isize * in_stride);
+            }
+            *optr.add(i) = sum;
+            i += 1;
+        }
+    }
 }
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
@@ -471,3 +597,106 @@ let sum = bias + p0 + p1 + p2 + p3;
      }
      }
      */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::conv::{Conv, KernelFormat};
+    use crate::ops::cnn::{PaddingSpec, PoolSpec};
+    use crate::ops::nn::DataFormat;
+
+    fn run_dw(
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        pad: PaddingSpec,
+        stride: (usize, usize),
+    ) {
+        let n = 1usize;
+        let x: Vec<f32> = (0..n * c * h * w).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
+        let kernel: Vec<f32> = (0..c * kh * kw).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
+        let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
+
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, c, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[c, 1, kh, kw], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[c], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(kh, kw),
+                padding: pad.clone(),
+                dilations: None,
+                strides: Some(tvec!(stride.0, stride.1)),
+                input_channels: c,
+                output_channels: c,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: c,
+            q_params: None,
+        };
+        let out = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        assert!(
+            model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
+            "expected DepthWiseConv, got {}",
+            model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
+        );
+        let runnable = model.into_runnable().unwrap();
+        let got = runnable
+            .run(tvec![Tensor::from_shape(&[n, c, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let got = got[0].to_plain_array_view::<f32>().unwrap();
+        let oshape = got.shape();
+        let oh = oshape[2];
+        let ow = oshape[3];
+        let (ph, pw) = match pad {
+            PaddingSpec::Valid => (0isize, 0isize),
+            _ => (((kh - 1) / 2) as isize, ((kw - 1) / 2) as isize),
+        };
+        let mut max_abs = 0f32;
+        for oc in 0..c {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[oc];
+                    for ky in 0..kh {
+                        for kx in 0..kw {
+                            let iy = oy as isize * stride.0 as isize + ky as isize - ph;
+                            let ix = ox as isize * stride.1 as isize + kx as isize - pw;
+                            if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                continue;
+                            }
+                            let xv = x[((oc * h + iy as usize) * w) + ix as usize];
+                            let kv = kernel[((oc * kh + ky) * kw) + kx];
+                            acc += xv * kv;
+                        }
+                    }
+                    let g = got[[0, oc, oy, ox]];
+                    max_abs = max_abs.max((g - acc).abs());
+                }
+            }
+        }
+        assert!(
+            max_abs < 1e-5,
+            "DepthWise mismatch c={c} {h}x{w} k={kh}x{kw} stride={stride:?} pad={pad:?}: max_abs={max_abs}"
+        );
+    }
+
+    #[test]
+    fn depthwise_contig_w_matches_reference() {
+        // 48 kHz-like: NCHW, H=1, long W, kw=3. Inner loop is W.
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(32, 1, 481, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(8, 1, 17, 1, 3, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 12, 20, 3, 1, PaddingSpec::Valid, (1, 1));
+        run_dw(4, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
+        // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
+        run_dw(64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
+        run_dw(64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 2));
+    }
+}
