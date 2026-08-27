@@ -1,6 +1,5 @@
 use anyhow::{Result, ensure};
 use boow::Bow;
-use std::collections::HashMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 
@@ -98,43 +97,111 @@ pub trait NnefInterface: Debug + Sized {
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Self::Model) -> Result<()>;
 }
 
+/// Options for the ONNX loader, carried as JSON.
+///
+/// Follows the same principle as [`TransformSpec`]: a typed struct that
+/// serializes to a JSON object, so a caller can pass either the struct or a
+/// JSON string, and the C and Python entry points can pass the string.
+///
+/// An unknown field is an error rather than being ignored, so a misspelling
+/// cannot look like an option that took effect.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct OnnxOptions {
+    /// Discard the shapes the model file declares and let tract infer them.
+    pub ignore_value_info: bool,
+    /// Assertions over the model symbols, applied once the model is parsed, for
+    /// instance `["h>=0", "w>=0"]`. Each one goes to tract's assertion parser
+    /// unchanged.
+    pub assertions: Vec<String>,
+}
+
+impl OnnxOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Discard the shapes the model file declares and let tract infer them.
+    pub fn ignore_value_info(mut self, ignore: bool) -> Self {
+        self.ignore_value_info = ignore;
+        self
+    }
+
+    /// Add one assertion over the model symbols.
+    pub fn assertion(mut self, assertion: impl Into<String>) -> Self {
+        self.assertions.push(assertion.into());
+        self
+    }
+
+    /// Produce the JSON the loader expects.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("OnnxOptions serialization cannot fail")
+    }
+}
+
+/// A serialized [`OnnxOptions`], accepted as either the struct or a JSON string.
+#[derive(Debug, Clone)]
+pub struct OnnxOptionsSpec(String);
+
+impl OnnxOptionsSpec {
+    /// The JSON the loader expects.
+    pub fn to_json(&self) -> String {
+        self.0.clone()
+    }
+
+    /// Parse back into the typed form.
+    pub fn parse(&self) -> Result<OnnxOptions> {
+        Ok(serde_json::from_str(&self.0)?)
+    }
+}
+
+impl From<OnnxOptions> for OnnxOptionsSpec {
+    fn from(o: OnnxOptions) -> Self {
+        OnnxOptionsSpec(o.to_json())
+    }
+}
+
+impl From<&str> for OnnxOptionsSpec {
+    fn from(s: &str) -> Self {
+        OnnxOptionsSpec(s.to_string())
+    }
+}
+
+impl From<String> for OnnxOptionsSpec {
+    fn from(s: String) -> Self {
+        OnnxOptionsSpec(s)
+    }
+}
+
 pub trait OnnxInterface: Debug {
     type InferenceModel: InferenceModelInterface;
 
     /// Load a ONNX model from a file into an InferenceModel.
     fn load(&self, path: impl AsRef<Path>) -> Result<Self::InferenceModel> {
-        self.load_with_options(path, &HashMap::new())
+        self.load_with_options(path, OnnxOptions::new())
     }
 
     /// Load a ONNX model from a buffer into an InferenceModel.
     fn load_buffer(&self, data: &[u8]) -> Result<Self::InferenceModel> {
-        self.load_buffer_with_options(data, &HashMap::new())
+        self.load_buffer_with_options(data, OnnxOptions::new())
     }
 
     /// Load a ONNX model from a file, configuring the loader with `options`.
     ///
-    /// An unknown key, or a value that can not be parsed, is an error instead of
-    /// being ignored, so a misspelled key can not look like one that worked.
-    ///
-    /// * `ONNX_IGNORE_VALUE_INFO`: discard the shapes the model file declares and
-    ///   let tract infer them instead. `1`, `yes`, `true` and `on` are true, `0`,
-    ///   `no`, `false` and `off` are false, in any case.
-    /// * `ASSERTIONS`: `;`-separated assertions over the model symbols, applied
-    ///   once the model is parsed, for instance `h>=0; w>=0`. Each one goes to
-    ///   tract's assertion parser unchanged.
+    /// `options` is either an [`OnnxOptions`] or the JSON for one.
     fn load_with_options(
         &self,
         path: impl AsRef<Path>,
-        options: &HashMap<String, String>,
+        options: impl Into<OnnxOptionsSpec>,
     ) -> Result<Self::InferenceModel>;
 
     /// Load a ONNX model from a buffer, configuring the loader with `options`.
     ///
-    /// See [`OnnxInterface::load_with_options`] for the accepted keys.
+    /// See [`OnnxInterface::load_with_options`].
     fn load_buffer_with_options(
         &self,
         data: &[u8],
-        options: &HashMap<String, String>,
+        options: impl Into<OnnxOptionsSpec>,
     ) -> Result<Self::InferenceModel>;
 }
 

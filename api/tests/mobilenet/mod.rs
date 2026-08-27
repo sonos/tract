@@ -414,15 +414,11 @@ fn test_tensor_methods() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn options(pairs: &[(&str, &str)]) -> std::collections::HashMap<String, String> {
-    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
-}
-
 #[test]
 fn test_onnx_load_with_options_ignoring_value_info() -> anyhow::Result<()> {
     ensure_models()?;
     let model = onnx()?
-        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUE_INFO", "true")]))?
+        .load_with_options("mobilenetv2-7.onnx", OnnxOptions::new().ignore_value_info(true))?
         .into_model()?
         .into_runnable()?;
     let result = model.run([grace_hopper()])?;
@@ -434,7 +430,10 @@ fn test_onnx_load_with_options_ignoring_value_info() -> anyhow::Result<()> {
 fn test_onnx_load_with_options_assertions() -> anyhow::Result<()> {
     ensure_models()?;
     let model = onnx()?
-        .load_with_options("mobilenetv2-7.onnx", &options(&[("ASSERTIONS", "n>=0; m>=0")]))?
+        .load_with_options(
+            "mobilenetv2-7.onnx",
+            OnnxOptions::new().assertion("n>=0").assertion("m>=0"),
+        )?
         .into_model()?
         .into_runnable()?;
     let result = model.run([grace_hopper()])?;
@@ -447,7 +446,7 @@ fn test_onnx_load_buffer_with_options() -> anyhow::Result<()> {
     ensure_models()?;
     let buffer = std::fs::read("mobilenetv2-7.onnx")?;
     let model = onnx()?
-        .load_buffer_with_options(&buffer, &options(&[("ONNX_IGNORE_VALUE_INFO", "1")]))?
+        .load_buffer_with_options(&buffer, OnnxOptions::new().ignore_value_info(true))?
         .into_model()?
         .into_runnable()?;
     let result = model.run([grace_hopper()])?;
@@ -456,35 +455,40 @@ fn test_onnx_load_buffer_with_options() -> anyhow::Result<()> {
 }
 
 #[test]
-fn test_onnx_load_with_options_refuses_unknown_key() -> anyhow::Result<()> {
+fn test_onnx_load_with_options_from_json() -> anyhow::Result<()> {
     ensure_models()?;
-    // A key that is nearly right is the case that matters: it must not be
+    // The string form is what the C and Python entry points pass.
+    let model = onnx()?
+        .load_with_options(
+            "mobilenetv2-7.onnx",
+            r#"{"ignore_value_info":true,"assertions":["n>=0"]}"#,
+        )?
+        .into_model()?
+        .into_runnable()?;
+    let result = model.run([grace_hopper()])?;
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_unknown_field() -> anyhow::Result<()> {
+    ensure_models()?;
+    // A field that is nearly right is the case that matters: it must not be
     // silently ignored, or a misspelling looks exactly like an option that took
-    // effect.
+    // effect. deny_unknown_fields is what makes that true.
     let err = onnx()?
-        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUEINFO", "1")]))
+        .load_with_options("mobilenetv2-7.onnx", r#"{"ignore_value_infos":true}"#)
         .unwrap_err()
         .to_string();
-    assert!(err.contains("ONNX_IGNORE_VALUEINFO"), "{err}");
+    assert!(err.contains("ignore_value_infos"), "{err}");
     Ok(())
 }
 
 #[test]
-fn test_onnx_load_with_options_refuses_unparsable_value() -> anyhow::Result<()> {
+fn test_onnx_load_with_options_refuses_wrong_type() -> anyhow::Result<()> {
     ensure_models()?;
     let err = onnx()?
-        .load_with_options("mobilenetv2-7.onnx", &options(&[("ONNX_IGNORE_VALUE_INFO", "maybe")]))
-        .unwrap_err()
-        .to_string();
-    assert!(err.contains("maybe"), "{err}");
-    Ok(())
-}
-
-#[test]
-fn test_onnx_load_with_options_refuses_malformed_assertion() -> anyhow::Result<()> {
-    ensure_models()?;
-    let err = onnx()?
-        .load_with_options("mobilenetv2-7.onnx", &options(&[("ASSERTIONS", "n >>>")]))
+        .load_with_options("mobilenetv2-7.onnx", r#"{"ignore_value_info":"maybe"}"#)
         .unwrap_err()
         .to_string();
     assert!(!err.is_empty());
@@ -492,15 +496,21 @@ fn test_onnx_load_with_options_refuses_malformed_assertion() -> anyhow::Result<(
 }
 
 #[test]
-fn test_onnx_load_with_options_accepts_booleans_in_any_case() -> anyhow::Result<()> {
+fn test_onnx_load_with_options_refuses_malformed_assertion() -> anyhow::Result<()> {
     ensure_models()?;
-    for value in ["1", "yes", "TRUE", "On", "0", "no", "False", "OFF"] {
-        onnx()?
-            .load_with_options(
-                "mobilenetv2-7.onnx",
-                &options(&[("ONNX_IGNORE_VALUE_INFO", value)]),
-            )
-            .unwrap_or_else(|e| panic!("{value:?} should parse as a boolean: {e}"));
-    }
+    let err = onnx()?
+        .load_with_options("mobilenetv2-7.onnx", OnnxOptions::new().assertion("n >>>"))
+        .unwrap_err()
+        .to_string();
+    assert!(!err.is_empty());
+    Ok(())
+}
+
+#[test]
+fn test_onnx_options_round_trip() -> anyhow::Result<()> {
+    let o = OnnxOptions::new().ignore_value_info(true).assertion("h>=0");
+    let json = o.to_json();
+    let back: OnnxOptions = serde_json::from_str(&json)?;
+    assert_eq!(o, back);
     Ok(())
 }
