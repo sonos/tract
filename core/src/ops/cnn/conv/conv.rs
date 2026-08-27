@@ -1432,7 +1432,21 @@ fn should_use_lazy(
     let n: usize = output_shape.hw_dims().iter().product();
     let k = pool_spec.input_channels * kernel_volume / group;
     let eager_scratch_bytes = k.saturating_mul(n).saturating_mul(dt.size_of());
-    eager_scratch_bytes >= lazy_im2col_max_eager_bytes()
+    if eager_scratch_bytes >= lazy_im2col_max_eager_bytes() {
+        return true;
+    }
+    // Single-panel rule. Both paths gather the same `k * n` elements: eager gathers
+    // them once into scratch the matmul then streams once per row panel, lazy
+    // re-gathers per row panel and builds nothing. Eager only pays for itself once
+    // there is more than one row panel to amortise the scratch over -- at a single
+    // panel lazy does the same gathers and skips the buffer entirely. Ask the kernel
+    // that will actually run rather than assuming its geometry.
+    let m = (pool_spec.output_channels / group).max(1);
+    let mr = tract_linalg::MmmDispatch::native()
+        .preferred_kernel(dt, Some(m), Some(k), Some(n))
+        .map(|mmm| mmm.mr())
+        .unwrap_or(1);
+    m <= mr
 }
 
 #[allow(non_snake_case)]
