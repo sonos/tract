@@ -1435,6 +1435,11 @@ fn should_use_lazy(
     if eager_scratch_bytes >= lazy_im2col_max_eager_bytes() {
         return true;
     }
+    // A 1x1 kernel has nothing to gather: its im2col is a reshape, so there is no
+    // materialisation for lazy to save and its per-position indirection is pure loss.
+    if kernel_volume == 1 {
+        return false;
+    }
     // Single-panel rule. Both paths gather the same `k * n` elements: eager gathers
     // them once into scratch the matmul then streams once per row panel, lazy
     // re-gathers per row panel and builds nothing. Eager only pays for itself once
