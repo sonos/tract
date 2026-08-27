@@ -1,7 +1,10 @@
 use crate::mmm::*;
 use tract_data::prelude::*;
 
-use super::{arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm_f32_64x1_gen};
+use super::{
+    arm64fp16_mmm_f16_16x8_gen, arm64simd_mmm_f32_8x8_gen, arm64simd_mmm_f32_32x1_gen,
+    arm64simd_mmm_f32_64x1_gen,
+};
 
 const CAN_FUSE: fn(&FusedSpec) -> bool = |f| !matches!(f, &FusedSpec::LeakyRelu(_));
 
@@ -20,8 +23,14 @@ fn preferred(
     _suitable: &[Suitable],
 ) -> Option<&'static str> {
     match (dt, query.n) {
-        // The AMX 32x1 is dominated by the NEON 64x1 at every shape.
-        (crate::DatumType::F32, Some(1)) => Some(arm64simd_mmm_f32_64x1_gen.name.as_str()),
+        // The AMX 32x1 is dominated by the NEON 64x1, but the 64-row tile only pays
+        // once `m` can fill it: below that the kernel computes rows whose results are
+        // discarded, and the 32-row NEON mat-vec is ahead.
+        (crate::DatumType::F32, Some(1)) => Some(if query.m.is_some_and(|m| m < 64) {
+            arm64simd_mmm_f32_32x1_gen.name.as_str()
+        } else {
+            arm64simd_mmm_f32_64x1_gen.name.as_str()
+        }),
         (crate::DatumType::F32, _) => {
             let big_enough = query.m.is_some_and(|m| m >= 32) && query.n.is_some_and(|n| n >= 32);
             Some(if big_enough {
