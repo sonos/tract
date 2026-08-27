@@ -221,3 +221,58 @@ impl ResourceLoader for SafeTensorsLoader {
 }
 
 impl Resource for Vec<(String, Arc<Tensor>)> {}
+
+/// A `.dat` file whose header has been read and whose payload has not.
+///
+/// Backs a `LazyConst`: the fact comes from the 128-byte header, and the payload is read
+/// only if `materialize` is called — which happens after the graph has been pruned to what
+/// will actually run. Needs a seekable file, so it is only produced for unpacked model
+/// directories; a `.tgz` is a gzip stream and stays eager.
+#[derive(Debug, Clone)]
+pub struct LazyDat {
+    path: std::path::PathBuf,
+    header: crate::tensors::TensorHeader,
+}
+
+impl LazyDat {
+    /// Read `path`'s header, leaving its payload on disk.
+    pub fn open(path: impl AsRef<std::path::Path>) -> TractResult<LazyDat> {
+        let path = path.as_ref().to_path_buf();
+        let mut file =
+            std::fs::File::open(&path).with_context(|| format!("opening {}", path.display()))?;
+        let header = crate::tensors::read_tensor_header(&mut file)
+            .with_context(|| format!("reading the header of {}", path.display()))?;
+        Ok(LazyDat { path, header })
+    }
+
+    pub fn header(&self) -> &crate::tensors::TensorHeader {
+        &self.header
+    }
+
+    /// Bytes this will read from disk when materialized, header included.
+    pub fn byte_len(&self) -> usize {
+        128 + self.header.body_bytes
+    }
+}
+
+impl tract_core::ops::konst::LazyConstProvider for LazyDat {
+    fn output_fact(&self) -> TractResult<TypedFact> {
+        let mut fact = self.header.to_fact();
+        if let Some(format) = &self.header.block_quant {
+            fact.exotic_fact = Some(Box::new(tract_linalg::block_quant::BlockQuantFact::new(
+                tract_core::dyn_clone::clone_box(&**format),
+                self.header.shape.clone(),
+            )));
+        }
+        Ok(fact)
+    }
+
+    fn materialize(&self) -> TractResult<tract_core::ops::konst::MaterializedConst> {
+        let mut file = std::fs::File::open(&self.path)
+            .with_context(|| format!("opening {}", self.path.display()))?;
+        let tensor = crate::tensors::read_tensor(&mut file)
+            .with_context(|| format!("reading {}", self.path.display()))?;
+        let exotic = tensor.exotic_fact()?;
+        Ok((tensor.into_arc_tensor(), exotic))
+    }
+}

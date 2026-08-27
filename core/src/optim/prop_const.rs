@@ -3,7 +3,7 @@ use tract_data::TooEarly;
 use crate::internal::*;
 use crate::ops::array::Slice;
 use crate::ops::dummy::Dummy;
-use crate::ops::konst::Const;
+use crate::ops::konst::{Const, LazyConst};
 use crate::ops::source::TypedSource;
 use crate::optim::{CONST_FOLD_MEM_BUDGET, OptimizerSession};
 
@@ -39,7 +39,10 @@ impl super::TypedPass for PropConst {
                 return Ok(Some(patch));
             }
             let inputs = model.node_input_facts(node.id)?;
+            // A LazyConst has no inputs, so "all inputs are constant" holds vacuously; it
+            // is a constant awaiting its value, not a computation to fold.
             if !node.op_is::<Const>()
+                && !node.op_is::<LazyConst>()
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
                 && node.op.is_stateless()

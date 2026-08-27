@@ -50,6 +50,7 @@ impl ModelTransform for PatchTransform {
             let proto_model = ProtoModel {
                 doc,
                 tensors: Default::default(),
+                lazy_tensors: Default::default(),
                 quantization: None,
                 resources: Default::default(),
             };

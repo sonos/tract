@@ -285,6 +285,7 @@ impl TypedModel {
             let node = self.node(n);
             let (inputs, outputs) = self.node_facts(n)?;
             if node.op.is_stateless()
+                && !node.op_is::<crate::ops::konst::LazyConst>()
                 && inputs.iter().all(|i| i.konst.as_ref().is_some_and(|k| k.is_plain()))
                 && outputs.iter().any(|o| o.konst.is_none())
             {

@@ -75,6 +75,26 @@ pub fn external(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> 
 pub fn variable(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let shape: TVec<usize> = invocation.named_arg_as(builder, "shape")?;
     let label = Identifier(invocation.named_arg_as(builder, "label")?);
+
+    // On a lazy load the payload has not been read: wire a LazyConst carrying the fact the
+    // header declared, and let the caller materialize whichever ones survive pruning.
+    let lazy = &builder.proto_model.lazy_tensors;
+    if !lazy.is_empty()
+        && let Some(dat) = lazy
+            .get(&label)
+            .or_else(|| lazy.get(&Identifier(label.0.trim_start_matches('/').to_owned())))
+    {
+        ensure!(
+            dat.header().shape == shape,
+            "Wrong shape for tensor {}: header says {:?}, graph says {:?}",
+            label.0,
+            dat.header().shape,
+            shape
+        );
+        let op = tract_core::ops::konst::LazyConst(dat.clone());
+        return builder.wire(op, &[]);
+    }
+
     let tensors = &builder.proto_model.tensors;
     let mut tensor = Arc::clone(
         tensors
