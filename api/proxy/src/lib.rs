@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString};
 use std::path::Path;
 use std::ptr::{null, null_mut};
 
@@ -143,42 +142,24 @@ impl NnefInterface for Nnef {
 // ONNX
 wrapper!(Onnx, TractOnnx, tract_onnx_destroy);
 
-/// Lay an option map out as the two parallel arrays the C entry points take.
-/// The `CString` pairs come back with the pointers because they own the bytes
-/// those pointers refer to, and must outlive the call.
-#[allow(clippy::type_complexity)]
-fn c_options(
-    options: &HashMap<String, String>,
-) -> Result<(Vec<(CString, CString)>, Vec<*const c_char>, Vec<*const c_char>)> {
-    let owned = options
-        .iter()
-        .map(|(key, value)| Ok((CString::new(&**key)?, CString::new(&**value)?)))
-        .collect::<Result<Vec<(CString, CString)>>>()?;
-    let keys = owned.iter().map(|(key, _)| key.as_ptr()).collect();
-    let values = owned.iter().map(|(_, value)| value.as_ptr()).collect();
-    Ok((owned, keys, values))
-}
-
 impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
 
     fn load_with_options(
         &self,
         path: impl AsRef<Path>,
-        options: &HashMap<String, String>,
+        options: impl Into<OnnxOptionsSpec>,
     ) -> Result<InferenceModel> {
         let path = path.as_ref();
         let path = CString::new(
             path.to_str().with_context(|| format!("Failed to re-encode {path:?} to uff-8"))?,
         )?;
-        let (_owned, keys, values) = c_options(options)?;
+        let options = CString::new(options.into().to_json())?;
         let mut model = null_mut();
         check!(sys::tract_onnx_load_with_options(
             self.0,
             path.as_ptr(),
-            keys.as_ptr(),
-            values.as_ptr(),
-            keys.len(),
+            options.as_ptr(),
             &mut model
         ))?;
         Ok(InferenceModel(model))
@@ -187,17 +168,15 @@ impl OnnxInterface for Onnx {
     fn load_buffer_with_options(
         &self,
         data: &[u8],
-        options: &HashMap<String, String>,
+        options: impl Into<OnnxOptionsSpec>,
     ) -> Result<InferenceModel> {
-        let (_owned, keys, values) = c_options(options)?;
+        let options = CString::new(options.into().to_json())?;
         let mut model = null_mut();
         check!(sys::tract_onnx_load_buffer_with_options(
             self.0,
             data.as_ptr() as _,
             data.len(),
-            keys.as_ptr(),
-            values.as_ptr(),
-            keys.len(),
+            options.as_ptr(),
             &mut model
         ))?;
         Ok(InferenceModel(model))
