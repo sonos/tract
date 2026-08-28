@@ -6,17 +6,12 @@ pub struct SourceState(pub usize);
 impl OpState for SourceState {
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
-        _inputs: TVec<TValue>,
+        inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        Ok(tvec!(
-            turn.values
-                .get(self.0)
-                .and_then(|v| v.as_ref())
-                .and_then(|vs| vs.first().cloned())
-                .with_context(|| format!("Input for node {} is missing", self.0))?
-        ))
+        ensure!(!inputs.is_empty(), "Input for node {} is missing", self.0);
+        Ok(inputs)
     }
 }
 
@@ -33,12 +28,12 @@ impl Op for TypedSource {
 }
 
 impl EvalOp for TypedSource {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(node_id))))
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(ctx.node_id))))
     }
 }
 

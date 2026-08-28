@@ -362,11 +362,11 @@ impl Op for Resize {
 }
 
 impl EvalOp for Resize {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_dt = inputs[0].datum_type();
         let rank = inputs[0].rank();
         let tf_crop = self.coord_transformer == CoordTransform::TfCropAndResize;

@@ -109,10 +109,10 @@ impl Op for DequantizeLinearF32 {
 }
 
 impl EvalOp for DequantizeLinearF32 {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let output = match inputs[0].datum_type() {
             DatumType::I8 => self.eval_t::<i8>(&inputs[0])?,
             DatumType::I32 => self.eval_t::<i32>(&inputs[0])?,

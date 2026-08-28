@@ -56,11 +56,11 @@ impl Op for Compress {
 }
 
 impl EvalOp for Compress {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, conds) = args_2!(inputs);
         let conds = conds.try_as_plain()?.as_slice()?;
         let compressed_dim = conds.iter().filter(|c| **c).count();

@@ -21,20 +21,15 @@ impl Op for Tile {
 }
 
 impl EvalOp for Tile {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
             .multipliers
             .iter()
-            .map(|m| m.eval(&turn.resolved_symbols).to_usize())
+            .map(|m| m.eval(ctx.symbols).to_usize())
             .collect::<Result<_, _>>()?;
         let result =
             dispatch_datum_by_size!(eval_t(inputs[0].datum_type())(&inputs[0], &multipliers))?;
@@ -116,22 +111,17 @@ impl Op for DynTile {
 }
 
 impl EvalOp for DynTile {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;
         let multipliers: TVec<usize> = multipliers
             .try_as_plain()?
             .as_slice::<TDim>()?
             .iter()
-            .map(|m| Ok(m.eval_to_i64(&turn.resolved_symbols)? as usize))
+            .map(|m| Ok(m.eval_to_i64(ctx.symbols)? as usize))
             .collect::<TractResult<_>>()?;
         let result =
             dispatch_datum_by_size!(eval_t(inputs[0].datum_type())(&inputs[0], &multipliers))?;

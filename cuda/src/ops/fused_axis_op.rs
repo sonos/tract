@@ -20,7 +20,7 @@ pub struct CudaFusedAxisOpState {
 fn compute_reshaped_inputs(
     inputs: TVec<TValue>,
     grouped_axis_ops: &TVec<TVec<GpuAxisOp>>,
-    turn: &TurnState,
+    ctx: &EvalContext,
 ) -> TractResult<TVec<TValue>> {
     // Apply Axis Ops per input
 
@@ -37,9 +37,8 @@ fn compute_reshaped_inputs(
                 |t, axis_op| -> TractResult<DeviceTensor> {
                     let new_shape = match &axis_op.inner {
                         AxisOp::Reshape(skip, from, to) => {
-                            let from =
-                                from.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
-                            let to = to.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
+                            let from = from.iter().map(|d| d.eval(ctx.symbols)).collect();
+                            let to = to.iter().map(|d| d.eval(ctx.symbols)).collect();
                             let mut shape: TVec<usize> = t.shape().into();
                             AxisOp::Reshape(*skip, from, to)
                                 .change_shape_array(&mut shape, false)?;
@@ -95,14 +94,14 @@ impl OpState for CudaFusedAxisOpState {
 
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let fused_axis_op = op.downcast_ref::<CudaFusedAxisOp>().unwrap();
-        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, turn)?;
+        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, ctx)?;
         // Runner inner op
-        self.op_state.eval(turn, fused_axis_op.op.as_op(), inputs)
+        self.op_state.eval(ctx, fused_axis_op.op.as_op(), inputs)
     }
 }
 
@@ -136,27 +135,22 @@ impl Op for CudaFusedAxisOp {
 }
 
 impl EvalOp for CudaFusedAxisOp {
-    fn is_stateless(&self) -> bool {
-        self.op.is_stateless()
+    fn is_pure_function(&self) -> bool {
+        self.op.is_pure_function()
     }
 
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        if let Some(state) = self.op.state(turn, node_id)? {
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        if let Some(state) = self.op.state(ctx)? {
             Ok(Some(Box::new(CudaFusedAxisOpState { op_state: state })))
         } else {
             Ok(None)
         }
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, turn)?;
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, ctx)?;
         // Runner inner op
-        self.op.eval_with_turn(node_id, turn, inputs)
+        self.op.eval(ctx, inputs)
     }
 }
 

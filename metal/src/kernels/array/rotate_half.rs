@@ -115,8 +115,10 @@ mod tests {
 
             let metal_a = a.clone().into_device()?;
 
-            let cpu_output =
-                apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
+            let cpu_output = apply_rope::RotateHalf
+                .eval(&EvalContext::pure(), tvec![a.clone().into()])?[0]
+                .clone()
+                .into_tensor();
             let metal_output = RotateHalf.eval(stream, &metal_a)?;
 
             cpu_output

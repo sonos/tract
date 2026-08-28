@@ -39,22 +39,17 @@ impl Op for GpuGatedDeltaNetRecurrent {
 }
 
 impl EvalOp for GpuGatedDeltaNetRecurrent {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 6);
         let tensors = inputs
             .iter()
             .map(|value| value.to_device_tensor())
             .collect::<TractResult<TVec<_>>>()?;
-        let output = make_tensor_for_node(turn, node_id, DatumType::F16, tensors[0].shape())?;
+        let output = make_tensor_for_node(ctx, DatumType::F16, tensors[0].shape())?;
         // The memory arena is keyed by node, so a second output cannot use the
         // same arena slot as the first one.
         let final_state = DeviceTensor::uninitialized_dt(DatumType::F32, tensors[5].shape())?;

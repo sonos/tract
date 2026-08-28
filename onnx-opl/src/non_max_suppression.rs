@@ -207,11 +207,11 @@ impl Op for NonMaxSuppression {
 }
 
 impl EvalOp for NonMaxSuppression {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let dt = inputs[0].datum_type();
         dispatch_floatlike!(Self::eval_t(dt)(self, inputs))
     }

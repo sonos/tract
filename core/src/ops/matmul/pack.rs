@@ -29,17 +29,12 @@ impl Op for OptMatMulPack {
 }
 
 impl EvalOp for OptMatMulPack {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        mut inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        self.do_eval(turn, inputs.remove(0))
+    fn eval(&self, ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.do_eval(ctx, inputs.remove(0))
     }
 }
 
@@ -81,7 +76,7 @@ impl TypedOp for OptMatMulPack {
 }
 
 impl OptMatMulPack {
-    fn do_eval(&self, _turn: &TurnState, input: TValue) -> TractResult<TVec<TValue>> {
+    fn do_eval(&self, _ctx: &EvalContext, input: TValue) -> TractResult<TVec<TValue>> {
         unsafe {
             let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
             let packer = &self.packers[mode];
@@ -152,15 +147,15 @@ impl Op for OptSimpleMatMulPack {
 }
 
 impl EvalOp for OptSimpleMatMulPack {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let bqs = input.try_storage_as::<BlockQuantStorage>()?;
         // Leading dims before the last 2 (M, K) are batch/group dims

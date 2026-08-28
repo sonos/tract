@@ -15,15 +15,15 @@ impl Op for BlockQuantIntoShape {
 }
 
 impl EvalOp for BlockQuantIntoShape {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs).into_tensor();
         let g = input.shape()[0];
         let bqs = input.try_storage_as::<BlockQuantStorage>()?.clone();
@@ -67,15 +67,15 @@ impl Op for SplitGroupBlockQuant {
 }
 
 impl EvalOp for SplitGroupBlockQuant {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let bqs = input.try_storage_as::<BlockQuantStorage>()?.clone();
         let mut new_shape: TVec<usize> = input.shape().into();

@@ -139,11 +139,11 @@ impl Op for Im2Col {
 }
 
 impl EvalOp for Im2Col {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let geometry = self.geometry.to_concrete(inputs[0].shape())?;
         unsafe {
             let mut input = inputs.remove(0).into_tensor();

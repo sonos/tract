@@ -38,17 +38,12 @@ impl Op for DeconvSum {
 }
 
 impl EvalOp for DeconvSum {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        self.eval_with_values(inputs, &turn.resolved_symbols)
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.eval_with_values(inputs, ctx.symbols)
     }
 }
 
@@ -537,18 +532,13 @@ impl Op for DepthwiseDeconv {
 }
 
 impl EvalOp for DepthwiseDeconv {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (kernel, input, bias) = args_3!(inputs);
-        let input_shape = self.input_shape.eval_to_usize(&turn.resolved_symbols)?.into_owned();
+        let input_shape = self.input_shape.eval_to_usize(ctx.symbols)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;

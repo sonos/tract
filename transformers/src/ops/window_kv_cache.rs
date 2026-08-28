@@ -175,10 +175,10 @@ impl Op for WindowKvSdpa {
 }
 
 impl EvalOp for WindowKvSdpa {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(WindowKvSdpaState {
             scale: self.scale,
             k: WindowKvCache::new(self.axis, self.window),
@@ -205,7 +205,7 @@ pub struct WindowKvSdpaState {
 impl OpState for WindowKvSdpaState {
     fn eval(
         &mut self,
-        _state: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -394,7 +394,7 @@ mod tests {
                 Ok(match acc {
                     None => x,
                     Some(a) => TypedConcat { axis: 2 }
-                        .eval(tvec![a.into(), x.into()])?
+                        .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
                         .remove(0)
                         .into_tensor(),
                 })
@@ -459,9 +459,10 @@ mod tests {
         let grow = |acc: Option<Tensor>, x: Tensor| -> TractResult<Tensor> {
             Ok(match acc {
                 None => x,
-                Some(a) => {
-                    TypedConcat { axis: 2 }.eval(tvec![a.into(), x.into()])?.remove(0).into_tensor()
-                }
+                Some(a) => TypedConcat { axis: 2 }
+                    .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                    .remove(0)
+                    .into_tensor(),
             })
         };
         let (mut kf, mut vf): (Option<Tensor>, Option<Tensor>) = (None, None);
@@ -548,9 +549,10 @@ mod tests {
         let grow = |acc: Option<Tensor>, x: Tensor| -> TractResult<Tensor> {
             Ok(match acc {
                 None => x,
-                Some(a) => {
-                    TypedConcat { axis: 2 }.eval(tvec![a.into(), x.into()])?.remove(0).into_tensor()
-                }
+                Some(a) => TypedConcat { axis: 2 }
+                    .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                    .remove(0)
+                    .into_tensor(),
             })
         };
         let (mut kf, mut vf): (Option<Tensor>, Option<Tensor>) = (None, None);

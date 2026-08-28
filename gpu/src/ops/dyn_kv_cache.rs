@@ -6,7 +6,6 @@ use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheSt
 
 #[derive(Debug, Clone, new)]
 pub struct GpuDynKVCacheState {
-    node_id: usize,
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
@@ -56,7 +55,7 @@ impl OpState for GpuDynKVCacheState {
 
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -77,12 +76,8 @@ impl OpState for GpuDynKVCacheState {
             op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[axis] = inputs.iter().map(|it| it.shape()[axis]).sum();
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            self.node_id,
-            inputs[0].datum_type(),
-            &output_shape,
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(ctx, inputs[0].datum_type(), &output_shape)?;
 
         // Concat inputs into output
         let ctx = crate::device::get_context()?;
@@ -179,13 +174,12 @@ impl Op for GpuDynKVCache {
 }
 
 impl EvalOp for GpuDynKVCache {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuDynKVCacheState::new(
-            node_id,
             self.name.clone(),
             self.axis,
             self.past_sequence_fact.clone(),

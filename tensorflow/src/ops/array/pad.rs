@@ -56,11 +56,11 @@ impl Op for Pad {
 }
 
 impl EvalOp for Pad {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, paddings) = args_2!(inputs);
         let paddings = paddings.to_plain_array_view::<i32>()?.into_dimensionality()?;
         Ok(tvec![dispatch_copy!(Self::compute_t(input.datum_type())(&input, paddings, None))?])
@@ -120,6 +120,6 @@ mod tests {
             .into()
         );
 
-        assert_eq!(Pad::new().eval(inputs).unwrap(), expected);
+        assert_eq!(Pad::new().eval_pure(inputs).unwrap(), expected);
     }
 }

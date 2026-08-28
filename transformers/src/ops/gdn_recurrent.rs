@@ -39,11 +39,11 @@ impl Op for GatedDeltaNetRecurrent {
 }
 
 impl EvalOp for GatedDeltaNetRecurrent {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 6, "GDN expects q, k, v, log_decay, beta, state");
         let q = inputs[0].to_plain_array_view::<f16>()?;
         let k = inputs[1].to_plain_array_view::<f16>()?;

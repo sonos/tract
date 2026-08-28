@@ -63,21 +63,15 @@ impl Op for CudaGgmlQuantQ81 {
 }
 
 impl EvalOp for CudaGgmlQuantQ81 {
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         crate::with_cuda_stream(|stream| {
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
 
-            let resolved_io_facts = self.io_facts.eval(&turn.resolved_symbols)?;
+            let resolved_io_facts = self.io_facts.eval(ctx.symbols)?;
 
             let output = make_scalar_exotic_tensor_for_node(
-                turn,
-                node_id,
+                ctx,
                 input.datum_type(),
                 Box::new(resolved_io_facts),
             )?;
@@ -88,7 +82,7 @@ impl EvalOp for CudaGgmlQuantQ81 {
         })
     }
 
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 }

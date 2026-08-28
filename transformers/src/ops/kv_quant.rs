@@ -259,10 +259,10 @@ impl Op for QuantizedKvSdpa {
 }
 
 impl EvalOp for QuantizedKvSdpa {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(QuantizedKvSdpaState {
             scale: self.scale,
             k_caches: Vec::new(),
@@ -291,7 +291,7 @@ pub struct QuantizedKvSdpaState {
 impl OpState for QuantizedKvSdpaState {
     fn eval(
         &mut self,
-        _state: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -552,9 +552,10 @@ mod tests {
         let grow = |acc: Option<Tensor>, x: Tensor| -> TractResult<Tensor> {
             Ok(match acc {
                 None => x,
-                Some(a) => {
-                    TypedConcat { axis: 2 }.eval(tvec![a.into(), x.into()])?.remove(0).into_tensor()
-                }
+                Some(a) => TypedConcat { axis: 2 }
+                    .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                    .remove(0)
+                    .into_tensor(),
             })
         };
         let attn = |q: A4<f32>, k: A4<f32>, v: A4<f32>| -> A4<f32> {

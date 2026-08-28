@@ -15,11 +15,11 @@ impl Op for Source {
 }
 
 impl EvalOp for Source {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(node_id))))
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(SourceState(ctx.node_id))))
     }
 }
 

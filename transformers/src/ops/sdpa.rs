@@ -275,11 +275,11 @@ impl Op for Sdpa {
 }
 
 impl EvalOp for Sdpa {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_facts: TVec<TypedFact> = inputs
             .iter()
             .map(|tv| TypedFact::try_from(tv.clone().into_arc_tensor()))

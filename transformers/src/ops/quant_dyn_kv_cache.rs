@@ -306,10 +306,10 @@ impl Op for QuantizedDynKeyValueCache {
 }
 
 impl EvalOp for QuantizedDynKeyValueCache {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(QuantizedDynKvCacheState {
             name: self.name.clone(),
             axis: self.axis,
@@ -477,7 +477,7 @@ impl OpState for QuantizedDynKvCacheState {
 
     fn eval(
         &mut self,
-        _state: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -695,7 +695,7 @@ mod tests {
                 acc = Some(match acc.take() {
                     None => step,
                     Some(a) => TypedConcat { axis: 2 }
-                        .eval(tvec![a.into(), step.into()])?
+                        .eval(&EvalContext::pure(), tvec![a.into(), step.into()])?
                         .remove(0)
                         .into_tensor(),
                 });

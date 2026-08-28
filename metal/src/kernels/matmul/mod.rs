@@ -453,7 +453,9 @@ mod tests {
                 b = b.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
             }
 
-            let output = args_1!(matmul.eval(tvec![a.into_tvalue(), b.into_tvalue()])?);
+            let output = args_1!(
+                matmul.eval(&EvalContext::pure(), tvec![a.into_tvalue(), b.into_tvalue()])?
+            );
             metal_output.to_host()?.close_enough(&output, Approximation::SuperApproximate)?;
             Ok(())
         })
@@ -910,7 +912,10 @@ mod tests {
             if self.q4_0 {
                 rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)?
             };
-            let output = matmul.eval(tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()])?;
+            let output = matmul.eval(
+                &EvalContext::pure(),
+                tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()],
+            )?;
 
             Ok(output[0].clone().into_tensor())
         }

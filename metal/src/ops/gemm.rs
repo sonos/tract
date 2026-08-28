@@ -67,16 +67,11 @@ impl<K: GemmKernel> MetalGemm<K> {
     }
 }
 impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a_raw, b_raw) = args_2!(inputs);
         let a = a_raw
             .to_device_tensor()
@@ -91,7 +86,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
 
         let c_dt = self.kernel.matmul.output_dt(a.datum_type(), b.datum_type())?;
         let c_shape = self.kernel.output_shape(a.shape(), &b_shape);
-        let c = tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, c_dt, &c_shape)?;
+        let c = tract_gpu::turn_handler::make_tensor_for_node(ctx, c_dt, &c_shape)?;
 
         crate::with_metal_stream(|stream| self.kernel.dispatch_eval(stream, a, b, &c))?;
 

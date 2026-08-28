@@ -126,8 +126,10 @@ mod tests {
                 kind: SoftmaxKind::Softmax,
             };
 
-            let cpu_output =
-                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = cpu_softmax
+                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
@@ -154,8 +156,10 @@ mod tests {
                 kind: SoftmaxKind::Softmax,
             };
 
-            let cpu_output =
-                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = cpu_softmax
+                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
@@ -182,8 +186,10 @@ mod tests {
                 kind: SoftmaxKind::Softmax,
             };
 
-            let cpu_output =
-                cpu_softmax.eval(tvec![a.to_host()?.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = cpu_softmax
+                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
@@ -268,7 +274,9 @@ mod tests {
                 quant_output_dt: None,
                 kind: SoftmaxKind::Softmax,
             };
-            let cpu_output = cpu_softmax.eval(tvec![a.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_output = cpu_softmax.eval(&EvalContext::pure(), tvec![a.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             Ok(cpu_output)
         }
 

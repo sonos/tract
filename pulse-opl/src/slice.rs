@@ -28,11 +28,11 @@ impl TypedOp for PulsedAxisSlice {
 }
 
 impl EvalOp for PulsedAxisSlice {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }

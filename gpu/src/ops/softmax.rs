@@ -71,24 +71,15 @@ impl Op for GpuSoftmax {
 }
 
 impl EvalOp for GpuSoftmax {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            input.datum_type(),
-            input.shape(),
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
         (self.dispatch)(input, self.axes[0], &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }

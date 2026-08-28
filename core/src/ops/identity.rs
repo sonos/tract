@@ -12,12 +12,12 @@ impl Op for Identity {
 }
 
 impl EvalOp for Identity {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 }
@@ -70,16 +70,16 @@ impl Op for PinConst {
 }
 
 impl EvalOp for PinConst {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
     /// Evaluates the operation given the input tensors.
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(self.clone())))
     }
 }
@@ -87,7 +87,7 @@ impl EvalOp for PinConst {
 impl OpState for PinConst {
     fn eval(
         &mut self,
-        _turn: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

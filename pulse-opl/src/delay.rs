@@ -74,7 +74,7 @@ impl DelayState {
 impl OpState for DelayState {
     fn eval(
         &mut self,
-        _state: &mut TurnState,
+        _ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -136,11 +136,11 @@ impl Op for Delay {
 }
 
 impl EvalOp for Delay {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DelayState { buffer: None })))
     }
 }

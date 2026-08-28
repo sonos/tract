@@ -70,7 +70,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 o.consistent()?;
             }
 
-            if op.is_stateless()
+            if op.is_pure_function()
                 && input_facts.len() > 0
                 && let Some(tensors) = input_facts
                     .iter()
@@ -82,7 +82,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .map(|t| t.into_tvalue())
                     })
                     .collect::<Option<TVec<_>>>()
-                && let Ok(outputs) = op.eval_with_turn(usize::MAX, &TurnState::default(), tensors)
+                && let Ok(outputs) = op.eval(&EvalContext::pure(), tensors)
             {
                 return outputs
                     .into_iter()
@@ -280,13 +280,13 @@ impl TypedModel {
         for n in self.eval_order()? {
             let node = self.node(n);
             let (inputs, outputs) = self.node_facts(n)?;
-            if node.op.is_stateless()
+            if node.op.is_pure_function()
                 && inputs.iter().all(|i| i.konst.as_ref().is_some_and(|k| k.is_plain()))
                 && outputs.iter().any(|o| o.konst.is_none())
             {
                 let inputs_ref =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
-                match node.op.eval_with_turn(node.id, &TurnState::default(), inputs_ref) {
+                match node.op.eval(&EvalContext::pure(), inputs_ref) {
                     Ok(res) => {
                         drop(inputs);
                         drop(outputs);

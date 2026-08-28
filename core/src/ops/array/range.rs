@@ -20,18 +20,13 @@ impl Op for Range {
 }
 
 impl EvalOp for Range {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (start, end, step) = args_3!(inputs);
-        Ok(tvec!(self.make(&start, &end, &step, &turn.resolved_symbols)?.into_tvalue()))
+        Ok(tvec!(self.make(&start, &end, &step, ctx.symbols)?.into_tvalue()))
     }
 }
 

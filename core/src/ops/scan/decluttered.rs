@@ -762,11 +762,11 @@ impl Op for Scan {
 }
 
 impl EvalOp for Scan {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_codegen_op(false)?.state(turn, node_id)
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_codegen_op(false)?.state(ctx)
     }
 }
 

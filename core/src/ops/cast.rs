@@ -40,16 +40,11 @@ impl Op for Cast {
 }
 
 impl EvalOp for Cast {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        state: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         if input.datum_type() == self.to {
             Ok(tvec!(input))
@@ -61,7 +56,7 @@ impl EvalOp for Cast {
                 input_plain.as_slice::<TDim>()?,
                 tmp_plain.as_slice_mut::<i64>()?
             ) {
-                *i = dim.eval(&state.resolved_symbols).to_i64()?
+                *i = dim.eval(ctx.symbols).to_i64()?
             }
             Ok(tvec!(tmp.cast_to_dt(self.to)?.into_owned().into_tvalue()))
         } else {

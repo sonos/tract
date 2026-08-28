@@ -119,7 +119,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + Downcast + Send {
 
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>>;
@@ -128,27 +128,42 @@ dyn_clone::clone_trait_object!(OpState);
 impl_downcast!(OpState);
 
 pub trait EvalOp {
+    /// Evaluate the op. `ctx` says where and when: the turn's symbols, the shared
+    /// resources a handler installed, and `(session, node_id)` so an op can key
+    /// whatever scratch it manages for itself. Ops carrying state that must
+    /// survive from one turn to the next build it in [`EvalOp::state`] instead,
+    /// and evaluate through [`OpState::eval`].
     #[allow(unused_variables)]
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        bail!("stateless evaluation not implemented")
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        bail!("{} has neither eval nor state", std::any::type_name::<Self>())
     }
 
-    #[allow(unused_variables)]
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        self.eval(inputs).context("Running legacy eval")
+    /// Evaluate with no context, for callers that have none: const folding, shape
+    /// inference, tests. Only meaningful for an op reporting
+    /// `is_pure_function()`. Convenience over [`EvalOp::eval`] -- do not override.
+    fn eval_pure(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.eval(&EvalContext::pure(), inputs)
     }
 
+    /// Build this node's inter-turn state, or `None` when the op keeps nothing
+    /// between turns. This is what decides whether the plan holds an
+    /// [`OpState`] for the node; there is no separate predicate.
     #[allow(unused_variables)]
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
-    fn is_stateless(&self) -> bool;
+    /// Whether evaluating depends on nothing but `inputs`, so the op can be run
+    /// outside a plan -- during const folding and shape inference, where there
+    /// is no meaningful context. False for anything that reads `ctx` or keeps
+    /// state.
+    fn is_pure_function(&self) -> bool;
+
+    /// Release whatever the op manages for `session`, called for every node as a
+    /// state is dropped. Ops keeping scratch keyed by `(session, node_id)` must
+    /// implement it, or that scratch outlives the session that made it.
+    #[allow(unused_variables)]
+    fn drop_session(&self, session: SessionId, node_id: usize) {}
 }
 
 /// A base operation

@@ -38,11 +38,11 @@ impl Op for LstmEpilogue {
 }
 
 impl EvalOp for LstmEpilogue {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // Dispatch on the dtype the precision transform left the graph in. The
         // ONNX LSTM is f32-native, but `FloatPrecisionTranslator` rewrites the
         // whole float graph (including this op's inputs) to f16, so we must run
@@ -141,7 +141,9 @@ mod tests {
         let pre_t = Tensor::from_shape(&[batch, 4 * h], &preact).unwrap();
         let cprev_t = Tensor::from_shape(&[batch, h], &cprev).unwrap();
         let op = LstmEpilogue { hidden: h };
-        let out = op.eval(tvec!(pre_t.into_tvalue(), cprev_t.into_tvalue())).unwrap();
+        let out = op
+            .eval(&EvalContext::pure(), tvec!(pre_t.into_tvalue(), cprev_t.into_tvalue()))
+            .unwrap();
         let ht = unsafe { out[0].as_slice_unchecked::<f32>() };
         let ct = unsafe { out[1].as_slice_unchecked::<f32>() };
 

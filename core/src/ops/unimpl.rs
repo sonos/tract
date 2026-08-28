@@ -26,7 +26,7 @@ impl Op for UnimplementedOp {
 }
 
 impl EvalOp for UnimplementedOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 }

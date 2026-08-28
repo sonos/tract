@@ -14,7 +14,7 @@ struct QElmWiseOpProblem {
 impl QOpProblem for QElmWiseOpProblem {
     fn reference_float_ops(&self) -> TractResult<Tensor> {
         let inp = self.tensor_input.cast_to::<f32>()?.clone().into_owned();
-        Ok(self.operator.eval(tvec![inp.into_tvalue()])?.remove(0).into_tensor())
+        Ok(self.operator.eval_pure(tvec![inp.into_tvalue()])?.remove(0).into_tensor())
     }
 }
 

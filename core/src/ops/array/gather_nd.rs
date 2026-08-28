@@ -90,11 +90,11 @@ impl Op for GatherNd {
 }
 
 impl EvalOp for GatherNd {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let shape = self.compute_shape(data.shape(), indices.shape())?;
         let indices = indices.cast_to::<i32>()?;

@@ -40,11 +40,11 @@ impl Op for PulsedRange {
 }
 
 impl EvalOp for PulsedRange {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsedRangeState>::default()))
     }
 }
@@ -65,7 +65,7 @@ struct PulsedRangeState {
 impl OpState for PulsedRangeState {
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -78,18 +78,8 @@ impl OpState for PulsedRangeState {
             // TDim-input form: `Range::make` materialises as i64 regardless
             // of `op.datum_type` (which is what `Range::output_facts` writes
             // for the TDim-input branch — see `core/src/ops/array/range.rs`).
-            let start = op
-                .start
-                .try_as_plain()?
-                .to_scalar::<TDim>()?
-                .eval(&turn.resolved_symbols)
-                .to_i64()?;
-            let step = op
-                .step
-                .try_as_plain()?
-                .to_scalar::<TDim>()?
-                .eval(&turn.resolved_symbols)
-                .to_i64()?;
+            let start = op.start.try_as_plain()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
+            let step = op.step.try_as_plain()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
             let data: Vec<i64> =
                 (0..pulse).map(|i| start + step * (base as i64 + i as i64)).collect();
             tract_nnef::tract_core::ndarray::Array1::from_vec(data).into_dyn().into_tensor()

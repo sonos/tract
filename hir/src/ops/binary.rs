@@ -122,11 +122,11 @@ impl Op for Nary {
 }
 
 impl EvalOp for Nary {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut t = inputs[0].clone().into_tensor();
         for i in inputs[1..].iter() {
             let mut i = i.clone().into_tensor();

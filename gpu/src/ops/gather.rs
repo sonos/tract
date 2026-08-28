@@ -53,26 +53,16 @@ impl Op for GpuGather {
 }
 
 impl EvalOp for GpuGather {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data_val, indices_val) = args_2!(inputs);
         let data = data_val.to_device_tensor()?;
         let indices = indices_val.to_device_tensor()?;
         let out_shape = compute_output_shape(self.axis, data.shape(), indices.shape())?;
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            data.datum_type(),
-            &out_shape,
-        )?;
+        let output = crate::turn_handler::make_tensor_for_node(ctx, data.datum_type(), &out_shape)?;
         (self.dispatch)(data, indices, self.axis, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }

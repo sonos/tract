@@ -55,19 +55,14 @@ impl Op for Slice {
 }
 
 impl EvalOp for Slice {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let start = self.start.eval(&turn.resolved_symbols).to_usize()?;
-        let end = self.end.eval(&turn.resolved_symbols).to_usize()?;
+        let start = self.start.eval(ctx.symbols).to_usize()?;
+        let end = self.end.eval(ctx.symbols).to_usize()?;
         eval_slice(&input, self.axis, start, end)
     }
 }

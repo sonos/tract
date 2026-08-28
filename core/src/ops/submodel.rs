@@ -46,12 +46,12 @@ impl Op for SubmodelOp {
 }
 
 impl EvalOp for SubmodelOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        self.model.state(turn, node_id)
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        self.model.state(ctx)
     }
 }
 
@@ -97,10 +97,10 @@ impl TypedOp for SubmodelOp {
 pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'static {
     #[allow(unused_variables)]
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
-    fn is_stateless(&self) -> bool;
+    fn is_pure_function(&self) -> bool;
 
     #[allow(unused_variables)]
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 
@@ -124,12 +124,12 @@ impl InnerModel for TypedModel {
             .collect::<TractResult<TVec<_>>>()?;
         Ok(facts)
     }
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
     #[allow(unused_variables)]
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let plan = self.clone().into_runnable()?;
         let state = plan.spawn()?;
         Ok(Some(Box::new(state)))
@@ -154,7 +154,7 @@ pub type TypedModelOpState = TypedSimpleState;
 impl OpState for TypedModelOpState {
     fn eval(
         &mut self,
-        _turn: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

@@ -44,21 +44,15 @@ impl Op for MetalPool {
 }
 
 impl EvalOp for MetalPool {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;
         let output_shape = self.pool_spec.output_shape(input.shape())?;
         let output = tract_gpu::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
+            ctx,
             input.datum_type(),
             &output_shape.shape,
         )?;

@@ -270,11 +270,11 @@ impl Op for StridedSlice {
 }
 
 impl EvalOp for StridedSlice {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
         let scope = inputs.iter().find_map(|i| {
             if i.datum_type() != TDim::datum_type() {
@@ -352,7 +352,7 @@ mod tests {
         if let Some(stride) = stride {
             inputs.push(tensor1(&[stride as i32]).into());
         }
-        op.eval(inputs).unwrap().remove(0)
+        op.eval_pure(inputs).unwrap().remove(0)
     }
 
     #[test]

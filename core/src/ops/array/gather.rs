@@ -322,11 +322,11 @@ impl TypedOp for Gather {
 }
 
 impl EvalOp for Gather {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
         let result = if let Some(bqs) = data.storage_as::<BlockQuantStorage>() {
             let dt = self.output_type.unwrap();
@@ -356,8 +356,9 @@ mod tests {
         let gatherer = Gather::new(0);
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx));
-            let outputs =
-                gatherer.eval(tvec![data.clone().into_tvalue(), index.into_tvalue()]).unwrap();
+            let outputs = gatherer
+                .eval(&EvalContext::pure(), tvec![data.clone().into_tvalue(), index.into_tvalue()])
+                .unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
             assert_eq!(*output.try_as_plain().unwrap().to_scalar::<i64>().unwrap(), idx + 1);

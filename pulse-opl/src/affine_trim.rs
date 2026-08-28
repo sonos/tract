@@ -36,11 +36,11 @@ impl Op for AffineChunkTrim {
 }
 
 impl EvalOp for AffineChunkTrim {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let n = input.shape()[self.axis];
         let take = if n.saturating_sub(self.typed_trim) >= self.target_per_pulse {

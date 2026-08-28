@@ -22,13 +22,13 @@ impl Op for MaxPool {
 }
 
 impl EvalOp for MaxPool {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
-        self.to_optimized(&shape)?.eval(inputs)
+        self.to_optimized(&shape)?.eval(_ctx, inputs)
     }
 }
 
@@ -120,11 +120,11 @@ impl Op for OptMaxPool {
 }
 
 impl EvalOp for OptMaxPool {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         dispatch_numbers!(Self::eval_t(input.datum_type())(self, &*input, geo.as_ref()))

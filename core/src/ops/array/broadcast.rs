@@ -18,17 +18,12 @@ impl Op for MultiBroadcastTo {
 }
 
 impl EvalOp for MultiBroadcastTo {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let shape = self.shape.eval_to_usize(&turn.resolved_symbols)?;
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let shape = self.shape.eval_to_usize(ctx.symbols)?;
         Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
     }
 }

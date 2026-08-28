@@ -155,10 +155,7 @@ mod tests {
             // TDims against the turn's resolved_symbols); pass an empty
             // TurnState since the TDims here are already concrete.
             let cpu_op = cpu_dg::DiagGather { offset: offset.to_dim(), out_len: out_len.to_dim() };
-            let turn = TurnState::default();
-            let cpu_out = cpu_op.eval_with_turn(0, &turn, tvec![cpu_in.into_tvalue()])?[0]
-                .clone()
-                .into_tensor();
+            let cpu_out = cpu_op.eval_pure(tvec![cpu_in.into_tvalue()])?[0].clone().into_tensor();
             let cuda_out = DiagGather.eval(stream, &cuda_in, offset, out_len)?;
             cpu_out
                 .close_enough(&cuda_out.to_host()?.into_tensor(), Approximation::Exact)

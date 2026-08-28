@@ -15,16 +15,11 @@ impl Op for CudaIff {
 }
 
 impl EvalOp for CudaIff {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond_val, then_val, else_val) = args_3!(inputs);
 
         let cond = cond_val.to_device_tensor()?;
@@ -37,8 +32,7 @@ impl EvalOp for CudaIff {
         let out_shape = multi_broadcast(&[cond.shape(), then_t.shape(), else_t.shape()])
             .context("No broadcasting solution found")?;
         let out_dt = then_t.datum_type();
-        let output =
-            tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, out_dt, &out_shape)?;
+        let output = tract_gpu::turn_handler::make_tensor_for_node(ctx, out_dt, &out_shape)?;
 
         if output.len() > 0 {
             crate::with_cuda_stream(|stream| {

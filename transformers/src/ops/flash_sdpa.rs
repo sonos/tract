@@ -96,11 +96,11 @@ impl TypedOp for FlashSdpaOp {
 }
 
 impl EvalOp for FlashSdpaOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 3 || inputs.len() == 4);
         let [q, k, v] = &inputs[0..3] else {
             bail!("Expects 3 or 4 inptus (Q, K, V, optional mask)")
@@ -415,15 +415,22 @@ mod tests {
         let v = Tensor::from_shape(&[b, hkv, sk, d], &vv)?;
         let op = FlashSdpaOp { causal: true, scale: None };
         let f32_out = op
-            .eval(tvec!(q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()))?
+            .eval(
+                &EvalContext::pure(),
+                tvec!(q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()),
+            )?
             .remove(0);
         let (q16, k16, v16) = (
             q.cast_to::<f16>()?.into_owned(),
             k.cast_to::<f16>()?.into_owned(),
             v.cast_to::<f16>()?.into_owned(),
         );
-        let f16_out =
-            op.eval(tvec!(q16.into_tvalue(), k16.into_tvalue(), v16.into_tvalue()))?.remove(0);
+        let f16_out = op
+            .eval(
+                &EvalContext::pure(),
+                tvec!(q16.into_tvalue(), k16.into_tvalue(), v16.into_tvalue()),
+            )?
+            .remove(0);
         ensure!(f16_out.datum_type() == f16::datum_type());
         let f16_as_f32 = f16_out.cast_to::<f32>()?;
         let got = f32_out.to_plain_array_view::<f32>()?;

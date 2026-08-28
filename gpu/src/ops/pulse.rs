@@ -34,12 +34,16 @@ impl Op for GpuDelay {
 }
 
 impl EvalOp for GpuDelay {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(GpuDelayState { node_id, buffer: None, shift_scratch: None })))
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(GpuDelayState {
+            node_id: ctx.node_id,
+            buffer: None,
+            shift_scratch: None,
+        })))
     }
 }
 
@@ -119,7 +123,7 @@ impl GpuDelayState {
 impl OpState for GpuDelayState {
     fn eval(
         &mut self,
-        state: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -132,15 +136,15 @@ impl OpState for GpuDelayState {
         let mut output_shape: TVec<usize> = device_input.shape().into();
         output_shape[op.axis] = output_pulse;
         let dt = device_input.datum_type();
-        let ctx = get_context()?;
+        let device = get_context()?;
         unsafe {
             if self.buffer.is_none() {
                 let mut shape = device_input.shape().to_owned();
                 shape[op.axis] = buffered;
                 self.buffer = Some(Tensor::zero_dt(dt, &shape)?.into_device()?);
             };
-            let mut output = make_tensor_for_node(state, self.node_id, dt, &output_shape)?;
-            self.apply_delay_unchecked(&*ctx, op, device_input, &mut output)?;
+            let mut output = make_tensor_for_node(ctx, dt, &output_shape)?;
+            self.apply_delay_unchecked(&*device, op, device_input, &mut output)?;
             Ok(tvec!(output.into_tensor().into()))
         }
     }
@@ -181,12 +185,16 @@ impl Op for GpuPulsePad {
 }
 
 impl EvalOp for GpuPulsePad {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(GpuPulsePadState { node_id, current_pos: 0, last_valid_frame: None })))
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(GpuPulsePadState {
+            node_id: ctx.node_id,
+            current_pos: 0,
+            last_valid_frame: None,
+        })))
     }
 }
 
@@ -277,34 +285,33 @@ impl GpuPulsePadState {
 
     fn pad(
         &mut self,
-        turn: &TurnState,
+        ctx: &EvalContext,
         gpu_op: &GpuPulsePad,
         input: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        let ctx = get_context()?;
+        let device = get_context()?;
         let op = &gpu_op.op;
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse - op.overlap;
-        let end_input = op.end_input.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
-        let after = op.after.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let end_input = op.end_input.eval(ctx.symbols).to_usize().unwrap_or(usize::MAX);
+        let after = op.after.eval(ctx.symbols).to_usize().unwrap_or(usize::MAX);
 
         if let PadMode::Edge = op.mode
             && after != 0
             && pulse_begin < end_input
         {
             let latest_valid_frame = (end_input - pulse_begin).min(pulse) - 1;
-            self.save_frame(&*ctx, op, input, latest_valid_frame)?;
+            self.save_frame(&*device, op, input, latest_valid_frame)?;
         }
 
         // Start with a copy of input.  The fused-axis-op chain may have
         // installed a non-contiguous view (Move only permutes strides,
         // never materialises), so a flat memcpy would read the buffer in
         // pre-Move order; copy_nd honours `input.strides()` instead.
-        let mut output =
-            make_tensor_for_node(turn, self.node_id, input.datum_type(), input.shape())?;
-        ctx.copy_nd(input, 0, input.strides(), &output, 0, input.shape(), output.strides())?;
+        let mut output = make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
+        device.copy_nd(input, 0, input.strides(), &output, 0, input.shape(), output.strides())?;
 
         // Quick return if entirely in valid or invalid range
         if (pulse_begin >= op.begin_input && pulse_end <= end_input)
@@ -318,14 +325,14 @@ impl GpuPulsePadState {
             let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
                 PadMode::Constant(_) => fill_slice_constant(
-                    &*ctx,
+                    &*device,
                     &mut output,
                     gpu_op.device_cst.as_ref().unwrap(),
                     op.axis,
                     0..fill_up_to,
                 )?,
                 PadMode::Edge => fill_slice_repeating_one_frame(
-                    &*ctx,
+                    &*device,
                     &mut output,
                     input,
                     op.axis,
@@ -340,14 +347,14 @@ impl GpuPulsePadState {
             let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
                 PadMode::Constant(_) => fill_slice_constant(
-                    &*ctx,
+                    &*device,
                     &mut output,
                     gpu_op.device_cst.as_ref().unwrap(),
                     op.axis,
                     fill_from..pulse,
                 )?,
                 PadMode::Edge => fill_slice_repeating_one_frame(
-                    &*ctx,
+                    &*device,
                     &mut output,
                     self.last_valid_frame.as_ref().unwrap(),
                     op.axis,
@@ -364,7 +371,7 @@ impl GpuPulsePadState {
 impl OpState for GpuPulsePadState {
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -372,7 +379,7 @@ impl OpState for GpuPulsePadState {
         let gpu_op =
             op.downcast_ref::<GpuPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let device_input = input.as_device_tensor().context("Expected a GPU tensor")?;
-        let output = self.pad(turn, gpu_op, device_input)?;
+        let output = self.pad(ctx, gpu_op, device_input)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
@@ -403,16 +410,11 @@ impl Op for GpuAffineChunkTrim {
 }
 
 impl EvalOp for GpuAffineChunkTrim {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
         let axis = self.inner.axis;
@@ -427,10 +429,18 @@ impl EvalOp for GpuAffineChunkTrim {
         }
         let mut o_shape: TVec<usize> = input.shape().into();
         o_shape[axis] = take;
-        let output = make_tensor_for_node(turn, node_id, input.datum_type(), &o_shape)?;
+        let output = make_tensor_for_node(ctx, input.datum_type(), &o_shape)?;
         let broadcast_strides = compute_broadcast_strides(&o_shape, input.strides())?;
-        let ctx = get_context()?;
-        ctx.copy_nd(input, 0, &broadcast_strides, &output, 0, output.shape(), output.strides())?;
+        let device = get_context()?;
+        device.copy_nd(
+            input,
+            0,
+            &broadcast_strides,
+            &output,
+            0,
+            output.shape(),
+            output.strides(),
+        )?;
         Ok(tvec![output.into_tensor().into_tvalue()])
     }
 }

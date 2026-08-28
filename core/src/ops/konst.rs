@@ -41,11 +41,11 @@ impl Op for Const {
 }
 
 impl EvalOp for Const {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(tvec![Arc::clone(&self.0).into_tvalue()])
     }
 }

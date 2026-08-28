@@ -20,11 +20,11 @@ impl Op for PulsedSameAxisConcat {
 }
 
 impl EvalOp for PulsedSameAxisConcat {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsedSameAxisConcatState>::default()))
     }
 }
@@ -54,7 +54,7 @@ pub struct PulsedSameAxisConcatState {
 impl OpState for PulsedSameAxisConcatState {
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -70,7 +70,7 @@ impl OpState for PulsedSameAxisConcatState {
         let pre_length = pre.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
         overwrite_part_of_pulse(op.axis, &mut data, current_pos, &pre, pre_offset)?;
-        if let Some(l) = op.input_len.maybe_eval_to_i64(&turn.resolved_symbols) {
+        if let Some(l) = op.input_len.maybe_eval_to_i64(ctx.symbols) {
             let post_offset = op.input_delay + l as usize;
             overwrite_part_of_pulse(op.axis, &mut data, current_pos, &post, post_offset)?;
         }

@@ -45,11 +45,11 @@ impl Op for Lrn {
 }
 
 impl EvalOp for Lrn {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         dispatch_floatlike!(Self::eval_t(input.datum_type())(self, input))
     }

@@ -23,7 +23,7 @@ fn eval_comp_oop<T: Datum + PartialOrd>(
 
 // Helper for TDim symbolic eval
 fn eval_tdim_symbolic(
-    turn: &TurnState,
+    ctx: &EvalContext,
     inputs: &TVec<TValue>,
     prove: impl Fn(&TDim, &TDim) -> TractResult<bool>,
 ) -> TractResult<Option<TVec<TValue>>> {
@@ -31,10 +31,10 @@ fn eval_tdim_symbolic(
     let mut a = inputs[0].clone().into_tensor();
     let mut b = inputs[1].clone().into_tensor();
     for a in a.try_as_plain_mut()?.as_slice_mut::<TDim>()? {
-        *a = a.eval(&turn.resolved_symbols);
+        *a = a.eval(ctx.symbols);
     }
     for b in b.try_as_plain_mut()?.as_slice_mut::<TDim>()? {
-        *b = b.eval(&turn.resolved_symbols);
+        *b = b.eval(ctx.symbols);
     }
     if let (Ok(a_i64), Ok(b_i64)) = (a.cast_to::<i64>(), b.cast_to::<i64>()) {
         let result = eval_comp_oop::<i64>(&a_i64, &b_i64, |a, b| {
@@ -115,10 +115,10 @@ macro_rules! comp_bin_mini_op {
 
             fn eval_symbolic(
                 &self,
-                turn: &TurnState,
+                ctx: &EvalContext,
                 inputs: TVec<TValue>,
             ) -> TractResult<Option<TVec<TValue>>> {
-                eval_tdim_symbolic(turn, &inputs, $prove_tdim)
+                eval_tdim_symbolic(ctx, &inputs, $prove_tdim)
             }
 
             fn uniform_tdim_comparison(
