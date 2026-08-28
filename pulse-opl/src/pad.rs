@@ -110,26 +110,21 @@ struct PadLimits {
 }
 
 impl PadLimits {
-    fn resolve(
-        cache: &mut Option<PadLimits>,
-        session: &TurnState,
-        op: &PulsePad,
-    ) -> (usize, usize) {
+    fn resolve(cache: &mut Option<PadLimits>, turn: &TurnState, op: &PulsePad) -> (usize, usize) {
         if let Some(l) = cache.as_ref() {
-            if l.deps.iter().all(|(s, v)| session.resolved_symbols.get(s) == *v) {
+            if l.deps.iter().all(|(s, v)| turn.resolved_symbols.get(s) == *v) {
                 return (l.end_input, l.after);
             }
         }
-        let end_input =
-            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
-        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let end_input = op.end_input.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let after = op.after.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
         let deps = op
             .end_input
             .symbols()
             .into_iter()
             .chain(op.after.symbols())
             .map(|s| {
-                let v = session.resolved_symbols.get(&s);
+                let v = turn.resolved_symbols.get(&s);
                 (s, v)
             })
             .collect();
@@ -141,13 +136,13 @@ impl PadLimits {
 impl OpState for PulsePadOpState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
-        self.pad(session, op, input).map(|t| tvec!(t))
+        self.pad(turn, op, input).map(|t| tvec!(t))
     }
 }
 
@@ -158,12 +153,12 @@ impl PulsePadOpState {
             Some(data.index_axis(Axis(op.axis), frame).to_owned().into_tensor());
     }
 
-    fn pad(&mut self, session: &TurnState, op: &PulsePad, input: TValue) -> TractResult<TValue> {
+    fn pad(&mut self, turn: &TurnState, op: &PulsePad, input: TValue) -> TractResult<TValue> {
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse - op.overlap;
-        let (end_input, after) = PadLimits::resolve(&mut self.limits, session, op);
+        let (end_input, after) = PadLimits::resolve(&mut self.limits, turn, op);
 
         if let PadMode::Edge = op.mode {
             if after != 0 && pulse_begin < end_input {
@@ -277,11 +272,7 @@ impl EvalOp for PulsePad {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsePadOpState>::default()))
     }
 }

@@ -651,17 +651,17 @@ impl EvalOp for AxisOp {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         match self {
             AxisOp::Reshape(skip, from, to) => {
-                let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                let from = from.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
+                let to = to.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
                 AxisOp::Reshape(*skip, from, to).change_tensor(&mut input, false)?
             }
             _ => self.change_tensor(&mut input, false)?,

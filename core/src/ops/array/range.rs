@@ -24,14 +24,14 @@ impl EvalOp for Range {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (start, end, step) = args_3!(inputs);
-        Ok(tvec!(self.make(&start, &end, &step, &session.resolved_symbols)?.into_tvalue()))
+        Ok(tvec!(self.make(&start, &end, &step, &turn.resolved_symbols)?.into_tvalue()))
     }
 }
 

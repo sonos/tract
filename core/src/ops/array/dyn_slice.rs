@@ -29,26 +29,26 @@ impl EvalOp for DynSlice {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let start = inputs[1]
             .cast_to::<TDim>()?
             .try_as_plain()?
             .to_scalar::<TDim>()?
-            .eval(&session.resolved_symbols)
+            .eval(&turn.resolved_symbols)
             .to_usize()?;
         let end = inputs[2]
             .cast_to::<TDim>()?
             .try_as_plain()?
             .to_scalar::<TDim>()?
-            .eval(&session.resolved_symbols)
+            .eval(&turn.resolved_symbols)
             .to_usize()?;
         ensure!(start <= end);
-        if let Ok(len) = self.len.eval(&session.resolved_symbols).to_usize() {
+        if let Ok(len) = self.len.eval(&turn.resolved_symbols).to_usize() {
             ensure!(start + len == end);
         }
         let slice = inputs[0].slice(self.axis, start, end)?;

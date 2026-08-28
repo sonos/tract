@@ -79,7 +79,7 @@ pub trait EvalOp {
 
      fn state(
          &self,
-         session: &mut TurnState,
+         turn: &mut TurnState,
          node_id: usize,
      ) -> TractResult<Option<Box<dyn OpState>>> {
          Ok(None)
@@ -101,7 +101,7 @@ instead:
 pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>>;
@@ -110,7 +110,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast {
 ```
 
 Here the eval implementation is free to mute some operation internal state if
-required, or access the `SessionState`.
+required, or access the `TurnState`.
 
 But most operators are stateless anyway.
 

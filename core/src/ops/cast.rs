@@ -44,7 +44,7 @@ impl EvalOp for Cast {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
         state: &TurnState,

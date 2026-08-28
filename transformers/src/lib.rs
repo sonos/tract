@@ -85,11 +85,11 @@ pub fn figure_out_causal_llm_b_s_p(
         model.input_fact(kv_input)?.shape.volume().symbols()
     } else {
         // Look for KVCache Op
-        let dummy_session_state = TurnState::default();
+        let dummy_turn = TurnState::default();
         let mut symbols = HashSet::new();
         for node in &model.nodes {
             if let Some((_, fact)) =
-                node.op.state(&dummy_session_state, 0)?.and_then(|state| state.init_tensor_fact())
+                node.op.state(&dummy_turn, 0)?.and_then(|state| state.init_tensor_fact())
             {
                 symbols = fact.shape.volume().symbols();
                 break;

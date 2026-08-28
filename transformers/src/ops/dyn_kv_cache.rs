@@ -195,11 +195,7 @@ impl EvalOp for DynKeyValueCache {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {
             name: self.name.clone(),
             axis: self.axis,
@@ -463,8 +459,8 @@ mod tests {
             axis,
         };
 
-        let mut session_state = TurnState::default();
-        let mut state = op.state(&session_state, 0)?.unwrap();
+        let mut turn = TurnState::default();
+        let mut state = op.state(&turn, 0)?.unwrap();
 
         let mut inputs = tvec![];
 
@@ -476,15 +472,13 @@ mod tests {
 
         let mut state_initializers = vec![input.into()].into_iter();
 
-        state.load_from(&mut session_state, &mut state_initializers)?;
+        state.load_from(&mut turn, &mut state_initializers)?;
 
         for shape in input_shapes {
             let len = shape.iter().product::<usize>();
             let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
             inputs.push(input.clone().into_tvalue());
-            state.eval(&mut session_state, &op, tvec!(input.clone().into()))?[0]
-                .clone()
-                .into_tensor();
+            state.eval(&mut turn, &op, tvec!(input.clone().into()))?[0].clone().into_tensor();
         }
 
         let mut curr_states = vec![];
@@ -519,8 +513,8 @@ mod tests {
             past_sequence_fact: f32::fact(&past),
             input_sequence_fact: f32::fact(&input),
         };
-        let session = TurnState::default();
-        let state = op.state(&session, 0)?.unwrap();
+        let turn = TurnState::default();
+        let state = op.state(&turn, 0)?.unwrap();
         assert!(state.has_init_tensor_fact());
         assert_eq!(state.has_init_tensor_fact(), state.init_tensor_fact().is_some());
         Ok(())

@@ -528,13 +528,13 @@ impl EvalOp for EinSumMatMul {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.op.eval_with_session(node_id, session, inputs)
+        self.op.eval_with_turn(node_id, turn, inputs)
     }
 }
 

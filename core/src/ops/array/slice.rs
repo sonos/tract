@@ -59,15 +59,15 @@ impl EvalOp for Slice {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let start = self.start.eval(&session.resolved_symbols).to_usize()?;
-        let end = self.end.eval(&session.resolved_symbols).to_usize()?;
+        let start = self.start.eval(&turn.resolved_symbols).to_usize()?;
+        let end = self.end.eval(&turn.resolved_symbols).to_usize()?;
         eval_slice(&input, self.axis, start, end)
     }
 }

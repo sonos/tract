@@ -86,7 +86,7 @@ impl EvalOp for CudaConv {
         false
     }
 
-    fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(CudaConvState::new(node_id))))
     }
 }
@@ -145,7 +145,7 @@ impl Drop for CudaConvState {
 impl OpState for CudaConvState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -153,8 +153,8 @@ impl OpState for CudaConvState {
         let inputs =
             inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let output_shape = op.op.pool_spec.output_shape(inputs[0].shape())?;
-        let output = tract_gpu::session_handler::make_tensor_for_node(
-            session,
+        let output = tract_gpu::turn_handler::make_tensor_for_node(
+            turn,
             self.node_id,
             inputs[0].datum_type(),
             &output_shape.shape,

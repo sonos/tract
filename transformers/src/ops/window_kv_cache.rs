@@ -179,11 +179,7 @@ impl EvalOp for WindowKvSdpa {
     fn is_stateless(&self) -> bool {
         false
     }
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(WindowKvSdpaState {
             window: self.window,
             scale: self.scale,

@@ -83,16 +83,16 @@ impl EvalOp for GpuStft {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;
         let window = (*self.window).clone().into_device()?;
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             input.datum_type(),
             &self.output_shape(input.shape()),
@@ -174,15 +174,15 @@ impl EvalOp for GpuFft {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             input.datum_type(),
             input.shape(),

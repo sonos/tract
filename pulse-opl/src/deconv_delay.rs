@@ -33,11 +33,7 @@ impl EvalOp for DeconvDelay {
         unreachable!()
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DeconvDelayState { valid_inputed: -(self.delay as isize), buffer: None })))
     }
 }
@@ -62,7 +58,7 @@ pub struct DeconvDelayState {
 impl OpState for DeconvDelayState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -73,7 +69,7 @@ impl OpState for DeconvDelayState {
             self.buffer = Some(Tensor::zero_dt(inputs[0].datum_type(), &buffer_size)?);
         }
         let mut input = inputs[0].clone().into_tensor();
-        dispatch_numbers!(Self::eval_t(input.datum_type())(self, session, op, &mut input))?;
+        dispatch_numbers!(Self::eval_t(input.datum_type())(self, turn, op, &mut input))?;
         let output = input.slice(op.axis, 0, input.shape()[op.axis] - op.overlap)?;
         Ok(tvec!(output.into_tvalue()))
     }
@@ -82,7 +78,7 @@ impl OpState for DeconvDelayState {
 impl DeconvDelayState {
     fn eval_t<T: Datum + AddAssign + Zero>(
         &mut self,
-        session: &TurnState,
+        turn: &TurnState,
         op: &DeconvDelay,
         input: &mut Tensor,
     ) -> TractResult<()> {
@@ -94,7 +90,7 @@ impl DeconvDelayState {
         let input_pulse = input.shape()[op.axis];
         let output_pulse = input_pulse - op.overlap;
         self.valid_inputed += output_pulse as isize;
-        if let Ok(input_dim) = op.deconv_input_dim.eval(&session.resolved_symbols).to_isize() {
+        if let Ok(input_dim) = op.deconv_input_dim.eval(&turn.resolved_symbols).to_isize() {
             if self.valid_inputed > input_dim {
                 let to_be_zeroed = ((self.valid_inputed - input_dim) as usize).min(input_pulse);
                 let mut zeroed =

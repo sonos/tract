@@ -79,11 +79,7 @@ impl EvalOp for PinConst {
         Ok(inputs)
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(self.clone())))
     }
 }
@@ -91,7 +87,7 @@ impl EvalOp for PinConst {
 impl OpState for PinConst {
     fn eval(
         &mut self,
-        _session: &mut TurnState,
+        _turn: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

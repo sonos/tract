@@ -435,11 +435,7 @@ impl EvalOp for OptMatMul {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<OptMatMulState>::default()))
     }
 }
@@ -447,12 +443,12 @@ impl EvalOp for OptMatMul {
 impl OpState for OptMatMulState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<OptMatMul>().context("OptMatMulState on non-OptMatMul op")?;
-        op.eval_with_state(session, inputs, self)
+        op.eval_with_state(turn, inputs, self)
     }
 }
 
@@ -474,18 +470,18 @@ impl OpStateFreeze for OptMatMulState {
 impl OptMatMul {
     fn eval_with_state(
         &self,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
         state: &mut OptMatMulState,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
-            let c_shape = self.c_fact.shape.eval_to_usize(&session.resolved_symbols)?;
+            let c_shape = self.c_fact.shape.eval_to_usize(&turn.resolved_symbols)?;
             let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
             let m = self.c_m_axis.map(|c_m| c.shape()[c_m]).unwrap_or(1);
             let n = self.c_n_axis.map(|c_n| c.shape()[c_n]).unwrap_or(1);
             let mode = self.mode_picker.pick(n)?;
             let mmm = &*self.mmm[mode];
-            let mut cell = session.cached_mmm_scratch_space.borrow_mut();
+            let mut cell = turn.cached_mmm_scratch_space.borrow_mut();
             if !cell.as_ref().is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch)) {
                 *cell = None
             }

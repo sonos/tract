@@ -60,17 +60,17 @@ impl EvalOp for GpuScaledMaskedSoftmax {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input_val, mask_val) = args_2!(inputs);
         let input = input_val.to_device_tensor()?;
         let mask = mask_val.to_device_tensor()?;
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             input.datum_type(),
             input.shape(),

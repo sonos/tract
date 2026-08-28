@@ -44,14 +44,14 @@ impl Clone for TurnState {
     }
 }
 
-pub trait SessionStateHandler: Send + Sync + Debug {
-    fn before_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()>;
-    fn after_plan_eval(&self, session_state: &mut TurnState) -> TractResult<()>;
+pub trait TurnStateHandler: Send + Sync + Debug {
+    fn before_plan_eval(&self, turn: &mut TurnState) -> TractResult<()>;
+    fn after_plan_eval(&self, turn: &mut TurnState) -> TractResult<()>;
 }
 
 impl Debug for TurnState {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "SessionState({:?})", self.resolved_symbols)
+        write!(f, "TurnState({:?})", self.resolved_symbols)
     }
 }
 
@@ -68,7 +68,7 @@ where
     has_unresolved_symbols: bool,
     symbols: Vec<Symbol>,
     executor: Option<Executor>,
-    session_handler: Option<Arc<dyn SessionStateHandler + 'static>>,
+    turn_handler: Option<Arc<dyn TurnStateHandler + 'static>>,
 }
 
 impl<F, O> SimplePlan<F, O>
@@ -112,11 +112,8 @@ where
         Self::build_with_outputs_and_deps(model, outputs, &[], &RunOptions::default()).map(Arc::new)
     }
 
-    pub fn with_session_handler<H: SessionStateHandler + 'static>(
-        mut self,
-        session_handler: H,
-    ) -> Self {
-        self.session_handler = Some(Arc::new(session_handler));
+    pub fn with_turn_handler<H: TurnStateHandler + 'static>(mut self, turn_handler: H) -> Self {
+        self.turn_handler = Some(Arc::new(turn_handler));
         self
     }
 
@@ -176,7 +173,7 @@ where
             has_unresolved_symbols: !symbols.is_empty(),
             symbols: symbols.into_iter().collect(),
             executor: options.executor.clone(),
-            session_handler: None,
+            turn_handler: None,
         })
     }
 
@@ -353,7 +350,7 @@ where
         {
             self.ready_turn();
             self.plan
-                .session_handler
+                .turn_handler
                 .as_ref()
                 .map(|it| it.before_plan_eval(&mut self.turn_state))
                 .transpose()?;
@@ -464,7 +461,7 @@ where
                 self.turn_state.values[node.id] = Some(vs);
             }
             self.plan
-                .session_handler
+                .turn_handler
                 .as_ref()
                 .map(|it| it.after_plan_eval(&mut self.turn_state))
                 .transpose()?;
@@ -653,13 +650,9 @@ where
                     inputs.push(self.turn_state.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
             }
-            let &mut Self {
-                op_states: ref mut states,
-                turn_state: ref mut session_state,
-                ref plan,
-                ..
-            } = self;
-            eval(session_state, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
+            let &mut Self { op_states: ref mut states, turn_state: ref mut turn, ref plan, .. } =
+                self;
+            eval(turn, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
         };
         self.turn_state.values[node] = Some(values);
         Ok(self.turn_state.values[node].as_ref().unwrap())
@@ -735,7 +728,7 @@ where
 }
 
 pub fn eval<F, O>(
-    session_state: &mut TurnState,
+    turn: &mut TurnState,
     mut state: Option<&mut (dyn OpState + 'static)>,
     node: &Node<F, O>,
     input: TVec<TValue>,
@@ -745,8 +738,8 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     match state {
-        Some(ref mut state) => state.eval(session_state, node.op(), input),
-        None => node.op().eval_with_session(node.id, session_state, input),
+        Some(ref mut state) => state.eval(turn, node.op(), input),
+        None => node.op().eval_with_turn(node.id, turn, input),
     }
     .with_context(|| format!("Evaluating {node}"))
 }

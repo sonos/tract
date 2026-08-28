@@ -112,11 +112,7 @@ impl EvalOp for ExpUnitNorm {
         self.stateless
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<ExpUnitNormState>::default()))
     }
 
@@ -178,7 +174,7 @@ impl ExpUnitNormState {
 impl OpState for ExpUnitNormState {
     fn eval(
         &mut self,
-        _session: &mut TurnState,
+        _turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {

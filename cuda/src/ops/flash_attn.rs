@@ -23,10 +23,10 @@ impl EvalOp for CudaFlashAttention {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         crate::with_cuda_stream(|stream| {
@@ -36,8 +36,8 @@ impl EvalOp for CudaFlashAttention {
             let k = inputs[1].to_device_tensor()?;
             let v = inputs[2].to_device_tensor()?;
             let mask = inputs.get(3).map(|m| m.to_device_tensor()).transpose()?;
-            let output = tract_gpu::session_handler::make_tensor_for_node(
-                session,
+            let output = tract_gpu::turn_handler::make_tensor_for_node(
+                turn,
                 node_id,
                 q.datum_type(),
                 &CudaFlashAttn.output_shape(q.shape(), k.shape(), v.shape())?,

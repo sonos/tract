@@ -149,8 +149,8 @@ mod tests {
             let metal_in = cpu_in.clone().into_device()?;
 
             let cpu_op = cpu_dg::DiagGather { offset: offset.to_dim(), out_len: out_len.to_dim() };
-            let session = TurnState::default();
-            let cpu_out = cpu_op.eval_with_session(0, &session, tvec![cpu_in.into_tvalue()])?[0]
+            let turn = TurnState::default();
+            let cpu_out = cpu_op.eval_with_turn(0, &turn, tvec![cpu_in.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_out = DiagGather.eval(stream, &metal_in, offset, out_len)?;

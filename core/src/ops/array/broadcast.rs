@@ -22,13 +22,13 @@ impl EvalOp for MultiBroadcastTo {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
+        let shape = self.shape.eval_to_usize(&turn.resolved_symbols)?;
         Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
     }
 }

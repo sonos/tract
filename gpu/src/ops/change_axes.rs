@@ -75,10 +75,10 @@ impl EvalOp for GpuAxisOp {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs).into_tensor();
@@ -97,8 +97,8 @@ impl EvalOp for GpuAxisOp {
                 permutation.insert(*to, *from);
 
                 let out_shape = permute_output_shape(input.shape(), &permutation)?;
-                let output = crate::session_handler::make_tensor_for_node(
-                    session,
+                let output = crate::turn_handler::make_tensor_for_node(
+                    turn,
                     node_id,
                     input.datum_type(),
                     &out_shape,
@@ -119,8 +119,8 @@ impl EvalOp for GpuAxisOp {
                 return Ok(tvec!(output.into_tensor().into_tvalue()));
             }
             AxisOp::Reshape(skip, from, to) => {
-                let from = from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                let from = from.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
+                let to = to.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
                 let mut shape: TVec<usize> = input.shape().into();
                 AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
                 shape
@@ -133,8 +133,8 @@ impl EvalOp for GpuAxisOp {
         };
 
         // Memcpy path (Reshape/Add/Rm) — flat copy, treat as 1D
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             input.datum_type(),
             &new_shape,

@@ -154,11 +154,7 @@ impl EvalOp for InPlaceKvSdpa {
     fn is_stateless(&self) -> bool {
         false
     }
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(InPlaceKvSdpaState {
             axis: self.axis,
             causal: self.causal,
@@ -595,9 +591,9 @@ mod tests {
     fn drive_fused_vs_baseline(causal: bool) -> TractResult<()> {
         let (bsz, hq, hkv, d) = (1usize, 4usize, 2usize, 16usize); // GQA: 4 q-heads / 2 kv-heads
         let op = InPlaceKvSdpa { axis: 2, causal, scale: None };
-        let session = TurnState::default();
-        let mut state = op.state(&session, 0)?.unwrap();
-        let mut session = session;
+        let turn = TurnState::default();
+        let mut state = op.state(&turn, 0)?.unwrap();
+        let mut turn = turn;
         let flash = FlashSdpaOp { causal, scale: None };
 
         let mut kc: Option<Tensor> = None;
@@ -614,7 +610,7 @@ mod tests {
 
             let o_fused = state
                 .eval(
-                    &mut session,
+                    &mut turn,
                     &op,
                     tvec![q.clone().into(), knew.clone().into(), vnew.clone().into()],
                 )?
@@ -827,14 +823,14 @@ mod tests {
         println!("   T     baseline(ms)  fused(ms)   speedup");
         for &steps in &[256usize, 512, 1024, 2048] {
             let op = InPlaceKvSdpa { axis: 2, causal: false, scale: None };
-            let session = TurnState::default();
-            let mut state = op.state(&session, 0)?.unwrap();
-            let mut session = session;
+            let turn = TurnState::default();
+            let mut state = op.state(&turn, 0)?.unwrap();
+            let mut turn = turn;
             let t_fused = {
                 let start = Instant::now();
                 for _ in 0..steps {
                     std::hint::black_box(state.eval(
-                        &mut session,
+                        &mut turn,
                         &op,
                         tvec![q.clone().into(), knew.clone().into(), vnew.clone().into()],
                     )?);
@@ -898,17 +894,17 @@ mod tests {
     #[test]
     fn resume_via_freeze_unfreeze() -> TractResult<()> {
         let op = InPlaceKvSdpa { axis: 2, causal: true, scale: None };
-        let mut session = TurnState::default();
-        let mut straight = op.state(&session, 0)?.unwrap();
-        let mut split = op.state(&session, 0)?.unwrap();
+        let mut turn = TurnState::default();
+        let mut straight = op.state(&turn, 0)?.unwrap();
+        let mut split = op.state(&turn, 0)?.unwrap();
         for (t, (q, k, v)) in decode_inputs(9).into_iter().enumerate() {
             let ins = tvec![q.into(), k.into(), v.into()];
-            let os = straight.eval(&mut session, &op, ins.clone())?.remove(0).into_tensor();
+            let os = straight.eval(&mut turn, &op, ins.clone())?.remove(0).into_tensor();
             if t == 5 {
                 let frozen = split.freeze();
                 split = frozen.unfreeze();
             }
-            let op2 = split.eval(&mut session, &op, ins)?.remove(0).into_tensor();
+            let op2 = split.eval(&mut turn, &op, ins)?.remove(0).into_tensor();
             os.close_enough(&op2, Approximation::Exact)
                 .with_context(|| format!("freeze/unfreeze resume mismatch at step {t}"))?;
         }
@@ -920,21 +916,21 @@ mod tests {
     #[test]
     fn resume_via_save_load() -> TractResult<()> {
         let op = InPlaceKvSdpa { axis: 2, causal: true, scale: None };
-        let mut session = TurnState::default();
-        let mut straight = op.state(&session, 0)?.unwrap();
-        let mut split = op.state(&session, 0)?.unwrap();
+        let mut turn = TurnState::default();
+        let mut straight = op.state(&turn, 0)?.unwrap();
+        let mut split = op.state(&turn, 0)?.unwrap();
         for (t, (q, k, v)) in decode_inputs(9).into_iter().enumerate() {
             let ins = tvec![q.into(), k.into(), v.into()];
-            let os = straight.eval(&mut session, &op, ins.clone())?.remove(0).into_tensor();
+            let os = straight.eval(&mut turn, &op, ins.clone())?.remove(0).into_tensor();
             if t == 5 {
                 let mut saved = vec![];
                 split.save_to(&mut saved)?;
                 ensure!(saved.len() == 2, "save_to should emit [K, V]");
-                let mut fresh = op.state(&session, 0)?.unwrap();
-                fresh.load_from(&mut session, &mut saved.into_iter())?;
+                let mut fresh = op.state(&turn, 0)?.unwrap();
+                fresh.load_from(&mut turn, &mut saved.into_iter())?;
                 split = fresh;
             }
-            let op2 = split.eval(&mut session, &op, ins)?.remove(0).into_tensor();
+            let op2 = split.eval(&mut turn, &op, ins)?.remove(0).into_tensor();
             os.close_enough(&op2, Approximation::Exact)
                 .with_context(|| format!("save/load resume mismatch at step {t}"))?;
         }
@@ -949,14 +945,14 @@ mod tests {
         use std::time::Instant;
         let (b, hq, hkv, d) = (1usize, 8usize, 8usize, 128usize);
         let op = InPlaceKvSdpa { axis: 2, causal: false, scale: None };
-        let session = TurnState::default();
+        let turn = TurnState::default();
         let q = seq_tensor(&[b, hq, 1, d], 7.0);
         let kv = seq_tensor(&[b, hkv, 1, d], 1.0);
         println!("\n  resume checkpoint (save_to) — one-time O(len):");
         println!("   len    save_to(ms)");
         for &len in &[256usize, 1024, 4096] {
             let mut sess = TurnState::default();
-            let mut state = op.state(&session, 0)?.unwrap();
+            let mut state = op.state(&turn, 0)?.unwrap();
             for _ in 0..len {
                 state.eval(
                     &mut sess,
