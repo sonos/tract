@@ -227,6 +227,10 @@ impl OpState for WindowKvSdpaState {
         let o = flash.flash_attention_gqa(qv, kview, vview, None);
         Ok(tvec!(o.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("WindowKvSdpa is not lane-aware: the ring buffers have no lane axis")
+    }
 }
 
 /// Rewrite rule: fuse `{DynKeyValueCache(K), DynKeyValueCache(V), Sdpa(Q,K,V)}` into a

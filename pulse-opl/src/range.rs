@@ -89,6 +89,10 @@ impl OpState for PulsedRangeState {
 
         Ok(tvec!(tensor.into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("PulsedRange is not lane-aware: current_pos has no lane axis")
+    }
 }
 
 fn make_pulse<T>(start: &Tensor, step: &Tensor, base: usize, pulse: usize) -> TractResult<Tensor>

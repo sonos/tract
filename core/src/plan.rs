@@ -29,6 +29,56 @@ impl SessionId {
     }
 }
 
+/// Where one stream's state lives inside a state shared by several streams. An
+/// index into the lane axis the state's per-lane buffers are sized at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LaneId(pub usize);
+
+/// Which lane each seat of a turn's batch carries: the index is the seat, the
+/// value is the lane. `max_lanes` is the extent of the lane axis, fixed for the
+/// life of the state, so an op sizing a buffer on first eval knows how wide to
+/// make it -- a turn seating one lane of many still needs the full width.
+///
+/// A lane appears at most once, which is what makes a stream's state sequential:
+/// two seats of one turn cannot both advance the same lane. A model with no
+/// session-scoped state has nothing to address, so its seating is inert.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Seating {
+    lanes: Vec<LaneId>,
+    max_lanes: usize,
+}
+
+impl Seating {
+    pub fn new(max_lanes: usize, lanes: impl IntoIterator<Item = LaneId>) -> TractResult<Seating> {
+        let lanes: Vec<LaneId> = lanes.into_iter().collect();
+        for (seat, lane) in lanes.iter().enumerate() {
+            ensure!(lane.0 < max_lanes, "Seat {seat} takes lane {} of {max_lanes}", lane.0);
+            ensure!(!lanes[..seat].contains(lane), "Lane {} takes two seats in one turn", lane.0);
+        }
+        Ok(Seating { lanes, max_lanes })
+    }
+
+    /// The seating of a state one stream owns: one lane wide, that lane seated.
+    /// Every turn has a seating, and this is what an unbatched turn is.
+    pub fn single() -> Seating {
+        Seating { lanes: vec![LaneId(0)], max_lanes: 1 }
+    }
+
+    pub fn max_lanes(&self) -> usize {
+        self.max_lanes
+    }
+
+    pub fn lanes(&self) -> &[LaneId] {
+        &self.lanes
+    }
+
+    /// Seats filled this turn, i.e. the extent of the batch axis of the tensors
+    /// flowing through it.
+    pub fn occupancy(&self) -> usize {
+        self.lanes.len()
+    }
+}
+
 /// Resources a [`TurnStateHandler`] installs for the turn and ops read while
 /// evaluating, keyed by the stored type. This is the extension point: ops see it
 /// read-only, only a handler mutates it.
@@ -46,6 +96,9 @@ pub struct EvalContext<'a> {
     pub symbols: &'a SymbolValues,
     pub scenario: Option<usize>,
     pub shared: Option<&'a TurnShared>,
+    /// Which lane each seat of this turn carries. A turn one stream owns is
+    /// [`Seating::single`], so an op reads the same field either way.
+    pub seating: &'a Seating,
 }
 
 pub struct TurnState {
@@ -57,6 +110,9 @@ pub struct TurnState {
     /// `reset_turn` does not touch them -- so what a handler installs is reused
     /// turn after turn unless it drops it in `after_plan_eval`.
     pub shared: TurnShared,
+    /// Which lane each seat of this turn carries. A laned runtime sets it before
+    /// each turn; a state one stream owns keeps [`Seating::single`].
+    pub seating: Seating,
 }
 
 impl EvalContext<'static> {
@@ -65,12 +121,14 @@ impl EvalContext<'static> {
     /// is bound and no shared resource is reachable.
     pub fn pure() -> EvalContext<'static> {
         static SYMBOLS: std::sync::OnceLock<SymbolValues> = std::sync::OnceLock::new();
+        static SEATING: std::sync::OnceLock<Seating> = std::sync::OnceLock::new();
         EvalContext {
             session: SessionId::NONE,
             node_id: usize::MAX,
             symbols: SYMBOLS.get_or_init(SymbolValues::default),
             scenario: None,
             shared: None,
+            seating: SEATING.get_or_init(Seating::single),
         }
     }
 }
@@ -83,6 +141,7 @@ impl TurnState {
             symbols: &self.resolved_symbols,
             scenario: self.scenario,
             shared: Some(&self.shared),
+            seating: &self.seating,
         }
     }
 }
@@ -94,6 +153,7 @@ impl Default for TurnState {
             scenario: None,
             values: vec![],
             shared: TurnShared::new(),
+            seating: Seating::single(),
         }
     }
 }
@@ -105,6 +165,7 @@ impl Clone for TurnState {
             scenario: self.scenario,
             values: vec![],
             shared: TurnShared::new(),
+            seating: self.seating.clone(),
         }
     }
 }

@@ -179,6 +179,10 @@ impl OpState for ExpUnitNormState {
         let op = op.downcast_ref::<ExpUnitNorm>().context("Wrong op")?;
         Self::eval(self, op, inputs)
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("ExpUnitNorm is not lane-aware: hidden has no lane axis")
+    }
 }
 
 impl TypedOp for ExpUnitNorm {

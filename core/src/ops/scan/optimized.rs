@@ -271,6 +271,10 @@ impl OpState for State {
 
         Ok(outputs.into_iter().map(|t| t.into_tvalue()).collect())
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("Scan is not lane-aware: its body is a nested state")
+    }
 }
 
 impl TypedOp for OptScan {

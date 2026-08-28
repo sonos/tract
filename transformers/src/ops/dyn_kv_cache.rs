@@ -173,6 +173,10 @@ impl OpState for DynKeyValueCacheState {
 
         Ok(tvec!(output))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("DynKeyValueCache is not lane-aware: the cache has no lane axis")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

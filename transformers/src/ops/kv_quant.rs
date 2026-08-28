@@ -341,6 +341,10 @@ impl OpState for QuantizedKvSdpaState {
         let o = flash.flash_attention_gqa(qv, k_full.view(), v_full.view(), None);
         Ok(tvec!(o.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("QuantizedKvSdpa is not lane-aware: the cache has no lane axis")
+    }
 }
 
 // ── Auto-wiring transform ──────────────────────────────────────────────────────────────────────

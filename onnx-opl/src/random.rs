@@ -152,6 +152,10 @@ impl OpState for RandomState {
         }
         Ok(tvec!(tensor.into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("Random is not lane-aware: one generator cannot serve several streams")
+    }
 }
 
 fn sample_uniform<T: Datum + SampleUniform + Copy>(

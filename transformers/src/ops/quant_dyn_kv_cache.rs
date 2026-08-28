@@ -487,6 +487,10 @@ impl OpState for QuantizedDynKvCacheState {
         self.ingest(&f32in)?;
         Ok(tvec!(self.dequantized()?.cast_to_dt(input_dt)?.into_owned().into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("QuantizedDynKvCache is not lane-aware: the cache has no lane axis")
+    }
 }
 
 // ── NNEF ser/de ─────────────────────────────────────────────────────────────────────────────────

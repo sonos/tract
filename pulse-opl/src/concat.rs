@@ -77,6 +77,10 @@ impl OpState for PulsedSameAxisConcatState {
 
         Ok(tvec!(data.into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("PulsedSameAxisConcat is not lane-aware: current_pos has no lane axis")
+    }
 }
 
 pub fn overwrite_part_of_pulse(

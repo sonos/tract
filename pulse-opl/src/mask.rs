@@ -55,6 +55,10 @@ impl OpState for PulseMaskOpState {
         let tensor = self.pad(ctx, op, input)?;
         Ok(tvec!(tensor.into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("PulseMask is not lane-aware: current_pos has no lane axis")
+    }
 }
 
 impl PulseMaskOpState {

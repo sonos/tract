@@ -161,4 +161,8 @@ impl OpState for TypedModelOpState {
         let inference_out = self.run(inputs)?;
         Ok(inference_out)
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("Submodel is not lane-aware: its body is a nested state")
+    }
 }

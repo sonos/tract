@@ -13,6 +13,10 @@ impl OpState for SourceState {
         ensure!(!inputs.is_empty(), "Input for node {} is missing", self.0);
         Ok(inputs)
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        Ok(())
+    }
 }
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]

@@ -72,6 +72,10 @@ impl OpState for DeconvDelayState {
         let output = input.slice(op.axis, 0, input.shape()[op.axis] - op.overlap)?;
         Ok(tvec!(output.into_tvalue()))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("DeconvDelay is not lane-aware: buffer has no lane axis")
+    }
 }
 
 impl DeconvDelayState {
