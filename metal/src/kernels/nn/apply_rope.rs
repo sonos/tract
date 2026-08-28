@@ -156,11 +156,10 @@ mod tests {
             let metal_sin = sin.clone().into_device()?;
             let metal_cos = cos.clone().into_device()?;
 
-            let cpu_output = apply_rope::ApplyRope.eval(tvec![
-                a.clone().into(),
-                cos.clone().into(),
-                sin.clone().into(),
-            ])?[0]
+            let cpu_output = apply_rope::ApplyRope.eval(
+                &EvalContext::pure(),
+                tvec![a.clone().into(), cos.clone().into(), sin.clone().into(),],
+            )?[0]
                 .clone()
                 .into_tensor();
             let metal_output = ApplyRope.eval(stream, &metal_a, &metal_cos, &metal_sin)?;

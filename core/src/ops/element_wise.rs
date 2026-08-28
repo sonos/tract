@@ -88,11 +88,11 @@ impl Op for ElementWiseOp {
 }
 
 impl EvalOp for ElementWiseOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {
             Ok(tvec!(self.0.eval_out_of_place(&inputs[0], self.1)?.into_tvalue()))
         } else {

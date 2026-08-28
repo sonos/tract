@@ -25,30 +25,25 @@ impl Op for DynSlice {
 }
 
 impl EvalOp for DynSlice {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let start = inputs[1]
             .cast_to::<TDim>()?
             .try_as_plain()?
             .to_scalar::<TDim>()?
-            .eval(&turn.resolved_symbols)
+            .eval(ctx.symbols)
             .to_usize()?;
         let end = inputs[2]
             .cast_to::<TDim>()?
             .try_as_plain()?
             .to_scalar::<TDim>()?
-            .eval(&turn.resolved_symbols)
+            .eval(ctx.symbols)
             .to_usize()?;
         ensure!(start <= end);
-        if let Ok(len) = self.len.eval(&turn.resolved_symbols).to_usize() {
+        if let Ok(len) = self.len.eval(ctx.symbols).to_usize() {
             ensure!(start + len == end);
         }
         let slice = inputs[0].slice(self.axis, start, end)?;

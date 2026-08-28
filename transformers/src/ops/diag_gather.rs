@@ -39,22 +39,17 @@ impl Op for DiagGather {
 }
 
 impl EvalOp for DiagGather {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let rank = input.rank();
         let t = input.shape()[rank - 2];
         let r = input.shape()[rank - 1];
-        let offset = self.offset.eval(&turn.resolved_symbols).to_i64()? as isize;
-        let out_len = self.out_len.eval(&turn.resolved_symbols).to_usize()?;
+        let offset = self.offset.eval(ctx.symbols).to_i64()? as isize;
+        let out_len = self.out_len.eval(ctx.symbols).to_usize()?;
 
         let mut out_shape: TVec<usize> = input.shape().into();
         out_shape[rank - 1] = out_len;

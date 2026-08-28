@@ -50,11 +50,11 @@ impl Op for DirectLookup {
 }
 
 impl EvalOp for DirectLookup {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.values.datum_type())(self, &input))?;
         Ok(tvec!(output.into_tvalue()))
@@ -167,11 +167,11 @@ impl Op for ReverseLookup {
 }
 
 impl EvalOp for ReverseLookup {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = dispatch_hash!(Self::eval_t(self.keys.datum_type())(self, &input))?;
         Ok(tvec!(output.into_tvalue()))

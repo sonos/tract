@@ -180,11 +180,11 @@ impl Op for Deconv {
 }
 
 impl EvalOp for Deconv {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 3);
         let mut model = TypedModel::default();
         let inputs = inputs

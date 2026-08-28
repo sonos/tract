@@ -125,12 +125,15 @@ mod tests {
         E: Into<Tensor>,
         S: Into<Tensor>,
     {
-        op.eval(tvec![
-            input.into().into(),
-            begin.into().into(),
-            end.into().into(),
-            strides.into().into(),
-        ])
+        op.eval(
+            &EvalContext::pure(),
+            tvec![
+                input.into().into(),
+                begin.into().into(),
+                end.into().into(),
+                strides.into().into(),
+            ],
+        )
         .unwrap()
         .pop()
         .unwrap()

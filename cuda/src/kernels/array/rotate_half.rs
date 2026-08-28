@@ -116,8 +116,10 @@ mod tests {
 
             let cuda_a = a.clone().into_device()?;
 
-            let cpu_output =
-                apply_rope::RotateHalf.eval(tvec![a.clone().into()])?[0].clone().into_tensor();
+            let cpu_output = apply_rope::RotateHalf
+                .eval(&EvalContext::pure(), tvec![a.clone().into()])?[0]
+                .clone()
+                .into_tensor();
             let cuda_output = RotateHalf.eval(stream, &cuda_a)?;
 
             cpu_output

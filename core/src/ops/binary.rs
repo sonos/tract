@@ -100,7 +100,7 @@ pub trait BinMiniOp:
     #[allow(unused_variables)]
     fn eval_symbolic(
         &self,
-        turn: &TurnState,
+        ctx: &EvalContext,
         inputs: TVec<TValue>,
     ) -> TractResult<Option<TVec<TValue>>> {
         Ok(None)
@@ -138,26 +138,14 @@ impl TypedBinOp {
 }
 
 impl EvalOp for TypedBinOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        if let Some(result) = self.0.eval_symbolic(turn, inputs.clone())? {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        if let Some(result) = self.0.eval_symbolic(ctx, inputs.clone())? {
             return Ok(result);
         }
-        let (a, b) = args_2!(inputs);
-        ensure!(a.rank() == b.rank());
-        let c_dt = self.output_datum_type(a.datum_type(), b.datum_type())?;
-        Ok(tvec!(self.0.eval(a, b, c_dt)?.into_tvalue()))
-    }
-
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         ensure!(a.rank() == b.rank());
         let c_dt = self.output_datum_type(a.datum_type(), b.datum_type())?;
@@ -727,11 +715,11 @@ impl Op for OptBinByScalar {
 }
 
 impl EvalOp for OptBinByScalar {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         // Same as OptBinUnicast: the fast path uses at_prefix + as_slice_mut
         // and relies on natural C-order strides for the slice math. Fall back
@@ -867,11 +855,11 @@ impl Op for OptBinUnicast {
 }
 
 impl EvalOp for OptBinUnicast {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
         // The unicast fast path indexes each input's storage via at_prefix +
         // as_slice_mut, which uses `strides[i-1]` to size the resulting slice
@@ -1329,7 +1317,7 @@ mod tests {
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
 
-        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         let out = &out[0];
         assert_eq!(out.shape(), &[1, 1, 640]);
         let plain = out.try_as_plain().unwrap();
@@ -1356,7 +1344,7 @@ mod tests {
             eval_fn: Arc::from(linalg_fn),
             linalg_op: BinOp::Add,
         };
-        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 8]);
 
         let a = Tensor::zero::<f32>(&[0, 4, 16]).unwrap();
@@ -1365,7 +1353,7 @@ mod tests {
             .bin(f32::datum_type())
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
-        let out = op.eval(tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 16]);
     }
 

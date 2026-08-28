@@ -56,25 +56,16 @@ impl Op for GpuScaledMaskedSoftmax {
 }
 
 impl EvalOp for GpuScaledMaskedSoftmax {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input_val, mask_val) = args_2!(inputs);
         let input = input_val.to_device_tensor()?;
         let mask = mask_val.to_device_tensor()?;
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            input.datum_type(),
-            input.shape(),
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
         (self.dispatch)(input, &self.scale, mask, self.post_softmax_mask, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }

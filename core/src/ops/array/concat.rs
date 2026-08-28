@@ -147,11 +147,11 @@ impl TypedOp for TypedConcat {
 }
 
 impl EvalOp for TypedConcat {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let result = Tensor::stack_tensors(self.axis, &inputs)?;
         Ok(tvec![result.into_tvalue()])
     }

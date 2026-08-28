@@ -74,11 +74,11 @@ impl Op for Iff {
 }
 
 impl EvalOp for Iff {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond, t, f) = args_3!(inputs);
         anyhow::ensure!(t.datum_type() == f.datum_type());
         let shape: TVec<usize> = multi_broadcast(&[cond.shape(), t.shape(), f.shape()])?;

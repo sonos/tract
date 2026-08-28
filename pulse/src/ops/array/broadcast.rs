@@ -108,11 +108,11 @@ impl TypedOp for PulsedMultibroadcastTo {
 }
 
 impl EvalOp for PulsedMultibroadcastTo {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.to_typed().eval(inputs)
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.to_typed().eval_pure(inputs)
     }
 }
 

@@ -38,26 +38,17 @@ impl Op for GpuApplyRope {
 }
 
 impl EvalOp for GpuApplyRope {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input_val, cos_val, sin_val) = args_3!(inputs);
         let input = input_val.to_device_tensor()?;
         let cos = cos_val.to_device_tensor()?;
         let sin = sin_val.to_device_tensor()?;
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            input.datum_type(),
-            input.shape(),
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
         (self.dispatch)(input, cos, sin, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }

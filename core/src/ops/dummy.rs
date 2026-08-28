@@ -12,11 +12,11 @@ impl Op for Dummy {
 }
 
 impl EvalOp for Dummy {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("eval() called on a Dummy op. This is a bug.")
     }
 }

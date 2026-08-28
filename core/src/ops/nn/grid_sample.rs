@@ -260,11 +260,11 @@ impl Op for GridSample {
 }
 
 impl EvalOp for GridSample {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (x, grid) = args_2!(inputs);
         let input_dt = x.datum_type();
         let x_tensor = x.into_tensor();

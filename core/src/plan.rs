@@ -10,16 +10,81 @@ use crate::runtime::RunOptions;
 
 use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for_nodes};
 
+/// Identifies one running state, so an op can key resources it manages itself
+/// per session and per node. Unique for the process; a state gets one at
+/// construction and keeps it until it is dropped, at which point the plan calls
+/// [`EvalOp::drop_session`] on every node.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SessionId(u64);
+
+static NEXT_SESSION_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+impl SessionId {
+    /// For evaluating an op outside any plan -- const folding, shape inference.
+    /// No state is ever built against it, so nothing keys scratch on it.
+    pub const NONE: SessionId = SessionId(u64::MAX);
+
+    fn next() -> SessionId {
+        SessionId(NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+}
+
+/// Resources a [`TurnStateHandler`] installs for the turn and ops read while
+/// evaluating, keyed by the stored type. This is the extension point: ops see it
+/// read-only, only a handler mutates it.
+pub type TurnShared = anymap3::Map<dyn std::any::Any + Send>;
+
+/// Everything an op is given about where and when it is being evaluated. Ops
+/// receive it by shared reference: they can read the turn's symbols and the
+/// installed shared resources, and they can identify themselves with
+/// `(session, node_id)`, but they cannot reach another node's values or rebind a
+/// symbol.
+#[derive(Debug, Clone, Copy)]
+pub struct EvalContext<'a> {
+    pub session: SessionId,
+    pub node_id: usize,
+    pub symbols: &'a SymbolValues,
+    pub scenario: Option<usize>,
+    pub shared: Option<&'a TurnShared>,
+}
+
 pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
     pub values: Vec<Option<TVec<TValue>>>,
-    /// Op scratch, keyed by the stored type, one entry per kind of scratch. Ops
-    /// define their own key types; nothing here carries meaning the model
-    /// depends on. Entries outlive the turn -- `reset_turn` does not touch them,
-    /// so a cache built here is reused turn after turn unless a
-    /// [`TurnStateHandler`] drops it in `after_plan_eval`.
-    pub scratch: anymap3::Map<dyn std::any::Any + Send>,
+    /// Resources installed for the turn by a [`TurnStateHandler`], reachable by
+    /// ops through [`EvalContext::shared`]. Entries outlive the turn --
+    /// `reset_turn` does not touch them -- so what a handler installs is reused
+    /// turn after turn unless it drops it in `after_plan_eval`.
+    pub shared: TurnShared,
+}
+
+impl EvalContext<'static> {
+    /// Context for evaluating outside any plan -- const folding and shape
+    /// inference. Only valid for an op reporting `is_pure_function()`: no symbol
+    /// is bound and no shared resource is reachable.
+    pub fn pure() -> EvalContext<'static> {
+        static SYMBOLS: std::sync::OnceLock<SymbolValues> = std::sync::OnceLock::new();
+        EvalContext {
+            session: SessionId::NONE,
+            node_id: usize::MAX,
+            symbols: SYMBOLS.get_or_init(SymbolValues::default),
+            scenario: None,
+            shared: None,
+        }
+    }
+}
+
+impl TurnState {
+    pub fn context(&self, session: SessionId, node_id: usize) -> EvalContext<'_> {
+        EvalContext {
+            session,
+            node_id,
+            symbols: &self.resolved_symbols,
+            scenario: self.scenario,
+            shared: Some(&self.shared),
+        }
+    }
 }
 
 impl Default for TurnState {
@@ -28,7 +93,7 @@ impl Default for TurnState {
             resolved_symbols: SymbolValues::default(),
             scenario: None,
             values: vec![],
-            scratch: anymap3::Map::new(),
+            shared: TurnShared::new(),
         }
     }
 }
@@ -39,7 +104,7 @@ impl Clone for TurnState {
             resolved_symbols: self.resolved_symbols.clone(),
             scenario: self.scenario,
             values: vec![],
-            scratch: anymap3::Map::new(),
+            shared: TurnShared::new(),
         }
     }
 }
@@ -195,7 +260,7 @@ where
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct SimpleState<F, O>
 where
     F: Fact + Clone + 'static,
@@ -204,6 +269,36 @@ where
     pub(crate) plan: Arc<SimplePlan<F, O>>,
     pub op_states: Vec<Option<Box<dyn OpState>>>,
     pub turn_state: TurnState,
+    session: SessionId,
+}
+
+/// A clone is a distinct session: it gets its own [`SessionId`], so whatever the
+/// ops key on `(session, node_id)` stays separate from the original's.
+impl<F, O> Clone for SimpleState<F, O>
+where
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn clone(&self) -> Self {
+        SimpleState {
+            plan: self.plan.clone(),
+            op_states: self.op_states.clone(),
+            turn_state: self.turn_state.clone(),
+            session: SessionId::next(),
+        }
+    }
+}
+
+impl<F, O> Drop for SimpleState<F, O>
+where
+    F: Fact + Clone + 'static,
+    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
+{
+    fn drop(&mut self) {
+        for (ix, node) in self.plan.model.nodes.iter().enumerate() {
+            node.op().drop_session(self.session, ix);
+        }
+    }
 }
 
 impl<F, O> SimpleState<F, O>
@@ -216,7 +311,8 @@ where
         let turn = TurnState::default();
         let model = plan.model();
         let states: Vec<Option<Box<dyn OpState>>> = vec![None; model.nodes.len()];
-        let mut state = SimpleState { plan, op_states: states, turn_state: turn };
+        let mut state =
+            SimpleState { plan, op_states: states, turn_state: turn, session: SessionId::next() };
         state.reset_op_states()?;
         Ok(state)
     }
@@ -269,9 +365,11 @@ where
 
     /// Reset op inner state.
     fn reset_op_states(&mut self) -> TractResult<()> {
-        let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
+        let &mut SimpleState {
+            ref plan, ref turn_state, op_states: ref mut states, session, ..
+        } = self;
         for (ix, n) in plan.model.nodes.iter().enumerate() {
-            states[ix] = if n.op().is_stateless() { None } else { n.op().state(turn_state, ix)? };
+            states[ix] = n.op().state(&turn_state.context(session, ix))?;
         }
         Ok(())
     }
@@ -303,7 +401,7 @@ where
     ) -> TractResult<TVec<TValue>>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut TurnState,
+            &'a EvalContext<'a>,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -321,7 +419,7 @@ where
     pub fn exec_plan_with_eval<Eval, E>(&mut self, eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut TurnState,
+            &'a EvalContext<'a>,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -340,7 +438,7 @@ where
     fn do_exec_plan_with_eval<Eval, E>(&mut self, mut eval: Eval) -> TractResult<()>
     where
         Eval: for<'a, 'b, 'c> FnMut(
-            &'a mut TurnState,
+            &'a EvalContext<'a>,
             Option<&'b mut (dyn OpState + 'static)>,
             &'c Node<F, O>,
             TVec<TValue>,
@@ -374,7 +472,6 @@ where
                     })?;
                     inputs.push(prec[i.slot].clone())
                 }
-
                 for flush in &self.plan.flush_lists[step] {
                     trace!("  Ran {} can now flush {}", node, self.plan.model.node(*flush));
                     self.turn_state.values[*flush] = None;
@@ -403,13 +500,20 @@ where
                     }
                 }
 
-                let vs = eval(
-                    &mut self.turn_state,
-                    self.op_states[node.id].as_deref_mut(),
-                    node,
-                    inputs,
-                )
-                .map_err(|e| e.into())?;
+                // A node with no precursors whose value is already set is a model
+                // input: `set_inputs` wrote it and `reset_turn` clears everything
+                // else, so hand it in rather than have the op reach for it. After
+                // the checks above, which are stated against the node's declared
+                // inputs -- a source declares none.
+                if node.inputs.is_empty()
+                    && let Some(preset) = self.turn_state.values[*n].as_ref()
+                {
+                    inputs = preset.clone();
+                }
+
+                let ctx = self.turn_state.context(self.session, node.id);
+                let vs = eval(&ctx, self.op_states[node.id].as_deref_mut(), node, inputs)
+                    .map_err(|e| e.into())?;
 
                 if !syms_done && self.plan.has_unresolved_symbols {
                     for (o, v) in node.outputs.iter().zip(vs.iter()) {
@@ -612,6 +716,11 @@ where
             })?;
             inputs.push(prec[i.slot].clone())
         }
+        if node.inputs.is_empty()
+            && let Some(preset) = turn_state.values[node.id].as_ref()
+        {
+            inputs = preset.clone();
+        }
         Ok(inputs)
     }
 
@@ -625,10 +734,17 @@ where
         node: usize,
         inputs: TVec<TValue>,
     ) -> TractResult<()> {
-        let &mut SimpleState { ref plan, ref mut turn_state, op_states: ref mut states, .. } = self;
+        let &mut SimpleState {
+            ref plan,
+            ref mut turn_state,
+            op_states: ref mut states,
+            session,
+            ..
+        } = self;
         let nodes = plan.model.nodes();
         let node = &nodes[node];
-        let vs = eval(turn_state, states[node.id].as_deref_mut(), node, inputs)?;
+        let ctx = turn_state.context(session, node.id);
+        let vs = eval(&ctx, states[node.id].as_deref_mut(), node, inputs)?;
         turn_state.values[node.id] = Some(vs);
         Ok(())
     }
@@ -649,10 +765,21 @@ where
                 for i in &node.inputs {
                     inputs.push(self.turn_state.values[i.node].as_ref().unwrap()[i.slot].clone())
                 }
+                if node.inputs.is_empty()
+                    && let Some(preset) = self.turn_state.values[node.id].as_ref()
+                {
+                    inputs = preset.clone();
+                }
             }
-            let &mut Self { op_states: ref mut states, turn_state: ref mut turn, ref plan, .. } =
-                self;
-            eval(turn, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
+            let &mut Self {
+                op_states: ref mut states,
+                turn_state: ref mut turn,
+                ref plan,
+                session,
+                ..
+            } = self;
+            let ctx = turn.context(session, node);
+            eval(&ctx, states[node].as_deref_mut(), &plan.model().nodes[node], inputs)?
         };
         self.turn_state.values[node] = Some(values);
         Ok(self.turn_state.values[node].as_ref().unwrap())
@@ -682,7 +809,7 @@ where
 }
 
 pub fn eval<F, O>(
-    turn: &mut TurnState,
+    ctx: &EvalContext,
     mut state: Option<&mut (dyn OpState + 'static)>,
     node: &Node<F, O>,
     input: TVec<TValue>,
@@ -692,8 +819,8 @@ where
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
     match state {
-        Some(ref mut state) => state.eval(turn, node.op(), input),
-        None => node.op().eval_with_turn(node.id, turn, input),
+        Some(ref mut state) => state.eval(ctx, node.op(), input),
+        None => node.op().eval(ctx, input),
     }
     .with_context(|| format!("Evaluating {node}"))
 }

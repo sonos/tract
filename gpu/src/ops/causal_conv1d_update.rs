@@ -36,21 +36,16 @@ impl Op for GpuCausalConv1dUpdate {
 }
 
 impl EvalOp for GpuCausalConv1dUpdate {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, weight, state) = args_3!(inputs);
         let input = input.to_device_tensor()?;
         let weight = weight.to_device_tensor()?;
         let state = state.to_device_tensor()?;
-        let output = make_tensor_for_node(turn, node_id, DatumType::F16, input.shape())?;
+        let output = make_tensor_for_node(ctx, DatumType::F16, input.shape())?;
         let final_state = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
         (self.dispatch)(input, weight, state, &output, &final_state)?;
         Ok(tvec![output.into_tensor().into_tvalue(), final_state.into_tensor().into_tvalue()])

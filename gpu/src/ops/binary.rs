@@ -61,22 +61,17 @@ impl Op for GpuBinOp {
 }
 
 impl EvalOp for GpuBinOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a_val, b_val) = args_2!(inputs);
         let a = a_val.to_device_tensor()?;
         let b = b_val.to_device_tensor()?;
         let out_shape = tract_core::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
         let out_dt = self.mini_op.result_datum_type(a.datum_type(), b.datum_type())?;
-        let output = crate::turn_handler::make_tensor_for_node(turn, node_id, out_dt, &out_shape)?;
+        let output = crate::turn_handler::make_tensor_for_node(ctx, out_dt, &out_shape)?;
         if a.len() > 0 && b.len() > 0 {
             (self.dispatch)(&*self.mini_op, a, b, &output)
                 .with_context(|| format!("Error while dispatching eval for {}", self.name()))?;

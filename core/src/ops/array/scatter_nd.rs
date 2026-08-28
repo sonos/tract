@@ -224,11 +224,11 @@ impl TypedOp for ScatterNd {
 }
 
 impl EvalOp for ScatterNd {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices, updates) = args_3!(inputs);
         let indices = indices.cast_to::<i64>()?;
         let indices = indices.to_plain_array_view::<i64>()?;

@@ -36,13 +36,13 @@ impl Op for SumPool {
 }
 
 impl EvalOp for SumPool {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
-        self.to_optimized(&shape)?.eval(inputs)
+        self.to_optimized(&shape)?.eval(_ctx, inputs)
     }
 }
 
@@ -124,11 +124,11 @@ impl Op for OptSumPool {
 }
 
 impl EvalOp for OptSumPool {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let geo = self.geometry.to_concrete(input.shape())?;
         let values = if input.datum_type().is_float() {
@@ -608,7 +608,7 @@ mod tests {
         .into_tensor();
 
         // generic zoned kernel (knob off by default)
-        let generic = op.eval(tvec![input.clone().into_tvalue()]).unwrap();
+        let generic = op.eval(&EvalContext::pure(), tvec![input.clone().into_tvalue()]).unwrap();
         let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable kernel, called directly
@@ -653,7 +653,7 @@ mod tests {
         .into_tensor();
 
         // generic zoned kernel (knob off by default)
-        let generic = op.eval(tvec![input.clone().into_tvalue()]).unwrap();
+        let generic = op.eval(&EvalContext::pure(), tvec![input.clone().into_tvalue()]).unwrap();
         let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable NHWC kernel, called directly

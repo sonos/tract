@@ -196,8 +196,10 @@ mod tests {
                 post_softmax_mask: false,
             };
 
-            let cpu_output = cpu
-                .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
+            let cpu_output = cpu.eval(
+                &EvalContext::pure(),
+                tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
+            )?[0]
                 .clone()
                 .into_tensor();
             let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, false)?;
@@ -226,8 +228,10 @@ mod tests {
                 post_softmax_mask: false,
             };
 
-            let cpu_output = cpu
-                .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
+            let cpu_output = cpu.eval(
+                &EvalContext::pure(),
+                tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
+            )?[0]
                 .clone()
                 .into_tensor();
             let metal_output = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, false)?;
@@ -267,8 +271,10 @@ mod tests {
                     scale: scale.clone(),
                     post_softmax_mask: post,
                 };
-                let cpu_out = cpu
-                    .eval(tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()])?[0]
+                let cpu_out = cpu.eval(
+                    &EvalContext::pure(),
+                    tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
+                )?[0]
                     .clone()
                     .into_tensor();
                 let metal_out = ScaledMaskedSoftmax.eval(stream, &a, &scale, &mask, post)?;
@@ -367,7 +373,7 @@ mod tests {
 
             let cpu_output =
                 scaled_masked_softmax::ScaledMaskedSoftmax { scale, post_softmax_mask: false }
-                    .eval(tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
+                    .eval(&EvalContext::pure(), tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
                     .clone()
                     .into_tensor();
             Ok(cpu_output)

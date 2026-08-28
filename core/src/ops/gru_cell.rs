@@ -44,11 +44,11 @@ impl Op for GruEpilogue {
 }
 
 impl EvalOp for GruEpilogue {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         match inputs[0].datum_type().unquantized() {
             DatumType::F32 => {
                 self.eval_t::<f32>(inputs, Func::Sigmoid.ew_f32()?, Func::Tanh.ew_f32()?)
@@ -154,8 +154,12 @@ mod tests {
         let rh_t = Tensor::from_shape(&[batch, 3 * h], &rh).unwrap();
         let hprev_t = Tensor::from_shape(&[batch, h], &hprev).unwrap();
         let op = GruEpilogue { hidden: h };
-        let out =
-            op.eval(tvec!(xh_t.into_tvalue(), rh_t.into_tvalue(), hprev_t.into_tvalue())).unwrap();
+        let out = op
+            .eval(
+                &EvalContext::pure(),
+                tvec!(xh_t.into_tvalue(), rh_t.into_tvalue(), hprev_t.into_tvalue()),
+            )
+            .unwrap();
         let got = unsafe { out[0].as_slice_unchecked::<f32>() };
 
         let sig = |x: f32| 1.0 / (1.0 + (-x).exp());

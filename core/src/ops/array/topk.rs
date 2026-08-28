@@ -21,11 +21,11 @@ impl Op for Topk {
 }
 
 impl EvalOp for Topk {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, k) = args_2!(inputs);
         let mut output_shape: TVec<usize> = input.shape().into();
         let k = k.cast_to_scalar::<i64>()? as usize;

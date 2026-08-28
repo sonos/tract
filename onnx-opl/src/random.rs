@@ -103,11 +103,11 @@ impl TypedOp for Random {
 }
 
 impl EvalOp for Random {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(rand::make_rng);
         Ok(Some(Box::new(RandomState(rng))))
     }
@@ -119,7 +119,7 @@ struct RandomState(SmallRng);
 impl OpState for RandomState {
     fn eval(
         &mut self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -127,7 +127,7 @@ impl OpState for RandomState {
         let mut tensor = unsafe {
             Tensor::uninitialized_dt(
                 op.fact.datum_type,
-                &op.fact.shape.eval_to_usize(&turn.resolved_symbols)?,
+                &op.fact.shape.eval_to_usize(ctx.symbols)?,
             )?
         };
         match &op.dist {

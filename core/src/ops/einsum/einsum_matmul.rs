@@ -525,16 +525,11 @@ impl Op for EinSumMatMul {
 }
 
 impl EvalOp for EinSumMatMul {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        self.op.eval_with_turn(node_id, turn, inputs)
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.op.eval(ctx, inputs)
     }
 }
 

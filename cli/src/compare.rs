@@ -508,7 +508,7 @@ where
                     let needed_type = clarified_fact.datum_type;
                     let needed_shape = clarified_fact
                         .shape
-                        .eval_to_usize(&turn.resolved_symbols)
+                        .eval_to_usize(turn.symbols)
                         .with_context(|| {
                             format!(
                                 "evaluating shape {:?} on node #{} {} (slot {}); known symbols: {:?}",
@@ -516,7 +516,7 @@ where
                                 node.id,
                                 node.name,
                                 slot,
-                                turn.resolved_symbols,
+                                *turn.symbols,
                             )
                         })?;
 

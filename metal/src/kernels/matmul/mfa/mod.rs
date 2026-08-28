@@ -485,15 +485,10 @@ impl Op for MetalMfaSdpa {
 }
 
 impl EvalOp for MetalMfaSdpa {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
         ensure!(inputs.len() == 3, "MetalMfaSdpa expects Q,K,V");
         let q = inputs[0].to_device_tensor()?;
@@ -511,8 +506,7 @@ impl EvalOp for MetalMfaSdpa {
         let sk = k.shape()[2];
         let h = b * nh;
         let dt = q.datum_type();
-        let out =
-            tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, dt, &[b, nh, sq, dd])?;
+        let out = tract_gpu::turn_handler::make_tensor_for_node(ctx, dt, &[b, nh, sq, dd])?;
         // causal -> [Sq,Sk] additive mask, bottom-right aligned (cached/cross attention)
         let mask = if self.is_causal {
             let mut m = vec![0f32; sq * sk];
@@ -1259,7 +1253,7 @@ mod tests {
         })
     }
 
-    // Slice C: the MetalMfaSdpa op end-to-end via eval_with_turn on device tensors.
+    // Slice C: the MetalMfaSdpa op end-to-end via eval on device tensors.
     #[test]
     fn test_metal_mfa_sdpa_op() -> TractResult<()> {
         use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
@@ -1318,15 +1312,11 @@ mod tests {
                 let kd = Tensor::from_shape(&[b, nh, sk, d], &kv)?.into_device()?;
                 let vd = Tensor::from_shape(&[b, nh, sk, d], &vv)?.into_device()?;
                 let op = MetalMfaSdpa { scale, is_causal };
-                let out = op.eval_with_turn(
-                    0,
-                    &TurnState::default(),
-                    tvec![
-                        qd.into_tensor().into_tvalue(),
-                        kd.into_tensor().into_tvalue(),
-                        vd.into_tensor().into_tvalue()
-                    ],
-                )?;
+                let out = op.eval_pure(tvec![
+                    qd.into_tensor().into_tvalue(),
+                    kd.into_tensor().into_tvalue(),
+                    vd.into_tensor().into_tvalue()
+                ])?;
                 let got = out[0].to_device_tensor()?.to_host()?.into_tensor();
                 let gv = unsafe { got.as_slice_unchecked::<f32>() };
                 Ok(gv.iter().zip(want.iter()).map(|(&g, &w)| (g - w).abs()).fold(0f32, f32::max))

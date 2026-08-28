@@ -41,11 +41,11 @@ impl Op for RandomUniform {
 }
 
 impl EvalOp for RandomUniform {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]
             .cast_to::<i64>()?
             .try_as_plain()?
@@ -129,11 +129,11 @@ impl Op for TypedRandomUniform {
 }
 
 impl EvalOp for TypedRandomUniform {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape = self.shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>()?;
         match self.t {
             DatumType::F32 => Ok(tvec!(make_f32(&shape, self.seed1, self.seed2)?)),
@@ -200,11 +200,11 @@ impl Op for RandomUniformInt {
 }
 
 impl EvalOp for RandomUniformInt {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]
             .cast_to::<i64>()?
             .try_as_plain()?

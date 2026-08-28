@@ -51,16 +51,11 @@ impl CudaGgmlGemm {
     }
 }
 impl EvalOp for CudaGgmlGemm {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (act_raw, weights_raw) = args_2!(inputs);
         let activs = act_raw
             .to_device_tensor()
@@ -75,7 +70,7 @@ impl EvalOp for CudaGgmlGemm {
         let out_shape = GgmlGemm.output_shape(&activ_shape, &weights_shape);
         let out_dt =
             if get_ggml_q81_fact(activs).is_some() { DatumType::F32 } else { activs.datum_type() };
-        let out = tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, out_dt, &out_shape)?;
+        let out = tract_gpu::turn_handler::make_tensor_for_node(ctx, out_dt, &out_shape)?;
 
         crate::with_cuda_stream(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
 

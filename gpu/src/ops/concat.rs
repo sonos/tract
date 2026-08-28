@@ -35,27 +35,18 @@ impl Op for GpuConcat {
 }
 
 impl EvalOp for GpuConcat {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let inputs =
             inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
 
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[self.axis] = inputs.iter().map(|it| it.shape()[self.axis]).sum();
-        let output = crate::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            inputs[0].datum_type(),
-            &output_shape,
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(ctx, inputs[0].datum_type(), &output_shape)?;
 
         let ctx = crate::device::get_context()?;
         let mut cursor = 0usize;

@@ -114,7 +114,9 @@ pub mod internal {
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
     pub use crate::ops::{Cost, EvalOp, Op, OpState, Validation};
-    pub use crate::plan::{SimplePlan, SimpleState, TurnState, TurnStateHandler};
+    pub use crate::plan::{
+        EvalContext, SessionId, SimplePlan, SimpleState, TurnShared, TurnState, TurnStateHandler,
+    };
     pub use crate::prelude::*;
     pub use crate::runtime::{
         DefaultRuntime, Runnable, Runtime, State, runtime_for_name, runtimes,

@@ -251,11 +251,11 @@ impl Op for PrefixMatMul {
 }
 
 impl EvalOp for PrefixMatMul {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let c_dt = self.operating_dt.unwrap_or_else(|| {
             let a_dt = inputs[0].datum_type();
             let b_dt = inputs[1].datum_type();

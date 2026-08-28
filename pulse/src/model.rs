@@ -371,16 +371,16 @@ impl Op for PulseWrappingOp {
 }
 
 impl EvalOp for PulseWrappingOp {
-    fn is_stateless(&self) -> bool {
-        self.0.is_stateless()
+    fn is_pure_function(&self) -> bool {
+        self.0.is_pure_function()
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.0.eval(inputs)
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.0.eval_pure(inputs)
     }
 
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        self.0.state(turn, node_id)
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        self.0.state(ctx)
     }
 }
 
@@ -461,16 +461,16 @@ impl Op for NonPulsingWrappingOp {
 }
 
 impl EvalOp for NonPulsingWrappingOp {
-    fn is_stateless(&self) -> bool {
-        self.0.is_stateless()
+    fn is_pure_function(&self) -> bool {
+        self.0.is_pure_function()
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.0.eval(inputs)
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        self.0.eval_pure(inputs)
     }
 
-    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        self.0.state(turn, node_id)
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        self.0.state(ctx)
     }
 }
 

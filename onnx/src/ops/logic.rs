@@ -78,11 +78,11 @@ impl Op for If {
 }
 
 impl EvalOp for If {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let cond = inputs[0].cast_to_scalar::<bool>()?;
         let (input_mapping, body) = if cond {
             (&self.then_input_mapping, &self.then_body)

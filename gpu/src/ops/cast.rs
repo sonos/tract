@@ -58,23 +58,17 @@ impl Op for GpuCast {
 }
 
 impl EvalOp for GpuCast {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
         if input.datum_type() == self.to {
             Ok(tvec!(input_value))
         } else {
-            let output =
-                crate::turn_handler::make_tensor_for_node(turn, node_id, self.to, input.shape())?;
+            let output = crate::turn_handler::make_tensor_for_node(ctx, self.to, input.shape())?;
             (self.dispatch)(input, &output)?;
             Ok(tvec![output.into_tensor().into_tvalue()])
         }

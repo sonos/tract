@@ -25,7 +25,9 @@ impl Downsample {
         let down_len = self.transform_dim(&input_fact.shape[self.axis]);
         downed.shape.set(self.axis, down_len);
         if let Some(k) = downed.konst {
-            let mut outputs = self.eval(tvec!(k.into_tvalue()))?;
+            let turn = TurnState::default();
+            let ctx = turn.context(SessionId::NONE, usize::MAX);
+            let mut outputs = self.eval(&ctx, tvec!(k.into_tvalue()))?;
             downed.konst = Some(outputs.remove(0).into_arc_tensor())
         }
         if cfg!(debug_assertions) {
@@ -48,11 +50,11 @@ impl Op for Downsample {
 }
 
 impl EvalOp for Downsample {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         unsafe {
             let t = if self.modulo > input.shape()[self.axis] {

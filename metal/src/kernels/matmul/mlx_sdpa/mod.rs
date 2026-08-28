@@ -464,15 +464,10 @@ impl Op for MetalMlxSdpa {
 }
 
 impl EvalOp for MetalMlxSdpa {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
-    fn eval_with_turn(
-        &self,
-        node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::DeviceTensorExt;
         ensure!((3..=4).contains(&inputs.len()), "MetalMlxSdpa expects Q,K,V[,mask]");
         let q = inputs[0].to_device_tensor()?;
@@ -480,12 +475,7 @@ impl EvalOp for MetalMlxSdpa {
         let v = inputs[2].to_device_tensor()?;
         let mask = inputs.get(3).map(|m| m.to_device_tensor()).transpose()?;
         ensure!(q.rank() == 4, "expects rank-4 [B,H,Sq,D], got {:?}", q.shape());
-        let out = tract_gpu::turn_handler::make_tensor_for_node(
-            turn,
-            node_id,
-            q.datum_type(),
-            q.shape(),
-        )?;
+        let out = tract_gpu::turn_handler::make_tensor_for_node(ctx, q.datum_type(), q.shape())?;
         crate::with_metal_stream(|stream| {
             dispatch_mlx_sdpa(stream, self.scale, self.is_causal, q, k, v, mask, &out)
         })?;
@@ -604,11 +594,10 @@ mod tests {
             acc_datum_type: f32::datum_type(),
             is_causal,
         };
-        Ok(cpu.eval(tvec![
-            q.clone().into_tvalue(),
-            k.clone().into_tvalue(),
-            v.clone().into_tvalue()
-        ])?[0]
+        Ok(cpu.eval(
+            &EvalContext::pure(),
+            tvec![q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()],
+        )?[0]
             .clone()
             .into_tensor())
     }
@@ -764,12 +753,15 @@ mod tests {
             acc_datum_type: f32::datum_type(),
             is_causal: false,
         };
-        let reference = cpu.eval(tvec![
-            q.clone().into_tvalue(),
-            k.clone().into_tvalue(),
-            v.clone().into_tvalue(),
-            mask.clone().into_tvalue()
-        ])?[0]
+        let reference = cpu.eval(
+            &EvalContext::pure(),
+            tvec![
+                q.clone().into_tvalue(),
+                k.clone().into_tvalue(),
+                v.clone().into_tvalue(),
+                mask.clone().into_tvalue()
+            ],
+        )?[0]
             .clone()
             .into_tensor();
         let scale = (d as f32).recip().sqrt();

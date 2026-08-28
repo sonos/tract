@@ -309,7 +309,7 @@ mod tests {
                 stride,
                 window: Some(std::sync::Arc::new(Tensor::from_shape(&[win_len], &win)?)),
             };
-            let reference = stft.eval(tvec!(signal.clone().into_tvalue()))?;
+            let reference = stft.eval(&EvalContext::pure(), tvec!(signal.clone().into_tvalue()))?;
             let reference = reference[0].to_plain_array_view::<f32>()?;
             let reference = reference.as_slice().unwrap();
 

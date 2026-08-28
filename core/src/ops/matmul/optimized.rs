@@ -422,64 +422,62 @@ impl Op for OptMatMul {
 /// Per-execution state for [`OptMatMul`]: on the trivial path it caches each
 /// micro-op's `Store` [`OutputStore`] layout (strides fixed for the output
 /// shape), so only the base pointer is refreshed per call. Constant operands
-/// are baked into the op at `fuse()`, so they need no per-call state here. Pure
-/// memoization: built lazily on first eval and reused for this node.
-/// Key for the reusable mmm scratch buffer in [`TurnState::scratch`]. Shared by
-/// every `OptMatMul` in the plan: only one op evaluates at a time, and the buffer
-/// is reallocated whenever the picked kernel cannot use the one already there.
-struct MmmScratch(Box<dyn tract_linalg::mmm::ScratchSpace>);
+/// are baked into the op at `fuse()`, so they need no per-call state here.
+///
+/// Scratch the op manages itself, per session: `space` is one reusable kernel
+/// buffer -- only one op evaluates at a time, and it is reallocated whenever the
+/// picked kernel cannot use the one already there -- and `stores` memoizes the
+/// trivial path's output-store descriptors per node, since those depend on that
+/// node's micro-ops. Thread-local, so nothing here has to be `Send`; a session's
+/// entry goes when the plan calls [`EvalOp::drop_session`].
+#[derive(Default)]
+struct MmmScratch {
+    space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
+    stores: HashMap<usize, TVec<Option<OutputStore>>>,
+}
 
-#[derive(Clone, Debug, Default)]
-pub struct OptMatMulState {
-    trivial_stores: Option<TVec<Option<OutputStore>>>,
+thread_local! {
+    static MMM_SCRATCH: std::cell::RefCell<HashMap<SessionId, MmmScratch>> =
+        std::cell::RefCell::new(HashMap::new());
 }
 
 impl EvalOp for OptMatMul {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::<OptMatMulState>::default()))
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        MMM_SCRATCH.with_borrow_mut(|per_session| {
+            self.eval_with_scratch(ctx, inputs, per_session.entry(ctx.session).or_default())
+        })
     }
-}
 
-impl OpState for OptMatMulState {
-    fn eval(
-        &mut self,
-        turn: &mut TurnState,
-        op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<OptMatMul>().context("OptMatMulState on non-OptMatMul op")?;
-        op.eval_with_state(turn, inputs, self)
+    fn drop_session(&self, session: SessionId, _node_id: usize) {
+        MMM_SCRATCH.with_borrow_mut(|per_session| per_session.remove(&session));
     }
 }
 
 impl OptMatMul {
-    fn eval_with_state(
+    fn eval_with_scratch(
         &self,
-        turn: &mut TurnState,
+        ctx: &EvalContext,
         inputs: TVec<TValue>,
-        state: &mut OptMatMulState,
+        scratch: &mut MmmScratch,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
-            let c_shape = self.c_fact.shape.eval_to_usize(&turn.resolved_symbols)?;
+            let c_shape = self.c_fact.shape.eval_to_usize(ctx.symbols)?;
             let mut c = Tensor::uninitialized_dt(self.c_fact.datum_type, &c_shape)?;
             let m = self.c_m_axis.map(|c_m| c.shape()[c_m]).unwrap_or(1);
             let n = self.c_n_axis.map(|c_n| c.shape()[c_n]).unwrap_or(1);
             let mode = self.mode_picker.pick(n)?;
             let mmm = &*self.mmm[mode];
-            let slot = turn
-                .scratch
-                .entry::<MmmScratch>()
-                .or_insert_with(|| MmmScratch(mmm.allocate_scratch_space()));
-            if !mmm.can_use_scratch_space(&*slot.0) {
-                *slot = MmmScratch(mmm.allocate_scratch_space());
+            let MmmScratch { space, stores } = scratch;
+            if !space.as_ref().is_some_and(|s| mmm.can_use_scratch_space(&**s)) {
+                *space = Some(mmm.allocate_scratch_space());
             }
-            let scratch = &mut slot.0;
+            let scratch = space.as_mut().unwrap();
             if self.trivial_path {
-                let stores = state.trivial_stores.get_or_insert_with(|| {
+                let stores = stores.entry(ctx.node_id).or_insert_with(|| {
                     self.micro_ops
                         .iter()
                         .map(|o| match o {

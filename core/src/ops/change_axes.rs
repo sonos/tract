@@ -647,21 +647,16 @@ impl Op for AxisOp {
 }
 
 impl EvalOp for AxisOp {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval_with_turn(
-        &self,
-        _node_id: usize,
-        turn: &TurnState,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         match self {
             AxisOp::Reshape(skip, from, to) => {
-                let from = from.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
-                let to = to.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
+                let from = from.iter().map(|d| d.eval(ctx.symbols)).collect();
+                let to = to.iter().map(|d| d.eval(ctx.symbols)).collect();
                 AxisOp::Reshape(*skip, from, to).change_tensor(&mut input, false)?
             }
             _ => self.change_tensor(&mut input, false)?,
@@ -1202,11 +1197,11 @@ impl Op for IntoShape {
 }
 
 impl EvalOp for IntoShape {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut input = args_1!(inputs).into_tensor();
         ensure!(input.len() == self.len);
         unsafe { input.set_geometry_unchecked(&self.dims, &self.strides) };

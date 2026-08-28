@@ -60,11 +60,11 @@ impl Op for Fft {
 }
 
 impl EvalOp for Fft {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut tensor = args_1!(inputs).into_tensor();
         match tensor.datum_type() {
             DatumType::F16 => {
@@ -219,11 +219,11 @@ impl Op for Stft {
 }
 
 impl EvalOp for Stft {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
         let output = match input.datum_type() {
             DatumType::F16 => {

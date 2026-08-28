@@ -55,7 +55,7 @@ impl Expansion for Random {
         Validation::Random
     }
 
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 
@@ -107,7 +107,7 @@ impl Expansion for RandomLike {
         Validation::Random
     }
 
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         false
     }
 

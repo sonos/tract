@@ -81,11 +81,11 @@ impl Op for BlockedConv {
 }
 
 impl EvalOp for BlockedConv {
-    fn is_stateless(&self) -> bool {
+    fn is_pure_function(&self) -> bool {
         true
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let x_t = inputs[0].cast_to::<f32>()?;
         let k_t = inputs[1].cast_to::<f32>()?;
         let b_t = inputs[2].cast_to::<f32>()?;
@@ -348,11 +348,14 @@ mod tests {
 
         let want = reference(&op, &x, &kernel, &bias);
         let got = op
-            .eval(tvec![
-                Tensor::from_shape(&[1, c_in, h_in, w], &x).unwrap().into_tvalue(),
-                Tensor::from_shape(&[oc, icg * kh], &kernel).unwrap().into_tvalue(),
-                Tensor::from_shape(&[oc], &bias).unwrap().into_tvalue(),
-            ])
+            .eval(
+                &EvalContext::pure(),
+                tvec![
+                    Tensor::from_shape(&[1, c_in, h_in, w], &x).unwrap().into_tvalue(),
+                    Tensor::from_shape(&[oc, icg * kh], &kernel).unwrap().into_tvalue(),
+                    Tensor::from_shape(&[oc], &bias).unwrap().into_tvalue(),
+                ],
+            )
             .unwrap();
         let got_view = got[0].to_plain_array_view::<f32>().unwrap();
         let got = got_view.as_slice().unwrap();
