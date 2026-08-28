@@ -6,7 +6,6 @@ use crate::utils::compute_broadcast_strides;
 use std::ops::Range;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
-use tract_core::trivial_op_state_freeze;
 use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulsePad};
 
 // ─── GpuDelay ────────────────────────────────────────────────────────────────
@@ -146,8 +145,6 @@ impl OpState for GpuDelayState {
         }
     }
 }
-
-trivial_op_state_freeze!(GpuDelayState);
 
 // ─── GpuPulsePad ─────────────────────────────────────────────────────────────
 
@@ -379,8 +376,6 @@ impl OpState for GpuPulsePadState {
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
-
-trivial_op_state_freeze!(GpuPulsePadState);
 
 // ─── GpuAffineChunkTrim ──────────────────────────────────────────────────────
 

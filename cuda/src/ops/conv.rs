@@ -4,7 +4,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use tract_core::internal::*;
-use tract_core::ops::OpStateFreeze;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::tensor::DeviceTensorExt;
@@ -178,20 +177,5 @@ impl OpState for CudaConvState {
             })?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FrozenCudaConvState(usize);
-
-impl OpStateFreeze for CudaConvState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenCudaConvState(self.node_id))
-    }
-}
-
-impl FrozenOpState for FrozenCudaConvState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(CudaConvState::new(self.0))
     }
 }

@@ -1,8 +1,7 @@
 use crate::fact::DeviceTypedFactExt;
-use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use crate::tensor::{DeviceTensorExt, IntoDevice};
 use derive_new::new;
 use tract_core::internal::*;
-use tract_core::ops::OpStateFreeze;
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
 #[derive(Debug, Clone, new)]
@@ -121,49 +120,6 @@ impl GpuDynKVCacheState {
             *v = t.into_device()?.into_tensor().into_tvalue();
         }
         Ok(())
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FrozenGpuDynKVCacheState {
-    node_id: usize,
-    name: String,
-    axis: usize,
-    past_sequence_fact: TypedFact,
-    kv_cache: Option<DeviceTensor>,
-}
-
-impl OpStateFreeze for GpuDynKVCacheState {
-    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
-        Box::new(FrozenGpuDynKVCacheState {
-            node_id: self.node_id,
-            name: self.name.clone(),
-            axis: self.axis,
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.to_device_tensor().cloned().unwrap()),
-        })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenGpuDynKVCacheState {
-            node_id: self.node_id,
-            name: self.name,
-            axis: self.axis,
-            past_sequence_fact: self.past_sequence_fact,
-            kv_cache: self.kv_cache.map(|t| t.to_device_tensor().cloned().unwrap()),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenGpuDynKVCacheState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(GpuDynKVCacheState {
-            node_id: self.node_id,
-            name: self.name.clone(),
-            axis: self.axis,
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor().into_tvalue()),
-        })
     }
 }
 

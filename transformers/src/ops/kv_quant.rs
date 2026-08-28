@@ -15,7 +15,6 @@
 //!      into the quantized op.
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
 use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::{Array2, Array4, ArrayView2, Ix4, s};
 
@@ -341,34 +340,6 @@ impl OpState for QuantizedKvSdpaState {
         let flash = FlashSdpaOp { causal: false, scale: self.scale };
         let o = flash.flash_attention_gqa(qv, k_full.view(), v_full.view(), None);
         Ok(tvec!(o.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FrozenQuantizedKvSdpaState {
-    scale: Option<f32>,
-    k_caches: Vec<QuantKeyCache>,
-    v_caches: Vec<QuantValueCache>,
-    initialized: bool,
-}
-impl OpStateFreeze for QuantizedKvSdpaState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenQuantizedKvSdpaState {
-            scale: self.scale,
-            k_caches: self.k_caches.clone(),
-            v_caches: self.v_caches.clone(),
-            initialized: self.initialized,
-        })
-    }
-}
-impl FrozenOpState for FrozenQuantizedKvSdpaState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(QuantizedKvSdpaState {
-            scale: self.scale,
-            k_caches: self.k_caches.clone(),
-            v_caches: self.v_caches.clone(),
-            initialized: self.initialized,
-        })
     }
 }
 

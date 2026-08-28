@@ -1,5 +1,4 @@
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -188,28 +187,5 @@ impl TypedOp for Delay {
         } else {
             Ok(None)
         }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct FrozenDelayState {
-    buffer: Option<Arc<Tensor>>,
-}
-
-impl OpStateFreeze for DelayState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDelayState {
-            buffer: self.buffer.as_ref().map(|t| t.clone().into_arc_tensor()),
-        })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDelayState { buffer: self.buffer.map(|t| t.into_arc_tensor()) })
-    }
-}
-
-impl FrozenOpState for FrozenDelayState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(DelayState { buffer: self.buffer.as_ref().map(|t| t.clone().into_tensor()) })
     }
 }

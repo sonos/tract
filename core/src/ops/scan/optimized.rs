@@ -1,5 +1,3 @@
-use crate::ops::OpStateFreeze;
-
 use super::*;
 use tract_data::internal::*;
 
@@ -75,45 +73,6 @@ pub struct State {
     position: usize,
     hidden_state: TVec<TValue>,
     pub model_state: TypedSimpleState,
-}
-
-#[derive(Debug, Clone)]
-struct FrozenState {
-    op: Arc<ScanOpParams>,
-    position: usize,
-    hidden_state: TVec<Tensor>,
-    model_state: TypedFrozenSimpleState,
-}
-
-impl OpStateFreeze for State {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenState {
-            op: self.op.clone(),
-            position: self.position,
-            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tensor()).collect(),
-            model_state: self.model_state.freeze(),
-        })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenState {
-            op: self.op,
-            position: self.position,
-            hidden_state: self.hidden_state.into_iter().map(|t| t.into_tensor()).collect(),
-            model_state: self.model_state.freeze_into(),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(State {
-            op: self.op.clone(),
-            position: self.position,
-            hidden_state: self.hidden_state.iter().map(|t| t.clone().into_tvalue()).collect(),
-            model_state: self.model_state.unfreeze(),
-        })
-    }
 }
 
 impl State {

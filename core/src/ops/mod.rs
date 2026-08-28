@@ -86,21 +86,7 @@ impl std::fmt::Debug for Cost {
     }
 }
 
-pub trait FrozenOpState: fmt::Debug + dyn_clone::DynClone + Send + 'static {
-    fn unfreeze(&self) -> Box<dyn OpState>;
-}
-
-pub trait OpStateFreeze {
-    fn freeze(&self) -> Box<dyn FrozenOpState>;
-    /// Consuming freeze: moves data instead of cloning. Default delegates to freeze().
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        self.freeze()
-    }
-}
-
-dyn_clone::clone_trait_object!(FrozenOpState);
-
-pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast + Send {
+pub trait OpState: fmt::Debug + dyn_clone::DynClone + Downcast + Send {
     fn load_from(
         &mut self,
         _: &mut TurnState,

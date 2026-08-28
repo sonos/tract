@@ -204,19 +204,3 @@ macro_rules! assert_close {
         }
     });
 }
-
-#[macro_export]
-macro_rules! trivial_op_state_freeze {
-    ($state:ty) => {
-        impl $crate::ops::FrozenOpState for $state {
-            fn unfreeze(&self) -> Box<dyn OpState> {
-                Box::new(self.clone())
-            }
-        }
-        impl $crate::ops::OpStateFreeze for $state {
-            fn freeze(&self) -> Box<dyn $crate::ops::FrozenOpState> {
-                Box::new(self.clone())
-            }
-        }
-    };
-}

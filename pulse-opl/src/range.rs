@@ -9,7 +9,6 @@
 //! representation (it lives strictly between the pulsifier and runtime).
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::trivial_op_state_freeze;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct PulsedRange {
@@ -122,5 +121,3 @@ where
     }
     Ok(tract_nnef::tract_core::ndarray::Array1::from_vec(data).into_dyn().into_tensor())
 }
-
-trivial_op_state_freeze!(PulsedRangeState);

@@ -2,7 +2,7 @@ use std::fmt::Debug;
 
 use tract_downcast_rs::Downcast;
 
-use crate::{internal::*, ops::OpStateFreeze};
+use crate::internal::*;
 
 #[derive(Debug, Clone)]
 pub struct SubmodelOp {
@@ -160,19 +160,5 @@ impl OpState for TypedModelOpState {
     ) -> TractResult<TVec<TValue>> {
         let inference_out = self.run(inputs)?;
         Ok(inference_out)
-    }
-}
-
-pub type FrozenSubmodelOpState = TypedFrozenSimpleState;
-
-impl FrozenOpState for FrozenSubmodelOpState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(self.unfreeze())
-    }
-}
-
-impl OpStateFreeze for TypedModelOpState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(self.freeze())
     }
 }

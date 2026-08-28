@@ -18,7 +18,6 @@
 //! that lives on the attention op, not here.
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
 use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::Ix4;
 
@@ -181,7 +180,6 @@ impl EvalOp for WindowKvSdpa {
     }
     fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(WindowKvSdpaState {
-            window: self.window,
             scale: self.scale,
             k: WindowKvCache::new(self.axis, self.window),
             v: WindowKvCache::new(self.axis, self.window),
@@ -199,7 +197,6 @@ impl TypedOp for WindowKvSdpa {
 
 #[derive(Clone, Debug)]
 pub struct WindowKvSdpaState {
-    window: usize,
     scale: Option<f32>,
     k: WindowKvCache,
     v: WindowKvCache,
@@ -229,34 +226,6 @@ impl OpState for WindowKvSdpaState {
         let flash = FlashSdpaOp { causal: false, scale: self.scale };
         let o = flash.flash_attention_gqa(qv, kview, vview, None);
         Ok(tvec!(o.into_tensor().cast_to_dt(input_dt)?.into_owned().into_tvalue()))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FrozenWindowKvSdpaState {
-    window: usize,
-    scale: Option<f32>,
-    k: WindowKvCache,
-    v: WindowKvCache,
-}
-impl OpStateFreeze for WindowKvSdpaState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenWindowKvSdpaState {
-            window: self.window,
-            scale: self.scale,
-            k: self.k.clone(),
-            v: self.v.clone(),
-        })
-    }
-}
-impl FrozenOpState for FrozenWindowKvSdpaState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(WindowKvSdpaState {
-            window: self.window,
-            scale: self.scale,
-            k: self.k.clone(),
-            v: self.v.clone(),
-        })
     }
 }
 
