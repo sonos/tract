@@ -10,6 +10,7 @@ extern crate num_integer;
 #[macro_use]
 pub extern crate tract_hir;
 
+pub mod dim_expr;
 pub mod model;
 pub mod ops;
 
