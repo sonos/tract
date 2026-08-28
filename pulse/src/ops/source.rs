@@ -47,8 +47,9 @@ impl EvalOp for PulsedSource {
         false
     }
 
-    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(ctx.node_id))))
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        ensure!(!inputs.is_empty(), "Input for node {} is missing", ctx.node_id);
+        Ok(inputs)
     }
 }
 
