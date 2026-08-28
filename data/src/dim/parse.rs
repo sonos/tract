@@ -85,7 +85,15 @@ fn atom<'i>(symbol_table: &SymbolScope, i: &'i str) -> R<'i, TDim> {
         map(|i| func(symbol_table, "min", i), TDim::Min),
         map(|i| func(symbol_table, "max", i), TDim::Max),
         map(|i| func(symbol_table, "broadcast", i), TDim::Broadcast),
-        map(|i| func(symbol_table, "floor", i), |xs| xs[0].clone()),
+        // ⚠⚠ There is deliberately NO `floor` here. It used to parse and then
+        // throw itself away, on the reasoning that flooring is a no-op in
+        // integer arithmetic. That is true of a TDim that is ALREADY integral,
+        // and false of the thing the expression was describing: ONNX writes
+        // rational shape expressions, so `floor(W/2 - 1/2)` was read as
+        // `W/2 - 0` and every even W came out one too big, silently. See #2724.
+        // ONNX expressions are now parsed as rational and translated
+        // explicitly, in `tract-onnx`'s `dim_expr` module, which is the only
+        // thing that ever relied on this arm.
         map(|i| identifier(symbol_table, i), TDim::Sym),
         map(pair(recognize(stag("-")), |i| atom(symbol_table, i)), |(_, dim)| dim * -1),
         delimited(stag("("), |i| expr(symbol_table, i), stag(")")),
@@ -219,9 +227,14 @@ mod test {
     }
 
     #[test]
-    fn parse_floors() {
+    fn floor_is_refused_rather_than_silently_dropped() {
+        // TDim has no floor, so the honest answer is to refuse the string. The
+        // old behaviour accepted it and discarded it, which is what made a
+        // rational ONNX expression parse into a wrong integer one without any
+        // error. Anything that genuinely needs floor semantics has to say what
+        // it means by them first — see `tract-onnx`'s `dim_expr`.
         let table = SymbolScope::default();
-        assert_eq!(parse_tdim(&table, "floor(a)").unwrap(), table.sym("a").to_dim());
+        assert!(parse_tdim(&table, "floor(a)").is_err());
     }
 
     #[test]
