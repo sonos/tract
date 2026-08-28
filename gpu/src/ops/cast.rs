@@ -62,10 +62,10 @@ impl EvalOp for GpuCast {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
@@ -73,12 +73,8 @@ impl EvalOp for GpuCast {
         if input.datum_type() == self.to {
             Ok(tvec!(input_value))
         } else {
-            let output = crate::session_handler::make_tensor_for_node(
-                session,
-                node_id,
-                self.to,
-                input.shape(),
-            )?;
+            let output =
+                crate::turn_handler::make_tensor_for_node(turn, node_id, self.to, input.shape())?;
             (self.dispatch)(input, &output)?;
             Ok(tvec![output.into_tensor().into_tvalue()])
         }

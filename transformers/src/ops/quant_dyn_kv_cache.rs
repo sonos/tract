@@ -310,11 +310,7 @@ impl EvalOp for QuantizedDynKeyValueCache {
     fn is_stateless(&self) -> bool {
         false
     }
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(QuantizedDynKvCacheState {
             name: self.name.clone(),
             axis: self.axis,

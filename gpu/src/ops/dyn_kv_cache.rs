@@ -57,7 +57,7 @@ impl OpState for GpuDynKVCacheState {
 
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -78,8 +78,8 @@ impl OpState for GpuDynKVCacheState {
             op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let mut output_shape = inputs[0].shape().to_vec();
         output_shape[axis] = inputs.iter().map(|it| it.shape()[axis]).sum();
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             self.node_id,
             inputs[0].datum_type(),
             &output_shape,
@@ -227,7 +227,7 @@ impl EvalOp for GpuDynKVCache {
         false
     }
 
-    fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuDynKVCacheState::new(
             node_id,
             self.name.clone(),

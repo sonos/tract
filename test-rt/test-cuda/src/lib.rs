@@ -20,13 +20,13 @@ struct CudaTestTransformState {
 impl State for CudaTestTransformState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut state = if self.use_arena {
-            let session_handler = tract_gpu::session_handler::DeviceSessionHandler::from_plan(
+            let turn_handler = tract_gpu::turn_handler::DeviceTurnHandler::from_plan(
                 self.state.plan(),
                 &self.state.turn_state.resolved_symbols,
             )?;
 
-            let plan = Arc::unwrap_or_clone(self.state.plan().clone())
-                .with_session_handler(session_handler);
+            let plan =
+                Arc::unwrap_or_clone(self.state.plan().clone()).with_turn_handler(turn_handler);
             let plan = Arc::new(plan);
             plan.spawn()?
         } else {

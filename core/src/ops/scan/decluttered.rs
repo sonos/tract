@@ -765,8 +765,8 @@ impl EvalOp for Scan {
     fn is_stateless(&self) -> bool {
         false
     }
-    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        self.to_codegen_op(false)?.state(session, node_id)
+    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+        self.to_codegen_op(false)?.state(turn, node_id)
     }
 }
 

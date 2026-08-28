@@ -7,7 +7,7 @@ use tract_core::internal::*;
 ///
 /// `offset` and `out_len` are TDim because the rel-pos table width and the
 /// query-axis length may both be symbolic upstream; both are resolved against
-/// `session.resolved_symbols` at eval time.
+/// `turn.resolved_symbols` at eval time.
 pub type DispatchDiagGatherFn =
     fn(input: &DeviceTensor, offset: i64, out_len: usize, output: &DeviceTensor) -> TractResult<()>;
 
@@ -57,22 +57,22 @@ impl EvalOp for GpuDiagGather {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_val = args_1!(inputs);
         let input = input_val.to_device_tensor()?;
-        let offset = self.offset.eval(&session.resolved_symbols).to_i64()?;
-        let out_len = self.out_len.eval(&session.resolved_symbols).to_usize()?;
+        let offset = self.offset.eval(&turn.resolved_symbols).to_i64()?;
+        let out_len = self.out_len.eval(&turn.resolved_symbols).to_usize()?;
         let mut out_shape: TVec<usize> = input.shape().into();
         let rank = out_shape.len();
         ensure!(rank >= 2);
         out_shape[rank - 1] = out_len;
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
+        let output = crate::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             input.datum_type(),
             &out_shape,

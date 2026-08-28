@@ -36,10 +36,10 @@ impl EvalOp for GpuPad {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
@@ -47,8 +47,7 @@ impl EvalOp for GpuPad {
         let dt = input.datum_type();
         let out_shape = self.output_shape(input.shape());
 
-        let output =
-            crate::session_handler::make_tensor_for_node(session, node_id, dt, &out_shape)?;
+        let output = crate::turn_handler::make_tensor_for_node(turn, node_id, dt, &out_shape)?;
 
         let ctx = crate::device::get_context()?;
 

@@ -220,91 +220,90 @@ where
         };
 
     let mut sources = inputs.sources;
-    for turn in 0..sources.len() {
-        let inputs = std::mem::replace(&mut sources[turn], TVec::new());
+    for turn_ix in 0..sources.len() {
+        let inputs = std::mem::replace(&mut sources[turn_ix], TVec::new());
         if let Some((sym, val)) = &pulse_sym_binding {
             state.turn_state.resolved_symbols.set(sym, *val);
         }
-        let turn_results =
-            state.run_plan_with_eval(inputs, |session_state, state, node, input| {
+        let turn_results = state.run_plan_with_eval(inputs, |turn, state, node, input| {
+            if steps {
+                for (ix, i) in input.iter().enumerate() {
+                    eprintln!(
+                        "{} {}{}{:?}",
+                        White.bold().paint(node.to_string()),
+                        ix,
+                        Blue.bold().paint("<< "),
+                        i
+                    );
+                }
+            }
+            let r = tract_core::plan::eval(turn, state, node, input)?;
+
+            if steps || npz.is_some() || check_f16_overflow || assert_sane_floats {
+                let clarified_r = crate::utils::clarify_tvalues(&r)?;
                 if steps {
-                    for (ix, i) in input.iter().enumerate() {
+                    for (ix, o) in clarified_r.iter().enumerate() {
                         eprintln!(
                             "{} {}{}{:?}",
                             White.bold().paint(node.to_string()),
                             ix,
-                            Blue.bold().paint("<< "),
-                            i
+                            Yellow.bold().paint(">> "),
+                            o
                         );
                     }
                 }
-                let r = tract_core::plan::eval(session_state, state, node, input)?;
-
-                if steps || npz.is_some() || check_f16_overflow || assert_sane_floats {
-                    let clarified_r = crate::utils::clarify_tvalues(&r)?;
-                    if steps {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            eprintln!(
-                                "{} {}{}{:?}",
-                                White.bold().paint(node.to_string()),
-                                ix,
-                                Yellow.bold().paint(">> "),
-                                o
-                            );
+                if let Some(npz) = npz.as_mut() {
+                    for (ix, t) in clarified_r.iter().enumerate() {
+                        let mut name = if ix == 0 {
+                            node.name.to_string()
+                        } else {
+                            format!("{}:{}", node.name, ix)
+                        };
+                        if multiturn {
+                            name = format!("turn_{turn_ix}/{name}");
                         }
+                        npz_add_tensor(npz, name, t)?;
                     }
-                    if let Some(npz) = npz.as_mut() {
-                        for (ix, t) in clarified_r.iter().enumerate() {
-                            let mut name = if ix == 0 {
-                                node.name.to_string()
-                            } else {
-                                format!("{}:{}", node.name, ix)
-                            };
-                            if multiturn {
-                                name = format!("turn_{turn}/{name}");
-                            }
-                            npz_add_tensor(npz, name, t)?;
-                        }
-                    }
-                    if check_f16_overflow {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            if let Ok(plain) = o.try_as_plain() {
-                                if let Ok(f32s) = plain.as_slice::<f32>() {
-                                    if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
-                                        warn!("{node}, output {ix} overflows f16");
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    if assert_sane_floats {
-                        for (ix, o) in clarified_r.iter().enumerate() {
-                            if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
-                                continue;
-                            }
-                            if let Ok(plain) = o.try_as_plain() {
-                                if let Ok(floats) = plain.as_slice::<f32>() {
-                                    if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                        eprintln!("{floats:?}");
-                                        bail!("Found {} in output {} of {}", floats[pos], ix, node);
-                                    }
-                                } else if let Ok(floats) = plain.as_slice::<f16>() {
-                                    if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
-                                        eprintln!("{floats:?}");
-                                        bail!("Found {} in output {} of {}", floats[pos], ix, node);
-                                    }
+                }
+                if check_f16_overflow {
+                    for (ix, o) in clarified_r.iter().enumerate() {
+                        if let Ok(plain) = o.try_as_plain() {
+                            if let Ok(f32s) = plain.as_slice::<f32>() {
+                                if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
+                                    warn!("{node}, output {ix} overflows f16");
                                 }
                             }
                         }
                     }
                 }
+                if assert_sane_floats {
+                    for (ix, o) in clarified_r.iter().enumerate() {
+                        if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
+                            continue;
+                        }
+                        if let Ok(plain) = o.try_as_plain() {
+                            if let Ok(floats) = plain.as_slice::<f32>() {
+                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                    eprintln!("{floats:?}");
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                                }
+                            } else if let Ok(floats) = plain.as_slice::<f16>() {
+                                if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
+                                    eprintln!("{floats:?}");
+                                    bail!("Found {} in output {} of {}", floats[pos], ix, node);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
-                Ok(r)
-            })?;
+            Ok(r)
+        })?;
         // Thread cache outputs into next turn's inputs
-        if turn + 1 < sources.len() && !cache_output_to_input.is_empty() {
+        if turn_ix + 1 < sources.len() && !cache_output_to_input.is_empty() {
             for &(out_ix, in_ix) in &cache_output_to_input {
-                sources[turn + 1][in_ix] = turn_results[out_ix].clone();
+                sources[turn_ix + 1][in_ix] = turn_results[out_ix].clone();
             }
         }
 

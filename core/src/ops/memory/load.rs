@@ -30,7 +30,7 @@ impl EvalOp for Load {
 
     fn state(
         &self,
-        _session: &TurnState,
+        _turn: &TurnState,
         _node_id: usize,
     ) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(self.clone())))
@@ -54,12 +54,12 @@ impl TypedOp for Load {
 impl OpState for Load {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        let tensor = session
+        let tensor = turn
             .tensors
             .get(&self.id)
             .map_or_else(
@@ -81,7 +81,7 @@ impl OpState for Load {
                     Ok(tvec!(it.clone().into_tvalue()))
                 },
             )
-            .with_context(|| anyhow!("While loading tensor from session"))?;
+            .with_context(|| anyhow!("While loading tensor from turn"))?;
 
         Ok(tensor)
     }

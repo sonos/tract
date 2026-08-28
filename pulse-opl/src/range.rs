@@ -45,11 +45,7 @@ impl EvalOp for PulsedRange {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsedRangeState>::default()))
     }
 }
@@ -70,7 +66,7 @@ struct PulsedRangeState {
 impl OpState for PulsedRangeState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         _inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -87,13 +83,13 @@ impl OpState for PulsedRangeState {
                 .start
                 .try_as_plain()?
                 .to_scalar::<TDim>()?
-                .eval(&session.resolved_symbols)
+                .eval(&turn.resolved_symbols)
                 .to_i64()?;
             let step = op
                 .step
                 .try_as_plain()?
                 .to_scalar::<TDim>()?
-                .eval(&session.resolved_symbols)
+                .eval(&turn.resolved_symbols)
                 .to_i64()?;
             let data: Vec<i64> =
                 (0..pulse).map(|i| start + step * (base as i64 + i as i64)).collect();

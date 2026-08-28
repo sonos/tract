@@ -19,10 +19,10 @@ impl EvalOp for CudaIff {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (cond_val, then_val, else_val) = args_3!(inputs);
@@ -38,7 +38,7 @@ impl EvalOp for CudaIff {
             .context("No broadcasting solution found")?;
         let out_dt = then_t.datum_type();
         let output =
-            tract_gpu::session_handler::make_tensor_for_node(session, node_id, out_dt, &out_shape)?;
+            tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, out_dt, &out_shape)?;
 
         if output.len() > 0 {
             crate::with_cuda_stream(|stream| {

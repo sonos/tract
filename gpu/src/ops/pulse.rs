@@ -1,7 +1,7 @@
 #![allow(unpredictable_function_pointer_comparisons)]
 use crate::device::{DeviceContext, get_context};
-use crate::session_handler::make_tensor_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
+use crate::turn_handler::make_tensor_for_node;
 use crate::utils::compute_broadcast_strides;
 use std::ops::Range;
 use tract_core::internal::*;
@@ -39,7 +39,7 @@ impl EvalOp for GpuDelay {
         false
     }
 
-    fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuDelayState { node_id, buffer: None, shift_scratch: None })))
     }
 }
@@ -188,7 +188,7 @@ impl EvalOp for GpuPulsePad {
         false
     }
 
-    fn state(&self, _session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuPulsePadState { node_id, current_pos: 0, last_valid_frame: None })))
     }
 }
@@ -280,7 +280,7 @@ impl GpuPulsePadState {
 
     fn pad(
         &mut self,
-        session: &TurnState,
+        turn: &TurnState,
         gpu_op: &GpuPulsePad,
         input: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
@@ -290,9 +290,8 @@ impl GpuPulsePadState {
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse - op.overlap;
-        let end_input =
-            op.end_input.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
-        let after = op.after.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let end_input = op.end_input.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let after = op.after.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
 
         if let PadMode::Edge = op.mode
             && after != 0
@@ -307,7 +306,7 @@ impl GpuPulsePadState {
         // never materialises), so a flat memcpy would read the buffer in
         // pre-Move order; copy_nd honours `input.strides()` instead.
         let mut output =
-            make_tensor_for_node(session, self.node_id, input.datum_type(), input.shape())?;
+            make_tensor_for_node(turn, self.node_id, input.datum_type(), input.shape())?;
         ctx.copy_nd(input, 0, input.strides(), &output, 0, input.shape(), output.strides())?;
 
         // Quick return if entirely in valid or invalid range
@@ -368,7 +367,7 @@ impl GpuPulsePadState {
 impl OpState for GpuPulsePadState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -376,7 +375,7 @@ impl OpState for GpuPulsePadState {
         let gpu_op =
             op.downcast_ref::<GpuPulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         let device_input = input.as_device_tensor().context("Expected a GPU tensor")?;
-        let output = self.pad(session, gpu_op, device_input)?;
+        let output = self.pad(turn, gpu_op, device_input)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
@@ -413,10 +412,10 @@ impl EvalOp for GpuAffineChunkTrim {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
@@ -433,7 +432,7 @@ impl EvalOp for GpuAffineChunkTrim {
         }
         let mut o_shape: TVec<usize> = input.shape().into();
         o_shape[axis] = take;
-        let output = make_tensor_for_node(session, node_id, input.datum_type(), &o_shape)?;
+        let output = make_tensor_for_node(turn, node_id, input.datum_type(), &o_shape)?;
         let broadcast_strides = compute_broadcast_strides(&o_shape, input.strides())?;
         let ctx = get_context()?;
         ctx.copy_nd(input, 0, &broadcast_strides, &output, 0, output.shape(), output.strides())?;

@@ -26,21 +26,17 @@ impl EvalOp for GpuMultiBroadcastTo {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
-        let shape = self.shape.eval_to_usize(&session.resolved_symbols)?;
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
-            node_id,
-            input.datum_type(),
-            &shape,
-        )?;
+        let shape = self.shape.eval_to_usize(&turn.resolved_symbols)?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(turn, node_id, input.datum_type(), &shape)?;
 
         // Pad input shape/strides to output rank for broadcasting
         let mut input_strides = vec![input.strides()[0]; output.rank() - input.rank()];

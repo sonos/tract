@@ -68,10 +68,10 @@ impl EvalOp for GpuResize {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let data = inputs[0].to_device_tensor()?;
@@ -85,7 +85,7 @@ impl EvalOp for GpuResize {
             shape[axis] = self.output_shape[axis];
             let last = step + 1 == self.axes.len();
             let output = if last {
-                crate::session_handler::make_tensor_for_node(session, node_id, dt, &shape)?
+                crate::turn_handler::make_tensor_for_node(turn, node_id, dt, &shape)?
             } else {
                 DeviceTensor::uninitialized_dt(dt, &shape)?
             };

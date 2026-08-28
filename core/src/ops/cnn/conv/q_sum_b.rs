@@ -28,13 +28,13 @@ impl EvalOp for QSumB {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let n = self.n.eval_to_i64(&session.resolved_symbols)? as usize;
+        let n = self.n.eval_to_i64(&turn.resolved_symbols)? as usize;
         self.eval(inputs, n)
     }
 }

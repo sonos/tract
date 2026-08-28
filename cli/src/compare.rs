@@ -163,8 +163,8 @@ pub fn handle_with_model(
     let mut state = plan.spawn()?;
     let inputs = get_or_make_inputs(&(reference_model.clone() as _), run_params)?;
     for input in inputs.sources {
-        state.run_plan_with_eval(input, |session, state, node, input| -> TractResult<_> {
-            let result = tract_core::plan::eval(session, state, node, input)?;
+        state.run_plan_with_eval(input, |turn, state, node, input| -> TractResult<_> {
+            let result = tract_core::plan::eval(turn, state, node, input)?;
             if node.outputs.len() == 1 {
                 values.entry(node.name.clone()).or_default().push(Ok(result[0].clone()));
             }
@@ -363,8 +363,8 @@ pub fn handle_stream(
 
         state.run_plan_with_eval(
             tvec!(pulsed_input.into_tensor().into()),
-            |session, op_state, node, input| -> TractResult<TVec<TValue>> {
-                let result = tract_core::plan::eval(session, op_state, node, input)?;
+            |turn, op_state, node, input| -> TractResult<TVec<TValue>> {
+                let result = tract_core::plan::eval(turn, op_state, node, input)?;
 
                 if let Some(info) = pulse_meta.get(&node.name) {
                     // Skip nodes where the optimizer removed the streaming axis (e.g.
@@ -469,18 +469,18 @@ where
     let all_values: HashMap<String, &Vec<TractResult<TValue>>> =
         all_values.iter().map(|(k, v)| (canonic(k), v)).collect();
     let inputs = get_or_make_inputs(&(tract.clone() as _), run_params)?;
-    for (turn, inputs) in inputs.sources.into_iter().enumerate() {
+    for (turn_ix, inputs) in inputs.sources.into_iter().enumerate() {
         state.run_plan_with_eval(
             inputs,
-            |session_state, state, node, input| -> TractResult<TVec<TValue>> {
-                let mut returning = tract_core::plan::eval(session_state, state, node, input)?;
+            |turn, state, node, input| -> TractResult<TVec<TValue>> {
+                let mut returning = tract_core::plan::eval(turn, state, node, input)?;
                 let tags = annotations.node_mut(node.id.into());
                 let mut comparison_error = None;
                 for slot in 0..returning.len() {
                     let get_value = |label: &str| {
                         all_values
                             .get(&canonic(label))
-                            .and_then(|v| v.get(turn))
+                            .and_then(|v| v.get(turn_ix))
                             .and_then(|r| r.as_ref().ok())
                             .cloned()
                     };
@@ -508,7 +508,7 @@ where
                     let needed_type = clarified_fact.datum_type;
                     let needed_shape = clarified_fact
                         .shape
-                        .eval_to_usize(&session_state.resolved_symbols)
+                        .eval_to_usize(&turn.resolved_symbols)
                         .with_context(|| {
                             format!(
                                 "evaluating shape {:?} on node #{} {} (slot {}); known symbols: {:?}",
@@ -516,7 +516,7 @@ where
                                 node.id,
                                 node.name,
                                 slot,
-                                session_state.resolved_symbols,
+                                turn.resolved_symbols,
                             )
                         })?;
 
@@ -560,7 +560,7 @@ where
                         let mut msg = vec![Red
                             .bold()
                             .paint(format!(
-                                "At turn {turn}, wrong value for output {slot}, {e}"
+                                "At turn {turn_ix}, wrong value for output {slot}, {e}"
                             ))
                             .to_string()];
                         msg.push(format!("{:<8}: {:?}", labels.0, computed));
@@ -569,7 +569,7 @@ where
                     } else {
                         debug!(
                             "At turn {}, matching value for {:?}",
-                            turn,
+                            turn_ix,
                             OutletId::new(node.id, slot)
                         )
                     }

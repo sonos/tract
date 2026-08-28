@@ -25,16 +25,16 @@ impl EvalOp for Tile {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
             .multipliers
             .iter()
-            .map(|m| m.eval(&session.resolved_symbols).to_usize())
+            .map(|m| m.eval(&turn.resolved_symbols).to_usize())
             .collect::<Result<_, _>>()?;
         let result =
             dispatch_datum_by_size!(eval_t(inputs[0].datum_type())(&inputs[0], &multipliers))?;
@@ -120,10 +120,10 @@ impl EvalOp for DynTile {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;
@@ -131,7 +131,7 @@ impl EvalOp for DynTile {
             .try_as_plain()?
             .as_slice::<TDim>()?
             .iter()
-            .map(|m| Ok(m.eval_to_i64(&session.resolved_symbols)? as usize))
+            .map(|m| Ok(m.eval_to_i64(&turn.resolved_symbols)? as usize))
             .collect::<TractResult<_>>()?;
         let result =
             dispatch_datum_by_size!(eval_t(inputs[0].datum_type())(&inputs[0], &multipliers))?;

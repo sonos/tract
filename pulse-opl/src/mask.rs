@@ -47,29 +47,24 @@ struct PulseMaskOpState {
 impl OpState for PulseMaskOpState {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs).into_tensor();
         let op = op.downcast_ref::<PulseMask>().ok_or_else(|| format_err!("Wrong Op type"))?;
-        let tensor = self.pad(session, op, input)?;
+        let tensor = self.pad(turn, op, input)?;
         Ok(tvec!(tensor.into_tvalue()))
     }
 }
 
 impl PulseMaskOpState {
-    fn pad(
-        &mut self,
-        session: &TurnState,
-        op: &PulseMask,
-        mut input: Tensor,
-    ) -> TractResult<Tensor> {
+    fn pad(&mut self, turn: &TurnState, op: &PulseMask, mut input: Tensor) -> TractResult<Tensor> {
         let pulse = input.shape()[op.axis];
         let pulse_begin = self.current_pos;
         let pulse_end = self.current_pos + pulse;
         self.current_pos += pulse;
-        let end = op.end.eval(&session.resolved_symbols).to_usize().unwrap_or(usize::MAX);
+        let end = op.end.eval(&turn.resolved_symbols).to_usize().unwrap_or(usize::MAX);
 
         // pulse is entirely in valid input, just forward
         if pulse_begin >= op.begin && pulse_end <= end {
@@ -128,11 +123,7 @@ impl EvalOp for PulseMask {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulseMaskOpState>::default()))
     }
 }

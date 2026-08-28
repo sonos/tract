@@ -42,13 +42,13 @@ impl EvalOp for DeconvSum {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        self.eval_with_values(inputs, &session.resolved_symbols)
+        self.eval_with_values(inputs, &turn.resolved_symbols)
     }
 }
 
@@ -541,14 +541,14 @@ impl EvalOp for DepthwiseDeconv {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (kernel, input, bias) = args_3!(inputs);
-        let input_shape = self.input_shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
+        let input_shape = self.input_shape.eval_to_usize(&turn.resolved_symbols)?.into_owned();
         let input_shape = self.pool_spec.data_format.shape(input_shape)?;
         let output_shape =
             super::output_shape(&self.pool_spec, &input_shape.shape, &self.adjustments)?;

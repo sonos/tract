@@ -1,5 +1,5 @@
-use crate::session_handler::make_tensor_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::turn_handler::make_tensor_for_node;
 use tract_core::internal::*;
 
 pub type DispatchGdnRecurrentFn = fn(
@@ -43,10 +43,10 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 6);
@@ -54,7 +54,7 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             .iter()
             .map(|value| value.to_device_tensor())
             .collect::<TractResult<TVec<_>>>()?;
-        let output = make_tensor_for_node(session, node_id, DatumType::F16, tensors[0].shape())?;
+        let output = make_tensor_for_node(turn, node_id, DatumType::F16, tensors[0].shape())?;
         // The memory arena is keyed by node, so a second output cannot use the
         // same arena slot as the first one.
         let final_state = DeviceTensor::uninitialized_dt(DatumType::F32, tensors[5].shape())?;

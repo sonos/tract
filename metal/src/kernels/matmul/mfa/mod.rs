@@ -488,10 +488,10 @@ impl EvalOp for MetalMfaSdpa {
     fn is_stateless(&self) -> bool {
         true
     }
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
@@ -511,12 +511,8 @@ impl EvalOp for MetalMfaSdpa {
         let sk = k.shape()[2];
         let h = b * nh;
         let dt = q.datum_type();
-        let out = tract_gpu::session_handler::make_tensor_for_node(
-            session,
-            node_id,
-            dt,
-            &[b, nh, sq, dd],
-        )?;
+        let out =
+            tract_gpu::turn_handler::make_tensor_for_node(turn, node_id, dt, &[b, nh, sq, dd])?;
         // causal -> [Sq,Sk] additive mask, bottom-right aligned (cached/cross attention)
         let mask = if self.is_causal {
             let mut m = vec![0f32; sq * sk];
@@ -1263,7 +1259,7 @@ mod tests {
         })
     }
 
-    // Slice C: the MetalMfaSdpa op end-to-end via eval_with_session on device tensors.
+    // Slice C: the MetalMfaSdpa op end-to-end via eval_with_turn on device tensors.
     #[test]
     fn test_metal_mfa_sdpa_op() -> TractResult<()> {
         use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
@@ -1322,7 +1318,7 @@ mod tests {
                 let kd = Tensor::from_shape(&[b, nh, sk, d], &kv)?.into_device()?;
                 let vd = Tensor::from_shape(&[b, nh, sk, d], &vv)?.into_device()?;
                 let op = MetalMfaSdpa { scale, is_causal };
-                let out = op.eval_with_session(
+                let out = op.eval_with_turn(
                     0,
                     &TurnState::default(),
                     tvec![

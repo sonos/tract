@@ -21,7 +21,7 @@ pub struct MetalFusedAxisOpState {
 fn compute_reshaped_inputs(
     inputs: TVec<TValue>,
     grouped_axis_ops: &TVec<TVec<GpuAxisOp>>,
-    session: &TurnState,
+    turn: &TurnState,
 ) -> TractResult<TVec<TValue>> {
     // Apply Axis Ops per input
 
@@ -39,8 +39,8 @@ fn compute_reshaped_inputs(
                     let new_shape = match &axis_op.inner {
                         AxisOp::Reshape(skip, from, to) => {
                             let from =
-                                from.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
-                            let to = to.iter().map(|d| d.eval(&session.resolved_symbols)).collect();
+                                from.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
+                            let to = to.iter().map(|d| d.eval(&turn.resolved_symbols)).collect();
                             let mut shape: TVec<usize> = t.shape().into();
                             AxisOp::Reshape(*skip, from, to)
                                 .change_shape_array(&mut shape, false)?;
@@ -80,30 +80,30 @@ impl OpState for MetalFusedAxisOpState {
 
     fn load_from(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         states: &mut dyn Iterator<Item = tract_core::value::TValue>,
     ) -> TractResult<()> {
-        self.op_state.load_from(session, states)
+        self.op_state.load_from(turn, states)
     }
 
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         self.op_state.save_to(states)
     }
 
-    fn resolve_symbols(&mut self, session: &mut TurnState) -> TractResult<()> {
-        self.op_state.resolve_symbols(session)
+    fn resolve_symbols(&mut self, turn: &mut TurnState) -> TractResult<()> {
+        self.op_state.resolve_symbols(turn)
     }
 
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let fused_axis_op = op.downcast_ref::<MetalFusedAxisOp>().unwrap();
-        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, session)?;
+        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, turn)?;
         // Runner inner op
-        self.op_state.eval(session, fused_axis_op.op.as_op(), inputs)
+        self.op_state.eval(turn, fused_axis_op.op.as_op(), inputs)
     }
 }
 
@@ -162,22 +162,22 @@ impl EvalOp for MetalFusedAxisOp {
         self.op.is_stateless()
     }
 
-    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        if let Some(state) = self.op.state(session, node_id)? {
+    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+        if let Some(state) = self.op.state(turn, node_id)? {
             Ok(Some(Box::new(MetalFusedAxisOpState { op_state: state })))
         } else {
             Ok(None)
         }
     }
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, session)?;
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, turn)?;
         // Runner inner op
-        self.op.eval_with_session(node_id, session, inputs)
+        self.op.eval_with_turn(node_id, turn, inputs)
     }
 }
 

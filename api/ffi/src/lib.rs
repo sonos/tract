@@ -871,7 +871,7 @@ pub unsafe extern "C" fn tract_runtime_release(runtime: *mut *mut TractRuntime) 
 // RUNNABLE MODEL
 pub struct TractRunnable(tract::Runnable);
 
-/// Spawn a session state from a runnable model.
+/// Spawn a state from a runnable model.
 ///
 /// This function does not take ownership of the `runnable` object, it can be used again to spawn
 /// other state instances. The runnable object is internally reference counted, it will be

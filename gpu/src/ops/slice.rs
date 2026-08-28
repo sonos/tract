@@ -31,17 +31,17 @@ impl EvalOp for GpuSlice {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
 
-        let start = self.inner.start.eval(&session.resolved_symbols).to_usize()?;
-        let end = self.inner.end.eval(&session.resolved_symbols).to_usize()?;
+        let start = self.inner.start.eval(&turn.resolved_symbols).to_usize()?;
+        let end = self.inner.end.eval(&turn.resolved_symbols).to_usize()?;
         let axis = self.inner.axis;
 
         let input_shape = input.shape();
@@ -62,12 +62,8 @@ impl EvalOp for GpuSlice {
 
         let offset = (start * input_strides[axis] as usize) * input_dt.size_of();
 
-        let output = crate::session_handler::make_tensor_for_node(
-            session,
-            node_id,
-            input.datum_type(),
-            &o_shape,
-        )?;
+        let output =
+            crate::turn_handler::make_tensor_for_node(turn, node_id, input.datum_type(), &o_shape)?;
 
         if o_shape[axis] != 0 {
             // Slice uses same strides as input (broadcast strides with matching shapes)

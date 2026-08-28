@@ -134,7 +134,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + OpStateFreeze + Downcast +
 
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>>;
@@ -149,17 +149,17 @@ pub trait EvalOp {
     }
 
     #[allow(unused_variables)]
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.eval(inputs).context("Running legacy eval")
     }
 
     #[allow(unused_variables)]
-    fn state(&self, session: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
 

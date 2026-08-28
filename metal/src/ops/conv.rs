@@ -61,17 +61,17 @@ impl EvalOp for MetalConv {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let inputs =
             inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let output_shape = self.op.pool_spec.output_shape(inputs[0].shape())?;
-        let output = tract_gpu::session_handler::make_tensor_for_node(
-            session,
+        let output = tract_gpu::turn_handler::make_tensor_for_node(
+            turn,
             node_id,
             inputs[0].datum_type(),
             &output_shape.shape,

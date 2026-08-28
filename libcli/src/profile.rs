@@ -290,25 +290,17 @@ pub fn rec_profiler_gpu(
     prefix: &[(usize, String)],
     before_node: &dyn Fn(usize),
 ) -> TractResult<TVec<TValue>> {
-    let r = state.run_plan_with_eval(
-        inputs.clone(),
-        |session_state, mut node_state, node, input| {
-            before_node(node.id);
-            // Profile node
-            let start = crate::time::now();
-            let res = tract_core::plan::eval(
-                session_state,
-                node_state.as_deref_mut(),
-                node,
-                input.clone(),
-            );
-            let elapsed = start.elapsed();
-            let node_id = NodeQId(prefix.into(), node.id);
-            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+    let r = state.run_plan_with_eval(inputs.clone(), |turn, mut node_state, node, input| {
+        before_node(node.id);
+        // Profile node
+        let start = crate::time::now();
+        let res = tract_core::plan::eval(turn, node_state.as_deref_mut(), node, input.clone());
+        let elapsed = start.elapsed();
+        let node_id = NodeQId(prefix.into(), node.id);
+        *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
 
-            res
-        },
-    )?;
+        res
+    })?;
 
     Ok(r)
 }
@@ -324,56 +316,50 @@ pub fn rec_profiler(
     time_accounted_by_inner_nodes: &mut Duration,
     folded: bool,
 ) -> TractResult<TVec<TValue>> {
-    let r = state.run_plan_with_eval(
-        inputs.clone(),
-        |session_state, mut node_state, node, input| {
-            // Keep a copy of the inputs only when a nested submodel will need them
-            // for recursive profiling. Otherwise move them straight into eval: an
-            // extra clone here holds a second Arc ref to each input and forces
-            // in-place ops (reshape, by-scalar/unicast bias add, ...) down their
-            // copy-on-shared path, inflating their measured time versus production.
-            let saved_input = (!folded && node_state.is_some()).then(|| input.clone());
-            // Profile node
+    let r = state.run_plan_with_eval(inputs.clone(), |turn, mut node_state, node, input| {
+        // Keep a copy of the inputs only when a nested submodel will need them
+        // for recursive profiling. Otherwise move them straight into eval: an
+        // extra clone here holds a second Arc ref to each input and forces
+        // in-place ops (reshape, by-scalar/unicast bias add, ...) down their
+        // copy-on-shared path, inflating their measured time versus production.
+        let saved_input = (!folded && node_state.is_some()).then(|| input.clone());
+        // Profile node
+        let start = crate::time::now();
+        let res = tract_core::plan::eval(turn, node_state.as_deref_mut(), node, input);
+        let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
+        let node_id = NodeQId(prefix.into(), node.id);
+        *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+
+        if let Some(saved_input) = saved_input {
             let start = crate::time::now();
-            let res = tract_core::plan::eval(session_state, node_state.as_deref_mut(), node, input);
-            let elapsed = start.elapsed().mul_f32(multiplier.unwrap_or(1) as _);
-            let node_id = NodeQId(prefix.into(), node.id);
-            *dg.node_mut(node_id).profile.get_or_insert(Duration::default()) += elapsed;
+            profile_submodel(
+                node,
+                node_state,
+                saved_input,
+                dg,
+                profilers,
+                prefix,
+                time_accounted_by_inner_nodes,
+            )?;
+            *time_accounted_by_inner_nodes += start.elapsed();
+        }
 
-            if let Some(saved_input) = saved_input {
-                let start = crate::time::now();
-                profile_submodel(
-                    node,
-                    node_state,
-                    saved_input,
-                    dg,
-                    profilers,
-                    prefix,
-                    time_accounted_by_inner_nodes,
-                )?;
-                *time_accounted_by_inner_nodes += start.elapsed();
-            }
-
-            // Update parent nodes if any (childs timings are deducted from parents)
-            let prefix_vec = prefix.to_vec();
-            if !prefix_vec.is_empty() {
-                (1..prefix_vec.len() + 1).map(|idx| prefix_vec[..idx].to_vec()).for_each(
-                    |parent_path| {
-                        let parent_node = parent_path.last().map(|it| it.0).unwrap();
-                        let parent = dg
-                            .node_mut(NodeQId(
-                                parent_path[..parent_path.len() - 1].into(),
-                                parent_node,
-                            ))
-                            .profile
-                            .get_or_insert(Duration::default());
-                        *parent -= elapsed.min(*parent);
-                    },
-                );
-            }
-            res
-        },
-    )?;
+        // Update parent nodes if any (childs timings are deducted from parents)
+        let prefix_vec = prefix.to_vec();
+        if !prefix_vec.is_empty() {
+            (1..prefix_vec.len() + 1).map(|idx| prefix_vec[..idx].to_vec()).for_each(
+                |parent_path| {
+                    let parent_node = parent_path.last().map(|it| it.0).unwrap();
+                    let parent = dg
+                        .node_mut(NodeQId(parent_path[..parent_path.len() - 1].into(), parent_node))
+                        .profile
+                        .get_or_insert(Duration::default());
+                    *parent -= elapsed.min(*parent);
+                },
+            );
+        }
+        res
+    })?;
     Ok(r)
 }
 

@@ -59,11 +59,7 @@ impl EvalOp for OptScan {
         false
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(State {
             position: 0,
             hidden_state: tvec!(),
@@ -190,7 +186,7 @@ impl State {
 impl OpState for State {
     fn eval(
         &mut self,
-        session: &mut TurnState,
+        turn: &mut TurnState,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -222,7 +218,7 @@ impl OpState for State {
             if let Some((slot, info)) = output.scan {
                 let fact = op.plan.model().output_fact(ix)?;
                 let mut shape: TVec<usize> =
-                    fact.shape.eval_to_usize(&session.resolved_symbols)?.into_owned();
+                    fact.shape.eval_to_usize(&turn.resolved_symbols)?.into_owned();
                 let scanning_dim = output
                     .full_dim_hint
                     .as_ref()

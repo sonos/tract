@@ -1,5 +1,5 @@
-use crate::session_handler::make_tensor_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
+use crate::turn_handler::make_tensor_for_node;
 use tract_core::internal::*;
 
 pub type DispatchCausalConv1dUpdateFn = fn(
@@ -40,17 +40,17 @@ impl EvalOp for GpuCausalConv1dUpdate {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input, weight, state) = args_3!(inputs);
         let input = input.to_device_tensor()?;
         let weight = weight.to_device_tensor()?;
         let state = state.to_device_tensor()?;
-        let output = make_tensor_for_node(session, node_id, DatumType::F16, input.shape())?;
+        let output = make_tensor_for_node(turn, node_id, DatumType::F16, input.shape())?;
         let final_state = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
         (self.dispatch)(input, weight, state, &output, &final_state)?;
         Ok(tvec![output.into_tensor().into_tvalue(), final_state.into_tensor().into_tvalue()])

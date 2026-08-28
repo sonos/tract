@@ -100,7 +100,7 @@ pub trait BinMiniOp:
     #[allow(unused_variables)]
     fn eval_symbolic(
         &self,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<Option<TVec<TValue>>> {
         Ok(None)
@@ -142,13 +142,13 @@ impl EvalOp for TypedBinOp {
         true
     }
 
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         _node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        if let Some(result) = self.0.eval_symbolic(session, inputs.clone())? {
+        if let Some(result) = self.0.eval_symbolic(turn, inputs.clone())? {
             return Ok(result);
         }
         let (a, b) = args_2!(inputs);

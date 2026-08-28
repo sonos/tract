@@ -1,7 +1,7 @@
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
-use tract_gpu::session_handler::make_scalar_exotic_tensor_for_node;
 use tract_gpu::tensor::DeviceTensorExt;
+use tract_gpu::turn_handler::make_scalar_exotic_tensor_for_node;
 
 use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
 
@@ -63,20 +63,20 @@ impl Op for CudaGgmlQuantQ81 {
 }
 
 impl EvalOp for CudaGgmlQuantQ81 {
-    fn eval_with_session(
+    fn eval_with_turn(
         &self,
         node_id: usize,
-        session: &TurnState,
+        turn: &TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         crate::with_cuda_stream(|stream| {
             let input_value = args_1!(inputs);
             let input = input_value.to_device_tensor()?;
 
-            let resolved_io_facts = self.io_facts.eval(&session.resolved_symbols)?;
+            let resolved_io_facts = self.io_facts.eval(&turn.resolved_symbols)?;
 
             let output = make_scalar_exotic_tensor_for_node(
-                session,
+                turn,
                 node_id,
                 input.datum_type(),
                 Box::new(resolved_io_facts),
