@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-use std::cell::RefCell;
 use std::fmt::{Debug, Display};
 
 use multithread::Executor;
@@ -14,9 +13,13 @@ use self::order::{build_flush_list, eval_order_for_nodes, eval_order_opt_ram_for
 pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
-    pub cached_mmm_scratch_space: RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>>,
-    pub scratch_extensions: anymap3::Map<dyn std::any::Any + Send>,
     pub values: Vec<Option<TVec<TValue>>>,
+    /// Op scratch, keyed by the stored type, one entry per kind of scratch. Ops
+    /// define their own key types; nothing here carries meaning the model
+    /// depends on. Entries outlive the turn -- `reset_turn` does not touch them,
+    /// so a cache built here is reused turn after turn unless a
+    /// [`TurnStateHandler`] drops it in `after_plan_eval`.
+    pub scratch: anymap3::Map<dyn std::any::Any + Send>,
 }
 
 impl Default for TurnState {
@@ -24,9 +27,8 @@ impl Default for TurnState {
         TurnState {
             resolved_symbols: SymbolValues::default(),
             scenario: None,
-            cached_mmm_scratch_space: None.into(),
-            scratch_extensions: anymap3::Map::new(),
             values: vec![],
+            scratch: anymap3::Map::new(),
         }
     }
 }
@@ -36,9 +38,8 @@ impl Clone for TurnState {
         TurnState {
             resolved_symbols: self.resolved_symbols.clone(),
             scenario: self.scenario,
-            cached_mmm_scratch_space: None.into(),
-            scratch_extensions: anymap3::Map::new(),
             values: vec![],
+            scratch: anymap3::Map::new(),
         }
     }
 }

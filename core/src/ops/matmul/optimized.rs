@@ -423,7 +423,12 @@ impl Op for OptMatMul {
 /// micro-op's `Store` [`OutputStore`] layout (strides fixed for the output
 /// shape), so only the base pointer is refreshed per call. Constant operands
 /// are baked into the op at `fuse()`, so they need no per-call state here. Pure
-/// memoization: dropped on freeze and rebuilt lazily on next eval.
+/// memoization: built lazily on first eval and reused for this node.
+/// Key for the reusable mmm scratch buffer in [`TurnState::scratch`]. Shared by
+/// every `OptMatMul` in the plan: only one op evaluates at a time, and the buffer
+/// is reallocated whenever the picked kernel cannot use the one already there.
+struct MmmScratch(Box<dyn tract_linalg::mmm::ScratchSpace>);
+
 #[derive(Clone, Debug, Default)]
 pub struct OptMatMulState {
     trivial_stores: Option<TVec<Option<OutputStore>>>,
@@ -454,7 +459,7 @@ impl OpState for OptMatMulState {
 impl OptMatMul {
     fn eval_with_state(
         &self,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
         state: &mut OptMatMulState,
     ) -> TractResult<TVec<TValue>> {
@@ -465,11 +470,14 @@ impl OptMatMul {
             let n = self.c_n_axis.map(|c_n| c.shape()[c_n]).unwrap_or(1);
             let mode = self.mode_picker.pick(n)?;
             let mmm = &*self.mmm[mode];
-            let mut cell = turn.cached_mmm_scratch_space.borrow_mut();
-            if !cell.as_ref().is_some_and(|scratch| mmm.can_use_scratch_space(&**scratch)) {
-                *cell = None
+            let slot = turn
+                .scratch
+                .entry::<MmmScratch>()
+                .or_insert_with(|| MmmScratch(mmm.allocate_scratch_space()));
+            if !mmm.can_use_scratch_space(&*slot.0) {
+                *slot = MmmScratch(mmm.allocate_scratch_space());
             }
-            let scratch = cell.get_or_insert_with(|| mmm.allocate_scratch_space());
+            let scratch = &mut slot.0;
             if self.trivial_path {
                 let stores = state.trivial_stores.get_or_insert_with(|| {
                     self.micro_ops

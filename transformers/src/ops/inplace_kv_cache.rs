@@ -211,9 +211,9 @@ impl OpState for InPlaceKvSdpaState {
     }
 
     /// Persist the accumulated cache as two state tensors `[K_valid, V_valid]`, so a
-    /// decode can be checkpointed and resumed (alongside `freeze`/`unfreeze`, which
-    /// snapshot the whole running state in-process). The valid `[0..len]` regions are
-    /// copied out once here — O(len), not per step.
+    /// decode can be checkpointed and resumed out of process, where cloning the
+    /// state only snapshots it in-process. The valid `[0..len]` regions are copied
+    /// out once here — O(len), not per step.
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
         if !self.k.is_empty() {
             states.push(self.k.valid_contiguous()?.into_tvalue());
@@ -855,7 +855,7 @@ mod tests {
             .collect()
     }
 
-    // Resume #1: snapshot the running state mid-decode via freeze/unfreeze, then keep
+    // Resume #1: snapshot the running state mid-decode by cloning it, then keep
     // going — bit-identical to a straight run.
     #[test]
     fn resume_via_clone() -> TractResult<()> {
