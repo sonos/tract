@@ -57,33 +57,3 @@ impl TypedOp for Identity {
 
     as_op!();
 }
-
-#[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
-pub struct PinConst;
-
-impl Op for PinConst {
-    fn name(&self) -> StaticName {
-        "PinConst".into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for PinConst {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
-
-    /// Evaluates the operation given the input tensors.
-    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        Ok(inputs)
-    }
-}
-
-impl TypedOp for PinConst {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].without_value()))
-    }
-
-    as_op!();
-}

@@ -16,8 +16,6 @@ pub fn tract_nnef() -> Registry {
         registry.register_primitive(id, &decl.parameters, &decl.results, func);
     };
 
-    registry.register_dumper(pin_const);
-
     primitive(&mut registry, "external", deser::external);
     registry.register_dumper(ser::source);
     primitive(&mut registry, "variable", deser::variable);
@@ -146,12 +144,4 @@ pub fn tract_nnef() -> Registry {
         }
     }
     registry
-}
-
-pub fn pin_const(
-    ast: &mut IntoAst,
-    node: &TypedNode,
-    _op: &ops::identity::PinConst,
-) -> TractResult<Option<Arc<RValue>>> {
-    Ok(Some(ast.mapping[&node.inputs[0]].clone()))
 }
