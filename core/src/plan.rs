@@ -6,7 +6,6 @@ use multithread::Executor;
 
 use crate::internal::*;
 use crate::model::{Fact, Graph, OutletId};
-use crate::ops::FrozenOpState;
 use crate::ops::konst::Const;
 use crate::runtime::RunOptions;
 
@@ -679,52 +678,6 @@ where
     pub fn model(&self) -> &Graph<F, O> {
         &self.plan.model
     }
-
-    pub fn freeze(&self) -> FrozenSimpleState<F, O> {
-        FrozenSimpleState {
-            plan: self.plan.clone(),
-            resolved_symbols: self.turn_state.resolved_symbols.clone(),
-            scenario: self.turn_state.scenario,
-            states: self.op_states.iter().map(|s| s.as_ref().map(|s| s.freeze())).collect(),
-            values: self
-                .turn_state
-                .values
-                .iter()
-                .enumerate()
-                .map(|(ix, t)| {
-                    if self.model().nodes[ix].op_is::<Const>() {
-                        t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tensor()).collect())
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-        }
-    }
-
-    pub fn freeze_into(self) -> FrozenSimpleState<F, O> {
-        let plan = self.plan;
-        let model = &plan.model;
-        FrozenSimpleState {
-            resolved_symbols: self.turn_state.resolved_symbols,
-            scenario: self.turn_state.scenario,
-            states: self.op_states.into_iter().map(|s| s.map(|s| s.freeze_into())).collect(),
-            values: self
-                .turn_state
-                .values
-                .into_iter()
-                .enumerate()
-                .map(|(ix, t)| {
-                    if model.nodes[ix].op_is::<Const>() {
-                        t.map(|t| t.into_iter().map(|t| t.into_tensor()).collect())
-                    } else {
-                        None
-                    }
-                })
-                .collect(),
-            plan,
-        }
-    }
 }
 
 pub fn eval<F, O>(
@@ -742,49 +695,6 @@ where
         None => node.op().eval_with_turn(node.id, turn, input),
     }
     .with_context(|| format!("Evaluating {node}"))
-}
-
-#[derive(Clone, Debug)]
-pub struct FrozenSimpleState<F, O>
-where
-    F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-{
-    plan: Arc<SimplePlan<F, O>>,
-    pub resolved_symbols: SymbolValues,
-    pub scenario: Option<usize>,
-    pub states: Vec<Option<Box<dyn FrozenOpState>>>,
-    pub values: Vec<Option<TVec<Tensor>>>,
-}
-
-impl<F, O> FrozenSimpleState<F, O>
-where
-    F: Fact + Clone + 'static,
-    O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
-{
-    pub fn plan(&self) -> &Arc<SimplePlan<F, O>> {
-        &self.plan
-    }
-
-    pub fn unfreeze(&self) -> SimpleState<F, O> {
-        SimpleState {
-            plan: self.plan.clone(),
-            turn_state: TurnState {
-                resolved_symbols: self.resolved_symbols.clone(),
-                scenario: self.scenario,
-                cached_mmm_scratch_space: None.into(),
-                scratch_extensions: anymap3::Map::new(),
-                values: self
-                    .values
-                    .iter()
-                    .map(|t| {
-                        t.as_ref().map(|t| t.iter().map(|t| t.clone().into_tvalue()).collect())
-                    })
-                    .collect(),
-            },
-            op_states: self.states.iter().map(|s| s.as_ref().map(|s| s.unfreeze())).collect(),
-        }
-    }
 }
 
 #[cfg(test)]
@@ -811,11 +721,6 @@ mod test {
     #[test]
     fn type_plan_is_sync() {
         is_sync::<TypedSimplePlan>();
-    }
-
-    #[test]
-    fn frozen_type_state_is_send() {
-        is_send::<TypedFrozenSimpleState>();
     }
 
     #[test]

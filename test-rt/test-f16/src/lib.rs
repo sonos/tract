@@ -100,10 +100,6 @@ mod run_as_f16 {
         fn runnable(&self) -> &dyn Runnable {
             self.0.runnable()
         }
-
-        fn freeze(&self) -> Box<dyn FrozenState> {
-            Box::new(self.0.freeze())
-        }
     }
 
     fn runtime() -> &'static RunAsF16 {

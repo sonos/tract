@@ -1,7 +1,6 @@
 use derive_new::new;
 use tract_core::internal::tract_smallvec::ToSmallVec;
 use tract_core::internal::*;
-use tract_core::ops::OpStateFreeze;
 use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
 
@@ -104,27 +103,6 @@ impl OpState for CudaFusedAxisOpState {
         let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, turn)?;
         // Runner inner op
         self.op_state.eval(turn, fused_axis_op.op.as_op(), inputs)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct FrozenCudaFusedAxisOpState {
-    pub op_state: Box<dyn FrozenOpState>,
-}
-
-impl OpStateFreeze for CudaFusedAxisOpState {
-    fn freeze(&self) -> Box<dyn FrozenOpState + 'static> {
-        Box::new(FrozenCudaFusedAxisOpState { op_state: self.op_state.freeze() })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenCudaFusedAxisOpState { op_state: self.op_state.freeze_into() })
-    }
-}
-
-impl FrozenOpState for FrozenCudaFusedAxisOpState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(CudaFusedAxisOpState { op_state: self.op_state.unfreeze() })
     }
 }
 

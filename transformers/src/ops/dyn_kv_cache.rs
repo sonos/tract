@@ -3,7 +3,6 @@ use std::str::FromStr;
 use tract_nnef::internal::*;
 use tract_nnef::prelude::tract_itertools::Itertools;
 use tract_nnef::ser::{datum_type, tdims};
-use tract_nnef::tract_core::ops::OpStateFreeze;
 use tract_nnef::tract_core::ops::array::TypedConcat;
 use tract_nnef::tract_core::ops::source::TypedSource;
 
@@ -232,45 +231,6 @@ impl TypedOp for DynKeyValueCache {
     }
 
     as_op!();
-}
-
-#[derive(Debug, Clone)]
-pub struct FrozenDynKeyValueCacheState {
-    name: String,
-    axis: usize,
-    past_sequence_fact: TypedFact,
-    kv_cache: Option<Tensor>,
-}
-
-impl OpStateFreeze for DynKeyValueCacheState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDynKeyValueCacheState {
-            name: self.name.clone(),
-            axis: self.axis,
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tensor()),
-        })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenDynKeyValueCacheState {
-            name: self.name,
-            axis: self.axis,
-            past_sequence_fact: self.past_sequence_fact,
-            kv_cache: self.kv_cache.map(|t| t.into_tensor()),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenDynKeyValueCacheState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(DynKeyValueCacheState {
-            axis: self.axis,
-            name: self.name.clone(),
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            kv_cache: self.kv_cache.clone().map(|t| t.into_tvalue()),
-        })
-    }
 }
 
 /// Reverse of `replace_kv_cache`: replaces a DynKeyValueCache node with Source + Concat,

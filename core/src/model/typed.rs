@@ -3,7 +3,7 @@ use crate::model::*;
 use crate::ops;
 use crate::ops::konst::Const;
 use crate::optim::OptimizerSession;
-use crate::plan::{FrozenSimpleState, SimplePlan, SimpleState};
+use crate::plan::{SimplePlan, SimpleState};
 use crate::transform::ModelTransform;
 use tract_data::TooEarly;
 use tract_num_traits::Zero;
@@ -20,9 +20,6 @@ pub type TypedSimplePlan = SimplePlan<TypedFact, Box<dyn TypedOp>>;
 pub type TypedRunnableModel = RunnableModel<TypedFact, Box<dyn TypedOp>>;
 /// An execution state for TypedModel.
 pub type TypedSimpleState = SimpleState<TypedFact, Box<dyn TypedOp>>;
-/// An execution state for TypedModel, frozen (and Send).
-pub type TypedFrozenSimpleState = FrozenSimpleState<TypedFact, Box<dyn TypedOp>>;
-
 /// A runnable model with fixed inputs and outputs.
 pub type RunnableModel<F, O> = SimplePlan<F, O>;
 

@@ -17,7 +17,6 @@ use tract_nnef::ser::{datum_type, tdims};
 use tract_nnef::tract_core::ops::array::MultiBroadcastTo;
 use tract_nnef::tract_core::ops::cast::Cast;
 use tract_nnef::tract_core::ops::change_axes::AxisOp;
-use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
 use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::{Array2, Ix4, s};
 
@@ -487,51 +486,6 @@ impl OpState for QuantizedDynKvCacheState {
         let f32in = input.cast_to::<f32>()?;
         self.ingest(&f32in)?;
         Ok(tvec!(self.dequantized()?.cast_to_dt(input_dt)?.into_owned().into_tvalue()))
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FrozenQuantizedDynKvCacheState {
-    name: String,
-    axis: usize,
-    bits: u32,
-    per_channel: bool,
-    past_sequence_fact: TypedFact,
-    caches: Vec<HeadCache>,
-    lead_shape: TVec<usize>,
-    d: usize,
-    len: usize,
-}
-
-impl OpStateFreeze for QuantizedDynKvCacheState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenQuantizedDynKvCacheState {
-            name: self.name.clone(),
-            axis: self.axis,
-            bits: self.bits,
-            per_channel: self.per_channel,
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            caches: self.caches.clone(),
-            lead_shape: self.lead_shape.clone(),
-            d: self.d,
-            len: self.len,
-        })
-    }
-}
-
-impl FrozenOpState for FrozenQuantizedDynKvCacheState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(QuantizedDynKvCacheState {
-            name: self.name.clone(),
-            axis: self.axis,
-            bits: self.bits,
-            per_channel: self.per_channel,
-            past_sequence_fact: self.past_sequence_fact.clone(),
-            caches: self.caches.clone(),
-            lead_shape: self.lead_shape.clone(),
-            d: self.d,
-            len: self.len,
-        })
     }
 }
 

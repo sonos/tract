@@ -84,22 +84,9 @@ pub trait State: Any + Downcast + Debug + Send + DynClone + 'static {
     fn output_count(&self) -> usize {
         self.runnable().output_count()
     }
-
-    fn freeze(&self) -> Box<dyn FrozenState>;
-    /// Consuming freeze: moves data instead of cloning.
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenState> {
-        self.freeze()
-    }
 }
 impl_downcast!(State);
 dyn_clone::clone_trait_object!(State);
-
-pub trait FrozenState: Any + Debug + DynClone + Send {
-    fn unfreeze(&self) -> Box<dyn State>;
-    fn input_count(&self) -> usize;
-    fn output_count(&self) -> usize;
-}
-dyn_clone::clone_trait_object!(FrozenState);
 
 #[derive(Debug)]
 pub struct DefaultRuntime;
@@ -159,28 +146,6 @@ impl State for TypedSimpleState {
 
     fn runnable(&self) -> &dyn Runnable {
         &self.plan
-    }
-
-    fn freeze(&self) -> Box<dyn FrozenState> {
-        Box::new(TypedSimpleState::freeze(self))
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenState> {
-        Box::new(TypedSimpleState::freeze_into(*self))
-    }
-}
-
-impl FrozenState for TypedFrozenSimpleState {
-    fn unfreeze(&self) -> Box<dyn State> {
-        Box::new(TypedFrozenSimpleState::unfreeze(self))
-    }
-
-    fn input_count(&self) -> usize {
-        self.plan().model().input_outlets().unwrap().len()
-    }
-
-    fn output_count(&self) -> usize {
-        self.plan().model().output_outlets().unwrap().len()
     }
 }
 

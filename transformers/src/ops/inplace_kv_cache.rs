@@ -15,7 +15,6 @@
 //! kernel (reading buffer + length) would use.
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::{FrozenOpState, OpStateFreeze};
 use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::Ix4;
 
@@ -238,39 +237,6 @@ impl OpState for InPlaceKvSdpaState {
             self.v.push(v.cast_to::<f32>()?.as_ref())?;
         }
         Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FrozenInPlaceKvSdpaState {
-    axis: usize,
-    causal: bool,
-    scale: Option<f32>,
-    k: InPlaceKvCache,
-    v: InPlaceKvCache,
-}
-
-impl OpStateFreeze for InPlaceKvSdpaState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenInPlaceKvSdpaState {
-            axis: self.axis,
-            causal: self.causal,
-            scale: self.scale,
-            k: self.k.clone(),
-            v: self.v.clone(),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenInPlaceKvSdpaState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(InPlaceKvSdpaState {
-            axis: self.axis,
-            causal: self.causal,
-            scale: self.scale,
-            k: self.k.clone(),
-            v: self.v.clone(),
-        })
     }
 }
 
@@ -892,7 +858,7 @@ mod tests {
     // Resume #1: snapshot the running state mid-decode via freeze/unfreeze, then keep
     // going — bit-identical to a straight run.
     #[test]
-    fn resume_via_freeze_unfreeze() -> TractResult<()> {
+    fn resume_via_clone() -> TractResult<()> {
         let op = InPlaceKvSdpa { axis: 2, causal: true, scale: None };
         let mut turn = TurnState::default();
         let mut straight = op.state(&turn, 0)?.unwrap();
@@ -901,12 +867,11 @@ mod tests {
             let ins = tvec![q.into(), k.into(), v.into()];
             let os = straight.eval(&mut turn, &op, ins.clone())?.remove(0).into_tensor();
             if t == 5 {
-                let frozen = split.freeze();
-                split = frozen.unfreeze();
+                split = split.clone();
             }
             let op2 = split.eval(&mut turn, &op, ins)?.remove(0).into_tensor();
             os.close_enough(&op2, Approximation::Exact)
-                .with_context(|| format!("freeze/unfreeze resume mismatch at step {t}"))?;
+                .with_context(|| format!("clone resume mismatch at step {t}"))?;
         }
         Ok(())
     }

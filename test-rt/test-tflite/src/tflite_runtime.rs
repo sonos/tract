@@ -128,10 +128,6 @@ impl State for TfliteState {
     fn runnable(&self) -> &dyn Runnable {
         todo!()
     }
-
-    fn freeze(&self) -> Box<dyn FrozenState> {
-        todo!()
-    }
 }
 
 fn runtime() -> &'static TfliteRuntime {

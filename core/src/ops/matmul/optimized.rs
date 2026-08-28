@@ -3,7 +3,6 @@ use crate::ops::cast::{Cast, cast};
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::nn::LeakyRelu;
-use crate::ops::{FrozenOpState, OpStateFreeze};
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -449,21 +448,6 @@ impl OpState for OptMatMulState {
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<OptMatMul>().context("OptMatMulState on non-OptMatMul op")?;
         op.eval_with_state(turn, inputs, self)
-    }
-}
-
-#[derive(Clone, Debug)]
-struct FrozenOptMatMulState;
-
-impl FrozenOpState for FrozenOptMatMulState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::<OptMatMulState>::default()
-    }
-}
-
-impl OpStateFreeze for OptMatMulState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenOptMatMulState)
     }
 }
 

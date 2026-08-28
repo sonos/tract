@@ -2,7 +2,6 @@ use tract_core::ndarray::*;
 use tract_core::ops::array::PadMode;
 use tract_nnef::internal::*;
 use tract_nnef::ser::tdim;
-use tract_nnef::tract_core::ops::OpStateFreeze;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -283,39 +282,4 @@ impl TypedOp for PulsePad {
     }
 
     as_op!();
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
-struct FrozenPulsePadOpState {
-    current_pos: usize,
-    last_valid_frame: Option<Arc<Tensor>>,
-    limits: Option<PadLimits>,
-}
-
-impl OpStateFreeze for PulsePadOpState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenPulsePadOpState {
-            current_pos: self.current_pos,
-            last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_arc_tensor()),
-            limits: self.limits.clone(),
-        })
-    }
-
-    fn freeze_into(self: Box<Self>) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenPulsePadOpState {
-            current_pos: self.current_pos,
-            last_valid_frame: self.last_valid_frame.map(|t| t.into_arc_tensor()),
-            limits: self.limits.clone(),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenPulsePadOpState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(PulsePadOpState {
-            current_pos: self.current_pos,
-            last_valid_frame: self.last_valid_frame.as_ref().map(|t| t.clone().into_tensor()),
-            limits: self.limits.clone(),
-        })
-    }
 }

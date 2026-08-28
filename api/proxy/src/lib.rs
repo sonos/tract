@@ -523,7 +523,7 @@ impl Clone for State {
     }
 }
 
-// Safety: the underlying FrozenState is Send
+// Safety: the handle exclusively owns a `tract::State`, which is Send.
 unsafe impl Send for State {}
 
 impl StateInterface for State {

@@ -87,4 +87,3 @@ impl OpState for Load {
     }
 }
 
-trivial_op_state_freeze!(Load);
