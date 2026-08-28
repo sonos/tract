@@ -9,6 +9,8 @@ pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
+    relu: bool,
+    scale: bool,
 }
 
 impl Op for DepthWise {
@@ -17,7 +19,7 @@ impl Op for DepthWise {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.patch)])
+        Ok(vec![format!("relu={} scale={} {:?}", self.relu, self.scale, self.patch)])
     }
 
     fn validation(&self) -> Validation {
@@ -58,7 +60,7 @@ impl DepthWise {
 
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        anyhow::ensure!(inputs.len() == 3);
+        anyhow::ensure!(inputs.len() == 3 || (self.scale && inputs.len() == 4));
         anyhow::ensure!(
             self.input_shape.c() == self.output_shape.c(),
             "DepthWiseConv must have same input and output channels"
@@ -83,20 +85,66 @@ impl TypedOp for DepthWise {
         )))
     }
 
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if model.outlet_fact(node.id.into())?.datum_type != f32::datum_type() {
+            return Ok(None);
+        }
+        if !self.relu && super::direct_spatial::successor_is_relu0(model, node)? {
+            return Ok(Some(TypedModelPatch::fuse_with_next(
+                model,
+                node,
+                Self { relu: true, ..self.clone() },
+            )?));
+        }
+        if !self.scale {
+            let c = *self.input_shape.c();
+            if let Some(other) = super::direct_spatial::successor_is_channel_mul(model, node, c)? {
+                let mut patch = TypedModelPatch::new("fuse channel scale into DepthWiseConv");
+                let mut taps = patch.taps(model, &node.inputs)?;
+                taps.push(patch.tap_model(model, other)?);
+                let succ = model.node(node.outputs[0].successors[0].node);
+                let out =
+                    patch.wire_node(&node.name, Self { scale: true, ..self.clone() }, &taps)?;
+                patch.shunt_outside(model, succ.id.into(), out[0])?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
     as_op!();
+}
+
+#[inline(always)]
+fn maybe_relu_generic<T: Copy + 'static>(v: T, relu: bool) -> T {
+    if relu && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+        let f = unsafe { *(&v as *const T as *const f32) };
+        let r = f.max(0.0);
+        return unsafe { std::ptr::read(&r as *const f32 as *const T) };
+    }
+    v
 }
 
 macro_rules! impl_eval {
     ($(#[$meta: meta])* $suffix: ident ) => {
         pastey::paste! {
             $(#[$meta])*
-            unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
+            unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar + 'static>(
                 dw: &DepthWise,
                 inputs: TVec<TValue>,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
             ) -> TractResult<TVec<TValue>> {
-                let (img, kernel, bias) = args_3!(inputs);
+                let img = &inputs[0];
+                let kernel = &inputs[1];
+                let bias = &inputs[2];
+                let scale_ptr: *const f32 = if dw.scale
+                    && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                {
+                    inputs[3].as_ptr::<f32>()?
+                } else {
+                    std::ptr::null()
+                };
                 let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
                 let iptr = img.as_ptr::<T>()?;
                 let optr = output.as_ptr_mut::<T>()?;
@@ -115,7 +163,7 @@ macro_rules! impl_eval {
                         for zone in &dw.patch.zones {
                             [<process_zone_ $suffix>](
                                 dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-                                add, mul,
+                                add, mul, scale_ptr,
                             )
                         }
                     }
@@ -138,6 +186,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
+                scale_ptr: *const f32,
                 ) { unsafe {
                 /*
                    if zone.values_offsets.len() == 2 {
@@ -151,25 +200,50 @@ macro_rules! impl_eval {
                    } else */
                 match zone.values_offsets.len() {
                     1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     2 => [<process_zone_n_ $suffix>]::<T, 2, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     3 => [<process_zone_n_ $suffix>]::<T, 3, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
-                    _ => zone.visit_output(&dw.patch, |visitor| {
-                        for c in 0..*dw.input_shape.c() as isize {
-                            let iptr = iptr.offset(c_stride_i * c);
-                            let optr = optr.offset(c_stride_o * c);
-                            let kptr = kptr.offset(k_stride_i * c);
-                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
+                    9 => [<process_zone_n_ $suffix>]::<T, 9, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
+                    ),
+                    25 => [<process_zone_n_ $suffix>]::<T, 25, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
+                    ),
+                    _ => {
+                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+                            process_zone_along_w_f32(
+                                dw,
+                                zone,
+                                c_stride_i,
+                                c_stride_o,
+                                k_stride_i,
+                                iptr as *const f32,
+                                kptr as *const f32,
+                                bias as *const f32,
+                                optr as *mut f32,
+                                scale_ptr,
+                            );
+                        } else {
+                            zone.visit_output(&dw.patch, |visitor| {
+                                for c in 0..*dw.input_shape.c() as isize {
+                                    let iptr = iptr.offset(c_stride_i * c);
+                                    let optr = optr.offset(c_stride_o * c);
+                                    let kptr = kptr.offset(k_stride_i * c);
+                                    [<inner_loop_ $suffix>]::<T>(
+                                        iptr, kptr, bias, optr, c, visitor, add, mul, dw.relu,
+                                    )
+                                }
+                            })
                         }
-                    }),
+                    }
                 }
             }}
 
@@ -188,6 +262,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
+                scale_ptr: *const f32,
                 ) { unsafe {
                 let mut visitor = ZoneScanner::new(zone, &dw.patch);
                 let mut ioffset = [0isize; N];
@@ -206,22 +281,29 @@ macro_rules! impl_eval {
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
-                        #[cfg(target_arch = "aarch64")]
                         if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
                             && visitor.inner_loop_output_stride == 1
                             && visitor.inner_loop_input_full_stride >= 1
                         {
-                            let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
+                            let k_f32 = &*(&k as *const [T; N] as *const [f32; N]);
                             let bias_f32 = *(&bias as *const T as *const f32);
-                            neon_depthwise_w_f32::<N>(
+                            super::along_w::conv_along_w_f32(
                                 iptr as *const f32,
                                 optr as *mut f32,
-                                &k_f32,
+                                k_f32,
                                 &ioffset,
                                 bias_f32,
                                 visitor.inner_loop_len,
                                 visitor.inner_loop_input_full_stride,
+                                dw.relu,
                             );
+                            if !scale_ptr.is_null() {
+                                let sc = *scale_ptr.offset(c);
+                                let op = optr as *mut f32;
+                                for i in 0..visitor.inner_loop_len {
+                                    *op.add(i) *= sc;
+                                }
+                            }
                             visitor.next_non_inner_axis();
                             continue;
                         }
@@ -254,7 +336,7 @@ macro_rules! impl_eval {
                                 for n in 0..N {
                                     sum = add(sum, ps[u][n]);
                                 }
-                                *optrs[u] = sum;
+                                *optrs[u] = maybe_relu_generic(sum, dw.relu);
                             }
                             i += UNROLL as isize;
                         }
@@ -273,7 +355,7 @@ macro_rules! impl_eval {
                             for n in 0..N {
                                 sum = add(sum, p[n]);
                             }
-                            *optr = sum;
+                            *optr = maybe_relu_generic(sum, dw.relu);
                             i += 1;
                         }
                         visitor.next_non_inner_axis()
@@ -293,6 +375,7 @@ macro_rules! impl_eval {
                 visitor: &ZoneScanner,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
+                relu: bool,
                 ) { unsafe {
                 let mut sum = *bias.offset(c);
                 let mut iter = visitor.valid_offsets_ker_in();
@@ -315,7 +398,7 @@ macro_rules! impl_eval {
                     }
                 }
                 let optr = optr.offset(visitor.output_offset);
-                *optr = sum;
+                *optr = maybe_relu_generic(sum, relu);
             }}
         }
     }
@@ -328,112 +411,76 @@ impl_eval! {
 aarch64fp16
 }
 
-/// Depthwise along an output-contiguous spatial axis (`output_stride == 1`).
-/// Vectorise over consecutive output points. Input may be contiguous (stride 1)
-/// or strided: DPDFNet 48 kHz encoder DW is NCHW `kw=3` with W-stride 2 or 3,
-/// which `vld2q`/`vld3q` de-interleave. Scalar `process_zone_n` stays for
-/// padded / non-unit output-stride zones. Does not touch `BlockedConv`.
-#[cfg(target_arch = "aarch64")]
-unsafe fn neon_depthwise_w_f32<const N: usize>(
+unsafe fn process_zone_along_w_f32(
+    dw: &DepthWise,
+    zone: &Zone,
+    c_stride_i: isize,
+    c_stride_o: isize,
+    k_stride_i: isize,
     iptr: *const f32,
+    kptr: *const f32,
+    bias: *const f32,
     optr: *mut f32,
-    k: &[f32; N],
-    ioffset: &[isize; N],
-    bias: f32,
-    len: usize,
-    in_stride: isize,
+    scale_ptr: *const f32,
 ) {
     unsafe {
-        use std::arch::aarch64::*;
-        let biasv = vdupq_n_f32(bias);
-        let mut i = 0usize;
-        if in_stride == 1 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).add(i);
-                    acc0 = vfmaq_f32(acc0, vld1q_f32(p), kn);
-                    acc1 = vfmaq_f32(acc1, vld1q_f32(p.add(4)), kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    acc = vfmaq_f32(acc, vld1q_f32(iptr.offset(ioffset[n]).add(i)), kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 2 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).offset(i as isize * 2);
-                    // vld2 de-interleaves even/odd; even lanes are stride-2 samples.
-                    let a = vld2q_f32(p);
-                    let b = vld2q_f32(p.add(8));
-                    acc0 = vfmaq_f32(acc0, a.0, kn);
-                    acc1 = vfmaq_f32(acc1, b.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let a = vld2q_f32(iptr.offset(ioffset[n]).offset(i as isize * 2));
-                    acc = vfmaq_f32(acc, a.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 3 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).offset(i as isize * 3);
-                    let a = vld3q_f32(p);
-                    let b = vld3q_f32(p.add(12));
-                    acc0 = vfmaq_f32(acc0, a.0, kn);
-                    acc1 = vfmaq_f32(acc1, b.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let a = vld3q_f32(iptr.offset(ioffset[n]).offset(i as isize * 3));
-                    acc = vfmaq_f32(acc, a.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
+        let n_taps = zone.values_offsets.len();
+        let mut ioffset = vec![0isize; n_taps];
+        let mut k = vec![0f32; n_taps];
+        for i in 0..n_taps {
+            ioffset[i] = zone.values_offsets[i].1;
         }
-        while i < len {
-            let mut sum = bias;
-            for n in 0..N {
-                sum += k[n] * *iptr.offset(ioffset[n]).offset(i as isize * in_stride);
+        let mut visitor = ZoneScanner::new(zone, &dw.patch);
+        for c in 0..*dw.input_shape.c() as isize {
+            visitor.reset();
+            let iptr_c = iptr.offset(c_stride_i * c);
+            let optr_c = optr.offset(c_stride_o * c);
+            let kptr_c = kptr.offset(k_stride_i * c);
+            for n in 0..n_taps {
+                k[n] = *kptr_c.add(zone.values_offsets[n].0);
             }
-            *optr.add(i) = sum;
-            i += 1;
+            let b = *bias.offset(c);
+            while !visitor.done {
+                let ip = iptr_c.offset(visitor.input_center_offset);
+                let op = optr_c.offset(visitor.output_offset);
+                if visitor.inner_loop_output_stride == 1
+                    && visitor.inner_loop_input_full_stride >= 1
+                {
+                    super::along_w::conv_along_w_f32(
+                        ip,
+                        op,
+                        &k,
+                        &ioffset,
+                        b,
+                        visitor.inner_loop_len,
+                        visitor.inner_loop_input_full_stride,
+                        dw.relu,
+                    );
+                    if !scale_ptr.is_null() {
+                        let sc = *scale_ptr.offset(c);
+                        for i in 0..visitor.inner_loop_len {
+                            *op.add(i) *= sc;
+                        }
+                    }
+                } else {
+                    for i in 0..visitor.inner_loop_len {
+                        let mut sum = b;
+                        let ipi = ip.offset(visitor.inner_loop_input_full_stride * i as isize);
+                        for n in 0..n_taps {
+                            sum += k[n] * *ipi.offset(ioffset[n]);
+                        }
+                        if dw.relu {
+                            sum = sum.max(0.0);
+                        }
+                        *op.offset(visitor.inner_loop_output_stride * i as isize) = sum;
+                    }
+                }
+                visitor.next_non_inner_axis();
+            }
         }
     }
 }
+
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
 /* partial alternative impl that may be relevant when simd gets better */
@@ -696,5 +743,10 @@ mod tests {
         run_dw(64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
         run_dw(64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
         run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 2));
+        // 2-D 3×3 / 5×5 (PP-OCR / MobileNet): interior zone is 9 or 25 taps.
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(4, 40, 40, 5, 5, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::Valid, (2, 2));
     }
 }

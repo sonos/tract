@@ -1,5 +1,6 @@
 mod act_f16;
 mod by_scalar;
+mod erf;
 mod gelu;
 mod gelu_fused;
 mod hardswish;
@@ -18,6 +19,7 @@ pub use act_f16::arm64simd_silu_f16_4n;
 pub use act_f16::arm64simd_silu_f16_lut_8n;
 pub use act_f16::arm64simd_tanh_f16_4n;
 pub use by_scalar::*;
+pub use erf::arm64simd_erf_f32_8n;
 pub use gelu::arm64simd_gelu_f32_4n;
 pub use gelu_fused::arm64simd_gelu_f32_4n_fused;
 pub use hardswish::arm64simd_hardswish_f32_8n;

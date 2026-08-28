@@ -147,6 +147,13 @@ impl OptMaxPool {
         geo: &ConcretePoolGeometry,
     ) -> TractResult<TVec<TValue>> {
         let input_dt = input.datum_type();
+
+        if self.with_index_outputs.is_none()
+            && let Some(values) = self.try_nchw_2d::<T>(input, geo)?
+        {
+            return Ok(tvec!(values.into_tvalue()));
+        }
+
         let input_plain = input.try_as_plain()?;
         let input: ArrayViewD<T> = input_plain.to_array_view()?;
         let input_ptr = input.as_ptr();
@@ -198,6 +205,218 @@ impl OptMaxPool {
             Ok(tvec!(values.into_tvalue()))
         }
     }
+
+    /// NCHW spatial loop (n, c, y, x) instead of `visit_output`'s inverted
+    /// (spatial, n, c). W is contiguous, so 2×2 stride-1 vectorises along x.
+    fn try_nchw_2d<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+        &self,
+        input: &Tensor,
+        geo: &ConcretePoolGeometry,
+    ) -> TractResult<Option<Tensor>> {
+        if self.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+            return Ok(None);
+        }
+        let patch = &geo.patch;
+        if patch.rank() != 2 || *geo.input_shape.w_stride() != 1 {
+            return Ok(None);
+        }
+        let mut values =
+            unsafe { Tensor::uninitialized_dt(input.datum_type(), &geo.output_shape.shape)? };
+        if T::datum_type() == f32::datum_type()
+            && patch.spec.kernel_shape[..] == [2, 2]
+            && patch.spec.dilations[..] == [1, 1]
+        {
+            unsafe {
+                maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
+            }
+            return Ok(Some(values));
+        }
+        unsafe {
+            maxpool_nchw_2d::<T>(input.as_ptr::<T>()?, values.as_ptr_mut::<T>()?, geo);
+        }
+        Ok(Some(values))
+    }
+}
+
+unsafe fn maxpool_nchw_2d<T: Copy + num_traits::Bounded + PartialOrd>(
+    iptr: *const T,
+    optr: *mut T,
+    geo: &ConcretePoolGeometry,
+) {
+    unsafe {
+        let ish = &geo.input_shape;
+        let osh = &geo.output_shape;
+        let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
+        let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
+        let (kh, kw) =
+            (geo.patch.spec.kernel_shape[0] as isize, geo.patch.spec.kernel_shape[1] as isize);
+        let sh = geo.patch.spec.strides[0] as isize;
+        let sw = geo.patch.spec.strides[1] as isize;
+        let dh = geo.patch.spec.dilations[0] as isize;
+        let dw = geo.patch.spec.dilations[1] as isize;
+        let pt = geo.patch.pad_before[0] as isize;
+        let pl = geo.patch.pad_before[1] as isize;
+        let ih_stride = *ish.h_stride() as isize;
+        let oh_stride = *osh.h_stride() as isize;
+        let n = *ish.n().unwrap_or(&1) as isize;
+        let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
+        let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
+        let c = *ish.c() as isize;
+        let ic_stride = *ish.c_stride() as isize;
+        let oc_stride = *osh.c_stride() as isize;
+        for nn in 0..n {
+            for cc in 0..c {
+                let in_base = nn * in_stride + cc * ic_stride;
+                let out_base = nn * on_stride + cc * oc_stride;
+                for oy in 0..oh {
+                    for ox in 0..ow {
+                        let mut m = T::min_value();
+                        for ky in 0..kh {
+                            let iy = oy as isize * sh + ky * dh - pt;
+                            if iy < 0 || iy >= h {
+                                continue;
+                            }
+                            let row = iptr.offset(in_base + iy * ih_stride);
+                            for kx in 0..kw {
+                                let ix = ox as isize * sw + kx * dw - pl;
+                                if ix < 0 || ix >= w {
+                                    continue;
+                                }
+                                let v = *row.offset(ix);
+                                if m < v {
+                                    m = v;
+                                }
+                            }
+                        }
+                        *optr.offset(out_base + oy as isize * oh_stride + ox as isize) = m;
+                    }
+                }
+            }
+        }
+    }
+}
+
+unsafe fn maxpool_2x2_f32(iptr: *const f32, optr: *mut f32, geo: &ConcretePoolGeometry) {
+    unsafe {
+        let ish = &geo.input_shape;
+        let osh = &geo.output_shape;
+        let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
+        let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
+        let sh = geo.patch.spec.strides[0] as isize;
+        let sw = geo.patch.spec.strides[1] as isize;
+        let pt = geo.patch.pad_before[0] as isize;
+        let pl = geo.patch.pad_before[1] as isize;
+        let ih_stride = *ish.h_stride() as isize;
+        let oh_stride = *osh.h_stride() as isize;
+        let n = *ish.n().unwrap_or(&1) as isize;
+        let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
+        let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
+        let c = *ish.c() as isize;
+        let ic_stride = *ish.c_stride() as isize;
+        let oc_stride = *osh.c_stride() as isize;
+        // Fully-valid 2×2 windows (both taps in-bounds). SameUpper 2×2 s=1
+        // keeps H/W and pads after, so the last row/col are partial.
+        let simd_s1 = sh == 1 && sw == 1;
+        let y0 = pt.max(0) as usize;
+        let y1 = ((h - 1 + pt).max(0) as usize).min(oh);
+        let x0 = pl.max(0) as usize;
+        let x1 = ((w - 1 + pl).max(0) as usize).min(ow);
+        for nn in 0..n {
+            for cc in 0..c {
+                let in_base = nn * in_stride + cc * ic_stride;
+                let out_base = nn * on_stride + cc * oc_stride;
+                if simd_s1 && y1 > y0 && x1 > x0 {
+                    maxpool_2x2_s1_valid_f32(
+                        iptr.offset(in_base + (y0 as isize - pt) * ih_stride + (x0 as isize - pl)),
+                        optr.offset(out_base + y0 as isize * oh_stride + x0 as isize),
+                        y1 - y0,
+                        x1 - x0,
+                        ih_stride,
+                        oh_stride,
+                    );
+                }
+                for oy in 0..oh {
+                    let interior_y = simd_s1 && oy >= y0 && oy < y1;
+                    for ox in 0..ow {
+                        if interior_y && ox >= x0 && ox < x1 {
+                            continue;
+                        }
+                        let mut m = f32::NEG_INFINITY;
+                        for ky in 0..2 {
+                            let iy = oy as isize * sh + ky - pt;
+                            if iy < 0 || iy >= h {
+                                continue;
+                            }
+                            let row = iptr.offset(in_base + iy * ih_stride);
+                            for kx in 0..2 {
+                                let ix = ox as isize * sw + kx - pl;
+                                if ix < 0 || ix >= w {
+                                    continue;
+                                }
+                                m = m.max(*row.offset(ix));
+                            }
+                        }
+                        *optr.offset(out_base + oy as isize * oh_stride + ox as isize) = m;
+                    }
+                }
+            }
+        }
+    }
+}
+
+unsafe fn maxpool_2x2_s1_valid_f32(
+    iptr: *const f32,
+    optr: *mut f32,
+    oh: usize,
+    ow: usize,
+    ih_stride: isize,
+    oh_stride: isize,
+) {
+    unsafe {
+        for oy in 0..oh {
+            let row0 = iptr.offset(oy as isize * ih_stride);
+            let row1 = iptr.offset((oy as isize + 1) * ih_stride);
+            let dst = optr.offset(oy as isize * oh_stride);
+            let mut ox = 0usize;
+            #[cfg(target_arch = "aarch64")]
+            {
+                use std::arch::aarch64::*;
+                while ox + 4 <= ow {
+                    let a = vld1q_f32(row0.add(ox));
+                    let b = vld1q_f32(row0.add(ox + 1));
+                    let c = vld1q_f32(row1.add(ox));
+                    let d = vld1q_f32(row1.add(ox + 1));
+                    vst1q_f32(dst.add(ox), vmaxq_f32(vmaxq_f32(a, b), vmaxq_f32(c, d)));
+                    ox += 4;
+                }
+            }
+            #[cfg(target_arch = "x86_64")]
+            {
+                if is_x86_feature_detected!("avx") {
+                    use std::arch::x86_64::*;
+                    while ox + 8 <= ow {
+                        let a = _mm256_loadu_ps(row0.add(ox));
+                        let b = _mm256_loadu_ps(row0.add(ox + 1));
+                        let c = _mm256_loadu_ps(row1.add(ox));
+                        let d = _mm256_loadu_ps(row1.add(ox + 1));
+                        _mm256_storeu_ps(
+                            dst.add(ox),
+                            _mm256_max_ps(_mm256_max_ps(a, b), _mm256_max_ps(c, d)),
+                        );
+                        ox += 8;
+                    }
+                }
+            }
+            while ox < ow {
+                let m = (*row0.add(ox))
+                    .max(*row0.add(ox + 1))
+                    .max(*row1.add(ox))
+                    .max(*row1.add(ox + 1));
+                *dst.add(ox) = m;
+                ox += 1;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -247,5 +466,95 @@ mod tests {
 
         let opt = optimized.into_runnable().unwrap().run(input).unwrap();
         assert_eq!(*opt[0], *plain[0]);
+    }
+
+    fn nchw_maxpool(
+        n: usize,
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        sh: usize,
+        sw: usize,
+        pad: PaddingSpec,
+    ) {
+        let mut model = TypedModel::default();
+        let source = model.add_source("data", f32::fact([n, c, h, w])).unwrap();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NCHW,
+            tvec![kh, kw],
+            pad.clone(),
+            None,
+            Some(tvec![sh, sw]),
+            c,
+            c,
+        );
+        let op = MaxPool { pool_spec, with_index_outputs: None };
+        let out = model.wire_node("pool", op, &[source]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let x: Vec<f32> = (0..n * c * h * w).map(|i| (i as f32 * 0.17).sin() * 3.0 - 0.5).collect();
+        let input = Tensor::from_shape(&[n, c, h, w], &x).unwrap().into_tvalue();
+        let optimized = model.into_optimized().unwrap();
+        assert!(optimized.nodes.iter().any(|node| node.op_as::<OptMaxPool>().is_some()));
+        let opt = optimized.into_runnable().unwrap().run(tvec!(input)).unwrap();
+        let got = opt[0].to_plain_array_view::<f32>().unwrap();
+        let oh = got.shape()[2];
+        let ow = got.shape()[3];
+        let (pt, pl) = match pad {
+            PaddingSpec::Valid => (0isize, 0isize),
+            PaddingSpec::SameUpper | PaddingSpec::SameLower => {
+                let ph = kh.saturating_sub(sh) as isize;
+                let pw = kw.saturating_sub(sw) as isize;
+                // SameUpper puts the extra pad after for even remainders; for
+                // 2×2 s=1 that is pad_before=0, pad_after=1.
+                if matches!(pad, PaddingSpec::SameUpper) {
+                    (ph / 2, pw / 2)
+                } else {
+                    ((ph + 1) / 2, (pw + 1) / 2)
+                }
+            }
+            PaddingSpec::Explicit(ref b, _) => {
+                (b.first().copied().unwrap_or(0) as isize, b.get(1).copied().unwrap_or(0) as isize)
+            }
+            _ => (0, 0),
+        };
+        let mut max_abs = 0f32;
+        for nn in 0..n {
+            for cc in 0..c {
+                for oy in 0..oh {
+                    for ox in 0..ow {
+                        let mut m = f32::NEG_INFINITY;
+                        for ky in 0..kh as isize {
+                            let iy = oy as isize * sh as isize + ky - pt;
+                            if iy < 0 || iy >= h as isize {
+                                continue;
+                            }
+                            for kx in 0..kw as isize {
+                                let ix = ox as isize * sw as isize + kx - pl;
+                                if ix < 0 || ix >= w as isize {
+                                    continue;
+                                }
+                                m = m.max(x[((nn * c + cc) * h + iy as usize) * w + ix as usize]);
+                            }
+                        }
+                        max_abs = max_abs.max((got[[nn, cc, oy, ox]] - m).abs());
+                    }
+                }
+            }
+        }
+        assert!(
+            max_abs < 1e-6,
+            "maxpool mismatch n={n} c={c} {h}x{w} k={kh}x{kw} s={sh}x{sw} pad={pad:?} max_abs={max_abs}"
+        );
+    }
+
+    #[test]
+    fn nchw_2x2_s1_matches_generic() {
+        nchw_maxpool(1, 3, 8, 8, 2, 2, 1, 1, PaddingSpec::Valid);
+        nchw_maxpool(1, 16, 17, 19, 2, 2, 1, 1, PaddingSpec::Valid);
+        nchw_maxpool(2, 4, 9, 9, 2, 2, 1, 1, PaddingSpec::SameUpper);
+        nchw_maxpool(1, 8, 16, 16, 2, 2, 2, 2, PaddingSpec::Valid);
+        nchw_maxpool(1, 4, 11, 13, 3, 3, 1, 1, PaddingSpec::Valid);
     }
 }

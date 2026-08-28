@@ -668,7 +668,77 @@ impl Conv {
             c_axis,
             self.output_channels(),
         )?[0];
-        let op = DepthWise::new(patch, input_shape, output_shape);
+        let op = DepthWise::new(patch, input_shape, output_shape, false, false);
+        Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
+    }
+
+    /// Small-`k` group-1 2-D NCHW conv (PP-OCR stem, first-layer 3×3): keep it
+    /// as a spatial conv along W instead of im2col GEMM. Matches ORT leaving
+    /// these as `Conv`/`FusedConv`. Depthwise is `wire_as_depth_wise`; large-k
+    /// 3×3 stays on im2col + AMX.
+    fn can_direct_spatial(&self, input_fact: &TypedFact) -> bool {
+        if self.q_params.is_some() {
+            return false;
+        }
+        if input_fact.datum_type != f32::datum_type() {
+            return false;
+        }
+        if self.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+            return false;
+        }
+        if self.group != 1 || self.pool_spec.rank() != 2 {
+            return false;
+        }
+        let kvol = self.pool_spec.kernel_shape.iter().product::<usize>();
+        if kvol < 2 {
+            return false;
+        }
+        let k = self.input_channels() * kvol;
+        // 32 covers the stem (3×3×3) and Conv.2 (2×2×8). 64 takes Conv.1
+        // (2×2×16 → 8), the huge-N skinny-K GEMM that starves AMX/FMA.
+        if k > 64 {
+            return false;
+        }
+        // along-W SIMD is aarch64/x86_64 only; on wasm this would replace
+        // simd128 GEMM with a scalar FIR (GTCRN 1×5, DFN3 3×3×1, MobileNet stem).
+        if cfg!(target_family = "wasm") {
+            return false;
+        }
+        input_fact.shape.as_concrete().is_some()
+    }
+
+    pub fn wire_as_direct_spatial(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: &[OutletId],
+    ) -> TractResult<OutletId> {
+        let &[x, kernel, mut bias] = wire else { bail!("Wrong number of inputs") };
+        let x_fact = model.outlet_fact(x)?.clone();
+        let x_shape = x_fact.shape.as_concrete().unwrap();
+        let ConcretePoolGeometry { input_shape, patch, output_shape } =
+            self.pool_spec.compute_geo(&x_fact.shape)?.to_concrete(x_shape)?.into_owned();
+        let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
+        let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
+        bias = wire_reshape_bias_for_bin(
+            model,
+            name,
+            bias,
+            x_fact.rank(),
+            c_axis,
+            self.output_channels(),
+        )?[0];
+        let spatial = self.pool_spec.kernel_shape.iter().product::<usize>();
+        let op = super::DirectSpatialConv::new(
+            patch,
+            input_shape,
+            output_shape,
+            self.input_channels(),
+            self.output_channels(),
+            spatial,
+            false,
+            false,
+        );
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
 
@@ -1287,6 +1357,15 @@ impl TypedOp for Conv {
                 let wire = self
                     .wire_as_blocked_conv(&mut patch, &node.name, &inputs, op)
                     .context("wire_as_blocked_conv")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
+                Ok(Some(patch))
+            } else if self.can_direct_spatial(input_fact) {
+                let mut patch = TypedModelPatch::new("direct-spatial");
+                let inputs = patch.taps(model, &node.inputs)?;
+                let wire = self
+                    .wire_as_direct_spatial(&mut patch, &node.name, &inputs)
+                    .context("wire_as_direct_spatial")?;
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
