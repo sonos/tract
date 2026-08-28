@@ -28,7 +28,6 @@ pub mod logic;
 pub mod lstm_cell;
 pub mod math;
 pub mod matmul;
-// pub mod memory;
 pub mod nn;
 pub mod quant;
 pub mod scan;
