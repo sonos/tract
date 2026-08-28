@@ -51,15 +51,29 @@ pub fn translate_inference_fact(
                     Some(tensor_shape_proto::dimension::Value::DimParam(v)) => {
                         if v == "?" || (v.starts_with("unk__") && !include_unknown_symbols) {
                             Ok(DimFact::default())
-                        } else if let Ok(dim) = parse_tdim(&ctx.template.symbols, v) {
-                            Ok(DimFact::from(dim))
                         } else {
-                            // Non-standard dim_param (e.g. sympy expressions from torch dynamo):
-                            // treat as unknown and let tract infer from the graph.
-                            log::debug!(
-                                "Could not parse dim_param `{v}` as TDim, treating as unknown"
-                            );
-                            Ok(DimFact::default())
+                            // ⚠️ NOT `parse_tdim`. An ONNX dim_param is a RATIONAL
+                            // expression and TDim is integral, so handing the string
+                            // straight to the TDim parser evaluated `1/2` as `0` and
+                            // silently produced a shape that was off by one for every
+                            // even input. `parse_onnx_dim` makes the translation an
+                            // explicit step. See #2724 and `crate::dim_expr`.
+                            match crate::dim_expr::parse_onnx_dim(&ctx.template.symbols, v) {
+                                Ok(dim) => Ok(DimFact::from(dim)),
+                                Err(e) => {
+                                    // Non-standard dim_param (e.g. sympy expressions
+                                    // from torch dynamo): treat as unknown and let
+                                    // tract infer from the graph, which is what it did
+                                    // before and what those models rely on. The reason
+                                    // is logged rather than swallowed, so an expression
+                                    // we ought to handle can be found rather than
+                                    // guessed at.
+                                    log::debug!(
+                                        "Could not translate dim_param `{v}`, treating as unknown: {e:?}"
+                                    );
+                                    Ok(DimFact::default())
+                                }
+                            }
                         }
                     }
                     _ => Ok(DimFact::default()),
