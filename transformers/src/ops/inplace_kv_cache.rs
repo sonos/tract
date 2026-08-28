@@ -238,6 +238,10 @@ impl OpState for InPlaceKvSdpaState {
         }
         Ok(())
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("InPlaceKvSdpa is not lane-aware: the cache has no lane axis")
+    }
 }
 
 /// Rewrite rule: fuse `{DynKeyValueCache(K), DynKeyValueCache(V), Sdpa(Q,K,V)}` into a

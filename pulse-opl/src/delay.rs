@@ -102,6 +102,10 @@ impl OpState for DelayState {
             Ok(tvec!(output.into()))
         }
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("Delay is not lane-aware: buffer has no lane axis")
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

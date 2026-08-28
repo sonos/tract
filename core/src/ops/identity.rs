@@ -93,6 +93,10 @@ impl OpState for PinConst {
     ) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        Ok(())
+    }
 }
 
 impl TypedOp for PinConst {

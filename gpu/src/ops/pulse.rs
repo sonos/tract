@@ -148,6 +148,10 @@ impl OpState for GpuDelayState {
             Ok(tvec!(output.into_tensor().into()))
         }
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GpuDelay is not lane-aware: buffer has no lane axis")
+    }
 }
 
 // ─── GpuPulsePad ─────────────────────────────────────────────────────────────
@@ -381,6 +385,10 @@ impl OpState for GpuPulsePadState {
         let device_input = input.as_device_tensor().context("Expected a GPU tensor")?;
         let output = self.pad(ctx, gpu_op, device_input)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
+    }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GpuPulsePad is not lane-aware: current_pos and last_valid_frame have no lane axis")
     }
 }
 

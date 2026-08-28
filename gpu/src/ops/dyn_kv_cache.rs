@@ -105,6 +105,10 @@ impl OpState for GpuDynKVCacheState {
         self.kv_cache = Some(res.clone());
         Ok(tvec!(res))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GpuDynKVCache is not lane-aware: the cache has no lane axis")
+    }
 }
 
 impl GpuDynKVCacheState {

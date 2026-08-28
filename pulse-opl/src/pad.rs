@@ -143,6 +143,10 @@ impl OpState for PulsePadOpState {
         let op = op.downcast_ref::<PulsePad>().ok_or_else(|| format_err!("Wrong Op type"))?;
         self.pad(ctx, op, input).map(|t| tvec!(t))
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("PulsePad is not lane-aware: current_pos and last_valid_frame have no lane axis")
+    }
 }
 
 impl PulsePadOpState {

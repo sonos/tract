@@ -103,6 +103,10 @@ impl OpState for MetalFusedAxisOpState {
         // Runner inner op
         self.op_state.eval(ctx, fused_axis_op.op.as_op(), inputs)
     }
+
+    fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()> {
+        self.op_state.reset_lanes(lanes)
+    }
 }
 
 impl Op for MetalFusedAxisOp {
