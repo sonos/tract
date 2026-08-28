@@ -78,25 +78,6 @@ impl EvalOp for PinConst {
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(inputs)
     }
-
-    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(self.clone())))
-    }
-}
-
-impl OpState for PinConst {
-    fn eval(
-        &mut self,
-        _ctx: &EvalContext,
-        _op: &dyn Op,
-        inputs: TVec<TValue>,
-    ) -> TractResult<TVec<TValue>> {
-        Ok(inputs)
-    }
-
-    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
-        Ok(())
-    }
 }
 
 impl TypedOp for PinConst {

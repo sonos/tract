@@ -1,7 +1,7 @@
 use crate::infer::*;
 use crate::internal::*;
 
-use tract_core::ops::source::{SourceState, TypedSource};
+use tract_core::ops::source::TypedSource;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Source;
@@ -18,8 +18,9 @@ impl EvalOp for Source {
     fn is_pure_function(&self) -> bool {
         false
     }
-    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(SourceState(ctx.node_id))))
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        ensure!(!inputs.is_empty(), "Input for node {} is missing", ctx.node_id);
+        Ok(inputs)
     }
 }
 
