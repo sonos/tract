@@ -28,7 +28,7 @@ impl EvalOp for Tile {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
@@ -123,7 +123,7 @@ impl EvalOp for DynTile {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;

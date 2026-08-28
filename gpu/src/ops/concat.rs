@@ -42,7 +42,7 @@ impl EvalOp for GpuConcat {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let inputs =

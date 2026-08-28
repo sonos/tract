@@ -45,7 +45,7 @@ impl EvalOp for DeconvSum {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, &turn.resolved_symbols)
@@ -544,7 +544,7 @@ impl EvalOp for DepthwiseDeconv {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (kernel, input, bias) = args_3!(inputs);

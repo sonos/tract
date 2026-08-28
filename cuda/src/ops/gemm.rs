@@ -58,7 +58,7 @@ impl EvalOp for CudaGgmlGemm {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (act_raw, weights_raw) = args_2!(inputs);

@@ -86,7 +86,7 @@ impl EvalOp for GpuStft {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;
@@ -177,7 +177,7 @@ impl EvalOp for GpuFft {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;

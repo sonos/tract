@@ -46,7 +46,7 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 6);

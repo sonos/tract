@@ -25,7 +25,7 @@ impl EvalOp for MultiBroadcastTo {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let shape = self.shape.eval_to_usize(&turn.resolved_symbols)?;

@@ -48,7 +48,7 @@ impl EvalOp for GpuGeluApproximate {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);

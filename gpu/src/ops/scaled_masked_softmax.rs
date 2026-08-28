@@ -63,7 +63,7 @@ impl EvalOp for GpuScaledMaskedSoftmax {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (input_val, mask_val) = args_2!(inputs);

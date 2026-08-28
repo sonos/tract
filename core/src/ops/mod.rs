@@ -138,7 +138,7 @@ pub trait EvalOp {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.eval(inputs).context("Running legacy eval")

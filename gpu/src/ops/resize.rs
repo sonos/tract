@@ -71,7 +71,7 @@ impl EvalOp for GpuResize {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let data = inputs[0].to_device_tensor()?;

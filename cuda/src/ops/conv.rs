@@ -80,16 +80,6 @@ impl Op for CudaConv {
     op_as_typed_op!();
 }
 
-impl EvalOp for CudaConv {
-    fn is_stateless(&self) -> bool {
-        false
-    }
-
-    fn state(&self, _turn: &TurnState, node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(CudaConvState::new(node_id))))
-    }
-}
-
 impl TypedOp for CudaConv {
     as_op!();
 
@@ -106,7 +96,10 @@ impl TypedOp for CudaConv {
     }
 }
 
-// OpState should be Send; cudnn descriptors aren't, so they live here instead of in CudaConvState.
+// cudnn descriptors are not Send, so they cannot live in TurnState::scratch. They
+// stay in a thread-local keyed by an id, and TurnState::scratch holds only the
+// node -> id map, which is Send. Dropping the map -- i.e. dropping the state that
+// owns it -- evicts that plan's descriptors from the cache.
 thread_local! {
     static CUDA_CONV_SCRATCH: RefCell<HashMap<usize, Box<dyn ConvKernelScratch>>> =
         RefCell::new(HashMap::new());
@@ -114,47 +107,46 @@ thread_local! {
 
 static NEXT_CUDA_CONV_SCRATCH_ID: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug)]
-struct CudaConvState {
-    node_id: usize,
-    scratch_id: usize,
-}
+#[derive(Debug, Default)]
+struct CudaConvScratchIds(HashMap<usize, usize>);
 
-impl CudaConvState {
-    fn new(node_id: usize) -> Self {
-        let scratch_id = NEXT_CUDA_CONV_SCRATCH_ID.fetch_add(1, Ordering::Relaxed);
-        CudaConvState { node_id, scratch_id }
+impl CudaConvScratchIds {
+    fn id_for(&mut self, node_id: usize) -> usize {
+        *self
+            .0
+            .entry(node_id)
+            .or_insert_with(|| NEXT_CUDA_CONV_SCRATCH_ID.fetch_add(1, Ordering::Relaxed))
     }
 }
 
-impl Clone for CudaConvState {
-    fn clone(&self) -> Self {
-        CudaConvState::new(self.node_id)
-    }
-}
-
-impl Drop for CudaConvState {
+impl Drop for CudaConvScratchIds {
     fn drop(&mut self) {
         CUDA_CONV_SCRATCH.with_borrow_mut(|cache| {
-            cache.remove(&self.scratch_id);
+            for id in self.0.values() {
+                cache.remove(id);
+            }
         });
     }
 }
 
-impl OpState for CudaConvState {
-    fn eval(
-        &mut self,
+impl EvalOp for CudaConv {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval_with_turn(
+        &self,
+        node_id: usize,
         turn: &mut TurnState,
-        op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op: &CudaConv = op.downcast_ref().context("Wrong op")?;
         let inputs =
             inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
-        let output_shape = op.op.pool_spec.output_shape(inputs[0].shape())?;
+        let output_shape = self.op.pool_spec.output_shape(inputs[0].shape())?;
+        let scratch_id = turn.scratch.entry::<CudaConvScratchIds>().or_default().id_for(node_id);
         let output = tract_gpu::turn_handler::make_tensor_for_node(
             turn,
-            self.node_id,
+            node_id,
             inputs[0].datum_type(),
             &output_shape.shape,
         )?;
@@ -162,11 +154,11 @@ impl OpState for CudaConvState {
         if output.len() > 0 {
             crate::with_cuda_stream(|stream| {
                 CUDA_CONV_SCRATCH.with_borrow_mut(|cache| {
-                    let scratch = cache.entry(self.scratch_id).or_insert_with(|| op.kernel.state());
-                    op.kernel.dispatch(
+                    let scratch = cache.entry(scratch_id).or_insert_with(|| self.kernel.state());
+                    self.kernel.dispatch(
                         &mut **scratch,
-                        self.node_id,
-                        &op.op,
+                        node_id,
+                        &self.op,
                         stream,
                         inputs[0],
                         inputs[1],

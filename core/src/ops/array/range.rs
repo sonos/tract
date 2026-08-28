@@ -27,7 +27,7 @@ impl EvalOp for Range {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (start, end, step) = args_3!(inputs);

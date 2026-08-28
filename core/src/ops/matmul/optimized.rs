@@ -423,45 +423,38 @@ impl Op for OptMatMul {
 /// micro-op's `Store` [`OutputStore`] layout (strides fixed for the output
 /// shape), so only the base pointer is refreshed per call. Constant operands
 /// are baked into the op at `fuse()`, so they need no per-call state here. Pure
-/// memoization: built lazily on first eval and reused for this node.
-/// Key for the reusable mmm scratch buffer in [`TurnState::scratch`]. Shared by
-/// every `OptMatMul` in the plan: only one op evaluates at a time, and the buffer
-/// is reallocated whenever the picked kernel cannot use the one already there.
-struct MmmScratch(Box<dyn tract_linalg::mmm::ScratchSpace>);
-
-#[derive(Clone, Debug, Default)]
-pub struct OptMatMulState {
-    trivial_stores: Option<TVec<Option<OutputStore>>>,
+/// Every `OptMatMul` in a plan shares one entry in [`TurnState::scratch`]. `space`
+/// is one reusable kernel scratch buffer -- only one op evaluates at a time, and
+/// it is reallocated whenever the picked kernel cannot use the one already there.
+/// `stores` memoizes the output-store descriptors of the trivial path per node,
+/// since those depend on that node's micro-ops.
+#[derive(Default)]
+struct MmmScratch {
+    space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
+    stores: HashMap<usize, TVec<Option<OutputStore>>>,
 }
 
 impl EvalOp for OptMatMul {
     fn is_stateless(&self) -> bool {
-        false
+        true
     }
 
-    fn state(&self, _turn: &TurnState, _node_id: usize) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::<OptMatMulState>::default()))
-    }
-}
-
-impl OpState for OptMatMulState {
-    fn eval(
-        &mut self,
+    fn eval_with_turn(
+        &self,
+        node_id: usize,
         turn: &mut TurnState,
-        op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let op = op.downcast_ref::<OptMatMul>().context("OptMatMulState on non-OptMatMul op")?;
-        op.eval_with_state(turn, inputs, self)
+        self.eval_with_scratch(node_id, turn, inputs)
     }
 }
 
 impl OptMatMul {
-    fn eval_with_state(
+    fn eval_with_scratch(
         &self,
+        node_id: usize,
         turn: &mut TurnState,
         inputs: TVec<TValue>,
-        state: &mut OptMatMulState,
     ) -> TractResult<TVec<TValue>> {
         unsafe {
             let c_shape = self.c_fact.shape.eval_to_usize(&turn.resolved_symbols)?;
@@ -470,16 +463,13 @@ impl OptMatMul {
             let n = self.c_n_axis.map(|c_n| c.shape()[c_n]).unwrap_or(1);
             let mode = self.mode_picker.pick(n)?;
             let mmm = &*self.mmm[mode];
-            let slot = turn
-                .scratch
-                .entry::<MmmScratch>()
-                .or_insert_with(|| MmmScratch(mmm.allocate_scratch_space()));
-            if !mmm.can_use_scratch_space(&*slot.0) {
-                *slot = MmmScratch(mmm.allocate_scratch_space());
+            let MmmScratch { space, stores } = turn.scratch.entry::<MmmScratch>().or_default();
+            if !space.as_ref().is_some_and(|s| mmm.can_use_scratch_space(&**s)) {
+                *space = Some(mmm.allocate_scratch_space());
             }
-            let scratch = &mut slot.0;
+            let scratch = space.as_mut().unwrap();
             if self.trivial_path {
-                let stores = state.trivial_stores.get_or_insert_with(|| {
+                let stores = stores.entry(node_id).or_insert_with(|| {
                     self.micro_ops
                         .iter()
                         .map(|o| match o {

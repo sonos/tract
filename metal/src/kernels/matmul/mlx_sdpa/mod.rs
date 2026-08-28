@@ -470,7 +470,7 @@ impl EvalOp for MetalMlxSdpa {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::DeviceTensorExt;

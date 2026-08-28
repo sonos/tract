@@ -74,7 +74,7 @@ impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
     fn eval_with_turn(
         &self,
         node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let (a_raw, b_raw) = args_2!(inputs);

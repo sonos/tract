@@ -36,7 +36,7 @@ impl EvalOp for OptMatMulPack {
     fn eval_with_turn(
         &self,
         _node_id: usize,
-        turn: &TurnState,
+        turn: &mut TurnState,
         mut inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         self.do_eval(turn, inputs.remove(0))
