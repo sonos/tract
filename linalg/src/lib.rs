@@ -196,3 +196,4 @@ impl LADatum for i32 {
 fn setup_test_logger() {
     let _ = env_logger::Builder::from_env("TRACT_LOG").try_init();
 }
+
