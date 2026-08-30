@@ -267,8 +267,9 @@ jobs:
           - triple: armv7-unknown-linux-gnueabihf-stretch
             rustc_triple: armv7-unknown-linux-gnueabihf
           # RISC-V boards run a fully-static musl CLI (built directly by cross.sh, no stretch
-          # container); one self-tuning build serves every rv64gc board. No RVV kernels yet, so
-          # this is the generic scalar path.
+          # container); one self-tuning build serves every rv64gc board. The RVV kernels are
+          # picked at runtime off the hart's VLEN, so this same binary runs them on an RVV 1.0
+          # board and the generic scalar path where the vector unit is absent or the 0.7.1 draft.
           - triple: riscv64gc-unknown-linux-musl
             rustc_triple: riscv64gc-unknown-linux-musl
     steps:

@@ -211,9 +211,12 @@ case "$PLATFORM" in
                 export ARCH=riscv64
                 export QEMU_ARCH=riscv64
                 export RUSTC_TRIPLE=riscv64gc-unknown-linux-musl
-                export CUSTOM_TC=`pwd`/riscv64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/riscv64-linux-musl-cross.tgz | tar zx
-                export TARGET_CC=$CUSTOM_TC/bin/riscv64-linux-musl-gcc
+                # Bootlin rather than musl.cc: the linalg RVV kernels need an assembler that
+                # knows the ratified RVV 1.0 encodings, which arrived in binutils 2.38, and
+                # musl-cross-make has cut no release since 2021 and is stuck on 2.37.
+                export CUSTOM_TC=`pwd`/riscv64-lp64d--musl--stable-2025.08-1
+                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/riscv64-lp64d--musl--stable-2025.08-1.tar.xz | tar Jx
+                export TARGET_CC=$CUSTOM_TC/bin/riscv64-buildroot-linux-musl-gcc
                 # riscv64 musl defaults to dynamic linking (unlike the aarch64/armv7 musl
                 # targets here); force a static binary so it runs on the glibc boards, which
                 # have no musl loader.
