@@ -12,6 +12,10 @@
 //! computes a short tile when `VLMAX < MR`. Each kernel therefore declares the
 //! narrowest vector unit that reaches its `MR`: [`Isa::RiscV64V`] for the
 //! `VLEN >= 128` every RVV 1.0 hart mandates, [`Isa::RiscV64Vlen256`] above it.
+//!
+//! Everything here rests on [`has_rvv`] being true only for the *ratified*
+//! extension: the 0.7.1 draft parts share neither encodings nor CSRs, and the
+//! kernels are not merely slow there but wrong.
 
 use crate::isa::{Arch, Isa, IsaSet};
 
@@ -22,24 +26,55 @@ mod rvv;
 #[cfg(tract_rvv)]
 pub use rvv::*;
 
-/// `AT_HWCAP` -- see `getauxval(3)`.
+/// `__NR_riscv_hwprobe`, Linux 6.4 and later.
 #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
-const AT_HWCAP: libc::c_ulong = 16;
+const NR_RISCV_HWPROBE: libc::c_long = 258;
 
-/// Bit `'V' - 'A'` of the single-letter extension bitmap Linux puts in
-/// `AT_HWCAP` (`COMPAT_HWCAP_ISA_V`).
+/// `RISCV_HWPROBE_KEY_IMA_EXT_0`, the extension bitmap.
+#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
+const HWPROBE_KEY_IMA_EXT_0: i64 = 4;
+
+/// `RISCV_HWPROBE_IMA_V`, which the kernel sets only for the ratified vector
+/// extension.
+#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
+const HWPROBE_IMA_V: u64 = 1 << 2;
+
+/// `struct riscv_hwprobe`.
+#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
+#[repr(C)]
+struct HwprobePair {
+    key: i64,
+    value: u64,
+}
+
+/// Whether the hart offers ratified RVV 1.0, asked through `riscv_hwprobe(2)`.
 ///
-/// This bit alone is a sufficient RVV 1.0 gate: Linux sets it only for the
-/// ratified extension, never for the incompatible 0.7.1 draft implemented by
-/// the Allwinner D1 and Sophgo SG2042.
-#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
-const HWCAP_ISA_V: libc::c_ulong = 1 << (b'V' - b'A');
-
+/// The `AT_HWCAP` 'V' bit cannot answer this. Linux derives that bitmap from
+/// the ISA string the firmware reports, and a T-Head C910 — BeagleV-Ahead,
+/// Sipeed LicheePi 4A — advertises a bare `v` while implementing the
+/// incompatible 0.7.1 draft, so the bit is set on a hart that faults on, or
+/// silently misdecodes, every 1.0 encoding. `hwprobe` is the interface that
+/// distinguishes them, and a kernel too old to have it is treated as having no
+/// vector unit: the draft parts are the old-kernel population, and losing the
+/// kernels on a 1.0 hart running an old kernel costs speed, not correctness.
 #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
 fn probe_rvv() -> bool {
-    // SAFETY: getauxval is thread-safe and takes a scalar; it returns 0 for an
-    // unknown type, which reads here as "no vector unit".
-    unsafe { libc::getauxval(AT_HWCAP) & HWCAP_ISA_V != 0 }
+    let mut pair = HwprobePair { key: HWPROBE_KEY_IMA_EXT_0, value: 0 };
+    // SAFETY: the syscall writes only through the pointer we hand it, to one
+    // pair of the layout it expects. A kernel without it fails with ENOSYS and
+    // writes nothing, leaving `pair` as initialised here.
+    let rc = unsafe {
+        libc::syscall(
+            NR_RISCV_HWPROBE,
+            &mut pair as *mut HwprobePair,
+            1 as libc::c_ulong,
+            0 as libc::c_ulong,
+            std::ptr::null_mut::<libc::c_ulong>(),
+            0 as libc::c_uint,
+        )
+    };
+    // An unrecognised key comes back as -1 with the value left at 0.
+    rc == 0 && pair.key == HWPROBE_KEY_IMA_EXT_0 && pair.value & HWPROBE_IMA_V != 0
 }
 
 #[cfg(not(all(target_arch = "riscv64", target_os = "linux")))]
