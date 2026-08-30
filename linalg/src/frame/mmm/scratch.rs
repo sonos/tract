@@ -256,7 +256,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
             if down < self.valid_down_tiles && right < self.valid_right_tiles {
                 self.for_valid_tile(ker, specs, tls, down, right)?;
                 let err = ker.kernel(tls.ker_specs());
-                debug_assert_eq!(err, 0, "Kernel return error {err}");
+                ensure!(err == 0, "Kernel {} returned error {err}", ker.name());
             } else {
                 let remnant_down =
                     if down < self.valid_down_tiles { ker.mr() } else { self.remnant_down };
@@ -264,7 +264,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     if right < self.valid_right_tiles { ker.nr() } else { self.remnant_right };
                 self.for_border_tile(ker, specs, tls, down, right, remnant_down, remnant_right)?;
                 let err = ker.kernel(tls.ker_specs());
-                debug_assert_eq!(err, 0, "Kernel return error {err}");
+                ensure!(err == 0, "Kernel {} returned error {err}", ker.name());
                 self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
             }
             Ok(())
