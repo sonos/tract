@@ -93,9 +93,7 @@ impl TypedOp for StreamedSdpaOp {
 }
 
 impl EvalOp for StreamedSdpaOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 3 || inputs.len() == 4);

@@ -251,9 +251,7 @@ impl Op for PrefixMatMul {
 }
 
 impl EvalOp for PrefixMatMul {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let c_dt = self.operating_dt.unwrap_or_else(|| {

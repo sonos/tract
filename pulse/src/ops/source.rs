@@ -43,9 +43,7 @@ impl Op for PulsedSource {
 }
 
 impl EvalOp for PulsedSource {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(!inputs.is_empty(), "Input for node {} is missing", ctx.node_id);

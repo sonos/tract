@@ -56,9 +56,7 @@ impl Op for Compress {
 }
 
 impl EvalOp for Compress {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, conds) = args_2!(inputs);

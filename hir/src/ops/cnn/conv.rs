@@ -315,7 +315,7 @@ mod test {
         setup_test_logger();
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let res = op.eval(
-            &EvalContext::pure(),
+            &EvalContext::out_of_plan(),
             tvec!(
                 Tensor::zero::<f32>(&[1, 2, 2, 2]).unwrap().into_tvalue(),
                 Tensor::zero::<f32>(&[2, 2, 2, 1]).unwrap().into_tvalue(),
@@ -342,7 +342,7 @@ mod test {
         let i = tensor4(&[[[[0.0f32, 0.0], [1.0, 0.0]]]]);
         let k = tensor4(&[[[[0.0f32], [0.0]], [[1.0], [0.0]]]]);
         let e = tensor4(&[[[[1.0f32], [0.0]]]]);
-        let res = op.eval(&EvalContext::pure(), tvec!(i.into(), k.into())).unwrap();
+        let res = op.eval(&EvalContext::out_of_plan(), tvec!(i.into(), k.into())).unwrap();
         res[0].close_enough(&e, Approximation::Approximate).unwrap();
     }
 
@@ -352,7 +352,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let i = tensor4(&[[[[0.0f32, 1.0], [2.0, 3.0]], [[10.0, 11.0], [12.0, 13.0]]]]);
         let k = tensor4(&[[[[1.0f32, 0.0], [0.0, 1.0]]]]);
-        let res = op.eval(&EvalContext::pure(), tvec!(i.clone().into(), k.into())).unwrap();
+        let res = op.eval(&EvalContext::out_of_plan(), tvec!(i.clone().into(), k.into())).unwrap();
         res[0].close_enough(&i, Approximation::Approximate).unwrap()
     }
 
@@ -362,7 +362,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(
                     tensor4(&[[[[2.0f32]]], [[[0.0f32]]]]).into(),
                     tensor4(&[[[[1.0f32]]]]).into()
@@ -389,7 +389,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(tensor3(&[[[2.0f32], [0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()),
             )
             .unwrap();
@@ -413,7 +413,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(tensor3(&[[[2.0f32]], [[0.0f32]]]).into(), tensor3(&[[[1.0f32]]]).into()),
             )
             .unwrap();
@@ -437,7 +437,7 @@ mod test {
         let op = expand(Conv::default().nhwc().hwio().padding(PaddingSpec::SameUpper));
         let result = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(
                     tensor3(&[[[2.0f32, 0.0f32]]]).into(),
                     tensor3(&[[[1.0f32], [0.0f32]]]).into()

@@ -41,9 +41,7 @@ impl Op for Const {
 }
 
 impl EvalOp for Const {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(tvec![Arc::clone(&self.0).into_tvalue()])

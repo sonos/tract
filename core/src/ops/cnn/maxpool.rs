@@ -22,9 +22,7 @@ impl Op for MaxPool {
 }
 
 impl EvalOp for MaxPool {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
@@ -120,9 +118,7 @@ impl Op for OptMaxPool {
 }
 
 impl EvalOp for OptMaxPool {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);

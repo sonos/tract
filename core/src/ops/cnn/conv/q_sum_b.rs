@@ -24,9 +24,7 @@ impl Op for QSumB {
 }
 
 impl EvalOp for QSumB {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let n = self.n.eval_to_i64(ctx.symbols)? as usize;

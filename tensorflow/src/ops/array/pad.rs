@@ -56,9 +56,7 @@ impl Op for Pad {
 }
 
 impl EvalOp for Pad {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, paddings) = args_2!(inputs);
@@ -120,6 +118,6 @@ mod tests {
             .into()
         );
 
-        assert_eq!(Pad::new().eval_pure(inputs).unwrap(), expected);
+        assert_eq!(Pad::new().eval(&EvalContext::out_of_plan(), inputs).unwrap(), expected);
     }
 }

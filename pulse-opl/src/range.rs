@@ -40,9 +40,7 @@ impl Op for PulsedRange {
 }
 
 impl EvalOp for PulsedRange {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<PulsedRangeState>::default()))

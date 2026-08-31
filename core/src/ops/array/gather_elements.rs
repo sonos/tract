@@ -114,9 +114,7 @@ impl TypedOp for GatherElements {
 }
 
 impl EvalOp for GatherElements {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
@@ -142,7 +140,7 @@ mod tests {
         let data = Tensor::from_shape(data_shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())?;
         let indices = Tensor::from_shape(&[1, indices.len()], indices)?;
         let mut outputs = GatherElements::new(data_shape.len() - 1)
-            .eval(&EvalContext::pure(), tvec!(data.into_tvalue(), indices.into_tvalue()))?;
+            .eval(&EvalContext::out_of_plan(), tvec!(data.into_tvalue(), indices.into_tvalue()))?;
         Ok(outputs.remove(0))
     }
 

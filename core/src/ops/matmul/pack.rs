@@ -29,9 +29,7 @@ impl Op for OptMatMulPack {
 }
 
 impl EvalOp for OptMatMulPack {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.do_eval(ctx, inputs.remove(0))
@@ -147,9 +145,7 @@ impl Op for OptSimpleMatMulPack {
 }
 
 impl EvalOp for OptSimpleMatMulPack {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

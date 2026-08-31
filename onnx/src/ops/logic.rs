@@ -78,9 +78,7 @@ impl Op for If {
 }
 
 impl EvalOp for If {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let cond = inputs[0].cast_to_scalar::<bool>()?;

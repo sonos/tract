@@ -70,8 +70,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                 o.consistent()?;
             }
 
-            if op.is_pure_function()
-                && input_facts.len() > 0
+            if input_facts.len() > 0
                 && let Some(tensors) = input_facts
                     .iter()
                     .map(|f| {
@@ -82,7 +81,7 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
                             .map(|t| t.into_tvalue())
                     })
                     .collect::<Option<TVec<_>>>()
-                && let Ok(outputs) = op.eval(&EvalContext::pure(), tensors)
+                && let Ok(Some(outputs)) = op.eval_out_of_plan(tensors)
             {
                 return outputs
                     .into_iter()
@@ -280,14 +279,14 @@ impl TypedModel {
         for n in self.eval_order()? {
             let node = self.node(n);
             let (inputs, outputs) = self.node_facts(n)?;
-            if node.op.is_pure_function()
-                && inputs.iter().all(|i| i.konst.as_ref().is_some_and(|k| k.is_plain()))
+            if inputs.iter().all(|i| i.konst.as_ref().is_some_and(|k| k.is_plain()))
                 && outputs.iter().any(|o| o.konst.is_none())
             {
                 let inputs_ref =
                     inputs.iter().map(|f| f.konst.clone().unwrap().into_tvalue()).collect();
-                match node.op.eval(&EvalContext::pure(), inputs_ref) {
-                    Ok(res) => {
+                match node.op.eval_out_of_plan(inputs_ref) {
+                    Ok(None) => (),
+                    Ok(Some(res)) => {
                         drop(inputs);
                         drop(outputs);
                         for (ix, output) in res.into_iter().enumerate() {

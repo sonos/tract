@@ -44,9 +44,7 @@ impl Op for MetalPool {
 }
 
 impl EvalOp for MetalPool {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;

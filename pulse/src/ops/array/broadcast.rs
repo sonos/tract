@@ -108,11 +108,9 @@ impl TypedOp for PulsedMultibroadcastTo {
 }
 
 impl EvalOp for PulsedMultibroadcastTo {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.to_typed().eval_pure(inputs)
+        self.to_typed().eval(&EvalContext::out_of_plan(), inputs)
     }
 }
 

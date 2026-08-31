@@ -175,9 +175,7 @@ impl Op for WindowKvSdpa {
 }
 
 impl EvalOp for WindowKvSdpa {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(WindowKvSdpaState {
             scale: self.scale,
@@ -398,7 +396,7 @@ mod tests {
                 Ok(match acc {
                     None => x,
                     Some(a) => TypedConcat { axis: 2 }
-                        .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                        .eval(&EvalContext::out_of_plan(), tvec![a.into(), x.into()])?
                         .remove(0)
                         .into_tensor(),
                 })
@@ -464,7 +462,7 @@ mod tests {
             Ok(match acc {
                 None => x,
                 Some(a) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![a.into(), x.into()])?
                     .remove(0)
                     .into_tensor(),
             })
@@ -554,7 +552,7 @@ mod tests {
             Ok(match acc {
                 None => x,
                 Some(a) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![a.into(), x.into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![a.into(), x.into()])?
                     .remove(0)
                     .into_tensor(),
             })

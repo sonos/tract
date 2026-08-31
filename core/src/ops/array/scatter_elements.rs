@@ -83,9 +83,7 @@ impl TypedOp for ScatterElements {
 }
 
 impl EvalOp for ScatterElements {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices, updates) = args_3!(inputs);

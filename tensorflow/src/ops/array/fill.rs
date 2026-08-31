@@ -35,9 +35,7 @@ impl Op for Fill {
 }
 
 impl EvalOp for Fill {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         dispatch_datum!(Self::eval_t(self.dt)(self, inputs))

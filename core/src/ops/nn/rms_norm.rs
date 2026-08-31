@@ -22,9 +22,7 @@ impl Op for RmsNorm {
 }
 
 impl EvalOp for RmsNorm {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -235,7 +233,7 @@ mod tests {
         let eps = tensor0(to_h(1e-5)).into_arc_tensor();
         let op = RmsNorm { axis: 0, eps };
         let out = op
-            .eval(&EvalContext::pure(), tvec!(input.clone().into()))
+            .eval(&EvalContext::out_of_plan(), tvec!(input.clone().into()))
             .expect("eval should not panic");
         let out = out.into_iter().next().unwrap().into_tensor();
         assert_eq!(out.datum_type(), DatumType::F16);
@@ -266,8 +264,9 @@ mod tests {
         let input = tensor2(&[[1.0_f32, 2.0, 3.0], [4.0, 5.0, 6.0]]);
         let eps = tensor0(0.0_f32).into_arc_tensor();
         let op = RmsNorm { axis: 0, eps };
-        let out =
-            op.eval(&EvalContext::pure(), tvec!(input.into())).expect("eval should not panic");
+        let out = op
+            .eval(&EvalContext::out_of_plan(), tvec!(input.into()))
+            .expect("eval should not panic");
         let out = out.into_iter().next().unwrap().into_tensor();
         assert_eq!(out.datum_type(), DatumType::F32);
         assert_eq!(out.shape(), &[2, 3]);

@@ -39,9 +39,7 @@ impl Op for DiagGather {
 }
 
 impl EvalOp for DiagGather {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);

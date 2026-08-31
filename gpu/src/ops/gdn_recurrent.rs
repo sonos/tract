@@ -39,9 +39,7 @@ impl Op for GpuGatedDeltaNetRecurrent {
 }
 
 impl EvalOp for GpuGatedDeltaNetRecurrent {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 6);

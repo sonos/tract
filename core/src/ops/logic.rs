@@ -74,9 +74,7 @@ impl Op for Iff {
 }
 
 impl EvalOp for Iff {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (cond, t, f) = args_3!(inputs);

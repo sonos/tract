@@ -106,8 +106,12 @@ impl Op for ExpUnitNorm {
 }
 
 impl EvalOp for ExpUnitNorm {
-    fn is_pure_function(&self) -> bool {
-        self.stateless
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        if self.stateless {
+            Ok(Some(self.eval(&EvalContext::out_of_plan(), inputs)?))
+        } else {
+            Ok(None)
+        }
     }
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {

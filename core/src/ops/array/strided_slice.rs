@@ -270,9 +270,7 @@ impl Op for StridedSlice {
 }
 
 impl EvalOp for StridedSlice {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
@@ -352,7 +350,7 @@ mod tests {
         if let Some(stride) = stride {
             inputs.push(tensor1(&[stride as i32]).into());
         }
-        op.eval_pure(inputs).unwrap().remove(0)
+        op.eval(&EvalContext::out_of_plan(), inputs).unwrap().remove(0)
     }
 
     #[test]

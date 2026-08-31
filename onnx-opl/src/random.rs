@@ -103,9 +103,7 @@ impl TypedOp for Random {
 }
 
 impl EvalOp for Random {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let rng = self.seed.map(SmallRng::seed_from_u64).unwrap_or_else(rand::make_rng);

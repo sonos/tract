@@ -139,9 +139,7 @@ impl Op for Im2Col {
 }
 
 impl EvalOp for Im2Col {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let geometry = self.geometry.to_concrete(inputs[0].shape())?;

@@ -158,9 +158,7 @@ impl Op for EinSum {
 }
 
 impl EvalOp for EinSum {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if inputs.iter().all(|i| i.datum_type().is_number() && i.is_plain()) {

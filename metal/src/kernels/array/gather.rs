@@ -141,8 +141,10 @@ mod tests {
             let metal_indices = indices.clone().into_device()?;
 
             let cpu_op = CpuGather::new(axis);
-            let cpu_out = cpu_op
-                .eval(&EvalContext::pure(), tvec![data.into_tvalue(), indices.into_tvalue()])?[0]
+            let cpu_out = cpu_op.eval(
+                &EvalContext::out_of_plan(),
+                tvec![data.into_tvalue(), indices.into_tvalue()],
+            )?[0]
                 .clone()
                 .into_tensor();
             let metal_out = Gather.eval(stream, &metal_data, &metal_indices, axis)?;

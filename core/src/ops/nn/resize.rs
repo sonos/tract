@@ -385,9 +385,7 @@ impl Op for Resize {
 }
 
 impl EvalOp for Resize {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_dt = inputs[0].datum_type();
@@ -590,7 +588,7 @@ mod tests {
             optional_scales_input: Some(1),
             optional_sizes_input: None,
         };
-        op.eval(&EvalContext::pure(), tvec!(input.into_tvalue(), scales.into_tvalue()))
+        op.eval(&EvalContext::out_of_plan(), tvec!(input.into_tvalue(), scales.into_tvalue()))
             .unwrap()
             .remove(0)
             .into_tensor()

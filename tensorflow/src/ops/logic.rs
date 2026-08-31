@@ -32,9 +32,7 @@ impl Op for Switch {
 }
 
 impl EvalOp for Switch {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
@@ -123,9 +121,7 @@ impl Op for Merge {
 }
 
 impl EvalOp for Merge {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

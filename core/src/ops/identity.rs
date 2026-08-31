@@ -12,9 +12,7 @@ impl Op for Identity {
 }
 
 impl EvalOp for Identity {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     /// Evaluates the operation given the input tensors.
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {

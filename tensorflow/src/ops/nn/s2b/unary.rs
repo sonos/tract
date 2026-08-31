@@ -28,9 +28,7 @@ impl Op for SpaceToBatchUnary {
 }
 
 impl EvalOp for SpaceToBatchUnary {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -116,9 +114,7 @@ impl Op for BatchToSpaceUnary {
 }
 
 impl EvalOp for BatchToSpaceUnary {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);

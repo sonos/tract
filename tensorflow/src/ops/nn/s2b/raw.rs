@@ -15,9 +15,7 @@ impl Op for SpaceToBatch {
 }
 
 impl EvalOp for SpaceToBatch {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, paddings) = args_3!(inputs);
@@ -108,9 +106,7 @@ impl Op for BatchToSpace {
 }
 
 impl EvalOp for BatchToSpace {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, block_shape, crops) = args_3!(inputs);

@@ -38,9 +38,7 @@ impl Op for LstmEpilogue {
 }
 
 impl EvalOp for LstmEpilogue {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // Dispatch on the dtype the precision transform left the graph in. The
@@ -142,7 +140,7 @@ mod tests {
         let cprev_t = Tensor::from_shape(&[batch, h], &cprev).unwrap();
         let op = LstmEpilogue { hidden: h };
         let out = op
-            .eval(&EvalContext::pure(), tvec!(pre_t.into_tvalue(), cprev_t.into_tvalue()))
+            .eval(&EvalContext::out_of_plan(), tvec!(pre_t.into_tvalue(), cprev_t.into_tvalue()))
             .unwrap();
         let ht = unsafe { out[0].as_slice_unchecked::<f32>() };
         let ct = unsafe { out[1].as_slice_unchecked::<f32>() };

@@ -46,9 +46,7 @@ impl Op for SubmodelOp {
 }
 
 impl EvalOp for SubmodelOp {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         self.model.state(ctx)
@@ -97,7 +95,6 @@ impl TypedOp for SubmodelOp {
 pub trait InnerModel: Debug + dyn_clone::DynClone + Downcast + Sync + Send + 'static {
     #[allow(unused_variables)]
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>>;
-    fn is_pure_function(&self) -> bool;
 
     #[allow(unused_variables)]
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
@@ -124,10 +121,6 @@ impl InnerModel for TypedModel {
             .collect::<TractResult<TVec<_>>>()?;
         Ok(facts)
     }
-    fn is_pure_function(&self) -> bool {
-        false
-    }
-
     #[allow(unused_variables)]
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let plan = self.clone().into_runnable()?;

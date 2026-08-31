@@ -79,9 +79,7 @@ impl Op for GpuStft {
 }
 
 impl EvalOp for GpuStft {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;
@@ -164,9 +162,7 @@ impl Op for GpuFft {
 }
 
 impl EvalOp for GpuFft {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = inputs[0].to_device_tensor()?;

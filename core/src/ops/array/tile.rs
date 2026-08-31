@@ -21,9 +21,7 @@ impl Op for Tile {
 }
 
 impl EvalOp for Tile {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers: TVec<usize> = self
@@ -111,9 +109,7 @@ impl Op for DynTile {
 }
 
 impl EvalOp for DynTile {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;

@@ -41,9 +41,7 @@ impl Op for RandomUniform {
 }
 
 impl EvalOp for RandomUniform {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]
@@ -129,9 +127,7 @@ impl Op for TypedRandomUniform {
 }
 
 impl EvalOp for TypedRandomUniform {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape = self.shape.iter().map(|d| d.to_usize()).collect::<Result<TVec<_>, _>>()?;
@@ -200,9 +196,7 @@ impl Op for RandomUniformInt {
 }
 
 impl EvalOp for RandomUniformInt {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]

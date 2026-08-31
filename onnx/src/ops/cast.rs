@@ -51,7 +51,7 @@ impl ElementWiseMiniOp for Cast {
             }
         } else {
             tract_hir::ops::cast::cast(self.to)
-                .eval_pure(tvec!(t.clone().into_tvalue()))
+                .eval(&EvalContext::out_of_plan(), tvec!(t.clone().into_tvalue()))
                 .map(|mut t| t.remove(0).into_tensor())
         }
     }

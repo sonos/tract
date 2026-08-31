@@ -306,9 +306,7 @@ impl Op for QuantizedDynKeyValueCache {
 }
 
 impl EvalOp for QuantizedDynKeyValueCache {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(QuantizedDynKvCacheState {
             name: self.name.clone(),
@@ -699,7 +697,7 @@ mod tests {
                 acc = Some(match acc.take() {
                     None => step,
                     Some(a) => TypedConcat { axis: 2 }
-                        .eval(&EvalContext::pure(), tvec![a.into(), step.into()])?
+                        .eval(&EvalContext::out_of_plan(), tvec![a.into(), step.into()])?
                         .remove(0)
                         .into_tensor(),
                 });

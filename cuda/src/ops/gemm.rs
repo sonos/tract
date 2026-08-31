@@ -51,9 +51,7 @@ impl CudaGgmlGemm {
     }
 }
 impl EvalOp for CudaGgmlGemm {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (act_raw, weights_raw) = args_2!(inputs);

@@ -525,9 +525,7 @@ impl Op for EinSumMatMul {
 }
 
 impl EvalOp for EinSumMatMul {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.op.eval(ctx, inputs)
     }

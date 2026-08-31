@@ -23,9 +23,7 @@ impl Op for ConstantLike {
 }
 
 impl EvalOp for ConstantLike {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -102,9 +100,7 @@ impl Op for EyeLike {
 }
 
 impl EvalOp for EyeLike {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);

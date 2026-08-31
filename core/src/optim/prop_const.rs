@@ -42,7 +42,6 @@ impl super::TypedPass for PropConst {
             if !node.op_is::<Const>()
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
-                && node.op.is_pure_function()
                 && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
                     fact.konst.is_some()
                         && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
@@ -61,8 +60,9 @@ impl super::TypedPass for PropConst {
                     .iter()
                     .map(|f| f.mem_size().as_i64().unwrap_or(i64::MAX) as u64)
                     .sum();
-                match node.op.eval(&EvalContext::pure(), inputs) {
-                    Ok(mut res) => {
+                match node.op.eval_out_of_plan(inputs) {
+                    Ok(None) => (),
+                    Ok(Some(mut res)) => {
                         self.0 = node.id;
                         let output_mem: u64 = res
                             .iter()
@@ -76,11 +76,10 @@ impl super::TypedPass for PropConst {
                             let Some(succ) = model.single_succ(node.id)? else {
                                 break;
                             };
-                            if succ.inputs.len() > 1 || !succ.op.is_pure_function() {
+                            if succ.inputs.len() > 1 {
                                 break;
                             }
-                            let Ok(succ_res) = succ.op.eval(&EvalContext::pure(), res.clone())
-                            else {
+                            let Ok(Some(succ_res)) = succ.op.eval_out_of_plan(res.clone()) else {
                                 break;
                             };
                             let succ_mem: u64 = succ_res

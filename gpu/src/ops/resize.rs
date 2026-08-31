@@ -64,9 +64,7 @@ impl Op for GpuResize {
 }
 
 impl EvalOp for GpuResize {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let data = inputs[0].to_device_tensor()?;

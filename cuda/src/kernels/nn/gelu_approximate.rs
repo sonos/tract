@@ -137,7 +137,7 @@ mod tests {
             .into_device()?;
 
             let cpu_output = gelu_approximate::gelu_approximate(false)
-                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let cuda_output = gelu_approx.eval(stream, &a)?;
@@ -282,7 +282,7 @@ mod tests {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
             let cpu_output = gelu_approximate::gelu_approximate(false)
-                .eval(&EvalContext::pure(), tvec![a.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
 

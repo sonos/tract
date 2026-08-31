@@ -362,9 +362,7 @@ impl Op for Resize {
 }
 
 impl EvalOp for Resize {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_dt = inputs[0].datum_type();

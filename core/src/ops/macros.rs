@@ -30,6 +30,24 @@ macro_rules! not_a_typed_op {
 }
 
 #[macro_export]
+macro_rules! op_out_of_plan {
+    () => {
+        fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+            Ok(Some(EvalOp::eval(self, &EvalContext::out_of_plan(), inputs)?))
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! not_out_of_plan {
+    () => {
+        fn eval_out_of_plan(&self, _inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+            Ok(None)
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! args_1 {
     ($inputs:expr) => {{
         let mut inputs = $inputs;
