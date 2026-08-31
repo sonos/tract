@@ -79,10 +79,18 @@ impl RmsNorm {
 
 pub fn cuda_rms_norm_dispatch(
     input: &DeviceTensor,
+    residual: Option<&DeviceTensor>,
+    scale: Option<&DeviceTensor>,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
+    sum_out: Option<&DeviceTensor>,
 ) -> TractResult<()> {
+    ensure!(scale.is_none(), "Cuda RmsNorm does not support a fused scale");
+    ensure!(
+        residual.is_none() && sum_out.is_none(),
+        "Cuda RmsNorm does not support a fused residual add"
+    );
     crate::with_cuda_stream(|stream| RmsNorm.dispatch_eval(stream, input, axis, eps, output))
 }
 
@@ -91,6 +99,9 @@ crate::register_cuda_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, no
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
+        false,
+        false,
+        None,
         "Cuda",
         cuda_rms_norm_dispatch,
     ))))

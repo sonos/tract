@@ -19,7 +19,10 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
-use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
+use tract_gpu::rewrite_rules::rms_norm::{
+    fuse_rms_norm_scale, fuse_rms_norm_split_scale,
+    fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
+};
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
@@ -192,7 +195,11 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
+            .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .rewrite(&(), model)?;
@@ -207,6 +214,11 @@ impl MetalTransform {
             return Ok(());
         }
 
+        // After elementwise fusion: only residual adds that stayed standalone
+        // dispatches are worth absorbing into their norm consumer.
+        Rewriter::default()
+            .with_rule_for("fuse_rms_norm_residual", rewrite_rules::fuse_rms_norm_residual)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
