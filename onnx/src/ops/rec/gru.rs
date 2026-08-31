@@ -72,8 +72,15 @@ impl WireBody for GRU {
             && is_element_wise::<tract_hir::tract_core::ops::nn::Sigmoid>(self.f.as_ref())
             && is_element_wise::<tract_hir::tract_core::ops::math::Tanh>(self.g.as_ref()))
         .then(|| {
-            Box::new(tract_hir::tract_core::ops::gru_seq::GruSeq { hidden, has_bias, chunk })
-                as Box<dyn TypedOp>
+            Box::new(tract_hir::tract_core::ops::gru_seq::GruSeq {
+                hidden,
+                has_bias,
+                chunk,
+                // The Scan this replaces is built with reset_every_turn false, so
+                // the fused op starts from the same contract; the pulse pass and
+                // NNEF round-trip carry the flag the same way for both.
+                reset_every_turn: false,
+            }) as Box<dyn TypedOp>
         })
     }
 
