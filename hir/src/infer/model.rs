@@ -108,7 +108,11 @@ impl InferenceModelExt for InferenceModel {
                 target: &mut TypedModel,
                 mapping: &HashMap<OutletId, OutletId>,
             ) -> TractResult<TVec<OutletId>> {
-                if node.op.is_pure_function()
+                // Two kinds of node must survive translation even when inference
+                // knows their value: a source, which is the model's input, and one
+                // whose state would be dropped along with it.
+                if !InferenceModel::is_source(&node.op)
+                    && node.op.state(&EvalContext::pure())?.is_none()
                     && source.node_output_facts(node.id)?.iter().all(|f| f.value.is_concrete())
                 {
                     (0..node.outputs.len())
