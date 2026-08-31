@@ -21,16 +21,21 @@ type PackedR = (Box<dyn MatMatMul>, Box<dyn MMMInputValue>);
 /// The input-side product `X.Wt` does not depend on the recurrent state, so it is
 /// taken once over the whole sequence as a single GEMM rather than once per step.
 ///
-/// State: like the `Scan` it replaces, the hidden state persists across calls, so
-/// models keep their current behaviour bit for bit. `initial_h` seeds the first
-/// call only. See sonos/tract#2629 for whether that is the right contract for a
-/// non-time recurrence -- this op deliberately does not change it.
+/// State: the op works both ways, as the `Scan` it replaces does. By default the
+/// hidden state lives in the session and persists across calls -- `initial_h`
+/// seeds the first call only -- so models keep their current behaviour bit for
+/// bit. With `reset_every_turn` the state is re-seeded from `initial_h` on every
+/// call instead, which is the ONNX contract and what a caller managing its own
+/// state wants. The flag is named after and means the same as `Scan`'s.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct GruSeq {
     pub hidden: usize,
     pub has_bias: bool,
     /// -1 runs the sequence backwards (the `.back` side of a bidirectional GRU).
     pub chunk: isize,
+    /// Re-seed the hidden state from `initial_h` on every call instead of
+    /// carrying it in the session. Same meaning as `Scan::reset_every_turn`.
+    pub reset_every_turn: bool,
 }
 
 #[derive(Default)]
@@ -62,12 +67,17 @@ impl Op for GruSeq {
         "GruSeq".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("hidden={} bias={} chunk={}", self.hidden, self.has_bias, self.chunk)])
+        Ok(vec![format!(
+            "hidden={} bias={} chunk={} reset_every_turn={}",
+            self.hidden, self.has_bias, self.chunk, self.reset_every_turn
+        )])
     }
     op_as_typed_op!();
 }
 
 impl EvalOp for GruSeq {
+    /// Stateful even with `reset_every_turn`: the state also holds the packed `R`,
+    /// which is a per-run cache rather than part of the recurrence.
     fn is_stateless(&self) -> bool {
         false
     }
@@ -174,7 +184,9 @@ impl GruSeq {
         let (mmm, pa) = packed_r.as_ref().unwrap();
         let (_, pack_b) = &mmm.packings()[0];
 
-        let mut ht: Tensor = match carry.as_ref() {
+        // With reset_every_turn the initializer wins every call; otherwise the
+        // session's carry seeds every call but the first.
+        let mut ht: Tensor = match carry.as_ref().filter(|_| !self.reset_every_turn) {
             Some(c) => squeeze_state(c, h)?,
             None => squeeze_state(h0, h)?,
         };
@@ -249,7 +261,7 @@ impl GruSeq {
                 .assign(&ht.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?);
         }
 
-        *carry = Some(ht.clone());
+        *carry = if self.reset_every_turn { None } else { Some(ht.clone()) };
         let mut h_out = ht;
         h_out.insert_axis(1)?; // back to [batch, 1, hidden]
         Ok(tvec!(y.into_tensor().into(), h_out.into()))
@@ -335,7 +347,12 @@ mod tests {
 
         let (want_y, want_h) = reference(&x, &w, &r, b.as_ref(), &h0, hidden, backward);
 
-        let op = GruSeq { hidden, has_bias: bias, chunk: if backward { -1 } else { 1 } };
+        let op = GruSeq {
+            hidden,
+            has_bias: bias,
+            chunk: if backward { -1 } else { 1 },
+            reset_every_turn: false,
+        };
         let mut inputs: TVec<TValue> = tvec!(
             x.clone().into_tensor().into(),
             w.clone().into_tensor().into(),
@@ -380,7 +397,7 @@ mod tests {
     /// The hidden state persists across calls, as the `Scan` it replaces does.
     #[test]
     fn carries_state_across_calls() {
-        let op = GruSeq { hidden: 4, has_bias: false, chunk: 1 };
+        let op = GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: false };
         let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
         let w = Array2::<f32>::from_elem((12, 2), 0.1);
         let r = Array2::<f32>::from_elem((12, 4), 0.1);
@@ -403,5 +420,37 @@ mod tests {
             second[1].to_plain_array_view::<f32>().unwrap(),
             "second call must continue from the carried state, not restart from initial_h"
         );
+    }
+
+    /// With reset_every_turn the initializer wins every call, so identical inputs
+    /// give identical outputs -- the ONNX contract, and what a caller managing its
+    /// own state across calls needs.
+    #[test]
+    fn reset_every_turn_restarts_from_initial_h() {
+        let op = GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: true };
+        let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
+        let w = Array2::<f32>::from_elem((12, 2), 0.1);
+        let r = Array2::<f32>::from_elem((12, 4), 0.1);
+        let h0 = Array2::<f32>::zeros((1, 4));
+        let mk = || -> TVec<TValue> {
+            tvec!(
+                x.clone().into_tensor().into(),
+                w.clone().into_tensor().into(),
+                r.clone().into_tensor().into(),
+                h0.clone().into_tensor().into()
+            )
+        };
+        let mut carry = None;
+        let mut packed = None;
+        let first = op.eval_with(&mut carry, &mut packed, mk()).unwrap();
+        assert!(carry.is_none(), "state must not be retained");
+        let second = op.eval_with(&mut carry, &mut packed, mk()).unwrap();
+        for slot in 0..2 {
+            assert_eq!(
+                first[slot].to_plain_array_view::<f32>().unwrap(),
+                second[slot].to_plain_array_view::<f32>().unwrap(),
+                "output {slot} must not drift between identical calls"
+            );
+        }
     }
 }
