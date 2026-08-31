@@ -273,9 +273,7 @@ impl Op for DynamicQuantizeLinearU8 {
 }
 
 impl EvalOp for DynamicQuantizeLinearU8 {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = &inputs[0];
         let input = input.cast_to::<f32>()?;

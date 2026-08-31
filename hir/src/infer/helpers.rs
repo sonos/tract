@@ -14,8 +14,8 @@ pub fn infer_forward_concrete(
     }
     let input_values = input_values.iter().map(|t| t.clone().into_tvalue()).collect();
     // If we know the value of all the inputs, we can deduce everything.
-    if op.is_pure_function() {
-        let output_value = op.eval_pure(input_values)?.pop().unwrap();
+    if let Some(mut values) = op.eval_out_of_plan(input_values)? {
+        let output_value = values.pop().unwrap();
         return Ok(Some(tvec![output_value.into_arc_tensor().try_into()?]));
     }
 

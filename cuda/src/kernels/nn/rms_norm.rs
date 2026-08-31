@@ -133,7 +133,7 @@ mod tests {
             let cpu_rms = rms_norm::RmsNorm { axis, eps: Arc::clone(&eps) };
 
             let cpu_output = cpu_rms
-                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let cuda_output = RmsNorm.eval(stream, &a, axis, &eps)?;
@@ -241,7 +241,7 @@ mod tests {
 
             let cpu_rms = rms_norm::RmsNorm { axis: self.axis, eps: Arc::clone(&self.eps) };
 
-            let cpu_output = cpu_rms.eval(&EvalContext::pure(), tvec![a.into_tvalue()])?[0]
+            let cpu_output = cpu_rms.eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
 

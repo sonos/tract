@@ -265,7 +265,7 @@ mod tests {
                 acc_datum_type: DatumType::F32,
                 is_causal,
             }
-            .eval_pure(ref_inputs)?;
+            .eval(&EvalContext::out_of_plan(), ref_inputs)?;
 
             cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
             Ok(())

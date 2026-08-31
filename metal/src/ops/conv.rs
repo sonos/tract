@@ -57,9 +57,7 @@ impl Op for MetalConv {
 }
 
 impl EvalOp for MetalConv {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let inputs =

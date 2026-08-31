@@ -61,9 +61,7 @@ impl Op for GpuBinOp {
 }
 
 impl EvalOp for GpuBinOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a_val, b_val) = args_2!(inputs);

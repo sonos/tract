@@ -428,7 +428,7 @@ fn declutter_mul_const_mul_const(
     rule_if!(const_fact.datum_type.is_float());
     let result = mul()
         .eval(
-            &EvalContext::pure(),
+            &EvalContext::out_of_plan(),
             tvec!(
                 const_fact.konst.clone().unwrap().into_tvalue(),
                 prec_const_fact.konst.clone().unwrap().into_tvalue()

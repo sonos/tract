@@ -371,12 +371,12 @@ impl Op for PulseWrappingOp {
 }
 
 impl EvalOp for PulseWrappingOp {
-    fn is_pure_function(&self) -> bool {
-        self.0.is_pure_function()
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        self.0.eval_out_of_plan(inputs)
     }
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.0.eval_pure(inputs)
+        self.0.eval(&EvalContext::out_of_plan(), inputs)
     }
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
@@ -461,12 +461,12 @@ impl Op for NonPulsingWrappingOp {
 }
 
 impl EvalOp for NonPulsingWrappingOp {
-    fn is_pure_function(&self) -> bool {
-        self.0.is_pure_function()
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        self.0.eval_out_of_plan(inputs)
     }
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.0.eval_pure(inputs)
+        self.0.eval(&EvalContext::out_of_plan(), inputs)
     }
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {

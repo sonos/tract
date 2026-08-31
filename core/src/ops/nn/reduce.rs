@@ -392,9 +392,7 @@ impl Op for Reduce {
 }
 
 impl EvalOp for Reduce {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         Ok(tvec!(self.reducer.reduce(&self.axes, &inputs[0])?.into()))

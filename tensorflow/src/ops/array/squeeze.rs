@@ -24,7 +24,12 @@ mod tests {
     where
         I: Into<Tensor>,
     {
-        expand(op).eval_pure(tvec![input.into().into()]).unwrap().pop().unwrap().into_tensor()
+        expand(op)
+            .eval(&EvalContext::out_of_plan(), tvec![input.into().into()])
+            .unwrap()
+            .pop()
+            .unwrap()
+            .into_tensor()
     }
 
     #[test]

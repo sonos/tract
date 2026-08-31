@@ -36,9 +36,7 @@ impl Op for CausalConv1dUpdate {
 }
 
 impl EvalOp for CausalConv1dUpdate {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, weight, state) = args_3!(inputs);

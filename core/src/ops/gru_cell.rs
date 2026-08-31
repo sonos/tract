@@ -44,9 +44,7 @@ impl Op for GruEpilogue {
 }
 
 impl EvalOp for GruEpilogue {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         match inputs[0].datum_type().unquantized() {
@@ -156,7 +154,7 @@ mod tests {
         let op = GruEpilogue { hidden: h };
         let out = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(xh_t.into_tvalue(), rh_t.into_tvalue(), hprev_t.into_tvalue()),
             )
             .unwrap();

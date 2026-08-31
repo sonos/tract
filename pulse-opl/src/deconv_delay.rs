@@ -24,9 +24,7 @@ impl Op for DeconvDelay {
 }
 
 impl EvalOp for DeconvDelay {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         unreachable!()

@@ -275,9 +275,7 @@ impl Op for Sdpa {
 }
 
 impl EvalOp for Sdpa {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_facts: TVec<TypedFact> = inputs

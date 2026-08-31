@@ -96,12 +96,10 @@ impl Op for PulsedReshape {
 }
 
 impl EvalOp for PulsedReshape {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.op.eval_pure(inputs)
+        self.op.eval(&EvalContext::out_of_plan(), inputs)
     }
 }
 

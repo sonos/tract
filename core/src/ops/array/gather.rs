@@ -322,9 +322,7 @@ impl TypedOp for Gather {
 }
 
 impl EvalOp for Gather {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (data, indices) = args_2!(inputs);
@@ -357,7 +355,10 @@ mod tests {
         for idx in 2..3 {
             let index = Tensor::from(arr0(idx));
             let outputs = gatherer
-                .eval(&EvalContext::pure(), tvec![data.clone().into_tvalue(), index.into_tvalue()])
+                .eval(
+                    &EvalContext::out_of_plan(),
+                    tvec![data.clone().into_tvalue(), index.into_tvalue()],
+                )
                 .unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);

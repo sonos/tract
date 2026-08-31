@@ -82,9 +82,7 @@ impl EvalOp for CudaGgmlQuantQ81 {
         })
     }
 
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 }
 
 impl TypedOp for CudaGgmlQuantQ81 {

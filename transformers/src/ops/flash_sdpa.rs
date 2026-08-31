@@ -96,9 +96,7 @@ impl TypedOp for FlashSdpaOp {
 }
 
 impl EvalOp for FlashSdpaOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 3 || inputs.len() == 4);
@@ -416,7 +414,7 @@ mod tests {
         let op = FlashSdpaOp { causal: true, scale: None };
         let f32_out = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()),
             )?
             .remove(0);
@@ -427,7 +425,7 @@ mod tests {
         );
         let f16_out = op
             .eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec!(q16.into_tvalue(), k16.into_tvalue(), v16.into_tvalue()),
             )?
             .remove(0);

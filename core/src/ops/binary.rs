@@ -138,9 +138,7 @@ impl TypedBinOp {
 }
 
 impl EvalOp for TypedBinOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(result) = self.0.eval_symbolic(ctx, inputs.clone())? {
@@ -715,9 +713,7 @@ impl Op for OptBinByScalar {
 }
 
 impl EvalOp for OptBinByScalar {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
@@ -855,9 +851,7 @@ impl Op for OptBinUnicast {
 }
 
 impl EvalOp for OptBinUnicast {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a, b) = args_2!(inputs);
@@ -1317,7 +1311,8 @@ mod tests {
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
 
-        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out =
+            op.eval(&EvalContext::out_of_plan(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         let out = &out[0];
         assert_eq!(out.shape(), &[1, 1, 640]);
         let plain = out.try_as_plain().unwrap();
@@ -1344,7 +1339,8 @@ mod tests {
             eval_fn: Arc::from(linalg_fn),
             linalg_op: BinOp::Add,
         };
-        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out =
+            op.eval(&EvalContext::out_of_plan(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 8]);
 
         let a = Tensor::zero::<f32>(&[0, 4, 16]).unwrap();
@@ -1353,7 +1349,8 @@ mod tests {
             .bin(f32::datum_type())
             .expect("f32 unicast Add kernel available");
         let op = OptBinUnicast { binop: Box::new(Add), eval_fn: Arc::from(linalg_fn) };
-        let out = op.eval(&EvalContext::pure(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
+        let out =
+            op.eval(&EvalContext::out_of_plan(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         assert_eq!(out[0].shape(), &[0, 4, 16]);
     }
 

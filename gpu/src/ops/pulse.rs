@@ -34,9 +34,7 @@ impl Op for GpuDelay {
 }
 
 impl EvalOp for GpuDelay {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuDelayState {
@@ -189,9 +187,7 @@ impl Op for GpuPulsePad {
 }
 
 impl EvalOp for GpuPulsePad {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(GpuPulsePadState {
@@ -418,9 +414,7 @@ impl Op for GpuAffineChunkTrim {
 }
 
 impl EvalOp for GpuAffineChunkTrim {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);

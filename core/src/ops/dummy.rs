@@ -12,9 +12,7 @@ impl Op for Dummy {
 }
 
 impl EvalOp for Dummy {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, _inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("eval() called on a Dummy op. This is a bug.")

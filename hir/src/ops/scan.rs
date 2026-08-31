@@ -41,9 +41,7 @@ impl Op for InferenceScan {
 }
 
 impl EvalOp for InferenceScan {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         self.to_mir_scan()?.state(ctx)

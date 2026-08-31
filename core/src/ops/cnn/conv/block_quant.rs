@@ -15,9 +15,7 @@ impl Op for BlockQuantIntoShape {
 }
 
 impl EvalOp for BlockQuantIntoShape {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
@@ -67,9 +65,7 @@ impl Op for SplitGroupBlockQuant {
 }
 
 impl EvalOp for SplitGroupBlockQuant {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)

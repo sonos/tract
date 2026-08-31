@@ -700,11 +700,10 @@ mod tests {
                 weights = weights.clone().cast_to_dt(DatumType::F32).unwrap().into_owned();
             }
 
-            let output =
-                args_1!(matmul.eval(
-                    &EvalContext::pure(),
-                    tvec![activs.into_tvalue(), weights.into_tvalue()]
-                )?);
+            let output = args_1!(matmul.eval(
+                &EvalContext::out_of_plan(),
+                tvec![activs.into_tvalue(), weights.into_tvalue()]
+            )?);
             cuda_output.to_host()?.close_enough(&output, Approximation::VeryApproximate)?;
             Ok(())
         })
@@ -889,7 +888,7 @@ mod tests {
                 rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)?
             };
             let output = matmul.eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()],
             )?;
 

@@ -176,7 +176,7 @@ mod tests {
             let cuda_cos = cos.clone().into_device()?;
 
             let cpu_output = apply_rope::ApplyRope.eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec![a.clone().into(), cos.clone().into(), sin.clone().into(),],
             )?[0]
                 .clone()

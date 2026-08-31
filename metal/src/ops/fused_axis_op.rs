@@ -139,8 +139,10 @@ impl Op for MetalFusedAxisOp {
 }
 
 impl EvalOp for MetalFusedAxisOp {
-    fn is_pure_function(&self) -> bool {
-        self.op.is_pure_function()
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        let ctx = EvalContext::out_of_plan();
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, &ctx)?;
+        self.op.eval_out_of_plan(inputs)
     }
 
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {

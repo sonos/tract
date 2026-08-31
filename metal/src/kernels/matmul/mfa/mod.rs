@@ -485,9 +485,7 @@ impl Op for MetalMfaSdpa {
 }
 
 impl EvalOp for MetalMfaSdpa {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::{DeviceTensorExt, IntoDevice};
         ensure!(inputs.len() == 3, "MetalMfaSdpa expects Q,K,V");
@@ -1312,11 +1310,14 @@ mod tests {
                 let kd = Tensor::from_shape(&[b, nh, sk, d], &kv)?.into_device()?;
                 let vd = Tensor::from_shape(&[b, nh, sk, d], &vv)?.into_device()?;
                 let op = MetalMfaSdpa { scale, is_causal };
-                let out = op.eval_pure(tvec![
-                    qd.into_tensor().into_tvalue(),
-                    kd.into_tensor().into_tvalue(),
-                    vd.into_tensor().into_tvalue()
-                ])?;
+                let out = op.eval(
+                    &EvalContext::out_of_plan(),
+                    tvec![
+                        qd.into_tensor().into_tvalue(),
+                        kd.into_tensor().into_tvalue(),
+                        vd.into_tensor().into_tvalue()
+                    ],
+                )?;
                 let got = out[0].to_device_tensor()?.to_host()?.into_tensor();
                 let gv = unsafe { got.as_slice_unchecked::<f32>() };
                 Ok(gv.iter().zip(want.iter()).map(|(&g, &w)| (g - w).abs()).fold(0f32, f32::max))

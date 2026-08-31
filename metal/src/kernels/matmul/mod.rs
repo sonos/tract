@@ -454,7 +454,8 @@ mod tests {
             }
 
             let output = args_1!(
-                matmul.eval(&EvalContext::pure(), tvec![a.into_tvalue(), b.into_tvalue()])?
+                matmul
+                    .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue(), b.into_tvalue()])?
             );
             metal_output.to_host()?.close_enough(&output, Approximation::SuperApproximate)?;
             Ok(())
@@ -913,7 +914,7 @@ mod tests {
                 rhs_tensor = Q4_0.simulate_precision_loss(rhs_tensor, 2)?
             };
             let output = matmul.eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec![lhs_tensor.into_tvalue(), rhs_tensor.into_tvalue()],
             )?;
 

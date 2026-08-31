@@ -145,12 +145,13 @@ pub trait EvalOp {
         bail!("{} has neither eval nor state", std::any::type_name::<Self>())
     }
 
-    /// Evaluate with no context, for callers that have none: const folding, shape
-    /// inference, tests. Only meaningful for an op reporting
-    /// `is_pure_function()`. Convenience over [`EvalOp::eval`] -- do not override.
-    fn eval_pure(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.eval(&EvalContext::pure(), inputs)
-    }
+    /// Evaluate with no plan around the node -- const folding, shape inference,
+    /// tests -- or `None` when there is no answer without one, because the op
+    /// reads the context or keeps state between turns. Required, with no default:
+    /// an op answering `Some` has produced the value from `inputs` alone, by
+    /// construction, so the claim and the act cannot disagree. Write it with
+    /// `op_out_of_plan!()` or `not_out_of_plan!()`.
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>>;
 
     /// Build this node's inter-turn state, or `None` when the op keeps nothing
     /// between turns. This is what decides whether the plan holds an
@@ -159,12 +160,6 @@ pub trait EvalOp {
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(None)
     }
-
-    /// Whether evaluating depends on nothing but `inputs`, so the op can be run
-    /// outside a plan -- during const folding and shape inference, where there
-    /// is no meaningful context. False for anything that reads `ctx` or keeps
-    /// state.
-    fn is_pure_function(&self) -> bool;
 
     /// Release whatever the op manages for `session`, called for every node as a
     /// state is dropped. Ops keeping scratch keyed by `(session, node_id)` must

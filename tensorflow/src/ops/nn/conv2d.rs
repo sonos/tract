@@ -35,7 +35,7 @@ mod tests {
 
     fn verify(input: Tensor, filter: Tensor, stride: usize, padding: PaddingSpec, expect: &[f32]) {
         let result = make_conv(stride, stride, padding)
-            .eval_pure(tvec![input.into(), filter.into()])
+            .eval(&EvalContext::out_of_plan(), tvec![input.into(), filter.into()])
             .unwrap()
             .remove(0);
         assert_eq!(expect.len(), result.shape().iter().product::<usize>());
@@ -136,7 +136,8 @@ mod tests {
         let filter = tensor4(&[[[[0.0f32]]], [[[1.0]]], [[[0.0]]]]);
         let exp = tensor4(&[[[[1f32]]]]);
 
-        let result = conv.eval_pure(tvec![data.into(), filter.into()]).unwrap();
+        let result =
+            conv.eval(&EvalContext::out_of_plan(), tvec![data.into(), filter.into()]).unwrap();
         result[0].close_enough(&exp, Approximation::Approximate).unwrap()
     }
 
@@ -146,7 +147,8 @@ mod tests {
         let data = tensor4(&[[[[142.3088f32], [48.891083]], [[208.3187], [-11.274994]]]]);
         let filter = tensor4(&[[[[160.72833f32]], [[107.84076]]], [[[247.50552]], [[-38.738464]]]]);
         let exp = tensor4(&[[[[80142.31f32], [5067.5586]], [[32266.81], [-1812.2109]]]]);
-        let got = &conv.eval_pure(tvec![data.into(), filter.into()]).unwrap()[0];
+        let got =
+            &conv.eval(&EvalContext::out_of_plan(), tvec![data.into(), filter.into()]).unwrap()[0];
         exp.close_enough(got, true).unwrap()
     }
 

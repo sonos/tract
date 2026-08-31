@@ -127,7 +127,7 @@ mod tests {
             };
 
             let cpu_output = cpu_softmax
-                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
@@ -157,7 +157,7 @@ mod tests {
             };
 
             let cpu_output = cpu_softmax
-                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
@@ -187,7 +187,7 @@ mod tests {
             };
 
             let cpu_output = cpu_softmax
-                .eval(&EvalContext::pure(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             let metal_output = Softmax.eval(stream, &a, axis)?;
@@ -274,7 +274,8 @@ mod tests {
                 quant_output_dt: None,
                 kind: SoftmaxKind::Softmax,
             };
-            let cpu_output = cpu_softmax.eval(&EvalContext::pure(), tvec![a.into_tvalue()])?[0]
+            let cpu_output = cpu_softmax
+                .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
             Ok(cpu_output)

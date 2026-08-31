@@ -36,9 +36,7 @@ impl Op for SumPool {
 }
 
 impl EvalOp for SumPool {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<TDim> = inputs[0].shape().iter().map(|d| d.to_dim()).collect();
@@ -124,9 +122,7 @@ impl Op for OptSumPool {
 }
 
 impl EvalOp for OptSumPool {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -608,7 +604,8 @@ mod tests {
         .into_tensor();
 
         // generic zoned kernel (knob off by default)
-        let generic = op.eval(&EvalContext::pure(), tvec![input.clone().into_tvalue()]).unwrap();
+        let generic =
+            op.eval(&EvalContext::out_of_plan(), tvec![input.clone().into_tvalue()]).unwrap();
         let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable kernel, called directly
@@ -653,7 +650,8 @@ mod tests {
         .into_tensor();
 
         // generic zoned kernel (knob off by default)
-        let generic = op.eval(&EvalContext::pure(), tvec![input.clone().into_tvalue()]).unwrap();
+        let generic =
+            op.eval(&EvalContext::out_of_plan(), tvec![input.clone().into_tvalue()]).unwrap();
         let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable NHWC kernel, called directly

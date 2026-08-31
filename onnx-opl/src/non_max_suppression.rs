@@ -207,9 +207,7 @@ impl Op for NonMaxSuppression {
 }
 
 impl EvalOp for NonMaxSuppression {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let dt = inputs[0].datum_type();

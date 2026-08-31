@@ -111,9 +111,7 @@ impl TypedOp for Softmax {
 }
 
 impl EvalOp for Softmax {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -477,7 +475,7 @@ mod test {
                 Softmax { axes: self.axes.clone(), quant_output_dt, ..Softmax::default() };
 
             // Compute quantized output
-            let result = softmax.eval_pure(inputs)?;
+            let result = softmax.eval(&EvalContext::out_of_plan(), inputs)?;
             let result = args_1!(result);
             let result_float = result.cast_to::<f32>()?;
 
@@ -485,7 +483,7 @@ mod test {
             let input_float = self.data.cast_to::<f32>()?;
             let inputs_float = tvec!(input_float.into_owned().into_tvalue());
             let softmax_float = Softmax { axes: self.axes.clone(), ..Softmax::default() };
-            let reference_float = softmax_float.eval_pure(inputs_float)?;
+            let reference_float = softmax_float.eval(&EvalContext::out_of_plan(), inputs_float)?;
             let reference_array = args_1!(reference_float);
             let reference = reference_array.to_plain_array_view::<f32>()?;
 

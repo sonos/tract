@@ -26,7 +26,5 @@ impl Op for UnimplementedOp {
 }
 
 impl EvalOp for UnimplementedOp {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 }

@@ -36,9 +36,7 @@ impl Op for GpuCausalConv1dUpdate {
 }
 
 impl EvalOp for GpuCausalConv1dUpdate {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, weight, state) = args_3!(inputs);

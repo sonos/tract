@@ -464,9 +464,7 @@ impl Op for MetalMlxSdpa {
 }
 
 impl EvalOp for MetalMlxSdpa {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::DeviceTensorExt;
         ensure!((3..=4).contains(&inputs.len()), "MetalMlxSdpa expects Q,K,V[,mask]");
@@ -595,7 +593,7 @@ mod tests {
             is_causal,
         };
         Ok(cpu.eval(
-            &EvalContext::pure(),
+            &EvalContext::out_of_plan(),
             tvec![q.clone().into_tvalue(), k.clone().into_tvalue(), v.clone().into_tvalue()],
         )?[0]
             .clone()
@@ -754,7 +752,7 @@ mod tests {
             is_causal: false,
         };
         let reference = cpu.eval(
-            &EvalContext::pure(),
+            &EvalContext::out_of_plan(),
             tvec![
                 q.clone().into_tvalue(),
                 k.clone().into_tvalue(),

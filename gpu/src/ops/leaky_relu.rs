@@ -41,9 +41,7 @@ impl Op for GpuLeakyRelu {
 }
 
 impl EvalOp for GpuLeakyRelu {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);

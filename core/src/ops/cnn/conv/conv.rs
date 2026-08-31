@@ -1004,9 +1004,7 @@ impl Op for Conv {
 }
 
 impl EvalOp for Conv {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let mut model = TypedModel::default();
@@ -1489,7 +1487,7 @@ mod test {
             rctensor0(1.0f32),
         );
         let input = input.into_iter().map(IntoTValue::into_tvalue).collect::<TVec<_>>();
-        let output = op.eval_pure(input).unwrap();
+        let output = op.eval(&EvalContext::out_of_plan(), input).unwrap();
         assert_eq!(*output[0], tensor4(&[[[[8i32, 12], [20, 24]]]]));
     }
 

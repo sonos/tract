@@ -197,7 +197,7 @@ mod tests {
             };
 
             let cpu_output = cpu.eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
             )?[0]
                 .clone()
@@ -229,7 +229,7 @@ mod tests {
             };
 
             let cpu_output = cpu.eval(
-                &EvalContext::pure(),
+                &EvalContext::out_of_plan(),
                 tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
             )?[0]
                 .clone()
@@ -272,7 +272,7 @@ mod tests {
                     post_softmax_mask: post,
                 };
                 let cpu_out = cpu.eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     tvec![a.to_host()?.into_tvalue(), mask.to_host()?.into_tvalue()],
                 )?[0]
                     .clone()
@@ -373,7 +373,10 @@ mod tests {
 
             let cpu_output =
                 scaled_masked_softmax::ScaledMaskedSoftmax { scale, post_softmax_mask: false }
-                    .eval(&EvalContext::pure(), tvec![a.into_tvalue(), mask.into_tvalue()])?[0]
+                    .eval(
+                        &EvalContext::out_of_plan(),
+                        tvec![a.into_tvalue(), mask.into_tvalue()],
+                    )?[0]
                     .clone()
                     .into_tensor();
             Ok(cpu_output)

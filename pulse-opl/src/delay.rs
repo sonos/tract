@@ -140,9 +140,7 @@ impl Op for Delay {
 }
 
 impl EvalOp for Delay {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DelayState { buffer: None })))

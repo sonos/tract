@@ -48,9 +48,7 @@ impl TypedOp for OneHot {
 }
 
 impl EvalOp for OneHot {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);

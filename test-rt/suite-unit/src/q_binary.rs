@@ -29,7 +29,7 @@ impl QOpProblem for QBinaryOpProblem {
         let b = self.tensor_b.cast_to::<f32>()?.clone().into_owned();
         Ok(self
             .operator
-            .eval_pure(tvec![a.into_tvalue(), b.into_tvalue()])?
+            .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue(), b.into_tvalue()])?
             .remove(0)
             .into_tensor())
     }

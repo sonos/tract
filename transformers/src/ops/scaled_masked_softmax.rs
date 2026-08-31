@@ -79,9 +79,7 @@ impl Op for ScaledMaskedSoftmax {
 }
 
 impl EvalOp for ScaledMaskedSoftmax {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, mask) = args_2!(inputs);
@@ -93,20 +91,24 @@ impl EvalOp for ScaledMaskedSoftmax {
         let pre_softmax: TValue = if mask.datum_type() == bool::datum_type() {
             // Boolean mask: keep score where mask=true, replace with -inf where mask=false.
             let fill = tensor0(-f32::INFINITY).cast_to_dt(dt)?.into_owned();
-            Iff.eval(&EvalContext::pure(), tvec![mask.clone(), scaled.into(), fill.into_tvalue()])?
-                .remove(0)
+            Iff.eval(
+                &EvalContext::out_of_plan(),
+                tvec![mask.clone(), scaled.into(), fill.into_tvalue()],
+            )?
+            .remove(0)
         } else {
             Add.eval(scaled.into(), mask.clone(), dt)?.into()
         };
 
         let softmax_out = Softmax::new(softmax_axis, None, SoftmaxKind::Softmax)
-            .eval(&EvalContext::pure(), tvec![pre_softmax])?[0]
+            .eval(&EvalContext::out_of_plan(), tvec![pre_softmax])?[0]
             .clone();
 
         if self.post_softmax_mask {
             // Zero out positions where the bool mask is false.
             let zero = tensor0(0f32).cast_to_dt(dt)?.into_owned();
-            Ok(Iff.eval(&EvalContext::pure(), tvec![mask, softmax_out, zero.into_tvalue()])?)
+            Ok(Iff
+                .eval(&EvalContext::out_of_plan(), tvec![mask, softmax_out, zero.into_tvalue()])?)
         } else {
             Ok(tvec![softmax_out])
         }

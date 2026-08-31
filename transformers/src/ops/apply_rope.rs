@@ -51,9 +51,7 @@ impl Op for RotateHalf {
 }
 
 impl EvalOp for RotateHalf {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
@@ -162,13 +160,12 @@ impl Op for ApplyRope {
 }
 
 impl EvalOp for ApplyRope {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, cos, sin) = args_3!(inputs);
-        let rotated_input = args_1!(RotateHalf.eval(&EvalContext::pure(), tvec![input.clone()])?);
+        let rotated_input =
+            args_1!(RotateHalf.eval(&EvalContext::out_of_plan(), tvec![input.clone()])?);
         let mul_with_cos = Mul.eval(input.clone(), cos, input.datum_type())?;
         let mul_with_sin = Mul.eval(rotated_input, sin, input.datum_type())?;
         let output = Add.eval(mul_with_cos.into(), mul_with_sin.into(), input.datum_type())?;
@@ -260,8 +257,9 @@ mod tests {
     {
         let a_len = a_shape.iter().product::<usize>();
         let input = Tensor::from_shape(a_shape, &(0..a_len).map(|f| f.as_()).collect::<Vec<F>>())?;
-        let rotated = RotateHalf.eval(&EvalContext::pure(), tvec![input.clone().into()])?;
-        let mut back = args_1!(RotateHalf.eval_pure(rotated)?).into_tensor();
+        let rotated = RotateHalf.eval(&EvalContext::out_of_plan(), tvec![input.clone().into()])?;
+        let mut back =
+            args_1!(RotateHalf.eval(&EvalContext::out_of_plan(), rotated)?).into_tensor();
         Neg {}.eval_in_place(&mut back, None)?;
         back.close_enough(&input, Approximation::Close)?;
         Ok(())

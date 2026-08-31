@@ -87,8 +87,10 @@ pub fn figure_out_causal_llm_b_s_p(
         // Look for KVCache Op
         let mut symbols = HashSet::new();
         for node in &model.nodes {
-            if let Some((_, fact)) =
-                node.op.state(&EvalContext::pure())?.and_then(|state| state.init_tensor_fact())
+            if let Some((_, fact)) = node
+                .op
+                .state(&EvalContext::out_of_plan())?
+                .and_then(|state| state.init_tensor_fact())
             {
                 symbols = fact.shape.volume().symbols();
                 break;

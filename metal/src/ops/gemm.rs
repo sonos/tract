@@ -67,9 +67,7 @@ impl<K: GemmKernel> MetalGemm<K> {
     }
 }
 impl<K: GemmKernel + 'static> EvalOp for MetalGemm<K> {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (a_raw, b_raw) = args_2!(inputs);

@@ -38,9 +38,7 @@ impl Op for DeconvSum {
 }
 
 impl EvalOp for DeconvSum {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.eval_with_values(inputs, ctx.symbols)
@@ -532,9 +530,7 @@ impl Op for DepthwiseDeconv {
 }
 
 impl EvalOp for DepthwiseDeconv {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (kernel, input, bias) = args_3!(inputs);

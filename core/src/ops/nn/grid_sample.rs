@@ -260,9 +260,7 @@ impl Op for GridSample {
 }
 
 impl EvalOp for GridSample {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (x, grid) = args_2!(inputs);

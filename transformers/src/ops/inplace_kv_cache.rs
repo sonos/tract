@@ -150,9 +150,7 @@ impl Op for InPlaceKvSdpa {
 }
 
 impl EvalOp for InPlaceKvSdpa {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(InPlaceKvSdpaState {
             axis: self.axis,
@@ -338,7 +336,7 @@ mod tests {
             concat = Some(match concat.take() {
                 None => chunk,
                 Some(c) => TypedConcat { axis }
-                    .eval(&EvalContext::pure(), tvec![c.into(), chunk.into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), chunk.into()])?
                     .remove(0)
                     .into_tensor(),
             });
@@ -431,7 +429,7 @@ mod tests {
             concat = Some(match concat.take() {
                 None => kv.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), kv.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), kv.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
@@ -477,7 +475,10 @@ mod tests {
                     concat = Some(match concat.take() {
                         None => step.clone(),
                         Some(c) => TypedConcat { axis: 2 }
-                            .eval(&EvalContext::pure(), tvec![c.into(), step.clone().into()])?
+                            .eval(
+                                &EvalContext::out_of_plan(),
+                                tvec![c.into(), step.clone().into()],
+                            )?
                             .remove(0)
                             .into_tensor(),
                     });
@@ -524,7 +525,10 @@ mod tests {
                     concat = Some(match concat.take() {
                         None => step.clone(),
                         Some(c) => TypedConcat { axis: 2 }
-                            .eval(&EvalContext::pure(), tvec![c.into(), step.clone().into()])?
+                            .eval(
+                                &EvalContext::out_of_plan(),
+                                tvec![c.into(), step.clone().into()],
+                            )?
                             .remove(0)
                             .into_tensor(),
                     });
@@ -562,7 +566,7 @@ mod tests {
         let (bsz, hq, hkv, d) = (1usize, 4usize, 2usize, 16usize); // GQA: 4 q-heads / 2 kv-heads
         let op = InPlaceKvSdpa { axis: 2, causal, scale: None };
         let turn = TurnState::default();
-        let mut state = op.state(&EvalContext::pure())?.unwrap();
+        let mut state = op.state(&EvalContext::out_of_plan())?.unwrap();
         let _turn = turn;
         let flash = FlashSdpaOp { causal, scale: None };
 
@@ -580,7 +584,7 @@ mod tests {
 
             let o_fused = state
                 .eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     &op,
                     tvec![q.clone().into(), knew.clone().into(), vnew.clone().into()],
                 )?
@@ -590,20 +594,20 @@ mod tests {
             kc = Some(match kc.take() {
                 None => knew.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), knew.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), knew.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             vc = Some(match vc.take() {
                 None => vnew.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), vnew.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), vnew.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             let o_base = flash
                 .eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     tvec![q.into(), kc.clone().unwrap().into(), vc.clone().unwrap().into()],
                 )?
                 .remove(0)
@@ -669,20 +673,20 @@ mod tests {
             kc = Some(match kc.take() {
                 None => knew.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), knew.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), knew.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             vc = Some(match vc.take() {
                 None => vnew.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), vnew.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), vnew.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             let o_base = flash
                 .eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     tvec![q.into(), kc.clone().unwrap().into(), vc.clone().unwrap().into()],
                 )?
                 .remove(0)
@@ -760,20 +764,20 @@ mod tests {
             kacc = Some(match kacc.take() {
                 None => ki.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), ki.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), ki.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             vacc = Some(match vacc.take() {
                 None => vi.clone(),
                 Some(c) => TypedConcat { axis: 2 }
-                    .eval(&EvalContext::pure(), tvec![c.into(), vi.clone().into()])?
+                    .eval(&EvalContext::out_of_plan(), tvec![c.into(), vi.clone().into()])?
                     .remove(0)
                     .into_tensor(),
             });
             let o_base = flash
                 .eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     tvec![qi.into(), kacc.clone().unwrap().into(), vacc.clone().unwrap().into()],
                 )?
                 .remove(0)
@@ -803,13 +807,13 @@ mod tests {
         for &steps in &[256usize, 512, 1024, 2048] {
             let op = InPlaceKvSdpa { axis: 2, causal: false, scale: None };
             let turn = TurnState::default();
-            let mut state = op.state(&EvalContext::pure())?.unwrap();
+            let mut state = op.state(&EvalContext::out_of_plan())?.unwrap();
             let _turn = turn;
             let t_fused = {
                 let start = Instant::now();
                 for _ in 0..steps {
                     std::hint::black_box(state.eval(
-                        &EvalContext::pure(),
+                        &EvalContext::out_of_plan(),
                         &op,
                         tvec![q.clone().into(), knew.clone().into(), vnew.clone().into()],
                     )?);
@@ -826,19 +830,25 @@ mod tests {
                     kc = Some(match kc.take() {
                         None => knew.clone(),
                         Some(c) => TypedConcat { axis: 2 }
-                            .eval(&EvalContext::pure(), tvec![c.into(), knew.clone().into()])?
+                            .eval(
+                                &EvalContext::out_of_plan(),
+                                tvec![c.into(), knew.clone().into()],
+                            )?
                             .remove(0)
                             .into_tensor(),
                     });
                     vc = Some(match vc.take() {
                         None => vnew.clone(),
                         Some(c) => TypedConcat { axis: 2 }
-                            .eval(&EvalContext::pure(), tvec![c.into(), vnew.clone().into()])?
+                            .eval(
+                                &EvalContext::out_of_plan(),
+                                tvec![c.into(), vnew.clone().into()],
+                            )?
                             .remove(0)
                             .into_tensor(),
                     });
                     std::hint::black_box(flash.eval(
-                        &EvalContext::pure(),
+                        &EvalContext::out_of_plan(),
                         tvec![
                             q.clone().into(),
                             kc.clone().unwrap().into(),
@@ -877,15 +887,18 @@ mod tests {
     fn resume_via_clone() -> TractResult<()> {
         let op = InPlaceKvSdpa { axis: 2, causal: true, scale: None };
         let _turn = TurnState::default();
-        let mut straight = op.state(&EvalContext::pure())?.unwrap();
-        let mut split = op.state(&EvalContext::pure())?.unwrap();
+        let mut straight = op.state(&EvalContext::out_of_plan())?.unwrap();
+        let mut split = op.state(&EvalContext::out_of_plan())?.unwrap();
         for (t, (q, k, v)) in decode_inputs(9).into_iter().enumerate() {
             let ins = tvec![q.into(), k.into(), v.into()];
-            let os = straight.eval(&EvalContext::pure(), &op, ins.clone())?.remove(0).into_tensor();
+            let os = straight
+                .eval(&EvalContext::out_of_plan(), &op, ins.clone())?
+                .remove(0)
+                .into_tensor();
             if t == 5 {
                 split = split.clone();
             }
-            let op2 = split.eval(&EvalContext::pure(), &op, ins)?.remove(0).into_tensor();
+            let op2 = split.eval(&EvalContext::out_of_plan(), &op, ins)?.remove(0).into_tensor();
             os.close_enough(&op2, Approximation::Exact)
                 .with_context(|| format!("clone resume mismatch at step {t}"))?;
         }
@@ -898,20 +911,23 @@ mod tests {
     fn resume_via_save_load() -> TractResult<()> {
         let op = InPlaceKvSdpa { axis: 2, causal: true, scale: None };
         let mut turn = TurnState::default();
-        let mut straight = op.state(&EvalContext::pure())?.unwrap();
-        let mut split = op.state(&EvalContext::pure())?.unwrap();
+        let mut straight = op.state(&EvalContext::out_of_plan())?.unwrap();
+        let mut split = op.state(&EvalContext::out_of_plan())?.unwrap();
         for (t, (q, k, v)) in decode_inputs(9).into_iter().enumerate() {
             let ins = tvec![q.into(), k.into(), v.into()];
-            let os = straight.eval(&EvalContext::pure(), &op, ins.clone())?.remove(0).into_tensor();
+            let os = straight
+                .eval(&EvalContext::out_of_plan(), &op, ins.clone())?
+                .remove(0)
+                .into_tensor();
             if t == 5 {
                 let mut saved = vec![];
                 split.save_to(&mut saved)?;
                 ensure!(saved.len() == 2, "save_to should emit [K, V]");
-                let mut fresh = op.state(&EvalContext::pure())?.unwrap();
+                let mut fresh = op.state(&EvalContext::out_of_plan())?.unwrap();
                 fresh.load_from(&mut turn, &mut saved.into_iter())?;
                 split = fresh;
             }
-            let op2 = split.eval(&EvalContext::pure(), &op, ins)?.remove(0).into_tensor();
+            let op2 = split.eval(&EvalContext::out_of_plan(), &op, ins)?.remove(0).into_tensor();
             os.close_enough(&op2, Approximation::Exact)
                 .with_context(|| format!("save/load resume mismatch at step {t}"))?;
         }
@@ -933,10 +949,10 @@ mod tests {
         println!("   len    save_to(ms)");
         for &len in &[256usize, 1024, 4096] {
             let _sess = TurnState::default();
-            let mut state = op.state(&EvalContext::pure())?.unwrap();
+            let mut state = op.state(&EvalContext::out_of_plan())?.unwrap();
             for _ in 0..len {
                 state.eval(
-                    &EvalContext::pure(),
+                    &EvalContext::out_of_plan(),
                     &op,
                     tvec![q.clone().into(), kv.clone().into(), kv.clone().into()],
                 )?;

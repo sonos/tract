@@ -126,7 +126,7 @@ mod tests {
         S: Into<Tensor>,
     {
         op.eval(
-            &EvalContext::pure(),
+            &EvalContext::out_of_plan(),
             tvec![
                 input.into().into(),
                 begin.into().into(),

@@ -38,8 +38,7 @@ pub trait InferenceOp: Op {
         let (infered_inputs, infered_outputs, observed) =
             self.infer_facts(inputs, outputs, observed).context("Infering facts")?;
 
-        if self.is_pure_function()
-            && infered_inputs.len() > 0
+        if infered_inputs.len() > 0
             && let Some(input_values) = infered_inputs
                 .iter()
                 .map(|i| {
@@ -51,8 +50,9 @@ pub trait InferenceOp: Op {
                 .collect::<Option<TVec<_>>>()
         {
             let input_mem: u64 = input_values.iter().map(|t| tensor_mem(t)).sum();
-            match self.eval_pure(input_values) {
-                Ok(values) => {
+            match self.eval_out_of_plan(input_values) {
+                Ok(None) => (),
+                Ok(Some(values)) => {
                     let output_mem: u64 = values.iter().map(|t| tensor_mem(t)).sum();
                     if output_mem <= input_mem.max(CONST_FOLD_MEM_BUDGET) {
                         let output_values = values

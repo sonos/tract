@@ -148,7 +148,9 @@ mod tests {
             let metal_in = cpu_in.clone().into_device()?;
 
             let cpu_op = cpu_dg::DiagGather { offset: offset.to_dim(), out_len: out_len.to_dim() };
-            let cpu_out = cpu_op.eval_pure(tvec![cpu_in.into_tvalue()])?[0].clone().into_tensor();
+            let cpu_out = cpu_op.eval(&EvalContext::out_of_plan(), tvec![cpu_in.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
             let metal_out = DiagGather.eval(stream, &metal_in, offset, out_len)?;
             cpu_out
                 .close_enough(&metal_out.to_host()?.into_tensor(), Approximation::Exact)

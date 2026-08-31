@@ -38,9 +38,7 @@ impl Op for GpuApplyRope {
 }
 
 impl EvalOp for GpuApplyRope {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input_val, cos_val, sin_val) = args_3!(inputs);

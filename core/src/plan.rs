@@ -117,9 +117,9 @@ pub struct TurnState {
 
 impl EvalContext<'static> {
     /// Context for evaluating outside any plan -- const folding and shape
-    /// inference. Only valid for an op reporting `is_pure_function()`: no symbol
-    /// is bound and no shared resource is reachable.
-    pub fn pure() -> EvalContext<'static> {
+    /// inference. What [`EvalOp::eval_out_of_plan`] hands the op: no symbol is
+    /// bound and no shared resource is reachable.
+    pub fn out_of_plan() -> EvalContext<'static> {
         static SYMBOLS: std::sync::OnceLock<SymbolValues> = std::sync::OnceLock::new();
         static SEATING: std::sync::OnceLock<Seating> = std::sync::OnceLock::new();
         EvalContext {

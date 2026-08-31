@@ -104,9 +104,7 @@ thread_local! {
 }
 
 impl EvalOp for CudaConv {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let inputs =

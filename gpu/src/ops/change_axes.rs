@@ -71,9 +71,7 @@ impl Op for GpuAxisOp {
 }
 
 impl EvalOp for GpuAxisOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let tensor = args_1!(inputs).into_tensor();

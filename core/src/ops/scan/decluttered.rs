@@ -762,9 +762,7 @@ impl Op for Scan {
 }
 
 impl EvalOp for Scan {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
     fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         self.to_codegen_op(false)?.state(ctx)
     }

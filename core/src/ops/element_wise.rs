@@ -88,9 +88,7 @@ impl Op for ElementWiseOp {
 }
 
 impl EvalOp for ElementWiseOp {
-    fn is_pure_function(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         if let Some(_dt) = self.0.output_type(inputs[0].datum_type()) {

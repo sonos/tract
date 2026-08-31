@@ -164,7 +164,7 @@ impl OpState for DynKeyValueCacheState {
         // build output
         let output = if let Some(curr) = self.kv_cache.take() {
             TypedConcat { axis: self.axis }
-                .eval(&EvalContext::pure(), tvec![curr, input])?
+                .eval(&EvalContext::out_of_plan(), tvec![curr, input])?
                 .remove(0)
         } else {
             input
@@ -196,9 +196,7 @@ impl Op for DynKeyValueCache {
 }
 
 impl EvalOp for DynKeyValueCache {
-    fn is_pure_function(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::new(DynKeyValueCacheState {
@@ -426,7 +424,7 @@ mod tests {
         };
 
         let mut turn = TurnState::default();
-        let mut state = op.state(&EvalContext::pure())?.unwrap();
+        let mut state = op.state(&EvalContext::out_of_plan())?.unwrap();
 
         let mut inputs = tvec![];
 
@@ -444,7 +442,7 @@ mod tests {
             let len = shape.iter().product::<usize>();
             let input = Tensor::from_shape(shape, &(0..len).map(|f| f.as_()).collect::<Vec<F>>())?;
             inputs.push(input.clone().into_tvalue());
-            state.eval(&EvalContext::pure(), &op, tvec!(input.clone().into()))?[0]
+            state.eval(&EvalContext::out_of_plan(), &op, tvec!(input.clone().into()))?[0]
                 .clone()
                 .into_tensor();
         }
@@ -453,7 +451,7 @@ mod tests {
         state.save_to(&mut curr_states)?;
         let output = curr_states.remove(0);
 
-        let reference = &TypedConcat { axis }.eval_pure(inputs)?[0];
+        let reference = &TypedConcat { axis }.eval(&EvalContext::out_of_plan(), inputs)?[0];
         output.close_enough(&reference.clone().into_tensor(), Approximation::Close)?;
         Ok(())
     }
@@ -482,7 +480,7 @@ mod tests {
             input_sequence_fact: f32::fact(&input),
         };
         let _turn = TurnState::default();
-        let state = op.state(&EvalContext::pure())?.unwrap();
+        let state = op.state(&EvalContext::out_of_plan())?.unwrap();
         assert!(state.has_init_tensor_fact());
         assert_eq!(state.has_init_tensor_fact(), state.init_tensor_fact().is_some());
         Ok(())
