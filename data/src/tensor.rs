@@ -9,7 +9,7 @@ use itertools::{Itertools, izip};
 use ndarray::prelude::*;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
-use num_traits::{Float, Zero};
+use num_traits::Float;
 use std::borrow::Cow;
 use std::fmt;
 use std::hash::Hash;
@@ -328,16 +328,21 @@ impl Tensor {
             tensor.update_strides_and_len();
         }
         if !tensor.storage.is_empty() {
-            if dt == String::datum_type() || dt == Blob::datum_type() {
-                // assumes zero-initialized string and blob are valid
-                tensor.plain_storage_mut().as_bytes_mut().fill(0);
-            } else if dt == TDim::datum_type() {
+            unsafe fn write_defaults<T: Datum + Default>(tensor: &mut Tensor) {
                 unsafe {
-                    tensor
-                        .as_slice_mut_unchecked::<TDim>()
-                        .iter_mut()
-                        .for_each(|dim| std::ptr::write(dim, TDim::zero()))
+                    let len = tensor.len;
+                    let dst = tensor.as_slice_mut_unchecked::<T>().as_mut_ptr();
+                    for i in 0..len {
+                        std::ptr::write(dst.add(i), T::default());
+                    }
                 }
+            }
+            if dt == String::datum_type() {
+                unsafe { write_defaults::<String>(&mut tensor) }
+            } else if dt == Blob::datum_type() {
+                unsafe { write_defaults::<Blob>(&mut tensor) }
+            } else if dt == TDim::datum_type() {
+                unsafe { write_defaults::<TDim>(&mut tensor) }
             } else if cfg!(debug_assertions) {
                 assert!(dt.is_copy());
                 if dt == DatumType::F32 {
@@ -1600,7 +1605,7 @@ impl Tensor {
         unsafe fn nth_t<T: Datum>(me: &Tensor, nth: usize, output: &mut Tensor) {
             unsafe {
                 let value = me.as_slice_unchecked::<T>()[nth].clone();
-                output.as_slice_mut_unchecked::<T>()[0] = value;
+                std::ptr::write(output.as_slice_mut_unchecked::<T>().as_mut_ptr(), value);
             }
         }
         unsafe {

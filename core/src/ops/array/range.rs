@@ -40,8 +40,9 @@ impl Range {
             let step = step.try_as_plain()?.to_scalar::<T>()?;
             {
                 let mut result_plain = result.try_as_plain_mut()?;
+                let slots = result_plain.as_slice_mut_unchecked::<T>().as_mut_ptr();
                 for i in 0..len {
-                    result_plain.as_slice_mut_unchecked::<T>()[i] = v.clone();
+                    std::ptr::write(slots.add(i), v.clone());
                     v = v + step;
                 }
             }
