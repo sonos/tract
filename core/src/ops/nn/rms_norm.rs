@@ -170,6 +170,110 @@ impl TypedOp for RmsNorm {
     as_op!();
 }
 
+/// RmsNorm followed by a per-axis learned scale (the classic `gamma` weight):
+/// `y = (x * rsqrt(mean_sq(x, axis) + eps)) * scale`
+///
+/// Inputs: `[input, scale]`. `scale` is a rank-1 F32 tensor whose length is
+/// the input dimension along `axis`. The multiply runs in F32 whatever the
+/// input dtype, and the output keeps the input dtype. This is the fused form
+/// GPU backends target so the norm + weight multiply + surrounding casts
+/// collapse into a single kernel dispatch.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct ScaledRmsNorm {
+    pub axis: usize,
+    pub eps: Arc<Tensor>,
+    /// Output dtype when it differs from the input dtype (fuses the
+    /// surrounding casts: the kernel computes in F32 anyway).
+    pub out_dt: Option<DatumType>,
+}
+
+impl Op for ScaledRmsNorm {
+    fn name(&self) -> StaticName {
+        "ScaledRmsNorm".to_string().into()
+    }
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("axis: {:?}, eps: {:?}, out_dt: {:?}", self.axis, self.eps, self.out_dt)])
+    }
+    op_as_typed_op!();
+}
+
+impl EvalOp for ScaledRmsNorm {
+    fn is_stateless(&self) -> bool {
+        true
+    }
+
+    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let (input, scale) = args_2!(inputs);
+        let in_dt = input.datum_type();
+        let normed = RmsNorm { axis: self.axis, eps: self.eps.clone() }
+            .eval(tvec!(input))?
+            .remove(0);
+        let mut buf = normed.cast_to::<f32>()?.into_owned();
+        let scale = scale.cast_to::<f32>()?.into_owned();
+        let scale = unsafe { scale.as_slice_unchecked::<f32>() };
+        let shape = buf.shape().to_vec();
+        let dim = shape[self.axis];
+        ensure!(
+            scale.len() == dim,
+            "ScaledRmsNorm: scale len {} != axis dim {}",
+            scale.len(),
+            dim
+        );
+        let inner: usize = shape[self.axis + 1..].iter().product();
+        let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
+        for chunk in data.chunks_mut(dim * inner) {
+            for (d, s) in scale.iter().enumerate() {
+                for x in &mut chunk[d * inner..(d + 1) * inner] {
+                    *x *= s;
+                }
+            }
+        }
+        let out_dt = self.out_dt.unwrap_or(in_dt);
+        if out_dt == DatumType::F32 {
+            return Ok(tvec![buf.into_tvalue()]);
+        }
+        Ok(tvec![buf.cast_to_dt(out_dt)?.into_owned().into()])
+    }
+}
+
+impl TypedOp for ScaledRmsNorm {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(self.eps.rank() == 0, "ScaledRmsNorm: eps must be a rank-0 tensor");
+        ensure!(inputs.len() == 2, "ScaledRmsNorm expects 2 inputs (input, scale)");
+        ensure!(
+            self.axis < inputs[0].rank(),
+            "ScaledRmsNorm: axis {} is out of bounds for input rank {}",
+            self.axis,
+            inputs[0].rank()
+        );
+        ensure!(inputs[1].rank() == 1, "ScaledRmsNorm: scale must be rank 1");
+        if let (Ok(axis_dim), Ok(scale_dim)) =
+            (inputs[0].shape[self.axis].to_usize(), inputs[1].shape[0].to_usize())
+        {
+            ensure!(
+                axis_dim == scale_dim,
+                "ScaledRmsNorm: scale len {} != axis dim {}",
+                scale_dim,
+                axis_dim
+            );
+        }
+        if let Some(out_dt) = self.out_dt {
+            ensure!(out_dt.is_float(), "ScaledRmsNorm: out_dt must be a float type");
+        }
+        let dt = self.out_dt.unwrap_or(inputs[0].datum_type);
+        let fact = dt.fact(inputs[0].shape.clone());
+        Ok(tvec!(fact))
+    }
+
+    fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
+        let dt = inputs[0].datum_type;
+        let count: TDim = inputs[0].shape.iter().product();
+        Ok(tvec!((Cost::FMA(dt), count * 4)))
+    }
+
+    as_op!();
+}
+
 /// Search pattern => A = A * RSQRT(MEAN_OF_SQUARES(A) + EPS)
 pub fn detect_rms_norm(
     op: &Reduce,
