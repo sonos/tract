@@ -50,6 +50,32 @@ impl DeviceMemoryPool {
             .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
     }
 
+    /// Per-output variant of [`Self::tensor_for_node`] for multi-output nodes:
+    /// each output slot has its own arena region in the schema.
+    pub fn tensor_for_node_output(
+        &self,
+        node_id: usize,
+        slot: usize,
+        dt: DatumType,
+        shape: &[usize],
+    ) -> TractResult<DeviceTensor> {
+        match self.resolved_schema.offsets_by_node[node_id].as_ref() {
+            Some(offsets) if slot < offsets.len() && offsets[slot].len() == 1 => {
+                Ok(DeviceArenaView {
+                    arena: Arc::clone(&self.storage),
+                    dt,
+                    len: shape.iter().product(),
+                    shape: shape.into(),
+                    strides: Tensor::natural_strides(shape),
+                    offset_bytes: offsets[slot][0],
+                    exotic_fact: None,
+                }
+                .into())
+            }
+            _ => DeviceTensor::uninitialized_dt(dt, shape),
+        }
+    }
+
     pub fn scalar_exotic_tensor_for_node(
         &self,
         node_id: usize,

@@ -194,6 +194,7 @@ impl MetalTransform {
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
+            .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {

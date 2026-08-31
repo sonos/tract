@@ -18,20 +18,22 @@ impl CudaGdnRecurrent {
         log_decay: &DeviceTensor,
         beta: &DeviceTensor,
         initial_state: &DeviceTensor,
-    ) -> TractResult<(usize, usize)> {
+    ) -> TractResult<(usize, usize, usize)> {
         ensure!(query.datum_type() == DatumType::F16, "GDN query must be F16");
         ensure!(key.datum_type() == DatumType::F16 && value.datum_type() == DatumType::F16);
         ensure!(beta.datum_type() == DatumType::F16, "GDN beta must be F16");
         ensure!(log_decay.datum_type() == DatumType::F32, "GDN decay must be F32");
         ensure!(initial_state.datum_type() == DatumType::F32, "GDN state must be F32");
         ensure!(query.shape() == key.shape() && query.shape() == value.shape());
-        let width = *query.shape().last().context("GDN query must have a last axis")?;
+        ensure!(query.rank() == 4, "GDN q/k/v layout is [b, S, h, w]");
+        ensure!(query.shape()[0] == 1, "the cuda GDN step loop requires batch 1");
+        let steps = query.shape()[1];
+        let heads = query.shape()[2];
+        let width = query.shape()[3];
         ensure!(width == 128, "the Qwen3.5 kernel currently requires width=128");
-        ensure!(query.len().is_multiple_of(width));
-        let heads = query.len() / width;
         ensure!(
-            log_decay.len() == heads && beta.len() == heads,
-            "GDN head mismatch: heads={heads}, q={:?}, g={:?} (len {}), beta={:?} (len {})",
+            log_decay.len() == steps * heads && beta.len() == steps * heads,
+            "GDN head mismatch: steps={steps}, heads={heads}, q={:?}, g={:?} (len {}), beta={:?} (len {})",
             query.shape(),
             log_decay.shape(),
             log_decay.len(),
@@ -39,7 +41,7 @@ impl CudaGdnRecurrent {
             beta.len(),
         );
         ensure!(initial_state.len() == heads * width * width);
-        Ok((heads, width))
+        Ok((steps, heads, width))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -55,7 +57,8 @@ impl CudaGdnRecurrent {
         output: &DeviceTensor,
         final_state: &DeviceTensor,
     ) -> TractResult<()> {
-        let (heads, width) = self.validate(query, key, value, log_decay, beta, initial_state)?;
+        let (steps, heads, width) =
+            self.validate(query, key, value, log_decay, beta, initial_state)?;
         ensure!(output.shape() == query.shape() && output.datum_type() == DatumType::F16);
         ensure!(
             final_state.shape() == initial_state.shape()
@@ -64,30 +67,59 @@ impl CudaGdnRecurrent {
 
         let function = cuda_context()
             .load_pipeline(LibraryName::GdnRecurrent, "tract_gdn_recurrent_f16".to_string())?;
-        let q = get_cuda_view(query);
-        let k = get_cuda_view(key);
-        let v = get_cuda_view(value);
-        let g = get_cuda_view(log_decay);
-        let b = get_cuda_view(beta);
-        let state = get_cuda_view(initial_state);
-        let out = get_cuda_view(output);
-        let next_state = get_cuda_view(final_state);
-        let mut args = TractLaunchArgs::new(stream, &function);
-        args.push_view(&q);
-        args.push_view(&k);
-        args.push_view(&v);
-        args.push_view(&g);
-        args.push_view(&b);
-        args.push_view(&state);
-        args.push_view(&out);
-        args.push_view(&next_state);
-        args.push_i32(heads);
-        args.push_i32(width);
-        args.launch(LaunchConfig {
-            grid_dim: (heads as u32, 1, 1),
-            block_dim: (width as u32, 1, 1),
-            shared_mem_bytes: (3 * width * size_of::<f32>()) as u32,
-        })
+        // The kernel is single-step; loop over S host-side with per-step
+        // views (the [1, S, h, w] layout is contiguous per step) and
+        // ping-pong the state so consecutive steps never read the buffer
+        // they write. Buffer parity is chosen so the LAST step always
+        // writes `final_state`, whatever the parity of `steps`.
+        let scratch_state = if steps > 1 {
+            Some(unsafe {
+                DeviceTensor::uninitialized_dt(DatumType::F32, initial_state.shape())?
+            })
+        } else {
+            None
+        };
+        let qkv_step = heads * width * DatumType::F16.size_of();
+        let g_step = heads * DatumType::F32.size_of();
+        let b_step = heads * DatumType::F16.size_of();
+        let state_bytes = heads * width * width * DatumType::F32.size_of();
+        for s in 0..steps {
+            let in_state = if s == 0 {
+                initial_state
+            } else if (steps - s) % 2 == 1 {
+                scratch_state.as_ref().unwrap()
+            } else {
+                final_state
+            };
+            let out_state = if (steps - s) % 2 == 1 { final_state } else {
+                scratch_state.as_ref().unwrap()
+            };
+            let q = crate::kernels::get_sliced_cuda_view(query, s * qkv_step, qkv_step)?;
+            let k = crate::kernels::get_sliced_cuda_view(key, s * qkv_step, qkv_step)?;
+            let v = crate::kernels::get_sliced_cuda_view(value, s * qkv_step, qkv_step)?;
+            let g = crate::kernels::get_sliced_cuda_view(log_decay, s * g_step, g_step)?;
+            let b = crate::kernels::get_sliced_cuda_view(beta, s * b_step, b_step)?;
+            let state = crate::kernels::get_sliced_cuda_view(in_state, 0, state_bytes)?;
+            let out = crate::kernels::get_sliced_cuda_view(output, s * qkv_step, qkv_step)?;
+            let next_state = crate::kernels::get_sliced_cuda_view(out_state, 0, state_bytes)?;
+            let mut args = TractLaunchArgs::new(stream, &function);
+            args.push_view(&q);
+            args.push_view(&k);
+            args.push_view(&v);
+            args.push_view(&g);
+            args.push_view(&b);
+            args.push_view(&state);
+            args.push_view(&out);
+            args.push_view(&next_state);
+            args.push_i32(heads);
+            args.push_i32(width);
+            args.launch(LaunchConfig {
+                grid_dim: (heads as u32, 1, 1),
+                block_dim: (width as u32, 1, 1),
+                shared_mem_bytes: (3 * width * size_of::<f32>()) as u32,
+            })?;
+        }
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -131,7 +163,9 @@ pub fn cuda_gdn_recurrent_launch(
     initial_state: &DeviceTensor,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
+    sigmoid_beta: bool,
 ) -> TractResult<()> {
+    anyhow::ensure!(!sigmoid_beta, "cuda GDN kernel has no in-kernel beta sigmoid");
     crate::with_cuda_stream(|stream| {
         CudaGdnRecurrent.dispatch_eval(
             stream,
@@ -149,10 +183,36 @@ pub fn cuda_gdn_recurrent_launch(
 
 crate::register_cuda_op!(
     tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent,
-    |_source, _node, _op| {
+    |source, node, op| {
+        // No in-kernel beta sigmoid on cuda yet.
+        if op.sigmoid_beta {
+            return Ok(None);
+        }
+        // The dispatch loops the single-step kernel over S host-side, so
+        // symbolic or concrete S are both fine. Still required: f16 dtypes,
+        // ungrouped heads (q/k head count == v head count; no GQA-group
+        // indexing in this kernel yet) and batch 1 ([b, S, h, w] layout).
+        let facts = source.node_input_facts(node.id)?;
+        let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
+        let rank_ok = facts[0].rank() == 4;
+        let batch_ok = rank_ok && facts[0].shape[0] == 1.to_dim();
+        let ungrouped = facts[0].shape == facts[2].shape;
+        let dts_ok = dts
+            == [
+                DatumType::F16,
+                DatumType::F16,
+                DatumType::F16,
+                DatumType::F32,
+                DatumType::F16,
+                DatumType::F32,
+            ];
+        if !rank_ok || !batch_ok || !ungrouped || !dts_ok {
+            return Ok(None);
+        }
         Ok(Some(Box::new(tract_gpu::ops::gdn_recurrent::GpuGatedDeltaNetRecurrent {
             backend_name: "Cuda",
             dispatch: cuda_gdn_recurrent_launch,
+            sigmoid_beta: false,
         })))
     }
 );

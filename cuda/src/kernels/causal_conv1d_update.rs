@@ -10,20 +10,27 @@ use crate::kernels::{LibraryName, get_cuda_view};
 pub struct CudaCausalConv1dUpdate;
 
 impl CudaCausalConv1dUpdate {
+    /// Returns (batch, channels, kernel_width, s_len). Layout: input/output
+    /// [b, C, S] (S may be folded away, e.g. [b, C]), state [b, C, K],
+    /// weight [C, K].
     pub fn validate(
         &self,
         input: &DeviceTensor,
         weight: &DeviceTensor,
         state: &DeviceTensor,
-    ) -> TractResult<(usize, usize)> {
+    ) -> TractResult<(usize, usize, usize, usize)> {
         ensure!(input.datum_type() == DatumType::F16);
         ensure!(weight.datum_type() == DatumType::F16 && state.datum_type() == DatumType::F16);
-        let channels = input.len();
         let kernel_width = *weight.shape().last().context("conv weight must have a kernel axis")?;
         ensure!(kernel_width == 4, "Qwen3.5 requires a four-tap convolution");
+        ensure!(state.rank() >= 2, "conv state must be [b, C, K]");
+        let batch = if state.rank() == 3 { state.shape()[0] } else { 1 };
+        ensure!(state.len().is_multiple_of(batch * kernel_width));
+        let channels = state.len() / (batch * kernel_width);
         ensure!(weight.len() == channels * kernel_width);
-        ensure!(state.len() == channels * kernel_width);
-        Ok((channels, kernel_width))
+        ensure!(input.len().is_multiple_of(batch * channels), "conv input not [b, C, S]");
+        let s_len = input.len() / (batch * channels);
+        Ok((batch, channels, kernel_width, s_len))
     }
 
     pub fn dispatch_eval(
@@ -35,7 +42,7 @@ impl CudaCausalConv1dUpdate {
         output: &DeviceTensor,
         final_state: &DeviceTensor,
     ) -> TractResult<()> {
-        let (channels, kernel_width) = self.validate(input, weight, state)?;
+        let (batch, channels, kernel_width, s_len) = self.validate(input, weight, state)?;
         ensure!(output.shape() == input.shape() && output.datum_type() == DatumType::F16);
         ensure!(final_state.shape() == state.shape() && final_state.datum_type() == DatumType::F16);
         let function = cuda_context().load_pipeline(
@@ -55,7 +62,9 @@ impl CudaCausalConv1dUpdate {
         args.push_view(&ns);
         args.push_i32(channels);
         args.push_i32(kernel_width);
-        args.launch(LaunchConfig::for_num_elems(channels as u32))?;
+        args.push_i32(s_len);
+        args.push_i32(batch);
+        args.launch(LaunchConfig::for_num_elems((batch * channels) as u32))?;
         Ok(())
     }
 
@@ -88,7 +97,17 @@ pub fn cuda_causal_conv1d_update_launch(
 
 crate::register_cuda_op!(
     tract_transformers::ops::causal_conv1d_update::CausalConv1dUpdate,
-    |_source, _node, _op| {
+    |source, node, _op| {
+        // The cuda kernel is f16-only; the op's layout is [b, C, S] and the
+        // kernel loops over S and batch (port of the Metal kernel).
+        let facts = source.node_input_facts(node.id)?;
+        let rank_ok = facts[0].rank() == 3;
+        let dts_ok = facts.iter().all(|f| f.datum_type == DatumType::F16);
+        // The kernel loops over S and batch internally, so symbolic or
+        // concrete values of either are fine.
+        if !rank_ok || !dts_ok {
+            return Ok(None);
+        }
         Ok(Some(Box::new(tract_gpu::ops::causal_conv1d_update::GpuCausalConv1dUpdate {
             backend_name: "Cuda",
             dispatch: cuda_causal_conv1d_update_launch,
