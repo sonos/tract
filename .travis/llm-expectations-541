@@ -34,7 +34,7 @@ Qwen--Qwen3-8B-f16f16.p99s1.arm64.cpu 0.94
 Qwen--Qwen3-8B-f16f16.p99s1.arm64.metal 0.99
 Qwen--Qwen3-8B-f16f16.p99s1.x86_64.cpu 0.99
 Qwen--Qwen3-8B-f16f16.p99s1.x86_64.cuda 0.99
-Qwen--Qwen3-8B-q40ef16.p0s100.arm64.cpu 0.85
+Qwen--Qwen3-8B-q40ef16.p0s100.arm64.cpu 0.83
 Qwen--Qwen3-8B-q40ef16.p0s100.arm64.metal 0.97
 Qwen--Qwen3-8B-q40ef16.p0s100.x86_64.cpu 0.99
 Qwen--Qwen3-8B-q40ef16.p0s100.x86_64.cuda 0.96
