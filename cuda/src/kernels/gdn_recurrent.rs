@@ -72,6 +72,11 @@ impl CudaGdnRecurrent {
         // ping-pong the state so consecutive steps never read the buffer
         // they write. Buffer parity is chosen so the LAST step always
         // writes `final_state`, whatever the parity of `steps`.
+        //
+        // KNOWN LIMITATION: unlike Metal's chunked gated-delta-rule kernel,
+        // this issues one launch per step, so a long CUDA prefill pays S
+        // serialized kernel-launch overheads instead of ~S/GDN_CHUNK. A
+        // chunked CUDA kernel is real follow-up work, not done here.
         let scratch_state = if steps > 1 {
             Some(unsafe {
                 DeviceTensor::uninitialized_dt(DatumType::F32, initial_state.shape())?

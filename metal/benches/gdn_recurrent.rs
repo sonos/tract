@@ -1,4 +1,4 @@
-//! CPU (pre-existing reference) vs Metal (split E) for GatedDeltaNetRecurrent.
+//! CPU vs Metal latency for `GatedDeltaNetRecurrent`.
 //!
 //! Same synthetic-data pattern as
 //! `metal/src/kernels/gdn_recurrent.rs`'s `multi_step_matches_cpu_op_len`
@@ -8,7 +8,9 @@ use criterion::measurement::WallTime;
 use criterion::*;
 use tract_core::internal::*;
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
-use tract_metal::kernels::gdn_recurrent::metal_gdn_recurrent_launch;
+use tract_metal::kernels::gdn_recurrent::{
+    TRACT_METAL_DISABLE_GDN_CHUNKED, metal_gdn_recurrent_launch,
+};
 use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
 
 struct Inputs {
@@ -84,14 +86,13 @@ fn metal_gdn(
     inputs: &Inputs,
     disable_chunked: bool,
 ) {
-    // Toggles dispatch_eval's own gate for the prefill chunking optimization
-    // this PR adds (see metal/src/kernels/gdn_recurrent.rs): unset uses the
-    // new chunked path, set forces the pre-existing threadgroup-parallel
-    // kernel this PR's chunking sits on top of ("prior to this PR's optim").
+    // Toggles dispatch_eval's chunked-vs-per-token gate: disabled uses the
+    // chunked gated-delta-rule path, enabled forces the per-token
+    // threadgroup-parallel kernel.
     if disable_chunked {
-        unsafe { std::env::set_var("TRACT_METAL_DISABLE_GDN_CHUNKED", "1") };
+        TRACT_METAL_DISABLE_GDN_CHUNKED.set(true);
     } else {
-        unsafe { std::env::remove_var("TRACT_METAL_DISABLE_GDN_CHUNKED") };
+        TRACT_METAL_DISABLE_GDN_CHUNKED.clear();
     }
     // First call initializes the global device context .into_device() below
     // requires, and reuses one thread-local MetalStream for every later call.
@@ -122,8 +123,8 @@ fn metal_gdn(
 }
 
 /// Decode: one step, the real Qwen3.5-35B geometry (16 k-heads, GQA groups=2,
-/// head width 128) — the threadgroup-parallel kernel path (unaffected by
-/// this PR's chunking optimization: chunking only engages at s_len >= 64).
+/// head width 128) — the threadgroup-parallel kernel path (chunking only
+/// engages at s_len >= 64, so this path is unaffected by it).
 fn decode_step(c: &mut Criterion) {
     let mut g = c.benchmark_group("gdn_decode_step_b1_s1_h32_w128");
     let inputs = make_inputs(1, 1, 16, 2, 128);
@@ -133,10 +134,8 @@ fn decode_step(c: &mut Criterion) {
 }
 
 /// Prefill: one 512-token chunk at the same geometry. Three points: the CPU
-/// reference, this PR's new chunked gated-delta-rule path (`GDN_CHUNK = 64`,
-/// 8 chunks), and the pre-existing threadgroup-parallel kernel looping one
-/// token at a time -- i.e. what Metal prefill looked like immediately prior
-/// to this PR's own chunking optimization.
+/// reference, the chunked gated-delta-rule path (`GDN_CHUNK = 64`, 8 chunks),
+/// and the per-token threadgroup-parallel kernel it sits on top of.
 fn prefill_chunk(c: &mut Criterion) {
     let mut g = c.benchmark_group("gdn_prefill_s512_h32_w128");
     let inputs = make_inputs(1, 512, 16, 2, 128);

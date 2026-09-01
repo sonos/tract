@@ -1,5 +1,7 @@
 use tract_nnef::internal::*;
 
+use super::cast_f32::{from_f32, to_f32_vec};
+
 pub fn register(registry: &mut Registry) {
     fn deserialize(
         builder: &mut ModelBuilder,
@@ -82,15 +84,6 @@ impl Op for GatedDeltaNetRecurrent {
     op_as_typed_op!();
 }
 
-fn to_f32_vec(t: &TValue) -> TractResult<Vec<f32>> {
-    let cow = t.cast_to::<f32>()?;
-    Ok(cow.to_plain_array_view::<f32>()?.iter().copied().collect())
-}
-
-fn from_f32(data: Vec<f32>, shape: &[usize], dt: DatumType) -> TractResult<Tensor> {
-    let t = Tensor::from_shape(shape, &data)?;
-    Ok(t.cast_to_dt(dt)?.into_owned())
-}
 
 impl EvalOp for GatedDeltaNetRecurrent {
     op_out_of_plan!();
@@ -192,13 +185,17 @@ impl EvalOp for GatedDeltaNetRecurrent {
 impl TypedOp for GatedDeltaNetRecurrent {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 6);
-        for input in inputs {
-            ensure!(
-                matches!(input.datum_type, DatumType::F16 | DatumType::F32),
-                "GDN inputs must be f16 or f32, got {:?}",
-                input.datum_type
-            );
-        }
+        let dts: Vec<DatumType> = inputs.iter().map(|i| i.datum_type).collect();
+        // The two intended combinations, matching what the GPU kernels
+        // accept (falling back to this CPU op, which upcasts to f32
+        // internally regardless, for anything else): uniformly f32, or the
+        // fused-kernel mix (query/key/value/beta f16, log_decay f32, state
+        // either f16 or f32).
+        let all_f32 = dts.iter().all(|dt| *dt == DatumType::F32);
+        let fused_mix = dts[..4] == [DatumType::F16, DatumType::F16, DatumType::F16, DatumType::F32]
+            && dts[4] == DatumType::F16
+            && matches!(dts[5], DatumType::F16 | DatumType::F32);
+        ensure!(all_f32 || fused_mix, "unsupported GDN dtype combination: {dts:?}");
         ensure!(inputs[0].rank() == 4, "GDN query must be [b, S, hk, w]");
         ensure!(inputs[0].shape == inputs[1].shape);
         ensure!(inputs[2].rank() == 4, "GDN value must be [b, S, hv, w]");
@@ -216,6 +213,7 @@ impl TypedOp for GatedDeltaNetRecurrent {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ops::test_utils::arb;
 
     fn run(
         s_len: usize,
@@ -238,19 +236,6 @@ mod tests {
             state.clone().into_tvalue(),
         ])?;
         Ok((outputs[0].clone().into_tensor(), outputs[1].clone().into_tensor()))
-    }
-
-    fn arb(shape: &[usize], seed: u64) -> Tensor {
-        // simple deterministic pseudo-random floats in [-1, 1]
-        let len: usize = shape.iter().product();
-        let mut x = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let data: Vec<f32> = (0..len)
-            .map(|_| {
-                x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-            })
-            .collect();
-        Tensor::from_shape(shape, &data).unwrap()
     }
 
     /// repeat_interleave along the head axis (2) of a [b, S, h, w] tensor.

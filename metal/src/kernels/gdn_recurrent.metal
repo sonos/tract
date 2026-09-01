@@ -316,7 +316,6 @@ gdn_recurrent_tg<half>(
     constant int &, constant int &, constant int &, constant int &,
     threadgroup float *, uint2, uint2, uint2);
 
-// ---------------------------------------------------------------------------
 // Chunked gated delta rule (prefill path). Mathematically the standard
 // chunk-parallel decomposition of the recurrence (HF transformers
 // torch_chunk_gated_delta_rule semantics): the sequence is cut into chunks
@@ -338,7 +337,6 @@ gdn_recurrent_tg<half>(
 //   v_new = value' - k_cumdecay @ S
 //   out   = q_g @ S + attn_local @ v_new
 //   S     = eg_last * S + w_t^T @ v_new
-// ---------------------------------------------------------------------------
 
 constant int GDN_CHUNK = 64;
 
