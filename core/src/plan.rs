@@ -46,7 +46,7 @@ pub struct LaneId(pub usize);
 /// Seats and lanes both index axis 0 -- of the turn's tensors and of a laned
 /// state's buffers respectively. A runtime seating more than one lane is what
 /// must have checked that axis 0 of every stateful node is the model's batch
-/// axis; ops only assert that their input carries one row per seat.
+/// axis; ops only assert that their input carries one stream per seat.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Seating {
     lanes: Vec<LaneId>,
