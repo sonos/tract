@@ -47,3 +47,7 @@ harness = false
 [[bench]]
 name = "metal_reduce"
 harness = false
+
+[[bench]]
+name = "gdn_recurrent"
+harness = false
