@@ -791,7 +791,56 @@ impl Tensor {
     }
 
     pub fn broadcast_to_shape(&self, shape: &[usize]) -> TractResult<Tensor> {
-        dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape))
+        if !self.dt.is_copy() {
+            return dispatch_datum!(Self::broadcast_to_shape_t(self.dt)(self, shape));
+        }
+        ensure!(
+            self.rank() <= shape.len(),
+            "Broadcasting {self:?} to {shape:?} would lose {} axes",
+            self.rank() - shape.len()
+        );
+        let offset = shape.len() - self.rank();
+        let mut src: TVec<usize> = tvec!(1; shape.len());
+        src[offset..].copy_from_slice(self.shape());
+        ensure!(
+            izip!(&src, shape).all(|(s, d)| *s == 1 || s == d),
+            "Broadcasting {self:?} to {shape:?}"
+        );
+        // The axes from the innermost one down to the first broadcast axis are
+        // one contiguous run of the source, so only the axes above it need a
+        // coordinate walk, with a null source stride wherever they broadcast.
+        let mut split = shape.len();
+        while split > 0 && src[split - 1] == shape[split - 1] {
+            split -= 1;
+        }
+        let dt_size = self.dt.size_of();
+        let run = shape[split..].iter().product::<usize>() * dt_size;
+        let outer: usize = shape[..split].iter().product();
+        let mut src_strides: TVec<usize> = tvec!(0; split);
+        let mut acc = run;
+        for ax in (0..split).rev() {
+            src_strides[ax] = if src[ax] == 1 { 0 } else { acc };
+            acc *= src[ax];
+        }
+        let mut output = unsafe { Tensor::uninitialized_dt(self.dt, shape)? };
+        if run == 0 || outer == 0 {
+            return Ok(output);
+        }
+        let source = self.as_bytes();
+        let dst = output.as_bytes_mut();
+        let mut coords: TVec<usize> = tvec!(0; split);
+        for block in 0..outer {
+            let from: usize = izip!(&coords, &src_strides).map(|(c, s)| c * s).sum();
+            dst[block * run..][..run].copy_from_slice(&source[from..][..run]);
+            for ax in (0..split).rev() {
+                coords[ax] += 1;
+                if coords[ax] < shape[ax] {
+                    break;
+                }
+                coords[ax] = 0;
+            }
+        }
+        Ok(output)
     }
 
     pub fn broadcast_vector_to_shape(&self, shape: &[usize], axis: usize) -> TractResult<Tensor> {
@@ -2399,6 +2448,38 @@ mod tests {
             .into_tensor();
         dst.assign_slice(1..2, &src, 0..1, 1).unwrap();
         assert_eq!(dst, strings(["a", "x", "c", "d", "y", "f"]));
+    }
+
+    // The run-based broadcast must agree with the ndarray view it replaced, over
+    // leading, middle and trailing broadcast axes and over ranks that grow.
+    #[test]
+    fn broadcast_to_shape_agrees_with_the_view() {
+        for (src, dst) in [
+            (tvec!(1usize, 8, 1, 7, 4), tvec!(1usize, 8, 4, 7, 4)),
+            (tvec!(1usize, 1, 1, 7), tvec!(2usize, 3, 5, 7)),
+            (tvec!(4usize), tvec!(2usize, 3, 5, 4)),
+            (tvec!(1usize, 5, 3), tvec!(6usize, 5, 3)),
+            (tvec!(2usize, 3), tvec!(2usize, 3)),
+            (tvec!(1usize), tvec!(3usize, 1, 2)),
+            (tvec!(3usize, 1), tvec!(3usize, 0)),
+        ] {
+            for dt in [f32::datum_type(), u8::datum_type(), i32::datum_type()] {
+                let t = Tensor::zero_dt(dt, &src).unwrap().cast_to_dt(dt).unwrap().into_owned();
+                let got = t.broadcast_to_shape(&dst).unwrap();
+                let want = dispatch_datum!(Tensor::broadcast_to_shape_t(dt)(&t, &dst)).unwrap();
+                assert_eq!(got.shape(), &*dst, "{src:?} -> {dst:?}");
+                assert_eq!(got, want, "{src:?} -> {dst:?} {dt:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn broadcast_to_shape_carries_values_and_rejects_mismatches() {
+        let t = tensor2(&[[1u8, 2, 3], [4, 5, 6]]);
+        let got = t.clone().into_shape(&[2, 1, 3]).unwrap().broadcast_to_shape(&[2, 2, 3]).unwrap();
+        assert_eq!(got, tensor3(&[[[1u8, 2, 3], [1, 2, 3]], [[4, 5, 6], [4, 5, 6]]]));
+        assert!(t.broadcast_to_shape(&[3, 3]).is_err());
+        assert!(t.broadcast_to_shape(&[3]).is_err());
     }
 
     #[test]
