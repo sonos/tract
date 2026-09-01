@@ -112,16 +112,17 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
 
-    # A case's device-capable steps are the ones naming TRACT_TEST_DEVICES, so the
-    # list maintains itself. cli-tests.sh reads the executable path back with jq,
-    # which this runner has not got, hence the fixed profile path here.
+    # A case's device steps are the ones naming TRACT_RUNTIMES, so the list
+    # maintains itself. ci-system-setup.sh spots the GPU and puts --cuda in
+    # TRACT_RUNTIMES; cli-tests.sh reads the executable path back with jq, which
+    # this runner has not got, hence the fixed profile path here.
     - name: Device-capable nnef-test-cases
       run: |
-        ROOT=. ./.travis/ci-system-setup.sh
+        export ROOT=.
+        . ./.travis/ci-system-setup.sh
         cargo build -p tract-cli --profile opt-no-lto --no-default-features --features pulse,pulse-opl,cuda-13000
         export TRACT_RUN=$PWD/target/opt-no-lto/tract
-        export TRACT_TEST_DEVICES=--cuda
-        for t in $(grep -l TRACT_TEST_DEVICES harness/nnef-test-cases/*/runme.sh)
+        for t in $(grep -rl TRACT_RUNTIMES --include=runme.sh harness)
         do
             echo $t
             $t

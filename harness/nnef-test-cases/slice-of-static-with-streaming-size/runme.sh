@@ -13,8 +13,8 @@ $TRACT_RUN --nnef-tract-core . \
 # Streaming compare: pulse=4.  Each step slices pe_table[0:4, :] (constant
 # 0.0001) and adds it to the current input chunk.  Because pe_table is uniform,
 # the streaming output matches the batch output element-wise.
-for dev in "" $TRACT_TEST_DEVICES
+for rt in "" $TRACT_RUNTIMES
 do
-    $TRACT_RUN --nnef-tract-core . --pulse 4 $dev compare \
+    $TRACT_RUN --nnef-tract-core . --pulse 4 $rt compare \
         --stream --allow-random-input -q
 done

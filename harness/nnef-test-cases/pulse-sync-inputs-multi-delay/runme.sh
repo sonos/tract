@@ -17,8 +17,8 @@ $TRACT_RUN --nnef-tract-core . \
 # at graph compaction with "duplicate name for node ... output.Delay". This
 # step pulsifies and compares against the batch run, so it fails without the
 # fix and passes with it.
-for dev in "" $TRACT_TEST_DEVICES
+for rt in "" $TRACT_RUNTIMES
 do
-    $TRACT_RUN --nnef-tract-core . --pulse 4 $dev compare \
+    $TRACT_RUN --nnef-tract-core . --pulse 4 $rt compare \
         --stream --allow-random-input -q
 done
