@@ -100,6 +100,33 @@ jobs:
     - name: Full test
       run: .travis/cli-tests.sh
 
+  cli-tests-cuda:
+    name: Device-capable CLI cases on cuda
+    runs-on: cuda-lovelace
+    needs: prepare
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        fetch-depth: 0
+        persist-credentials: false
+
+    # A case's device-capable steps are the ones naming TRACT_TEST_DEVICES, so the
+    # list maintains itself. cli-tests.sh reads the executable path back with jq,
+    # which this runner has not got, hence the fixed profile path here.
+    - name: Device-capable nnef-test-cases
+      run: |
+        ROOT=. ./.travis/ci-system-setup.sh
+        cargo build -p tract-cli --profile opt-no-lto --no-default-features --features pulse,pulse-opl,cuda-13000
+        export TRACT_RUN=$PWD/target/opt-no-lto/tract
+        export TRACT_TEST_DEVICES=--cuda
+        for t in $(grep -l TRACT_TEST_DEVICES harness/nnef-test-cases/*/runme.sh)
+        do
+            echo $t
+            $t
+        done
+
   onnx-tests:
     runs-on: ubuntu-latest
     needs: prepare
@@ -267,7 +294,7 @@ jobs:
 
   report:
     name: Report result to PR
-    needs: [ prepare, old-harness, cli-tests, onnx-tests, tflite, some-tests-with-paranoid-asserts, without-default-features, complexes, check-all-targets, C, python ]
+    needs: [ prepare, old-harness, cli-tests, cli-tests-cuda, onnx-tests, tflite, some-tests-with-paranoid-asserts, without-default-features, complexes, check-all-targets, C, python ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     permissions:

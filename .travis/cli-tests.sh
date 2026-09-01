@@ -16,6 +16,11 @@ TRACT_RUN=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --profil
 echo TRACT_RUN=$TRACT_RUN
 export TRACT_RUN
 
+# Device flags the device-capable runme.sh cases repeat their pulsed steps with:
+# empty on a runner with no accelerator, --cuda or --metal where there is one.
+: ${TRACT_TEST_DEVICES:=}
+export TRACT_TEST_DEVICES
+
 echo
 echo $WHITE • harness/nnef-test-cases $NC
 echo

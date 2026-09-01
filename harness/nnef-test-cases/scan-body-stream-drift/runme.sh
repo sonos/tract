@@ -11,8 +11,11 @@ $TRACT_RUN --nnef-tract-core . \
     -t 'set_symbols(values: {"S": 8})' \
     run --allow-random-input -q
 
-$TRACT_RUN --nnef-tract-core . --pulse 4 compare \
-    --stream --allow-random-input -q
+for dev in "" $TRACT_TEST_DEVICES
+do
+    $TRACT_RUN --nnef-tract-core . --pulse 4 $dev compare \
+        --stream --allow-random-input -q
+done
 
 # Body / outer fact consistency: the Pulsifier substitutes the stream
 # symbol S in the outer wire facts; it must do the same on the Scan
