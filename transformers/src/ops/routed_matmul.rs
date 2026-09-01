@@ -104,6 +104,13 @@ impl RoutedInputRows {
     }
 }
 
+// `base` points into an input tensor for the duration of one synchronous
+// `eval` call only: each call clears and repopulates it before touching the
+// pointer, and it is never dereferenced across a call boundary. Safe to hand
+// across threads for the same reason `RoutedRowsInput` below is.
+unsafe impl Send for RoutedInputRows {}
+unsafe impl Sync for RoutedInputRows {}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct RoutedRowsInput {
     base: usize,
@@ -257,6 +264,7 @@ impl fmt::Debug for PreparedRoutedMatMulState {
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn select_block_quant_left_mmm(
     weight: &Tensor,
     out_dim: usize,
@@ -264,7 +272,7 @@ fn select_block_quant_left_mmm(
 ) -> TractResult<PreparedPackedMatMul> {
     let bqs = weight.try_storage_as::<BlockQuantStorage>()?;
     let mut best: Option<(
-        isize,
+        (bool, isize),
         bool,
         usize,
         usize,
@@ -274,8 +282,8 @@ fn select_block_quant_left_mmm(
         PackedFormat,
     )> = None;
 
-    for mmm in tract_nnef::tract_core::tract_linalg::ops().mmm_impls() {
-        if !mmm.is_supported_here()
+    for mmm in tract_nnef::tract_core::tract_linalg::MmmDispatch::native().runnable() {
+        if !mmm.runnable()
             || mmm.internal_type() != f32::datum_type()
             || !mmm.stores().contains(&f32::datum_type())
         {
@@ -298,7 +306,10 @@ fn select_block_quant_left_mmm(
                 continue;
             }
 
-            let score = -(mmm.quality().cost() as isize * 1000) + mmm.dynamic_boost();
+            // A kernel written for this architecture always beats a portable one,
+            // whatever their preference; among kernels of the same kind, higher
+            // preference wins. Mirrors `retain_best`'s own ranking key.
+            let score = (mmm.arch().is_some(), mmm.preference());
             let candidate = (
                 score,
                 mmm.nr() == 1,

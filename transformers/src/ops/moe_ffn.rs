@@ -5,15 +5,18 @@ use std::time::{Duration, Instant};
 
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, ArrayViewD, Axis, s};
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::OpState;
 use tract_nnef::tract_core::ops::array::Slice;
 use tract_nnef::tract_core::ops::einsum::EinSum;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::{add, mul};
-use tract_nnef::tract_core::ops::{FrozenOpState, OpState, OpStateFreeze};
+use tract_nnef::tract_core::tract_linalg::MmmDispatch;
 use tract_nnef::tract_core::tract_linalg::block_quant::{
     BlockQuantFact, BlockQuantStorage, block_quant_slice,
 };
-use tract_nnef::tract_core::tract_linalg::mmm::{AsInputValue, FusedSpec, MMMInputValue};
+use tract_nnef::tract_core::tract_linalg::mmm::{
+    AsInputValue, FusedSpec, MMMInputValue, MatMatMul, Query,
+};
 use tract_nnef::tract_core::tract_linalg::pack::PackedFormat;
 
 use super::gelu_approximate::gelu_approximate;
@@ -510,11 +513,9 @@ impl Op for RouteTopK {
 }
 
 impl EvalOp for RouteTopK {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let x_t = inputs[0].cast_to::<f32>()?.into_owned();
         let wg_t = inputs[1].cast_to::<f32>()?.into_owned();
         let x = as_2d_tokens(x_t.to_plain_array_view::<f32>()?)?;
@@ -616,10 +617,21 @@ struct RoutedMatMulState {
     cache: Option<RoutedMatMulWeightsCache>,
 }
 
-#[derive(Clone, Debug)]
-struct FrozenRoutedMatMulState {
-    op: RoutedMatMul,
-    cache: Option<RoutedMatMulWeightsCache>,
+/// A plain f32 mmm kernel for this shape, packed on both sides -- no panel
+/// extractor, since the caller (`RoutedMatMul`) packs its `a` rows and `b`
+/// weights itself, directly in whichever format is chosen, rather than
+/// extracting from data already packed some other way.
+fn plain_f32_packed_mmm(
+    k_dim: usize,
+    n_dim: usize,
+) -> Option<(Box<dyn MatMatMul>, usize, PackedFormat, PackedFormat)> {
+    let mut query = Query::plain(f32::datum_type(), None, Some(k_dim), Some(n_dim));
+    query.allow_extractor = false;
+    let (mmm, packing, _extractor) = MmmDispatch::native().pick(&query)?;
+    let (a, b) = &mmm.packings()[packing];
+    let a_format = a.downcast_ref::<PackedFormat>()?.clone();
+    let b_format = b.downcast_ref::<PackedFormat>()?.clone();
+    Some((mmm, packing, a_format, b_format))
 }
 
 impl RoutedMatMul {
@@ -690,24 +702,7 @@ impl RoutedMatMul {
             return Ok(Some(Array2::<f32>::zeros((0, n_dim)).into_tensor()));
         }
 
-        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
-            f32::datum_type(),
-            None,
-            Some(k_dim),
-            Some(n_dim),
-        ) else {
-            return Ok(None);
-        };
-        if !mmm.is_supported_here() {
-            return Ok(None);
-        }
-        let Some((packing, a_format, b_format)) =
-            mmm.packings().iter().enumerate().find_map(|(ix, (a, b))| {
-                let a = a.downcast_ref::<PackedFormat>()?;
-                let b = b.downcast_ref::<PackedFormat>()?;
-                Some((ix, a.clone(), b.clone()))
-            })
-        else {
+        let Some((mmm, packing, a_format, b_format)) = plain_f32_packed_mmm(k_dim, n_dim) else {
             return Ok(None);
         };
 
@@ -775,24 +770,7 @@ impl RoutedMatMul {
         let num_experts = weights.shape()[0];
         let k_dim = weights.shape()[1];
         let n_dim = weights.shape()[2];
-        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
-            f32::datum_type(),
-            None,
-            Some(k_dim),
-            Some(n_dim),
-        ) else {
-            return Ok(None);
-        };
-        if !mmm.is_supported_here() {
-            return Ok(None);
-        }
-        let Some((packing, a_format, b_format)) =
-            mmm.packings().iter().enumerate().find_map(|(ix, (a, b))| {
-                let a = a.downcast_ref::<PackedFormat>()?;
-                let b = b.downcast_ref::<PackedFormat>()?;
-                Some((ix, a.clone(), b.clone()))
-            })
-        else {
+        let Some((_mmm, packing, a_format, b_format)) = plain_f32_packed_mmm(k_dim, n_dim) else {
             return Ok(None);
         };
 
@@ -840,15 +818,11 @@ impl RoutedMatMul {
             return Ok(Array2::<f32>::zeros((0, cache.n_dim)).into_tensor());
         }
 
-        let Some(mmm) = tract_nnef::tract_core::tract_linalg::ops().mmm(
-            f32::datum_type(),
-            None,
-            Some(cache.k_dim),
-            Some(cache.n_dim),
-        ) else {
+        let Some((mmm, _packing, _a_format, _b_format)) =
+            plain_f32_packed_mmm(cache.k_dim, cache.n_dim)
+        else {
             bail!("cached routed matmul MMM is no longer available");
         };
-        ensure!(mmm.is_supported_here(), "cached routed matmul MMM is no longer supported here");
 
         let expert_routes = self.group_routes(route_count, cache.num_experts, route_expert_ids)?;
         let mut output = Array2::<f32>::zeros((route_count, cache.n_dim));
@@ -967,22 +941,10 @@ impl Op for RoutedMatMul {
     op_as_typed_op!();
 }
 
-impl OpStateFreeze for RoutedMatMulState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenRoutedMatMulState { op: self.op.clone(), cache: self.cache.clone() })
-    }
-}
-
-impl FrozenOpState for FrozenRoutedMatMulState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(RoutedMatMulState { op: self.op.clone(), cache: self.cache.clone() })
-    }
-}
-
 impl OpState for RoutedMatMulState {
     fn eval(
         &mut self,
-        _session: &mut TurnState,
+        ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -990,7 +952,7 @@ impl OpState for RoutedMatMulState {
             self.cache = self.op.build_weights_cache(&inputs[1])?;
         }
         let Some(cache) = self.cache.as_ref() else {
-            return self.op.eval(inputs);
+            return self.op.eval(ctx, inputs);
         };
 
         let input_t = inputs[0].cast_to::<f32>()?.into_owned();
@@ -1002,18 +964,24 @@ impl OpState for RoutedMatMulState {
             self.op.eval_with_cached_mmm(&input_t, route_token_ids, route_expert_ids, cache)?;
         Ok(tvec![output.into_tvalue()])
     }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        // The weights cache is shared, session-wide scratch keyed by the op
+        // itself, not per-lane state, so there is nothing to discard here.
+        Ok(())
+    }
 }
 
 impl EvalOp for RoutedMatMul {
-    fn is_stateless(&self) -> bool {
-        !self.cache_weights
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        if self.cache_weights {
+            Ok(None)
+        } else {
+            Ok(Some(EvalOp::eval(self, &EvalContext::out_of_plan(), inputs)?))
+        }
     }
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         if self.cache_weights {
             Ok(Some(Box::new(RoutedMatMulState { op: self.clone(), cache: None })))
         } else {
@@ -1021,7 +989,7 @@ impl EvalOp for RoutedMatMul {
         }
     }
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // inputs: data, weights [E,K,N], route_token_ids [R], route_expert_ids [R].
         let input_t = inputs[0].cast_to::<f32>()?.into_owned();
         let weights_t = inputs[1].cast_to::<f32>()?.into_owned();
@@ -1093,11 +1061,9 @@ impl Op for RoutedQ40MatMul {
 }
 
 impl EvalOp for RoutedQ40MatMul {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // inputs: data [rows,K], Q4_0 weights [E,N,K], route_token_ids [R],
         // route_expert_ids [R]. Weights are in the linear layout consumed by
         // the Q40 kernels, unlike RoutedMatMul's canonical [E,K,N] contract.
@@ -1214,11 +1180,9 @@ impl Op for RoutedCombine {
 }
 
 impl EvalOp for RoutedCombine {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // inputs: shape_like, route_values [R,D], route_token_ids [R], route_weights [R].
         let output_dt = inputs[0].datum_type();
         let route_values_t = inputs[1].cast_to::<f32>()?.into_owned();
@@ -1416,11 +1380,9 @@ fn concat_block_quant_rows(lhs: &Tensor, rhs: &Tensor) -> TractResult<Tensor> {
 }
 
 impl EvalOp for MoeFfn {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         // inputs: x [T,D], wg [E,D] or [1,E,D], w1 [E,D,H], w2 [E,H,D],
         // then optionally w3 [E,D,H], wg_bias [E], w1_bias [E,H],
         // w3_bias [E,H], w2_bias [E,D] (order set in deser_moe_ffn).
@@ -1957,11 +1919,9 @@ impl Op for ClampedSwiGlu {
 }
 
 impl EvalOp for ClampedSwiGlu {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 2, "ClampedSwiGlu expects gate and up inputs");
         let gate = inputs[0].cast_to::<f32>()?.into_owned();
         let up = inputs[1].cast_to::<f32>()?.into_owned();
@@ -2385,15 +2345,9 @@ impl Op for OptMoeFfn {
 }
 
 impl EvalOp for OptMoeFfn {
-    fn is_stateless(&self) -> bool {
-        false
-    }
+    not_out_of_plan!();
 
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let router_state = self.router_plan.spawn()?;
         let q40_state = self.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default());
         Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, q40_state })))
@@ -2677,8 +2631,8 @@ impl Q40LinearExpertState {
 
 #[derive(Clone)]
 /// Only the router keeps a long-lived state. Expert plans are spawned per eval
-/// so they can run on the rayon pool (`OpState` is not `Send`); they are
-/// stateless matmuls, so there is nothing to carry between calls anyway.
+/// so they can run on the rayon pool; they are stateless matmuls, so there is
+/// nothing to carry between calls anyway.
 struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
@@ -2695,35 +2649,10 @@ impl fmt::Debug for OptMoeFfnState {
     }
 }
 
-#[derive(Clone, Debug)]
-struct FrozenOptMoeFfnState {
-    op: OptMoeFfn,
-    router_state: TypedFrozenSimpleState,
-}
-
-impl OpStateFreeze for OptMoeFfnState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenOptMoeFfnState {
-            op: self.op.clone(),
-            router_state: self.router_state.freeze(),
-        })
-    }
-}
-
-impl FrozenOpState for FrozenOptMoeFfnState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(OptMoeFfnState {
-            op: self.op.clone(),
-            router_state: self.router_state.unfreeze(),
-            q40_state: self.op.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default()),
-        })
-    }
-}
-
 impl OpState for OptMoeFfnState {
     fn eval(
         &mut self,
-        _session: &mut TurnState,
+        _ctx: &EvalContext,
         _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
@@ -2878,6 +2807,13 @@ impl OpState for OptMoeFfnState {
             );
         }
         Ok(tvec![output_tensor.into_tvalue()])
+    }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        // The router sub-state and the Q40 expert scratch are reused,
+        // op-level working buffers, not data keyed per lane, so there is
+        // nothing here that needs discarding when handed to another stream.
+        Ok(())
     }
 }
 
@@ -3401,12 +3337,15 @@ mod tests {
         let route_expert_ids = Tensor::from_shape(&[4], &[1i64, 0, 1, 0])?;
 
         let op = RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: false };
-        let result = op.eval(tvec![
-            input.into_tvalue(),
-            weights.into_tvalue(),
-            route_token_ids.into_tvalue(),
-            route_expert_ids.into_tvalue(),
-        ])?;
+        let result = op.eval(
+            &EvalContext::out_of_plan(),
+            tvec![
+                input.into_tvalue(),
+                weights.into_tvalue(),
+                route_token_ids.into_tvalue(),
+                route_expert_ids.into_tvalue(),
+            ],
+        )?;
 
         let expected = Tensor::from_shape(
             &[4, 2],
@@ -3558,12 +3497,15 @@ mod tests {
         let w2 = make(&[1, d_hidden, d_model], &mut next_f32);
 
         let op = MoeFfn::basic(1, "gelu", GateMode::SoftmaxTopk, false);
-        let got = op.eval(tvec![
-            x.clone().into_tvalue(),
-            wg.into_tvalue(),
-            w1.clone().into_tvalue(),
-            w2.clone().into_tvalue(),
-        ])?;
+        let got = op.eval(
+            &EvalContext::out_of_plan(),
+            tvec![
+                x.clone().into_tvalue(),
+                wg.into_tvalue(),
+                w1.clone().into_tvalue(),
+                w2.clone().into_tvalue(),
+            ],
+        )?;
 
         let x_a: tract_ndarray::Array2<f32> =
             x.to_plain_array_view::<f32>()?.into_dimensionality()?.to_owned();
