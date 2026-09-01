@@ -393,7 +393,8 @@ pub fn handle_stream(
                                 // Full pulse in valid region
                                 (0, info.output_pulse)
                             };
-                            let valid = result[0].slice(info.output_axis, p_o, p_o + count)?;
+                            let value = crate::utils::clarify_tvalue(&result[0])?;
+                            let valid = value.slice(info.output_axis, p_o, p_o + count)?;
                             node_slices
                                 .entry(node.name.clone())
                                 .or_default()
@@ -406,7 +407,7 @@ pub fn handle_stream(
                     node_slices
                         .entry(node.name.clone())
                         .or_default()
-                        .push(result[0].clone().into_tensor());
+                        .push(crate::utils::clarify_tvalue(&result[0])?.into_tensor());
                 }
 
                 Ok(result)
