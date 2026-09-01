@@ -45,8 +45,8 @@ masked score matrix.
 Blockify recognises this pattern (the recogniser matches Mul-by-mask
 followed by either `Reduce<Sum>` or a contracting `EinSum`) and rewrites
 the second EinSum the same way as the first, with the chunk batch axis
-prepended to its subscripts.  Numerical match is verified end-to-end in
-`harness/core-proptest-pulse/tests/blockify_ex01.rs`.
+prepended to its subscripts.  Numerical match is verified end-to-end by
+this case's own `runme.sh`, against the numpy reference in `io.npz`.
 
 ## ex03-banded-reduce
 
@@ -68,8 +68,8 @@ einsum's contracted axis carries `W·k` elements per chunk instead of
 `k`.  Pulsification is non-causal: the streamed output is delayed by
 `L = upper − lower` chunks (the future-lookahead the band requires),
 flushed by feeding zero-chunks at the end of the stream.  Numerical
-match is verified end-to-end in
-`harness/core-proptest-pulse/tests/blockify_ex01.rs::ex03_*`.
+match is verified end-to-end by this case's own `runme.sh`, against the
+numpy reference in `io.npz`.
 
 ## ex04-banded-causal
 

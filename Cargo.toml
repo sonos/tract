@@ -51,7 +51,6 @@ members = [
     "examples/stable-diffusion-xl",
     "examples/wasm-model-bench",
 
-    "harness/core-proptest-pulse",
     "harness/nnef-inceptionv3",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
@@ -60,10 +59,12 @@ members = [
     "test-rt/infra",
     "test-rt/suite-unit",
     "test-rt/suite-onnx",
+    "test-rt/suite-pulse",
     "test-rt/test-f16",
     "test-rt/test-metal",
     "test-rt/test-cuda",
     "test-rt/test-unit-core",
+    "test-rt/test-pulse-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
     "test-rt/test-tflite"
@@ -104,7 +105,6 @@ default-members = [
     "examples/pytorch-albert-v2",
     "examples/pytorch-resnet",
 
-    "harness/core-proptest-pulse",
     "harness/nnef-inceptionv3",
     "harness/tf-inceptionv3",
     "harness/tf-mobilenet-v2",
@@ -113,8 +113,10 @@ default-members = [
     "test-rt/infra",
     "test-rt/suite-unit",
     "test-rt/suite-onnx",
+    "test-rt/suite-pulse",
     "test-rt/test-f16",
     "test-rt/test-unit-core",
+    "test-rt/test-pulse-core",
     "test-rt/test-onnx-core",
     "test-rt/test-nnef-cycle",
 ]

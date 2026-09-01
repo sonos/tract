@@ -1,0 +1,16 @@
+[package]
+name = "suite-pulse"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tract-core.workspace = true
+tract-pulse.workspace = true
+infra = { path = "../infra" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+proptest.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+# Wasm doesn't support the `fork` feature of proptest.
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }
