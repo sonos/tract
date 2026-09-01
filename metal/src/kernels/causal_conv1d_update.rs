@@ -131,22 +131,23 @@ mod tests {
             let input_f = (0..b * channels * s_len)
                 .map(|i| ((i % 17) as f32 - 8.0) / 32.0)
                 .collect::<Vec<_>>();
-            let weight_f = (0..channels * k)
-                .map(|i| ((i % 13) as f32 - 6.0) / 64.0)
-                .collect::<Vec<_>>();
-            let state_f = (0..b * channels * k)
-                .map(|i| ((i % 11) as f32 - 5.0) / 32.0)
-                .collect::<Vec<_>>();
+            let weight_f =
+                (0..channels * k).map(|i| ((i % 13) as f32 - 6.0) / 64.0).collect::<Vec<_>>();
+            let state_f =
+                (0..b * channels * k).map(|i| ((i % 11) as f32 - 5.0) / 32.0).collect::<Vec<_>>();
             let cvt = |v: &[f32]| v.iter().copied().map(f16::from_f32).collect::<Vec<_>>();
             let input = Tensor::from_shape(&[b, channels, s_len], &cvt(&input_f))?;
             let weight = Tensor::from_shape(&[channels, k], &cvt(&weight_f))?;
             let state = Tensor::from_shape(&[b, channels, k], &cvt(&state_f))?;
 
-            let cpu = CausalConv1dUpdate.eval(&EvalContext::out_of_plan(), tvec![
-                input.clone().into_tvalue(),
-                weight.clone().into_tvalue(),
-                state.clone().into_tvalue(),
-            ])?;
+            let cpu = CausalConv1dUpdate.eval(
+                &EvalContext::out_of_plan(),
+                tvec![
+                    input.clone().into_tvalue(),
+                    weight.clone().into_tvalue(),
+                    state.clone().into_tvalue(),
+                ],
+            )?;
 
             let input_d = input.into_device()?;
             let weight_d = weight.into_device()?;
@@ -157,14 +158,13 @@ mod tests {
             stream.wait_until_completed()?;
             let output = output.to_host()?.into_tensor();
             let next = next.to_host()?.into_tensor();
-            output.cast_to::<f32>()?.into_owned().close_enough(
-                &cpu[0].cast_to::<f32>()?.into_owned(),
-                Approximation::Approximate,
-            )?;
-            next.cast_to::<f32>()?.into_owned().close_enough(
-                &cpu[1].cast_to::<f32>()?.into_owned(),
-                Approximation::Approximate,
-            )?;
+            output
+                .cast_to::<f32>()?
+                .into_owned()
+                .close_enough(&cpu[0].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
+            next.cast_to::<f32>()?
+                .into_owned()
+                .close_enough(&cpu[1].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
             Ok(())
         })
     }

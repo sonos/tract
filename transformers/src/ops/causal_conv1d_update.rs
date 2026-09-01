@@ -18,8 +18,7 @@ pub fn register(registry: &mut Registry) {
         node: &TypedNode,
         _op: &CausalConv1dUpdate,
     ) -> TractResult<Option<Arc<RValue>>> {
-        let inputs: Vec<Arc<RValue>> =
-            node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
+        let inputs: Vec<Arc<RValue>> = node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
         Ok(Some(invocation("tract_transformers_causal_conv1d_update", &inputs, &[])))
     }
     registry.register_dumper(serialize);
@@ -59,7 +58,6 @@ impl Op for CausalConv1dUpdate {
     op_as_typed_op!();
 }
 
-
 impl EvalOp for CausalConv1dUpdate {
     op_out_of_plan!();
 
@@ -70,8 +68,7 @@ impl EvalOp for CausalConv1dUpdate {
         let state_shape: TVec<usize> = inputs[2].shape().into();
         ensure!(input_shape.len() == 3, "input must be [b, C, S], got {input_shape:?}");
         let (b, channels, s_len) = (input_shape[0], input_shape[1], input_shape[2]);
-        let kernel_width =
-            *weight_shape.last().context("conv weight must have a kernel axis")?;
+        let kernel_width = *weight_shape.last().context("conv weight must have a kernel axis")?;
         ensure!(
             weight_shape.iter().product::<usize>() == channels * kernel_width,
             "weight must be [C, k], got {weight_shape:?}"
@@ -141,16 +138,15 @@ mod tests {
     use super::*;
     use crate::ops::test_utils::arb;
 
-    fn run(
-        input: &Tensor,
-        weight: &Tensor,
-        state: &Tensor,
-    ) -> TractResult<(Tensor, Tensor)> {
-        let outputs = CausalConv1dUpdate.eval(&EvalContext::out_of_plan(), tvec![
-            input.clone().into_tvalue(),
-            weight.clone().into_tvalue(),
-            state.clone().into_tvalue(),
-        ])?;
+    fn run(input: &Tensor, weight: &Tensor, state: &Tensor) -> TractResult<(Tensor, Tensor)> {
+        let outputs = CausalConv1dUpdate.eval(
+            &EvalContext::out_of_plan(),
+            tvec![
+                input.clone().into_tvalue(),
+                weight.clone().into_tvalue(),
+                state.clone().into_tvalue(),
+            ],
+        )?;
         Ok((outputs[0].clone().into_tensor(), outputs[1].clone().into_tensor()))
     }
 

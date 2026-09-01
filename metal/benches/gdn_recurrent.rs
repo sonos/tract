@@ -67,14 +67,17 @@ fn cpu_gdn(crit: &mut BenchmarkGroup<WallTime>, label: &str, inputs: &Inputs) {
     crit.bench_function(&format!("cpu_{label}"), |be| {
         be.iter(|| {
             GatedDeltaNetRecurrent::default()
-                .eval(&EvalContext::out_of_plan(), tvec![
-                    inputs.q.clone().into_tvalue(),
-                    inputs.k.clone().into_tvalue(),
-                    inputs.v.clone().into_tvalue(),
-                    inputs.g.clone().into_tvalue(),
-                    inputs.beta.clone().into_tvalue(),
-                    inputs.state.clone().into_tvalue(),
-                ])
+                .eval(
+                    &EvalContext::out_of_plan(),
+                    tvec![
+                        inputs.q.clone().into_tvalue(),
+                        inputs.k.clone().into_tvalue(),
+                        inputs.v.clone().into_tvalue(),
+                        inputs.g.clone().into_tvalue(),
+                        inputs.beta.clone().into_tvalue(),
+                        inputs.state.clone().into_tvalue(),
+                    ],
+                )
                 .unwrap()
         });
     });

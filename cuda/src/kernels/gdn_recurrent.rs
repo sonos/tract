@@ -78,9 +78,7 @@ impl CudaGdnRecurrent {
         // serialized kernel-launch overheads instead of ~S/GDN_CHUNK. A
         // chunked CUDA kernel is real follow-up work, not done here.
         let scratch_state = if steps > 1 {
-            Some(unsafe {
-                DeviceTensor::uninitialized_dt(DatumType::F32, initial_state.shape())?
-            })
+            Some(unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, initial_state.shape())? })
         } else {
             None
         };
@@ -96,9 +94,8 @@ impl CudaGdnRecurrent {
             } else {
                 final_state
             };
-            let out_state = if (steps - s) % 2 == 1 { final_state } else {
-                scratch_state.as_ref().unwrap()
-            };
+            let out_state =
+                if (steps - s) % 2 == 1 { final_state } else { scratch_state.as_ref().unwrap() };
             let q = crate::kernels::get_sliced_cuda_view(query, s * qkv_step, qkv_step)?;
             let k = crate::kernels::get_sliced_cuda_view(key, s * qkv_step, qkv_step)?;
             let v = crate::kernels::get_sliced_cuda_view(value, s * qkv_step, qkv_step)?;
