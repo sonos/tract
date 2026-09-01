@@ -14,49 +14,33 @@ mod suite;
 struct CudaTestTransformState {
     state: TypedSimpleState,
     transpose_inputs: bool,
-    use_arena: bool,
 }
 
 impl State for CudaTestTransformState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let mut state = if self.use_arena {
-            let turn_handler = tract_gpu::turn_handler::DeviceTurnHandler::from_plan(
-                self.state.plan(),
-                &self.state.turn_state.resolved_symbols,
-            )?;
-
-            let plan =
-                Arc::unwrap_or_clone(self.state.plan().clone()).with_turn_handler(turn_handler);
-            let plan = Arc::new(plan);
-            plan.spawn()?
-        } else {
-            self.state.clone()
-        };
-
-        if self.transpose_inputs {
-            let inputs = inputs
-                .into_iter()
-                .map(|input| {
-                    let input = input.into_tensor();
-                    let rank = input.rank();
-                    let perms = (0..rank).rev().collect_vec();
-                    Ok(input.permute_axes(&perms)?.into_tvalue())
-                })
-                .collect::<TractResult<TVec<TValue>>>()?;
-
-            state
-                .run(inputs)?
-                .into_iter()
-                .map(|t| {
-                    let t = t.into_tensor();
-                    let rank = t.rank();
-                    let perms = (0..rank).rev().collect_vec();
-                    Ok(t.permute_axes(&perms)?.into_tvalue())
-                })
-                .collect()
-        } else {
-            state.run(inputs)
+        if !self.transpose_inputs {
+            return self.state.run(inputs);
         }
+        let inputs = inputs
+            .into_iter()
+            .map(|input| {
+                let input = input.into_tensor();
+                let rank = input.rank();
+                let perms = (0..rank).rev().collect_vec();
+                Ok(input.permute_axes(&perms)?.into_tvalue())
+            })
+            .collect::<TractResult<TVec<TValue>>>()?;
+
+        self.state
+            .run(inputs)?
+            .into_iter()
+            .map(|t| {
+                let t = t.into_tensor();
+                let rank = t.rank();
+                let perms = (0..rank).rev().collect_vec();
+                Ok(t.permute_axes(&perms)?.into_tvalue())
+            })
+            .collect()
     }
 
     fn input_count(&self) -> usize {
@@ -81,11 +65,17 @@ struct CudaTestTransformRunnable {
 
 impl Runnable for CudaTestTransformRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
-        Ok(Box::new(CudaTestTransformState {
-            state: self.runnable.spawn()?,
-            transpose_inputs: self.transpose_inputs,
-            use_arena: self.use_arena,
-        }))
+        let state = if self.use_arena {
+            let turn_handler = tract_gpu::turn_handler::DeviceTurnHandler::from_plan(
+                &self.runnable,
+                &SymbolValues::default(),
+            )?;
+            let plan = Arc::unwrap_or_clone(self.runnable.clone()).with_turn_handler(turn_handler);
+            Arc::new(plan).spawn()?
+        } else {
+            self.runnable.spawn()?
+        };
+        Ok(Box::new(CudaTestTransformState { state, transpose_inputs: self.transpose_inputs }))
     }
 
     fn input_count(&self) -> usize {
