@@ -15,6 +15,7 @@ mod madd;
 mod fuse;
 
 mod act;
+mod act_f32;
 #[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod dispatch_tests;
 mod mmm_f32_gemm;
@@ -23,6 +24,7 @@ mod mmm_i32;
 mod reduce;
 
 pub use act::*;
+pub use act_f32::*;
 pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
