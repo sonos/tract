@@ -16,7 +16,7 @@ impl Op for PulsedAxisSlice {
         Ok(vec![format!("axis:{}, skip:{} take:{}", self.axis, self.skip, self.take)])
     }
 
-    not_a_typed_op!();
+    op_as_typed_op!();
 }
 
 impl TypedOp for PulsedAxisSlice {
