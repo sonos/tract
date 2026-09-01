@@ -82,6 +82,14 @@ impl Seating {
     pub fn occupancy(&self) -> usize {
         self.lanes.len()
     }
+
+    /// Where seat `ix` reads its stream and writes its state: the seat on axis 0
+    /// of the turn's tensors, the lane on axis 0 of the state's buffers. Both are
+    /// absent when the state is one lane wide, as its buffers then have no lane
+    /// axis and axis 0 of the tensors carries data rather than streams.
+    pub fn address(&self, ix: usize) -> (Option<usize>, Option<usize>) {
+        if self.max_lanes == 1 { (None, None) } else { (Some(ix), Some(self.lanes[ix].0)) }
+    }
 }
 
 /// Resources a [`TurnStateHandler`] installs for the turn and ops read while

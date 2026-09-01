@@ -139,18 +139,17 @@ impl OpState for DelayState {
             self.lanes
         );
         let mut output = unsafe { Tensor::uninitialized_dt(dt, &output_shape)? };
-        if max_lanes == 1 {
-            self.delay_seat(op, &input, &mut output, None, None)?;
-        } else {
+        if max_lanes > 1 {
             ensure!(
                 input.shape()[0] == ctx.seating.occupancy(),
                 "Delay input carries {} streams, this turn seats {}",
                 input.shape()[0],
                 ctx.seating.occupancy()
             );
-            for (seat, lane) in ctx.seating.lanes().iter().enumerate() {
-                self.delay_seat(op, &input, &mut output, Some(seat), Some(lane.0))?;
-            }
+        }
+        for ix in 0..ctx.seating.occupancy() {
+            let (seat, lane) = ctx.seating.address(ix);
+            self.delay_seat(op, &input, &mut output, seat, lane)?;
         }
         Ok(tvec!(output.into()))
     }
