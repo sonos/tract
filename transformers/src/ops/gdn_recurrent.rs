@@ -227,7 +227,7 @@ mod tests {
         state: &Tensor,
     ) -> TractResult<(Tensor, Tensor)> {
         let _ = (s_len, heads, width);
-        let outputs = GatedDeltaNetRecurrent::default().eval(tvec![
+        let outputs = GatedDeltaNetRecurrent::default().eval(&EvalContext::out_of_plan(), tvec![
             q.clone().into_tvalue(),
             k.clone().into_tvalue(),
             v.clone().into_tvalue(),

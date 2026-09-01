@@ -438,7 +438,7 @@ mod tests {
                 .cast_to_dt(state_dt)?
                 .into_owned();
 
-            let cpu = GatedDeltaNetRecurrent::default().eval(tvec![
+            let cpu = GatedDeltaNetRecurrent::default().eval(&EvalContext::out_of_plan(), tvec![
                 q.clone().into_tvalue(),
                 k.clone().into_tvalue(),
                 v.clone().into_tvalue(),
