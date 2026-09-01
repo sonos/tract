@@ -4,6 +4,7 @@ use tract_core::ops::cast::cast;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::konst::Const;
 use tract_core::ops::math::add;
+use tract_core::ops::nn::{Reduce, Reducer};
 use tract_hir::internal::*;
 use tract_hir::ops::logic::wire_with_rank_broadcast;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
@@ -14,9 +15,10 @@ use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
 //   scales:      float [N * n_blocks]
 //   zero_points: uint8 [N * ceil(n_blocks/2)] packed (optional; default 8)
 //   bias:        float [N] (optional)
-// block_size 32 + symmetric + K a multiple of 32 keeps the weight as a Q4_0 block-quant
-// constant (dequantized inside the matmul packer); any other shape dequantizes the constant
-// to a plain float [N, K] weight and emits a plain matmul (EinSum).
+// block_size 32 + K a multiple of 32 keeps the weight as a Q4_0 block-quant constant
+// (dequantized inside the matmul packer), with a zero point carried as a separate low-rank
+// correction; any other shape dequantizes the constant to a plain float [N, K] weight and
+// emits a plain matmul (EinSum).
 pub fn mat_mul_nbits(
     _ctx: &ParsingContext,
     node: &NodeProto,
@@ -115,14 +117,12 @@ impl Expansion for MatMulNBits {
             None => None,
         };
 
-        // Dequantize to a [N, K] float weight; also keep the raw nibbles (logical row-major)
-        // so the block-quant path can reuse the original int4 values without re-quantizing.
-        let mut w = vec![0f32; n * k];
+        // Unpack the nibbles (logical row-major) and the per-block zero point.
         let mut q_logical = vec![0u8; n * k];
+        let mut zeros = vec![0f32; n * n_blocks];
         for col in 0..n {
             for blk in 0..n_blocks {
-                let scale = scales[col * n_blocks + blk];
-                let zero = match zp {
+                zeros[col * n_blocks + blk] = match zp {
                     Some(zp) => {
                         let byte = zp[col * zp_blob + blk / 2];
                         if blk % 2 == 0 { byte & 0x0F } else { byte >> 4 }
@@ -136,9 +136,7 @@ impl Expansion for MatMulNBits {
                         break;
                     }
                     let byte = b[base + i / 2];
-                    let nib = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 };
-                    q_logical[col * k + kk] = nib;
-                    w[col * k + kk] = (nib as f32 - zero) * scale;
+                    q_logical[col * k + kk] = if i % 2 == 0 { byte & 0x0F } else { byte >> 4 };
                 }
             }
         }
@@ -149,11 +147,17 @@ impl Expansion for MatMulNBits {
             model.wire_node(format!("{prefix}.cast_a"), cast(f32::datum_type()), &[inputs[0]])?[0];
         let lead: String = "abcdefgh".chars().take(rank - 1).collect();
 
-        // block_size 32 + symmetric (no zero points) + K a multiple of 32 maps onto tract's
-        // Q4_0 block-quant format: the weight stays int4 in memory and is dequantized inside the
-        // matmul packer, instead of materializing a full f32 weight. Anything else (other block
-        // sizes, asymmetric zero points, a partial last block) falls back to the f32 weight.
-        let y = if block_size == 32 && self.zp_input.is_none() && k % 32 == 0 {
+        // block_size 32 + K a multiple of 32 maps onto tract's Q4_0 block-quant format: the
+        // weight stays int4 in memory and is dequantized inside the matmul packer, instead of
+        // materializing a full f32 weight. Anything else (other block sizes, a partial last
+        // block) falls back to the f32 weight.
+        //
+        // Q4_0 fixes the zero point at 8, so an asymmetric weight is split as
+        // `(q - z) * s == (q - 8) * s + (8 - z) * s`. The second term is constant within a
+        // block, so it contributes `sum_b (8 - z) * s * sum_{k in b} A[k]`: the block sums of
+        // the activations against a `[N, K/32]` constant. Both terms use the f16-rounded
+        // scale the packer stores, so the split is exact against the rounded weight.
+        let y = if block_size == 32 && k % 32 == 0 {
             let weights = Q4_0.pack_prequantized(&q_logical, scales, n, k)?;
             let bqs = BlockQuantStorage::new(Box::new(Q4_0), n, k, Arc::new(weights))?;
             let fact = Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec!(1, n, k)));
@@ -169,12 +173,70 @@ impl Expansion for MatMulNBits {
                 &[format!("{lead}k"), "gnk".to_string()],
                 &[format!("{lead}n")],
             )?;
-            model.wire_node(
+            let y = model.wire_node(
                 format!("{prefix}.matmul"),
                 EinSum::new(axes, f32::datum_type()),
                 &[a, wq],
-            )?[0]
+            )?[0];
+            if self.zp_input.is_some() {
+                let offsets: Vec<f32> = zeros
+                    .iter()
+                    .zip(scales)
+                    .map(|(z, s)| (8. - z) * f16::from_f32(*s).to_f32())
+                    .collect();
+                let offsets = model.add_const(
+                    format!("{prefix}.zp_offsets"),
+                    Tensor::from_shape(&[n, n_blocks], &offsets)?,
+                )?;
+                let blocked = model.wire_node(
+                    format!("{prefix}.a_blocked"),
+                    AxisOp::Reshape(
+                        rank - 1,
+                        tvec![k.to_dim()],
+                        tvec![n_blocks.to_dim(), block_size.to_dim()],
+                    ),
+                    &[a],
+                )?[0];
+                let summed = model.wire_node(
+                    format!("{prefix}.a_block_sums"),
+                    Reduce::new(tvec![rank], Reducer::Sum),
+                    &[blocked],
+                )?[0];
+                let summed =
+                    model.wire_node(format!("{prefix}.a_sums"), AxisOp::Rm(rank), &[summed])?[0];
+                let axes = AxesMapping::from_strs(
+                    &[format!("{lead}z"), "nz".to_string()],
+                    &[format!("{lead}n")],
+                )?;
+                let correction = model.wire_node(
+                    format!("{prefix}.zp_correction"),
+                    EinSum::new(axes, f32::datum_type()),
+                    &[summed, offsets],
+                )?[0];
+                wire_with_rank_broadcast(
+                    format!("{prefix}.unbias"),
+                    model,
+                    add(),
+                    &[y, correction],
+                )?[0]
+            } else {
+                y
+            }
         } else {
+            let mut w = vec![0f32; n * k];
+            for col in 0..n {
+                for blk in 0..n_blocks {
+                    let scale = scales[col * n_blocks + blk];
+                    let zero = zeros[col * n_blocks + blk];
+                    for i in 0..block_size {
+                        let kk = blk * block_size + i;
+                        if kk >= k {
+                            break;
+                        }
+                        w[col * k + kk] = (q_logical[col * k + kk] as f32 - zero) * scale;
+                    }
+                }
+            }
             let w =
                 model.add_const(format!("{prefix}.weight"), Tensor::from_shape(&[n, k], &w)?)?;
             let axes = AxesMapping::from_strs(
