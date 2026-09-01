@@ -923,24 +923,27 @@ impl Tensor {
                         )
                 }
             }
-            if self.datum_type().is_copy() && self.shape[..axis].iter().all(|d| *d == 1) {
-                let stride = self.strides[axis] as usize * self.datum_type().size_of();
-                let dst_start = (stride * range.start) as isize;
-                let src_start = (stride * src_range.start) as isize;
-                let len = stride * range.len();
+            if self.datum_type().is_copy() {
+                // Tensors carry natural strides, so a range along `axis` is one
+                // contiguous run per coordinate of the axes before it, and both
+                // sides share the run length and the trailing block.
+                let post = self.strides[axis] as usize * self.datum_type().size_of();
+                let len = post * range.len();
                 if len > 0 {
-                    if self.plain_storage().as_ptr() != src.plain_storage().as_ptr() {
-                        std::ptr::copy_nonoverlapping(
-                            src.plain_storage().as_ptr().offset(src_start),
-                            self.plain_storage_mut().as_mut_ptr().offset(dst_start),
-                            len,
-                        );
-                    } else {
-                        std::ptr::copy(
-                            src.plain_storage().as_ptr().offset(src_start),
-                            self.plain_storage_mut().as_mut_ptr().offset(dst_start),
-                            len,
-                        );
+                    let outer: usize = self.shape[..axis].iter().product();
+                    let dst_block = post * self.shape[axis];
+                    let src_block = post * src.shape[axis];
+                    let src_ptr = src.plain_storage().as_ptr().add(post * src_range.start);
+                    let aliasing = self.plain_storage().as_ptr() == src.plain_storage().as_ptr();
+                    let dst_ptr = self.plain_storage_mut().as_mut_ptr().add(post * range.start);
+                    for run in 0..outer {
+                        let from = src_ptr.add(run * src_block);
+                        let to = dst_ptr.add(run * dst_block);
+                        if aliasing {
+                            std::ptr::copy(from, to, len);
+                        } else {
+                            std::ptr::copy_nonoverlapping(from, to, len);
+                        }
                     }
                 }
             } else {
@@ -2314,6 +2317,93 @@ mod tests {
         let a = Tensor::zero::<f32>(&[0, 2, 3]).unwrap();
         let stacked = Tensor::stack_tensors(2, &[a.clone(), a.clone()]).unwrap();
         assert_eq!(stacked.shape(), &[0, 2, 6]);
+    }
+
+    // assign_slice copies one contiguous run per coordinate of the axes before
+    // `axis`; the runs must agree with plain index arithmetic for every axis,
+    // including the trailing one where each run is a single datum.
+    fn assign_slice_reference<T: Datum + Copy>(
+        dst: &Tensor,
+        dst_range: Range<usize>,
+        src: &Tensor,
+        src_range: Range<usize>,
+        axis: usize,
+    ) -> Tensor {
+        let mut out = dst.clone();
+        let outer: usize = dst.shape()[..axis].iter().product();
+        let inner: usize = dst.shape()[axis + 1..].iter().product();
+        let dst_mid = dst.shape()[axis];
+        let src_mid = src.shape()[axis];
+        let sv = unsafe { src.as_slice_unchecked::<T>() };
+        let ov = unsafe { out.as_slice_mut_unchecked::<T>() };
+        for o in 0..outer {
+            for j in 0..dst_range.len() {
+                for i in 0..inner {
+                    ov[(o * dst_mid + dst_range.start + j) * inner + i] =
+                        sv[(o * src_mid + src_range.start + j) * inner + i];
+                }
+            }
+        }
+        out
+    }
+
+    macro_rules! assign_slice_agrees_for {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for (shape, axis, dst_mid, src_mid, dst_start, len, src_start) in [
+                    (tvec!(1usize, 56, 24), 2, 24, 8, 16, 8, 0),
+                    (tvec!(1usize, 56, 24), 2, 24, 24, 0, 16, 8),
+                    (tvec!(1usize, 32, 4, 128), 3, 128, 128, 0, 64, 64),
+                    (tvec!(1usize, 8, 16, 64), 2, 16, 1, 3, 1, 0),
+                    (tvec!(3usize, 5), 0, 3, 7, 1, 2, 4),
+                    (tvec!(4usize, 3), 1, 3, 3, 0, 3, 0),
+                    (tvec!(7usize), 0, 7, 7, 2, 0, 5),
+                ] {
+                    let mut dst_shape = shape.clone();
+                    dst_shape[axis] = dst_mid;
+                    let mut src_shape = shape.clone();
+                    src_shape[axis] = src_mid;
+                    let mut got: Tensor = ramp::<$t>(&dst_shape, 1);
+                    let src: Tensor = ramp::<$t>(&src_shape, 100);
+                    let want = assign_slice_reference::<$t>(
+                        &got,
+                        dst_start..dst_start + len,
+                        &src,
+                        src_start..src_start + len,
+                        axis,
+                    );
+                    got.assign_slice(
+                        dst_start..dst_start + len,
+                        &src,
+                        src_start..src_start + len,
+                        axis,
+                    )
+                    .unwrap();
+                    assert_eq!(got, want, "shape {dst_shape:?} axis {axis}");
+                }
+            }
+        };
+    }
+
+    assign_slice_agrees_for!(assign_slice_agrees_u8, u8);
+    assign_slice_agrees_for!(assign_slice_agrees_u16, u16);
+    assign_slice_agrees_for!(assign_slice_agrees_u32, u32);
+    assign_slice_agrees_for!(assign_slice_agrees_u64, u64);
+
+    #[test]
+    fn assign_slice_carries_non_copy_data() {
+        let strings = |v: [&str; 6]| {
+            ndarray::Array2::from_shape_vec((2, 3), v.iter().map(|s| s.to_string()).collect())
+                .unwrap()
+                .into_tensor()
+        };
+        let mut dst = strings(["a", "b", "c", "d", "e", "f"]);
+        let src = ndarray::Array2::from_shape_vec((2, 1), vec!["x".to_string(), "y".to_string()])
+            .unwrap()
+            .into_tensor();
+        dst.assign_slice(1..2, &src, 0..1, 1).unwrap();
+        assert_eq!(dst, strings(["a", "x", "c", "d", "y", "f"]));
     }
 
     #[test]
