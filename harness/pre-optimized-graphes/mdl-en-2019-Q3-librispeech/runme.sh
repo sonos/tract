@@ -2,9 +2,10 @@
 
 set -ex
 
-cd `dirname $0`
+HERE=$(dirname $(realpath $0))
+cd $HERE
 
-ROOT=$(dirname $(realpath $0))/../../..
+ROOT=$HERE/../../..
 . $ROOT/.travis/ci-system-setup.sh
 
 : ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}

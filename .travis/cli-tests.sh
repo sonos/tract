@@ -16,36 +16,15 @@ TRACT_RUN=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --profil
 echo TRACT_RUN=$TRACT_RUN
 export TRACT_RUN
 
-# Device flags the device-capable runme.sh cases repeat their pulsed steps with:
-# empty on a runner with no accelerator, --cuda or --metal where there is one.
-: ${TRACT_TEST_DEVICES:=}
-export TRACT_TEST_DEVICES
-
 echo
-echo $WHITE • harness/nnef-test-cases $NC
+echo $WHITE • harness runme.sh cases $NC
 echo
 
-for t in `find harness/nnef-test-cases -name runme.sh`
+for t in `find harness -name runme.sh`
 do
     echo $WHITE$t$NC
     $t
 done
-
-echo
-echo $WHITE • harness/pulse-multi-axis $NC
-echo
-
-for t in `find harness/pulse-multi-axis -name runme.sh`
-do
-    echo $WHITE$t$NC
-    $t
-done
-
-echo
-echo $WHITE • onnx/test_cases $NC
-echo
-
-# ( cd onnx/test_cases ; CACHEDIR=$MODELS ./run_all.sh )
 
 echo
 echo $WHITE • full models command line test cases $NC
@@ -145,11 +124,6 @@ $TRACT_RUN $MODELS/2024_06_25_elm_micro_export_with_kv_cache.nnef.tgz \
     dump -q --nnef $TEMP_ELM/with-asserts.nnef.tgz
 $TRACT_RUN --nnef-tract-core $TEMP_ELM/with-asserts.nnef.tgz dump -q
 rm -rf $TEMP_ELM
-
-for t in harness/pre-optimized-graphes/*
-do
-    ( cd $t ; ./runme.sh)
-done
 
 (
 echo
