@@ -90,12 +90,12 @@ impl ElementWiseKer<f32> for WasmGelu4 {
                 qn = f32x4_add(f32x4_mul(x2c, qn), b2);
                 qn = f32x4_add(f32x4_mul(x2c, qn), b0);
 
-                // Lanes pinned to the low clamp: tanh is -1 there to f32
-                // precision, but the polynomial lands one ulp short, so
-                // 1 + tanh never cancels and the error grows with |x|.
-                let pinned_low = f32x4_eq(clamped, lo);
+                // The Pade quotient overshoots past -1 before the argument
+                // reaches the low clamp, so 1 + tanh turns negative and flips
+                // the sign of the result. Saturating the quotient keeps the
+                // factor non-negative, which also pins the clamped lanes.
                 let tanh = f32x4_div(pn, qn);
-                let tanh = v128_bitselect(neg_one, tanh, pinned_low);
+                let tanh = f32x4_min(one, f32x4_max(neg_one, tanh));
                 let result = f32x4_mul(f32x4_mul(half, orig), f32x4_add(one, tanh));
 
                 v128_store(p as *mut v128, result);
@@ -189,7 +189,11 @@ impl ElementWiseKer<f32> for WasmSilu4 {
                 qn = f32x4_add(f32x4_mul(x2, qn), b2);
                 qn = f32x4_add(f32x4_mul(x2, qn), b0);
 
+                // The sum cancels below zero on the negative tail, which would
+                // flip the sign of the product. ssigmoid clamps for the same
+                // reason.
                 let sig = f32x4_add(f32x4_div(pn, qn), f32x4_splat(0.5));
+                let sig = f32x4_min(f32x4_splat(1.0), f32x4_max(f32x4_splat(0.0), sig));
                 let result = f32x4_mul(orig, sig);
 
                 v128_store(p as *mut v128, result);
