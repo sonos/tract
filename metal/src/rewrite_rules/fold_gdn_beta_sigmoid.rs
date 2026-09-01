@@ -41,11 +41,7 @@ pub fn fold_gdn_beta_sigmoid(
         let outlet = if ix == 4 { beta_node.inputs[0] } else { *input };
         inputs.push(patch.tap_model(model, outlet)?);
     }
-    let out = patch.wire_node(
-        node_name,
-        GatedDeltaNetRecurrent { sigmoid_beta: true },
-        &inputs,
-    )?;
+    let out = patch.wire_node(node_name, GatedDeltaNetRecurrent { sigmoid_beta: true }, &inputs)?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
     patch.shunt_outside(model, OutletId::new(node.id, 1), out[1])?;
     Ok(Some(patch))

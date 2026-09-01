@@ -92,10 +92,7 @@ fn dispatch_eval(
     let tg_pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, tg_kernel_name)?;
     let max_tg = tg_pipeline.max_total_threads_per_threadgroup() as usize;
     let mut rchunks = 1;
-    while rchunks < 16
-        && width % (rchunks * 2) == 0
-        && width * rchunks * 2 <= max_tg.min(1024)
-    {
+    while rchunks < 16 && width % (rchunks * 2) == 0 && width * rchunks * 2 <= max_tg.min(1024) {
         rchunks *= 2;
     }
 
@@ -137,8 +134,7 @@ fn dispatch_eval(
         return Ok(());
     }
 
-    let kernel_name =
-        if f16_state { "gdn_recurrent_f16_state_f16" } else { "gdn_recurrent_f16" };
+    let kernel_name = if f16_state { "gdn_recurrent_f16_state_f16" } else { "gdn_recurrent_f16" };
     let pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, kernel_name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
@@ -217,8 +213,7 @@ fn dispatch_chunked(
         for (ix, t) in [query, key, value, log_decay, beta].iter().enumerate() {
             encoder.set_metal_tensor(ix as u64, t, metal::MTLResourceUsage::Read);
         }
-        for (ix, t) in
-            [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last].iter().enumerate()
+        for (ix, t) in [&value_p, &k_cumdecay, &attn_local, &q_g, &w_t, &eg_last].iter().enumerate()
         {
             encoder.set_metal_tensor(5 + ix as u64, t, metal::MTLResourceUsage::Write);
         }
@@ -319,13 +314,9 @@ crate::register_metal_op!(
         let dts: Vec<DatumType> = facts.iter().map(|f| f.datum_type).collect();
         // q/k/v/beta f16, log_decay f32; the recurrent state may be f16
         // (graph exported with -idt f16) or f32, each has its kernel.
-        if dts[..5] != [
-            DatumType::F16,
-            DatumType::F16,
-            DatumType::F16,
-            DatumType::F32,
-            DatumType::F16,
-        ] || !matches!(dts[5], DatumType::F16 | DatumType::F32)
+        if dts[..5]
+            != [DatumType::F16, DatumType::F16, DatumType::F16, DatumType::F32, DatumType::F16]
+            || !matches!(dts[5], DatumType::F16 | DatumType::F32)
         {
             return Ok(None);
         }
@@ -438,14 +429,17 @@ mod tests {
                 .cast_to_dt(state_dt)?
                 .into_owned();
 
-            let cpu = GatedDeltaNetRecurrent::default().eval(&EvalContext::out_of_plan(), tvec![
-                q.clone().into_tvalue(),
-                k.clone().into_tvalue(),
-                v.clone().into_tvalue(),
-                g.clone().into_tvalue(),
-                beta.clone().into_tvalue(),
-                state.clone().into_tvalue(),
-            ])?;
+            let cpu = GatedDeltaNetRecurrent::default().eval(
+                &EvalContext::out_of_plan(),
+                tvec![
+                    q.clone().into_tvalue(),
+                    k.clone().into_tvalue(),
+                    v.clone().into_tvalue(),
+                    g.clone().into_tvalue(),
+                    beta.clone().into_tvalue(),
+                    state.clone().into_tvalue(),
+                ],
+            )?;
 
             let qd = q.into_device()?;
             let kd = k.into_device()?;

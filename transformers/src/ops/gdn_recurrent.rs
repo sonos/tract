@@ -24,8 +24,7 @@ pub fn register(registry: &mut Registry) {
             !op.sigmoid_beta,
             "GatedDeltaNetRecurrent with sigmoid_beta cannot be serialized to NNEF"
         );
-        let inputs: Vec<Arc<RValue>> =
-            node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
+        let inputs: Vec<Arc<RValue>> = node.inputs.iter().map(|i| ast.mapping[i].clone()).collect();
         Ok(Some(invocation("tract_transformers_gdn_recurrent", &inputs, &[])))
     }
     registry.register_dumper(serialize);
@@ -84,7 +83,6 @@ impl Op for GatedDeltaNetRecurrent {
     op_as_typed_op!();
 }
 
-
 impl EvalOp for GatedDeltaNetRecurrent {
     op_out_of_plan!();
 
@@ -93,10 +91,7 @@ impl EvalOp for GatedDeltaNetRecurrent {
         let q_shape: TVec<usize> = inputs[0].shape().into();
         let v_shape: TVec<usize> = inputs[2].shape().into();
         let state_shape: TVec<usize> = inputs[5].shape().into();
-        ensure!(
-            q_shape.len() == 4,
-            "GDN query must be [b, S, hk, w], got {q_shape:?}"
-        );
+        ensure!(q_shape.len() == 4, "GDN query must be [b, S, hk, w], got {q_shape:?}");
         ensure!(inputs[1].shape() == &*q_shape);
         let (b, s_len, k_heads, width) = (q_shape[0], q_shape[1], q_shape[2], q_shape[3]);
         ensure!(
@@ -192,7 +187,8 @@ impl TypedOp for GatedDeltaNetRecurrent {
         // fused-kernel mix (query/key/value/beta f16, log_decay f32, state
         // either f16 or f32).
         let all_f32 = dts.iter().all(|dt| *dt == DatumType::F32);
-        let fused_mix = dts[..4] == [DatumType::F16, DatumType::F16, DatumType::F16, DatumType::F32]
+        let fused_mix = dts[..4]
+            == [DatumType::F16, DatumType::F16, DatumType::F16, DatumType::F32]
             && dts[4] == DatumType::F16
             && matches!(dts[5], DatumType::F16 | DatumType::F32);
         ensure!(all_f32 || fused_mix, "unsupported GDN dtype combination: {dts:?}");
@@ -227,14 +223,17 @@ mod tests {
         state: &Tensor,
     ) -> TractResult<(Tensor, Tensor)> {
         let _ = (s_len, heads, width);
-        let outputs = GatedDeltaNetRecurrent::default().eval(&EvalContext::out_of_plan(), tvec![
-            q.clone().into_tvalue(),
-            k.clone().into_tvalue(),
-            v.clone().into_tvalue(),
-            g.clone().into_tvalue(),
-            beta.clone().into_tvalue(),
-            state.clone().into_tvalue(),
-        ])?;
+        let outputs = GatedDeltaNetRecurrent::default().eval(
+            &EvalContext::out_of_plan(),
+            tvec![
+                q.clone().into_tvalue(),
+                k.clone().into_tvalue(),
+                v.clone().into_tvalue(),
+                g.clone().into_tvalue(),
+                beta.clone().into_tvalue(),
+                state.clone().into_tvalue(),
+            ],
+        )?;
         Ok((outputs[0].clone().into_tensor(), outputs[1].clone().into_tensor()))
     }
 
@@ -291,7 +290,10 @@ mod tests {
             outs.push(o);
             state = st;
         }
-        let seq_out = Tensor::stack_tensors(1, &outs.iter().map(|o| o.clone().into()).collect::<Vec<TValue>>())?;
+        let seq_out = Tensor::stack_tensors(
+            1,
+            &outs.iter().map(|o| o.clone().into()).collect::<Vec<TValue>>(),
+        )?;
         // stacked [b, S, 1, h, w] vs [b, S, h, w]: reshape
         let seq_out = seq_out.into_shape(&[b, s_len, heads, width])?;
 
