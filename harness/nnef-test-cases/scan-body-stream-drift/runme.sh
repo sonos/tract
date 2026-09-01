@@ -11,9 +11,9 @@ $TRACT_RUN --nnef-tract-core . \
     -t 'set_symbols(values: {"S": 8})' \
     run --allow-random-input -q
 
-for dev in "" $TRACT_TEST_DEVICES
+for rt in "" $TRACT_RUNTIMES
 do
-    $TRACT_RUN --nnef-tract-core . --pulse 4 $dev compare \
+    $TRACT_RUN --nnef-tract-core . --pulse 4 $rt compare \
         --stream --allow-random-input -q
 done
 

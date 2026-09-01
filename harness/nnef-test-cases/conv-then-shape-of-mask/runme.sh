@@ -14,8 +14,8 @@ $TRACT_RUN --nnef-tract-core . \
 # tract_core_broadcast (shape=[1,1,S/2+1]) must also produce 2 frames/step.
 # The MultiBroadcastTo pulsifier removes the constant boundary term so that
 # per-pulse size = substitute(S→P) - substitute(S→0) = (1+P/2) - 1 = P/2.
-for dev in "" $TRACT_TEST_DEVICES
+for rt in "" $TRACT_RUNTIMES
 do
-    $TRACT_RUN --nnef-tract-core . --pulse 4 $dev compare \
+    $TRACT_RUN --nnef-tract-core . --pulse 4 $rt compare \
         --stream --allow-random-input -q
 done

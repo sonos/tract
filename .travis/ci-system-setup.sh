@@ -95,4 +95,5 @@ then
     TRACT_RUNTIMES="$TRACT_RUNTIMES --cuda"
 fi
 
+export TRACT_RUNTIMES
 echo $TRACT_RUNTIMES
