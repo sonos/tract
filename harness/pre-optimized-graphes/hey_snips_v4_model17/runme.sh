@@ -1,8 +1,9 @@
 #!/bin/sh
 
-cd `dirname $0`
+HERE=$(dirname $(realpath $0))
+cd $HERE
 
-ROOT=$(dirname $(realpath $0))/../../..
+ROOT=$HERE/../../..
 . $ROOT/.travis/ci-system-setup.sh
 
 set -ex
