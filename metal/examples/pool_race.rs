@@ -19,7 +19,7 @@
 use tract_core::internal::*;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::math::add;
-use tract_core::ops::nn::{Softmax, SoftmaxExp, SoftmaxKind};
+use tract_core::ops::nn::{Softmax, SoftmaxKind};
 use tract_core::transform::ModelTransform;
 use tract_metal::MetalTransform;
 
@@ -71,7 +71,7 @@ fn main() -> TractResult<()> {
         let biased = model.wire_node(format!("add{l}"), add(), &[mm, b])?[0];
         x = model.wire_node(
             format!("sm{l}"),
-            Softmax::new(tvec![2], None, SoftmaxKind::Softmax(SoftmaxExp::Libc)),
+            Softmax::new(tvec![2], None, SoftmaxKind::Softmax),
             &[biased],
         )?[0];
     }
