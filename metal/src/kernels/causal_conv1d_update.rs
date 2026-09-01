@@ -142,7 +142,7 @@ mod tests {
             let weight = Tensor::from_shape(&[channels, k], &cvt(&weight_f))?;
             let state = Tensor::from_shape(&[b, channels, k], &cvt(&state_f))?;
 
-            let cpu = CausalConv1dUpdate.eval(tvec![
+            let cpu = CausalConv1dUpdate.eval(&EvalContext::out_of_plan(), tvec![
                 input.clone().into_tvalue(),
                 weight.clone().into_tvalue(),
                 state.clone().into_tvalue(),
