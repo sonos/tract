@@ -75,6 +75,14 @@ impl_downcast!(Runnable);
 pub trait State: Any + Downcast + Debug + Send + DynClone + 'static {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>>;
 
+    /// Pin a symbol for the coming turn. A pulsed plan needs the stream length
+    /// on the turn carrying the last, partial pulse: the input tensor is padded
+    /// to a full pulse, so its shape can not carry it.
+    fn resolve_symbol(&mut self, symbol: &Symbol, value: i64) -> TractResult<()> {
+        let _ = (symbol, value);
+        bail!("{self:?} can not resolve a symbol")
+    }
+
     fn runnable(&self) -> &dyn Runnable;
 
     fn input_count(&self) -> usize {
@@ -142,6 +150,11 @@ impl Runnable for Arc<TypedRunnableModel> {
 impl State for TypedSimpleState {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         self.run(inputs)
+    }
+
+    fn resolve_symbol(&mut self, symbol: &Symbol, value: i64) -> TractResult<()> {
+        self.turn_state.resolved_symbols.set(symbol, value);
+        Ok(())
     }
 
     fn runnable(&self) -> &dyn Runnable {

@@ -89,6 +89,10 @@ mod run_as_f16 {
                 .collect())
         }
 
+        fn resolve_symbol(&mut self, symbol: &Symbol, value: i64) -> TractResult<()> {
+            self.0.resolve_symbol(symbol, value)
+        }
+
         fn input_count(&self) -> usize {
             self.0.input_count()
         }

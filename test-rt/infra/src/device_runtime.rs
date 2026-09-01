@@ -157,6 +157,10 @@ impl State for DeviceTestState {
         transpose_tensors(outputs)
     }
 
+    fn resolve_symbol(&mut self, symbol: &Symbol, value: i64) -> TractResult<()> {
+        self.state.resolve_symbol(symbol, value)
+    }
+
     fn input_count(&self) -> usize {
         self.state.input_count()
     }
