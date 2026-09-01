@@ -16,13 +16,19 @@ The split is in the type: `SimpleState { op_states, turn_state }` is exactly
 session-scoped versus turn-scoped. State belongs in the container matching its
 scope — an op that needs only per-turn workspace does not belong in `op_states`.
 
-## Reserved
+## Batch addressing
 
-- **lane** — the address at which one session's state lives inside a state shared
-  by several sessions. Reserved for batched streaming runtimes; nothing
-  implements it yet.
-- **seat** — a session's position within one turn's batch, where a turn carries
-  several sessions. Reserved with `lane`.
+Axis 0 carries the batch, in a turn's tensors and in a laned state's buffers
+alike: an op reads its lane there, and a laned runtime is what must have checked
+that axis 0 of every stateful node is the model's batch axis.
+
+- **lane** — the address at which one stream's state lives inside a state shared
+  by several streams: axis 0 of a laned op state's buffers, sized at the
+  seating's `max_lanes`. `LaneId`, and `OpState::reset_lanes` to hand a lane to a
+  new stream.
+- **seat** — a stream's position within one turn's batch: axis 0 of the turn's
+  I/O tensors, whose extent is the occupancy. A turn's `Seating` maps seat to
+  lane, and an op with no per-lane state ignores it.
 
 ## Taken, do not reuse
 

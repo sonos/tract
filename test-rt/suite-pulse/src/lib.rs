@@ -12,6 +12,7 @@ pub mod delay_plus_downsample;
 pub mod delay_plus_pool;
 pub mod einsum;
 pub mod fft;
+pub mod lanes;
 pub mod pad;
 pub mod pad_plus_conv;
 pub mod slice;
@@ -26,6 +27,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("einsum", einsum::suite()?);
     suite.add("fft", fft::suite()?);
     suite.add("pad_plus_conv", pad_plus_conv::suite()?);
+    suite.add("lanes", lanes::suite()?);
     suite.add("pad", pad::suite()?);
     suite.add("slice", slice::suite()?);
     suite.add("stft", stft::suite()?);

@@ -5,6 +5,7 @@ mod affine_trim;
 pub mod concat;
 mod deconv_delay;
 mod delay;
+mod lane;
 mod mask;
 mod pad;
 mod range;
