@@ -198,15 +198,13 @@ impl Op for ScaledRmsNorm {
 }
 
 impl EvalOp for ScaledRmsNorm {
-    fn is_stateless(&self) -> bool {
-        true
-    }
+    op_out_of_plan!();
 
-    fn eval(&self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, scale) = args_2!(inputs);
         let in_dt = input.datum_type();
         let normed = RmsNorm { axis: self.axis, eps: self.eps.clone() }
-            .eval(tvec!(input))?
+            .eval(ctx, tvec!(input))?
             .remove(0);
         let mut buf = normed.cast_to::<f32>()?.into_owned();
         let scale = scale.cast_to::<f32>()?.into_owned();
