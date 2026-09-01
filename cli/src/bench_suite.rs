@@ -53,6 +53,13 @@ struct Bench {
     /// Requires a `multithread-mm` build; skipped with a warning otherwise.
     #[serde(default)]
     threads: Vec<usize>,
+    /// Median-of-N on the PR path, for a bench whose single shot lands off the
+    /// nightly reference's own median often enough to flag on its own. Raises the
+    /// suite's `--samples` for this bench alone; the nightly reference, already
+    /// sampling more than this, is unaffected. A bench listed here is also left out
+    /// of the second pass, whose keep-best would undo the median.
+    #[serde(default)]
+    samples: Option<usize>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -388,10 +395,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             let run = || {
                 run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, threads, smoke)
             };
+            let bench_samples = bench.samples.unwrap_or(1).max(samples);
             let outcome = if smoke {
                 run()
-            } else if samples > 1 {
-                bench_median(run, samples)
+            } else if bench_samples > 1 {
+                bench_median(run, bench_samples)
             } else {
                 bench_run(run, &expectations, retry_max)
             };
@@ -643,6 +651,7 @@ fn second_pass(
     let red: Vec<usize> = results
         .iter()
         .enumerate()
+        .filter(|(_, r)| manifest.benches[r.bench_idx].samples.unwrap_or(1) <= 1)
         .filter(|(_, r)| {
             let m: BTreeMap<String, f64> = r.metrics.iter().cloned().collect();
             out_of_threshold(&m, expectations)
@@ -692,8 +701,9 @@ fn second_pass(
 /// Reference statistics: run the bench `samples` times (a fresh child each) and record
 /// the per-metric median. A median drops a lone clock-glitch outlier (spuriously fast /
 /// sub-floor time) that `bench_run`'s keep-best would instead latch onto — so the stored
-/// nightly reference can't be poisoned by a single bad draw. Used for the reference run;
-/// PR runs stay on `bench_run` (retry-until-good-enough).
+/// nightly reference can't be poisoned by a single bad draw. Used for the reference run,
+/// and on the PR path for the benches carrying a per-bench `samples`; every other PR
+/// bench stays on `bench_run` (retry-until-good-enough).
 fn bench_median(
     run: impl Fn() -> TractResult<Vec<(String, f64)>>,
     samples: usize,
