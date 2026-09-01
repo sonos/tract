@@ -1003,6 +1003,67 @@ impl Tensor {
         }
     }
 
+    /// Fill `range` along `axis` with `value`, a one-element tensor of this
+    /// tensor's datum type.
+    pub fn fill_slice(
+        &mut self,
+        range: impl std::ops::RangeBounds<usize>,
+        value: &Tensor,
+        axis: usize,
+    ) -> TractResult<()> {
+        ensure!(axis < self.rank(), "Filling axis {axis} of {self:?}");
+        ensure!(
+            value.datum_type() == self.datum_type() && value.len() == 1,
+            "Filling {:?} with {value:?}",
+            self.datum_type()
+        );
+        let range = clip_range_bounds(self.shape[axis], range);
+        ensure!(
+            range.end <= self.shape[axis],
+            "Filling invalid slice (axis {axis}, {range:?}) of {self:?}"
+        );
+        if !self.datum_type().is_copy() {
+            return dispatch_datum!(Self::fill_slice_t(self.datum_type())(
+                self, range, value, axis
+            ));
+        }
+        // Tensors carry natural strides, so the range is one contiguous run per
+        // coordinate of the axes before `axis`, and a run of one datum grows to
+        // its whole length in log2(len) copies of itself.
+        let dt_size = self.datum_type().size_of();
+        let post = self.strides[axis] as usize * dt_size;
+        let len = post * range.len();
+        if len == 0 {
+            return Ok(());
+        }
+        let block = post * self.shape[axis];
+        let runs: usize = self.shape[..axis].iter().product();
+        let start = range.start * post;
+        let value = &value.as_bytes()[..dt_size];
+        let data = self.as_bytes_mut();
+        for run in 0..runs {
+            let run = &mut data[start + run * block..start + run * block + len];
+            run[..dt_size].copy_from_slice(value);
+            let mut written = dt_size;
+            while written < len {
+                let grow = written.min(len - written);
+                run.copy_within(0..grow, written);
+                written += grow;
+            }
+        }
+        Ok(())
+    }
+
+    fn fill_slice_t<T: Datum>(
+        &mut self,
+        range: Range<usize>,
+        value: &Tensor,
+        axis: usize,
+    ) -> TractResult<()> {
+        let value = value.try_as_plain()?.to_scalar::<T>()?.clone();
+        self.to_plain_array_view_mut::<T>()?.slice_axis_mut(Axis(axis), range.into()).fill(value);
+        Ok(())
+    }
     /// Get the datum type of the tensor.
     #[inline]
     pub fn datum_type(&self) -> DatumType {
@@ -2434,6 +2495,70 @@ mod tests {
     assign_slice_agrees_for!(assign_slice_agrees_u16, u16);
     assign_slice_agrees_for!(assign_slice_agrees_u32, u32);
     assign_slice_agrees_for!(assign_slice_agrees_u64, u64);
+
+    // fill_slice writes one contiguous run per coordinate of the axes before
+    // `axis`; the runs must agree with plain index arithmetic, including on the
+    // trailing axis where each run is a single datum.
+    fn fill_slice_reference<T: Datum + Copy>(
+        data: &Tensor,
+        range: Range<usize>,
+        value: T,
+        axis: usize,
+    ) -> Tensor {
+        let mut out = data.clone();
+        let shape = data.shape().to_vec();
+        let inner: usize = shape[axis + 1..].iter().product();
+        let mid = shape[axis];
+        let outer: usize = shape[..axis].iter().product();
+        let ov = unsafe { out.as_slice_mut_unchecked::<T>() };
+        for o in 0..outer {
+            for j in range.clone() {
+                for i in 0..inner {
+                    ov[(o * mid + j) * inner + i] = value;
+                }
+            }
+        }
+        out
+    }
+
+    macro_rules! fill_slice_agrees_for {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for (shape, axis, start, len) in [
+                    (tvec!(1usize, 56, 24), 2, 16, 8),
+                    (tvec!(3usize, 5, 7), 1, 1, 3),
+                    (tvec!(3usize, 5, 7), 2, 3, 4),
+                    (tvec!(4usize, 3), 0, 1, 2),
+                    (tvec!(2usize, 8, 16, 64), 2, 3, 1),
+                    (tvec!(7usize), 0, 2, 0),
+                ] {
+                    let value: $t = 42 as $t;
+                    let mut got: Tensor = ramp::<$t>(&shape, 1);
+                    let want = fill_slice_reference::<$t>(&got, start..start + len, value, axis);
+                    got.fill_slice(start..start + len, &tensor0(value), axis).unwrap();
+                    assert_eq!(got, want, "shape {shape:?} axis {axis}");
+                }
+            }
+        };
+    }
+
+    fill_slice_agrees_for!(fill_slice_agrees_u8, u8);
+    fill_slice_agrees_for!(fill_slice_agrees_u16, u16);
+    fill_slice_agrees_for!(fill_slice_agrees_u32, u32);
+    fill_slice_agrees_for!(fill_slice_agrees_u64, u64);
+
+    #[test]
+    fn fill_slice_carries_non_copy_data() {
+        let strings = |v: [&str; 6]| {
+            ndarray::Array2::from_shape_vec((2, 3), v.iter().map(|s| s.to_string()).collect())
+                .unwrap()
+                .into_tensor()
+        };
+        let mut data = strings(["a", "b", "c", "d", "e", "f"]);
+        data.fill_slice(1..3, &tensor0("x".to_string()), 1).unwrap();
+        assert_eq!(data, strings(["a", "x", "x", "d", "x", "x"]));
+    }
 
     #[test]
     fn assign_slice_carries_non_copy_data() {

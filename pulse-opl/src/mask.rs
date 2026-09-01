@@ -76,25 +76,11 @@ impl PulseMaskOpState {
 
         if pulse_begin < op.begin {
             let fill_up_to = (op.begin - pulse_begin).min(pulse);
-            unsafe {
-                dispatch_copy_by_size!(crate::pad::fill_slice_constant(input.datum_type())(
-                    &mut input,
-                    &op.value,
-                    op.axis,
-                    0..fill_up_to
-                ))
-            };
+            input.fill_slice(0..fill_up_to, &op.value, op.axis)?;
         }
         if pulse_end > end {
             let fill_from = pulse - (pulse_end - end).min(pulse);
-            unsafe {
-                dispatch_copy_by_size!(crate::pad::fill_slice_constant(input.datum_type())(
-                    &mut input,
-                    &op.value,
-                    op.axis,
-                    fill_from..pulse
-                ))
-            }
+            input.fill_slice(fill_from..pulse, &op.value, op.axis)?;
         }
 
         Ok(input)

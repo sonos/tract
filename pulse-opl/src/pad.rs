@@ -62,18 +62,6 @@ fn deser(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractRe
     builder.wire(op, &[wire])
 }
 
-pub(crate) unsafe fn fill_slice_constant<T: Datum + Copy>(
-    data: &mut Tensor,
-    constant: &Tensor,
-    axis: usize,
-    range: std::ops::Range<usize>,
-) {
-    unsafe {
-        let c = constant.to_scalar_unchecked::<T>();
-        data.to_array_view_mut_unchecked::<T>().slice_axis_mut(Axis(axis), range.into()).fill(*c);
-    }
-}
-
 unsafe fn fill_slice_with_frame<T: Datum + Copy>(
     data: &mut Tensor,
     axis: usize,
@@ -192,14 +180,7 @@ impl PulsePadOpState {
         if pulse_begin < op.begin_input {
             let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
             match &op.mode {
-                PadMode::Constant(c) => unsafe {
-                    dispatch_copy_by_size!(fill_slice_constant(input.datum_type())(
-                        &mut input,
-                        c,
-                        op.axis,
-                        0..fill_up_to
-                    ))
-                },
+                PadMode::Constant(c) => input.fill_slice(0..fill_up_to, c, op.axis)?,
                 PadMode::Edge => {
                     let frame = input.slice(op.axis, fill_up_to, fill_up_to + 1)?;
                     unsafe {
@@ -217,14 +198,7 @@ impl PulsePadOpState {
         if pulse_end > end_input && after > 0 {
             let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
-                PadMode::Constant(c) => unsafe {
-                    dispatch_copy_by_size!(fill_slice_constant(input.datum_type())(
-                        &mut input,
-                        c,
-                        op.axis,
-                        fill_from..pulse
-                    ))
-                },
+                PadMode::Constant(c) => input.fill_slice(fill_from..pulse, c, op.axis)?,
                 PadMode::Edge => {
                     let last_frame = self.last_valid_frame.as_ref().unwrap();
                     unsafe {
