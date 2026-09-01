@@ -2,7 +2,6 @@ use infra::{TestResult, TestSuite};
 use tract_core::internal::*;
 use tract_core::ndarray::{ArrayD, Axis};
 use tract_core::num_traits::Zero;
-use tract_core::ops::array::PadMode;
 use tract_core::runtime::Runtime;
 use tract_pulse::internal::PulsedModel;
 use tract_pulse::model::PulsedModelExt;
@@ -126,12 +125,4 @@ pub fn values(
     use proptest::strategy::Strategy;
     len.prop_flat_map(|l| proptest::collection::vec(-5..5, l..=l))
         .prop_map(|v| v.into_iter().map(|f| f as f32).collect())
-}
-
-/// GPU pulse pad mishandles an Edge fill at the head of the stream: the head
-/// frames come out zeroed instead of repeating the first one, and a tail fill on
-/// the same graph unwraps a `last_valid_frame` it never recorded. CPU is fine.
-pub fn broken_edge_pad_on_gpu(case: &dyn infra::Test) -> bool {
-    case.downcast_ref::<pad_plus_conv::PadPlusConvProblem>()
-        .is_some_and(|pb| pb.pad_before > 0 && matches!(pb.pad_mode, PadMode::Edge))
 }

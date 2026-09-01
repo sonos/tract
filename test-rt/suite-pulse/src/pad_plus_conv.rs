@@ -21,22 +21,11 @@ pub struct PadPlusConvProblem {
     pub input: Array3<f32>,
 }
 
-#[derive(Debug, Clone)]
-pub struct PadPlusConvProblemParams {
-    pub edge: bool,
-}
-
-impl Default for PadPlusConvProblemParams {
-    fn default() -> Self {
-        PadPlusConvProblemParams { edge: true }
-    }
-}
-
 impl Arbitrary for PadPlusConvProblem {
-    type Parameters = PadPlusConvProblemParams;
+    type Parameters = ();
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with(params: Self::Parameters) -> BoxedStrategy<PadPlusConvProblem> {
+    fn arbitrary_with(_: Self::Parameters) -> BoxedStrategy<PadPlusConvProblem> {
         (
             1usize..3,
             crate::values(1usize..3),
@@ -59,8 +48,8 @@ impl Arbitrary for PadPlusConvProblem {
                     Just(edge),
                 )
             })
-            .prop_map(move |(stride, ker, dilation, pad_before, pad_after, pulse, input, edge)| {
-                let pad_mode = if edge && params.edge && pad_before < pulse {
+            .prop_map(|(stride, ker, dilation, pad_before, pad_after, pulse, input, edge)| {
+                let pad_mode = if edge && pad_before < pulse {
                     PadMode::Edge
                 } else {
                     PadMode::Constant(Tensor::from(9999f32).into())
@@ -129,7 +118,7 @@ impl Test for PadPlusConvProblem {
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
-    suite.add_arbitrary::<PadPlusConvProblem>("proptest", Default::default());
+    suite.add_arbitrary::<PadPlusConvProblem>("proptest", ());
     suite.add_test(
         "conv_1",
         PadPlusConvProblem {

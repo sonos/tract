@@ -240,6 +240,10 @@ fn fill_slice_constant(
     )
 }
 
+/// Fill `dst[dst_range]` along `axis` with `src`'s frame `src_frame`, repeated.
+/// The frame index has to go into the source offset rather than an origin: the
+/// axis stride is zeroed to broadcast the frame, and an origin term on that axis
+/// is scaled by that same stride.
 fn fill_slice_repeating_one_frame(
     ctx: &dyn DeviceContext,
     dst: &mut DeviceTensor,
@@ -250,21 +254,14 @@ fn fill_slice_repeating_one_frame(
 ) -> TractResult<()> {
     let mut zone_shape: TVec<usize> = dst.shape().into();
     zone_shape[axis] = dst_range.len();
-    let mut dst_origin = tvec!(0; dst.rank());
-    dst_origin[axis] = dst_range.start;
-    let mut src_origin = tvec!(0; src.rank());
-    src_origin[axis] = src_frame;
+    if zone_shape.iter().product::<usize>() == 0 {
+        return Ok(());
+    }
+    let src_offset = src_frame * src.strides()[axis] as usize * src.datum_type().size_of();
+    let dst_offset = dst_range.start * dst.strides()[axis] as usize * dst.datum_type().size_of();
     let mut src_strides: TVec<isize> = src.strides().into();
     src_strides[axis] = 0;
-    ctx.copy_with_origins(
-        &zone_shape,
-        dst,
-        &dst_origin,
-        dst.strides(),
-        src,
-        &src_origin,
-        &src_strides,
-    )
+    ctx.copy_nd(src, src_offset, &src_strides, dst, dst_offset, &zone_shape, dst.strides())
 }
 
 impl GpuPulsePadState {
@@ -343,7 +340,7 @@ impl GpuPulsePadState {
             }
         }
 
-        if pulse_end > end_input {
+        if pulse_end > end_input && after > 0 {
             let fill_from = pulse - (pulse_end - end_input).min(pulse);
             match &op.mode {
                 PadMode::Constant(_) => fill_slice_constant(

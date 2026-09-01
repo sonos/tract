@@ -1,5 +1,4 @@
 use infra::Test;
-use suite_pulse::pad_plus_conv::{PadPlusConvProblem, PadPlusConvProblemParams};
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 
@@ -31,11 +30,7 @@ fn mk_suite() -> infra::TestSuite {
         ConvProblemParams { no_batch: true, ..ConvProblemParams::default() },
     );
 
-    let mut pulse = suite_pulse::suite().unwrap().clone();
-    pulse.ignore_case(&|_, case| suite_pulse::broken_edge_pad_on_gpu(case));
-    pulse
-        .get_sub_mut("pad_plus_conv")
-        .add_arbitrary::<PadPlusConvProblem>("proptest", PadPlusConvProblemParams { edge: false });
+    let pulse = suite_pulse::suite().unwrap().clone();
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit).with("pulse", pulse)
 }
