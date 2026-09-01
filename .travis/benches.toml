@@ -4,6 +4,9 @@
 # `threads = [n, ...]` adds cpu-only runs with `--threads n` (0 = physical cores),
 # labelled `<variant>_t{n}` (or `_mt` for 0); the base single-thread series is
 # always kept. Threaded runs need a `multithread-mm` build (else skipped).
+# `samples = n` runs a bench n times and keeps the per-metric median on the PR path
+# too, for the few benches whose single shot sits off the nightly median often enough
+# to flag on its own.
 
 base_url = "https://tract-test-assets.tract.rs"
 
@@ -15,6 +18,7 @@ name = "arm_ml_kws_cnn_m"
 variant = "pass"
 model = "ARM-ML-KWS-CNN-M.pb"
 args = "-i 49,10,f32 --partial --input-node Mfcc"
+samples = 5
 
 [[bench]]
 kind = "net"
@@ -36,6 +40,7 @@ name = "hey_snips_v4_model17"
 variant = "2sec"
 model = "hey_snips_v4_model17.pb"
 args = "-i 200,20,f32"
+samples = 5
 
 [[bench]]
 kind = "net"
@@ -43,6 +48,7 @@ name = "hey_snips_v4_model17"
 variant = "pulse8"
 model = "hey_snips_v4_model17.pb"
 args = "-i S,20,f32 --pulse 8"
+samples = 5
 
 [[bench]]
 kind = "net"
@@ -50,6 +56,7 @@ name = "hey_snips_v4_model17_nnef"
 variant = "pulse8"
 model = "hey_snips_v4_model17.alpha1.tar"
 args = "--nnef-tract-pulse"
+samples = 5
 
 [[bench]]
 kind = "net"
@@ -252,6 +259,7 @@ name = "parakeet-tdt-600m-v3-f32f32-preprocessor_1s"
 model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.preprocessor.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set A=16000"
 runtimes = ["cpu", "metal", "cuda"]
+samples = 3
 
 [[bench]]
 kind = "net"
@@ -281,6 +289,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_1s"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set INPUT_SIGNAL__TIME=16000"
 runtimes = ["cpu", "metal", "cuda"]
+samples = 3
 
 [[bench]]
 kind = "net"
@@ -304,6 +313,7 @@ args = [
     "-t", 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "1600")',
 ]
 runtimes = ["cpu", "metal", "cuda"]
+samples = 3
 
 [[bench]]
 kind = "net"
