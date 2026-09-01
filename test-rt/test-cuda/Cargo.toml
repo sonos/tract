@@ -15,6 +15,7 @@ infra = { path = "../infra" }
 tract-core.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
+suite-pulse = { path = "../suite-pulse" }
 tract-gpu.workspace = true
 tract-onnx-opl.workspace = true
 pastey.workspace = true
@@ -31,4 +32,5 @@ tract-cuda = { workspace = true, features = ["cuda-13000"] }
 tract-gpu.workspace = true
 suite-onnx = { path = "../suite-onnx" }
 suite-unit = { path = "../suite-unit" }
+suite-pulse = { path = "../suite-pulse" }
 pastey.workspace = true

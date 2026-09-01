@@ -784,18 +784,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "core-proptest-pulse"
-version = "0.20.7-pre"
-dependencies = [
- "env_logger",
- "log",
- "proptest",
- "tract-core",
- "tract-nnef",
- "tract-pulse",
-]
-
-[[package]]
 name = "core_affinity"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4156,6 +4144,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "suite-pulse"
+version = "0.1.0"
+dependencies = [
+ "infra",
+ "proptest",
+ "tract-core",
+ "tract-pulse",
+]
+
+[[package]]
 name = "suite-unit"
 version = "0.1.0"
 dependencies = [
@@ -4258,6 +4256,7 @@ dependencies = [
  "pastey 0.2.3",
  "regex",
  "suite-onnx",
+ "suite-pulse",
  "suite-unit",
  "tract-core",
  "tract-cuda",
@@ -4293,6 +4292,7 @@ dependencies = [
  "pastey 0.2.3",
  "regex",
  "suite-onnx",
+ "suite-pulse",
  "suite-unit",
  "tract-core",
  "tract-gpu",
@@ -4325,6 +4325,14 @@ dependencies = [
  "tract-core",
  "tract-nnef",
  "tract-onnx",
+]
+
+[[package]]
+name = "test-pulse-core"
+version = "0.1.0"
+dependencies = [
+ "suite-pulse",
+ "tract-core",
 ]
 
 [[package]]
