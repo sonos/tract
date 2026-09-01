@@ -234,15 +234,16 @@ fn dispatch_chunked(
             MTLSize { width: tg_width, height: 1, depth: 1 },
         );
     });
-    // NOTE(split-e): the origin branch uses `stream.commit_current()` here, a
-    // non-blocking commit from a buffer-pool/backpressure rework that lives
-    // in an unrelated split (touches context.rs's MetalStream internals plus
-    // fused_sdpa/routed_q40_matmul/routed_q40_swiglu/autotune/tuning). Rather
-    // than pull that split in, this uses the synchronous barrier already
-    // used elsewhere in this same file for the same purpose. Correctness is
-    // unaffected; this only gives up the async pipelining between the
-    // prepare and scan dispatches, so it may cost some decode throughput
-    // until the buffer-pool split lands and this is rebased onto it.
+    // Correctness barrier: the scan dispatch below reads the scratch buffers
+    // this prepare dispatch just wrote, which requires the prepare command
+    // buffer to have actually completed first (see the module doc comment).
+    // MetalStream holds one shared, lazily-committed command buffer for the
+    // whole stream, so this commits and blocks on EVERY previously-encoded
+    // dispatch on the stream, not just this op's own prepare -- a full
+    // pipeline drain, not a narrow two-dispatch sync. A non-blocking,
+    // per-op-scoped commit needs the stream's buffer-pool/backpressure
+    // rework (not part of this PR); until then every chunked-prefill call
+    // pays this drain.
     stream.wait_until_completed()?;
 
     let scan_name = if f16_state { "gdn_chunk_scan_f16_state" } else { "gdn_chunk_scan_f32_state" };
