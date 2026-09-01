@@ -320,9 +320,10 @@ struct MaskForm {
     chunk_size: i64,
     lower: i64,
     upper: i64,
-    /// Axis whose chunk index appears with positive sign in the diff.
+    /// Axis whose chunk index appears with positive sign in the diff, in mask
+    /// frame: 0 or 1, whatever the wire carries in front of its two mask axes.
     axis_a: usize,
-    /// Axis whose chunk index appears negated in the diff.
+    /// Axis whose chunk index appears negated in the diff, in mask frame.
     axis_b: usize,
 }
 
@@ -555,6 +556,8 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         return None;
     }
     let want: BTreeSet<usize> = streaming_axes.iter().copied().collect();
+    // Coordinate symbols name absolute axes; the mask frame is the two of them.
+    let leading = streaming_axes[0].min(streaming_axes[1]);
 
     // Form 1 — block-diagonal Eq.
     if let TDim::Eq(lhs, rhs) = expr {
@@ -567,7 +570,13 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         if want != got {
             return None;
         }
-        return Some(MaskForm { chunk_size: k_a as i64, lower: 0, upper: 0, axis_a, axis_b });
+        return Some(MaskForm {
+            chunk_size: k_a as i64,
+            lower: 0,
+            upper: 0,
+            axis_a: axis_a - leading,
+            axis_b: axis_b - leading,
+        });
     }
 
     // Form 2 — banded Mul of two Ge's.
@@ -575,9 +584,11 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         && terms.len() == 2
     {
         for (a, b) in [(&terms[0], &terms[1]), (&terms[1], &terms[0])] {
-            if let Some(form) = decode_banded_terms(a, b)
+            if let Some(mut form) = decode_banded_terms(a, b)
                 && want == [form.axis_a, form.axis_b].into_iter().collect()
             {
+                form.axis_a -= leading;
+                form.axis_b -= leading;
                 return Some(form);
             }
         }
@@ -1289,14 +1300,19 @@ fn wire_initiator_multibroadcastto_streaming(
 
 /// Initiator for a multi-T-axis `uniform_tdim` node — typically the
 /// `Eq`/`Sub` head of the mask-construction chain whose two inputs are
-/// single-T-axis chunk-index wires (`chunk_row` at axis 0, `chunk_col`
-/// at axis 1).  Tap each input, split its T-axis into `[..., S, k, ...]`,
-/// move the chunk axis to position 0 to align with the rest of the
-/// section, and (if its source T-axis equals the section's contracted
-/// axis) wrap with `WindowOnAxis` using a **sentinel pad value** so the
-/// downstream band predicate evaluates to false on out-of-stream
-/// boundary slots.  Then wire the same op (Eq/Sub/…) with the chunked
-/// inputs.
+/// single-T-axis chunk-index wires (`chunk_row` and `chunk_col`, the two
+/// mask axes).  Tap each input, split its T-axis into `[..., S, k, ...]`,
+/// move the chunk axis to the initiator's first streaming position to
+/// align with the rest of the section, and (if its source T-axis equals
+/// the section's contracted axis) wrap with `WindowOnAxis` using a
+/// **sentinel pad value** so the downstream band predicate evaluates to
+/// false on out-of-stream boundary slots.  Then wire the same op (Eq/Sub/…)
+/// with the chunked inputs.
+///
+/// The mask frame is the initiator output's last two axes; whatever it
+/// carries in front of them — a batch axis, once the chain is batchified —
+/// stays in front of the chunk axis, which is what keeps a lane axis
+/// available on the `Delay` / `PulsePad` pair the window pulsifies into.
 fn wire_uniform_tdim_initiator(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1306,6 +1322,15 @@ fn wire_uniform_tdim_initiator(
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
+    let out_streaming = streaming_positions(&node.outputs[0].fact, chunk_sym);
+    let leading = node.outputs[0].fact.rank().checked_sub(2).ok_or_else(|| {
+        format_err!("uniform_tdim initiator {node} has rank < 2, so it has no mask frame")
+    })?;
+    ensure!(
+        out_streaming == tvec!(leading, leading + 1),
+        "uniform_tdim initiator {node} must carry the mask frame on its last two axes, \
+         streaming axes are {out_streaming:?}"
+    );
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     for (ix, &input) in node.inputs.iter().enumerate() {
         let chunked = chunkify_uniform_tdim_input(
@@ -1315,6 +1340,7 @@ fn wire_uniform_tdim_initiator(
             &format!("{}.in{ix}", node.name),
             mask,
             contracted_axis,
+            leading,
             chunk_sym,
             k,
         )?;
@@ -1351,6 +1377,7 @@ fn chunkify_uniform_tdim_input(
     name_prefix: &str,
     mask: &MaskForm,
     contracted_axis: usize,
+    leading: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
@@ -1388,20 +1415,20 @@ fn chunkify_uniform_tdim_input(
     // `stream_axis + 1`.
     wire = wire_chunk_split(patch, name_prefix, wire, stream_axis, chunk_sym, k)?;
 
-    // Move chunk axis to position 0 if it isn't already, so the section
-    // frame uniformly carries the chunk axis at 0.
-    if stream_axis != 0 {
+    // Move the chunk axis to the section frame's chunk position, right
+    // behind whatever the initiator carries in front of its mask frame.
+    if stream_axis != leading {
         wire = patch.wire_node(
             format!("{name_prefix}.move_chunk"),
-            AxisOp::Move(stream_axis, 0),
+            AxisOp::Move(stream_axis, leading),
             &[wire],
         )?[0];
     }
 
     // If this input's source T-axis is the contracted side, window the
-    // chunk axis (now at position 0) and flatten the W slot back into the
-    // within-block axis so downstream consumers see W·k along that axis.
-    let needs_window = !mask.is_block_diag() && stream_axis == contracted_axis;
+    // chunk axis and flatten the W slot back into the within-block axis so
+    // downstream consumers see W·k along that axis.
+    let needs_window = !mask.is_block_diag() && stream_axis - leading == contracted_axis;
     if needs_window {
         let window_size: usize = (mask.upper - mask.lower + 1) as usize;
         let start = window_start_for(mask, contracted_axis);
@@ -1412,7 +1439,7 @@ fn chunkify_uniform_tdim_input(
         wire = patch.wire_node(
             format!("{name_prefix}.window"),
             tract_pulse_opl::ops::WindowOnAxis {
-                axis: 0,
+                axis: leading,
                 window: window_size,
                 start,
                 pad_value: sentinel,
@@ -1420,15 +1447,15 @@ fn chunkify_uniform_tdim_input(
             &[wire],
         )?[0];
 
-        // Post-window shape: chunk at 0, W at 1, then the original axes
-        // (the within-block axis is at `stream_axis + 1` post-window:
-        // chunk was at 0 pre-window, W gets inserted at 1, so axes shift
-        // right by 1).  Flatten W (slice index 0) and within-block (slice
-        // index `stream_axis`) into a single (W·k) axis.
+        // Post-window shape: chunk at `leading`, W right behind it, then the
+        // original axes shifted right by one.  Flatten W (slice index 0) and
+        // within-block (slice index `stream_axis - leading`) into a single
+        // (W·k) axis, the slice starting behind the chunk axis.
         let post_window = patch.outlet_fact(wire)?.clone();
         let rank_after = post_window.rank();
-        let from: TVec<TDim> = (1..rank_after).map(|i| post_window.shape[i].clone()).collect();
-        let within_slice_idx = stream_axis;
+        let from: TVec<TDim> =
+            (leading + 1..rank_after).map(|i| post_window.shape[i].clone()).collect();
+        let within_slice_idx = stream_axis - leading;
         let mut to: TVec<TDim> = tvec!();
         for (i, dim) in from.iter().enumerate() {
             if i == 0 {
@@ -1443,7 +1470,7 @@ fn chunkify_uniform_tdim_input(
         }
         wire = patch.wire_node(
             format!("{name_prefix}.flatten_window"),
-            AxisOp::Reshape(1, from, to),
+            AxisOp::Reshape(leading + 1, from, to),
             &[wire],
         )?[0];
     }
