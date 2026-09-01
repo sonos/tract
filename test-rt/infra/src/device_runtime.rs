@@ -10,7 +10,11 @@ use tract_core::runtime::{RunOptions, Runnable, Runtime, State};
 pub trait DeviceTestBackend: Debug + Send + Sync + 'static {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()>;
 
-    fn with_arena(&self, plan: TypedSimplePlan) -> TractResult<TypedSimplePlan>;
+    fn with_arena(
+        &self,
+        plan: TypedSimplePlan,
+        memory_hint: &SymbolValues,
+    ) -> TractResult<TypedSimplePlan>;
 
     fn check(&self) -> TractResult<()> {
         Ok(())
@@ -48,7 +52,8 @@ impl<B: DeviceTestBackend> Runtime for DeviceTestRuntime<B> {
         }
         let mut plan = Arc::unwrap_or_clone(model.into_runnable_with_options(options)?);
         if self.use_arena {
-            plan = self.backend.with_arena(plan)?;
+            let memory_hint = options.memory_sizing_hints.clone().unwrap_or_default();
+            plan = self.backend.with_arena(plan, &memory_hint)?;
         }
         Ok(Box::new(DeviceTestRunnable {
             runnable: Arc::new(plan),
@@ -159,6 +164,15 @@ impl State for DeviceTestState {
 
     fn resolve_symbol(&mut self, symbol: &Symbol, value: i64) -> TractResult<()> {
         self.state.resolve_symbol(symbol, value)
+    }
+
+    fn seat(&mut self, seating: Seating) -> TractResult<()> {
+        self.state.seat(seating);
+        Ok(())
+    }
+
+    fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()> {
+        self.state.reset_lanes(lanes)
     }
 
     fn input_count(&self) -> usize {
