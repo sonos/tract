@@ -234,7 +234,7 @@ impl PulsePadOpState {
             self.lanes
         );
         let pulse = input.shape()[op.axis];
-        let occupancy = if max_lanes == 1 { 1 } else { ctx.seating.occupancy() };
+        let occupancy = ctx.seating.occupancy();
         if max_lanes > 1 {
             ensure!(op.axis > 0, "PulsePad on axis 0 leaves no axis 0 for the lanes");
             ensure!(
@@ -247,11 +247,7 @@ impl PulsePadOpState {
         // it, with the stream position they start at. Every other seat forwards.
         let mut to_pad: TVec<(Option<usize>, Option<usize>, usize)> = tvec!();
         for ix in 0..occupancy {
-            let (seat, lane) = if max_lanes == 1 {
-                (None, None)
-            } else {
-                (Some(ix), Some(ctx.seating.lanes()[ix].0))
-            };
+            let (seat, lane) = ctx.seating.address(ix);
             let pulse_begin = self.current_pos[lane.unwrap_or(0)];
             let pulse_end = pulse_begin + pulse;
             self.current_pos[lane.unwrap_or(0)] += pulse - op.overlap;

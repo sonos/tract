@@ -234,18 +234,17 @@ impl OpState for GpuDelayState {
             self.lanes
         );
         let mut output = make_tensor_for_node(ctx, dt, &output_shape)?;
-        if max_lanes == 1 {
-            self.delay_seat(&*device, op, device_input, &mut output, None, None)?;
-        } else {
+        if max_lanes > 1 {
             ensure!(
                 device_input.shape()[0] == ctx.seating.occupancy(),
                 "GpuDelay input carries {} streams, this turn seats {}",
                 device_input.shape()[0],
                 ctx.seating.occupancy()
             );
-            for (seat, lane) in ctx.seating.lanes().iter().enumerate() {
-                self.delay_seat(&*device, op, device_input, &mut output, Some(seat), Some(lane.0))?;
-            }
+        }
+        for ix in 0..ctx.seating.occupancy() {
+            let (seat, lane) = ctx.seating.address(ix);
+            self.delay_seat(&*device, op, device_input, &mut output, seat, lane)?;
         }
         Ok(tvec!(output.into_tensor().into()))
     }
@@ -412,7 +411,7 @@ impl GpuPulsePadState {
             "GpuPulsePad holds {} lanes, this turn seats {max_lanes} of them",
             self.lanes
         );
-        let occupancy = if max_lanes == 1 { 1 } else { ctx.seating.occupancy() };
+        let occupancy = ctx.seating.occupancy();
         if max_lanes > 1 {
             ensure!(op.axis > 0, "GpuPulsePad on axis 0 leaves no axis 0 for the lanes");
             ensure!(
@@ -426,11 +425,7 @@ impl GpuPulsePadState {
         // over unchanged.
         let mut to_pad: TVec<(Option<usize>, Option<usize>, usize)> = tvec!();
         for ix in 0..occupancy {
-            let (seat, lane) = if max_lanes == 1 {
-                (None, None)
-            } else {
-                (Some(ix), Some(ctx.seating.lanes()[ix].0))
-            };
+            let (seat, lane) = ctx.seating.address(ix);
             let pulse_begin = self.current_pos[lane.unwrap_or(0)];
             let pulse_end = pulse_begin + pulse;
             self.current_pos[lane.unwrap_or(0)] += pulse - op.overlap;
