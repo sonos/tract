@@ -1734,18 +1734,13 @@ impl Tensor {
         if start > self.shape[axis] || end > self.shape[axis] || start >= end {
             bail!("Invalid slicing range {start}..{end} on axis {axis} for {self:?}");
         }
-        fn slice_t<T: Datum>(
-            t: &Tensor,
-            axis: usize,
-            start: usize,
-            end: usize,
-        ) -> TractResult<Tensor> {
-            Ok(t.to_plain_array_view::<T>()?
-                .slice_axis(ndarray::Axis(axis), (start..end).into())
-                .into_owned()
-                .into_tensor())
+        let mut shape: TVec<usize> = self.shape().into();
+        shape[axis] = end - start;
+        unsafe {
+            let mut tensor = Tensor::uninitialized_dt(self.datum_type(), &shape)?;
+            tensor.assign_slice_from_resolved(0..end - start, self, start..end, axis);
+            Ok(tensor)
         }
-        dispatch_datum!(slice_t(self.datum_type())(self, axis, start, end))
     }
 
     #[inline]
@@ -2404,6 +2399,21 @@ mod tests {
             .into_tensor();
         dst.assign_slice(1..2, &src, 0..1, 1).unwrap();
         assert_eq!(dst, strings(["a", "x", "c", "d", "y", "f"]));
+    }
+
+    #[test]
+    fn slice_keeps_the_datum_type_and_the_values() {
+        let t = ramp::<u32>(&tvec!(2usize, 3, 4), 0);
+        let got = t.slice(1, 1, 3).unwrap();
+        let mut want = Tensor::zero::<u32>(&[2, 2, 4]).unwrap();
+        want.assign_slice(0..2, &t, 1..3, 1).unwrap();
+        assert_eq!(got, want);
+        let quantized = Tensor::zero_dt(
+            i8::datum_type().quantize(QParams::ZpScale { zero_point: 3, scale: 0.5 }),
+            &[2, 4],
+        )
+        .unwrap();
+        assert_eq!(quantized.slice(1, 0, 2).unwrap().datum_type(), quantized.datum_type());
     }
 
     #[test]
