@@ -546,6 +546,19 @@ impl AxisOp {
         }
     }
 
+    /// The same op on wires that gained `prefix` axes in front: every axis it
+    /// names moves right by as much, so none of them can land ahead of the new
+    /// axes. Inverse of [`AxisOp::trim_left`], and infallible where that one can
+    /// refuse.
+    pub fn pad_left(&self, prefix: usize) -> AxisOp {
+        match self {
+            Rm(r) => Rm(r + prefix),
+            Add(a) => Add(a + prefix),
+            Reshape(at, from, to) => Reshape(at + prefix, from.clone(), to.clone()),
+            Move(from, to) => Move(from + prefix, to + prefix),
+        }
+    }
+
     pub fn trim_left(&self, prefix: usize) -> TractResult<AxisOp> {
         Ok(match self {
             Rm(r) if *r >= prefix => Rm(r - prefix),

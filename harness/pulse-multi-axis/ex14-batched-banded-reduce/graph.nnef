@@ -1,0 +1,53 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol B;
+extension tract_symbol T;
+extension tract_assert B>=1;
+extension tract_assert T>=0;
+
+# ex03's banded interaction, with a batch axis on the data.
+#
+# The point of the case is the asymmetry: the scores are batched and the
+# mask is not, because the mask is a function of position alone — no
+# `tract_core_external` feeds it. Rank-strict binary ops force an
+# `unsqueeze(mask, axes=[0])` in front of the multiply, and that extent-1
+# axis is where the batch axis belongs. Pulsification windows the mask
+# chain into `Delay` / `PulsePad`, so without a batch axis there those two
+# buffers are shared by every stream of a batched run.
+#
+# Inputs:  a, b  both [B, T, 4]
+#
+# scores[n, i, j] = sum_d a[n, i, d] * b[n, j, d]              [B, T, T]
+# diff[i, j]      = floor(i / P) - floor(j / P)                 P = 2
+# mask[i, j]      = (0 <= diff[i, j]) and (diff[i, j] <= L)     L = 1
+# masked          = scores * mask                              [B, T, T]
+# output[n, j]    = sum_i masked[n, i, j]                       [B, T]
+#
+# Streaming axis: 1 on both inputs and on the output. Pulse size P = 2.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [B, T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [B, T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "nid,njd->nij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(a)[1], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_band  = and(left_ok, right_ok);
+
+    mask_f32 = tract_core_cast(in_band, to = 'f32');
+    mask_b   = unsqueeze(mask_f32, axes = [0]);
+    masked   = mul(scores, mask_b);
+
+    reduced = sum_reduce(masked, axes = [1]);
+    output  = squeeze(reduced, axes = [1]);
+}
