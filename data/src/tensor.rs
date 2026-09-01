@@ -435,7 +435,14 @@ impl Tensor {
                 for t in tensors {
                     let t = t.borrow();
                     let len = t.shape()[axis];
-                    result.assign_slice_from_resolved(offset..offset + len, t, 0..len, axis);
+                    result.assign_slice_from_resolved(
+                        &[],
+                        offset..offset + len,
+                        t,
+                        &[],
+                        0..len,
+                        axis,
+                    );
                     offset += len;
                 }
             }
@@ -883,11 +890,27 @@ impl Tensor {
             Ok(output)
         }
     }
-
     pub fn assign_slice(
         &mut self,
         range: impl std::ops::RangeBounds<usize>,
         src: &Tensor,
+        src_range: impl std::ops::RangeBounds<usize>,
+        axis: usize,
+    ) -> TractResult<()> {
+        self.assign_slice_at_prefix(&[], range, src, &[], src_range, axis)
+    }
+
+    /// Assign `src`'s `src_range` along `axis` into `range` along `axis`, each
+    /// taken in the sub-tensor at its prefix. A prefix indexes the leading axes
+    /// as [`Tensor::view_at_prefix`] does, and both prefixes cover the same
+    /// axes, whose extents may then differ. `axis` stays an axis of the whole
+    /// tensors, so it has to sit past the prefixes.
+    pub fn assign_slice_at_prefix(
+        &mut self,
+        prefix: &[usize],
+        range: impl std::ops::RangeBounds<usize>,
+        src: &Tensor,
+        src_prefix: &[usize],
         src_range: impl std::ops::RangeBounds<usize>,
         axis: usize,
     ) -> TractResult<()> {
@@ -908,7 +931,16 @@ impl Tensor {
             src_range,
         );
         ensure!(
-            itertools::izip!(0.., self.shape(), src.shape())
+            prefix.len() == src_prefix.len() && prefix.len() <= axis,
+            "Attempt to assign axis {axis} at prefixes {prefix:?} and {src_prefix:?}"
+        );
+        ensure!(
+            izip!(prefix, self.shape()).all(|(ix, dim)| ix < dim)
+                && izip!(src_prefix, src.shape()).all(|(ix, dim)| ix < dim),
+            "Attempt to assign into {self:?} at {prefix:?} from {src:?} at {src_prefix:?}"
+        );
+        ensure!(
+            izip!(prefix.len().., &self.shape[prefix.len()..], &src.shape[prefix.len()..])
                 .all(|(ix, dst, src)| ix == axis || src == dst),
             "Attempt to assign a {}-axis range of {:?} from a range of {:?}",
             axis,
@@ -929,7 +961,7 @@ impl Tensor {
             range,
             self
         );
-        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
+        unsafe { self.assign_slice_from_resolved(prefix, range, src, src_prefix, src_range, axis) };
         Ok(())
     }
 
@@ -942,14 +974,23 @@ impl Tensor {
     ) {
         let range = clip_range_bounds(self.shape[axis], range);
         let src_range = clip_range_bounds(src.shape[axis], src_range);
-        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
+        unsafe { self.assign_slice_from_resolved(&[], range, src, &[], src_range, axis) };
+    }
+
+    /// The byte offset of the sub-tensor at `prefix`, which indexes the leading
+    /// axes as [`Tensor::view_at_prefix`] does.
+    fn prefix_offset(&self, prefix: &[usize]) -> usize {
+        izip!(prefix, &self.strides).map(|(ix, stride)| ix * *stride as usize).sum::<usize>()
+            * self.datum_type().size_of()
     }
 
     #[allow(clippy::ptr_eq)]
     unsafe fn assign_slice_from_resolved(
         &mut self,
+        prefix: &[usize],
         range: std::ops::Range<usize>,
         src: &Tensor,
+        src_prefix: &[usize],
         src_range: std::ops::Range<usize>,
         axis: usize,
     ) {
@@ -957,34 +998,43 @@ impl Tensor {
             use ndarray::Slice;
             unsafe fn assign_slice_t<T: Datum>(
                 to: &mut Tensor,
+                to_prefix: &[usize],
                 to_range: Range<usize>,
                 from: &Tensor,
+                from_prefix: &[usize],
                 from_range: Range<usize>,
                 axis: usize,
             ) {
                 unsafe {
-                    to.to_array_view_mut_unchecked::<T>()
+                    let mut to_view = to.to_array_view_mut_unchecked::<T>();
+                    let mut from_view = from.to_array_view_unchecked::<T>();
+                    for (ax, (to, from)) in izip!(to_prefix, from_prefix).enumerate() {
+                        to_view.slice_axis_inplace(Axis(ax), Slice::from(*to..*to + 1));
+                        from_view.slice_axis_inplace(Axis(ax), Slice::from(*from..*from + 1));
+                    }
+                    to_view
                         .slice_axis_mut(Axis(axis), Slice::from(to_range))
-                        .assign(
-                            &from
-                                .to_array_view_unchecked::<T>()
-                                .slice_axis(Axis(axis), Slice::from(from_range)),
-                        )
+                        .assign(&from_view.slice_axis(Axis(axis), Slice::from(from_range)))
                 }
             }
             if self.datum_type().is_copy() {
                 // Tensors carry natural strides, so a range along `axis` is one
-                // contiguous run per coordinate of the axes before it, and both
-                // sides share the run length and the trailing block.
+                // contiguous run per coordinate of the axes between the prefix
+                // and it, and both sides share the run length and the trailing
+                // block.
                 let post = self.strides[axis] as usize * self.datum_type().size_of();
                 let len = post * range.len();
                 if len > 0 {
-                    let outer: usize = self.shape[..axis].iter().product();
+                    let outer: usize = self.shape[prefix.len()..axis].iter().product();
                     let dst_block = post * self.shape[axis];
                     let src_block = post * src.shape[axis];
-                    let src_ptr = src.plain_storage().as_ptr().add(post * src_range.start);
+                    let src_ptr = src
+                        .plain_storage()
+                        .as_ptr()
+                        .add(src.prefix_offset(src_prefix) + post * src_range.start);
                     let aliasing = self.plain_storage().as_ptr() == src.plain_storage().as_ptr();
-                    let dst_ptr = self.plain_storage_mut().as_mut_ptr().add(post * range.start);
+                    let dst_offset = self.prefix_offset(prefix) + post * range.start;
+                    let dst_ptr = self.plain_storage_mut().as_mut_ptr().add(dst_offset);
                     for run in 0..outer {
                         let from = src_ptr.add(run * src_block);
                         let to = dst_ptr.add(run * dst_block);
@@ -997,12 +1047,11 @@ impl Tensor {
                 }
             } else {
                 dispatch_datum!(assign_slice_t(self.datum_type())(
-                    self, range, src, src_range, axis
+                    self, prefix, range, src, src_prefix, src_range, axis
                 ));
             }
         }
     }
-
     /// Fill `range` along `axis` with `value`, a one-element tensor of this
     /// tensor's datum type.
     pub fn fill_slice(
@@ -1011,7 +1060,29 @@ impl Tensor {
         value: &Tensor,
         axis: usize,
     ) -> TractResult<()> {
+        self.fill_slice_at_prefix(&[], range, value, axis)
+    }
+
+    /// Fill `range` along `axis` of the sub-tensor at `prefix`, which indexes
+    /// the leading axes as [`Tensor::view_at_prefix`] does, with `value`, a
+    /// one-element tensor of this tensor's datum type. `axis` stays an axis of
+    /// the whole tensor, so it has to sit past `prefix`.
+    pub fn fill_slice_at_prefix(
+        &mut self,
+        prefix: &[usize],
+        range: impl std::ops::RangeBounds<usize>,
+        value: &Tensor,
+        axis: usize,
+    ) -> TractResult<()> {
         ensure!(axis < self.rank(), "Filling axis {axis} of {self:?}");
+        ensure!(
+            prefix.len() <= axis,
+            "Filling axis {axis} of {self:?} at prefix {prefix:?}, which reaches it"
+        );
+        ensure!(
+            izip!(prefix, self.shape()).all(|(ix, dim)| ix < dim),
+            "Filling {self:?} at prefix {prefix:?}"
+        );
         ensure!(
             value.datum_type() == self.datum_type() && value.len() == 1,
             "Filling {:?} with {value:?}",
@@ -1024,12 +1095,12 @@ impl Tensor {
         );
         if !self.datum_type().is_copy() {
             return dispatch_datum!(Self::fill_slice_t(self.datum_type())(
-                self, range, value, axis
+                self, prefix, range, value, axis
             ));
         }
         // Tensors carry natural strides, so the range is one contiguous run per
-        // coordinate of the axes before `axis`, and a run of one datum grows to
-        // its whole length in log2(len) copies of itself.
+        // coordinate of the axes between the prefix and `axis`, and a run of one
+        // datum grows to its whole length in log2(len) copies of itself.
         let dt_size = self.datum_type().size_of();
         let post = self.strides[axis] as usize * dt_size;
         let len = post * range.len();
@@ -1037,8 +1108,8 @@ impl Tensor {
             return Ok(());
         }
         let block = post * self.shape[axis];
-        let runs: usize = self.shape[..axis].iter().product();
-        let start = range.start * post;
+        let runs: usize = self.shape[prefix.len()..axis].iter().product();
+        let start = self.prefix_offset(prefix) + range.start * post;
         let value = &value.as_bytes()[..dt_size];
         let data = self.as_bytes_mut();
         for run in 0..runs {
@@ -1056,14 +1127,20 @@ impl Tensor {
 
     fn fill_slice_t<T: Datum>(
         &mut self,
+        prefix: &[usize],
         range: Range<usize>,
         value: &Tensor,
         axis: usize,
     ) -> TractResult<()> {
         let value = value.try_as_plain()?.to_scalar::<T>()?.clone();
-        self.to_plain_array_view_mut::<T>()?.slice_axis_mut(Axis(axis), range.into()).fill(value);
+        let mut view = self.to_plain_array_view_mut::<T>()?;
+        for (ax, ix) in prefix.iter().enumerate() {
+            view.slice_axis_inplace(Axis(ax), (*ix..*ix + 1).into());
+        }
+        view.slice_axis_mut(Axis(axis), range.into()).fill(value);
         Ok(())
     }
+
     /// Get the datum type of the tensor.
     #[inline]
     pub fn datum_type(&self) -> DatumType {
@@ -1848,7 +1925,7 @@ impl Tensor {
         shape[axis] = end - start;
         unsafe {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), &shape)?;
-            tensor.assign_slice_from_resolved(0..end - start, self, start..end, axis);
+            tensor.assign_slice_from_resolved(&[], 0..end - start, self, &[], start..end, axis);
             Ok(tensor)
         }
     }
@@ -2496,11 +2573,72 @@ mod tests {
     assign_slice_agrees_for!(assign_slice_agrees_u32, u32);
     assign_slice_agrees_for!(assign_slice_agrees_u64, u64);
 
-    // fill_slice writes one contiguous run per coordinate of the axes before
-    // `axis`; the runs must agree with plain index arithmetic, including on the
-    // trailing axis where each run is a single datum.
+    // The prefixed assign copies the same runs inside one sub-tensor of each
+    // side, and the prefixed axes are free to differ in extent.
+    macro_rules! assign_slice_at_prefix_agrees_for {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for (shape, prefix, src_lead, src_prefix, axis, start, len, src_start) in [
+                    (tvec!(3usize, 5, 7), tvec!(2usize), 4, tvec!(3usize), 2, 3, 4, 0),
+                    (tvec!(3usize, 5, 7), tvec!(0usize), 1, tvec!(0usize), 1, 1, 3, 2),
+                    (tvec!(2usize, 4, 8, 3), tvec!(1usize, 2), 2, tvec!(0usize, 1), 3, 0, 3, 0),
+                    (tvec!(4usize, 6), tvec!(), 4, tvec!(), 1, 2, 4, 2),
+                ] {
+                    let mut src_shape = shape.clone();
+                    src_shape[0] = src_lead;
+                    let mut got: Tensor = ramp::<$t>(&shape, 1);
+                    let src: Tensor = ramp::<$t>(&src_shape, 100);
+                    // A prefixed assign is the same assign between the two
+                    // sub-tensors, which a slice materializes.
+                    let mut want_sub = sub_tensor(&got, &prefix);
+                    want_sub
+                        .assign_slice(
+                            start..start + len,
+                            &sub_tensor(&src, &src_prefix),
+                            src_start..src_start + len,
+                            axis - prefix.len(),
+                        )
+                        .unwrap();
+                    got.assign_slice_at_prefix(
+                        &prefix,
+                        start..start + len,
+                        &src,
+                        &src_prefix,
+                        src_start..src_start + len,
+                        axis,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        sub_tensor(&got, &prefix),
+                        want_sub,
+                        "shape {shape:?} prefix {prefix:?} axis {axis}"
+                    );
+                }
+            }
+        };
+    }
+
+    fn sub_tensor(t: &Tensor, prefix: &[usize]) -> Tensor {
+        let mut sub = t.clone();
+        for ix in prefix {
+            sub = sub.slice(0, *ix, ix + 1).unwrap();
+            sub.remove_axis(0).unwrap();
+        }
+        sub
+    }
+
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u8, u8);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u16, u16);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u32, u32);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u64, u64);
+
+    // fill_slice writes one contiguous run per coordinate of the axes between
+    // the prefix and `axis`; the runs must agree with plain index arithmetic,
+    // including on the trailing axis where each run is a single datum.
     fn fill_slice_reference<T: Datum + Copy>(
         data: &Tensor,
+        prefix: &[usize],
         range: Range<usize>,
         value: T,
         axis: usize,
@@ -2509,12 +2647,13 @@ mod tests {
         let shape = data.shape().to_vec();
         let inner: usize = shape[axis + 1..].iter().product();
         let mid = shape[axis];
-        let outer: usize = shape[..axis].iter().product();
+        let outer: usize = shape[prefix.len()..axis].iter().product();
+        let at: usize = izip!(prefix, data.strides()).map(|(ix, s)| ix * *s as usize).sum();
         let ov = unsafe { out.as_slice_mut_unchecked::<T>() };
         for o in 0..outer {
             for j in range.clone() {
                 for i in 0..inner {
-                    ov[(o * mid + j) * inner + i] = value;
+                    ov[at + (o * mid + j) * inner + i] = value;
                 }
             }
         }
@@ -2525,19 +2664,22 @@ mod tests {
         ($name:ident, $t:ty) => {
             #[test]
             fn $name() {
-                for (shape, axis, start, len) in [
-                    (tvec!(1usize, 56, 24), 2, 16, 8),
-                    (tvec!(3usize, 5, 7), 1, 1, 3),
-                    (tvec!(3usize, 5, 7), 2, 3, 4),
-                    (tvec!(4usize, 3), 0, 1, 2),
-                    (tvec!(2usize, 8, 16, 64), 2, 3, 1),
-                    (tvec!(7usize), 0, 2, 0),
+                for (shape, prefix, axis, start, len) in [
+                    (tvec!(1usize, 56, 24), tvec!(), 2, 16, 8),
+                    (tvec!(3usize, 5, 7), tvec!(), 1, 1, 3),
+                    (tvec!(3usize, 5, 7), tvec!(2usize), 2, 3, 4),
+                    (tvec!(3usize, 5, 7), tvec!(1usize, 4), 2, 0, 7),
+                    (tvec!(4usize, 3), tvec!(), 0, 1, 2),
+                    (tvec!(2usize, 8, 16, 64), tvec!(1usize), 2, 3, 1),
+                    (tvec!(7usize), tvec!(), 0, 2, 0),
                 ] {
                     let value: $t = 42 as $t;
                     let mut got: Tensor = ramp::<$t>(&shape, 1);
-                    let want = fill_slice_reference::<$t>(&got, start..start + len, value, axis);
-                    got.fill_slice(start..start + len, &tensor0(value), axis).unwrap();
-                    assert_eq!(got, want, "shape {shape:?} axis {axis}");
+                    let want =
+                        fill_slice_reference::<$t>(&got, &prefix, start..start + len, value, axis);
+                    got.fill_slice_at_prefix(&prefix, start..start + len, &tensor0(value), axis)
+                        .unwrap();
+                    assert_eq!(got, want, "shape {shape:?} prefix {prefix:?} axis {axis}");
                 }
             }
         };
