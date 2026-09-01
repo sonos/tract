@@ -29,6 +29,19 @@ impl CudaCausalConv1dUpdate {
         let channels = state.len() / (batch * kernel_width);
         ensure!(weight.len() == channels * kernel_width);
         ensure!(input.len().is_multiple_of(batch * channels), "conv input not [b, C, S]");
+        // When input carries an explicit batch axis (the registered dispatch
+        // path always does: register_cuda_op! only wires this op at rank 3),
+        // it must agree with state's batch -- otherwise input.len() being a
+        // multiple of batch * channels can pass by coincidence with a
+        // mismatched batch folded into a wrong s_len.
+        if input.rank() == 3 {
+            ensure!(
+                input.shape()[0] == batch,
+                "conv input batch {} != state batch {}",
+                input.shape()[0],
+                batch
+            );
+        }
         let s_len = input.len() / (batch * channels);
         Ok((batch, channels, kernel_width, s_len))
     }

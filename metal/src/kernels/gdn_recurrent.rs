@@ -4,6 +4,14 @@ use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+tract_core::declare_knob!(
+    TRACT_METAL_DISABLE_GDN_CHUNKED,
+    bool,
+    false,
+    "Disable the chunked gated-delta-rule prefill kernel, forcing the \
+     per-token threadgroup-parallel kernel for every sequence length."
+);
+
 #[allow(clippy::too_many_arguments)]
 fn dispatch_eval(
     stream: &MetalStream,
@@ -58,10 +66,7 @@ fn dispatch_eval(
     // that is sequential only across S/64 chunks instead of S steps.
     // width <= 128: the scan kernel's static threadgroup arrays hold one
     // [width x GDN_COL_BLOCK] f32 state block.
-    if s_len >= GDN_CHUNK
-        && width <= 128
-        && std::env::var_os("TRACT_METAL_DISABLE_GDN_CHUNKED").is_none()
-    {
+    if s_len >= GDN_CHUNK && width <= 128 && !TRACT_METAL_DISABLE_GDN_CHUNKED.get() {
         return dispatch_chunked(
             stream,
             query,
@@ -666,13 +671,13 @@ mod tests {
             stream.wait_until_completed()?;
             let per = start.elapsed().as_secs_f64() / N as f64;
             eprintln!("gdn chunked s=512: {:.1} us/layer-dispatch", per * 1e6);
+            TRACT_METAL_DISABLE_GDN_CHUNKED.set(true);
             let start = std::time::Instant::now();
-            unsafe { std::env::set_var("TRACT_METAL_DISABLE_GDN_CHUNKED", "1") };
             for _ in 0..N {
                 dispatch_eval(stream, &q, &k, &v, &g, &beta, &state, &output, &next, false)?;
             }
             stream.wait_until_completed()?;
-            unsafe { std::env::remove_var("TRACT_METAL_DISABLE_GDN_CHUNKED") };
+            TRACT_METAL_DISABLE_GDN_CHUNKED.clear();
             let per = start.elapsed().as_secs_f64() / N as f64;
             eprintln!("gdn old tg kernel s=512: {:.1} us/layer-dispatch", per * 1e6);
             Ok(())

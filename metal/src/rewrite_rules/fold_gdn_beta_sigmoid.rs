@@ -4,6 +4,14 @@ use tract_core::ops::nn::Sigmoid;
 use tract_gpu::rule_ensure;
 use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
 
+tract_core::declare_knob!(
+    TRACT_METAL_DISABLE_GDN_BETA_SIGMOID,
+    bool,
+    false,
+    "Disable folding a singleton Sigmoid feeding GatedDeltaNetRecurrent's \
+     beta input into the op itself."
+);
+
 /// Fold a singleton `Sigmoid` feeding the beta input of a
 /// `GatedDeltaNetRecurrent` into the op itself (`sigmoid_beta`): the Metal
 /// kernel replicates the elementwise sigmoid on half bit-exactly, so this
@@ -19,7 +27,7 @@ pub fn fold_gdn_beta_sigmoid(
     op: &GatedDeltaNetRecurrent,
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(!op.sigmoid_beta);
-    rule_ensure!(std::env::var_os("TRACT_METAL_DISABLE_GDN_BETA_SIGMOID").is_none());
+    rule_ensure!(!TRACT_METAL_DISABLE_GDN_BETA_SIGMOID.get());
     let beta_outlet = node.inputs[4];
     let beta_node = model.node(beta_outlet.node);
     let Some(ew) = beta_node.op_as::<ElementWiseOp>() else { return Ok(None) };

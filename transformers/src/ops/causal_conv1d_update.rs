@@ -1,5 +1,7 @@
 use tract_nnef::internal::*;
 
+use super::cast_f32::{from_f32, to_f32_vec};
+
 pub fn register(registry: &mut Registry) {
     fn deserialize(
         builder: &mut ModelBuilder,
@@ -57,15 +59,6 @@ impl Op for CausalConv1dUpdate {
     op_as_typed_op!();
 }
 
-fn to_f32_vec(t: &TValue) -> TractResult<Vec<f32>> {
-    let cow = t.cast_to::<f32>()?;
-    Ok(cow.to_plain_array_view::<f32>()?.iter().copied().collect())
-}
-
-fn from_f32(data: Vec<f32>, shape: &[usize], dt: DatumType) -> TractResult<Tensor> {
-    let t = Tensor::from_shape(shape, &data)?;
-    Ok(t.cast_to_dt(dt)?.into_owned())
-}
 
 impl EvalOp for CausalConv1dUpdate {
     op_out_of_plan!();
@@ -126,13 +119,16 @@ impl EvalOp for CausalConv1dUpdate {
 impl TypedOp for CausalConv1dUpdate {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 3);
-        for input in inputs {
-            ensure!(
-                matches!(input.datum_type, DatumType::F16 | DatumType::F32),
-                "causal conv update inputs must be f16 or f32, got {:?}",
-                input.datum_type
-            );
-        }
+        let dts: Vec<DatumType> = inputs.iter().map(|i| i.datum_type).collect();
+        // The GPU kernels are f16-only (falling back to this CPU op for any
+        // other mix, e.g. an all-f32 test export), and this CPU op upcasts
+        // to f32 internally regardless -- so the only two intended
+        // combinations are uniformly f16 or uniformly f32.
+        ensure!(
+            dts.iter().all(|dt| *dt == DatumType::F16)
+                || dts.iter().all(|dt| *dt == DatumType::F32),
+            "causal conv update inputs must be uniformly f16 or uniformly f32, got {dts:?}"
+        );
         ensure!(inputs[0].rank() == 3, "input must be [b, C, S]");
         ensure!(inputs[2].rank() == 3, "state must be [b, C, k]");
         Ok(tvec![inputs[0].without_value(), inputs[2].without_value()])
@@ -143,18 +139,7 @@ impl TypedOp for CausalConv1dUpdate {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn arb(shape: &[usize], seed: u64) -> Tensor {
-        let len: usize = shape.iter().product();
-        let mut x = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        let data: Vec<f32> = (0..len)
-            .map(|_| {
-                x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                ((x >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-            })
-            .collect();
-        Tensor::from_shape(shape, &data).unwrap()
-    }
+    use crate::ops::test_utils::arb;
 
     fn run(
         input: &Tensor,
