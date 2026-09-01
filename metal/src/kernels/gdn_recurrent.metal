@@ -81,8 +81,14 @@ kernel void gdn_recurrent_f16(
 }
 
 // Variant with an f16 recurrent state (graph exported with -idt f16):
-// identical math, f32 accumulation, state roundtrips through half like
-// the CPU op does for an f16-state graph.
+// identical math, f32 accumulation per step, but -- unlike the CPU op and
+// the chunked path, which keep state in f32 across every step of a
+// multi-step call and round to half only once at the end -- this kernel
+// rounds `final_state` to half after EVERY step and reads it back
+// rounded on the next one, since state_in/final_state alias the same
+// half buffer. Precision-equivalent to the CPU op only for a single-step
+// call (decode); for a multi-step call (2 <= s_len < GDN_CHUNK) this
+// accumulates extra per-step rounding error the CPU op does not have.
 kernel void gdn_recurrent_f16_state_f16(
     device const half *query [[buffer(0)]],
     device const half *key [[buffer(1)]],
@@ -198,6 +204,11 @@ kernel void causal_conv1d_update_f16(
 // the per-thread dependency chains by R. Each thread still owns its
 // (column, chunk-rows) slice of the state exclusively, so the sequential S
 // loop only ever reads back its own device writes.
+//
+// With ST=half (gdn_recurrent_f16_state_f16_tg): same per-step half
+// rounding caveat as gdn_recurrent_f16_state_f16 above -- state_in and
+// final_state alias the same half buffer, so a multi-step call rounds
+// once per step instead of once per call like the CPU op.
 template <typename ST>
 kernel void gdn_recurrent_tg(
     device const half *query [[buffer(0)]],
