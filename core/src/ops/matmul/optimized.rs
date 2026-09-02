@@ -433,7 +433,16 @@ impl Op for OptMatMul {
 #[derive(Default)]
 struct MmmScratch {
     space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
-    stores: HashMap<usize, TVec<Option<OutputStore>>>,
+    stores: HashMap<usize, StoreMemo>,
+}
+
+/// The [`OutputStore`]s of one node, and the output shape and kernel they were
+/// built for: their strides come from that shape, so a turn of another shape
+/// -- a batch axis of another extent, say -- needs its own.
+struct StoreMemo {
+    c_shape: TVec<usize>,
+    mode: usize,
+    stores: TVec<Option<OutputStore>>,
 }
 
 thread_local! {
@@ -475,19 +484,26 @@ impl OptMatMul {
             }
             let scratch = space.as_mut().unwrap();
             if self.trivial_path {
-                let stores = stores.entry(ctx.node_id).or_insert_with(|| {
-                    self.micro_ops
+                let memo = || StoreMemo {
+                    c_shape: c.shape().into(),
+                    mode,
+                    stores: self
+                        .micro_ops
                         .iter()
                         .map(|o| match o {
                             ProtoFusedSpec::Store(oss) => Some(oss[mode].wrap(&c.view())),
                             _ => None,
                         })
-                        .collect()
-                });
+                        .collect(),
+                };
+                let stores = stores.entry(ctx.node_id).or_insert_with(memo);
+                if stores.c_shape.as_slice() != c.shape() || stores.mode != mode {
+                    *stores = memo();
+                }
                 let uops: TVec<FusedSpec> = self
                     .micro_ops
                     .iter()
-                    .zip(stores.iter())
+                    .zip(stores.stores.iter())
                     .map(|(o, store)| o.resolve_trivial_cached(&inputs, &mut c, mmm, mode, *store))
                     .collect();
                 mmm.run_with_scratch_space(m, n, scratch.as_mut(), &uops)?;
