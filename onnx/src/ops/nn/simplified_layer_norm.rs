@@ -72,15 +72,17 @@ mod tests {
         let runnable =
             crate::onnx().model_for_read(&mut &*buf)?.into_optimized()?.into_runnable()?;
 
-        // x has a non-zero mean; scale is all ones.
+        // x has a non-zero mean; scale is non-unit so the test also exercises the
+        // elementwise scale multiply (a lowering that dropped input 1 would fail).
         let x = tensor2(&[[1f32, 2., 3., 4.]]);
-        let scale = tensor1(&[1f32, 1., 1., 1.]);
+        let scale = tensor1(&[0.5f32, 1.5, 2.0, 0.25]);
         let out = runnable.run(tvec!(x.into_tvalue(), scale.into_tvalue()))?;
 
         // RMS norm: rms = sqrt(mean(x^2) + 1e-5) = sqrt(7.5 + 1e-5) ~= 2.7386
-        //   y = x / rms ~= [0.3651, 0.7303, 1.0954, 1.4606]
-        // (LayerNorm would centre first and yield [-1.342, -0.447, 0.447, 1.342].)
-        let expected = tensor2(&[[0.365_15f32, 0.730_30, 1.095_45, 1.460_60]]);
+        //   norm = x / rms ~= [0.3651, 0.7303, 1.0954, 1.4606]
+        //   y = norm * scale ~= [0.1826, 1.0954, 2.1909, 0.3651]
+        // (LayerNorm would centre first and yield a completely different result.)
+        let expected = tensor2(&[[0.182_574f32, 1.095_444, 2.190_889, 0.365_148]]);
         out[0].close_enough(&expected, Approximation::Approximate)?;
         Ok(())
     }
