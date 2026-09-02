@@ -327,6 +327,13 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 1,
                 ker.mr(),
                 ker.nr(),
+                // A footprint of zero, which asks the chunk gate for the full
+                // slack. The gate exists to price the re-reads extra chunks cost,
+                // and on a single column of panels there are none: each chunk
+                // covers a disjoint band of A, and the one B panel every chunk
+                // re-reads is a vector.
+                0,
+                0,
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -343,6 +350,13 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 1,
                 ker.mr(),
                 ker.nr(),
+                // A footprint of zero, which asks the chunk gate for the full
+                // slack. The gate exists to price the re-reads extra chunks cost,
+                // and on a single column of panels there are none: each chunk
+                // covers a disjoint band of A, and the one B panel every chunk
+                // re-reads is a vector.
+                0,
+                0,
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -613,8 +627,8 @@ unsafe fn run_blocked<K: MatMatMulKer>(
 /// Run the whole `m × n` output over the executor currently installed: as one
 /// rectangle when single-threaded, else split into the chunk grid
 /// [`chunk_grid`] picks. `col_outer` selects the tile order inside a rectangle
-/// (B-reuse vs A-reuse), from the fused ops' preference. `k` is only used to size
-/// the cache blocking.
+/// (B-reuse vs A-reuse), from the fused ops' preference. `k` is used to size the
+/// cache blocking and the packed-operand footprint the chunk gate reads.
 unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
     ker: &K,
     m: usize,
@@ -644,80 +658,173 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 run_blocked(ker, 0..m_panels, 0..n_panels, k, col_outer, 1, scratch, non_linear)
             }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => {
-                chunked_dispatch_rayon(Some(&pool), m_panels, n_panels, ker.mr(), ker.nr(), chunk)
-            }
+            Executor::MultiThread(pool) => chunked_dispatch_rayon(
+                Some(&pool),
+                m_panels,
+                n_panels,
+                ker.mr(),
+                ker.nr(),
+                k,
+                K::Acc::datum_type().size_of(),
+                chunk,
+            ),
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m_panels, n_panels, ker.mr(), ker.nr(), chunk)
-            }
+            Executor::RayonGlobal => chunked_dispatch_rayon(
+                None,
+                m_panels,
+                n_panels,
+                ker.mr(),
+                ker.nr(),
+                k,
+                K::Acc::datum_type().size_of(),
+                chunk,
+            ),
         }
     }
 }
 
-/// The static chunk count `TRACT_MMM_CHUNKS_PER_THREAD` forces, if any. `None`
-/// — the default — selects the adaptive split, which names no chunk count at
-/// all: [`chunked_dispatch_rayon`] hands rayon a rectangle and rayon splits it
-/// only as far as idle threads ask it to.
-///
-/// The hook exists so the fleet can A/B the adaptive path against a fixed grid
-/// without a rebuild: `=4` reproduces the dispatch as it was before the adaptive
-/// split, `=1` the one-chunk-per-thread grid a small-cache part was forced onto
-/// while this was gated on the machine.
-///
-/// Resolved once — this sits on the per-matmul dispatch path and the variable
-/// does not change under a running process.
+/// Chunks per thread the 2D dispatch aims for when the extra chunks are worth
+/// their re-reads (see [`chunks_per_thread`]). Above one, rayon can steal work
+/// when threads progress unevenly — a contended core, an E-core on a big.LITTLE
+/// part, a chunk carrying more border tiles — so a straggler costs at most its
+/// share rather than the whole grid's tail. Each extra chunk also re-reads a band
+/// of the packed operands, and that cost grows as `sqrt(chunks)` against a linear
+/// gain in slack, which is what keeps this small.
 #[cfg(feature = "multithread-mm")]
-fn forced_chunks_per_thread() -> Option<usize> {
+const CHUNKS_PER_THREAD: usize = 4;
+
+/// Last-level cache above which the slack is always worth taking, whatever the
+/// problem: a part with this much LLC absorbs the re-reads of anything the
+/// dispatch is likely to see, so the gate below never fires and the chunk grid is
+/// bit-for-bit what it was before this gate existed.
+#[cfg(feature = "multithread-mm")]
+const CHUNK_SLACK_LLC_BYTES: usize = 2 * 1024 * 1024;
+
+/// Largest packed-operand footprint whose re-reads a small-cache part still
+/// absorbs. Below it the extra chunks re-read something the memory system is
+/// plausibly still holding and the slack is close to free; above it each extra
+/// chunk is a fresh DRAM stream.
+///
+/// A slider, not a separator. The two models that disagree about the slack do
+/// **not** occupy disjoint footprint ranges — over their threaded matmuls at
+/// 12x8/f32, InceptionV3 spans 0.16-23.8 MB (median 0.54) and MobileNet v2
+/// 0.20-6.95 MB (median 0.88) — so no boundary sorts one model from the other.
+/// What the boundary does is set the share of each model's FLOPs that keeps the
+/// slack, and the a53's InceptionV3 win and the a7/a9/beaglev MobileNet
+/// regression both scale with that share:
+///
+/// ```text
+///   boundary   incep FLOPs at cpt 1 -> a53      mobilenet at cpt 1 -> a7/a9/bv
+///     0.5 MB           88.5%          -7.3%          79.7%           +5.6%
+///     1.0 MB           85.9%          -7.0%          53.5%           +3.7%
+///     1.5 MB           76.9%          -6.3%          21.5%           +1.5%
+///     2.0 MB           62.0%          -5.1%          18.9%           +1.3%
+///     4.0 MB           41.5%          -3.4%           0.3%            0.0%
+/// ```
+///
+/// Predicted linearly from the two measured endpoints (all-cpt-1: a53 -8.2%,
+/// MobileNet +6.0..8.0%), which reproduce the measured 2 MB point to within half
+/// a point on both models. 1.5 MB is the knee: MobileNet's share falls off a
+/// cliff between 1.5 and 1.0 MB while InceptionV3's barely moves, so it buys most
+/// of the a53 win before the regression comes back.
+///
+/// `TRACT_MMM_CHUNK_SLACK_BYTES` moves it, which is how the table above would be
+/// measured rather than predicted.
+#[cfg(feature = "multithread-mm")]
+const CHUNK_SLACK_OPERAND_BYTES: usize = 3 * 512 * 1024;
+
+/// Machine facts the chunk gate reads, resolved once: `(llc_bytes, slack_bytes,
+/// override)`. Memoised like the cache probe underneath it — this sits on the
+/// per-matmul dispatch path, and neither the env vars nor the cache geometry
+/// change under a running process.
+#[cfg(feature = "multithread-mm")]
+fn chunk_gate_env() -> (usize, usize, Option<usize>) {
     use std::sync::OnceLock;
-    static CPT: OnceLock<Option<usize>> = OnceLock::new();
-    *CPT.get_or_init(|| {
-        std::env::var("TRACT_MMM_CHUNKS_PER_THREAD")
-            .ok()
-            .and_then(|v| v.trim().parse::<usize>().ok())
-            .map(|n| n.max(1))
+    static ENV: OnceLock<(usize, usize, Option<usize>)> = OnceLock::new();
+    *ENV.get_or_init(|| {
+        let usize_var =
+            |k: &str| std::env::var(k).ok().and_then(|v| v.trim().parse::<usize>().ok());
+        let llc = crate::cache::last_level_cache()
+            .map(|(bytes, _)| bytes)
+            .unwrap_or_else(|| crate::cache::cache_info().l2);
+        let slack = usize_var("TRACT_MMM_CHUNK_SLACK_BYTES").unwrap_or(CHUNK_SLACK_OPERAND_BYTES);
+        (llc, slack, usize_var("TRACT_MMM_CHUNKS_PER_THREAD"))
     })
 }
 
-/// A rectangle of the panel grid, as the adaptive dispatch splits it.
+/// Chunks per thread [`chunk_grid`] aims for, for a dispatch whose packed
+/// operands occupy `packed_bytes`.
+///
+/// An extra chunk buys load-balance slack and costs one more pass over a packed
+/// operand. Whether that pass is worth taking is a property of the *problem* as
+/// much as of the machine: on a part with a large last-level cache every pass is
+/// a cache hit, so the slack is always taken; on a small-cache part it depends on
+/// whether the operands are small enough for the memory system to still be
+/// holding them. Gating on the machine alone takes the slack away from the small
+/// problems that were paying nothing for it.
+///
+/// `TRACT_MMM_CHUNKS_PER_THREAD` overrides the choice outright, and
+/// `TRACT_MMM_CHUNK_SLACK_BYTES` moves the footprint boundary. Both are resolved
+/// once, like the cache probe they sit next to.
 #[cfg(feature = "multithread-mm")]
-#[derive(Clone, Debug)]
-struct PanelRect {
-    m: Range<usize>,
-    n: Range<usize>,
+fn chunks_per_thread(packed_bytes: usize) -> usize {
+    let (llc, slack, over) = chunk_gate_env();
+    resolve_chunks_per_thread(over, llc, slack, packed_bytes)
 }
 
-/// One demand-driven split of a panel rectangle, for [`rayon::iter::split`].
-///
-/// Halves the axis whose *output extent* is longer, which keeps rectangles as
-/// square as the operands allow — the same objective the old fixed grid reached
-/// by shaping `nchunks_m` as `sqrt(chunks · m / n)`. A chunk covering `dr_m ×
-/// dr_n` panels reads `dr_m·mr·k` of A and `dr_n·nr·k` of B, so square
-/// rectangles are what minimise total operand traffic at a given count.
-///
-/// Returning `None` for the second half stops the recursion: rayon then runs the
-/// rectangle whole rather than splitting further.
+/// Pure resolution of [`chunks_per_thread`] (factored out so the gate is testable
+/// without the host's cache geometry, which decides it otherwise).
 #[cfg(feature = "multithread-mm")]
-fn split_panel_rect(rect: PanelRect, mr: usize, nr: usize) -> (PanelRect, Option<PanelRect>) {
-    let (dm, dn) = (rect.m.len(), rect.n.len());
-    let split_m = match (dm > 1, dn > 1) {
-        (false, false) => return (rect, None),
-        (true, false) => true,
-        (false, true) => false,
-        // Both splittable: halve the longer output extent.
-        (true, true) => dm * mr >= dn * nr,
-    };
-    if split_m {
-        let mid = rect.m.start + dm / 2;
-        let right = PanelRect { m: mid..rect.m.end, n: rect.n.clone() };
-        (PanelRect { m: rect.m.start..mid, n: rect.n }, Some(right))
-    } else {
-        let mid = rect.n.start + dn / 2;
-        let right = PanelRect { m: rect.m.clone(), n: mid..rect.n.end };
-        (PanelRect { m: rect.m, n: rect.n.start..mid }, Some(right))
+fn resolve_chunks_per_thread(
+    override_cpt: Option<usize>,
+    llc: usize,
+    slack_bytes: usize,
+    packed_bytes: usize,
+) -> usize {
+    if let Some(n) = override_cpt {
+        return n.max(1);
     }
+    // A big enough LLC absorbs the re-reads whatever the problem: unchanged.
+    if llc >= CHUNK_SLACK_LLC_BYTES {
+        return CHUNKS_PER_THREAD;
+    }
+    if packed_bytes <= slack_bytes { CHUNKS_PER_THREAD } else { 1 }
 }
 
+/// Bytes the packed operands of a dispatch occupy: A is `n_panels_m·mr` rows and
+/// B `n_panels_n·nr` columns, both over `k`, both padded to whole panels — which
+/// is exactly what the packers wrote and the chunks re-read.
+#[cfg(feature = "multithread-mm")]
+fn packed_operand_bytes(
+    n_panels_m: usize,
+    n_panels_n: usize,
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem: usize,
+) -> usize {
+    (n_panels_m.saturating_mul(mr).saturating_add(n_panels_n.saturating_mul(nr)))
+        .saturating_mul(k)
+        .saturating_mul(elem)
+}
+
+/// Chunk grid for the 2D dispatch: `(nchunks_m, nchunks_n, dr_m, dr_n)`.
+///
+/// Aims for `cpt · nth` chunks — see [`chunks_per_thread`] for where `cpt` comes
+/// from — and shapes them to minimise how
+/// often the packed operands are re-read: a chunk covering `dr_m × dr_n` panels
+/// reads `dr_m·mr·k` of A and `dr_n·nr·k` of B, so over the whole grid A is read
+/// `nchunks_n` times and B `nchunks_m` times. Minimising
+/// `nchunks_n·m + nchunks_m·n` at a fixed chunk count puts
+/// `nchunks_m = sqrt(chunks · m / n)` — chunks as square as the operands'
+/// extents, rather than a band across one axis.
+///
+/// Cache locality *inside* a chunk is [`run_blocked`]'s job, not this function's;
+/// chunk *shape* therefore tracks the operands' extents and chunk *count* the
+/// thread count, with the cache entering only through `cpt`.
+///
+/// Both panel counts must be non-zero; the dispatcher returns early on an empty
+/// grid.
 #[cfg(feature = "multithread-mm")]
 fn chunk_grid(
     n_panels_m: usize,
@@ -739,9 +846,8 @@ fn chunk_grid(
     (n_panels_m.div_ceil(dr_m), n_panels_n.div_ceil(dr_n), dr_m, dr_n)
 }
 
-/// Dispatch the `m_panels × n_panels` panel grid across the rayon path, split on
-/// demand by [`split_panel_rect`] — or, when `TRACT_MMM_CHUNKS_PER_THREAD` forces
-/// a count, into the fixed 2D grid [`chunk_grid`] picks. Grids below
+/// Dispatch the `m_panels × n_panels` panel grid across the rayon path, split into
+/// the 2D chunk grid [`chunk_grid`] picks. Grids below
 /// [`crate::multithread::current_threading_panel_threshold`] run whole on the
 /// calling thread instead.
 ///
@@ -761,12 +867,15 @@ fn chunk_grid(
 ///     the only working path on `wasm32-unknown-unknown` via
 ///     `wasm_bindgen_rayon::init_thread_pool`.
 #[cfg(feature = "multithread-mm")]
+#[allow(clippy::too_many_arguments)]
 unsafe fn chunked_dispatch_rayon<F>(
     pool: Option<&rayon::ThreadPool>,
     n_panels_m: usize,
     n_panels_n: usize,
     mr: usize,
     nr: usize,
+    k: usize,
+    elem: usize,
     run_chunk: F,
 ) -> TractResult<()>
 where
@@ -782,34 +891,21 @@ where
         return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
     }
     let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
+    let cpt = chunks_per_thread(packed_operand_bytes(n_panels_m, n_panels_n, mr, nr, k, elem));
     let body = || {
         let nth = rayon::current_num_threads();
-        if let Some(cpt) = forced_chunks_per_thread() {
-            let (nchunks_m, nchunks_n, dr_m, dr_n) =
-                chunk_grid(n_panels_m, n_panels_n, mr, nr, nth, cpt);
-            let total = nchunks_m * nchunks_n;
-            let concurrency = nth.min(total);
-            return (0..total).into_par_iter().try_for_each(|idx| {
-                let im = idx % nchunks_m;
-                let in_ = idx / nchunks_m;
-                let ia_start = im * dr_m;
-                let ia_end = (ia_start + dr_m).min(n_panels_m);
-                let ib_start = in_ * dr_n;
-                let ib_end = (ib_start + dr_n).min(n_panels_n);
-                run_chunk(ia_start, ia_end, ib_start, ib_end, concurrency)
-            });
-        }
-        // Adaptive: hand rayon the whole rectangle and let it split. Its splitter
-        // is thief-driven — it splits while it has splits budgeted, and re-arms
-        // that budget only when a job is actually stolen — so a balanced dispatch
-        // settles around one rectangle per thread and pays the minimum operand
-        // traffic, while an unbalanced one splits further exactly where a thread
-        // went idle. Concurrent walkers are still bounded by the thread count,
-        // which is what the cache blocking needs to size its share.
-        let concurrency = nth.min(n_panels_m * n_panels_n);
-        let whole = PanelRect { m: 0..n_panels_m, n: 0..n_panels_n };
-        rayon::iter::split(whole, |rect| split_panel_rect(rect, mr, nr)).try_for_each(|rect| {
-            run_chunk(rect.m.start, rect.m.end, rect.n.start, rect.n.end, concurrency)
+        let (nchunks_m, nchunks_n, dr_m, dr_n) =
+            chunk_grid(n_panels_m, n_panels_n, mr, nr, nth, cpt);
+        let total = nchunks_m * nchunks_n;
+        let concurrency = nth.min(total);
+        (0..total).into_par_iter().try_for_each(|idx| {
+            let im = idx % nchunks_m;
+            let in_ = idx / nchunks_m;
+            let ia_start = im * dr_m;
+            let ia_end = (ia_start + dr_m).min(n_panels_m);
+            let ib_start = in_ * dr_n;
+            let ib_end = (ib_start + dr_n).min(n_panels_n);
+            run_chunk(ia_start, ia_end, ib_start, ib_end, concurrency)
         })
     };
     if use_global { body() } else { pool.unwrap().install(body) }
@@ -983,7 +1079,7 @@ mod blocked_walk_tests {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
-                    for cpt in [1, 4] {
+                    for cpt in [1, CHUNKS_PER_THREAD] {
                         let (cm, cn, dr_m, dr_n) = chunk_grid(m, n, mr, nr, nth, cpt);
                         let ctx =
                             format!("{m}x{n} panels, {mr}x{nr} kernel, {nth} threads, cpt {cpt}");
@@ -1022,7 +1118,7 @@ mod blocked_walk_tests {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
-                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, 4);
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, CHUNKS_PER_THREAD);
                     assert!(
                         cm * cn >= nth.min(m * n),
                         "{cm}x{cn} chunks for {nth} threads on {m}x{n} panels"
@@ -1032,72 +1128,55 @@ mod blocked_walk_tests {
         }
     }
 
-    /// Splitting a rectangle to exhaustion must tile the panel grid exactly, the
-    /// same invariant the fixed grid owes: rayon runs one work item per leaf, so
-    /// an overlap double-computes a tile and a gap leaves part of C uninitialised.
-    /// Unlike the grid, the recursion decides its own depth, so this drives it to
-    /// the floor where `split_panel_rect` stops.
+    /// The gate is a property of the problem, not only of the machine. On a part
+    /// too small to absorb the re-reads, a dispatch whose packed operands stay
+    /// under the slack budget still gets the full chunk count — that is the
+    /// MobileNet case, which paid a regression when the gate looked at the
+    /// machine alone — while one above it drops to one chunk per thread, which is
+    /// the InceptionV3 case the gate exists for.
     #[cfg(feature = "multithread-mm")]
     #[test]
-    fn split_panel_rect_tiles_the_panel_grid() {
-        for &(m, n) in GRIDS {
-            for &(mr, nr) in RATIOS {
-                let ctx = format!("{m}x{n} panels, {mr}x{nr} kernel");
-                let mut seen = vec![false; m * n];
-                let mut stack = vec![PanelRect { m: 0..m, n: 0..n }];
-                let mut leaves = 0;
-                while let Some(rect) = stack.pop() {
-                    let (left, right) = split_panel_rect(rect.clone(), mr, nr);
-                    if let Some(right) = right {
-                        assert!(!left.m.is_empty() && !left.n.is_empty(), "empty half in {ctx}");
-                        assert!(!right.m.is_empty() && !right.n.is_empty(), "empty half in {ctx}");
-                        stack.push(left);
-                        stack.push(right);
-                        continue;
-                    }
-                    // A leaf: `split_panel_rect` returned the rectangle unsplit.
-                    leaves += 1;
-                    for ia in left.m.clone() {
-                        for ib in left.n.clone() {
-                            assert!(!seen[ia * n + ib], "tile ({ia},{ib}) twice in {ctx}");
-                            seen[ia * n + ib] = true;
-                        }
-                    }
-                }
-                assert!(seen.iter().all(|s| *s), "tile left out in {ctx}");
-                assert_eq!(leaves, m * n, "recursion stopped above one panel in {ctx}");
-            }
+    fn chunk_gate_reads_the_problem_not_just_the_machine() {
+        let small_llc = 512 * 1024;
+        let slack = CHUNK_SLACK_OPERAND_BYTES;
+        // MobileNet v2 pointwise, f32: 96x16x12544 packs to well under a megabyte.
+        assert_eq!(
+            resolve_chunks_per_thread(None, small_llc, slack, 806 * 1024),
+            CHUNKS_PER_THREAD
+        );
+        // InceptionV3 conv, f32: 384x4032x64 packs to 7.2 MB.
+        assert_eq!(resolve_chunks_per_thread(None, small_llc, slack, 7 * 1024 * 1024), 1);
+        // A machine with cache to spare takes the slack either way, which is what
+        // keeps this inert on the m1-max / i9 / Orin numbers.
+        for bytes in [806 * 1024, 7 * 1024 * 1024] {
+            let big_llc = CHUNK_SLACK_LLC_BYTES;
+            assert_eq!(resolve_chunks_per_thread(None, big_llc, slack, bytes), CHUNKS_PER_THREAD);
         }
     }
 
-    /// The split halves the longer *output* extent, which is how the recursion
-    /// reaches square-ish rectangles — the shape objective the fixed grid met by
-    /// solving for `sqrt(chunks · m / n)`. A kernel with `mr != nr` makes panel
-    /// counts and extents disagree, and it is the extents that decide.
+    /// An undetected cache reads as 0, which must not read as "small problem":
+    /// the gate has to fall to one chunk per thread there, as it would on the
+    /// smallest part it can see.
     #[cfg(feature = "multithread-mm")]
     #[test]
-    fn split_panel_rect_halves_the_longer_extent() {
-        // 8x32 panels of a 32x4 kernel: 256 wide in m, 128 in n — so m splits,
-        // even though n has four times the panels.
-        let (left, right) = split_panel_rect(PanelRect { m: 0..8, n: 0..32 }, 32, 4);
-        assert_eq!((left.m, left.n.len()), (0..4, 32));
-        assert_eq!(right.unwrap().m, 4..8);
-        // Same panel counts, 4x32 kernel: now n is the longer extent.
-        let (left, right) = split_panel_rect(PanelRect { m: 0..8, n: 0..32 }, 4, 32);
-        assert_eq!((left.m.len(), left.n), (8, 0..16));
-        assert_eq!(right.unwrap().n, 16..32);
+    fn chunk_gate_overrides_and_undetected_cache() {
+        let slack = CHUNK_SLACK_OPERAND_BYTES;
+        assert_eq!(resolve_chunks_per_thread(None, 0, slack, 7 * 1024 * 1024), 1);
+        // The override wins over both, and never names zero chunks.
+        assert_eq!(resolve_chunks_per_thread(Some(1), CHUNK_SLACK_LLC_BYTES, slack, 0), 1);
+        assert_eq!(resolve_chunks_per_thread(Some(8), 0, slack, usize::MAX), 8);
+        assert_eq!(resolve_chunks_per_thread(Some(0), 0, slack, usize::MAX), 1);
     }
 
-    /// The recursion has to terminate, and an axis of one panel is indivisible.
-    /// A single panel must come back unsplit rather than as an empty pair.
+    /// The footprint the gate reads is what the packers actually wrote: both
+    /// operands padded out to whole panels, over the full depth.
     #[cfg(feature = "multithread-mm")]
     #[test]
-    fn split_panel_rect_stops_at_a_single_panel() {
-        assert!(split_panel_rect(PanelRect { m: 0..1, n: 0..1 }, 12, 8).1.is_none());
-        // One panel on the longer-extent axis: the other axis still splits.
-        let (left, right) = split_panel_rect(PanelRect { m: 0..1, n: 0..9 }, 64, 1);
-        assert_eq!(left.n, 0..4);
-        assert_eq!(right.unwrap().n, 4..9);
+    fn packed_operand_bytes_counts_whole_panels() {
+        // 32x8 panels of a 12x8 kernel over k=4032, f32.
+        assert_eq!(packed_operand_bytes(32, 8, 12, 8, 4032, 4), (32 * 12 + 8 * 8) * 4032 * 4);
+        // Saturating, so a degenerate shape gates conservatively rather than wrapping.
+        assert_eq!(packed_operand_bytes(usize::MAX, 1, 12, 8, 4032, 4), usize::MAX);
     }
 
     /// The grid is shaped to minimise packed-operand re-reads: A is read once per
@@ -1111,7 +1190,7 @@ mod blocked_walk_tests {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [2usize, 4, 8, 16] {
-                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, 4);
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, CHUNKS_PER_THREAD);
                     let chunks = cm * cn;
                     // Only a band that fits along the axis is a real alternative:
                     // one clamped shorter would be a different chunk count, and a
