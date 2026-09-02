@@ -89,7 +89,7 @@ impl OpState for PulsedRangeState {
     }
 
     fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
-        bail!("PulsedRange is not lane-aware: current_pos has no lane axis")
+        bail!("PulsedRange is not lane-aware: current_pos counts the state's turns, not a stream's")
     }
 }
 
