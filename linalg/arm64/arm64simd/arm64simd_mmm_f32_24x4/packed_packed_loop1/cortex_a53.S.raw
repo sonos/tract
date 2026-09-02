@@ -52,17 +52,16 @@ fmla        v31.4s, v5.4s, v7.s[3]
     prfm        pldl1keep, [x2, #448]
 
 ins         v0.d[0], x4
-ins         v1.d[0], x6
-ins         v2.d[0], x8
-ins         v3.d[0], x10
-ins         v4.d[0], x12
-ins         v5.d[0], x14
 ins         v7.d[0], x20
-
 ins         v0.d[1], x5
-ins         v1.d[1], x7
-ins         v2.d[1], x9
-ins         v3.d[1], x11
-ins         v4.d[1], x13
-ins         v5.d[1], x15
 ins         v7.d[1], x21
+ins         v1.d[0], x6
+ins         v1.d[1], x7
+ins         v2.d[0], x8
+ins         v2.d[1], x9
+ins         v3.d[0], x10
+ins         v3.d[1], x11
+ins         v4.d[0], x12
+ins         v4.d[1], x13
+ins         v5.d[0], x14
+ins         v5.d[1], x15

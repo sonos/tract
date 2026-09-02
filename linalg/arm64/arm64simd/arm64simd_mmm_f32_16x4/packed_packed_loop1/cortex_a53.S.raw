@@ -33,14 +33,13 @@ fmla        v31.4s, v3.4s, v4.s[3]
 prfm        pldl1keep, [x2, #320]
 
 ins         v0.d[0], x5
-ins         v2.d[0], x9
-ins         v1.d[0], x7
-ins         v3.d[0], x11
 ins         v4.d[0], x24
-
 ins         v0.d[1], x6
-ins         v2.d[1], x10
-ins         v1.d[1], x8
-ins         v3.d[1], x12
 ins         v4.d[1], x25
+ins         v1.d[0], x7
+ins         v1.d[1], x8
+ins         v2.d[0], x9
+ins         v2.d[1], x10
+ins         v3.d[0], x11
+ins         v3.d[1], x12
 
