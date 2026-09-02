@@ -327,6 +327,13 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 1,
                 ker.mr(),
                 ker.nr(),
+                // A footprint of zero, which asks the chunk gate for the full
+                // slack. The gate exists to price the re-reads extra chunks cost,
+                // and on a single column of panels there are none: each chunk
+                // covers a disjoint band of A, and the one B panel every chunk
+                // re-reads is a vector.
+                0,
+                0,
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -343,6 +350,13 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 1,
                 ker.mr(),
                 ker.nr(),
+                // A footprint of zero, which asks the chunk gate for the full
+                // slack. The gate exists to price the re-reads extra chunks cost,
+                // and on a single column of panels there are none: each chunk
+                // covers a disjoint band of A, and the one B panel every chunk
+                // re-reads is a vector.
+                0,
+                0,
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -613,8 +627,8 @@ unsafe fn run_blocked<K: MatMatMulKer>(
 /// Run the whole `m × n` output over the executor currently installed: as one
 /// rectangle when single-threaded, else split into the chunk grid
 /// [`chunk_grid`] picks. `col_outer` selects the tile order inside a rectangle
-/// (B-reuse vs A-reuse), from the fused ops' preference. `k` is only used to size
-/// the cache blocking.
+/// (B-reuse vs A-reuse), from the fused ops' preference. `k` is used to size the
+/// cache blocking and the packed-operand footprint the chunk gate reads.
 unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
     ker: &K,
     m: usize,
@@ -644,63 +658,141 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 run_blocked(ker, 0..m_panels, 0..n_panels, k, col_outer, 1, scratch, non_linear)
             }
             #[cfg(feature = "multithread-mm")]
-            Executor::MultiThread(pool) => {
-                chunked_dispatch_rayon(Some(&pool), m_panels, n_panels, ker.mr(), ker.nr(), chunk)
-            }
+            Executor::MultiThread(pool) => chunked_dispatch_rayon(
+                Some(&pool),
+                m_panels,
+                n_panels,
+                ker.mr(),
+                ker.nr(),
+                k,
+                K::Acc::datum_type().size_of(),
+                chunk,
+            ),
             #[cfg(feature = "multithread-mm")]
-            Executor::RayonGlobal => {
-                chunked_dispatch_rayon(None, m_panels, n_panels, ker.mr(), ker.nr(), chunk)
-            }
+            Executor::RayonGlobal => chunked_dispatch_rayon(
+                None,
+                m_panels,
+                n_panels,
+                ker.mr(),
+                ker.nr(),
+                k,
+                K::Acc::datum_type().size_of(),
+                chunk,
+            ),
         }
     }
 }
 
-/// Chunks per thread the 2D dispatch aims for on a part whose last-level cache
-/// can absorb the re-reads (see [`chunks_per_thread`]). Above one, rayon can steal
-/// work when threads progress unevenly — a contended core, an E-core on a
-/// big.LITTLE part, a chunk carrying more border tiles — so a straggler costs at
-/// most its share rather than the whole grid's tail. Each extra chunk also
-/// re-reads a band of the packed operands, and that cost grows as `sqrt(chunks)`
-/// against a linear gain in slack, which is what keeps this small.
+/// Chunks per thread the 2D dispatch aims for when the extra chunks are worth
+/// their re-reads (see [`chunks_per_thread`]). Above one, rayon can steal work
+/// when threads progress unevenly — a contended core, an E-core on a big.LITTLE
+/// part, a chunk carrying more border tiles — so a straggler costs at most its
+/// share rather than the whole grid's tail. Each extra chunk also re-reads a band
+/// of the packed operands, and that cost grows as `sqrt(chunks)` against a linear
+/// gain in slack, which is what keeps this small.
 #[cfg(feature = "multithread-mm")]
 const CHUNKS_PER_THREAD: usize = 4;
 
-/// Smallest last-level cache that makes the extra chunks worth their re-reads.
-/// Below this a part has only a small cluster L2 and no LLC behind it
-/// (Cortex-A7/A9/A53), so the band a chunk re-reads comes from DRAM every time.
+/// Last-level cache above which the slack is always worth taking, whatever the
+/// problem: a part with this much LLC absorbs the re-reads of anything the
+/// dispatch is likely to see, so the gate below never fires and the chunk grid is
+/// bit-for-bit what it was before this gate existed.
 #[cfg(feature = "multithread-mm")]
 const CHUNK_SLACK_LLC_BYTES: usize = 2 * 1024 * 1024;
 
-/// Chunks per thread [`chunk_grid`] aims for on this machine.
+/// Largest packed-operand footprint whose re-reads a small-cache part still
+/// absorbs. Below it the extra chunks re-read something the memory system is
+/// already holding — a MobileNet pointwise conv packs to a few hundred KB — and
+/// the slack is free. Above it each extra chunk is a fresh DRAM stream of a
+/// multi-megabyte operand, which is the InceptionV3 case that costs the a53 more
+/// than the slack returns.
 ///
-/// An extra chunk buys load-balance slack and costs one more pass over a packed
-/// operand. That pass is a cache hit on a part with a last-level cache big enough
-/// to hold the band and a DRAM round trip on one without, so the slack is only
-/// worth taking above [`CHUNK_SLACK_LLC_BYTES`]; below it the dispatch takes one
-/// chunk per thread.
-///
-/// `TRACT_MMM_CHUNKS_PER_THREAD` overrides the choice. Resolved once, like the
-/// cache probe it reads, so a later change to the variable has no effect.
+/// A calibration constant, not a physical size: it sits above the footprints that
+/// measured *faster* with the slack and below those that measured slower, which
+/// is a wider band than any one cache level. `TRACT_MMM_CHUNK_SLACK_BYTES` moves
+/// it so the fleet can sweep where the boundary belongs.
 #[cfg(feature = "multithread-mm")]
-fn chunks_per_thread() -> usize {
+const CHUNK_SLACK_OPERAND_BYTES: usize = 2 * 1024 * 1024;
+
+/// Machine facts the chunk gate reads, resolved once: `(llc_bytes, slack_bytes,
+/// override)`. Memoised like the cache probe underneath it — this sits on the
+/// per-matmul dispatch path, and neither the env vars nor the cache geometry
+/// change under a running process.
+#[cfg(feature = "multithread-mm")]
+fn chunk_gate_env() -> (usize, usize, Option<usize>) {
     use std::sync::OnceLock;
-    static CPT: OnceLock<usize> = OnceLock::new();
-    *CPT.get_or_init(|| {
-        if let Some(n) =
-            std::env::var("TRACT_MMM_CHUNKS_PER_THREAD").ok().and_then(|v| v.trim().parse().ok())
-        {
-            return usize::max(n, 1);
-        }
+    static ENV: OnceLock<(usize, usize, Option<usize>)> = OnceLock::new();
+    *ENV.get_or_init(|| {
+        let usize_var =
+            |k: &str| std::env::var(k).ok().and_then(|v| v.trim().parse::<usize>().ok());
         let llc = crate::cache::last_level_cache()
             .map(|(bytes, _)| bytes)
             .unwrap_or_else(|| crate::cache::cache_info().l2);
-        if llc >= CHUNK_SLACK_LLC_BYTES { CHUNKS_PER_THREAD } else { 1 }
+        let slack = usize_var("TRACT_MMM_CHUNK_SLACK_BYTES").unwrap_or(CHUNK_SLACK_OPERAND_BYTES);
+        (llc, slack, usize_var("TRACT_MMM_CHUNKS_PER_THREAD"))
     })
+}
+
+/// Chunks per thread [`chunk_grid`] aims for, for a dispatch whose packed
+/// operands occupy `packed_bytes`.
+///
+/// An extra chunk buys load-balance slack and costs one more pass over a packed
+/// operand. Whether that pass is worth taking is a property of the *problem* as
+/// much as of the machine: on a part with a large last-level cache every pass is
+/// a cache hit, so the slack is always taken; on a small-cache part it depends on
+/// whether the operands are small enough for the memory system to still be
+/// holding them. Gating on the machine alone takes the slack away from the small
+/// problems that were paying nothing for it.
+///
+/// `TRACT_MMM_CHUNKS_PER_THREAD` overrides the choice outright, and
+/// `TRACT_MMM_CHUNK_SLACK_BYTES` moves the footprint boundary. Both are resolved
+/// once, like the cache probe they sit next to.
+#[cfg(feature = "multithread-mm")]
+fn chunks_per_thread(packed_bytes: usize) -> usize {
+    let (llc, slack, over) = chunk_gate_env();
+    resolve_chunks_per_thread(over, llc, slack, packed_bytes)
+}
+
+/// Pure resolution of [`chunks_per_thread`] (factored out so the gate is testable
+/// without the host's cache geometry, which decides it otherwise).
+#[cfg(feature = "multithread-mm")]
+fn resolve_chunks_per_thread(
+    override_cpt: Option<usize>,
+    llc: usize,
+    slack_bytes: usize,
+    packed_bytes: usize,
+) -> usize {
+    if let Some(n) = override_cpt {
+        return n.max(1);
+    }
+    // A big enough LLC absorbs the re-reads whatever the problem: unchanged.
+    if llc >= CHUNK_SLACK_LLC_BYTES {
+        return CHUNKS_PER_THREAD;
+    }
+    if packed_bytes <= slack_bytes { CHUNKS_PER_THREAD } else { 1 }
+}
+
+/// Bytes the packed operands of a dispatch occupy: A is `n_panels_m·mr` rows and
+/// B `n_panels_n·nr` columns, both over `k`, both padded to whole panels — which
+/// is exactly what the packers wrote and the chunks re-read.
+#[cfg(feature = "multithread-mm")]
+fn packed_operand_bytes(
+    n_panels_m: usize,
+    n_panels_n: usize,
+    mr: usize,
+    nr: usize,
+    k: usize,
+    elem: usize,
+) -> usize {
+    (n_panels_m.saturating_mul(mr).saturating_add(n_panels_n.saturating_mul(nr)))
+        .saturating_mul(k)
+        .saturating_mul(elem)
 }
 
 /// Chunk grid for the 2D dispatch: `(nchunks_m, nchunks_n, dr_m, dr_n)`.
 ///
-/// Aims for [`chunks_per_thread`]`· nth` chunks and shapes them to minimise how
+/// Aims for `cpt · nth` chunks — see [`chunks_per_thread`] for where `cpt` comes
+/// from — and shapes them to minimise how
 /// often the packed operands are re-read: a chunk covering `dr_m × dr_n` panels
 /// reads `dr_m·mr·k` of A and `dr_n·nr·k` of B, so over the whole grid A is read
 /// `nchunks_n` times and B `nchunks_m` times. Minimising
@@ -709,7 +801,8 @@ fn chunks_per_thread() -> usize {
 /// extents, rather than a band across one axis.
 ///
 /// Cache locality *inside* a chunk is [`run_blocked`]'s job, not this function's;
-/// chunk count therefore tracks the thread count and not a cache size.
+/// chunk *shape* therefore tracks the operands' extents and chunk *count* the
+/// thread count, with the cache entering only through `cpt`.
 ///
 /// Both panel counts must be non-zero; the dispatcher returns early on an empty
 /// grid.
@@ -720,8 +813,9 @@ fn chunk_grid(
     mr: usize,
     nr: usize,
     nth: usize,
+    cpt: usize,
 ) -> (usize, usize, usize, usize) {
-    let chunks = (chunks_per_thread() * nth).max(1);
+    let chunks = (cpt * nth).max(1);
     let (m, n) = (n_panels_m * mr, (n_panels_n * nr).max(1));
     let nchunks_m = (chunks.saturating_mul(m) / n).isqrt().clamp(1, n_panels_m);
     let nchunks_n = (chunks / nchunks_m).clamp(1, n_panels_n);
@@ -754,12 +848,15 @@ fn chunk_grid(
 ///     the only working path on `wasm32-unknown-unknown` via
 ///     `wasm_bindgen_rayon::init_thread_pool`.
 #[cfg(feature = "multithread-mm")]
+#[allow(clippy::too_many_arguments)]
 unsafe fn chunked_dispatch_rayon<F>(
     pool: Option<&rayon::ThreadPool>,
     n_panels_m: usize,
     n_panels_n: usize,
     mr: usize,
     nr: usize,
+    k: usize,
+    elem: usize,
     run_chunk: F,
 ) -> TractResult<()>
 where
@@ -775,9 +872,11 @@ where
         return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
     }
     let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
+    let cpt = chunks_per_thread(packed_operand_bytes(n_panels_m, n_panels_n, mr, nr, k, elem));
     let body = || {
         let nth = rayon::current_num_threads();
-        let (nchunks_m, nchunks_n, dr_m, dr_n) = chunk_grid(n_panels_m, n_panels_n, mr, nr, nth);
+        let (nchunks_m, nchunks_n, dr_m, dr_n) =
+            chunk_grid(n_panels_m, n_panels_n, mr, nr, nth, cpt);
         let total = nchunks_m * nchunks_n;
         let concurrency = nth.min(total);
         (0..total).into_par_iter().try_for_each(|idx| {
@@ -961,22 +1060,25 @@ mod blocked_walk_tests {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
-                    let (cm, cn, dr_m, dr_n) = chunk_grid(m, n, mr, nr, nth);
-                    let ctx = format!("{m}x{n} panels, {mr}x{nr} kernel, {nth} threads");
-                    let mut seen = vec![false; m * n];
-                    for idx in 0..cm * cn {
-                        let (im, in_) = (idx % cm, idx / cm);
-                        let (a0, a1) = (im * dr_m, (im * dr_m + dr_m).min(m));
-                        let (b0, b1) = (in_ * dr_n, (in_ * dr_n + dr_n).min(n));
-                        assert!(a0 < a1 && b0 < b1, "empty chunk {idx} in {ctx}");
-                        for ia in a0..a1 {
-                            for ib in b0..b1 {
-                                assert!(!seen[ia * n + ib], "tile ({ia},{ib}) twice in {ctx}");
-                                seen[ia * n + ib] = true;
+                    for cpt in [1, CHUNKS_PER_THREAD] {
+                        let (cm, cn, dr_m, dr_n) = chunk_grid(m, n, mr, nr, nth, cpt);
+                        let ctx =
+                            format!("{m}x{n} panels, {mr}x{nr} kernel, {nth} threads, cpt {cpt}");
+                        let mut seen = vec![false; m * n];
+                        for idx in 0..cm * cn {
+                            let (im, in_) = (idx % cm, idx / cm);
+                            let (a0, a1) = (im * dr_m, (im * dr_m + dr_m).min(m));
+                            let (b0, b1) = (in_ * dr_n, (in_ * dr_n + dr_n).min(n));
+                            assert!(a0 < a1 && b0 < b1, "empty chunk {idx} in {ctx}");
+                            for ia in a0..a1 {
+                                for ib in b0..b1 {
+                                    assert!(!seen[ia * n + ib], "tile ({ia},{ib}) twice in {ctx}");
+                                    seen[ia * n + ib] = true;
+                                }
                             }
                         }
+                        assert!(seen.iter().all(|s| *s), "tile left out in {ctx}");
                     }
-                    assert!(seen.iter().all(|s| *s), "tile left out in {ctx}");
                 }
             }
         }
@@ -985,13 +1087,19 @@ mod blocked_walk_tests {
     /// Enough chunks to keep every thread fed, whenever the grid has that many
     /// panels to go round. Recounting the chunks from the edges is what makes this
     /// hold: naming more chunks than the edges cover would idle the difference.
+    ///
+    /// Only at the slack count. At `cpt == 1` the dispatch asks for exactly `nth`
+    /// chunks and the `div_ceil` rounding can only give back fewer — a 1x5 panel
+    /// grid over 4 threads lands 3 chunks — so a gated dispatch can leave a thread
+    /// idle. That is the price the gate pays, and it buys the operand re-reads it
+    /// saves; [`chunks_per_thread`] only takes it where those re-reads cost more.
     #[cfg(feature = "multithread-mm")]
     #[test]
     fn chunk_grid_feeds_every_thread() {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
-                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth);
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, CHUNKS_PER_THREAD);
                     assert!(
                         cm * cn >= nth.min(m * n),
                         "{cm}x{cn} chunks for {nth} threads on {m}x{n} panels"
@@ -999,6 +1107,57 @@ mod blocked_walk_tests {
                 }
             }
         }
+    }
+
+    /// The gate is a property of the problem, not only of the machine. On a part
+    /// too small to absorb the re-reads, a dispatch whose packed operands stay
+    /// under the slack budget still gets the full chunk count — that is the
+    /// MobileNet case, which paid a regression when the gate looked at the
+    /// machine alone — while one above it drops to one chunk per thread, which is
+    /// the InceptionV3 case the gate exists for.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_gate_reads_the_problem_not_just_the_machine() {
+        let small_llc = 512 * 1024;
+        let slack = CHUNK_SLACK_OPERAND_BYTES;
+        // MobileNet v2 pointwise, f32: 96x16x12544 packs to well under a megabyte.
+        assert_eq!(
+            resolve_chunks_per_thread(None, small_llc, slack, 806 * 1024),
+            CHUNKS_PER_THREAD
+        );
+        // InceptionV3 conv, f32: 384x4032x64 packs to 7.2 MB.
+        assert_eq!(resolve_chunks_per_thread(None, small_llc, slack, 7 * 1024 * 1024), 1);
+        // A machine with cache to spare takes the slack either way, which is what
+        // keeps this inert on the m1-max / i9 / Orin numbers.
+        for bytes in [806 * 1024, 7 * 1024 * 1024] {
+            let big_llc = CHUNK_SLACK_LLC_BYTES;
+            assert_eq!(resolve_chunks_per_thread(None, big_llc, slack, bytes), CHUNKS_PER_THREAD);
+        }
+    }
+
+    /// An undetected cache reads as 0, which must not read as "small problem":
+    /// the gate has to fall to one chunk per thread there, as it would on the
+    /// smallest part it can see.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_gate_overrides_and_undetected_cache() {
+        let slack = CHUNK_SLACK_OPERAND_BYTES;
+        assert_eq!(resolve_chunks_per_thread(None, 0, slack, 7 * 1024 * 1024), 1);
+        // The override wins over both, and never names zero chunks.
+        assert_eq!(resolve_chunks_per_thread(Some(1), CHUNK_SLACK_LLC_BYTES, slack, 0), 1);
+        assert_eq!(resolve_chunks_per_thread(Some(8), 0, slack, usize::MAX), 8);
+        assert_eq!(resolve_chunks_per_thread(Some(0), 0, slack, usize::MAX), 1);
+    }
+
+    /// The footprint the gate reads is what the packers actually wrote: both
+    /// operands padded out to whole panels, over the full depth.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn packed_operand_bytes_counts_whole_panels() {
+        // 32x8 panels of a 12x8 kernel over k=4032, f32.
+        assert_eq!(packed_operand_bytes(32, 8, 12, 8, 4032, 4), (32 * 12 + 8 * 8) * 4032 * 4);
+        // Saturating, so a degenerate shape gates conservatively rather than wrapping.
+        assert_eq!(packed_operand_bytes(usize::MAX, 1, 12, 8, 4032, 4), usize::MAX);
     }
 
     /// The grid is shaped to minimise packed-operand re-reads: A is read once per
@@ -1012,7 +1171,7 @@ mod blocked_walk_tests {
         for &(m, n) in GRIDS {
             for &(mr, nr) in RATIOS {
                 for nth in [2usize, 4, 8, 16] {
-                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth);
+                    let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, CHUNKS_PER_THREAD);
                     let chunks = cm * cn;
                     // Only a band that fits along the axis is a real alternative:
                     // one clamped shorter would be a different chunk count, and a
