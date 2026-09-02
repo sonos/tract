@@ -4704,7 +4704,7 @@ dependencies = [
 
 [[package]]
 name = "tract"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "boow",
@@ -4731,7 +4731,7 @@ dependencies = [
 
 [[package]]
 name = "tract-api"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "boow",
@@ -4746,7 +4746,7 @@ dependencies = [
 
 [[package]]
 name = "tract-cli"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "box_drawing",
  "clap",
@@ -4806,7 +4806,7 @@ dependencies = [
 
 [[package]]
 name = "tract-core"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "anymap3",
@@ -4838,7 +4838,7 @@ dependencies = [
 
 [[package]]
 name = "tract-cuda"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "criterion",
@@ -4864,7 +4864,7 @@ dependencies = [
 
 [[package]]
 name = "tract-data"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "criterion",
@@ -4893,7 +4893,7 @@ dependencies = [
 
 [[package]]
 name = "tract-extra"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "approx",
  "criterion",
@@ -4906,7 +4906,7 @@ dependencies = [
 
 [[package]]
 name = "tract-ffi"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "flate2",
@@ -4918,7 +4918,7 @@ dependencies = [
 
 [[package]]
 name = "tract-gpu"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "derive-new",
@@ -4933,7 +4933,7 @@ dependencies = [
 
 [[package]]
 name = "tract-hir"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "derive-new",
  "env_logger",
@@ -4943,7 +4943,7 @@ dependencies = [
 
 [[package]]
 name = "tract-libcli"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "box_drawing",
  "clap",
@@ -4969,7 +4969,7 @@ dependencies = [
 
 [[package]]
 name = "tract-linalg"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "byteorder",
  "cc",
@@ -4999,7 +4999,7 @@ dependencies = [
 
 [[package]]
 name = "tract-metal"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "criterion",
@@ -5020,7 +5020,7 @@ dependencies = [
 
 [[package]]
 name = "tract-nnef"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "byteorder",
  "erased-serde",
@@ -5054,7 +5054,7 @@ dependencies = [
 
 [[package]]
 name = "tract-nnef-resources"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "nom 8.0.0",
@@ -5066,7 +5066,7 @@ dependencies = [
 
 [[package]]
 name = "tract-onnx"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "bytes",
  "criterion",
@@ -5093,7 +5093,7 @@ dependencies = [
 
 [[package]]
 name = "tract-onnx-opl"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "dyn-eq",
  "env_logger",
@@ -5108,7 +5108,7 @@ dependencies = [
 
 [[package]]
 name = "tract-proxy"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "anyhow",
  "boow",
@@ -5124,14 +5124,14 @@ dependencies = [
 
 [[package]]
 name = "tract-proxy-sys"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "bindgen 0.72.1",
 ]
 
 [[package]]
 name = "tract-pulse"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "downcast-rs",
  "dyn-eq",
@@ -5145,7 +5145,7 @@ dependencies = [
 
 [[package]]
 name = "tract-pulse-opl"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "downcast-rs",
  "dyn-eq",
@@ -5155,7 +5155,7 @@ dependencies = [
 
 [[package]]
 name = "tract-tensorflow"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "bytes",
  "criterion",
@@ -5171,7 +5171,7 @@ dependencies = [
 
 [[package]]
 name = "tract-tflite"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "derive-new",
  "flatbuffers",
@@ -5180,7 +5180,7 @@ dependencies = [
 
 [[package]]
 name = "tract-transformers"
-version = "0.23.6"
+version = "0.23.7-pre"
 dependencies = [
  "float-ord",
  "rayon",
