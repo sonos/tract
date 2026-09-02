@@ -111,7 +111,7 @@ pub mod prelude {
 pub mod internal {
     pub extern crate inventory;
     pub use crate::axes::{AxesMapping, Axis};
-    pub use crate::lanes::LaneTable;
+    pub use crate::lanes::{LaneTable, LanedRunnable, SessionHandle};
     pub use crate::late_bind::*;
     pub use crate::ops::change_axes::*;
     pub use crate::ops::element_wise::ElementWiseMiniOp;
