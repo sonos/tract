@@ -192,7 +192,11 @@ impl LanedRunnable {
         let (requests, queue) = channel::<Request>();
         let (spawned, ready) = channel::<TractResult<()>>();
         thread::Builder::new().name("tract-lanes".into()).spawn(move || {
-            let mut state = match inner.spawn() {
+            let mut state = match inner.spawn().and_then(|mut state| {
+                let lanes: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
+                state.reset_lanes(&lanes).context("Preparing a laned model")?;
+                Ok(state)
+            }) {
                 Ok(state) => {
                     let _ = spawned.send(Ok(()));
                     state
