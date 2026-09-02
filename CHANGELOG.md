@@ -9,6 +9,58 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.6 - unreleased
+
+### Platforms
+
+- **RISC-V 64 is a supported target.** RVV 1.0 f32 matmul kernels, i8/i32 kernels, f16 kernels behind `Zvfh`, and RVV element-wise and reduction kernels. Vector support is detected through `hwprobe` rather than the `AT_HWCAP` V bit. CI cross-tests riscv64 under qemu with a Bootlin musl toolchain.
+- **WASM**: fused simd128 f32 gelu, silu and erf kernels; a 4x16 f32 GEMM kernel picked by N; the relaxed-simd int8 dot path is now bit-exact across engines; BlockedConv's inner loop is SIMD-vectorized. CI runs the WASM kernel invariants against relaxed-simd, and the CLI builds for `wasm32-wasip1`.
+- Fix: Windows ARM64 linalg assembly builds.
+
+### CPU / linalg
+
+- **Kernel declaration and dispatch reworked.** Every kernel — matmul, element-wise, reduction, unicast, by-scalar, look-up table, panel extractor — is now declared once by macro and registered where it is defined, and dispatch reads one inventory instead of hand-plugged tables. A kernel declares its instruction set, ranking and gating follow from that declaration, and each platform registers a single dispatch policy that picks from a shared candidate list (`candidates()` takes one query, shared with core). The `kit`/`plug`/quality-label vocabulary is retired.
+- **Every kernel tree compiles on every host.** arm32, arm64, x86_64 and wasm kernels build anywhere via bail stubs (foreign trees behind a feature), so CI runs linalg's tests with all kernel trees compiled in — which surfaced dotprod and SME tiers no local build had ever compiled.
+- **Accuracy fixes across activations and reductions**: f32 tanh and sigmoid are kept in range by their input clamp alone (wasm, x86, arm32); the generic GELU is computed with the tanh polynomial and the generic SiLU with the sigmoid polynomial; f16 silu and erf are served from tables instead of widening every chunk to f32; aarch64 cores without `FEAT_FP16` get an f32-roundtrip f16 tanh kernel; softmax and the generic reduce accumulate f16 row sums in f32.
+- **Accurate softmax exp.** The fast-compact exp path is gone; the accurate f32 exp is backed by vectorized hand-written kernels on aarch64, wasm, x86_64 FMA and AVX-512, while GPUs keep the hardware fast path.
+- Matmul selection: the aarch64 mat-vec kernel is picked by m rather than unconditionally; the AMX bf16 opt-in is a ranking boost rather than a capability; FMA f32 kernels rank as peers of the AVX-512 ones; conv's block-quant candidates rank like everything else; kernel return codes are checked in release builds.
+- Any pack format can now be packed from a view.
+- Fix: integer `Div` and `Mod` wrap at `MIN / -1` instead of panicking.
+- Fix: dropping of uninitialised memory in `tensor0`, `nth` and `Range`.
+
+### Core
+
+- **Turn/state model reworked.** Ops receive an `EvalContext` rather than the whole `TurnState`; the per-turn scope is named `turn`, op scratch lives in one place, the state freeze/unfreeze roundtrip is gone, and a `State` can resolve a symbol for the coming turn. Every state names the lane it sits in and is addressed by it. `PinConst`, the parked variable-based state ops and the two states that carried nothing are deleted.
+- **ONNX: Symbolic dimensions use rationals.** `dim_expr` is backed by num-rational with a nom parser, `floor` is out of the TDim parser, and ONNX `dim_param` is parsed as a rational and translated to a TDim explicitly. TDim "floor" is retired.
+- **Tensor data paths**: `Tensor::fill_slice`, the `at_prefix` slice variants, slicing and broadcasting by contiguous runs instead of ndarray views/copies, one-datum blocks copied inline in `stack_tensors`, and tiling by slice assignment.
+- Perf: 1x1 convolutions stay on eager im2col, lazy im2col is preferred when the matmul has a single row panel, depthwise deconvolution is fused into a `DepthwiseDeconv` op instead of an outer-product einsum, `Pow` against a uniform exponent lowers to a `PowConst` unary op (with NNEF serialization), binary by-scalar reads the scalar in place for short groups, `Gather`'s block copy skips slice copies for one-datum blocks, and `LstmEpilogue` sizes its row loop from the state.
+- Perf: `OptScan` passes the input handle through and hands the body output out directly when a single iteration covers the whole axis.
+- **ONNX GRU**: the standard cell is fused into one `GruEpilogue` op.
+
+### Streaming / pulse
+
+- Perf: `PulsePad` skips its copy and symbol re-resolution on pass-through pulses.
+- Work-in-progress: Laned/batch execution for increased parallelism.
+- `PulsedAxisSlice` is a typed op; `Delay` and `PulsePad` state (CPU and GPU) is addressed by lane; GPU pulses are edge-padded from the right frame.
+- The pulse proptests are a suite, CI repeats the pulsed cases over `TRACT_RUNTIMES` and runs the pulsed NNEF cases on device, and the CLI brings a node's pulse output to host before slicing it.
+- BatchifyDataTree transoform: A model's data-free wires now get the batch axis.
+
+### GPU
+
+- **Metal**: skinny f16 matmuls route through a port of MLX's `gemv_wide`; contiguous `softmax_nd3` gets a fast path.
+- CUDA is optional in the Rust facade and in `tract-ffi`.
+
+### NNEF / ONNX
+
+- ONNX loader options are carried as JSON and can be passed from the facade.
+- Fix: **average pooling round-trips lost `count_include_pad`.** The serializer wrote every border as `ignore` and the deserializer built every `SumPool` with the flag false, so a pool that counts its padding came back dividing by the real elements alone (a 9/4 error on a 3x3 window holding four values), silently. The flag now rides the NNEF `border` argument: `constant` counts the pad, `ignore` leaves it out of both sum and divisor.
+- Fix: ONNX `Reshape` honours `allowzero`, rejects a `-1` that divides a zero remainder, and rejects a target shape keeping a negative dimension.
+- Fix: `GatherNd` output shape inference; GRU keeps the cell shape on the output update.
+
+### CLI / diagnostics
+
+- `hwbench` can bench the portable kernels; a new dump reports what mmm selection answers for every machine at once, drawn as a kernel matrix with one coloured cell per machine, with the cells that are closed on purpose marked as such.
+
 # 0.23.5 - 2026-08-19
 
 ### GPU
