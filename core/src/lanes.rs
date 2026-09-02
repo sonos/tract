@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
 use std::time::Duration;
@@ -158,6 +159,15 @@ struct Shared {
     model: Option<Arc<TypedModel>>,
     plan: Option<Arc<TypedSimplePlan>>,
     max_lanes: usize,
+    counts: Arc<Counts>,
+}
+
+/// What the worker has served, for whoever tunes the turn policy: mean
+/// occupancy is `seats / turns`.
+#[derive(Debug, Default)]
+struct Counts {
+    turns: AtomicU64,
+    seats: AtomicU64,
 }
 
 impl LanedRunnable {
@@ -187,10 +197,12 @@ impl LanedRunnable {
             "A laned model carries one batch symbol on axis 0, this one carries {symbols:?}"
         );
         ensure!(batch_out.iter().any(|b| *b), "A laned model must batch one output at least");
+        let counts = Arc::new(Counts::default());
         let max_seats = TRACT_MAX_SEATS.get().min(max_lanes);
         let linger = Duration::from_micros(TRACT_TURN_LINGER_US.get() as u64);
         let (requests, queue) = channel::<Request>();
         let (spawned, ready) = channel::<TractResult<()>>();
+        let worker_counts = counts.clone();
         thread::Builder::new().name("tract-lanes".into()).spawn(move || {
             let mut state = match inner.spawn().and_then(|mut state| {
                 let lanes: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
@@ -206,16 +218,35 @@ impl LanedRunnable {
                     return;
                 }
             };
-            worker(&mut *state, queue, Table { batch_in, batch_out, max_seats, linger, max_lanes });
+            worker(
+                &mut *state,
+                queue,
+                Table { batch_in, batch_out, max_seats, linger, max_lanes, counts: worker_counts },
+            );
         })?;
         ready.recv().map_err(|_| format_err!("The laned worker died spawning the state"))??;
         Ok(LanedRunnable {
-            shared: Arc::new(Shared { requests: Mutex::new(requests), model, plan, max_lanes }),
+            shared: Arc::new(Shared {
+                requests: Mutex::new(requests),
+                model,
+                plan,
+                max_lanes,
+                counts,
+            }),
         })
     }
 
     pub fn max_lanes(&self) -> usize {
         self.shared.max_lanes
+    }
+
+    /// Turns run and seats filled since the model was prepared: how wide the
+    /// turns the queue actually offers are.
+    pub fn turns_and_seats(&self) -> (u64, u64) {
+        (
+            self.shared.counts.turns.load(Ordering::Relaxed),
+            self.shared.counts.seats.load(Ordering::Relaxed),
+        )
     }
 
     fn request(&self) -> TractResult<Sender<Request>> {
@@ -316,6 +347,7 @@ struct Table {
     max_seats: usize,
     linger: Duration,
     max_lanes: usize,
+    counts: Arc<Counts>,
 }
 
 fn worker(state: &mut dyn State, queue: Receiver<Request>, table: Table) {
@@ -350,6 +382,8 @@ fn worker(state: &mut dyn State, queue: Receiver<Request>, table: Table) {
         if seated.is_empty() {
             continue;
         }
+        table.counts.turns.fetch_add(1, Ordering::Relaxed);
+        table.counts.seats.fetch_add(seated.len() as u64, Ordering::Relaxed);
         match run_turn(state, &lanes, &seated, &table) {
             Ok(per_seat) => {
                 for (turn, outputs) in seated.into_iter().zip(per_seat) {
@@ -508,6 +542,32 @@ mod laned_test {
         for stream in streams {
             stream.join().unwrap()?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn a_turn_seats_the_streams_that_are_ready() -> TractResult<()> {
+        TRACT_TURN_LINGER_US.set(20_000);
+        let runnable = doubler(8);
+        TRACT_TURN_LINGER_US.clear();
+        let runnable = runnable?;
+        let streams: Vec<_> = (0..8)
+            .map(|stream| {
+                let runnable = runnable.clone();
+                std::thread::spawn(move || -> TractResult<()> {
+                    let mut handle = runnable.spawn()?;
+                    for t in 0..4 {
+                        turn(&mut handle, stream, t)?;
+                    }
+                    Ok(())
+                })
+            })
+            .collect();
+        for stream in streams {
+            stream.join().unwrap()?;
+        }
+        let (turns, seats) = runnable.turns_and_seats();
+        assert!(seats > turns, "{seats} seats over {turns} turns, none of them shared");
         Ok(())
     }
 
