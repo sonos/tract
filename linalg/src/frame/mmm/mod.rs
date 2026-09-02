@@ -702,17 +702,36 @@ const CHUNK_SLACK_LLC_BYTES: usize = 2 * 1024 * 1024;
 
 /// Largest packed-operand footprint whose re-reads a small-cache part still
 /// absorbs. Below it the extra chunks re-read something the memory system is
-/// already holding — a MobileNet pointwise conv packs to a few hundred KB — and
-/// the slack is free. Above it each extra chunk is a fresh DRAM stream of a
-/// multi-megabyte operand, which is the InceptionV3 case that costs the a53 more
-/// than the slack returns.
+/// plausibly still holding and the slack is close to free; above it each extra
+/// chunk is a fresh DRAM stream.
 ///
-/// A calibration constant, not a physical size: it sits above the footprints that
-/// measured *faster* with the slack and below those that measured slower, which
-/// is a wider band than any one cache level. `TRACT_MMM_CHUNK_SLACK_BYTES` moves
-/// it so the fleet can sweep where the boundary belongs.
+/// A slider, not a separator. The two models that disagree about the slack do
+/// **not** occupy disjoint footprint ranges — over their threaded matmuls at
+/// 12x8/f32, InceptionV3 spans 0.16-23.8 MB (median 0.54) and MobileNet v2
+/// 0.20-6.95 MB (median 0.88) — so no boundary sorts one model from the other.
+/// What the boundary does is set the share of each model's FLOPs that keeps the
+/// slack, and the a53's InceptionV3 win and the a7/a9/beaglev MobileNet
+/// regression both scale with that share:
+///
+/// ```text
+///   boundary   incep FLOPs at cpt 1 -> a53      mobilenet at cpt 1 -> a7/a9/bv
+///     0.5 MB           88.5%          -7.3%          79.7%           +5.6%
+///     1.0 MB           85.9%          -7.0%          53.5%           +3.7%
+///     1.5 MB           76.9%          -6.3%          21.5%           +1.5%
+///     2.0 MB           62.0%          -5.1%          18.9%           +1.3%
+///     4.0 MB           41.5%          -3.4%           0.3%            0.0%
+/// ```
+///
+/// Predicted linearly from the two measured endpoints (all-cpt-1: a53 -8.2%,
+/// MobileNet +6.0..8.0%), which reproduce the measured 2 MB point to within half
+/// a point on both models. 1.5 MB is the knee: MobileNet's share falls off a
+/// cliff between 1.5 and 1.0 MB while InceptionV3's barely moves, so it buys most
+/// of the a53 win before the regression comes back.
+///
+/// `TRACT_MMM_CHUNK_SLACK_BYTES` moves it, which is how the table above would be
+/// measured rather than predicted.
 #[cfg(feature = "multithread-mm")]
-const CHUNK_SLACK_OPERAND_BYTES: usize = 2 * 1024 * 1024;
+const CHUNK_SLACK_OPERAND_BYTES: usize = 3 * 512 * 1024;
 
 /// Machine facts the chunk gate reads, resolved once: `(llc_bytes, slack_bytes,
 /// override)`. Memoised like the cache probe underneath it — this sits on the
