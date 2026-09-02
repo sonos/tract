@@ -1,5 +1,6 @@
 use infra::{Test, TestResult, TestSuite};
 use tract_core::internal::*;
+use tract_core::lanes::LanedRunnable;
 use tract_core::ndarray::{ArrayD, Axis, arr3};
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
@@ -32,59 +33,67 @@ fn stack(pulses: &[ArrayD<f32>]) -> TractResult<TValue> {
     Ok(tract_core::ndarray::concatenate(Axis(0), &views)?.into_tensor().into_tvalue())
 }
 
-impl LanesProblem {
-    /// Pad plus convolution over `[B, 1, S]`: pulsified, the padding becomes a
-    /// `PulsePad` and the kernel window a `Delay`, both carrying the batch axis
-    /// the lanes are addressed along.
-    fn pulsed(&self) -> TractResult<TypedModel> {
-        let mut model = TypedModel::default();
-        let s = model.symbols.sym("S");
-        let b = model.symbols.sym("B");
-        let mut wire = model.add_source("a", f32::fact(dims!(b, 1, s)))?;
-        wire = model.wire_node(
-            "pad",
-            Pad::new(vec![(0, 0), (0, 0), (self.pad_before, 0)], self.pad_mode.clone()),
-            &[wire],
-        )?[0];
-        let kernel = model.add_const("kernel", arr3(&[[[1f32, 2., 3.]]]))?;
-        let bias = model.add_const("bias", tensor0(0f32))?;
-        let conv = model.wire_node(
-            "conv",
-            Conv {
-                pool_spec: PoolSpec::new(
-                    DataFormat::NCHW,
-                    tvec!(3),
-                    PaddingSpec::Valid,
-                    None,
-                    None,
-                    1,
-                    1,
-                ),
-                kernel_fmt: KernelFormat::OIHW,
-                group: 1,
-                q_params: None,
-            },
-            &[wire, kernel, bias],
-        )?;
-        model.select_output_outlets(&conv)?;
-        PulsedModel::new(&model.into_decluttered()?, s, &self.pulse.to_dim())?.into_typed()
-    }
+/// Pad plus convolution over `[B, 1, S]`: pulsified, the padding becomes a
+/// `PulsePad` and the kernel window a `Delay`, both carrying the batch axis the
+/// lanes are addressed along.
+fn pulsed(pulse: usize, pad_before: usize, pad_mode: &PadMode) -> TractResult<TypedModel> {
+    let mut model = TypedModel::default();
+    let s = model.symbols.sym("S");
+    let b = model.symbols.sym("B");
+    let mut wire = model.add_source("a", f32::fact(dims!(b, 1, s)))?;
+    wire = model.wire_node(
+        "pad",
+        Pad::new(vec![(0, 0), (0, 0), (pad_before, 0)], pad_mode.clone()),
+        &[wire],
+    )?[0];
+    let kernel = model.add_const("kernel", arr3(&[[[1f32, 2., 3.]]]))?;
+    let bias = model.add_const("bias", tensor0(0f32))?;
+    let conv = model.wire_node(
+        "conv",
+        Conv {
+            pool_spec: PoolSpec::new(
+                DataFormat::NCHW,
+                tvec!(3),
+                PaddingSpec::Valid,
+                None,
+                None,
+                1,
+                1,
+            ),
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        },
+        &[wire, kernel, bias],
+    )?;
+    model.select_output_outlets(&conv)?;
+    PulsedModel::new(&model.into_decluttered()?, s, &pulse.to_dim())?.into_typed()
+}
 
-    /// One stream on a state of its own: the reference every laned turn is
-    /// compared to.
-    fn solo(
-        &self,
-        runnable: &dyn Runnable,
-        stream: usize,
-        turns: usize,
-    ) -> TractResult<Vec<Tensor>> {
-        let mut state = runnable.spawn()?;
-        (0..turns)
-            .map(|turn| {
-                let input = stack(&[pulse_of(stream, turn, self.pulse)])?;
-                Ok(state.run(tvec!(input))?.remove(0).into_tensor())
-            })
-            .collect()
+/// One stream on a state of its own: the reference every laned turn is compared
+/// to.
+fn solo(
+    runnable: &dyn Runnable,
+    pulse: usize,
+    stream: usize,
+    turns: usize,
+) -> TractResult<Vec<Tensor>> {
+    let mut state = runnable.spawn()?;
+    (0..turns)
+        .map(|turn| {
+            let input = stack(&[pulse_of(stream, turn, pulse)])?;
+            Ok(state.run(tvec!(input))?.remove(0).into_tensor())
+        })
+        .collect()
+}
+
+/// How wide a turn gets: the batch axis the lanes sit on stays symbolic, so an
+/// arena has to be told before it can size its buffers.
+fn options(model: &TypedModel, max_lanes: usize) -> RunOptions {
+    let batch = model.symbols.sym("B");
+    RunOptions {
+        memory_sizing_hints: Some(SymbolValues::default().with(&batch, max_lanes as i64)),
+        ..RunOptions::default()
     }
 }
 
@@ -95,14 +104,8 @@ impl Test for LanesProblem {
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
-        let model = self.pulsed()?;
-        // The batch axis the lanes sit on stays symbolic, so an arena has to be
-        // told how wide a turn gets before it can size the buffers.
-        let batch = model.symbols.sym("B");
-        let options = RunOptions {
-            memory_sizing_hints: Some(SymbolValues::default().with(&batch, self.max_lanes as i64)),
-            ..RunOptions::default()
-        };
+        let model = pulsed(self.pulse, self.pad_before, &self.pad_mode)?;
+        let options = options(&model, self.max_lanes);
         let runnable = runtime.prepare_with_options(model, &options)?;
         let streams = self.turns.iter().flatten().map(|(_, stream)| stream + 1).max().unwrap_or(0);
         let mut state = runnable.spawn()?;
@@ -127,7 +130,64 @@ impl Test for LanesProblem {
         }
 
         for (stream, got) in got.iter().enumerate() {
-            let expected = self.solo(&*runnable, stream, got.len())?;
+            let expected = solo(&*runnable, self.pulse, stream, got.len())?;
+            for (turn, (got, expected)) in got.iter().zip(expected.iter()).enumerate() {
+                got.close_enough(expected, approx)
+                    .with_context(|| format!("stream {stream} turn {turn}"))?;
+            }
+        }
+        Ok(())
+    }
+}
+
+/// The laned runtime serving one stream per thread. Each stream takes a lane of
+/// its own and feeds one pulse per turn as fast as it can, so occupancy is
+/// whatever the worker finds queued and the seats stagger themselves.
+#[derive(Clone, Debug)]
+pub struct LanedProblem {
+    pub pulse: usize,
+    pub pad_before: usize,
+    pub pad_mode: PadMode,
+    pub streams: usize,
+    pub turns: usize,
+}
+
+impl Test for LanedProblem {
+    fn run_with_approx(
+        &self,
+        _id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TestResult {
+        let model = pulsed(self.pulse, self.pad_before, &self.pad_mode)?;
+        let options = options(&model, self.streams);
+        let laned = LanedRunnable::wrap(
+            runtime.prepare_with_options(model.clone(), &options)?,
+            self.streams,
+        )?;
+        let got: Vec<Vec<Tensor>> = std::thread::scope(|scope| {
+            let streams: Vec<_> = (0..self.streams)
+                .map(|stream| {
+                    let laned = laned.clone();
+                    scope.spawn(move || -> TractResult<Vec<Tensor>> {
+                        let mut handle = laned.spawn()?;
+                        (0..self.turns)
+                            .map(|turn| {
+                                let input = stack(&[pulse_of(stream, turn, self.pulse)])?;
+                                Ok(handle.run(tvec!(input))?.remove(0).into_tensor())
+                            })
+                            .collect()
+                    })
+                })
+                .collect();
+            streams.into_iter().map(|stream| stream.join().unwrap()).collect::<Vec<_>>()
+        })
+        .into_iter()
+        .collect::<TractResult<_>>()?;
+
+        let runnable = runtime.prepare_with_options(model, &options)?;
+        for (stream, got) in got.iter().enumerate() {
+            let expected = solo(&*runnable, self.pulse, stream, got.len())?;
             for (turn, (got, expected)) in got.iter().zip(expected.iter()).enumerate() {
                 got.close_enough(expected, approx)
                     .with_context(|| format!("stream {stream} turn {turn}"))?;
@@ -161,5 +221,15 @@ pub fn suite() -> TractResult<TestSuite> {
         staggered(2, PadMode::Constant(tensor0(9999f32).into())),
     );
     suite.add_test("staggered_seats_edge_pad", staggered(1, PadMode::Edge));
+    suite.add_test(
+        "laned_runtime",
+        LanedProblem {
+            pulse: 2,
+            pad_before: 2,
+            pad_mode: PadMode::Constant(tensor0(9999f32).into()),
+            streams: 4,
+            turns: 16,
+        },
+    );
     Ok(suite)
 }
