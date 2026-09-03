@@ -111,13 +111,18 @@ pub fn fuse_rms_norm_scale(
     rule_if_some!(w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, axis_dim));
 
     let scale = w.val().cast_to::<f32>()?.into_owned().into_shape(&[axis_dim])?.into_arc_tensor();
+    // The Mul this replaces may promote to a wider dtype than the norm's own
+    // input/output (e.g. f16 norm * f32 gamma -> f32): preserve that dtype
+    // explicitly instead of defaulting to "same as input", which would
+    // silently change every consumer's expected dtype.
+    let out_dt = mul.outputs[0].fact.datum_type;
 
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &node.inputs)?;
     let scale = patch.add_const(format!("{node_name}.scale"), scale)?;
     let out = patch.wire_node(
         format!("{node_name}.scaled"),
-        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: None },
+        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: Some(out_dt) },
         &[rsm_input[0], scale],
     )?;
     patch.shunt_outside(model, mul.id.into(), out[0])?;
