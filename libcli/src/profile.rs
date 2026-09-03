@@ -201,6 +201,152 @@ impl BenchLimits {
         latencies.sort();
         Ok(StreamsBench { streams, wall, latencies })
     }
+
+    /// One paced loop per stream: `streams` threads, a state each, every one of
+    /// them owing a turn every period of the wall clock, the way a live stream
+    /// does. Turn `n` of a stream is due at a fixed offset from its first, so a
+    /// turn which runs long does not push the ones behind it back -- the stream
+    /// catches up or falls further behind, and `added` is what says which.
+    ///
+    /// Streams are phased evenly over one period. Each stream runs one turn
+    /// before the clock starts, so the buffers a first turn allocates are not
+    /// charged to the load.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn bench_streams_paced(
+        &self,
+        runnable: &Arc<dyn Runnable>,
+        inputs: &RunTensors,
+        streams: usize,
+        pacing: &Pacing,
+    ) -> TractResult<PacedBench> {
+        ensure!(streams > 0, "A paced bench needs a stream at least");
+        ensure!(!pacing.period.is_zero(), "A paced bench needs a turn period");
+        let max_loops = if self.max_loops.is_zero() { usize::MAX } else { self.max_loops };
+        let max_time = if self.max_time.is_zero() { Duration::MAX } else { self.max_time };
+        ensure!(
+            max_time >= 4 * pacing.period,
+            "A turn period of {:?} wants four periods of run at least, --max-time gives {max_time:?}",
+            pacing.period
+        );
+        let reuse = reusable_state(runnable);
+        let start = Instant::now();
+        let served: Vec<StreamTurns> = std::thread::scope(|scope| {
+            let running: Vec<_> = (0..streams)
+                .map(|stream| {
+                    scope.spawn(move || -> TractResult<StreamTurns> {
+                        let mut state = runnable.spawn()?;
+                        state.run(inputs.sources[0].clone())?;
+                        let base =
+                            Instant::now() + pacing.period.mul_f64(stream as f64 / streams as f64);
+                        let mut turns = StreamTurns::default();
+                        while turns.service.len() < max_loops && start.elapsed() < max_time {
+                            if !reuse {
+                                state = runnable.spawn()?;
+                            }
+                            let due = base + pacing.period * turns.service.len() as u32;
+                            if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                                std::thread::sleep(wait);
+                            }
+                            let turn = Instant::now();
+                            state.run(inputs.sources[0].clone())?;
+                            let done = Instant::now();
+                            turns.service.push(done - turn);
+                            turns.added.push(done.saturating_duration_since(due));
+                            turns.span = done - base;
+                        }
+                        Ok(turns)
+                    })
+                })
+                .collect();
+            running.into_iter().map(|stream| stream.join().unwrap()).collect::<Vec<_>>()
+        })
+        .into_iter()
+        .collect::<TractResult<_>>()?;
+        let wall = served.iter().map(|turns| turns.span).max().unwrap_or_default();
+        let mut service: Vec<Duration> =
+            served.iter().flat_map(|turns| turns.service.iter().copied()).collect();
+        let mut added: Vec<Duration> = served.into_iter().flat_map(|turns| turns.added).collect();
+        service.sort();
+        added.sort();
+        Ok(PacedBench { streams, deadline: pacing.deadline, wall, service, added })
+    }
+}
+
+/// The wall clock a paced load runs against: what a turn's input covers, and
+/// how much a turn may add over its arrival before it counts as late.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Clone, Copy, Debug)]
+pub struct Pacing {
+    pub period: Duration,
+    pub deadline: Duration,
+}
+
+/// One stream's turns, as it served them.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Default)]
+struct StreamTurns {
+    service: Vec<Duration>,
+    added: Vec<Duration>,
+    span: Duration,
+}
+
+/// What `streams` paced streams did against that clock: how long each turn took
+/// to run, and how late each one completed against the moment its input
+/// arrived. The second is what a real-time load is judged on -- it holds the
+/// queueing a turn waited through as well as its own run.
+#[cfg(not(target_family = "wasm"))]
+pub struct PacedBench {
+    pub streams: usize,
+    pub deadline: Duration,
+    pub wall: Duration,
+    /// One entry per turn, over every stream, sorted.
+    pub service: Vec<Duration>,
+    /// One entry per turn, over every stream, sorted.
+    pub added: Vec<Duration>,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl PacedBench {
+    pub fn turns(&self) -> usize {
+        self.service.len()
+    }
+
+    pub fn turns_per_second(&self) -> f64 {
+        self.turns() as f64 / self.wall.as_secs_f64()
+    }
+
+    pub fn mean_service(&self) -> Duration {
+        self.service.iter().sum::<Duration>().checked_div(self.turns() as u32).unwrap_or_default()
+    }
+
+    /// The added latency `q` of the turns came in under, `q` in 0..1.
+    pub fn added_quantile(&self, q: f64) -> Duration {
+        quantile(&self.added, q)
+    }
+
+    /// The share of turns which completed past the deadline.
+    pub fn late_fraction(&self) -> f64 {
+        if self.added.is_empty() {
+            return 0.;
+        }
+        let in_time = self.added.partition_point(|added| *added <= self.deadline);
+        (self.turns() - in_time) as f64 / self.turns() as f64
+    }
+
+    /// Whether this load held: the `q`th added latency met the deadline. A load
+    /// which served nothing never holds.
+    pub fn holds(&self, q: f64) -> bool {
+        !self.added.is_empty() && self.added_quantile(q) <= self.deadline
+    }
+}
+
+/// The value `q` of a sorted series comes in under, `q` in 0..1.
+#[cfg(not(target_family = "wasm"))]
+fn quantile(sorted: &[Duration], q: f64) -> Duration {
+    if sorted.is_empty() {
+        return Duration::default();
+    }
+    sorted[((sorted.len() - 1) as f64 * q).round() as usize]
 }
 
 /// What `streams` saturating streams did: how long they ran for, and how long
@@ -231,11 +377,7 @@ impl StreamsBench {
 
     /// The latency `q` of the turns came in under, `q` in 0..1.
     pub fn latency_quantile(&self, q: f64) -> Duration {
-        if self.latencies.is_empty() {
-            return Duration::default();
-        }
-        let ix = ((self.turns() - 1) as f64 * q).round() as usize;
-        self.latencies[ix]
+        quantile(&self.latencies, q)
     }
 }
 
