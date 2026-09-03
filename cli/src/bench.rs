@@ -38,6 +38,13 @@ pub fn run(
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
 
+    let streams: usize =
+        sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?.unwrap_or(1);
+    #[cfg(not(target_family = "wasm"))]
+    if streams > 1 {
+        return bench_streams(params, &inputs, limits, streams);
+    }
+
     let (iters, dur) = {
         #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
         let _profiler =
@@ -52,6 +59,40 @@ pub fn run(
         metrics.push((format!("pp{pp}"), pp as f64 / evaltime));
     }
     Ok(BenchResult { metrics, iters })
+}
+
+/// Several streams at once, each saturating a thread of its own. `evaltime` is
+/// the mean turn as a stream sees it, which under saturation includes waiting
+/// for the others, and `turns_per_s` is what the streams got served together --
+/// the two numbers a laned runtime trades against each other.
+#[cfg(not(target_family = "wasm"))]
+fn bench_streams(
+    params: &Parameters,
+    inputs: &tract_libcli::tensor::RunTensors,
+    limits: &BenchLimits,
+    streams: usize,
+) -> TractResult<BenchResult> {
+    let runnable = params.req_runnable()?;
+    let laned = runnable.downcast_ref::<tract_core::lanes::LanedRunnable>();
+    if let Some(laned) = laned {
+        ensure!(
+            streams <= laned.max_lanes(),
+            "{streams} streams over {} lanes: a stream holds a lane for its whole session",
+            laned.max_lanes()
+        );
+    }
+    let bench = limits.bench_streams(&runnable, inputs, streams)?;
+    let mut metrics = vec![
+        ("evaltime".to_string(), bench.mean_latency().as_secs_f64()),
+        ("turns_per_s".to_string(), bench.turns_per_second()),
+        ("latency_p50".to_string(), bench.latency_quantile(0.5).as_secs_f64()),
+        ("latency_p95".to_string(), bench.latency_quantile(0.95).as_secs_f64()),
+    ];
+    if let Some(laned) = laned {
+        let (turns, seats) = laned.turns_and_seats();
+        metrics.push(("occupancy".to_string(), seats as f64 / turns as f64));
+    }
+    Ok(BenchResult { metrics, iters: bench.turns() })
 }
 
 pub fn handle(
@@ -75,6 +116,19 @@ pub fn handle(
             result.iters,
             terminal::dur_avg(Duration::from_secs_f64(evaltime))
         );
+    }
+
+    let metric = |name: &str| result.metrics.iter().find(|(k, _)| k == name).map(|(_, v)| *v);
+    if let Some(turns_per_s) = metric("turns_per_s") {
+        println!("{turns_per_s:.1} turns/sec over every stream together.");
+        for (name, q) in [("p50", "latency_p50"), ("p95", "latency_p95")] {
+            if let Some(latency) = metric(q) {
+                println!("{name} turn {}.", terminal::dur_avg(Duration::from_secs_f64(latency)));
+            }
+        }
+        if let Some(occupancy) = metric("occupancy") {
+            println!("Mean occupancy {occupancy:.2}.");
+        }
     }
 
     for (k, v) in &result.metrics {

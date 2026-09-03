@@ -153,6 +153,90 @@ impl BenchLimits {
 
         Ok((iters, dur))
     }
+
+    /// One saturating loop per stream: `streams` threads, a state each, every one
+    /// of them feeding turns as fast as it can until the limits run out. The
+    /// limits are per stream, the wall clock is shared.
+    ///
+    /// This is what a laned runtime is compared against: the same load offered
+    /// to the plain runtime is `streams` independent states running side by
+    /// side.
+    // Wasm has no threads to saturate with.
+    #[cfg(not(target_family = "wasm"))]
+    pub fn bench_streams(
+        &self,
+        runnable: &Arc<dyn Runnable>,
+        inputs: &RunTensors,
+        streams: usize,
+    ) -> TractResult<StreamsBench> {
+        ensure!(streams > 0, "A saturating bench needs a stream at least");
+        let reuse = reusable_state(runnable);
+        let max_loops = if self.max_loops.is_zero() { usize::MAX } else { self.max_loops };
+        let max_time = if self.max_time.is_zero() { Duration::MAX } else { self.max_time };
+        let start = Instant::now();
+        let turns: Vec<Vec<Duration>> = std::thread::scope(|scope| {
+            let running: Vec<_> = (0..streams)
+                .map(|_| {
+                    scope.spawn(|| -> TractResult<Vec<Duration>> {
+                        let mut state = runnable.spawn()?;
+                        let mut turns = vec![];
+                        while turns.len() < max_loops && start.elapsed() < max_time {
+                            if !reuse {
+                                state = runnable.spawn()?;
+                            }
+                            let turn = Instant::now();
+                            state.run(inputs.sources[0].clone())?;
+                            turns.push(turn.elapsed());
+                        }
+                        Ok(turns)
+                    })
+                })
+                .collect();
+            running.into_iter().map(|stream| stream.join().unwrap()).collect::<Vec<_>>()
+        })
+        .into_iter()
+        .collect::<TractResult<_>>()?;
+        let wall = start.elapsed();
+        let mut latencies: Vec<Duration> = turns.into_iter().flatten().collect();
+        latencies.sort();
+        Ok(StreamsBench { streams, wall, latencies })
+    }
+}
+
+/// What `streams` saturating streams did: how long they ran for, and how long
+/// every one of their turns took.
+#[cfg(not(target_family = "wasm"))]
+pub struct StreamsBench {
+    pub streams: usize,
+    pub wall: Duration,
+    /// One entry per turn, over every stream, sorted.
+    pub latencies: Vec<Duration>,
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl StreamsBench {
+    pub fn turns(&self) -> usize {
+        self.latencies.len()
+    }
+
+    /// Turns served per second, all streams together: the number a laned
+    /// runtime has to beat.
+    pub fn turns_per_second(&self) -> f64 {
+        self.turns() as f64 / self.wall.as_secs_f64()
+    }
+
+    pub fn mean_latency(&self) -> Duration {
+        self.latencies.iter().sum::<Duration>().checked_div(self.turns() as u32).unwrap_or_default()
+    }
+
+    /// The latency `q` of the turns came in under, `q` in 0..1.
+    pub fn latency_quantile(&self, q: f64) -> Duration {
+        if self.latencies.is_empty() {
+            return Duration::default();
+        }
+        let ix = ((self.turns() - 1) as f64 * q).round() as usize;
+        self.latencies[ix]
+    }
 }
 
 pub fn profile(

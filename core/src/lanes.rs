@@ -156,8 +156,10 @@ struct Shared {
     /// [`std::sync::mpsc::Sender`] is not `Sync`, and a `Runnable` is: handles
     /// take their own clone of it, under the lock, once.
     requests: Mutex<Sender<Request>>,
+    inner: Arc<dyn Runnable>,
     model: Option<Arc<TypedModel>>,
     plan: Option<Arc<TypedSimplePlan>>,
+    batch: Symbol,
     max_lanes: usize,
     counts: Arc<Counts>,
 }
@@ -174,7 +176,7 @@ impl LanedRunnable {
     /// Serve `max_lanes` streams through `inner`, which must be prepared from a
     /// model carrying a batch axis: at least one input and one output with a
     /// symbol on axis 0, and one symbol for all of them.
-    pub fn wrap(inner: Box<dyn Runnable>, max_lanes: usize) -> TractResult<LanedRunnable> {
+    pub fn wrap(inner: Arc<dyn Runnable>, max_lanes: usize) -> TractResult<LanedRunnable> {
         let model = inner.typed_model().cloned();
         let plan = inner.typed_plan().cloned();
         let mut symbols: Vec<Symbol> = vec![];
@@ -197,14 +199,16 @@ impl LanedRunnable {
             "A laned model carries one batch symbol on axis 0, this one carries {symbols:?}"
         );
         ensure!(batch_out.iter().any(|b| *b), "A laned model must batch one output at least");
+        let batch = symbols.remove(0);
         let counts = Arc::new(Counts::default());
         let max_seats = TRACT_MAX_SEATS.get().min(max_lanes);
         let linger = Duration::from_micros(TRACT_TURN_LINGER_US.get() as u64);
         let (requests, queue) = channel::<Request>();
         let (spawned, ready) = channel::<TractResult<()>>();
         let worker_counts = counts.clone();
+        let worker_inner = inner.clone();
         thread::Builder::new().name("tract-lanes".into()).spawn(move || {
-            let mut state = match inner.spawn().and_then(|mut state| {
+            let mut state = match worker_inner.spawn().and_then(|mut state| {
                 let lanes: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
                 state.reset_lanes(&lanes).context("Preparing a laned model")?;
                 Ok(state)
@@ -228,8 +232,10 @@ impl LanedRunnable {
         Ok(LanedRunnable {
             shared: Arc::new(Shared {
                 requests: Mutex::new(requests),
+                inner,
                 model,
                 plan,
+                batch,
                 max_lanes,
                 counts,
             }),
@@ -238,6 +244,19 @@ impl LanedRunnable {
 
     pub fn max_lanes(&self) -> usize {
         self.shared.max_lanes
+    }
+
+    /// The model as it was prepared, serving one stream at a time: what a turn
+    /// of one seat has to agree with.
+    pub fn inner(&self) -> &Arc<dyn Runnable> {
+        &self.shared.inner
+    }
+
+    /// The symbol axis 0 of the batched tensors carries. A stream feeds one row
+    /// per turn, so it stands for the turn's occupancy, never for a stream's
+    /// own shapes.
+    pub fn batch_symbol(&self) -> &Symbol {
+        &self.shared.batch
     }
 
     /// Turns run and seats filled since the model was prepared: how wide the
@@ -493,7 +512,7 @@ mod laned_test {
         let doubled = model.wire_node("doubled", mul(), &[input, two])?;
         model.select_output_outlets(&doubled)?;
         let inner = DefaultRuntime.prepare(model)?;
-        LanedRunnable::wrap(inner, max_lanes)
+        LanedRunnable::wrap(inner.into(), max_lanes)
     }
 
     fn turn(handle: &mut Box<dyn State>, stream: usize, turn: usize) -> TractResult<()> {

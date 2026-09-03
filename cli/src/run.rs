@@ -318,6 +318,19 @@ fn run_regular(
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
+    // Several streams, or a runtime whose states are the lanes of one: either
+    // way a stream is a state of its own, driven through the runnable rather
+    // than through a plan of ours.
+    let streams: usize =
+        sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?.unwrap_or(1);
+    let laned = params
+        .runnable
+        .as_ref()
+        .is_some_and(|runnable| runnable.is::<tract_core::lanes::LanedRunnable>());
+    if streams > 1 || laned {
+        return crate::streams::run(params, sub_matches, streams);
+    }
+
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let steps = sub_matches.get_flag("steps");
