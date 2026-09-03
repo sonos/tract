@@ -55,7 +55,7 @@ unsafe fn erf4(
     a5: std::arch::aarch64::float32x4_t,
     a6: std::arch::aarch64::float32x4_t,
     one: std::arch::aarch64::float32x4_t,
-    two: std::arch::aarch64::float32x4_t,
+    _two: std::arch::aarch64::float32x4_t,
 ) -> std::arch::aarch64::float32x4_t {
     unsafe {
         use std::arch::aarch64::*;
@@ -72,10 +72,41 @@ unsafe fn erf4(
         p = vmulq_f32(p, p);
         p = vmulq_f32(p, p);
         p = vmulq_f32(p, p);
-        let mut r = vrecpeq_f32(p);
-        r = vmulq_f32(r, vmlsq_f32(two, p, r));
-        r = vmulq_f32(r, vmlsq_f32(two, p, r));
+        // vdiv(1, +inf) = 0, matching scalar powi(16).recip(); Newton
+        // vrecpe(+inf) is 0 and the correction 2-inf*0 is NaN.
+        let r = vdivq_f32(one, p);
         let mag = vsubq_f32(one, r);
         vbslq_f32(vcltq_f32(x, vdupq_n_f32(0.0)), vnegq_f32(mag), mag)
+    }
+}
+
+#[cfg(all(test, target_arch = "aarch64"))]
+#[macro_use]
+mod tests {
+    crate::erf_frame_tests!(true, f32, super::arm64simd_erf_f32_8n);
+
+    #[test]
+    fn large_and_inf_match_scalar() {
+        // Values past the A&S polynomial's f32 range: scalar overflows to
+        // inf then recip→0; Newton vrecpe(inf) used to yield NaN.
+        let xs = [
+            -100.0,
+            -20.0,
+            -8.0,
+            -5.0,
+            5.0,
+            8.0,
+            20.0,
+            100.0,
+            f32::INFINITY,
+            f32::NEG_INFINITY,
+            0.0,
+            -0.0,
+            1.0,
+            -1.0,
+            3.5,
+            -3.5,
+        ];
+        crate::frame::erf::test::test_erf::<super::arm64simd_erf_f32_8n, f32>(&xs).unwrap();
     }
 }

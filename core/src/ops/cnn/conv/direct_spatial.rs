@@ -198,6 +198,7 @@ impl DirectSpatialConv {
                                             if self.relu {
                                                 sum = sum.max(0.0);
                                             }
+                                            sum *= scale_at(scale, n, self.oc, ni as usize, oc + o);
                                             *opo.offset(
                                                 visitor.inner_loop_output_stride * i as isize,
                                             ) = sum;
@@ -254,6 +255,7 @@ impl DirectSpatialConv {
                                     if self.relu {
                                         sum = sum.max(0.0);
                                     }
+                                    sum *= scale_at(scale, n, self.oc, ni as usize, oc);
                                     *op.offset(visitor.inner_loop_output_stride * i as isize) = sum;
                                 }
                             }
@@ -352,6 +354,9 @@ pub(crate) fn successor_is_channel_mul(
         .is_some_and(|op| op.0.is::<crate::ops::math::Mul>())
         || succ
             .op_as::<crate::ops::binary::OptBinByScalar>()
+            .is_some_and(|op| op.binop.is::<crate::ops::math::Mul>())
+        || succ
+            .op_as::<crate::ops::binary::OptBinUnicast>()
             .is_some_and(|op| op.binop.is::<crate::ops::math::Mul>());
     if !is_mul || succ.inputs.len() != 2 {
         return Ok(None);
@@ -418,6 +423,19 @@ mod tests {
     use crate::ops::cnn::{PaddingSpec, PoolSpec};
     use crate::ops::nn::DataFormat;
 
+    fn assert_spatial_lowering(model: &TypedModel) {
+        let has = model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some());
+        if cfg!(target_family = "wasm") {
+            assert!(!has, "wasm must keep small-k conv on simd128 GEMM, got DirectSpatialConv");
+        } else {
+            assert!(
+                has,
+                "expected DirectSpatialConv, got {}",
+                model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
+            );
+        }
+    }
+
     #[test]
     fn stem_3x3_s2_matches_im2col() {
         let n = 1usize;
@@ -454,11 +472,7 @@ mod tests {
         let out = model.wire_node("conv", conv, &[xv, kv, bv]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
-        assert!(
-            model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some()),
-            "expected DirectSpatialConv, got {}",
-            model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
-        );
+        assert_spatial_lowering(&model);
         let runnable = model.into_runnable().unwrap();
         let got = runnable
             .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
@@ -530,22 +544,25 @@ mod tests {
         let out = model.wire_node("relu", crate::ops::math::max(), &[y, zero]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
-        let dsc = model
-            .nodes
-            .iter()
-            .find_map(|node| node.op_as::<DirectSpatialConv>())
-            .expect("expected DirectSpatialConv");
-        assert!(dsc.relu, "Relu should fuse into DirectSpatialConv");
-        assert!(
-            !model.nodes.iter().any(|node| {
-                node.op_as::<crate::ops::binary::TypedBinOp>()
-                    .is_some_and(|op| op.0.is::<crate::ops::math::Max>())
-                    || node
-                        .op_as::<crate::ops::binary::OptBinByScalar>()
-                        .is_some_and(|op| op.binop.is::<crate::ops::math::Max>())
-            }),
-            "fused Relu should not remain as a Max"
-        );
+        assert_spatial_lowering(&model);
+        if !cfg!(target_family = "wasm") {
+            let dsc = model
+                .nodes
+                .iter()
+                .find_map(|node| node.op_as::<DirectSpatialConv>())
+                .expect("expected DirectSpatialConv");
+            assert!(dsc.relu, "Relu should fuse into DirectSpatialConv");
+            assert!(
+                !model.nodes.iter().any(|node| {
+                    node.op_as::<crate::ops::binary::TypedBinOp>()
+                        .is_some_and(|op| op.0.is::<crate::ops::math::Max>())
+                        || node
+                            .op_as::<crate::ops::binary::OptBinByScalar>()
+                            .is_some_and(|op| op.binop.is::<crate::ops::math::Max>())
+                }),
+                "fused Relu should not remain as a Max"
+            );
+        }
         let runnable = model.into_runnable().unwrap();
         let got = runnable
             .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
@@ -618,13 +635,16 @@ mod tests {
         let out = model.wire_node("relu", crate::ops::math::max(), &[y, zero]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
-        assert!(
-            model
-                .nodes
-                .iter()
-                .any(|node| node.op_as::<DirectSpatialConv>().is_some_and(|d| d.relu)),
-            "expected fused DirectSpatialConv"
-        );
+        assert_spatial_lowering(&model);
+        if !cfg!(target_family = "wasm") {
+            assert!(
+                model
+                    .nodes
+                    .iter()
+                    .any(|node| node.op_as::<DirectSpatialConv>().is_some_and(|d| d.relu)),
+                "expected fused DirectSpatialConv"
+            );
+        }
         let runnable = model.into_runnable().unwrap();
         let got = runnable
             .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
@@ -695,10 +715,7 @@ mod tests {
         let out = model.wire_node("conv", conv, &[xv, kv, bv]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
-        assert!(
-            model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some()),
-            "expected DirectSpatialConv for 2x2 16→8 (k=64)"
-        );
+        assert_spatial_lowering(&model);
         let runnable = model.into_runnable().unwrap();
         let got = runnable
             .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
@@ -730,5 +747,184 @@ mod tests {
             }
         }
         assert!(max_abs < 1e-4, "2x2 16→8 mismatch max_abs={max_abs}");
+    }
+
+    fn channel_scale_case()
+    -> (usize, usize, usize, usize, usize, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+        // SameUpper 2×2 so the last row/col are edge zones; oc=6 hits oc4 + remainder.
+        let n = 1usize;
+        let ic = 4usize;
+        let oc = 6usize;
+        let h = 9usize;
+        let w = 11usize;
+        let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.13).sin() - 0.2).collect();
+        let kernel: Vec<f32> =
+            (0..oc * ic * 2 * 2).map(|i| (i as f32 * 0.09).cos() * 0.15).collect();
+        let bias: Vec<f32> = (0..oc).map(|i| i as f32 * 0.02 - 0.1).collect();
+        let scale: Vec<f32> = (0..oc).map(|i| 0.4 + i as f32 * 0.15).collect();
+        (n, ic, oc, h, w, x, kernel, bias, scale)
+    }
+
+    fn conv_2x2_s1(ic: usize, oc: usize) -> Conv {
+        Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(2, 2),
+                padding: PaddingSpec::SameUpper,
+                dilations: None,
+                strides: Some(tvec!(1, 1)),
+                input_channels: ic,
+                output_channels: oc,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        }
+    }
+
+    fn check_scaled_2x2(
+        y: &Tensor,
+        x: &[f32],
+        kernel: &[f32],
+        bias: &[f32],
+        scale: &[f32],
+        ic: usize,
+        oc: usize,
+        h: usize,
+        w: usize,
+    ) {
+        let y = y.to_plain_array_view::<f32>().unwrap();
+        let oh = y.shape()[2];
+        let ow = y.shape()[3];
+        let mut max_abs = 0f32;
+        for o in 0..oc {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[o];
+                    for c in 0..ic {
+                        for ky in 0..2 {
+                            for kx in 0..2 {
+                                let iy = oy as isize + ky as isize;
+                                let ix = ox as isize + kx as isize;
+                                if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                    continue;
+                                }
+                                let xv = x[(c * h + iy as usize) * w + ix as usize];
+                                let kv = kernel[((o * ic + c) * 2 + ky) * 2 + kx];
+                                acc += xv * kv;
+                            }
+                        }
+                    }
+                    acc *= scale[o];
+                    max_abs = max_abs.max((y[[0, o, oy, ox]] - acc).abs());
+                }
+            }
+        }
+        assert!(max_abs < 1e-4, "channel-scale mismatch max_abs={max_abs}");
+    }
+
+    #[test]
+    fn conv_2x2_s1_channel_scale_matches_reference() {
+        // Conv fuses [1,C,1,1] Mul into kernel/bias before DirectSpatial exists.
+        let (n, ic, oc, h, w, x, kernel, bias, scale) = channel_scale_case();
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, ic, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[oc, ic, 2, 2], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[oc], &bias).unwrap()).unwrap();
+        let y = model.wire_node("conv", conv_2x2_s1(ic, oc), &[xv, kv, bv]).unwrap()[0];
+        let sv =
+            model.add_const("scale", Tensor::from_shape(&[1, oc, 1, 1], &scale).unwrap()).unwrap();
+        let out = model.wire_node("se", crate::ops::math::mul(), &[y, sv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        assert_spatial_lowering(&model);
+        let got = model
+            .into_runnable()
+            .unwrap()
+            .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        check_scaled_2x2(&*got[0], &x, &kernel, &bias, &scale, ic, oc, h, w);
+    }
+
+    #[test]
+    fn direct_spatial_fuses_channel_scale() {
+        // Mul after lowering: Conv can no longer absorb it, DirectSpatial should.
+        if cfg!(target_family = "wasm") {
+            return;
+        }
+        let (n, ic, oc, h, w, x, kernel, bias, scale) = channel_scale_case();
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, ic, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[oc, ic, 2, 2], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[oc], &bias).unwrap()).unwrap();
+        let y = model.wire_node("conv", conv_2x2_s1(ic, oc), &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&y).unwrap();
+        let mut model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        assert_spatial_lowering(&model);
+        let conv_out = model.output_outlets().unwrap()[0];
+        let sv =
+            model.add_const("scale", Tensor::from_shape(&[1, oc, 1, 1], &scale).unwrap()).unwrap();
+        let out = model.wire_node("se", crate::ops::math::mul(), &[conv_out, sv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        let dsc = model
+            .nodes
+            .iter()
+            .find_map(|node| node.op_as::<DirectSpatialConv>())
+            .expect("expected DirectSpatialConv");
+        assert!(dsc.scale, "channel-scale Mul should fuse into DirectSpatialConv");
+        let got = model
+            .into_runnable()
+            .unwrap()
+            .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        check_scaled_2x2(&*got[0], &x, &kernel, &bias, &scale, ic, oc, h, w);
+    }
+
+    #[test]
+    fn rec_stem_3x3_s2_oc24_is_finite() {
+        // PP-OCRv6 tiny_rec Conv.0: 1×3×48×320, 3×3 s=2 oc=24, Explicit pad 1.
+        let n = 1usize;
+        let ic = 3usize;
+        let oc = 24usize;
+        let h = 48usize;
+        let w = 320usize;
+        let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.11).sin()).collect();
+        let kernel: Vec<f32> = (0..oc * ic * 9).map(|i| (i as f32 * 0.07).cos() * 0.2).collect();
+        let bias: Vec<f32> = (0..oc).map(|i| i as f32 * 0.01).collect();
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, ic, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[oc, ic, 3, 3], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[oc], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(3, 3),
+                padding: PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1)),
+                dilations: None,
+                strides: Some(tvec!(2, 2)),
+                input_channels: ic,
+                output_channels: oc,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let out = model.wire_node("conv", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        assert_spatial_lowering(&model);
+        let got = model
+            .into_runnable()
+            .unwrap()
+            .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let y = got[0].to_plain_array_view::<f32>().unwrap();
+        let nans = y.iter().filter(|v| !v.is_finite()).count();
+        assert_eq!(nans, 0, "rec stem produced {nans} non-finite values");
+        assert_eq!(y.shape(), &[1, 24, 24, 160]);
     }
 }
