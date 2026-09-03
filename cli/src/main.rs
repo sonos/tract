@@ -641,7 +641,11 @@ fn bench_options(command: clap::Command) -> clap::Command {
                  arg!(--"warmup-loops" [warmup_loops] "Number of loops to run before starting the clock."),
                  arg!(--"max-loops" [max_iters] "Sets the maximum number of iterations for each node [default: 100_000].").alias("max-iters"),
                  arg!(--"max-time" [max_time] "Sets the maximum execution time for each node (in ms) [default: 5000]."),
-                 arg!(--"streams" [streams] "Saturate that many concurrent streams, one thread and one state each, instead of benching a single one.") ])
+                 arg!(--"streams" [streams] "Saturate that many concurrent streams, one thread and one state each, instead of benching a single one. Under --turn-period, the load offered instead; under --capacity, the ceiling the search stops at."),
+                 arg!(--"turn-period" [turn_period] "Wall-clock milliseconds one turn's input covers, pacing the streams against real time instead of saturating them."),
+                 arg!(--"deadline" [deadline] "Milliseconds a turn may add over the arrival of its input before it counts as late [default: the turn period]."),
+                 arg!(--"deadline-quantile" [quantile] "Quantile of added latency the deadline is read at [default: 0.99]."),
+                 arg!(--"capacity" "Search the largest paced load which meets the deadline, doubling then bisecting up to the ceiling.").action(ArgAction::SetTrue) ])
 }
 
 fn run_options(command: clap::Command) -> clap::Command {

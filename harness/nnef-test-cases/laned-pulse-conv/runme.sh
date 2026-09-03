@@ -31,3 +31,10 @@ $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 run --streams 4 \
 TRACT_TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 \
     --hint B=4 run --streams 4 --approx exact --assert-occupancy 3.0 \
     --input-from-bundle io.npz
+
+# The real-time load: every stream owes a turn every 20 ms, and --capacity
+# doubles the load until the deadline breaks. Nothing is asserted of the
+# timings -- a CI box's scheduling is not a measurement -- only that the paced
+# path serves the lanes.
+$TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 bench \
+    --input-from-bundle io.npz --capacity --turn-period 20 --max-time 200
