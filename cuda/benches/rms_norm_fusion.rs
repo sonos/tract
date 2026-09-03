@@ -1,23 +1,23 @@
-//! End-to-end latency for the RMSNorm GPU fusions in this PR: residual-add
+//! End-to-end latency for the RMSNorm CUDA fusions in this PR: residual-add
 //! absorption and gamma-scale absorption collapse a 3-dispatch-per-layer
 //! pattern (Add -> RmsNorm -> Mul) into a single fused kernel dispatch.
+//! Same comparison as `metal/benches/rms_norm_fusion.rs`, retargeted at the
+//! CUDA kernel this PR adds (`rms_norm_add`/`rms_norm_scaled`/
+//! `rms_norm_scaled_add` variants of `cuda/src/kernels/cu/nn.cu`).
 //!
 //! "unfused" reproduces the graph shape that existed on `main` before this
-//! PR (no `ScaledRmsNorm`, no residual-fusion rule): three separate Metal
-//! kernel dispatches per layer, chained the same way `fuse_rms_norm_scale`
-//! and `fuse_rms_norm_residual` see them in a real transformer's residual
-//! stream. "fused" is `RmsNorm::dispatch_eval`'s single `residual`+`scale`
-//! call, which is exactly what those rewrite rules collapse the pattern
-//! into.
+//! PR (no `ScaledRmsNorm` translation for Cuda, no residual-fusion rule):
+//! three separate CUDA kernel dispatches per layer. "fused" is
+//! `RmsNorm::dispatch_eval`'s single `residual`+`scale` call.
 
 use criterion::measurement::WallTime;
 use criterion::*;
 use tract_core::internal::*;
 use tract_core::ops::math::{Add, Mul};
+use tract_cuda::kernels::binary;
+use tract_cuda::kernels::nn::RmsNorm;
+use tract_cuda::with_cuda_stream;
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
-use tract_metal::kernels::bin_ops;
-use tract_metal::kernels::nn::rms_norm::RmsNorm;
-use tract_metal::with_metal_stream;
 
 const LAYERS: usize = 32;
 
@@ -62,24 +62,24 @@ fn make_inputs(batch: usize, seq: usize, dim: usize) -> Inputs {
 }
 
 fn unfused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: usize, dim: usize) {
-    with_metal_stream(|_| Ok(())).unwrap(); // one-time device/context init
+    with_cuda_stream(|_| Ok(())).unwrap(); // one-time device/context init
     let inputs = make_inputs(batch, seq, dim);
     let eps = tensor0(1e-6f32);
     let shape = [batch, seq, dim];
 
     let run = || -> TractResult<()> {
-        with_metal_stream(|stream| {
+        with_cuda_stream(|stream| {
             let mut x = inputs.x0.clone();
             for l in 0..LAYERS {
                 let h = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
-                bin_ops::dispatch_eval(stream, &Add, &x, &inputs.deltas[l], &h)?;
+                binary::dispatch_eval(stream, &Add, &x, &inputs.deltas[l], &h)?;
                 let n = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
                 RmsNorm.dispatch_eval(stream, &h, None, None, 2, &eps, &n, None)?;
                 let out = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
-                bin_ops::dispatch_eval(stream, &Mul, &n, &inputs.gammas[l], &out)?;
+                binary::dispatch_eval(stream, &Mul, &n, &inputs.gammas[l], &out)?;
                 x = out;
             }
-            stream.wait_until_completed()
+            Ok(stream.synchronize()?)
         })
     };
 
@@ -88,13 +88,13 @@ fn unfused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: 
 }
 
 fn fused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: usize, dim: usize) {
-    with_metal_stream(|_| Ok(())).unwrap();
+    with_cuda_stream(|_| Ok(())).unwrap();
     let inputs = make_inputs(batch, seq, dim);
     let eps = tensor0(1e-6f32);
     let shape = [batch, seq, dim];
 
     let run = || -> TractResult<()> {
-        with_metal_stream(|stream| {
+        with_cuda_stream(|stream| {
             let mut x = inputs.x0.clone();
             for l in 0..LAYERS {
                 let n = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
@@ -111,7 +111,7 @@ fn fused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: us
                 )?;
                 x = n;
             }
-            stream.wait_until_completed()
+            Ok(stream.synchronize()?)
         })
     };
 
@@ -129,9 +129,7 @@ fn decode_step(c: &mut Criterion) {
     g.finish();
 }
 
-/// Prefill: same 32 layers, a 32-token chunk. More real compute per
-/// dispatch, so the fixed per-dispatch overhead is a smaller fraction of
-/// total time here than in decode.
+/// Prefill: same 32 layers, a 32-token chunk.
 fn prefill_chunk(c: &mut Criterion) {
     let mut g = c.benchmark_group("rms_norm_fusion_prefill_b1_s32_d4096_l32");
     unfused(&mut g, "prefill", 1, 32, 4096);

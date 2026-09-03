@@ -65,7 +65,16 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| [0, MAX_THREADS].into_iter().map(move |n_cols| (dt, n_cols)))
-            .flat_map(|(dt, n_cols)| RmsNorm.kernel_name(dt, n_cols).into_iter()),
+            .flat_map(|(dt, n_cols)| {
+                [false, true].into_iter().flat_map(move |scaled| {
+                    [false, true]
+                        .into_iter()
+                        .map(move |with_residual| (dt, n_cols, scaled, with_residual))
+                })
+            })
+            .flat_map(|(dt, n_cols, scaled, with_residual)| {
+                RmsNorm.kernel_name(dt, n_cols, scaled, with_residual).into_iter()
+            }),
     );
 
     functions.extend(
