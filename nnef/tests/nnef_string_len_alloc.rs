@@ -23,10 +23,12 @@ unsafe impl GlobalAlloc for CountingAllocator {
         let size = layout.size();
         let _ = MAX_SINGLE_ALLOC
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| Some(c.max(size)));
-        System.alloc(layout)
+        unsafe { System.alloc(layout) }
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        System.dealloc(ptr, layout);
+        unsafe {
+            System.dealloc(ptr, layout);
+        }
     }
 }
 
