@@ -105,12 +105,7 @@ pub fn fuse_rms_norm_scale(
     rule_if_some!(mul = model.single_succ(node.id)?);
     rule_if_some!(w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, axis_dim));
 
-    let scale = w
-        .val()
-        .cast_to::<f32>()?
-        .into_owned()
-        .into_shape(&[axis_dim])?
-        .into_arc_tensor();
+    let scale = w.val().cast_to::<f32>()?.into_owned().into_shape(&[axis_dim])?.into_arc_tensor();
 
     let mut patch = TypedModelPatch::default();
     let rsm_input = patch.taps(model, &node.inputs)?;
@@ -164,9 +159,7 @@ pub fn fuse_rms_norm_split_scale(
         rule_if_some!(end = slice.end.to_usize().ok());
         rule_if!(end > start);
         rule_if_some!(mul = model.single_succ(slice_node.id)?);
-        rule_if_some!(
-            w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, end - start)
-        );
+        rule_if_some!(w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, end - start));
         // Optional single float cast closing the branch.
         let (shunt, dt) = match model.single_succ(mul.id)? {
             Some(c)
@@ -291,20 +284,13 @@ mod tests {
     fn split_scale_model(ranges: &[(usize, usize)]) -> TractResult<TypedModel> {
         let mut model = TypedModel::default();
         let input = model.add_source("input", f16::datum_type().fact([2usize, 8]))?;
-        let cast =
-            model.wire_node("cast-in", Cast { to: DatumType::F32 }, &[input])?;
-        let norm = model.wire_node(
-            "norm",
-            RmsNorm { axis: 1, eps: Arc::new(tensor0(1e-4f32)) },
-            &cast,
-        )?;
+        let cast = model.wire_node("cast-in", Cast { to: DatumType::F32 }, &[input])?;
+        let norm =
+            model.wire_node("norm", RmsNorm { axis: 1, eps: Arc::new(tensor0(1e-4f32)) }, &cast)?;
         let mut outputs = tvec![];
         for (ix, (start, end)) in ranges.iter().enumerate() {
-            let sliced = model.wire_node(
-                format!("slice.{ix}"),
-                Slice::new(1, *start, *end),
-                &norm,
-            )?;
+            let sliced =
+                model.wire_node(format!("slice.{ix}"), Slice::new(1, *start, *end), &norm)?;
             let gamma = model.add_const(
                 format!("gamma.{ix}"),
                 Tensor::from_shape(

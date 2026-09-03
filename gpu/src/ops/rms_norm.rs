@@ -104,15 +104,7 @@ impl EvalOp for GpuRmsNorm {
                 input.datum_type(),
                 input.shape(),
             )?;
-            (self.dispatch)(
-                input,
-                residual,
-                scale,
-                self.axis,
-                &self.eps,
-                &output,
-                Some(&sum_out),
-            )?;
+            (self.dispatch)(input, residual, scale, self.axis, &self.eps, &output, Some(&sum_out))?;
             return Ok(tvec!(
                 output.into_tensor().into_tvalue(),
                 sum_out.into_tensor().into_tvalue()

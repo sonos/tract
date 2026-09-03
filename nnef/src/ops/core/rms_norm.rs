@@ -56,8 +56,7 @@ fn de_scaled_rms_norm(
     let axis: usize = invocation.named_arg_as(builder, "axis")?;
     let eps = invocation.named_arg_as(builder, "eps")?;
     let out_dt: String = invocation.named_arg_as(builder, "out_dt")?;
-    let out_dt =
-        if out_dt.is_empty() { None } else { Some(out_dt.parse::<DatumType>()?) };
+    let out_dt = if out_dt.is_empty() { None } else { Some(out_dt.parse::<DatumType>()?) };
     builder.wire(ScaledRmsNorm { axis, eps, out_dt }, &[input, scale])
 }
 
