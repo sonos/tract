@@ -162,7 +162,7 @@ impl Test for LanedProblem {
         let model = pulsed(self.pulse, self.pad_before, &self.pad_mode)?;
         let options = options(&model, self.streams);
         let laned = LanedRunnable::wrap(
-            runtime.prepare_with_options(model.clone(), &options)?,
+            runtime.prepare_with_options(model.clone(), &options)?.into(),
             self.streams,
         )?;
         let got: Vec<Vec<Tensor>> = std::thread::scope(|scope| {
