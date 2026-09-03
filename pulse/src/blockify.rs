@@ -1413,7 +1413,11 @@ fn chunkify_uniform_tdim_input(
     // numeric dtype carries the values (the final mask comes out as Bool
     // either way) — and `wire_uniform_tdim_initiator` casts back after.
     let dt = i64::datum_type();
-    let zero = patch.add_const(format!("{name_prefix}.zero"), Tensor::zero_scalar_dt(dt)?)?;
+    // Rank-matched rather than scalar: an axis change reaching the broadcast
+    // is pushed into its input, and a rank-0 tensor has no axis to insert one
+    // in front of.
+    let zero = patch
+        .add_const(format!("{name_prefix}.zero"), Tensor::zero_dt(dt, &vec![1; in_fact.rank()])?)?;
     let mut wire = patch.wire_node(
         format!("{name_prefix}.position_free"),
         tract_core::ops::array::MultiBroadcastTo { shape: in_fact.shape.clone() },
