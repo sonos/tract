@@ -247,24 +247,21 @@ crate::register_metal_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, n
     ))))
 });
 
-crate::register_metal_op!(
-    tract_core::ops::nn::ScaledRmsNorm,
-    |source, node, op| {
-        let input_facts = source.node_input_facts(node.id)?;
-        rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
-        rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
-        rule_if!(input_facts[1].datum_type == DatumType::F32);
-        Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
-            op.axis,
-            op.eps.clone(),
-            true,
-            false,
-            op.out_dt,
-            "Metal",
-            metal_rms_norm_dispatch,
-        ))))
-    }
-);
+crate::register_metal_op!(tract_core::ops::nn::ScaledRmsNorm, |source, node, op| {
+    let input_facts = source.node_input_facts(node.id)?;
+    rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
+    rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
+    rule_if!(input_facts[1].datum_type == DatumType::F32);
+    Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
+        op.axis,
+        op.eps.clone(),
+        true,
+        false,
+        op.out_dt,
+        "Metal",
+        metal_rms_norm_dispatch,
+    ))))
+});
 
 #[cfg(test)]
 mod tests {
@@ -357,13 +354,11 @@ mod tests {
             )?;
 
             let eps = Arc::new(tensor0(0.0001f32));
-            let cpu_op =
-                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
-            let cpu_output = cpu_op
-                .eval(
-                    &EvalContext::out_of_plan(),
-                    tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
-                )?[0]
+            let cpu_op = ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
+            let cpu_output = cpu_op.eval(
+                &EvalContext::out_of_plan(),
+                tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
+            )?[0]
                 .clone()
                 .into_tensor();
 

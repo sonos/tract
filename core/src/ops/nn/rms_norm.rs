@@ -203,20 +203,14 @@ impl EvalOp for ScaledRmsNorm {
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, scale) = args_2!(inputs);
         let in_dt = input.datum_type();
-        let normed = RmsNorm { axis: self.axis, eps: self.eps.clone() }
-            .eval(ctx, tvec!(input))?
-            .remove(0);
+        let normed =
+            RmsNorm { axis: self.axis, eps: self.eps.clone() }.eval(ctx, tvec!(input))?.remove(0);
         let mut buf = normed.cast_to::<f32>()?.into_owned();
         let scale = scale.cast_to::<f32>()?.into_owned();
         let scale = unsafe { scale.as_slice_unchecked::<f32>() };
         let shape = buf.shape().to_vec();
         let dim = shape[self.axis];
-        ensure!(
-            scale.len() == dim,
-            "ScaledRmsNorm: scale len {} != axis dim {}",
-            scale.len(),
-            dim
-        );
+        ensure!(scale.len() == dim, "ScaledRmsNorm: scale len {} != axis dim {}", scale.len(), dim);
         let inner: usize = shape[self.axis + 1..].iter().product();
         let data = unsafe { buf.as_slice_mut_unchecked::<f32>() };
         for chunk in data.chunks_mut(dim * inner) {
