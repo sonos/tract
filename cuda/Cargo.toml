@@ -68,3 +68,7 @@ harness = false
 [[bench]]
 name = "gdn_recurrent"
 harness = false
+
+[[bench]]
+name = "rms_norm_fusion"
+harness = false

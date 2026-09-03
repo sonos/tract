@@ -20,8 +20,8 @@ use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
-    fuse_rms_norm_scale, fuse_rms_norm_split_scale, fuse_scaled_rms_norm_in_cast,
-    fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
+    fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
+    fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
 };
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
@@ -217,7 +217,7 @@ impl MetalTransform {
         // After elementwise fusion: only residual adds that stayed standalone
         // dispatches are worth absorbing into their norm consumer.
         Rewriter::default()
-            .with_rule_for("fuse_rms_norm_residual", rewrite_rules::fuse_rms_norm_residual)
+            .with_rule_for("fuse_rms_norm_residual", fuse_rms_norm_residual)
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
