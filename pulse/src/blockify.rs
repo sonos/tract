@@ -49,14 +49,22 @@
 //! * **uniform_tdim mask head** (`wire_uniform_tdim_initiator`): the
 //!   multi-T-axis Sub/Eq at the top of the mask-construction chain.
 //!   Each input is a single-T-axis chunk-id wire (`chunk_row`,
-//!   `chunk_col`); `chunkify_uniform_tdim_input` taps it, casts TDim →
-//!   I64 (PulsePad's `dispatch_copy_by_size!` fill needs `Copy`), splits
-//!   the T-axis, moves the chunk axis to position 0, and on the
-//!   contracted side wraps with `WindowOnAxis` using a **sentinel pad
-//!   value** so out-of-stream boundary slots produce values way outside
-//!   the band; downstream Ge/Le evaluate to `false` there.  After Sub,
-//!   the result is cast back to the source dtype so downstream body ops
-//!   that tap external constants (e.g. the `0` in `ge(diff, 0)`) match.
+//!   `chunk_col`), and `chunkify_uniform_tdim_input` replaces it with
+//!   **I64 zeros** of the same shape (PulsePad's
+//!   `dispatch_copy_by_size!` fill needs `Copy`, so not the source's
+//!   TDim), splits the T-axis, moves the chunk axis to position 0, and
+//!   on the contracted side wraps with `WindowOnAxis` using a
+//!   **sentinel pad value** — so out-of-stream boundary slots produce
+//!   values way outside the band and downstream Ge/Le evaluate to
+//!   `false` there — then adds the window's slot offsets.  The chunk
+//!   index itself is never read: `W` covers exactly the band, so every
+//!   in-window slot satisfies the predicate at any stream position, and
+//!   zeros plus `start + j` reproduce the source's in-window values with
+//!   no absolute position in them.  That is what keeps the mask correct
+//!   when a laned runtime seats a stream on some turns and not others.
+//!   After Sub, the result is cast back to the source dtype so
+//!   downstream body ops that tap external constants (e.g. the `0` in
+//!   `ge(diff, 0)`) match.
 //! * **MultiBroadcastTo** (`wire_initiator_multibroadcastto`): the
 //!   `select(mask, scores, scores * 0.0 + -inf)` false-branch pattern,
 //!   where declutter folds the chain to a `MultiBroadcastTo` of a small
@@ -107,13 +115,11 @@
 //!
 //! # Runtime dependencies
 //!
-//! * `tract_pulse_opl::ops::PulsedRange` — pulsifies the source's
-//!   `Range(0, T)` chunk-id chain that
-//!   `chunkify_uniform_tdim_input` taps.  Without it, `Range` falls
-//!   through `NonPulsingWrappingOp` and produces a fresh symbolic shape
-//!   the rest of pulsification can't match.
 //! * `WindowOnAxis::pad_value` — set per-input to either `zero` (data
 //!   wires) or a sentinel (chunk-id wires), depending on the initiator.
+//!   On the chunk-id wires it is the only thing the mask predicate
+//!   reads, so the per-lane `PulsePad` it pulsifies into is what makes a
+//!   mask section servable by several streams at once.
 //!
 //! # Known workarounds
 //!
@@ -122,11 +128,10 @@
 //!   larger sentinels truncate to small junk and the band predicate
 //!   evaluates true on boundary slots.  REVISIT: fix the cast upstream
 //!   and lift the cap.
-//! * TDim → I64 cast on chunk-id wires before windowing, then back to
-//!   TDim after the chunked Sub: `PulsePad`'s fill uses
-//!   `dispatch_copy_by_size!` which doesn't include TDim (not `Copy`).
-//!   REVISIT: add a clone-fill arm to `PulsePad` for TDim and drop the
-//!   round-trip.
+//! * I64 chunk-id wires cast back to TDim after the chunked Sub:
+//!   `PulsePad`'s fill uses `dispatch_copy_by_size!` which doesn't
+//!   include TDim (not `Copy`).  REVISIT: add a clone-fill arm to
+//!   `PulsePad` for TDim and drop the cast.
 
 use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
@@ -1364,11 +1369,22 @@ fn wire_uniform_tdim_initiator(
     Ok(out)
 }
 
-/// Tap a single-T-axis `uniform_tdim` wire (e.g. `chunk_row [T, 1]` or
-/// `chunk_col [1, T]`), split its T-axis at `k`, move the chunk axis to
-/// position 0, and — for the contracted side — `WindowOnAxis` with a
-/// sentinel pad so out-of-stream boundary slots produce out-of-band
-/// values for the downstream predicate.  Returns the chunked outlet.
+/// Wire the chunked counterpart of a single-T-axis `uniform_tdim` wire
+/// (e.g. `chunk_row [T, 1]` or `chunk_col [1, T]`): zeros of the same
+/// shape, T-axis split at `k`, chunk axis moved to position 0, and — for
+/// the contracted side — `WindowOnAxis` with a sentinel pad plus the
+/// window's own slot offsets.  Returns the chunked outlet.
+///
+/// The chunk index itself is not read.  `W` covers exactly the band, so
+/// every in-window slot satisfies `chunk(axis_a) - chunk(axis_b) ∈
+/// [lower, upper]` at any stream position; what the predicate has to
+/// decide is which slots the stream has reached, and that is
+/// `PulsePad`'s sentinel region, held per lane.  Zeros plus the slot
+/// offsets `start + j` reproduce the source's values on every in-window
+/// slot — the initiator's own sign structure turns them into
+/// `lower + j` on the `axis_a` side and `upper - j` on the `axis_b` one
+/// — while leaving no absolute position for a shared clock to get
+/// wrong.
 #[allow(clippy::too_many_arguments)]
 fn chunkify_uniform_tdim_input(
     patch: &mut TypedModelPatch,
@@ -1390,25 +1406,19 @@ fn chunkify_uniform_tdim_input(
     );
     let stream_axis = positions[0];
 
-    let tapped = patch.tap_model(model, input)?;
-
-    // Cast TDim → I64 up-front: PulsePad (used by WindowOnAxis pulsifier
-    // for the contracted side) fills with `dispatch_copy_by_size!`, which
-    // panics on non-Copy datum types like TDim.  Body ops downstream are
-    // Sub/Ge/Le/And — they don't care whether their numeric inputs are
-    // TDim or I64 (the final mask comes out as Bool either way).
-    //
-    // REVISIT: add a TDim arm to `pulse-opl/src/pad.rs` (clone-fill instead
-    // of `dispatch_copy_by_size`) and drop this round-trip.
-    let mut wire = tapped;
-    if patch.outlet_fact(wire)?.datum_type == TDim::datum_type() {
-        wire = patch.wire_node(
-            format!("{name_prefix}.cast_i64"),
-            tract_core::ops::cast::cast(i64::datum_type()),
-            &[wire],
-        )?[0];
-    }
-    let dt = patch.outlet_fact(wire)?.datum_type;
+    // I64 rather than the source's dtype: PulsePad (used by the
+    // WindowOnAxis pulsifier for the contracted side) fills with
+    // `dispatch_copy_by_size!`, which panics on non-Copy datum types like
+    // TDim.  Body ops downstream are Sub/Ge/Le/And — they don't care which
+    // numeric dtype carries the values (the final mask comes out as Bool
+    // either way) — and `wire_uniform_tdim_initiator` casts back after.
+    let dt = i64::datum_type();
+    let zero = patch.add_const(format!("{name_prefix}.zero"), Tensor::zero_scalar_dt(dt)?)?;
+    let mut wire = patch.wire_node(
+        format!("{name_prefix}.position_free"),
+        tract_core::ops::array::MultiBroadcastTo { shape: in_fact.shape.clone() },
+        &[zero],
+    )?[0];
 
     // Split the T-axis at `k`.  Output rank = input rank + 1, with the
     // chunk axis at `stream_axis` and the within-block axis at
@@ -1468,10 +1478,27 @@ fn chunkify_uniform_tdim_input(
                 to.push(dim.clone());
             }
         }
+        let merged_axis = leading + 1 + within_slice_idx;
         wire = patch.wire_node(
             format!("{name_prefix}.flatten_window"),
             AxisOp::Reshape(leading + 1, from, to),
             &[wire],
+        )?[0];
+
+        // The window slot's chunk offset relative to the consumer's own
+        // chunk, laid out W-major over the flattened (W·k) axis.  Broadcast
+        // against the chunk axis, so it holds at every stream position.
+        let mut offsets_shape = tvec!(1; patch.outlet_fact(wire)?.rank());
+        offsets_shape[merged_axis] = window_size * k as usize;
+        let offsets: Vec<i64> = (0..window_size as i64 * k).map(|slot| start + slot / k).collect();
+        let offsets = patch.add_const(
+            format!("{name_prefix}.slot_offsets"),
+            Tensor::from_shape(&offsets_shape, &offsets)?.cast_to_dt(dt)?.into_owned(),
+        )?;
+        wire = patch.wire_node(
+            format!("{name_prefix}.slot_offset"),
+            tract_core::ops::math::add(),
+            &[wire, offsets],
         )?[0];
     }
 
