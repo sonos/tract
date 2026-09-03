@@ -477,7 +477,8 @@ fn run_turn(
     Ok(per_seat)
 }
 
-#[cfg(test)]
+// The suite is disabled on Wasm because a laned runnable spawns a thread.
+#[cfg(all(test, not(target_family = "wasm")))]
 mod laned_test {
     use super::*;
     use crate::ops::math::mul;
