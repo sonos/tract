@@ -55,9 +55,13 @@ impl<B: DeviceTestBackend> Runtime for DeviceTestRuntime<B> {
             let memory_hint = options.memory_sizing_hints.clone().unwrap_or_default();
             plan = self.backend.with_arena(plan, &memory_hint)?;
         }
+        let runnable = Arc::new(plan);
+        let facts =
+            if self.transpose_inputs { Some(reversed_interface_facts(&runnable)?) } else { None };
         Ok(Box::new(DeviceTestRunnable {
-            runnable: Arc::new(plan),
+            runnable,
             transpose_inputs: self.transpose_inputs,
+            facts,
         }))
     }
 
@@ -116,10 +120,35 @@ fn transpose_tensors(values: TVec<TValue>) -> TractResult<TVec<TValue>> {
         .collect()
 }
 
+/// The interface facts callers see, axis-reversed back from the transposed
+/// model's own: [`DeviceTestState`] transposes what it is handed, so the facts
+/// a caller must feed are the reverse of the inner model's.
+#[derive(Debug)]
+struct InterfaceFacts {
+    inputs: TVec<TypedFact>,
+    outputs: TVec<TypedFact>,
+}
+
+fn reversed_interface_facts(runnable: &Arc<TypedRunnableModel>) -> TractResult<InterfaceFacts> {
+    let reverse = |fact: &TypedFact| {
+        let shape = fact.shape.dims().iter().rev().collect::<TVec<_>>();
+        fact.datum_type.fact(shape)
+    };
+    Ok(InterfaceFacts {
+        inputs: (0..runnable.input_count())
+            .map(|ix| runnable.input_fact(ix).map(reverse))
+            .collect::<TractResult<_>>()?,
+        outputs: (0..runnable.output_count())
+            .map(|ix| runnable.output_fact(ix).map(reverse))
+            .collect::<TractResult<_>>()?,
+    })
+}
+
 #[derive(Debug)]
 struct DeviceTestRunnable {
     runnable: Arc<TypedRunnableModel>,
     transpose_inputs: bool,
+    facts: Option<InterfaceFacts>,
 }
 
 impl Runnable for DeviceTestRunnable {
@@ -136,6 +165,20 @@ impl Runnable for DeviceTestRunnable {
 
     fn output_count(&self) -> usize {
         self.runnable.output_count()
+    }
+
+    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        match &self.facts {
+            Some(facts) => Ok(&facts.inputs[ix]),
+            None => self.runnable.input_fact(ix),
+        }
+    }
+
+    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        match &self.facts {
+            Some(facts) => Ok(&facts.outputs[ix]),
+            None => self.runnable.output_fact(ix),
+        }
     }
 
     fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
