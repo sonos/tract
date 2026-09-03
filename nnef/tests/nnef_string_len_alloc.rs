@@ -21,7 +21,8 @@ static MAX_SINGLE_ALLOC: AtomicUsize = AtomicUsize::new(0);
 unsafe impl GlobalAlloc for CountingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let size = layout.size();
-        let _ = MAX_SINGLE_ALLOC.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| Some(c.max(size)));
+        let _ = MAX_SINGLE_ALLOC
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |c| Some(c.max(size)));
         System.alloc(layout)
     }
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -76,7 +77,9 @@ fn string_item_len_must_not_drive_unbounded_alloc() {
     let _ = read_tensor(Cursor::new(bytes));
 
     let max_alloc = MAX_SINGLE_ALLOC.load(Ordering::Relaxed);
-    println!("largest single allocation during read_tensor = {max_alloc} bytes (malicious declared len = {DECLARED_LEN})");
+    println!(
+        "largest single allocation during read_tensor = {max_alloc} bytes (malicious declared len = {DECLARED_LEN})"
+    );
     assert!(
         max_alloc <= MAX_ACCEPTABLE_SINGLE_ALLOC,
         "read_tensor pre-allocated {max_alloc} bytes from an untrusted string length (CWE-770)"

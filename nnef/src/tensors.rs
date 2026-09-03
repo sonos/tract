@@ -185,10 +185,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
             let mut bytes = Vec::new();
             (&mut reader).take(len as u64).read_to_end(&mut bytes)?;
             if bytes.len() != len as usize {
-                bail!(
-                    "NNEF string item declared {len} bytes but only {} readable",
-                    bytes.len()
-                );
+                bail!("NNEF string item declared {len} bytes but only {} readable", bytes.len());
             }
             *item = String::from_utf8(bytes)?;
         }
