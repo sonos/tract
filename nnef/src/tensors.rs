@@ -176,12 +176,20 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         let mut plain = tensor.try_as_plain_mut()?;
         for item in plain.as_slice_mut::<String>()? {
             let len: u32 = reader.read_u32::<LE>()?;
-            let mut bytes = Vec::with_capacity(len as usize);
-            #[allow(clippy::uninit_vec)]
-            unsafe {
-                bytes.set_len(len as usize);
-            };
-            reader.read_exact(&mut bytes)?;
+            // SECURITY: `len` is read from the (untrusted) NNEF file. Do NOT pre-allocate or
+            // `set_len` an unbounded buffer from it (CWE-770): a malicious file advertising a
+            // multi-gigabyte string length forces a huge *upfront* allocation (abort on OOM, or
+            // memory exhaustion) before any byte is read, and the previous `unsafe set_len` also
+            // left the buffer uninitialized. Read at most `len` bytes, growing the buffer from what
+            // actually arrives, then verify the real length matches the declaration.
+            let mut bytes = Vec::new();
+            (&mut reader).take(len as u64).read_to_end(&mut bytes)?;
+            if bytes.len() != len as usize {
+                bail!(
+                    "NNEF string item declared {len} bytes but only {} readable",
+                    bytes.len()
+                );
+            }
             *item = String::from_utf8(bytes)?;
         }
         Ok(tensor)
