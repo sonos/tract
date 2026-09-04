@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate io.npz for the laned causal-conv synthetic.
+"""Generate io.npz for the autobatch causal-conv synthetic.
 
 One row of batch -- the batch axis is the lane axis, so a stream feeds one row
-per turn -- and a stream long enough to hold several turns: a laned run seats
+per turn -- and a stream long enough to hold several turns: an autobatched run seats
 the streams at different positions in it, which is what makes a piece of state
 two streams share show up as a diff.
 

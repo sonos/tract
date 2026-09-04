@@ -411,7 +411,7 @@ fn get_or_make_tensors(
     target: &mut TVec<Vec<TValue>>,
     streaming_input_len: &mut Option<usize>,
 ) -> TractResult<()> {
-    // What the caller feeds is not what the model runs: a laned model keeps its
+    // What the caller feeds is not what the model runs: an autobatched model keeps its
     // batch axis symbolic while every stream feeds one row, so the shapes here
     // come from `--set` rather than from the facts.
     let mut fact = fact;

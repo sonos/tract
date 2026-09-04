@@ -8,6 +8,9 @@ pub mod draw;
 pub mod export;
 pub mod model;
 pub mod profile;
+// None of it works without threads.
+#[cfg(not(target_family = "wasm"))]
+pub mod profile_autobatch;
 pub mod tensor;
 pub mod terminal;
 pub mod time;
