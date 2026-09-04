@@ -64,8 +64,6 @@ them on any conflict.
   `shunt_outside_unchecked` is a last resort, for surgical patches whose safety
   is locally obvious; reach for safe alternatives first.
 - No abstraction beyond the task — three similar lines beat a premature helper.
-- Prefer `as_X()` over `to_X().ok()` for cheap reference-style conversions.
-- No clap extension traits — use the clap API directly, even with turbofish.
 
 ## Pull requests
 - Open with a 1–2 sentence summary of what and why.
