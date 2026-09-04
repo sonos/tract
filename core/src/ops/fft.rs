@@ -3,7 +3,6 @@ use num_complex::Complex;
 use rustfft::num_traits::{Float, FromPrimitive};
 use rustfft::{FftDirection, FftNum};
 use tract_data::itertools::Itertools;
-use tract_ndarray::Axis as NdAxis;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Fft {
@@ -140,68 +139,102 @@ pub struct Stft {
 }
 
 impl Stft {
+    /// The window zero-padded to `frame` and centered, ready to scale a whole frame in one
+    /// pass; `None` when the op carries no window.
+    fn padded_window<T: Datum + Float>(&self) -> TractResult<Option<Vec<T>>> {
+        let Some(window) = &self.window else { return Ok(None) };
+        let window = window.try_as_plain()?.as_slice::<T>()?;
+        ensure!(
+            window.len() <= self.frame,
+            "Stft window ({}) is longer than the frame ({})",
+            window.len(),
+            self.frame
+        );
+        let pad_left = (self.frame - window.len()) / 2;
+        let mut padded = vec![T::zero(); self.frame];
+        padded[pad_left..pad_left + window.len()].copy_from_slice(window);
+        Ok(Some(padded))
+    }
+
     fn eval_t<T: Datum + FftNum + FromPrimitive + Float>(
         &self,
         input: &Tensor,
     ) -> TractResult<Tensor> {
-        let mut iterator_shape: TVec<usize> = input.shape().into();
-        iterator_shape.pop(); // [re,im]
-        iterator_shape[self.axis] = 1;
-        let mut output_shape: TVec<usize> = input.shape().into();
+        let rank = input.rank();
         let frames = (input.shape()[self.axis] - self.frame) / self.stride + 1;
-        output_shape.insert(self.axis, frames);
-        output_shape[self.axis + 1] = self.frame;
+        let mut output_shape: TVec<usize> = input.shape().into();
+        output_shape[self.axis] = frames;
+        output_shape.insert(self.axis + 1, self.frame);
         let mut output = unsafe { Tensor::uninitialized::<T>(&output_shape)? };
+
+        let mut iterator_shape: TVec<usize> = input.shape().into();
+        iterator_shape.pop(); // last dim is [re, im]
+        iterator_shape[self.axis] = 1;
+
+        let in_strides: TVec<usize> = input.strides().iter().map(|s| *s as usize).collect();
+        let out_strides: TVec<usize> = output.strides().iter().map(|s| *s as usize).collect();
+        let time_stride = in_strides[self.axis];
+        let frame_stride = out_strides[self.axis];
+        let bin_stride = out_strides[self.axis + 1];
+
+        let window = self.padded_window::<T>()?;
         let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
-        let input = input.to_plain_array_view::<T>()?;
+
+        let input_plain = input.try_as_plain()?;
+        let data = input_plain.as_slice::<T>()?;
         let mut output_plain = output.try_as_plain_mut()?;
-        let mut oview = output_plain.to_array_view_mut::<T>()?;
+        let out = output_plain.as_slice_mut::<T>()?;
+
         let mut v = Vec::with_capacity(self.frame);
         for coords in tract_ndarray::indices(&*iterator_shape) {
-            let islice = input.slice_each_axis(|ax| {
-                if ax.axis.index() == self.axis || ax.stride == 1 {
-                    (..).into()
-                } else {
-                    let c = coords[ax.axis.index()] as isize;
-                    (c..=c).into()
-                }
-            });
-            let mut oslice = oview.slice_each_axis_mut(|ax| {
-                if ax.stride == 1 {
-                    (..).into()
-                } else if ax.axis.index() < self.axis {
-                    let c = coords[ax.axis.index()] as isize;
-                    (c..=c).into()
-                } else if ax.axis.index() == self.axis || ax.axis.index() == self.axis + 1 {
-                    (..).into()
-                } else {
-                    let c = coords[ax.axis.index() - 1] as isize;
-                    (c..=c).into()
-                }
-            });
-            let signal: Vec<Complex<T>> =
-                islice.iter().tuples().map(|(re, im)| Complex::new(*re, *im)).collect();
+            let mut in_base = 0;
+            let mut out_base = 0;
+            for i in (0..rank - 1).filter(|i| *i != self.axis) {
+                in_base += coords[i] * in_strides[i];
+                out_base += coords[i] * out_strides[i + usize::from(i > self.axis)];
+            }
             for f in 0..frames {
+                let src = in_base + f * self.stride * time_stride;
                 v.clear();
-                v.extend_from_slice(&signal[self.stride * f..self.stride * f + self.frame]);
-                if let Some(win) = &self.window {
-                    let win = win.try_as_plain()?.as_slice::<T>()?;
-                    // symmetric padding in case window is smaller than frames (aka n fft)
-                    let pad_left = (self.frame - win.len()) / 2;
-                    v.iter_mut().enumerate().for_each(|(ix, v)| {
-                        *v = if ix < pad_left || ix >= pad_left + win.len() {
-                            Complex::new(T::zero(), T::zero())
-                        } else {
-                            *v * Complex::new(win[ix - pad_left], T::zero())
-                        }
+                if time_stride == 2 {
+                    v.extend(
+                        data[src..src + 2 * self.frame]
+                            .as_chunks::<2>()
+                            .0
+                            .iter()
+                            .map(|c| Complex::new(c[0], c[1])),
+                    );
+                } else {
+                    v.extend((0..self.frame).map(|k| {
+                        let o = src + k * time_stride;
+                        Complex::new(data[o], data[o + 1])
+                    }));
+                }
+                if let Some(window) = &window {
+                    v.iter_mut().zip(window).for_each(|(v, w)| {
+                        v.re = v.re * *w;
+                        v.im = v.im * *w;
                     });
                 }
                 fft.process(&mut v);
-                oslice
-                    .index_axis_mut(NdAxis(self.axis), f)
-                    .iter_mut()
-                    .zip(v.iter().flat_map(|cmpl| [cmpl.re, cmpl.im].into_iter()))
-                    .for_each(|(s, v)| *s = v);
+                let dst = out_base + f * frame_stride;
+                if bin_stride == 2 {
+                    out[dst..dst + 2 * self.frame]
+                        .as_chunks_mut::<2>()
+                        .0
+                        .iter_mut()
+                        .zip(&v)
+                        .for_each(|(o, c)| {
+                            o[0] = c.re;
+                            o[1] = c.im;
+                        });
+                } else {
+                    for (k, c) in v.iter().enumerate() {
+                        let o = dst + k * bin_stride;
+                        out[o] = c.re;
+                        out[o + 1] = c.im;
+                    }
+                }
             }
         }
         Ok(output)
