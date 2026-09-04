@@ -275,9 +275,12 @@ impl PulsePadOpState {
             if pulse_begin < op.begin_input {
                 let fill_up_to = (op.begin_input - pulse_begin).min(pulse);
                 match &op.mode {
-                    PadMode::Constant(c) => {
-                        output.fill_slice_at_prefix(seat.as_slice(), 0..fill_up_to, c, op.axis)?
-                    }
+                    PadMode::Constant(c) => output.fill_slice_at_prefix(
+                        seat.as_slice(),
+                        0..fill_up_to,
+                        &*c.cast_to_dt(dt)?,
+                        op.axis,
+                    )?,
                     PadMode::Edge => {
                         fill_from_own_frame(&mut output, seat, op.axis, 0..fill_up_to, fill_up_to)
                     }
@@ -290,7 +293,7 @@ impl PulsePadOpState {
                     PadMode::Constant(c) => output.fill_slice_at_prefix(
                         seat.as_slice(),
                         fill_from..pulse,
-                        c,
+                        &*c.cast_to_dt(dt)?,
                         op.axis,
                     )?,
                     PadMode::Edge => {
@@ -353,4 +356,47 @@ impl TypedOp for PulsePad {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// An f16 pulse padded by the f32 constant a model builder leaves in
+    /// `PadMode`, on both the leading and the trailing pad.
+    #[test]
+    fn constant_is_cast_to_the_pulse_datum_type() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let source = model.add_source("source", f16::fact([2]))?;
+        let pad = model.wire_node(
+            "pad",
+            PulsePad {
+                axis: 0,
+                before: 2,
+                after: 2.to_dim(),
+                begin_input: 2,
+                end_input: 6.to_dim(),
+                mode: PadMode::Constant(rctensor0(-1f32)),
+                overlap: 0,
+            },
+            &[source],
+        )?;
+        model.select_output_outlets(&pad)?;
+
+        let mut state = model.into_runnable()?.spawn()?;
+        let minus_one = f16::from_f32(-1.0);
+        let mut got = vec![];
+        for pulse in 0..4 {
+            let input = tensor1(&[f16::from_f32(pulse as f32), f16::from_f32(pulse as f32)]);
+            let output = state.run(tvec!(input.into_tvalue()))?;
+            got.extend_from_slice(output[0].try_as_plain()?.as_slice::<f16>()?);
+        }
+        assert_eq!(got[0..2], [minus_one; 2]);
+        assert_eq!(
+            got[2..6],
+            [f16::from_f32(1.0), f16::from_f32(1.0), f16::from_f32(2.0), f16::from_f32(2.0)]
+        );
+        assert_eq!(got[6..8], [minus_one; 2]);
+        Ok(())
+    }
 }

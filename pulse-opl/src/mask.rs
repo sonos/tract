@@ -74,13 +74,14 @@ impl PulseMaskOpState {
             return Ok(input);
         }
 
+        let value = op.value.cast_to_dt(input.datum_type())?;
         if pulse_begin < op.begin {
             let fill_up_to = (op.begin - pulse_begin).min(pulse);
-            input.fill_slice(0..fill_up_to, &op.value, op.axis)?;
+            input.fill_slice(0..fill_up_to, &value, op.axis)?;
         }
         if pulse_end > end {
             let fill_from = pulse - (pulse_end - end).min(pulse);
-            input.fill_slice(fill_from..pulse, &op.value, op.axis)?;
+            input.fill_slice(fill_from..pulse, &value, op.axis)?;
         }
 
         Ok(input)

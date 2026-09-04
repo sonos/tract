@@ -269,9 +269,12 @@ pub struct GpuPulsePad {
 }
 
 impl GpuPulsePad {
-    pub fn new(op: &PulsePad) -> TractResult<Self> {
-        let device_cst =
-            if let PadMode::Constant(c) = &op.mode { Some(c.clone().into_device()?) } else { None };
+    pub fn new(op: &PulsePad, dt: DatumType) -> TractResult<Self> {
+        let device_cst = if let PadMode::Constant(c) = &op.mode {
+            Some(c.cast_to_dt(dt)?.into_owned().into_device()?)
+        } else {
+            None
+        };
         Ok(Self { op: op.clone(), device_cst })
     }
 }
