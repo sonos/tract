@@ -73,6 +73,7 @@ pub fn handle(
                 .outlet_label(params.tract_model.output_outlets()[ix])
                 .map(|name| format!("{name}.dat"))
                 .unwrap_or_else(|| format!("output_{ix}.dat"));
+            tract_nnef::framework::ensure_label_is_relative_path(&name)?;
 
             if outputs.len() == 1 {
                 let mut f = fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
