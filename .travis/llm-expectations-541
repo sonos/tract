@@ -51,11 +51,11 @@ apple--OpenELM-270M-f16f16.p0s100.arm64.metal 0.99
 apple--OpenELM-270M-f16f16.p0s100.x86_64.cpu 0.99
 apple--OpenELM-270M-f16f16.p0s100.x86_64.cuda 0.98
 apple--OpenELM-270M-f16f16.p50s50.arm64.cpu 0.92
-apple--OpenELM-270M-f16f16.p50s50.arm64.metal 0.92
+apple--OpenELM-270M-f16f16.p50s50.arm64.metal 0.91
 apple--OpenELM-270M-f16f16.p50s50.x86_64.cpu 0.99
 apple--OpenELM-270M-f16f16.p50s50.x86_64.cuda 0.99
 apple--OpenELM-270M-f16f16.p99s1.arm64.cpu 0.96
-apple--OpenELM-270M-f16f16.p99s1.arm64.metal 0.99
+apple--OpenELM-270M-f16f16.p99s1.arm64.metal 0.98
 apple--OpenELM-270M-f16f16.p99s1.x86_64.cpu 0.99
 apple--OpenELM-270M-f16f16.p99s1.x86_64.cuda 0.99
 apple--OpenELM-270M-q40ef16.p0s100.arm64.cpu 0.98
