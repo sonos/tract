@@ -1,6 +1,5 @@
 use crate::internal::translator::Translate;
 use crate::internal::*;
-use crate::ops::array::{Pad, PadMode};
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::{Cast, cast};
 use crate::ops::einsum::EinSum;
@@ -179,17 +178,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 let operating_dt =
                     if op.operating_dt == self.from_dt { self.to_dt } else { op.operating_dt };
                 Box::new(EinSum { operating_dt, ..op.clone() })
-            } else if let Some(op) = node.op_as::<Pad>() {
-                if let PadMode::Constant(t) = &op.mode {
-                    let new_t = if t.datum_type() == self.from_dt {
-                        t.cast_to_dt(self.to_dt)?.into_owned().into_arc_tensor()
-                    } else {
-                        Arc::clone(t)
-                    };
-                    Box::new(Pad { mode: PadMode::Constant(new_t), ..op.clone() })
-                } else {
-                    Box::new(op.clone())
-                }
             } else {
                 node.op.clone()
             };

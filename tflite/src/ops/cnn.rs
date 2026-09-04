@@ -313,7 +313,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn ser_pad(
     builder: &mut SubgraphBuilder,
-    _model: &TypedModel,
+    model: &TypedModel,
     node: &TypedNode,
     pad: &Pad,
 ) -> TractResult<()> {
@@ -332,12 +332,12 @@ fn ser_pad(
     let PadMode::Constant(pad_value) = &pad.mode else {
         bail!("Only constant padding is supported by tflite");
     };
-    inputs.push(
-        builder.write_fact(
-            format!("{node_name}.pad_value"),
-            TypedFact::try_from(pad_value.clone())?,
-        )?,
-    );
+    // PADV2 takes constant_values in the type of the tensor it pads.
+    let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+    inputs.push(builder.write_fact(
+        format!("{node_name}.pad_value"),
+        TypedFact::try_from(pad_value.cast_to_dt(dt)?.into_owned())?,
+    )?);
     let options = PadOptions::create(builder.fb(), &PadOptionsArgs {});
     builder.write_op_with_options(
         &inputs,
