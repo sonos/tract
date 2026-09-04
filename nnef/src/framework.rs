@@ -11,6 +11,21 @@ use std::os::unix::prelude::OsStrExt;
 use std::path::Path;
 use std::str::FromStr;
 
+/// Checks a label can be used as a path inside a serialized model, relative to its root.
+///
+/// Labels come from the model, which may itself have been loaded from an untrusted file: a
+/// label escaping the root would make serialization write outside the destination directory.
+/// A leading `/` is tolerated (and dropped by the writers), parent components are not.
+pub fn ensure_label_is_relative_path(label: &str) -> TractResult<()> {
+    let label = label.trim_start_matches('/');
+    ensure!(
+        Path::new(label).components().all(|c| matches!(c, std::path::Component::Normal(_)))
+            && !label.split(['/', '\\']).any(|part| part == ".."),
+        "Invalid label {label:?}: expected a path relative to the model root"
+    );
+    Ok(())
+}
+
 pub fn stdlib() -> Vec<FragmentDef> {
     crate::ast::parse::parse_fragments(include_str!("../stdlib.nnef")).unwrap()
 }
@@ -171,6 +186,7 @@ impl Nnef {
         labels.sort();
         for label in labels {
             let t = proto_model.tensors.get(label).unwrap();
+            ensure_label_is_relative_path(&label.0)?;
             let mut label = label.0.to_string() + ".dat";
             if label.starts_with('/') {
                 label.insert(0, '.');
@@ -195,6 +211,7 @@ impl Nnef {
         for label in labels {
             let resource = proto_model.resources.get(label).unwrap();
             if let Some(typed_model_resource) = resource.downcast_ref::<TypedModelResource>() {
+                ensure_label_is_relative_path(label)?;
                 let mut submodel_data = vec![];
                 let mut filename = std::path::PathBuf::from_str(label)?;
                 let typed_model = &typed_model_resource.0;
@@ -251,6 +268,7 @@ impl Nnef {
         }
 
         for (label, t) in &proto_model.tensors {
+            ensure_label_is_relative_path(&label.0)?;
             let label = label.0.to_string() + ".dat";
             let label = label.trim_start_matches('/');
             let parent = path.join(label).parent().unwrap().to_owned();
@@ -465,4 +483,38 @@ fn read_stream<R: std::io::Read>(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn label_as_path() {
+        assert!(ensure_label_is_relative_path("conv/weights").is_ok());
+        assert!(ensure_label_is_relative_path("/model/layer.0/weights").is_ok());
+        assert!(ensure_label_is_relative_path("../evil").is_err());
+        assert!(ensure_label_is_relative_path("a/../../evil").is_err());
+        assert!(ensure_label_is_relative_path("..\\evil").is_err());
+        assert!(ensure_label_is_relative_path("/../evil").is_err());
+    }
+
+    #[test]
+    fn hostile_const_name_does_not_escape_output_dir() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([9]))?;
+        let k = model.add_const("../evil", tensor1(&[0f32; 9]))?;
+        let y = model.wire_node("add", tract_core::ops::math::add(), &[x, k])?;
+        model.select_output_outlets(&y)?;
+
+        let dir = temp_dir::TempDir::new()?;
+        for e in [
+            nnef().write_to_dir(&model, dir.path().join("model")).unwrap_err(),
+            nnef().write(&model, &mut vec![]).unwrap_err(),
+        ] {
+            assert!(format!("{e:?}").contains("Invalid label"), "{e:?}");
+        }
+        assert!(!dir.path().parent().unwrap().join("evil.dat").exists());
+        Ok(())
+    }
 }
