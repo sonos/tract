@@ -1033,13 +1033,14 @@ impl Parameters {
                 let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
                 let runnable: Arc<dyn Runnable> =
                     runtime.prepare_with_options(typed_model, &options)?.into();
-                // Laning decorates whatever runtime was picked: the lanes live in
-                // the state the worker owns, so it wraps the prepared model rather
-                // than replacing the runtime that prepared it.
-                let runnable = if let Some(lanes) = matches.get_one::<String>("lanes") {
-                    let lanes = lanes
-                        .parse()
-                        .with_context(|| format!("--lanes expects a count, got {lanes}"))?;
+                // Autobatching decorates whatever runtime was picked: the lanes
+                // live in the state the worker owns, so it wraps the prepared
+                // model rather than replacing the runtime that prepared it.
+                let runnable = if let Some(lanes) = matches.get_one::<String>("autobatch-sessions")
+                {
+                    let lanes = lanes.parse().with_context(|| {
+                        format!("--autobatch-sessions expects a count, got {lanes}")
+                    })?;
                     Arc::new(tract_core::lanes::LanedRunnable::wrap(runnable, lanes)?)
                         as Arc<dyn Runnable>
                 } else {

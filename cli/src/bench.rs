@@ -90,7 +90,7 @@ fn bench_streams(
     if let Some(laned) = laned {
         ensure!(
             streams <= laned.max_lanes(),
-            "{streams} streams over {} lanes: a stream holds a lane for its whole session",
+            "{streams} streams over {} autobatch sessions: a stream holds one for its whole life",
             laned.max_lanes()
         );
     }
@@ -150,8 +150,8 @@ fn pacing(sub_matches: &clap::ArgMatches) -> TractResult<Option<Pacing>> {
 /// the fixed load `--streams` offers, or -- under `--capacity` -- the largest
 /// load which holds, doubling until the deadline breaks and bisecting back.
 ///
-/// The ceiling is `--streams`, or the lanes the runtime was given when it is
-/// laned: a stream holds a lane for its whole session, so no search can go past
+/// The ceiling is `--streams`, or the sessions `--autobatch-sessions` gave the
+/// runtime: a stream holds one for its whole life, so no search can go past
 /// them.
 #[cfg(not(target_family = "wasm"))]
 fn bench_paced(
@@ -169,7 +169,7 @@ fn bench_paced(
         (Some(asked), Some(lanes)) => {
             ensure!(
                 asked <= lanes,
-                "{asked} streams over {lanes} lanes: a stream holds a lane for its whole session"
+                "{asked} streams over {lanes} autobatch sessions: a stream holds one for its whole life"
             );
             asked
         }

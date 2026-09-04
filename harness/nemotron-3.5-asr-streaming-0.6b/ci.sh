@@ -125,9 +125,9 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	--approx very \
 	--drop-partial-pulse
 
-# The batch axis is the lane axis, so the laned form of the encoder keeps BATCH
-# symbolic: no set_symbols, and a shape-generic patch body, since `length` as a
-# scalar reshapes to [BATCH] and only typechecks at BATCH=1.
+# The batch axis is the lane axis, so the autobatched form of the encoder keeps
+# BATCH symbolic: no set_symbols, and a shape-generic patch body, since `length`
+# as a scalar reshapes to [BATCH] and only typechecks at BATCH=1.
 batched_patch='patch(body: "length = tract_core_cast(squeeze(sum_reduce(audio_signal, axes=[1,2]), axes=[1,2]) * 0.0, to = \"i64\") + tract_core_cast(tract_core_shape_of(audio_signal)[2], to = \"i64\");")'
 
 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
@@ -151,7 +151,7 @@ TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	-t 'select_outputs(outputs: ["outputs"])' \
 	-t 'batchify_data_free(symbol: Some("BATCH"))' \
 	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
-	--lanes 4 --hint BATCH=4 \
+	--autobatch-sessions 4 --hint BATCH=4 \
 	run --streams 4 --turns 3 --assert-occupancy 2.5 \
 	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
 	--approx exact \

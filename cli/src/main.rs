@@ -154,7 +154,7 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("transform").short('t').long("transform").num_args(1).action(clap::ArgAction::Append).help("Apply a built-in transformation to the model"))
         .arg(Arg::new("set").long("set").num_args(1).action(clap::ArgAction::Append).long_help("Set a symbol to a concrete value after decluttering"))
         .arg(Arg::new("hint").long("hint").num_args(1).action(clap::ArgAction::Append).long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
-        .arg(Arg::new("lanes").long("lanes").num_args(1).long_help("Serve the model to that many streams at once, one lane each. Needs a batch axis on axis 0, and wants a hint on its symbol for the memory arena to size the widest turn (--lanes 4 --hint B=4)"))
+        .arg(Arg::new("autobatch-sessions").long("autobatch-sessions").num_args(1).long_help("Autobatch the model: serve that many concurrent sessions off one prepared copy of it, batching whatever turns arrive together. Needs a batch axis on axis 0, and wants a hint on its symbol for the memory arena to size the widest turn (--autobatch-sessions 4 --hint B=4)"))
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
         .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transformers_detect_all"))
@@ -374,7 +374,7 @@ fn main() -> TractResult<()> {
             Arg::new("assert-occupancy")
                 .long("assert-occupancy")
                 .num_args(1)
-                .help("Fail unless the laned turns seated that many streams on average"),
+                .help("Fail unless the autobatched turns carried that many sessions on average"),
         )
         .arg(
             Arg::new("per-turn-diff")
