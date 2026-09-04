@@ -9,8 +9,9 @@ use crate::params::Parameters;
 /// Run the model on several concurrent streams, and check every one of them
 /// gets what it gets alone.
 ///
-/// One thread and one state per stream -- one lane each when the runtime is
-/// laned (`--lanes`), one state of its own when it is not -- feeding one row
+/// One thread and one state per stream -- one lane each when the runtime
+/// autobatches (`--autobatch-sessions`), one state of its own when it does not
+/// -- feeding one row
 /// per turn as fast as it can. So the seats stagger themselves: occupancy is
 /// whatever the worker finds queued, and a piece of state two streams share
 /// shows up as a diff against the solo run. Stream `k` feeds the input turns
@@ -38,13 +39,13 @@ pub fn run(
     if let Some(laned) = laned {
         ensure!(
             streams <= laned.max_lanes(),
-            "{streams} streams over {} lanes: a stream holds a lane for its whole session",
+            "{streams} streams over {} autobatch sessions: a stream holds one for its whole life",
             laned.max_lanes()
         );
     } else {
         ensure!(
             !sub_matches.contains_id("assert-occupancy"),
-            "Occupancy is what a laned turn seats: --assert-occupancy wants --lanes"
+            "Occupancy is what an autobatched turn carries: --assert-occupancy wants --autobatch-sessions"
         );
     }
     let solo = laned.map(|laned| laned.inner()).unwrap_or(&runnable);

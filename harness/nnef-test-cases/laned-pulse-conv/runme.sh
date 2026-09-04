@@ -15,20 +15,20 @@ $TRACT_RUN --nnef-tract-core . $PULSE --set B=1 run --approx approximate \
 $TRACT_RUN --nnef-tract-core . $PULSE dump -q \
     --assert-op-count Delay 1 --assert-op-count PulsePad 1
 
-# Laned, batch axis left symbolic: four streams share one state, each on a lane
-# of its own, and each must get what it gets alone. The seats stagger
+# Autobatched, batch axis left symbolic: four streams share one state, each on a
+# lane of its own, and each must get what it gets alone. The seats stagger
 # themselves -- a stream feeds the turns rotated by its own index -- so a
 # `Delay` or `PulsePad` two streams share shows up as a diff here. The
-# reference bundle is not asserted against a laned run: the width of a turn
+# reference bundle is not asserted against an autobatched run: the width of a turn
 # decides how its sums associate, so only the same model run alone is an exact
 # reference.
-$TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 run --streams 4 \
+$TRACT_RUN --nnef-tract-core . $PULSE --autobatch-sessions 4 --hint B=4 run --streams 4 \
     --approx exact --input-from-bundle io.npz
 
 # The same, with the worker lingering for the streams that are not queued yet:
 # whatever the box's scheduling, the turns are wide, so the batch axis and the
 # seating are actually exercised.
-TRACT_TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 \
+TRACT_TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE --autobatch-sessions 4 \
     --hint B=4 run --streams 4 --approx exact --assert-occupancy 3.0 \
     --input-from-bundle io.npz
 
@@ -36,13 +36,13 @@ TRACT_TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 \
 # doubles the load until the deadline breaks. Nothing is asserted of the
 # timings -- a CI box's scheduling is not a measurement -- only that the paced
 # path serves the lanes.
-$TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 bench \
+$TRACT_RUN --nnef-tract-core . $PULSE --autobatch-sessions 4 --hint B=4 bench \
     --input-from-bundle io.npz --capacity --turn-period 20 --max-time 200
 
 # The same load with the sessions coming and going: one is held for ~60 ms on
 # average and another is admitted in its place, so lanes are given back and
 # taken again. Again nothing is asserted of the timings, only that the churn is
 # served.
-$TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 bench \
+$TRACT_RUN --nnef-tract-core . $PULSE --autobatch-sessions 4 --hint B=4 bench \
     --input-from-bundle io.npz --streams 4 --turn-period 20 --max-time 400 \
     --session-duration 60
