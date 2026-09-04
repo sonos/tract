@@ -208,9 +208,14 @@ impl BenchLimits {
     /// turn which runs long does not push the ones behind it back -- the stream
     /// catches up or falls further behind, and `added` is what says which.
     ///
-    /// Streams are phased evenly over one period. Each stream runs one turn
+    /// Streams are phased evenly over one period. Each session runs one turn
     /// before the clock starts, so the buffers a first turn allocates are not
     /// charged to the load.
+    ///
+    /// Under `churn` a stream is a seat in a steady population rather than one
+    /// session: it holds a session for a draw around `hold`, gives it up, and
+    /// admits another in its place, so the lanes turn over while the load does
+    /// not.
     #[cfg(not(target_family = "wasm"))]
     pub fn bench_streams_paced(
         &self,
@@ -219,6 +224,7 @@ impl BenchLimits {
         streams: usize,
         pacing: &Pacing,
     ) -> TractResult<PacedBench> {
+        use rand::SeedableRng;
         ensure!(streams > 0, "A paced bench needs a stream at least");
         ensure!(!pacing.period.is_zero(), "A paced bench needs a turn period");
         let max_loops = if self.max_loops.is_zero() { usize::MAX } else { self.max_loops };
@@ -229,30 +235,69 @@ impl BenchLimits {
             pacing.period
         );
         let reuse = reusable_state(runnable);
+        ensure!(
+            pacing.churn.is_none() || reuse,
+            "Churn ends a session and admits another in its place, which only means something for a model carrying a session across turns"
+        );
         let start = Instant::now();
         let served: Vec<StreamTurns> = std::thread::scope(|scope| {
             let running: Vec<_> = (0..streams)
                 .map(|stream| {
                     scope.spawn(move || -> TractResult<StreamTurns> {
-                        let mut state = runnable.spawn()?;
-                        state.run(inputs.sources[0].clone())?;
-                        let base =
-                            Instant::now() + pacing.period.mul_f64(stream as f64 / streams as f64);
+                        let mut rng = rand::rngs::StdRng::seed_from_u64(stream as u64);
+                        let phase = pacing.period.mul_f64(stream as f64 / streams as f64);
                         let mut turns = StreamTurns::default();
+                        // The seat's slots in the period, one turn owed at each.
+                        // Laid down once the first session has run its pre-clock
+                        // turn -- 144 of those serialize through the worker, and
+                        // a grid laid before them starts every stream already
+                        // behind -- and never re-phased, so churn costs what
+                        // admitting a session costs rather than what bunching
+                        // every arrival would.
+                        let mut grid: Option<Instant> = None;
+                        let mut slot = 0usize;
                         while turns.service.len() < max_loops && start.elapsed() < max_time {
-                            if !reuse {
-                                state = runnable.spawn()?;
-                            }
-                            let due = base + pacing.period * turns.service.len() as u32;
-                            if let Some(wait) = due.checked_duration_since(Instant::now()) {
-                                std::thread::sleep(wait);
-                            }
-                            let turn = Instant::now();
+                            let (mut state, starved, took) = admit(runnable, &start, max_time)?;
+                            turns.admissions += 1;
+                            turns.starved += usize::from(starved);
+                            turns.admitting.push(took);
+                            // A session's first turn allocates its buffers, and
+                            // runs before its clock starts, so the load is not
+                            // charged for it.
                             state.run(inputs.sources[0].clone())?;
-                            let done = Instant::now();
-                            turns.service.push(done - turn);
-                            turns.added.push(done.saturating_duration_since(due));
-                            turns.span = done - base;
+                            let admitted = Instant::now();
+                            let grid = *grid.get_or_insert(admitted + phase);
+                            // A session serves the seat's slots which fall in
+                            // its own life, starting at the first one at or
+                            // after it arrived: a stream's clock starts when it
+                            // does, so a session does not inherit what the seat
+                            // was owed before it.
+                            if let Some(late) = admitted.checked_duration_since(grid) {
+                                let missed = late.div_duration_f64(pacing.period).ceil();
+                                slot = slot.max(missed as usize);
+                            }
+                            let hold = pacing
+                                .churn
+                                .map(|churn| exponential(&mut rng, churn.hold).max(pacing.period));
+                            while turns.service.len() < max_loops && start.elapsed() < max_time {
+                                if hold.is_some_and(|hold| admitted.elapsed() >= hold) {
+                                    break;
+                                }
+                                if !reuse {
+                                    state = runnable.spawn()?;
+                                }
+                                let due = grid + pacing.period * slot as u32;
+                                slot += 1;
+                                if let Some(wait) = due.checked_duration_since(Instant::now()) {
+                                    std::thread::sleep(wait);
+                                }
+                                let turn = Instant::now();
+                                state.run(inputs.sources[0].clone())?;
+                                let done = Instant::now();
+                                turns.service.push(done - turn);
+                                turns.added.push(done.saturating_duration_since(due));
+                                turns.span = done - grid;
+                            }
                         }
                         Ok(turns)
                     })
@@ -263,13 +308,61 @@ impl BenchLimits {
         .into_iter()
         .collect::<TractResult<_>>()?;
         let wall = served.iter().map(|turns| turns.span).max().unwrap_or_default();
+        let admissions = served.iter().map(|turns| turns.admissions).sum();
+        let starved = served.iter().map(|turns| turns.starved).sum();
+        let mut admitting: Vec<Duration> =
+            served.iter().flat_map(|turns| turns.admitting.iter().copied()).collect();
+        admitting.sort();
         let mut service: Vec<Duration> =
             served.iter().flat_map(|turns| turns.service.iter().copied()).collect();
         let mut added: Vec<Duration> = served.into_iter().flat_map(|turns| turns.added).collect();
         service.sort();
         added.sort();
-        Ok(PacedBench { streams, deadline: pacing.deadline, wall, service, added })
+        Ok(PacedBench {
+            streams,
+            deadline: pacing.deadline,
+            wall,
+            service,
+            added,
+            admissions,
+            starved,
+            admitting,
+        })
     }
+}
+
+/// Take a session, retrying while every lane is held. A laned runtime hands a
+/// lane back through its worker's queue, so a session leaving and another
+/// arriving in its place can find none free for a moment: that is the starve
+/// count, and how long it waited shows up as the new session's first turns
+/// being late.
+#[cfg(not(target_family = "wasm"))]
+fn admit(
+    runnable: &Arc<dyn Runnable>,
+    start: &Instant,
+    max_time: Duration,
+) -> TractResult<(Box<dyn State>, bool, Duration)> {
+    let mut starved = false;
+    let asked = Instant::now();
+    loop {
+        match runnable.spawn() {
+            Ok(state) => return Ok((state, starved, asked.elapsed())),
+            Err(e) => {
+                if start.elapsed() >= max_time {
+                    return Err(e).context("Admitting a session");
+                }
+                starved = true;
+                std::thread::sleep(Duration::from_micros(200));
+            }
+        }
+    }
+}
+
+/// A holding time around `mean`, so sessions do not all leave together.
+#[cfg(not(target_family = "wasm"))]
+fn exponential(rng: &mut impl rand::RngExt, mean: Duration) -> Duration {
+    let uniform: f64 = rng.random::<f64>();
+    mean.mul_f64(-(1. - uniform).max(f64::MIN_POSITIVE).ln())
 }
 
 /// The wall clock a paced load runs against: what a turn's input covers, and
@@ -279,6 +372,15 @@ impl BenchLimits {
 pub struct Pacing {
     pub period: Duration,
     pub deadline: Duration,
+    pub churn: Option<Churn>,
+}
+
+/// Sessions coming and going under a steady population: how long one is held
+/// before it leaves and another is admitted in its place.
+#[cfg(not(target_family = "wasm"))]
+#[derive(Clone, Copy, Debug)]
+pub struct Churn {
+    pub hold: Duration,
 }
 
 /// One stream's turns, as it served them.
@@ -288,6 +390,9 @@ struct StreamTurns {
     service: Vec<Duration>,
     added: Vec<Duration>,
     span: Duration,
+    admissions: usize,
+    starved: usize,
+    admitting: Vec<Duration>,
 }
 
 /// What `streams` paced streams did against that clock: how long each turn took
@@ -303,10 +408,40 @@ pub struct PacedBench {
     pub service: Vec<Duration>,
     /// One entry per turn, over every stream, sorted.
     pub added: Vec<Duration>,
+    /// Sessions admitted over the trial: one per stream without churn, and
+    /// however many the holding time turned over with it.
+    pub admissions: usize,
+    /// Admissions which found every lane held and had to wait for one.
+    pub starved: usize,
+    /// What each admission waited between asking for a session and getting one,
+    /// sorted. A laned runtime answers on its worker, between turns, so this
+    /// holds the turn in flight as well as the lane's own reset -- it is the
+    /// wait, not the cost of the reset. Read it at a quantile: every seat's
+    /// first admission lands in one storm at the start of the trial, so a mean
+    /// over a short trial is mostly that storm.
+    pub admitting: Vec<Duration>,
 }
 
 #[cfg(not(target_family = "wasm"))]
 impl PacedBench {
+    /// Sessions admitted per second: how fast the lanes turn over.
+    pub fn admissions_per_second(&self) -> f64 {
+        self.admissions as f64 / self.wall.as_secs_f64()
+    }
+
+    /// The wait `q` of the admissions came in under, `q` in 0..1.
+    pub fn admission_quantile(&self, q: f64) -> Duration {
+        quantile(&self.admitting, q)
+    }
+
+    /// The share of admissions which waited for a lane.
+    pub fn starve_fraction(&self) -> f64 {
+        if self.admissions == 0 {
+            return 0.;
+        }
+        self.starved as f64 / self.admissions as f64
+    }
+
     pub fn turns(&self) -> usize {
         self.service.len()
     }

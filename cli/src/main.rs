@@ -645,7 +645,8 @@ fn bench_options(command: clap::Command) -> clap::Command {
                  arg!(--"turn-period" [turn_period] "Wall-clock milliseconds one turn's input covers, pacing the streams against real time instead of saturating them."),
                  arg!(--"deadline" [deadline] "Milliseconds a turn may add over the arrival of its input before it counts as late [default: the turn period]."),
                  arg!(--"deadline-quantile" [quantile] "Quantile of added latency the deadline is read at [default: 0.99]."),
-                 arg!(--"capacity" "Search the largest paced load which meets the deadline, doubling then bisecting up to the ceiling.").action(ArgAction::SetTrue) ])
+                 arg!(--"capacity" "Search the largest paced load which meets the deadline, doubling then bisecting up to the ceiling.").action(ArgAction::SetTrue),
+                 arg!(--"session-duration" [session_duration] "Mean milliseconds a session is held before it leaves and another is admitted in its place, keeping the population steady. Off by default: sessions last the whole trial.") ])
 }
 
 fn run_options(command: clap::Command) -> clap::Command {
