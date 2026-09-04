@@ -7,7 +7,7 @@ to be portable and embedding-friendly, with a focus on inference on the
 edge, in the browser, or on small embeddable CPUs.
 
 For an overview of the codebase (crates, traits, model rewriting, streaming,
-CLI inspection) see [`AGENTS.md`](../AGENTS.md). The notes in this directory
+CLI inspection) see [`overview.md`](overview.md). The notes in this directory
 cover material that is harder to derive from reading the source:
 
 * this file — the tract-OPL philosophy and the translate-time / runtime split
