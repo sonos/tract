@@ -38,3 +38,11 @@ TRACT_TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 \
 # path serves the lanes.
 $TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 bench \
     --input-from-bundle io.npz --capacity --turn-period 20 --max-time 200
+
+# The same load with the sessions coming and going: one is held for ~60 ms on
+# average and another is admitted in its place, so lanes are given back and
+# taken again. Again nothing is asserted of the timings, only that the churn is
+# served.
+$TRACT_RUN --nnef-tract-core . $PULSE --lanes 4 --hint B=4 bench \
+    --input-from-bundle io.npz --streams 4 --turn-period 20 --max-time 400 \
+    --session-duration 60

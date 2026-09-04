@@ -5,7 +5,7 @@ use tract_hir::internal::*;
 use tract_libcli::profile::run_one_step;
 use tract_libcli::profile::{BenchLimits, BenchResult};
 #[cfg(not(target_family = "wasm"))]
-use tract_libcli::profile::{PacedBench, Pacing};
+use tract_libcli::profile::{Churn, PacedBench, Pacing};
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
@@ -132,9 +132,17 @@ fn pacing(sub_matches: &clap::ArgMatches) -> TractResult<Option<Pacing>> {
             millis("deadline")?.is_none(),
             "--deadline times a turn against the wall clock: it wants --turn-period"
         );
+        ensure!(
+            millis("session-duration")?.is_none(),
+            "--session-duration paces a session against the wall clock: it wants --turn-period"
+        );
         return Ok(None);
     };
-    Ok(Some(Pacing { period, deadline: millis("deadline")?.unwrap_or(period) }))
+    Ok(Some(Pacing {
+        period,
+        deadline: millis("deadline")?.unwrap_or(period),
+        churn: millis("session-duration")?.map(|hold| Churn { hold }),
+    }))
 }
 
 /// A real-time load: every stream owes a turn per `--turn-period`, and a turn
@@ -258,6 +266,12 @@ fn paced_metrics(
         ("added_p99".to_string(), bench.added_quantile(0.99).as_secs_f64()),
         ("late_fraction".to_string(), bench.late_fraction()),
     ];
+    if bench.admissions > bench.streams {
+        metrics.push(("admissions_per_s".to_string(), bench.admissions_per_second()));
+        metrics.push(("starve_fraction".to_string(), bench.starve_fraction()));
+        metrics.push(("admission_p50".to_string(), bench.admission_quantile(0.5).as_secs_f64()));
+        metrics.push(("admission_p99".to_string(), bench.admission_quantile(0.99).as_secs_f64()));
+    }
     metrics.extend(occupancy.map(|occupancy| ("occupancy".to_string(), occupancy)));
     metrics.extend(capacity.map(|capacity| ("capacity".to_string(), capacity as f64)));
     metrics
@@ -304,6 +318,17 @@ pub fn handle(
         }
         if let Some(occupancy) = metric("occupancy") {
             println!("Mean occupancy {occupancy:.2}.");
+        }
+        if let Some(admissions) = metric("admissions_per_s") {
+            println!("{admissions:.1} sessions admitted per second.");
+        }
+        if let Some(starved) = metric("starve_fraction") {
+            println!("{:.1}% of the admissions waited for a lane.", starved * 100.);
+        }
+        for (name, q) in [("p50", "admission_p50"), ("p99", "admission_p99")] {
+            if let Some(admission) = metric(q) {
+                println!("{name} wait to admit one {:.1} ms.", admission * 1e3);
+            }
         }
     }
     if let Some(capacity) = metric("capacity") {
