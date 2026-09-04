@@ -722,10 +722,13 @@ __device__ void scaled_bool_masked_softmax(
 // `residual`/`scale`, writing `sum_out`) is eliminated by `if constexpr`, so
 // the plain variant never touches those pointers and callers may pass any
 // valid device pointer (e.g. `dst` itself) as a placeholder for the ones it
-// doesn't use.
-template <typename T, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE>
-__device__ void rms_norm_body(const T *x, const T *residual, const float *scale,
-                               T *dst, T *sum_out, const int32_t shape_0,
+// doesn't use. `InT`/`OutT` may differ (e.g. an f16 activation normalized
+// into an f32 buffer for a higher-precision downstream op): `residual` and
+// `sum_out` are always `InT` (the residual stream stays in the input
+// dtype, same contract as Metal's kernel), only `dst` is `OutT`.
+template <typename InT, typename OutT, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE>
+__device__ void rms_norm_body(const InT *x, const InT *residual, const float *scale,
+                               OutT *dst, InT *sum_out, const int32_t shape_0,
                                const int32_t shape_1, const int32_t shape_2,
                                const int32_t strides_0, const int32_t strides_1,
                                const int32_t strides_2, const float eps) {
@@ -763,41 +766,49 @@ __device__ void rms_norm_body(const T *x, const T *residual, const float *scale,
         float xi = (float)x[idx];
         if constexpr (HAS_RESIDUAL) {
             xi += (float)residual[idx];
-            sum_out[idx] = (T)xi;
+            sum_out[idx] = (InT)xi;
         }
         float normed = rscale * xi;
         if constexpr (HAS_SCALE) {
             normed *= scale[i];
         }
-        dst[idx] = (T)normed;
+        dst[idx] = (OutT)normed;
     }
 }
 
-#define INSTANTIATE_RMS_NORM_VARIANT(suffix, has_residual, has_scale, name, T,  \
-                                     bname, block_size)                        \
-    extern "C" __global__ void rms_norm##suffix##_##bname##name(               \
-        const T *x, const T *residual, const float *scale, T *dst, T *sum_out, \
-        const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,    \
-        const int32_t strides_0, const int32_t strides_1,                      \
-        const int32_t strides_2, const float eps) {                            \
-        rms_norm_body<T, block_size, has_residual, has_scale>(                 \
-            x, residual, scale, dst, sum_out, shape_0, shape_1, shape_2,       \
-            strides_0, strides_1, strides_2, eps);                             \
+#define INSTANTIATE_RMS_NORM_VARIANT(suffix, has_residual, has_scale, iname,     \
+                                     InT, oname, OutT, bname, block_size)        \
+    extern "C" __global__ void rms_norm##suffix##_##bname##iname##_##oname(     \
+        const InT *x, const InT *residual, const float *scale, OutT *dst,       \
+        InT *sum_out, const int32_t shape_0, const int32_t shape_1,             \
+        const int32_t shape_2, const int32_t strides_0, const int32_t strides_1, \
+        const int32_t strides_2, const float eps) {                             \
+        rms_norm_body<InT, OutT, block_size, has_residual, has_scale>(          \
+            x, residual, scale, dst, sum_out, shape_0, shape_1, shape_2,        \
+            strides_0, strides_1, strides_2, eps);                              \
     }
 
-#define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                            \
-    INSTANTIATE_RMS_NORM_VARIANT(, false, false, name, T, bname, block_size)         \
-    INSTANTIATE_RMS_NORM_VARIANT(_scaled, false, true, name, T, bname, block_size)   \
-    INSTANTIATE_RMS_NORM_VARIANT(_add, true, false, name, T, bname, block_size)      \
-    INSTANTIATE_RMS_NORM_VARIANT(_scaled_add, true, true, name, T, bname, block_size)
+#define INSTANTIATE_RMS_NORM_INOUT(iname, InT, oname, OutT, bname, block_size)  \
+    INSTANTIATE_RMS_NORM_VARIANT(, false, false, iname, InT, oname, OutT,       \
+                                  bname, block_size)                            \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled, false, true, iname, InT, oname, OutT, \
+                                  bname, block_size)                            \
+    INSTANTIATE_RMS_NORM_VARIANT(_add, true, false, iname, InT, oname, OutT,    \
+                                  bname, block_size)                            \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_add, true, true, iname, InT, oname,    \
+                                  OutT, bname, block_size)
 
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)
 
-INSTANTIATE_RMS_NORM(f32, float, small_, 32)
-INSTANTIATE_RMS_NORM(f32, float, , 1024)
-INSTANTIATE_RMS_NORM(f16, __half, small_, 32)
-INSTANTIATE_RMS_NORM(f16, __half, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f32, float, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f32, float, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f16, __half, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f16, __half, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f32, float, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f32, float, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, , 1024)
 
 INSTANTIATE_SOFTMAX(f32, float, small_, 32)
 INSTANTIATE_SOFTMAX(f32, float, , 1024)
