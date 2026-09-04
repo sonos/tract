@@ -15,13 +15,16 @@ impl RmsNorm {
 
     pub fn kernel_name(
         &self,
-        dt: DatumType,
+        in_dt: DatumType,
+        out_dt: DatumType,
         n_cols: usize,
         scaled: bool,
         with_residual: bool,
     ) -> TractResult<String> {
-        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda rmsop", dt);
-        let tname = DeviceTensor::tname(dt)?;
+        ensure!(Self::is_supported_dt(in_dt), "Unsupported dt {:?} for cuda rmsop", in_dt);
+        ensure!(Self::is_supported_dt(out_dt), "Unsupported dt {:?} for cuda rmsop", out_dt);
+        let iname = DeviceTensor::tname(in_dt)?;
+        let oname = DeviceTensor::tname(out_dt)?;
         let variant = match (scaled, with_residual) {
             (true, true) => "rms_norm_scaled_add",
             (true, false) => "rms_norm_scaled",
@@ -29,9 +32,9 @@ impl RmsNorm {
             (false, false) => "rms_norm",
         };
         if n_cols < MAX_THREADS {
-            Ok(format!("{variant}_small_{tname}"))
+            Ok(format!("{variant}_small_{iname}_{oname}"))
         } else {
-            Ok(format!("{variant}_{tname}"))
+            Ok(format!("{variant}_{iname}_{oname}"))
         }
     }
 
@@ -66,7 +69,7 @@ impl RmsNorm {
         sum_out: Option<&DeviceTensor>,
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
-        ensure!(output.datum_type() == input.datum_type());
+        ensure!(Self::is_supported_dt(output.datum_type()));
         ensure!(residual.is_some() == sum_out.is_some());
         if let (Some(residual), Some(sum_out)) = (residual, sum_out) {
             ensure!(residual.shape() == input.shape());
@@ -84,6 +87,7 @@ impl RmsNorm {
 
         let kernel_name = self.kernel_name(
             input.datum_type(),
+            output.datum_type(),
             shape_nd3[1],
             scale.is_some(),
             residual.is_some(),
@@ -155,12 +159,8 @@ crate::register_cuda_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, no
 crate::register_cuda_op!(tract_core::ops::nn::ScaledRmsNorm, |source, node, op| {
     let input_facts = source.node_input_facts(node.id)?;
     rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
+    rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
     rule_if!(input_facts[1].datum_type == DatumType::F32);
-    // Unlike Metal's kernel, the Cuda kernel is one fixed dtype `T` for
-    // both input and output: it does not support a fused cast, only a
-    // fused scale/residual. `out_dt` differing from the input dtype
-    // stays untranslated here and falls back to the CPU op instead.
-    rule_if!(op.out_dt.is_none_or(|dt| dt == input_facts[0].datum_type));
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
@@ -292,6 +292,75 @@ mod tests {
         }
         scaled_test_case::<f32>(&[2, 1200], 1)?;
         scaled_test_case::<f16>(&[2, 1200], 1)?;
+        Ok(())
+    }
+
+    /// The OpenELM QK-norm shape: an f16 activation normalized (and scaled)
+    /// into an f32 buffer for a higher-precision downstream op -- the
+    /// specific in/out dtype mismatch that used to make the Cuda
+    /// registration decline `ScaledRmsNorm` and fall back to the CPU op.
+    fn cast_test_case(
+        shape: &[usize],
+        axis: usize,
+        in_dt: DatumType,
+        out_dt: DatumType,
+    ) -> TractResult<()> {
+        use tract_core::ops::nn::ScaledRmsNorm;
+        crate::with_cuda_stream(|stream| {
+            let len = shape.iter().product::<usize>();
+            let dim = shape[axis];
+
+            let input = Tensor::from_shape(
+                shape,
+                &(0..len).map(|f| (f as f32) / 33.0 - 5.0).collect::<Vec<_>>(),
+            )?
+            .cast_to_dt(in_dt)?
+            .into_owned();
+            let scale = Tensor::from_shape(
+                &[dim],
+                &(0..dim).map(|f| 0.5 + (f as f32) / dim as f32).collect::<Vec<_>>(),
+            )?;
+
+            let eps = Arc::new(tensor0(0.0001f32));
+            let cpu_op = ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
+            let cpu_output = cpu_op.eval(
+                &EvalContext::out_of_plan(),
+                tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
+            )?[0]
+                .clone()
+                .into_tensor();
+
+            let input_c = input.into_device()?;
+            let scale_c = scale.into_device()?;
+            let output_c = unsafe { DeviceTensor::uninitialized_dt(out_dt, input_c.shape())? };
+            RmsNorm.dispatch_eval(
+                stream,
+                &input_c,
+                None,
+                Some(&scale_c),
+                axis,
+                &eps,
+                &output_c,
+                None,
+            )?;
+            stream.synchronize()?;
+            let cuda_output = output_c.to_host()?.into_tensor();
+
+            cpu_output
+                .close_enough(&cuda_output, Approximation::Approximate)
+                .with_context(|| format!("Cpu: {cpu_output:?}, Cuda: {cuda_output:?}"))?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_rms_scaled_cast() -> TractResult<()> {
+        for (shape, axis) in [(&[6usize, 8][..], 1), (&[6, 9][..], 1), (&[8, 5][..], 0)] {
+            cast_test_case(shape, axis, DatumType::F16, DatumType::F32)?;
+            cast_test_case(shape, axis, DatumType::F32, DatumType::F16)?;
+        }
+        cast_test_case(&[2, 1200], 1, DatumType::F16, DatumType::F32)?;
+        cast_test_case(&[2, 1200], 1, DatumType::F32, DatumType::F16)?;
         Ok(())
     }
 

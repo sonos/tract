@@ -64,16 +64,23 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
-            .flat_map(|dt| [0, MAX_THREADS].into_iter().map(move |n_cols| (dt, n_cols)))
-            .flat_map(|(dt, n_cols)| {
+            .flat_map(|in_dt| {
+                tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+                    .into_iter()
+                    .map(move |out_dt| (in_dt, out_dt))
+            })
+            .flat_map(|(in_dt, out_dt)| {
+                [0, MAX_THREADS].into_iter().map(move |n_cols| (in_dt, out_dt, n_cols))
+            })
+            .flat_map(|(in_dt, out_dt, n_cols)| {
                 [false, true].into_iter().flat_map(move |scaled| {
                     [false, true]
                         .into_iter()
-                        .map(move |with_residual| (dt, n_cols, scaled, with_residual))
+                        .map(move |with_residual| (in_dt, out_dt, n_cols, scaled, with_residual))
                 })
             })
-            .flat_map(|(dt, n_cols, scaled, with_residual)| {
-                RmsNorm.kernel_name(dt, n_cols, scaled, with_residual).into_iter()
+            .flat_map(|(in_dt, out_dt, n_cols, scaled, with_residual)| {
+                RmsNorm.kernel_name(in_dt, out_dt, n_cols, scaled, with_residual).into_iter()
             }),
     );
 
