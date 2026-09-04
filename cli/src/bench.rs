@@ -5,7 +5,7 @@ use tract_hir::internal::*;
 use tract_libcli::profile::run_one_step;
 use tract_libcli::profile::{BenchLimits, BenchResult};
 #[cfg(not(target_family = "wasm"))]
-use tract_libcli::profile::{Churn, PacedBench, Pacing};
+use tract_libcli::profile_autobatch::{Churn, PacedBench, Pacing};
 use tract_libcli::tensor::get_or_make_inputs;
 use tract_libcli::terminal;
 
@@ -77,7 +77,7 @@ pub fn run(
 /// Several streams at once, each saturating a thread of its own. `evaltime` is
 /// the mean turn as a stream sees it, which under saturation includes waiting
 /// for the others, and `turns_per_s` is what the streams got served together --
-/// the two numbers a laned runtime trades against each other.
+/// the two numbers an autobatch runtime trades against each other.
 #[cfg(not(target_family = "wasm"))]
 fn bench_streams(
     params: &Parameters,

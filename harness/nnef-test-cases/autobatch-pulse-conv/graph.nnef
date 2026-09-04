@@ -9,7 +9,7 @@ extension tract_assert T>=0;
 # Causal convolution over `[B, 1, T]`, pulsified with `B` left symbolic.
 #
 # `B` is the lane axis, not a shape of the signal: a stream feeds one row per
-# turn and the laned runtime stacks the seats of a turn on it. The left pad
+# turn and the autobatch runtime stacks the seats of a turn on it. The left pad
 # and the kernel window are what the pulsifier turns into the `PulsePad` and
 # `Delay` a stream's history lives in, so both have to be addressed per lane
 # for several streams to share the state.
