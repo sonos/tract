@@ -475,6 +475,23 @@ impl RunnableInterface for Runnable {
     }
 }
 
+#[cfg(feature = "unstable-autobatch")]
+impl Runnable {
+    /// Serve up to `max_sessions` concurrent sessions off this one prepared
+    /// model, batching the turns which arrive together into one run. Each
+    /// `spawn_state` is then one session.
+    ///
+    /// The model must carry a batch axis: one symbol, on axis 0, on at least
+    /// one input and one output. A session feeds one row of it per turn, and how
+    /// many rows a run carries is the load's business, not the caller's. A model
+    /// which cannot be served that way fails here.
+    pub fn autobatch(&self, max_sessions: usize) -> Result<Runnable> {
+        let laned =
+            tract_onnx::tract_core::lanes::LanedRunnable::wrap(self.0.clone(), max_sessions)?;
+        Ok(Runnable(Arc::new(laned)))
+    }
+}
+
 // STATE
 pub struct State(Option<Box<dyn tract_nnef::internal::State>>);
 

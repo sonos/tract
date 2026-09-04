@@ -11,6 +11,14 @@
 //! The encoder pulse must equal the model's attention chunk (32 mel frames = 4
 //! encoder frames = 320 ms); other pulses fail chunk-alignment during
 //! pulsification.
+//!
+//! A fourth argument asks for several concurrent sessions. The encoder then
+//! keeps its batch axis symbolic and is served by an autobatch runtime, which
+//! batches whatever turns arrive together; every session is checked against the
+//! same audio transcribed a session at a time, through the same graph. Nothing
+//! makes a box queue two sessions in one turn, so `TRACT_TURN_LINGER_US` is
+//! what widens them; that the turns really were wide is asserted by the CLI
+//! case in `harness/nemotron-3.5-asr-streaming-0.6b`, not here.
 
 use std::fs::File;
 use std::path::PathBuf;
@@ -36,6 +44,24 @@ fn fact_shape(f: &Fact) -> anyhow::Result<Vec<usize>> {
     (0..f.rank()?).map(|a| f.dim(a).and_then(|d| d.to_int64()).map(|v| v as usize)).collect()
 }
 
+/// The shape one session feeds. A symbolic dim is the encoder's batch axis, and
+/// a session feeds one row of it per turn whatever the turn ends up carrying.
+fn fact_shape_one_row(f: &Fact) -> anyhow::Result<Vec<usize>> {
+    (0..f.rank()?).map(|a| Ok(f.dim(a)?.to_int64().map(|v| v as usize).unwrap_or(1))).collect()
+}
+
+/// How the encoder's batch axis is set up, and what serves it.
+#[derive(Clone, Copy)]
+enum EncoderForm {
+    /// Pinned to one row: the single-session demo.
+    Pinned,
+    /// Symbolic, served a session at a time -- the reference an autobatched run
+    /// has to match, on the same graph.
+    Solo,
+    /// Symbolic, served by an autobatch runtime holding that many sessions.
+    Autobatch(usize),
+}
+
 struct NemotronModels {
     preprocessor: Runnable,
     encoder: Runnable,
@@ -55,7 +81,7 @@ struct NemotronModels {
 }
 
 impl NemotronModels {
-    fn load(assets: &str, lang_id: i64) -> anyhow::Result<Self> {
+    fn load(assets: &str, lang_id: i64, form: EncoderForm) -> anyhow::Result<Self> {
         let model_config: serde_json::Value =
             serde_json::from_reader(File::open(format!("{assets}/model/model_config.json"))?)?;
         // t2n>=0.24 config passthrough: vocabulary is `labels`, RNNT blank is the
@@ -92,20 +118,41 @@ impl NemotronModels {
         // Encoder: prompt-fused, so it keeps `audio_signal` + `lang_id`. Pulsify
         // over the mel time axis; `lang_id` (no time axis) rides along as a
         // constant per-pulse input. Drop the `length` output-side input.
+        //
+        // The batch axis is what a session's turns are seated on, so the two
+        // batched forms keep BATCH symbolic. `length` as a scalar then reshapes
+        // to [BATCH] and only typechecks at one row, hence the shape-generic
+        // body; and `batchify_data_free` gives the batch axis to the mask wires
+        // no input feeds, which pulsification would otherwise turn into buffers
+        // every session shares.
         let mut enc = nnef.load(format!("{assets}/model/encoder.nnef.tgz"))?;
-        enc.transform(SetSymbols::new().value("BATCH", 1))?;
+        if matches!(form, EncoderForm::Pinned) {
+            enc.transform(SetSymbols::new().value("BATCH", 1))?;
+        }
         enc.transform("transformers_detect_all")?;
-        enc.transform(
-            r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#,
-        )?;
+        if matches!(form, EncoderForm::Pinned) {
+            enc.transform(
+                r#"{"name":"patch","body":"length = tract_core_shape_of(audio_signal)[2];"}"#,
+            )?;
+        } else {
+            enc.transform(
+                r#"{"name":"patch","body":"length = tract_core_cast(squeeze(sum_reduce(audio_signal, axes=[1,2]), axes=[1,2]) * 0.0, to = \"i64\") + tract_core_cast(tract_core_shape_of(audio_signal)[2], to = \"i64\");"}"#,
+            )?;
+        }
         enc.transform(r#"{"name":"select_inputs","inputs":["audio_signal","lang_id"]}"#)?;
         enc.transform(r#"{"name":"select_outputs","outputs":["outputs"]}"#)?;
+        if !matches!(form, EncoderForm::Pinned) {
+            enc.transform(r#"{"name":"batchify_data_free","symbol":"BATCH"}"#)?;
+        }
         enc.transform(Pulse::new(ENCODER_PULSE.to_string()).symbol("AUDIO_SIGNAL__TIME"))?;
         let enc_delay = enc.property("pulse.delay")?.as_slice::<i64>()?[0] as usize;
         let enc_output_axis = enc.property("pulse.output_axes")?.as_slice::<i64>()?[0] as usize;
         let enc_output_pulse = enc.output_fact(0)?.dim(enc_output_axis)?.to_int64()? as usize;
-        let enc_input_shape = fact_shape(&enc.input_fact(0)?)?;
-        let encoder = runtime.prepare(enc)?;
+        let enc_input_shape = fact_shape_one_row(&enc.input_fact(0)?)?;
+        let encoder = match form {
+            EncoderForm::Autobatch(sessions) => runtime.prepare(enc)?.autobatch(sessions)?,
+            _ => runtime.prepare(enc)?,
+        };
 
         // Decoder (prednet) and joint stay non-streaming, one step at a time.
         let mut dec = nnef.load(format!("{assets}/model/decoder.nnef.tgz"))?;
@@ -318,11 +365,98 @@ impl<'a> StreamState<'a> {
         }
         Ok(())
     }
+}
 
-    fn transcript(&self) -> String {
-        let vocab: Vec<&str> = self.models.vocab.iter().map(|s| s.as_str()).collect();
-        self.hyp.iter().map(|&t| vocab[t]).join("")
+/// Feed one session the whole clip in small chunks, deterministically, and
+/// return the tokens it decoded.
+fn transcribe(models: &NemotronModels, audio: &[f32]) -> anyhow::Result<Vec<usize>> {
+    let mut state = StreamState::new(models)?;
+    for chunk in audio.chunks(80) {
+        state.push_audio(chunk)?;
     }
+    state.flush()?;
+    Ok(state.hyp)
+}
+
+fn text(models: &NemotronModels, hyp: &[usize]) -> String {
+    hyp.iter()
+        .map(|&t| models.vocab[t].as_str())
+        .join("")
+        .replace('\u{2581}', " ")
+        .trim()
+        .to_string()
+}
+
+/// The transcript of the bundled English clip at lang_id=0 (en-US). The
+/// `<en-US>` language tag is part of the model's output and is kept verbatim.
+const EXPECTED: &str = "well I don't wish to see it any more, observed Phoebe, turning away her eyes. <en-US> It is certainly very like the old portrait";
+
+/// Several sessions at once must transcribe exactly as each of them does alone,
+/// and again on a lane a departed session left.
+///
+/// Session `k` arrives `k` pulses late, so no two of them sit at the same
+/// position and a buffer two of them share cannot stay invisible. The same
+/// staggered audio is transcribed a session at a time on the same graph, the
+/// autobatch runtime being all that differs, and that solo run is what the
+/// batched transcripts are held against -- leading silence can move the greedy
+/// path, so only session 0 transcribes the clip as the clip.
+fn check_sessions_batch_as_they_run_alone(
+    assets: &str,
+    lang_id: i64,
+    wav: &[f32],
+    streams: usize,
+) -> anyhow::Result<()> {
+    let arrivals: Vec<Vec<f32>> = (0..streams)
+        .map(|k| {
+            let mut audio = vec![0.0f32; k * PREPROC_PULSE];
+            audio.extend_from_slice(wav);
+            audio
+        })
+        .collect();
+
+    // One at a time: the solo encoder and the autobatched one never hold their
+    // weights together.
+    let alone: Vec<Vec<usize>> = {
+        let models = NemotronModels::load(assets, lang_id, EncoderForm::Solo)?;
+        arrivals.iter().map(|audio| transcribe(&models, audio)).collect::<anyhow::Result<_>>()?
+    };
+
+    let models = NemotronModels::load(assets, lang_id, EncoderForm::Autobatch(streams))?;
+    let batched = |arrivals: &[Vec<f32>]| -> anyhow::Result<Vec<Vec<usize>>> {
+        std::thread::scope(|scope| {
+            let running: Vec<_> =
+                arrivals.iter().map(|audio| scope.spawn(|| transcribe(&models, audio))).collect();
+            running.into_iter().map(|session| session.join().unwrap()).collect::<Vec<_>>()
+        })
+        .into_iter()
+        .collect()
+    };
+
+    let served = batched(&arrivals)?;
+    for (k, (hyp, alone)) in served.iter().zip(&alone).enumerate() {
+        let hyp = text(&models, hyp);
+        ensure!(
+            hyp == text(&models, alone),
+            "session {k} batched transcribes `{hyp}', alone `{}'",
+            text(&models, alone)
+        );
+        println!("session {k}: {hyp}");
+    }
+    ensure!(
+        lang_id != 0 || text(&models, &served[0]) == EXPECTED,
+        "session 0 feeds the clip from its start, so it transcribes it"
+    );
+
+    // The same sessions again, so every lane is one a departed session left:
+    // what a lane carries of its last session has to be gone, and the whole
+    // encoder is 11.4 MiB of it.
+    ensure!(
+        batched(&arrivals)? == served,
+        "a session admitted to a lane a previous one left transcribes differently"
+    );
+
+    println!("{streams} sessions batch as they run alone, and again on the lanes they left.");
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -330,30 +464,22 @@ fn main() -> anyhow::Result<()> {
     let lang_id: i64 = std::env::args().nth(2).and_then(|s| s.parse().ok()).unwrap_or(0);
     let wav_path: PathBuf =
         std::env::args().nth(3).unwrap_or_else(|| format!("{assets}/2086-149220-0033.wav")).into();
-
-    let models = NemotronModels::load(&assets, lang_id)?;
-    let mut state = StreamState::new(&models)?;
+    let streams: usize = std::env::args().nth(4).and_then(|s| s.parse().ok()).unwrap_or(1);
 
     let wav: Vec<f32> = hound::WavReader::open(&wav_path)?
         .samples::<i16>()
         .map(|x| x.unwrap() as f32 / 32768.0)
         .collect();
 
-    // Feed in small chunks to exercise the streaming buffers (deterministic).
-    for chunk in wav.chunks(80) {
-        state.push_audio(chunk)?;
+    if streams > 1 {
+        return check_sessions_batch_as_they_run_alone(&assets, lang_id, &wav, streams);
     }
-    state.flush()?;
 
-    let transcript = state.transcript().replace('▁', " ");
-    let transcript = transcript.trim();
+    let models = NemotronModels::load(&assets, lang_id, EncoderForm::Pinned)?;
+    let transcript = text(&models, &transcribe(&models, &wav)?);
     println!("Transcript: {transcript}");
 
-    // Lock the reference transcript for the bundled English clip at lang_id=0
-    // (en-US). The `<en-US>` language tag is part of the model's output and is
-    // kept verbatim.
     if lang_id == 0 && wav_path.ends_with("2086-149220-0033.wav") {
-        const EXPECTED: &str = "well I don't wish to see it any more, observed Phoebe, turning away her eyes. <en-US> It is certainly very like the old portrait";
         assert_eq!(transcript, EXPECTED);
     }
     Ok(())
