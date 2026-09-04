@@ -672,10 +672,13 @@ impl Conv {
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
 
-    /// Small-`k` group-1 2-D NCHW conv (PP-OCR stem, first-layer 3×3): keep it
-    /// as a spatial conv along W instead of im2col GEMM. Matches ORT leaving
-    /// these as `Conv`/`FusedConv`. Depthwise is `wire_as_depth_wise`; large-k
-    /// 3×3 stays on im2col + AMX.
+    /// Small-`k` group-1 2-D NCHW conv: keep it as a spatial FIR along W
+    /// instead of im2col GEMM. Matches ORT leaving these as `Conv`/`FusedConv`.
+    /// Depthwise is `wire_as_depth_wise`.
+    ///
+    /// On Apple AMX, fat 3×3 (`k = Cin·kh·kw` in the hundreds) stay im2col —
+    /// AMX wants that tile. Without AMX (x86 AVX2) the same layers are a
+    /// starved skinny-K GEMM, so the cap rises to 576 (3×3×64).
     fn can_direct_spatial(&self, input_fact: &TypedFact) -> bool {
         if self.q_params.is_some() {
             return false;
@@ -694,9 +697,8 @@ impl Conv {
             return false;
         }
         let k = self.input_channels() * kvol;
-        // 32 covers the stem (3×3×3) and Conv.2 (2×2×8). 64 takes Conv.1
-        // (2×2×16 → 8), the huge-N skinny-K GEMM that starves AMX/FMA.
-        if k > 64 {
+        let k_limit = if amx_owns_fat_spatial() { 64 } else { 576 };
+        if k > k_limit {
             return false;
         }
         // along-W SIMD is aarch64/x86_64 only; on wasm this would replace
@@ -1421,6 +1423,19 @@ impl TypedOp for Conv {
 /// (and likely lower on memory-constrained targets like embedded ARM). Override via
 /// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
 const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
+
+/// Apple AMX (and the SME path that `has_amx` also reports on M4) owns fat
+/// 3×3 im2col. Everywhere else, DirectSpatial is the better lowering.
+pub(crate) fn amx_owns_fat_spatial() -> bool {
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    {
+        tract_linalg::arm64::has_amx()
+    }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+    {
+        false
+    }
+}
 
 crate::declare_knob!(
     TRACT_ENABLE_BLOCKED_CONV,

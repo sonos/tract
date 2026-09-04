@@ -1,8 +1,8 @@
 //! Direct NCHW spatial convolution (no im2col), vectorised along W.
 //!
-//! Same lowering ORT keeps as `Conv`/`FusedConv` for small-`k` stems
-//! (`k = Cin·kh·kw`). Depthwise goes through `DepthWise`; large-`k` 3×3 stays
-//! on im2col + AMX.
+//! Same lowering ORT keeps as `Conv`/`FusedConv`. Depthwise goes through
+//! `DepthWise`. On Apple AMX, `k = Cin·kh·kw > 64` stays im2col; without AMX
+//! the cap is 576 so fat 3×3 does not become a starved skinny-K GEMM.
 
 use super::along_w::{conv_along_w_f32, conv_along_w_oc4_f32};
 use crate::internal::*;
@@ -79,8 +79,8 @@ impl DirectSpatialConv {
             let c_stride_i = *self.input_shape.c_stride() as isize;
             let c_stride_o = *self.output_shape.c_stride() as isize;
             let k_oc_stride = (self.ic * self.spatial) as isize;
-            // `can_direct_spatial` keeps k = ic·kh·kw ≤ 64.
-            const MAX_TAPS: usize = 64;
+            // Matches `can_direct_spatial`: 64 on AMX, 576 (3×3×64) otherwise.
+            const MAX_TAPS: usize = 576;
             for ni in 0..n as isize {
                 let iptr_n = iptr.offset(n_stride_i * ni);
                 let optr_n = optr.offset(n_stride_o * ni);
@@ -926,5 +926,77 @@ mod tests {
         let nans = y.iter().filter(|v| !v.is_finite()).count();
         assert_eq!(nans, 0, "rec stem produced {nans} non-finite values");
         assert_eq!(y.shape(), &[1, 24, 24, 160]);
+    }
+
+    #[test]
+    fn fat_3x3_k288_matches_reference() {
+        // k = 32·9 = 288: DirectSpatial on AVX2, im2col+AMX on Apple.
+        let n = 1usize;
+        let ic = 32usize;
+        let oc = 8usize;
+        let h = 8usize;
+        let w = 8usize;
+        let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.11).sin()).collect();
+        let kernel: Vec<f32> = (0..oc * ic * 9).map(|i| (i as f32 * 0.07).cos() * 0.2).collect();
+        let bias: Vec<f32> = (0..oc).map(|i| i as f32 * 0.01).collect();
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, ic, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[oc, ic, 3, 3], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[oc], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(3, 3),
+                padding: PaddingSpec::Valid,
+                dilations: None,
+                strides: Some(tvec!(1, 1)),
+                input_channels: ic,
+                output_channels: oc,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let out = model.wire_node("conv", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        let has = model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some());
+        if cfg!(target_family = "wasm") {
+            assert!(!has, "wasm must keep fat 3×3 on simd128 GEMM");
+        } else if super::super::conv::amx_owns_fat_spatial() {
+            assert!(!has, "AMX must keep k=288 on im2col, got DirectSpatialConv");
+        } else {
+            assert!(has, "no-AMX must take DirectSpatial for 3×3 k=288");
+        }
+        let got = model
+            .into_runnable()
+            .unwrap()
+            .run(tvec![Tensor::from_shape(&[n, ic, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let y = got[0].to_plain_array_view::<f32>().unwrap();
+        let oh = y.shape()[2];
+        let ow = y.shape()[3];
+        let mut max_abs = 0f32;
+        for o in 0..oc {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[o];
+                    for c in 0..ic {
+                        for ky in 0..3 {
+                            for kx in 0..3 {
+                                let iy = oy + ky;
+                                let ix = ox + kx;
+                                let xv = x[(c * h + iy) * w + ix];
+                                let kv = kernel[((o * ic + c) * 3 + ky) * 3 + kx];
+                                acc += xv * kv;
+                            }
+                        }
+                    }
+                    max_abs = max_abs.max((y[[0, o, oy, ox]] - acc).abs());
+                }
+            }
+        }
+        assert!(max_abs < 1e-3, "fat 3×3 k=288 mismatch max_abs={max_abs}");
     }
 }

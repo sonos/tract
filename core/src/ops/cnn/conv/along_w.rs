@@ -29,7 +29,7 @@ pub unsafe fn conv_along_w_f32(
     }
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx") {
+        if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx2") {
             avx2_fma(iptr, optr, k, ioffset, bias, len, in_stride, relu);
         } else {
             scalar(iptr, optr, k, ioffset, bias, len, in_stride, relu);
@@ -179,7 +179,29 @@ unsafe fn neon(
 }
 
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx,fma")]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn avx2_load8(p: *const f32, stride: isize) -> std::arch::x86_64::__m256 {
+    unsafe {
+        use std::arch::x86_64::*;
+        if stride == 1 {
+            _mm256_loadu_ps(p)
+        } else if stride == 2 {
+            // 16 consecutive → 8 evens: [0,2,4,6,8,10,12,14]
+            let a = _mm256_loadu_ps(p);
+            let b = _mm256_loadu_ps(p.add(8));
+            let t0 = _mm256_permute2f128_ps(a, b, 0x20);
+            let t1 = _mm256_permute2f128_ps(a, b, 0x31);
+            _mm256_shuffle_ps(t0, t1, 0x88)
+        } else {
+            let s = stride as i32;
+            let idx = _mm256_setr_epi32(0, s, 2 * s, 3 * s, 4 * s, 5 * s, 6 * s, 7 * s);
+            _mm256_i32gather_ps(p, idx, 4)
+        }
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx2,fma")]
 unsafe fn avx2_fma(
     iptr: *const f32,
     optr: *mut f32,
@@ -194,14 +216,14 @@ unsafe fn avx2_fma(
         use std::arch::x86_64::*;
         let n_taps = k.len();
         let mut i = 0usize;
-        if in_stride == 1 {
+        if in_stride == 1 || in_stride == 2 || in_stride == 3 {
             let biasv = _mm256_set1_ps(bias);
             let z = _mm256_setzero_ps();
             while i + 8 <= len {
                 let mut acc = biasv;
                 for n in 0..n_taps {
                     let kn = _mm256_set1_ps(k[n]);
-                    let x = _mm256_loadu_ps(iptr.offset(ioffset[n]).add(i));
+                    let x = avx2_load8(iptr.offset(ioffset[n]).offset(i as isize * in_stride), in_stride);
                     acc = _mm256_fmadd_ps(x, kn, acc);
                 }
                 if relu {
@@ -247,7 +269,7 @@ pub unsafe fn conv_along_w_oc4_f32(
     }
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx") {
+        if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx2") {
             avx2_oc4(iptr, optr, k, ioffset, bias, len, in_stride, oc_stride, relu);
         } else {
             scalar_oc4(iptr, optr, k, ioffset, bias, len, in_stride, oc_stride, relu);
@@ -430,7 +452,7 @@ unsafe fn neon_oc4(
 }
 
 #[cfg(target_arch = "x86_64")]
-#[target_feature(enable = "avx,fma")]
+#[target_feature(enable = "avx2,fma")]
 unsafe fn avx2_oc4(
     iptr: *const f32,
     optr: *mut f32,
@@ -446,7 +468,7 @@ unsafe fn avx2_oc4(
         use std::arch::x86_64::*;
         let n_taps = ioffset.len();
         let mut i = 0usize;
-        if in_stride == 1 {
+        if in_stride == 1 || in_stride == 2 || in_stride == 3 {
             let z = _mm256_setzero_ps();
             let b0 = _mm256_set1_ps(bias[0]);
             let b1 = _mm256_set1_ps(bias[1]);
@@ -458,7 +480,10 @@ unsafe fn avx2_oc4(
                 let mut a2 = b2;
                 let mut a3 = b3;
                 for t in 0..n_taps {
-                    let x = _mm256_loadu_ps(iptr.offset(ioffset[t]).add(i));
+                    let x = avx2_load8(
+                        iptr.offset(ioffset[t]).offset(i as isize * in_stride),
+                        in_stride,
+                    );
                     a0 = _mm256_fmadd_ps(x, _mm256_set1_ps(k[t]), a0);
                     a1 = _mm256_fmadd_ps(x, _mm256_set1_ps(k[n_taps + t]), a1);
                     a2 = _mm256_fmadd_ps(x, _mm256_set1_ps(k[2 * n_taps + t]), a2);
