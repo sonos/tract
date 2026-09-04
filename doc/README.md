@@ -1,6 +1,6 @@
 # tract internals documentation
 
-Internal notes about tract. Start from [`AGENTS.md`](../AGENTS.md) for the
+Internal notes about tract. Start from [`overview.md`](overview.md) for the
 operational quick reference (crate map, build/test, model rewriting,
 streaming, CLI inspection); the documents here cover conceptual material
 that is harder to derive from reading the source.
