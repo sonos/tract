@@ -72,3 +72,8 @@ cuda-12090 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-12090"]
 cuda-13000 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13000"]
 cuda-13010 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13010"]
 cuda-13020 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13020"]
+
+# Serve many concurrent sessions off one prepared model (`Runtime::autobatch`).
+# Unstable: the shape of the surface is still being settled against the server
+# it is meant for, so it is not covered by the no-breaking-change commitment.
+unstable-autobatch = []
