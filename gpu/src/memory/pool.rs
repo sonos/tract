@@ -44,14 +44,8 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        self.resolved_schema.offsets_by_node[node_id]
-            .as_ref()
-            .map(|offsets| {
-                ensure!(
-                    slot < offsets.len() && offsets[slot].len() == 1,
-                    "'tensor_for_node_output' slot {slot} out of range or not \
-                     mono-region for node {node_id}"
-                );
+        match self.resolved_schema.offsets_by_node[node_id].as_ref() {
+            Some(offsets) if slot < offsets.len() && offsets[slot].len() == 1 => {
                 Ok(DeviceArenaView {
                     arena: Arc::clone(&self.storage),
                     dt,
@@ -62,8 +56,9 @@ impl DeviceMemoryPool {
                     exotic_fact: None,
                 }
                 .into())
-            })
-            .unwrap_or_else(|| DeviceTensor::uninitialized_dt(dt, shape))
+            }
+            _ => DeviceTensor::uninitialized_dt(dt, shape),
+        }
     }
 
     pub fn scalar_exotic_tensor_for_node(
