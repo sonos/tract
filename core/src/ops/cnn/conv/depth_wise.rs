@@ -9,6 +9,8 @@ pub struct DepthWise {
     patch: Patch,
     input_shape: DataShape,
     output_shape: DataShape,
+    relu: bool,
+    scale: bool,
 }
 
 impl Op for DepthWise {
@@ -17,7 +19,7 @@ impl Op for DepthWise {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.patch)])
+        Ok(vec![format!("relu={} scale={} {:?}", self.relu, self.scale, self.patch)])
     }
 
     fn validation(&self) -> Validation {
@@ -58,7 +60,7 @@ impl DepthWise {
 
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        anyhow::ensure!(inputs.len() == 3);
+        anyhow::ensure!(inputs.len() == 3 || (self.scale && inputs.len() == 4));
         anyhow::ensure!(
             self.input_shape.c() == self.output_shape.c(),
             "DepthWiseConv must have same input and output channels"
@@ -83,20 +85,155 @@ impl TypedOp for DepthWise {
         )))
     }
 
+    fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
+        if model.outlet_fact(node.id.into())?.datum_type != f32::datum_type() {
+            return Ok(None);
+        }
+        if !self.relu && super::direct_spatial::successor_is_relu0(model, node)? {
+            return Ok(Some(TypedModelPatch::fuse_with_next(
+                model,
+                node,
+                Self { relu: true, ..self.clone() },
+            )?));
+        }
+        if !self.scale {
+            let c = *self.input_shape.c();
+            if let Some(other) = super::direct_spatial::successor_is_channel_mul(model, node, c)? {
+                // Prefer baking the scale into the weights: exact, and free at
+                // eval, where carrying it costs a scalar pass over every output
+                // element. Only the const, per-channel case can fold.
+                if let Some(patch) = fold_channel_scale(self, model, node, other, c)? {
+                    return Ok(Some(patch));
+                }
+                let mut patch = TypedModelPatch::new("fuse channel scale into DepthWiseConv");
+                let mut taps = patch.taps(model, &node.inputs)?;
+                taps.push(patch.tap_model(model, other)?);
+                let succ = model.node(node.outputs[0].successors[0].node);
+                let out =
+                    patch.wire_node(&node.name, Self { scale: true, ..self.clone() }, &taps)?;
+                patch.shunt_outside(model, succ.id.into(), out[0])?;
+                return Ok(Some(patch));
+            }
+        }
+        Ok(None)
+    }
+
     as_op!();
+}
+
+/// Bake a constant per-channel scale into the kernel and bias, so no scale
+/// survives to eval: `relu(conv(x, w) + b) * s == relu(conv(x, w*s) + b*s)`.
+///
+/// The kernel applies `relu` *before* the scale, and `relu(y)*s == relu(y*s)`
+/// only holds for `s > 0`, so a relu-fused op needs every scale positive.
+/// A per-batch scale (`volume == c*n`) cannot fold: the weights are shared
+/// across the batch. Both fall back to carrying the scale at runtime.
+fn fold_channel_scale(
+    op: &DepthWise,
+    model: &TypedModel,
+    node: &TypedNode,
+    scale_outlet: OutletId,
+    c: usize,
+) -> TractResult<Option<TypedModelPatch>> {
+    let scale_fact = model.outlet_fact(scale_outlet)?;
+    if scale_fact.shape.volume().to_usize().ok() != Some(c) {
+        return Ok(None);
+    }
+    let (Some(scale), Some(kernel), Some(bias)) = (
+        scale_fact.konst.as_ref(),
+        model.outlet_fact(node.inputs[1])?.konst.as_ref(),
+        model.outlet_fact(node.inputs[2])?.konst.as_ref(),
+    ) else {
+        return Ok(None);
+    };
+    if kernel.datum_type() != f32::datum_type() || bias.datum_type() != f32::datum_type() {
+        return Ok(None);
+    }
+    let scale = scale.cast_to::<f32>()?;
+    let scale = scale.try_as_plain()?.as_slice::<f32>()?.to_vec();
+    if op.relu && !scale.iter().all(|s| *s > 0.0) {
+        return Ok(None);
+    }
+    let mut kernel = kernel.clone().into_tensor();
+    let mut bias = bias.clone().into_tensor();
+    // The eval loop reads channel `c` at `kernel.strides()[1] * c`, so that
+    // stride is what maps a kernel element back to its channel.
+    let k_stride = *kernel.strides().get(1).context("depthwise kernel is rank < 2")? as usize;
+    if k_stride == 0 {
+        return Ok(None);
+    }
+    {
+        let mut k_plain = kernel.try_as_plain_mut()?;
+        for (i, k) in k_plain.as_slice_mut::<f32>()?.iter_mut().enumerate() {
+            *k *= scale[(i / k_stride) % c];
+        }
+    }
+    {
+        let mut b_plain = bias.try_as_plain_mut()?;
+        for (b, s) in b_plain.as_slice_mut::<f32>()?.iter_mut().zip(scale.iter()) {
+            *b *= s;
+        }
+    }
+    let mut patch = TypedModelPatch::new("fold channel scale into DepthWiseConv weights");
+    let x = patch.tap_model(model, node.inputs[0])?;
+    let kernel = patch.add_const(format!("{}.kernel_scaled", node.name), kernel)?;
+    let bias = patch.add_const(format!("{}.bias_scaled", node.name), bias)?;
+    let out = patch.wire_node(&node.name, op.clone(), &[x, kernel, bias])?;
+    let succ = model.node(node.outputs[0].successors[0].node);
+    patch.shunt_outside(model, succ.id.into(), out[0])?;
+    Ok(Some(patch))
+}
+
+#[inline(always)]
+fn maybe_relu_generic<T: Copy + 'static>(v: T, relu: bool) -> T {
+    if relu && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+        let f = unsafe { *(&v as *const T as *const f32) };
+        let r = f.max(0.0);
+        return unsafe { std::ptr::read(&r as *const f32 as *const T) };
+    }
+    v
+}
+
+/// The channel scale for `c`, or 1.0 when there is none. Read once per channel:
+/// reading it per output element, and worse applying it through the output
+/// pointer, put a store-to-load round trip in the innermost loop and stopped it
+/// vectorising.
+#[inline(always)]
+unsafe fn channel_scale(scale_ptr: *const f32, c: isize) -> f32 {
+    if scale_ptr.is_null() { 1.0 } else { unsafe { *scale_ptr.offset(c) } }
+}
+
+/// `v * sc` for `T = f32`, `v` otherwise. `TypeId` folds at monomorphisation,
+/// so the non-f32 instantiations keep this free.
+#[inline(always)]
+fn scaled_generic<T: Copy + 'static>(v: T, sc: f32) -> T {
+    if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+        let f = unsafe { *(&v as *const T as *const f32) } * sc;
+        return unsafe { std::ptr::read(&f as *const f32 as *const T) };
+    }
+    v
 }
 
 macro_rules! impl_eval {
     ($(#[$meta: meta])* $suffix: ident ) => {
         pastey::paste! {
             $(#[$meta])*
-            unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
+            unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar + 'static>(
                 dw: &DepthWise,
                 inputs: TVec<TValue>,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
             ) -> TractResult<TVec<TValue>> {
-                let (img, kernel, bias) = args_3!(inputs);
+                let img = &inputs[0];
+                let kernel = &inputs[1];
+                let bias = &inputs[2];
+                let scale_ptr: *const f32 = if dw.scale
+                    && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                {
+                    inputs[3].as_ptr::<f32>()?
+                } else {
+                    std::ptr::null()
+                };
                 let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
                 let iptr = img.as_ptr::<T>()?;
                 let optr = output.as_ptr_mut::<T>()?;
@@ -115,7 +252,7 @@ macro_rules! impl_eval {
                         for zone in &dw.patch.zones {
                             [<process_zone_ $suffix>](
                                 dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-                                add, mul,
+                                add, mul, scale_ptr,
                             )
                         }
                     }
@@ -138,6 +275,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
+                scale_ptr: *const f32,
                 ) { unsafe {
                 /*
                    if zone.values_offsets.len() == 2 {
@@ -151,25 +289,51 @@ macro_rules! impl_eval {
                    } else */
                 match zone.values_offsets.len() {
                     1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     2 => [<process_zone_n_ $suffix>]::<T, 2, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     3 => [<process_zone_n_ $suffix>]::<T, 3, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
-                    _ => zone.visit_output(&dw.patch, |visitor| {
-                        for c in 0..*dw.input_shape.c() as isize {
-                            let iptr = iptr.offset(c_stride_i * c);
-                            let optr = optr.offset(c_stride_o * c);
-                            let kptr = kptr.offset(k_stride_i * c);
-                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
+                    9 => [<process_zone_n_ $suffix>]::<T, 9, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
+                    ),
+                    25 => [<process_zone_n_ $suffix>]::<T, 25, 4>(
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
+                    ),
+                    _ => {
+                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+                            process_zone_along_w_f32(
+                                dw,
+                                zone,
+                                c_stride_i,
+                                c_stride_o,
+                                k_stride_i,
+                                iptr as *const f32,
+                                kptr as *const f32,
+                                bias as *const f32,
+                                optr as *mut f32,
+                                scale_ptr,
+                            );
+                        } else {
+                            zone.visit_output(&dw.patch, |visitor| {
+                                for c in 0..*dw.input_shape.c() as isize {
+                                    let iptr = iptr.offset(c_stride_i * c);
+                                    let optr = optr.offset(c_stride_o * c);
+                                    let kptr = kptr.offset(k_stride_i * c);
+                                    [<inner_loop_ $suffix>]::<T>(
+                                        iptr, kptr, bias, optr, c, visitor, add, mul, dw.relu,
+                                        scale_ptr,
+                                    )
+                                }
+                            })
                         }
-                    }),
+                    }
                 }
             }}
 
@@ -188,6 +352,7 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
+                scale_ptr: *const f32,
                 ) { unsafe {
                 let mut visitor = ZoneScanner::new(zone, &dw.patch);
                 let mut ioffset = [0isize; N];
@@ -203,9 +368,39 @@ macro_rules! impl_eval {
                         k[n] = *kptr.offset(k_stride_i * c).add(zone.values_offsets[n].0);
                     }
                     let bias = *bias.offset(c);
+                    let scale = channel_scale(scale_ptr, c);
+                    let has_scale = !scale_ptr.is_null();
+                    let relu = dw.relu;
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
+                        if super::along_w::has_simd_kernel()
+                            && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                            && visitor.inner_loop_output_stride == 1
+                            && visitor.inner_loop_input_full_stride >= 1
+                        {
+                            let k_f32 = &*(&k as *const [T; N] as *const [f32; N]);
+                            let bias_f32 = *(&bias as *const T as *const f32);
+                            super::along_w::conv_along_w_f32(
+                                iptr as *const f32,
+                                optr as *mut f32,
+                                k_f32,
+                                &ioffset,
+                                bias_f32,
+                                visitor.inner_loop_len,
+                                visitor.inner_loop_input_full_stride,
+                                dw.relu,
+                            );
+                            if !scale_ptr.is_null() {
+                                let sc = *scale_ptr.offset(c);
+                                let op = optr as *mut f32;
+                                for i in 0..visitor.inner_loop_len {
+                                    *op.add(i) *= sc;
+                                }
+                            }
+                            visitor.next_non_inner_axis();
+                            continue;
+                        }
                         let mut i = 0isize;
                         while i + (UNROLL as isize) < visitor.inner_loop_len as isize {
                             let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
@@ -235,7 +430,8 @@ macro_rules! impl_eval {
                                 for n in 0..N {
                                     sum = add(sum, ps[u][n]);
                                 }
-                                *optrs[u] = sum;
+                                let v = maybe_relu_generic(sum, relu);
+                                *optrs[u] = if has_scale { scaled_generic(v, scale) } else { v };
                             }
                             i += UNROLL as isize;
                         }
@@ -254,7 +450,8 @@ macro_rules! impl_eval {
                             for n in 0..N {
                                 sum = add(sum, p[n]);
                             }
-                            *optr = sum;
+                            let v = maybe_relu_generic(sum, relu);
+                            *optr = if has_scale { scaled_generic(v, scale) } else { v };
                             i += 1;
                         }
                         visitor.next_non_inner_axis()
@@ -274,7 +471,10 @@ macro_rules! impl_eval {
                 visitor: &ZoneScanner,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
+                relu: bool,
+                scale_ptr: *const f32,
                 ) { unsafe {
+                let scale = channel_scale(scale_ptr, c);
                 let mut sum = *bias.offset(c);
                 let mut iter = visitor.valid_offsets_ker_in();
                 if iter.size_hint() == (3, Some(3)) {
@@ -296,7 +496,8 @@ macro_rules! impl_eval {
                     }
                 }
                 let optr = optr.offset(visitor.output_offset);
-                *optr = sum;
+                let v = maybe_relu_generic(sum, relu);
+                *optr = if scale_ptr.is_null() { v } else { scaled_generic(v, scale) };
             }}
         }
     }
@@ -308,6 +509,81 @@ impl_eval! {
 #[cfg(target_arch = "aarch64")]
 aarch64fp16
 }
+
+unsafe fn process_zone_along_w_f32(
+    dw: &DepthWise,
+    zone: &Zone,
+    c_stride_i: isize,
+    c_stride_o: isize,
+    k_stride_i: isize,
+    iptr: *const f32,
+    kptr: *const f32,
+    bias: *const f32,
+    optr: *mut f32,
+    scale_ptr: *const f32,
+) {
+    unsafe {
+        let n_taps = zone.values_offsets.len();
+        let mut ioffset = vec![0isize; n_taps];
+        let mut k = vec![0f32; n_taps];
+        for i in 0..n_taps {
+            ioffset[i] = zone.values_offsets[i].1;
+        }
+        let mut visitor = ZoneScanner::new(zone, &dw.patch);
+        for c in 0..*dw.input_shape.c() as isize {
+            visitor.reset();
+            let iptr_c = iptr.offset(c_stride_i * c);
+            let optr_c = optr.offset(c_stride_o * c);
+            let kptr_c = kptr.offset(k_stride_i * c);
+            for n in 0..n_taps {
+                k[n] = *kptr_c.add(zone.values_offsets[n].0);
+            }
+            let b = *bias.offset(c);
+            while !visitor.done {
+                let ip = iptr_c.offset(visitor.input_center_offset);
+                let op = optr_c.offset(visitor.output_offset);
+                if super::along_w::has_simd_kernel()
+                    && visitor.inner_loop_output_stride == 1
+                    && visitor.inner_loop_input_full_stride >= 1
+                {
+                    super::along_w::conv_along_w_f32(
+                        ip,
+                        op,
+                        &k,
+                        &ioffset,
+                        b,
+                        visitor.inner_loop_len,
+                        visitor.inner_loop_input_full_stride,
+                        dw.relu,
+                    );
+                    if !scale_ptr.is_null() {
+                        let sc = *scale_ptr.offset(c);
+                        for i in 0..visitor.inner_loop_len {
+                            *op.add(i) *= sc;
+                        }
+                    }
+                } else {
+                    for i in 0..visitor.inner_loop_len {
+                        let mut sum = b;
+                        let ipi = ip.offset(visitor.inner_loop_input_full_stride * i as isize);
+                        for n in 0..n_taps {
+                            sum += k[n] * *ipi.offset(ioffset[n]);
+                        }
+                        if dw.relu {
+                            sum = sum.max(0.0);
+                        }
+                        if !scale_ptr.is_null() {
+                            sum *= *scale_ptr.offset(c);
+                        }
+                        *op.offset(visitor.inner_loop_output_stride * i as isize) = sum;
+                    }
+                }
+                visitor.next_non_inner_axis();
+            }
+        }
+    }
+}
+
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
 /* partial alternative impl that may be relevant when simd gets better */
@@ -469,3 +745,245 @@ let sum = bias + p0 + p1 + p2 + p3;
      }
      }
      */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::conv::{Conv, KernelFormat};
+    use crate::ops::cnn::{PaddingSpec, PoolSpec};
+    use crate::ops::nn::DataFormat;
+
+    fn run_dw(
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        pad: PaddingSpec,
+        stride: (usize, usize),
+    ) {
+        let n = 1usize;
+        let x: Vec<f32> = (0..n * c * h * w).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
+        let kernel: Vec<f32> = (0..c * kh * kw).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
+        let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
+
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, c, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[c, 1, kh, kw], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[c], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(kh, kw),
+                padding: pad.clone(),
+                dilations: None,
+                strides: Some(tvec!(stride.0, stride.1)),
+                input_channels: c,
+                output_channels: c,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: c,
+            q_params: None,
+        };
+        let out = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        // On wasm the blocked convolution is on by default and owns this
+        // lowering, so only assert the op elsewhere. The numeric check below
+        // still runs on every target.
+        assert!(
+            cfg!(target_family = "wasm")
+                || model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
+            "expected DepthWiseConv, got {}",
+            model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
+        );
+        let runnable = model.into_runnable().unwrap();
+        let got = runnable
+            .run(tvec![Tensor::from_shape(&[n, c, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let got = got[0].to_plain_array_view::<f32>().unwrap();
+        let oshape = got.shape();
+        let oh = oshape[2];
+        let ow = oshape[3];
+        let (ph, pw) = match pad {
+            PaddingSpec::Valid => (0isize, 0isize),
+            _ => (((kh - 1) / 2) as isize, ((kw - 1) / 2) as isize),
+        };
+        let mut max_abs = 0f32;
+        for oc in 0..c {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[oc];
+                    for ky in 0..kh {
+                        for kx in 0..kw {
+                            let iy = oy as isize * stride.0 as isize + ky as isize - ph;
+                            let ix = ox as isize * stride.1 as isize + kx as isize - pw;
+                            if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                continue;
+                            }
+                            let xv = x[((oc * h + iy as usize) * w) + ix as usize];
+                            let kv = kernel[((oc * kh + ky) * kw) + kx];
+                            acc += xv * kv;
+                        }
+                    }
+                    let g = got[[0, oc, oy, ox]];
+                    max_abs = max_abs.max((g - acc).abs());
+                }
+            }
+        }
+        assert!(
+            max_abs < 1e-5,
+            "DepthWise mismatch c={c} {h}x{w} k={kh}x{kw} stride={stride:?} pad={pad:?}: max_abs={max_abs}"
+        );
+    }
+
+    #[test]
+    fn depthwise_contig_w_matches_reference() {
+        // 48 kHz-like: NCHW, H=1, long W, kw=3. Inner loop is W.
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(32, 1, 481, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(8, 1, 17, 1, 3, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 12, 20, 3, 1, PaddingSpec::Valid, (1, 1));
+        run_dw(4, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
+        // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
+        run_dw(64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
+        run_dw(64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 2));
+        // 2-D 3×3 / 5×5 (PP-OCR / MobileNet): interior zone is 9 or 25 taps.
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(4, 40, 40, 5, 5, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 32, 32, 3, 3, PaddingSpec::Valid, (2, 2));
+    }
+
+    #[test]
+    fn depthwise_channel_scale_matches_reference() {
+        // Conv fuses [1,C,1,1] Mul into the DW kernel before DepthWise exists.
+        run_dw_scale(8, 9, 11, 3, 3, PaddingSpec::SameUpper, (1, 1), false);
+        run_dw_scale(6, 1, 32, 1, 3, PaddingSpec::Valid, (1, 1), false);
+        run_dw_scale(4, 8, 8, 3, 3, PaddingSpec::Valid, (1, 1), false);
+    }
+
+    #[test]
+    fn depthwise_fuses_channel_scale() {
+        run_dw_scale(8, 9, 11, 3, 3, PaddingSpec::SameUpper, (1, 1), true);
+        run_dw_scale(6, 1, 32, 1, 3, PaddingSpec::Valid, (1, 1), true);
+        // tiny_rec Conv.35: 1×5 along W, pad 2, C=160, H=1, W=40.
+        run_dw_scale(
+            160,
+            1,
+            40,
+            1,
+            5,
+            PaddingSpec::Explicit(tvec!(0, 2), tvec!(0, 2)),
+            (1, 1),
+            true,
+        );
+    }
+
+    fn run_dw_scale(
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        pad: PaddingSpec,
+        stride: (usize, usize),
+        after_lowering: bool,
+    ) {
+        let n = 1usize;
+        let x: Vec<f32> = (0..n * c * h * w).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
+        let kernel: Vec<f32> = (0..c * kh * kw).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
+        let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
+        let scale: Vec<f32> = (0..c).map(|i| 0.5 + i as f32 * 0.1).collect();
+
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, c, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[c, 1, kh, kw], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[c], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(kh, kw),
+                padding: pad.clone(),
+                dilations: None,
+                strides: Some(tvec!(stride.0, stride.1)),
+                input_channels: c,
+                output_channels: c,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: c,
+            q_params: None,
+        };
+        let y = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&y).unwrap();
+        let mut model = if after_lowering {
+            model.into_decluttered().unwrap().into_optimized().unwrap()
+        } else {
+            model
+        };
+        let conv_out = model.output_outlets().unwrap()[0];
+        let sv =
+            model.add_const("scale", Tensor::from_shape(&[1, c, 1, 1], &scale).unwrap()).unwrap();
+        let out = model.wire_node("se", crate::ops::math::mul(), &[conv_out, sv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        let dw = model
+            .nodes
+            .iter()
+            .find_map(|node| node.op_as::<DepthWise>())
+            .expect("expected DepthWiseConv");
+        if after_lowering {
+            // The Mul must not survive. A const per-channel scale folds into the
+            // weights (`scale` stays false and nothing is left to do at eval);
+            // anything else is carried on the op as `scale`. Either way the
+            // DepthWiseConv is what produces the output.
+            let out_node = model.node(model.output_outlets().unwrap()[0].node);
+            assert!(
+                out_node.op_as::<DepthWise>().is_some(),
+                "channel-scale Mul should be absorbed by DepthWiseConv, got {}",
+                out_node.op().name()
+            );
+            assert!(!dw.scale, "a const per-channel scale should fold into the weights");
+        }
+        let runnable = model.into_runnable().unwrap();
+        let got = runnable
+            .run(tvec![Tensor::from_shape(&[n, c, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let got = got[0].to_plain_array_view::<f32>().unwrap();
+        let oh = got.shape()[2];
+        let ow = got.shape()[3];
+        let (ph, pw) = match pad {
+            PaddingSpec::Valid => (0isize, 0isize),
+            _ => (((kh - 1) / 2) as isize, ((kw - 1) / 2) as isize),
+        };
+        let mut max_abs = 0f32;
+        for oc in 0..c {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[oc];
+                    for ky in 0..kh {
+                        for kx in 0..kw {
+                            let iy = oy as isize * stride.0 as isize + ky as isize - ph;
+                            let ix = ox as isize * stride.1 as isize + kx as isize - pw;
+                            if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                continue;
+                            }
+                            let xv = x[((oc * h + iy as usize) * w) + ix as usize];
+                            let kv = kernel[((oc * kh + ky) * kw) + kx];
+                            acc += xv * kv;
+                        }
+                    }
+                    acc *= scale[oc];
+                    max_abs = max_abs.max((got[[0, oc, oy, ox]] - acc).abs());
+                }
+            }
+        }
+        assert!(
+            max_abs < 1e-4,
+            "DepthWise scale mismatch c={c} {h}x{w} k={kh}x{kw} stride={stride:?} pad={pad:?} after_lowering={after_lowering}: max_abs={max_abs}"
+        );
+    }
+}

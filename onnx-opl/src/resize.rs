@@ -460,6 +460,18 @@ impl TypedOp for Resize {
             }
         }
 
+        Ok(None)
+    }
+
+    /// Codegen, not declutter: `NearestUpsample` is an execution form with no
+    /// NNEF serializer, and NNEF round-trips the decluttered model.
+    fn codegen(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        let rank = input_fact.rank();
         rule_if!(matches!(self.interpolator, Interpolator::Nearest));
         rule_if_some!(scales_input = self.optional_scales_input);
         let scales_fact = model.outlet_fact(node.inputs[scales_input])?;

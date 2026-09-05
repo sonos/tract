@@ -668,7 +668,93 @@ impl Conv {
             c_axis,
             self.output_channels(),
         )?[0];
-        let op = DepthWise::new(patch, input_shape, output_shape);
+        let op = DepthWise::new(patch, input_shape, output_shape, false, false);
+        Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
+    }
+
+    /// Small-`k` group-1 2-D NCHW conv: keep it as a spatial FIR along W
+    /// instead of im2col GEMM. Matches ORT leaving these as `Conv`/`FusedConv`.
+    /// Depthwise is `wire_as_depth_wise`.
+    ///
+    /// On Apple AMX, fat 3×3 (`k = Cin·kh·kw` in the hundreds) stay im2col —
+    /// AMX wants that tile. Without AMX (x86 AVX2) the same layers are a
+    /// starved skinny-K GEMM, so the cap rises to 576 (3×3×64).
+    fn can_direct_spatial(&self, input_fact: &TypedFact) -> bool {
+        if self.q_params.is_some() {
+            return false;
+        }
+        if input_fact.datum_type != f32::datum_type() {
+            return false;
+        }
+        if self.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+            return false;
+        }
+        if self.group != 1 || self.pool_spec.rank() != 2 {
+            return false;
+        }
+        let kvol = self.pool_spec.kernel_shape.iter().product::<usize>();
+        if kvol < 2 {
+            return false;
+        }
+        let k = self.input_channels() * kvol;
+        let k_limit = if amx_owns_fat_spatial() { 64 } else { 576 };
+        if k > k_limit {
+            return false;
+        }
+        // along-W SIMD is aarch64/x86_64 only. Anywhere else this replaces a
+        // tuned GEMM with a scalar FIR: simd128 on wasm, and equally armv7
+        // (cortex-a7/a9) and riscv64 (GTCRN 1×5, DFN3 3×3×1, MobileNet stem).
+        if !super::along_w::has_simd_kernel() {
+            return false;
+        }
+        let Some(ishape) = input_fact.shape.as_concrete() else {
+            return false;
+        };
+        // DirectSpatial repacks its taps per zone and per four output channels,
+        // so it needs a long enough output row to amortise that. PP-OCR
+        // detection runs W=320/640 and wins; DFN3's encoder runs W=32/96 and
+        // loses 12% against the im2col GEMM it would replace.
+        let Ok(oshape) = self.pool_spec.output_shape(&ishape) else {
+            return false;
+        };
+        let Some(w_out) = oshape.hw_dims().last().cloned() else {
+            return false;
+        };
+        w_out >= MIN_DIRECT_SPATIAL_W
+    }
+
+    pub fn wire_as_direct_spatial(
+        &self,
+        model: &mut TypedModel,
+        name: &str,
+        wire: &[OutletId],
+    ) -> TractResult<OutletId> {
+        let &[x, kernel, mut bias] = wire else { bail!("Wrong number of inputs") };
+        let x_fact = model.outlet_fact(x)?.clone();
+        let x_shape = x_fact.shape.as_concrete().unwrap();
+        let ConcretePoolGeometry { input_shape, patch, output_shape } =
+            self.pool_spec.compute_geo(&x_fact.shape)?.to_concrete(x_shape)?.into_owned();
+        let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
+        let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
+        bias = wire_reshape_bias_for_bin(
+            model,
+            name,
+            bias,
+            x_fact.rank(),
+            c_axis,
+            self.output_channels(),
+        )?[0];
+        let spatial = self.pool_spec.kernel_shape.iter().product::<usize>();
+        let op = super::DirectSpatialConv::new(
+            patch,
+            input_shape,
+            output_shape,
+            self.input_channels(),
+            self.output_channels(),
+            spatial,
+            false,
+            false,
+        );
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
 
@@ -1290,6 +1376,15 @@ impl TypedOp for Conv {
                 patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
                 patch.obliterate(node.id)?;
                 Ok(Some(patch))
+            } else if self.can_direct_spatial(input_fact) {
+                let mut patch = TypedModelPatch::new("direct-spatial");
+                let inputs = patch.taps(model, &node.inputs)?;
+                let wire = self
+                    .wire_as_direct_spatial(&mut patch, &node.name, &inputs)
+                    .context("wire_as_direct_spatial")?;
+                patch.shunt_outside(model, OutletId::new(node.id, 0), wire)?;
+                patch.obliterate(node.id)?;
+                Ok(Some(patch))
             } else if input_fact
                 .shape
                 .as_concrete()
@@ -1342,6 +1437,25 @@ impl TypedOp for Conv {
 /// (and likely lower on memory-constrained targets like embedded ARM). Override via
 /// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
 const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
+
+/// Shortest output row DirectSpatial will take. Below it the per-zone tap
+/// repack does not amortise and im2col wins: measured on DFN3's encoder
+/// (W=32/96), which regresses 12% without this, against PP-OCR detection
+/// (W=320/640), which is where the lowering pays.
+const MIN_DIRECT_SPATIAL_W: usize = 128;
+
+/// Apple AMX (and the SME path that `has_amx` also reports on M4) owns fat
+/// 3×3 im2col. Everywhere else, DirectSpatial is the better lowering.
+pub(crate) fn amx_owns_fat_spatial() -> bool {
+    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
+    {
+        tract_linalg::arm64::has_amx()
+    }
+    #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
+    {
+        false
+    }
+}
 
 crate::declare_knob!(
     TRACT_ENABLE_BLOCKED_CONV,
