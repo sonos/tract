@@ -707,7 +707,20 @@ impl Conv {
         if !super::along_w::has_simd_kernel() {
             return false;
         }
-        input_fact.shape.as_concrete().is_some()
+        let Some(ishape) = input_fact.shape.as_concrete() else {
+            return false;
+        };
+        // DirectSpatial repacks its taps per zone and per four output channels,
+        // so it needs a long enough output row to amortise that. PP-OCR
+        // detection runs W=320/640 and wins; DFN3's encoder runs W=32/96 and
+        // loses 12% against the im2col GEMM it would replace.
+        let Ok(oshape) = self.pool_spec.output_shape(&ishape) else {
+            return false;
+        };
+        let Some(w_out) = oshape.hw_dims().last().cloned() else {
+            return false;
+        };
+        w_out >= MIN_DIRECT_SPATIAL_W
     }
 
     pub fn wire_as_direct_spatial(
@@ -1424,6 +1437,12 @@ impl TypedOp for Conv {
 /// (and likely lower on memory-constrained targets like embedded ARM). Override via
 /// `TRACT_LAZY_IM2COL_MIN_KERNEL` env var to experiment with lower thresholds.
 const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
+
+/// Shortest output row DirectSpatial will take. Below it the per-zone tap
+/// repack does not amortise and im2col wins: measured on DFN3's encoder
+/// (W=32/96), which regresses 12% without this, against PP-OCR detection
+/// (W=320/640), which is where the lowering pays.
+const MIN_DIRECT_SPATIAL_W: usize = 128;
 
 /// Apple AMX (and the SME path that `has_amx` also reports on M4) owns fat
 /// 3×3 im2col. Everywhere else, DirectSpatial is the better lowering.

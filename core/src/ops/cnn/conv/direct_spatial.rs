@@ -442,7 +442,7 @@ mod tests {
         let ic = 3usize;
         let oc = 16usize;
         let h = 32usize;
-        let w = 32usize;
+        let w = 320usize;
         let kh = 3usize;
         let kw = 3usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.11).sin()).collect();
@@ -512,7 +512,7 @@ mod tests {
         let ic = 3usize;
         let oc = 8usize;
         let h = 16usize;
-        let w = 16usize;
+        let w = 320usize;
         let kh = 3usize;
         let kw = 3usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.11).sin() - 0.3).collect();
@@ -603,7 +603,7 @@ mod tests {
         let ic = 8usize;
         let oc = 16usize;
         let h = 16usize;
-        let w = 16usize;
+        let w = 320usize;
         let kh = 2usize;
         let kw = 2usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.13).sin() - 0.2).collect();
@@ -685,7 +685,7 @@ mod tests {
         let ic = 16usize;
         let oc = 8usize;
         let h = 12usize;
-        let w = 12usize;
+        let w = 320usize;
         let kh = 2usize;
         let kw = 2usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.13).sin() - 0.2).collect();
@@ -756,7 +756,7 @@ mod tests {
         let ic = 4usize;
         let oc = 6usize;
         let h = 9usize;
-        let w = 11usize;
+        let w = 321usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.13).sin() - 0.2).collect();
         let kernel: Vec<f32> =
             (0..oc * ic * 2 * 2).map(|i| (i as f32 * 0.09).cos() * 0.15).collect();
@@ -935,7 +935,7 @@ mod tests {
         let ic = 32usize;
         let oc = 8usize;
         let h = 8usize;
-        let w = 8usize;
+        let w = 320usize;
         let x: Vec<f32> = (0..n * ic * h * w).map(|i| (i as f32 * 0.11).sin()).collect();
         let kernel: Vec<f32> = (0..oc * ic * 9).map(|i| (i as f32 * 0.07).cos() * 0.2).collect();
         let bias: Vec<f32> = (0..oc).map(|i| i as f32 * 0.01).collect();
