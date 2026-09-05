@@ -194,15 +194,24 @@ fn maybe_relu_generic<T: Copy + 'static>(v: T, relu: bool) -> T {
     v
 }
 
+/// The channel scale for `c`, or 1.0 when there is none. Read once per channel:
+/// reading it per output element, and worse applying it through the output
+/// pointer, put a store-to-load round trip in the innermost loop and stopped it
+/// vectorising.
 #[inline(always)]
-fn apply_scale_f32<T: Copy + 'static>(optr: *mut T, scale_ptr: *const f32, c: isize) {
-    if scale_ptr.is_null() || std::any::TypeId::of::<T>() != std::any::TypeId::of::<f32>() {
-        return;
+unsafe fn channel_scale(scale_ptr: *const f32, c: isize) -> f32 {
+    if scale_ptr.is_null() { 1.0 } else { unsafe { *scale_ptr.offset(c) } }
+}
+
+/// `v * sc` for `T = f32`, `v` otherwise. `TypeId` folds at monomorphisation,
+/// so the non-f32 instantiations keep this free.
+#[inline(always)]
+fn scaled_generic<T: Copy + 'static>(v: T, sc: f32) -> T {
+    if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+        let f = unsafe { *(&v as *const T as *const f32) } * sc;
+        return unsafe { std::ptr::read(&f as *const f32 as *const T) };
     }
-    unsafe {
-        let sc = *scale_ptr.offset(c);
-        *(optr as *mut f32) *= sc;
-    }
+    v
 }
 
 macro_rules! impl_eval {
@@ -359,14 +368,16 @@ macro_rules! impl_eval {
                         k[n] = *kptr.offset(k_stride_i * c).add(zone.values_offsets[n].0);
                     }
                     let bias = *bias.offset(c);
+                    let scale = channel_scale(scale_ptr, c);
+                    let has_scale = !scale_ptr.is_null();
+                    let relu = dw.relu;
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
-                        if super::along_w::HAS_SIMD_KERNEL
+                        if super::along_w::has_simd_kernel()
                             && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
                             && visitor.inner_loop_output_stride == 1
                             && visitor.inner_loop_input_full_stride >= 1
-                            && visitor.inner_loop_len >= super::along_w::MIN_ALONG_W_LEN
                         {
                             let k_f32 = &*(&k as *const [T; N] as *const [f32; N]);
                             let bias_f32 = *(&bias as *const T as *const f32);
@@ -419,8 +430,8 @@ macro_rules! impl_eval {
                                 for n in 0..N {
                                     sum = add(sum, ps[u][n]);
                                 }
-                                *optrs[u] = maybe_relu_generic(sum, dw.relu);
-                                apply_scale_f32(optrs[u], scale_ptr, c);
+                                let v = maybe_relu_generic(sum, relu);
+                                *optrs[u] = if has_scale { scaled_generic(v, scale) } else { v };
                             }
                             i += UNROLL as isize;
                         }
@@ -439,8 +450,8 @@ macro_rules! impl_eval {
                             for n in 0..N {
                                 sum = add(sum, p[n]);
                             }
-                            *optr = maybe_relu_generic(sum, dw.relu);
-                            apply_scale_f32(optr, scale_ptr, c);
+                            let v = maybe_relu_generic(sum, relu);
+                            *optr = if has_scale { scaled_generic(v, scale) } else { v };
                             i += 1;
                         }
                         visitor.next_non_inner_axis()
@@ -463,6 +474,7 @@ macro_rules! impl_eval {
                 relu: bool,
                 scale_ptr: *const f32,
                 ) { unsafe {
+                let scale = channel_scale(scale_ptr, c);
                 let mut sum = *bias.offset(c);
                 let mut iter = visitor.valid_offsets_ker_in();
                 if iter.size_hint() == (3, Some(3)) {
@@ -484,8 +496,8 @@ macro_rules! impl_eval {
                     }
                 }
                 let optr = optr.offset(visitor.output_offset);
-                *optr = maybe_relu_generic(sum, relu);
-                apply_scale_f32(optr, scale_ptr, c);
+                let v = maybe_relu_generic(sum, relu);
+                *optr = if scale_ptr.is_null() { v } else { scaled_generic(v, scale) };
             }}
         }
     }
@@ -530,7 +542,7 @@ unsafe fn process_zone_along_w_f32(
             while !visitor.done {
                 let ip = iptr_c.offset(visitor.input_center_offset);
                 let op = optr_c.offset(visitor.output_offset);
-                if super::along_w::HAS_SIMD_KERNEL
+                if super::along_w::has_simd_kernel()
                     && visitor.inner_loop_output_stride == 1
                     && visitor.inner_loop_input_full_stride >= 1
                 {

@@ -704,7 +704,7 @@ impl Conv {
         // along-W SIMD is aarch64/x86_64 only. Anywhere else this replaces a
         // tuned GEMM with a scalar FIR: simd128 on wasm, and equally armv7
         // (cortex-a7/a9) and riscv64 (GTCRN 1×5, DFN3 3×3×1, MobileNet stem).
-        if !super::along_w::HAS_SIMD_KERNEL {
+        if !super::along_w::has_simd_kernel() {
             return false;
         }
         input_fact.shape.as_concrete().is_some()
