@@ -99,7 +99,7 @@ inference (wake-word, streaming ASR, ...).
 
 The translate-time logic lives in `tract-pulse`; runtime ships only the
 small `tract-pulse-opl` crate. See
-[`AGENTS.md` § Streaming and pulsification](AGENTS.md#streaming-and-pulsification)
+[`doc/overview.md` § Streaming and pulsification](doc/overview.md#streaming-and-pulsification)
 for the engineering view, and
 [`examples/nemo-nemotron-streaming-asr`](examples/nemo-nemotron-streaming-asr)
 for a working demo.

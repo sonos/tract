@@ -411,6 +411,11 @@ fn get_or_make_tensors(
     target: &mut TVec<Vec<TValue>>,
     streaming_input_len: &mut Option<usize>,
 ) -> TractResult<()> {
+    // What the caller feeds is not what the model runs: an autobatched model keeps its
+    // batch axis symbolic while every stream feeds one row, so the shapes here
+    // come from `--set` rather than from the facts.
+    let mut fact = fact;
+    fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
     if let Some(mut value) = params
         .tensors_values
         .by_name(name)
@@ -504,7 +509,10 @@ fn get_or_make_tensors(
             let needed_pulses = last_frame.divceil(output_pulse);
             let mut values = vec![];
             for ix in 0..needed_pulses {
-                let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                let shape = fact.shape.as_concrete().with_context(|| {
+                    format!("Input {name} pulses into {fact:?}, bind its free symbols with --set")
+                })?;
+                let mut t = Tensor::zero_dt(fact.datum_type, shape)?;
                 let start = ix * input_pulse;
                 let end = (start + input_pulse).min(input_len);
                 if end > start {
@@ -540,7 +548,6 @@ fn get_or_make_tensors(
 
         let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
         for fact in &mut chunked_facts {
-            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
             chunked_tensors.push(tensor_for_fact(fact, None, tv)?.into());
         }
         target.push(chunked_tensors);

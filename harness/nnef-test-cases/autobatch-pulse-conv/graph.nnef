@@ -1,0 +1,26 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol B;
+extension tract_symbol T;
+extension tract_assert B>=1;
+extension tract_assert T>=0;
+
+# Causal convolution over `[B, 1, T]`, pulsified with `B` left symbolic.
+#
+# `B` is the lane axis, not a shape of the signal: a stream feeds one row per
+# turn and the autobatch runtime stacks the seats of a turn on it. The left pad
+# and the kernel window are what the pulsifier turns into the `PulsePad` and
+# `Delay` a stream's history lives in, so both have to be addressed per lane
+# for several streams to share the state.
+#
+# Streaming axis: 2 on the input and on the output. Pulse size P = 2.
+
+graph network(a) -> (output)
+{
+    a = tract_core_external(shape = [B, 1, T], datum_type = 'f32');
+
+    padded = pad(a, padding = [(0, 0), (0, 0), (2, 0)], border = 'constant', value = 0.0);
+    kernel = [[[1.0, 2.0, 3.0]]];
+    output = conv(padded, kernel, border = 'constant', padding = [(0, 0)]);
+}

@@ -2,10 +2,12 @@ mod act_f16;
 mod by_scalar;
 #[cfg(target_arch = "aarch64")]
 mod erf;
+mod exp;
 mod gelu;
 mod gelu_fused;
 mod hardswish;
 mod leaky_relu;
+mod ln;
 mod max;
 mod min;
 mod panel_extract;
@@ -22,10 +24,12 @@ pub use act_f16::arm64simd_tanh_f16_4n;
 pub use by_scalar::*;
 #[cfg(target_arch = "aarch64")]
 pub use erf::arm64simd_erf_f32_8n;
+pub use exp::arm64simd_exp_f32_16n;
 pub use gelu::arm64simd_gelu_f32_4n;
 pub use gelu_fused::arm64simd_gelu_f32_4n_fused;
 pub use hardswish::arm64simd_hardswish_f32_8n;
 pub use leaky_relu::arm64simd_leaky_relu_f32_8n;
+pub use ln::arm64simd_ln_f32_16n;
 pub use max::arm64simd_max_f32_16n;
 pub use min::arm64simd_min_f32_16n;
 pub use rms_norm::rms_norm_f32 as arm64simd_rms_norm_f32;

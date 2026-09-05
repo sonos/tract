@@ -1031,12 +1031,26 @@ impl Parameters {
                 };
 
                 let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
-                let runnable = runtime.prepare_with_options(typed_model, &options)?;
+                let runnable: Arc<dyn Runnable> =
+                    runtime.prepare_with_options(typed_model, &options)?.into();
+                // Autobatching decorates whatever runtime was picked: the lanes
+                // live in the state the worker owns, so it wraps the prepared
+                // model rather than replacing the runtime that prepared it.
+                let runnable = if let Some(lanes) = matches.get_one::<String>("autobatch-sessions")
+                {
+                    let lanes = lanes.parse().with_context(|| {
+                        format!("--autobatch-sessions expects a count, got {lanes}")
+                    })?;
+                    Arc::new(tract_core::lanes::LanedRunnable::wrap(runnable, lanes)?)
+                        as Arc<dyn Runnable>
+                } else {
+                    runnable
+                };
                 // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
                 // so we consume tract_model knowning the runnable will give us a new one later.
                 // we should hold on the old model in the general case, but this leads to dup models weights in memory
                 let typed_model = runnable.typed_model().unwrap();
-                (typed_model.clone(), Some(runnable.into()))
+                (typed_model.clone(), Some(runnable))
             } else {
                 (tract_model, None)
             };

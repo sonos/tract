@@ -528,7 +528,9 @@ q: [i8, u8, i32, i32] => f32::abs;
 operating_datum_type: |dt| if dt == TDim::datum_type() { i64::datum_type() } else { dt }
 );
 
-element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
+element_wise!(exp, Exp,
+[f32] => |_, xs| { Func::Exp.ew_f32()?.run(xs) },
+[f16, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.exp());
     Ok(())
 };
@@ -536,7 +538,9 @@ q: [i8, u8, i32, i32] => f32::exp;
 validation: Validation::Rounding
 );
 
-element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
+element_wise!(ln, Ln,
+[f32] => |_, xs| { Func::Ln.ew_f32()?.run(xs) },
+[f16, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ln());
     Ok(())
 };

@@ -124,3 +124,35 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
 	--approx very \
 	--drop-partial-pulse
+
+# The batch axis is the lane axis, so the autobatched form of the encoder keeps
+# BATCH symbolic: no set_symbols, and a shape-generic patch body, since `length`
+# as a scalar reshapes to [BATCH] and only typechecks at BATCH=1.
+batched_patch='patch(body: "length = tract_core_cast(squeeze(sum_reduce(audio_signal, axes=[1,2]), axes=[1,2]) * 0.0, to = \"i64\") + tract_core_cast(tract_core_shape_of(audio_signal)[2], to = \"i64\");")'
+
+$TRACT_RUN $model_prefix.encoder.nnef.tgz \
+	--nnef-tract-transformers \
+	-t "$batched_patch" \
+	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'batchify_data_free(symbol: Some("BATCH"))' \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+	dump -q \
+	--assert-output-fact BATCH,1024,4,f32
+
+# Four streams on four lanes of one state, seated wherever the worker finds them
+# queued, each against the same stream run alone. The linger widens the turns
+# whatever the box's scheduling, so the batch axis and the seating are exercised
+# rather than the model being served one stream at a time.
+TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
+	--nnef-tract-transformers \
+	-t "$batched_patch" \
+	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'batchify_data_free(symbol: Some("BATCH"))' \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+	--autobatch-sessions 4 --hint BATCH=4 \
+	run --streams 4 --turns 3 --assert-occupancy 2.5 \
+	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+	--approx exact \
+	--drop-partial-pulse

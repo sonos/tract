@@ -242,7 +242,7 @@ for context on the kernel selection that `LAZY_IM2COL_*` is steering.
 ## Pulsified networks
 
 The CLI can turn a streaming-friendly network into a pulsified one and run
-the assertion path against a batch reference (see also AGENTS.md §Streaming
+the assertion path against a batch reference (see also overview.md §Streaming
 and pulsification):
 
 ```bash
