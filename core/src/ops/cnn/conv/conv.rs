@@ -701,9 +701,10 @@ impl Conv {
         if k > k_limit {
             return false;
         }
-        // along-W SIMD is aarch64/x86_64 only; on wasm this would replace
-        // simd128 GEMM with a scalar FIR (GTCRN 1×5, DFN3 3×3×1, MobileNet stem).
-        if cfg!(target_family = "wasm") {
+        // along-W SIMD is aarch64/x86_64 only. Anywhere else this replaces a
+        // tuned GEMM with a scalar FIR: simd128 on wasm, and equally armv7
+        // (cortex-a7/a9) and riscv64 (GTCRN 1×5, DFN3 3×3×1, MobileNet stem).
+        if !super::along_w::HAS_SIMD_KERNEL {
             return false;
         }
         input_fact.shape.as_concrete().is_some()

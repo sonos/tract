@@ -293,9 +293,11 @@ macro_rules! impl_eval {
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
-                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                        if super::along_w::HAS_SIMD_KERNEL
+                            && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
                             && visitor.inner_loop_output_stride == 1
                             && visitor.inner_loop_input_full_stride >= 1
+                            && visitor.inner_loop_len >= super::along_w::MIN_ALONG_W_LEN
                         {
                             let k_f32 = &*(&k as *const [T; N] as *const [f32; N]);
                             let bias_f32 = *(&bias as *const T as *const f32);
@@ -459,7 +461,8 @@ unsafe fn process_zone_along_w_f32(
             while !visitor.done {
                 let ip = iptr_c.offset(visitor.input_center_offset);
                 let op = optr_c.offset(visitor.output_offset);
-                if visitor.inner_loop_output_stride == 1
+                if super::along_w::HAS_SIMD_KERNEL
+                    && visitor.inner_loop_output_stride == 1
                     && visitor.inner_loop_input_full_stride >= 1
                 {
                     super::along_w::conv_along_w_f32(
@@ -705,8 +708,12 @@ mod tests {
         let out = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        // On wasm the blocked convolution is on by default and owns this
+        // lowering, so only assert the op elsewhere. The numeric check below
+        // still runs on every target.
         assert!(
-            model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
+            cfg!(target_family = "wasm")
+                || model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
             "expected DepthWiseConv, got {}",
             model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
         );

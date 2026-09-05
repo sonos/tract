@@ -2,8 +2,20 @@
 //!
 //! Same inner loop ORT/MLAS uses for NCHW spatial conv: splat each tap, FMA a
 //! SIMD load of X. Depthwise 3×3/5×5 is N=9/25; a grouped-1 stem 3×3×Cin is
-//! N=Cin·9. 1-D kernels (DPDFNet, N=3) stay on the const-N monomorph in
-//! `depth_wise.rs`.
+//! N=Cin·9. Short rows and non-SIMD targets stay on the const-N monomorph in
+//! `depth_wise.rs` — see `MIN_ALONG_W_LEN` and `HAS_SIMD_KERNEL`.
+
+/// `conv_along_w_*` is only a win where it has a SIMD kernel. On every other
+/// target it degrades to `scalar()`, a runtime-length serial `fmul`/`fadd`
+/// chain, which loses to the const-N monomorph's four independent accumulators
+/// (armv7 cortex-a7/a9, riscv64, wasm simd128).
+pub const HAS_SIMD_KERNEL: bool = cfg!(any(target_arch = "aarch64", target_arch = "x86_64"));
+
+/// Minimum contiguous outputs before the along-W handoff pays for itself. The
+/// call is out-of-line and re-splats each tap per 8-output block, so a short
+/// row (MobileNet 14×14 and 7×7 stages) is cheaper on the const-N body, which
+/// keeps taps in registers and unrolls four outputs.
+pub const MIN_ALONG_W_LEN: usize = 32;
 
 /// F32 FIR along W. `in_stride` is the input step for one output step (1 for
 /// stride-1, 2/3 for the DPDFNet encoder). `relu` applies `max(0, ·)` at the
@@ -223,7 +235,10 @@ unsafe fn avx2_fma(
                 let mut acc = biasv;
                 for n in 0..n_taps {
                     let kn = _mm256_set1_ps(k[n]);
-                    let x = avx2_load8(iptr.offset(ioffset[n]).offset(i as isize * in_stride), in_stride);
+                    let x = avx2_load8(
+                        iptr.offset(ioffset[n]).offset(i as isize * in_stride),
+                        in_stride,
+                    );
                     acc = _mm256_fmadd_ps(x, kn, acc);
                 }
                 if relu {

@@ -207,7 +207,8 @@ impl OptMaxPool {
     }
 
     /// NCHW spatial loop (n, c, y, x) instead of `visit_output`'s inverted
-    /// (spatial, n, c). W is contiguous, so 2×2 stride-1 vectorises along x.
+    /// (spatial, n, c). W is contiguous, so 2×2 vectorises along x. Every other
+    /// geometry returns `None` and keeps the zone-partitioned path.
     fn try_nchw_2d<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,
@@ -220,79 +221,22 @@ impl OptMaxPool {
         if patch.rank() != 2 || *geo.input_shape.w_stride() != 1 {
             return Ok(None);
         }
+        // Only the vectorised 2×2 f32 case beats the zone-partitioned
+        // `visit_output` path. A generic NCHW loop is a naive scalar walk with a
+        // bounds test per tap, where `visit_output` hoists those out of the
+        // interior, so anything else (inception's 3×3/2 pools) must fall through.
+        if !(T::datum_type() == f32::datum_type()
+            && patch.spec.kernel_shape[..] == [2, 2]
+            && patch.spec.dilations[..] == [1, 1])
+        {
+            return Ok(None);
+        }
         let mut values =
             unsafe { Tensor::uninitialized_dt(input.datum_type(), &geo.output_shape.shape)? };
-        if T::datum_type() == f32::datum_type()
-            && patch.spec.kernel_shape[..] == [2, 2]
-            && patch.spec.dilations[..] == [1, 1]
-        {
-            unsafe {
-                maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
-            }
-            return Ok(Some(values));
-        }
         unsafe {
-            maxpool_nchw_2d::<T>(input.as_ptr::<T>()?, values.as_ptr_mut::<T>()?, geo);
+            maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
         }
         Ok(Some(values))
-    }
-}
-
-unsafe fn maxpool_nchw_2d<T: Copy + num_traits::Bounded + PartialOrd>(
-    iptr: *const T,
-    optr: *mut T,
-    geo: &ConcretePoolGeometry,
-) {
-    unsafe {
-        let ish = &geo.input_shape;
-        let osh = &geo.output_shape;
-        let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
-        let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
-        let (kh, kw) =
-            (geo.patch.spec.kernel_shape[0] as isize, geo.patch.spec.kernel_shape[1] as isize);
-        let sh = geo.patch.spec.strides[0] as isize;
-        let sw = geo.patch.spec.strides[1] as isize;
-        let dh = geo.patch.spec.dilations[0] as isize;
-        let dw = geo.patch.spec.dilations[1] as isize;
-        let pt = geo.patch.pad_before[0] as isize;
-        let pl = geo.patch.pad_before[1] as isize;
-        let ih_stride = *ish.h_stride() as isize;
-        let oh_stride = *osh.h_stride() as isize;
-        let n = *ish.n().unwrap_or(&1) as isize;
-        let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
-        let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
-        let c = *ish.c() as isize;
-        let ic_stride = *ish.c_stride() as isize;
-        let oc_stride = *osh.c_stride() as isize;
-        for nn in 0..n {
-            for cc in 0..c {
-                let in_base = nn * in_stride + cc * ic_stride;
-                let out_base = nn * on_stride + cc * oc_stride;
-                for oy in 0..oh {
-                    for ox in 0..ow {
-                        let mut m = T::min_value();
-                        for ky in 0..kh {
-                            let iy = oy as isize * sh + ky * dh - pt;
-                            if iy < 0 || iy >= h {
-                                continue;
-                            }
-                            let row = iptr.offset(in_base + iy * ih_stride);
-                            for kx in 0..kw {
-                                let ix = ox as isize * sw + kx * dw - pl;
-                                if ix < 0 || ix >= w {
-                                    continue;
-                                }
-                                let v = *row.offset(ix);
-                                if m < v {
-                                    m = v;
-                                }
-                            }
-                        }
-                        *optr.offset(out_base + oy as isize * oh_stride + ox as isize) = m;
-                    }
-                }
-            }
-        }
     }
 }
 
