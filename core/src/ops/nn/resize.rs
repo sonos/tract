@@ -437,7 +437,9 @@ impl TypedOp for Resize {
         Ok(tvec!(inputs[0].datum_type.fact(&output_shape)))
     }
 
-    fn declutter(
+    /// Codegen, not declutter: `NearestUpsample` is an execution form with no
+    /// NNEF serializer, and NNEF round-trips the decluttered model.
+    fn codegen(
         &self,
         model: &TypedModel,
         node: &TypedNode,
@@ -633,9 +635,10 @@ pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<
     })
 }
 
-/// Lowers a nearest-neighbour integer upsample to Reshape → Tile → Reshape: each
-/// upsampled axis is split into a size-1 axis, tiled by its scale, then merged
-/// back. Shared by the core and ONNX Resize declutters.
+/// Lowers a nearest-neighbour integer upsample to a single `NearestUpsample`,
+/// replacing the Reshape → Tile → MultiBroadcastTo → Reshape chain with one
+/// pixel-replication pass. Shared by the core and ONNX Resize codegens — it
+/// runs at codegen because `NearestUpsample` has no NNEF serializer.
 pub fn lower_nearest_integer_upsample(
     model: &TypedModel,
     node: &TypedNode,
