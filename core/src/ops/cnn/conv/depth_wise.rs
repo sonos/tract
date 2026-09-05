@@ -99,6 +99,12 @@ impl TypedOp for DepthWise {
         if !self.scale {
             let c = *self.input_shape.c();
             if let Some(other) = super::direct_spatial::successor_is_channel_mul(model, node, c)? {
+                // Prefer baking the scale into the weights: exact, and free at
+                // eval, where carrying it costs a scalar pass over every output
+                // element. Only the const, per-channel case can fold.
+                if let Some(patch) = fold_channel_scale(self, model, node, other, c)? {
+                    return Ok(Some(patch));
+                }
                 let mut patch = TypedModelPatch::new("fuse channel scale into DepthWiseConv");
                 let mut taps = patch.taps(model, &node.inputs)?;
                 taps.push(patch.tap_model(model, other)?);
@@ -113,6 +119,69 @@ impl TypedOp for DepthWise {
     }
 
     as_op!();
+}
+
+/// Bake a constant per-channel scale into the kernel and bias, so no scale
+/// survives to eval: `relu(conv(x, w) + b) * s == relu(conv(x, w*s) + b*s)`.
+///
+/// The kernel applies `relu` *before* the scale, and `relu(y)*s == relu(y*s)`
+/// only holds for `s > 0`, so a relu-fused op needs every scale positive.
+/// A per-batch scale (`volume == c*n`) cannot fold: the weights are shared
+/// across the batch. Both fall back to carrying the scale at runtime.
+fn fold_channel_scale(
+    op: &DepthWise,
+    model: &TypedModel,
+    node: &TypedNode,
+    scale_outlet: OutletId,
+    c: usize,
+) -> TractResult<Option<TypedModelPatch>> {
+    let scale_fact = model.outlet_fact(scale_outlet)?;
+    if scale_fact.shape.volume().to_usize().ok() != Some(c) {
+        return Ok(None);
+    }
+    let (Some(scale), Some(kernel), Some(bias)) = (
+        scale_fact.konst.as_ref(),
+        model.outlet_fact(node.inputs[1])?.konst.as_ref(),
+        model.outlet_fact(node.inputs[2])?.konst.as_ref(),
+    ) else {
+        return Ok(None);
+    };
+    if kernel.datum_type() != f32::datum_type() || bias.datum_type() != f32::datum_type() {
+        return Ok(None);
+    }
+    let scale = scale.cast_to::<f32>()?;
+    let scale = scale.try_as_plain()?.as_slice::<f32>()?.to_vec();
+    if op.relu && !scale.iter().all(|s| *s > 0.0) {
+        return Ok(None);
+    }
+    let mut kernel = kernel.clone().into_tensor();
+    let mut bias = bias.clone().into_tensor();
+    // The eval loop reads channel `c` at `kernel.strides()[1] * c`, so that
+    // stride is what maps a kernel element back to its channel.
+    let k_stride = *kernel.strides().get(1).context("depthwise kernel is rank < 2")? as usize;
+    if k_stride == 0 {
+        return Ok(None);
+    }
+    {
+        let mut k_plain = kernel.try_as_plain_mut()?;
+        for (i, k) in k_plain.as_slice_mut::<f32>()?.iter_mut().enumerate() {
+            *k *= scale[(i / k_stride) % c];
+        }
+    }
+    {
+        let mut b_plain = bias.try_as_plain_mut()?;
+        for (b, s) in b_plain.as_slice_mut::<f32>()?.iter_mut().zip(scale.iter()) {
+            *b *= s;
+        }
+    }
+    let mut patch = TypedModelPatch::new("fold channel scale into DepthWiseConv weights");
+    let x = patch.tap_model(model, node.inputs[0])?;
+    let kernel = patch.add_const(format!("{}.kernel_scaled", node.name), kernel)?;
+    let bias = patch.add_const(format!("{}.bias_scaled", node.name), bias)?;
+    let out = patch.wire_node(&node.name, op.clone(), &[x, kernel, bias])?;
+    let succ = model.node(node.outputs[0].successors[0].node);
+    patch.shunt_outside(model, succ.id.into(), out[0])?;
+    Ok(Some(patch))
 }
 
 #[inline(always)]
@@ -855,7 +924,17 @@ mod tests {
             .find_map(|node| node.op_as::<DepthWise>())
             .expect("expected DepthWiseConv");
         if after_lowering {
-            assert!(dw.scale, "channel-scale Mul should fuse into DepthWiseConv");
+            // The Mul must not survive. A const per-channel scale folds into the
+            // weights (`scale` stays false and nothing is left to do at eval);
+            // anything else is carried on the op as `scale`. Either way the
+            // DepthWiseConv is what produces the output.
+            let out_node = model.node(model.output_outlets().unwrap()[0].node);
+            assert!(
+                out_node.op_as::<DepthWise>().is_some(),
+                "channel-scale Mul should be absorbed by DepthWiseConv, got {}",
+                out_node.op().name()
+            );
+            assert!(!dw.scale, "a const per-channel scale should fold into the weights");
         }
         let runnable = model.into_runnable().unwrap();
         let got = runnable
