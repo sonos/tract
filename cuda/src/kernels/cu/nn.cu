@@ -726,6 +726,20 @@ __device__ void scaled_bool_masked_softmax(
 // into an f32 buffer for a higher-precision downstream op): `residual` and
 // `sum_out` are always `InT` (the residual stream stays in the input
 // dtype, same contract as Metal's kernel), only `dst` is `OutT`.
+// Reads the value the norm operates on: the plain input, or `input +
+// residual` summed in InT. The two f16 operands add exactly in f32, so the
+// single cast back to InT is the correctly-rounded InT sum -- i.e. exactly
+// what a standalone Add dispatch (and Metal's kernel) produces.
+template <typename InT, bool HAS_RESIDUAL>
+__device__ __forceinline__ InT load_normed_input(const InT *x, const InT *residual,
+                                                 const int idx) {
+    if constexpr (HAS_RESIDUAL) {
+        return (InT)((float)x[idx] + (float)residual[idx]);
+    } else {
+        return x[idx];
+    }
+}
+
 template <typename InT, typename OutT, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE>
 __device__ void rms_norm_body(const InT *x, const InT *residual, const float *scale,
                                OutT *dst, InT *sum_out, const int32_t shape_0,
@@ -738,10 +752,12 @@ __device__ void rms_norm_body(const InT *x, const InT *residual, const float *sc
     float tmp = 0.0f;
     for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
         const int idx = base_idx + i * strides_1;
-        float xi = (float)x[idx];
-        if constexpr (HAS_RESIDUAL) {
-            xi += (float)residual[idx];
-        }
+        // The residual sum is ROUNDED BACK TO InT before it is used, so the
+        // fusion stays bit-identical to the standalone Add dispatch it
+        // replaces (and matches Metal's `input[idx] + res[idx]`). Summing in
+        // f32 and normalizing that unrounded value would drop a rounding
+        // step the source graph performs.
+        float xi = (float)load_normed_input<InT, HAS_RESIDUAL>(x, residual, idx);
         tmp += xi * xi;
     }
 
@@ -763,12 +779,11 @@ __device__ void rms_norm_body(const InT *x, const InT *residual, const float *sc
 
     for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
         const int idx = base_idx + i * strides_1;
-        float xi = (float)x[idx];
+        const InT v = load_normed_input<InT, HAS_RESIDUAL>(x, residual, idx);
         if constexpr (HAS_RESIDUAL) {
-            xi += (float)residual[idx];
-            sum_out[idx] = (InT)xi;
+            sum_out[idx] = v;
         }
-        float normed = rscale * xi;
+        float normed = rscale * (float)v;
         if constexpr (HAS_SCALE) {
             normed *= scale[i];
         }
