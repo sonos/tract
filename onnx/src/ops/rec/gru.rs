@@ -56,16 +56,12 @@ impl WireBody for GRU {
         has_bias: bool,
         chunk: isize,
         seq_len: usize,
+        emit_y: bool,
     ) -> Option<Box<dyn TypedOp>> {
-        // Same gate as the fused cell: GruSeq's loop body IS GruEpilogue, so it is
-        // valid exactly where the epilogue is.
-        // Fusing trades per-iteration dispatch for an in-op loop, so it pays only
-        // while dispatch dominates the step's arithmetic. Measured, aarch64, min of
-        // five interleaved runs: GTCRN (hidden 16, T=33) 0.67 ms -> 0.46, a 1.45x
-        // win; DeepFilterNet3's erb_dec (hidden 256, T=100) 5.55 ms -> 5.93, a 7%
-        // loss, because there the per-step product IS the work and the Scan's
-        // per-dispatch kernel selection is already doing the right thing. Gate on
-        // the hidden size that separates the two regimes.
+        // GruSeq's loop body IS GruEpilogue, so the fused form is valid exactly
+        // where the epilogue is. Fusing trades per-iteration dispatch for an in-op
+        // loop, so it pays only below the hidden size at which the per-step product,
+        // rather than dispatch, dominates the step.
         (hidden <= 64
             && seq_len >= 4
             && self.linear_before_reset
@@ -77,9 +73,9 @@ impl WireBody for GRU {
                 has_bias,
                 chunk,
                 // The Scan this replaces is built with reset_every_turn false, so
-                // the fused op starts from the same contract; the pulse pass and
-                // NNEF round-trip carry the flag the same way for both.
+                // the fused op starts from the same contract.
                 reset_every_turn: false,
+                emit_y,
             }) as Box<dyn TypedOp>
         })
     }
