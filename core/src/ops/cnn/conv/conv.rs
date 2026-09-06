@@ -714,6 +714,16 @@ impl Conv {
         // so it needs a long enough output row to amortise that. PP-OCR
         // detection runs W=320/640 and wins; DFN3's encoder runs W=32/96 and
         // loses 12% against the im2col GEMM it would replace.
+        //
+        // A convolution never widens W, so the input's own W is an upper bound
+        // on the output's and settles most candidates without computing the
+        // output shape at all -- that call is not free at codegen time, and it
+        // showed up as load+optimize on the small cores.
+        let hw = self.pool_spec.data_format.shape(&ishape).ok();
+        let w_in = hw.as_ref().and_then(|s| s.hw_dims().last().copied());
+        if w_in.is_some_and(|w| w < MIN_DIRECT_SPATIAL_W) {
+            return false;
+        }
         let Ok(oshape) = self.pool_spec.output_shape(&ishape) else {
             return false;
         };
