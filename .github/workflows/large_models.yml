@@ -143,14 +143,7 @@ jobs:
       run: |
         chmod +x "tract-cli-${UNAME}/tract"
         export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli-${UNAME}/tract"
-        if [ "$RT_MATRIX" = "gpu" ]
-        then
-          case $(uname) in
-            Darwin) RT=metal;;
-            Linux) RT=cuda;;
-          esac
-        fi
-        .travis/test-llm.sh "$MODEL" "$Q" "$RT"
+        .travis/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
 
   parakeet-tdt-600m-v3:
     name: ${{matrix.os}} / Parakeet TDT 600m v3
