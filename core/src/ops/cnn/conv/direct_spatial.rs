@@ -429,8 +429,8 @@ mod tests {
 
     fn assert_spatial_lowering(model: &TypedModel) {
         let has = model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some());
-        if cfg!(target_family = "wasm") {
-            assert!(!has, "wasm must keep small-k conv on simd128 GEMM, got DirectSpatialConv");
+        if !super::super::along_w::has_simd_kernel() {
+            assert!(!has, "no along-W SIMD kernel must keep small-k conv on GEMM");
         } else {
             assert!(
                 has,
@@ -549,7 +549,7 @@ mod tests {
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
         assert_spatial_lowering(&model);
-        if !cfg!(target_family = "wasm") {
+        if super::super::along_w::has_simd_kernel() {
             let dsc = model
                 .nodes
                 .iter()
@@ -640,7 +640,7 @@ mod tests {
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
         assert_spatial_lowering(&model);
-        if !cfg!(target_family = "wasm") {
+        if super::super::along_w::has_simd_kernel() {
             assert!(
                 model
                     .nodes
@@ -854,7 +854,7 @@ mod tests {
     #[test]
     fn direct_spatial_fuses_channel_scale() {
         // Mul after lowering: Conv can no longer absorb it, DirectSpatial should.
-        if cfg!(target_family = "wasm") {
+        if !super::super::along_w::has_simd_kernel() {
             return;
         }
         let (n, ic, oc, h, w, x, kernel, bias, scale) = channel_scale_case();
@@ -966,8 +966,8 @@ mod tests {
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
         let has = model.nodes.iter().any(|node| node.op_as::<DirectSpatialConv>().is_some());
-        if cfg!(target_family = "wasm") {
-            assert!(!has, "wasm must keep fat 3×3 on simd128 GEMM");
+        if !super::super::along_w::has_simd_kernel() {
+            assert!(!has, "no along-W SIMD kernel must keep fat 3×3 on GEMM");
         } else if super::super::conv::amx_owns_fat_spatial() {
             assert!(!has, "AMX must keep k=288 on im2col, got DirectSpatialConv");
         } else {
