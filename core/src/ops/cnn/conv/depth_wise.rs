@@ -89,7 +89,10 @@ impl TypedOp for DepthWise {
         if model.outlet_fact(node.id.into())?.datum_type != f32::datum_type() {
             return Ok(None);
         }
-        if !self.relu && super::direct_spatial::successor_is_relu0(model, node)? {
+        // Not once a scale is absorbed: see DirectSpatialConv::fuse. The const
+        // fold bakes the scale into the weights while relu is still false, so
+        // it is unaffected; the runtime scale path is what this guards.
+        if !self.relu && !self.scale && super::direct_spatial::successor_is_relu0(model, node)? {
             return Ok(Some(TypedModelPatch::fuse_with_next(
                 model,
                 node,

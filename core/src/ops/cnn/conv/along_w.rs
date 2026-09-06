@@ -140,7 +140,7 @@ unsafe fn neon(
                 i += 4;
             }
         } else if in_stride == 2 {
-            while i + 8 <= len {
+            while i + 9 <= len {
                 let mut acc0 = biasv;
                 let mut acc1 = biasv;
                 for n in 0..n_taps {
@@ -155,7 +155,7 @@ unsafe fn neon(
                 store(optr.add(i + 4), acc1);
                 i += 8;
             }
-            while i + 4 <= len {
+            while i + 5 <= len {
                 let mut acc = biasv;
                 for n in 0..n_taps {
                     let kn = vdupq_n_f32(k[n]);
@@ -166,7 +166,7 @@ unsafe fn neon(
                 i += 4;
             }
         } else if in_stride == 3 {
-            while i + 8 <= len {
+            while i + 9 <= len {
                 let mut acc0 = biasv;
                 let mut acc1 = biasv;
                 for n in 0..n_taps {
@@ -181,7 +181,7 @@ unsafe fn neon(
                 store(optr.add(i + 4), acc1);
                 i += 8;
             }
-            while i + 4 <= len {
+            while i + 5 <= len {
                 let mut acc = biasv;
                 for n in 0..n_taps {
                     let kn = vdupq_n_f32(k[n]);
@@ -244,7 +244,8 @@ unsafe fn avx2_fma(
         if in_stride == 1 || in_stride == 2 || in_stride == 3 {
             let biasv = _mm256_set1_ps(bias);
             let z = _mm256_setzero_ps();
-            while i + 8 <= len {
+            let block = if in_stride == 2 { 9 } else { 8 };
+            while i + block <= len {
                 let mut acc = biasv;
                 for n in 0..n_taps {
                     let kn = _mm256_set1_ps(k[n]);
@@ -417,7 +418,7 @@ unsafe fn neon_oc4(
                 i += 4;
             }
         } else if in_stride == 2 {
-            while i + 8 <= len {
+            while i + 9 <= len {
                 let mut a0 = b0;
                 let mut a0b = b0;
                 let mut a1 = b1;
@@ -447,7 +448,7 @@ unsafe fn neon_oc4(
                 store4(optr, i + 4, a0b, a1b, a2b, a3b);
                 i += 8;
             }
-            while i + 4 <= len {
+            while i + 5 <= len {
                 let mut a0 = b0;
                 let mut a1 = b1;
                 let mut a2 = b2;
@@ -502,7 +503,8 @@ unsafe fn avx2_oc4(
             let b1 = _mm256_set1_ps(bias[1]);
             let b2 = _mm256_set1_ps(bias[2]);
             let b3 = _mm256_set1_ps(bias[3]);
-            while i + 8 <= len {
+            let block = if in_stride == 2 { 9 } else { 8 };
+            while i + block <= len {
                 let mut a0 = b0;
                 let mut a1 = b1;
                 let mut a2 = b2;

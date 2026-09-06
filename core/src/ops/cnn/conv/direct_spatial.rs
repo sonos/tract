@@ -286,7 +286,11 @@ impl TypedOp for DirectSpatialConv {
     }
 
     fn fuse(&self, model: &TypedModel, node: &TypedNode) -> TractResult<Option<TypedModelPatch>> {
-        if !self.relu && successor_is_relu0(model, node)? {
+        // Not once a scale is absorbed: eval applies relu before the scale, so
+        // fusing a relu that the graph puts *after* the Mul would compute
+        // relu(conv(x)) * s where the graph means relu(conv(x) * s). Those
+        // differ wherever a scale is negative.
+        if !self.relu && !self.scale && successor_is_relu0(model, node)? {
             return Ok(Some(TypedModelPatch::fuse_with_next(
                 model,
                 node,

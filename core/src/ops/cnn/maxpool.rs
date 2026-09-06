@@ -221,13 +221,15 @@ impl OptMaxPool {
         if patch.rank() != 2 || *geo.input_shape.w_stride() != 1 {
             return Ok(None);
         }
-        // Only the vectorised 2×2 f32 case beats the zone-partitioned
+        // Only the vectorised 2×2 stride-1 f32 case beats the zone-partitioned
         // `visit_output` path. A generic NCHW loop is a naive scalar walk with a
         // bounds test per tap, where `visit_output` hoists those out of the
-        // interior, so anything else (inception's 3×3/2 pools) must fall through.
+        // interior, so anything else must fall through -- inception's 3×3/2
+        // pools, and equally 2×2/2, which `maxpool_2x2_f32` does not vectorise.
         if !(T::datum_type() == f32::datum_type()
             && patch.spec.kernel_shape[..] == [2, 2]
-            && patch.spec.dilations[..] == [1, 1])
+            && patch.spec.dilations[..] == [1, 1]
+            && patch.spec.strides[..] == [1, 1])
         {
             return Ok(None);
         }
