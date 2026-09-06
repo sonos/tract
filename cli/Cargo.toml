@@ -97,6 +97,9 @@ tract-cuda = { workspace = true, optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { version = "1", features = ["fs"] }
 
+[target.'cfg(all(target_os = "linux", target_env = "gnu"))'.dependencies]
+libc.workspace = true
+
 [features]
 default = [
   "onnx",

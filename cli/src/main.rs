@@ -97,8 +97,27 @@ pub const STAGES: &[&str] = &[
     "optimize",
 ];
 
+/// Pins glibc's mmap and trim thresholds.
+///
+/// Left to itself glibc adapts the mmap threshold at run time, and a plan whose
+/// per-eval intermediates straddle the current value maps and unmaps them on
+/// every pass. Whether a process settles above or below that line depends on
+/// how its heap happens to start, so the same binary can run either way.
+#[cfg(all(target_os = "linux", target_env = "gnu"))]
+fn pin_malloc_thresholds() {
+    const PIN: libc::c_int = 64 * 1024 * 1024;
+    unsafe {
+        libc::mallopt(libc::M_MMAP_THRESHOLD, PIN);
+        libc::mallopt(libc::M_TRIM_THRESHOLD, PIN);
+    }
+}
+
+#[cfg(not(all(target_os = "linux", target_env = "gnu")))]
+fn pin_malloc_thresholds() {}
+
 /// Entrypoint for the command-line interface.
 fn main() -> TractResult<()> {
+    pin_malloc_thresholds();
     use clap::*;
     let mut app = command!()
         .arg(arg!(--readings "Start readings instrumentation"))

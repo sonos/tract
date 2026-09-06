@@ -4765,6 +4765,7 @@ dependencies = [
  "idna_adapter",
  "inventory",
  "lazy_static",
+ "libc",
  "litemap",
  "log",
  "minijinja",
