@@ -11,12 +11,9 @@ type PackedR = (Box<dyn MatMatMul>, Box<dyn MMMInputValue>);
 /// Whole-sequence GRU: the ONNX GRU with `linear_before_reset != 0`, run as one op
 /// instead of a `Scan` that dispatches its body once per timestep.
 ///
-/// tract's generic `Scan` costs about 1.6 us per iteration natively and 2.2 us on
-/// wasm32, against onnxruntime's 0.25 / 0.32 for the same GRU geometry -- measured
-/// on a bare GRU at input 12, hidden 16, sweeping the sequence length. The
-/// arithmetic is identical; the difference is per-iteration machinery. Models whose
-/// recurrence scans a non-time axis pay it hardest: GTCRN runs eight bidirectional
-/// scans of 33 frequency subbands per frame, about half its runtime.
+/// Valid exactly where [`crate::ops::gru_cell::GruEpilogue`] is: sigmoid `f`, tanh
+/// `g`, no peepholes, no extra cell state, no `sequence_lens`. `R` must be a
+/// constant -- it is packed once and the packing is cached for the op's life.
 ///
 /// The input-side product `X.Wt` does not depend on the recurrent state, so it is
 /// taken once over the whole sequence as a single GEMM rather than once per step.
@@ -33,6 +30,9 @@ pub struct GruSeq {
     pub has_bias: bool,
     /// -1 runs the sequence backwards (the `.back` side of a bidirectional GRU).
     pub chunk: isize,
+    /// Fill the `Y` output with the whole sequence. False leaves it empty, for a
+    /// caller that only reads `Y_h`.
+    pub emit_y: bool,
     /// Re-seed the hidden state from `initial_h` on every call instead of
     /// carrying it in the session. Same meaning as `Scan::reset_every_turn`.
     pub reset_every_turn: bool,
@@ -42,10 +42,8 @@ pub struct GruSeq {
 struct GruSeqState {
     h: Option<Tensor>,
     /// R packed for the recurrent GEMM, built on the first call and reused for
-    /// every timestep of every later call. onnxruntime does the same thing at
-    /// model load via `OpKernel::PrePack` + `MlasGemmPackB`; packing per call is
-    /// what makes an in-op loop lose to the Scan's already-packed kernels once the
-    /// hidden size is large enough for the GEMM to dominate.
+    /// every timestep of every later call. Sound only because the wiring requires
+    /// `R` to be a constant.
     packed_r: Option<PackedR>,
 }
 
@@ -68,8 +66,8 @@ impl Op for GruSeq {
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!(
-            "hidden={} bias={} chunk={} reset_every_turn={}",
-            self.hidden, self.has_bias, self.chunk, self.reset_every_turn
+            "hidden={} bias={} chunk={} reset_every_turn={} emit_y={}",
+            self.hidden, self.has_bias, self.chunk, self.reset_every_turn, self.emit_y
         )])
     }
     op_as_typed_op!();
@@ -149,11 +147,11 @@ impl GruSeq {
         };
 
         // One GEMM for the whole sequence, and the W-side bias folded in once here
-        // rather than once per timestep.
-        let mut xw = x
-            .to_shape((batch * t_len, in_size))?
-            .dot(&w.t())
-            .into_shape_with_order((batch * t_len, 3 * h))?;
+        // rather than once per timestep. The step loop reads one timestep's rows at
+        // a time, so the rows are ordered by timestep, not by batch element.
+        let x_permuted = x.permuted_axes([1, 0, 2]);
+        let x_by_step = x_permuted.as_standard_layout();
+        let mut xw = x_by_step.to_shape((t_len * batch, in_size))?.dot(&w.t());
         if let Some(wb) = &wb {
             xw += &wb.view().insert_axis(Axis(0));
         }
@@ -165,10 +163,7 @@ impl GruSeq {
             // Computed transposed: R[3h, h] . h_prev[h, batch] -> [3h, batch].
             // With batch == 1 that is n == 1, which is how tract selects its
             // matrix-vector kernel -- the side that gets packed is R, once, and the
-            // per-step vector is never packed. Packing the per-step operand instead
-            // costs more than the weight packing saves (measured: 10.6 ms vs 7.8 on
-            // DeepFilterNet3's erb_dec), which is the same reason MLAS skips packing
-            // on its M==1 path.
+            // per-step vector is never packed.
             let mmm = (tract_linalg::ops().mmm_policy())(
                 f32::datum_type(),
                 Some(3 * h),
@@ -187,8 +182,8 @@ impl GruSeq {
         // With reset_every_turn the initializer wins every call; otherwise the
         // session's carry seeds every call but the first.
         let mut ht: Tensor = match carry.as_ref().filter(|_| !self.reset_every_turn) {
-            Some(c) => squeeze_state(c, h)?,
-            None => squeeze_state(h0, h)?,
+            Some(c) => squeeze_state(c, batch, h)?,
+            None => squeeze_state(h0, batch, h)?,
         };
 
         let ops = tract_linalg::ops();
@@ -207,7 +202,7 @@ impl GruSeq {
         // stride, so the step needs no transposing copy out of a [3*h, batch] temp.
         let mut rh = Tensor::zero::<f32>(&[batch, 3 * h])?;
         let mut h_next = Tensor::zero::<f32>(&[batch, h])?;
-        let mut y = Array3::<f32>::zeros((batch, t_len, h));
+        let mut y = Array3::<f32>::zeros((batch, if self.emit_y { t_len } else { 0 }, h));
 
         for step in 0..t_len {
             let t = if self.chunk < 0 { t_len - 1 - step } else { step };
@@ -257,8 +252,10 @@ impl GruSeq {
                 &*tanh,
             )?;
             std::mem::swap(&mut ht, &mut h_next);
-            y.slice_mut(s![.., t, ..])
-                .assign(&ht.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?);
+            if self.emit_y {
+                y.slice_mut(s![.., t, ..])
+                    .assign(&ht.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?);
+            }
         }
 
         *carry = if self.reset_every_turn { None } else { Some(ht.clone()) };
@@ -269,9 +266,13 @@ impl GruSeq {
 }
 
 /// initial_h and the state slot are chunk-shaped [batch, 1, hidden].
-fn squeeze_state(t: &Tensor, h: usize) -> TractResult<Tensor> {
+fn squeeze_state(t: &Tensor, batch: usize, h: usize) -> TractResult<Tensor> {
     let mut t = t.clone().into_tensor();
-    let batch = t.len() / h.max(1);
+    ensure!(
+        t.len() == batch * h,
+        "GruSeq state holds {} elements, expected batch {batch} x hidden {h}",
+        t.len()
+    );
     t.set_shape(&[batch, h])?;
     Ok(t)
 }
@@ -281,8 +282,9 @@ impl TypedOp for GruSeq {
         let x = inputs[0];
         let batch = x.shape[0].clone();
         let t = x.shape[1].clone();
+        let y_len = if self.emit_y { t } else { 0.to_dim() };
         Ok(tvec!(
-            f32::fact([batch.clone(), t, self.hidden.to_dim()]),
+            f32::fact([batch.clone(), y_len, self.hidden.to_dim()]),
             f32::fact([batch, 1.to_dim(), self.hidden.to_dim()])
         ))
     }
@@ -336,8 +338,8 @@ mod tests {
         (y, ht)
     }
 
-    fn run_case(t_len: usize, backward: bool, bias: bool) {
-        let (batch, input, hidden) = (1usize, 12usize, 16usize);
+    fn run_case(batch: usize, t_len: usize, backward: bool, bias: bool) {
+        let (input, hidden) = (12usize, 16usize);
         let f = |n: usize, k: f32| Array1::from_iter((0..n).map(|i| ((i as f32) * k).sin() * 0.3));
         let x = f(batch * t_len * input, 0.7).into_shape_with_order((batch, t_len, input)).unwrap();
         let w = f(3 * hidden * input, 0.31).into_shape_with_order((3 * hidden, input)).unwrap();
@@ -352,6 +354,7 @@ mod tests {
             has_bias: bias,
             chunk: if backward { -1 } else { 1 },
             reset_every_turn: false,
+            emit_y: true,
         };
         let mut inputs: TVec<TValue> = tvec!(
             x.clone().into_tensor().into(),
@@ -379,16 +382,21 @@ mod tests {
             .unwrap()
             .index_axis_move(Axis(1), 0)
             .to_owned();
-        assert_eq!(got_y, want_y, "Y mismatch t={t_len} backward={backward} bias={bias}");
-        assert_eq!(got_h, want_h, "Y_h mismatch t={t_len} backward={backward} bias={bias}");
+        assert_eq!(got_y, want_y, "Y mismatch b={batch} t={t_len} backward={backward} bias={bias}");
+        assert_eq!(
+            got_h, want_h,
+            "Y_h mismatch b={batch} t={t_len} backward={backward} bias={bias}"
+        );
     }
 
     #[test]
     fn matches_the_step_by_step_recurrence() {
-        for &t in &[1usize, 2, 5, 33] {
-            for &backward in &[false, true] {
-                for &bias in &[false, true] {
-                    run_case(t, backward, bias);
+        for &batch in &[1usize, 2, 3] {
+            for &t in &[1usize, 2, 5, 33] {
+                for &backward in &[false, true] {
+                    for &bias in &[false, true] {
+                        run_case(batch, t, backward, bias);
+                    }
                 }
             }
         }
@@ -397,7 +405,8 @@ mod tests {
     /// The hidden state persists across calls, as the `Scan` it replaces does.
     #[test]
     fn carries_state_across_calls() {
-        let op = GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: false };
+        let op =
+            GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: false, emit_y: true };
         let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
         let w = Array2::<f32>::from_elem((12, 2), 0.1);
         let r = Array2::<f32>::from_elem((12, 4), 0.1);
@@ -427,7 +436,8 @@ mod tests {
     /// own state across calls needs.
     #[test]
     fn reset_every_turn_restarts_from_initial_h() {
-        let op = GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: true };
+        let op =
+            GruSeq { hidden: 4, has_bias: false, chunk: 1, reset_every_turn: true, emit_y: true };
         let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
         let w = Array2::<f32>::from_elem((12, 2), 0.1);
         let r = Array2::<f32>::from_elem((12, 4), 0.1);
