@@ -271,6 +271,13 @@ pub fn fuse_scaled_rms_norm_out_cast(
         })
     );
     let to = cast_out.op_as::<Cast>().unwrap().to;
+    // Only fold NARROWING casts (f32 -> f16): the kernel already computes in
+    // f32 and rounds once when writing, so absorbing the narrowing keeps the
+    // exact same rounding. Folding a widening cast (f16 -> f32) instead
+    // DELETES the f16 rounding the source model performs at the norm output,
+    // silently making the op more precise than the graph it replaces -- the
+    // same invariant `fuse_scaled_rms_norm_in_cast` enforces on its side.
+    rule_if!(to.size_of() < node.outputs[0].fact.datum_type.size_of());
 
     let mut patch = TypedModelPatch::default();
     let inputs = patch.taps(model, &node.inputs)?;
