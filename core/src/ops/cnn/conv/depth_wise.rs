@@ -92,7 +92,12 @@ impl TypedOp for DepthWise {
         // Not once a scale is absorbed: see DirectSpatialConv::fuse. The const
         // fold bakes the scale into the weights while relu is still false, so
         // it is unaffected; the runtime scale path is what this guards.
-        if !self.relu && !self.scale && super::direct_spatial::successor_is_relu0(model, node)? {
+        let along_w = *self.output_shape.w_stride() == 1;
+        if along_w
+            && !self.relu
+            && !self.scale
+            && super::direct_spatial::successor_is_relu0(model, node)?
+        {
             return Ok(Some(TypedModelPatch::fuse_with_next(
                 model,
                 node,
@@ -107,6 +112,9 @@ impl TypedOp for DepthWise {
                 // element. Only the const, per-channel case can fold.
                 if let Some(patch) = fold_channel_scale(self, model, node, other, c)? {
                     return Ok(Some(patch));
+                }
+                if !along_w {
+                    return Ok(None);
                 }
                 let mut patch = TypedModelPatch::new("fuse channel scale into DepthWiseConv");
                 let mut taps = patch.taps(model, &node.inputs)?;
@@ -290,6 +298,12 @@ macro_rules! impl_eval {
                    zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
                    )
                    } else */
+                // Everything below that is new is for a contiguous output W, i.e.
+                // NCHW. On NHWC the inner axis is C, so none of it can vectorise
+                // and all of it loses to what main does -- `visit_output` for
+                // N=9, which is every mobilenet depthwise layer. Keeping that
+                // path bit-identical is why the fusions are gated too.
+                let along_w = *dw.output_shape.w_stride() == 1;
                 match zone.values_offsets.len() {
                     1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
@@ -303,14 +317,16 @@ macro_rules! impl_eval {
                     4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
-                    9 => [<process_zone_n_ $suffix>]::<T, 9, 4>(
+                    9 if along_w => [<process_zone_n_ $suffix>]::<T, 9, 4>(
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
-                    25 => [<process_zone_n_ $suffix>]::<T, 25, 4>(
+                    25 if along_w => [<process_zone_n_ $suffix>]::<T, 25, 4>(
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul, scale_ptr,
                     ),
                     _ => {
-                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>() {
+                        if along_w
+                            && std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                        {
                             process_zone_along_w_f32(
                                 dw,
                                 zone,
@@ -477,7 +493,6 @@ macro_rules! impl_eval {
                 relu: bool,
                 scale_ptr: *const f32,
                 ) { unsafe {
-                let scale = channel_scale(scale_ptr, c);
                 let mut sum = *bias.offset(c);
                 let mut iter = visitor.valid_offsets_ker_in();
                 if iter.size_hint() == (3, Some(3)) {
@@ -499,8 +514,14 @@ macro_rules! impl_eval {
                     }
                 }
                 let optr = optr.offset(visitor.output_offset);
-                let v = maybe_relu_generic(sum, relu);
-                *optr = if scale_ptr.is_null() { v } else { scaled_generic(v, scale) };
+                // Nothing that reaches here carries a relu or a scale: f32 with a
+                // contiguous W goes to a monomorph or the along-W handoff, an NHWC
+                // op is not allowed to fuse either, and for any other T both are
+                // TypeId no-ops. So this stays the bare store it is on main --
+                // the function is #[inline(never)] and runs once per output
+                // element per channel, so a branch here is not free.
+                debug_assert!(!relu && scale_ptr.is_null());
+                *optr = sum;
             }}
         }
     }
