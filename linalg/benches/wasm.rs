@@ -39,6 +39,10 @@ fn main() {
     eprintln!("=== int8 matvec (n=1): wasm_i32_4x4 vs generic_i32_4x1 ({target}) ===");
     bench_i8_matvec::run();
 
+    eprintln!();
+    eprintln!("=== ln/exp: wasm simd128 vs generic scalar ({target}) ===");
+    bench_ln_exp::run();
+
     #[cfg(target_feature = "relaxed-simd")]
     {
         eprintln!();
@@ -698,6 +702,69 @@ mod bench_activations {
         bench("hidden=256", 256, 5_000);
         bench("hidden=512", 512, 3_000);
         bench("hidden=1024", 1024, 2_000);
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+mod bench_ln_exp {
+    //! Microbench: the WASM SIMD ln and exp kernels against the generic scalar
+    //! fallback, whose per-element fit is what a log-mel featurizer pays.
+    //!
+    //! The buffer is restored from a source before every call: run in place over
+    //! and over, ln walks its own output into NaN and exp into infinity within a
+    //! few iterations, and the timing then belongs to the special paths. The
+    //! restore is timed on its own and taken off both readings.
+
+    use std::time::Instant;
+    use tract_linalg::element_wise::ElementWiseKer;
+
+    fn ns_per_call<K: ElementWiseKer<f32>>(src: &[f32], buf: &mut [f32], iters: usize) -> f64 {
+        for _ in 0..50 {
+            buf.copy_from_slice(src);
+            K::run(buf, ());
+        }
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            buf.copy_from_slice(src);
+            K::run(buf, ());
+        }
+        let with_restore = t0.elapsed().as_secs_f64() / iters as f64 * 1e9;
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            buf.copy_from_slice(src);
+            std::hint::black_box(&buf);
+        }
+        with_restore - t0.elapsed().as_secs_f64() / iters as f64 * 1e9
+    }
+
+    fn bench(label: &str, n: usize, iters: usize) {
+        let positive: Vec<f32> = (0..n).map(|i| (i % 37) as f32 * 0.7 + 0.1).collect();
+        let centered: Vec<f32> = (0..n).map(|i| ((i % 37) as f32 - 18.0) * 0.5).collect();
+        let mut buf = vec![0f32; n];
+
+        let scalar_ln =
+            ns_per_call::<tract_linalg::generic::ln::generic_ln_f32_4n>(&positive, &mut buf, iters);
+        let simd_ln =
+            ns_per_call::<tract_linalg::wasm::wasm_ln_f32_16n>(&positive, &mut buf, iters);
+        let scalar_exp = ns_per_call::<tract_linalg::generic::exp::generic_exp_f32_4n>(
+            &centered, &mut buf, iters,
+        );
+        let simd_exp =
+            ns_per_call::<tract_linalg::wasm::wasm_exp_f32_16n>(&centered, &mut buf, iters);
+
+        eprintln!(
+            "{label} n={n} iters={iters}: \
+             ln scalar={scalar_ln:.0} ns simd={simd_ln:.0} ns ({:.2}x); \
+             exp scalar={scalar_exp:.0} ns simd={simd_exp:.0} ns ({:.2}x)",
+            scalar_ln / simd_ln,
+            scalar_exp / simd_exp,
+        );
+    }
+
+    pub fn run() {
+        bench("frame=256", 256, 5_000);
+        bench("frame=512", 512, 3_000);
+        bench("frame=1024", 1024, 2_000);
     }
 }
 
