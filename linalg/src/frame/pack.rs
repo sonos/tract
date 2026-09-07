@@ -203,6 +203,7 @@ impl PackedFormat {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
+        ensure!(k_axis != mn_axis, "k_axis and mn_axis must differ (both are {k_axis})");
         ensure!(
             t.datum_type().unquantized() == self.dt.unquantized(),
             "Attempting to pack for {self} tensor view {t:?}"
@@ -598,6 +599,12 @@ where
         mn: usize,
         k: usize,
     ) -> KInWriter<'p, T> {
+        assert!(panel_width > 0, "panel_width must be non-zero");
+        assert!(panel_len > 0 || (k == 0 && mn == 0), "panel_len must be non-zero when k or mn is non-zero");
+        assert!(
+            k.checked_mul(panel_width).is_some(),
+            "k * panel_width overflows"
+        );
         let panels = mn.divceil(panel_width);
         let last_panel_width = mn - (panels - 1) * panel_width;
         KInWriter {
@@ -1106,6 +1113,7 @@ impl PackedI8K4 {
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
+        ensure!(k_axis != mn_axis, "k_axis and mn_axis must differ (both are {k_axis})");
         let k = t.shape()[k_axis];
         let mn = t.shape()[mn_axis];
         let kp = k.div_ceil(4) * 4;
