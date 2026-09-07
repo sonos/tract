@@ -531,6 +531,54 @@ unsafe fn avx2_oc4(
             let b2 = _mm256_set1_ps(bias[2]);
             let b3 = _mm256_set1_ps(bias[3]);
             let block = if in_stride == 2 { 9 } else { 8 };
+            // Two W blocks per tap: the four weight broadcasts are the loads
+            // that bound this loop, and both blocks reuse each one.
+            while i + 8 + block <= len {
+                let mut a0 = b0;
+                let mut a1 = b1;
+                let mut a2 = b2;
+                let mut a3 = b3;
+                let mut a4 = b0;
+                let mut a5 = b1;
+                let mut a6 = b2;
+                let mut a7 = b3;
+                for t in 0..n_taps {
+                    let p = iptr.offset(ioffset[t]).offset(i as isize * in_stride);
+                    let x = avx2_load8(p, in_stride);
+                    let y = avx2_load8(p.offset(8 * in_stride), in_stride);
+                    let k0 = _mm256_set1_ps(k[t]);
+                    let k1 = _mm256_set1_ps(k[n_taps + t]);
+                    let k2 = _mm256_set1_ps(k[2 * n_taps + t]);
+                    let k3 = _mm256_set1_ps(k[3 * n_taps + t]);
+                    a0 = _mm256_fmadd_ps(x, k0, a0);
+                    a1 = _mm256_fmadd_ps(x, k1, a1);
+                    a2 = _mm256_fmadd_ps(x, k2, a2);
+                    a3 = _mm256_fmadd_ps(x, k3, a3);
+                    a4 = _mm256_fmadd_ps(y, k0, a4);
+                    a5 = _mm256_fmadd_ps(y, k1, a5);
+                    a6 = _mm256_fmadd_ps(y, k2, a6);
+                    a7 = _mm256_fmadd_ps(y, k3, a7);
+                }
+                if relu {
+                    a0 = _mm256_max_ps(a0, z);
+                    a1 = _mm256_max_ps(a1, z);
+                    a2 = _mm256_max_ps(a2, z);
+                    a3 = _mm256_max_ps(a3, z);
+                    a4 = _mm256_max_ps(a4, z);
+                    a5 = _mm256_max_ps(a5, z);
+                    a6 = _mm256_max_ps(a6, z);
+                    a7 = _mm256_max_ps(a7, z);
+                }
+                _mm256_storeu_ps(optr.add(i), a0);
+                _mm256_storeu_ps(optr.offset(oc_stride).add(i), a1);
+                _mm256_storeu_ps(optr.offset(2 * oc_stride).add(i), a2);
+                _mm256_storeu_ps(optr.offset(3 * oc_stride).add(i), a3);
+                _mm256_storeu_ps(optr.add(i + 8), a4);
+                _mm256_storeu_ps(optr.offset(oc_stride).add(i + 8), a5);
+                _mm256_storeu_ps(optr.offset(2 * oc_stride).add(i + 8), a6);
+                _mm256_storeu_ps(optr.offset(3 * oc_stride).add(i + 8), a7);
+                i += 16;
+            }
             while i + block <= len {
                 let mut a0 = b0;
                 let mut a1 = b1;
