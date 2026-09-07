@@ -600,11 +600,11 @@ where
         k: usize,
     ) -> KInWriter<'p, T> {
         assert!(panel_width > 0, "panel_width must be non-zero");
-        assert!(panel_len > 0 || (k == 0 && mn == 0), "panel_len must be non-zero when k or mn is non-zero");
         assert!(
-            k.checked_mul(panel_width).is_some(),
-            "k * panel_width overflows"
+            panel_len > 0 || (k == 0 && mn == 0),
+            "panel_len must be non-zero when k or mn is non-zero"
         );
+        assert!(k.checked_mul(panel_width).is_some(), "k * panel_width overflows");
         let panels = mn.divceil(panel_width);
         let last_panel_width = mn - (panels - 1) * panel_width;
         KInWriter {
