@@ -56,6 +56,10 @@ use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
 
+#[cfg(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows"))))]
+readings_probe::wrap_global_allocator!(tikv_jemallocator::Jemalloc);
+
+#[cfg(not(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows")))))]
 readings_probe::instrumented_allocator!();
 
 fn info_usage(stage: &str, probe: Option<&Probe>) {

@@ -199,6 +199,7 @@ rand = "0.10"
 rand_distr = "0.6"
 rayon = "1.10"
 readings-probe = "0.1.8"
+tikv-jemallocator = "0.6"
 regex = "1.5.4"
 ron = "0.12"
 reqwest = { version = "0.13", features = [ "blocking", "rustls-no-provider" ], default-features = false }
