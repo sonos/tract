@@ -10,8 +10,7 @@ pub fn simplified_layer_norm(
     // `SimplifiedLayerNormalization` is RMS normalization: it scales by the root
     // mean square and does *not* subtract the mean. Lowering it to `LayerNorm`,
     // which centres the input, produced wrong activations for every non-zero-mean
-    // input (and silently dropped the optional bias input). Delegate to the RMS
-    // normalization parser instead (#2646).
+    // input. Delegate to the RMS normalization parser instead (#2646).
     rms_normalization(ctx, node)
 }
 
