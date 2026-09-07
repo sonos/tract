@@ -8,7 +8,9 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
+use tract_core::model::translator::Translate;
 use tract_core::ops::konst::Const;
+use tract_core::ops::source::TypedSource;
 #[allow(unused_imports)]
 use tract_core::transform::ModelTransform;
 use tract_hir::internal::*;
@@ -898,12 +900,25 @@ impl Parameters {
         if let Some(override_facts) = matches.get_many::<String>("override-fact") {
             for fact in override_facts {
                 let fact = fact.as_str();
-                let (name, fact) = tensor::for_string(&symbols, fact)?;
-                let node = raw_model.node_id_by_name(name.as_ref().unwrap())?;
+                // The symbols of the fact are the model's own, not the ones the
+                // command line built: a symbol of another scope names nothing
+                // here.
                 if let Some(inf) = raw_model.downcast_mut::<InferenceModel>() {
+                    let (name, fact) = tensor::for_string(&inf.symbols.clone(), fact)?;
+                    let node = inf.node_id_by_name(name.as_ref().unwrap())?;
                     inf.set_outlet_fact(OutletId::new(node, 0), fact)?;
                 } else if let Some(typ) = raw_model.downcast_mut::<TypedModel>() {
-                    typ.set_outlet_fact(OutletId::new(node, 0), (&fact).try_into()?)?;
+                    let (name, fact) = tensor::for_string(&typ.symbols.clone(), fact)?;
+                    let node = typ.node_id_by_name(name.as_ref().unwrap())?;
+                    let source = typ.node(node);
+                    ensure!(
+                        source.op_as::<TypedSource>().is_some(),
+                        "--override-fact overrides the fact of a source, and {} is a {}",
+                        source.name,
+                        source.op().name()
+                    );
+                    *typ = OverrideSourceFact { node, fact: (&fact).try_into()? }
+                        .translate_model(typ)?;
                 }
             }
         };
@@ -1252,4 +1267,33 @@ pub(crate) fn http_client() -> TractResult<reqwest::blocking::Client> {
             .with_no_client_auth();
 
     Ok(reqwest::blocking::Client::builder().use_preconfigured_tls(config).build()?)
+}
+
+/// Rewire a typed model from one of its sources holding `fact`.
+///
+/// A `TypedSource` carries its fact in the op, so overriding the outlet fact
+/// alone is undone by the next `output_facts` call. Rewiring re-derives every
+/// downstream fact from the new one, and fails on an op which cannot take it.
+#[derive(Debug)]
+struct OverrideSourceFact {
+    node: usize,
+    fact: TypedFact,
+}
+
+impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for OverrideSourceFact {
+    fn translate_node(
+        &self,
+        _source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
+        let op: Box<dyn TypedOp> = if node.id == self.node {
+            Box::new(TypedSource::new(self.fact.clone()))
+        } else {
+            node.op.clone()
+        };
+        let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+        target.wire_node(&node.name, op, &inputs)
+    }
 }
