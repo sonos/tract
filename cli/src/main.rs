@@ -59,18 +59,29 @@ use tract_linalg::WeightType;
 use tract_linalg::block_quant::Q4_0;
 use tract_linalg::mmm::MatMatMul;
 
-#[cfg(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows"))))]
+// Darwin's allocator does not have the glibc mmap/munmap-per-eval pathology this works
+// around, and jemalloc measured slower there, so apple targets keep the system allocator.
+#[cfg(all(
+    feature = "jemalloc",
+    not(any(target_family = "wasm", target_os = "windows", target_vendor = "apple"))
+))]
 readings_probe::wrap_global_allocator!(tikv_jemallocator::Jemalloc);
 
 // jemalloc keeps purged extents mapped and dirty under its default `retain`, and some
 // kernels never take those pages back: the resident set then reports the process peak
 // rather than what the model holds.
-#[cfg(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows"))))]
+#[cfg(all(
+    feature = "jemalloc",
+    not(any(target_family = "wasm", target_os = "windows", target_vendor = "apple"))
+))]
 #[unsafe(export_name = "_rjem_malloc_conf")]
 #[allow(non_upper_case_globals)]
 pub static malloc_conf: &[u8] = b"retain:false\0";
 
-#[cfg(not(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows")))))]
+#[cfg(not(all(
+    feature = "jemalloc",
+    not(any(target_family = "wasm", target_os = "windows", target_vendor = "apple"))
+)))]
 readings_probe::instrumented_allocator!();
 
 fn info_usage(stage: &str, probe: Option<&Probe>) {
