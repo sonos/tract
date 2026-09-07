@@ -146,7 +146,8 @@ crate::declare_knob!(
 ///
 /// A stream feeds one row per turn: axis 0 carries streams, not data. Inputs and
 /// outputs whose axis 0 is a symbol are the batched ones; the rest are shared,
-/// fed from the first seat and handed back to every stream.
+/// so one value of such an input serves the whole turn and every seat must feed
+/// the same one, and such an output is handed back to every stream.
 #[derive(Clone)]
 pub struct LanedRunnable {
     shared: Arc<Shared>,
@@ -470,7 +471,15 @@ fn run_turn(
             }
             batched.push(Tensor::stack_tensors(0, &rows)?.into_tvalue());
         } else {
-            batched.push(seated[0].inputs[ix].clone());
+            let shared = &seated[0].inputs[ix];
+            for (seat, turn) in seated.iter().enumerate().skip(1) {
+                ensure!(
+                    turn.inputs[ix] == *shared,
+                    "Input {ix} carries no batch axis, so one value of it serves the whole \
+                     turn, and seats 0 and {seat} feed it different ones"
+                );
+            }
+            batched.push(shared.clone());
         }
     }
     state.seat(seating)?;
@@ -500,7 +509,7 @@ fn run_turn(
 #[cfg(all(test, not(target_family = "wasm")))]
 mod laned_test {
     use super::*;
-    use crate::ops::math::mul;
+    use crate::ops::math::{add, mul};
 
     /// `[BATCH, 3] * 2`, prepared on the cpu runtime: stateless, so its lanes
     /// address nothing and only the seating of the batch axis is exercised.
@@ -521,6 +530,10 @@ mod laned_test {
         assert_eq!(&*output[0], &tensor2(&[[2. * stream as f32, 2. * turn as f32, 2.]]));
         Ok(())
     }
+
+    /// `TRACT_TURN_LINGER_US` is process-wide, so the tests which widen the
+    /// turns hold this while they build their runnable and run their streams.
+    static LINGER: Mutex<()> = Mutex::new(());
 
     /// A dropped handle hands its lane back through the queue, so the lane is
     /// free at some point after the drop rather than at it.
@@ -567,6 +580,7 @@ mod laned_test {
 
     #[test]
     fn a_turn_seats_the_streams_that_are_ready() -> TractResult<()> {
+        let _linger = LINGER.lock().unwrap_or_else(|e| e.into_inner());
         TRACT_TURN_LINGER_US.set(20_000);
         let runnable = doubler(8);
         TRACT_TURN_LINGER_US.clear();
@@ -588,6 +602,72 @@ mod laned_test {
         }
         let (turns, seats) = runnable.turns_and_seats();
         assert!(seats > turns, "{seats} seats over {turns} turns, none of them shared");
+        Ok(())
+    }
+
+    /// `[B, 3] * 2 + bias`, `bias` carrying no batch axis: the shape of a
+    /// shared input, which one value of serves the whole turn.
+    fn biased(max_lanes: usize) -> TractResult<LanedRunnable> {
+        let mut model = TypedModel::default();
+        let batch = model.symbols.sym("B");
+        let input = model.add_source("input", f32::fact(dims!(batch, 3)))?;
+        let bias = model.add_source("bias", f32::fact(dims!(1, 1)))?;
+        let two = model.add_const("two", tensor2(&[[2f32]]))?;
+        let doubled = model.wire_node("doubled", mul(), &[input, two])?;
+        let biased = model.wire_node("biased", add(), &[doubled[0], bias])?;
+        model.select_output_outlets(&biased)?;
+        let inner = DefaultRuntime.prepare(model)?;
+        LanedRunnable::wrap(inner.into(), max_lanes)
+    }
+
+    /// One turn per stream, all of them at once, the `stream`th feeding
+    /// `biases[stream]`. Every lane is taken before any turn is queued, so the
+    /// linger has the turns to seat together rather than a `spawn` to serve.
+    fn biased_turns(runnable: &LanedRunnable, biases: &[f32]) -> TractResult<Vec<TractResult<()>>> {
+        let handles: Vec<Box<dyn State>> =
+            biases.iter().map(|_| runnable.spawn()).collect::<TractResult<_>>()?;
+        let streams: Vec<_> = handles
+            .into_iter()
+            .zip(biases.iter().copied())
+            .map(|(mut handle, bias)| {
+                std::thread::spawn(move || -> TractResult<()> {
+                    handle.run(tvec!(
+                        tensor2(&[[1f32, 2., 3.]]).into_tvalue(),
+                        tensor2(&[[bias]]).into_tvalue()
+                    ))?;
+                    Ok(())
+                })
+            })
+            .collect();
+        Ok(streams.into_iter().map(|stream| stream.join().unwrap()).collect())
+    }
+
+    #[test]
+    fn seats_agreeing_on_a_shared_input_share_a_turn() -> TractResult<()> {
+        let _linger = LINGER.lock().unwrap_or_else(|e| e.into_inner());
+        TRACT_TURN_LINGER_US.set(100_000);
+        let runnable = biased(2);
+        TRACT_TURN_LINGER_US.clear();
+        let runnable = runnable?;
+        let served = biased_turns(&runnable, &[7., 7.])?;
+        assert!(served.iter().all(|s| s.is_ok()), "{served:?}");
+        assert_eq!(runnable.turns_and_seats(), (1, 2));
+        Ok(())
+    }
+
+    #[test]
+    fn seats_disagreeing_on_a_shared_input_fail_the_turn() -> TractResult<()> {
+        let _linger = LINGER.lock().unwrap_or_else(|e| e.into_inner());
+        TRACT_TURN_LINGER_US.set(100_000);
+        let runnable = biased(2);
+        TRACT_TURN_LINGER_US.clear();
+        let runnable = runnable?;
+        let served = biased_turns(&runnable, &[7., 8.])?;
+        assert_eq!(runnable.turns_and_seats(), (1, 2));
+        for stream in &served {
+            let error = format!("{:#}", stream.as_ref().unwrap_err());
+            assert!(error.contains("seats 0 and 1 feed it different ones"), "{error}");
+        }
         Ok(())
     }
 
