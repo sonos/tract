@@ -97,7 +97,9 @@ fn mul_axis_vector_const<'m>(
 /// learned `gamma`). Rewrites to the fused `ScaledRmsNorm(A, W)` so GPU
 /// backends run norm + weight multiply as one kernel. The scale is stored as
 /// a rank-1 F32 const whatever its original dtype (the fused kernels multiply
-/// in F32).
+/// in F32), and `scale_dt` records the norm's own dtype: the Mul this
+/// absorbs ran on a norm output materialized there, and the kernel must
+/// round to it before scaling to stand for that graph.
 pub fn fuse_rms_norm_scale(
     _ctx: &(),
     model: &TypedModel,
@@ -122,7 +124,12 @@ pub fn fuse_rms_norm_scale(
     let scale = patch.add_const(format!("{node_name}.scale"), scale)?;
     let out = patch.wire_node(
         format!("{node_name}.scaled"),
-        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: Some(out_dt) },
+        ScaledRmsNorm {
+            axis: op.axis,
+            eps: op.eps.clone(),
+            out_dt: Some(out_dt),
+            scale_dt: Some(in_fact.datum_type),
+        },
         &[rsm_input[0], scale],
     )?;
     patch.shunt_outside(model, mul.id.into(), out[0])?;
@@ -137,10 +144,9 @@ pub fn fuse_rms_norm_scale(
 /// single float cast, all branches ending on one dtype. Reassembles the full
 /// gamma and rewrites to one fused `ScaledRmsNorm` re-sliced per branch: the
 /// norm+scale runs as a single kernel instead of one norm plus a mul(+cast)
-/// dispatch per slice. The fused kernel multiplies by gamma directly off the
-/// norm's f32 accumulator. When the input dtype is narrower than F32, this
-/// differs from the split form, which rounds the norm's output to the input
-/// dtype before each gamma multiply.
+/// dispatch per slice. `scale_dt` carries the norm's dtype, which every
+/// branch multiplies at, so the fused kernel rounds the normalized value the
+/// same way the split form does before its gamma multiplies.
 pub fn fuse_rms_norm_split_scale(
     _ctx: &(),
     model: &TypedModel,
@@ -204,7 +210,12 @@ pub fn fuse_rms_norm_split_scale(
     let gamma = patch.add_const(format!("{node_name}.split-scale"), tensor1(&gamma))?;
     let scaled = patch.wire_node(
         format!("{node_name}.split-scaled"),
-        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: common_dt },
+        ScaledRmsNorm {
+            axis: op.axis,
+            eps: op.eps.clone(),
+            out_dt: common_dt,
+            scale_dt: Some(in_fact.datum_type),
+        },
         &[rsm_input[0], gamma],
     )?;
     for (ix, (start, end, _, shunt)) in branches.iter().enumerate() {
@@ -220,7 +231,9 @@ pub fn fuse_rms_norm_split_scale(
 
 /// Folds a float-to-float cast feeding a `ScaledRmsNorm` into the op (the
 /// kernel loads through an F32 accumulator whatever the input dtype). The
-/// output dtype is pinned so downstream facts do not change.
+/// output dtype is pinned so downstream facts do not change, and `scale_dt`
+/// is carried over untouched: it names the precision the graph rounded to
+/// before its gamma multiply, which this fold must not move.
 pub fn fuse_scaled_rms_norm_in_cast(
     _ctx: &(),
     model: &TypedModel,
@@ -245,7 +258,12 @@ pub fn fuse_scaled_rms_norm_in_cast(
     let scale_input = patch.tap_model(model, node.inputs[1])?;
     let out = patch.wire_node(
         format!("{node_name}.in-cast-folded"),
-        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: Some(out_dt) },
+        ScaledRmsNorm {
+            axis: op.axis,
+            eps: op.eps.clone(),
+            out_dt: Some(out_dt),
+            scale_dt: op.scale_dt,
+        },
         &[data_input[0], scale_input],
     )?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
@@ -284,7 +302,12 @@ pub fn fuse_scaled_rms_norm_out_cast(
     let inputs = patch.taps(model, &node.inputs)?;
     let out = patch.wire_node(
         format!("{node_name}.out-cast-folded"),
-        ScaledRmsNorm { axis: op.axis, eps: op.eps.clone(), out_dt: Some(to) },
+        ScaledRmsNorm {
+            axis: op.axis,
+            eps: op.eps.clone(),
+            out_dt: Some(to),
+            scale_dt: op.scale_dt,
+        },
         &inputs,
     )?;
     patch.shunt_outside(model, cast_out.id.into(), out[0])?;

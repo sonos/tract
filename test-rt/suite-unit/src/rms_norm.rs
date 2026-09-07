@@ -251,6 +251,10 @@ where
         let broadcasted_norm = norm.broadcast(a.raw_dim()).unwrap().to_owned();
         let mut normed = a / broadcasted_norm;
         if let Some(gamma) = &self.gamma {
+            // The norm output is materialized at F before the gamma
+            // multiply, both in the graph (an F norm feeding a cast) and in
+            // the fused op (`ScaledRmsNorm::scale_dt`).
+            normed = normed.mapv(|x| F::from(x).unwrap().to_f32().unwrap());
             let g =
                 gamma.cast_to::<f32>().unwrap().to_plain_array_view::<f32>().unwrap().to_owned();
             let g = g.broadcast(normed.raw_dim()).unwrap().to_owned();

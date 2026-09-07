@@ -80,7 +80,12 @@ pub fn all_functions() -> Vec<String> {
                 })
             })
             .flat_map(|(in_dt, out_dt, n_cols, scaled, with_residual)| {
-                RmsNorm.kernel_name(in_dt, out_dt, n_cols, scaled, with_residual).into_iter()
+                [false, true]
+                    .into_iter()
+                    .map(move |round| (in_dt, out_dt, n_cols, scaled, with_residual, round))
+            })
+            .flat_map(|(in_dt, out_dt, n_cols, scaled, with_residual, round)| {
+                RmsNorm.kernel_name(in_dt, out_dt, n_cols, scaled, with_residual, round).into_iter()
             }),
     );
 

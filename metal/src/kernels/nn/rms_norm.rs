@@ -13,6 +13,7 @@ impl RmsNorm {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn kernel_name(
         &self,
         in_dt: DatumType,
@@ -20,16 +21,20 @@ impl RmsNorm {
         is_l4: bool,
         scaled: bool,
         with_residual: bool,
+        round_scale_f16: bool,
     ) -> TractResult<String> {
         ensure!(Self::is_supported_dt(in_dt), "Unsupported dt {:?} for metal rmsop", in_dt);
         ensure!(Self::is_supported_dt(out_dt), "Unsupported out dt {:?} for metal rmsop", out_dt);
         let iname = DeviceTensor::tname(in_dt)?;
         let oname = DeviceTensor::tname(out_dt)?;
-        let variant = match (scaled, with_residual) {
-            (true, true) => "rms_norm_scaled_add",
-            (true, false) => "rms_norm_scaled",
-            (false, true) => "rms_norm_add",
-            (false, false) => "rms_norm",
+        ensure!(!round_scale_f16 || scaled, "round_scale_f16 requires a scale");
+        let variant = match (scaled, with_residual, round_scale_f16) {
+            (true, true, false) => "rms_norm_scaled_add",
+            (true, true, true) => "rms_norm_scaled_r16_add",
+            (true, false, false) => "rms_norm_scaled",
+            (true, false, true) => "rms_norm_scaled_r16",
+            (false, true, _) => "rms_norm_add",
+            (false, false, _) => "rms_norm",
         };
         if !is_l4 {
             Ok(format!("nn_ops::{variant}_nd3_{iname}_{oname}"))
@@ -49,7 +54,7 @@ impl RmsNorm {
     ) -> TractResult<DeviceTensor> {
         let out_dt = out_dt.unwrap_or(input.datum_type());
         let output = unsafe { DeviceTensor::uninitialized_dt(out_dt, input.shape())? };
-        self.dispatch_eval(stream, input, None, scale, axis, eps, &output, None)?;
+        self.dispatch_eval(stream, input, None, scale, false, axis, eps, &output, None)?;
         stream.wait_until_completed()?;
         Ok(output)
     }
@@ -65,6 +70,7 @@ impl RmsNorm {
         input: &DeviceTensor,
         residual: Option<&DeviceTensor>,
         scale: Option<&DeviceTensor>,
+        round_scale_f16: bool,
         axis: usize,
         eps: &Tensor,
         output: &DeviceTensor,
@@ -102,6 +108,7 @@ impl RmsNorm {
                     true,
                     scale.is_some(),
                     residual.is_some(),
+                    round_scale_f16,
                 )?,
             )?;
 
@@ -173,6 +180,7 @@ impl RmsNorm {
                     false,
                     scale.is_some(),
                     residual.is_some(),
+                    round_scale_f16,
                 )?,
             )?;
 
@@ -220,17 +228,29 @@ impl RmsNorm {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn metal_rms_norm_dispatch(
     input: &DeviceTensor,
     residual: Option<&DeviceTensor>,
     scale: Option<&DeviceTensor>,
+    round_scale_f16: bool,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
     sum_out: Option<&DeviceTensor>,
 ) -> TractResult<()> {
     crate::with_metal_stream(|stream| {
-        RmsNorm.dispatch_eval(stream, input, residual, scale, axis, eps, output, sum_out)
+        RmsNorm.dispatch_eval(
+            stream,
+            input,
+            residual,
+            scale,
+            round_scale_f16,
+            axis,
+            eps,
+            output,
+            sum_out,
+        )
     })
 }
 
@@ -242,6 +262,7 @@ crate::register_metal_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, n
         false,
         false,
         None,
+        false,
         "Metal",
         metal_rms_norm_dispatch,
     ))))
@@ -252,12 +273,14 @@ crate::register_metal_op!(tract_core::ops::nn::ScaledRmsNorm, |source, node, op|
     rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
     rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
     rule_if!(input_facts[1].datum_type == DatumType::F32);
+    rule_if!(op.scale_dt.is_none_or(|dt| matches!(dt, DatumType::F16 | DatumType::F32)));
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
         true,
         false,
         op.out_dt,
+        op.scale_dt == Some(DatumType::F16),
         "Metal",
         metal_rms_norm_dispatch,
     ))))
@@ -328,7 +351,12 @@ mod tests {
         Ok(())
     }
 
-    fn scaled_test_case<F>(shape: &[usize], axis: usize, out_dt: DatumType) -> TractResult<()>
+    fn scaled_test_case<F>(
+        shape: &[usize],
+        axis: usize,
+        out_dt: DatumType,
+        scale_dt: Option<DatumType>,
+    ) -> TractResult<()>
     where
         F: Float + Datum,
         usize: AsPrimitive<f32>,
@@ -354,7 +382,8 @@ mod tests {
             )?;
 
             let eps = Arc::new(tensor0(0.0001f32));
-            let cpu_op = ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
+            let cpu_op =
+                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt), scale_dt };
             let cpu_output = cpu_op.eval(
                 &EvalContext::out_of_plan(),
                 tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
@@ -364,9 +393,20 @@ mod tests {
 
             let input_m = input.into_device()?;
             let scale_m = scale.into_device()?;
-            let metal_output =
-                RmsNorm.eval(stream, &input_m, Some(&scale_m), Some(out_dt), axis, &eps)?;
-            let metal_output = metal_output.to_host()?.into_tensor();
+            let output_m = unsafe { DeviceTensor::uninitialized_dt(out_dt, input_m.shape())? };
+            RmsNorm.dispatch_eval(
+                stream,
+                &input_m,
+                None,
+                Some(&scale_m),
+                scale_dt == Some(DatumType::F16),
+                axis,
+                &eps,
+                &output_m,
+                None,
+            )?;
+            stream.wait_until_completed()?;
+            let metal_output = output_m.to_host()?.into_tensor();
 
             ensure!(metal_output.datum_type() == out_dt);
             cpu_output
@@ -381,10 +421,12 @@ mod tests {
         // l4 fast path (last axis, multiple of 4) and nd3 path (non-last axis
         // or dim not multiple of 4), all in/out dtype combos.
         for (shape, axis) in [(&[6usize, 8][..], 1), (&[6, 9][..], 1), (&[8, 5][..], 0)] {
-            scaled_test_case::<f32>(shape, axis, DatumType::F32)?;
-            scaled_test_case::<f32>(shape, axis, DatumType::F16)?;
-            scaled_test_case::<f16>(shape, axis, DatumType::F16)?;
-            scaled_test_case::<f16>(shape, axis, DatumType::F32)?;
+            for scale_dt in [None, Some(DatumType::F16)] {
+                scaled_test_case::<f32>(shape, axis, DatumType::F32, scale_dt)?;
+                scaled_test_case::<f32>(shape, axis, DatumType::F16, scale_dt)?;
+                scaled_test_case::<f16>(shape, axis, DatumType::F16, scale_dt)?;
+                scaled_test_case::<f16>(shape, axis, DatumType::F32, scale_dt)?;
+            }
         }
         Ok(())
     }

@@ -740,7 +740,8 @@ __device__ __forceinline__ InT load_normed_input(const InT *x, const InT *residu
     }
 }
 
-template <typename InT, typename OutT, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE>
+template <typename InT, typename OutT, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE,
+          bool ROUND_SCALE_F16>
 __device__ void rms_norm_body(const InT *x, const InT *residual, const float *scale,
                                OutT *dst, InT *sum_out, const int32_t shape_0,
                                const int32_t shape_1, const int32_t shape_2,
@@ -785,33 +786,43 @@ __device__ void rms_norm_body(const InT *x, const InT *residual, const float *sc
         }
         float normed = rscale * (float)v;
         if constexpr (HAS_SCALE) {
+            // The graph this fusion replaces materializes the norm output at
+            // its own precision before the gamma multiply; keeping the f32
+            // accumulator here would make the op more precise than that graph.
+            if constexpr (ROUND_SCALE_F16) {
+                normed = (float)(__half)normed;
+            }
             normed *= scale[i];
         }
         dst[idx] = (OutT)normed;
     }
 }
 
-#define INSTANTIATE_RMS_NORM_VARIANT(suffix, has_residual, has_scale, iname,     \
-                                     InT, oname, OutT, bname, block_size)        \
+#define INSTANTIATE_RMS_NORM_VARIANT(suffix, has_residual, has_scale, round16,   \
+                                     iname, InT, oname, OutT, bname, block_size)  \
     extern "C" __global__ void rms_norm##suffix##_##bname##iname##_##oname(     \
         const InT *x, const InT *residual, const float *scale, OutT *dst,       \
         InT *sum_out, const int32_t shape_0, const int32_t shape_1,             \
         const int32_t shape_2, const int32_t strides_0, const int32_t strides_1, \
         const int32_t strides_2, const float eps) {                             \
-        rms_norm_body<InT, OutT, block_size, has_residual, has_scale>(          \
+        rms_norm_body<InT, OutT, block_size, has_residual, has_scale, round16>( \
             x, residual, scale, dst, sum_out, shape_0, shape_1, shape_2,        \
             strides_0, strides_1, strides_2, eps);                              \
     }
 
 #define INSTANTIATE_RMS_NORM_INOUT(iname, InT, oname, OutT, bname, block_size)  \
-    INSTANTIATE_RMS_NORM_VARIANT(, false, false, iname, InT, oname, OutT,       \
-                                  bname, block_size)                            \
-    INSTANTIATE_RMS_NORM_VARIANT(_scaled, false, true, iname, InT, oname, OutT, \
-                                  bname, block_size)                            \
-    INSTANTIATE_RMS_NORM_VARIANT(_add, true, false, iname, InT, oname, OutT,    \
-                                  bname, block_size)                            \
-    INSTANTIATE_RMS_NORM_VARIANT(_scaled_add, true, true, iname, InT, oname,    \
-                                  OutT, bname, block_size)
+    INSTANTIATE_RMS_NORM_VARIANT(, false, false, false, iname, InT, oname,      \
+                                  OutT, bname, block_size)                      \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled, false, true, false, iname, InT,       \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16, false, true, true, iname, InT,    \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_add, true, false, false, iname, InT, oname,   \
+                                  OutT, bname, block_size)                      \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_add, true, true, false, iname, InT,    \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16_add, true, true, true, iname, InT, \
+                                  oname, OutT, bname, block_size)
 
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)

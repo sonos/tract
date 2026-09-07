@@ -13,6 +13,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("axis"),
             TypeName::Scalar.named("eps").default(1e-6f32),
             TypeName::String.named("out_dt").default(""),
+            TypeName::String.named("scale_dt").default(""),
         ],
         &[("output", TypeName::Scalar.tensor())],
         de_scaled_rms_norm,
@@ -57,7 +58,9 @@ fn de_scaled_rms_norm(
     let eps = invocation.named_arg_as(builder, "eps")?;
     let out_dt: String = invocation.named_arg_as(builder, "out_dt")?;
     let out_dt = if out_dt.is_empty() { None } else { Some(out_dt.parse::<DatumType>()?) };
-    builder.wire(ScaledRmsNorm { axis, eps, out_dt }, &[input, scale])
+    let scale_dt: String = invocation.named_arg_as(builder, "scale_dt")?;
+    let scale_dt = if scale_dt.is_empty() { None } else { Some(scale_dt.parse::<DatumType>()?) };
+    builder.wire(ScaledRmsNorm { axis, eps, out_dt, scale_dt }, &[input, scale])
 }
 
 fn ser_scaled_rms_norm(
@@ -68,6 +71,7 @@ fn ser_scaled_rms_norm(
     let input = ast.mapping[&node.inputs[0]].clone();
     let scale = ast.mapping[&node.inputs[1]].clone();
     let out_dt = op.out_dt.map(|dt| format!("{dt:?}").to_lowercase()).unwrap_or_default();
+    let scale_dt = op.scale_dt.map(|dt| format!("{dt:?}").to_lowercase()).unwrap_or_default();
     Ok(Some(invocation(
         "tract_core_scaled_rms_norm",
         &[input, scale],
@@ -75,6 +79,7 @@ fn ser_scaled_rms_norm(
             ("axis", numeric(op.axis)),
             ("eps", numeric(op.eps.cast_to_scalar::<f32>()?)),
             ("out_dt", string(out_dt)),
+            ("scale_dt", string(scale_dt)),
         ],
     )))
 }

@@ -13,6 +13,7 @@ impl RmsNorm {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn kernel_name(
         &self,
         in_dt: DatumType,
@@ -20,16 +21,20 @@ impl RmsNorm {
         n_cols: usize,
         scaled: bool,
         with_residual: bool,
+        round_scale_f16: bool,
     ) -> TractResult<String> {
         ensure!(Self::is_supported_dt(in_dt), "Unsupported dt {:?} for cuda rmsop", in_dt);
         ensure!(Self::is_supported_dt(out_dt), "Unsupported dt {:?} for cuda rmsop", out_dt);
         let iname = DeviceTensor::tname(in_dt)?;
         let oname = DeviceTensor::tname(out_dt)?;
-        let variant = match (scaled, with_residual) {
-            (true, true) => "rms_norm_scaled_add",
-            (true, false) => "rms_norm_scaled",
-            (false, true) => "rms_norm_add",
-            (false, false) => "rms_norm",
+        ensure!(!round_scale_f16 || scaled, "round_scale_f16 requires a scale");
+        let variant = match (scaled, with_residual, round_scale_f16) {
+            (true, true, false) => "rms_norm_scaled_add",
+            (true, true, true) => "rms_norm_scaled_r16_add",
+            (true, false, false) => "rms_norm_scaled",
+            (true, false, true) => "rms_norm_scaled_r16",
+            (false, true, _) => "rms_norm_add",
+            (false, false, _) => "rms_norm",
         };
         if n_cols < MAX_THREADS {
             Ok(format!("{variant}_small_{iname}_{oname}"))
@@ -47,7 +52,7 @@ impl RmsNorm {
         eps: &Tensor,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, None, scale, axis, eps, &output, None)?;
+        self.dispatch_eval(stream, input, None, scale, false, axis, eps, &output, None)?;
         stream.synchronize()?;
         Ok(output)
     }
@@ -63,6 +68,7 @@ impl RmsNorm {
         input: &DeviceTensor,
         residual: Option<&DeviceTensor>,
         scale: Option<&DeviceTensor>,
+        round_scale_f16: bool,
         axis: usize,
         eps: &Tensor,
         output: &DeviceTensor,
@@ -91,6 +97,7 @@ impl RmsNorm {
             shape_nd3[1],
             scale.is_some(),
             residual.is_some(),
+            round_scale_f16,
         )?;
 
         let i_view = get_cuda_view(input);
@@ -133,13 +140,24 @@ pub fn cuda_rms_norm_dispatch(
     input: &DeviceTensor,
     residual: Option<&DeviceTensor>,
     scale: Option<&DeviceTensor>,
+    round_scale_f16: bool,
     axis: usize,
     eps: &Tensor,
     output: &DeviceTensor,
     sum_out: Option<&DeviceTensor>,
 ) -> TractResult<()> {
     crate::with_cuda_stream(|stream| {
-        RmsNorm.dispatch_eval(stream, input, residual, scale, axis, eps, output, sum_out)
+        RmsNorm.dispatch_eval(
+            stream,
+            input,
+            residual,
+            scale,
+            round_scale_f16,
+            axis,
+            eps,
+            output,
+            sum_out,
+        )
     })
 }
 
@@ -151,6 +169,7 @@ crate::register_cuda_op!(tract_transformers::ops::rms_norm::RmsNorm, |source, no
         false,
         false,
         None,
+        false,
         "Cuda",
         cuda_rms_norm_dispatch,
     ))))
@@ -161,12 +180,14 @@ crate::register_cuda_op!(tract_core::ops::nn::ScaledRmsNorm, |source, node, op| 
     rule_if!(RmsNorm::is_supported_dt(input_facts[0].datum_type));
     rule_if!(op.out_dt.map(RmsNorm::is_supported_dt).unwrap_or(true));
     rule_if!(input_facts[1].datum_type == DatumType::F32);
+    rule_if!(op.scale_dt.is_none_or(|dt| matches!(dt, DatumType::F16 | DatumType::F32)));
     Ok(Some(Box::new(tract_gpu::ops::rms_norm::GpuRmsNorm::new(
         op.axis,
         op.eps.clone(),
         true,
         false,
         op.out_dt,
+        op.scale_dt == Some(DatumType::F16),
         "Cuda",
         cuda_rms_norm_dispatch,
     ))))
@@ -263,7 +284,8 @@ mod tests {
             )?;
 
             let eps = Arc::new(tensor0(0.0001f32));
-            let cpu_op = ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: None };
+            let cpu_op =
+                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: None, scale_dt: None };
             let cpu_output = cpu_op.eval(
                 &EvalContext::out_of_plan(),
                 tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
@@ -304,6 +326,7 @@ mod tests {
         axis: usize,
         in_dt: DatumType,
         out_dt: DatumType,
+        scale_dt: Option<DatumType>,
     ) -> TractResult<()> {
         use tract_core::ops::nn::ScaledRmsNorm;
         crate::with_cuda_stream(|stream| {
@@ -322,7 +345,8 @@ mod tests {
             )?;
 
             let eps = Arc::new(tensor0(0.0001f32));
-            let cpu_op = ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt) };
+            let cpu_op =
+                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: Some(out_dt), scale_dt };
             let cpu_output = cpu_op.eval(
                 &EvalContext::out_of_plan(),
                 tvec![input.clone().into_tvalue(), scale.clone().into_tvalue()],
@@ -338,6 +362,7 @@ mod tests {
                 &input_c,
                 None,
                 Some(&scale_c),
+                scale_dt == Some(DatumType::F16),
                 axis,
                 &eps,
                 &output_c,
@@ -356,11 +381,15 @@ mod tests {
     #[test]
     fn test_rms_scaled_cast() -> TractResult<()> {
         for (shape, axis) in [(&[6usize, 8][..], 1), (&[6, 9][..], 1), (&[8, 5][..], 0)] {
-            cast_test_case(shape, axis, DatumType::F16, DatumType::F32)?;
-            cast_test_case(shape, axis, DatumType::F32, DatumType::F16)?;
+            cast_test_case(shape, axis, DatumType::F16, DatumType::F32, None)?;
+            cast_test_case(shape, axis, DatumType::F32, DatumType::F16, None)?;
+            cast_test_case(shape, axis, DatumType::F16, DatumType::F32, Some(DatumType::F16))?;
+            cast_test_case(shape, axis, DatumType::F32, DatumType::F16, Some(DatumType::F16))?;
         }
-        cast_test_case(&[2, 1200], 1, DatumType::F16, DatumType::F32)?;
-        cast_test_case(&[2, 1200], 1, DatumType::F32, DatumType::F16)?;
+        cast_test_case(&[2, 1200], 1, DatumType::F16, DatumType::F32, None)?;
+        cast_test_case(&[2, 1200], 1, DatumType::F32, DatumType::F16, None)?;
+        cast_test_case(&[2, 1200], 1, DatumType::F16, DatumType::F32, Some(DatumType::F16))?;
+        cast_test_case(&[2, 1200], 1, DatumType::F32, DatumType::F16, Some(DatumType::F16))?;
         Ok(())
     }
 
@@ -408,7 +437,7 @@ mod tests {
                 .clone()
                 .into_tensor();
             let cpu_normed = if with_scale {
-                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: None }.eval(
+                ScaledRmsNorm { axis, eps: Arc::clone(&eps), out_dt: None, scale_dt: None }.eval(
                     &EvalContext::out_of_plan(),
                     tvec![sum.clone().into_tvalue(), scale.clone().into_tvalue()],
                 )?[0]
@@ -433,6 +462,7 @@ mod tests {
                 &input_c,
                 Some(&residual_c),
                 with_scale.then_some(&scale_c),
+                false,
                 axis,
                 &eps,
                 &output_c,
