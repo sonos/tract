@@ -1,0 +1,7 @@
+version 1.0;
+
+graph scaled_bias(bias) -> (output)
+{
+    bias = external<scalar>(shape = [1, 1]);
+    output = mul(bias, 2.0);
+}
