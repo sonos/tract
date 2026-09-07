@@ -245,6 +245,33 @@ unsafe fn avx2_fma(
             let biasv = _mm256_set1_ps(bias);
             let z = _mm256_setzero_ps();
             let block = if in_stride == 2 { 9 } else { 8 };
+            // Four accumulators: one chain per tap would serialise on FMA
+            // latency, and the taps are a dependency chain per output lane.
+            while i + 24 + block <= len {
+                let mut a0 = biasv;
+                let mut a1 = biasv;
+                let mut a2 = biasv;
+                let mut a3 = biasv;
+                for n in 0..n_taps {
+                    let kn = _mm256_set1_ps(k[n]);
+                    let b = iptr.offset(ioffset[n]).offset(i as isize * in_stride);
+                    a0 = _mm256_fmadd_ps(avx2_load8(b, in_stride), kn, a0);
+                    a1 = _mm256_fmadd_ps(avx2_load8(b.offset(8 * in_stride), in_stride), kn, a1);
+                    a2 = _mm256_fmadd_ps(avx2_load8(b.offset(16 * in_stride), in_stride), kn, a2);
+                    a3 = _mm256_fmadd_ps(avx2_load8(b.offset(24 * in_stride), in_stride), kn, a3);
+                }
+                if relu {
+                    a0 = _mm256_max_ps(a0, z);
+                    a1 = _mm256_max_ps(a1, z);
+                    a2 = _mm256_max_ps(a2, z);
+                    a3 = _mm256_max_ps(a3, z);
+                }
+                _mm256_storeu_ps(optr.add(i), a0);
+                _mm256_storeu_ps(optr.add(i + 8), a1);
+                _mm256_storeu_ps(optr.add(i + 16), a2);
+                _mm256_storeu_ps(optr.add(i + 24), a3);
+                i += 32;
+            }
             while i + block <= len {
                 let mut acc = biasv;
                 for n in 0..n_taps {
