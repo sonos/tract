@@ -195,6 +195,11 @@ macro_rules! impl_eval {
                     ioffset[i] = zone.values_offsets[i].1;
                 }
                 let mut k = [T::zero(); N];
+                let ker = if T::datum_type() == f32::datum_type() {
+                    tract_linalg::routines::depthwise_w_f32()
+                } else {
+                    None
+                };
                 for c in 0..*dw.input_shape.c() as isize {
                     visitor.reset();
                     let iptr = iptr.offset(c_stride_i * c);
@@ -206,19 +211,17 @@ macro_rules! impl_eval {
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
-                        #[cfg(target_arch = "aarch64")]
-                        if std::any::TypeId::of::<T>() == std::any::TypeId::of::<f32>()
+                        if let Some(ker) = ker
                             && visitor.inner_loop_output_stride == 1
                             && visitor.inner_loop_input_full_stride >= 1
                         {
                             let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
-                            let bias_f32 = *(&bias as *const T as *const f32);
-                            neon_depthwise_w_f32::<N>(
+                            ker(
                                 iptr as *const f32,
                                 optr as *mut f32,
                                 &k_f32,
                                 &ioffset,
-                                bias_f32,
+                                *(&bias as *const T as *const f32),
                                 visitor.inner_loop_len,
                                 visitor.inner_loop_input_full_stride,
                             );
@@ -328,112 +331,6 @@ impl_eval! {
 aarch64fp16
 }
 
-/// Depthwise along an output-contiguous spatial axis (`output_stride == 1`).
-/// Vectorise over consecutive output points. Input may be contiguous (stride 1)
-/// or strided: DPDFNet 48 kHz encoder DW is NCHW `kw=3` with W-stride 2 or 3,
-/// which `vld2q`/`vld3q` de-interleave. Scalar `process_zone_n` stays for
-/// padded / non-unit output-stride zones. Does not touch `BlockedConv`.
-#[cfg(target_arch = "aarch64")]
-unsafe fn neon_depthwise_w_f32<const N: usize>(
-    iptr: *const f32,
-    optr: *mut f32,
-    k: &[f32; N],
-    ioffset: &[isize; N],
-    bias: f32,
-    len: usize,
-    in_stride: isize,
-) {
-    unsafe {
-        use std::arch::aarch64::*;
-        let biasv = vdupq_n_f32(bias);
-        let mut i = 0usize;
-        if in_stride == 1 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).add(i);
-                    acc0 = vfmaq_f32(acc0, vld1q_f32(p), kn);
-                    acc1 = vfmaq_f32(acc1, vld1q_f32(p.add(4)), kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    acc = vfmaq_f32(acc, vld1q_f32(iptr.offset(ioffset[n]).add(i)), kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 2 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).offset(i as isize * 2);
-                    // vld2 de-interleaves even/odd; even lanes are stride-2 samples.
-                    let a = vld2q_f32(p);
-                    let b = vld2q_f32(p.add(8));
-                    acc0 = vfmaq_f32(acc0, a.0, kn);
-                    acc1 = vfmaq_f32(acc1, b.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let a = vld2q_f32(iptr.offset(ioffset[n]).offset(i as isize * 2));
-                    acc = vfmaq_f32(acc, a.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 3 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = iptr.offset(ioffset[n]).offset(i as isize * 3);
-                    let a = vld3q_f32(p);
-                    let b = vld3q_f32(p.add(12));
-                    acc0 = vfmaq_f32(acc0, a.0, kn);
-                    acc1 = vfmaq_f32(acc1, b.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc0);
-                vst1q_f32(optr.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let a = vld3q_f32(iptr.offset(ioffset[n]).offset(i as isize * 3));
-                    acc = vfmaq_f32(acc, a.0, kn);
-                }
-                vst1q_f32(optr.add(i), acc);
-                i += 4;
-            }
-        }
-        while i < len {
-            let mut sum = bias;
-            for n in 0..N {
-                sum += k[n] * *iptr.offset(ioffset[n]).offset(i as isize * in_stride);
-            }
-            *optr.add(i) = sum;
-            i += 1;
-        }
-    }
-}
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
 /* partial alternative impl that may be relevant when simd gets better */
