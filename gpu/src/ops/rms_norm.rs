@@ -3,12 +3,13 @@ use derive_new::new;
 use std::sync::Arc;
 use tract_core::internal::*;
 
-/// (input, residual?, scale?, axis, eps, output, sum_out?): residual and
-/// sum_out come and go together (see `GpuRmsNorm::has_residual`).
+/// (input, residual?, scale?, round_scale_f16, axis, eps, output, sum_out?):
+/// residual and sum_out come and go together (see `GpuRmsNorm::has_residual`).
 pub type DispatchRmsNormFn = fn(
     &DeviceTensor,
     Option<&DeviceTensor>,
     Option<&DeviceTensor>,
+    bool,
     usize,
     &Tensor,
     &DeviceTensor,
@@ -16,6 +17,7 @@ pub type DispatchRmsNormFn = fn(
 ) -> TractResult<()>;
 
 #[derive(Clone, new)]
+#[allow(clippy::too_many_arguments)]
 pub struct GpuRmsNorm {
     pub axis: usize,
     pub eps: Arc<Tensor>,
@@ -29,6 +31,11 @@ pub struct GpuRmsNorm {
     pub has_residual: bool,
     /// Output dtype when it differs from the input dtype (fused cast).
     pub out_dt: Option<DatumType>,
+    /// When true the F32 accumulator is rounded to F16 before the scale
+    /// multiply, which is what `ScaledRmsNorm::scale_dt` asks for when the
+    /// graph materialized its norm output in F16. Rounding to F32 is a
+    /// no-op on the accumulator, so it needs no flag of its own.
+    pub round_scale_f16: bool,
     pub backend_name: &'static str,
     pub dispatch: DispatchRmsNormFn,
 }
@@ -51,6 +58,7 @@ impl PartialEq for GpuRmsNorm {
             && self.has_scale == other.has_scale
             && self.has_residual == other.has_residual
             && self.out_dt == other.out_dt
+            && self.round_scale_f16 == other.round_scale_f16
     }
 }
 
@@ -64,6 +72,7 @@ impl std::hash::Hash for GpuRmsNorm {
         self.has_scale.hash(state);
         self.has_residual.hash(state);
         self.out_dt.hash(state);
+        self.round_scale_f16.hash(state);
     }
 }
 
@@ -104,7 +113,16 @@ impl EvalOp for GpuRmsNorm {
                 input.datum_type(),
                 input.shape(),
             )?;
-            (self.dispatch)(input, residual, scale, self.axis, &self.eps, &output, Some(&sum_out))?;
+            (self.dispatch)(
+                input,
+                residual,
+                scale,
+                self.round_scale_f16,
+                self.axis,
+                &self.eps,
+                &output,
+                Some(&sum_out),
+            )?;
             return Ok(tvec!(
                 output.into_tensor().into_tvalue(),
                 sum_out.into_tensor().into_tvalue()
@@ -115,7 +133,16 @@ impl EvalOp for GpuRmsNorm {
             self.out_dt.unwrap_or(input.datum_type()),
             input.shape(),
         )?;
-        (self.dispatch)(input, None, scale, self.axis, &self.eps, &output, None)?;
+        (self.dispatch)(
+            input,
+            None,
+            scale,
+            self.round_scale_f16,
+            self.axis,
+            &self.eps,
+            &output,
+            None,
+        )?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }

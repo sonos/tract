@@ -342,7 +342,7 @@ template <typename I4, typename O4>
     }
 }
 
-template <typename FI, typename FO>
+template <typename FI, typename FO, bool ROUND_F16>
 [[kernel]] void rms_norm_scaled_nd3(device const void *input_b,
                              constant void *eps_b,
                              device const float *scale,
@@ -391,12 +391,18 @@ template <typename FI, typename FO>
 
     for (size_t i = tpitg; i < dim; i += ntg) {
         auto idx = base_idx + i * strides[1];
-        output[idx] =
-            static_cast<FO>(static_cast<float>(input[idx]) * norm * scale[i]);
+        // The graph this fusion replaces materializes the norm output at its
+        // own precision before the gamma multiply; keeping the f32
+        // accumulator here would make the op more precise than that graph.
+        float normed = static_cast<float>(input[idx]) * norm;
+        if (ROUND_F16) {
+            normed = static_cast<float>(static_cast<half>(normed));
+        }
+        output[idx] = static_cast<FO>(normed * scale[i]);
     }
 }
 
-template <typename I4, typename O4>
+template <typename I4, typename O4, bool ROUND_F16>
 [[kernel]] void rms_norm_scaled_nd2_l4(device const char *input_b,
                                 constant char *eps_b,
                                 device const float4 *scale4,
@@ -441,7 +447,11 @@ template <typename I4, typename O4>
 
     device O4 *y = (device O4 *)output_b + tgpig * n_div_4;
     for (size_t i = tpitg; i < n_div_4; i += ntg) {
-        y[i] = static_cast<O4>(static_cast<float4>(x[i]) * scale * scale4[i]);
+        float4 normed = static_cast<float4>(x[i]) * scale;
+        if (ROUND_F16) {
+            normed = static_cast<float4>(static_cast<half4>(normed));
+        }
+        y[i] = static_cast<O4>(normed * scale4[i]);
     }
 }
 
@@ -564,7 +574,7 @@ template <typename I4, typename O4>
     }
 }
 
-template <typename FI, typename FO>
+template <typename FI, typename FO, bool ROUND_F16>
 [[kernel]] void rms_norm_scaled_add_nd3(device const void *input_b,
                              device const void *res_b,
                              constant void *eps_b,
@@ -621,12 +631,15 @@ template <typename FI, typename FO>
     for (size_t i = tpitg; i < dim; i += ntg) {
         auto idx = base_idx + i * strides[1];
         const FI v = input[idx] + res[idx];
-        output[idx] =
-            static_cast<FO>(static_cast<float>(v) * norm * scale[i]);
+        float normed = static_cast<float>(v) * norm;
+        if (ROUND_F16) {
+            normed = static_cast<float>(static_cast<half>(normed));
+        }
+        output[idx] = static_cast<FO>(normed * scale[i]);
     }
 }
 
-template <typename I4, typename O4>
+template <typename I4, typename O4, bool ROUND_F16>
 [[kernel]] void rms_norm_scaled_add_nd2_l4(device const char *input_b,
                                 device const char *res_b,
                                 constant char *eps_b,
@@ -677,84 +690,121 @@ template <typename I4, typename O4>
 
     device O4 *y = (device O4 *)output_b + tgpig * n_div_4;
     for (size_t i = tpitg; i < n_div_4; i += ntg) {
-        y[i] = static_cast<O4>(static_cast<float4>(x[i] + r[i]) * scale * scale4[i]);
+        float4 normed = static_cast<float4>(x[i] + r[i]) * scale;
+        if (ROUND_F16) {
+            normed = static_cast<float4>(static_cast<half4>(normed));
+        }
+        y[i] = static_cast<O4>(normed * scale4[i]);
     }
 }
 
 typedef decltype(rms_norm_nd3<float, float>) rms_norm_nd3_t;
 typedef decltype(rms_norm_nd2_l4<float4, float4>) rms_norm_nd2_l4_t;
-typedef decltype(rms_norm_scaled_nd3<float, float>) rms_norm_scaled_nd3_t;
-typedef decltype(rms_norm_scaled_nd2_l4<float4, float4>) rms_norm_scaled_nd2_l4_t;
+typedef decltype(rms_norm_scaled_nd3<float, float, false>) rms_norm_scaled_nd3_t;
+typedef decltype(rms_norm_scaled_nd2_l4<float4, float4, false>) rms_norm_scaled_nd2_l4_t;
 typedef decltype(rms_norm_add_nd3<float, float>) rms_norm_add_nd3_t;
 typedef decltype(rms_norm_add_nd2_l4<float4, float4>) rms_norm_add_nd2_l4_t;
-typedef decltype(rms_norm_scaled_add_nd3<float, float>) rms_norm_scaled_add_nd3_t;
-typedef decltype(rms_norm_scaled_add_nd2_l4<float4, float4>) rms_norm_scaled_add_nd2_l4_t;
+typedef decltype(rms_norm_scaled_add_nd3<float, float, false>) rms_norm_scaled_add_nd3_t;
+typedef decltype(rms_norm_scaled_add_nd2_l4<float4, float4, false>)
+    rms_norm_scaled_add_nd2_l4_t;
 
 template [[host_name("nn_ops::rms_norm_nd3_f32_f32")]] [[kernel]]
     rms_norm_nd3_t rms_norm_nd3<float, float>;
 template [[host_name("nn_ops::rms_norm_nd2_l4_f32_f32")]] [[kernel]]
     rms_norm_nd2_l4_t rms_norm_nd2_l4<float4, float4>;
 template [[host_name("nn_ops::rms_norm_scaled_nd3_f32_f32")]] [[kernel]]
-    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, float>;
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, float, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd3_f32_f32")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, float, true>;
 template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f32_f32")]] [[kernel]]
-    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, float4>;
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, float4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd2_l4_f32_f32")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, float4, true>;
 template [[host_name("nn_ops::rms_norm_nd3_f32_f16")]] [[kernel]]
     rms_norm_nd3_t rms_norm_nd3<float, half>;
 template [[host_name("nn_ops::rms_norm_nd2_l4_f32_f16")]] [[kernel]]
     rms_norm_nd2_l4_t rms_norm_nd2_l4<float4, half4>;
 template [[host_name("nn_ops::rms_norm_scaled_nd3_f32_f16")]] [[kernel]]
-    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, half>;
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, half, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd3_f32_f16")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<float, half, true>;
 template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f32_f16")]] [[kernel]]
-    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, half4>;
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, half4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd2_l4_f32_f16")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<float4, half4, true>;
 template [[host_name("nn_ops::rms_norm_nd3_f16_f32")]] [[kernel]]
     rms_norm_nd3_t rms_norm_nd3<half, float>;
 template [[host_name("nn_ops::rms_norm_nd2_l4_f16_f32")]] [[kernel]]
     rms_norm_nd2_l4_t rms_norm_nd2_l4<half4, float4>;
 template [[host_name("nn_ops::rms_norm_scaled_nd3_f16_f32")]] [[kernel]]
-    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, float>;
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, float, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd3_f16_f32")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, float, true>;
 template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f16_f32")]] [[kernel]]
-    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, float4>;
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, float4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd2_l4_f16_f32")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, float4, true>;
 template [[host_name("nn_ops::rms_norm_nd3_f16_f16")]] [[kernel]]
     rms_norm_nd3_t rms_norm_nd3<half, half>;
 template [[host_name("nn_ops::rms_norm_nd2_l4_f16_f16")]] [[kernel]]
     rms_norm_nd2_l4_t rms_norm_nd2_l4<half4, half4>;
 template [[host_name("nn_ops::rms_norm_scaled_nd3_f16_f16")]] [[kernel]]
-    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, half>;
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, half, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd3_f16_f16")]] [[kernel]]
+    rms_norm_scaled_nd3_t rms_norm_scaled_nd3<half, half, true>;
 template [[host_name("nn_ops::rms_norm_scaled_nd2_l4_f16_f16")]] [[kernel]]
-    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, half4>;
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, half4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_nd2_l4_f16_f16")]] [[kernel]]
+    rms_norm_scaled_nd2_l4_t rms_norm_scaled_nd2_l4<half4, half4, true>;
 
 template [[host_name("nn_ops::rms_norm_add_nd3_f32_f32")]] [[kernel]]
     rms_norm_add_nd3_t rms_norm_add_nd3<float, float>;
 template [[host_name("nn_ops::rms_norm_add_nd2_l4_f32_f32")]] [[kernel]]
     rms_norm_add_nd2_l4_t rms_norm_add_nd2_l4<float4, float4>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd3_f32_f32")]] [[kernel]]
-    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, float>;
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, float, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd3_f32_f32")]] [[kernel]]
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, float, true>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd2_l4_f32_f32")]] [[kernel]]
-    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, float4>;
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, float4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd2_l4_f32_f32")]] [[kernel]]
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, float4, true>;
 template [[host_name("nn_ops::rms_norm_add_nd3_f32_f16")]] [[kernel]]
     rms_norm_add_nd3_t rms_norm_add_nd3<float, half>;
 template [[host_name("nn_ops::rms_norm_add_nd2_l4_f32_f16")]] [[kernel]]
     rms_norm_add_nd2_l4_t rms_norm_add_nd2_l4<float4, half4>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd3_f32_f16")]] [[kernel]]
-    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, half>;
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, half, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd3_f32_f16")]] [[kernel]]
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<float, half, true>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd2_l4_f32_f16")]] [[kernel]]
-    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, half4>;
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, half4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd2_l4_f32_f16")]] [[kernel]]
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<float4, half4, true>;
 template [[host_name("nn_ops::rms_norm_add_nd3_f16_f32")]] [[kernel]]
     rms_norm_add_nd3_t rms_norm_add_nd3<half, float>;
 template [[host_name("nn_ops::rms_norm_add_nd2_l4_f16_f32")]] [[kernel]]
     rms_norm_add_nd2_l4_t rms_norm_add_nd2_l4<half4, float4>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd3_f16_f32")]] [[kernel]]
-    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, float>;
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, float, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd3_f16_f32")]] [[kernel]]
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, float, true>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd2_l4_f16_f32")]] [[kernel]]
-    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, float4>;
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, float4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd2_l4_f16_f32")]] [[kernel]]
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, float4, true>;
 template [[host_name("nn_ops::rms_norm_add_nd3_f16_f16")]] [[kernel]]
     rms_norm_add_nd3_t rms_norm_add_nd3<half, half>;
 template [[host_name("nn_ops::rms_norm_add_nd2_l4_f16_f16")]] [[kernel]]
     rms_norm_add_nd2_l4_t rms_norm_add_nd2_l4<half4, half4>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd3_f16_f16")]] [[kernel]]
-    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, half>;
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, half, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd3_f16_f16")]] [[kernel]]
+    rms_norm_scaled_add_nd3_t rms_norm_scaled_add_nd3<half, half, true>;
 template [[host_name("nn_ops::rms_norm_scaled_add_nd2_l4_f16_f16")]] [[kernel]]
-    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, half4>;
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, half4, false>;
+template [[host_name("nn_ops::rms_norm_scaled_r16_add_nd2_l4_f16_f16")]] [[kernel]]
+    rms_norm_scaled_add_nd2_l4_t rms_norm_scaled_add_nd2_l4<half4, half4, true>;
 
 struct Sigmoid {
     template <typename T> T operator()(T x) {

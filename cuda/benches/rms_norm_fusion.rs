@@ -74,7 +74,7 @@ fn unfused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: 
                 let h = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
                 binary::dispatch_eval(stream, &Add, &x, &inputs.deltas[l], &h)?;
                 let n = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
-                RmsNorm.dispatch_eval(stream, &h, None, None, 2, &eps, &n, None)?;
+                RmsNorm.dispatch_eval(stream, &h, None, None, false, 2, &eps, &n, None)?;
                 let out = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
                 binary::dispatch_eval(stream, &Mul, &n, &inputs.gammas[l], &out)?;
                 x = out;
@@ -104,6 +104,7 @@ fn fused(crit: &mut BenchmarkGroup<WallTime>, label: &str, batch: usize, seq: us
                     &x,
                     Some(&inputs.deltas[l]),
                     Some(&inputs.gammas[l]),
+                    false,
                     2,
                     &eps,
                     &n,

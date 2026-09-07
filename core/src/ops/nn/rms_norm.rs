@@ -175,9 +175,10 @@ impl TypedOp for RmsNorm {
 ///
 /// Inputs: `[input, scale]`. `scale` is a rank-1 F32 tensor whose length is
 /// the input dimension along `axis`. The multiply runs in F32 whatever the
-/// input dtype, and the output keeps the input dtype. This is the fused form
-/// GPU backends target so the norm + weight multiply + surrounding casts
-/// collapse into a single kernel dispatch.
+/// input dtype, and the output keeps the input dtype unless `out_dt` says
+/// otherwise. This is the fused form GPU backends target so the norm +
+/// weight multiply + surrounding casts collapse into a single kernel
+/// dispatch.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ScaledRmsNorm {
     pub axis: usize,
@@ -185,6 +186,15 @@ pub struct ScaledRmsNorm {
     /// Output dtype when it differs from the input dtype (fuses the
     /// surrounding casts: the kernel computes in F32 anyway).
     pub out_dt: Option<DatumType>,
+    /// Dtype the normalized value is rounded to before the scale multiply.
+    /// The graphs this op replaces materialize the norm output at their own
+    /// precision first (`weight * hidden.to(input_dtype)`), and dropping
+    /// that rounding makes the fused op more precise than the graph it
+    /// stands for. `None` multiplies the F32 accumulator directly, which is
+    /// what a norm that genuinely ran in F32 does; the rounding target must
+    /// therefore be recorded here rather than read off the input fact,
+    /// which `fuse_scaled_rms_norm_in_cast` rewrites afterwards.
+    pub scale_dt: Option<DatumType>,
 }
 
 impl Op for ScaledRmsNorm {
@@ -192,7 +202,10 @@ impl Op for ScaledRmsNorm {
         "ScaledRmsNorm".to_string().into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {:?}, eps: {:?}, out_dt: {:?}", self.axis, self.eps, self.out_dt)])
+        Ok(vec![format!(
+            "axis: {:?}, eps: {:?}, out_dt: {:?}, scale_dt: {:?}",
+            self.axis, self.eps, self.out_dt, self.scale_dt
+        )])
     }
     op_as_typed_op!();
 }
@@ -203,9 +216,16 @@ impl EvalOp for ScaledRmsNorm {
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, scale) = args_2!(inputs);
         let in_dt = input.datum_type();
+        let input = input.cast_to::<f32>()?.into_owned().into_tvalue();
         let normed =
             RmsNorm { axis: self.axis, eps: self.eps.clone() }.eval(ctx, tvec!(input))?.remove(0);
-        let mut buf = normed.cast_to::<f32>()?.into_owned();
+        let normed = match self.scale_dt {
+            Some(dt) if dt != DatumType::F32 => {
+                normed.cast_to_dt(dt)?.into_owned().cast_to::<f32>()?.into_owned().into_tvalue()
+            }
+            _ => normed,
+        };
+        let mut buf = normed.into_tensor();
         let scale = scale.cast_to::<f32>()?.into_owned();
         let scale = unsafe { scale.as_slice_unchecked::<f32>() };
         let shape = buf.shape().to_vec();
@@ -251,6 +271,9 @@ impl TypedOp for ScaledRmsNorm {
         }
         if let Some(out_dt) = self.out_dt {
             ensure!(out_dt.is_float(), "ScaledRmsNorm: out_dt must be a float type");
+        }
+        if let Some(scale_dt) = self.scale_dt {
+            ensure!(scale_dt.is_float(), "ScaledRmsNorm: scale_dt must be a float type");
         }
         let dt = self.out_dt.unwrap_or(inputs[0].datum_type);
         let fact = dt.fact(inputs[0].shape.clone());
