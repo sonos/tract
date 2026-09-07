@@ -59,6 +59,14 @@ use tract_linalg::mmm::MatMatMul;
 #[cfg(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows"))))]
 readings_probe::wrap_global_allocator!(tikv_jemallocator::Jemalloc);
 
+// jemalloc keeps purged extents mapped and dirty under its default `retain`, and some
+// kernels never take those pages back: the resident set then reports the process peak
+// rather than what the model holds.
+#[cfg(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows"))))]
+#[unsafe(export_name = "_rjem_malloc_conf")]
+#[allow(non_upper_case_globals)]
+pub static malloc_conf: &[u8] = b"retain:false\0";
+
 #[cfg(not(all(feature = "jemalloc", not(any(target_family = "wasm", target_os = "windows")))))]
 readings_probe::instrumented_allocator!();
 
