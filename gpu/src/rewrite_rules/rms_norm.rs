@@ -137,9 +137,10 @@ pub fn fuse_rms_norm_scale(
 /// single float cast, all branches ending on one dtype. Reassembles the full
 /// gamma and rewrites to one fused `ScaledRmsNorm` re-sliced per branch: the
 /// norm+scale runs as a single kernel instead of one norm plus a mul(+cast)
-/// dispatch per slice. Bit-exact: the fused kernel computes
-/// `cast((x * norm) * gamma)` in f32 with one rounding at the write, the
-/// same op sequence as the split form.
+/// dispatch per slice. The fused kernel multiplies by gamma directly off the
+/// norm's f32 accumulator. When the input dtype is narrower than F32, this
+/// differs from the split form, which rounds the norm's output to the input
+/// dtype before each gamma multiply.
 pub fn fuse_rms_norm_split_scale(
     _ctx: &(),
     model: &TypedModel,
