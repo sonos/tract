@@ -696,6 +696,9 @@ impl Conv {
         if kvol < 2 {
             return false;
         }
+        if TRACT_DISABLE_DIRECT_SPATIAL.get() {
+            return false;
+        }
         let k = self.input_channels() * kvol;
         let k_limit = if amx_owns_fat_spatial() { 64 } else { 576 };
         if k > k_limit {
@@ -1467,6 +1470,12 @@ pub(crate) fn amx_owns_fat_spatial() -> bool {
     }
 }
 
+crate::declare_knob!(
+    TRACT_DISABLE_DIRECT_SPATIAL,
+    bool,
+    false,
+    "Disable the direct spatial convolution lowering, falling back to im2col + matmul."
+);
 crate::declare_knob!(
     TRACT_ENABLE_BLOCKED_CONV,
     bool,
