@@ -96,7 +96,7 @@ tract-cuda = { workspace = true, optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 rustix = { version = "1", features = ["fs"] }
 
-[target.'cfg(not(any(target_family = "wasm", target_os = "windows")))'.dependencies]
+[target.'cfg(not(any(target_family = "wasm", target_os = "windows", target_vendor = "apple")))'.dependencies]
 tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
