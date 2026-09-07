@@ -11,6 +11,7 @@ that is harder to derive from reading the source.
 * [`graph.md`](graph.md) — Graph, Node, Outlet, Fact, model pipeline
 * [`op.md`](op.md) — anatomy of an Op (`Op` / `EvalOp` / `TypedOp` / `InferenceOp`)
 * [`cli-recipe.md`](cli-recipe.md) — `tract` command-line cookbook
+* [`allocator.md`](allocator.md) — which allocator to link, and how to configure it
 * [`pgo.md`](pgo.md) — profile-guided optimization build recipe
 * [`kernel-notes.md`](kernel-notes.md) — tract-linalg kernels and debugging
 * [`pgo-bolt.md`](pgo-bolt.md) — profile-guided optimization and BOLT release builds
