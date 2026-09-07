@@ -325,7 +325,13 @@ pub unsafe fn conv_along_w_oc4_f32(
     }
     #[cfg(target_arch = "x86_64")]
     unsafe {
-        if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx2") {
+        if in_stride == 1
+            && is_x86_feature_detected!("avx512f")
+            && is_x86_feature_detected!("fma")
+            && is_x86_feature_detected!("avx2")
+        {
+            avx512_oc4_s1(iptr, optr, k, ioffset, bias, len, oc_stride, relu);
+        } else if is_x86_feature_detected!("fma") && is_x86_feature_detected!("avx2") {
             avx2_oc4(iptr, optr, k, ioffset, bias, len, in_stride, oc_stride, relu);
         } else {
             scalar_oc4(iptr, optr, k, ioffset, bias, len, in_stride, oc_stride, relu);
@@ -338,6 +344,76 @@ pub unsafe fn conv_along_w_oc4_f32(
 }
 
 #[cfg_attr(target_arch = "aarch64", allow(dead_code))]
+/// Unit-stride `conv_along_w_oc4_f32` on zmm: two 16 lane W blocks share the
+/// four weight broadcasts, which are the loads that bound the loop.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx512f")]
+unsafe fn avx512_oc4_s1(
+    iptr: *const f32,
+    optr: *mut f32,
+    k: &[f32],
+    ioffset: &[isize],
+    bias: &[f32; 4],
+    len: usize,
+    oc_stride: isize,
+    relu: bool,
+) {
+    unsafe {
+        use std::arch::x86_64::*;
+        let n_taps = ioffset.len();
+        let z = _mm512_setzero_ps();
+        let b = [
+            _mm512_set1_ps(bias[0]),
+            _mm512_set1_ps(bias[1]),
+            _mm512_set1_ps(bias[2]),
+            _mm512_set1_ps(bias[3]),
+        ];
+        let mut i = 0usize;
+        while i + 32 <= len {
+            let mut a = [b[0], b[1], b[2], b[3]];
+            let mut c = [b[0], b[1], b[2], b[3]];
+            for t in 0..n_taps {
+                let p = iptr.offset(ioffset[t]).add(i);
+                let x = _mm512_loadu_ps(p);
+                let y = _mm512_loadu_ps(p.add(16));
+                for o in 0..4 {
+                    let kt = _mm512_set1_ps(k[o * n_taps + t]);
+                    a[o] = _mm512_fmadd_ps(x, kt, a[o]);
+                    c[o] = _mm512_fmadd_ps(y, kt, c[o]);
+                }
+            }
+            for o in 0..4 {
+                if relu {
+                    a[o] = _mm512_max_ps(a[o], z);
+                    c[o] = _mm512_max_ps(c[o], z);
+                }
+                _mm512_storeu_ps(optr.offset(o as isize * oc_stride).add(i), a[o]);
+                _mm512_storeu_ps(optr.offset(o as isize * oc_stride).add(i + 16), c[o]);
+            }
+            i += 32;
+        }
+        while i + 16 <= len {
+            let mut a = [b[0], b[1], b[2], b[3]];
+            for t in 0..n_taps {
+                let x = _mm512_loadu_ps(iptr.offset(ioffset[t]).add(i));
+                for o in 0..4 {
+                    a[o] = _mm512_fmadd_ps(x, _mm512_set1_ps(k[o * n_taps + t]), a[o]);
+                }
+            }
+            for o in 0..4 {
+                if relu {
+                    a[o] = _mm512_max_ps(a[o], z);
+                }
+                _mm512_storeu_ps(optr.offset(o as isize * oc_stride).add(i), a[o]);
+            }
+            i += 16;
+        }
+        if i < len {
+            avx2_oc4(iptr.add(i), optr.add(i), k, ioffset, bias, len - i, 1, oc_stride, relu);
+        }
+    }
+}
+
 unsafe fn scalar_oc4(
     iptr: *const f32,
     optr: *mut f32,
