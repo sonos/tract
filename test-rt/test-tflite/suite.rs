@@ -81,6 +81,7 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_or
 
         test_reduce
+        test_resize
         test_softmax
 
         test_abs
