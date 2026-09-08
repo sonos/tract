@@ -29,7 +29,7 @@ tract-transformers.workspace = true
 serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
-tract-metal.workspace = true
+tract-metal = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 tract-cuda = { workspace = true, default-features = false, optional = true }
@@ -44,11 +44,16 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000"]
+default = ["cuda-13000", "metal"]
 complex = []
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []
+
+# Gates the `extern crate tract_metal` that registers the Metal runtime, on the
+# Apple targets that have it. Enabled by default; CPU-only consumers drop the
+# backend, and the shader sources it embeds, with `default-features = false`.
+metal = ["dep:tract-metal", "tract-libcli/metal"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Gates the `extern crate tract_cuda` that registers the CUDA runtime.

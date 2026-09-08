@@ -32,7 +32,7 @@ tract-gpu.workspace = true
 tract-transformers = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
-tract-metal = { workspace = true }
+tract-metal = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 cudarc = { workspace = true, optional = true }
@@ -45,6 +45,12 @@ hir = []
 onnx = ["tract-onnx"]
 complex = ["tract-core/complex"]
 transformers = ["tract-transformers"]
+# Dependency selector for the Metal-backed `--metal-gpu-trace` path, mirroring
+# `cuda`. Off leaves the flag reporting that the build has no Metal support,
+# and keeps tract-metal -- and the shader sources it embeds -- out of any
+# library linking tract-libcli.
+metal = ["dep:tract-metal"]
+
 # Marker / dependency selector for cudarc-backed code paths
 # (`--cuda-gpu-trace`).  Enabled transitively by tract-cli's cuda-XXXXX
 # features.  Always pulled together — picking one selects the cudarc API
