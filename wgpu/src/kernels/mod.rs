@@ -5,6 +5,7 @@ pub mod conv;
 pub mod copy;
 pub mod deconv;
 pub mod element_wise;
+pub mod ingest;
 pub mod matmul;
 pub mod pool;
 pub mod reduce;
@@ -22,6 +23,7 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<shaders::PipelineKey> {
     keys.extend(copy::all_pipeline_keys(shader_f16));
     keys.extend(deconv::all_pipeline_keys(shader_f16));
     keys.extend(element_wise::all_pipeline_keys(shader_f16));
+    keys.extend(ingest::all_pipeline_keys(shader_f16));
     keys.extend(matmul::all_pipeline_keys(shader_f16));
     keys.extend(pool::all_pipeline_keys(shader_f16));
     keys.extend(reduce::all_pipeline_keys(shader_f16));

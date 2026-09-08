@@ -24,6 +24,9 @@ pub enum LayoutKind {
     Unary,
     Binary,
     Resize,
+    Ingest,
+    /// Writes a tensor into a storage texture the caller owns.
+    Export,
     /// A fused elementwise chain: `n` storage buffers, the last one the output.
     Chain(u8),
 }
@@ -34,6 +37,8 @@ impl LayoutKind {
             Self::Unary => "tract-wgpu-unary-layout",
             Self::Binary => "tract-wgpu-binary-layout",
             Self::Resize => "tract-wgpu-resize-layout",
+            Self::Ingest => "tract-wgpu-ingest-layout",
+            Self::Export => "tract-wgpu-export-layout",
             Self::Chain(_) => "tract-wgpu-chain-layout",
         }
     }
@@ -43,11 +48,81 @@ impl LayoutKind {
             Self::Unary => 2,
             Self::Binary => 3,
             Self::Resize => 4,
+            Self::Ingest => 1,
+            Self::Export => 1,
             Self::Chain(n) => n as u32,
         }
     }
 
     pub fn bind_group_layout_entries(self) -> Vec<wgpu::BindGroupLayoutEntry> {
+        if self == Self::Export {
+            return vec![
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: true },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::StorageTexture {
+                        access: wgpu::StorageTextureAccess::WriteOnly,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: std::num::NonZeroU64::new(256),
+                    },
+                    count: None,
+                },
+            ];
+        }
+        if self == Self::Ingest {
+            return vec![
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Storage { read_only: false },
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::COMPUTE,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: std::num::NonZeroU64::new(256),
+                    },
+                    count: None,
+                },
+            ];
+        }
         let mut entries = Vec::new();
         let n = self.storage_count();
         for i in 0..n {
@@ -117,6 +192,8 @@ pub enum ModuleKind {
     Deconv,
     Resize,
     Softmax,
+    Ingest,
+    Export,
     MatMul,
 }
 
@@ -145,6 +222,8 @@ impl ModuleKey {
                 LayoutKind::Binary
             }
             ModuleKind::Resize => LayoutKind::Resize,
+            ModuleKind::Ingest => LayoutKind::Ingest,
+            ModuleKind::Export => LayoutKind::Export,
         }
     }
 
@@ -160,6 +239,8 @@ impl ModuleKey {
             ModuleKind::Deconv => deconv_wgsl(self.dtype),
             ModuleKind::Resize => resize_wgsl(self.dtype),
             ModuleKind::Softmax => softmax_wgsl(self.dtype),
+            ModuleKind::Ingest => ingest_wgsl(self.dtype),
+            ModuleKind::Export => export_wgsl(self.dtype),
             ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }
     }
@@ -1724,6 +1805,73 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 "#
     ));
     s
+}
+
+/// A single-channel tensor into a texture the caller can sample: the mask
+/// leaves the graph as a GPU resource rather than as bytes on the host.
+fn export_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    width: u32,
+    height: u32,
+    _p: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var dst: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn export_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.width * params.height;
+    if (i >= n) {{ return; }}
+    let x = i % params.width;
+    let y = i / params.width;
+    let v = clamp(f32(inp[params.off_in + i]), 0.0, 1.0);
+    textureStore(dst, vec2<i32>(i32(x), i32(y)), vec4<f32>(v, v, v, 1.0));
+}}
+"#
+    ));
+    s
+}
+
+fn ingest_wgsl(dt: ShaderDtype) -> String {
+    let _ = dt;
+    format!(
+        r#"
+struct Params {{
+    off_out: u32,
+    width: u32,
+    height: u32,
+    _p: u32,
+}}
+
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read_write> outp: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn rgba_to_nchw_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.width * params.height;
+    if (i >= n) {{ return; }}
+    let x = i % params.width;
+    let y = i / params.width;
+    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0);
+    let hw = params.width * params.height;
+    let o = params.off_out + i;
+    outp[o] = px.r;
+    outp[o + hw] = px.g;
+    outp[o + 2u * hw] = px.b;
+}}
+"#
+    )
 }
 
 pub fn pack_u32s(vals: &[u32]) -> Vec<u8> {

@@ -373,6 +373,7 @@ impl WgpuContext {
         buffers: &[&WgpuBuffer],
         uniform: &wgpu::Buffer,
     ) -> TractResult<wgpu::BindGroup> {
+        ensure!(kind != LayoutKind::Ingest, "Ingest layout binds a texture; use bind_group_ingest");
         let key = BindGroupKey {
             layout: kind,
             buffers: buffers.iter().map(|b| b.id).collect(),
@@ -403,6 +404,45 @@ impl WgpuContext {
         let mut cache = self.inner.bind_groups.lock().map_err(|e| anyhow!("{e}"))?;
         cache.insert(key, bg.clone());
         Ok(bg)
+    }
+
+    /// One storage buffer read, one storage texture written.
+    pub fn bind_group_export(
+        &self,
+        input: &wgpu::Buffer,
+        view: &wgpu::TextureView,
+        uniform: &wgpu::Buffer,
+    ) -> TractResult<wgpu::BindGroup> {
+        let (bgl, _) = self.layout(LayoutKind::Export)?;
+        let entries = [
+            wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(view) },
+            uniform_entry(2, uniform),
+        ];
+        Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(LayoutKind::Export.label()),
+            layout: &bgl,
+            entries: &entries,
+        }))
+    }
+
+    pub fn bind_group_ingest(
+        &self,
+        view: &wgpu::TextureView,
+        output: &wgpu::Buffer,
+        uniform: &wgpu::Buffer,
+    ) -> TractResult<wgpu::BindGroup> {
+        let (bgl, _) = self.layout(LayoutKind::Ingest)?;
+        let entries = [
+            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+            wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
+            uniform_entry(2, uniform),
+        ];
+        Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(LayoutKind::Ingest.label()),
+            layout: &bgl,
+            entries: &entries,
+        }))
     }
 
     pub fn create_storage_buffer(&self, bytes: &[u8]) -> wgpu::Buffer {
