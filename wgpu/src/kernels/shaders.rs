@@ -23,6 +23,7 @@ const AT8: &str = "fn at8(a: vec4<u32>, b: vec4<u32>, i: u32) -> u32 {
 pub enum LayoutKind {
     Unary,
     Binary,
+    Resize,
     /// A fused elementwise chain: `n` storage buffers, the last one the output.
     Chain(u8),
 }
@@ -32,6 +33,7 @@ impl LayoutKind {
         match self {
             Self::Unary => "tract-wgpu-unary-layout",
             Self::Binary => "tract-wgpu-binary-layout",
+            Self::Resize => "tract-wgpu-resize-layout",
             Self::Chain(_) => "tract-wgpu-chain-layout",
         }
     }
@@ -40,6 +42,7 @@ impl LayoutKind {
         match self {
             Self::Unary => 2,
             Self::Binary => 3,
+            Self::Resize => 4,
             Self::Chain(n) => n as u32,
         }
     }
@@ -107,10 +110,13 @@ pub enum ModuleKind {
     ElementWise,
     Binary,
     Copy,
+    Reduce,
     Pool,
     Cast,
     Conv,
     Deconv,
+    Resize,
+    Softmax,
     MatMul,
 }
 
@@ -129,12 +135,16 @@ impl ModuleKey {
 
     pub fn layout(self) -> LayoutKind {
         match self.kind {
-            ModuleKind::ElementWise | ModuleKind::Copy | ModuleKind::Pool | ModuleKind::Cast => {
-                LayoutKind::Unary
-            }
+            ModuleKind::ElementWise
+            | ModuleKind::Copy
+            | ModuleKind::Reduce
+            | ModuleKind::Pool
+            | ModuleKind::Cast
+            | ModuleKind::Softmax => LayoutKind::Unary,
             ModuleKind::Binary | ModuleKind::Conv | ModuleKind::Deconv | ModuleKind::MatMul => {
                 LayoutKind::Binary
             }
+            ModuleKind::Resize => LayoutKind::Resize,
         }
     }
 
@@ -143,10 +153,13 @@ impl ModuleKey {
             ModuleKind::ElementWise => element_wise_wgsl(self.dtype),
             ModuleKind::Binary => binary_wgsl(self.dtype),
             ModuleKind::Copy => copy_wgsl(self.dtype),
+            ModuleKind::Reduce => reduce_wgsl(self.dtype),
             ModuleKind::Pool => pool_wgsl(self.dtype),
             ModuleKind::Cast => cast_wgsl(self.dtype),
             ModuleKind::Conv => conv_wgsl(self.dtype),
             ModuleKind::Deconv => deconv_wgsl(self.dtype),
+            ModuleKind::Resize => resize_wgsl(self.dtype),
+            ModuleKind::Softmax => softmax_wgsl(self.dtype),
             ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }
     }
@@ -568,6 +581,102 @@ fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
         out_i += c * at8(params.out_s0, params.out_s1, axis);
     }}
     outp[out_i] = inp[in_i];
+}}
+"#
+    ));
+    s
+}
+
+fn reduce_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    outer: u32,
+    k: u32,
+    inner: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = {t}(0.0);
+    for (var k = 0u; k < params.k; k++) {{
+        acc += inp[params.off_in + (o * params.k + k) * params.inner + r];
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = {t}(1.0);
+    for (var k = 0u; k < params.k; k++) {{
+        acc *= inp[params.off_in + (o * params.k + k) * params.inner + r];
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = inp[params.off_in + (o * params.k) * params.inner + r];
+    for (var k = 1u; k < params.k; k++) {{
+        acc = max(acc, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = inp[params.off_in + (o * params.k) * params.inner + r];
+    for (var k = 1u; k < params.k; k++) {{
+        acc = min(acc, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = {t}(0.0);
+    for (var k = 0u; k < params.k; k++) {{
+        let v = inp[params.off_in + (o * params.k + k) * params.inner + r];
+        acc += v * v;
+    }}
+    outp[params.off_out + i] = acc / {t}(f32(params.k));
 }}
 "#
     ));
@@ -1140,6 +1249,105 @@ fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
         + i32(ow) * params.out_sw
     );
     outp[out_i] = {t}(acc);
+}}
+"#
+    ));
+    s
+}
+
+fn resize_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_idx: u32,
+    off_w: u32,
+    off_out: u32,
+    outer: u32,
+    len_in: u32,
+    len_out: u32,
+    inner: u32,
+    window: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> indices: array<i32>;
+@group(0) @binding(2) var<storage, read> weights: array<f32>;
+@group(0) @binding(3) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn resize_axis_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.len_out * params.inner;
+    if (i >= n) {{ return; }}
+    let inner_i = i % params.inner;
+    let t = i / params.inner;
+    let xo = t % params.len_out;
+    let outer_i = t / params.len_out;
+    var acc = 0.0;
+    for (var w = 0u; w < params.window; w++) {{
+        let ix = indices[params.off_idx + xo * params.window + w];
+        let wt = weights[params.off_w + xo * params.window + w];
+        let in_i = params.off_in + (outer_i * params.len_in + u32(ix)) * params.inner + inner_i;
+        acc += f32(inp[in_i]) * wt;
+    }}
+    outp[params.off_out + (outer_i * params.len_out) * params.inner + xo * params.inner + inner_i] = {t}(acc);
+}}
+"#
+    ));
+    s
+}
+
+fn softmax_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    outer: u32,
+    k: u32,
+    inner: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var m = inp[params.off_in + (o * params.k) * params.inner + r];
+    for (var k = 1u; k < params.k; k++) {{
+        m = max(m, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    var sum = {t}(0.0);
+    for (var k = 0u; k < params.k; k++) {{
+        let e = exp(inp[params.off_in + (o * params.k + k) * params.inner + r] - m);
+        outp[params.off_out + (o * params.k + k) * params.inner + r] = e;
+        sum += e;
+    }}
+    let inv = {t}(1.0) / sum;
+    for (var k = 0u; k < params.k; k++) {{
+        let idx = params.off_out + (o * params.k + k) * params.inner + r;
+        outp[idx] = outp[idx] * inv;
+    }}
 }}
 "#
     ));

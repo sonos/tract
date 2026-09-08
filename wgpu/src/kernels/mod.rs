@@ -6,7 +6,10 @@ pub mod deconv;
 pub mod element_wise;
 pub mod matmul;
 pub mod pool;
+pub mod reduce;
+pub mod resize;
 pub mod shaders;
+pub mod softmax;
 
 /// Every pipeline this crate's kernels can need. They are built when the
 /// context is created so that no frame ever waits on a shader compile.
@@ -20,5 +23,8 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<shaders::PipelineKey> {
     keys.extend(element_wise::all_pipeline_keys(shader_f16));
     keys.extend(matmul::all_pipeline_keys(shader_f16));
     keys.extend(pool::all_pipeline_keys(shader_f16));
+    keys.extend(reduce::all_pipeline_keys(shader_f16));
+    keys.extend(resize::all_pipeline_keys(shader_f16));
+    keys.extend(softmax::all_pipeline_keys(shader_f16));
     keys
 }
