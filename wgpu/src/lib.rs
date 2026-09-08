@@ -23,19 +23,25 @@
 //! `(buffer, byte_offset as uniform)`.
 
 mod context;
+pub mod coverage;
 pub mod jspi;
 pub mod kernels;
 mod tensor;
 mod tests;
+mod transform;
 mod utils;
 
 use tract_core::internal::*;
+use tract_core::transform::ModelTransform;
 
 pub use crate::context::{
     CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, wgpu_context, wgpu_context_async,
     with_wgpu_queue,
 };
+pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
+
+pub use crate::transform::WgpuTransform;
 
 use crate::utils::get_wgpu_buffer;
 use tract_gpu::tensor::DeviceTensor;
@@ -49,3 +55,54 @@ pub async fn to_host_async(tensor: &DeviceTensor) -> TractResult<Tensor> {
     let bytes = ctx.download_async(&buffer, offset, len).await?;
     unsafe { Tensor::from_raw_dt(tensor.datum_type(), tensor.shape(), &bytes) }
 }
+
+#[derive(Debug)]
+struct WgpuRuntime;
+
+impl Runtime for WgpuRuntime {
+    fn name(&self) -> StaticName {
+        "wgpu".into()
+    }
+
+    fn prepare_with_options(
+        &self,
+        mut model: TypedModel,
+        options: &RunOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        WgpuTransform.transform(&mut model)?;
+        model = model.into_optimized()?;
+        if hybrid_fallback_available() {
+            let bad = uncovered_ops(&model)?;
+            if !bad.is_empty() {
+                let list = bad
+                    .iter()
+                    .map(|u| format!("{} (node {:?})", u.op, u.node))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                log::warn!(
+                    "tract-wgpu hybrid fallback: running on CPU for {list}. \
+                     Covered ops stay on GPU."
+                );
+            }
+        } else {
+            ensure_wgpu_coverage(&model)?;
+        }
+
+        let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
+        let mut runnable = TypedSimplePlan::build(model, &options)?;
+        if let Some(hints) = options.memory_sizing_hints {
+            let turn_handler =
+                tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
+                    .context("While sizing memory arena. Missing hint ?")?;
+            runnable = runnable.with_turn_handler(turn_handler);
+        }
+
+        Ok(Box::new(Arc::new(runnable)))
+    }
+
+    fn check(&self) -> TractResult<()> {
+        Ok(())
+    }
+}
+
+register_runtime!(WgpuRuntime = WgpuRuntime);
