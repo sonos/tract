@@ -377,12 +377,15 @@ fn worker(state: &mut dyn State, queue: Receiver<Request>, table: Table) {
     };
     let mut queued: Vec<Turn> = vec![];
     loop {
-        if queued.is_empty() {
+        // The linger belongs to the turn a request opens, not to the request:
+        // taking or giving back a lane must not delay the turns behind it, and
+        // turns left waiting by a full one have lingered already.
+        while queued.is_empty() {
             match queue.recv() {
                 Ok(request) => serve(state, &mut lanes, &mut queued, request),
                 Err(_) => return,
             }
-            if !table.linger.is_zero() {
+            if !queued.is_empty() && !table.linger.is_zero() {
                 thread::sleep(table.linger);
             }
         }
