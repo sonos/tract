@@ -76,14 +76,23 @@ impl DeconvSum {
         if !self.pool_spec.data_format.has_n() {
             tensor.insert_axis(0)?;
         }
-        eval(
+        if !try_fast_nchw_2x2_s2_f32(
             self,
             &input_shape,
             &output_shape,
             &spatial_output_details,
             &n_o_hkwk_hw,
             &mut tensor,
-        )?;
+        )? {
+            eval(
+                self,
+                &input_shape,
+                &output_shape,
+                &spatial_output_details,
+                &n_o_hkwk_hw,
+                &mut tensor,
+            )?;
+        }
         if !self.pool_spec.data_format.has_n() {
             tensor.remove_axis(0)?;
         }
@@ -115,6 +124,138 @@ impl TypedOp for DeconvSum {
     }
 
     as_op!();
+}
+
+/// NCHW 2×2 stride-2 unpack: write even/odd W with `vld2`/`vst2` instead of
+/// the generic loop's channel-inner scatter (C stride is `H*W` on NCHW).
+fn try_fast_nchw_2x2_s2_f32(
+    op: &DeconvSum,
+    input_shape: &DataShape,
+    output_shape: &DataShape,
+    spatial_output_details: &[ComputedPaddedDim<usize>],
+    gemm: &Tensor,
+    output: &mut Tensor,
+) -> TractResult<bool> {
+    if output.datum_type() != f32::datum_type() {
+        return Ok(false);
+    }
+    if op.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+        return Ok(false);
+    }
+    if op.pool_spec.kernel_shape[..] != [2, 2] {
+        return Ok(false);
+    }
+    if op.pool_spec.strides()[..] != [2, 2] || op.pool_spec.dilations()[..] != [1, 1] {
+        return Ok(false);
+    }
+    if spatial_output_details.len() != 2
+        || spatial_output_details[0].pad_before != 0
+        || spatial_output_details[1].pad_before != 0
+    {
+        return Ok(false);
+    }
+    if *output_shape.w_stride() != 1 {
+        return Ok(false);
+    }
+    let ih = input_shape.hw_dims()[0];
+    let iw = input_shape.hw_dims()[1];
+    let oh = output_shape.hw_dims()[0];
+    let ow = output_shape.hw_dims()[1];
+    if oh != ih * 2 || ow != iw * 2 {
+        return Ok(false);
+    }
+    unsafe {
+        deconv_nchw_2x2_s2_f32(gemm, output, input_shape, output_shape, ih, iw);
+    }
+    Ok(true)
+}
+
+unsafe fn deconv_nchw_2x2_s2_f32(
+    gemm: &Tensor,
+    output: &mut Tensor,
+    input_shape: &DataShape,
+    output_shape: &DataShape,
+    ih: usize,
+    iw: usize,
+) {
+    unsafe {
+        let gptr = gemm.as_ptr::<f32>().expect("f32 gemm");
+        let optr = output.as_ptr_mut::<f32>().expect("f32 out");
+        let n = *output_shape.n().unwrap_or(&1);
+        let oc = *output_shape.c();
+        let g_n = gemm.strides()[0];
+        let g_o = gemm.strides()[1];
+        let g_k = gemm.strides()[2];
+        let g_i = gemm.strides()[3];
+        let o_n = *output_shape.n_stride().unwrap_or(&0) as isize;
+        let o_c = *output_shape.c_stride() as isize;
+        let o_h = *output_shape.h_stride() as isize;
+        for ni in 0..n as isize {
+            for o in 0..oc as isize {
+                let g = gptr.offset(ni * g_n + o * g_o);
+                let dst = optr.offset(ni * o_n + o * o_c);
+                let src00 = g;
+                let src01 = g.offset(g_k);
+                let src10 = g.offset(2 * g_k);
+                let src11 = g.offset(3 * g_k);
+                for ix in 0..ih {
+                    let in_row = (ix * iw) as isize * g_i;
+                    interleave_add_row(
+                        dst.offset((2 * ix) as isize * o_h),
+                        src00.offset(in_row),
+                        src01.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                    interleave_add_row(
+                        dst.offset((2 * ix + 1) as isize * o_h),
+                        src10.offset(in_row),
+                        src11.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                }
+            }
+        }
+        let _ = input_shape;
+    }
+}
+
+unsafe fn interleave_add_row(
+    dst: *mut f32,
+    even: *const f32,
+    odd: *const f32,
+    iw: usize,
+    src_stride: isize,
+) {
+    unsafe {
+        let mut i = 0usize;
+        if src_stride == 1 {
+            #[cfg(target_arch = "aarch64")]
+            {
+                use std::arch::aarch64::*;
+                while i + 4 <= iw {
+                    let e = vld1q_f32(even.add(i));
+                    let o = vld1q_f32(odd.add(i));
+                    let mut d = vld2q_f32(dst.add(2 * i));
+                    d.0 = vaddq_f32(d.0, e);
+                    d.1 = vaddq_f32(d.1, o);
+                    vst2q_f32(dst.add(2 * i), d);
+                    i += 4;
+                }
+            }
+            #[cfg(target_arch = "x86_64")]
+            {
+                // scalar tail covers x86; the add is stride-2 stores
+            }
+        }
+        while i < iw {
+            let di = dst.add(2 * i);
+            *di += *even.offset(i as isize * src_stride);
+            *di.add(1) += *odd.offset(i as isize * src_stride);
+            i += 1;
+        }
+    }
 }
 
 fn eval(
@@ -742,4 +883,66 @@ impl TypedOp for DepthwiseDeconv {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::PaddingSpec;
+    use crate::ops::nn::DataFormat;
+
+    #[test]
+    fn nchw_2x2_s2_matches_generic() {
+        let n = 1usize;
+        let oc = 4usize;
+        let ih = 5usize;
+        let iw = 6usize;
+        let hw = ih * iw;
+        let gemm: Vec<f32> = (0..n * oc * 4 * hw).map(|i| (i as f32 * 0.07).sin()).collect();
+        let bias: Vec<f32> =
+            (0..n * oc * ih * 2 * iw * 2).map(|i| (i as f32 * 0.01) - 0.2).collect();
+        let gemm_t = Tensor::from_shape(&[n, oc, 4, hw], &gemm).unwrap();
+        let mut out_fast = Tensor::from_shape(&[n, oc, ih * 2, iw * 2], &bias).unwrap();
+        let mut out_gen = out_fast.clone();
+        let pool_spec = PoolSpec::new(
+            DataFormat::NCHW,
+            tvec![2, 2],
+            PaddingSpec::Valid,
+            Some(tvec![1, 1]),
+            Some(tvec![2, 2]),
+            oc,
+            oc,
+        );
+        let op = DeconvSum {
+            pool_spec,
+            kernel_format: KernelFormat::OIHW,
+            input_shape: [n.to_dim(), oc.to_dim(), ih.to_dim(), iw.to_dim()].into(),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        };
+        let ish = DataFormat::NCHW.shape(tvec![n, oc, ih, iw]).unwrap();
+        let osh = DataFormat::NCHW.shape(tvec![n, oc, ih * 2, iw * 2]).unwrap();
+        let spatial = op
+            .pool_spec
+            .padding
+            .compute_for_deconv(
+                ish.hw_dims(),
+                &op.pool_spec.kernel_shape,
+                &op.pool_spec.dilations(),
+                &op.pool_spec.strides(),
+                &op.adjustments,
+            )
+            .unwrap();
+        assert!(
+            try_fast_nchw_2x2_s2_f32(&op, &ish, &osh, &spatial, &gemm_t, &mut out_fast).unwrap()
+        );
+        eval(&op, &ish, &osh, &spatial, &gemm_t, &mut out_gen).unwrap();
+        let a = out_fast.to_plain_array_view::<f32>().unwrap();
+        let b = out_gen.to_plain_array_view::<f32>().unwrap();
+        let mut max_abs = 0f32;
+        for (x, y) in a.iter().zip(b.iter()) {
+            max_abs = max_abs.max((x - y).abs());
+        }
+        assert!(max_abs < 1e-5, "deconv 2x2 s=2 mismatch max_abs={max_abs}");
+    }
 }

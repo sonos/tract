@@ -22,6 +22,12 @@ impl EvalOp for MultiBroadcastTo {
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape = self.shape.eval_to_usize(ctx.symbols)?;
+        if inputs[0].shape() == shape.as_slice() {
+            return Ok(tvec!(inputs[0].clone()));
+        }
+        if let Some(out) = fast_broadcast(&inputs[0], &shape)? {
+            return Ok(tvec!(out.into_tvalue()));
+        }
         Ok(tvec!(inputs[0].broadcast_to_shape(&shape)?.into_tvalue()))
     }
 }
@@ -200,6 +206,109 @@ impl TypedOp for MultiBroadcastTo {
     as_op!();
 }
 
+/// Copy-typed broadcast: repeat inner blocks instead of ndarray's general
+/// strided `into_owned`. Nearest upsample (Tile of inserted 1-axes) and
+/// channel-bias broadcast to NCHW hit this path.
+fn fast_broadcast(input: &Tensor, out_shape: &[usize]) -> TractResult<Option<Tensor>> {
+    if !input.datum_type().is_copy() {
+        return Ok(None);
+    }
+    if input.rank() > out_shape.len() {
+        return Ok(None);
+    }
+    if input.len() != input.shape().iter().product::<usize>()
+        || input.strides() != &*Tensor::natural_strides(input.shape())
+    {
+        return Ok(None);
+    }
+    let rank = out_shape.len();
+    let mut in_shape = vec![1usize; rank];
+    in_shape[rank - input.rank()..].copy_from_slice(input.shape());
+    for (&i, &o) in in_shape.iter().zip(out_shape.iter()) {
+        if i != 1 && i != o {
+            return Ok(None);
+        }
+    }
+    let mut output = unsafe { Tensor::uninitialized_dt(input.datum_type(), out_shape)? };
+    if output.len() == 0 {
+        return Ok(Some(output));
+    }
+    let item = input.datum_type().size_of();
+    unsafe {
+        broadcast_copy(
+            input.as_bytes().as_ptr(),
+            &in_shape,
+            output.as_bytes_mut().as_mut_ptr(),
+            out_shape,
+            item,
+        );
+    }
+    Ok(Some(output))
+}
+
+unsafe fn broadcast_copy(
+    inp: *const u8,
+    in_shape: &[usize],
+    out: *mut u8,
+    out_shape: &[usize],
+    item: usize,
+) {
+    unsafe fn fill(
+        axis: usize,
+        inp: *const u8,
+        out: *mut u8,
+        in_shape: &[usize],
+        out_shape: &[usize],
+        item: usize,
+    ) {
+        unsafe {
+            let rank = out_shape.len();
+            if axis == rank - 1 {
+                let nout = out_shape[axis];
+                if in_shape[axis] == nout {
+                    std::ptr::copy_nonoverlapping(inp, out, nout * item);
+                } else {
+                    debug_assert_eq!(in_shape[axis], 1);
+                    if item == 4 {
+                        let v = *(inp as *const u32);
+                        let dst = out as *mut u32;
+                        for i in 0..nout {
+                            *dst.add(i) = v;
+                        }
+                    } else {
+                        for i in 0..nout {
+                            std::ptr::copy_nonoverlapping(inp, out.add(i * item), item);
+                        }
+                    }
+                }
+                return;
+            }
+            let inner_in: usize = in_shape[axis + 1..].iter().product::<usize>() * item;
+            let inner_out: usize = out_shape[axis + 1..].iter().product::<usize>() * item;
+            if in_shape[axis] == 1 {
+                fill(axis + 1, inp, out, in_shape, out_shape, item);
+                for i in 1..out_shape[axis] {
+                    std::ptr::copy_nonoverlapping(out, out.add(i * inner_out), inner_out);
+                }
+            } else {
+                for i in 0..in_shape[axis] {
+                    fill(
+                        axis + 1,
+                        inp.add(i * inner_in),
+                        out.add(i * inner_out),
+                        in_shape,
+                        out_shape,
+                        item,
+                    );
+                }
+            }
+        }
+    }
+    unsafe {
+        fill(0, inp, out, in_shape, out_shape, item);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,6 +415,41 @@ mod tests {
             model.output_fact(0)?.shape.to_tvec(),
             tvec![1.to_dim(), 512.to_dim(), 16.to_dim(), 1.to_dim()]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn fast_broadcast_pixel_replication_and_bias() -> TractResult<()> {
+        // Nearest-upsample Tile pattern: [N,C,H,1,W,1] → [N,C,H,2,W,2].
+        let src = Tensor::from_shape(
+            &[1, 2, 3, 1, 4, 1],
+            &(0..24).map(|i| i as f32).collect::<Vec<_>>(),
+        )?;
+        let out = fast_broadcast(&src, &[1, 2, 3, 2, 4, 2])?.expect("copy path");
+        let view = out.to_plain_array_view::<f32>()?;
+        for c in 0..2 {
+            for h in 0..3 {
+                for w in 0..4 {
+                    let v = (c * 12 + h * 4 + w) as f32;
+                    for rh in 0..2 {
+                        for rw in 0..2 {
+                            assert_eq!(view[[0, c, h, rh, w, rw]], v);
+                        }
+                    }
+                }
+            }
+        }
+        // Channel bias [1,C,1,1] → [1,C,H,W].
+        let bias = Tensor::from_shape(&[1, 3, 1, 1], &[1.0f32, 2.0, 3.0])?;
+        let out = fast_broadcast(&bias, &[1, 3, 5, 6])?.expect("copy path");
+        let view = out.to_plain_array_view::<f32>()?;
+        for c in 0..3 {
+            for h in 0..5 {
+                for w in 0..6 {
+                    assert_eq!(view[[0, c, h, w]], (c as f32) + 1.0);
+                }
+            }
+        }
         Ok(())
     }
 }

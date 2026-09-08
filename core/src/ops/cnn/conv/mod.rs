@@ -1,8 +1,10 @@
+mod along_w;
 mod block_quant;
 mod blocked;
 #[allow(clippy::module_inception)]
 mod conv;
 mod depth_wise;
+mod direct_spatial;
 mod im2col;
 mod lazy_im2col;
 mod q_sum_b;
@@ -12,6 +14,7 @@ use crate::ops::cnn::Deconv;
 
 pub use self::blocked::BlockedConv;
 pub use self::conv::Conv;
+pub use self::direct_spatial::DirectSpatialConv;
 pub use self::im2col::Im2Col;
 pub(crate) use self::q_sum_b::QSumB;
 
