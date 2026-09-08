@@ -496,7 +496,7 @@ let sum = bias + p0 + p1 + p2 + p3;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ops::cnn::conv::{Conv, KernelFormat};
+    use crate::ops::cnn::conv::{BlockedConv, Conv, KernelFormat};
     use crate::ops::cnn::{PaddingSpec, PoolSpec};
     use crate::ops::nn::DataFormat;
 
@@ -536,6 +536,12 @@ mod tests {
         let out = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
         model.select_output_outlets(&out).unwrap();
         let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        if kw == 1 && model.nodes.iter().any(|node| node.op_as::<BlockedConv>().is_some()) {
+            // `BlockedConv` claims kw=1 NCHW f32 wherever it is enabled -- by default on
+            // wasm, opt-in elsewhere -- so this shape does not reach DepthWise there.
+            // `blocked_conv_matches_reference` covers it.
+            return;
+        }
         assert!(
             model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
             "expected DepthWiseConv, got {}",
@@ -587,6 +593,7 @@ mod tests {
         run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 1));
         run_dw(32, 1, 481, 1, 3, PaddingSpec::Valid, (1, 1));
         run_dw(8, 1, 17, 1, 3, PaddingSpec::SameUpper, (1, 1));
+        // kw=1: taps a row apart, output still contiguous along W.
         run_dw(8, 12, 20, 3, 1, PaddingSpec::Valid, (1, 1));
         run_dw(4, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
         // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
