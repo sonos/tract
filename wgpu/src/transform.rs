@@ -71,6 +71,21 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
+        Rewriter::default()
+            .with_rule_for("start_elementwise_chain", crate::rewrite_rules::start_elementwise_chain)
+            .with_rule_for("start_binary_chain", crate::rewrite_rules::start_binary_chain)
+            .with_rule_for("grow_elementwise_chain", crate::rewrite_rules::grow_elementwise_chain)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_gemm_epilogue", crate::rewrite_rules::fuse_gemm_epilogue)
+            .with_rule_for("fuse_conv_epilogue", crate::rewrite_rules::fuse_conv_epilogue)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_move_axis", crate::rewrite_rules::fuse_move_axis)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_axis_op", crate::rewrite_rules::fuse_axis_op)
+            .rewrite(&(), model)?;
         rewire_syncs(model)?;
         Ok(())
     }
