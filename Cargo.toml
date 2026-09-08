@@ -64,6 +64,7 @@ members = [
     "test-rt/test-f16",
     "test-rt/test-metal",
     "test-rt/test-cuda",
+    "test-rt/test-wgpu",
     "test-rt/test-unit-core",
     "test-rt/test-pulse-core",
     "test-rt/test-onnx-core",

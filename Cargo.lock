@@ -4684,6 +4684,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "test-wgpu"
+version = "0.1.0"
+dependencies = [
+ "home",
+ "infra",
+ "lazy_static",
+ "log",
+ "pastey 0.2.3",
+ "regex",
+ "suite-onnx",
+ "suite-pulse",
+ "suite-unit",
+ "tract-core",
+ "tract-gpu",
+ "tract-onnx-opl",
+ "tract-wgpu",
+]
+
+[[package]]
 name = "tf-inceptionv3"
 version = "0.20.7-pre"
 dependencies = [

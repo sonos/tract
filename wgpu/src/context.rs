@@ -125,12 +125,6 @@ struct WgpuContextInner {
     layouts: RwLock<HashMap<LayoutKind, (wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
     bind_groups: Mutex<HashMap<BindGroupKey, wgpu::BindGroup>>,
     staging: Mutex<Option<wgpu::Buffer>>,
-    /// A graph allocates the same sizes in the same order every frame, so a
-    /// buffer is keyed by that position rather than by size alone: the Nth
-    /// allocation of a given size always gets the same buffer, and the bind
-    /// group built for it last frame still matches.
-    buffer_slots: Mutex<HashMap<(u64, u32), Arc<WgpuBuffer>>>,
-    slot_cursor: Mutex<HashMap<u64, u32>>,
 }
 
 /// `wgpu::Buffer` hashes by the resource it points at, so a cached entry stays
@@ -140,6 +134,7 @@ struct WgpuContextInner {
 struct BindGroupKey {
     layout: LayoutKind,
     buffers: Vec<u64>,
+    uniform: wgpu::Buffer,
 }
 
 impl std::fmt::Debug for WgpuContext {
@@ -208,8 +203,6 @@ impl WgpuContext {
                 layouts: RwLock::new(HashMap::new()),
                 bind_groups: Mutex::new(HashMap::new()),
                 staging: Mutex::new(None),
-                buffer_slots: Mutex::new(HashMap::new()),
-                slot_cursor: Mutex::new(HashMap::new()),
             }),
         };
         ctxt.preload_pipelines()?;
@@ -380,7 +373,11 @@ impl WgpuContext {
         buffers: &[&WgpuBuffer],
         uniform: &wgpu::Buffer,
     ) -> TractResult<wgpu::BindGroup> {
-        let key = BindGroupKey { layout: kind, buffers: buffers.iter().map(|b| b.id).collect() };
+        let key = BindGroupKey {
+            layout: kind,
+            buffers: buffers.iter().map(|b| b.id).collect(),
+            uniform: uniform.clone(),
+        };
         {
             let cache = self.inner.bind_groups.lock().map_err(|e| anyhow!("{e}"))?;
             if let Some(bg) = cache.get(&key) {
@@ -433,52 +430,14 @@ impl WgpuContext {
         }
     }
 
-    pub(crate) fn reset_buffer_slots(&self) {
-        if let Ok(mut cursor) = self.inner.slot_cursor.lock() {
-            cursor.clear();
-        }
-    }
-
     fn next_buffer_id(&self) -> u64 {
         static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
         NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
-    /// A storage buffer of `size` bytes for this position in the frame's
-    /// allocation sequence. Reuses the buffer that position held last frame,
-    /// unless it is still alive.
     pub fn alloc_storage(&self, size: u64) -> Arc<WgpuBuffer> {
-        let size = size.max(4).next_multiple_of(4);
-        let seq = self
-            .inner
-            .slot_cursor
-            .lock()
-            .map(|mut c| {
-                let n = c.entry(size).or_insert(0);
-                let seq = *n;
-                *n += 1;
-                seq
-            })
-            .unwrap_or(u32::MAX);
-        if seq != u32::MAX
-            && let Ok(mut slots) = self.inner.buffer_slots.lock()
-        {
-            if let Some(held) = slots.get(&(size, seq))
-                && Arc::strong_count(held) == 1
-            {
-                bump(2);
-                return held.clone();
-            }
-            let fresh = Arc::new(WgpuBuffer {
-                inner: self.create_empty_storage(size),
-                id: self.next_buffer_id(),
-            });
-            bump(3);
-            slots.insert((size, seq), fresh.clone());
-            return fresh;
-        }
-        bump(3);
-        Arc::new(WgpuBuffer { inner: self.create_empty_storage(size), id: self.next_buffer_id() })
+        with_wgpu_queue(|q| Ok(q.alloc_storage(size)))
+            .expect("wgpu queue unavailable for allocation")
     }
 
     pub fn wrap_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
@@ -721,6 +680,14 @@ pub struct WgpuQueue {
     encoder: RefCell<Option<wgpu::CommandEncoder>>,
     pending: RefCell<Vec<Dispatch>>,
     uniform_staging: RefCell<Vec<u8>>,
+    /// A graph allocates the same sizes in the same order every frame, so a
+    /// buffer is keyed by that position rather than by size alone: the Nth
+    /// allocation of a given size always gets the same buffer, and the bind
+    /// group built for it last frame still matches. Both maps belong to the
+    /// thread that owns the frame: a buffer must not be handed to another
+    /// thread while a dispatch this one recorded still reads it.
+    buffer_slots: RefCell<HashMap<(u64, u32), Arc<WgpuBuffer>>>,
+    slot_cursor: RefCell<HashMap<u64, u32>>,
     profile: Cell<bool>,
     profiled: RefCell<Vec<(&'static str, u32)>>,
     queries: RefCell<Option<Queries>>,
@@ -850,6 +817,8 @@ impl WgpuQueue {
             encoder: RefCell::new(None),
             pending: RefCell::new(vec![]),
             uniform_staging: RefCell::new(vec![]),
+            buffer_slots: RefCell::new(HashMap::new()),
+            slot_cursor: RefCell::new(HashMap::new()),
             profile: Cell::new(false),
             profiled: RefCell::new(vec![]),
             queries: RefCell::new(None),
@@ -878,9 +847,35 @@ impl WgpuQueue {
         std::mem::forget(self.staging.replace(None));
         std::mem::forget(std::mem::take(&mut *self.retained.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.retained_textures.borrow_mut()));
+        std::mem::forget(std::mem::take(&mut *self.buffer_slots.borrow_mut()));
         unsafe {
             std::mem::forget(ManuallyDrop::take(&mut self.uniform));
         }
+    }
+
+    /// A storage buffer of `size` bytes for this position in the frame's
+    /// allocation sequence. Reuses the buffer that position held last frame,
+    /// unless it is still alive.
+    pub fn alloc_storage(&self, size: u64) -> Arc<WgpuBuffer> {
+        let size = size.max(4).next_multiple_of(4);
+        let seq = {
+            let mut cursor = self.slot_cursor.borrow_mut();
+            let n = cursor.entry(size).or_insert(0);
+            let seq = *n;
+            *n += 1;
+            seq
+        };
+        let mut slots = self.buffer_slots.borrow_mut();
+        if let Some(held) = slots.get(&(size, seq))
+            && Arc::strong_count(held) == 1
+        {
+            bump(2);
+            return held.clone();
+        }
+        let fresh = Arc::new(self.context.wrap_storage(self.context.create_empty_storage(size)));
+        bump(3);
+        slots.insert((size, seq), fresh.clone());
+        fresh
     }
 
     pub fn retain_tensor(&self, t: &DeviceTensor) {
@@ -1050,7 +1045,7 @@ impl WgpuQueue {
         self.retained_textures.borrow_mut().clear();
         self.uniform_cursor.set(0);
         self.context.trim_bind_groups();
-        self.context.reset_buffer_slots();
+        self.slot_cursor.borrow_mut().clear();
         Ok(())
     }
 

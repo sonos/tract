@@ -5,7 +5,7 @@ use crate::kernels::shaders::{
     EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, pack_u32s,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
-use crate::with_wgpu_queue;
+use crate::{register_wgpu_op, with_wgpu_queue};
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     if !shader_f16 {
@@ -58,3 +58,8 @@ pub fn wgpu_cast_dispatch(input: &DeviceTensor, output: &DeviceTensor) -> TractR
         q.dispatch("cast", &pipeline, &bg, dyn_off, output.len() as u64)
     })
 }
+
+register_wgpu_op!(tract_core::ops::cast::Cast, |_source, _node, op| {
+    Ok(tract_gpu::ops::cast::GpuCast::new(op.to, "Wgpu", wgpu_cast_dispatch, is_supported_dt)
+        .map(|c| Box::new(c) as _))
+});
