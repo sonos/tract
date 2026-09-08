@@ -23,6 +23,8 @@ const AT8: &str = "fn at8(a: vec4<u32>, b: vec4<u32>, i: u32) -> u32 {
 pub enum LayoutKind {
     Unary,
     Binary,
+    /// A fused elementwise chain: `n` storage buffers, the last one the output.
+    Chain(u8),
 }
 
 impl LayoutKind {
@@ -30,6 +32,7 @@ impl LayoutKind {
         match self {
             Self::Unary => "tract-wgpu-unary-layout",
             Self::Binary => "tract-wgpu-binary-layout",
+            Self::Chain(_) => "tract-wgpu-chain-layout",
         }
     }
 
@@ -37,6 +40,7 @@ impl LayoutKind {
         match self {
             Self::Unary => 2,
             Self::Binary => 3,
+            Self::Chain(n) => n as u32,
         }
     }
 
@@ -104,6 +108,7 @@ pub enum ModuleKind {
     Binary,
     Copy,
     Cast,
+    MatMul,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -122,7 +127,7 @@ impl ModuleKey {
     pub fn layout(self) -> LayoutKind {
         match self.kind {
             ModuleKind::ElementWise | ModuleKind::Copy | ModuleKind::Cast => LayoutKind::Unary,
-            ModuleKind::Binary => LayoutKind::Binary,
+            ModuleKind::Binary | ModuleKind::MatMul => LayoutKind::Binary,
         }
     }
 
@@ -132,6 +137,7 @@ impl ModuleKey {
             ModuleKind::Binary => binary_wgsl(self.dtype),
             ModuleKind::Copy => copy_wgsl(self.dtype),
             ModuleKind::Cast => cast_wgsl(self.dtype),
+            ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }
     }
 }
@@ -224,6 +230,14 @@ fn preamble(dt: ShaderDtype) -> String {
         ShaderDtype::F32 => "",
     };
     enable.to_string()
+}
+
+/// One link of a fused elementwise chain. `Binary` reads its second operand
+/// from an extra input; `swapped` puts the running value on the right.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum ChainStep {
+    Unary(String),
+    Binary { op: String, rhs: usize, swapped: bool },
 }
 
 fn binary_ops_vec4_wgsl(t: &str) -> String {
@@ -590,6 +604,152 @@ fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }
 }
 
+/// Applies the fused steps to `v`, reading each extra operand at `index`.
+fn epilogue_body(steps: &[ChainStep], index: &str) -> String {
+    let mut s = String::new();
+    for step in steps {
+        match step {
+            ChainStep::Unary(op) => s.push_str(&format!("    v = op_{op}(v);\n")),
+            ChainStep::Binary { op, rhs, swapped } => {
+                let i = rhs - 1;
+                s.push_str(&format!(
+                    "    let e{i} = extra{i}[params.off_extra[{i}u] + select(0u, {index}, params.mode_extra[{i}u] != 0u)];\n"
+                ));
+                if *swapped {
+                    s.push_str(&format!("    v = op_{op}(e{i}, v);\n"));
+                } else {
+                    s.push_str(&format!("    v = op_{op}(v, e{i});\n"));
+                }
+            }
+        }
+    }
+    s
+}
+
+/// Names a generated program by its kernel and fused epilogue.
+pub fn program_key(kind: &str, dt: ShaderDtype, steps: &[ChainStep], extras: usize) -> String {
+    let mut key = format!("{kind}_{}_{extras}", dt.suffix());
+    for step in steps {
+        match step {
+            ChainStep::Unary(op) => key.push_str(&format!("_{op}")),
+            ChainStep::Binary { op, rhs, swapped } => {
+                key.push_str(&format!("_{op}{rhs}{}", if *swapped { "r" } else { "" }))
+            }
+        }
+    }
+    key
+}
+
+fn matmul_wgsl(dt: ShaderDtype) -> String {
+    matmul_module(dt, &[], 0)
+}
+
+/// `extras` epilogue operands bind between B and the output.
+pub fn matmul_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "col");
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{t}>;
+@group(0) @binding(1) var<storage, read> b: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+@compute @workgroup_size({WORKGROUP})
+fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let mn = params.m * params.n;
+    let nout = params.prefix * mn;
+    if (i >= nout) {{ return; }}
+    let pref = i / mn;
+    let rest = i % mn;
+    var row: u32;
+    var col: u32;
+    if (params.tc != 0u) {{
+        row = rest % params.m;
+        col = rest / params.m;
+    }} else {{
+        col = rest % params.n;
+        row = rest / params.n;
+    }}
+    // Shapes and strides are right-aligned in the 8 slots: the two matmul axes
+    // land in slots 6 and 7, prefix axes in 0..5, padded with dim 1 stride 0.
+    // `pref` is row-major over the prefix, so decode from the fastest axis up.
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = pref;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_row_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let a_col_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_row_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
+    let b_col_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    var acc = 0.0;
+    for (var kk = 0u; kk < params.k; kk++) {{
+        let av = f32(a[a_i + row * a_row_s + kk * a_col_s]);
+        let bv = f32(b[b_i + kk * b_row_s + col * b_col_s]);
+        acc += av * bv;
+    }}
+    let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+    var v = {t}(acc);
+{epilogue}
+    outp[o_i + row * o_row_s + col * o_col_s] = v;
+}}
+"#
+    ));
+    s
+}
+
 pub fn pack_u32s(vals: &[u32]) -> Vec<u8> {
     let mut out = Vec::with_capacity(vals.len() * 4);
     for v in vals {
@@ -610,6 +770,32 @@ pub fn pad8_stride(xs: &[isize]) -> [u32; 8] {
     let mut out = [0u32; 8];
     for (i, s) in xs.iter().take(8).enumerate() {
         out[i] = (*s).max(0) as u32;
+    }
+    out
+}
+
+/// Right-aligned into the 8 slots: axis `i` of a rank-`r` tensor lands in slot
+/// `8 - r + i`, so a matmul's two trailing axes always sit in slots 6 and 7 and
+/// the prefix in 0..6. Absent axes read as dim 1.
+pub fn rpad8_dims(shape: &[usize]) -> [u32; 8] {
+    let mut out = [1u32; 8];
+    let base = 8 - shape.len().min(8);
+    for (i, d) in shape.iter().take(8).enumerate() {
+        out[base + i] = *d as u32;
+    }
+    out
+}
+
+/// [`rpad8_dims`] for strides: absent axes read as stride 0, and so do axes this
+/// tensor broadcasts over (`shape[i] == 1 && out_shape[i] != 1`).
+pub fn rpad8_strides(shape: &[usize], strides: &[isize], out_shape: &[usize]) -> [u32; 8] {
+    let mut out = [0u32; 8];
+    let base = 8 - shape.len().min(8);
+    for i in 0..shape.len().min(8) {
+        if shape[i] == 1 && out_shape.get(i).is_some_and(|d| *d != 1) {
+            continue;
+        }
+        out[base + i] = strides[i].max(0) as u32;
     }
     out
 }

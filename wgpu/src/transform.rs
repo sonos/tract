@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
@@ -15,6 +16,7 @@ use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::IntoDevice;
 
 use crate::context::wgpu_context;
+use crate::ops;
 
 /// A registered translator that can convert a core op into a wgpu GPU op.
 pub struct WgpuOpTranslator {
@@ -55,6 +57,9 @@ impl ModelTransform for WgpuTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         wgpu_context();
+        // Pointwise convolutions reach the backend as EinSum, so a segmenter is
+        // mostly matmuls until this runs.
+        rewrite_einsum_to_prefix_matmul(model, false)?;
         *model = self.translate_model(model)?;
         rewire_syncs(model)?;
         Ok(())
@@ -111,6 +116,25 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        let input_facts = source.node_input_facts(node.id)?;
+        if let Some(op) = node.op_as::<PrefixMatMul>()
+            && op.quantize_output.is_none()
+            && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
+            && input_facts.iter().all(|f| {
+                crate::kernels::matmul::is_supported_dt(f.datum_type) && f.exotic_fact().is_none()
+            })
+            && input_facts[0].datum_type == input_facts[1].datum_type
+            && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids = target.wire_node(
+                node.name.clone(),
+                ops::matmul::WgpuGemm { op: *op, epilogue: vec![] },
+                &device_inputs,
+            )?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(op) = node.op_as::<Const>()
             && crate::utils::is_supported_dt(op.val().datum_type())
             && op.exotic_fact().is_none()
