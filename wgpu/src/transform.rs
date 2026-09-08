@@ -9,6 +9,7 @@ use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_dec
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
+use tract_core::ops::nn::Reduce;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
@@ -67,6 +68,7 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
         rewire_syncs(model)?;
@@ -165,6 +167,18 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
                 ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
+        if let Some(gpu_op) = crate::kernels::resize::wgpu_resize(source, node)? {
+            let mut input = mapping[&node.inputs[0]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(op) = node.op_as::<Const>()
             && crate::utils::is_supported_dt(op.val().datum_type())
             && op.exotic_fact().is_none()
@@ -225,4 +239,26 @@ fn maybe_sync_outputs(
     {
         sync_model_outputs_if_required(src, node, target, outlet_ids)
     }
+}
+
+fn split_multi_axis_reduce(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &Reduce,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(op.axes.len() > 1);
+    use tract_core::ops::nn::Reducer::*;
+    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
+    let mut axes = op.axes.clone();
+    axes.sort();
+    for (i, &axis) in axes.iter().rev().enumerate() {
+        let single = Reduce { axes: tvec![axis], reducer: op.reducer };
+        wire = patch.wire_node(format!("{node_name}.axis_{i}"), single, &[wire])?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    Ok(Some(patch))
 }
