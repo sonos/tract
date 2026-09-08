@@ -2,6 +2,7 @@ pub mod bin_ops;
 pub mod cast;
 pub mod copy;
 pub mod element_wise;
+pub mod matmul;
 pub mod shaders;
 
 /// Every pipeline this crate's kernels can need. They are built when the
@@ -12,5 +13,6 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<shaders::PipelineKey> {
     keys.extend(cast::all_pipeline_keys(shader_f16));
     keys.extend(copy::all_pipeline_keys(shader_f16));
     keys.extend(element_wise::all_pipeline_keys(shader_f16));
+    keys.extend(matmul::all_pipeline_keys(shader_f16));
     keys
 }

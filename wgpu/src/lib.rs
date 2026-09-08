@@ -26,6 +26,7 @@ mod context;
 pub mod coverage;
 pub mod jspi;
 pub mod kernels;
+pub mod ops;
 mod tensor;
 mod tests;
 mod transform;
