@@ -223,6 +223,25 @@ jobs:
         ROOT=$(pwd) ./.travis/ci-system-setup.sh
         cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal
 
+  feature-configs-apple:
+    runs-on: macos-latest
+    needs: prepare
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        fetch-depth: 0
+        persist-credentials: false
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
+    - name: Apple feature configurations
+      run: |
+        rustup update
+        .travis/feature-configs-apple.sh
+
   C:
     runs-on: ubuntu-latest
     needs: prepare
@@ -276,7 +295,7 @@ jobs:
 
   report:
     name: Report result to PR
-    needs: [ prepare, old-harness, cli-tests, cli-tests-cuda, onnx-tests, tflite, some-tests-with-paranoid-asserts, feature-configs, check-all-targets, C, python ]
+    needs: [ prepare, old-harness, cli-tests, cli-tests-cuda, onnx-tests, tflite, some-tests-with-paranoid-asserts, feature-configs, check-all-targets, feature-configs-apple, C, python ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     permissions:
