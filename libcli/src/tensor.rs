@@ -315,6 +315,25 @@ pub struct RunTensors {
     pub streaming_input_len: Option<usize>,
 }
 
+#[cfg(not(feature = "transformers"))]
+fn chunk_fact(
+    fact: &TypedFact,
+    _params: &RunParams,
+    _model: &Arc<dyn Model>,
+) -> TractResult<Vec<TypedFact>> {
+    Ok(vec![fact.clone()])
+}
+
+#[cfg(not(feature = "transformers"))]
+fn chunk_tensor(
+    tensor: Tensor,
+    _fact: &TypedFact,
+    _params: &RunParams,
+    _model: &Arc<dyn Model>,
+) -> TractResult<Vec<TValue>> {
+    Ok(vec![tensor.into_tvalue()])
+}
+
 #[cfg(feature = "transformers")]
 fn chunk_fact(
     fact: &TypedFact,
