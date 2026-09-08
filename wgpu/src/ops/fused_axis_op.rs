@@ -1,0 +1,189 @@
+//! Applies a chain of shape-only axis ops to an op's inputs as views, so a
+//! `Reshape` / `Add` / `Rm` (and a `Move` its consumer can restride) costs no
+//! kernel and no copy. Mirrors `MetalFusedAxisOp`.
+
+use derive_new::new;
+use tract_core::internal::tract_smallvec::ToSmallVec;
+use tract_core::internal::*;
+use tract_gpu::ops::change_axes::GpuAxisOp;
+use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt};
+
+#[derive(Clone, Debug, new, PartialEq, Eq)]
+pub struct WgpuFusedAxisOp {
+    /// List of axis ops to apply for each op inputs
+    /// Length of the list is equal to number of inputs
+    pub grouped_axis_ops: TVec<TVec<GpuAxisOp>>,
+    pub op: Box<dyn TypedOp>,
+}
+
+#[derive(Debug, Clone, new)]
+pub struct WgpuFusedAxisOpState {
+    pub op_state: Box<dyn OpState>,
+}
+
+fn compute_reshaped_inputs(
+    inputs: TVec<TValue>,
+    grouped_axis_ops: &TVec<TVec<GpuAxisOp>>,
+    ctx: &EvalContext,
+) -> TractResult<TVec<TValue>> {
+    // Apply Axis Ops per input
+
+    inputs
+        .into_iter()
+        .zip(grouped_axis_ops.iter())
+        .map(|(input, axis_ops)| {
+            if axis_ops.is_empty() {
+                return Ok(input);
+            };
+            let m_input = input.to_device_tensor()?;
+            let reshaped_input = axis_ops.iter().try_fold(
+                m_input.clone(),
+                |t, axis_op| -> TractResult<DeviceTensor> {
+                    let new_shape = match &axis_op.inner {
+                        AxisOp::Reshape(skip, from, to) => {
+                            let from = from.iter().map(|d| d.eval(ctx.symbols)).collect();
+                            let to = to.iter().map(|d| d.eval(ctx.symbols)).collect();
+                            let mut shape: TVec<usize> = t.shape().into();
+                            AxisOp::Reshape(*skip, from, to)
+                                .change_shape_array(&mut shape, false)?;
+                            shape
+                        }
+                        AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
+                            let mut shape: TVec<usize> = t.shape().into();
+                            axis_op.inner.change_shape_array(&mut shape, false)?;
+                            shape
+                        }
+                    };
+                    if let AxisOp::Move(from, to) = axis_op.inner {
+                        let mut out_strides: TVec<isize> = t.strides().to_smallvec();
+                        let removed_stride = out_strides.remove(from);
+                        out_strides.insert(to, removed_stride);
+                        let tmp_t = t.reshaped(new_shape)?;
+                        tmp_t.restrided(out_strides)
+                    } else {
+                        t.reshaped(new_shape)
+                    }
+                },
+            )?;
+
+            Ok(reshaped_input.into_tensor().into())
+        })
+        .collect::<TractResult<TVec<_>>>()
+}
+
+impl OpState for WgpuFusedAxisOpState {
+    fn init_tensor_fact(&self) -> Option<(String, TypedFact)> {
+        self.op_state.init_tensor_fact()
+    }
+
+    fn has_init_tensor_fact(&self) -> bool {
+        self.op_state.has_init_tensor_fact()
+    }
+
+    fn load_from(
+        &mut self,
+        turn: &mut TurnState,
+        states: &mut dyn Iterator<Item = tract_core::value::TValue>,
+    ) -> TractResult<()> {
+        self.op_state.load_from(turn, states)
+    }
+
+    fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
+        self.op_state.save_to(states)
+    }
+
+    fn resolve_symbols(&mut self, turn: &mut TurnState) -> TractResult<()> {
+        self.op_state.resolve_symbols(turn)
+    }
+
+    fn eval(
+        &mut self,
+        ctx: &EvalContext,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let fused_axis_op = op.downcast_ref::<WgpuFusedAxisOp>().unwrap();
+        let inputs = compute_reshaped_inputs(inputs, &fused_axis_op.grouped_axis_ops, ctx)?;
+        // Runner inner op
+        self.op_state.eval(ctx, fused_axis_op.op.as_op(), inputs)
+    }
+
+    fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()> {
+        self.op_state.reset_lanes(lanes)
+    }
+}
+
+impl Op for WgpuFusedAxisOp {
+    fn name(&self) -> StaticName {
+        self.op.name()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        let mut info = self.op.info()?;
+        for (idx, axis_ops) in self.grouped_axis_ops.iter().enumerate() {
+            if !axis_ops.is_empty() {
+                info.push(format!(
+                    "Fused axis Op on Input #{idx}: {}",
+                    axis_ops
+                        .iter()
+                        .map(|axis_op| Ok(format!(
+                            "{} - {}",
+                            axis_op.name(),
+                            axis_op.info()?.join(" | ")
+                        )))
+                        .collect::<TractResult<TVec<_>>>()?
+                        .join(" | ")
+                ));
+            }
+        }
+        Ok(info)
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for WgpuFusedAxisOp {
+    fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
+        let ctx = EvalContext::out_of_plan();
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, &ctx)?;
+        self.op.eval_out_of_plan(inputs)
+    }
+
+    fn state(&self, ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        if let Some(state) = self.op.state(ctx)? {
+            Ok(Some(Box::new(WgpuFusedAxisOpState { op_state: state })))
+        } else {
+            Ok(None)
+        }
+    }
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, ctx)?;
+        // Runner inner op
+        self.op.eval(ctx, inputs)
+    }
+}
+
+impl TypedOp for WgpuFusedAxisOp {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(
+            inputs.len() == self.grouped_axis_ops.len(),
+            "Number of inputs and fused axis ops are not aligned"
+        );
+        // Apply AxisOp
+        let inputs = inputs
+            .iter()
+            .zip(self.grouped_axis_ops.iter())
+            .map(|(i, axis_ops)| {
+                axis_ops.iter().try_fold((*i).clone(), |reshaped_i, axis_op| {
+                    Ok(axis_op.output_facts(&[&reshaped_i])?[0].clone())
+                })
+            })
+            .collect::<TractResult<TVec<_>>>()?;
+
+        let inputs_ref = inputs.iter().collect::<TVec<_>>();
+        // Apply Op
+        self.op.output_facts(&inputs_ref)
+    }
+
+    as_op!();
+}

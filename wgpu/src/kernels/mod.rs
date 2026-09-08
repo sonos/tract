@@ -1,5 +1,6 @@
 pub mod bin_ops;
 pub mod cast;
+pub mod chain;
 pub mod conv;
 pub mod copy;
 pub mod deconv;

@@ -120,3 +120,85 @@ fn coverage_rejects_logsoftmax_by_name() -> TractResult<()> {
     ensure!(msg.contains("attn_sm"), "error should name the node, got {msg}");
     Ok(())
 }
+
+/// The suites check what a fused graph computes; these check that it fused.
+fn transformed(mut model: TypedModel) -> TractResult<TypedModel> {
+    crate::context::wgpu_context();
+    WgpuTransform.transform(&mut model)?;
+    model.into_optimized()
+}
+
+#[test]
+fn elementwise_run_becomes_one_chain() -> TractResult<()> {
+    use tract_core::ops::nn::sigmoid;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([2, 4]))?;
+    let a = model.wire_node("a", sigmoid(), &[x])?[0];
+    let b = model.wire_node("b", tract_core::ops::math::tanh(), &[a])?[0];
+    let c = model.wire_node("c", sigmoid(), &[b])?[0];
+    model.select_output_outlets(&[c])?;
+    let model = transformed(model)?;
+    let chains = model
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op_as::<crate::ops::chain::WgpuElementWiseChain>())
+        .collect::<Vec<_>>();
+    ensure!(chains.len() == 1, "three element-wise ops should leave one chain, got {chains:?}");
+    ensure!(chains[0].steps.len() == 3, "chain should hold all three steps");
+    Ok(())
+}
+
+#[test]
+fn bias_and_activation_become_a_gemm_epilogue() -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    use tract_core::ops::nn::sigmoid;
+    let mut model = TypedModel::default();
+    let a = model.add_source("a", f32::fact([6, 5]))?;
+    let b = model.add_const("b", Tensor::zero::<f32>(&[5, 7])?)?;
+    let bias = model.add_const("bias", Tensor::zero::<f32>(&[1, 7])?)?;
+    let mm = model.wire_node(
+        "mm",
+        PrefixMatMul {
+            transpose_a: false,
+            transpose_b: false,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: None,
+        },
+        &[a, b],
+    )?[0];
+    let biased = model.wire_node("bias_add", tract_core::ops::math::add(), &[mm, bias])?[0];
+    let y = model.wire_node("act", sigmoid(), &[biased])?[0];
+    model.select_output_outlets(&[y])?;
+    let model = transformed(model)?;
+    let gemms = model
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op_as::<crate::ops::matmul::WgpuGemm>())
+        .collect::<Vec<_>>();
+    ensure!(gemms.len() == 1, "expected one gemm, got {}", gemms.len());
+    ensure!(
+        gemms[0].epilogue.len() == 2,
+        "bias and activation should ride the gemm, got {:?}",
+        gemms[0].epilogue
+    );
+    Ok(())
+}
+
+#[test]
+fn a_move_rides_the_op_that_reads_it() -> TractResult<()> {
+    use tract_core::ops::nn::sigmoid;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([2, 3, 4]))?;
+    let m = model.wire_node("mv", AxisOp::Move(0, 2), &[x])?[0];
+    let y = model.wire_node("act", sigmoid(), &[m])?[0];
+    model.select_output_outlets(&[y])?;
+    let model = transformed(model)?;
+    let fused = model
+        .nodes()
+        .iter()
+        .filter(|n| n.op_is::<crate::ops::fused_axis_op::WgpuFusedAxisOp>())
+        .count();
+    ensure!(fused == 1, "the move should ride its consumer, got {fused} fused nodes");
+    Ok(())
+}

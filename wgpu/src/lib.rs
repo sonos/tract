@@ -27,6 +27,7 @@ pub mod coverage;
 pub mod jspi;
 pub mod kernels;
 pub mod ops;
+mod rewrite_rules;
 mod tensor;
 mod tests;
 mod transform;
