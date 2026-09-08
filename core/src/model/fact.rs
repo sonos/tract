@@ -283,6 +283,21 @@ impl TypedFact {
         }
     }
 
+    /// Parse a fact spec: the dims, then the element type, comma-separated, as
+    /// in `1,80,S,f32`. Dims are TDim expressions resolved against `symbols`,
+    /// so a spec with no dim at all (`f32`) is a scalar. Every dim must be
+    /// given: there is no wildcard, and no rank inference.
+    pub fn from_spec(symbols: &SymbolScope, spec: &str) -> TractResult<TypedFact> {
+        let mut parts = spec.split(',').map(|s| s.trim()).collect::<TVec<_>>();
+        let datum_type =
+            parts.pop().and_then(|last| last.parse::<DatumType>().ok()).with_context(|| {
+                format!("A fact spec ends with its element type, as in 1,80,f32; got {spec:?}")
+            })?;
+        let dims =
+            parts.iter().map(|dim| symbols.parse_tdim(dim)).collect::<TractResult<TVec<TDim>>>()?;
+        Ok(Self::dt_shape(datum_type, ShapeFact::from_dims(dims)))
+    }
+
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
     where
         S: Into<ShapeFact>,
@@ -543,5 +558,35 @@ impl DatumTypeExt for DatumType {
         S: Into<ShapeFact>,
     {
         TypedFact::dt_shape(*self, shape)
+    }
+}
+
+#[cfg(test)]
+mod from_spec_tests {
+    use super::*;
+
+    #[test]
+    fn scalar() {
+        let fact = TypedFact::from_spec(&SymbolScope::default(), "f32").unwrap();
+        assert_eq!(fact, f32::fact([0usize; 0]));
+    }
+
+    #[test]
+    fn concrete() {
+        let fact = TypedFact::from_spec(&SymbolScope::default(), "1,80,f16").unwrap();
+        assert_eq!(fact, f16::fact([1, 80]));
+    }
+
+    #[test]
+    fn symbolic() {
+        let symbols = SymbolScope::default();
+        let s = symbols.sym("S");
+        let fact = TypedFact::from_spec(&symbols, "1,80,2*S,f32").unwrap();
+        assert_eq!(fact, f32::fact(&[1.into(), 80.into(), s.to_dim() * 2]));
+    }
+
+    #[test]
+    fn missing_datum_type() {
+        assert!(TypedFact::from_spec(&SymbolScope::default(), "1,80").is_err());
     }
 }

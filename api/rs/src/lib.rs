@@ -597,9 +597,7 @@ impl FactInterface for Fact {
 
 impl Fact {
     fn new(model: &Model, spec: impl ToString) -> Result<Fact> {
-        let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
-        let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
-        Ok(Fact(fact))
+        Ok(Fact(TypedFact::from_spec(&model.0.symbols, &spec.to_string())?))
     }
 }
 
