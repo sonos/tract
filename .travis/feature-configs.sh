@@ -23,6 +23,7 @@ check tract-linalg --features foreign-inventory
 
 check tract-nnef --no-default-features
 check tract-nnef --features complex
+check tract-nnef --features unstable-jinja
 check tract-nnef --no-default-features --features complex
 
 check tract-pulse-opl --no-default-features

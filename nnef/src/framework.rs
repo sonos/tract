@@ -450,7 +450,10 @@ fn proto_model_from_resources(
         None
     };
 
-    let doc = crate::liquid::process_file(&doc.0, &new_resources)?;
+    #[cfg(feature = "unstable-jinja")]
+    let doc = crate::jinja::process_file(&doc.0, &new_resources)?;
+    #[cfg(not(feature = "unstable-jinja"))]
+    let doc = doc.0;
     let doc = crate::ast::parse::parse_document(&doc)?;
 
     let proto = ProtoModel { doc, tensors, quantization, resources: new_resources };

@@ -16,7 +16,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 byteorder.workspace = true
-minijinja.workspace = true
+minijinja = { workspace = true, optional = true }
 log.workspace = true
 nom.workspace = true
 nom-language.workspace = true
@@ -36,4 +36,7 @@ serde_json.workspace = true
 
 [features]
 default = ["flate2"]
+# Templating graph.nnef through minijinja. Experimental, unsupported, and it
+# links the template engine in.
+unstable-jinja = ["dep:minijinja"]
 complex = [ "tract-core/complex" ]
