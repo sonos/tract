@@ -7,7 +7,7 @@ use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::math::add;
 use tract_core::ops::nn::Softmax;
-use tract_core::ops::nn::{Reduce, Reducer};
+use tract_core::ops::nn::{CoordTransformer, Interpolator, Nearest, Reduce, Reducer, Resize};
 use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
@@ -35,6 +35,9 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::MEAN, de_reduce_mean);
     reg.reg_to_tflite(ser_softmax);
     reg.reg_to_tract(BuiltinOperator::SOFTMAX, de_softmax);
+
+    reg.reg_to_tract(BuiltinOperator::RESIZE_BILINEAR, de_resize_bilinear);
+    reg.reg_to_tract(BuiltinOperator::RESIZE_NEAREST_NEIGHBOR, de_resize_nearest);
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
@@ -163,6 +166,66 @@ fn de_softmax(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let quant_output_dt = Some(input.datum_type).filter(|dt| !dt.is_float());
     let softmax = Softmax { axes: tvec!(input.rank() - 1), quant_output_dt, ..Softmax::default() };
     op.ctx.target.wire_node(op.prefix, softmax, op.inputs)
+}
+
+/// The size input names the two spatial axes only, and the coordinate
+/// transformation is spelled as two flags rather than a name: neither set is
+/// TensorFlow's original mapping, where the output grid simply spans the input
+/// one.
+fn de_resize_bilinear(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_resize_bilinear_options);
+    let coord_transformer = if options.align_corners() {
+        CoordTransformer::AlignCorners
+    } else if options.half_pixel_centers() {
+        CoordTransformer::HalfPixel
+    } else {
+        CoordTransformer::Asymmetric
+    };
+    de_resize(op, coord_transformer, Interpolator::Linear, Nearest::Floor)
+}
+
+/// Nearest neighbour reads its half-pixel mode through a transformation of its
+/// own, and rounds up on a tie where bilinear has nothing to round.
+fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_resize_nearest_neighbor_options);
+    let coord_transformer = if options.align_corners() {
+        CoordTransformer::AlignCorners
+    } else if options.half_pixel_centers() {
+        CoordTransformer::TfHalfPixelForNn
+    } else {
+        CoordTransformer::Asymmetric
+    };
+    let nearest =
+        if options.half_pixel_centers() { Nearest::Floor } else { Nearest::RoundPreferCeil };
+    de_resize(op, coord_transformer, Interpolator::Nearest, nearest)
+}
+
+fn de_resize(
+    op: &mut DeserOp,
+    coord_transformer: CoordTransformer,
+    interpolator: Interpolator,
+    nearest: Nearest,
+) -> TractResult<TVec<OutletId>> {
+    let (input, sizes) = args_2!(op.facts()?);
+    ensure!(input.rank() == 4, "Resize expects NHWC, got rank {}", input.rank());
+    let sizes = sizes.konst.clone().context("Dynamic resize size is not supported")?;
+    let sizes = sizes.cast_to::<i64>()?;
+    let sizes = sizes.try_as_plain()?.as_slice::<i64>()?;
+    ensure!(sizes.len() == 2, "Resize expects a size per spatial axis, got {sizes:?}");
+    let shape = &input.shape;
+    let full = tensor1(&[shape[0].clone(), sizes[0].to_dim(), sizes[1].to_dim(), shape[3].clone()]);
+    let sizes = op.ctx.target.add_const(format!("{}.sizes", op.prefix), full)?;
+    op.ctx.target.wire_node(
+        op.prefix,
+        Resize {
+            coord_transformer,
+            interpolator,
+            nearest,
+            optional_scales_input: None,
+            optional_sizes_input: Some(1),
+        },
+        &[op.inputs[0], sizes],
+    )
 }
 
 pub fn de_relu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
