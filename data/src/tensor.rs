@@ -317,7 +317,15 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
-        let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
+        // `shape` and `dt` come from the model file. Computing the byte count
+        // with a plain product used to wrap around on overflow, silently
+        // allocating a buffer much smaller than the tensor claims (or asking
+        // the allocator for an absurd one). Check instead.
+        let bytes = shape
+            .iter()
+            .try_fold(dt.size_of(), |acc, &d| acc.checked_mul(d))
+            .filter(|&b| b <= isize::MAX as usize)
+            .ok_or_else(|| format_err!("tensor shape {shape:?} of {dt:?} is too large"))?;
         let storage = StorageKind::Plain(PlainStorage::from(unsafe {
             Blob::new_for_size_and_align(bytes, alignment)
         }));
@@ -591,8 +599,17 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> TractResult<Tensor> {
-        let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
-        let expected = tensor.as_bytes().len();
+        // Check the declared shape against the payload *before* allocating.
+        // The shape is attacker-controlled, so allocating first lets a
+        // malformed model request an allocation of any size it likes, even
+        // when the payload that follows is a few bytes long.
+        let len = shape
+            .iter()
+            .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+            .ok_or_else(|| format_err!("tensor shape {shape:?} overflows"))?;
+        let expected = len
+            .checked_mul(dt.size_of())
+            .ok_or_else(|| format_err!("tensor shape {shape:?} of {dt:?} is too large"))?;
         ensure!(
             content.len() == expected,
             "Raw tensor data length ({}) does not match shape {:?} of {:?} ({} bytes)",
@@ -601,6 +618,7 @@ impl Tensor {
             dt,
             expected
         );
+        let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
         tensor.as_bytes_mut().copy_from_slice(content);
         Ok(tensor)
     }
