@@ -217,12 +217,17 @@ impl Nnef {
                 let typed_model = &typed_model_resource.0;
 
                 if compress_nested_models {
-                    filename.set_extension("nnef.tgz");
-                    let encoder = flate2::write::GzEncoder::new(
-                        &mut submodel_data,
-                        flate2::Compression::default(),
-                    );
-                    self.write(typed_model, encoder)?;
+                    #[cfg(not(feature = "flate2"))]
+                    bail!("Cannot compress nested models without flate2 enabled.");
+                    #[cfg(feature = "flate2")]
+                    {
+                        filename.set_extension("nnef.tgz");
+                        let encoder = flate2::write::GzEncoder::new(
+                            &mut submodel_data,
+                            flate2::Compression::default(),
+                        );
+                        self.write(typed_model, encoder)?;
+                    }
                 } else {
                     filename.set_extension("nnef.tar");
                     self.write(typed_model, &mut submodel_data)?;
