@@ -1,4 +1,4 @@
-#[cfg(target_vendor = "apple")]
+#[cfg(all(target_vendor = "apple", feature = "metal"))]
 extern crate tract_metal;
 
 #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]

@@ -107,8 +107,10 @@ default = [
   "transformers",
   "extra",
   "cuda-13000",
+  "metal",
 ]
 apple-amx-ios = ["tract-linalg/apple-amx-ios"]
+metal = ["tract-libcli/metal"]
 onnx = ["tract-onnx", "tract-libcli/hir", "tract-libcli/onnx"]
 extra = ["tract-extra"]
 pulse-opl = ["tract-pulse-opl"]

@@ -27,7 +27,7 @@ where
     if matches.contains_id("metal-gpu-trace")
         && matches.get_one::<String>("metal-gpu-trace").is_some()
     {
-        #[cfg(any(target_os = "macos", target_os = "ios"))]
+        #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
         {
             let gpu_trace_path =
                 std::path::Path::new(matches.get_one::<String>("metal-gpu-trace").unwrap())
@@ -43,9 +43,12 @@ where
                 stream.capture_trace(gpu_trace_path, move |_stream| func())
             })
         }
-        #[cfg(not(any(target_os = "macos", target_os = "ios")))]
+        #[cfg(not(all(any(target_os = "macos", target_os = "ios"), feature = "metal")))]
         {
-            bail!("`--metal-gpu-trace` present but it is only available on MacOS and iOS")
+            bail!(
+                "`--metal-gpu-trace` present but tract was not built with Metal support \
+                 (re-build on MacOS/iOS with the metal feature)"
+            )
         }
     } else if matches.get_flag("cuda-gpu-trace") {
         #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
