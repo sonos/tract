@@ -107,7 +107,10 @@ pub enum ModuleKind {
     ElementWise,
     Binary,
     Copy,
+    Pool,
     Cast,
+    Conv,
+    Deconv,
     MatMul,
 }
 
@@ -126,8 +129,12 @@ impl ModuleKey {
 
     pub fn layout(self) -> LayoutKind {
         match self.kind {
-            ModuleKind::ElementWise | ModuleKind::Copy | ModuleKind::Cast => LayoutKind::Unary,
-            ModuleKind::Binary | ModuleKind::MatMul => LayoutKind::Binary,
+            ModuleKind::ElementWise | ModuleKind::Copy | ModuleKind::Pool | ModuleKind::Cast => {
+                LayoutKind::Unary
+            }
+            ModuleKind::Binary | ModuleKind::Conv | ModuleKind::Deconv | ModuleKind::MatMul => {
+                LayoutKind::Binary
+            }
         }
     }
 
@@ -136,7 +143,10 @@ impl ModuleKey {
             ModuleKind::ElementWise => element_wise_wgsl(self.dtype),
             ModuleKind::Binary => binary_wgsl(self.dtype),
             ModuleKind::Copy => copy_wgsl(self.dtype),
+            ModuleKind::Pool => pool_wgsl(self.dtype),
             ModuleKind::Cast => cast_wgsl(self.dtype),
+            ModuleKind::Conv => conv_wgsl(self.dtype),
+            ModuleKind::Deconv => deconv_wgsl(self.dtype),
             ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }
     }
@@ -564,6 +574,145 @@ fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+fn pool_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let neg_inf = match dt {
+        ShaderDtype::F32 => "f32(-3.402823e+38)",
+        ShaderDtype::F16 => "f16(-65504.0)",
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    n: i32,
+    ih: i32,
+    iw: i32,
+    c: i32,
+    oh: i32,
+    ow: i32,
+    kh: i32,
+    kw: i32,
+    stride_h: i32,
+    stride_w: i32,
+    pad_h: i32,
+    pad_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    count_include_pad: i32,
+    normalize: i32,
+    channels_last: i32,
+    _p0: i32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+fn in_idx_nhwc(n: i32, h: i32, w: i32, c: i32) -> u32 {{
+    return u32(((n * params.ih + h) * params.iw + w) * params.c + c);
+}}
+fn in_idx_nchw(n: i32, c: i32, h: i32, w: i32) -> u32 {{
+    return u32(((n * params.c + c) * params.ih + h) * params.iw + w);
+}}
+fn out_idx_nhwc(n: i32, h: i32, w: i32, c: i32) -> u32 {{
+    return u32(((n * params.oh + h) * params.ow + w) * params.c + c);
+}}
+fn out_idx_nchw(n: i32, c: i32, h: i32, w: i32) -> u32 {{
+    return u32(((n * params.c + c) * params.oh + h) * params.ow + w);
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn max_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = i32(gid.x);
+    let nout = params.n * params.oh * params.ow * params.c;
+    if (i >= nout) {{ return; }}
+    var rest = i;
+    let c = rest % params.c; rest = rest / params.c;
+    let ow = rest % params.ow; rest = rest / params.ow;
+    let oh = rest % params.oh;
+    let n = rest / params.oh;
+    let h0 = oh * params.stride_h - params.pad_h;
+    let w0 = ow * params.stride_w - params.pad_w;
+    var best = {neg_inf};
+    for (var kh = 0; kh < params.kh; kh++) {{
+        let ih = h0 + kh * params.dil_h;
+        if (ih < 0 || ih >= params.ih) {{ continue; }}
+        for (var kw = 0; kw < params.kw; kw++) {{
+            let iw = w0 + kw * params.dil_w;
+            if (iw < 0 || iw >= params.iw) {{ continue; }}
+            var idx: u32;
+            if (params.channels_last != 0) {{
+                idx = in_idx_nhwc(n, ih, iw, c);
+            }} else {{
+                idx = in_idx_nchw(n, c, ih, iw);
+            }}
+            best = max(best, inp[params.off_in + idx]);
+        }}
+    }}
+    var oidx: u32;
+    if (params.channels_last != 0) {{
+        oidx = out_idx_nhwc(n, oh, ow, c);
+    }} else {{
+        oidx = out_idx_nchw(n, c, oh, ow);
+    }}
+    outp[params.off_out + oidx] = best;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = i32(gid.x);
+    let nout = params.n * params.oh * params.ow * params.c;
+    if (i >= nout) {{ return; }}
+    var rest = i;
+    let c = rest % params.c; rest = rest / params.c;
+    let ow = rest % params.ow; rest = rest / params.ow;
+    let oh = rest % params.oh;
+    let n = rest / params.oh;
+    let h0 = oh * params.stride_h - params.pad_h;
+    let w0 = ow * params.stride_w - params.pad_w;
+    var acc = {t}(0.0);
+    var count = 0;
+    for (var kh = 0; kh < params.kh; kh++) {{
+        let ih = h0 + kh * params.dil_h;
+        if (ih < 0 || ih >= params.ih) {{ continue; }}
+        for (var kw = 0; kw < params.kw; kw++) {{
+            let iw = w0 + kw * params.dil_w;
+            if (iw < 0 || iw >= params.iw) {{ continue; }}
+            var idx: u32;
+            if (params.channels_last != 0) {{
+                idx = in_idx_nhwc(n, ih, iw, c);
+            }} else {{
+                idx = in_idx_nchw(n, c, ih, iw);
+            }}
+            acc += inp[params.off_in + idx];
+            count += 1;
+        }}
+    }}
+    if (params.normalize != 0) {{
+        var denom = count;
+        if (params.count_include_pad != 0) {{
+            denom = params.kh * params.kw;
+        }}
+        if (denom > 0) {{
+            acc = acc / {t}(f32(denom));
+        }}
+    }}
+    var oidx: u32;
+    if (params.channels_last != 0) {{
+        oidx = out_idx_nhwc(n, oh, ow, c);
+    }} else {{
+        oidx = out_idx_nchw(n, c, oh, ow);
+    }}
+    outp[params.off_out + oidx] = acc;
+}}
+"#
+    ));
+    s
+}
+
 fn cast_wgsl(dt: ShaderDtype) -> String {
     match dt {
         ShaderDtype::F32 => {
@@ -602,6 +751,399 @@ fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
             )
         }
     }
+}
+
+/// Workgroup edge of the depthwise tile: 16x16 output values per workgroup.
+pub const DW_WG: u32 = 16;
+
+/// Shape of one depthwise convolution, baked into its program so the filter
+/// loops unroll and the halo tile is sized exactly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct DepthwiseShape {
+    pub kh: u32,
+    pub kw: u32,
+    pub stride_h: u32,
+    pub stride_w: u32,
+    pub dil_h: u32,
+    pub dil_w: u32,
+}
+
+impl DepthwiseShape {
+    fn tile_h(&self) -> u32 {
+        (DW_WG - 1) * self.stride_h + (self.kh - 1) * self.dil_h + 1
+    }
+
+    fn tile_w(&self) -> u32 {
+        (DW_WG - 1) * self.stride_w + (self.kw - 1) * self.dil_w + 1
+    }
+
+    pub fn key(&self) -> String {
+        format!(
+            "{}x{}s{}x{}d{}x{}",
+            self.kh, self.kw, self.stride_h, self.stride_w, self.dil_h, self.dil_w
+        )
+    }
+}
+
+/// Depthwise convolution, ported from tfjs-backend-webgpu
+/// `DepthwiseConv2DNCHWSharedProgram`
+/// (tfjs-backend-webgpu/src/depthwise_conv2d_nchw_shared_webgpu.ts, Apache-2.0,
+/// Copyright 2021 Google LLC): a workgroup owns one 16x16 output tile of one
+/// channel, staging that tile's input halo and the filter in workgroup memory,
+/// so each input value is read once instead of once per filter tap. Strides and
+/// dilations size the halo here, where tfjs assumed one; indices come from
+/// tract's strides, and the epilogue replaces their bias/activation snippet.
+pub fn conv_depthwise_module(
+    dt: ShaderDtype,
+    shape: DepthwiseShape,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let DepthwiseShape { kh, kw, stride_h, stride_w, dil_h, dil_w } = shape;
+    let (tile_h, tile_w) = (shape.tile_h(), shape.tile_w());
+    let wg = DW_WG;
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    pad_h: i32,
+    pad_w: i32,
+    _p0: u32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_sh: i32,
+    w_sw: i32,
+    _p1: u32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+var<workgroup> x_tile: array<array<f32, {tile_w}>, {tile_h}>;
+var<workgroup> w_tile: array<array<f32, {kw}>, {kh}>;
+
+@compute @workgroup_size({wg}, {wg}, 1)
+fn conv_dw_{suf}(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) lidx: u32,
+) {{
+    let co = wid.z % params.co;
+    let n = wid.z / params.co;
+    let oh0 = wid.y * {wg}u;
+    let ow0 = wid.x * {wg}u;
+    let ih0 = i32(oh0) * {stride_h} - params.pad_h;
+    let iw0 = i32(ow0) * {stride_w} - params.pad_w;
+
+    for (var r = lid.y; r < {tile_h}u; r = r + {wg}u) {{
+        for (var c = lid.x; c < {tile_w}u; c = c + {wg}u) {{
+            let ih = ih0 + i32(r);
+            let iw = iw0 + i32(c);
+            var v = 0.0;
+            if (ih >= 0 && ih < i32(params.ih) && iw >= 0 && iw < i32(params.iw)) {{
+                let idx = params.off_in + u32(
+                    i32(n) * params.in_sn
+                    + i32(co) * params.in_sc
+                    + ih * params.in_sh
+                    + iw * params.in_sw
+                );
+                v = f32(inp[idx]);
+            }}
+            x_tile[r][c] = v;
+        }}
+    }}
+    if (lidx < {kh}u * {kw}u) {{
+        let wr = lidx / {kw}u;
+        let wc = lidx % {kw}u;
+        let idx = params.off_w + u32(
+            i32(co) * params.w_so + i32(wr) * params.w_sh + i32(wc) * params.w_sw
+        );
+        w_tile[wr][wc] = f32(wgt[idx]);
+    }}
+    workgroupBarrier();
+
+    let oh = oh0 + lid.y;
+    let ow = ow0 + lid.x;
+    if (oh >= params.oh || ow >= params.ow) {{ return; }}
+    var acc = 0.0;
+    for (var wr = 0u; wr < {kh}u; wr++) {{
+        for (var wc = 0u; wc < {kw}u; wc++) {{
+            acc = fma(
+                x_tile[lid.y * {stride_h}u + wr * {dil_h}u][lid.x * {stride_w}u + wc * {dil_w}u],
+                w_tile[wr][wc],
+                acc
+            );
+        }}
+    }}
+    var v = {t}(acc);
+{epilogue}
+    let out_i = params.off_out + u32(
+        i32(n) * params.out_sn
+        + i32(co) * params.out_sc
+        + i32(oh) * params.out_sh
+        + i32(ow) * params.out_sw
+    );
+    outp[out_i] = v;
+}}
+"#
+    ));
+    s
+}
+
+fn conv_wgsl(dt: ShaderDtype) -> String {
+    conv_module(dt, &[], 0)
+}
+
+/// `extras` epilogue operands bind between the weights and the output.
+pub fn conv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let mut s = preamble(dt);
+    // Packed params: see kernels/conv.rs. 2D NCHW/NHWC, OIHW weights.
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    channels_last: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+@compute @workgroup_size({WORKGROUP})
+fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let nout = params.n * params.co * params.oh * params.ow;
+    if (i >= nout) {{ return; }}
+    var rest = i;
+    let ow = rest % params.ow; rest = rest / params.ow;
+    let oh = rest % params.oh; rest = rest / params.oh;
+    let co = rest % params.co;
+    let n = rest / params.co;
+    let g = co / params.co_pg;
+    let ci0 = g * params.ci_pg;
+    var acc = 0.0;
+    // Where a tap reads does not depend on the channel, so the channels run
+    // innermost and the window is walked once rather than once per channel.
+    for (var kh = 0u; kh < params.kh; kh++) {{
+        let ih = i32(oh) * params.stride_h + i32(kh) * params.dil_h - params.pad_h;
+        if (ih < 0 || ih >= i32(params.ih)) {{ continue; }}
+        for (var kw = 0u; kw < params.kw; kw++) {{
+            let iw = i32(ow) * params.stride_w + i32(kw) * params.dil_w - params.pad_w;
+            if (iw < 0 || iw >= i32(params.iw)) {{ continue; }}
+            let in_base = i32(n) * params.in_sn
+                + i32(ci0) * params.in_sc
+                + ih * params.in_sh
+                + iw * params.in_sw;
+            let w_base = i32(co) * params.w_so
+                + i32(kh) * params.w_sh
+                + i32(kw) * params.w_sw;
+            for (var ci = 0u; ci < params.ci_pg; ci++) {{
+                let in_i = params.off_in + u32(in_base + i32(ci) * params.in_sc);
+                let w_i = params.off_w + u32(w_base + i32(ci) * params.w_si);
+                acc += f32(inp[in_i]) * f32(wgt[w_i]);
+            }}
+        }}
+    }}
+    let out_i = params.off_out + u32(
+        i32(n) * params.out_sn
+        + i32(co) * params.out_sc
+        + i32(oh) * params.out_sh
+        + i32(ow) * params.out_sw
+    );
+    var v = {t}(acc);
+{epilogue}
+    outp[out_i] = v;
+}}
+"#
+    ));
+    s
+}
+
+fn deconv_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    // Gather-based conv_transpose (ORT style). WGSL has no float atomics.
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    _p0: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let nout = params.n * params.co * params.oh * params.ow;
+    if (i >= nout) {{ return; }}
+    var rest = i;
+    let ow = rest % params.ow; rest = rest / params.ow;
+    let oh = rest % params.oh; rest = rest / params.oh;
+    let co = rest % params.co;
+    let n = rest / params.co;
+    let g = co / params.co_pg;
+    let ci0 = g * params.ci_pg;
+    var acc = 0.0;
+    // Which taps land on an input pixel does not depend on the channel, and
+    // finding out costs two integer divisions, so the channels run innermost.
+    for (var kh = 0u; kh < params.kh; kh++) {{
+        let ih_num = i32(oh) + params.pad_h - i32(kh) * params.dil_h;
+        if (params.stride_h == 0 || ih_num % params.stride_h != 0) {{ continue; }}
+        let ih = ih_num / params.stride_h;
+        if (ih < 0 || ih >= i32(params.ih)) {{ continue; }}
+        for (var kw = 0u; kw < params.kw; kw++) {{
+            let iw_num = i32(ow) + params.pad_w - i32(kw) * params.dil_w;
+            if (params.stride_w == 0 || iw_num % params.stride_w != 0) {{ continue; }}
+            let iw = iw_num / params.stride_w;
+            if (iw < 0 || iw >= i32(params.iw)) {{ continue; }}
+            let in_base = i32(n) * params.in_sn
+                + i32(ci0) * params.in_sc
+                + ih * params.in_sh
+                + iw * params.in_sw;
+            let w_base = i32(co) * params.w_so
+                + i32(kh) * params.w_sh
+                + i32(kw) * params.w_sw;
+            for (var ci = 0u; ci < params.ci_pg; ci++) {{
+                let in_i = params.off_in + u32(in_base + i32(ci) * params.in_sc);
+                let w_i = params.off_w + u32(w_base + i32(ci) * params.w_si);
+                acc += f32(inp[in_i]) * f32(wgt[w_i]);
+            }}
+        }}
+    }}
+    let out_i = params.off_out + u32(
+        i32(n) * params.out_sn
+        + i32(co) * params.out_sc
+        + i32(oh) * params.out_sh
+        + i32(ow) * params.out_sw
+    );
+    outp[out_i] = {t}(acc);
+}}
+"#
+    ));
+    s
 }
 
 /// Applies the fused steps to `v`, reading each extra operand at `index`.
