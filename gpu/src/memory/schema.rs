@@ -342,24 +342,23 @@ impl DeviceMemSchema {
     /// Evaluate peak memory size for given symbols. The return value is lower or equal to the memory
     /// size of the schema. The difference between peak memory size and memory size represents the
     /// memory fragmentation introduced by the schema.
+    pub fn peak_memory_terms(&self) -> Vec<TDim> {
+        self.by_steps
+            .iter()
+            .map(|active_nodes| active_nodes.iter().flatten().map(|it| it.mem_size.clone()).sum())
+            .collect()
+    }
+
     pub fn eval_peak_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
         Ok(self
-            .by_steps
+            .peak_memory_terms()
             .iter()
-            .map(|active_nodes| {
-                active_nodes
-                    .iter()
-                    .flatten()
-                    .map(|it| it.mem_size.clone())
-                    .sum::<TDim>()
-                    .eval_to_i64(symbols)
-            })
+            .map(|term| term.eval_to_i64(symbols))
             .collect::<TractResult<Vec<_>>>()?
             .into_iter()
             .max()
             .unwrap_or(0))
     }
-
     /// Evaluate the usage for given symbols as the ratio between
     /// schema memory size and peak memory size. A value of 1.0 means
     /// that the schema doesn't introduce memory fragmentation.
