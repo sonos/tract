@@ -9,7 +9,7 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
-# 0.23.7 - unreleased
+# 0.23.7 - 2026-09-08
 
 ### CPU / linalg
 
@@ -17,22 +17,29 @@ For normal usage we recommend adopting the **`tract` facade crate** (the public 
 - **AVX2/FMA `erf` kernel**, and the erf-flavoured GELU is now detected with the half factored out.
 - Matmul chunking slack is gated on the problem rather than the machine alone, with the boundary at the 1.5 MB knee, and taken only where the cache absorbs it. The generic i32 4x4 tile is demoted off x86_64.
 - Input validation added to the packing functions.
+- **Depthwise convolution is vectorised along W.** NCHW W-inner `DepthWiseConv` ran `process_zone_n` scalar; consecutive output points are now computed together when the output stride is 1, by splatting each kernel tap and FMA-ing a 4/8-wide load, with `vld2q`/`vld3q` for the stride 2/3 paths the DPDFNet 48 kHz encoder uses. Padded and non-unit-output-stride zones stay scalar, and `BlockedConv` is untouched. The kernel lives in linalg as a `DepthwiseW` routine rather than as aarch64 intrinsics inside core.
 
 ### Core
 
 - **`Stft::eval_t` addresses frames by offset.** It walked contiguous tensors one element at a time through dynamic-rank ndarray views, re-resolving the window and branching on the pad offset per sample. Whole frames are now gathered and stored as slices when contiguous, the zero-padded window is computed once per eval, and an element-wise path is kept for a time axis not adjacent to the complex pair.
 
+### NNEF / ONNX
+
+- Fix: **ONNX `SimplifiedLayerNormalization` lowered to a full LayerNorm** instead of an RMS norm, so it subtracted a mean the operator does not have (#2646).
+
 ### GPU / transformers
 
+- **Metal convolution goes through an implicit GEMM.** The direct kernel computed one output position per thread and left most of the GPU idle — a 56x56x64 -> 128 3x3 layer ran at about 20 GFLOP/s on an M1 Pro. MLX's tiled implicit-GEMM conv is ported as owned `.metal` source and takes NHWC f16/f32 single-group 2D convolutions; every other shape stays on the direct kernel. A metal-local rule reorders eligible kernels from the shared rewrite's OIHW into the OHWI layout the ported kernel wants, as a constant, since the metal transform does not declutter afterwards.
 - **GatedDeltaNet recurrent and causal-conv1d-update CUDA kernels**, matching the Metal implementation, with CPU-vs-GPU criterion benches on both backends.
 - **RMSNorm fusions**: residual absorption and scaled-norm fusion across nn/gpu/cuda/metal, a CUDA fused scale/residual kernel matching Metal, support for a fused in/out dtype cast, end-to-end coverage through the real backend pipeline, and a before/after latency bench on Metal. `ScaledRmsNorm` evaluation moved to the ctx-based `EvalOp` API.
-- Fix: **the fused norms came out more precise than the graphs they replace**, which cost accuracy on q40ef16 LLMs. The scale fusions multiplied gamma against the raw f32 accumulator where the graph rounds first (`weight * hidden.to(input_dtype)`) — the rounding target is now recorded as `ScaledRmsNorm::scale_dt`, carried through the cast folds and applied before scaling; `fuse_scaled_rms_norm_out_cast` folded widening casts as well as narrowing ones, deleting a rounding step and flipping the top-1 token on OpenELM q40ef16; and the CUDA kernel normalized an unrounded f32 residual sum, diverging from Metal and from the standalone `Add` it claims to replace.
+- Fix: **the fused norms came out more precise than the graphs they replace**, which cost accuracy on q40ef16 LLMs. The scale fusions multiplied gamma against the raw f32 accumulator where the graph rounds first (`weight * hidden.to(input_dtype)`) — the rounding target is now recorded as `ScaledRmsNorm::scale_dt`, carried through the cast folds and applied before scaling; `fuse_scaled_rms_norm_out_cast` folded widening casts as well as narrowing ones, deleting a rounding step and flipping the top-1 token on OpenELM q40ef16; and the CUDA kernel normalized an unrounded f32 residual sum, diverging from Metal and from the standalone `Add` it claims to replace. The OpenELM f16 Metal top-1 expectations relaxed while the fusions were in flight are restored to their pre-fusion values.
 - Fix: `GpuMultiBroadcastTo` panicked on a rank-0 input, whose strides are empty.
 
 ### Security
 
 - **`SECURITY.md`**: private reporting through GitHub advisories, the supported release lines, the trust boundary between developer-supplied models and untrusted inference inputs, and the `api/rs` facade (the `tract` crate) as the supported surface.
 - Fix: **NNEF tensor and resource labels could escape the destination directory.** Only a leading slash was stripped, so a label carrying a `..` component resolved outside the directory a model is written to. Labels are checked to be plain relative paths in both writers and in the CLI output dump.
+- Fix: **a tensor's shape arithmetic overflowed before it was allocated**, both ways, from a model file. `uninitialized_aligned_dt` multiplied the shape product by the datum size in wrapping arithmetic: wrapped large, `from_raw_dt_align` allocates before comparing against the payload, so a 4-byte payload made tract ask the allocator for 16 EiB (dims `[-1]` on 0.23.6); wrapped small, the length check passed and the tensor claimed far more elements than its buffer held, with `as_slice_unchecked()` handing out the oversized slice. The arithmetic is now checked, `isize::MAX` bound included, before allocating.
 - Fix: malformed TensorFlow `TensorProto`s return an error instead of panicking (CWE-248).
 - Fix: `read_tensor` is hardened against an untrusted NNEF string length (CWE-770).
 
