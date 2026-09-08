@@ -202,3 +202,28 @@ fn a_move_rides_the_op_that_reads_it() -> TractResult<()> {
     ensure!(fused == 1, "the move should ride its consumer, got {fused} fused nodes");
     Ok(())
 }
+
+#[test]
+fn rgba8_ingest_to_nchw_f32() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        // 2x2 packed RGBA8. textureLoad of rgba8unorm yields 0..1 floats.
+        let rgba: [u8; 16] = [
+            255, 0, 0, 255, // (0,0) red
+            0, 255, 0, 255, // (1,0) green
+            0, 0, 255, 255, // (0,1) blue
+            255, 255, 255, 255, // (1,1) white
+        ];
+        let gpu = crate::tensor_from_rgba8(2, 2, &rgba)?;
+        q.flush()?;
+        let host = gpu.to_host()?.into_tensor();
+        let expected = Tensor::from_shape(
+            &[1, 3, 2, 2],
+            &[
+                1.0f32, 0.0, 0.0, 1.0, // R
+                0.0, 1.0, 0.0, 1.0, // G
+                0.0, 0.0, 1.0, 1.0, // B
+            ],
+        )?;
+        close(&host, &expected)
+    })
+}

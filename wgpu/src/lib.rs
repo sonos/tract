@@ -42,7 +42,45 @@ pub use crate::context::{
 };
 pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
+#[cfg(target_arch = "wasm32")]
+pub use crate::kernels::ingest::{tensor_from_external_image, tensor_from_video_frame};
+pub use crate::kernels::ingest::{tensor_from_rgba8, tensor_to_texture};
 
+/// The `GPUDevice` this backend runs on, so a compositor in the page can be
+/// built against the same device and read the mask where it already is.
+#[cfg(target_arch = "wasm32")]
+pub fn webgpu_device() -> Option<wasm_bindgen::JsValue> {
+    use wasm_bindgen::JsCast;
+    wgpu_context().device().as_webgpu().map(|d| d.clone().unchecked_into())
+}
+
+/// A texture this backend can write a mask into, handed to the page as a
+/// `GPUTexture`.
+#[cfg(target_arch = "wasm32")]
+pub fn mask_texture(
+    width: u32,
+    height: u32,
+) -> TractResult<(wgpu::Texture, wasm_bindgen::JsValue)> {
+    use wasm_bindgen::JsCast;
+    let texture = wgpu_context().device().create_texture(&wgpu::TextureDescriptor {
+        label: Some("tract-wgpu-mask"),
+        size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::STORAGE_BINDING
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    });
+    let handle = texture
+        .as_webgpu()
+        .context("mask texture is not a WebGPU texture")?
+        .clone()
+        .unchecked_into();
+    Ok((texture, handle))
+}
 pub use crate::transform::WgpuTransform;
 
 use crate::utils::get_wgpu_buffer;
