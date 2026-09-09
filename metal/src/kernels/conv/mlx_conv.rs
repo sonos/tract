@@ -85,21 +85,16 @@ pub fn mlx_conv_eligible(op: &Conv, in_facts: &[&TypedFact]) -> bool {
     if op.q_params.is_some() {
         return false;
     }
+    // Only a single group. The kernel wants each group's weights contiguous,
+    // which is `[O, kH, kW, C/group]` — the group on the output axis. That is
+    // not what `OHWI` means here: `OHWI` puts the group on the input axis, so
+    // its grouped shape is `[O/group, kH, kW, C]`. There is no way to hand the
+    // kernel the second as if it were the first, since the two interleave the
+    // group differently, and a grouped conv would have to be relabelled as a
+    // format it does not match. Grouped convolutions stay where they were;
+    // depthwise has its own kernel.
     if op.group != 1 {
-        // Grouped convolutions only go to the specialised kernel, and only when
-        // each group's channel counts are shaped the way it wants. Depthwise is
-        // handled by its own kernel.
-        let (c, o) = (op.pool_spec.input_channels, op.pool_spec.output_channels);
-        if op.group == 0 || !c.is_multiple_of(op.group) || !o.is_multiple_of(op.group) {
-            return false;
-        }
-        let (cg, og) = (c / op.group, o / op.group);
-        if cg == 1 && og == 1 {
-            return false;
-        }
-        if !(cg <= 4 || cg.is_multiple_of(16)) || !(og <= 16 || og.is_multiple_of(16)) {
-            return false;
-        }
+        return false;
     }
     if !matches!(in_facts[0].datum_type, DatumType::F16 | DatumType::F32) {
         return false;
@@ -289,18 +284,8 @@ pub fn mlx_conv_dispatchable(op: &Conv, input: &DeviceTensor, weights: &DeviceTe
     if op.q_params.is_some() || op.kernel_fmt != KernelFormat::OHWI {
         return false;
     }
-    let (c, o) = (op.pool_spec.input_channels, op.pool_spec.output_channels);
     if op.group != 1 {
-        if op.group == 0 || !c.is_multiple_of(op.group) || !o.is_multiple_of(op.group) {
-            return false;
-        }
-        let (cg, og) = (c / op.group, o / op.group);
-        if (cg == 1 && og == 1)
-            || !(cg <= 4 || cg.is_multiple_of(16))
-            || !(og <= 16 || og.is_multiple_of(16))
-        {
-            return false;
-        }
+        return false;
     }
     if !matches!(input.datum_type(), DatumType::F16 | DatumType::F32)
         || input.datum_type() != weights.datum_type()
