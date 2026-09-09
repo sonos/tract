@@ -190,7 +190,8 @@ fn de_resize_bilinear(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 /// Nearest neighbour reads its half-pixel mode through a transformation of its
-/// own, and rounds up on a tie where bilinear has nothing to round.
+/// own, and truncates the source coordinate unless aligning corners, which
+/// rounds it and so rounds up on a tie.
 fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_resize_nearest_neighbor_options);
     let coord_transformer = if options.align_corners() {
@@ -200,15 +201,15 @@ fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     } else {
         CoordTransformer::Asymmetric
     };
-    let nearest =
-        if options.half_pixel_centers() { Nearest::Floor } else { Nearest::RoundPreferCeil };
+    let nearest = if options.align_corners() { Nearest::RoundPreferCeil } else { Nearest::Floor };
     de_resize(op, coord_transformer, Interpolator::Nearest, nearest)
 }
 
 /// The size goes out as the two spatial extents, and the coordinate
 /// transformation as the pair of flags that name it here. Anything tract can
 /// express and tflite cannot — a non-spatial axis, an interpolator or a
-/// transformation with no flag for it — is left for another serializer.
+/// transformation with no flag for it, a scale the output size does not
+/// reproduce — is left for another serializer.
 fn ser_resize(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
@@ -227,6 +228,20 @@ fn ser_resize(
         input_shape[0] == output_shape[0] && input_shape[3] == output_shape[3],
         "tflite resizes the spatial axes only, {input_shape:?} to {output_shape:?}"
     );
+    if let Some(slot) = op.optional_scales_input {
+        let scales = model.node_input_facts(node.id)?[slot].konst.clone();
+        if let Some(scales) = scales.filter(|scales| scales.len() == input.rank()) {
+            let scales = scales.cast_to::<f32>()?;
+            for (axis, scale) in scales.try_as_plain()?.as_slice::<f32>()?.iter().enumerate() {
+                ensure!(
+                    *scale == output_shape[axis] as f32 / input_shape[axis] as f32,
+                    "tflite resamples by the ratio of the sizes it carries, and scale {scale} on axis {axis} is not {} over {}",
+                    output_shape[axis],
+                    input_shape[axis]
+                );
+            }
+        }
+    }
     let (align_corners, half_pixel_centers) = match &op.coord_transformer {
         CoordTransformer::AlignCorners => (true, false),
         CoordTransformer::Asymmetric => (false, false),
@@ -263,8 +278,7 @@ fn ser_resize(
             )
         }
         Interpolator::Nearest => {
-            let expected =
-                if half_pixel_centers { Nearest::Floor } else { Nearest::RoundPreferCeil };
+            let expected = if align_corners { Nearest::RoundPreferCeil } else { Nearest::Floor };
             ensure!(
                 op.nearest == expected,
                 "tflite nearest resize rounds {expected:?}, this one rounds {:?}",
@@ -507,7 +521,8 @@ mod resize {
             (CoordTransformer::AlignCorners, Interpolator::Linear, Nearest::Floor),
             (CoordTransformer::Asymmetric, Interpolator::Linear, Nearest::Floor),
             (CoordTransformer::TfHalfPixelForNn, Interpolator::Nearest, Nearest::Floor),
-            (CoordTransformer::Asymmetric, Interpolator::Nearest, Nearest::RoundPreferCeil),
+            (CoordTransformer::Asymmetric, Interpolator::Nearest, Nearest::Floor),
+            (CoordTransformer::AlignCorners, Interpolator::Nearest, Nearest::RoundPreferCeil),
         ] {
             let m = model(coord.clone(), interp.clone(), nearest)?;
             let mut buf = vec![];
