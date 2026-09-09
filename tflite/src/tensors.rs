@@ -113,7 +113,19 @@ pub fn flat_tensor_to_tract_fact<'m>(
             dt = dt.quantize(QParams::ZpScale { zero_point: zp.get(0) as _, scale: scale.get(0) })
         }
     }
-    let mut fact = dt.fact(flat.shape().unwrap().iter().map(|d| d as usize).collect_vec());
+    let shape = flat
+        .shape()
+        .unwrap()
+        .iter()
+        .map(|d| {
+            if d < 0 {
+                bail!("Negative dimension in TFLite tensor shape: {d}")
+            } else {
+                Ok(d as usize)
+            }
+        })
+        .collect::<TractResult<Vec<usize>>>()?;
+    let mut fact = dt.fact(shape);
     let buffer_ix = flat.buffer() as usize;
     if buffer_ix != 0 {
         let buffer = model.buffers().unwrap().get(flat.buffer() as usize);
