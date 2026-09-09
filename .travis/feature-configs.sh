@@ -46,3 +46,7 @@ check tract --no-default-features --features flate2
 check tract --no-default-features --features pulse
 
 check tract-nnef --features unstable-safetensors
+
+check tract --no-default-features --features transformers
+
+check tract-onnx --features transformers

@@ -7,6 +7,7 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
+#[cfg(feature = "transformers")]
 mod attention;
 mod batch_norm;
 mod conv_transpose;
@@ -14,6 +15,7 @@ mod dropout;
 mod gelu;
 mod gelu_contrib;
 mod group_norm;
+#[cfg(feature = "transformers")]
 mod group_query_attention;
 mod instance_norm;
 mod layer_norm;
@@ -21,6 +23,7 @@ mod lp_norm;
 mod lrn;
 mod mat_mul_nbits;
 mod mish;
+#[cfg(feature = "transformers")]
 mod multi_head_attention;
 mod mvn;
 mod reduce;
@@ -90,14 +93,17 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
+    #[cfg(feature = "transformers")]
     reg.insert("Attention", attention::attention);
     reg.insert("Gelu", gelu::gelu);
     reg.insert("BiasGelu", gelu_contrib::bias_gelu);
     reg.insert("FastGelu", gelu_contrib::fast_gelu);
     reg.insert("QuickGelu", gelu_contrib::quick_gelu);
+    #[cfg(feature = "transformers")]
     reg.insert("GroupQueryAttention", group_query_attention::group_query_attention);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
+    #[cfg(feature = "transformers")]
     reg.insert("MultiHeadAttention", multi_head_attention::multi_head_attention);
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);

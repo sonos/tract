@@ -17,7 +17,7 @@ prost.workspace = true
 regex.workspace = true 
 infra = { path = "../infra" }
 tract-core.workspace = true
-tract-onnx.workspace = true
+tract-onnx = { workspace = true, features = ["transformers"] }
 tract-hir.workspace = true
 
 [features]

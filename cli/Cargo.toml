@@ -117,7 +117,7 @@ pulse-opl = ["tract-pulse-opl"]
 pulse = ["tract-pulse", "tract-pulse-opl", "tract-extra?/pulse"]
 tf = ["tract-tensorflow", "tract-libcli/hir"]
 tflite = ["tract-tflite"]
-transformers = ["tract-transformers", "tract-libcli/transformers"]
+transformers = ["tract-transformers", "tract-libcli/transformers", "tract-onnx?/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
 bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time", "multithread-mm"]
 

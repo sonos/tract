@@ -26,7 +26,7 @@ tract-extra.workspace = true
 tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl.workspace = true
 tract-libcli.workspace = true
-tract-transformers.workspace = true
+tract-transformers = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
@@ -45,7 +45,7 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000", "metal", "flate2", "pulse"]
+default = ["cuda-13000", "metal", "flate2", "pulse", "transformers"]
 complex = []
 
 # Gzip support for NNEF archives: reading `.nnef.tgz` models and writing them
@@ -56,8 +56,17 @@ flate2 = ["dep:flate2", "tract-nnef/flate2"]
 # Offline pulsification: the `pulse` and `blockify` model transforms, and the
 # write side of pulsed NNEF. Enabled by default; consumers that only load and
 # run an already pulsified model keep `enable_pulse` off tract-pulse-opl alone
-# with `default-features = false`.
-pulse = ["dep:tract-pulse", "tract-extra/pulse"]
+# with `default-features = false`. Implies `transformers`, which tract-pulse
+# needs for the DiagGather pulsifier and blockify.
+pulse = ["dep:tract-pulse", "tract-extra/pulse", "transformers"]
+
+# The tract_transformers NNEF extension: attention, KV cache and rope
+# operators, and the transforms that detect them, plus the ONNX attention
+# operators that lower onto them and libcli's causal-LLM tensor specs. Enabled
+# by default; with it off `enable_tract_transformers` fails and a model using
+# those operators does not load, so only drop it for a model known not to need
+# them.
+transformers = ["dep:tract-transformers", "tract-onnx/transformers", "tract-libcli/transformers"]
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []

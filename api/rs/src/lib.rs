@@ -3,6 +3,7 @@ extern crate tract_metal;
 
 #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 extern crate tract_cuda;
+#[cfg(feature = "transformers")]
 extern crate tract_transformers;
 
 use std::borrow::Cow;
@@ -27,6 +28,7 @@ use tract_onnx_opl::WithOnnx;
 use tract_pulse::WithPulse;
 #[cfg(not(feature = "pulse"))]
 use tract_pulse_opl::WithPulse;
+#[cfg(feature = "transformers")]
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
@@ -108,8 +110,13 @@ impl NnefInterface for Nnef {
     }
 
     fn enable_tract_transformers(&mut self) -> Result<()> {
-        self.0.enable_tract_transformers();
-        Ok(())
+        #[cfg(not(feature = "transformers"))]
+        anyhow::bail!("Cannot enable tract-transformers without the transformers feature enabled.");
+        #[cfg(feature = "transformers")]
+        {
+            self.0.enable_tract_transformers();
+            Ok(())
+        }
     }
 
     fn enable_onnx(&mut self) -> Result<()> {
