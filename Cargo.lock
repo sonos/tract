@@ -5270,6 +5270,7 @@ dependencies = [
  "log",
  "num-traits",
  "tract-core",
+ "tract-metal",
  "tract-pulse-opl",
  "tract-transformers",
 ]

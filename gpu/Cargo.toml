@@ -29,3 +29,10 @@ tract-core.workspace = true
 tract-pulse-opl.workspace = true
 tract-transformers.workspace = true
 dyn-hash.workspace = true
+
+[dev-dependencies]
+tract-metal.workspace = true
+
+[[bench]]
+name = "infer_bench"
+harness = false
