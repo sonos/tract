@@ -21,6 +21,7 @@ members = [
     "cli",
     "gpu",
     "metal",
+    "wgpu",
     "extra",
     "transformers",
     "cuda",
@@ -221,6 +222,8 @@ toml = "1.1"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 zerofrom = "0.1.5"
+wgpu = { version = "30.0.1", features = ["fragile-send-sync-non-atomic-wasm"] }
+pollster = "0.4"
 tract-api = { version = "0.23.8-pre", path = 'api' }
 tract-core = { version = "0.23.8-pre", path = 'core' }
 tract-cuda = { version = "0.23.8-pre", path = 'cuda', default-features = false }
@@ -231,6 +234,7 @@ tract-hir = { version = "0.23.8-pre", path = 'hir' }
 tract-libcli = { version = "0.23.8-pre", path = 'libcli' }
 tract-linalg = { version = "0.23.8-pre", path = 'linalg' }
 tract-metal = { version = "0.23.8-pre", path = 'metal' }
+tract-wgpu = { version = "0.23.8-pre", path = 'wgpu' }
 tract-nnef-resources = { version = "0.23.8-pre", path = 'nnef/nnef-resources' }
 tract-nnef = { version = "0.23.8-pre", path = 'nnef' }
 tract-onnx-opl = { version = "0.23.8-pre", path = 'onnx-opl' }
