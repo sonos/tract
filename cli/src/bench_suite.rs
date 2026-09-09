@@ -116,12 +116,16 @@ impl RuntimeKind {
     }
 
     /// `(global, subcommand)` flags. `--timeout` is a whole-process watchdog
-    /// (load+optimize+run); the GPU arms keep it wide to clear a large-model load.
+    /// (load+optimize+run). The child never fetches: `stage` hands it bytes the parent
+    /// already downloaded (a memfd on Linux, a local file elsewhere), so the window
+    /// covers compute only and does not have to clear a cold download. The slowest
+    /// healthy GPU case measures ~42s, so 180 keeps 4x margin while bounding a wedged
+    /// transform at 3min instead of 10.
     fn flags(&self) -> (&'static [&'static str], &'static [&'static str]) {
         match self {
             RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
-            RuntimeKind::Metal => (&["--metal", "--timeout", "600"], &["--warmup-loops", "1"]),
-            RuntimeKind::Cuda => (&["--cuda", "--timeout", "600"], &["--warmup-loops", "1"]),
+            RuntimeKind::Metal => (&["--metal", "--timeout", "180"], &["--warmup-loops", "1"]),
+            RuntimeKind::Cuda => (&["--cuda", "--timeout", "180"], &["--warmup-loops", "1"]),
         }
     }
 }
@@ -296,7 +300,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     let start = Instant::now();
     let mut results: Vec<RunResult> = vec![];
-    let mut smoke_failures: Vec<String> = vec![];
+    let mut failures: Vec<String> = vec![];
 
     for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
@@ -409,19 +413,19 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 }
                 Err(e) => {
                     eprintln!("  !! {} {} failed: {e:#}", bench.name, variant);
-                    smoke_failures.push(format!("{} [{variant}]", bench.name));
+                    failures.push(format!("{} [{variant}]", bench.name));
                 }
             }
         }
     }
 
     if smoke {
-        eprintln!("smoke: {} run(s) ok, {} failed", results.len(), smoke_failures.len());
+        eprintln!("smoke: {} run(s) ok, {} failed", results.len(), failures.len());
         ensure!(
-            smoke_failures.is_empty(),
+            failures.is_empty(),
             "smoke: {} run(s) failed to load/run:\n  {}",
-            smoke_failures.len(),
-            smoke_failures.join("\n  ")
+            failures.len(),
+            failures.join("\n  ")
         );
         return Ok(());
     }
@@ -443,6 +447,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
     write_metrics(output, &metrics)?;
     eprintln!("wrote {} metrics to {output}", metrics.len());
+    // A run that died -- notably a `--timeout` watchdog kill (exit 124) on a wedged
+    // transform -- used to be collected here and never looked at, so a hung bench
+    // reported success and cost only wall clock. The metrics are written first, so the
+    // cases that did run still land and the report still has something to compare.
+    ensure!(
+        failures.is_empty(),
+        "{} bench run(s) failed:\n  {}",
+        failures.len(),
+        failures.join("\n  ")
+    );
     Ok(())
 }
 
