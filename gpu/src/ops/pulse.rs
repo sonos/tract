@@ -40,7 +40,7 @@ impl EvalOp for GpuDelay {
         Ok(Some(Box::new(GpuDelayState {
             node_id: ctx.node_id,
             buffer: None,
-            shift_scratch: None,
+            heads: tvec!(),
             lanes: 0,
         })))
     }
@@ -141,14 +141,16 @@ fn fill_lane(
     )
 }
 
-/// The streaming context preceding the current pulse. `lanes` is the extent of
-/// the buffer's lane axis, 1 when the state serves a single stream and the
-/// buffer has no lane axis at all.
+/// The streaming context preceding the current pulse, held as a ring: `heads`
+/// is each lane's ring index of the oldest buffered frame, so a turn overwrites
+/// the frames it retires instead of shifting the whole buffer down. `lanes` is
+/// the extent of the buffer's lane axis, 1 when the state serves a single
+/// stream and the buffer has no lane axis at all.
 #[derive(Debug, Clone)]
 pub struct GpuDelayState {
     pub node_id: usize,
     pub buffer: Option<DeviceTensor>,
-    pub shift_scratch: Option<DeviceTensor>,
+    heads: TVec<usize>,
     lanes: usize,
 }
 
@@ -166,39 +168,24 @@ impl GpuDelayState {
         lane: Option<usize>,
     ) -> TractResult<()> {
         let axis = op.axis;
-        let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[axis];
         let output_pulse = input_pulse + op.overlap;
         let from_input = input_pulse.saturating_sub(op.delay);
-        let from_buffer = output_pulse.saturating_sub(from_input);
+        let from_buffer = output_pulse - from_input;
+        let head = self.heads[lane.unwrap_or(0)];
         let buffer = self.buffer.as_ref().unwrap();
 
-        copy_lane(ctx, output, seat, 0, buffer, lane, 0, axis, from_buffer)?;
+        for (at, run) in op.ring_runs(head, from_buffer) {
+            copy_lane(ctx, output, seat, at, buffer, lane, run.start, axis, run.len())?;
+        }
         copy_lane(ctx, output, seat, from_buffer, input, seat, 0, axis, from_input)?;
 
-        if buffered < input_pulse {
-            copy_lane(ctx, buffer, lane, 0, input, seat, input_pulse - buffered, axis, buffered)?;
-        } else {
-            // CUDA memcpy is undefined for overlapping regions in the same
-            // buffer (parallel threads), so shift the lane left by input_pulse
-            // through a scratch buffer.
-            let keep = buffered - input_pulse;
-            let scratch = match self.shift_scratch.as_ref() {
-                Some(scratch) => scratch,
-                None => {
-                    let mut shape: TVec<usize> = buffer.shape().into();
-                    if lane.is_some() {
-                        shape[0] = 1;
-                    }
-                    self.shift_scratch
-                        .insert(DeviceTensor::uninitialized_dt(input.datum_type(), &shape)?)
-                }
-            };
-            let scratch_lane = lane.map(|_| 0);
-            copy_lane(ctx, scratch, scratch_lane, 0, buffer, lane, input_pulse, axis, keep)?;
-            copy_lane(ctx, buffer, lane, 0, scratch, scratch_lane, 0, axis, keep)?;
-            copy_lane(ctx, buffer, lane, keep, input, seat, 0, axis, input_pulse)?;
+        let fresh = input_pulse.min(op.buffered());
+        for (at, run) in op.ring_runs(op.ring_index(head + input_pulse - fresh), fresh) {
+            let from = input_pulse - fresh + at;
+            copy_lane(ctx, buffer, lane, run.start, input, seat, from, axis, run.len())?;
         }
+        self.heads[lane.unwrap_or(0)] = op.ring_index(head + input_pulse);
         Ok(())
     }
 }
@@ -227,6 +214,7 @@ impl OpState for GpuDelayState {
             }
             self.buffer = Some(Tensor::zero_dt(dt, &shape)?.into_device()?);
             self.lanes = max_lanes;
+            self.heads = tvec!(0; max_lanes);
         }
         ensure!(
             self.lanes == max_lanes,
@@ -256,6 +244,9 @@ impl OpState for GpuDelayState {
             "GpuDelay buffer holds {} lanes, asked to reset {lanes:?}",
             self.lanes
         );
+        for lane in lanes {
+            self.heads[lane.0] = 0;
+        }
         zero_lanes(&*get_context()?, buffer, lanes, self.lanes > 1)
     }
 }

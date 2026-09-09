@@ -1,6 +1,6 @@
-use tract_nnef::internal::*;
+use std::ops::Range;
 
-use crate::lane::lane_runs;
+use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -26,12 +26,15 @@ fn de_delay(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     builder.wire(op, &[wire])
 }
 
-/// The streaming context preceding the current pulse. `lanes` is the extent of
-/// the buffer's lane axis, 1 when the state serves a single stream and the
-/// buffer has no lane axis at all.
+/// The streaming context preceding the current pulse, held as a ring: `heads`
+/// is each lane's ring index of the oldest buffered frame, so a turn overwrites
+/// the frames it retires instead of shifting the whole buffer down. `lanes` is
+/// the extent of the buffer's lane axis, 1 when the state serves a single
+/// stream and the buffer has no lane axis at all.
 #[derive(Debug, Clone, Default)]
 pub struct DelayState {
     pub buffer: Option<Tensor>,
+    heads: TVec<usize>,
     lanes: usize,
 }
 
@@ -48,20 +51,23 @@ impl DelayState {
         lane: Option<usize>,
     ) -> TractResult<()> {
         let axis = op.axis;
-        let buffered = op.delay + op.overlap;
         let input_pulse = input.shape()[axis];
         let output_pulse = input_pulse + op.overlap;
         let from_input = input_pulse.saturating_sub(op.delay);
-        let from_buffer = output_pulse.saturating_sub(from_input);
+        let from_buffer = output_pulse - from_input;
+        let head = self.heads[lane.unwrap_or(0)];
         let buffer = self.buffer.as_mut().unwrap();
-        output.assign_slice_at_prefix(
-            seat.as_slice(),
-            0..from_buffer,
-            buffer,
-            lane.as_slice(),
-            0..from_buffer,
-            axis,
-        )?;
+        for (at, run) in op.ring_runs(head, from_buffer) {
+            let len = run.len();
+            output.assign_slice_at_prefix(
+                seat.as_slice(),
+                at..at + len,
+                buffer,
+                lane.as_slice(),
+                run,
+                axis,
+            )?;
+        }
         output.assign_slice_at_prefix(
             seat.as_slice(),
             from_buffer..output_pulse,
@@ -70,36 +76,20 @@ impl DelayState {
             0..from_input,
             axis,
         )?;
-        if buffered < input_pulse {
-            let tail = input_pulse - buffered;
+        let fresh = input_pulse.min(op.buffered());
+        for (at, run) in op.ring_runs(op.ring_index(head + input_pulse - fresh), fresh) {
+            let len = run.len();
+            let from = input_pulse - fresh + at;
             buffer.assign_slice_at_prefix(
                 lane.as_slice(),
-                0..buffered,
+                run,
                 input,
                 seat.as_slice(),
-                tail..input_pulse,
-                axis,
-            )?;
-        } else {
-            let keep = buffered - input_pulse;
-            // The kept context moves down inside the buffer, so source and
-            // destination are the same tensor and no assign can name both.
-            let dt_size = buffer.datum_type().size_of();
-            let bshape: TVec<usize> = buffer.shape().into();
-            let source = lane_runs(&bshape, dt_size, axis, lane, input_pulse..buffered);
-            let buf = buffer.as_bytes_mut();
-            for (to, from) in lane_runs(&bshape, dt_size, axis, lane, 0..keep).zip(source) {
-                buf.copy_within(from, to.start);
-            }
-            buffer.assign_slice_at_prefix(
-                lane.as_slice(),
-                keep..buffered,
-                input,
-                seat.as_slice(),
-                0..input_pulse,
+                from..from + len,
                 axis,
             )?;
         }
+        self.heads[lane.unwrap_or(0)] = op.ring_index(head + input_pulse);
         Ok(())
     }
 }
@@ -132,6 +122,7 @@ impl OpState for DelayState {
             // per-node comparison meaningless on the warmup region.
             self.buffer = Some(Tensor::zero_dt(dt, &shape)?);
             self.lanes = max_lanes;
+            self.heads = tvec!(0; max_lanes);
         }
         ensure!(
             self.lanes == max_lanes,
@@ -164,6 +155,7 @@ impl OpState for DelayState {
         let stride = buffer.as_bytes().len() / self.lanes;
         for lane in lanes {
             buffer.as_bytes_mut()[lane.0 * stride..][..stride].fill(0);
+            self.heads[lane.0] = 0;
         }
         Ok(())
     }
@@ -182,6 +174,31 @@ impl Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
         Delay { buffer_shape, axis, delay, overlap }
+    }
+
+    /// The number of frames the state buffers, and so the length of its ring.
+    pub fn buffered(&self) -> usize {
+        self.delay + self.overlap
+    }
+
+    /// Wrap a ring index which may have run one lap past the end.
+    pub fn ring_index(&self, index: usize) -> usize {
+        if self.buffered() == 0 { 0 } else { index % self.buffered() }
+    }
+
+    /// The one or two runs of the ring holding `len` frames from ring index
+    /// `start`, each paired with its offset in the contiguous sequence of
+    /// frames they spell out.
+    pub fn ring_runs(&self, start: usize, len: usize) -> TVec<(usize, Range<usize>)> {
+        if len == 0 {
+            return tvec!();
+        }
+        let first = len.min(self.buffered() - start);
+        let mut runs = tvec!((0, start..start + first));
+        if first < len {
+            runs.push((first, 0..len - first));
+        }
+        runs
     }
 }
 
