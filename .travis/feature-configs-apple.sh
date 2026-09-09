@@ -15,3 +15,8 @@ do
     cargo check --target $target -p tract-libcli $CARGO_EXTRA
     cargo check --target $target -p tract-libcli --features metal $CARGO_EXTRA
 done
+
+# The CLI is desktop-only; check it with and without the metal dependency.
+cargo check --target aarch64-apple-darwin -p tract-cli $CARGO_EXTRA
+cargo check --target aarch64-apple-darwin -p tract-cli --no-default-features \
+    --features transformers,pulse $CARGO_EXTRA
