@@ -56,7 +56,7 @@ toml = { workspace = true, optional = true, features = ["preserve_order"] }
 tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core.workspace = true
 tract-hir.workspace = true
-tract-nnef.workspace = true
+tract-nnef = { workspace = true, features = ["flate2"] }
 tract-nnef-resources.workspace = true
 tract-libcli.workspace = true
 tract-gpu.workspace = true
@@ -117,10 +117,10 @@ metal = ["dep:tract-metal", "tract-libcli/metal"]
 onnx = ["tract-onnx", "tract-libcli/hir", "tract-libcli/onnx"]
 extra = ["tract-extra"]
 pulse-opl = ["tract-pulse-opl"]
-pulse = ["tract-pulse", "tract-pulse-opl"]
+pulse = ["tract-pulse", "tract-pulse-opl", "tract-extra?/pulse"]
 tf = ["tract-tensorflow", "tract-libcli/hir"]
 tflite = ["tract-tflite"]
-transformers = ["tract-transformers", "tract-libcli/transformers"]
+transformers = ["tract-transformers", "tract-libcli/transformers", "tract-onnx?/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
 bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time", "multithread-mm"]
 

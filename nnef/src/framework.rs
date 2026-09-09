@@ -3,7 +3,7 @@ use tract_core::tract_data::itertools::Itertools;
 
 use crate::ast::quant::write_quant_format;
 use crate::ast::{Identifier, ProtoModel, QuantFormat};
-use crate::resource::{GraphNnef, SafeTensorsLoader};
+use crate::resource::GraphNnef;
 use crate::{internal::*, nnef};
 use std::io::Read;
 #[cfg(target_family = "unix")]
@@ -48,7 +48,8 @@ impl Default for Nnef {
                 DatLoader.into_boxed(),
                 GraphQuantLoader.into_boxed(),
                 TypedModelLoader::new(false).into_boxed(),
-                SafeTensorsLoader.into_boxed(),
+                #[cfg(feature = "unstable-safetensors")]
+                crate::resource::SafeTensorsLoader.into_boxed(),
             ],
             allow_extended_identifier_syntax: false,
             extern_all_constants: false,

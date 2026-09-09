@@ -34,7 +34,7 @@ tract-nnef.workspace = true
 tract-hir.workspace = true
 tract-onnx-opl.workspace = true
 tract-extra.workspace = true
-tract-transformers.workspace = true
+tract-transformers = { workspace = true, optional = true }
 
 [dev-dependencies]
 criterion.workspace = true
@@ -55,5 +55,9 @@ name = "linear_regressor"
 harness = false
 
 [features]
-default = []
+default = ["transformers"]
+# The ONNX Attention, MultiHeadAttention and GroupQueryAttention operators,
+# which lower onto tract-transformers' Sdpa. Enabled by default; with it off
+# those three operators are unknown and tract-transformers is not linked.
+transformers = ["dep:tract-transformers"]
 getrandom-js = ["tract-onnx-opl/getrandom-js"]

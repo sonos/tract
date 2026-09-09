@@ -40,3 +40,13 @@ check tract-libcli --features onnx,transformers
 
 check tract --no-default-features
 check tract-cli --no-default-features
+
+check tract --no-default-features --features flate2
+
+check tract --no-default-features --features pulse
+
+check tract-nnef --features unstable-safetensors
+
+check tract --no-default-features --features transformers
+
+check tract-onnx --features transformers

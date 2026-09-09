@@ -3,6 +3,7 @@ extern crate tract_metal;
 
 #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 extern crate tract_cuda;
+#[cfg(feature = "transformers")]
 extern crate tract_transformers;
 
 use std::borrow::Cow;
@@ -23,7 +24,11 @@ use tract_nnef::prelude::{
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
+#[cfg(feature = "pulse")]
 use tract_pulse::WithPulse;
+#[cfg(not(feature = "pulse"))]
+use tract_pulse_opl::WithPulse;
+#[cfg(feature = "transformers")]
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
@@ -105,8 +110,13 @@ impl NnefInterface for Nnef {
     }
 
     fn enable_tract_transformers(&mut self) -> Result<()> {
-        self.0.enable_tract_transformers();
-        Ok(())
+        #[cfg(not(feature = "transformers"))]
+        anyhow::bail!("Cannot enable tract-transformers without the transformers feature enabled.");
+        #[cfg(feature = "transformers")]
+        {
+            self.0.enable_tract_transformers();
+            Ok(())
+        }
     }
 
     fn enable_onnx(&mut self) -> Result<()> {
@@ -135,10 +145,18 @@ impl NnefInterface for Nnef {
     }
 
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let file = std::fs::File::create(path)?;
-        let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        self.0.write_to_tar(&model.0, gz)?;
-        Ok(())
+        #[cfg(not(feature = "flate2"))]
+        {
+            let _ = (path, model);
+            anyhow::bail!("Cannot write gzip file without the flate2 feature enabled.")
+        }
+        #[cfg(feature = "flate2")]
+        {
+            let file = std::fs::File::create(path)?;
+            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            self.0.write_to_tar(&model.0, gz)?;
+            Ok(())
+        }
     }
 }
 

@@ -225,16 +225,16 @@ tract-api = { version = "0.23.8-pre", path = 'api' }
 tract-core = { version = "0.23.8-pre", path = 'core' }
 tract-cuda = { version = "0.23.8-pre", path = 'cuda', default-features = false }
 tract-data = { version = "0.23.8-pre", path = 'data' }
-tract-extra = { version = "0.23.8-pre", path = 'extra' }
+tract-extra = { version = "0.23.8-pre", path = 'extra', default-features = false }
 tract-gpu = { version = "0.23.8-pre", path = 'gpu' }
 tract-hir = { version = "0.23.8-pre", path = 'hir' }
-tract-libcli = { version = "0.23.8-pre", path = 'libcli' }
+tract-libcli = { version = "0.23.8-pre", path = 'libcli', default-features = false }
 tract-linalg = { version = "0.23.8-pre", path = 'linalg' }
 tract-metal = { version = "0.23.8-pre", path = 'metal' }
 tract-nnef-resources = { version = "0.23.8-pre", path = 'nnef/nnef-resources' }
-tract-nnef = { version = "0.23.8-pre", path = 'nnef' }
+tract-nnef = { version = "0.23.8-pre", path = 'nnef', default-features = false }
 tract-onnx-opl = { version = "0.23.8-pre", path = 'onnx-opl' }
-tract-onnx = { version = "0.23.8-pre", path = 'onnx' }
+tract-onnx = { version = "0.23.8-pre", path = 'onnx', default-features = false }
 tract-pulse-opl = { version = "0.23.8-pre", path = 'pulse-opl' }
 tract-pulse = { version = "0.23.8-pre", path = 'pulse' }
 tract-tensorflow = { version = "0.23.8-pre", path = 'tensorflow' }

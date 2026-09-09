@@ -1,8 +1,10 @@
 use tract_nnef::internal::*;
-use tract_pulse::PulsedOp;
+#[cfg(feature = "pulse")]
 use tract_pulse::model::PulsedModel;
+#[cfg(feature = "pulse")]
 use tract_pulse::ops::OpPulsifier;
-use tract_pulse::{internal::*, pulsed_op_to_typed_op};
+#[cfg(feature = "pulse")]
+use tract_pulse::{PulsedOp, internal::PulsedFact, pulsed_op_to_typed_op};
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -37,6 +39,7 @@ pub fn register(registry: &mut Registry) {
         de_eun,
     );
 
+    #[cfg(feature = "pulse")]
     OpPulsifier::register::<ExpUnitNorm>(pulsify).unwrap();
 }
 
@@ -204,6 +207,7 @@ impl TypedOp for ExpUnitNorm {
     as_op!();
 }
 
+#[cfg(feature = "pulse")]
 impl PulsedOp for ExpUnitNorm {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -213,6 +217,7 @@ impl PulsedOp for ExpUnitNorm {
     pulsed_op_to_typed_op!();
 }
 
+#[cfg(feature = "pulse")]
 fn pulsify(
     _source: &TypedModel,
     node: &TypedNode,

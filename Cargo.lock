@@ -4736,6 +4736,7 @@ dependencies = [
  "tract-onnx",
  "tract-onnx-opl",
  "tract-pulse",
+ "tract-pulse-opl",
  "tract-transformers",
 ]
 
@@ -4745,7 +4746,6 @@ version = "0.23.8-pre"
 dependencies = [
  "anyhow",
  "boow",
- "flate2",
  "half",
  "lazy_static",
  "reqwest",
@@ -4896,7 +4896,6 @@ dependencies = [
  "num-traits",
  "parking_lot",
  "proptest",
- "scan_fmt",
  "smallvec",
  "string-interner",
 ]
@@ -4919,7 +4918,6 @@ name = "tract-ffi"
 version = "0.23.8-pre"
 dependencies = [
  "anyhow",
- "flate2",
  "serde",
  "serde_json",
  "tract",
@@ -5000,7 +4998,6 @@ dependencies = [
  "pastey 0.2.3",
  "proptest",
  "rayon",
- "scan_fmt",
  "tract-data",
  "walkdir",
 ]
