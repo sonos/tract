@@ -5,7 +5,7 @@ use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
-use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Softmax};
+use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Resize, Softmax};
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
@@ -20,6 +20,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("conv-nchw-to-nhwc", conv_nchw_to_nhwc)
         .with_rule_for("maxpool-nchw-to-nhwc", maxpool_nchw_to_nhwc)
         .with_rule_for("sumpool-nchw-to-nhwc", sumpool_nchw_to_nhwc)
+        .with_rule_for("resize-nchw-to-nhwc", resize_nchw_to_nhwc)
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)
@@ -243,6 +244,40 @@ fn nchw_to_nhwc(
         return Ok(Some(patch));
     }
     Ok(None)
+}
+
+/// tflite resizes the axes in the middle of an NHWC tensor, so a resize aiming
+/// at the last axis needs the channel axis moved out of the way, along with the
+/// scales or sizes vector naming it.
+fn resize_nchw_to_nhwc(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &Resize,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input = model.outlet_fact(node.inputs[0])?;
+    let output = &node.outputs[0].fact;
+    rule_if!(input.rank() == 4);
+    rule_if!(input.shape[0] == output.shape[0] && input.shape[1] == output.shape[1]);
+    rule_if!(input.shape[3] != output.shape[3]);
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.taps(model, &node.inputs)?;
+    wire[0] = patch.wire_node(format!("{name}.nhwc"), AxisOp::Move(1, 3), &[wire[0]])?[0];
+    for slot in [op.optional_scales_input, op.optional_sizes_input].into_iter().flatten() {
+        rule_if_some!(nchw = &model.outlet_fact(node.inputs[slot])?.konst);
+        rule_if!(nchw.len() == 4);
+        let axes = [0, 2, 3, 1]
+            .iter()
+            .map(|ax| nchw.slice(0, *ax, ax + 1))
+            .collect::<TractResult<TVec<_>>>()?;
+        wire[slot] =
+            patch.add_const(format!("{name}.nhwc.{slot}"), Tensor::stack_tensors(0, &axes)?)?;
+    }
+    let resized = patch.wire_node(name, op.clone(), &wire)?;
+    let out = patch.wire_node(format!("{name}.nchw"), AxisOp::Move(3, 1), &resized)?;
+    patch.shunt_outside(model, node.id.into(), out[0])?;
+    Ok(Some(patch))
 }
 
 fn padding(
