@@ -893,8 +893,7 @@ mod tests {
     use super::*;
 
     /// Regression test for the transient buffer-pool recycling race: a
-    /// pooled tensor dropped while GPU work is pending (an open command
-    /// buffer, then a committed-but-unawaited one) must NOT be recyclable
+    /// pooled tensor dropped while GPU work is pending must NOT be recyclable
     /// until that work completes. Before the deferral fix the pair entered
     /// the pool at host-drop time and could be handed to a new tensor while
     /// an in-flight command buffer still referenced it (byte-level
@@ -912,7 +911,7 @@ mod tests {
             while context.pool_take(dt, &shape).is_some() {}
 
             // Idle stream: a drop recycles immediately (historical behavior).
-            let t = unsafe { DeviceTensor::uninitialized_dt(dt, &shape)? };
+            let t = DeviceTensor::uninitialized_dt(dt, &shape)?;
             drop(t);
             ensure!(
                 context.pool_take(dt, &shape).is_some(),
@@ -920,7 +919,7 @@ mod tests {
             );
 
             // Busy stream: with a command buffer open, the drop must defer.
-            let t = unsafe { DeviceTensor::uninitialized_dt(dt, &shape)? };
+            let t = DeviceTensor::uninitialized_dt(dt, &shape)?;
             let _cb = stream.command_buffer();
             drop(t);
             ensure!(
@@ -928,13 +927,19 @@ mod tests {
                 "drop under an open command buffer must not recycle yet"
             );
 
-            // Committed but unawaited (within the in-flight window): still
-            // deferred.
+            // A committed buffer can complete before the CPU returns from
+            // commit_current. Recycling is safe in that case; otherwise the
+            // pair remains deferred until the blocking wait below.
             stream.commit_current()?;
-            ensure!(
-                context.pool_take(dt, &shape).is_none(),
-                "drop under a committed-but-unawaited buffer must not recycle yet"
-            );
+            let pending = stream.committed_command_buffers.borrow().back().is_some_and(|entry| {
+                entry.buffer.status() != metal::MTLCommandBufferStatus::Completed
+            });
+            if pending {
+                ensure!(
+                    context.pool_take(dt, &shape).is_none(),
+                    "drop under a pending committed buffer must not recycle yet"
+                );
+            }
 
             // Fully waited: the deferred pair lands in the pool.
             stream.wait_until_completed()?;
