@@ -5,6 +5,7 @@ pub mod conv;
 pub mod copy;
 pub mod deconv;
 pub mod element_wise;
+pub mod gemv_pair;
 pub mod ingest;
 pub mod matmul;
 pub mod pool;
