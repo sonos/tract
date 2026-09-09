@@ -78,6 +78,9 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("grow_elementwise_chain", crate::rewrite_rules::grow_elementwise_chain)
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for("fuse_gemv_pair", crate::rewrite_rules::fuse_gemv_pair)
+            .rewrite(&(), model)?;
+        Rewriter::default()
             .with_rule_for("fuse_gemm_epilogue", crate::rewrite_rules::fuse_gemm_epilogue)
             .with_rule_for("fuse_conv_epilogue", crate::rewrite_rules::fuse_conv_epilogue)
             .rewrite(&(), model)?;
