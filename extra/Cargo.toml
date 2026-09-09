@@ -16,7 +16,14 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 tract-nnef.workspace = true
-tract-pulse.workspace = true
+tract-pulse = { workspace = true, optional = true }
+
+[features]
+default = ["pulse"]
+# Pulsification of the crate's stateful ops, for the offline side of streaming.
+# Enabled by default; runtime-only consumers drop tract-pulse with
+# `default-features = false`.
+pulse = ["dep:tract-pulse"]
 
 [dev-dependencies]
 criterion.workspace = true

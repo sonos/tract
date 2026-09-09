@@ -225,7 +225,7 @@ tract-api = { version = "0.23.8-pre", path = 'api' }
 tract-core = { version = "0.23.8-pre", path = 'core' }
 tract-cuda = { version = "0.23.8-pre", path = 'cuda', default-features = false }
 tract-data = { version = "0.23.8-pre", path = 'data' }
-tract-extra = { version = "0.23.8-pre", path = 'extra' }
+tract-extra = { version = "0.23.8-pre", path = 'extra', default-features = false }
 tract-gpu = { version = "0.23.8-pre", path = 'gpu' }
 tract-hir = { version = "0.23.8-pre", path = 'hir' }
 tract-libcli = { version = "0.23.8-pre", path = 'libcli' }

@@ -23,7 +23,8 @@ tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
 tract-onnx.workspace = true
 tract-extra.workspace = true
-tract-pulse.workspace = true
+tract-pulse = { workspace = true, optional = true }
+tract-pulse-opl.workspace = true
 tract-libcli.workspace = true
 tract-transformers.workspace = true
 serde_json.workspace = true
@@ -44,13 +45,19 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000", "metal", "flate2"]
+default = ["cuda-13000", "metal", "flate2", "pulse"]
 complex = []
 
 # Gzip support for NNEF archives: reading `.nnef.tgz` models and writing them
 # back. Enabled by default; consumers that only load uncompressed NNEF drop
 # flate2 and miniz_oxide with `default-features = false`.
 flate2 = ["dep:flate2", "tract-nnef/flate2"]
+
+# Offline pulsification: the `pulse` and `blockify` model transforms, and the
+# write side of pulsed NNEF. Enabled by default; consumers that only load and
+# run an already pulsified model keep `enable_pulse` off tract-pulse-opl alone
+# with `default-features = false`.
+pulse = ["dep:tract-pulse", "tract-extra/pulse"]
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []

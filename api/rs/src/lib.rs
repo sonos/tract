@@ -23,7 +23,10 @@ use tract_nnef::prelude::{
 };
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
+#[cfg(feature = "pulse")]
 use tract_pulse::WithPulse;
+#[cfg(not(feature = "pulse"))]
+use tract_pulse_opl::WithPulse;
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;

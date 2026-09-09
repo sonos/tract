@@ -4736,6 +4736,7 @@ dependencies = [
  "tract-onnx",
  "tract-onnx-opl",
  "tract-pulse",
+ "tract-pulse-opl",
  "tract-transformers",
 ]
 
