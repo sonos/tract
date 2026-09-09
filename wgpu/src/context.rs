@@ -22,7 +22,9 @@ compile_error!(
      Build wasm32-unknown-unknown without +atomics; see linalg/MULTITHREAD_BENCHMARKS.md."
 );
 
-use crate::kernels::shaders::{EntryPoint, LayoutKind, ModuleKey, PipelineKey, ShaderDtype};
+use crate::kernels::shaders::{
+    EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, PipelineKey, ShaderDtype,
+};
 use crate::tensor::WgpuTensor;
 
 pub const UNIFORM_ALIGN: u64 = 256;
@@ -943,8 +945,10 @@ impl WgpuQueue {
         if n_elements == 0 {
             return Ok(());
         }
-        let groups = n_elements.div_ceil(WORKGROUP as u64) as u32;
-        self.dispatch_grid(label, pipeline, bind_group, dynamic_offset, [groups, 1, 1])
+        let groups = n_elements.div_ceil(WORKGROUP as u64);
+        let x = groups.min(GRID_LIMIT as u64) as u32;
+        let y = groups.div_ceil(GRID_LIMIT as u64) as u32;
+        self.dispatch_grid(label, pipeline, bind_group, dynamic_offset, [x, y, 1])
     }
 
     /// A kernel whose workgroups tile a 2-D or 3-D iteration space itself.

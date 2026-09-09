@@ -13,6 +13,10 @@ use tract_core::internal::*;
 
 pub const WORKGROUP: u32 = 64;
 
+/// WebGPU's cap on workgroups per dispatch dimension. A kernel that walks a
+/// tensor linearly takes the overflow on y and folds it back into its index.
+pub const GRID_LIMIT: u32 = 65535;
+
 /// Reads one of the eight values a uniform packs as two `vec4<u32>`.
 const AT8: &str = "fn at8(a: vec4<u32>, b: vec4<u32>, i: u32) -> u32 {
     if (i < 4u) { return a[i]; }
@@ -600,7 +604,7 @@ struct Params {{
             r#"
 @compute @workgroup_size({WORKGROUP})
 fn {name}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     outp[params.off_out + i] = op_{name}(inp[params.off_in + i]);
 }}
@@ -699,7 +703,7 @@ fn gather_idx(linear: u32, is_lhs: bool) -> u32 {{
             r#"
 @compute @workgroup_size({WORKGROUP})
 fn {name}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     let li = params.off_lhs + gather_idx(i, true);
     let ri = params.off_rhs + gather_idx(i, false);
@@ -745,14 +749,14 @@ fn store4(i: u32, v: vec4<{t}>) {{
             r#"
 @compute @workgroup_size({WORKGROUP})
 fn {name}_v4_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i * 4u >= params.len) {{ return; }}
     store4(i, op_{name}_v(lhs4(i), rhs4(i)));
 }}
 
 @compute @workgroup_size({WORKGROUP})
 fn {name}_v4s_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i * 4u >= params.len) {{ return; }}
     let r = vec4<{t}>(rhs[params.off_rhs + gather_idx(i * 4u, false)]);
     store4(i, op_{name}_v(lhs4(i), r));
@@ -792,7 +796,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     var rest = i;
     var in_i = params.off_in;
@@ -1061,7 +1065,7 @@ struct Params {{ off_in: u32, off_out: u32, len: u32, _p: u32 }}
 @group(0) @binding(2) var<uniform> params: Params;
 @compute @workgroup_size({WORKGROUP})
 fn cast_f32_f16(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     outp[params.off_out + i] = f16(inp[params.off_in + i]);
 }}
@@ -1078,7 +1082,7 @@ struct Params {{ off_in: u32, off_out: u32, len: u32, _p: u32 }}
 @group(0) @binding(2) var<uniform> params: Params;
 @compute @workgroup_size({WORKGROUP})
 fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     outp[params.off_out + i] = f32(inp[params.off_in + i]);
 }}
