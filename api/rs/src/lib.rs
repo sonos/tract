@@ -391,8 +391,7 @@ impl Model {
     /// tensors: slice them with [`Tensor::sliced`] or feed them straight back
     /// as inputs; reading them on host is not possible. The CPU runtime
     /// ignores the declaration. Declaring an empty set clears a previous
-    /// declaration; the `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` env var (escape
-    /// hatch), when set, overrides the declaration in both directions.
+    /// declaration.
     pub fn declare_device_resident_outputs(
         &mut self,
         outputs: impl IntoIterator<Item = usize>,

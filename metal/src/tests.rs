@@ -864,9 +864,8 @@ mod tests {
         Ok(())
     }
 
-    /// The device-resident output declaration (the API replacing the
-    /// TRACT_GPU_DEVICE_RESIDENT_OUTPUTS side channel) must thread through
-    /// the metal transform: declared outputs keep their device fact (no
+    /// The device-resident output declaration must thread through the metal
+    /// transform: declared outputs keep their device fact (no
     /// ToHost sync), undeclared ones still sync to host.
     #[test]
     fn declared_device_resident_output_skips_to_host_sync() -> TractResult<()> {

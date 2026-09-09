@@ -165,9 +165,7 @@ pub const DEVICE_RESIDENT_OUTPUTS_PROPERTY: &str = "gpu.device_resident_outputs"
 /// then yield opaque device tensors; the ToDevice sync on the paired input
 /// passes device tensors through untouched, closing the loop without any host
 /// round trip. CPU runtimes ignore the declaration. Declaring an empty set
-/// clears a previous declaration. The `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` env
-/// var, when set, overrides the declaration in both directions (see
-/// [`is_device_resident_output`]).
+/// clears a previous declaration.
 pub fn declare_device_resident_outputs(
     model: &mut TypedModel,
     outputs: impl IntoIterator<Item = usize>,
@@ -192,126 +190,27 @@ pub fn declare_device_resident_outputs(
     Ok(())
 }
 
-/// Env override for device-resident outputs (escape hatch, highest
-/// precedence): `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` lists model-output
-/// indexes as comma-separated entries, `a-b` inclusive ranges allowed (e.g.
-/// `1-80,82`). Setting it (even to the empty string, which forces every
-/// output back to host) fully replaces any model-level declaration; unset
-/// defers to the model property.
-fn parse_device_resident_output_spec(spec: &str) -> TractResult<Vec<(usize, usize)>> {
-    let mut ranges = vec![];
-    for entry in spec.split(',') {
-        let entry = entry.trim();
-        if entry.is_empty() {
-            continue;
-        }
-        let range = if let Some((a, b)) = entry.split_once('-') {
-            (a.trim().parse::<usize>(), b.trim().parse::<usize>())
-        } else {
-            let ix = entry.parse::<usize>();
-            (ix.clone(), ix)
-        };
-        let (Ok(a), Ok(b)) = range else {
-            bail!(
-                "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS: cannot parse entry {entry:?} in {spec:?} \
-                 (expected comma-separated output indexes, `a-b` inclusive ranges allowed)"
-            );
-        };
-        ensure!(
-            a <= b,
-            "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS: empty range {entry:?} in {spec:?} (start > end)"
-        );
-        ranges.push((a, b));
-    }
-    Ok(ranges)
-}
-
-/// Resolve the effective device-resident output ranges and their source.
-/// Precedence: env spec (when set, even empty) > model-level declaration >
-/// nothing. Split out from the env read so precedence is unit-testable.
-fn resolve_device_resident_output_ranges(
-    env_spec: Option<&str>,
-    model: &TypedModel,
-) -> TractResult<Option<(Vec<(usize, usize)>, &'static str)>> {
-    if let Some(spec) = env_spec {
-        return Ok(Some((
-            parse_device_resident_output_spec(spec)?,
-            "TRACT_GPU_DEVICE_RESIDENT_OUTPUTS env override",
-        )));
-    }
-    let Some(t) = model.properties.get(DEVICE_RESIDENT_OUTPUTS_PROPERTY) else {
-        return Ok(None);
+/// True when the caller declared this src-model output device-resident.
+pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> TractResult<bool> {
+    let Some(t) = src.properties.get(DEVICE_RESIDENT_OUTPUTS_PROPERTY) else {
+        return Ok(false);
     };
     let ixes = t.cast_to::<i64>()?;
-    let mut ranges = vec![];
-    for &ix in ixes.try_as_plain()?.as_slice::<i64>()? {
-        ensure!(
-            ix >= 0,
-            "{DEVICE_RESIDENT_OUTPUTS_PROPERTY}: negative output index {ix} in declaration"
-        );
-        ranges.push((ix as usize, ix as usize));
-    }
-    Ok(Some((ranges, "model declaration")))
-}
-
-/// True when the caller declared this src-model output device-resident,
-/// either through [`declare_device_resident_outputs`] (the supported API) or
-/// the `TRACT_GPU_DEVICE_RESIDENT_OUTPUTS` env var (escape hatch, wins over
-/// the declaration in both directions when set). Errors (instead of silently
-/// keeping the ToHost sync, which would strip the loop-closing behavior for
-/// e.g. the logits output) on an unparseable spec or on indexes outside the
-/// model's output range.
-pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> TractResult<bool> {
-    let env_spec = std::env::var("TRACT_GPU_DEVICE_RESIDENT_OUTPUTS").ok();
-    is_device_resident_output_with_env(env_spec.as_deref(), src, outlet)
-}
-
-fn is_device_resident_output_with_env(
-    env_spec: Option<&str>,
-    src: &TypedModel,
-    outlet: OutletId,
-) -> TractResult<bool> {
-    let Some((ranges, source)) = resolve_device_resident_output_ranges(env_spec, src)? else {
-        return Ok(false);
-    };
-    if ranges.is_empty() {
-        return Ok(false);
-    }
     let output_count = src.outputs.len();
-    for &(_, b) in &ranges {
+    let ixes = ixes.try_as_plain()?.as_slice::<i64>()?;
+    for &ix in ixes {
         ensure!(
-            b < output_count,
-            "device-resident outputs ({source}): output index {b} out of range \
+            ix >= 0 && (ix as usize) < output_count,
+            "{DEVICE_RESIDENT_OUTPUTS_PROPERTY}: output index {ix} out of range \
              (model has {output_count} outputs)"
         );
     }
-    static LOGGED: std::sync::Once = std::sync::Once::new();
-    LOGGED.call_once(|| {
-        log::info!("device-resident outputs resolved to ranges {ranges:?} ({source})");
-    });
-    Ok(src
-        .outputs
-        .iter()
-        .position(|o| *o == outlet)
-        .is_some_and(|ix| ranges.iter().any(|(a, b)| (*a..=*b).contains(&ix))))
+    Ok(src.outputs.iter().position(|o| *o == outlet).is_some_and(|ix| ixes.contains(&(ix as i64))))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_parse_device_resident_output_spec() -> TractResult<()> {
-        assert_eq!(parse_device_resident_output_spec("")?, vec![]);
-        assert_eq!(parse_device_resident_output_spec("2")?, vec![(2, 2)]);
-        assert_eq!(parse_device_resident_output_spec("1-80,82")?, vec![(1, 80), (82, 82)]);
-        assert_eq!(parse_device_resident_output_spec(" 1 - 3 , 5 ")?, vec![(1, 3), (5, 5)]);
-        assert!(parse_device_resident_output_spec("1-x").is_err());
-        assert!(parse_device_resident_output_spec("abc").is_err());
-        assert!(parse_device_resident_output_spec("1;2").is_err());
-        assert!(parse_device_resident_output_spec("5-2").is_err());
-        Ok(())
-    }
 
     fn model_with_outputs(n: usize) -> TractResult<TypedModel> {
         let mut m = TypedModel::default();
@@ -326,16 +225,14 @@ mod tests {
     #[test]
     fn test_declared_outputs_resolve_device_resident() -> TractResult<()> {
         let mut m = model_with_outputs(3)?;
-        // Nothing declared, no env: everything syncs to host.
-        assert!(!is_device_resident_output_with_env(None, &m, m.outputs[1])?);
+        assert!(!is_device_resident_output(&m, m.outputs[1])?);
         declare_device_resident_outputs(&mut m, [1, 2])?;
-        assert!(!is_device_resident_output_with_env(None, &m, m.outputs[0])?);
-        assert!(is_device_resident_output_with_env(None, &m, m.outputs[1])?);
-        assert!(is_device_resident_output_with_env(None, &m, m.outputs[2])?);
-        // Declaring the empty set clears the previous declaration.
+        assert!(!is_device_resident_output(&m, m.outputs[0])?);
+        assert!(is_device_resident_output(&m, m.outputs[1])?);
+        assert!(is_device_resident_output(&m, m.outputs[2])?);
         declare_device_resident_outputs(&mut m, [])?;
         assert!(!m.properties.contains_key(DEVICE_RESIDENT_OUTPUTS_PROPERTY));
-        assert!(!is_device_resident_output_with_env(None, &m, m.outputs[1])?);
+        assert!(!is_device_resident_output(&m, m.outputs[1])?);
         Ok(())
     }
 
@@ -343,23 +240,6 @@ mod tests {
     fn test_declare_device_resident_outputs_validates_range() -> TractResult<()> {
         let mut m = model_with_outputs(2)?;
         assert!(declare_device_resident_outputs(&mut m, [2]).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_env_overrides_declaration_both_ways() -> TractResult<()> {
-        let mut m = model_with_outputs(3)?;
-        declare_device_resident_outputs(&mut m, [1])?;
-        // Env set: fully replaces the declaration (force-resident output 2,
-        // force-host the declared output 1).
-        assert!(!is_device_resident_output_with_env(Some("2"), &m, m.outputs[1])?);
-        assert!(is_device_resident_output_with_env(Some("2"), &m, m.outputs[2])?);
-        // Env set but empty: forces every output back to host.
-        assert!(!is_device_resident_output_with_env(Some(""), &m, m.outputs[1])?);
-        // Env unset: the declaration applies.
-        assert!(is_device_resident_output_with_env(None, &m, m.outputs[1])?);
-        // Out-of-range env index errors instead of silently syncing to host.
-        assert!(is_device_resident_output_with_env(Some("5"), &m, m.outputs[0]).is_err());
         Ok(())
     }
 }
