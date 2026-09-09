@@ -186,6 +186,15 @@ impl Delay {
         if self.buffered() == 0 { 0 } else { index % self.buffered() }
     }
 
+    /// The move `suggested_axis_changes` asks for, when the layout has one to
+    /// gain: the ring copies runs of frames, and a run is contiguous only when
+    /// the axis leads. A symbolic leading extent is the batch axis a laned turn
+    /// addresses its buffer by, and displacing it would leave the state
+    /// un-lane-addressable, so the layout stays as it is.
+    fn wants_axis_first(&self) -> bool {
+        self.axis != 0 && self.buffer_shape[0].as_i64().is_some()
+    }
+
     /// The one or two runs of the ring holding `len` frames from ring index
     /// `start`, each paired with its offset in the contiguous sequence of
     /// frames they spell out.
@@ -239,7 +248,7 @@ impl TypedOp for Delay {
     }
 
     fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
-        if self.axis != 0 {
+        if self.wants_axis_first() {
             Ok(tvec!((InOut::In(0), AxisOp::Move(self.axis, 0))))
         } else {
             Ok(tvec!())
