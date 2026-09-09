@@ -20,7 +20,6 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
-flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tract-api.workspace = true
