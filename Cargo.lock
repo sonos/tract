@@ -4745,7 +4745,6 @@ version = "0.23.8-pre"
 dependencies = [
  "anyhow",
  "boow",
- "flate2",
  "half",
  "lazy_static",
  "reqwest",
@@ -4918,7 +4917,6 @@ name = "tract-ffi"
 version = "0.23.8-pre"
 dependencies = [
  "anyhow",
- "flate2",
  "serde",
  "serde_json",
  "tract",

@@ -232,7 +232,7 @@ tract-libcli = { version = "0.23.8-pre", path = 'libcli' }
 tract-linalg = { version = "0.23.8-pre", path = 'linalg' }
 tract-metal = { version = "0.23.8-pre", path = 'metal' }
 tract-nnef-resources = { version = "0.23.8-pre", path = 'nnef/nnef-resources' }
-tract-nnef = { version = "0.23.8-pre", path = 'nnef' }
+tract-nnef = { version = "0.23.8-pre", path = 'nnef', default-features = false }
 tract-onnx-opl = { version = "0.23.8-pre", path = 'onnx-opl' }
 tract-onnx = { version = "0.23.8-pre", path = 'onnx' }
 tract-pulse-opl = { version = "0.23.8-pre", path = 'pulse-opl' }

@@ -36,6 +36,11 @@ serde_json.workspace = true
 
 [features]
 default = ["flate2"]
+# Gzip support for NNEF archives: reading `.nnef.tgz` models and compressing
+# nested ones on the way out. Enabled by default; consumers that only load
+# uncompressed NNEF drop flate2 and miniz_oxide with
+# `default-features = false`.
+flate2 = ["dep:flate2"]
 # Templating graph.nnef through minijinja. Experimental, unsupported, and it
 # links the template engine in.
 unstable-jinja = ["dep:minijinja"]

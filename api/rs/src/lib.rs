@@ -135,10 +135,18 @@ impl NnefInterface for Nnef {
     }
 
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let file = std::fs::File::create(path)?;
-        let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        self.0.write_to_tar(&model.0, gz)?;
-        Ok(())
+        #[cfg(not(feature = "flate2"))]
+        {
+            let _ = (path, model);
+            anyhow::bail!("Cannot write gzip file without the flate2 feature enabled.")
+        }
+        #[cfg(feature = "flate2")]
+        {
+            let file = std::fs::File::create(path)?;
+            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            self.0.write_to_tar(&model.0, gz)?;
+            Ok(())
+        }
     }
 }
 

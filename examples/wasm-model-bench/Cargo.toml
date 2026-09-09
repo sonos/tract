@@ -17,5 +17,5 @@ path = "src/bench_nnef.rs"
 
 [dependencies]
 anyhow.workspace = true
-tract-nnef.workspace = true
+tract-nnef = { workspace = true, features = ["flate2"] }
 tract-onnx.workspace = true

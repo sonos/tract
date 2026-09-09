@@ -16,7 +16,7 @@ include = ["Cargo.toml", "src/**/*.rs", "LICENSE*", "tests"]
 anyhow.workspace = true
 boow.workspace = true
 erased-serde.workspace = true
-flate2.workspace = true
+flate2 = { workspace = true, optional = true }
 half.workspace = true
 tract-api.workspace = true
 tract-nnef.workspace = true
@@ -44,8 +44,13 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000", "metal"]
+default = ["cuda-13000", "metal", "flate2"]
 complex = []
+
+# Gzip support for NNEF archives: reading `.nnef.tgz` models and writing them
+# back. Enabled by default; consumers that only load uncompressed NNEF drop
+# flate2 and miniz_oxide with `default-features = false`.
+flate2 = ["dep:flate2", "tract-nnef/flate2"]
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []

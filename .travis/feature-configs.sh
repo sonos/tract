@@ -40,3 +40,5 @@ check tract-libcli --features onnx,transformers
 
 check tract --no-default-features
 check tract-cli --no-default-features
+
+check tract --no-default-features --features flate2
