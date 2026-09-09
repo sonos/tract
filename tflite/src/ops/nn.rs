@@ -190,7 +190,8 @@ fn de_resize_bilinear(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 /// Nearest neighbour reads its half-pixel mode through a transformation of its
-/// own, and rounds up on a tie where bilinear has nothing to round.
+/// own, and truncates the source coordinate unless aligning corners, which
+/// rounds it and so rounds up on a tie.
 fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let options = builtin!(op, builtin_options_as_resize_nearest_neighbor_options);
     let coord_transformer = if options.align_corners() {
@@ -200,8 +201,7 @@ fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     } else {
         CoordTransformer::Asymmetric
     };
-    let nearest =
-        if options.half_pixel_centers() { Nearest::Floor } else { Nearest::RoundPreferCeil };
+    let nearest = if options.align_corners() { Nearest::RoundPreferCeil } else { Nearest::Floor };
     de_resize(op, coord_transformer, Interpolator::Nearest, nearest)
 }
 
@@ -263,8 +263,7 @@ fn ser_resize(
             )
         }
         Interpolator::Nearest => {
-            let expected =
-                if half_pixel_centers { Nearest::Floor } else { Nearest::RoundPreferCeil };
+            let expected = if align_corners { Nearest::RoundPreferCeil } else { Nearest::Floor };
             ensure!(
                 op.nearest == expected,
                 "tflite nearest resize rounds {expected:?}, this one rounds {:?}",
@@ -507,7 +506,8 @@ mod resize {
             (CoordTransformer::AlignCorners, Interpolator::Linear, Nearest::Floor),
             (CoordTransformer::Asymmetric, Interpolator::Linear, Nearest::Floor),
             (CoordTransformer::TfHalfPixelForNn, Interpolator::Nearest, Nearest::Floor),
-            (CoordTransformer::Asymmetric, Interpolator::Nearest, Nearest::RoundPreferCeil),
+            (CoordTransformer::Asymmetric, Interpolator::Nearest, Nearest::Floor),
+            (CoordTransformer::AlignCorners, Interpolator::Nearest, Nearest::RoundPreferCeil),
         ] {
             let m = model(coord.clone(), interp.clone(), nearest)?;
             let mut buf = vec![];
