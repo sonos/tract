@@ -208,7 +208,8 @@ fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 /// The size goes out as the two spatial extents, and the coordinate
 /// transformation as the pair of flags that name it here. Anything tract can
 /// express and tflite cannot — a non-spatial axis, an interpolator or a
-/// transformation with no flag for it — is left for another serializer.
+/// transformation with no flag for it, a scale the output size does not
+/// reproduce — is left for another serializer.
 fn ser_resize(
     builder: &mut SubgraphBuilder,
     model: &TypedModel,
@@ -227,6 +228,20 @@ fn ser_resize(
         input_shape[0] == output_shape[0] && input_shape[3] == output_shape[3],
         "tflite resizes the spatial axes only, {input_shape:?} to {output_shape:?}"
     );
+    if let Some(slot) = op.optional_scales_input {
+        let scales = model.node_input_facts(node.id)?[slot].konst.clone();
+        if let Some(scales) = scales.filter(|scales| scales.len() == input.rank()) {
+            let scales = scales.cast_to::<f32>()?;
+            for (axis, scale) in scales.try_as_plain()?.as_slice::<f32>()?.iter().enumerate() {
+                ensure!(
+                    *scale == output_shape[axis] as f32 / input_shape[axis] as f32,
+                    "tflite resamples by the ratio of the sizes it carries, and scale {scale} on axis {axis} is not {} over {}",
+                    output_shape[axis],
+                    input_shape[axis]
+                );
+            }
+        }
+    }
     let (align_corners, half_pixel_centers) = match &op.coord_transformer {
         CoordTransformer::AlignCorners => (true, false),
         CoordTransformer::Asymmetric => (false, false),
