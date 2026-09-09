@@ -77,7 +77,7 @@ jobs:
           save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
       - run: |
           ROOT=. ./.travis/ci-system-setup.sh
-          cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse,cuda-13000
+          cargo build -p tract-cli --profile opt-no-lto --no-default-features --features transformers,pulse,cuda-13000,metal
       - run: echo uname=$(uname) >> $GITHUB_ENV
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

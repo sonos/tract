@@ -4,6 +4,9 @@
 #[macro_use]
 extern crate log;
 
+#[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
+extern crate tract_metal;
+
 #[macro_use]
 mod macros;
 pub(crate) mod runtimes;
