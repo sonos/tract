@@ -57,9 +57,36 @@ impl<const QK: usize> BaseQ4_0<QK> {
         m: usize,
         k: usize,
     ) -> TractResult<Blob> {
+        ensure!(q.len() == m * k, "Expected {} nibbles, got {}", m * k, q.len());
+        self.pack_prequantized_by(scales, m, k, |ix| q[ix] & 0x0F)
+    }
+
+    /// Same, for nibbles packed two per byte, low nibble first — the layout ONNX stores int4
+    /// weights in. Saves an importer from widening a whole table to one byte per value just
+    /// to hand it over: a vocabulary-sized embedding is hundreds of megabytes.
+    pub fn pack_prequantized_nibbles(
+        &self,
+        q: &[u8],
+        scales: &[f32],
+        m: usize,
+        k: usize,
+    ) -> TractResult<Blob> {
+        ensure!(q.len() == m * k / 2, "Expected {} bytes, got {}", m * k / 2, q.len());
+        self.pack_prequantized_by(scales, m, k, |ix| {
+            if ix % 2 == 0 { q[ix / 2] & 0x0F } else { q[ix / 2] >> 4 }
+        })
+    }
+
+    fn pack_prequantized_by(
+        &self,
+        scales: &[f32],
+        m: usize,
+        k: usize,
+        nibble: impl Fn(usize) -> u8,
+    ) -> TractResult<Blob> {
         ensure!(k % QK == 0, "Q4_0 needs K a multiple of {QK}, got {k}");
         let n_blocks = k / QK;
-        ensure!(q.len() == m * k && scales.len() == m * n_blocks);
+        ensure!(scales.len() == m * n_blocks);
         let mut blob = unsafe {
             Blob::for_layout(Layout::from_size_align(m * n_blocks * self.block_bytes(), 128)?)
         };
@@ -72,7 +99,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 let base = row * k + blk * QK;
                 for idx in 0..QK {
                     let ggml_idx = (QK / 2) * (idx % 2) + (idx / 2);
-                    writer.write_i4((q[base + ggml_idx] & 0x0F) as i8);
+                    writer.write_i4(nibble(base + ggml_idx) as i8);
                 }
             }
         }
