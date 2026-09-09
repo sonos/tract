@@ -14,6 +14,7 @@ fn ser_delay(ast: &mut IntoAst, node: &TypedNode, op: &Delay) -> TractResult<Opt
             ("axis", numeric(op.axis)),
             ("delay", numeric(op.delay)),
             ("overlap", numeric(op.overlap)),
+            ("zero_pad", logical(op.zero_pad)),
         ],
     )))
 }
@@ -24,7 +25,12 @@ impl PulsedOp for Delay {
         let mut fact = inputs[0].clone();
         let stream = fact.stream.as_mut().unwrap();
         fact.shape.set(self.axis, fact.shape[self.axis].clone() + self.overlap);
-        stream.delay += self.delay + self.overlap;
+        stream.delay += self.delay;
+        if self.zero_pad {
+            stream.dim += self.overlap.to_dim();
+        } else {
+            stream.delay += self.overlap;
+        }
         Ok(tvec!(fact))
     }
 
