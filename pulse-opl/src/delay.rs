@@ -10,6 +10,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::Integer.named("axis"),
             TypeName::Integer.named("delay"),
             TypeName::Integer.named("overlap"),
+            TypeName::Logical.named("zero_pad").default(false),
         ],
         &[("output", TypeName::Scalar.tensor())],
         de_delay,
@@ -22,7 +23,8 @@ fn de_delay(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Trac
     let delay = invocation.named_arg_as::<i64>(builder, "delay")? as usize;
     let overlap = invocation.named_arg_as::<i64>(builder, "overlap")? as usize;
     let input_fact = builder.model.outlet_fact(wire)?;
-    let op = Delay::new_typed(input_fact, axis, delay, overlap);
+    let mut op = Delay::new_typed(input_fact, axis, delay, overlap);
+    op.zero_pad = invocation.named_arg_as(builder, "zero_pad")?;
     builder.wire(op, &[wire])
 }
 
@@ -167,13 +169,19 @@ pub struct Delay {
     pub axis: usize,
     pub delay: usize,
     pub overlap: usize,
+    /// The `overlap` frames the op prepends to a pulse stand for the
+    /// out-of-stream past as zero padding, so they count in the stream's dim
+    /// instead of as delay the consumer waits out. Sound only because the
+    /// buffer starts and resets to zero, hence a leading `Constant(0)` pad and
+    /// no other.
+    pub zero_pad: bool,
 }
 
 impl Delay {
     pub fn new_typed(input_fact: &TypedFact, axis: usize, delay: usize, overlap: usize) -> Delay {
         let mut buffer_shape: TVec<TDim> = input_fact.shape.to_tvec();
         buffer_shape[axis] = (delay + overlap).to_dim();
-        Delay { buffer_shape, axis, delay, overlap }
+        Delay { buffer_shape, axis, delay, overlap, zero_pad: false }
     }
 
     /// The number of frames the state buffers, and so the length of its ring.
@@ -186,6 +194,9 @@ impl Delay {
         if self.buffered() == 0 { 0 } else { index % self.buffered() }
     }
 
+    /// The one or two runs of the ring holding `len` frames from ring index
+    /// `start`, each paired with its offset in the contiguous sequence of
+    /// frames they spell out.
     /// The move `suggested_axis_changes` asks for, when the layout has one to
     /// gain: the ring copies runs of frames, and a run is contiguous only when
     /// the axis leads. A symbolic leading extent is the batch axis a laned turn
@@ -195,9 +206,6 @@ impl Delay {
         self.axis != 0 && self.buffer_shape[0].as_i64().is_some()
     }
 
-    /// The one or two runs of the ring holding `len` frames from ring index
-    /// `start`, each paired with its offset in the contiguous sequence of
-    /// frames they spell out.
     pub fn ring_runs(&self, start: usize, len: usize) -> TVec<(usize, Range<usize>)> {
         if len == 0 {
             return tvec!();
@@ -218,7 +226,13 @@ impl Op for Delay {
 
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![
-            format!("axis: {} delay: {} overlap: {}", self.axis, self.delay, self.overlap),
+            format!(
+                "axis: {} delay: {} overlap: {}{}",
+                self.axis,
+                self.delay,
+                self.overlap,
+                if self.zero_pad { " zero_pad" } else { "" }
+            ),
             format!("buffer: {:?}", self.buffer_shape),
         ])
     }
