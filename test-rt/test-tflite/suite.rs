@@ -81,7 +81,10 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_or
 
         test_reduce
-        test_resize
+        # tflite resamples by the ratio of the sizes it carries, with neither a
+        # cubic kernel, an antialias filter, a roi nor an aspect-ratio policy
+        test_resize_upsample_scales_linear
+        test_resize_upsample_scales_nearest$
         test_softmax
 
         test_abs
