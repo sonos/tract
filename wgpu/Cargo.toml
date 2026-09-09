@@ -1,0 +1,53 @@
+[package]
+name = "tract-wgpu"
+version = "0.23.8-pre"
+license = "MIT OR Apache-2.0"
+authors = [
+	"Ckristian Zoli <czoli1976@users.noreply.github.com>",
+]
+description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
+repository = "https://github.com/snipsco/tract"
+keywords = [ "TensorFlow", "NeuralNetworks", "WebGPU", "wgpu" ]
+categories = [ "science" ]
+autobenches = false
+edition = "2024"
+rust-version.workspace = true
+
+[badges]
+maintenance = { status = "actively-developed" }
+
+[features]
+default = []
+# Browser WebGPU. Mutually exclusive with tract's wasm-bindgen-rayon
+# (+atomics,+bulk-memory) tier — see lib.rs.
+web = []
+# Wasm JSPI hybrid: uncovered ops fall back to tract CPU kernels via a
+# mid-graph mapAsync suspend. Not a default — Safari 26 has WebGPU but not
+# JSPI (Safari 27). Chrome 137+, Firefox 139+.
+jspi = []
+
+[dependencies]
+anyhow.workspace = true
+derive-new.workspace = true
+downcast-rs.workspace = true
+inventory.workspace = true
+log.workspace = true
+num-traits.workspace = true
+tract-core.workspace = true
+tract-pulse-opl.workspace = true
+tract-transformers.workspace = true
+tract-gpu.workspace = true
+wgpu.workspace = true
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+pollster.workspace = true
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["VideoFrame"] }
+
+[dev-dependencies]
+proptest.workspace = true
+rand.workspace = true
