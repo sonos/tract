@@ -2,8 +2,10 @@ use std::path::Path;
 
 use crate::ast::QuantFormat;
 use crate::internal::*;
+#[cfg(feature = "unstable-safetensors")]
 use safetensors::SafeTensors;
 use tract_core::downcast_rs::{DowncastSync, impl_downcast};
+#[cfg(feature = "unstable-safetensors")]
 use tract_core::tract_data::itertools::Itertools;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
@@ -185,8 +187,10 @@ pub struct TypedModelResource(pub TypedModel);
 
 impl Resource for TypedModelResource {}
 
+#[cfg(feature = "unstable-safetensors")]
 pub struct SafeTensorsLoader;
 
+#[cfg(feature = "unstable-safetensors")]
 impl ResourceLoader for SafeTensorsLoader {
     fn name(&self) -> StaticName {
         "SafeTensorsLoader".into()

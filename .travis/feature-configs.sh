@@ -44,3 +44,5 @@ check tract-cli --no-default-features
 check tract --no-default-features --features flate2
 
 check tract --no-default-features --features pulse
+
+check tract-nnef --features unstable-safetensors
