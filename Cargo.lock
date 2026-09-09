@@ -4896,7 +4896,6 @@ dependencies = [
  "num-traits",
  "parking_lot",
  "proptest",
- "scan_fmt",
  "smallvec",
  "string-interner",
 ]
@@ -4969,11 +4968,9 @@ dependencies = [
  "serde_json",
  "tract-core",
  "tract-cuda",
- "tract-gpu",
  "tract-hir",
  "tract-metal",
  "tract-onnx",
- "tract-tflite",
  "tract-transformers",
 ]
 
@@ -5002,7 +4999,6 @@ dependencies = [
  "pastey 0.2.3",
  "proptest",
  "rayon",
- "scan_fmt",
  "tract-data",
  "walkdir",
 ]

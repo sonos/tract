@@ -6,7 +6,6 @@ use crate::tensor::Tensor;
 use half::f16;
 #[cfg(feature = "complex")]
 use num_complex::Complex;
-use scan_fmt::scan_fmt;
 use std::fmt;
 use std::hash::Hash;
 
@@ -385,16 +384,23 @@ impl DatumType {
     }
 }
 
+/// Parses the `Debug` form of a zero-point/scale quantized type, `QU8(Z:128 S:0.01)`.
+fn parse_zp_scale(s: &str, prefix: &str) -> Option<QParams> {
+    let body = s.strip_prefix(prefix)?.strip_prefix("(Z:")?.strip_suffix(")")?;
+    let (zero_point, scale) = body.split_once(" S:")?;
+    Some(QParams::ZpScale { zero_point: zero_point.parse().ok()?, scale: scale.parse().ok()? })
+}
+
 impl std::str::FromStr for DatumType {
     type Err = TractError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if let Ok((z, s)) = scan_fmt!(s, "QU8(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QU8(QParams::ZpScale { zero_point: z, scale: s }))
-        } else if let Ok((z, s)) = scan_fmt!(s, "QI8(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QI8(QParams::ZpScale { zero_point: z, scale: s }))
-        } else if let Ok((z, s)) = scan_fmt!(s, "QI32(Z:{d} S:{f})", i32, f32) {
-            Ok(DatumType::QI32(QParams::ZpScale { zero_point: z, scale: s }))
+        if let Some(qp) = parse_zp_scale(s, "QU8") {
+            Ok(DatumType::QU8(qp))
+        } else if let Some(qp) = parse_zp_scale(s, "QI8") {
+            Ok(DatumType::QI8(qp))
+        } else if let Some(qp) = parse_zp_scale(s, "QI32") {
+            Ok(DatumType::QI32(qp))
         } else {
             match s {
                 "I8" | "i8" => Ok(DatumType::I8),
@@ -568,5 +574,22 @@ mod tests {
             "QU8(Z:128 S:0.01)".parse::<DatumType>().unwrap(),
             DatumType::QU8(QParams::ZpScale { zero_point: 128, scale: 0.01 })
         );
+    }
+
+    #[test]
+    fn test_parse_quantized_round_trip() {
+        for dt in [
+            DatumType::QI8(QParams::ZpScale { zero_point: -3, scale: 1. }),
+            DatumType::QI32(QParams::ZpScale { zero_point: 0, scale: 2.5e-3 }),
+        ] {
+            assert_eq!(format!("{dt:?}").parse::<DatumType>().unwrap(), dt);
+        }
+    }
+
+    #[test]
+    fn test_parse_malformed_quantized() {
+        for spec in ["QU8(Z:128 S:)", "QU8(Z:128)", "QU8(Z:x S:0.01)", "QU8(Z:128 S:0.01"] {
+            assert!(spec.parse::<DatumType>().is_err());
+        }
     }
 }
