@@ -562,6 +562,10 @@ impl Op for GpuAffineChunkTrim {
 impl EvalOp for GpuAffineChunkTrim {
     op_out_of_plan!();
 
+    fn forwards_input(&self) -> Option<usize> {
+        Some(0)
+    }
+
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
