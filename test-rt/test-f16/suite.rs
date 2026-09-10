@@ -1,6 +1,8 @@
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
+use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -24,6 +26,11 @@ fn mk_suite() -> infra::TestSuite {
         QConvProblemParams::default(),
         compatible_conv_q,
     );
+    unit.get_sub_mut("max_pool").add_arbitrary_with_filter::<MaxPoolProblem>(
+        "proptest",
+        MaxPoolProblemParams::default(),
+        compatible_max_pool,
+    );
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -32,6 +39,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
+            return true;
+        }
+    }
+    #[allow(clippy::collapsible_if)]
+    if let Some(mp) = case.downcast_ref::<MaxPoolProblem>() {
+        if !compatible_max_pool(mp) {
             return true;
         }
     }
@@ -99,4 +112,9 @@ test_unsqueeze
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     qcp.qp.iter().all(|t| t.len() == 1)
+}
+
+/// nnef_f16 goes through the NNEF dumper, which bails on SameLower.
+fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
+    mp.padding != PaddingSpec::SameLower
 }

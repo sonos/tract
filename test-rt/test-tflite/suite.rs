@@ -3,7 +3,9 @@ use regex::Regex;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
 use tract_core::internal::*;
+use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -31,6 +33,11 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         QConvProblemParams { conv: cv, tflite_rules: true, ..QConvProblemParams::default() },
         compatible_conv_q,
+    );
+    unit.get_sub_mut("max_pool").add_arbitrary_with_filter::<MaxPoolProblem>(
+        "proptest",
+        MaxPoolProblemParams::default(),
+        compatible_max_pool,
     );
 
     let einsum_params = BinEinsumProblemParams { max_dims: 4, ..BinEinsumProblemParams::default() };
@@ -163,6 +170,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
             return true;
         }
     }
+    #[allow(clippy::collapsible_if)]
+    if let Some(mp) = case.downcast_ref::<MaxPoolProblem>() {
+        if !compatible_max_pool(mp) {
+            return true;
+        }
+    }
 
     if t[0] == "bin_einsum" && t[1] == "proptest" {
         return true;
@@ -193,6 +206,16 @@ fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
     qcp.group == 1
         && (qcp.kernel.ndim() == 4 || qcp.kernel.ndim() == 3)
         && qcp.dilations.iter().all(|d| *d == 1)
+}
+
+/// What `pool_2d_options` can express: 2D, VALID or SAME (upper), and a batch axis, since
+/// the rewriter moves NCHW to NHWC but nothing adds a missing N. It drops a dilation
+/// silently rather than refusing it.
+fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
+    mp.data_format.has_n()
+        && mp.kernel_shape.len() == 2
+        && mp.dilations.iter().all(|d| *d == 1)
+        && (mp.padding == PaddingSpec::Valid || mp.padding == PaddingSpec::SameUpper)
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {

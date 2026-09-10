@@ -1,6 +1,8 @@
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
+use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -25,6 +27,11 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         QConvProblemParams::default(),
         compatible_conv_q,
+    );
+    unit.get_sub_mut("max_pool").add_arbitrary_with_filter::<MaxPoolProblem>(
+        "proptest",
+        MaxPoolProblemParams::default(),
+        compatible_max_pool,
     );
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
@@ -88,9 +95,17 @@ fn ignore_unit(t: &[String], tc: &dyn Test) -> bool {
     if let Some(qcp) = tc.downcast_ref::<QConvProblem>() {
         return !compatible_conv_q(qcp);
     }
+    if let Some(mp) = tc.downcast_ref::<MaxPoolProblem>() {
+        return !compatible_max_pool(mp);
+    }
     false
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     qcp.qp.iter().all(|qp| qp.len() == 1)
+}
+
+/// The NNEF dumper bails on SameLower, as test_maxpool_2d_same_lower above shows.
+fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
+    mp.padding != PaddingSpec::SameLower
 }
