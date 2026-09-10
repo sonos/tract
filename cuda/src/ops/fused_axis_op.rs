@@ -139,6 +139,10 @@ impl Op for CudaFusedAxisOp {
 }
 
 impl EvalOp for CudaFusedAxisOp {
+    fn forwards_input(&self) -> Option<usize> {
+        self.op.forwards_input()
+    }
+
     fn eval_out_of_plan(&self, inputs: TVec<TValue>) -> TractResult<Option<TVec<TValue>>> {
         let ctx = EvalContext::out_of_plan();
         let inputs = compute_reshaped_inputs(inputs, &self.grouped_axis_ops, &ctx)?;

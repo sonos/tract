@@ -145,6 +145,14 @@ pub trait EvalOp {
         bail!("{} has neither eval nor state", std::any::type_name::<Self>())
     }
 
+    /// The input this op hands straight back as its output when it has nothing
+    /// to do, if any: what reads the output then reads the producer's memory, so
+    /// an allocator pooling node outputs has to keep that region alive as long
+    /// as this op's own output. A wrapper delegates to what it wraps.
+    fn forwards_input(&self) -> Option<usize> {
+        None
+    }
+
     /// Evaluate with no plan around the node -- const folding, shape inference,
     /// tests -- or `None` when there is no answer without one, because the op
     /// reads the context or keeps state between turns. Required, with no default:
