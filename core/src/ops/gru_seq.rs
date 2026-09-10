@@ -1,12 +1,14 @@
 use crate::internal::*;
-use crate::ops::{FrozenOpState, OpStateFreeze};
-use tract_linalg::mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul};
+use tract_linalg::MmmDispatch;
+use tract_linalg::mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul, Query};
 use tract_linalg::pack::PackedFormat;
+use tract_linalg::routines::Func;
 use tract_ndarray::prelude::*;
 
 /// The recurrent weight `R`, packed once and reused for every timestep of every
-/// later call — see [`GruSeqState::packed_r`].
-type PackedR = (Box<dyn MatMatMul>, Box<dyn MMMInputValue>);
+/// later call — see [`GruSeqState::packed_r`]. The `usize` is which of the
+/// kernel's packings `R` was prepared in.
+type PackedR = (Box<dyn MatMatMul>, usize, Box<dyn MMMInputValue>);
 
 /// Whole-sequence GRU: the ONNX GRU with `linear_before_reset != 0`, run as one op
 /// instead of a `Scan` that dispatches its body once per timestep.
@@ -74,46 +76,30 @@ impl Op for GruSeq {
 }
 
 impl EvalOp for GruSeq {
+    not_out_of_plan!();
+
     /// Stateful even with `reset_every_turn`: the state also holds the packed `R`,
     /// which is a per-run cache rather than part of the recurrence.
-    fn is_stateless(&self) -> bool {
-        false
-    }
-    fn state(
-        &self,
-        _session: &TurnState,
-        _node_id: usize,
-    ) -> TractResult<Option<Box<dyn OpState>>> {
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         Ok(Some(Box::<GruSeqState>::default()))
-    }
-}
-
-#[derive(Debug, Clone)]
-struct FrozenGruSeqState {
-    h: Option<Tensor>,
-}
-
-impl FrozenOpState for FrozenGruSeqState {
-    fn unfreeze(&self) -> Box<dyn OpState> {
-        Box::new(GruSeqState { h: self.h.clone(), packed_r: None })
-    }
-}
-
-impl OpStateFreeze for GruSeqState {
-    fn freeze(&self) -> Box<dyn FrozenOpState> {
-        Box::new(FrozenGruSeqState { h: self.h.clone() })
     }
 }
 
 impl OpState for GruSeqState {
     fn eval(
         &mut self,
-        _session: &mut TurnState,
+        _ctx: &EvalContext,
         op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         let op = op.downcast_ref::<GruSeq>().context("wrong op")?;
         op.eval_with(&mut self.h, &mut self.packed_r, inputs)
+    }
+
+    /// GruSeq carries a single hidden state, not one row per stream, so it cannot
+    /// be split across lanes -- same stance as the `Scan` it replaces.
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GruSeq is not lane-aware: it carries a single hidden state")
     }
 }
 
@@ -163,21 +149,22 @@ impl GruSeq {
             // Computed transposed: R[3h, h] . h_prev[h, batch] -> [3h, batch].
             // With batch == 1 that is n == 1, which is how tract selects its
             // matrix-vector kernel -- the side that gets packed is R, once, and the
-            // per-step vector is never packed.
-            let mmm = (tract_linalg::ops().mmm_policy())(
-                f32::datum_type(),
-                Some(3 * h),
-                Some(h),
-                Some(batch),
-            )
-            .context("no matmul kernel for the recurrent product")?;
-            let (pack_a, _) = &mmm.packings()[0];
+            // per-step vector is never packed. No extractor: R is packed here once,
+            // so an extractor would re-run on every panel of every step.
+            let query = Query {
+                allow_extractor: false,
+                ..Query::plain(f32::datum_type(), Some(3 * h), Some(h), Some(batch))
+            };
+            let (mmm, packing, _) = MmmDispatch::native()
+                .pick(&query)
+                .context("no matmul kernel for the recurrent product")?;
+            let (pack_a, _) = &mmm.packings()[packing];
             let r_t = r.clone().into_tensor();
             let pa = pack_a.prepare_one(&r_t, 1, 0)?;
-            *packed_r = Some((mmm, pa));
+            *packed_r = Some((mmm, packing, pa));
         }
-        let (mmm, pa) = packed_r.as_ref().unwrap();
-        let (_, pack_b) = &mmm.packings()[0];
+        let (mmm, packing, pa) = packed_r.as_ref().unwrap();
+        let (_, pack_b) = &mmm.packings()[*packing];
 
         // With reset_every_turn the initializer wins every call; otherwise the
         // session's carry seeds every call but the first.
@@ -186,9 +173,8 @@ impl GruSeq {
             None => squeeze_state(h0, batch, h)?,
         };
 
-        let ops = tract_linalg::ops();
-        let sigmoid = (ops.sigmoid_f32)();
-        let tanh = (ops.tanh_f32)();
+        let sigmoid = Func::Sigmoid.ew_f32()?;
+        let tanh = Func::Tanh.ew_f32()?;
 
         // Everything the loop needs, allocated once -- including the packed form of
         // the per-step state. `prepare_one` would allocate a fresh panel buffer on
@@ -321,11 +307,14 @@ mod tests {
                 rh += &b.slice(s![3 * hidden..6 * hidden]).insert_axis(Axis(0));
             }
             let out = GruEpilogue { hidden }
-                .eval(tvec!(
-                    xh.into_tensor().into(),
-                    rh.into_tensor().into(),
-                    ht.clone().into_tensor().into()
-                ))
+                .eval(
+                    &EvalContext::out_of_plan(),
+                    tvec!(
+                        xh.into_tensor().into(),
+                        rh.into_tensor().into(),
+                        ht.clone().into_tensor().into()
+                    ),
+                )
                 .unwrap();
             ht = out[0]
                 .to_plain_array_view::<f32>()
