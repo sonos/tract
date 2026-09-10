@@ -20,6 +20,7 @@ pub mod elmwise;
 pub mod gather_elements;
 pub mod gelu_approximate;
 pub mod matmul_q40;
+pub mod max_pool;
 pub mod q_binary;
 pub mod q_elmwise;
 pub mod q_flavours;
@@ -40,6 +41,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
     suite.add("matmul_q40", matmul_q40::suite()?);
+    suite.add("max_pool", max_pool::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
     suite.add("apply_rope", apply_rope::suite()?);
