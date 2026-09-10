@@ -368,15 +368,16 @@ mod tests {
             .to_owned();
 
         // Tolerance, not equality: the reference GEMMs through `matrixmultiply` and
-        // the op through tract's MMM, and the two disagree by a ULP or so on targets
-        // with no SIMD mmm kernel. Bit-exactness holds against the `Scan` this
-        // replaces, which shares the MMM path, and is checked e2e.
-        got_y.close_enough(&want_y.into_tensor(), Approximation::Close).unwrap_or_else(|e| {
+        // the op through tract's MMM. Their last bits differ on targets with no SIMD
+        // mmm kernel, and the gap compounds over a 33-step recurrence. Bit-exactness
+        // holds against the `Scan` this replaces, which shares the MMM path, and is
+        // checked e2e.
+        got_y.close_enough(&want_y.into_tensor(), Approximation::Approximate).unwrap_or_else(|e| {
             panic!("Y mismatch b={batch} t={t_len} backward={backward} bias={bias}: {e}")
         });
         got_h
             .into_tensor()
-            .close_enough(&want_h.into_tensor(), Approximation::Close)
+            .close_enough(&want_h.into_tensor(), Approximation::Approximate)
             .unwrap_or_else(|e| {
                 panic!("Y_h mismatch b={batch} t={t_len} backward={backward} bias={bias}: {e}")
             });
