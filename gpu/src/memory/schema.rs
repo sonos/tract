@@ -53,6 +53,15 @@ fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a Ty
     )
 }
 
+/// Ops that hand their input straight back as their output when there is
+/// nothing to do: what reads their output is reading the producer's region, so
+/// the producer is not dead when they are.
+fn may_forward_input(op: &dyn TypedOp) -> Option<usize> {
+    (op.downcast_ref::<crate::ops::cast::GpuCast>().is_some()
+        || op.downcast_ref::<crate::ops::pulse::GpuAffineChunkTrim>().is_some())
+    .then_some(0)
+}
+
 pub fn eval_device_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
@@ -109,6 +118,24 @@ pub fn eval_device_mem_req_for_nodes(
                     mem_size: buff_size,
                 })
             }
+        }
+    }
+
+    // Walked backwards so a chain of forwarders carries the extension down to
+    // the region it all aliases.
+    for n in order.iter().rev() {
+        let Some(ix) = may_forward_input(model.node(*n).op.as_ref()) else { continue };
+        let Some(end) = scoped_nodes
+            .iter()
+            .filter(|req| req.outlet_id.node == *n)
+            .map(|req| req.lifetime.end)
+            .max()
+        else {
+            continue;
+        };
+        let src = model.node(*n).inputs[ix];
+        for req in scoped_nodes.iter_mut().filter(|req| req.outlet_id == src) {
+            req.lifetime.end = req.lifetime.end.max(end);
         }
     }
 
