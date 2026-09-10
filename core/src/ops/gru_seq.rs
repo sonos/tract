@@ -358,12 +358,7 @@ mod tests {
         let mut packed = None;
         let got = op.eval_with(&mut carry, &mut packed, inputs).unwrap();
 
-        let got_y = got[0]
-            .to_plain_array_view::<f32>()
-            .unwrap()
-            .into_dimensionality::<Ix3>()
-            .unwrap()
-            .to_owned();
+        let got_y = got[0].clone().into_tensor();
         let got_h = got[1]
             .to_plain_array_view::<f32>()
             .unwrap()
@@ -371,11 +366,20 @@ mod tests {
             .unwrap()
             .index_axis_move(Axis(1), 0)
             .to_owned();
-        assert_eq!(got_y, want_y, "Y mismatch b={batch} t={t_len} backward={backward} bias={bias}");
-        assert_eq!(
-            got_h, want_h,
-            "Y_h mismatch b={batch} t={t_len} backward={backward} bias={bias}"
-        );
+
+        // Tolerance, not equality: the reference GEMMs through `matrixmultiply` and
+        // the op through tract's MMM, and the two disagree by a ULP or so on targets
+        // with no SIMD mmm kernel. Bit-exactness holds against the `Scan` this
+        // replaces, which shares the MMM path, and is checked e2e.
+        got_y.close_enough(&want_y.into_tensor(), Approximation::Close).unwrap_or_else(|e| {
+            panic!("Y mismatch b={batch} t={t_len} backward={backward} bias={bias}: {e}")
+        });
+        got_h
+            .into_tensor()
+            .close_enough(&want_h.into_tensor(), Approximation::Close)
+            .unwrap_or_else(|e| {
+                panic!("Y_h mismatch b={batch} t={t_len} backward={backward} bias={bias}: {e}")
+            });
     }
 
     #[test]
