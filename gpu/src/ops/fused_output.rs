@@ -187,6 +187,9 @@ pub fn fuse_output_axis_op(
     rule_if_some!(producer = model.single_prec(node.id)?);
     rule_if_some!(fused = as_fused_output(producer.op.as_ref()));
     rule_ensure!(fused.out_axis_ops().is_empty());
+    // An op that may hand its input back writes nothing in that case, so taking a
+    // chain would trade the consumer's copy for one of its own.
+    rule_ensure!(producer.op.forwards_input().is_none());
     rule_ensure!(model.single_succ(producer.id)?.is_some());
 
     let mut chain = tvec!(axis_op.clone());
@@ -198,6 +201,11 @@ pub fn fuse_output_axis_op(
         chain.push(next_op.clone());
         cursor = next;
     }
+
+    // A Move is the only axis op that changes the layout, so it is the only one
+    // whose copy this saves: the input-side pass folds a bare Add, Rm or Reshape
+    // into its consumer as a view, for nothing.
+    rule_ensure!(chain.iter().any(|op| matches!(op.inner, AxisOp::Move(..))));
 
     let rank = model.node_output_facts(producer.id)?[0]
         .as_device_fact()
