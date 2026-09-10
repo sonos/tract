@@ -897,4 +897,28 @@ mod tests {
         );
         Ok(())
     }
+
+    #[test]
+    fn device_resident_output_round_trips_through_an_arena_backed_state() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensorExt;
+
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([2, 3]))?;
+        let one = model.add_const("one", Tensor::from_shape(&[2, 3], &[1f32; 6])?)?;
+        let mid = model.wire_node("mid", add(), &[input, one])?[0];
+        let output = model.wire_node("output", add(), &[mid, one])?[0];
+        model.select_output_outlets(&[output])?;
+        tract_gpu::sync::declare_device_resident_outputs(&mut model, [0])?;
+
+        let runtime = runtime_for_name("metal")?.context("Metal runtime was not registered")?;
+        let runnable = runtime.prepare(model)?;
+        let mut state = runnable.spawn()?;
+        let first = state.run(tvec![Tensor::from_shape(&[2, 3], &[0f32; 6])?.into_tvalue()])?;
+        assert!(first[0].to_device_tensor().is_ok(), "declared output must stay on device");
+
+        let second = state.run(tvec![first[0].clone()])?;
+        let host = second[0].to_device_tensor()?.to_host()?;
+        host.close_enough(&Tensor::from_shape(&[2, 3], &[4f32; 6])?, Approximation::Exact)?;
+        Ok(())
+    }
 }

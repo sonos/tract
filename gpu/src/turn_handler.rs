@@ -25,25 +25,17 @@ impl TurnStateHandler for DeviceTurnHandler {
             Ok(schema) => schema,
             Err(_) => return Ok(()),
         };
-        // The storage cache lives in the session scratch slot, which survives
-        // clones of the owning SimpleState (the tract API clones the state
-        // between turns), so consecutive evaluations reuse one storage
-        // allocation.
-        let cache = match &turn.session_scratch {
-            Some(scratch) => scratch.clone(),
-            None => {
-                let cache: Arc<dyn std::any::Any + Send + Sync> =
-                    Arc::new(crate::memory::ArenaStorageCache::default());
-                turn.session_scratch = Some(cache.clone());
+        let cache = {
+            let mut resources = turn.session_shared.lock().map_err(|e| anyhow!("{e}"))?;
+            if let Some(cache) = resources.get::<Arc<crate::memory::ArenaStorageCache>>() {
+                Arc::clone(cache)
+            } else {
+                let cache = Arc::new(crate::memory::ArenaStorageCache::default());
+                resources.insert(Arc::clone(&cache));
                 cache
             }
         };
-        let memory_pool = match cache.downcast_ref::<crate::memory::ArenaStorageCache>() {
-            Some(cache) => DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, cache)?,
-            // Someone else owns the scratch slot: run with a per-evaluation
-            // storage rather than fighting over it.
-            None => DeviceMemoryPool::from_schema(resolved_mem_schema)?,
-        };
+        let memory_pool = DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, &cache)?;
 
         turn.shared.insert(memory_pool);
         ensure!(turn.shared.get::<DeviceMemoryPool>().is_some());
