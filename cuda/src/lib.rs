@@ -36,7 +36,8 @@ impl Runtime for CudaRuntime {
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
 
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
+        if options.enable_gpu_memory_arena.unwrap_or(options.memory_sizing_hints.is_some()) {
+            let hints = options.memory_sizing_hints.unwrap_or_default();
             let turn_handler =
                 tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
                     .context("While sizing memory arena. Missing hint ?")?;

@@ -31,6 +31,10 @@ thread_local! {
     static METAL_STREAM: RefCell<Option<MetalStream>> = const { RefCell::new(None) };
 }
 
+const MAX_POOLED_PER_KEY: usize = 16;
+const MAX_POOLED_BYTES: usize = 512 * 1024 * 1024;
+const MAX_IN_FLIGHT_COMMAND_BUFFERS: usize = 8;
+
 pub fn with_metal_stream<R>(f: impl FnOnce(&MetalStream) -> TractResult<R>) -> TractResult<R> {
     metal_context(); // ensures context is initialized
     METAL_STREAM.with(|cell| {
@@ -56,40 +60,6 @@ pub fn metal_context() -> MetalContext {
         .clone()
 }
 
-/// Env flags read on per-dispatch hot paths, resolved once per process
-/// (getenv on every load_pipeline/commit_current measurably shows up in
-/// decode CPU profiles).
-pub(crate) fn profile_kernels() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some())
-}
-
-pub(crate) fn log_gpu_time() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_GPU_TIME").is_some())
-}
-
-/// Record kernel names per command buffer WITHOUT the per-kernel buffer
-/// split TRACT_METAL_PROFILE_KERNELS forces: gpu-time segment lines then
-/// show each real buffer's kernel composition (who requested the boundary).
-pub(crate) fn log_buffer_kernels() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_BUFFER_KERNELS").is_some())
-}
-
-pub(crate) fn buffer_pool_disabled() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_DISABLE_BUFFER_POOL").is_some())
-}
-
-/// Log threshold in KB for pool event logging; None = disabled.
-pub(crate) fn log_pool() -> Option<usize> {
-    static V: OnceLock<Option<usize>> = OnceLock::new();
-    *V.get_or_init(|| {
-        std::env::var("TRACT_METAL_LOG_POOL").ok().map(|v| v.parse::<usize>().unwrap_or(8192))
-    })
-}
-
 #[derive(Debug, Clone)]
 pub struct MetalContext {
     device: Device,
@@ -110,37 +80,9 @@ pub struct MetalContext {
 }
 
 impl MetalContext {
-    /// Cap on recycled buffers per exact (dtype, shape) key. See
-    /// [`crate::tuning::MetalTuning::max_pooled_per_key`].
-    fn max_pooled_per_key() -> usize {
-        crate::tuning::tuning().max_pooled_per_key
-    }
-
-    /// Hard cap on recycled bytes, oldest-first eviction beyond it. See
-    /// [`crate::tuning::MetalTuning::pool_max_bytes`]
-    /// (`TRACT_METAL_POOL_MAX_MB`).
-    fn max_pooled_bytes() -> usize {
-        crate::tuning::tuning().pool_max_bytes
-    }
-
     fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
-        if buffer_pool_disabled() {
-            return None;
-        }
         let mut pool = self.buffer_pool.lock().ok()?;
         let entry = pool.get_mut(&(dt, TVec::from_slice(shape)));
-        if let Some(thresh_kb) = log_pool() {
-            let bytes = shape.iter().product::<usize>() * dt.size_of();
-            if bytes >= thresh_kb * 1024 {
-                eprintln!(
-                    "pool_take {:?} {:?} {:.1} KB: {}",
-                    dt,
-                    shape,
-                    bytes as f64 / 1024.0,
-                    if entry.as_ref().is_some_and(|e| !e.is_empty()) { "hit" } else { "MISS" }
-                );
-            }
-        }
         let hit = entry?.pop()?;
         self.pooled_bytes
             .fetch_sub(hit.0.len() * dt.size_of(), std::sync::atomic::Ordering::Relaxed);
@@ -148,34 +90,21 @@ impl MetalContext {
     }
 
     fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
-        if buffer_pool_disabled() {
-            return;
-        }
         let dt = host.datum_type();
         if !DeviceTensor::is_supported_dt(dt) {
             return;
         }
         let bytes = host.len() * dt.size_of();
-        let budget = Self::max_pooled_bytes();
-        if log_pool().is_some_and(|thresh_kb| bytes >= thresh_kb * 1024) {
-            eprintln!(
-                "pool_put {:?} {:?} {:.1} KB (pooled {:.1} MB){}",
-                dt,
-                host.shape(),
-                bytes as f64 / 1024.0,
-                self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) as f64
-                    / (1024.0 * 1024.0),
-                if bytes > budget { " REJECTED-over-budget" } else { "" }
-            );
-        }
-        if bytes > budget {
+        if bytes > MAX_POOLED_BYTES {
             return;
         }
         let Ok(mut pool) = self.buffer_pool.lock() else { return };
         // Evict oldest entries (globally, by insertion stamp) until the new
         // buffer fits the budget: recent shapes stay hot, stale shapes from
         // an earlier context length get released for real.
-        while self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes > budget {
+        while self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
+            > MAX_POOLED_BYTES
+        {
             let oldest_key = pool
                 .iter()
                 .filter(|(_, v)| !v.is_empty())
@@ -185,21 +114,13 @@ impl MetalContext {
             let Some(entry) = pool.get_mut(&key) else { break };
             let (evicted_host, _, _) = entry.remove(0);
             let evicted_bytes = evicted_host.len() * evicted_host.datum_type().size_of();
-            if log_pool().is_some_and(|thresh_kb| evicted_bytes >= thresh_kb * 1024) {
-                eprintln!(
-                    "pool_evict {:?} {:?} {:.1} KB",
-                    evicted_host.datum_type(),
-                    evicted_host.shape(),
-                    evicted_bytes as f64 / 1024.0,
-                );
-            }
             self.pooled_bytes.fetch_sub(evicted_bytes, std::sync::atomic::Ordering::Relaxed);
             if entry.is_empty() {
                 pool.remove(&key);
             }
         }
         let entry = pool.entry((dt, TVec::from_slice(host.shape()))).or_default();
-        if entry.len() >= Self::max_pooled_per_key() {
+        if entry.len() >= MAX_POOLED_PER_KEY {
             return;
         }
         let stamp = self.pool_stamp.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -302,7 +223,6 @@ impl MetalContext {
         let mut cache_pipelines = self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?;
 
         let (library_name, func_name, constants) = key;
-        let start = std::time::Instant::now();
         let func = self.load_function(
             library_name,
             &func_name,
@@ -312,16 +232,6 @@ impl MetalContext {
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
-        // Pipeline-state creation observability (cache misses only): the
-        // basis for deciding whether plan-derived PSO warming at prepare is
-        // worth building.
-        if std::env::var("TRACT_METAL_LOG_PIPELINES").is_ok_and(|v| v == "1") {
-            log::info!(
-                "pipeline created: {:?}::{func_name} in {:.2} ms",
-                library_name,
-                start.elapsed().as_secs_f64() * 1e3
-            );
-        }
         cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
@@ -401,23 +311,12 @@ impl DeviceContext for MetalContext {
                 exotic_fact: None,
             }));
         }
-        let t0 = log_pool().map(|_| std::time::Instant::now());
         let tensor = unsafe {
             Tensor::uninitialized_dt(dt, shape).with_context(|| {
                 format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
             })?
         };
-        let r = self.tensor_to_device(tensor.into());
-        if let Some(t0) = t0 {
-            eprintln!(
-                "fresh_alloc {:?} {:?} {:.1} KB: {:.1} us",
-                dt,
-                shape,
-                (shape.iter().product::<usize>() * dt.size_of()) as f64 / 1024.0,
-                t0.elapsed().as_secs_f64() * 1e6
-            );
-        }
-        r
+        self.tensor_to_device(tensor.into())
     }
 
     fn uninitialized_device_exotic_tensor(
@@ -478,7 +377,6 @@ struct InFlightBuffer {
     /// an in-flight command buffer still referenced it (byte-level run-to-run
     /// nondeterminism at low in-flight depth, qwen3.5-35B, 2026-08-12).
     recycle: Vec<(Arc<Tensor>, Buffer)>,
-    kernel_names: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -494,15 +392,8 @@ pub struct MetalStream {
     /// [`InFlightBuffer::recycle`]): they move onto the next committed
     /// buffer, or recycle directly at the next blocking wait.
     recycle_stash: RefCell<Vec<(Arc<Tensor>, Buffer)>>,
-    /// Kernel names dispatched into the current (open) command buffer, only
-    /// populated under TRACT_METAL_PROFILE_KERNELS.
-    pending_kernel_names: RefCell<Vec<String>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
-    /// `command_buffer()` acquisitions since the last cadence commit; only
-    /// maintained when the resolved commit cadence is non-zero
-    /// (`MetalTuning::commit_every_n_dispatches`).
-    dispatches_since_commit: std::cell::Cell<usize>,
 }
 
 impl Default for MetalStream {
@@ -521,10 +412,8 @@ impl MetalStream {
             command_buffer: RefCell::new(None),
             committed_command_buffers: RefCell::new(VecDeque::new()),
             recycle_stash: RefCell::new(Vec::new()),
-            pending_kernel_names: RefCell::new(Vec::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
-            dispatches_since_commit: std::cell::Cell::new(0),
         }
     }
 
@@ -537,14 +426,6 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
-        if profile_kernels() {
-            // One command buffer per dispatch: per-buffer GPU clocks become
-            // per-kernel GPU times, logged with the name recorded here.
-            self.commit_current()?;
-            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
-        } else if log_buffer_kernels() {
-            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
-        }
         self.context.load_pipeline(library_name, func_name)
     }
 
@@ -554,13 +435,6 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
-        if profile_kernels() {
-            // Same per-dispatch attribution as `load_pipeline`.
-            self.commit_current()?;
-            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
-        } else if log_buffer_kernels() {
-            self.pending_kernel_names.borrow_mut().push(func_name.to_string());
-        }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
@@ -568,65 +442,13 @@ impl MetalStream {
         self.retained_tensors.borrow_mut().push(tensor.clone());
     }
 
-    /// Commit cadence, 0 = disabled. See
-    /// [`crate::tuning::MetalTuning::commit_every_n_dispatches`]
-    /// (`TRACT_METAL_COMMIT_EVERY_N_DISPATCHES`). Callers with fn-local
-    /// scratch tensors must re-retain them after encoding (see
-    /// `dispatch_route_topk_f32`): a cadence commit moves the retained list
-    /// onto the buffer being closed.
-    fn commit_every_n_dispatches() -> usize {
-        crate::tuning::tuning().commit_every_n_dispatches
-    }
-
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let cadence = Self::commit_every_n_dispatches();
-        if cadence > 0 {
-            let n = self.dispatches_since_commit.get() + 1;
-            if n > cadence && self.command_buffer.borrow().is_some() {
-                // Ignore failure modes commit_current already guards against.
-                let _ = self.commit_current();
-                self.dispatches_since_commit.set(1);
-            } else {
-                self.dispatches_since_commit.set(n);
-            }
-        }
         self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
                 TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned())
             })
             .to_owned()
-    }
-
-    fn log_gpu_time(buffer: &TCommandBuffer, tag: &str) {
-        Self::log_gpu_time_named(buffer, tag, &[]);
-    }
-
-    fn log_gpu_time_named(buffer: &TCommandBuffer, tag: &str, names: &[String]) {
-        if log_gpu_time() || profile_kernels() || log_buffer_kernels() {
-            // metal-rs does not wrap GPUStartTime/GPUEndTime; go through objc.
-            use objc::{msg_send, sel, sel_impl};
-            let raw: &metal::CommandBufferRef = buffer;
-            let start: f64 = unsafe { msg_send![raw, GPUStartTime] };
-            let end: f64 = unsafe { msg_send![raw, GPUEndTime] };
-            let ksched: f64 = unsafe { msg_send![raw, kernelStartTime] };
-            let kend: f64 = unsafe { msg_send![raw, kernelEndTime] };
-            let label =
-                if names.is_empty() { String::new() } else { format!(" [{}]", names.join("+")) };
-            eprintln!(
-                "gpu-time {tag}{label}: {:.3} ms (sched {:.3} ms, gpu_start {start:.6}, gpu_end {end:.6})",
-                (end - start) * 1e3,
-                (kend - ksched) * 1e3
-            );
-        }
-    }
-
-    /// How many committed-but-unawaited buffers `commit_current` keeps in
-    /// flight. See
-    /// [`crate::tuning::MetalTuning::max_command_buffers_in_flight`]
-    /// (`TRACT_METAL_MAX_IN_FLIGHT`).
-    fn max_committed_in_flight() -> usize {
-        crate::tuning::tuning().max_command_buffers_in_flight
     }
 
     /// Commit the current command buffer without blocking the CPU on its
@@ -649,18 +471,12 @@ impl MetalStream {
         command_buffer.encoder().end_encoding();
         command_buffer.commit();
         let retained = std::mem::take(&mut *self.retained_tensors.borrow_mut());
-        let names = std::mem::take(&mut *self.pending_kernel_names.borrow_mut());
         // Pool pairs dropped while this buffer was open may still be
         // referenced by it (or by an earlier one, which the queue's FIFO
         // order covers): recycle them only once this buffer has completed.
         let recycle = std::mem::take(&mut *self.recycle_stash.borrow_mut());
         let mut committed = self.committed_command_buffers.borrow_mut();
-        committed.push_back(InFlightBuffer {
-            buffer: command_buffer,
-            retained,
-            recycle,
-            kernel_names: names,
-        });
+        committed.push_back(InFlightBuffer { buffer: command_buffer, retained, recycle });
         // Retire every already-completed buffer at the front (no wait): their
         // recycle pairs go back to the pool at true completion time instead
         // of pop time, keeping the pool hot within a step at deep in-flight
@@ -669,12 +485,11 @@ impl MetalStream {
             let done = committed
                 .front()
                 .is_some_and(|e| e.buffer.status() == metal::MTLCommandBufferStatus::Completed);
-            if !done && committed.len() <= Self::max_committed_in_flight() {
+            if !done && committed.len() <= MAX_IN_FLIGHT_COMMAND_BUFFERS {
                 break;
             }
             let oldest = committed.pop_front().unwrap();
             oldest.buffer.wait_until_completed();
-            Self::log_gpu_time_named(&oldest.buffer, "segment", &oldest.kernel_names);
             for (host, buffer) in oldest.recycle {
                 self.context.pool_put(host, buffer);
             }
@@ -712,9 +527,6 @@ impl MetalStream {
             if let Some(newest) = drained.last() {
                 newest.buffer.wait_until_completed();
             }
-            for entry in &drained {
-                Self::log_gpu_time_named(&entry.buffer, "segment-tail", &entry.kernel_names);
-            }
             for entry in drained {
                 for (host, buffer) in entry.recycle {
                     self.context.pool_put(host, buffer);
@@ -740,7 +552,6 @@ impl MetalStream {
         command_buffer.commit();
         log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
-        Self::log_gpu_time(&command_buffer, "final");
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
 
         // The queue is FIFO: the buffer above completing implies every buffer
@@ -825,7 +636,7 @@ pub(crate) struct BufferPoolGuard {
 
 impl Drop for BufferPoolGuard {
     fn drop(&mut self) {
-        if Arc::strong_count(&self.host) != 1 || buffer_pool_disabled() {
+        if Arc::strong_count(&self.host) != 1 {
             return;
         }
         let mut pair = Some((self.host.clone(), self.buffer.clone()));

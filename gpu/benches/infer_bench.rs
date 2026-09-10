@@ -58,24 +58,27 @@ fn median(samples: &mut [Duration]) -> Duration {
     samples[samples.len() / 2]
 }
 
-fn env_usize(name: &str, default: usize) -> TractResult<usize> {
-    std::env::var(name).ok().map_or(Ok(default), |value| value.parse().map_err(Into::into))
+fn arg_usize(name: &str, default: usize) -> TractResult<usize> {
+    std::env::args()
+        .find_map(|arg| arg.strip_prefix(&format!("--{name}=")).map(str::to_owned))
+        .map_or(Ok(default), |value| value.parse().map_err(Into::into))
 }
 
 fn main() -> TractResult<()> {
-    let layers = env_usize("ARENA_BENCH_LAYERS", 8)?;
-    let experts = env_usize("ARENA_BENCH_EXPERTS", 3)?;
-    let m = env_usize("ARENA_BENCH_M", 32)?;
-    let k = env_usize("ARENA_BENCH_K", 2048)?;
-    let warmup = env_usize("ARENA_BENCH_WARMUP", 3)?;
-    let samples = env_usize("ARENA_BENCH_SAMPLES", 20)?;
+    let layers = arg_usize("layers", 8)?;
+    let experts = arg_usize("experts", 3)?;
+    let m = arg_usize("m", 32)?;
+    let k = arg_usize("k", 2048)?;
+    let warmup = arg_usize("warmup", 3)?;
+    let samples = arg_usize("samples", 20)?;
     ensure!(experts > 0 && samples > 0, "experts and samples must be positive");
 
-    let arena = std::env::var_os("TRACT_GPU_DISABLE_MEMORY_ARENA").is_none();
+    let arena = !std::env::args().any(|arg| arg == "--without-arena");
     let _metal = tract_metal::MetalTransform::default();
     let runtime = tract_core::runtime::runtime_for_name("metal")?
         .context("Metal runtime was not registered")?;
-    let runnable = runtime.prepare(build_model(layers, experts, m, k)?)?;
+    let options = RunOptions { enable_gpu_memory_arena: Some(arena), ..Default::default() };
+    let runnable = runtime.prepare_with_options(build_model(layers, experts, m, k)?, &options)?;
     let mut state = runnable.spawn()?;
     let input = Tensor::from_shape(
         &[1, m, k],

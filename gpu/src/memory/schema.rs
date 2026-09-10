@@ -405,8 +405,7 @@ impl DeviceMemSchema {
     /// the memory schema because it is based on symbolic dimensions. That doesn't mean it will be
     /// optimal for all possible values for symbolic dimensions.
     ///
-    /// Symbols missing from the hint fall back to a representative default
-    /// (`GpuTuning::mem_hint_default_dim`, env `TRACT_GPU_MEM_HINT_DEFAULT`):
+    /// Symbols missing from the hint fall back to a representative default:
     /// the hint only drives the partition packing order, never correctness,
     /// so an incomplete (or empty) hint still yields a valid schema.
     pub fn build(
@@ -417,7 +416,7 @@ impl DeviceMemSchema {
         let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
 
         let exotic_facts = collect_exotic_facts(model)?;
-        let default_dim: i64 = crate::tuning::tuning().mem_hint_default_dim;
+        let default_dim = 1024;
         let mut hint = hint.clone();
         for node_mem in &nodes_mem_req {
             for sym in node_mem.mem_size.symbols() {

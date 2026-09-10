@@ -71,19 +71,6 @@ impl DeviceMemoryPool {
                 } else {
                     needed
                 };
-                if std::env::var_os("TRACT_GPU_LOG_ARENA").is_some() {
-                    eprintln!(
-                        "arena alloc: {:.1} MB (demand {:.1} MB, cached {:.1} MB{})",
-                        size as f64 / (1024.0 * 1024.0),
-                        needed as f64 / (1024.0 * 1024.0),
-                        cached.as_ref().map(|(_, s)| *s).unwrap_or(0) as f64 / (1024.0 * 1024.0),
-                        if cached.as_ref().is_some_and(|(s, _)| Arc::strong_count(s) > 1) {
-                            ", busy"
-                        } else {
-                            ""
-                        },
-                    );
-                }
                 let storage =
                     Arc::new(get_context()?.uninitialized_device_tensor(&[size], DatumType::U8)?);
                 *cached = Some((Arc::clone(&storage), size));

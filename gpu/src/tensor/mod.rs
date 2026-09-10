@@ -200,10 +200,6 @@ impl DeviceTensor {
         strides: &[isize],
         offset_bytes: usize,
     ) -> TractResult<Option<DeviceTensor>> {
-        static DISABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        if *DISABLED.get_or_init(|| std::env::var_os("TRACT_GPU_DISABLE_COPY_ALIAS").is_some()) {
-            return Ok(None);
-        }
         // The view must be packed row-major over its shape.
         let mut expect = 1isize;
         for (d, s) in shape.iter().zip(strides.iter()).rev() {
