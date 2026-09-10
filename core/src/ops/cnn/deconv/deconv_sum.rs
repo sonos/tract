@@ -76,14 +76,23 @@ impl DeconvSum {
         if !self.pool_spec.data_format.has_n() {
             tensor.insert_axis(0)?;
         }
-        eval(
+        if !try_fast_nchw_2x2_s2_f32(
             self,
             &input_shape,
             &output_shape,
             &spatial_output_details,
             &n_o_hkwk_hw,
             &mut tensor,
-        )?;
+        )? {
+            eval(
+                self,
+                &input_shape,
+                &output_shape,
+                &spatial_output_details,
+                &n_o_hkwk_hw,
+                &mut tensor,
+            )?;
+        }
         if !self.pool_spec.data_format.has_n() {
             tensor.remove_axis(0)?;
         }
@@ -115,6 +124,130 @@ impl TypedOp for DeconvSum {
     }
 
     as_op!();
+}
+
+/// NCHW 2×2 stride-2 unpack: write even/odd W with `vld2`/`vst2` instead of
+/// the generic loop's channel-inner scatter (C stride is `H*W` on NCHW).
+fn try_fast_nchw_2x2_s2_f32(
+    op: &DeconvSum,
+    input_shape: &DataShape,
+    output_shape: &DataShape,
+    spatial_output_details: &[ComputedPaddedDim<usize>],
+    gemm: &Tensor,
+    output: &mut Tensor,
+) -> TractResult<bool> {
+    if output.datum_type() != f32::datum_type() {
+        return Ok(false);
+    }
+    if op.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+        return Ok(false);
+    }
+    if op.pool_spec.kernel_shape[..] != [2, 2] {
+        return Ok(false);
+    }
+    if op.pool_spec.strides()[..] != [2, 2] || op.pool_spec.dilations()[..] != [1, 1] {
+        return Ok(false);
+    }
+    if spatial_output_details.len() != 2
+        || spatial_output_details[0].pad_before != 0
+        || spatial_output_details[1].pad_before != 0
+    {
+        return Ok(false);
+    }
+    if *output_shape.w_stride() != 1 {
+        return Ok(false);
+    }
+    let ih = input_shape.hw_dims()[0];
+    let iw = input_shape.hw_dims()[1];
+    let oh = output_shape.hw_dims()[0];
+    let ow = output_shape.hw_dims()[1];
+    if oh != ih * 2 || ow != iw * 2 {
+        return Ok(false);
+    }
+    unsafe {
+        deconv_nchw_2x2_s2_f32(gemm, output, output_shape, ih, iw);
+    }
+    Ok(true)
+}
+
+unsafe fn deconv_nchw_2x2_s2_f32(
+    gemm: &Tensor,
+    output: &mut Tensor,
+    output_shape: &DataShape,
+    ih: usize,
+    iw: usize,
+) {
+    unsafe {
+        let gptr = gemm.as_ptr::<f32>().expect("f32 gemm");
+        let optr = output.as_ptr_mut::<f32>().expect("f32 out");
+        let n = *output_shape.n().unwrap_or(&1);
+        let oc = *output_shape.c();
+        let g_n = gemm.strides()[0];
+        let g_o = gemm.strides()[1];
+        let g_k = gemm.strides()[2];
+        let g_i = gemm.strides()[3];
+        let o_n = *output_shape.n_stride().unwrap_or(&0) as isize;
+        let o_c = *output_shape.c_stride() as isize;
+        let o_h = *output_shape.h_stride() as isize;
+        for ni in 0..n as isize {
+            for o in 0..oc as isize {
+                let g = gptr.offset(ni * g_n + o * g_o);
+                let dst = optr.offset(ni * o_n + o * o_c);
+                let src00 = g;
+                let src01 = g.offset(g_k);
+                let src10 = g.offset(2 * g_k);
+                let src11 = g.offset(3 * g_k);
+                for ix in 0..ih {
+                    let in_row = (ix * iw) as isize * g_i;
+                    interleave_add_row(
+                        dst.offset((2 * ix) as isize * o_h),
+                        src00.offset(in_row),
+                        src01.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                    interleave_add_row(
+                        dst.offset((2 * ix + 1) as isize * o_h),
+                        src10.offset(in_row),
+                        src11.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                }
+            }
+        }
+    }
+}
+
+unsafe fn interleave_add_row(
+    dst: *mut f32,
+    even: *const f32,
+    odd: *const f32,
+    iw: usize,
+    src_stride: isize,
+) {
+    unsafe {
+        let mut i = 0usize;
+        #[cfg(target_arch = "aarch64")]
+        if src_stride == 1 {
+            use std::arch::aarch64::*;
+            while i + 4 <= iw {
+                let e = vld1q_f32(even.add(i));
+                let o = vld1q_f32(odd.add(i));
+                let mut d = vld2q_f32(dst.add(2 * i));
+                d.0 = vaddq_f32(d.0, e);
+                d.1 = vaddq_f32(d.1, o);
+                vst2q_f32(dst.add(2 * i), d);
+                i += 4;
+            }
+        }
+        while i < iw {
+            let di = dst.add(2 * i);
+            *di += *even.offset(i as isize * src_stride);
+            *di.add(1) += *odd.offset(i as isize * src_stride);
+            i += 1;
+        }
+    }
 }
 
 fn eval(

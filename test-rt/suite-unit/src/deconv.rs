@@ -36,101 +36,150 @@ impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
     type Parameters = DeconvProblemParams;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        (1usize..4)
-            .prop_flat_map(|georank| {
+        // The 2x2 stride-2 NCHW shape has a dedicated kernel and comes up about once
+        // in fifty thousand uniform draws, so half the cases are that shape.
+        prop_oneof![general(), fast_2x2_s2()].boxed()
+    }
+}
+
+fn general() -> BoxedStrategy<DeconvProblem> {
+    (1usize..4)
+        .prop_flat_map(|georank| {
+            (
+                data_format(),
+                kernel_format(),
+                prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
+                1usize..3,                         // n
+                1usize..4,                         // ci / group
+                1usize..4,                         // co / group
+                vec(1usize..4, georank..=georank), // kernel shape
+                vec(1usize..8, georank..=georank), // image shape
+                vec(1usize..4, georank..=georank), // strides
+                vec(1usize..4, georank..=georank), // dilations
+                1usize..4,                         // group
+            )
+        })
+        .prop_filter(
+            "dilation, strides and shapes in SAME",
+            |(_, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
+                pad == &PaddingSpec::Valid
+                    || tract_itertools::izip!(hwk, dilations, strides)
+                        .all(|(k, d, s)| (k - 1) * d > s - 1)
+            },
+        )
+        .prop_flat_map(
+            |(
+                df,
+                kf,
+                pad,
+                n,
+                ci_over_group,
+                co_over_group,
+                hwk,
+                hwi,
+                strides,
+                dilations,
+                group,
+            )| {
+                let mut kernel_shape = hwk;
+                match kf {
+                    OIHW => {
+                        kernel_shape.insert(0, co_over_group * group);
+                        kernel_shape.insert(1, ci_over_group);
+                    }
+                    HWIO => {
+                        kernel_shape.push(ci_over_group * group);
+                        kernel_shape.push(co_over_group);
+                    }
+                    OHWI => {
+                        kernel_shape.insert(0, co_over_group);
+                        kernel_shape.push(ci_over_group * group);
+                    }
+                };
+                let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
                 (
-                    data_format(),
-                    kernel_format(),
-                    prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
-                    1usize..3,                         // n
-                    1usize..4,                         // ci / group
-                    1usize..4,                         // co / group
-                    vec(1usize..4, georank..=georank), // kernel shape
-                    vec(1usize..8, georank..=georank), // image shape
-                    vec(1usize..4, georank..=georank), // strides
-                    vec(1usize..4, georank..=georank), // dilations
-                    1usize..4,                         // group
+                    Just(df),
+                    Just(kf),
+                    Just(pad),
+                    tensor(&data_shape.shape),
+                    tensor(&kernel_shape),
+                    proptest::option::of(tensor(&[co_over_group * group])),
+                    Just(strides),
+                    Just(dilations),
+                    Just(group),
                 )
-            })
-            .prop_filter(
-                "dilation, strides and shapes in SAME",
-                |(_, _, pad, _, _, _, hwk, _, strides, dilations, _)| {
-                    pad == &PaddingSpec::Valid
-                        || tract_itertools::izip!(hwk, dilations, strides)
-                            .all(|(k, d, s)| (k - 1) * d > s - 1)
-                },
-            )
-            .prop_flat_map(
-                |(
-                    df,
-                    kf,
-                    pad,
-                    n,
-                    ci_over_group,
-                    co_over_group,
-                    hwk,
-                    hwi,
-                    strides,
-                    dilations,
-                    group,
-                )| {
-                    let mut kernel_shape = hwk;
-                    match kf {
-                        OIHW => {
-                            kernel_shape.insert(0, co_over_group * group);
-                            kernel_shape.insert(1, ci_over_group);
-                        }
-                        HWIO => {
-                            kernel_shape.push(ci_over_group * group);
-                            kernel_shape.push(co_over_group);
-                        }
-                        OHWI => {
-                            kernel_shape.insert(0, co_over_group);
-                            kernel_shape.push(ci_over_group * group);
-                        }
-                    };
-                    let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
-                    (
-                        Just(df),
-                        Just(kf),
-                        Just(pad),
-                        tensor(&data_shape.shape),
-                        tensor(&kernel_shape),
-                        proptest::option::of(tensor(&[co_over_group * group])),
-                        Just(strides),
-                        Just(dilations),
-                        Just(group),
-                    )
-                },
-            )
-            .prop_map(
-                |(
+            },
+        )
+        .prop_map(
+            |(
+                data_format,
+                kernel_format,
+                padding,
+                input,
+                kernel,
+                bias,
+                strides,
+                dilations,
+                group,
+            )| {
+                let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
+                DeconvProblem {
                     data_format,
                     kernel_format,
                     padding,
                     input,
                     kernel,
                     bias,
-                    strides,
-                    dilations,
+                    strides: strides.into(),
+                    dilations: dilations.into(),
+                    adjustments,
                     group,
-                )| {
-                    let adjustments = tvec!(0; kernel.ndim() - 2); // FIXME maybe
-                    DeconvProblem {
-                        data_format,
-                        kernel_format,
-                        padding,
-                        input,
-                        kernel,
-                        bias,
-                        strides: strides.into(),
-                        dilations: dilations.into(),
-                        adjustments,
-                        group,
-                    }
-                },
-            )
-            .boxed()
+                }
+            },
+        )
+        .boxed()
+}
+
+fn fast_2x2_s2() -> BoxedStrategy<DeconvProblem> {
+    (1usize..3, 1usize..4, 1usize..4, 1usize..10, 1usize..10)
+        .prop_flat_map(|(n, ci, co, hi, wi)| {
+            (tensor(&[n, ci, hi, wi]), tensor(&[co, ci, 2, 2]), proptest::option::of(tensor(&[co])))
+        })
+        .prop_map(|(input, kernel, bias)| DeconvProblem {
+            data_format: NCHW,
+            kernel_format: OIHW,
+            padding: PaddingSpec::Valid,
+            input,
+            kernel,
+            bias,
+            strides: tvec!(2, 2),
+            dilations: tvec!(1, 1),
+            adjustments: tvec!(0, 0),
+            group: 1,
+        })
+        .boxed()
+}
+
+/// Distinct small integers, so a tap read from the wrong place changes the answer
+/// and every sum stays exact in f16.
+fn nchw_2x2_s2(n: usize, ci: usize, co: usize, h: usize, w: usize) -> DeconvProblem {
+    let input = ArrayD::from_shape_fn(IxDyn(&[n, ci, h, w]), |ix| {
+        ((ix[0] * 7 + ix[1] * 5 + ix[2] * 3 + ix[3]) % 9) as f32 - 4.0
+    });
+    let kernel = ArrayD::from_shape_fn(IxDyn(&[co, ci, 2, 2]), |ix| {
+        ((ix[0] * 5 + ix[1] * 3 + ix[2] * 2 + ix[3]) % 7) as f32 - 3.0
+    });
+    DeconvProblem {
+        data_format: NCHW,
+        kernel_format: OIHW,
+        padding: PaddingSpec::Valid,
+        input,
+        kernel,
+        bias: None,
+        strides: tvec!(2, 2),
+        dilations: tvec!(1, 1),
+        adjustments: tvec!(0, 0),
+        group: 1,
     }
 }
 
@@ -284,6 +333,9 @@ impl Test for DeconvProblem {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<DeconvProblem>("proptest", DeconvProblemParams::default());
+
+    suite.add("nchw_2x2_s2_5x6", nchw_2x2_s2(1, 3, 4, 5, 6));
+    suite.add("nchw_2x2_s2_wide", nchw_2x2_s2(2, 2, 3, 3, 9));
 
     suite.add(
         "trivial_0",
