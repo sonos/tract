@@ -459,7 +459,6 @@ pub mod scale {
         let expected = (((a as i32) * (b as i32)) as f32) / scale;
         let expected = round_ties_to_even(expected.abs()) * expected.signum();
         let expected = (expected as i32).clamp(-128, 127);
-        let expected = tensor2(&[[expected as i8]]);
 
         let input = tvec!(tensor2(&[[b]]).into_tvalue());
         let mut model = TypedModel::default();
@@ -483,10 +482,14 @@ pub mod scale {
         model.select_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
-        assert_eq!(*plain[0], expected);
-
         let optim = model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
-        assert_eq!(*optim[0], expected);
+
+        // The reference divides in f32, the plain path multiplies by the folded f32 scale, the
+        // optimized one by its Q0_31 fixed-point form: three roundings that can straddle a tie.
+        for (label, found) in [("plain", &plain[0]), ("optimized", &optim[0])] {
+            let found = found.cast_to_scalar::<i32>().unwrap();
+            assert!((found - expected).abs() <= 1, "{label}: expected {expected}, found {found}");
+        }
     }
 
     proptest! {
@@ -504,5 +507,10 @@ pub mod scale {
     #[test]
     fn t2() {
         test_scale(-4, -60, 475.21674);
+    }
+
+    #[test]
+    fn t3() {
+        test_scale(120, 101, 692.5715);
     }
 }
