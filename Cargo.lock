@@ -5271,6 +5271,7 @@ dependencies = [
  "log",
  "num-traits",
  "serde",
+ "serde_json",
  "tract-core",
  "tract-metal",
  "tract-pulse-opl",

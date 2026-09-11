@@ -271,8 +271,15 @@ mod tests {
     #[test]
     fn test_device_resident_outputs_transform() -> TractResult<()> {
         let mut m = model_with_outputs(3)?;
-        DeviceResidentOutputsTransform(DeviceResidentOutputsConfig { outputs: vec![0, 2] })
-            .transform(&mut m)?;
+        let mut config = <dyn erased_serde::Deserializer>::erase(serde_json::json!({
+            "outputs": [0, 2],
+        }));
+        let transform = tract_core::transform::get_transform_with_params(
+            "gpu_device_resident_outputs",
+            &mut config,
+        )?
+        .context("device-resident output transform was not registered")?;
+        transform.transform(&mut m)?;
         assert!(is_device_resident_output(&m, m.outputs[0])?);
         assert!(!is_device_resident_output(&m, m.outputs[1])?);
         assert!(is_device_resident_output(&m, m.outputs[2])?);

@@ -33,6 +33,7 @@ tract-transformers.workspace = true
 dyn-hash.workspace = true
 
 [dev-dependencies]
+serde_json.workspace = true
 tract-metal.workspace = true
 
 [[bench]]
