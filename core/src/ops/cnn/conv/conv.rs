@@ -896,6 +896,82 @@ impl Conv {
         Ok(Some(patch))
     }
 
+    /// Fuses a QDQ-style `DequantizeLinear(x) -> Conv(x, w, bias) -> QuantizeLinear(y)`
+    /// sandwich into a single `q_params`-set `Conv`, reusing `wire_as_quant_im2col`'s
+    /// int8 GEMM path instead of running the middle `Conv` in float.
+    ///
+    /// `w`/`bias` arrive as plain float32 constants (any weight/bias-side
+    /// `DequantizeLinear` is already constant-folded away by the time this runs), so
+    /// they are independently re-quantized here: `w` per-tensor symmetric int8 from
+    /// its own value range, `bias` to int32 using the standard `x_scale * w_scale`
+    /// convention `wire_as_quant_im2col` assumes for its accumulator.
+    fn declutter_qdq_fuse(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        rule_if!(self.q_params.is_none());
+        let prec = model.node(node.inputs[0].node);
+        rule_if_some!(dq = prec.op_as::<ops::quant::DequantizeLinearF32>());
+        rule_if_let!(&[succ_outlet] = &*node.outputs[0].successors);
+        let succ = model.node(succ_outlet.node);
+        rule_if_some!(succ_ew = succ.op_as::<ops::element_wise::ElementWiseOp>());
+        // QuantizeLinearU8/I8.scale is `1/y_scale` (the ONNX importer inverts it to
+        // match this op's multiply-based eval); invert back to the step-size
+        // convention x_scale/k_scale/DequantizeLinearF32.scale already use.
+        let (y_scale, y_zero_point, y_dt) =
+            if let Some(q) = succ_ew.0.downcast_ref::<ops::quant::QuantizeLinearU8>() {
+                (q.scale.recip(), q.zero_point as i32, u8::datum_type())
+            } else if let Some(q) = succ_ew.0.downcast_ref::<ops::quant::QuantizeLinearI8>() {
+                (q.scale.recip(), q.zero_point as i32, i8::datum_type())
+            } else {
+                return Ok(None);
+            };
+        rule_if_some!(kernel_konst = model.outlet_fact(node.inputs[1])?.konst.clone());
+        rule_if_some!(bias_konst = model.outlet_fact(node.inputs[2])?.konst.clone());
+
+        let kernel_f32 = kernel_konst.cast_to::<f32>()?;
+        let kernel_slice = kernel_f32.try_as_plain()?.as_slice::<f32>()?;
+        let max_abs = kernel_slice.iter().fold(0f32, |a, &b| a.max(b.abs()));
+        let w_scale = if max_abs > 0.0 { max_abs / 127.0 } else { 1.0 };
+        let kernel_i8: Vec<i8> = kernel_slice
+            .iter()
+            .map(|&v| (v / w_scale).round().clamp(-127.0, 127.0) as i8)
+            .collect();
+        let kernel_i8_tensor = Tensor::from_shape(kernel_konst.shape(), &kernel_i8)?;
+
+        let bias_f32 = bias_konst.cast_to::<f32>()?;
+        let bias_slice = bias_f32.try_as_plain()?.as_slice::<f32>()?;
+        let bias_scale = dq.scale * w_scale;
+        let bias_i32: Vec<i32> = bias_slice
+            .iter()
+            .map(|&v| if bias_scale > 0.0 { (v / bias_scale).round() as i32 } else { 0 })
+            .collect();
+        let bias_i32_tensor = Tensor::from_shape(bias_konst.shape(), &bias_i32)?;
+
+        let mut patch = TypedModelPatch::default();
+        let x = patch.tap_model(model, prec.inputs[0])?;
+        let name = &node.name;
+        let kernel = patch.add_const(format!("{name}.qdq.kernel"), kernel_i8_tensor)?;
+        let bias = patch.add_const(format!("{name}.qdq.bias"), bias_i32_tensor)?;
+        let x0 = patch.add_const(format!("{name}.qdq.x0"), tensor0(dq.zero_point))?;
+        let x_scale = patch.add_const(format!("{name}.qdq.x_scale"), tensor0(dq.scale))?;
+        let k0 = patch.add_const(format!("{name}.qdq.k0"), tensor0(0i32))?;
+        let k_scale = patch.add_const(format!("{name}.qdq.k_scale"), tensor0(w_scale))?;
+        let y0 = patch.add_const(format!("{name}.qdq.y0"), tensor0(y_zero_point))?;
+        let y_scale_c = patch.add_const(format!("{name}.qdq.y_scale"), tensor0(y_scale))?;
+
+        let mut new = self.clone();
+        new.q_params = Some(y_dt);
+        let wire = patch.wire_node(
+            name,
+            new,
+            &[x, kernel, bias, x0, x_scale, k0, k_scale, y0, y_scale_c],
+        )?;
+        patch.shunt_outside(model, OutletId::new(succ.id, 0), wire[0])?;
+        Ok(Some(patch))
+    }
+
     fn declutter_channel_arithmetic_succ(
         &self,
         model: &TypedModel,
@@ -1141,6 +1217,7 @@ impl TypedOp for Conv {
         pass!(declutter_as_einsum);
         pass!(declutter_channel_arithmetic_succ);
         pass!(declutter_precursor_padding);
+        pass!(declutter_qdq_fuse);
         Ok(None)
     }
 
@@ -1489,6 +1566,138 @@ mod test {
         let input = input.into_iter().map(IntoTValue::into_tvalue).collect::<TVec<_>>();
         let output = op.eval(&EvalContext::out_of_plan(), input).unwrap();
         assert_eq!(*output[0], tensor4(&[[[[8i32, 12], [20, 24]]]]));
+    }
+
+    fn qdq_conv_model(
+        x_scale: f32,
+        x_zero_point: i32,
+        y_scale: f32,
+        y_zero_point: u8,
+    ) -> TractResult<(TypedModel, OutletId)> {
+        let mut model = TypedModel::default();
+        let c = 2usize;
+        let l = 4usize;
+        let source = model.add_source("x_q", u8::fact(dims!(1, c, l)))?;
+        let dq = model.wire_node(
+            "dequant",
+            crate::ops::quant::DequantizeLinearF32 { scale: x_scale, zero_point: x_zero_point },
+            &[source],
+        )?[0];
+        let weight = model.add_const(
+            "weight",
+            rctensor3(&[
+                [[0.1f32, -0.2, 0.05], [0.3, 0.0, -0.1]],
+                [[-0.05, 0.2, 0.1], [0.15, -0.1, 0.2]],
+            ]),
+        )?;
+        let bias = model.add_const("bias", rctensor1(&[0.01f32, -0.02]))?;
+        let conv = model.wire_node(
+            "conv",
+            Conv {
+                pool_spec: PoolSpec {
+                    data_format: crate::ops::nn::DataFormat::NCHW,
+                    dilations: None,
+                    strides: None,
+                    kernel_shape: tvec![3],
+                    padding: Explicit(tvec![1], tvec![1]),
+                    input_channels: c,
+                    output_channels: c,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            },
+            &[dq, weight, bias],
+        )?[0];
+        // QuantizeLinearU8's own `scale` field is the reciprocal of the ONNX
+        // y_scale, matching how the ONNX importer constructs it.
+        let quant = model.wire_node(
+            "quant",
+            crate::ops::element_wise::ElementWiseOp(
+                Box::new(crate::ops::quant::QuantizeLinearU8 {
+                    scale: y_scale.recip(),
+                    zero_point: y_zero_point,
+                }),
+                None,
+            ),
+            &[conv],
+        )?[0];
+        model.select_output_outlets(&[quant])?;
+        Ok((model, source))
+    }
+
+    #[test]
+    fn qdq_conv_fuses_and_matches_float() -> TractResult<()> {
+        let (model, _) = qdq_conv_model(0.02, 128, 0.015, 120)?;
+        let x_q = tensor3(&[[[110u8, 140, 90, 160], [130, 100, 150, 120]]]);
+
+        let float_out = {
+            let plan = SimplePlan::new(model.clone())?;
+            plan.run(tvec!(x_q.clone().into_tvalue()))?
+        };
+
+        let optimized = model.into_optimized()?;
+        // `Conv` never survives full optimization (quantized or not — codegen
+        // always lowers it into Im2col/OptMatMul), so check for fusion by the
+        // absence of a float round-trip through the QDQ ops instead.
+        assert!(
+            !optimized.nodes().iter().any(|n| n.op_is::<ops::quant::DequantizeLinearF32>()
+                || n.op_as::<ops::element_wise::ElementWiseOp>()
+                    .is_some_and(|ew| ew.0.is::<ops::quant::QuantizeLinearU8>())),
+            "expected the QDQ sandwich to be fused away, got: {optimized}"
+        );
+        let plan = SimplePlan::new(optimized)?;
+        let fused_out = plan.run(tvec!(x_q.into_tvalue()))?;
+
+        let a = float_out[0].cast_to::<f32>()?;
+        let b = fused_out[0].cast_to::<f32>()?;
+        let a = a.try_as_plain()?.as_slice::<f32>()?;
+        let b = b.try_as_plain()?.as_slice::<f32>()?;
+        assert_eq!(a.len(), b.len());
+        let max_abs = a.iter().zip(b).map(|(x, y)| (x - y).abs()).fold(0f32, f32::max);
+        assert!(max_abs < 1e-2, "fused output diverged from the unfused QDQ graph: {max_abs}");
+        Ok(())
+    }
+
+    #[test]
+    fn qdq_conv_does_not_fuse_without_dequant_precursor() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let source = model.add_source("x", f32::fact(dims!(1, 2, 4)))?;
+        let weight = model.add_const(
+            "weight",
+            rctensor3(&[
+                [[0.1f32, -0.2, 0.05], [0.3, 0.0, -0.1]],
+                [[-0.05, 0.2, 0.1], [0.15, -0.1, 0.2]],
+            ]),
+        )?;
+        let bias = model.add_const("bias", rctensor1(&[0.0f32, 0.0]))?;
+        let conv = model.wire_node(
+            "conv",
+            Conv {
+                pool_spec: PoolSpec {
+                    data_format: crate::ops::nn::DataFormat::NCHW,
+                    dilations: None,
+                    strides: None,
+                    kernel_shape: tvec![3],
+                    padding: Explicit(tvec![1], tvec![1]),
+                    input_channels: 2,
+                    output_channels: 2,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            },
+            &[source, weight, bias],
+        )?[0];
+        model.select_output_outlets(&[conv])?;
+        let optimized = model.into_optimized()?;
+        let out = optimized.output_outlets()?[0];
+        assert_eq!(
+            optimized.outlet_fact(out)?.datum_type,
+            f32::datum_type(),
+            "a plain float Conv with no Dequant precursor must not be quantized"
+        );
+        Ok(())
     }
 
     #[test]
