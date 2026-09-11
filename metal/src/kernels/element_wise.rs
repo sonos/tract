@@ -1,7 +1,6 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
-use metal::{MTLSize, NSUInteger};
 use tract_core::internal::*;
 use tract_core::ops::element_wise::ElementWiseMiniOp;
 use tract_gpu::tensor::DeviceTensor;
@@ -83,9 +82,7 @@ pub fn dispatch_eval(
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
 
-        let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid_size, group_size);
+        crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, output.len());
     });
     Ok(())
 }
