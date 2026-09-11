@@ -4,6 +4,7 @@ mod encoder;
 mod func_constants;
 pub mod kernels;
 pub mod ops;
+mod profile;
 mod rewrite_rules;
 mod tensor;
 mod tests;
@@ -18,6 +19,7 @@ use crate::kernels::LibraryName;
 pub use crate::kernels::matmul::MetalGemmImplKind;
 
 pub use crate::context::{MetalContext, MetalStream, with_metal_stream};
+pub use crate::profile::MetalProfile;
 pub use crate::transform::MetalTransform;
 
 #[derive(Debug)]

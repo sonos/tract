@@ -155,12 +155,22 @@ pub fn handle(
             #[cfg(not(all(any(target_os = "linux", target_os = "windows"), feature = "cuda")))]
             let is_cuda = false;
 
+            #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
+            let is_metal = matches.get_flag("metal");
+            #[cfg(not(all(any(target_os = "macos", target_os = "ios"), feature = "metal")))]
+            let is_metal = false;
+
             if is_cuda {
                 #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
                 tract_cuda::with_cuda_stream(|s| {
                     s.enable_profiling();
                     Ok(())
                 })?;
+            }
+
+            if is_metal {
+                #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
+                tract_metal::with_metal_stream(|s| s.enable_profiling())?;
             }
 
             let before_node: Box<dyn Fn(usize)> = if is_cuda {
@@ -178,6 +188,19 @@ pub fn handle(
                     any(target_os = "linux", target_os = "windows"),
                     feature = "cuda"
                 )))]
+                Box::new(|_| {})
+            } else if is_metal {
+                #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
+                {
+                    Box::new(|node_id| {
+                        tract_metal::with_metal_stream(|s| {
+                            s.set_current_node(node_id);
+                            Ok(())
+                        })
+                        .ok();
+                    })
+                }
+                #[cfg(not(all(any(target_os = "macos", target_os = "ios"), feature = "metal")))]
                 Box::new(|_| {})
             } else {
                 Box::new(|_| {})
@@ -217,6 +240,25 @@ pub fn handle(
                     any(target_os = "linux", target_os = "windows"),
                     feature = "cuda"
                 )))]
+                Box::new(|_, _| Ok(()))
+            } else if is_metal {
+                #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
+                {
+                    Box::new(|dg, prefix| {
+                        tract_metal::with_metal_stream(|s| {
+                            s.wait_until_completed()?;
+                            for (node_id, dur) in s.drain_profile()? {
+                                let node_id =
+                                    tract_libcli::annotations::NodeQId(prefix.into(), node_id);
+                                *dg.node_mut(node_id)
+                                    .accelerator_profile
+                                    .get_or_insert(std::time::Duration::default()) += dur;
+                            }
+                            Ok(())
+                        })
+                    })
+                }
+                #[cfg(not(all(any(target_os = "macos", target_os = "ios"), feature = "metal")))]
                 Box::new(|_, _| Ok(()))
             } else {
                 Box::new(|_, _| Ok(()))
