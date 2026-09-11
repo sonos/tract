@@ -12,7 +12,7 @@ for rt in $TRACT_RUNTIMES
 do
 	gpu_assert=""
 	case "$rt" in
-		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub,Not";;
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub";;
 		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub,Not";;
 	esac
 
@@ -72,7 +72,7 @@ do
 	case "$rt" in
 		--cuda)
 			pp_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
-			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange,Not"
+			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange"
 			;;
 		--metal)
 			pp_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
