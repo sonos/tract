@@ -220,7 +220,11 @@ case "$PLATFORM" in
                 # riscv64 musl defaults to dynamic linking (unlike the aarch64/armv7 musl
                 # targets here); force a static binary so it runs on the glibc boards, which
                 # have no musl loader.
-                export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static"
+                # jemalloc's ffs lowers to a __ffsdi2 libgcc call on rv64gc, which has no
+                # count-trailing-zeros outside Zbb, and rust's compiler_builtins carries the
+                # rest of the *di2 family but not that one: name libgcc for the -nodefaultlibs
+                # link.
+                export CARGO_TARGET_RISCV64GC_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-C target-feature=+crt-static -C link-arg=-lgcc"
                 ;;
             # RVV is vector-length agnostic and the mmm kernels are gated on the
             # hart's VLEN, so the two entries below differ only in vlen: 256 is
