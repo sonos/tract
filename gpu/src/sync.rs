@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use tract_core::internal::*;
+use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceSyncKind {
@@ -158,6 +159,30 @@ pub fn sync_inputs_if_required(
 /// GPU runtime transform without any side channel.
 pub const DEVICE_RESIDENT_OUTPUTS_PROPERTY: &str = "gpu.device_resident_outputs";
 
+/// JSON configuration for the experimental `gpu_device_resident_outputs`
+/// model transform.
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct DeviceResidentOutputsConfig {
+    pub outputs: Vec<usize>,
+}
+
+#[derive(Debug)]
+struct DeviceResidentOutputsTransform(DeviceResidentOutputsConfig);
+
+impl ModelTransform for DeviceResidentOutputsTransform {
+    fn name(&self) -> StaticName {
+        "gpu_device_resident_outputs".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        declare_device_resident_outputs(model, self.0.outputs.iter().copied())
+    }
+}
+
+register_model_transform!("gpu_device_resident_outputs", DeviceResidentOutputsConfig, |config| Ok(
+    Box::new(DeviceResidentOutputsTransform(config))
+));
+
 /// Declare model outputs the caller keeps device-resident: they are fed back
 /// verbatim as next-step inputs (recurrent/conv states, unfolded KV caches)
 /// and never read on host, so the final ToHost sync (a full GPU pipeline
@@ -240,6 +265,17 @@ mod tests {
     fn test_declare_device_resident_outputs_validates_range() -> TractResult<()> {
         let mut m = model_with_outputs(2)?;
         assert!(declare_device_resident_outputs(&mut m, [2]).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn test_device_resident_outputs_transform() -> TractResult<()> {
+        let mut m = model_with_outputs(3)?;
+        DeviceResidentOutputsTransform(DeviceResidentOutputsConfig { outputs: vec![0, 2] })
+            .transform(&mut m)?;
+        assert!(is_device_resident_output(&m, m.outputs[0])?);
+        assert!(!is_device_resident_output(&m, m.outputs[1])?);
+        assert!(is_device_resident_output(&m, m.outputs[2])?);
         Ok(())
     }
 }
