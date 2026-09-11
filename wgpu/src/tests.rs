@@ -7,6 +7,7 @@ use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
 use crate::kernels::cast::wgpu_cast_dispatch;
 use crate::kernels::copy::wgpu_copy_nd_dispatch;
+use crate::kernels::element_wise::wgpu_element_wise_dispatch;
 use crate::{WgpuTransform, with_wgpu_queue};
 
 fn close(a: &Tensor, b: &Tensor) -> TractResult<()> {
@@ -201,4 +202,48 @@ fn a_move_rides_the_op_that_reads_it() -> TractResult<()> {
         .count();
     ensure!(fused == 1, "the move should ride its consumer, got {fused} fused nodes");
     Ok(())
+}
+
+/// WebGPU caps a dispatch dimension at 65535 workgroups, which at 64 threads
+/// each is 4_194_240 values — a feature map a real model reaches. The excess
+/// rides the y axis, so the kernel has to fold it back in.
+#[test]
+fn copy_past_one_grid_dimension() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        let n = crate::kernels::shaders::GRID_LIMIT as usize
+            * crate::kernels::shaders::WORKGROUP as usize
+            + 1000;
+        let t =
+            Tensor::from_shape(&[2, n / 2], &(0..n).map(|i| (i % 97) as f32).collect::<Vec<_>>())?;
+        let src = t.clone().into_device()?;
+        let dst = DeviceTensor::uninitialized_dt(DatumType::F32, &[n / 2, 2])?;
+        wgpu_copy_nd_dispatch(&src, 0, &[1, (n / 2) as isize], &dst, 0, &[n / 2, 2], &[2, 1])?;
+        q.flush()?;
+        close(&dst.to_host()?.into_tensor(), &t.permute_axes(&[1, 0])?)
+    })
+}
+
+/// The element-wise kernels are the ones a large feature map actually reaches,
+/// and they take four values a thread, so the grid runs out four times later.
+#[test]
+fn element_wise_past_one_grid_dimension() -> TractResult<()> {
+    use tract_core::ops::nn::sigmoid;
+    with_wgpu_queue(|q| {
+        let n = 4
+            * crate::kernels::shaders::GRID_LIMIT as usize
+            * crate::kernels::shaders::WORKGROUP as usize
+            + 4000;
+        let data = (0..n).map(|i| ((i % 17) as f32) - 8.0).collect::<Vec<_>>();
+        let t = Tensor::from_shape(&[n], &data)?;
+        let cpu = sigmoid()
+            .eval_out_of_plan(tvec!(t.clone().into_tvalue()))?
+            .unwrap()
+            .remove(0)
+            .into_tensor();
+        let input = t.into_device()?;
+        let output = DeviceTensor::uninitialized_dt(DatumType::F32, input.shape())?;
+        wgpu_element_wise_dispatch(&*sigmoid().0, &input, &output)?;
+        q.flush()?;
+        close(&output.to_host()?.into_tensor(), &cpu)
+    })
 }
