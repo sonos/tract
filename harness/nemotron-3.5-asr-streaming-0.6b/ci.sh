@@ -112,12 +112,16 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 # Check that pulsified encoder output matches batch output.
 # --drop-partial-pulse truncates the input to a multiple of the pulse size,
 # and the output comparison is trimmed accordingly.
-# cuda serves the attention window out of a ring the GEMM rotates as it reads,
-# so it runs this too: metal has no device pulse ops and keeps them on cpu.
+# Both GPU runtimes serve the pulse ops on device -- the translator that lowers
+# them is backend-agnostic -- so they run this too, cuda out of a ring its GEMM
+# rotates as it reads.
 pulse_runtimes=""
-case " $TRACT_RUNTIMES " in
-	*" --cuda "*) pulse_runtimes="--cuda";;
-esac
+for rt in $TRACT_RUNTIMES
+do
+	case "$rt" in
+		--cuda|--metal) pulse_runtimes="$pulse_runtimes $rt";;
+	esac
+done
 
 for rt in "" $pulse_runtimes
 do
@@ -157,7 +161,8 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 # width decides how the GEMMs decompose their sums, so a seat does not match the
 # same stream run alone bit for bit; the tolerance stays far under what a seat
 # reading another's data would show, and the diff holds a ratio rather than
-# compounding turn over turn.
+# compounding turn over turn. Metal decomposes them the same at any width, and
+# matches to the bit.
 for rt in "" $pulse_runtimes
 do
 	case "$rt" in
