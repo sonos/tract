@@ -9,14 +9,26 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
             const int32_t stride_row, const int32_t stride_col_y2,
             const int32_t stride_col_dst, const int32_t channel_ratio,
             const int32_t stride_channel_x, const int32_t stride_channel_y,
-            const int32_t stride_channel_dst) {
+            const int32_t stride_channel_dst,
+            const int32_t *__restrict__ x_ring) {
   const int row = blockIdx.x;
   const int channel_dst = blockIdx.y;
   const int channel_x = channel_dst / channel_ratio;
   const int channel_y = channel_dst;
   const int tid = threadIdx.x;
 
-  x += channel_x * stride_channel_x + row * stride_row;
+  if (x_ring == nullptr) {
+    x += channel_x * stride_channel_x + row * stride_row;
+  } else {
+    // x holds each channel's gridDim.x rows as a ring, and more channels than
+    // the grid covers: the table gives this channel's first row and where its
+    // rows start.
+    int row_x = row + x_ring[2 * channel_dst];
+    if (row_x >= (int)gridDim.x) {
+      row_x -= (int)gridDim.x;
+    }
+    x += (x_ring[2 * channel_dst + 1] + row_x) * stride_row;
+  }
   y += channel_y * stride_channel_y;
   dst += channel_dst * stride_channel_dst;
 
@@ -100,11 +112,12 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
           const int32_t stride_row, const int32_t stride_col_y2,                       \
           const int32_t stride_col_dst, const int32_t channel_ratio,                   \
           const int32_t stride_channel_x, const int32_t stride_channel_y,              \
-          const int32_t stride_channel_dst) {                                      \
+          const int32_t stride_channel_dst,                                    \
+          const int32_t *__restrict__ x_ring) {                                \
     mul_mat_vec<T, ncols_dst, block_size>(                                     \
         x, y, dst, ncols2, nchannels_y, stride_row, stride_col_y2,             \
         stride_col_dst, channel_ratio, stride_channel_x, stride_channel_y,     \
-        stride_channel_dst);                                                   \
+        stride_channel_dst, x_ring);                                           \
   }
 
 #define INSTANTIATE_MAT_VEC_FOR_BS(name, T, blocksize)                         \
