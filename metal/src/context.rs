@@ -71,19 +71,13 @@ pub struct MetalContext {
     #[allow(clippy::type_complexity)]
     cache_pipelines:
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
-    /// Recycled (host allocation, MTLBuffer) pairs keyed by exact
-    /// (dtype, shape). Creating and destroying Metal buffers goes through an
-    /// IOGPU kernel trap each way (~17% of decode CPU time before pooling);
-    /// transformer decode reallocates the same transient shapes every token,
-    /// so an exact-shape pool absorbs nearly all of it.
+    /// Recycled host allocation and Metal-buffer pairs keyed by dtype and shape.
     #[allow(clippy::type_complexity)]
     buffer_pool: Arc<Mutex<HashMap<(DatumType, TVec<usize>), Vec<(Arc<Tensor>, Buffer, u64)>>>>,
     pooled_bytes: Arc<std::sync::atomic::AtomicUsize>,
     /// Monotonic insertion stamp driving oldest-first pool eviction.
     pool_stamp: Arc<std::sync::atomic::AtomicU64>,
-    /// Pool entries dropped while any command buffer is being encoded or is
-    /// in flight. This is context-wide rather than stream-local because
-    /// device tensors are Send + Sync and may be dropped from another thread.
+    /// Pairs released while a command buffer is active, retained until completion.
     pool_liveness: Arc<Mutex<PoolLiveness>>,
 }
 
@@ -107,9 +101,7 @@ impl MetalContext {
             return;
         }
         let Ok(mut pool) = self.buffer_pool.lock() else { return };
-        // Evict oldest entries (globally, by insertion stamp) until the new
-        // buffer fits the budget: recent shapes stay hot, stale shapes from
-        // an earlier context length get released for real.
+        // Evict oldest entries until the new buffer fits the budget.
         while self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
             > MAX_POOLED_BYTES
         {
@@ -541,10 +533,7 @@ impl Drop for MetalStream {
     }
 }
 
-/// Returns its (host allocation, MTLBuffer) pair to the context pool when
-/// the last owner drops it, provided nothing else still references the host
-/// tensor (`to_host` on unified memory hands out the same allocation, so an
-/// escaped `Arc<Tensor>` blocks recycling and the pair is simply released).
+/// Returns its host allocation and Metal buffer to the context pool on last drop.
 #[derive(Debug)]
 pub(crate) struct BufferPoolGuard {
     pub(crate) host: Arc<Tensor>,
@@ -597,9 +586,7 @@ impl DeviceBuffer for MetalBuffer {
 mod tests {
     use super::*;
 
-    /// Regression test for the transient buffer-pool recycling race: a
-    /// pooled tensor dropped while GPU work is pending cannot be recycled
-    /// until that work completes.
+    /// A pooled tensor released during GPU work is recycled after completion.
     #[test]
     fn pool_recycling_defers_to_command_buffer_completion() -> TractResult<()> {
         crate::utils::with_borrowed_metal_stream(|stream| {

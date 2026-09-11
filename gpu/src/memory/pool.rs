@@ -12,33 +12,17 @@ pub struct DeviceMemoryPool {
     resolved_schema: DeviceResolvedMemSchema,
 }
 
-/// Session-lived arena storage, cached in the session state across plan
-/// evaluations. Without it every evaluation allocates (and wires) a fresh
-/// multi-hundred-MB device buffer: over a chunked long-context prefill that
-/// is gigabytes of alloc/free churn, enough to push the process into the
-/// compressor and stall the next evaluations on driver re-residency.
+/// Reusable arena storage held in a turn's shared resources.
 ///
-/// Growth allocates 25% headroom so a prefill whose per-chunk arena grows
-/// with the past-context length reallocates a handful of times instead of
-/// once per chunk; when demand drops to half the cached size or less (the
-/// prefill -> decode transition), the storage shrinks back to the demand.
-///
-/// Safety: the cached storage is only reused when this cache holds the sole
-/// reference to it. Anything still alive from an earlier evaluation (an
-/// escaped output view, an in-flight command buffer, a concurrently running
-/// clone of the state) keeps its own `Arc`, which forces a fresh allocation
-/// here instead of clobbering memory someone still reads.
+/// Storage is reused only when the cache is its sole owner. Live arena views
+/// retain their backing allocation and force a new allocation on the next turn.
 #[derive(Debug, Default)]
 pub struct ArenaStorageCache {
     storage: std::sync::Mutex<Option<(Arc<Box<dyn OwnedDeviceTensor>>, usize)>>,
 }
 
 impl DeviceMemoryPool {
-    /// Arena allocations are rounded up to this granularity so consecutive
-    /// steps of a growing-context decode request the SAME buffer size: one
-    /// storage allocation then serves many steps instead of reallocating and
-    /// wiring a fresh multi-MB device buffer per token (an IOGPU kernel trap
-    /// on alloc and free, per step, growing with context).
+    /// Granularity used to reuse a growing arena across nearby sizes.
     const ARENA_SIZE_BUCKET: usize = 16 * 1024 * 1024;
 
     fn bucketed(size: usize) -> usize {
@@ -81,7 +65,13 @@ impl DeviceMemoryPool {
     }
 
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
-        Self::from_schema_with_cache(resolved_schema, &ArenaStorageCache::default())
+        Ok(Self {
+            storage: Arc::new(
+                get_context()?
+                    .uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?,
+            ),
+            resolved_schema,
+        })
     }
 
     pub fn tensor_for_node(
