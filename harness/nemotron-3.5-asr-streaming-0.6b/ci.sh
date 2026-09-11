@@ -153,16 +153,27 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 # Four streams on four lanes of one state, seated wherever the worker finds them
 # queued, each against the same stream run alone. The linger widens the turns
 # whatever the box's scheduling, so the batch axis and the seating are exercised
-# rather than the model being served one stream at a time.
-TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
-	--nnef-tract-transformers \
-	-t "$batched_patch" \
-	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
-	-t 'select_outputs(outputs: ["outputs"])' \
-	-t 'batchify_data_free(symbol: Some("BATCH"))' \
-	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
-	--autobatch-sessions 4 --hint BATCH=4 \
-	run --streams 4 --turns 3 --assert-occupancy 2.5 \
-	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-	--approx exact \
-	--drop-partial-pulse
+# rather than the model being served one stream at a time. On cuda a turn's
+# width decides how the GEMMs decompose their sums, so a seat does not match the
+# same stream run alone bit for bit; the tolerance stays far under what a seat
+# reading another's data would show, and the diff holds a ratio rather than
+# compounding turn over turn.
+for rt in "" $pulse_runtimes
+do
+	case "$rt" in
+		--cuda) approx=approximate;;
+		*) approx=exact;;
+	esac
+	TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t "$batched_patch" \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'batchify_data_free(symbol: Some("BATCH"))' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		--autobatch-sessions 4 --hint BATCH=4 \
+		run --streams 4 --turns 3 --assert-occupancy 2.5 \
+		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--approx $approx \
+		--drop-partial-pulse
+done
