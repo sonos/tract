@@ -21,7 +21,10 @@ impl Op for CudaGgmlGemm {
 }
 
 impl CudaGgmlGemm {
-    fn resolve_output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+    pub(crate) fn resolve_output_facts(
+        &self,
+        inputs: &[&TypedFact],
+    ) -> TractResult<TVec<TypedFact>> {
         let [a, b] = inputs else {
             bail!("Expects 2 inputs");
         };
