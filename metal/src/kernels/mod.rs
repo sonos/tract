@@ -35,6 +35,7 @@ const NN_OPS: &str = concat!(include_str!("nn/nn_ops.metal"), include_str!("nn/p
 const CONV_OPS: &str = include_str!("conv/direct_conv.metal");
 const MLX_CONV: &str = include_str!("conv/mlx_conv.metal");
 const MLX_CONV_DW: &str = include_str!("conv/mlx_conv_dw.metal");
+const MLX_CONV_SPEC: &str = include_str!("conv/mlx_conv_spec.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 const FFT_OPS: &str = include_str!("fft.metal");
 const GDN_RECURRENT: &str = include_str!("gdn_recurrent.metal");
@@ -57,6 +58,7 @@ pub enum LibraryName {
     ConvOps,
     MlxConv,
     MlxConvDw,
+    MlxConvSpec,
     NNOps,
     ElementWiseOps,
     Ggml,
@@ -74,6 +76,7 @@ impl LibraryName {
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::MlxConv => LibraryContent::Source(MLX_CONV),
             Self::MlxConvDw => LibraryContent::Source(MLX_CONV_DW),
+            Self::MlxConvSpec => LibraryContent::Source(MLX_CONV_SPEC),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
             Self::MlxGemm => LibraryContent::Source(MLX_GEMM),
