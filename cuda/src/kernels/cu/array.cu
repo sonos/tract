@@ -123,7 +123,9 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       input[in_offset + p * in_stride_prev + i * in_stride_inner];
 }
 
-/* The axes beyond the innermost two are packed into blockIdx.y. */
+/* The axes beyond the innermost two are packed into blockIdx.y and blockIdx.z,
+   neither of which holds more than 65535 blocks. The last of z's blocks can run
+   past them, so every rank checks the outermost index it decodes. */
 #define INSTANTIATE_COPY(name, T)                                              \
   extern "C" __global__ void copy_nd1_##name(                                  \
       const T *input, T *output, int32_t in_strides_0, int32_t out_shape_0,    \
@@ -147,7 +149,10 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       int32_t in_strides_2, int32_t out_shape_0, int32_t out_shape_1,          \
       int32_t out_shape_2, int32_t out_strides_0, int32_t out_strides_1,       \
       int32_t out_strides_2) {                                                 \
-    const int i0 = blockIdx.y;                                                 \
+    const int i0 = blockIdx.y + blockIdx.z * gridDim.y;                        \
+    if (i0 >= out_shape_0) {                                                   \
+      return;                                                                  \
+    }                                                                          \
     copy_last2<T>(input, i0 * in_strides_0, in_strides_1, in_strides_2,        \
                   output, i0 * out_strides_0, out_strides_1, out_strides_2,    \
                   out_shape_1, out_shape_2);                                   \
@@ -159,10 +164,13 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3,           \
       int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2,     \
       int32_t out_strides_3) {                                                 \
-    int b = blockIdx.y;                                                        \
+    int b = blockIdx.y + blockIdx.z * gridDim.y;                               \
     const int i1 = b % out_shape_1;                                            \
     b /= out_shape_1;                                                          \
     const int i0 = b;                                                          \
+    if (i0 >= out_shape_0) {                                                   \
+      return;                                                                  \
+    }                                                                          \
     copy_last2<T>(input, i0 * in_strides_0 + i1 * in_strides_1, in_strides_2,  \
                   in_strides_3, output,                                        \
                   i0 * out_strides_0 + i1 * out_strides_1, out_strides_2,      \
@@ -176,12 +184,15 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       int32_t out_shape_3, int32_t out_shape_4, int32_t out_strides_0,         \
       int32_t out_strides_1, int32_t out_strides_2, int32_t out_strides_3,     \
       int32_t out_strides_4) {                                                 \
-    int b = blockIdx.y;                                                        \
+    int b = blockIdx.y + blockIdx.z * gridDim.y;                               \
     const int i2 = b % out_shape_2;                                            \
     b /= out_shape_2;                                                          \
     const int i1 = b % out_shape_1;                                            \
     b /= out_shape_1;                                                          \
     const int i0 = b;                                                          \
+    if (i0 >= out_shape_0) {                                                   \
+      return;                                                                  \
+    }                                                                          \
     copy_last2<T>(                                                             \
         input, i0 * in_strides_0 + i1 * in_strides_1 + i2 * in_strides_2,      \
         in_strides_3, in_strides_4, output,                                    \
@@ -197,7 +208,7 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       int32_t out_shape_5, int32_t out_strides_0, int32_t out_strides_1,       \
       int32_t out_strides_2, int32_t out_strides_3, int32_t out_strides_4,     \
       int32_t out_strides_5) {                                                 \
-    int b = blockIdx.y;                                                        \
+    int b = blockIdx.y + blockIdx.z * gridDim.y;                               \
     const int i3 = b % out_shape_3;                                            \
     b /= out_shape_3;                                                          \
     const int i2 = b % out_shape_2;                                            \
@@ -205,6 +216,9 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
     const int i1 = b % out_shape_1;                                            \
     b /= out_shape_1;                                                          \
     const int i0 = b;                                                          \
+    if (i0 >= out_shape_0) {                                                   \
+      return;                                                                  \
+    }                                                                          \
     copy_last2<T>(input,                                                       \
                   i0 * in_strides_0 + i1 * in_strides_1 + i2 * in_strides_2 +  \
                       i3 * in_strides_3,                                       \
