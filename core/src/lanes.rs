@@ -155,14 +155,38 @@ pub struct LanedRunnable {
 
 struct Shared {
     /// [`std::sync::mpsc::Sender`] is not `Sync`, and a `Runnable` is: handles
-    /// take their own clone of it, under the lock, once.
-    requests: Mutex<Sender<Request>>,
+    /// take their own clone of it, under the lock, once. `None` once the
+    /// runnable is being dropped, which is what closes the queue.
+    requests: Mutex<Option<Sender<Request>>>,
+    /// Joined when the runnable is dropped, so the worker is gone before
+    /// whatever the caller does next.
+    worker: Mutex<Option<thread::JoinHandle<()>>>,
     inner: Arc<dyn Runnable>,
     model: Option<Arc<TypedModel>>,
     plan: Option<Arc<TypedSimplePlan>>,
     batch: Symbol,
     max_lanes: usize,
     counts: Arc<Counts>,
+}
+
+/// The worker owns per-thread device state -- a CUDA stream, its cuBLAS and
+/// cuDNN handles -- whose destructors run as the thread exits. Nothing joined
+/// it before, so a process that returned from `main` while the worker was
+/// still winding down ran those destructors against libraries already tearing
+/// themselves down in their own `atexit` handlers, and segfaulted in
+/// `cudnnDestroy` about one run in fifteen. Closing the queue is what stops
+/// the worker, so the sender goes first and the join waits for at most the
+/// turn in flight.
+impl Drop for Shared {
+    fn drop(&mut self) {
+        if let Ok(mut requests) = self.requests.lock() {
+            requests.take();
+        }
+        let worker = self.worker.lock().ok().and_then(|mut worker| worker.take());
+        if let Some(worker) = worker {
+            let _ = worker.join();
+        }
+    }
 }
 
 /// What the worker has served, for whoever tunes the turn policy: mean
@@ -208,7 +232,7 @@ impl LanedRunnable {
         let (spawned, ready) = channel::<TractResult<()>>();
         let worker_counts = counts.clone();
         let worker_inner = inner.clone();
-        thread::Builder::new().name("tract-lanes".into()).spawn(move || {
+        let worker_thread = thread::Builder::new().name("tract-lanes".into()).spawn(move || {
             let mut state = match worker_inner.spawn().and_then(|mut state| {
                 let lanes: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
                 state.reset_lanes(&lanes).context("Preparing a laned model")?;
@@ -232,7 +256,8 @@ impl LanedRunnable {
         ready.recv().map_err(|_| format_err!("The laned worker died spawning the state"))??;
         Ok(LanedRunnable {
             shared: Arc::new(Shared {
-                requests: Mutex::new(requests),
+                requests: Mutex::new(Some(requests)),
+                worker: Mutex::new(Some(worker_thread)),
                 inner,
                 model,
                 plan,
@@ -270,7 +295,12 @@ impl LanedRunnable {
     }
 
     fn request(&self) -> TractResult<Sender<Request>> {
-        Ok(self.shared.requests.lock().map_err(|_| format_err!("Poisoned laned sender"))?.clone())
+        self.shared
+            .requests
+            .lock()
+            .map_err(|_| format_err!("Poisoned laned sender"))?
+            .clone()
+            .context("The laned runnable is gone")
     }
 }
 
