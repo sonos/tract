@@ -1,31 +1,44 @@
 use cudarc::driver::LaunchConfig;
 
-use crate::kernels::MAX_THREADS;
+/// Threads per block for a copy. A block of the 1024 a launch may ask for
+/// leaves a third of an SM's thread slots unused -- they come in 1536 -- and a
+/// copy is bandwidth-bound, so it wants every slot it can fill.
+const COPY_THREADS: usize = 256;
 
 pub use tract_gpu::utils::{compute_broadcast_strides, reshape_to_rank_2, reshape_to_rank_3};
 
+/// The grid a `copy_ndN` kernel runs on: a block covers whole rows of the
+/// innermost axis, `x` the rows a single block does not hold, and `y` every
+/// axis beyond the innermost two. The rows take `x` because a tensor has far
+/// more of them, and `y` and `z` hold 65535 where `x` holds 2^31.
+///
+/// `block_dim` stays a whole multiple of the innermost extent -- the kernel
+/// maps a thread to a row by dividing by it -- and only a row wider than a
+/// block breaks that, in which case one block takes one row and strides
+/// through it.
 pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
-    // Grid layout: z=dim0, y=dim1, x=product(middle dims), threads=innermost
-    // nd1: x=1, threads=d0
-    // nd2: x=d0, threads=d1
-    // nd3: x=d0*d1, threads=d2
-    // nd4: z=d0, x=d1*d2, threads=d3
-    // nd5: z=d0, y=d1, x=d2*d3, threads=d4
-    // nd6: z=d0, y=d1, x=d2*d3*d4, threads=d5
     let rank = shape.len();
-    let grid_dim = match rank {
-        0 => panic!("Unexpected empty shape while build grid size"),
-        1 => (1, 1, 1),
-        2 => (shape[0] as _, 1, 1),
-        3 => (shape[1] as _, shape[0] as _, 1),
-        4 => (shape[2] as _, shape[1] as _, shape[0] as _),
-        5 => (shape[2] as u32 * shape[3] as u32, shape[1] as _, shape[0] as _),
-        6 => (shape[2] as u32 * shape[3] as u32 * shape[4] as u32, shape[1] as _, shape[0] as _),
-        _ => panic!("Unsupported rank {rank} for cuda copy launch config"),
+    assert!((1..=6).contains(&rank), "Unsupported rank {rank} for cuda copy launch config");
+    if rank == 1 {
+        let block = shape[0].clamp(1, COPY_THREADS);
+        return LaunchConfig {
+            grid_dim: (shape[0].div_ceil(block) as _, 1, 1),
+            block_dim: (block as _, 1, 1),
+            shared_mem_bytes: 0,
+        };
+    }
+    let inner = shape[rank - 1];
+    let prev = shape[rank - 2];
+    let outer: usize = shape[..rank - 2].iter().product();
+    let (block, rows) = if inner > COPY_THREADS {
+        (COPY_THREADS, 0)
+    } else {
+        let rows = (COPY_THREADS / inner).min(prev);
+        (inner * rows, rows)
     };
     LaunchConfig {
-        grid_dim,
-        block_dim: (shape[rank - 1].min(MAX_THREADS) as _, 1, 1),
+        grid_dim: (if rows == 0 { prev as _ } else { prev.div_ceil(rows) as _ }, outer as _, 1),
+        block_dim: (block as _, 1, 1),
         shared_mem_bytes: 0,
     }
 }

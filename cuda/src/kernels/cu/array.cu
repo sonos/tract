@@ -89,99 +89,129 @@ static __device__ void pad_constant(
     }                                                                          \
   }
 
+/// The two innermost axes of a copy, as one block: `blockDim.x` covers
+/// `blockDim.x / inner` whole rows of `inner` elements, and `blockIdx.x` the
+/// rows beyond the first block's. A short innermost axis would otherwise leave
+/// most of a block's warps idle, and the copy costs one tiny block per row.
+///
+/// The rows take `x` because a tensor has far more of them than it has of the
+/// axes beyond them, and `y` and `z` hold 65535 where `x` holds 2^31.
+/// The caller sets `blockDim.x` to a whole multiple of `inner`, or to
+/// `MAX_THREADS` when a row does not fit in a block.
+template <typename T>
+static __device__ void
+copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inner,
+           T *output, int out_offset, int out_stride_prev, int out_stride_inner,
+           int prev, int inner) {
+  const int rows = blockDim.x / inner;
+  if (rows == 0) {
+    const int p = blockIdx.x;
+    in_offset += p * in_stride_prev;
+    out_offset += p * out_stride_prev;
+    for (int i = threadIdx.x; i < inner; i += blockDim.x) {
+      output[out_offset + i * out_stride_inner] =
+          input[in_offset + i * in_stride_inner];
+    }
+    return;
+  }
+  const int p = blockIdx.x * rows + threadIdx.x / inner;
+  if (p >= prev) {
+    return;
+  }
+  const int i = threadIdx.x % inner;
+  output[out_offset + p * out_stride_prev + i * out_stride_inner] =
+      input[in_offset + p * in_stride_prev + i * in_stride_inner];
+}
+
+/* The axes beyond the innermost two are packed into blockIdx.y. */
 #define INSTANTIATE_COPY(name, T)                                              \
   extern "C" __global__ void copy_nd1_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t out_shape_0,            \
-      int32_t out_strides_0) {                                                     \
-    for (int i = threadIdx.x; i < out_shape_0; i += MAX_THREADS) {  \
+      const T *input, T *output, int32_t in_strides_0, int32_t out_shape_0,    \
+      int32_t out_strides_0) {                                                 \
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < out_shape_0;       \
+         i += blockDim.x * gridDim.x) {                                        \
       output[i * out_strides_0] = input[i * in_strides_0];                     \
     }                                                                          \
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd2_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
-      int32_t out_shape_0, int32_t out_shape_1, int32_t out_strides_0,                     \
-      int32_t out_strides_1) {                                                     \
-    int in_offset = blockIdx.x * in_strides_0;                                 \
-    int out_offset = blockIdx.x * out_strides_0;                               \
-    for (int i = threadIdx.x; i < out_shape_1; i += MAX_THREADS) {  \
-      output[out_offset + i * out_strides_1] =                                 \
-          input[in_offset + i * in_strides_1];                                 \
-    }                                                                          \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t out_shape_0, int32_t out_shape_1, int32_t out_strides_0,         \
+      int32_t out_strides_1) {                                                 \
+    copy_last2<T>(input, 0, in_strides_0, in_strides_1, output, 0,             \
+                  out_strides_0, out_strides_1, out_shape_0, out_shape_1);     \
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd3_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
-      int32_t in_strides_2, int32_t out_shape_0, int32_t out_shape_1, int32_t out_shape_2,     \
-      int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2) {               \
-    int in_offset = blockIdx.x * in_strides_1 + blockIdx.y * in_strides_0;     \
-    int out_offset = blockIdx.x * out_strides_1 + blockIdx.y * out_strides_0;  \
-    for (int i = threadIdx.x; i < out_shape_2; i += MAX_THREADS) {  \
-      output[out_offset + i * out_strides_2] =                                 \
-          input[in_offset + i * in_strides_2];                                 \
-    }                                                                          \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t in_strides_2, int32_t out_shape_0, int32_t out_shape_1,          \
+      int32_t out_shape_2, int32_t out_strides_0, int32_t out_strides_1,       \
+      int32_t out_strides_2) {                                                 \
+    const int i0 = blockIdx.y;                                                 \
+    copy_last2<T>(input, i0 * in_strides_0, in_strides_1, in_strides_2,        \
+                  output, i0 * out_strides_0, out_strides_1, out_strides_2,    \
+                  out_shape_1, out_shape_2);                                   \
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd4_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
-      int32_t in_strides_2, int32_t in_strides_3, int32_t out_shape_0, int32_t out_shape_1,    \
-      int32_t out_shape_2, int32_t out_shape_3, int32_t out_strides_0, int32_t out_strides_1,  \
-      int32_t out_strides_2, int32_t out_strides_3) {                                  \
-    int in_offset = blockIdx.x * in_strides_2 + blockIdx.y * in_strides_1 +    \
-                    blockIdx.z * in_strides_0;                                 \
-    int out_offset = blockIdx.x * out_strides_2 + blockIdx.y * out_strides_1 + \
-                     blockIdx.z * out_strides_0;                               \
-    for (int i = threadIdx.x; i < out_shape_3; i += MAX_THREADS) {             \
-      output[out_offset + i * out_strides_3] =                                 \
-          input[in_offset + i * in_strides_3];                                 \
-    }                                                                          \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t in_strides_2, int32_t in_strides_3, int32_t out_shape_0,         \
+      int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3,           \
+      int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2,     \
+      int32_t out_strides_3) {                                                 \
+    int b = blockIdx.y;                                                        \
+    const int i1 = b % out_shape_1;                                            \
+    b /= out_shape_1;                                                          \
+    const int i0 = b;                                                          \
+    copy_last2<T>(input, i0 * in_strides_0 + i1 * in_strides_1, in_strides_2,  \
+                  in_strides_3, output,                                        \
+                  i0 * out_strides_0 + i1 * out_strides_1, out_strides_2,      \
+                  out_strides_3, out_shape_2, out_shape_3);                    \
   }                                                                            \
                                                                                \
-  /* nd5: z=d0, y=d1, x=d2*d3 (packed), threads=d4 */                         \
   extern "C" __global__ void copy_nd5_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
-      int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4, int32_t out_shape_0,   \
-      int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4,      \
-      int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2,                 \
-      int32_t out_strides_3, int32_t out_strides_4) {                                  \
-    int block_idx_x = blockIdx.x;                                              \
-    int idx_3 = block_idx_x % out_shape_3;                                     \
-    block_idx_x /= out_shape_3;                                                \
-    int idx_2 = block_idx_x;                                                   \
-    int in_offset = blockIdx.z * in_strides_0 + blockIdx.y * in_strides_1 +    \
-                    idx_2 * in_strides_2 + idx_3 * in_strides_3;               \
-    int out_offset = blockIdx.z * out_strides_0 + blockIdx.y * out_strides_1 + \
-                     idx_2 * out_strides_2 + idx_3 * out_strides_3;            \
-    for (int i = threadIdx.x; i < out_shape_4; i += MAX_THREADS) {             \
-      output[out_offset + i * out_strides_4] =                                 \
-          input[in_offset + i * in_strides_4];                                 \
-    }                                                                          \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4,        \
+      int32_t out_shape_0, int32_t out_shape_1, int32_t out_shape_2,           \
+      int32_t out_shape_3, int32_t out_shape_4, int32_t out_strides_0,         \
+      int32_t out_strides_1, int32_t out_strides_2, int32_t out_strides_3,     \
+      int32_t out_strides_4) {                                                 \
+    int b = blockIdx.y;                                                        \
+    const int i2 = b % out_shape_2;                                            \
+    b /= out_shape_2;                                                          \
+    const int i1 = b % out_shape_1;                                            \
+    b /= out_shape_1;                                                          \
+    const int i0 = b;                                                          \
+    copy_last2<T>(                                                             \
+        input, i0 * in_strides_0 + i1 * in_strides_1 + i2 * in_strides_2,      \
+        in_strides_3, in_strides_4, output,                                    \
+        i0 * out_strides_0 + i1 * out_strides_1 + i2 * out_strides_2,          \
+        out_strides_3, out_strides_4, out_shape_3, out_shape_4);               \
   }                                                                            \
                                                                                \
-  /* nd6: z=d0, y=d1, x=d2*d3*d4 (packed), threads=d5 */                      \
   extern "C" __global__ void copy_nd6_##name(                                  \
-      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,           \
-      int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4, int32_t in_strides_5,  \
-      int32_t out_shape_0, int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3,      \
-      int32_t out_shape_4, int32_t out_shape_5, int32_t out_strides_0, int32_t out_strides_1,  \
-      int32_t out_strides_2, int32_t out_strides_3, int32_t out_strides_4,                 \
-      int32_t out_strides_5) {                                                     \
-    int block_idx_x = blockIdx.x;                                              \
-    int idx_4 = block_idx_x % out_shape_4;                                     \
-    block_idx_x /= out_shape_4;                                                \
-    int idx_3 = block_idx_x % out_shape_3;                                     \
-    block_idx_x /= out_shape_3;                                                \
-    int idx_2 = block_idx_x;                                                   \
-    int in_offset = blockIdx.z * in_strides_0 + blockIdx.y * in_strides_1 +    \
-                    idx_2 * in_strides_2 + idx_3 * in_strides_3 +              \
-                    idx_4 * in_strides_4;                                      \
-    int out_offset = blockIdx.z * out_strides_0 + blockIdx.y * out_strides_1 + \
-                     idx_2 * out_strides_2 + idx_3 * out_strides_3 +           \
-                     idx_4 * out_strides_4;                                    \
-    for (int i = threadIdx.x; i < out_shape_5; i += MAX_THREADS) {             \
-      output[out_offset + i * out_strides_5] =                                 \
-          input[in_offset + i * in_strides_5];                                 \
-    }                                                                          \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4,        \
+      int32_t in_strides_5, int32_t out_shape_0, int32_t out_shape_1,          \
+      int32_t out_shape_2, int32_t out_shape_3, int32_t out_shape_4,           \
+      int32_t out_shape_5, int32_t out_strides_0, int32_t out_strides_1,       \
+      int32_t out_strides_2, int32_t out_strides_3, int32_t out_strides_4,     \
+      int32_t out_strides_5) {                                                 \
+    int b = blockIdx.y;                                                        \
+    const int i3 = b % out_shape_3;                                            \
+    b /= out_shape_3;                                                          \
+    const int i2 = b % out_shape_2;                                            \
+    b /= out_shape_2;                                                          \
+    const int i1 = b % out_shape_1;                                            \
+    b /= out_shape_1;                                                          \
+    const int i0 = b;                                                          \
+    copy_last2<T>(input,                                                       \
+                  i0 * in_strides_0 + i1 * in_strides_1 + i2 * in_strides_2 +  \
+                      i3 * in_strides_3,                                       \
+                  in_strides_4, in_strides_5, output,                          \
+                  i0 * out_strides_0 + i1 * out_strides_1 +                    \
+                      i2 * out_strides_2 + i3 * out_strides_3,                 \
+                  out_strides_4, out_strides_5, out_shape_4, out_shape_5);     \
   }
 
 #define INSTANTIATE_CAST_FROM(tname, type)                                     \
