@@ -75,6 +75,12 @@ impl<'a> TractLaunchArgs<'a> {
         self.inner.arg(x);
     }
 
+    /// A null pointer for an optional buffer argument: a view is pushed as its
+    /// `CUdeviceptr`, so a zeroed one of the same width stands for none.
+    pub fn push_null_ptr(&mut self) {
+        self.arg_typed::<u64>(0);
+    }
+
     pub fn launch(&mut self, cfg: LaunchConfig) -> TractResult<()> {
         if let Some((start, end)) = self.stream.record_profile_events()? {
             unsafe {
