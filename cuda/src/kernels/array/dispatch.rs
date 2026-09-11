@@ -100,6 +100,102 @@ mod tests {
         // More rows than a grid dimension other than x holds.
         run_copy_case(&[70000, 300], &[70000, 300], &[70000, 300])?;
         run_copy_case(&[70000, 8], &[70000, 9], &[70000, 8])?;
+        // More of the axes beyond the innermost two than one such dimension
+        // holds, so they take two, the second of which runs past them.
+        run_copy_case(&[70000, 3, 5], &[70000, 3, 5], &[70000, 3, 5])?;
+        run_copy_case(&[260, 256, 65, 17], &[260, 256, 65, 17], &[260, 256, 65, 16])?;
+        run_copy_case(&[70001, 2, 3, 4], &[70001, 2, 3, 5], &[70001, 2, 3, 4])?;
+        // The same, with a row a block does not hold, which addresses its rows
+        // through x rather than packing them with the threads.
+        run_copy_case(&[70000, 2, 300], &[70000, 2, 300], &[70000, 2, 300])?;
+        Ok(())
+    }
+
+    /// Every shape a copy can be asked for has to land inside what the device
+    /// takes, and a launch the driver refuses is the whole failure mode here, so
+    /// this walks the shapes rather than naming them.
+    #[test]
+    fn test_copy_launch_cfg_within_device_limits() -> TractResult<()> {
+        let props = cuda_context().properties();
+        let max_grid = props.maxGridSize;
+        let max_threads = props.maxThreadsPerBlock as usize;
+        // Extents on both sides of every threshold the helper and the driver
+        // carry: a block's threads, a warp, and a grid dimension's 65535.
+        const EXTENTS: [usize; 13] =
+            [1, 2, 3, 17, 31, 32, 255, 256, 257, 1024, 65535, 65536, 70000];
+        // Past this the tensor is larger than any device holds, and the helper
+        // is never handed one. The axes beyond the innermost two are bounded
+        // separately, the helper refusing what two grid dimensions cannot hold.
+        const MAX_ELEMS: usize = 1 << 33;
+        const MAX_OUTER: usize = 65535 * 65535;
+        let mut checked = 0usize;
+        let mut shape: TVec<usize> = tvec!();
+        let mut walk = |shape: &TVec<usize>, checked: &mut usize| -> TractResult<()> {
+            let rank = shape.len();
+            if rank > 2 && shape[..rank - 2].iter().product::<usize>() > MAX_OUTER {
+                return Ok(());
+            }
+            let cfg = cuda_launch_cfg_for_cpy(shape);
+            let grid = [cfg.grid_dim.0, cfg.grid_dim.1, cfg.grid_dim.2];
+            for (axis, (asked, allowed)) in grid.iter().zip(max_grid.iter()).enumerate() {
+                ensure!(
+                    *asked >= 1 && (*asked as i64) <= *allowed as i64,
+                    "{shape:?} asks for {asked} blocks on the grid's axis {axis}, of {allowed}"
+                );
+            }
+            let block =
+                cfg.block_dim.0 as usize * cfg.block_dim.1 as usize * cfg.block_dim.2 as usize;
+            ensure!(
+                block >= 1 && block <= max_threads,
+                "{shape:?} asks for {block} threads a block, of {max_threads}"
+            );
+            // Every element of the copy has to be reachable: a block covers
+            // whole rows of the innermost axis, so the grid has to span the rest.
+            let covered = if rank == 1 {
+                cfg.grid_dim.0 as usize * cfg.block_dim.0 as usize
+            } else {
+                let inner = shape[rank - 1];
+                let rows = (cfg.block_dim.0 as usize / inner).max(1);
+                cfg.grid_dim.0 as usize * rows
+            };
+            ensure!(
+                covered >= if rank == 1 { shape[0] } else { shape[rank - 2] },
+                "{shape:?} leaves rows past the {covered} the grid covers"
+            );
+            if rank > 2 {
+                let outer: usize = shape[..rank - 2].iter().product();
+                let packed = cfg.grid_dim.1 as usize * cfg.grid_dim.2 as usize;
+                ensure!(packed >= outer, "{shape:?} leaves {outer} axes over {packed} blocks");
+            }
+            *checked += 1;
+            Ok(())
+        };
+        fn extend(
+            shape: &mut TVec<usize>,
+            elems: usize,
+            checked: &mut usize,
+            walk: &mut impl FnMut(&TVec<usize>, &mut usize) -> TractResult<()>,
+        ) -> TractResult<()> {
+            walk(shape, checked)?;
+            if shape.len() == 6 {
+                return Ok(());
+            }
+            for extent in EXTENTS {
+                let Some(elems) = elems.checked_mul(extent).filter(|e| *e <= MAX_ELEMS) else {
+                    continue;
+                };
+                shape.push(extent);
+                extend(shape, elems, checked, walk)?;
+                shape.pop();
+            }
+            Ok(())
+        }
+        for extent in EXTENTS {
+            shape.push(extent);
+            extend(&mut shape, extent, &mut checked, &mut walk)?;
+            shape.pop();
+        }
+        assert!(checked > 10_000, "only {checked} shapes walked");
         Ok(())
     }
 }
