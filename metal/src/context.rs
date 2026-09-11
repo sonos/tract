@@ -24,7 +24,6 @@ use metal::{
     FunctionConstantValues, Library, MTLResourceOptions,
 };
 use std::collections::HashMap;
-use std::collections::VecDeque;
 use tract_core::internal::*;
 
 thread_local! {
@@ -33,7 +32,6 @@ thread_local! {
 
 const MAX_POOLED_PER_KEY: usize = 16;
 const MAX_POOLED_BYTES: usize = 512 * 1024 * 1024;
-const MAX_IN_FLIGHT_COMMAND_BUFFERS: usize = 8;
 
 #[derive(Debug, Default)]
 struct PoolLiveness {
@@ -331,7 +329,7 @@ impl DeviceContext for MetalContext {
         let host = tensor.into_arc_tensor();
         let device_buffer = MetalBuffer {
             inner: buffer.clone(),
-            pool: if bqf.is_none() {
+            _pool: if bqf.is_none() {
                 Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer }))
             } else {
                 None
@@ -349,7 +347,7 @@ impl DeviceContext for MetalContext {
         if let Some((host, buffer)) = self.pool_take(dt, shape) {
             let device_buffer = MetalBuffer {
                 inner: buffer.clone(),
-                pool: Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer })),
+                _pool: Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer })),
             };
             return Ok(Box::new(MetalTensor {
                 inner: MValue::Natural(host),
@@ -408,23 +406,11 @@ impl DeviceContext for MetalContext {
     }
 }
 
-/// One committed-but-unawaited command buffer and the tensors that must stay
-/// alive until it completes.
-#[derive(Debug)]
-struct InFlightBuffer {
-    buffer: TCommandBuffer,
-    retained: Vec<DeviceTensor>,
-}
-
 #[derive(Debug)]
 pub struct MetalStream {
     context: MetalContext,
     command_queue: CommandQueue,
     command_buffer: RefCell<Option<TCommandBuffer>>,
-    /// Buffers committed by `commit_current` and not yet awaited, oldest
-    /// first, each with the tensors that must stay alive until it completes.
-    /// The queue is FIFO, so waiting on the newest implies all have completed.
-    committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
 }
@@ -443,7 +429,6 @@ impl MetalStream {
             context,
             command_queue,
             command_buffer: RefCell::new(None),
-            committed_command_buffers: RefCell::new(VecDeque::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
         }
@@ -484,61 +469,8 @@ impl MetalStream {
         command_buffer.as_ref().unwrap().to_owned()
     }
 
-    /// Commit the current command buffer without blocking the CPU on its
-    /// completion. The next `command_buffer()` call opens a fresh one; the
-    /// queue guarantees the committed buffer executes before it. Tensors
-    /// retained so far move into the in-flight entry and are released once
-    /// that buffer completes.
-    pub fn commit_current(&self) -> TractResult<()> {
-        let Some(command_buffer) = self.command_buffer.borrow_mut().take() else {
-            return Ok(());
-        };
-        match command_buffer.status() {
-            metal::MTLCommandBufferStatus::Committed
-            | metal::MTLCommandBufferStatus::Scheduled
-            | metal::MTLCommandBufferStatus::Completed => {
-                anyhow::bail!("Current Metal command buffer is already committed.")
-            }
-            _ => {}
-        }
-        command_buffer.encoder().end_encoding();
-        command_buffer.commit();
-        let retained = std::mem::take(&mut *self.retained_tensors.borrow_mut());
-        let mut committed = self.committed_command_buffers.borrow_mut();
-        committed.push_back(InFlightBuffer { buffer: command_buffer, retained });
-        // Retire every completed buffer at the front without waiting, then
-        // enforce the in-flight cap with blocking waits.
-        loop {
-            let done = committed
-                .front()
-                .is_some_and(|e| e.buffer.status() == metal::MTLCommandBufferStatus::Completed);
-            if !done && committed.len() <= MAX_IN_FLIGHT_COMMAND_BUFFERS {
-                break;
-            }
-            let oldest = committed.pop_front().unwrap();
-            oldest.buffer.wait_until_completed();
-            self.context.command_buffer_completed();
-            drop(oldest.retained);
-        }
-        Ok(())
-    }
-
     pub fn wait_until_completed(&self) -> TractResult<()> {
-        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else {
-            // No open buffer, but commit_current buffers may still be in
-            // flight: the host must not read results before they land. FIFO:
-            // waiting on the newest is enough.
-            let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-            if let Some(newest) = drained.last() {
-                newest.buffer.wait_until_completed();
-            }
-            for entry in drained {
-                self.context.command_buffer_completed();
-                drop(entry.retained);
-            }
-            self.retained_tensors.borrow_mut().clear();
-            return Ok(());
-        };
+        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 
         command_buffer.encoder().end_encoding();
 
@@ -556,14 +488,6 @@ impl MetalStream {
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
         self.context.command_buffer_completed();
-
-        // The queue is FIFO: the buffer above completing implies every buffer
-        // committed earlier by commit_current has completed too.
-        let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-        for entry in drained {
-            self.context.command_buffer_completed();
-            drop(entry.retained);
-        }
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
@@ -599,14 +523,6 @@ impl MetalStream {
 
 impl Drop for MetalStream {
     fn drop(&mut self) {
-        let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
-        if let Some(newest) = drained.last() {
-            newest.buffer.wait_until_completed();
-        }
-        for entry in drained {
-            self.context.command_buffer_completed();
-            drop(entry.retained);
-        }
         if let Some(command_buffer) = self.command_buffer.borrow_mut().take() {
             match command_buffer.status() {
                 metal::MTLCommandBufferStatus::Committed
@@ -648,7 +564,7 @@ impl Drop for BufferPoolGuard {
 pub struct MetalBuffer {
     pub inner: Buffer,
     /// Shared across clones of the owning tensor; the last drop recycles.
-    pub(crate) pool: Option<Arc<BufferPoolGuard>>,
+    pub(crate) _pool: Option<Arc<BufferPoolGuard>>,
 }
 
 impl PartialEq for MetalBuffer {
@@ -682,13 +598,8 @@ mod tests {
     use super::*;
 
     /// Regression test for the transient buffer-pool recycling race: a
-    /// pooled tensor dropped while GPU work is pending must NOT be recyclable
-    /// until that work completes. Before the deferral fix the pair entered
-    /// the pool at host-drop time and could be handed to a new tensor while
-    /// an in-flight command buffer still referenced it (byte-level
-    /// run-to-run nondeterminism on qwen3.5-35B at in-flight depth 2,
-    /// 2026-08-12). The race itself needs GPU/CPU timing to bite, so this
-    /// tests the lifetime mechanics deterministically instead.
+    /// pooled tensor dropped while GPU work is pending cannot be recycled
+    /// until that work completes.
     #[test]
     fn pool_recycling_defers_to_command_buffer_completion() -> TractResult<()> {
         crate::utils::with_borrowed_metal_stream(|stream| {
@@ -716,20 +627,6 @@ mod tests {
                 context.pool_take(dt, &shape).is_none(),
                 "drop under an open command buffer must not recycle yet"
             );
-
-            // A committed buffer can complete before the CPU returns from
-            // commit_current. Recycling is safe in that case; otherwise the
-            // pair remains deferred until the blocking wait below.
-            stream.commit_current()?;
-            let pending = stream.committed_command_buffers.borrow().back().is_some_and(|entry| {
-                entry.buffer.status() != metal::MTLCommandBufferStatus::Completed
-            });
-            if pending {
-                ensure!(
-                    context.pool_take(dt, &shape).is_none(),
-                    "drop under a pending committed buffer must not recycle yet"
-                );
-            }
 
             // Fully waited: the pair is either back in the pool or deferred
             // behind unrelated work from another thread.

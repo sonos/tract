@@ -5,7 +5,6 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use tract_core::internal::*;
-use tract_core::transform::ModelTransform;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceSyncKind {
@@ -47,12 +46,6 @@ impl EvalOp for DeviceSync {
                 Ok(tvec![tensor.into_tvalue()])
             }
             DeviceSyncKind::ToDevice => {
-                // Already-device tensors (e.g. cache views fed back by the
-                // caller) pass through untouched: uploading them would read
-                // opaque storage as host bytes and panic.
-                if input.to_device_tensor().is_ok() {
-                    return Ok(tvec![input]);
-                }
                 let device_input = if let Some(t) = input.as_arc_tensor() {
                     Arc::clone(t).into_device()?
                 } else {
@@ -152,141 +145,6 @@ pub fn sync_inputs_if_required(
     Ok(mapped_inputs)
 }
 
-/// Model property key declaring device-resident outputs: a rank-1 i64 tensor
-/// of model-output indexes, set through [`declare_device_resident_outputs`]
-/// (or `Model::declare_device_resident_outputs` in the rust embedding API).
-/// Living on the model, it survives clones and serialization and reaches the
-/// GPU runtime transform without any side channel.
-pub const DEVICE_RESIDENT_OUTPUTS_PROPERTY: &str = "gpu.device_resident_outputs";
-
-/// JSON configuration for the experimental `gpu_device_resident_outputs`
-/// model transform.
-#[derive(Debug, Default, serde::Deserialize)]
-pub struct DeviceResidentOutputsConfig {
-    pub outputs: Vec<usize>,
-}
-
-#[derive(Debug)]
-struct DeviceResidentOutputsTransform(DeviceResidentOutputsConfig);
-
-impl ModelTransform for DeviceResidentOutputsTransform {
-    fn name(&self) -> StaticName {
-        "gpu_device_resident_outputs".into()
-    }
-
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        declare_device_resident_outputs(model, self.0.outputs.iter().copied())
-    }
-}
-
-register_model_transform!("gpu_device_resident_outputs", DeviceResidentOutputsConfig, |config| Ok(
-    Box::new(DeviceResidentOutputsTransform(config))
-));
-
-/// Declare model outputs the caller keeps device-resident: they are fed back
-/// verbatim as next-step inputs (recurrent/conv states, unfolded KV caches)
-/// and never read on host, so the final ToHost sync (a full GPU pipeline
-/// stall each) is pure waste and GPU runtimes skip it. The matching outputs
-/// then yield opaque device tensors; the ToDevice sync on the paired input
-/// passes device tensors through untouched, closing the loop without any host
-/// round trip. CPU runtimes ignore the declaration. Declaring an empty set
-/// clears a previous declaration.
-pub fn declare_device_resident_outputs(
-    model: &mut TypedModel,
-    outputs: impl IntoIterator<Item = usize>,
-) -> TractResult<()> {
-    let mut ixes: Vec<i64> = outputs.into_iter().map(|ix| ix as i64).collect();
-    ixes.sort_unstable();
-    ixes.dedup();
-    let output_count = model.outputs.len();
-    if let Some(&last) = ixes.last() {
-        ensure!(
-            (last as usize) < output_count,
-            "device-resident output index {last} out of range (model has {output_count} outputs)"
-        );
-    }
-    if ixes.is_empty() {
-        model.properties.remove(DEVICE_RESIDENT_OUTPUTS_PROPERTY);
-    } else {
-        model
-            .properties
-            .insert(DEVICE_RESIDENT_OUTPUTS_PROPERTY.to_string(), tensor1(&ixes).into_arc_tensor());
-    }
-    Ok(())
-}
-
-/// True when the caller declared this src-model output device-resident.
-pub fn is_device_resident_output(src: &TypedModel, outlet: OutletId) -> TractResult<bool> {
-    let Some(t) = src.properties.get(DEVICE_RESIDENT_OUTPUTS_PROPERTY) else {
-        return Ok(false);
-    };
-    let ixes = t.cast_to::<i64>()?;
-    let output_count = src.outputs.len();
-    let ixes = ixes.try_as_plain()?.as_slice::<i64>()?;
-    for &ix in ixes {
-        ensure!(
-            ix >= 0 && (ix as usize) < output_count,
-            "{DEVICE_RESIDENT_OUTPUTS_PROPERTY}: output index {ix} out of range \
-             (model has {output_count} outputs)"
-        );
-    }
-    Ok(src.outputs.iter().position(|o| *o == outlet).is_some_and(|ix| ixes.contains(&(ix as i64))))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn model_with_outputs(n: usize) -> TractResult<TypedModel> {
-        let mut m = TypedModel::default();
-        let mut outs = tvec![];
-        for i in 0..n {
-            outs.push(m.add_source(format!("s{i}"), f32::fact([2]))?);
-        }
-        m.select_output_outlets(&outs)?;
-        Ok(m)
-    }
-
-    #[test]
-    fn test_declared_outputs_resolve_device_resident() -> TractResult<()> {
-        let mut m = model_with_outputs(3)?;
-        assert!(!is_device_resident_output(&m, m.outputs[1])?);
-        declare_device_resident_outputs(&mut m, [1, 2])?;
-        assert!(!is_device_resident_output(&m, m.outputs[0])?);
-        assert!(is_device_resident_output(&m, m.outputs[1])?);
-        assert!(is_device_resident_output(&m, m.outputs[2])?);
-        declare_device_resident_outputs(&mut m, [])?;
-        assert!(!m.properties.contains_key(DEVICE_RESIDENT_OUTPUTS_PROPERTY));
-        assert!(!is_device_resident_output(&m, m.outputs[1])?);
-        Ok(())
-    }
-
-    #[test]
-    fn test_declare_device_resident_outputs_validates_range() -> TractResult<()> {
-        let mut m = model_with_outputs(2)?;
-        assert!(declare_device_resident_outputs(&mut m, [2]).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn test_device_resident_outputs_transform() -> TractResult<()> {
-        let mut m = model_with_outputs(3)?;
-        let mut config = <dyn erased_serde::Deserializer>::erase(serde_json::json!({
-            "outputs": [0, 2],
-        }));
-        let transform = tract_core::transform::get_transform_with_params(
-            "gpu_device_resident_outputs",
-            &mut config,
-        )?
-        .context("device-resident output transform was not registered")?;
-        transform.transform(&mut m)?;
-        assert!(is_device_resident_output(&m, m.outputs[0])?);
-        assert!(!is_device_resident_output(&m, m.outputs[1])?);
-        assert!(is_device_resident_output(&m, m.outputs[2])?);
-        Ok(())
-    }
-}
-
 /// For model outputs that are on device, insert DeviceSync nodes to move them back to host.
 pub fn sync_model_outputs_if_required(
     src: &TypedModel,
@@ -296,12 +154,8 @@ pub fn sync_model_outputs_if_required(
 ) -> TractResult<TVec<OutletId>> {
     let mut outputs = tvec![];
     for (o_idx, o) in target_node_outlet_ids.into_iter().enumerate() {
-        let src_outlet = OutletId::new(node.id, o_idx);
-        let is_src_output = src.outputs.contains(&src_outlet);
-        if target.outlet_fact(o)?.as_device_fact().is_some()
-            && is_src_output
-            && !is_device_resident_output(src, src_outlet)?
-        {
+        let is_src_output = src.outputs.contains(&OutletId::new(node.id, o_idx));
+        if target.outlet_fact(o)?.as_device_fact().is_some() && is_src_output {
             let sync_output = target.wire_node(
                 format!("{}.to-host-{o_idx}-out", node.name),
                 DeviceSync::new(DeviceSyncKind::ToHost),

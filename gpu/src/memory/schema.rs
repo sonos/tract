@@ -75,23 +75,18 @@ pub fn eval_device_mem_req_for_nodes(
             })
     });
 
-    // Lifetime end per node: one past the step at which it is flushed.
-    let mut end_by_node: Vec<Option<usize>> = vec![None; model.nodes().len()];
-    for n in order {
-        end_by_node[*n] = flush_lists
-            .iter()
-            .enumerate()
-            .find(|(_step, flush_list)| flush_list.contains(n))
-            .map(|it| usize::min(it.0 + 1, order.len()));
-    }
-
     let mut scoped_nodes = tvec![];
 
     for (step, n) in order.iter().enumerate() {
         let lifetime_start = step;
 
+        let lifetime_end = flush_lists
+            .iter()
+            .enumerate()
+            .find(|(_step, flush_list)| flush_list.contains(n))
+            .map(|it| usize::min(it.0 + 1, order.len()));
         // Ignore nodes that won't be flushed from Device.
-        let Some(lifetime_end) = end_by_node[*n] else {
+        let Some(lifetime_end) = lifetime_end else {
             continue;
         };
 
@@ -264,6 +259,10 @@ impl DeviceMemSchema {
     /// Evaluate peak memory size for given symbols. The return value is lower or equal to the memory
     /// size of the schema. The difference between peak memory size and memory size represents the
     /// memory fragmentation introduced by the schema.
+    /// Per-step arena occupancy as symbolic expressions; the peak for a given
+    /// symbol assignment is the max of these evaluated. These do not depend on
+    /// symbol values, so a caller sweeping many assignments should compute them
+    /// once rather than re-summing the symbolic terms for every point.
     pub fn peak_memory_terms(&self) -> Vec<TDim> {
         self.by_steps
             .iter()
@@ -281,6 +280,7 @@ impl DeviceMemSchema {
             .max()
             .unwrap_or(0))
     }
+
     /// Evaluate the usage for given symbols as the ratio between
     /// schema memory size and peak memory size. A value of 1.0 means
     /// that the schema doesn't introduce memory fragmentation.

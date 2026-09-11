@@ -25,15 +25,13 @@ impl TurnStateHandler for DeviceTurnHandler {
             Ok(schema) => schema,
             Err(_) => return Ok(()),
         };
-        let cache = {
-            let mut resources = turn.session_shared.lock().map_err(|e| anyhow!("{e}"))?;
-            if let Some(cache) = resources.get::<Arc<crate::memory::ArenaStorageCache>>() {
-                Arc::clone(cache)
-            } else {
-                let cache = Arc::new(crate::memory::ArenaStorageCache::default());
-                resources.insert(Arc::clone(&cache));
-                cache
-            }
+        let cache = if let Some(cache) = turn.shared.get::<Arc<crate::memory::ArenaStorageCache>>()
+        {
+            Arc::clone(cache)
+        } else {
+            let cache = Arc::new(crate::memory::ArenaStorageCache::default());
+            turn.shared.insert(Arc::clone(&cache));
+            cache
         };
         let memory_pool = DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, &cache)?;
 

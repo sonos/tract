@@ -97,11 +97,6 @@ impl Seating {
 /// read-only, only a handler mutates it.
 pub type TurnShared = anymap3::Map<dyn std::any::Any + Send>;
 
-/// Resources that belong to a state across evaluations, keyed by their type.
-/// State clones share this store; resources must provide their own
-/// synchronization when they are used concurrently.
-pub type SessionShared = Arc<std::sync::Mutex<TurnShared>>;
-
 /// Everything an op is given about where and when it is being evaluated. Ops
 /// receive it by shared reference: they can read the turn's symbols and the
 /// installed shared resources, and they can identify themselves with
@@ -122,8 +117,6 @@ pub struct EvalContext<'a> {
 pub struct TurnState {
     pub resolved_symbols: SymbolValues,
     pub scenario: Option<usize>,
-    /// Resources that survive evaluations and are shared by state clones.
-    pub session_shared: SessionShared,
     pub values: Vec<Option<TVec<TValue>>>,
     /// Resources installed for the turn by a [`TurnStateHandler`], reachable by
     /// ops through [`EvalContext::shared`]. Entries outlive the turn --
@@ -171,7 +164,6 @@ impl Default for TurnState {
         TurnState {
             resolved_symbols: SymbolValues::default(),
             scenario: None,
-            session_shared: Arc::new(std::sync::Mutex::new(TurnShared::new())),
             values: vec![],
             shared: TurnShared::new(),
             seating: Seating::single(),
@@ -184,7 +176,6 @@ impl Clone for TurnState {
         TurnState {
             resolved_symbols: self.resolved_symbols.clone(),
             scenario: self.scenario,
-            session_shared: Arc::clone(&self.session_shared),
             values: vec![],
             shared: TurnShared::new(),
             seating: self.seating.clone(),
@@ -951,16 +942,5 @@ mod test {
     #[test]
     fn type_state_is_send() {
         is_send::<TypedSimpleState>();
-    }
-
-    #[test]
-    fn session_resources_are_composable_and_shared_by_state_clones() {
-        let turn = TurnState::default();
-        turn.session_shared.lock().unwrap().insert(7usize);
-        turn.session_shared.lock().unwrap().insert("gpu");
-        let clone = turn.clone();
-        let resources = clone.session_shared.lock().unwrap();
-        assert_eq!(resources.get::<usize>(), Some(&7));
-        assert_eq!(resources.get::<&str>(), Some(&"gpu"));
     }
 }
