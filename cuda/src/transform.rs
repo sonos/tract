@@ -135,6 +135,9 @@ impl CudaTransform {
             .with_rule_for("fuse_output_axis_op", tract_gpu::ops::fused_output::fuse_output_axis_op)
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for("fuse_window_into_gemm", rewrite_rules::fuse_window_into_gemm)
+            .rewrite(&(), model)?;
+        Rewriter::default()
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
             .rewrite(&(), model)?;
 

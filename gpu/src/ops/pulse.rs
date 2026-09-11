@@ -90,7 +90,7 @@ impl TypedOp for GpuDelay {
 /// each: axis 0 is the lane axis, or the copy spans it when the lanes are absent
 /// and the tensors carry a single stream's state.
 #[allow(clippy::too_many_arguments)]
-fn copy_lane(
+pub fn copy_lane(
     ctx: &dyn DeviceContext,
     dst: &DeviceTensor,
     dst_lane: Option<usize>,
@@ -117,7 +117,7 @@ fn copy_lane(
 
 /// Zero each of `lanes` whole, or the whole tensor when it holds a single
 /// stream's state and has no lane axis.
-fn zero_lanes(
+pub fn zero_lanes(
     ctx: &dyn DeviceContext,
     dst: &DeviceTensor,
     lanes: &[LaneId],

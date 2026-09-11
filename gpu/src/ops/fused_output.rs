@@ -47,7 +47,7 @@ fn eval_axis_op(op: &AxisOp, symbols: &SymbolValues) -> AxisOp {
 }
 
 /// The shape `chain` turns `shape` into.
-fn chain_shape(
+pub fn chain_shape(
     shape: &[usize],
     chain: &[GpuAxisOp],
     symbols: &SymbolValues,
@@ -66,7 +66,7 @@ fn concrete(dims: &[TDim]) -> TractResult<TVec<usize>> {
 /// The shape and strides addressing a `chain`-shaped tensor in the axis order
 /// its producer writes: `chain` applied backwards, each op's inverse carrying
 /// the shape and the strides together.
-fn unchain_strides(
+pub fn unchain_strides(
     shape: &[usize],
     strides: &[isize],
     chain: &[GpuAxisOp],

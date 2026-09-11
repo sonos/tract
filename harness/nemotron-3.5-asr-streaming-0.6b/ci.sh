@@ -112,18 +112,28 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 # Check that pulsified encoder output matches batch output.
 # --drop-partial-pulse truncates the input to a multiple of the pulse size,
 # and the output comparison is trimmed accordingly.
-$TRACT_RUN $model_prefix.encoder.nnef.tgz \
-	--nnef-tract-transformers \
-	-t 'set_symbols(values: {"BATCH": 1})' \
-	-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
-	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
-	-t 'select_outputs(outputs: ["outputs"])' \
-	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
-	run \
-	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-	--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-	--approx very \
-	--drop-partial-pulse
+# cuda serves the attention window out of a ring the GEMM rotates as it reads,
+# so it runs this too: metal has no device pulse ops and keeps them on cpu.
+pulse_runtimes=""
+case " $TRACT_RUNTIMES " in
+	*" --cuda "*) pulse_runtimes="--cuda";;
+esac
+
+for rt in "" $pulse_runtimes
+do
+	$TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t 'set_symbols(values: {"BATCH": 1})' \
+		-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		run \
+		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--approx very \
+		--drop-partial-pulse
+done
 
 # The batch axis is the lane axis, so the autobatched form of the encoder keeps
 # BATCH symbolic: no set_symbols, and a shape-generic patch body, since `length`
