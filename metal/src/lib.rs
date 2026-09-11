@@ -38,10 +38,17 @@ impl Runtime for MetalRuntime {
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
+        // Always plan transients through the device memory arena: without it
+        // every transient is an individually allocated (wired) Metal buffer,
+        // and a large-batch forward churns through gigabytes of alloc/free,
+        // spiking the process footprint into the compressor and stalling the
+        // next forwards on driver re-residency. Hints only tune the packing
+        // order; missing symbols fall back to a representative default.
+        if options.enable_gpu_memory_arena.unwrap_or(true) {
+            let hints = options.memory_sizing_hints.clone().unwrap_or_default();
             let turn_handler =
                 tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
-                    .context("While sizing memory arena. Missing hint ?")?;
+                    .context("While sizing memory arena")?;
             runnable = runnable.with_turn_handler(turn_handler);
         }
 

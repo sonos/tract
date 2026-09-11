@@ -9,12 +9,26 @@ mod tests {
     use tract_core::ops::nn::{Softmax, SoftmaxKind};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
-    use tract_gpu::tensor::IntoDevice;
+    use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
         with_borrowed_metal_stream(|_| Tensor::from_shape::<f32>(&[0], &[])?.into_device())?;
         Ok(())
+    }
+
+    #[test]
+    fn tensor_slice_keeps_owned_device_tensors_on_device() -> TractResult<()> {
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let device =
+            with_borrowed_metal_stream(|_| Tensor::from_shape(&[4, 6], &data)?.into_device())?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        let sliced = device.into_tensor().slice(0, 1, 3)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::ArenaView(_)));
+        assert_eq!(device.shape(), &[2, 6]);
+        let expected = Tensor::from_shape(&[2, 6], &data[6..18])?;
+        device.to_host()?.close_enough(&expected, Approximation::Exact)
     }
 
     fn wire_sdpa_layer(
@@ -862,5 +876,47 @@ mod tests {
             .into_tensor()
             .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Exact)?;
         Ok(())
+    }
+
+    #[test]
+    fn declared_device_resident_output_skips_to_host_sync() -> TractResult<()> {
+        use tract_gpu::fact::DeviceTypedFactExt;
+        let build = || -> TractResult<TypedModel> {
+            let mut m = TypedModel::default();
+            let a = m.add_source("a", f32::fact([2, 3]))?;
+            let b = m.add_source("b", f32::fact([2, 3]))?;
+            let sum = m.wire_node("sum", add(), &[a, b])?[0];
+            let prod = m.wire_node("prod", mul(), &[a, b])?[0];
+            m.select_output_outlets(&[sum, prod])?;
+            Ok(m)
+        };
+        let plain = MetalTransform::default().transform_into(build()?)?;
+        assert!(plain.outlet_fact(plain.outputs[0])?.as_device_fact().is_none());
+        assert!(plain.outlet_fact(plain.outputs[1])?.as_device_fact().is_none());
+        let mut declared = build()?;
+        tract_gpu::sync::declare_device_resident_outputs(&mut declared, [1])?;
+        let declared = MetalTransform::default().transform_into(declared)?;
+        assert!(declared.outlet_fact(declared.outputs[0])?.as_device_fact().is_none());
+        assert!(declared.outlet_fact(declared.outputs[1])?.as_device_fact().is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn device_resident_output_round_trips_through_an_arena_backed_state() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([2, 3]))?;
+        let one = model.add_const("one", Tensor::from_shape(&[2, 3], &[1f32; 6])?)?;
+        let mid = model.wire_node("mid", add(), &[input, one])?[0];
+        let output = model.wire_node("output", add(), &[mid, one])?[0];
+        model.select_output_outlets(&[output])?;
+        tract_gpu::sync::declare_device_resident_outputs(&mut model, [0])?;
+        let runtime = runtime_for_name("metal")?.context("Metal runtime was not registered")?;
+        let runnable = runtime.prepare(model)?;
+        let mut state = runnable.spawn()?;
+        let first = state.run(tvec![Tensor::from_shape(&[2, 3], &[0f32; 6])?.into_tvalue()])?;
+        assert!(first[0].to_device_tensor().is_ok());
+        let second = state.run(tvec![first[0].clone()])?;
+        let host = second[0].to_device_tensor()?.to_host()?;
+        host.close_enough(&Tensor::from_shape(&[2, 3], &[4f32; 6])?, Approximation::Exact)
     }
 }

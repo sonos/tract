@@ -71,4 +71,7 @@ harness = false
 
 [[bench]]
 name = "rms_norm_fusion"
+
+[[bench]]
+name = "arena_bench"
 harness = false
