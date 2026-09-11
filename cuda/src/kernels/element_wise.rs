@@ -38,6 +38,7 @@ const ALL_OP_NAMES: &[&str] = &[
     "sign",
     "hardswish",
     "bitnot",
+    "not",
 ];
 
 pub fn all_functions() -> Vec<String> {
@@ -55,10 +56,10 @@ pub fn all_functions() -> Vec<String> {
 pub fn is_supported(mini_op: &dyn ElementWiseMiniOp, dt: DatumType) -> bool {
     let name = mini_op.name().to_lowercase();
     ALL_OP_NAMES.contains(&name.as_str())
-        && if name == "bitnot" {
-            dt.is_integer() || dt.is::<bool>()
-        } else {
-            matches!(dt, DatumType::F32 | DatumType::F16)
+        && match name.as_str() {
+            "bitnot" => dt.is_integer() || dt.is::<bool>(),
+            "not" => dt.is::<bool>(),
+            _ => matches!(dt, DatumType::F32 | DatumType::F16),
         }
 }
 
@@ -164,6 +165,22 @@ mod tests {
         test_case::<f32>(&nn::Sigmoid {}, &[4, 4])?;
         test_case::<f16>(&nn::Sigmoid {}, &[4, 4])?;
         Ok(())
+    }
+
+    /// The bool ops the `Float` helper above cannot reach. `Not` is the one the
+    /// attention mask needs: without it the mask chain leaves the device for a
+    /// single negation and comes back.
+    #[test]
+    fn test_element_wise_not() -> TractResult<()> {
+        with_cuda_stream(|stream| {
+            let input = tensor1(&[true, false, true, true]).into_device()?;
+            let output = unsafe { DeviceTensor::uninitialized_dt(DatumType::Bool, input.shape())? };
+            dispatch_eval(stream, &tract_core::ops::logic::Not {}, &input, &output)?;
+            stream.synchronize()?;
+            let out = output.to_host()?.into_tensor();
+            assert_eq!(out.as_plain().unwrap().as_slice::<bool>()?, &[false, true, false, false]);
+            Ok(())
+        })
     }
 
     #[test]
