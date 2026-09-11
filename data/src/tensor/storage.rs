@@ -5,6 +5,7 @@ use std::hash::Hash;
 use crate::TractResult;
 use crate::blob::Blob;
 use crate::exotic::ExoticFact;
+use crate::tensor::Tensor;
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_eq::DynEq;
 
@@ -22,6 +23,11 @@ pub trait TensorStorage:
     fn as_plain_mut(&mut self) -> Option<&mut PlainStorage>;
     fn into_plain(self: Box<Self>) -> Option<PlainStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
+    /// Optionally specialize [`Tensor::slice`] for this storage.
+    /// Returning `None` uses the standard copy path.
+    fn slice(&self, _axis: usize, _start: usize, _end: usize) -> TractResult<Option<Tensor>> {
+        Ok(None)
+    }
     /// Build the `ExoticFact` that describes this storage for use in `TypedFact`.
     ///
     /// Plain storage returns `None`. Exotic storages should return the
