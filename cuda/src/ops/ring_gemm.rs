@@ -1,3 +1,4 @@
+use tract_core::internal::natural_strides;
 use tract_core::internal::*;
 use tract_gpu::device::get_context;
 use tract_gpu::ops::change_axes::GpuAxisOp;
@@ -7,7 +8,7 @@ use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_gpu::turn_handler::make_tensor_for_node;
 use tract_pulse_opl::ops::Delay;
 
-use crate::kernels::matmul::GgmlGemm;
+use crate::kernels::matmul::{GgmlGemm, RingAxis};
 use crate::ops::CudaGgmlGemm;
 
 /// A pulsed window and the GEMM reading it, fused: the window stays a ring of
@@ -19,8 +20,9 @@ use crate::ops::CudaGgmlGemm;
 /// and so the layout the ring is held in. The inputs are the GEMM's activations
 /// and the turn's slot, in that order, the window being the GEMM's second
 /// operand. Sound only for a window the rotation of a ring can stand for: a
-/// `Delay` of no delay and a zeroed pad, a slot per turn, and a layout whose
-/// window axis spans one channel in runs of whole slots.
+/// `Delay` of no delay and a zeroed pad, a slot per turn, and a layout under
+/// which a slot is either a run of whole rows of the window or an even run of
+/// the columns of every one of its rows -- the two axes a ring can turn on.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CudaRingGemm {
     pub delay: Delay,
@@ -122,18 +124,35 @@ impl CudaRingGemmState {
         let max_lanes = ctx.seating.max_lanes();
         let mut slots_shape: TVec<usize> = slot.shape().into();
         slots_shape[axis] = op.slots();
-        if max_lanes > 1 {
-            ensure!(axis > 0, "A ring on axis 0 leaves no axis 0 for the lanes");
-            slots_shape[0] = max_lanes;
-        }
+        // The layout the window reaches its GEMM in, for the streams this turn
+        // seats.
         let held = chain_shape(&slots_shape, &op.window_axis_ops, ctx.symbols)?;
-        let ring = Tensor::zero_dt(slot.datum_type(), &held)?.into_device()?;
-        let (unchained, strides) =
-            unchain_strides(ring.shape(), ring.strides(), &op.window_axis_ops, ctx.symbols)?;
+        let (unchained, mut strides) =
+            unchain_strides(&held, &natural_strides(&held), &op.window_axis_ops, ctx.symbols)?;
         ensure!(
             unchained == slots_shape,
             "The ring's layout leads to {unchained:?}, not {slots_shape:?}"
         );
+        // A laned ring holds a lane per seat the turn may ever seat, and the
+        // chain can fold the lane axis into another, so it holds one stream's
+        // worth of that layout per lane rather than being chained at its full
+        // width. A ring one stream owns is that layout whole.
+        let ring_shape: TVec<usize> = if max_lanes > 1 {
+            ensure!(axis > 0, "A ring on axis 0 leaves no axis 0 for the lanes");
+            let lane_span = held.iter().product::<usize>() / slots_shape[0];
+            ensure!(
+                slots_shape[0] == 1 || strides[0] as usize == lane_span,
+                "A ring held as {held:?} gives a stream stride of {}, not the {lane_span} a \
+                 whole stream of it spans",
+                strides[0]
+            );
+            slots_shape[0] = max_lanes;
+            strides[0] = lane_span as isize;
+            tvec!(max_lanes, lane_span)
+        } else {
+            held
+        };
+        let ring = Tensor::zero_dt(slot.datum_type(), &ring_shape)?.into_device()?;
         self.slots_view = Some(ring.reshaped(slots_shape)?.restrided(strides)?);
         self.ring = Some(ring);
         self.heads = tvec!(0; max_lanes);
@@ -141,15 +160,16 @@ impl CudaRingGemmState {
         Ok(())
     }
 
-    /// Where each activation channel reads: the row its window starts at within
-    /// its lane, and the row its lane starts at. A seat holds `channels /
-    /// occupancy` consecutive channels of the turn, a lane as many of the ring.
+    /// Where each activation channel reads: how far its window has turned,
+    /// counted in whatever unit a slot spans along the axis the ring turns on,
+    /// and the row its lane starts at. A seat holds `channels / occupancy`
+    /// consecutive channels of the turn, a lane as many of the ring.
     fn fill_table(
         &mut self,
         ctx: &EvalContext,
         channels: usize,
         n: usize,
-        slot_rows: usize,
+        slot_unit: usize,
     ) -> TractResult<()> {
         let occupancy = ctx.seating.occupancy();
         ensure!(channels.is_multiple_of(occupancy), "{channels} channels over {occupancy} seats");
@@ -160,7 +180,7 @@ impl CudaRingGemmState {
             let head = self.heads[lane.unwrap_or(0)];
             for c in 0..per_seat {
                 let channel = seat.unwrap_or(0) * per_seat + c;
-                table[2 * channel] = (head * slot_rows) as i32;
+                table[2 * channel] = (head * slot_unit) as i32;
                 table[2 * channel + 1] = ((lane.unwrap_or(0) * per_seat + c) * n) as i32;
             }
         }
@@ -214,13 +234,22 @@ impl OpState for CudaRingGemmState {
         let channels: usize = w_shape[..w_shape.len() - 2].iter().product();
         let slots_view = self.slots_view.clone().unwrap();
         let slot_span = slots_view.strides()[axis] as usize;
-        ensure!(
-            slot_span.is_multiple_of(k) && slot_span * slots == n * k,
-            "A slot spans {slot_span} of a {n}x{k} window, which is not a run of whole rows"
-        );
-        let slot_rows = slot_span / k;
+        let (ring_axis, slot_unit) = if slot_span.is_multiple_of(k) {
+            ensure!(
+                slot_span * slots == n * k,
+                "A slot spans {slot_span} of a {n}x{k} window, which is not a run of whole rows"
+            );
+            (RingAxis::Rows, slot_span / k)
+        } else {
+            ensure!(
+                slot_span * slots == k && slot_span.is_multiple_of(2),
+                "A slot spans {slot_span} of a {n}x{k} window, which is neither a run of \
+                 whole rows nor an even run of every row's columns"
+            );
+            (RingAxis::Contracted, slot_span / 2)
+        };
 
-        self.fill_table(ctx, channels, n, slot_rows)?;
+        self.fill_table(ctx, channels, n, slot_unit)?;
         let device = get_context()?;
         for ix in 0..occupancy {
             let (seat, lane) = ctx.seating.address(ix);
@@ -242,7 +271,7 @@ impl OpState for CudaRingGemmState {
         let ring = self.ring.as_ref().unwrap();
         let table = self.table.as_ref().unwrap();
         crate::with_cuda_stream(|stream| {
-            GgmlGemm.dispatch_matvec_ring(stream, act, ring, &out, &w_shape, table)
+            GgmlGemm.dispatch_matvec_ring(stream, act, ring, &out, &w_shape, table, ring_axis)
         })?;
         Ok(tvec!(out.into_tensor().into()))
     }

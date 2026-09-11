@@ -10,15 +10,25 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
             const int32_t stride_col_dst, const int32_t channel_ratio,
             const int32_t stride_channel_x, const int32_t stride_channel_y,
             const int32_t stride_channel_dst,
-            const int32_t *__restrict__ x_ring) {
+            const int32_t *__restrict__ x_ring,
+            const int32_t ring_rotates_k) {
   const int row = blockIdx.x;
   const int channel_dst = blockIdx.y;
   const int channel_x = channel_dst / channel_ratio;
   const int channel_y = channel_dst;
   const int tid = threadIdx.x;
 
+  // How far this channel's window has turned, in pairs of columns, when the
+  // ring turns along the contracted axis rather than along the rows.
+  int ring_off2 = 0;
   if (x_ring == nullptr) {
     x += channel_x * stride_channel_x + row * stride_row;
+  } else if (ring_rotates_k) {
+    // x holds each channel's contracted axis as a ring of whole slots, and more
+    // channels than the grid covers: the table gives how far the window has
+    // turned and where this channel's rows start.
+    ring_off2 = x_ring[2 * channel_dst];
+    x += (x_ring[2 * channel_dst + 1] + row) * stride_row;
   } else {
     // x holds each channel's gridDim.x rows as a ring, and more channels than
     // the grid covers: the table gives this channel's first row and where its
@@ -48,7 +58,11 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
     const float2 *x2 = (const float2 *)x;
     const float2 *y2 = (const float2 *)y;
     for (int col2 = tid; col2 < ncols2; col2 += block_size) {
-      const float2 tmpx = x2[col2];
+      int col2_x = col2 + ring_off2;
+      if (col2_x >= ncols2) {
+        col2_x -= ncols2;
+      }
+      const float2 tmpx = x2[col2_x];
 
 #pragma unroll
       for (int j = 0; j < ncols_dst; ++j) {
@@ -63,7 +77,11 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
     half2 sumh2[ncols_dst] = {{0.0f, 0.0f}};
 
     for (int col2 = tid; col2 < ncols2; col2 += block_size) {
-      const half2 tmpx = x2[col2];
+      int col2_x = col2 + ring_off2;
+      if (col2_x >= ncols2) {
+        col2_x -= ncols2;
+      }
+      const half2 tmpx = x2[col2_x];
 
 #pragma unroll
       for (int j = 0; j < ncols_dst; ++j) {
@@ -113,11 +131,12 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
           const int32_t stride_col_dst, const int32_t channel_ratio,                   \
           const int32_t stride_channel_x, const int32_t stride_channel_y,              \
           const int32_t stride_channel_dst,                                    \
-          const int32_t *__restrict__ x_ring) {                                \
+          const int32_t *__restrict__ x_ring,                                  \
+          const int32_t ring_rotates_k) {                                      \
     mul_mat_vec<T, ncols_dst, block_size>(                                     \
         x, y, dst, ncols2, nchannels_y, stride_row, stride_col_y2,             \
         stride_col_dst, channel_ratio, stride_channel_x, stride_channel_y,     \
-        stride_channel_dst, x_ring);                                           \
+        stride_channel_dst, x_ring, ring_rotates_k);                           \
   }
 
 #define INSTANTIATE_MAT_VEC_FOR_BS(name, T, blocksize)                         \
