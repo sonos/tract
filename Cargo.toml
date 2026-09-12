@@ -245,7 +245,15 @@ tract-pulse = { version = "0.23.8-pre", path = 'pulse' }
 tract-tensorflow = { version = "0.23.8-pre", path = 'tensorflow' }
 tract-tflite = { version = "0.23.8-pre", path = 'tflite' }
 tract-transformers = { version = "0.23.8-pre", path = 'transformers' }
-tract = { version = "0.23.8-pre", path = 'api/rs', default-features = false }
+# default-features off so the GPU backends stay opt-in per crate: an example
+# building on an ubuntu runner must not pull tract-cuda in. The rest of the
+# facade's default set has to be named back, or every in-tree consumer loses
+# gzip, pulsification and the transformers extension.
+tract = { version = "0.23.8-pre", path = 'api/rs', default-features = false, features = [
+  "flate2",
+  "pulse",
+  "transformers",
+] }
 tract-proxy-sys = { version = "0.23.8-pre", path = 'api/proxy/sys' }
 tract-cli = { version = "0.23.8-pre", path = 'cli' }
 tract-ffi = { version = "0.23.8-pre" }
