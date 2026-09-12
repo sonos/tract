@@ -8,7 +8,7 @@ authors = [
 	"Louis Chouraki <louis.chouraki@sonos.com>",
 ]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "GPU" ]
 categories = [ "science" ]
 autobenches = false
