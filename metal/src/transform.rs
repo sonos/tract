@@ -15,7 +15,7 @@ use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::Reduce;
+use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
@@ -245,6 +245,7 @@ impl MetalTransform {
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
+            .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {

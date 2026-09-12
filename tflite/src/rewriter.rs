@@ -5,7 +5,9 @@ use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::math::Recip;
-use tract_core::ops::nn::{expand_mean_of_squares, DataFormat, Resize, Softmax};
+use tract_core::ops::nn::{
+    expand_mean_of_squares, rewrite_nearest_upsample_to_broadcast, DataFormat, Resize, Softmax,
+};
 use tract_core::tract_data::itertools::Itertools;
 
 pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
@@ -21,6 +23,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("maxpool-nchw-to-nhwc", maxpool_nchw_to_nhwc)
         .with_rule_for("sumpool-nchw-to-nhwc", sumpool_nchw_to_nhwc)
         .with_rule_for("resize-nchw-to-nhwc", resize_nchw_to_nhwc)
+        .with_rule_for("nearest-upsample-to-broadcast", rewrite_nearest_upsample_to_broadcast)
         .with_rule_for("padding", padding)
         .with_rule_for("manual_recip", manual_recip)
         .with_rule_for("softmax_on_last_axis", softmax_on_last_axis)

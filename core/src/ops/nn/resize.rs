@@ -1,4 +1,5 @@
 use crate::internal::*;
+use crate::ops::array::MultiBroadcastTo;
 
 /// Maps an output coordinate back to the input axis. The ONNX coordinate
 /// transformation modes that have a well-defined inverse without an input ROI.
@@ -634,9 +635,8 @@ pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<
     })
 }
 
-/// Lowers a nearest-neighbour integer upsample to Reshape → Tile → Reshape: each
-/// upsampled axis is split into a size-1 axis, tiled by its scale, then merged
-/// back. Shared by the core and ONNX Resize declutters.
+/// Lowers a nearest-neighbour integer upsample to [`NearestUpsample`]. Shared
+/// by the core and ONNX Resize declutters.
 pub fn lower_nearest_integer_upsample(
     model: &TypedModel,
     node: &TypedNode,
@@ -644,6 +644,78 @@ pub fn lower_nearest_integer_upsample(
 ) -> TractResult<Option<TypedModelPatch>> {
     let op = NearestUpsample { scales: int_scales.iter().cloned().collect() };
     TypedModelPatch::replace_single_op(model, node, &node.inputs[..1], op).map(Some)
+}
+
+/// Expands [`NearestUpsample`] into Reshape → MultiBroadcastTo → Reshape: each
+/// upsampled axis is split into a size-1 axis, broadcast to its scale, then
+/// merged back. For the targets that take a broadcast but have no upsample of
+/// their own.
+pub fn rewrite_nearest_upsample_to_broadcast(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &NearestUpsample,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.tap_model(model, node.inputs[0])?;
+
+    let mut from_dims: TVec<TDim> = tvec![];
+    let mut to_dims: TVec<TDim> = tvec![];
+    let mut first_upsampled = None;
+
+    for (i, &scale) in op.scales.iter().enumerate() {
+        from_dims.push(input_shape[i].clone());
+        to_dims.push(input_shape[i].clone());
+        if scale > 1 {
+            if first_upsampled.is_none() {
+                first_upsampled = Some(i);
+            }
+            to_dims.push(1.into());
+        }
+    }
+
+    let Some(first) = first_upsampled else { return Ok(None) };
+
+    wire = patch.wire_node(
+        format!("{}.reshape_pre", node.name),
+        AxisOp::Reshape(first, from_dims[first..].into(), to_dims[first..].into()),
+        &[wire],
+    )?[0];
+
+    let tiled_shape: TVec<TDim> = to_dims
+        .iter()
+        .zip(op.scales.iter().flat_map(|&s| if s > 1 { vec![1usize, s] } else { vec![1] }))
+        .map(|(d, s)| d.clone() * s)
+        .collect();
+
+    wire = patch.wire_node(
+        format!("{}.broadcast", node.name),
+        MultiBroadcastTo { shape: tiled_shape.clone().into() },
+        &[wire],
+    )?[0];
+    let mut final_dims: TVec<TDim> = tvec![];
+    let mut idx = 0;
+    for &scale in &op.scales {
+        if scale > 1 {
+            final_dims.push(tiled_shape[idx].clone() * tiled_shape[idx + 1].clone());
+            idx += 2;
+        } else {
+            final_dims.push(tiled_shape[idx].clone());
+            idx += 1;
+        }
+    }
+
+    wire = patch.wire_node(
+        format!("{}.reshape_post", node.name),
+        AxisOp::Reshape(first, tiled_shape[first..].into(), final_dims[first..].into()),
+        &[wire],
+    )?[0];
+
+    patch.shunt_outside(model, node.id.into(), wire)?;
+    Ok(Some(patch))
 }
 
 #[cfg(test)]
