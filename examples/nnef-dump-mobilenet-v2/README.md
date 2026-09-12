@@ -7,7 +7,7 @@ This example shows how to translate a Neural Network to NNEF (with extensions
 if needed), then use this translated network for prediction.
 
 ```sh
-git clone https://github.com/snipsco/tract
+git clone https://github.com/sonos/tract
 cd tract/examples/nnef-mobilenet-v2/
 ```
 

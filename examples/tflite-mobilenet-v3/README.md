@@ -7,7 +7,7 @@ The example assume the following command are run in the directory of this
 example project, where this README lives.
 
 ```sh
-git clone https://github.com/snipsco/tract
+git clone https://github.com/sonos/tract
 cd tract/examples/tflite-mobilenet-v3
 ```
 
