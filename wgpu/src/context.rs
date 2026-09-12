@@ -481,7 +481,11 @@ impl WgpuContext {
     }
 
     pub fn wrap_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
-        WgpuBuffer { inner, id: self.next_buffer_id() }
+        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: false }
+    }
+
+    fn wrap_pooled_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
+        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: true }
     }
 
     pub fn create_empty_storage(&self, size: u64) -> wgpu::Buffer {
@@ -727,6 +731,10 @@ pub struct WgpuQueue {
     /// thread that owns the frame: a buffer must not be handed to another
     /// thread while a dispatch this one recorded still reads it.
     buffer_slots: RefCell<HashMap<(u64, u32), Arc<WgpuBuffer>>>,
+    /// The blocked matmul's weights, transposed once. Keyed by everything the
+    /// packing depends on, and only ever by an unpooled buffer, whose id no
+    /// later tensor can take.
+    repacked: RefCell<HashMap<RepackKey, DeviceTensor>>,
     slot_cursor: RefCell<HashMap<u64, u32>>,
     profile: Cell<bool>,
     profiled: RefCell<Vec<(&'static str, u32)>>,
@@ -858,6 +866,7 @@ impl WgpuQueue {
             pending: RefCell::new(vec![]),
             uniform_staging: RefCell::new(vec![]),
             buffer_slots: RefCell::new(HashMap::new()),
+            repacked: RefCell::new(HashMap::new()),
             slot_cursor: RefCell::new(HashMap::new()),
             profile: Cell::new(false),
             profiled: RefCell::new(vec![]),
@@ -888,6 +897,7 @@ impl WgpuQueue {
         std::mem::forget(std::mem::take(&mut *self.retained.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.retained_textures.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.buffer_slots.borrow_mut()));
+        std::mem::forget(std::mem::take(&mut *self.repacked.borrow_mut()));
         unsafe {
             std::mem::forget(ManuallyDrop::take(&mut self.uniform));
         }
@@ -912,10 +922,19 @@ impl WgpuQueue {
             bump(2);
             return held.clone();
         }
-        let fresh = Arc::new(self.context.wrap_storage(self.context.create_empty_storage(size)));
+        let fresh =
+            Arc::new(self.context.wrap_pooled_storage(self.context.create_empty_storage(size)));
         bump(3);
         slots.insert((size, seq), fresh.clone());
         fresh
+    }
+
+    pub fn repacked(&self, key: &RepackKey) -> Option<DeviceTensor> {
+        self.repacked.borrow().get(key).cloned()
+    }
+
+    pub fn store_repacked(&self, key: RepackKey, packed: DeviceTensor) {
+        self.repacked.borrow_mut().insert(key, packed);
     }
 
     pub fn retain_tensor(&self, t: &DeviceTensor) {
@@ -1215,6 +1234,16 @@ impl Drop for WgpuQueue {
     }
 }
 
+/// Identifies one blocked-matmul weight packing: the buffer it was read from,
+/// where in that buffer, and the shape it was written as.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RepackKey {
+    pub buffer: u64,
+    pub offset: usize,
+    pub k: usize,
+    pub n: usize,
+}
+
 #[derive(Clone)]
 /// The identity a bind group is keyed on. It follows the buffer through the
 /// pool, so a graph that reuses its buffers reuses its bind groups; keying on
@@ -1223,6 +1252,10 @@ impl Drop for WgpuQueue {
 pub struct WgpuBuffer {
     pub inner: wgpu::Buffer,
     pub id: u64,
+    /// Whether this buffer came from the frame pool, which hands it to the next
+    /// tensor that fits once nothing holds it. Its `id` is stable only while it
+    /// lives, so a cache must not key on a pooled buffer.
+    pub pooled: bool,
 }
 
 impl std::fmt::Debug for WgpuBuffer {
