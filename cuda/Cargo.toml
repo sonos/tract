@@ -7,7 +7,7 @@ authors = [
 	"Mathieu Poumeyrol <kali@zoy.org>",
 ]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "CUDA" ]
 categories = [ "science" ]
 autobenches = false
