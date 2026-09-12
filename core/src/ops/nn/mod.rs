@@ -13,7 +13,10 @@ pub use self::gelu_approximate::GeluApproximate;
 pub use self::gelu_exact::GeluExact;
 pub use self::grid_sample::{GridSample, InterpolationMode, PaddingMode};
 pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
-pub use self::resize::{CoordTransformer, Interpolator, Nearest, Resize};
+pub use self::resize::{
+    CoordTransformer, Interpolator, Nearest, NearestUpsample, Resize,
+    rewrite_nearest_upsample_to_broadcast,
+};
 pub use self::rms_norm::{RmsNorm, ScaledRmsNorm};
 pub use self::silu::Silu;
 pub use self::softmax::{Softmax, SoftmaxKind};
