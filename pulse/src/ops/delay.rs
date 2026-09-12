@@ -7,16 +7,15 @@ pub fn register(registry: &mut Registry) {
 
 fn ser_delay(ast: &mut IntoAst, node: &TypedNode, op: &Delay) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation(
-        "tract_pulse_delay",
-        &[wire],
-        &[
-            ("axis", numeric(op.axis)),
-            ("delay", numeric(op.delay)),
-            ("overlap", numeric(op.overlap)),
-            ("zero_pad", logical(op.zero_pad)),
-        ],
-    )))
+    let mut params = tvec!(
+        ("axis", numeric(op.axis)),
+        ("delay", numeric(op.delay)),
+        ("overlap", numeric(op.overlap)),
+    );
+    if op.zero_pad {
+        params.push(("zero_pad", logical(true)));
+    }
+    Ok(Some(invocation("tract_pulse_delay", &[wire], &params)))
 }
 
 impl PulsedOp for Delay {
