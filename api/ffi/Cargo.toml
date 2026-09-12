@@ -26,7 +26,7 @@ tract-api.workspace = true
 tract.workspace = true
 
 [features]
-default = ["cuda-13000"]
+default = ["cuda-13000", "metal"]
 
 # CUDA driver-API selectors, passed straight through to the tract facade
 # (linux/windows targets only). Exactly one must be active for CUDA support;
@@ -44,3 +44,7 @@ cuda-12090 = ["tract/cuda-12090"]
 cuda-13000 = ["tract/cuda-13000"]
 cuda-13010 = ["tract/cuda-13010"]
 cuda-13020 = ["tract/cuda-13020"]
+
+# Gates the Metal backend in the facade (Apple targets only). Enabled by
+# default; CPU-only cdylibs drop it with `--no-default-features`.
+metal = ["tract/metal"]
