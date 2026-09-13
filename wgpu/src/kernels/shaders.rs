@@ -2093,6 +2093,12 @@ fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 /// Applies the fused steps to `v`, reading each extra operand at `index`.
 fn epilogue_body(steps: &[ChainStep], index: &str) -> String {
+    epilogue_body_at(steps, index, "0u")
+}
+
+/// As [`epilogue_body`], where a mode-2 operand is read at `element`, the
+/// output element's own offset.
+fn epilogue_body_at(steps: &[ChainStep], index: &str, element: &str) -> String {
     let mut s = String::new();
     for step in steps {
         match step {
@@ -2100,7 +2106,7 @@ fn epilogue_body(steps: &[ChainStep], index: &str) -> String {
             ChainStep::Binary { op, rhs, swapped } => {
                 let i = rhs - 1;
                 s.push_str(&format!(
-                    "    let e{i} = extra{i}[params.off_extra[{i}u] + select(0u, {index}, params.mode_extra[{i}u] != 0u)];\n"
+                    "    let e{i} = extra{i}[params.off_extra[{i}u] + select(select(0u, {index}, params.mode_extra[{i}u] == 1u), {element}, params.mode_extra[{i}u] == 2u)];\n"
                 ));
                 if *swapped {
                     s.push_str(&format!("    v = op_{op}(e{i}, v);\n"));
@@ -2133,7 +2139,7 @@ pub fn matmul_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> 
     } else {
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
-    let epilogue = epilogue_body(epilogue, "col");
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -2214,6 +2220,7 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }}
     let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
     let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+    let oe = o_i - params.off_out + row * o_row_s + col * o_col_s;
     var v = {t}(acc);
 {epilogue}
     outp[o_i + row * o_row_s + col * o_col_s] = v;
@@ -2491,7 +2498,7 @@ pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: us
         })
         .collect::<String>();
     let lib = format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"));
-    let epi = epilogue_body(epilogue, "col");
+    let epi = epilogue_body_at(epilogue, "col", "oe");
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -2514,7 +2521,7 @@ struct Params {{
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
 
-fn epi(v_in: f32, col: u32) -> f32 {{
+fn epi(v_in: f32, col: u32, oe: u32) -> f32 {{
     var v = v_in;
 {epi}
     return v;
@@ -2550,17 +2557,22 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }}
     let col0 = col_tile * 4u;
     let cc = params.off_out + col0 * m4 + row_tile;
+    let e0 = (col0 * m4 + row_tile) * 4u;
+    let e1 = e0 + m4 * 4u;
+    let e2 = e1 + m4 * 4u;
+    let e3 = e2 + m4 * 4u;
     c4[cc] = vec4<f32>(
-        epi(acc0.x, col0), epi(acc0.y, col0), epi(acc0.z, col0), epi(acc0.w, col0));
+        epi(acc0.x, col0, e0), epi(acc0.y, col0, e0 + 1u),
+        epi(acc0.z, col0, e0 + 2u), epi(acc0.w, col0, e0 + 3u));
     c4[cc + m4] = vec4<f32>(
-        epi(acc1.x, col0 + 1u), epi(acc1.y, col0 + 1u),
-        epi(acc1.z, col0 + 1u), epi(acc1.w, col0 + 1u));
+        epi(acc1.x, col0 + 1u, e1), epi(acc1.y, col0 + 1u, e1 + 1u),
+        epi(acc1.z, col0 + 1u, e1 + 2u), epi(acc1.w, col0 + 1u, e1 + 3u));
     c4[cc + 2u * m4] = vec4<f32>(
-        epi(acc2.x, col0 + 2u), epi(acc2.y, col0 + 2u),
-        epi(acc2.z, col0 + 2u), epi(acc2.w, col0 + 2u));
+        epi(acc2.x, col0 + 2u, e2), epi(acc2.y, col0 + 2u, e2 + 1u),
+        epi(acc2.z, col0 + 2u, e2 + 2u), epi(acc2.w, col0 + 2u, e2 + 3u));
     c4[cc + 3u * m4] = vec4<f32>(
-        epi(acc3.x, col0 + 3u), epi(acc3.y, col0 + 3u),
-        epi(acc3.z, col0 + 3u), epi(acc3.w, col0 + 3u));
+        epi(acc3.x, col0 + 3u, e3), epi(acc3.y, col0 + 3u, e3 + 1u),
+        epi(acc3.z, col0 + 3u, e3 + 2u), epi(acc3.w, col0 + 3u, e3 + 3u));
 }}
 "#
     ));
