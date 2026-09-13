@@ -625,7 +625,7 @@ fn op_asin(x: {t}) -> {t} {{ return asin(x); }}
 fn op_atan(x: {t}) -> {t} {{ return atan(x); }}
 fn op_cosh(x: {t}) -> {t} {{ return cosh(x); }}
 fn op_sinh(x: {t}) -> {t} {{ return sinh(x); }}
-fn op_tanh(x: {t}) -> {t} {{ return tanh(x); }}
+fn op_tanh(x: {t}) -> {t} {{ return tanh(clamp(x, {t}(-15.0), {t}(15.0))); }}
 fn op_acosh(x: {t}) -> {t} {{ return acosh(x); }}
 fn op_asinh(x: {t}) -> {t} {{ return asinh(x); }}
 fn op_atanh(x: {t}) -> {t} {{ return atanh(x); }}

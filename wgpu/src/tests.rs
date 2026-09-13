@@ -227,3 +227,163 @@ fn rgba8_ingest_to_nchw_f32() -> TractResult<()> {
         close(&host, &expected)
     })
 }
+
+// --- fusion arithmetic: the fused graph must compute what the ops did apart ---
+
+fn fill(seed: u64, n: usize) -> Vec<f32> {
+    let mut s = seed ^ 0x9e37_79b9_7f4a_7c15;
+    (0..n)
+        .map(|_| {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            ((s >> 33) as f32) / (u32::MAX as f32) * 6.0 - 3.0
+        })
+        .collect()
+}
+
+fn gpu_vs_cpu(model: TypedModel, input: Tensor) -> TractResult<()> {
+    crate::context::wgpu_context();
+    let cpu = SimplePlan::new(model.clone())?;
+    let rt =
+        tract_core::runtime::runtime_for_name("wgpu")?.context("wgpu runtime not registered")?;
+    let gpu = rt.prepare(model)?;
+    let g = gpu.run(tvec!(input.clone().into()))?.remove(0).into_tensor();
+    let c = Arc::new(cpu).run(tvec!(input.into()))?.remove(0).into_tensor();
+    g.close_enough(&c, Approximation::Approximate)
+}
+
+/// Wires a random element-wise op, matching the operand's own rank for any
+/// constant it needs -- a rank-0 scalar against a rank-N tensor is rejected
+/// by tract's typed fact check before this can even reach the GPU.
+fn wire_ew(model: &mut TypedModel, name: &str, code: u8, w: OutletId) -> TractResult<OutletId> {
+    use tract_core::ops::math;
+    let rank = model.outlet_fact(w)?.rank();
+    let scalar = |model: &mut TypedModel, nm: String, v: f32| -> TractResult<OutletId> {
+        model.add_const(nm, Tensor::from_shape(&vec![1usize; rank], &[v])?)
+    };
+    Ok(match code % 8 {
+        0 => model.wire_node(name, tract_core::ops::nn::sigmoid(), &[w])?[0],
+        1 => model.wire_node(name, math::tanh(), &[w])?[0],
+        2 => model.wire_node(name, math::abs(), &[w])?[0],
+        3 => model.wire_node(name, math::neg(), &[w])?[0],
+        4 => model.wire_node(name, math::square(), &[w])?[0],
+        5 => {
+            let k = scalar(model, format!("{name}.k"), 0.5)?;
+            model.wire_node(name, math::add(), &[w, k])?[0]
+        }
+        6 => {
+            let k = scalar(model, format!("{name}.k"), 1.25)?;
+            model.wire_node(name, math::mul(), &[w, k])?[0]
+        }
+        _ => {
+            let z = scalar(model, format!("{name}.k"), 0.0)?;
+            model.wire_node(name, math::max(), &[w, z])?[0]
+        }
+    })
+}
+
+fn check_ew_chain(len: usize, ops: &[u8], seed: u64) -> TractResult<()> {
+    let mut model = TypedModel::default();
+    let mut w = model.add_source("x", f32::fact([len]))?;
+    for (i, op) in ops.iter().enumerate() {
+        w = wire_ew(&mut model, &format!("e{i}"), *op, w)?;
+    }
+    model.select_output_outlets(&[w])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[len], &fill(seed, len))?)
+}
+
+fn check_move_then_chain(
+    shape: [usize; 3],
+    from: usize,
+    to: usize,
+    ops: &[u8],
+    seed: u64,
+) -> TractResult<()> {
+    let mut model = TypedModel::default();
+    let mut w = model.add_source("x", f32::fact(&shape))?;
+    if from != to {
+        w = model.wire_node("mv", AxisOp::Move(from, to), &[w])?[0];
+    }
+    for (i, op) in ops.iter().enumerate() {
+        w = wire_ew(&mut model, &format!("e{i}"), *op, w)?;
+    }
+    model.select_output_outlets(&[w])?;
+    let n: usize = shape.iter().product();
+    gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(seed, n))?)
+}
+
+fn check_gemm_epilogue(
+    m: usize,
+    k: usize,
+    n: usize,
+    per_col: bool,
+    act: u8,
+    seed: u64,
+) -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    let mut model = TypedModel::default();
+    let a = model.add_source("a", f32::fact([m, k]))?;
+    let b = model.add_const("b", Tensor::from_shape(&[k, n], &fill(seed ^ 1, k * n))?)?;
+    let mm = model.wire_node(
+        "mm",
+        PrefixMatMul {
+            transpose_a: false,
+            transpose_b: false,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: None,
+        },
+        &[a, b],
+    )?[0];
+    let bias_shape: Vec<usize> = if per_col { vec![1, n] } else { vec![1, 1] };
+    let bias_len: usize = bias_shape.iter().product();
+    let bias =
+        model.add_const("bias", Tensor::from_shape(&bias_shape, &fill(seed ^ 2, bias_len))?)?;
+    let mut y = model.wire_node("bias_add", tract_core::ops::math::add(), &[mm, bias])?[0];
+    if act != 0 {
+        y = wire_ew(&mut model, "act", act, y)?;
+    }
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[m, k], &fill(seed, m * k))?)
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(24))]
+
+    /// Bias and a trailing activation ride the GEMM as its epilogue; the
+    /// epilogue arithmetic must match add-then-activate on the result. This
+    /// is what caught the tanh overflow this commit fixes: any activation
+    /// drawn against a matmul-scale accumulator exercises the full range a
+    /// standalone small-tensor test never reaches.
+    #[test]
+    fn prop_gemm_epilogue_matches_cpu(
+        m in 1usize..9, k in 1usize..9, n in 1usize..9,
+        per_col in proptest::prelude::any::<bool>(),
+        act in 0u8..8,
+        seed in proptest::prelude::any::<u64>(),
+    ) {
+        check_gemm_epilogue(m * 4, k * 4, n * 4, per_col, act, seed).unwrap();
+    }
+
+    /// A run of element-wise ops fuses to one chain kernel; it must still
+    /// compute the composition.
+    #[test]
+    fn prop_elementwise_chain_matches_cpu(
+        len in 1usize..96,
+        ops in proptest::collection::vec(0u8..8, 2..7),
+        seed in proptest::prelude::any::<u64>(),
+    ) {
+        check_ew_chain(len, &ops, seed).unwrap();
+    }
+
+    /// A shape-only Move in front of an element-wise chain becomes a strided
+    /// read; the values must land where the copy would have put them.
+    #[test]
+    fn prop_axis_move_then_chain_matches_cpu(
+        d0 in 1usize..6, d1 in 1usize..6, d2 in 1usize..6,
+        from in 0usize..3, to in 0usize..3,
+        ops in proptest::collection::vec(0u8..8, 1..4),
+        seed in proptest::prelude::any::<u64>(),
+    ) {
+        check_move_then_chain([d0, d1, d2], from, to, &ops, seed).unwrap();
+    }
+}
