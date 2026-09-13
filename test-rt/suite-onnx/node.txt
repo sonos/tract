@@ -134,6 +134,7 @@ test_cumsum_2d_negative_axis input:x since:13
 test_cumsum_2d not-nnef input:x since:13
 test_depthtospace.*
 test_dequantizelinear                                                               input:x not-nnef
+test_dequantizelinear_axis input:x
 test_dft.* input:x
 test_div.*
 test_dropout_default
@@ -356,6 +357,7 @@ test_prelu_example_expanded
 test_qlinearmatmul_2D                                                                
 test_qlinearmatmul_3D                                                                
 test_quantizelinear                                                                 input:x not-nnef
+test_quantizelinear_axis input:x
 test_range_float_type_positive_delta
 test_range_int32_type_negative_delta
 test_reciprocal
