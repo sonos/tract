@@ -1,6 +1,7 @@
 use tract_core::internal::*;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::ops::binary::GpuBinOp;
+use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::ops::element_wise::GpuElementWise;
 use tract_gpu::rule_ensure;
 
@@ -53,9 +54,8 @@ pub fn fuse_conv_epilogue(
     node_name: &str,
     op: &WgpuConv,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.epilogue.is_empty());
     let channels = op.op.pool_spec.output_channels.to_dim();
-    absorb(model, node, node_name, channels, |steps| WgpuConv {
+    absorb(model, node, node_name, channels, &op.epilogue, |steps| WgpuConv {
         op: op.op.clone(),
         epilogue: steps,
     })
@@ -70,7 +70,6 @@ pub fn fuse_gemm_epilogue(
     node_name: &str,
     op: &WgpuGemm,
 ) -> TractResult<Option<TypedModelPatch>> {
-    rule_ensure!(op.epilogue.is_empty());
     let out_shape = shape_of(model, node.id.into())?;
     rule_ensure!(out_shape.len() >= 2);
     let columns = if op.op.transpose_c {
@@ -78,30 +77,61 @@ pub fn fuse_gemm_epilogue(
     } else {
         out_shape[out_shape.len() - 1].clone()
     };
-    absorb(model, node, node_name, columns, |steps| WgpuGemm { op: op.op, epilogue: steps })
+    absorb(model, node, node_name, columns, &op.epilogue, |steps| WgpuGemm {
+        op: op.op,
+        epilogue: steps,
+    })
 }
 
+/// An axis op that leaves every value where it is, so an epilogue can be
+/// applied before it as well as after.
+fn is_respelling(node: &TypedNode) -> bool {
+    node.op_as::<GpuAxisOp>()
+        .is_some_and(|a| matches!(a.inner, AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Reshape(..)))
+}
+
+/// Grows the epilogue `existing` by the elementwise op that consumes the
+/// result, stepping over the respellings in between; those are re-wired after
+/// the fused op so its output keeps its own shape.
 fn absorb<O: TypedOp>(
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
     columns: TDim,
+    existing: &[ChainStep],
     build: impl FnOnce(Vec<ChainStep>) -> O,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let Some(succ) = model.single_succ(node.id)? else { return Ok(None) };
-    rule_ensure!(succ.inputs.iter().filter(|i| i.node == node.id).count() == 1);
-    rule_ensure!(shape_of(model, succ.id.into())? == shape_of(model, node.id.into())?);
+    let mut respellings: Vec<&TypedNode> = vec![];
+    let mut tail = node;
+    let succ = loop {
+        let Some(succ) = model.single_succ(tail.id)? else { return Ok(None) };
+        if is_respelling(succ) {
+            respellings.push(succ);
+            tail = succ;
+        } else {
+            break succ;
+        }
+    };
+    rule_ensure!(succ.inputs.iter().filter(|i| i.node == tail.id).count() == 1);
+    rule_ensure!(shape_of(model, succ.id.into())? == shape_of(model, tail.id.into())?);
 
-    let slot = succ.inputs.iter().position(|i| i.node == node.id).unwrap();
+    let existing_extras = node.inputs.len() - 2;
+    let slot = succ.inputs.iter().position(|i| i.node == tail.id).unwrap();
     let Some((steps, operands)) = steps_of(succ, slot, 1) else { return Ok(None) };
-    rule_ensure!(operands <= MAX_EPILOGUE_OPERANDS);
+    rule_ensure!(existing_extras + operands <= MAX_EPILOGUE_OPERANDS);
+    let steps = steps.into_iter().map(|s| match s {
+        ChainStep::Binary { op, rhs, swapped } => {
+            ChainStep::Binary { op, rhs: rhs + existing_extras, swapped }
+        }
+        other => other,
+    });
 
     let extras: TVec<OutletId> = succ
         .inputs
         .iter()
         .enumerate()
         .filter(|(i, inlet)| {
-            !(succ.op_is::<WgpuElementWiseChain>() && *i == 0) && inlet.node != node.id
+            !(succ.op_is::<WgpuElementWiseChain>() && *i == 0) && inlet.node != tail.id
         })
         .map(|(_, inlet)| *inlet)
         .collect();
@@ -111,12 +141,19 @@ fn absorb<O: TypedOp>(
     }
 
     let mut patch = TypedModelPatch::default();
-    let mut inputs = vec![patch.tap_model(model, node.inputs[0])?];
-    inputs.push(patch.tap_model(model, node.inputs[1])?);
-    for extra in extras {
-        inputs.push(patch.tap_model(model, extra)?);
+    let mut inputs = vec![];
+    for input in node.inputs.iter().chain(extras.iter()) {
+        inputs.push(patch.tap_model(model, *input)?);
     }
-    let out = patch.wire_node(format!("{node_name}.epilogue"), build(steps), &inputs)?;
-    patch.shunt_outside(model, succ.id.into(), out[0])?;
+    let all_steps = existing.iter().cloned().chain(steps).collect();
+    let mut out = patch.wire_node(format!("{node_name}.epilogue"), build(all_steps), &inputs)?[0];
+    for respelling in &respellings {
+        out = patch.wire_node(
+            format!("{}.epilogue", respelling.name),
+            respelling.op.clone(),
+            &[out],
+        )?[0];
+    }
+    patch.shunt_outside(model, succ.id.into(), out)?;
     Ok(Some(patch))
 }
