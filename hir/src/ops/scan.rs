@@ -58,7 +58,8 @@ impl InferenceScan {
             .map(|(ix, im)| {
                 Ok(match im {
                     InputMapping::Scan(info) => InputMapping::Scan(ScanInfo {
-                        chunk: typed_model.input_fact(ix)?.shape[info.axis].to_isize()?,
+                        chunk: typed_model.input_fact(ix)?.shape[info.axis].to_isize()?
+                            * info.chunk.signum(),
                         ..*info
                     }),
                     other => other.clone(),
@@ -74,7 +75,8 @@ impl InferenceScan {
                     Some((
                         slot,
                         ScanInfo {
-                            chunk: typed_model.input_fact(ix)?.shape[scan.axis].to_isize()?,
+                            chunk: typed_model.output_fact(ix)?.shape[scan.axis].to_isize()?
+                                * scan.chunk.signum(),
                             ..scan
                         },
                     ))
