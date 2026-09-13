@@ -22,12 +22,25 @@ fn shape_of(model: &TypedModel, outlet: OutletId) -> TractResult<TVec<TDim>> {
         .unwrap_or_else(|| fact.shape.dims().into()))
 }
 
-/// A GEMM's epilogue can only read an operand that is one value, or one per
-/// output column — that is what a convolution bias becomes here.
-fn addressable(model: &TypedModel, outlet: OutletId, columns: &TDim) -> TractResult<bool> {
+/// An epilogue reads an operand that is one value, or one per output column —
+/// that is what a convolution bias becomes here — or, for a GEMM, one laid out
+/// like the output itself, which a residual is. That last one is read through
+/// the output's own strides, so it cannot come from an axis op that a later
+/// pass would fold into a strided view.
+fn addressable(
+    model: &TypedModel,
+    outlet: OutletId,
+    columns: &TDim,
+    output: Option<&TVec<TDim>>,
+) -> TractResult<bool> {
     let shape = shape_of(model, outlet)?;
     let len = shape.iter().product::<TDim>();
-    Ok(len == 1.to_dim() || len == *columns)
+    if len == 1.to_dim() || len == *columns {
+        return Ok(true);
+    }
+    Ok(output.is_some_and(|out| *out == shape)
+        && !model.node(outlet.node).op_is::<GpuAxisOp>()
+        && model.node(outlet.node).op_as::<tract_core::ops::konst::Const>().is_none())
 }
 
 fn steps_of(node: &TypedNode, slot: usize, rhs: usize) -> Option<(Vec<ChainStep>, usize)> {
@@ -58,7 +71,7 @@ pub fn fuse_deconv_epilogue(
     op: &WgpuDeconv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let channels = op.op.pool_spec.output_channels.to_dim();
-    absorb(model, node, node_name, channels, &op.epilogue, |steps| WgpuDeconv {
+    absorb(model, node, node_name, channels, &op.epilogue, false, |steps| WgpuDeconv {
         op: op.op.clone(),
         epilogue: steps,
     })
@@ -72,7 +85,7 @@ pub fn fuse_conv_epilogue(
     op: &WgpuConv,
 ) -> TractResult<Option<TypedModelPatch>> {
     let channels = op.op.pool_spec.output_channels.to_dim();
-    absorb(model, node, node_name, channels, &op.epilogue, |steps| WgpuConv {
+    absorb(model, node, node_name, channels, &op.epilogue, false, |steps| WgpuConv {
         op: op.op.clone(),
         epilogue: steps,
     })
@@ -94,7 +107,7 @@ pub fn fuse_gemm_epilogue(
     } else {
         out_shape[out_shape.len() - 1].clone()
     };
-    absorb(model, node, node_name, columns, &op.epilogue, |steps| WgpuGemm {
+    absorb(model, node, node_name, columns, &op.epilogue, true, |steps| WgpuGemm {
         op: op.op,
         epilogue: steps,
     })
@@ -116,6 +129,7 @@ fn absorb<O: TypedOp>(
     node_name: &str,
     columns: TDim,
     existing: &[ChainStep],
+    elementwise: bool,
     build: impl FnOnce(Vec<ChainStep>) -> O,
 ) -> TractResult<Option<TypedModelPatch>> {
     let mut respellings: Vec<&TypedNode> = vec![];
@@ -153,8 +167,9 @@ fn absorb<O: TypedOp>(
         .map(|(_, inlet)| *inlet)
         .collect();
     rule_ensure!(extras.len() == operands);
+    let out_shape = shape_of(model, node.id.into())?;
     for extra in &extras {
-        rule_ensure!(addressable(model, *extra, &columns)?);
+        rule_ensure!(addressable(model, *extra, &columns, elementwise.then_some(&out_shape))?);
     }
 
     let mut patch = TypedModelPatch::default();

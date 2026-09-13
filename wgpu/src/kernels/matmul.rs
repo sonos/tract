@@ -82,6 +82,19 @@ pub fn epilogue_mode(extra: &DeviceTensor, n: usize) -> TractResult<u32> {
     }
 }
 
+/// As [`epilogue_mode`], plus an operand laid out exactly like the output,
+/// read element for element.
+fn gemm_epilogue_mode(extra: &DeviceTensor, n: usize, output: &DeviceTensor) -> TractResult<u32> {
+    if extra.len() == output.len() && extra.len() != 1 && extra.len() != n {
+        ensure!(
+            extra.shape() == output.shape() && extra.strides() == output.strides(),
+            "an elementwise epilogue operand must share the output's shape and strides"
+        );
+        return Ok(2);
+    }
+    epilogue_mode(extra, n)
+}
+
 /// The transpose flags a `PrefixMatMul` carries, as the kernel reads them.
 #[derive(Debug, Clone, Copy)]
 pub struct Transposes {
@@ -219,7 +232,7 @@ pub fn wgpu_matmul_dispatch(
             let mut mode_extra = [0u32; 4];
             for (i, t) in extras.iter().enumerate() {
                 off_extra[i] = element_offset(t, 0) as u32;
-                mode_extra[i] = epilogue_mode(t, n)?;
+                mode_extra[i] = gemm_epilogue_mode(t, n, output)?;
             }
             vals.extend_from_slice(&off_extra);
             vals.extend_from_slice(&mode_extra);
@@ -261,7 +274,7 @@ pub fn wgpu_matmul_dispatch(
         let mut mode_extra = [0u32; 4];
         for (i, t) in extras.iter().enumerate() {
             off_extra[i] = element_offset(t, 0) as u32;
-            mode_extra[i] = epilogue_mode(t, n)?;
+            mode_extra[i] = gemm_epilogue_mode(t, n, output)?;
         }
         vals.extend_from_slice(&off_extra);
         vals.extend_from_slice(&mode_extra);

@@ -575,3 +575,41 @@ fn deconv_bias_activation_matches_cpu() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// A residual: the operand is another tensor shaped like the product, read
+/// element for element. Two products chained so the residual is an op's
+/// output. With `transposed` every flag is set, as a channels-first pointwise
+/// convolution lowers, and the sizes are multiples of four so the blocked
+/// kernel takes it.
+fn matmul_residual(m: usize, k: usize, n: usize, transposed: bool) -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    let mut model = TypedModel::default();
+    let op = PrefixMatMul {
+        transpose_a: transposed,
+        transpose_b: transposed,
+        transpose_c: transposed,
+        quantize_output: None,
+        operating_dt: None,
+    };
+    let (a_shape, b_shape, bias_shape, w2_shape) = if transposed {
+        (vec![k, m], vec![n, k], vec![n, 1], vec![n, n])
+    } else {
+        (vec![m, k], vec![k, n], vec![1, n], vec![n, n])
+    };
+    let a = model.add_source("a", f32::fact(&*a_shape))?;
+    let b = model.add_const("b", Tensor::from_shape(&b_shape, &fill(1, k * n))?)?;
+    let bias = model.add_const("bias", Tensor::from_shape(&bias_shape, &fill(2, n))?)?;
+    let first = model.wire_node("first", op, &[a, b])?[0];
+    let first = model.wire_node("first_bias", tract_core::ops::math::add(), &[first, bias])?[0];
+    let w2 = model.add_const("w2", Tensor::from_shape(&w2_shape, &fill(3, n * n))?)?;
+    let second = model.wire_node("second", op, &[first, w2])?[0];
+    let y = model.wire_node("residual", tract_core::ops::math::add(), &[second, first])?[0];
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, m * k))?)
+}
+
+#[test]
+fn matmul_residual_matches_cpu() -> TractResult<()> {
+    matmul_residual(6, 5, 7, false)?;
+    matmul_residual(8, 8, 16, true)
+}
