@@ -255,10 +255,11 @@ pub fn average_pool(
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node, true)?;
     let strides = strides(node)?;
+    let dilations = dilations(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok((
         expand(cnn::HirSumPool::new(
-            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, 0, 0),
+            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, dilations, strides, 0, 0),
             count_include_pad,
             true,
         )),
@@ -350,9 +351,10 @@ pub fn max_pool(
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node, true)?;
     let strides = strides(node)?;
+    let dilations = dilations(node)?;
     Ok((
         expand(cnn::HirMaxPool::new(
-            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, 0, 0),
+            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, dilations, strides, 0, 0),
             if node.output.len() == 2 { Some(DatumType::I64) } else { None },
         )),
         vec![],
