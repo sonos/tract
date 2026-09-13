@@ -1865,7 +1865,15 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// Both vectors are narrow, so the whole gate fits in a single launch, which is
 /// the point — three dispatches this small are all launch and no work. The
 /// activation's own operands, a bias and a clamp, ride in `extras`.
-pub fn gemv_pair_module(dt: ShaderDtype, act: &[ChainStep], extras: usize) -> String {
+/// `extras` counts every bound operand: the activation's, then `post`'s, then
+/// the scale, which is the last one when `scaled`.
+pub fn gemv_pair_module(
+    dt: ShaderDtype,
+    act: &[ChainStep],
+    post: &[ChainStep],
+    extras: usize,
+    scaled: bool,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 3 + extras;
@@ -1877,6 +1885,13 @@ pub fn gemv_pair_module(dt: ShaderDtype, act: &[ChainStep], extras: usize) -> St
         .collect::<String>();
     let lib = format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t));
     let act_body = epilogue_body(act, "j");
+    let post_body = epilogue_body(post, "c");
+    let x_scale = if scaled {
+        let i = extras - 1;
+        format!("f32(extra{i}[params.off_extra[{i}u]])")
+    } else {
+        "1.0".to_string()
+    };
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -1913,10 +1928,11 @@ var<workgroup> hidden: array<f32, {GEMV_PAIR_WG}>;
 @compute @workgroup_size({GEMV_PAIR_WG})
 fn gemv_pair_{suf}(@builtin(local_invocation_id) lid: vec3<u32>) {{
     let tid = lid.x;
+    let x_scale = {x_scale};
     for (var j = tid; j < params.r; j += {GEMV_PAIR_WG}u) {{
         var sum = 0.0;
         for (var kk = 0u; kk < params.k; kk++) {{
-            let xv = f32(x[params.off_x + kk * params.x_s]);
+            let xv = f32(x[params.off_x + kk * params.x_s]) * x_scale;
             let wv = f32(w1[params.off_w1 + kk * params.w1_row_s + j * params.w1_col_s]);
             sum += xv * wv;
         }}
@@ -1930,7 +1946,9 @@ fn gemv_pair_{suf}(@builtin(local_invocation_id) lid: vec3<u32>) {{
         for (var j = 0u; j < params.r; j++) {{
             acc += hidden[j] * f32(w2[params.off_w2 + j * params.w2_row_s + c * params.w2_col_s]);
         }}
-        outp[params.off_out + c * params.out_s] = {t}(acc);
+        var v = {t}(acc);
+{post_body}
+        outp[params.off_out + c * params.out_s] = v;
     }}
 }}
 "#
