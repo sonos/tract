@@ -3,8 +3,8 @@ use tract_gpu::ops::reduce::Reducer;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, op_in_set,
-    pack_u32s,
+    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, SUM_RUN_WG, ShaderDtype, keys_for,
+    op_in_set, pack_u32s, sum_run_module,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -70,8 +70,63 @@ pub fn wgpu_reduce_launch(
     })
 }
 
+/// Whether a reduce is a sum over every axis from `axes[0]` to the last, with
+/// enough values under each output to keep a workgroup busy.
+pub fn is_trailing_sum_run(op: &tract_core::ops::nn::Reduce, shape: &[TDim]) -> bool {
+    let Some(&first) = op.axes.first() else { return false };
+    op.reducer == tract_core::ops::nn::Reducer::Sum
+        && op.axes.len() > 1
+        && op.axes.iter().copied().eq(first..shape.len())
+        && shape[first..]
+            .iter()
+            .product::<TDim>()
+            .to_usize()
+            .is_ok_and(|k| k >= SUM_RUN_WG as usize / 4)
+}
+
+/// One workgroup per output value, its threads striding over the reduced
+/// values and meeting in workgroup memory.
+pub fn wgpu_sum_run_launch(
+    input: &DeviceTensor,
+    first_axis: usize,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        q.retain_tensor(input);
+        q.retain_tensor(output);
+        let dt = ShaderDtype::from_datum(input.datum_type())?;
+        let outer: usize = input.shape()[..first_axis].iter().product();
+        let k: usize = input.shape()[first_axis..].iter().product();
+        ensure!(outer <= 65535, "sum run over {outer} outputs exceeds one grid dimension");
+        let layout = LayoutKind::Unary;
+        let pipeline = q.context().chain_pipeline(
+            &format!("sum_run_{}", dt.suffix()),
+            layout,
+            EntryPoint::typed("sum_run", dt),
+            || sum_run_module(dt),
+        )?;
+        let bg = q.context().bind_group(
+            layout,
+            &[get_wgpu_buffer(input), get_wgpu_buffer(output)],
+            q.uniform(),
+        )?;
+        let params = pack_u32s(&[
+            element_offset(input, 0) as u32,
+            element_offset(output, 0) as u32,
+            k as u32,
+            0,
+        ]);
+        let dyn_off = q.alloc_uniform(&params)?;
+        q.dispatch_grid("sum_run", &pipeline, &bg, dyn_off, [outer as u32, 1, 1])
+    })
+}
+
 register_wgpu_op!(tract_core::ops::nn::Reduce, |source, node, op| {
-    let dt = source.node_input_facts(node.id)?[0].datum_type;
+    let fact = &source.node_input_facts(node.id)?[0];
+    let dt = fact.datum_type;
+    if is_trailing_sum_run(op, fact.shape.dims()) && dt.is_float() {
+        return Ok(Some(Box::new(crate::ops::sum_run::WgpuSumRun { first_axis: op.axes[0] })));
+    }
     if let Ok(gpu_op) =
         tract_gpu::ops::reduce::GpuReduce::from_tract_core(op, "Wgpu", wgpu_reduce_launch)
     {

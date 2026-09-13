@@ -12,6 +12,8 @@
 use tract_core::internal::*;
 
 pub const WORKGROUP: u32 = 64;
+/// Threads in a cooperative sum: each output gets one workgroup this wide.
+pub const SUM_RUN_WG: u32 = 256;
 
 /// Reads one of the eight values a uniform packs as two `vec4<u32>`.
 const AT8: &str = "fn at8(a: vec4<u32>, b: vec4<u32>, i: u32) -> u32 {
@@ -888,6 +890,50 @@ fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
         out_i += c * at8(params.out_s0, params.out_s1, axis);
     }}
     outp[out_i] = inp[in_i];
+}}
+"#
+    ));
+    s
+}
+
+/// A sum over the trailing values of each output: one workgroup per output,
+/// threads striding over its `k` values, then a tree over workgroup memory.
+pub fn sum_run_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    k: u32,
+    _p0: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+var<workgroup> partial: array<f32, {SUM_RUN_WG}>;
+
+@compute @workgroup_size({SUM_RUN_WG})
+fn sum_run_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let base = params.off_in + wid.x * params.k;
+    var acc = 0.0;
+    for (var i = lid.x; i < params.k; i += {SUM_RUN_WG}u) {{
+        acc += f32(inp[base + i]);
+    }}
+    partial[lid.x] = acc;
+    for (var stride = {SUM_RUN_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    if (lid.x == 0u) {{
+        outp[params.off_out + wid.x] = {t}(partial[0]);
+    }}
 }}
 "#
     ));

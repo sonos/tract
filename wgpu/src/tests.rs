@@ -387,3 +387,20 @@ proptest::proptest! {
         check_move_then_chain([d0, d1, d2], from, to, &ops, seed).unwrap();
     }
 }
+
+/// A sum over both trailing axes at once, as a global pooling is: one
+/// cooperative launch instead of one per axis.
+#[test]
+fn trailing_sum_run_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::nn::{Reduce, Reducer};
+    for shape in [[3, 20, 17], [16, 9, 16], [2, 1000, 3]] {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact(shape))?;
+        let y =
+            model.wire_node("sum", Reduce { axes: tvec![1, 2], reducer: Reducer::Sum }, &[a])?[0];
+        model.select_output_outlets(&[y])?;
+        let n: usize = shape.iter().product();
+        gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(7, n))?)?;
+    }
+    Ok(())
+}
