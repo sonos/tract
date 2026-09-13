@@ -267,6 +267,11 @@ fn split_multi_axis_reduce(
     rule_if!(op.axes.len() > 1);
     use tract_core::ops::nn::Reducer::*;
     rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    let fact = model.outlet_fact(node.inputs[0])?;
+    rule_if!(
+        !(crate::kernels::reduce::is_trailing_sum_run(op, fact.shape.dims())
+            && fact.datum_type.is_float())
+    );
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
     let mut axes = op.axes.clone();
