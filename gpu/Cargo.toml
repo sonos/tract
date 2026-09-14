@@ -21,13 +21,18 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 derive-new.workspace = true
+erased-serde.workspace = true
 log.workspace = true
 downcast-rs.workspace = true
 num-traits.workspace = true
+serde.workspace = true
 tract-core.workspace = true
 tract-pulse-opl.workspace = true
 tract-transformers.workspace = true
 dyn-hash.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dev-dependencies]
 tract-metal.workspace = true
