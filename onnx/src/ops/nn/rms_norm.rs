@@ -1,4 +1,4 @@
-use crate::model::ParsingContext;
+use crate::model::{ParsingContext, optional_outputs};
 use crate::pb::NodeProto;
 use tract_core::ops::cast::cast;
 use tract_core::ops::math::{add, mul, rsqrt};
@@ -13,7 +13,9 @@ pub fn rms_normalization(
     let axis = node.get_attr_opt::<isize>("axis")?.unwrap_or(-1);
     let epsilon = node.get_attr_opt("epsilon")?.unwrap_or(1e-5f32);
     let have_bias = node.input.len() >= 3 && !node.input[2].is_empty();
-    Ok((expand(RmsNormalization { axis, epsilon, have_bias }), vec![]))
+    // onnxruntime's SimplifiedLayerNormalization has an optional second output, inv_std_var.
+    let invstd = optional_outputs(node).nth(1).flatten().is_some();
+    Ok((expand(RmsNormalization { axis, epsilon, have_bias, invstd }), vec![]))
 }
 
 #[derive(Debug, Clone)]
@@ -21,11 +23,16 @@ struct RmsNormalization {
     axis: isize,
     epsilon: f32,
     have_bias: bool,
+    invstd: bool,
 }
 
 impl Expansion for RmsNormalization {
     fn name(&self) -> StaticName {
         "RmsNormalization".into()
+    }
+
+    fn nboutputs(&self) -> TractResult<usize> {
+        Ok(1 + self.invstd as usize)
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(
@@ -35,9 +42,27 @@ impl Expansion for RmsNormalization {
         outputs: &'p [TensorProxy],
     ) -> InferenceResult {
         check_input_arity(inputs, 2 + self.have_bias as usize)?;
-        check_output_arity(outputs, 1)?;
+        check_output_arity(outputs, self.nboutputs()?)?;
         s.equals(&inputs[0].datum_type, &outputs[0].datum_type)?;
         s.equals(&inputs[0].shape, &outputs[0].shape)?;
+        if self.invstd {
+            s.equals(&outputs[1].datum_type, DatumType::F32)?;
+            s.equals(&inputs[0].rank, &outputs[1].rank)?;
+            s.given(&inputs[0].rank, move |s, rank| {
+                let axis = if self.axis < 0 {
+                    (self.axis + rank as isize) as usize
+                } else {
+                    self.axis as usize
+                };
+                for ax in 0..axis {
+                    s.equals(&inputs[0].shape[ax], &outputs[1].shape[ax])?;
+                }
+                for ax in axis..rank as usize {
+                    s.equals(&outputs[1].shape[ax], 1.to_dim())?;
+                }
+                Ok(())
+            })?;
+        }
         Ok(())
     }
 
@@ -81,10 +106,14 @@ impl Expansion for RmsNormalization {
             mul(),
             &[normalized_cast, inputs[1]],
         )?[0];
-        if self.have_bias {
-            wire_with_rank_broadcast(prefix, model, add(), &[scaled, inputs[2]])
+        let mut outputs = if self.have_bias {
+            wire_with_rank_broadcast(prefix, model, add(), &[scaled, inputs[2]])?
         } else {
-            Ok(tvec![scaled])
+            tvec![scaled]
+        };
+        if self.invstd {
+            outputs.push(inv_rms);
         }
+        Ok(outputs)
     }
 }
