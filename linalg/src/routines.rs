@@ -719,6 +719,14 @@ where
 mod tests {
     use super::*;
 
+    /// Every build declares kernels, generic ones at least. An empty registry is a build that
+    /// lost them, and every test reading the matrix would pass on a machine that can compute
+    /// nothing.
+    #[test]
+    fn the_registry_is_never_empty() {
+        assert!(declared().next().is_some());
+    }
+
     /// The dispatch table is indexed by [`Func::slot`], so every function must own one slot
     /// inside it, and the cache must answer what a fresh scan would.
     #[test]
