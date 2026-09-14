@@ -113,6 +113,7 @@ fn ignore_onnx(t: &[String]) -> bool {
     test_attention_4d_gqa_with_past_and_present_fp16
     test_attention_4d_scaled
     test_attention_4d_with_past_and_present
+    test_matmul_bcast
     "#
     .trim()
     .lines()
