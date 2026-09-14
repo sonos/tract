@@ -31,6 +31,7 @@ tract-onnx-opl.workspace = true
 
 [dev-dependencies]
 env_logger.workspace = true
+tempfile.workspace = true
 
 # [build-dependencies]
 # protobuf-src = "1.0.5+3.19.3"
