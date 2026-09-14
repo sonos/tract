@@ -404,7 +404,6 @@ pub fn dispatch_mlx_sdpa(
 
     if let Some(m) = mask {
         ensure!(m.datum_type() == dt, "MLX SDPA mask dt {:?} != {dt:?}", m.datum_type());
-        ensure_natural(m, "mask")?;
         stream.retain_tensor(m);
     }
     stream.retain_tensor(q);
