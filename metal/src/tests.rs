@@ -9,12 +9,26 @@ mod tests {
     use tract_core::ops::nn::{Softmax, SoftmaxKind};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
-    use tract_gpu::tensor::IntoDevice;
+    use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
         with_borrowed_metal_stream(|_| Tensor::from_shape::<f32>(&[0], &[])?.into_device())?;
         Ok(())
+    }
+
+    #[test]
+    fn tensor_slice_keeps_owned_device_tensors_on_device() -> TractResult<()> {
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let device =
+            with_borrowed_metal_stream(|_| Tensor::from_shape(&[4, 6], &data)?.into_device())?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        let sliced = device.into_tensor().slice(0, 1, 3)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::ArenaView(_)));
+        assert_eq!(device.shape(), &[2, 6]);
+        let expected = Tensor::from_shape(&[2, 6], &data[6..18])?;
+        device.to_host()?.close_enough(&expected, Approximation::Exact)
     }
 
     fn wire_sdpa_layer(

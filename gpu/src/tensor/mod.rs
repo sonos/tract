@@ -245,6 +245,28 @@ impl TensorStorage for DeviceTensor {
         // no meaningful hash for device memory
     }
 
+    fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Option<Tensor>> {
+        let tensor = match self {
+            Self::ArenaView(view) => DeviceTensor::ArenaView(view.sliced(axis, start, end)?),
+            Self::Owned(owned)
+                if owned.exotic_fact().is_none()
+                    && owned.strides().iter().all(|&stride| stride >= 0) =>
+            {
+                let arena = Arc::new(tract_core::dyn_clone::clone_box(&**owned));
+                let view = DeviceArenaView::from_owned(
+                    arena,
+                    self.datum_type(),
+                    owned.shape().into(),
+                    owned.strides().into(),
+                    0,
+                )?;
+                DeviceTensor::ArenaView(view.sliced(axis, start, end)?)
+            }
+            Self::Owned(_) => return Ok(Some((*self.to_host()?).slice(axis, start, end)?)),
+        };
+        Ok(Some(tensor.into_tensor()))
+    }
+
     fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
         bail!(
             "DeviceTensor cannot reconstruct a DeviceFact: origin (FromHost/FromDevice) is not carried by storage"
