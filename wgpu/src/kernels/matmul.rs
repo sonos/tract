@@ -10,8 +10,9 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::RepackKey;
 use crate::kernels::shaders::{
-    ChainStep, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for,
-    matmul_blocked_module, matmul_module, pack_u32s, rpad8_dims, rpad8_strides,
+    ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, ModuleKey, ModuleKind, PipelineKey,
+    ShaderDtype, keys_for, matmul_blocked_module, matmul_module, pack_u32s, rpad8_dims,
+    rpad8_strides,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -151,6 +152,7 @@ fn blocked_applies(
         && m.is_multiple_of(4)
         && n.is_multiple_of(4)
         && k.is_multiple_of(4)
+        && ((m / 4) * (n / 4)).div_ceil(MATMUL_BLOCKED_WG as usize) <= 65535
         && t.a
         && t.b
         && t.c
@@ -237,13 +239,8 @@ pub fn wgpu_matmul_dispatch(
             vals.extend_from_slice(&off_extra);
             vals.extend_from_slice(&mode_extra);
             let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
-            return q.dispatch(
-                "matmul_blocked",
-                &pipeline,
-                &bg,
-                dyn_off,
-                ((m / 4) * (n / 4)) as u64,
-            );
+            let groups = ((m / 4) * (n / 4)).div_ceil(MATMUL_BLOCKED_WG as usize) as u32;
+            return q.dispatch_grid("matmul_blocked", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
 
         let mut buffers: Vec<&crate::context::WgpuBuffer> =

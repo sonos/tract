@@ -608,6 +608,32 @@ fn matmul_residual(m: usize, k: usize, n: usize, transposed: bool) -> TractResul
     gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, m * k))?)
 }
 
+/// `k` a multiple of four but not of eight, so the blocked kernel's unrolled
+/// loop leaves a four-step tail to run.
+#[test]
+fn matmul_blocked_k_tail_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    for (m, k, n) in [(64usize, 12usize, 16usize), (144, 20, 32), (16, 4, 8)] {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([k, m]))?;
+        let b = model.add_const("b", Tensor::from_shape(&[n, k], &fill(1, n * k))?)?;
+        let op = PrefixMatMul {
+            transpose_a: true,
+            transpose_b: true,
+            transpose_c: true,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let out = model.wire_node("mm", op, &[a, b])?[0];
+        let bias = model.add_const("bias", Tensor::from_shape(&[n, 1], &fill(2, n))?)?;
+        let y = model.wire_node("bias_add", tract_core::ops::math::add(), &[out, bias])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[k, m], &fill(3, k * m))?)
+            .with_context(|| format!("m={m} k={k} n={n}"))?;
+    }
+    Ok(())
+}
+
 #[test]
 fn matmul_residual_matches_cpu() -> TractResult<()> {
     matmul_residual(6, 5, 7, false)?;
