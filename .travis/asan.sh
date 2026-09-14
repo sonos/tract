@@ -14,11 +14,14 @@ export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
 export CARGO_EXTRA="--target $TARGET"
 
-# macos ld-prime rejects inventory's asan static initializers with
-# "initializer pointer has no target"; the classic linker links them fine.
+# asan's global redzones break the __DATA,__mod_init_func entries `inventory`
+# writes: ld-prime rejects them with "initializer pointer has no target", and
+# the classic linker takes them and silently registers nothing, which leaves
+# every registry empty and the tests reading them vacuously green. Leave
+# globals uninstrumented; heap and stack checking are unaffected.
 if [ $(uname) == "Darwin" ]
 then
-    RUSTFLAGS="$RUSTFLAGS -Clink-arg=-Wl,-ld_classic"
+    RUSTFLAGS="$RUSTFLAGS -Cllvm-args=-asan-globals=0"
 fi
 export RUSTDOCFLAGS=$RUSTFLAGS
 
