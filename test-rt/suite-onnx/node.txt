@@ -63,6 +63,7 @@ test_averagepool_3d_default
 test_averagepool_3d_dilations_large_count_include_pad_is_0_ceil_mode_is_False
 test_averagepool_3d_dilations_large_count_include_pad_is_0_ceil_mode_is_True
 test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_False
+test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True
 test_averagepool_3d_dilations_small
 test_basic_convinteger                                                              input:x 
 test_basic_conv_without_padding input:x
