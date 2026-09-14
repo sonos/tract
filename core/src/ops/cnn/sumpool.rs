@@ -3,6 +3,7 @@ use num_traits::AsPrimitive;
 use std::iter::Sum;
 
 use crate::ops::cnn::pools::{ConcretePoolGeometry, PoolGeometry, PoolSpec};
+use crate::ops::cnn::{PaddingSpec, Patch};
 
 crate::declare_knob!(
     TRACT_AVGPOOL_SEPARABLE,
@@ -174,6 +175,25 @@ impl TypedOp for OptSumPool {
     as_op!();
 }
 
+/// Kernel taps of the window at `output_coords` that land inside the padded input, the
+/// `count_include_pad` divisor. It is the full kernel, except with ONNX ceil mode where the
+/// last window can run past the explicit padding and the overhang is not counted.
+fn padded_window_len(patch: &Patch, output_coords: &[usize]) -> usize {
+    let spec = &patch.spec;
+    let PaddingSpec::ExplicitOnnxPool(before, after, true) = &spec.padding else {
+        return patch.standard_layout_data_field.len();
+    };
+    (0..spec.kernel_shape.len())
+        .map(|ax| {
+            let padded_len = before[ax] + spec.input_shape[ax] + after[ax];
+            let start = output_coords[ax] * spec.strides[ax];
+            (0..spec.kernel_shape[ax])
+                .filter(|k| start + k * spec.dilations[ax] < padded_len)
+                .count()
+        })
+        .product()
+}
+
 impl OptSumPool {
     fn eval_t<T: Copy + Datum + Sum + num_traits::Float>(
         &self,
@@ -197,7 +217,7 @@ impl OptSumPool {
                 let div: Option<T> = if self.normalize {
                     Some(
                         if self.count_include_pad {
-                            geo.patch.standard_layout_data_field.len().as_()
+                            padded_window_len(&geo.patch, &visitor.output_coords).as_()
                         } else {
                             visitor.valid_count().as_()
                         }
