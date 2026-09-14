@@ -4,7 +4,7 @@ use crate::pb::tensor_proto::DataType;
 use crate::pb::*;
 use prost::Message;
 use std::convert::{TryFrom, TryInto};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tract_hir::internal::*;
 
 impl TryFrom<DataType> for DatumType {
@@ -78,6 +78,30 @@ pub fn translate_inference_fact(
     Ok(fact)
 }
 
+/// Resolves an existing relative external-data path within its canonical model directory.
+fn resolve_external_data_path(model_dir: &Path, location: &str) -> TractResult<PathBuf> {
+    let location_path = Path::new(location);
+    if location_path.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) {
+        bail!(
+            "external data location must be a relative path inside the model directory, got {location:?}"
+        );
+    }
+
+    let model_dir = if model_dir.as_os_str().is_empty() { Path::new(".") } else { model_dir };
+    let model_dir = model_dir
+        .canonicalize()
+        .with_context(|| format!("Canonicalizing ONNX model directory {model_dir:?}"))?;
+    let data_path = model_dir.join(location_path);
+    let data_path = data_path
+        .canonicalize()
+        .with_context(|| format!("Canonicalizing ONNX external data path {data_path:?}"))?;
+    ensure!(
+        data_path.starts_with(&model_dir),
+        "external data path {data_path:?} resolves outside the model directory {model_dir:?}"
+    );
+    Ok(data_path)
+}
+
 fn get_external_resources(
     provider: &dyn ModelDataResolver,
     t: &TensorProto,
@@ -91,18 +115,6 @@ fn get_external_resources(
         .find(|it| it.key == "location")
         .map(|it| it.value.as_str())
         .context("Could not find external data location")?;
-
-    // `location` comes from the untrusted model file; confine it to the model
-    // directory so it cannot escape via an absolute path or `..`.
-    let location_path = std::path::Path::new(location);
-    if location_path
-        .components()
-        .any(|c| !matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir))
-    {
-        bail!(
-            "external data location must be a relative path inside the model directory, got {location:?}"
-        );
-    }
 
     let offset: usize = t
         .external_data
@@ -121,12 +133,43 @@ fn get_external_resources(
         .transpose()
         .context("Error while parsing length value on external data description")?;
 
-    let p = PathBuf::from(path).join(location_path);
+    let p = resolve_external_data_path(Path::new(path), location)?;
 
     trace!("external file detected: {p:?}, offset {offset:?}, length: {length:?}");
     provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;
     trace!("external file loaded");
     Ok(tensor_data)
+}
+
+#[cfg(all(test, unix))]
+mod path_tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::symlink;
+
+    #[test]
+    fn external_data_path_must_resolve_inside_model_directory() -> TractResult<()> {
+        let temp = tempfile::tempdir()?;
+        let model_dir = temp.path().join("model");
+        let outside = temp.path().join("outside.bin");
+        fs::create_dir(&model_dir)?;
+        fs::write(model_dir.join("inside.bin"), b"inside")?;
+        fs::write(&outside, b"outside")?;
+        symlink("inside.bin", model_dir.join("inside-link"))?;
+        symlink("../outside.bin", model_dir.join("relative-outside-link"))?;
+        symlink(&outside, model_dir.join("absolute-outside-link"))?;
+        symlink(temp.path(), model_dir.join("outside-dir"))?;
+
+        let inside = model_dir.join("inside.bin").canonicalize()?;
+        assert_eq!(resolve_external_data_path(&model_dir, "inside.bin")?, inside);
+        assert_eq!(resolve_external_data_path(&model_dir, "inside-link")?, inside);
+        assert!(resolve_external_data_path(&model_dir, "relative-outside-link").is_err());
+        assert!(resolve_external_data_path(&model_dir, "absolute-outside-link").is_err());
+        assert!(resolve_external_data_path(&model_dir, "outside-dir/outside.bin").is_err());
+        assert!(resolve_external_data_path(&model_dir, "../outside.bin").is_err());
+        assert!(resolve_external_data_path(&model_dir, outside.to_str().unwrap()).is_err());
+        Ok(())
+    }
 }
 
 fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<Tensor> {
