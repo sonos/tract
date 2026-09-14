@@ -32,6 +32,8 @@ mod tensor;
 mod tests;
 mod transform;
 mod utils;
+#[cfg(target_arch = "wasm32")]
+mod wasm_record;
 
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
