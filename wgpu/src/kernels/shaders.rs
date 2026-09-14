@@ -14,6 +14,8 @@ use tract_core::internal::*;
 pub const WORKGROUP: u32 = 64;
 /// Threads in a cooperative sum: each output gets one workgroup this wide.
 pub const SUM_RUN_WG: u32 = 256;
+/// Steps of each of the gemv pair's reductions taken per iteration.
+pub const GEMV_PAIR_UNROLL: usize = 10;
 
 /// The fused squeeze-excitation gate runs as one workgroup of this width.
 pub const GEMV_PAIR_WG: u32 = 256;
@@ -1867,6 +1869,12 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// activation's own operands, a bias and a clamp, ride in `extras`.
 /// `extras` counts every bound operand: the activation's, then `post`'s, then
 /// the scale, which is the last one when `scaled`.
+///
+/// Both reductions are unrolled by [`GEMV_PAIR_UNROLL`] with a scalar tail, the
+/// second into that many accumulators: the vectors are short enough that only a
+/// few dozen of the workgroup's threads have a row at all, so what is left to
+/// win is instruction-level parallelism inside each of them rather than more
+/// threads.
 pub fn gemv_pair_module(
     dt: ShaderDtype,
     act: &[ChainStep],
@@ -1886,6 +1894,16 @@ pub fn gemv_pair_module(
     let lib = format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t));
     let act_body = epilogue_body(act, "j");
     let post_body = epilogue_body(post, "c");
+    let unroll = GEMV_PAIR_UNROLL;
+    let unroll_last = unroll - 1;
+    let first_unrolled: String = (0..unroll)
+        .map(|i| format!("            sum += x_at(kk + {i}u) * x_scale * w1_at(kk + {i}u, j);\n"))
+        .collect();
+    let acc_decls: String = (0..unroll).map(|i| format!("        var acc{i} = 0.0;\n")).collect();
+    let second_unrolled: String = (0..unroll)
+        .map(|i| format!("            acc{i} += hidden[j + {i}u] * w2_at(j + {i}u, c);\n"))
+        .collect();
+    let acc_sum = (0..unroll).map(|i| format!("acc{i}")).collect::<Vec<_>>().join(" + ");
     let x_scale = if scaled {
         let i = extras - 1;
         format!("f32(extra{i}[params.off_extra[{i}u]])")
@@ -1923,6 +1941,14 @@ struct Params {{
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
 
+fn x_at(kk: u32) -> f32 {{ return f32(x[params.off_x + kk * params.x_s]); }}
+fn w1_at(kk: u32, j: u32) -> f32 {{
+    return f32(w1[params.off_w1 + kk * params.w1_row_s + j * params.w1_col_s]);
+}}
+fn w2_at(j: u32, c: u32) -> f32 {{
+    return f32(w2[params.off_w2 + j * params.w2_row_s + c * params.w2_col_s]);
+}}
+
 var<workgroup> hidden: array<f32, {GEMV_PAIR_WG}>;
 
 @compute @workgroup_size({GEMV_PAIR_WG})
@@ -1931,10 +1957,12 @@ fn gemv_pair_{suf}(@builtin(local_invocation_id) lid: vec3<u32>) {{
     let x_scale = {x_scale};
     for (var j = tid; j < params.r; j += {GEMV_PAIR_WG}u) {{
         var sum = 0.0;
-        for (var kk = 0u; kk < params.k; kk++) {{
-            let xv = f32(x[params.off_x + kk * params.x_s]) * x_scale;
-            let wv = f32(w1[params.off_w1 + kk * params.w1_row_s + j * params.w1_col_s]);
-            sum += xv * wv;
+        var kk = 0u;
+        while (kk + {unroll_last}u < params.k) {{
+{first_unrolled}            kk += {unroll}u;
+        }}
+        for (; kk < params.k; kk++) {{
+            sum += x_at(kk) * x_scale * w1_at(kk, j);
         }}
         var v = {t}(sum);
 {act_body}
@@ -1942,11 +1970,14 @@ fn gemv_pair_{suf}(@builtin(local_invocation_id) lid: vec3<u32>) {{
     }}
     workgroupBarrier();
     for (var c = tid; c < params.n; c += {GEMV_PAIR_WG}u) {{
-        var acc = 0.0;
-        for (var j = 0u; j < params.r; j++) {{
-            acc += hidden[j] * f32(w2[params.off_w2 + j * params.w2_row_s + c * params.w2_col_s]);
+{acc_decls}        var j = 0u;
+        while (j + {unroll_last}u < params.r) {{
+{second_unrolled}            j += {unroll}u;
         }}
-        var v = {t}(acc);
+        for (; j < params.r; j++) {{
+            acc0 += hidden[j] * w2_at(j, c);
+        }}
+        var v = {t}({acc_sum});
 {post_body}
         outp[params.off_out + c * params.out_s] = v;
     }}
