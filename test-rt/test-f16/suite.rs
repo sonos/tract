@@ -78,6 +78,7 @@ test_if
 test_maxpool_2d_ceil
 test_maxpool_2d_same_lower
 test_maxpool_with_argmax_2d_precomputed_pads
+test_maxpool_with_argmax_2d_precomputed_strides
 test_mod_broadcast
 test_mod_int64_fmod
 test_mod_mixed_sign_float16

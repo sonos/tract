@@ -269,6 +269,7 @@ test_maxpool_3d_dilations
 test_maxpool_3d_dilations_use_ref_impl
 test_maxpool_3d_dilations_use_ref_impl_large
 test_maxpool_with_argmax_2d_precomputed_pads not-nnef
+test_maxpool_with_argmax_2d_precomputed_strides not-nnef
 test_mean_example
 test_mean_one_input
 test_mean_two_inputs

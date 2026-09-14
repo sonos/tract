@@ -23,6 +23,7 @@ mod layer_norm;
 mod lp_norm;
 mod lrn;
 mod mat_mul_nbits;
+mod max_pool;
 mod mish;
 #[cfg(feature = "transformers")]
 mod multi_head_attention;
@@ -73,7 +74,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn::lrn);
     reg.insert("MatMulNBits", mat_mul_nbits::mat_mul_nbits);
-    reg.insert("MaxPool", max_pool);
+    reg.insert("MaxPool", max_pool::max_pool);
     reg.insert("MeanVarianceNormalization", mvn::mean_variance_normalization);
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
@@ -342,23 +343,6 @@ pub fn leaky_relu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
     Ok((expand(ops::activations::LeakyRelu(alpha)), vec![]))
-}
-
-pub fn max_pool(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let kernel_shape = node.get_attr_tvec("kernel_shape")?;
-    let pad = pad(node, true)?;
-    let strides = strides(node)?;
-    let dilations = dilations(node)?;
-    Ok((
-        expand(cnn::HirMaxPool::new(
-            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, dilations, strides, 0, 0),
-            if node.output.len() == 2 { Some(DatumType::I64) } else { None },
-        )),
-        vec![],
-    ))
 }
 
 pub fn parametric_softplus(
