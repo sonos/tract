@@ -3,7 +3,7 @@ use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    ChainStep, DW_WG, DepthwiseShape, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey,
+    ChainStep, DepthwiseShape, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey,
     ShaderDtype, conv_depthwise_module, conv_module, keys_for, pack_u32s, program_key,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
@@ -109,7 +109,8 @@ fn dispatch_depthwise(
     vals.extend_from_slice(&off_extra);
     vals.extend_from_slice(&mode_extra);
     let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
-    let groups = [(ow as u32).div_ceil(DW_WG), (oh as u32).div_ceil(DW_WG), (n * co) as u32];
+    let wg = shape.wg();
+    let groups = [(ow as u32).div_ceil(wg), (oh as u32).div_ceil(wg), (n * co) as u32];
     q.dispatch_grid("conv_depthwise", &pipeline, &bg, dyn_off, groups)
 }
 
