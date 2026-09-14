@@ -65,8 +65,8 @@ macro_rules! register_metal_op {
 /// Metal-local SDPA flattening: explode only the `Sdpa` nodes neither fused
 /// kernel can take (MLX port first, vendored MFA metallib second), leaving
 /// fusable ones for the chooser translator in `kernels::matmul::mlx_sdpa`.
-/// (The shared `tract_gpu` `rewire_sdpa` explodes all of them; cuda still
-/// uses it.)
+/// (The shared `tract_gpu` `rewire_sdpa` explodes all of them; the cuda
+/// transform carries the same local rule.)
 fn flatten_unfused_sdpa(
     _ctx: &(),
     model: &TypedModel,
