@@ -148,7 +148,7 @@ criterion = "0.8"
 cudarc = { version = "0.19", features = ["dynamic-loading", "f16", "cudnn"] }
 derive-new = "0.7"
 dinghy-test = "0.8"
-dirs = "6.0.0"
+dirs = "7.0.0"
 downcast-rs = "2.0"
 dyn-clone = "1.0.4"
 dyn-eq = "0.1"
@@ -224,7 +224,7 @@ unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 zerofrom = "0.1.5"
 wgpu = { version = "30.0.1", features = ["fragile-send-sync-non-atomic-wasm"] }
-pollster = "0.4"
+pollster = "1.0"
 tract-api = { version = "0.23.8-pre", path = 'api' }
 tract-core = { version = "0.23.8-pre", path = 'core' }
 tract-cuda = { version = "0.23.8-pre", path = 'cuda', default-features = false }
