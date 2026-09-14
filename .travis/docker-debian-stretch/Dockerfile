@@ -11,7 +11,7 @@ ENV APT_OPTS="-o Acquire::Check-Valid-Until=false"
 # per run.
 RUN apt-get $APT_OPTS update && apt-get $APT_OPTS install -y --no-install-recommends \
         ca-certificates curl wget build-essential sudo clang llvm \
-        python3 python3-numpy jshon libssl-dev pkg-config \
+        python3 python3-numpy jq libssl-dev pkg-config \
         qemu-system-arm qemu-user \
         binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
         binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf libc6-dev-armhf-cross \
