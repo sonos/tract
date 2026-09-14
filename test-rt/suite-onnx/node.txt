@@ -224,6 +224,7 @@ test_hardsigmoid_expanded_ver18
 test_hardswish
 test_hardswish_expanded
 test_identity
+test_instancenorm_epsilon
 test_instancenorm_example
 test_isinf.*
 test_isnan
