@@ -52,8 +52,12 @@ then
     cargo clean
 fi
 
-# Build libtract.so with asan, then run proxy tests against it
-cargo build -p tract-ffi $CARGO_EXTRA
-LIBTRACT_DIR=$(dirname $(find target -name 'libtract.so' | head -1))
-TRACT_DYLIB_SEARCH_PATH=$LIBTRACT_DIR LD_LIBRARY_PATH=$LIBTRACT_DIR cargo -q test -q -p tract-proxy $CARGO_EXTRA
+# Build the dylib with asan, then run the proxy tests against it. cargo names the
+# file it wrote: the extension and the profile directory both vary, and a search
+# of target/ finds whatever another profile left there.
+LIBTRACT=$(cargo build --message-format=json -p tract-ffi $CARGO_EXTRA \
+    | jq -r 'select(.target.kind[]? == "cdylib") | .filenames[0]' | head -1)
+LIBTRACT_DIR=$(dirname $LIBTRACT)
+TRACT_DYLIB_SEARCH_PATH=$LIBTRACT_DIR LD_LIBRARY_PATH=$LIBTRACT_DIR \
+    DYLD_LIBRARY_PATH=$LIBTRACT_DIR cargo -q test -q -p tract-proxy $CARGO_EXTRA
 
