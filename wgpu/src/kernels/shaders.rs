@@ -12,6 +12,9 @@
 use tract_core::internal::*;
 
 pub const WORKGROUP: u32 = 64;
+/// Threads per workgroup of the blocked matmul.
+pub const MATMUL_BLOCKED_WG: u32 = 192;
+
 /// Threads in a cooperative sum: each output gets one workgroup this wide.
 pub const SUM_RUN_WG: u32 = 256;
 /// Steps of each of the gemv pair's reductions taken per iteration.
@@ -2232,6 +2235,16 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 /// A single-channel tensor into a texture the caller can sample: the mask
 /// leaves the graph as a GPU resource rather than as bytes on the host.
+/// A matmul whose thread computes a four-by-four tile of the output.
+///
+/// Both operands are read as `vec4`: four rows of `a` are contiguous because the
+/// activations are channels-first, and four columns of `b` are contiguous
+/// because the weights were transposed once at build time. Eight `k` per pass,
+/// with a four-step tail, keeps the loop overhead off what is otherwise a
+/// two-load, sixteen-multiply step and gives each accumulator eight
+/// independent products to overlap. Requires `m`, `n` and `k` all multiples
+/// of four, a unit prefix, and both matmul axes unit-strided on their fastest
+/// side.
 /// Two matrix-vector products with an activation between them, as one kernel.
 ///
 /// One workgroup: it computes the hidden vector cooperatively, holds it in
@@ -2527,7 +2540,7 @@ fn epi(v_in: f32, col: u32, oe: u32) -> f32 {{
     return v;
 }}
 
-@compute @workgroup_size({WORKGROUP})
+@compute @workgroup_size({MATMUL_BLOCKED_WG})
 fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let m4 = params.m / 4u;
     let n4 = params.n / 4u;
@@ -2539,7 +2552,36 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     var acc1 = vec4<f32>(0.0);
     var acc2 = vec4<f32>(0.0);
     var acc3 = vec4<f32>(0.0);
-    for (var kk = 0u; kk < params.k; kk += 4u) {{
+    var kk = 0u;
+    for (; kk + 8u <= params.k; kk += 8u) {{
+        let ab = params.off_a + kk * m4 + row_tile;
+        let bb = params.off_b + kk * n4 + col_tile;
+        let a0 = a4[ab];
+        let a1 = a4[ab + m4];
+        let a2 = a4[ab + 2u * m4];
+        let a3 = a4[ab + 3u * m4];
+        let a4v = a4[ab + 4u * m4];
+        let a5 = a4[ab + 5u * m4];
+        let a6 = a4[ab + 6u * m4];
+        let a7 = a4[ab + 7u * m4];
+        let b0 = b4[bb];
+        let b1 = b4[bb + n4];
+        let b2 = b4[bb + 2u * n4];
+        let b3 = b4[bb + 3u * n4];
+        let b4v = b4[bb + 4u * n4];
+        let b5 = b4[bb + 5u * n4];
+        let b6 = b4[bb + 6u * n4];
+        let b7 = b4[bb + 7u * n4];
+        acc0 += a0 * b0.x + a1 * b1.x + a2 * b2.x + a3 * b3.x
+              + a4v * b4v.x + a5 * b5.x + a6 * b6.x + a7 * b7.x;
+        acc1 += a0 * b0.y + a1 * b1.y + a2 * b2.y + a3 * b3.y
+              + a4v * b4v.y + a5 * b5.y + a6 * b6.y + a7 * b7.y;
+        acc2 += a0 * b0.z + a1 * b1.z + a2 * b2.z + a3 * b3.z
+              + a4v * b4v.z + a5 * b5.z + a6 * b6.z + a7 * b7.z;
+        acc3 += a0 * b0.w + a1 * b1.w + a2 * b2.w + a3 * b3.w
+              + a4v * b4v.w + a5 * b5.w + a6 * b6.w + a7 * b7.w;
+    }}
+    for (; kk < params.k; kk += 4u) {{
         let ab = params.off_a + kk * m4 + row_tile;
         let bb = params.off_b + kk * n4 + col_tile;
         let a0 = a4[ab];
