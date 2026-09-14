@@ -144,6 +144,9 @@ test_dequantizelinear_axis input:x
 test_dft.* input:x
 test_div.*
 test_dropout_default
+test_dropout_default_mask
+test_dropout_default_mask_ratio input:x
+test_dropout_default_ratio input:x
 test_dropout_default_old
 test_dropout_random not-nnef
 test_dropout_random_old
@@ -632,6 +635,8 @@ test_tile_precomputed input:x
 test_top_k_negative_axis
 test_top_k since:10
 test_top_k_smallest
+test_training_dropout_zero_ratio input:x
+test_training_dropout_zero_ratio_mask input:x
 test_transpose_all_permutations_0
 test_transpose_all_permutations_1
 test_transpose_all_permutations_2
