@@ -134,6 +134,7 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_div_uint8
             test_reduce_log_sum_exp.*           # tflite does not support f64 reducers 🤷
             pool_2d_ceil
+            pool_2d_dilations                   # tflite pools have no dilation
             pool_2d_pads
             pool_2d_precomputed_pads_count_include_pad
             pool_2d_same_lower
