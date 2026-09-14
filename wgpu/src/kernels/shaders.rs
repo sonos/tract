@@ -1172,6 +1172,9 @@ fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// Workgroup edge of the depthwise tile: 16x16 output values per workgroup.
 pub const DW_WG: u32 = 16;
 
+/// Workgroup edge when the halo is left to the cache instead of staged.
+pub const DW_DIRECT_WG: u32 = 8;
+
 /// Shape of one depthwise convolution, baked into its program so the filter
 /// loops unroll and the halo tile is sized exactly.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -1185,6 +1188,19 @@ pub struct DepthwiseShape {
 }
 
 impl DepthwiseShape {
+    /// Whether to read the input directly rather than stage a halo tile. Taps
+    /// this few reuse too little for the staging and its barrier to repay
+    /// themselves and the overlap is served from cache; from 7x7 up the tile
+    /// wins instead.
+    pub fn reads_direct(&self) -> bool {
+        self.kh <= 3 && self.kw <= 3
+    }
+
+    /// Output values along each edge of one workgroup's tile.
+    pub fn wg(&self) -> u32 {
+        if self.reads_direct() { DW_DIRECT_WG } else { DW_WG }
+    }
+
     fn tile_h(&self) -> u32 {
         (DW_WG - 1) * self.stride_h + (self.kh - 1) * self.dil_h + 1
     }
@@ -1201,91 +1217,25 @@ impl DepthwiseShape {
     }
 }
 
-/// Depthwise convolution, ported from tfjs-backend-webgpu
-/// `DepthwiseConv2DNCHWSharedProgram`
-/// (tfjs-backend-webgpu/src/depthwise_conv2d_nchw_shared_webgpu.ts, Apache-2.0,
-/// Copyright 2021 Google LLC): a workgroup owns one 16x16 output tile of one
-/// channel, staging that tile's input halo and the filter in workgroup memory,
-/// so each input value is read once instead of once per filter tap. Strides and
-/// dilations size the halo here, where tfjs assumed one; indices come from
-/// tract's strides, and the epilogue replaces their bias/activation snippet.
-pub fn conv_depthwise_module(
-    dt: ShaderDtype,
-    shape: DepthwiseShape,
-    epilogue: &[ChainStep],
-    extras: usize,
-) -> String {
-    let t = dt.wgsl();
-    let suf = dt.suffix();
+/// The workgroup arrays the staged body reads through.
+fn depthwise_tile_decls(shape: DepthwiseShape) -> String {
+    let DepthwiseShape { kh, kw, .. } = shape;
+    let (tile_h, tile_w) = (shape.tile_h(), shape.tile_w());
+    format!(
+        "var<workgroup> x_tile: array<array<f32, {tile_w}>, {tile_h}>;\n\
+         var<workgroup> w_tile: array<array<f32, {kw}>, {kh}>;\n\n"
+    )
+}
+
+/// Every thread stages its share of the workgroup's input halo and the filter
+/// in workgroup memory, so each input value is read once rather than once per
+/// tap.
+fn depthwise_staged_body(shape: DepthwiseShape) -> String {
     let DepthwiseShape { kh, kw, stride_h, stride_w, dil_h, dil_w } = shape;
     let (tile_h, tile_w) = (shape.tile_h(), shape.tile_w());
-    let wg = DW_WG;
-    let out_binding = 2 + extras;
-    let uniform_binding = 3 + extras;
-    let extra_bindings = (0..extras)
-        .map(|i| {
-            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
-        })
-        .collect::<String>();
-    let lib = if epilogue.is_empty() {
-        String::new()
-    } else {
-        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
-    };
-    let epilogue = epilogue_body(epilogue, "co");
-    let mut s = preamble(dt);
-    s.push_str(&format!(
+    let wg = shape.wg();
+    format!(
         r#"
-struct Params {{
-    off_in: u32,
-    off_w: u32,
-    off_out: u32,
-    n: u32,
-    co: u32,
-    ih: u32,
-    iw: u32,
-    oh: u32,
-    ow: u32,
-    pad_h: i32,
-    pad_w: i32,
-    _p0: u32,
-    in_sn: i32,
-    in_sc: i32,
-    in_sh: i32,
-    in_sw: i32,
-    w_so: i32,
-    w_sh: i32,
-    w_sw: i32,
-    _p1: u32,
-    out_sn: i32,
-    out_sc: i32,
-    out_sh: i32,
-    out_sw: i32,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
-}}
-
-@group(0) @binding(0) var<storage, read> inp: array<{t}>;
-@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding({uniform_binding}) var<uniform> params: Params;
-{lib}
-var<workgroup> x_tile: array<array<f32, {tile_w}>, {tile_h}>;
-var<workgroup> w_tile: array<array<f32, {kw}>, {kh}>;
-
-@compute @workgroup_size({wg}, {wg}, 1)
-fn conv_dw_{suf}(
-    @builtin(workgroup_id) wid: vec3<u32>,
-    @builtin(local_invocation_id) lid: vec3<u32>,
-    @builtin(local_invocation_index) lidx: u32,
-) {{
-    let co = wid.z % params.co;
-    let n = wid.z / params.co;
-    let oh0 = wid.y * {wg}u;
-    let ow0 = wid.x * {wg}u;
-    let ih0 = i32(oh0) * {stride_h} - params.pad_h;
-    let iw0 = i32(ow0) * {stride_w} - params.pad_w;
-
     for (var r = lid.y; r < {tile_h}u; r = r + {wg}u) {{
         for (var c = lid.x; c < {tile_w}u; c = c + {wg}u) {{
             let ih = ih0 + i32(r);
@@ -1326,7 +1276,133 @@ fn conv_dw_{suf}(
             );
         }}
     }}
-    var v = {t}(acc);
+"#
+    )
+}
+
+/// Each thread reads its own taps straight from the input, leaving the overlap
+/// between neighbours to the cache: with few taps there is too little reuse to
+/// repay staging it, and dropping the workgroup arrays and their barrier frees
+/// the occupancy that pays instead.
+fn depthwise_direct_body(shape: DepthwiseShape) -> String {
+    let DepthwiseShape { kh, kw, stride_h, stride_w, dil_h, dil_w } = shape;
+    format!(
+        r#"
+    let oh = oh0 + lid.y;
+    let ow = ow0 + lid.x;
+    if (oh >= params.oh || ow >= params.ow) {{ return; }}
+    var acc = 0.0;
+    for (var wr = 0u; wr < {kh}u; wr++) {{
+        for (var wc = 0u; wc < {kw}u; wc++) {{
+            let ih = ih0 + i32(lid.y) * {stride_h} + i32(wr) * {dil_h};
+            let iw = iw0 + i32(lid.x) * {stride_w} + i32(wc) * {dil_w};
+            var v = 0.0;
+            if (ih >= 0 && ih < i32(params.ih) && iw >= 0 && iw < i32(params.iw)) {{
+                let idx = params.off_in + u32(
+                    i32(n) * params.in_sn
+                    + i32(co) * params.in_sc
+                    + ih * params.in_sh
+                    + iw * params.in_sw
+                );
+                v = f32(inp[idx]);
+            }}
+            let w_idx = params.off_w + u32(
+                i32(co) * params.w_so + i32(wr) * params.w_sh + i32(wc) * params.w_sw
+            );
+            acc = fma(v, f32(wgt[w_idx]), acc);
+        }}
+    }}
+"#
+    )
+}
+
+/// Depthwise convolution, ported from tfjs-backend-webgpu
+/// `DepthwiseConv2DNCHWSharedProgram`
+/// (tfjs-backend-webgpu/src/depthwise_conv2d_nchw_shared_webgpu.ts, Apache-2.0,
+/// Copyright 2021 Google LLC): a workgroup owns one 16x16 output tile of one
+/// channel, staging that tile's input halo and the filter in workgroup memory,
+/// so each input value is read once instead of once per filter tap. Strides and
+/// dilations size the halo here, where tfjs assumed one; indices come from
+/// tract's strides, and the epilogue replaces their bias/activation snippet.
+pub fn conv_depthwise_module(
+    dt: ShaderDtype,
+    shape: DepthwiseShape,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let DepthwiseShape { stride_h, stride_w, .. } = shape;
+    let wg = shape.wg();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let (tile_decls, accumulate) = if shape.reads_direct() {
+        (String::new(), depthwise_direct_body(shape))
+    } else {
+        (depthwise_tile_decls(shape), depthwise_staged_body(shape))
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    pad_h: i32,
+    pad_w: i32,
+    _p0: u32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_sh: i32,
+    w_sw: i32,
+    _p1: u32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{tile_decls}@compute @workgroup_size({wg}, {wg}, 1)
+fn conv_dw_{suf}(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+    @builtin(local_invocation_index) lidx: u32,
+) {{
+    let co = wid.z % params.co;
+    let n = wid.z / params.co;
+    let oh0 = wid.y * {wg}u;
+    let ow0 = wid.x * {wg}u;
+    let ih0 = i32(oh0) * {stride_h} - params.pad_h;
+    let iw0 = i32(ow0) * {stride_w} - params.pad_w;
+
+{accumulate}    var v = {t}(acc);
 {epilogue}
     let out_i = params.off_out + u32(
         i32(n) * params.out_sn
