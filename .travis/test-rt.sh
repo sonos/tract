@@ -30,6 +30,13 @@ for c in test-rt/test*; do
                 continue
             fi
             ;;
+        test-rt/test-wgpu)
+            # No GPU on a CI runner: wgpu finds no adapter and every case panics.
+            if [ -n "$CI" ]; then
+                echo "$WHITE ### $c ### IGNORED $NC"
+                continue
+            fi
+            ;;
         test-rt/test-cuda)
             if ! command -v nvcc >/dev/null; then
                 echo "$WHITE ### $c ### IGNORED $NC"
