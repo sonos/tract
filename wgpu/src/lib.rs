@@ -37,8 +37,8 @@ use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 
 pub use crate::context::{
-    CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, wgpu_context, wgpu_context_async,
-    with_wgpu_queue,
+    CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, try_wgpu_context, wgpu_context,
+    wgpu_context_async, with_wgpu_queue,
 };
 pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
@@ -141,6 +141,7 @@ impl Runtime for WgpuRuntime {
     }
 
     fn check(&self) -> TractResult<()> {
+        try_wgpu_context()?;
         Ok(())
     }
 }

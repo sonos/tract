@@ -80,24 +80,22 @@ fn install_context(ctxt: WgpuContext) -> TractResult<WgpuContext> {
 /// [`wgpu_context_async`] has already completed — `pollster` cannot block
 /// the browser event loop.
 pub fn wgpu_context() -> WgpuContext {
+    try_wgpu_context().expect("Could not create wgpu context")
+}
+
+/// As [`wgpu_context`], reporting a host with no usable adapter instead of
+/// panicking, which is what `Runtime::check` needs to answer.
+pub fn try_wgpu_context() -> TractResult<WgpuContext> {
+    if let Some(ctxt) = context_slot().get() {
+        return Ok(ctxt.clone());
+    }
     #[cfg(target_arch = "wasm32")]
-    {
-        context_slot().get().cloned().expect(
-            "tract-wgpu on wasm32: await wgpu_context_async() once at startup \
-             (requestAdapter/requestDevice are async; PollType::Wait is a no-op on web)",
-        )
-    }
+    bail!(
+        "tract-wgpu on wasm32: await wgpu_context_async() once at startup \
+         (requestAdapter/requestDevice are async; PollType::Wait is a no-op on web)"
+    );
     #[cfg(not(target_arch = "wasm32"))]
-    {
-        context_slot()
-            .get_or_init(|| {
-                let ctxt = WgpuContext::new().expect("Could not create wgpu context");
-                tract_gpu::device::set_context(Box::new(ctxt.clone()))
-                    .expect("Could not set wgpu context");
-                ctxt
-            })
-            .clone()
-    }
+    install_context(WgpuContext::new()?)
 }
 
 /// One-shot async device init. Safe to call from wasm `wasm_bindgen` async
