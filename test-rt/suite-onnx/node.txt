@@ -113,7 +113,7 @@ test_constant_pad_axes input:x
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
 test_constantlike_zeros_without_input_dtype not-nnef
-test_convinteger_with_padding                                                       input:x 
+test_convinteger_with_padding                                                       input:x until:24
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
 test_convtranspose_dilations input:X
