@@ -64,6 +64,9 @@ fn compatible_sdpa<F: Datum + Float>(sdpap: &SdpaProblem<F>) -> bool {
     matches!(sdpap.k.shape().last().unwrap(), 64 | 80 | 96 | 112 | 128 | 256)
 }
 
+/// Cases the CUDA runtime declines: the SDPA kernel takes only a few head dims, so every
+/// Attention case that keeps an SDPA node rejects the small ones the ONNX suite uses, and
+/// CudaGgmlGemm has no broadcast batch.
 fn ignore_onnx(t: &[String]) -> bool {
     r#"
     test_slice_start_out_of_bounds
@@ -71,6 +74,45 @@ fn ignore_onnx(t: &[String]) -> bool {
     test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded
     test_tril_zero
     test_triu_zero
+    test_attention_3d
+    test_attention_3d_attn_mask
+    test_attention_3d_causal
+    test_attention_3d_diff_heads_sizes
+    test_attention_3d_diff_heads_sizes_attn_mask
+    test_attention_3d_diff_heads_sizes_causal
+    test_attention_3d_diff_heads_sizes_scaled
+    test_attention_3d_diff_heads_with_past_and_present
+    test_attention_3d_gqa
+    test_attention_3d_gqa_attn_mask
+    test_attention_3d_gqa_causal
+    test_attention_3d_gqa_scaled
+    test_attention_3d_gqa_with_past_and_present
+    test_attention_3d_scaled
+    test_attention_3d_transpose_verification
+    test_attention_3d_with_past_and_present
+    test_attention_4d
+    test_attention_4d_attn_mask
+    test_attention_4d_attn_mask_3d
+    test_attention_4d_attn_mask_3d_causal
+    test_attention_4d_attn_mask_4d
+    test_attention_4d_attn_mask_4d_causal
+    test_attention_4d_causal
+    test_attention_4d_diff_heads_sizes
+    test_attention_4d_diff_heads_sizes_attn_mask
+    test_attention_4d_diff_heads_sizes_causal
+    test_attention_4d_diff_heads_sizes_scaled
+    test_attention_4d_diff_heads_with_past_and_present
+    test_attention_4d_diff_heads_with_past_and_present_mask3d
+    test_attention_4d_diff_heads_with_past_and_present_mask4d
+    test_attention_4d_fp16
+    test_attention_4d_gqa
+    test_attention_4d_gqa_attn_mask
+    test_attention_4d_gqa_causal
+    test_attention_4d_gqa_scaled
+    test_attention_4d_gqa_with_past_and_present
+    test_attention_4d_gqa_with_past_and_present_fp16
+    test_attention_4d_scaled
+    test_attention_4d_with_past_and_present
     "#
     .trim()
     .lines()
