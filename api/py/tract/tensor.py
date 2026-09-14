@@ -128,7 +128,15 @@ class Tensor:
         return (DatumType(dt.value), shape, data)
 
     def from_numpy(array: numpy.ndarray) -> "Tensor":
+        """Builds a tensor from a numpy array, preserving its rank.
+
+        `numpy.ascontiguousarray` promotes 0-d arrays to rank 1, so the original rank is
+        restored afterwards: a scalar input must stay a scalar to match a rank-0 fact.
+        """
+        rank = array.ndim
         array = numpy.ascontiguousarray(array)
+        if rank == 0:
+            array = array.reshape(())
 
         data = array.__array_interface__['data'][0]
         data = c_void_p(data)
