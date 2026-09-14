@@ -38,6 +38,8 @@ const BIND_GROUP_CACHE_CAP: usize = 8192;
 
 thread_local! {
     static WGPU_QUEUE: RefCell<Option<WgpuQueue>> = const { RefCell::new(None) };
+    static LAST_PIPE_ID: Cell<u32> = const { Cell::new(0) };
+    static LAST_BG_ID: Cell<u32> = const { Cell::new(0) };
 }
 
 pub fn with_wgpu_queue<R>(f: impl FnOnce(&WgpuQueue) -> TractResult<R>) -> TractResult<R> {
@@ -118,21 +120,23 @@ struct WgpuContextInner {
     queue: wgpu::Queue,
     shader_f16: bool,
     modules: RwLock<HashMap<ModuleKey, wgpu::ShaderModule>>,
-    pipelines: RwLock<HashMap<PipelineKey, wgpu::ComputePipeline>>,
-    chain_pipelines: RwLock<HashMap<String, wgpu::ComputePipeline>>,
+    pipelines: RwLock<HashMap<PipelineKey, (wgpu::ComputePipeline, u32)>>,
+    chain_pipelines: RwLock<HashMap<String, (wgpu::ComputePipeline, u32)>>,
     layouts: RwLock<HashMap<LayoutKind, (wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
-    bind_groups: Mutex<HashMap<BindGroupKey, wgpu::BindGroup>>,
+    bind_groups: Mutex<HashMap<BindGroupKey, (wgpu::BindGroup, u32)>>,
     staging: Mutex<Option<wgpu::Buffer>>,
+    next_gpu_id: std::sync::atomic::AtomicU32,
 }
 
-/// `wgpu::Buffer` hashes by the resource it points at, so a cached entry stays
-/// valid for as long as that buffer lives — and holding the key's clones is
-/// what keeps it alive.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Identity of a bind group. Buffer ids are stable for pooled slots, so a
+/// graph that allocates in the same order reuses last frame's groups. The
+/// uniform ring is the same buffer for every dispatch on this queue, so it
+/// is not part of the key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct BindGroupKey {
     layout: LayoutKind,
-    buffers: Vec<u64>,
-    uniform: wgpu::Buffer,
+    n: u8,
+    buffers: [u64; 8],
 }
 
 impl std::fmt::Debug for WgpuContext {
@@ -201,8 +205,11 @@ impl WgpuContext {
                 layouts: RwLock::new(HashMap::new()),
                 bind_groups: Mutex::new(HashMap::new()),
                 staging: Mutex::new(None),
+                next_gpu_id: std::sync::atomic::AtomicU32::new(1),
             }),
         };
+        #[cfg(target_arch = "wasm32")]
+        crate::wasm_record::tract_install_record_hooks();
         ctxt.preload_pipelines()?;
         Ok(ctxt)
     }
@@ -301,30 +308,39 @@ impl WgpuContext {
         Ok(module)
     }
 
+    fn next_gpu_id(&self) -> u32 {
+        self.inner.next_gpu_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
     pub fn pipeline(&self, key: PipelineKey) -> TractResult<wgpu::ComputePipeline> {
         {
             let cache = self.inner.pipelines.read().map_err(|e| anyhow!("{e}"))?;
-            if let Some(p) = cache.get(&key) {
+            if let Some((p, id)) = cache.get(&key) {
+                LAST_PIPE_ID.with(|c| c.set(*id));
                 return Ok(p.clone());
             }
         }
         let mut cache = self.inner.pipelines.write().map_err(|e| anyhow!("{e}"))?;
-        if let Some(p) = cache.get(&key) {
+        if let Some((p, id)) = cache.get(&key) {
+            LAST_PIPE_ID.with(|c| c.set(*id));
             return Ok(p.clone());
         }
         let module = self.module(key.module)?;
         let (_bgl, pl) = self.layout(key.module.layout())?;
         let entry = key.entry.name();
+        let id = self.next_gpu_id();
+        let label = format!("tp{id}");
         let pipeline =
             self.inner.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some(&entry),
+                label: Some(&label),
                 layout: Some(&pl),
                 module: &module,
                 entry_point: Some(&entry),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 cache: None,
             });
-        cache.insert(key, pipeline.clone());
+        LAST_PIPE_ID.with(|c| c.set(id));
+        cache.insert(key, (pipeline.clone(), id));
         Ok(pipeline)
     }
 
@@ -339,12 +355,14 @@ impl WgpuContext {
     ) -> TractResult<wgpu::ComputePipeline> {
         {
             let cache = self.inner.chain_pipelines.read().map_err(|e| anyhow!("{e}"))?;
-            if let Some(p) = cache.get(key) {
+            if let Some((p, id)) = cache.get(key) {
+                LAST_PIPE_ID.with(|c| c.set(*id));
                 return Ok(p.clone());
             }
         }
         let mut cache = self.inner.chain_pipelines.write().map_err(|e| anyhow!("{e}"))?;
-        if let Some(p) = cache.get(key) {
+        if let Some((p, id)) = cache.get(key) {
+            LAST_PIPE_ID.with(|c| c.set(*id));
             return Ok(p.clone());
         }
         let module = self.inner.device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -352,16 +370,19 @@ impl WgpuContext {
             source: wgpu::ShaderSource::Wgsl(source().into()),
         });
         let (_bgl, pl) = self.layout(layout)?;
+        let id = self.next_gpu_id();
+        let label = format!("tp{id}");
         let pipeline =
             self.inner.device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-                label: Some("tract-wgpu-generated"),
+                label: Some(&label),
                 layout: Some(&pl),
                 module: &module,
                 entry_point: Some(&entry.name()),
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
                 cache: None,
             });
-        cache.insert(key.to_string(), pipeline.clone());
+        LAST_PIPE_ID.with(|c| c.set(id));
+        cache.insert(key.to_string(), (pipeline.clone(), id));
         Ok(pipeline)
     }
 
@@ -372,15 +393,17 @@ impl WgpuContext {
         uniform: &wgpu::Buffer,
     ) -> TractResult<wgpu::BindGroup> {
         ensure!(kind != LayoutKind::Ingest, "Ingest layout binds a texture; use bind_group_ingest");
-        let key = BindGroupKey {
-            layout: kind,
-            buffers: buffers.iter().map(|b| b.id).collect(),
-            uniform: uniform.clone(),
-        };
+        ensure!(buffers.len() <= 8, "bind group has {} buffers, max 8", buffers.len());
+        let mut ids = [0u64; 8];
+        for (i, b) in buffers.iter().enumerate() {
+            ids[i] = b.id;
+        }
+        let key = BindGroupKey { layout: kind, n: buffers.len() as u8, buffers: ids };
         {
             let cache = self.inner.bind_groups.lock().map_err(|e| anyhow!("{e}"))?;
-            if let Some(bg) = cache.get(&key) {
+            if let Some((bg, id)) = cache.get(&key) {
                 bump(0);
+                LAST_BG_ID.with(|c| c.set(*id));
                 return Ok(bg.clone());
             }
         }
@@ -394,13 +417,16 @@ impl WgpuContext {
             });
         }
         entries.push(uniform_entry(buffers.len() as u32, uniform));
+        let id = self.next_gpu_id();
+        let label = format!("tb{id}");
         let bg = self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(kind.label()),
+            label: Some(&label),
             layout: &bgl,
             entries: &entries,
         });
+        LAST_BG_ID.with(|c| c.set(id));
         let mut cache = self.inner.bind_groups.lock().map_err(|e| anyhow!("{e}"))?;
-        cache.insert(key, bg.clone());
+        cache.insert(key, (bg.clone(), id));
         Ok(bg)
     }
 
@@ -417,8 +443,11 @@ impl WgpuContext {
             wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(view) },
             uniform_entry(2, uniform),
         ];
+        let id = self.next_gpu_id();
+        let label = format!("tb{id}");
+        LAST_BG_ID.with(|c| c.set(id));
         Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(LayoutKind::Export.label()),
+            label: Some(&label),
             layout: &bgl,
             entries: &entries,
         }))
@@ -436,8 +465,11 @@ impl WgpuContext {
             wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
             uniform_entry(2, uniform),
         ];
+        let id = self.next_gpu_id();
+        let label = format!("tb{id}");
+        LAST_BG_ID.with(|c| c.set(id));
         Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some(LayoutKind::Ingest.label()),
+            label: Some(&label),
             layout: &bgl,
             entries: &entries,
         }))
@@ -702,6 +734,10 @@ struct Dispatch {
     label: &'static str,
     pipeline: wgpu::ComputePipeline,
     bind_group: wgpu::BindGroup,
+    #[allow(dead_code)]
+    pipe_id: u32,
+    #[allow(dead_code)]
+    bg_id: u32,
     dynamic_offset: u32,
     groups: [u32; 3],
 }
@@ -1001,6 +1037,8 @@ impl WgpuQueue {
             label,
             pipeline: pipeline.clone(),
             bind_group: bind_group.clone(),
+            pipe_id: LAST_PIPE_ID.with(|c| c.get()),
+            bg_id: LAST_BG_ID.with(|c| c.get()),
             dynamic_offset,
             groups,
         });
@@ -1020,6 +1058,11 @@ impl WgpuQueue {
             self.drain_profiled(&pending);
             return;
         }
+        #[cfg(target_arch = "wasm32")]
+        {
+            self.drain_pending_wasm(&pending);
+            return;
+        }
         let mut encoder = self.encoder();
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
             label: Some("tract-wgpu"),
@@ -1029,6 +1072,28 @@ impl WgpuQueue {
             pass.set_pipeline(&d.pipeline);
             pass.set_bind_group(0, &d.bind_group, &[d.dynamic_offset]);
             pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    fn drain_pending_wasm(&self, pending: &[Dispatch]) {
+        let mut bytes = vec![0u8; pending.len() * 24];
+        for (i, d) in pending.iter().enumerate() {
+            let o = i * 24;
+            bytes[o..o + 4].copy_from_slice(&d.pipe_id.to_le_bytes());
+            bytes[o + 4..o + 8].copy_from_slice(&d.bg_id.to_le_bytes());
+            bytes[o + 8..o + 12].copy_from_slice(&d.dynamic_offset.to_le_bytes());
+            bytes[o + 12..o + 16].copy_from_slice(&d.groups[0].to_le_bytes());
+            bytes[o + 16..o + 20].copy_from_slice(&d.groups[1].to_le_bytes());
+            bytes[o + 20..o + 24].copy_from_slice(&d.groups[2].to_le_bytes());
+        }
+        let mut encoder = self.encoder();
+        {
+            let _pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("tract-wgpu"),
+                timestamp_writes: None,
+            });
+            crate::wasm_record::tract_record_pass(&bytes);
         }
     }
 
