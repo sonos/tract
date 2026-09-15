@@ -405,8 +405,9 @@ impl AxisOp {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
-                let mut tmp = tensor.clone().move_axis(*from, *to)?;
-                std::mem::swap(tensor, &mut tmp);
+                // `move_axis` consumes its input and materialises the permuted
+                // result, so cloning first would copy the data twice.
+                *tensor = std::mem::take(tensor).move_axis(*from, *to)?;
                 Ok(())
             }
             Reshape(at, from, to) => {
