@@ -9,12 +9,55 @@ mod tests {
     use tract_core::ops::nn::{Softmax, SoftmaxKind};
     use tract_core::transform::ModelTransform;
     use tract_gpu::memory::DeviceMemSchema;
-    use tract_gpu::tensor::IntoDevice;
+    use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
         with_borrowed_metal_stream(|_| Tensor::from_shape::<f32>(&[0], &[])?.into_device())?;
         Ok(())
+    }
+
+    #[test]
+    fn tensor_slice_keeps_dense_owned_device_tensors_on_device() -> TractResult<()> {
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let device =
+            with_borrowed_metal_stream(|_| Tensor::from_shape(&[4, 6], &data)?.into_device())?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        let sliced = device.into_tensor().slice(0, 1, 3)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::ArenaView(_)));
+        assert_eq!(device.shape(), &[2, 6]);
+        let expected = Tensor::from_shape(&[2, 6], &data[6..18])?;
+        device.to_host()?.close_enough(&expected, Approximation::Exact)
+    }
+
+    #[test]
+    fn tensor_slice_materializes_nondense_device_slices_on_host() -> TractResult<()> {
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let device =
+            with_borrowed_metal_stream(|_| Tensor::from_shape(&[4, 6], &data)?.into_device())?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        let sliced = device.into_tensor().slice(1, 1, 4)?;
+        assert!(sliced.as_device_tensor().is_none());
+        assert_eq!(sliced.shape(), &[4, 3]);
+        let expected =
+            tensor2(&[[1.0f32, 2.0, 3.0], [7.0, 8.0, 9.0], [13.0, 14.0, 15.0], [19.0, 20.0, 21.0]]);
+        sliced.close_enough(&expected, Approximation::Exact)
+    }
+
+    #[test]
+    fn tensor_slice_keeps_reshaped_device_tensors_on_device() -> TractResult<()> {
+        let data: Vec<f32> = (0..24).map(|i| i as f32).collect();
+        let device =
+            with_borrowed_metal_stream(|_| Tensor::from_shape(&[4, 6], &data)?.into_device())?;
+        let reshaped = device.reshaped(tvec![2, 12])?;
+        assert!(matches!(reshaped, DeviceTensor::Owned(_)));
+        let sliced = reshaped.into_tensor().slice(0, 1, 2)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::ArenaView(_)));
+        assert_eq!(device.shape(), &[1, 12]);
+        let expected = Tensor::from_shape(&[1, 12], &data[12..24])?;
+        device.to_host()?.close_enough(&expected, Approximation::Exact)
     }
 
     fn wire_sdpa_layer(
