@@ -34,21 +34,13 @@ deny = [
 # Skip some multiple-versions checks, until they can be fixed.
 skip = [
     { name = "hashbrown", version="<0.17" },
-    { name = "cpufeatures", version="<0.3" },
     { name = "cfg-if", version="<1" },
     { name = "getrandom", version="<0.4" },
     { name = "rand", version="<0.10" },
     { name = "rand_core", version="<0.10" },
     { name = "rand_distr", version="<0.6" },
     { name = "itertools", version="<0.15" },
-    { name = "windows-sys", version="<0.61" },
     { name = "syn", version="<3" },
-]
-
-[sources]
-# trusted git sources.
-allow-git = [
-    "https://github.com/rustformers/llm.git",
 ]
 
 [licenses]
