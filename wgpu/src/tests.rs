@@ -482,3 +482,43 @@ fn resize_two_trailing_axes() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// A dense 3x3 convolution takes the per-pixel kernel, every output channel
+/// of a pixel from one thread; the shapes cover the stem, a batch, a stride-1
+/// layer with more input channels, and an odd size, against the CPU.
+#[test]
+fn conv_3x3_per_pixel() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    for (n, ci, co, h, w, stride, pad) in [
+        (1usize, 3usize, 16usize, 144usize, 256usize, 2usize, 1usize),
+        (2, 3, 8, 20, 30, 2, 1),
+        (1, 7, 5, 13, 17, 1, 1),
+        (1, 4, 6, 9, 9, 1, 0),
+    ] {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+        let k =
+            model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+        let b = model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                dilations: None,
+                strides: Some(tvec![stride, stride]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[n, ci, h, w], &fill(5, n * ci * h * w))?)
+            .with_context(|| format!("n{n} ci{ci} co{co} {h}x{w} s{stride} p{pad}"))?;
+    }
+    Ok(())
+}
