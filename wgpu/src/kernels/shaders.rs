@@ -1592,6 +1592,186 @@ fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// Threads per workgroup of the per-pixel convolution.
+pub const CONV_PIXEL_WG: u32 = 256;
+
+/// One thread per output pixel computing every output channel, for a dense 3x3
+/// convolution over few input channels — the MobileNet stem: the 27 inputs a
+/// pixel reads are shared by all its channels, so they are read once per group
+/// of four rather than once per output element. The kernel came out of an
+/// OpenEvolve search over tract's own conv contract (3.0x on the stem, seed
+/// 115us); the taps are unrolled for kh = kw = 3 at dilation 1.
+pub fn conv_pixel_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let mut s = preamble(dt);
+    // Same packed params as `conv_module`, see kernels/conv.rs.
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    channels_last: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+fn read_inp(ih: i32, iw: i32, ic: u32, n: u32) -> f32 {{
+    if (ih < 0 || ih >= i32(params.ih) || iw < 0 || iw >= i32(params.iw)) {{ return 0.0; }}
+    return f32(inp[params.off_in + u32(i32(n) * params.in_sn + ih * params.in_sh + iw * params.in_sw + i32(ic) * params.in_sc)]);
+}}
+
+@compute @workgroup_size({CONV_PIXEL_WG})
+fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let idx = gid.x;
+    let npix = params.n * params.oh * params.ow;
+    if (idx >= npix) {{ return; }}
+    var rest = idx;
+    let ow = rest % params.ow; rest /= params.ow;
+    let oh = rest % params.oh; rest /= params.oh;
+    let n = rest;
+    let ih0 = i32(oh) * params.stride_h - params.pad_h;
+    let iw0 = i32(ow) * params.stride_w - params.pad_w;
+    // Four channels at a time, in four named accumulators: an indexed private
+    // array here lands in memory under Tint, which costs ~20% in Chrome.
+    for (var co_grp = 0u; co_grp < params.co; co_grp += 4u) {{
+        var acc0 = 0.0;
+        var acc1 = 0.0;
+        var acc2 = 0.0;
+        var acc3 = 0.0;
+        for (var ci = 0u; ci < params.ci; ci++) {{
+            let i00 = read_inp(ih0, iw0, ci, n);
+            let i01 = read_inp(ih0, iw0 + 1, ci, n);
+            let i02 = read_inp(ih0, iw0 + 2, ci, n);
+            let i10 = read_inp(ih0 + 1, iw0, ci, n);
+            let i11 = read_inp(ih0 + 1, iw0 + 1, ci, n);
+            let i12 = read_inp(ih0 + 1, iw0 + 2, ci, n);
+            let i20 = read_inp(ih0 + 2, iw0, ci, n);
+            let i21 = read_inp(ih0 + 2, iw0 + 1, ci, n);
+            let i22 = read_inp(ih0 + 2, iw0 + 2, ci, n);
+            if (co_grp + 0u < params.co) {{
+                let co = co_grp + 0u;
+                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
+                let w00 = f32(wgt[wc0]);
+                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
+                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
+                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
+                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
+                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
+                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
+                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                acc0 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
+            }}
+            if (co_grp + 1u < params.co) {{
+                let co = co_grp + 1u;
+                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
+                let w00 = f32(wgt[wc0]);
+                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
+                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
+                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
+                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
+                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
+                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
+                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                acc1 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
+            }}
+            if (co_grp + 2u < params.co) {{
+                let co = co_grp + 2u;
+                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
+                let w00 = f32(wgt[wc0]);
+                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
+                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
+                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
+                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
+                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
+                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
+                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                acc2 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
+            }}
+            if (co_grp + 3u < params.co) {{
+                let co = co_grp + 3u;
+                let wc0 = params.off_w + co * u32(params.w_so) + ci * u32(params.w_si);
+                let w00 = f32(wgt[wc0]);
+                let w01 = f32(wgt[wc0 + u32(params.w_sw)]);
+                let w02 = f32(wgt[wc0 + 2u * u32(params.w_sw)]);
+                let w10 = f32(wgt[wc0 + u32(params.w_sh)]);
+                let w11 = f32(wgt[wc0 + u32(params.w_sh) + u32(params.w_sw)]);
+                let w12 = f32(wgt[wc0 + u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                let w20 = f32(wgt[wc0 + 2u * u32(params.w_sh)]);
+                let w21 = f32(wgt[wc0 + 2u * u32(params.w_sh) + u32(params.w_sw)]);
+                let w22 = f32(wgt[wc0 + 2u * u32(params.w_sh) + 2u * u32(params.w_sw)]);
+                acc3 += i00 * w00 + i01 * w01 + i02 * w02 + i10 * w10 + i11 * w11 + i12 * w12 + i20 * w20 + i21 * w21 + i22 * w22;
+            }}
+        }}
+        for (var j = 0u; j < 4u; j++) {{
+            let co = co_grp + j;
+            if (co >= params.co) {{ break; }}
+            let acc = select(select(select(acc0, acc1, j == 1u), acc2, j == 2u), acc3, j == 3u);
+            let out_i = params.off_out + u32(i32(n) * params.out_sn + i32(co) * params.out_sc + i32(oh) * params.out_sh + i32(ow) * params.out_sw);
+            var v = {t}(acc);
+{epilogue}
+            outp[out_i] = v;
+        }}
+    }}
+}}
+"#
+    ));
+    s
+}
+
 fn deconv_wgsl(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
