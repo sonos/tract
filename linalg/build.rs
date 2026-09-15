@@ -258,9 +258,20 @@ fn main() {
             // ACE (AI Compute Extensions): future-looking seam. The probe fails on
             // every current toolchain, so `tract_ace` stays unset and the emulated
             // ACE kernels (src/ace/, pure Rust) remain active. When binutils/LLVM
-            // gain ACE, this sets the cfg and the real ACE .S kernels (to be added)
-            // would compile here; the src/ace swap points then resolve to them.
+            // gain ACE, this sets the cfg and the real ACE .S kernels compile here;
+            // the src/ace swap points then resolve to them.
             if os != "windows" && assembler_supports_ace() {
+                // Compile real ACE assembly kernels when assembler support is available
+                let ace_files = vec![
+                    path::PathBuf::from("x86_64/ace/ace_int8.S"),
+                    path::PathBuf::from("x86_64/ace/ace_bf16.S"),
+                    path::PathBuf::from("x86_64/ace/ace_mxfp8.S"),
+                    path::PathBuf::from("x86_64/ace/ace_mxint8.S"),
+                ];
+                cc::Build::new()
+                    .files(ace_files)
+                    .flag("-mavx512f")  // ACE requires AVX-512 baseline
+                    .compile("x86_64_ace");
                 println!("cargo:rustc-cfg=tract_ace");
             }
         }

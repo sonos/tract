@@ -30,5 +30,8 @@ pub mod isa;
 pub mod mmm;
 pub mod packers;
 
+#[cfg(test)]
+pub mod sde_tests;
+
 pub use detect::has_ace;
 pub use mmm::plug;
