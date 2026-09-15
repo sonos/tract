@@ -18,7 +18,6 @@ byteorder.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
 dyn-clone.workspace = true
-dyn-eq.workspace = true
 dyn-hash.workspace = true
 inventory.workspace = true
 lazy_static.workspace = true

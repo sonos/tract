@@ -4,7 +4,7 @@ use std::fmt;
 use downcast_rs::Downcast;
 
 use dyn_clone;
-use dyn_eq::DynEq;
+use tract_data::dyn_eq::DynEq;
 
 #[macro_use]
 pub mod macros;
@@ -179,7 +179,7 @@ pub trait EvalOp {
 
 /// A base operation
 pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast + EvalOp
+    fmt::Debug + dyn_clone::DynClone + DynEq + Send + Sync + 'static + Downcast + EvalOp
 {
     fn name(&self) -> StaticName;
 

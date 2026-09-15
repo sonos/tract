@@ -1,8 +1,8 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
-use dyn_eq::DynEq;
 use std::fmt::Debug;
 use tract_core::dyn_clone;
+use tract_core::internal::dyn_eq::DynEq;
 use tract_core::internal::*;
 
 use crate::device::DeviceBuffer;

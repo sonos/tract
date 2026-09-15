@@ -1241,12 +1241,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
-name = "dyn-eq"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c2d035d21af5cde1a6f5c7b444a5bf963520a9f142e5d06931178433d7d5388"
-
-[[package]]
 name = "dyn-hash"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5139,7 +5133,6 @@ dependencies = [
  "derive-new",
  "downcast-rs",
  "dyn-clone",
- "dyn-eq",
  "env_logger",
  "erased-serde",
  "inventory",
@@ -5169,7 +5162,6 @@ dependencies = [
  "derive-new",
  "dirs",
  "downcast-rs",
- "dyn-eq",
  "inventory",
  "libloading 0.9.0",
  "log",
@@ -5193,7 +5185,6 @@ dependencies = [
  "criterion",
  "downcast-rs",
  "dyn-clone",
- "dyn-eq",
  "dyn-hash",
  "half",
  "inventory",
@@ -5244,7 +5235,6 @@ dependencies = [
  "anyhow",
  "derive-new",
  "downcast-rs",
- "dyn-eq",
  "dyn-hash",
  "num-traits",
  "tract-core",
@@ -5297,7 +5287,6 @@ dependencies = [
  "derive-new",
  "downcast-rs",
  "dyn-clone",
- "dyn-eq",
  "dyn-hash",
  "env_logger",
  "half",
@@ -5389,7 +5378,6 @@ dependencies = [
  "bytes",
  "criterion",
  "derive-new",
- "dyn-eq",
  "env_logger",
  "log",
  "memmap2",
@@ -5413,7 +5401,6 @@ dependencies = [
 name = "tract-onnx-opl"
 version = "0.23.8-pre"
 dependencies = [
- "dyn-eq",
  "env_logger",
  "getrandom 0.4.3",
  "log",
@@ -5452,7 +5439,6 @@ name = "tract-pulse"
 version = "0.23.8-pre"
 dependencies = [
  "downcast-rs",
- "dyn-eq",
  "erased-serde",
  "lazy_static",
  "log",
@@ -5466,7 +5452,6 @@ name = "tract-pulse-opl"
 version = "0.23.8-pre"
 dependencies = [
  "downcast-rs",
- "dyn-eq",
  "lazy_static",
  "tract-nnef",
 ]

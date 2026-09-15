@@ -4,17 +4,15 @@ use std::hash::Hash;
 
 use crate::TractResult;
 use crate::blob::Blob;
+use crate::dyn_eq::DynEq;
 use crate::exotic::ExoticFact;
 use downcast_rs::{Downcast, impl_downcast};
-use dyn_eq::DynEq;
 
 /// Trait abstracting over tensor storage backends.
 ///
 /// `PlainStorage` is the primary implementation backed by a contiguous `Blob`.
 /// Non-plain backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
-pub trait TensorStorage:
-    Send + Sync + fmt::Debug + fmt::Display + dyn_eq::DynEq + Downcast
-{
+pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + DynEq + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
@@ -30,7 +28,7 @@ pub trait TensorStorage:
     fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>>;
 }
 impl_downcast!(TensorStorage);
-dyn_eq::eq_trait_object!(TensorStorage);
+crate::eq_trait_object!(TensorStorage);
 
 /// Plain, contiguous storage backed by a `Blob`.
 #[derive(Eq)]

@@ -1,7 +1,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
-use dyn_eq::DynEq;
 use std::fmt::{self, Debug};
+use tract_data::dyn_eq::DynEq;
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::multithread::BShare;
@@ -12,7 +12,7 @@ use super::{cast::cast, math::SubF};
 use tract_linalg::routines::Func;
 
 pub trait BinMiniOp:
-    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + DynEq + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {

@@ -1,11 +1,11 @@
 use crate::internal::*;
 use crate::ops::array::MultiBroadcastTo;
 use downcast_rs::Downcast;
-use dyn_eq::DynEq;
 use std::fmt;
+use tract_data::dyn_eq::DynEq;
 
 pub trait ElementWiseMiniOp:
-    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + DynEq + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> String;
     fn prefix(&self) -> &'static str {

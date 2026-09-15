@@ -1,5 +1,5 @@
 use crate::internal::*;
-use dyn_eq::DynEq;
+use tract_core::internal::dyn_eq::DynEq;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct StreamInfo {
