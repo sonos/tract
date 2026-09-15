@@ -43,10 +43,15 @@ check tract-cli --no-default-features
 
 check tract --no-default-features --features flate2
 
+check tract --no-default-features --features onnx
+
 check tract --no-default-features --features pulse
 
 check tract-nnef --features unstable-safetensors
 
 check tract --no-default-features --features transformers
+
+# transformers reaches tract-onnx weakly: enabling it must leave the parser out.
+check tract --no-default-features --features onnx,transformers
 
 check tract-onnx --features transformers
