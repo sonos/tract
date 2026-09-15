@@ -128,14 +128,8 @@ impl TractCudaContext {
 
         log::info!("Compiling {:?} to {}…", lib, out_path.display());
 
-        let mut input = lib.content().to_string();
-        if input.contains("// liquid:true") {
-            let env = minijinja::Environment::new();
-            let tmpl = env.template_from_str(lib.content())?;
-            input = tmpl.render(())?;
-        }
-
-        let c_src = CString::new(input).context("Failed to make CString from CUDA source")?;
+        let c_src =
+            CString::new(lib.content()).context("Failed to make CString from CUDA source")?;
         let prog = unsafe {
             let mut prog = MaybeUninit::uninit();
             nvrtcCreateProgram(

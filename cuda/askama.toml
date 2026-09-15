@@ -1,0 +1,3 @@
+# Kernel templates live beside the .cu sources they generate, not in a templates/ tree.
+[general]
+dirs = ["src/kernels/cu"]
