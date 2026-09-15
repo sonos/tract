@@ -35,10 +35,29 @@ const WARP_SIZE: usize = 32;
 
 static CUBIN_FOLDER: OnceLock<PathBuf> = OnceLock::new();
 
+/// The user's cache directory: `%LOCALAPPDATA%` on Windows, `Library/Caches`
+/// on Apple targets, `XDG_CACHE_HOME` or `~/.cache` elsewhere.
+///
+/// Per the XDG spec a relative `XDG_CACHE_HOME` is ignored rather than resolved
+/// against the working directory.
+fn user_cache_dir() -> Option<PathBuf> {
+    if cfg!(target_os = "windows") {
+        return env::var_os("LOCALAPPDATA").filter(|v| !v.is_empty()).map(PathBuf::from);
+    }
+    let home = || env::var_os("HOME").filter(|v| !v.is_empty()).map(PathBuf::from);
+    if cfg!(target_vendor = "apple") {
+        return home().map(|h| h.join("Library/Caches"));
+    }
+    env::var_os("XDG_CACHE_HOME")
+        .map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .or_else(|| home().map(|h| h.join(".cache")))
+}
+
 pub fn cubin_dir() -> &'static Path {
     CUBIN_FOLDER
         .get_or_init(|| {
-            dirs::cache_dir()
+            user_cache_dir()
                 .unwrap_or_else(|| ".cache".into())
                 .join("tract")
                 .join(env!("CARGO_PKG_VERSION"))
