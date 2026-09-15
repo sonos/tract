@@ -14,6 +14,11 @@ use tract_core::internal::*;
 pub const WORKGROUP: u32 = 64;
 /// Threads in a cooperative sum: each output gets one workgroup this wide.
 pub const SUM_RUN_WG: u32 = 256;
+/// Steps of each of the gemv pair's reductions taken per iteration.
+pub const GEMV_PAIR_UNROLL: usize = 10;
+
+/// The fused squeeze-excitation gate runs as one workgroup of this width.
+pub const GEMV_PAIR_WG: u32 = 256;
 
 /// Reads one of the eight values a uniform packs as two `vec4<u32>`.
 const AT8: &str = "fn at8(a: vec4<u32>, b: vec4<u32>, i: u32) -> u32 {
@@ -1855,6 +1860,133 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 /// A single-channel tensor into a texture the caller can sample: the mask
 /// leaves the graph as a GPU resource rather than as bytes on the host.
+/// Two matrix-vector products with an activation between them, as one kernel.
+///
+/// One workgroup: it computes the hidden vector cooperatively, holds it in
+/// workgroup memory across a barrier, and reads it back for the second product.
+/// Both vectors are narrow, so the whole gate fits in a single launch, which is
+/// the point — three dispatches this small are all launch and no work. The
+/// activation's own operands, a bias and a clamp, ride in `extras`.
+/// `extras` counts every bound operand: the activation's, then `post`'s, then
+/// the scale, which is the last one when `scaled`.
+///
+/// Both reductions are unrolled by [`GEMV_PAIR_UNROLL`] with a scalar tail, the
+/// second into that many accumulators: the vectors are short enough that only a
+/// few dozen of the workgroup's threads have a row at all, so what is left to
+/// win is instruction-level parallelism inside each of them rather than more
+/// threads.
+pub fn gemv_pair_module(
+    dt: ShaderDtype,
+    act: &[ChainStep],
+    post: &[ChainStep],
+    extras: usize,
+    scaled: bool,
+) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 3 + extras;
+    let uniform_binding = 4 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 3 + i)
+        })
+        .collect::<String>();
+    let lib = format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t));
+    let act_body = epilogue_body(act, "j");
+    let post_body = epilogue_body(post, "c");
+    let unroll = GEMV_PAIR_UNROLL;
+    let unroll_last = unroll - 1;
+    let first_unrolled: String = (0..unroll)
+        .map(|i| format!("            sum += x_at(kk + {i}u) * x_scale * w1_at(kk + {i}u, j);\n"))
+        .collect();
+    let acc_decls: String = (0..unroll).map(|i| format!("        var acc{i} = 0.0;\n")).collect();
+    let second_unrolled: String = (0..unroll)
+        .map(|i| format!("            acc{i} += hidden[j + {i}u] * w2_at(j + {i}u, c);\n"))
+        .collect();
+    let acc_sum = (0..unroll).map(|i| format!("acc{i}")).collect::<Vec<_>>().join(" + ");
+    let x_scale = if scaled {
+        let i = extras - 1;
+        format!("f32(extra{i}[params.off_extra[{i}u]])")
+    } else {
+        "1.0".to_string()
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_x: u32,
+    off_w1: u32,
+    off_w2: u32,
+    off_out: u32,
+    k: u32,
+    r: u32,
+    n: u32,
+    x_s: u32,
+    w1_row_s: u32,
+    w1_col_s: u32,
+    w2_row_s: u32,
+    w2_col_s: u32,
+    out_s: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> x: array<{t}>;
+@group(0) @binding(1) var<storage, read> w1: array<{t}>;
+@group(0) @binding(2) var<storage, read> w2: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+
+fn x_at(kk: u32) -> f32 {{ return f32(x[params.off_x + kk * params.x_s]); }}
+fn w1_at(kk: u32, j: u32) -> f32 {{
+    return f32(w1[params.off_w1 + kk * params.w1_row_s + j * params.w1_col_s]);
+}}
+fn w2_at(j: u32, c: u32) -> f32 {{
+    return f32(w2[params.off_w2 + j * params.w2_row_s + c * params.w2_col_s]);
+}}
+
+var<workgroup> hidden: array<f32, {GEMV_PAIR_WG}>;
+
+@compute @workgroup_size({GEMV_PAIR_WG})
+fn gemv_pair_{suf}(@builtin(local_invocation_id) lid: vec3<u32>) {{
+    let tid = lid.x;
+    let x_scale = {x_scale};
+    for (var j = tid; j < params.r; j += {GEMV_PAIR_WG}u) {{
+        var sum = 0.0;
+        var kk = 0u;
+        while (kk + {unroll_last}u < params.k) {{
+{first_unrolled}            kk += {unroll}u;
+        }}
+        for (; kk < params.k; kk++) {{
+            sum += x_at(kk) * x_scale * w1_at(kk, j);
+        }}
+        var v = {t}(sum);
+{act_body}
+        hidden[j] = f32(v);
+    }}
+    workgroupBarrier();
+    for (var c = tid; c < params.n; c += {GEMV_PAIR_WG}u) {{
+{acc_decls}        var j = 0u;
+        while (j + {unroll_last}u < params.r) {{
+{second_unrolled}            j += {unroll}u;
+        }}
+        for (; j < params.r; j++) {{
+            acc0 += hidden[j] * w2_at(j, c);
+        }}
+        var v = {t}({acc_sum});
+{post_body}
+        outp[params.off_out + c * params.out_s] = v;
+    }}
+}}
+"#
+    ));
+    s
+}
+
 fn export_wgsl(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
