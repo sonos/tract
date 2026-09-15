@@ -31,12 +31,6 @@ deny = [
     # List crates we don't want in our dependency tree here.
 ]
 
-[sources]
-# trusted git sources.
-allow-git = [
-    "https://github.com/rustformers/llm.git",
-]
-
 [licenses]
 allow = [
     "Apache-2.0",                     # https://tldrlegal.com/license/apache-license-2.0-(apache-2.0)
