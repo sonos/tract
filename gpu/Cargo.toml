@@ -22,7 +22,6 @@ maintenance = { status = "actively-developed" }
 anyhow.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
-dyn-eq.workspace = true
 num-traits.workspace = true
 tract-core.workspace = true
 tract-pulse-opl.workspace = true

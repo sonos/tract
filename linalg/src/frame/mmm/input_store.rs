@@ -1,17 +1,17 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::DynClone;
-use dyn_eq::DynEq;
 use dyn_hash::DynHash;
 use std::alloc::Layout;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
+use tract_data::dyn_eq::DynEq;
 use tract_data::internal::*;
 
 use crate::WeightType;
 
 pub trait MMMInputFormat:
-    Downcast + Debug + DynHash + dyn_eq::DynEq + DynClone + Send + Sync + Display
+    Downcast + Debug + DynHash + DynEq + DynClone + Send + Sync + Display
 {
     fn prepare_tensor(&self, t: &Tensor, k_axis: usize, mn_axis: usize) -> TractResult<Tensor>;
     /// Pack one matmul out of a possibly strided view — one batch of a batched input, which a
@@ -64,10 +64,10 @@ pub trait MMMInputFormat:
 dyn_clone::clone_trait_object!(MMMInputFormat);
 impl_downcast!(MMMInputFormat);
 dyn_hash::hash_trait_object!(MMMInputFormat);
-dyn_eq::eq_trait_object!(MMMInputFormat);
+tract_data::eq_trait_object!(MMMInputFormat);
 
 pub trait MMMInputValue:
-    DynClone + Debug + DynHash + dyn_eq::DynEq + Send + Sync + Display + Downcast
+    DynClone + Debug + DynHash + DynEq + Send + Sync + Display + Downcast
 {
     fn format(&self) -> &dyn MMMInputFormat;
     fn scratch_panel_buffer_layout(&self) -> Option<Layout>;
@@ -85,7 +85,7 @@ pub trait MMMInputValue:
 dyn_clone::clone_trait_object!(MMMInputValue);
 impl_downcast!(MMMInputValue);
 dyn_hash::hash_trait_object!(MMMInputValue);
-dyn_eq::eq_trait_object!(MMMInputValue);
+tract_data::eq_trait_object!(MMMInputValue);
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 #[derive(Clone, Hash, Debug)]

@@ -1,8 +1,8 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
 use downcast_rs::Downcast;
-use dyn_eq::DynEq;
 use std::fmt;
+use tract_data::dyn_eq::DynEq;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -174,7 +174,7 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
 pub trait Fact:
-    std::fmt::Debug + Downcast + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static
+    std::fmt::Debug + Downcast + dyn_clone::DynClone + DynEq + Send + Sync + 'static
 {
     fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>>;
 

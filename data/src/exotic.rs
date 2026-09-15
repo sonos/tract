@@ -4,12 +4,12 @@ use crate::dim::TDim;
 use crate::internal::TVec;
 use std::fmt::Debug;
 
+use crate::dyn_eq::DynEq;
 use downcast_rs::{Downcast, impl_downcast};
-use dyn_eq::DynEq;
 use dyn_hash::DynHash;
 
 pub trait ExoticFact:
-    DynHash + dyn_eq::DynEq + Send + Sync + Debug + dyn_clone::DynClone + Downcast
+    DynHash + DynEq + Send + Sync + Debug + dyn_clone::DynClone + Downcast
 {
     /// Whether or not it is acceptable for a Patch to substitute `self` by `other`.
     ///
@@ -32,7 +32,7 @@ pub trait ExoticFact:
 impl_downcast!(ExoticFact);
 dyn_hash::hash_trait_object!(ExoticFact);
 dyn_clone::clone_trait_object!(ExoticFact);
-dyn_eq::eq_trait_object!(ExoticFact);
+crate::eq_trait_object!(ExoticFact);
 
 impl<T: ExoticFact> From<T> for Box<dyn ExoticFact> {
     fn from(v: T) -> Self {

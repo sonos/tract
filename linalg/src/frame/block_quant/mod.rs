@@ -1,8 +1,8 @@
 use downcast_rs::{Downcast, impl_downcast};
 use dyn_clone::{DynClone, clone_box};
-use dyn_eq::DynEq;
 use dyn_hash::DynHash;
 use num_traits::Zero;
+use tract_data::dyn_eq::DynEq;
 use tract_data::internal::*;
 use tract_data::itertools::Itertools;
 
@@ -34,7 +34,7 @@ use crate::WeightType;
 use super::mmm::MMMInputValue;
 
 pub trait BlockQuant:
-    Debug + Display + Send + Sync + DynClone + DynHash + dyn_eq::DynEq + Downcast
+    Debug + Display + Send + Sync + DynClone + DynHash + DynEq + Downcast
 {
     fn block_len(&self) -> usize;
 
@@ -188,7 +188,7 @@ pub trait BlockQuant:
 
 dyn_clone::clone_trait_object!(BlockQuant);
 dyn_hash::hash_trait_object!(BlockQuant);
-dyn_eq::eq_trait_object!(BlockQuant);
+tract_data::eq_trait_object!(BlockQuant);
 impl_downcast!(BlockQuant);
 
 #[allow(clippy::derived_hash_with_manual_eq)]
