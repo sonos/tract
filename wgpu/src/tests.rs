@@ -449,3 +449,36 @@ fn element_wise_past_one_grid_dimension() -> TractResult<()> {
         close(&output.to_host()?.into_tensor(), &cpu)
     })
 }
+
+/// A resize over the two trailing axes runs as one launch, two taps unrolled
+/// when it is bilinear and the generic gather otherwise, and matches the CPU.
+#[test]
+fn resize_two_trailing_axes() -> TractResult<()> {
+    use tract_core::ops::nn::resize::{CoordTransformer, Interpolator, Nearest, Resize};
+    for (interp, coord, shape, scales) in [
+        (Interpolator::Linear, CoordTransformer::HalfPixel, [1usize, 3, 9, 16], [1f32, 1., 2., 2.]),
+        (Interpolator::Linear, CoordTransformer::AlignCorners, [2, 5, 7, 11], [1., 1., 3., 1.5]),
+        (Interpolator::Nearest, CoordTransformer::Asymmetric, [1, 2, 6, 6], [1., 1., 2., 2.]),
+        (Interpolator::Cubic, CoordTransformer::HalfPixel, [1, 1, 8, 8], [1., 1., 2., 2.]),
+    ] {
+        let label = format!("{interp:?} {coord:?} {shape:?} x {scales:?}");
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(&shape))?;
+        let s = model.add_const("scales", tensor1(&scales))?;
+        let y = model.wire_node(
+            "resize",
+            Resize {
+                coord_transformer: coord,
+                interpolator: interp,
+                nearest: Nearest::RoundPreferCeil,
+                optional_scales_input: Some(1),
+                optional_sizes_input: None,
+            },
+            &[x, s],
+        )?[0];
+        model.select_output_outlets(&[y])?;
+        let n: usize = shape.iter().product();
+        gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(7, n))?).with_context(|| label)?;
+    }
+    Ok(())
+}
