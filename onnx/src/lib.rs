@@ -1,3 +1,15 @@
+//! This is tract-onnx importer.
+//!
+//! IF YOU'RE INTEGRATING TRACT IN AN APP, PLEASE LINK THE `tract` CRATE INSTEAD.
+//!
+//! Sonce 0.23, the `tract` crate presents a minimal facade which is meant to be the
+//! unique entry-point to tract, while tract-onnx is an internal piece of machinery.
+//!
+//! There is not stability commitment on tract-onnx (or other internals) API.
+//!
+//! If the facade does not meet your requirements, tract maintainers are interested to
+//! understand your use-case.
+
 #![allow(clippy::len_zero)]
 #[allow(unused_imports)]
 #[macro_use]

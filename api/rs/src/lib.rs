@@ -1,3 +1,17 @@
+//! # Main tract facade for application integration.
+//!
+//! This crate is meant to be the only entry-point for an applcation using tract in
+//! the "obvious" load a model, then run a model usecase. This should be the only tract
+//! crate your project need. If it is not the case please get in touch, we are curious.
+//!
+//! * Since 0.23.6, cuda support is opt-in.
+//! * Starting with 0.23.7, there have been efforts to reduce the facade footprint using
+//! with mode compilation-time features (onnx support is opt-out for instance).
+//! * The API from this crate is lowered to a C-ABI by tract-ffi, for instegration in
+//! other languages (see tract python library). tract-proxy is the opposite: a consumer of
+//! tract C library that re-implement the same interface then this `tract` crateto. It
+//! makes it possible to switch to dynamic linking of tract if it helps your deployment.
+
 #[cfg(all(target_vendor = "apple", feature = "metal"))]
 extern crate tract_metal;
 
