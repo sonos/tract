@@ -1936,3 +1936,90 @@ pub fn broadcast_strides(shape: &[usize], strides: &[isize], out_shape: &[usize]
     }
     out
 }
+
+pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"));
+    let epi = epilogue_body(epilogue, "col");
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    m: u32,
+    k: u32,
+    n: u32,
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    _p0: u32,
+    _p1: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> b4: array<vec4<f32>>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<f32>>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+
+fn epi(v_in: f32, col: u32) -> f32 {{
+    var v = v_in;
+{epi}
+    return v;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let m4 = params.m / 4u;
+    let n4 = params.n / 4u;
+    let tile = gid.x;
+    let row_tile = tile % m4;
+    let col_tile = tile / m4;
+    if (col_tile >= n4) {{ return; }}
+    var acc0 = vec4<f32>(0.0);
+    var acc1 = vec4<f32>(0.0);
+    var acc2 = vec4<f32>(0.0);
+    var acc3 = vec4<f32>(0.0);
+    for (var kk = 0u; kk < params.k; kk += 4u) {{
+        let ab = params.off_a + kk * m4 + row_tile;
+        let bb = params.off_b + kk * n4 + col_tile;
+        let a0 = a4[ab];
+        let a1 = a4[ab + m4];
+        let a2 = a4[ab + 2u * m4];
+        let a3 = a4[ab + 3u * m4];
+        let b0 = b4[bb];
+        let b1 = b4[bb + n4];
+        let b2 = b4[bb + 2u * n4];
+        let b3 = b4[bb + 3u * n4];
+        acc0 += a0 * b0.x + a1 * b1.x + a2 * b2.x + a3 * b3.x;
+        acc1 += a0 * b0.y + a1 * b1.y + a2 * b2.y + a3 * b3.y;
+        acc2 += a0 * b0.z + a1 * b1.z + a2 * b2.z + a3 * b3.z;
+        acc3 += a0 * b0.w + a1 * b1.w + a2 * b2.w + a3 * b3.w;
+    }}
+    let col0 = col_tile * 4u;
+    let cc = params.off_out + col0 * m4 + row_tile;
+    c4[cc] = vec4<f32>(
+        epi(acc0.x, col0), epi(acc0.y, col0), epi(acc0.z, col0), epi(acc0.w, col0));
+    c4[cc + m4] = vec4<f32>(
+        epi(acc1.x, col0 + 1u), epi(acc1.y, col0 + 1u),
+        epi(acc1.z, col0 + 1u), epi(acc1.w, col0 + 1u));
+    c4[cc + 2u * m4] = vec4<f32>(
+        epi(acc2.x, col0 + 2u), epi(acc2.y, col0 + 2u),
+        epi(acc2.z, col0 + 2u), epi(acc2.w, col0 + 2u));
+    c4[cc + 3u * m4] = vec4<f32>(
+        epi(acc3.x, col0 + 3u), epi(acc3.y, col0 + 3u),
+        epi(acc3.z, col0 + 3u), epi(acc3.w, col0 + 3u));
+}}
+"#
+    ));
+    s
+}

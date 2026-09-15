@@ -8,9 +8,10 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+use crate::context::RepackKey;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for,
-    matmul_module, pack_u32s, program_key, rpad8_dims, rpad8_strides,
+    matmul_blocked_module, matmul_module, pack_u32s, program_key, rpad8_dims, rpad8_strides,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -89,6 +90,64 @@ pub struct Transposes {
     pub c: bool,
 }
 
+/// `b` transposed once, kept for the frames that read it again. Only reached
+/// for an unpooled `b`, so the key cannot outlive the buffer it names.
+fn repacked_b(
+    q: &crate::context::WgpuQueue,
+    b: &DeviceTensor,
+    k: usize,
+    n: usize,
+) -> TractResult<DeviceTensor> {
+    let key = RepackKey { buffer: get_wgpu_buffer(b).id, offset: element_offset(b, 0), k, n };
+    if let Some(packed) = q.repacked(&key) {
+        return Ok(packed);
+    }
+    let packed = DeviceTensor::uninitialized_dt(b.datum_type(), &[k, n])?;
+    // b is (n, k) with k fastest; write it out with n fastest
+    crate::kernels::copy::wgpu_copy_nd_dispatch(
+        b,
+        0,
+        &[1, k as isize],
+        &packed,
+        0,
+        &[k, n],
+        &[n as isize, 1],
+    )?;
+    q.store_repacked(key, packed.clone());
+    Ok(packed)
+}
+
+/// Whether the blocked kernel can serve this product: it reads both operands as
+/// `vec4`, so the tile must divide the shape and the fastest axis of each
+/// operand must be the one it widens. `b` is repacked once and read back by
+/// buffer id, which only a buffer outside the frame pool keeps.
+#[allow(clippy::too_many_arguments)]
+fn blocked_applies(
+    prefix: usize,
+    m: usize,
+    k: usize,
+    n: usize,
+    a: &DeviceTensor,
+    b: &DeviceTensor,
+    out: &DeviceTensor,
+    t: Transposes,
+) -> bool {
+    let rank = a.rank();
+    !get_wgpu_buffer(b).pooled
+        && prefix == 1
+        && m.is_multiple_of(4)
+        && n.is_multiple_of(4)
+        && k.is_multiple_of(4)
+        && t.a
+        && t.b
+        && t.c
+        && a.strides()[rank - 1] == 1
+        && a.strides()[rank - 2] == m as isize
+        && out.strides()[out.rank() - 1] == 1
+        && element_offset(a, 0).is_multiple_of(4)
+        && element_offset(out, 0).is_multiple_of(4)
+}
+
 pub fn wgpu_matmul_dispatch(
     t: Transposes,
     epilogue: &[ChainStep],
@@ -128,6 +187,48 @@ pub fn wgpu_matmul_dispatch(
             "matmul output shape {out_shape:?} does not match its inputs"
         );
         let prefix: usize = out_shape[..out_shape.len() - 2].iter().product();
+
+        if blocked_applies(prefix, m, k, n, a, b, output, t) {
+            let packed = repacked_b(q, b, k, n)?;
+            let pipeline = q.context().chain_pipeline(
+                &program_key("matmul_blocked", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("matmul_blocked", dt),
+                || matmul_blocked_module(dt, epilogue, extras.len()),
+            )?;
+            q.retain_tensor(&packed);
+            let mut buffers: Vec<&crate::context::WgpuBuffer> =
+                vec![get_wgpu_buffer(a), get_wgpu_buffer(&packed)];
+            buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
+            buffers.push(get_wgpu_buffer(output));
+            let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
+            let mut vals = vec![
+                m as u32,
+                k as u32,
+                n as u32,
+                (element_offset(a, 0) / 4) as u32,
+                (element_offset(&packed, 0) / 4) as u32,
+                (element_offset(output, 0) / 4) as u32,
+                0,
+                0,
+            ];
+            let mut off_extra = [0u32; 4];
+            let mut mode_extra = [0u32; 4];
+            for (i, t) in extras.iter().enumerate() {
+                off_extra[i] = element_offset(t, 0) as u32;
+                mode_extra[i] = epilogue_mode(t, n)?;
+            }
+            vals.extend_from_slice(&off_extra);
+            vals.extend_from_slice(&mode_extra);
+            let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+            return q.dispatch(
+                "matmul_blocked",
+                &pipeline,
+                &bg,
+                dyn_off,
+                ((m / 4) * (n / 4)) as u64,
+            );
+        }
 
         let mut buffers: Vec<&crate::context::WgpuBuffer> =
             vec![get_wgpu_buffer(a), get_wgpu_buffer(b)];
