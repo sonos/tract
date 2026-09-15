@@ -483,8 +483,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 && (can_convert_to_cuda_gemm(&facts)
                     || can_convert_to_cuda_gemm(&[facts[1].clone(), facts[0].clone()]))
             {
-                let mut device_inputs =
-                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let mut device_inputs = sync_inputs_if_required(
+                    source,
+                    target,
+                    node,
+                    mapping,
+                    DeviceSyncKind::ToDevice,
+                )?;
                 let outlet_ids =
                     convert_matmul_to_cuda(source, node, target, &mut device_inputs, op)?;
                 return sync_model_outputs_if_required(source, node, target, outlet_ids);
@@ -494,7 +499,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             && cuda_flash_attn_supported(&input_facts)
         {
             let mut device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 convert_sdpa_to_cuda_flash_attn(source, node, target, &mut device_inputs, op)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
@@ -504,7 +509,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             && matches!(input_facts[0].datum_type, F16 | F32)
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
@@ -513,7 +518,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             && DeviceTensor::is_supported_dt(op.val().datum_type())
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
@@ -575,12 +580,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             && gpu_op.output_facts(&target_input_post_sync_refs).is_ok()
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
