@@ -5042,6 +5042,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tract-api",
+ "tract-core",
  "tract-cuda",
  "tract-extra",
  "tract-libcli",
