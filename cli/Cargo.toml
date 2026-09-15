@@ -45,7 +45,6 @@ num_cpus.workspace = true
 py_literal.workspace = true
 readings-probe.workspace = true
 ron.workspace = true
-regex.workspace = true
 scan_fmt.workspace = true
 serde.workspace = true
 serde_json.workspace = true
