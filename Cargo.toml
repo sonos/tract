@@ -148,7 +148,6 @@ criterion = "0.8"
 cudarc = { version = "0.19", features = ["dynamic-loading", "f16", "cudnn"] }
 derive-new = "0.7"
 dinghy-test = "0.8"
-dirs = "7.0.0"
 downcast-rs = "2.0"
 dyn-clone = "1.0.4"
 dyn-hash = "1.0"
