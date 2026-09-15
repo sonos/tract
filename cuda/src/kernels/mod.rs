@@ -5,6 +5,7 @@ pub mod binary;
 pub mod causal_conv1d_update;
 pub mod conv;
 pub mod conv_cudnn;
+mod conv_source;
 pub mod element_wise;
 pub mod fft;
 pub mod flash_attn;
@@ -72,7 +73,6 @@ const ELEMENT_WISE_OPS: &str = include_str!("cu/element_wise.cu");
 const BINARY_OPS: &str = include_str!("cu/binary.cu");
 const ARRAY_OPS: &str = include_str!("cu/array.cu");
 const NN_OPS: &str = include_str!("cu/nn.cu");
-const CNN_OPS: &str = include_str!("cu/cnn.cu");
 const GGML_MM_MV: &str = include_str!("cu/mm_mv.cu");
 const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
@@ -80,6 +80,13 @@ const FLASH_ATTN: &str = include_str!("cu/flash_attn.cu");
 const GDN_RECURRENT: &str = include_str!("cu/gdn_recurrent.cu");
 const FFT_OPS: &str = include_str!("cu/fft.cu");
 pub const COMMON_H: &str = include_str!("cu/common.cuh");
+
+/// The convolution kernels are rendered rather than read: every instantiation the Cnn
+/// library carries, concatenated once.
+fn cnn_ops() -> &'static str {
+    static CNN_OPS: OnceLock<String> = OnceLock::new();
+    CNN_OPS.get_or_init(conv_source::conv_library_source)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
@@ -130,7 +137,7 @@ impl LibraryName {
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
             Self::NN => NN_OPS,
-            Self::Cnn => CNN_OPS,
+            Self::Cnn => cnn_ops(),
             Self::GdnRecurrent => GDN_RECURRENT,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
