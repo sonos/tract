@@ -194,7 +194,11 @@ impl OwnedDeviceTensor for MetalTensor {
     }
 
     fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
-        self.inner.as_arc_tensor().unwrap().as_bytes()[offset..offset + len].to_vec()
+        match &self.inner {
+            MValue::Natural(t) | MValue::Reshaped { t, .. } => {
+                t.as_bytes()[offset..offset + len].to_vec()
+            }
+        }
     }
 }
 

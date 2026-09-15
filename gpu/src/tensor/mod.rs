@@ -247,7 +247,15 @@ impl TensorStorage for DeviceTensor {
 
     fn slice(&self, axis: usize, start: usize, end: usize) -> TractResult<Option<Tensor>> {
         let tensor = match self {
-            Self::ArenaView(view) => DeviceTensor::ArenaView(view.sliced(axis, start, end)?),
+            Self::ArenaView(view) if view.exotic_fact().is_none() => {
+                let view = view.sliced(axis, start, end)?;
+                if view.is_dense() {
+                    DeviceTensor::ArenaView(view)
+                } else {
+                    return Ok(Some((*self.to_host()?).slice(axis, start, end)?));
+                }
+            }
+            Self::ArenaView(_) => return Ok(Some((*self.to_host()?).slice(axis, start, end)?)),
             Self::Owned(owned)
                 if owned.exotic_fact().is_none()
                     && owned.strides().iter().all(|&stride| stride >= 0) =>
@@ -260,7 +268,12 @@ impl TensorStorage for DeviceTensor {
                     owned.strides().into(),
                     0,
                 )?;
-                DeviceTensor::ArenaView(view.sliced(axis, start, end)?)
+                let view = view.sliced(axis, start, end)?;
+                if view.is_dense() {
+                    DeviceTensor::ArenaView(view)
+                } else {
+                    return Ok(Some((*self.to_host()?).slice(axis, start, end)?));
+                }
             }
             Self::Owned(_) => return Ok(Some((*self.to_host()?).slice(axis, start, end)?)),
         };
