@@ -5250,8 +5250,13 @@ dependencies = [
  "derive-new",
  "downcast-rs",
  "dyn-hash",
+ "erased-serde",
+ "log",
  "num-traits",
+ "serde",
+ "serde_json",
  "tract-core",
+ "tract-metal",
  "tract-pulse-opl",
  "tract-transformers",
 ]
