@@ -228,10 +228,17 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
   constexpr load_tiles_mmq_t load_tiles =
       mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::load_tiles;
 
-  extern __shared__ int data_mul_mat_q[];
-  int *tile_y = data_mul_mat_q + mmq_x;
-  int *tile_x = tile_y + PAD(mmq_x * (WARP_SIZE + WARP_SIZE / QI8_1),
-                             N_WARPS * WARP_SIZE);
+  extern __shared__ alignment_dummy __shm[];
+  shared_allocator al((int *)&__shm[0]);
+  // First mmq_x ints are reserved for ids_dst_shared (allocated by caller mul_mat_q)
+  al.allocate<int, mmq_x>();
+  auto &tile_y_arr = al.allocate<int, mmq_x *(WARP_SIZE + WARP_SIZE / QI8_1)>();
+  int *tile_y = &tile_y_arr[0];
+  constexpr int tile_x_size =
+      PAD(mmq_x *(WARP_SIZE + WARP_SIZE / QI8_1), N_WARPS * WARP_SIZE);
+  auto &tile_x_arr =
+      al.allocate<sizeof(int) * N_WARPS * WARP_SIZE, int, tile_x_size>();
+  int *tile_x = &tile_x_arr[0];
 
   constexpr vec_dot_mmq_t vec_dot =
       mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::vec_dot_mma;
@@ -310,8 +317,9 @@ mul_mat_q(const char *__restrict__ x, const int *__restrict__ y,
   // Initialize the ids for writing back data with just the index.
   // For regular matrix multiplications this is never changed.
   // For MoE the correct indices are loaded from ids_dst.
-  extern __shared__ int
-      ids_dst_shared[]; // Stored at beginning of shared memory.
+  extern __shared__ alignment_dummy __shm[];
+  shared_allocator al((int *)&__shm[0]);
+  int (&ids_dst_shared)[mmq_x] = al.allocate<int, mmq_x>();
   _Pragma("unroll") for (int j0 = 0; j0 < mmq_x; j0 += nwarps * WARP_SIZE) {
     const int j = j0 + threadIdx.y * WARP_SIZE + threadIdx.x;
 

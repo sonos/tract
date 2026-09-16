@@ -16,6 +16,82 @@
 #define MAX_THREADS 1024
 #define WARP_SIZE 32
 
+// Dummy type for aligning extern __shared__ declarations.
+// Always use alignment_dummy instead of raw types for extern __shared__
+// to ensure 16-byte alignment for cp.async / ldmatrix / mma operations.
+struct alignment_dummy {
+    alignas(16) int dummy;
+};
+
+// Type-safe shared memory allocator for dynamic shared memory.
+// Inspired by ThunderKittens (github.com/HazyResearch/ThunderKittens)
+// include/common/util.cuh shared_allocator.
+//
+// Usage:
+//   extern __shared__ alignment_dummy __shm[];
+//   shared_allocator al((int*)&__shm[0]);
+//   auto& my_struct  = al.allocate<my_type>();        // single instance
+//   auto& my_array   = al.allocate<float, 256>();     // float[256]
+//   auto& my_matrix  = al.allocate<half, 8, 32>();    // half[8][32]
+//
+// Each allocate<>() call advances an internal pointer with proper alignment,
+// eliminating manual offset arithmetic and alignment bugs.
+template<int default_alignment = 16>
+struct shared_allocator {
+    int *ptr;
+
+private:
+    // Recursive helper to generate N-dimensional array type from trailing
+    // size_t dimensions: allocate<T, 8, 32>() -> T&[8][32]
+    template<typename A, size_t... dims>
+    struct variadic_array;
+    template<typename A, size_t first_dim, size_t... rest_dims>
+    struct variadic_array<A, first_dim, rest_dims...> {
+        using type = typename variadic_array<A, rest_dims...>::type[first_dim];
+    };
+    template<typename A>
+    struct variadic_array<A> {
+        using type = A;
+    };
+    template<typename A, size_t... dims>
+    using variadic_array_t = typename variadic_array<A, dims...>::type;
+
+    template<int alignment>
+    __device__ __forceinline__ void align_ptr() {
+        if constexpr (alignment > 0) {
+            uint64_t p = reinterpret_cast<uint64_t>(ptr);
+            if (p % alignment != 0) {
+                ptr = (int *)(p + (alignment - (p % alignment)));
+            }
+        }
+    }
+
+public:
+    __device__ shared_allocator(int *_ptr) : ptr(_ptr) {}
+
+    // Allocate a single instance or N-dimensional array of type A.
+    // Returns a reference to the allocated object.
+    template<typename A, size_t... dims>
+    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
+        align_ptr<default_alignment>();
+        using at = variadic_array_t<A, dims...>;
+        at *p = reinterpret_cast<at *>(ptr);
+        // Ceiling division so sub-4-byte types (e.g. half) are handled correctly.
+        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
+        return *p;
+    }
+
+    // Allocate with a custom alignment override.
+    template<int alignment, typename A, size_t... dims>
+    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
+        align_ptr<alignment>();
+        using at = variadic_array_t<A, dims...>;
+        at *p = reinterpret_cast<at *>(ptr);
+        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
+        return *p;
+    }
+};
+
 #define QK8_1 32
 #define QI8_1 (QK8_1 / (4 * QR8_1))
 #define QR8_1 1
