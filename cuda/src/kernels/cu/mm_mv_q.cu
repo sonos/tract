@@ -236,8 +236,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
   int *tile_y = &tile_y_arr[0];
   constexpr int tile_x_size =
       PAD(mmq_x *(WARP_SIZE + WARP_SIZE / QI8_1), N_WARPS * WARP_SIZE);
-  auto &tile_x_arr =
-      al.allocate<sizeof(int) * N_WARPS * WARP_SIZE, int, tile_x_size>();
+  auto &tile_x_arr = al.allocate<int, tile_x_size>();
   int *tile_x = &tile_x_arr[0];
 
   constexpr vec_dot_mmq_t vec_dot =
