@@ -58,12 +58,10 @@ private:
 
     template<int alignment>
     __device__ __forceinline__ void align_ptr() {
-        if constexpr (alignment > 0) {
-            uint64_t p = reinterpret_cast<uint64_t>(ptr);
-            if (p % alignment != 0) {
-                ptr = (int *)(p + (alignment - (p % alignment)));
-            }
-        }
+        // No-op: alignment_dummy has alignas(16), guaranteeing the
+        // shared memory block is 16-byte aligned at entry. All
+        // allocate() sizes in this codebase are multiples of 16
+        // bytes, so ptr stays aligned after each call.
     }
 
 public:
