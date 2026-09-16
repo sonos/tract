@@ -22,7 +22,7 @@ pub struct LazyHostStorage {
     /// Dropped once the host side is written to: a mutated tensor is a plain
     /// host tensor and must not alias a device buffer anyone else holds.
     device: Option<DeviceTensor>,
-    host: OnceLock<Tensor>,
+    host: OnceLock<Arc<Tensor>>,
 }
 
 impl LazyHostStorage {
@@ -64,7 +64,16 @@ impl LazyHostStorage {
         Tensor::from_storage(dt, &shape, self)
     }
 
-    fn materialize(&self) -> TractResult<&Tensor> {
+    /// The host tensor, brought back from the device on the first call.
+    ///
+    /// Kept as the `Arc` the device tensor handed out rather than a tensor of
+    /// our own: on a unified-memory backend the device buffer wraps that very
+    /// allocation and the backend keeps a share of it, so taking ownership is
+    /// never possible and copying would spend a full readback to own bytes we
+    /// can already read. Sharing them is free, and safe because everything
+    /// handed out from here is immutable -- a write goes through `as_plain_mut`,
+    /// which copies out of the `Arc` first.
+    fn materialize(&self) -> TractResult<&Arc<Tensor>> {
         if let Some(host) = self.host.get() {
             return Ok(host);
         }
@@ -73,9 +82,6 @@ impl LazyHostStorage {
             .as_ref()
             .context("Lazy host storage has neither a device tensor nor host bytes")?;
         let host = device.to_host().context("While materializing a lazy host tensor")?;
-        // to_host hands out an Arc the device tensor may still hold a share of;
-        // take it when we can, copy when we cannot.
-        let host = Arc::try_unwrap(host).unwrap_or_else(|shared| (*shared).clone());
         Ok(self.host.get_or_init(|| host))
     }
 }
@@ -117,9 +123,11 @@ impl TensorStorage for LazyHostStorage {
     }
 
     fn deep_clone(&self) -> Box<dyn TensorStorage> {
+        // Shares whatever has been materialized; a write on either side copies
+        // it out first, so the two stay independent as the contract requires.
         let host = OnceLock::new();
         if let Some(h) = self.host.get() {
-            let _ = host.set(h.clone());
+            let _ = host.set(Arc::clone(h));
         }
         Box::new(LazyHostStorage { device: self.device.clone(), host })
     }
@@ -133,14 +141,17 @@ impl TensorStorage for LazyHostStorage {
         self.materialize().ok()?;
         // Writing to the host side detaches the device tensor: from here on
         // this is an ordinary host tensor, and nothing aliases device memory.
+        // make_mut copies the bytes out only if the backend is still sharing
+        // them, which is exactly when writing through would reach the device.
         self.device = None;
-        self.host.get_mut().and_then(|h| h.as_plain_storage_mut())
+        Arc::make_mut(self.host.get_mut()?).as_plain_storage_mut()
     }
 
     fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
         let me = *self;
         me.materialize().ok()?;
         let host = me.host.into_inner()?;
+        let host = Arc::try_unwrap(host).unwrap_or_else(|shared| (*shared).clone());
         host.into_blob().ok().map(PlainStorage::from)
     }
 
