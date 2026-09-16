@@ -26,9 +26,10 @@ that axis 0 of every stateful node is the model's batch axis.
   by several streams: axis 0 of a laned op state's buffers, sized at the
   seating's `max_lanes`. `LaneId`, and `OpState::reset_lanes` to hand a lane to a
   new stream.
-- **seat** — a stream's position within one turn's batch: axis 0 of the turn's
-  I/O tensors, whose extent is the occupancy. A turn's `Seating` maps seat to
-  lane, and an op with no per-lane state ignores it.
+- **seat** — a position within one turn's batch: axis 0 of the turn's I/O
+  tensors, whose extent is the occupancy. A turn's `Seating` maps seat to lane,
+  and an op with no per-lane state ignores it. One seat per lane per turn, so a
+  caller asking for several at once is asking for several lanes.
 
 ## Taken, do not reuse
 

@@ -96,7 +96,7 @@ impl OpState for GruSeqState {
         op.eval_with(&mut self.h, &mut self.packed_r, inputs)
     }
 
-    /// GruSeq carries a single hidden state, not one row per stream, so it cannot
+    /// GruSeq carries a single hidden state, not one per lane, so it cannot
     /// be split across lanes -- same stance as the `Scan` it replaces.
     fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
         bail!("GruSeq is not lane-aware: it carries a single hidden state")

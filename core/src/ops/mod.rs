@@ -127,7 +127,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + Downcast + Send {
 
     /// Discard what this state carries for `lanes`, so each can be handed to
     /// another stream. Required, with no default: an op holding per-lane state
-    /// clears those rows, one holding none says so with `Ok(())`, and one that
+    /// clears those lanes, one holding none says so with `Ok(())`, and one that
     /// cannot serve several streams at once fails here -- which is where a laned
     /// runtime finds out, since it resets every lane before the first turn.
     fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()>;

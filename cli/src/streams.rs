@@ -11,13 +11,12 @@ use crate::params::Parameters;
 ///
 /// One thread and one state per stream -- one lane each when the runtime
 /// autobatches (`--autobatch-sessions`), one state of its own when it does not
-/// -- feeding one row
-/// per turn as fast as it can. So the seats stagger themselves: occupancy is
-/// whatever the worker finds queued, and a piece of state two streams share
-/// shows up as a diff against the solo run. Stream `k` feeds the input turns
-/// rotated by `k`, so no two seats of a turn carry the same values -- a state
-/// shared by two streams sitting at the same position in the same signal is
-/// invisible.
+/// -- feeding one seat per turn as fast as it can. So the seats stagger
+/// themselves: occupancy is whatever the worker finds queued, and a piece of
+/// state two streams share shows up as a diff against the solo run. Stream `k`
+/// feeds the input turns rotated by `k`, so no two seats of a turn carry the
+/// same values -- a state shared by two streams sitting at the same position in
+/// the same signal is invisible.
 ///
 /// The stream-length symbol is never bound: a turn is symbol-homogeneous, so
 /// end of stream belongs to the caller. Feed whole pulses.

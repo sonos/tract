@@ -83,7 +83,7 @@ pub trait State: Any + Downcast + Debug + Send + DynClone + 'static {
         bail!("{self:?} can not resolve a symbol")
     }
 
-    /// Seat the lanes carrying the coming turn's streams, one lane per row of
+    /// Seat the lanes carrying the coming turn's streams, one lane per seat of
     /// axis 0 of its tensors. A turn seating more than one lane needs axis 0 of
     /// every stateful node to be the model's batch axis.
     fn seat(&mut self, seating: Seating) -> TractResult<()> {
