@@ -19,7 +19,15 @@ impl DeviceTurnHandler {
 impl TurnStateHandler for DeviceTurnHandler {
     fn before_plan_eval(&self, turn: &mut TurnState) -> TractResult<()> {
         let resolved_mem_schema = self.mem_schema.resolve(&turn.resolved_symbols)?;
-        let memory_pool = DeviceMemoryPool::from_schema(resolved_mem_schema)?;
+        let cache = if let Some(cache) = turn.shared.get::<Arc<crate::memory::ArenaStorageCache>>()
+        {
+            Arc::clone(cache)
+        } else {
+            let cache = Arc::new(crate::memory::ArenaStorageCache::default());
+            turn.shared.insert(Arc::clone(&cache));
+            cache
+        };
+        let memory_pool = DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, &cache)?;
 
         turn.shared.insert(memory_pool);
         ensure!(turn.shared.get::<DeviceMemoryPool>().is_some());
