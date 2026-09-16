@@ -540,7 +540,7 @@ impl State for LanedStateHandle {
         let (done, outputs) = channel();
         self.lease
             .requests
-            .send(Request::Call(Call { lane: self.lease.lane, inputs, done }))
+            .send(Request::Call(Call { leased: self.lease.lane, inputs, done }))
             .map_err(|_| format_err!("The laned worker is gone"))?;
         outputs.recv().map_err(|_| format_err!("The laned worker dropped a turn"))?
     }
@@ -567,8 +567,10 @@ enum Request {
 /// answered once every one of them has been served -- over as many turns as
 /// the free lanes took to seat them all.
 struct Call {
-    /// The caller's own lane, which its first seat sits in.
-    lane: LaneId,
+    /// The lane the caller holds for the life of its handle, which this call's
+    /// first seat sits in. It is a reservation, not a home: a call asking for
+    /// several seats borrows the rest.
+    leased: LaneId,
     /// What the caller fed, batched inputs still stacked as they came.
     inputs: TVec<TValue>,
     /// Where the assembled answer goes; the caller blocks on the other end.
@@ -581,8 +583,8 @@ struct Call {
 struct Seat {
     /// The call this seat answers, keying its [`Completer`].
     call: u64,
-    /// The lane the seat sits in: its caller's own, overwritten by `fill` with
-    /// a borrowed one when the caller's is already taken this turn.
+    /// The lane the seat sits in: the call's leased one, overwritten by `fill`
+    /// with a borrowed one when that lane already took a seat this turn.
     lane: LaneId,
     /// Its place in the call, so the answer stacks back in the order asked.
     ix: usize,
@@ -624,7 +626,7 @@ impl Queue {
                 self.completers
                     .insert(id, Completer { served: vec![None; seats.len()], done: call.done });
                 for (ix, inputs) in seats.into_iter().enumerate() {
-                    self.seats.push_back(Seat { call: id, lane: call.lane, ix, inputs });
+                    self.seats.push_back(Seat { call: id, lane: call.leased, ix, inputs });
                 }
             }
             Err(e) => {
