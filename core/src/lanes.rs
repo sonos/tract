@@ -1,3 +1,169 @@
+//! Serving many streams through one state.
+//!
+//! A prepared model serves one stream at a time: `spawn()` hands out a state,
+//! and each `run()` on it is one turn of that stream. [`LanedRunnable::wrap`]
+//! makes one state serve many streams at once, by batching the turns that
+//! happen to be ready into a single `run()` on a single state. Callers see
+//! nothing of it: they still spawn a state each and run it per turn.
+//!
+//! This is the one corner of `core` where threads, queues and a promise per
+//! caller appear, so its plumbing carries more comment than the rest of the
+//! crate: the types are small, and what they mean is where the bugs are.
+//!
+//! # Two batch axes, and the words for them
+//!
+//! `doc/lexicon.md` is the reference; the four words this module lives on:
+//!
+//! - **lane** -- where one stream's state sits inside the shared state: axis 0
+//!   of a laned op state's buffers, of extent `max_lanes`, addressed through
+//!   the turn's [`Seating`].
+//! - **seat** -- a position in one turn's batch: axis 0 of the turn's input and
+//!   output tensors, of extent the turn's occupancy.
+//! - **turn** -- one `run()` on the state. It has one seating, and its seats
+//!   are the streams it serves.
+//! - **call** -- one `run()` on a [`LanedStateHandle`]. Usually one seat of one
+//!   turn, but a caller feeding several at once asks for several seats, and is
+//!   answered over as many turns as they took to seat.
+//!
+//! One lane takes at most one seat per turn: a stream's state is sequential.
+//!
+//! # The actors
+//!
+//! ```text
+//!     caller thread                     caller thread
+//!      (stream A)                        (stream B)
+//!          |                                 |
+//!   LanedStateHandle                  LanedStateHandle
+//!    lane 0, cloned                    lane 1, cloned
+//!          |                                 |
+//!          |   Request::{Spawn, Call, Drop}  |
+//!          +---------------+-----------------+
+//!                          |   one mpsc queue, cloned per handle
+//!                          v
+//!       +--------------------------------------------+
+//!       |        worker thread "tract-lanes"         |
+//!       |                                            |
+//!       |  LaneTable   which lanes are taken         |
+//!       |  Queue       seats waiting, completers     |
+//!       |  Box<dyn State>   the one state, laned     |
+//!       +--------------------------------------------+
+//!                          |
+//!                          |   one answer channel per call
+//!                          v
+//!                    back to the callers
+//! ```
+//!
+//! The worker owns the state and the [`LaneTable`] both, and is the only thread
+//! which touches either. That is not tidiness: taking a lane **resets** it,
+//! which writes the state -- device memory for a state on a GPU -- so it has to
+//! happen where the state lives. Hence a handle asks for a lane rather than
+//! taking one, and `Lease` only knows how to send it back.
+//!
+//! # The life of a handle, in requests
+//!
+//! - `Request::Spawn` -- `LanedRunnable::spawn` asks for a lane and blocks
+//!   until the worker resets one and answers, or until it answers that every
+//!   lane is taken.
+//! - `Request::Call` -- `LanedStateHandle::run` sends its inputs and a
+//!   one-shot channel, then blocks on that channel.
+//! - `Request::Drop` -- the last clone of a handle dropped sends its lane
+//!   back, and the next stream can have it.
+//!
+//! # The life of a turn
+//!
+//! 1. The worker blocks until a request arrives. If it put a seat in the queue,
+//!    the turn **lingers** for [`TRACT_TURN_LINGER_US`], so that streams whose
+//!    pulses land within a hair of each other share a turn instead of taking
+//!    one each. Zero by default.
+//! 2. Everything else pending is drained, so the turn sees every seat ready.
+//! 3. `fill` seats the head of the queue: at most [`TRACT_MAX_SEATS`] seats, at
+//!    most one per lane.
+//! 4. `run_turn` stacks the batched inputs along axis 0 in seat order, checks
+//!    that the shared ones agree across seats, publishes the seating, and runs
+//!    the state **once**.
+//! 5. Its outputs are sliced back per seat, borrowed lanes go back to the
+//!    table, and each seat is handed to its call's `Completer`, which answers
+//!    the caller once its last seat has landed.
+//!
+//! A turn that fails fails every seat of it, and a seat that fails fails its
+//! whole call and drops that call's seats still queued.
+//!
+//! # A call asking for several seats
+//!
+//! A beam decoder hands a stateless model its k hypotheses in one `run()`. Such
+//! a call **explodes** into one `Seat` per slice of its batched inputs; the
+//! queue is therefore a queue of seats, not of calls, and a call wider than the
+//! free lanes is split at the turn boundary rather than held until it fits
+//! whole -- so a wide call cannot starve the one-seat calls behind it. Its first
+//! seat sits in its caller's own lane and the rest **borrow** free lanes, which
+//! resets them, so no seat ever reads what another caller left.
+//!
+//! With `max_lanes` 4, A holding lane 0 and B lane 1, A calling for 5 seats and
+//! B for one:
+//!
+//! ```text
+//!   A: run([5, ..])                      B: run([1, ..])
+//!         |                                    |
+//!         | explode                            | explode
+//!         v                                    v
+//!      A0 A1 A2 A3 A4                          B0
+//!         |                                    |
+//!         +----------------+-------------------+
+//!                          v
+//!            queue: A0 A1 A2 A3 A4 B0
+//!
+//!   turn 1                        lane 0  lane 1  lane 2  lane 3
+//!     A0 -> its own lane          [ A0 ]  [ B0 ]  [ A1 ]  [ A2 ]
+//!     A1 -> borrows lane 2          |       |       |       |
+//!     A2 -> borrows lane 3          +-------+---+---+-------+
+//!     A3 -> nothing free, waits                 |  one run(), occupancy 4
+//!     A4 -> waits                               v
+//!     B0 -> its own lane              B answered; A has 3 of 5 seats
+//!
+//!   turn 2                        lane 0  lane 1  lane 2  lane 3
+//!     A3 -> its own lane          [ A3 ]    --    [ A4 ]    --
+//!     A4 -> borrows lane 2          |               |
+//!                                   +-------+-------+
+//!                                           |  one run(), occupancy 2
+//!                                           v
+//!                                 A's 5 seats stack back into one [5, ..]
+//! ```
+//!
+//! A one-seat call pays nothing for any of this: `explode` does not slice it and
+//! `assemble` hands its outputs straight back.
+//!
+//! # What a laned model must satisfy
+//!
+//! - **The batch axis is axis 0**, on at least one input and one output, and it
+//!   is one symbol for all of them. It is the only position where a seat's
+//!   values are a contiguous run, which is what makes stacking a memcpy and
+//!   slicing a view, and the only one whose seats are independent under a
+//!   liquid schedule. A model wanting it elsewhere gets it moved by a graph
+//!   edit, never by a per-turn transpose here.
+//! - **An input or output whose axis 0 is not a symbol is shared**: one value of
+//!   it serves the whole turn, so seats disagreeing about it fail the turn, and
+//!   a shared output is handed back to every seat.
+//! - **Axis 0 of every stateful node** is that batch axis. `wrap` walks the I/O
+//!   facts and resets every lane once, which fails a state that cannot serve
+//!   several streams; the interior is otherwise on trust.
+//!
+//! # Traps
+//!
+//! - `Seat::lane` is the lane the seat **sits in**, not the lane its caller
+//!   holds: `fill` overwrites it when it borrows, or a turn ends up seating one
+//!   lane twice.
+//! - The knobs are read at `wrap` and are process-wide, so tests which set
+//!   [`TRACT_TURN_LINGER_US`] have to serialize.
+//! - Dropping the runnable closes the queue and **joins** the worker. The worker
+//!   holds per-thread device state whose destructors must not run against
+//!   libraries already tearing themselves down.
+//!
+//! # Not here
+//!
+//! Admission is not a policy yet: `spawn` fails when every lane is taken rather
+//! than waiting for one. A caller holding a lane for the life of a handle is
+//! what makes that felt, and what a server wants of it is still open.
+
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
 use std::sync::Mutex;
@@ -18,6 +184,8 @@ use crate::internal::*;
 /// history until that caller resets it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LaneTable {
+    /// One flag per lane, true while a stream holds it. A lane's index is its
+    /// [`LaneId`], and the length is the state's fixed lane count.
     taken: Vec<bool>,
 }
 
@@ -69,58 +237,6 @@ impl LaneTable {
     }
 }
 
-#[cfg(test)]
-mod test {
-    use super::*;
-
-    #[test]
-    fn takes_the_lowest_free_lane() -> TractResult<()> {
-        let mut table = LaneTable::new(3)?;
-        assert_eq!(table.take(), Some(LaneId(0)));
-        assert_eq!(table.take(), Some(LaneId(1)));
-        table.give_back(LaneId(0))?;
-        assert_eq!(table.take(), Some(LaneId(0)));
-        assert_eq!(table.taken(), 2);
-        Ok(())
-    }
-
-    #[test]
-    fn runs_out_of_lanes() -> TractResult<()> {
-        let mut table = LaneTable::new(1)?;
-        assert_eq!(table.take(), Some(LaneId(0)));
-        assert_eq!(table.take(), None);
-        Ok(())
-    }
-
-    #[test]
-    fn gives_back_a_taken_lane_only() -> TractResult<()> {
-        let mut table = LaneTable::new(2)?;
-        assert!(table.give_back(LaneId(0)).is_err());
-        table.take();
-        table.give_back(LaneId(0))?;
-        assert!(table.give_back(LaneId(0)).is_err());
-        assert!(table.give_back(LaneId(7)).is_err());
-        Ok(())
-    }
-
-    #[test]
-    fn seats_taken_lanes_in_order() -> TractResult<()> {
-        let mut table = LaneTable::new(4)?;
-        table.take();
-        table.take();
-        table.take();
-        table.give_back(LaneId(1))?;
-        let seating = table.seat([LaneId(2), LaneId(0)])?;
-        assert_eq!(seating.max_lanes(), 4);
-        assert_eq!(seating.occupancy(), 2);
-        assert_eq!(seating.address(0), (Some(0), Some(2)));
-        assert_eq!(seating.address(1), (Some(1), Some(0)));
-        assert!(table.seat([LaneId(0), LaneId(1)]).is_err());
-        assert!(table.seat([LaneId(0), LaneId(0)]).is_err());
-        Ok(())
-    }
-}
-
 crate::declare_knob!(
     TRACT_MAX_SEATS,
     usize,
@@ -162,11 +278,19 @@ struct Shared {
     /// Joined when the runnable is dropped, so the worker is gone before
     /// whatever the caller does next.
     worker: Mutex<Option<thread::JoinHandle<()>>>,
+    /// The one-stream model the worker spawned its state from.
     inner: Arc<dyn Runnable>,
+    /// `inner`'s model and plan, carried so that a laned runnable answers
+    /// [`Runnable::typed_model`] and [`Runnable::typed_plan`] like any other.
     model: Option<Arc<TypedModel>>,
     plan: Option<Arc<TypedSimplePlan>>,
+    /// The symbol axis 0 of the batched tensors carries: the turn's occupancy,
+    /// never a stream's own shapes.
     batch: Symbol,
+    /// Lanes the state was reset for at `wrap`, hence the most streams that can
+    /// hold a handle at once and the widest a turn can be.
     max_lanes: usize,
+    /// Turns and seats served, shared with the worker which is what counts them.
     counts: Arc<Counts>,
 }
 
@@ -194,7 +318,9 @@ impl Drop for Shared {
 /// occupancy is `seats / turns`.
 #[derive(Debug, Default)]
 struct Counts {
+    /// Turns run since the model was prepared.
     turns: AtomicU64,
+    /// Seats filled over those turns, so `seats / turns` is mean occupancy.
     seats: AtomicU64,
 }
 
@@ -388,13 +514,18 @@ impl Runnable for LanedRunnable {
 /// lane goes back to the table once the last of them is dropped.
 #[derive(Clone, Debug)]
 pub struct LanedStateHandle {
+    /// The lane this stream holds, shared by the handle's clones: the last of
+    /// them dropped is what gives the lane back.
     lease: Arc<Lease>,
+    /// The runnable the handle came from, for [`State::runnable`].
     runnable: LanedRunnable,
 }
 
 #[derive(Debug)]
 struct Lease {
+    /// The lane the worker handed this stream at spawn.
     lane: LaneId,
+    /// Where to send the lane back, which is all `Drop` needs.
     requests: Sender<Request>,
 }
 
@@ -423,8 +554,12 @@ impl State for LanedStateHandle {
 /// life: a lane when it is spawned, a turn per call, and its lane back when it
 /// is dropped.
 enum Request {
+    /// A new stream wants a lane; the worker answers with one, reset, or with
+    /// the error that every lane is taken.
     Spawn(Sender<TractResult<LaneId>>),
+    /// A stream wants a turn, or several at once.
     Call(Call),
+    /// A stream is over and its lane goes back to the table.
     Drop(LaneId),
 }
 
@@ -432,8 +567,11 @@ enum Request {
 /// answered once every one of them has been served -- over as many turns as
 /// the free lanes took to seat them all.
 struct Call {
+    /// The caller's own lane, which its first seat sits in.
     lane: LaneId,
+    /// What the caller fed, batched inputs still stacked as they came.
     inputs: TVec<TValue>,
+    /// Where the assembled answer goes; the caller blocks on the other end.
     done: Sender<TractResult<TVec<TValue>>>,
 }
 
@@ -441,9 +579,14 @@ struct Call {
 /// caller's own until a turn borrows another for it -- its place in the call,
 /// and the slice of the call's inputs it feeds.
 struct Seat {
+    /// The call this seat answers, keying its [`Completer`].
     call: u64,
+    /// The lane the seat sits in: its caller's own, overwritten by `fill` with
+    /// a borrowed one when the caller's is already taken this turn.
     lane: LaneId,
+    /// Its place in the call, so the answer stacks back in the order asked.
     ix: usize,
+    /// One seat's slice of the call's inputs, shared inputs whole.
     inputs: TVec<TValue>,
 }
 
@@ -451,7 +594,10 @@ struct Seat {
 /// land, in the order it asked for them, and where to send them once the last
 /// of them has. The caller holds the other half and blocks on it.
 struct Completer {
+    /// One slot per seat the call asked for, filled as its seats land -- over
+    /// several turns when the call was wider than the free lanes.
     served: Vec<Option<TVec<TValue>>>,
+    /// The call's own answer channel, moved here from the [`Call`].
     done: Sender<TractResult<TVec<TValue>>>,
 }
 
@@ -461,8 +607,11 @@ struct Completer {
 /// split at the boundary rather than held until it fits whole.
 #[derive(Default)]
 struct Queue {
+    /// Seats waiting for a lane, oldest first: what a turn fills from.
     seats: VecDeque<Seat>,
+    /// The calls with seats still to land, by call id.
     completers: HashMap<u64, Completer>,
+    /// The id the next call gets, so seats of different calls never collide.
     calls: u64,
 }
 
@@ -578,11 +727,21 @@ fn assemble(served: Vec<TVec<TValue>>, batch_out: &[bool]) -> TractResult<TVec<T
 /// What the worker needs beyond the state and its lanes: which tensors carry the
 /// batch axis, and the turn policy.
 struct Table {
+    /// One flag per input, true where axis 0 carries the batch symbol: those
+    /// are sliced per seat, the rest serve the whole turn.
     batch_in: Vec<bool>,
+    /// The same per output: batched ones are sliced back per seat, shared ones
+    /// handed to every seat of the turn.
     batch_out: Vec<bool>,
+    /// The widest turn the worker will run, [`TRACT_MAX_SEATS`] clamped to the
+    /// state's lanes.
     max_seats: usize,
+    /// How long a turn waits for latecomers once its first seat is queued
+    /// ([`TRACT_TURN_LINGER_US`]), zero to run as soon as one is ready.
     linger: Duration,
+    /// Lanes the state holds, hence the [`LaneTable`] the worker builds.
     max_lanes: usize,
+    /// Turns and seats, shared with the runnable the caller reads them from.
     counts: Arc<Counts>,
 }
 
@@ -1050,6 +1209,58 @@ mod laned_test {
         drop(clone);
         let mut handle = spawn_once_free(&runnable)?;
         turn(&mut handle, 1, 0)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod lane_table_test {
+    use super::*;
+
+    #[test]
+    fn takes_the_lowest_free_lane() -> TractResult<()> {
+        let mut table = LaneTable::new(3)?;
+        assert_eq!(table.take(), Some(LaneId(0)));
+        assert_eq!(table.take(), Some(LaneId(1)));
+        table.give_back(LaneId(0))?;
+        assert_eq!(table.take(), Some(LaneId(0)));
+        assert_eq!(table.taken(), 2);
+        Ok(())
+    }
+
+    #[test]
+    fn runs_out_of_lanes() -> TractResult<()> {
+        let mut table = LaneTable::new(1)?;
+        assert_eq!(table.take(), Some(LaneId(0)));
+        assert_eq!(table.take(), None);
+        Ok(())
+    }
+
+    #[test]
+    fn gives_back_a_taken_lane_only() -> TractResult<()> {
+        let mut table = LaneTable::new(2)?;
+        assert!(table.give_back(LaneId(0)).is_err());
+        table.take();
+        table.give_back(LaneId(0))?;
+        assert!(table.give_back(LaneId(0)).is_err());
+        assert!(table.give_back(LaneId(7)).is_err());
+        Ok(())
+    }
+
+    #[test]
+    fn seats_taken_lanes_in_order() -> TractResult<()> {
+        let mut table = LaneTable::new(4)?;
+        table.take();
+        table.take();
+        table.take();
+        table.give_back(LaneId(1))?;
+        let seating = table.seat([LaneId(2), LaneId(0)])?;
+        assert_eq!(seating.max_lanes(), 4);
+        assert_eq!(seating.occupancy(), 2);
+        assert_eq!(seating.address(0), (Some(0), Some(2)));
+        assert_eq!(seating.address(1), (Some(1), Some(0)));
+        assert!(table.seat([LaneId(0), LaneId(1)]).is_err());
+        assert!(table.seat([LaneId(0), LaneId(0)]).is_err());
         Ok(())
     }
 }
