@@ -511,6 +511,51 @@ load_ldmatrix_trans(tile<16, 8, T> &t, const T *__restrict__ xs0,
 // ============================================================================
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
 
+/// cp.async 16-byte copy from global memory to shared memory (cache-at-shared).
+static __device__ __forceinline__ void cp_async_ca_16B(uint32_t dst, const void *src) {
+    asm volatile(
+        "cp.async.ca.shared.global [%0], [%1], 16;\n"
+        :: "r"(dst), "l"(src) : "memory");
+}
+
+/// Predicated cp.async 16-byte copy with zero-fill on miss.
+static __device__ __forceinline__ void cp_async_ca_16B_pred(uint32_t dst, const void *src, bool pred) {
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        ".reg .b32 z;\n\t"
+        "mov.b32 z, 0;\n\t"
+        "setp.ne.b32 p, %2, 0;\n\t"
+        "@p   cp.async.ca.shared.global [%0], [%1], 16;\n\t"
+        "@!p  st.shared.v4.b32 [%0], {z, z, z, z};\n\t"
+        "}\n\t"
+        :: "r"(dst), "l"(src), "r"((int)pred) : "memory");
+}
+
+/// Commit all pending cp.async copies.
+static __device__ __forceinline__ void cp_async_commit() {
+    asm volatile("cp.async.commit_group;" ::: "memory");
+}
+
+/// Wait until all pending cp.async copies have completed.
+static __device__ __forceinline__ void cp_async_wait_all() {
+    asm volatile("cp.async.wait_all;" ::: "memory");
+}
+
+/// Predicated cp.async 4-byte copy with zero-fill on miss.
+static __device__ __forceinline__ void cp_async_ca_4B_pred(uint32_t dst, const void *src, bool pred) {
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        ".reg .b32 z;\n\t"
+        "mov.b32 z, 0;\n\t"
+        "setp.ne.b32 p, %2, 0;\n\t"
+        "@p   cp.async.ca.shared.global [%0], [%1], 4;\n\t"
+        "@!p  st.shared.b32 [%0], z;\n\t"
+        "}\n\t"
+        :: "r"(dst), "l"(src), "r"((int)pred) : "memory");
+}
+
 namespace cuda_wgmma {
 
 /// Fence the WGMMA pipeline so subsequent cp.async loads are ordered

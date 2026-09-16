@@ -189,7 +189,8 @@ INSTANTIATE_MAT_VEC_FOR_T(f16, half)
 #define WGMMA_M_TILE 64
 #define WGMMA_N_TILE 32
 #define WGMMA_K_CHUNK 16
-#define WGMMA_SHARED_BYTES (WGMMA_M_TILE * WGMMA_K_CHUNK + WGMMA_N_TILE * WGMMA_K_CHUNK) * sizeof(half)
+#define WGMMA_TILE_BYTES ((WGMMA_M_TILE * WGMMA_K_CHUNK + WGMMA_N_TILE * WGMMA_K_CHUNK) * sizeof(half))
+#define WGMMA_SHARED_BYTES_DB (2 * WGMMA_TILE_BYTES)  // double-buffered
 
 template <typename T>
 __launch_bounds__(128) __global__
@@ -218,69 +219,98 @@ void ggml_matmul_wgmma_impl(const half *__restrict__ A, // acts     (m, k)
 
     extern __shared__ alignment_dummy __shm[];
     shared_allocator al((int *)&__shm[0]);
-    auto &a_smem = al.allocate<half, M_TILE * K_CHUNK>();  // 64×16 = 2 KB
-    auto &b_smem = al.allocate<half, N_TILE * K_CHUNK>();  // 32×16 = 1 KB
+
+    // Double-buffered shared memory: tile 0 and tile 1
+    auto &a_smem0 = al.allocate<half, M_TILE * K_CHUNK>();
+    auto &b_smem0 = al.allocate<half, N_TILE * K_CHUNK>();
+    auto &a_smem1 = al.allocate<half, M_TILE * K_CHUNK>();
+    auto &b_smem1 = al.allocate<half, N_TILE * K_CHUNK>();
+    half *buf_a[2] = { &a_smem0[0], &a_smem1[0] };
+    half *buf_b[2] = { &b_smem0[0], &b_smem1[0] };
+    int cur = 0;
 
     // Accumulator: 16 f32 per thread = 8 float2.
     float2 D[8] = {};
 
-    // --- K dimension loop (chunks of 16) ---
+    // --- Preload K-chunk 0 (cp.async A + direct B) ---
+    {
+        const int idx = tid * 8;
+        const int a_row = idx / K_CHUNK;
+        const int a_col = idx % K_CHUNK;
+        const bool va = (row_base + a_row < m) && (a_col + 8 <= k);
+        const half *sa = B + size_t(row_base + a_row) * ldb + a_col;
+        cp_async_ca_16B_pred(__cvta_generic_to_shared(&buf_a[0][idx]),
+                             va ? sa : (const half *)B, va);
+
+        const int bidx = tid * 4;
+        half *bd = &buf_b[0][bidx];
+        #pragma unroll
+        for (int i = 0; i < 4; i++) {
+            const int e = bidx + i;
+            const int bt_row = e / N_TILE;
+            const int bt_col = e % N_TILE;
+            bd[i] = (col_base + bt_col < n && bt_row < k)
+                        ? A[size_t(col_base + bt_col) * lda + bt_row]
+                        : __float2half(0.0f);
+        }
+    }
+    cp_async_commit();
+    cp_async_wait_all();
+    __syncthreads();
+
+    // --- K dimension loop with cp.async double-buffering ---
+    // Pipeline: issue WGMMA on current buffer, then preload next buffer
+    // (cp.async A + direct B) while WGMMA computes in the background.
     for (int kt = 0; kt < k; kt += K_CHUNK) {
-        // Load A tile (64×16 from activations B_orig, row-major):
-        //   A_wgmma[i, j] = act[row_base + i, kt + j]
-        // 1024 fp16 / 128 threads = 8 fp16 per thread.
-        {
-            const int idx = tid * 8;
-            const int a_row = idx / K_CHUNK;      // 0..63
-            const int a_col = idx % K_CHUNK;      // 0..15
-            const half *src = B + size_t(row_base + a_row) * ldb + kt + a_col;
-            half *dst = &a_smem[idx];
-            if (row_base + a_row < m && kt + a_col + 8 <= k) {
-                #pragma unroll
-                for (int i = 0; i < 8; i++) dst[i] = src[i];
-            } else {
-                #pragma unroll
-                for (int i = 0; i < 8; i++) {
-                    dst[i] = (row_base + a_row < m && kt + a_col + i < k)
-                                 ? src[i]
-                                 : __float2half(0.0f);
-                }
-            }
-        }
+        const int nxt = 1 - cur;
+        const int next_kt = kt + K_CHUNK;
 
-        // Load B^T tile (16×32 from weights A_orig, transposed into shared mem):
-        //   B_wgmma[i, j] = weights[col_base + j, kt + i]
-        // 512 fp16 / 128 threads = 4 fp16 per thread.
-        {
-            const int idx = tid * 4;
-            half *dst = &b_smem[idx];
-            #pragma unroll
-            for (int i = 0; i < 4; i++) {
-                const int e = idx + i;
-                const int bt_row = e / N_TILE;  // 0..15  (K-chunk index)
-                const int bt_col = e % N_TILE;  // 0..31  (N / output-col index)
-                dst[i] = (col_base + bt_col < n && kt + bt_row < k)
-                             ? A[size_t(col_base + bt_col) * lda + kt + bt_row]
-                             : __float2half(0.0f);
-            }
-        }
+        // WGMMA descriptors for current tile
+        const uint32_t a_addr = __cvta_generic_to_shared(buf_a[cur]);
+        const uint32_t b_addr = __cvta_generic_to_shared(buf_b[cur]);
+        const uint32_t a_stride = K_CHUNK * sizeof(half);
+        const uint64_t b_desc = make_b_desc(b_addr, N_TILE * sizeof(half), 0);
 
-        __syncthreads();
-
-        // WGMMA descriptors
-        const uint32_t a_addr = __cvta_generic_to_shared(&a_smem[0]);
-        const uint32_t b_addr = __cvta_generic_to_shared(&b_smem[0]);
-        const uint32_t a_stride = K_CHUNK * sizeof(half);   // 32 bytes
-        const uint32_t b_lead = N_TILE * sizeof(half);      // 64 bytes
-        const uint64_t b_desc = make_b_desc(b_addr, b_lead, 0);
-
-        // Issue WGMMA MMA (async)
+        // Issue WGMMA MMA (async — hardware starts computing)
         mma_m64n32k16_fp16_fp32(D, a_addr, a_stride, b_desc, 1, 0, 1);
-
         fence();
         commit_group();
+
+        // Preload next K-chunk (overlaps with WGMMA compute)
+        if (next_kt < k) {
+            const int idx = tid * 8;
+            const int a_row = idx / K_CHUNK;
+            const int a_col = idx % K_CHUNK;
+            const bool va = (row_base + a_row < m) && (next_kt + a_col + 8 <= k);
+            const half *sa = B + size_t(row_base + a_row) * ldb + next_kt + a_col;
+            cp_async_ca_16B_pred(__cvta_generic_to_shared(&buf_a[nxt][idx]),
+                                 va ? sa : (const half *)B, va);
+
+            const int bidx = tid * 4;
+            half *bd = &buf_b[nxt][bidx];
+            #pragma unroll
+            for (int i = 0; i < 4; i++) {
+                const int e = bidx + i;
+                const int bt_row = e / N_TILE;
+                const int bt_col = e % N_TILE;
+                bd[i] = (col_base + bt_col < n && next_kt + bt_row < k)
+                            ? A[size_t(col_base + bt_col) * lda + next_kt + bt_row]
+                            : __float2half(0.0f);
+            }
+            cp_async_commit();
+        }
+
+        // Wait for WGMMA to complete
         wait_group(0);
-        __syncthreads();
+
+        // Wait for preload, sync, and swap buffers
+        if (next_kt < k) {
+            cp_async_wait_all();
+            __syncthreads();
+            cur = nxt;
+        } else {
+            __syncthreads();
+        }
     }
 
     // --- Store accumulator D to global output C ---

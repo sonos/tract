@@ -380,7 +380,7 @@ fn dispatch_wgmma_gemm(
     };
 
     let func = context.load_pipeline(LibraryName::Ggml, kernel_name.to_string())?;
-    let shared_bytes = (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2;
+    let shared_bytes = 2 * (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2;
     func.set_attribute(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         shared_bytes as i32,
