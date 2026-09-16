@@ -44,13 +44,17 @@ fn squeeze_batch_axes(s: &[usize]) -> TractResult<TVec<usize>> {
     Ok(tvec![s[..rank - 2].iter().product(), s[rank - 2], s[rank - 1],])
 }
 
-fn mmq_get_nbytes_shared_q40(mmq_weights: usize, mmq_act: usize) -> usize {
+fn mmq_get_nbytes_shared_q40(mmq_weights: usize, mmq_act: usize, sm_major: i32) -> usize {
     let nb_ids = mmq_weights * size_of::<i32>();
     let mmq_tile_w_l = MMQ_MMA_TILE_X_K_Q8_0;
     let nbs_w = mmq_act * mmq_tile_w_l * size_of::<i32>();
-    let nbs_act = mmq_weights * 144;
-
+    // Y tile: mmq_weights * MMQ_TILE_Y_K * sizeof(int) = mmq_weights * 36 * 4 = mmq_weights * 144
+    let nbs_y_tile = mmq_weights * 144;
     let pad = N_WARPS * WARP_SIZE * size_of::<i32>();
+    // Double-buffer Y tiles on SM80+ (cp.async overlap), single on SM75 fallback
+    let n_y_tiles = if sm_major >= 8 { 2 } else { 1 };
+    let nbs_act = n_y_tiles * nbs_y_tile;
+
     nb_ids + nbs_w + nbs_act.next_multiple_of(pad)
 }
 
@@ -324,7 +328,7 @@ fn kernel_name_q40(
     Ok(format!("mul_mat_q40_{fixup_str}{mmq_w}_8_{need_check}"))
 }
 
-fn find_best_mmq_w(smbpo: usize, m: usize) -> usize {
+fn find_best_mmq_w(smbpo: usize, sm_major: i32, m: usize) -> usize {
     let mut mmq_w_best = 0;
     let mut ntiles_w_best = usize::MAX;
 
@@ -332,7 +336,9 @@ fn find_best_mmq_w(smbpo: usize, m: usize) -> usize {
     while mmq_w <= MMQ_X_MAX && ntiles_w_best > 1 {
         mmq_w += 8;
         let granularity = if mmq_w >= 48 { 16 } else { 8 };
-        if (mmq_w % granularity != 0 || mmq_get_nbytes_shared_q40(mmq_w, MMQ_X_MAX) > smbpo) {
+        if (mmq_w % granularity != 0
+            || mmq_get_nbytes_shared_q40(mmq_w, MMQ_X_MAX, sm_major) > smbpo)
+        {
             continue;
         }
         let ntiles_w = m.div_ceil(mmq_w);
@@ -453,8 +459,8 @@ fn dispatch_ggml_matmul_q40(
     let w_batch_stride = n_blocks * params.n;
     let batch_ratio = params.act_batch / params.w_batch;
 
-    let mmq_w_best = find_best_mmq_w(props.sharedMemPerBlockOptin, params.m);
-    let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_w_best, MMQ_X_MAX);
+    let mmq_w_best = find_best_mmq_w(props.sharedMemPerBlockOptin, props.major, params.m);
+    let nbytes_shared = mmq_get_nbytes_shared_q40(mmq_w_best, MMQ_X_MAX, props.major);
 
     let ntx = params.m.div_ceil(mmq_w_best);
     let nty = params.n.div_ceil(MMQ_X_MAX);
