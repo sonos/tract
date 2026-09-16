@@ -74,6 +74,27 @@ impl DeviceArenaView {
         self.arena.get_bytes_slice(self.offset_bytes, len)
     }
 
+    /// A dense view over `arena` at `offset_bytes`, with natural strides.
+    ///
+    /// The caller is responsible for the result being a contiguous range of the
+    /// arena: strides are natural here, which is what keeps the view within
+    /// what `check_strides_validity` accepts everywhere else.
+    pub(crate) fn from_parts(
+        arena: Arc<Box<dyn OwnedDeviceTensor>>,
+        dt: DatumType,
+        shape: TVec<usize>,
+        offset_bytes: usize,
+    ) -> TractResult<Self> {
+        let len = shape.iter().product::<usize>();
+        let arena_bytes = arena.len() * arena.datum_type().size_of();
+        ensure!(
+            offset_bytes + len * dt.size_of() <= arena_bytes,
+            "Device view of {len} x {dt:?} at byte {offset_bytes} overflows its {arena_bytes} byte arena"
+        );
+        let strides = Tensor::natural_strides(&shape);
+        Ok(Self { arena, dt, len, shape, strides, offset_bytes, exotic_fact: None })
+    }
+
     /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: impl Into<TVec<usize>>) -> TractResult<Self> {
         ensure!(self.exotic_fact.is_none(), "Can't reshape exotic tensor");

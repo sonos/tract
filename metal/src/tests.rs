@@ -863,4 +863,61 @@ mod tests {
             .close_enough(&metal_out[0].clone().into_tensor(), Approximation::Exact)?;
         Ok(())
     }
+    /// A model output built on device comes back as a host tensor that has not
+    /// been read back yet, and feeding it into the next run never touches host
+    /// memory.
+    #[test]
+    fn device_output_comes_back_lazily_and_goes_straight_back_in() -> TractResult<()> {
+        use tract_gpu::tensor::LazyHostStorage;
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([2, 3]))?;
+        let one = model.add_const("one", Tensor::from_shape(&[2, 3], &[1f32; 6])?)?;
+        let output = model.wire_node("output", add(), &[input, one])?[0];
+        model.select_output_outlets(&[output])?;
+
+        let runtime = runtime_for_name("metal")?.context("Metal runtime was not registered")?;
+        let mut state = runtime.prepare(model)?.spawn()?;
+
+        let first = state.run(tvec![Tensor::from_shape(&[2, 3], &[0f32; 6])?.into_tvalue()])?;
+        let lazy = first[0]
+            .storage_as::<LazyHostStorage>()
+            .context("model output is not lazily host-backed")?;
+        assert!(!lazy.is_materialized());
+        assert_eq!(first[0].datum_type(), f32::datum_type());
+        assert_eq!(first[0].shape(), &[2, 3]);
+
+        // Fed straight back: still on device, no readback on the way in.
+        let second = state.run(tvec![first[0].clone()])?;
+        assert!(!first[0].storage_as::<LazyHostStorage>().unwrap().is_materialized());
+        second[0]
+            .try_as_plain()?
+            .tensor()
+            .close_enough(&Tensor::from_shape(&[2, 3], &[2f32; 6])?, Approximation::Exact)?;
+
+        // Reading the first output still gives the right values, late.
+        first[0]
+            .try_as_plain()?
+            .tensor()
+            .close_enough(&Tensor::from_shape(&[2, 3], &[1f32; 6])?, Approximation::Exact)?;
+        assert!(first[0].storage_as::<LazyHostStorage>().unwrap().is_materialized());
+        Ok(())
+    }
+
+    /// Slicing a device-resident output on a dense axis keeps it on device;
+    /// a gappy slice falls back to the generic host copy.
+    #[test]
+    fn slicing_a_device_output_stays_on_device_when_it_is_dense() -> TractResult<()> {
+        use tract_gpu::tensor::LazyHostStorage;
+        let t = Tensor::from_shape(&[4, 3], &(0..12).map(|i| i as f32).collect::<Vec<_>>())?;
+        let lazy = LazyHostStorage::new(t.clone().into_device()?).into_tensor();
+
+        let dense = lazy.slice(0, 1, 3)?;
+        assert!(dense.storage_as::<LazyHostStorage>().is_some(), "dense slice left the device");
+        dense.try_as_plain()?.tensor().close_enough(&t.slice(0, 1, 3)?, Approximation::Exact)?;
+
+        let gappy = lazy.slice(1, 1, 3)?;
+        assert!(gappy.is_plain(), "gappy slice should have fallen back to a host copy");
+        gappy.close_enough(&t.slice(1, 1, 3)?, Approximation::Exact)?;
+        Ok(())
+    }
 }
