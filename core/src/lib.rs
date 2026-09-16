@@ -74,6 +74,7 @@ pub mod macros;
 pub mod ops;
 
 pub mod axes;
+pub mod batchify;
 pub mod broadcast;
 pub mod floats;
 pub mod framework;

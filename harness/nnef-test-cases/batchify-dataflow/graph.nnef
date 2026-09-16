@@ -1,0 +1,27 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=1;
+
+# A model with no batch axis at all: one stream of `T` frames of 4 features, a
+# projection, a per-feature scale the caller passes in, an activation and a
+# reduction. `batchify` is what gives it a batch axis, so nothing here mentions
+# one.
+#
+# `scale` is the shared-input case: every seat reads the same three numbers, so
+# it must come out of the transform unbatched.
+
+graph network(x, scale) -> (output)
+{
+    x = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    scale = tract_core_external(shape = [1, 3], datum_type = 'f32');
+
+    w = [[1.0, 0.5, -0.25], [0.0, 1.0, 0.5], [-0.5, 0.25, 1.0], [0.75, -1.0, 0.25]];
+    xw = matmul(x, w);
+    bias = [[0.5, -0.25, 1.0]];
+    biased = add(xw, bias);
+    scaled = mul(biased, scale);
+    act = tanh(scaled);
+    output = sum_reduce(act, axes = [1]);
+}

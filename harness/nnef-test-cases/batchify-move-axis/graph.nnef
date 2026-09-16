@@ -1,0 +1,21 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_symbol B;
+extension tract_assert T>=1;
+extension tract_assert B>=1;
+
+# A model that already carries its batch, but inside: `[T, B, 4]` is what an
+# export whose frames come first looks like. `batchify` is what brings that axis
+# to the front, on the input and on the output, and the graph itself keeps the
+# layout it was built for.
+
+graph network(x) -> (output)
+{
+    x = tract_core_external(shape = [T, B, 4], datum_type = 'f32');
+
+    w = [[[1.0, 0.5, -0.25], [0.0, 1.0, 0.5], [-0.5, 0.25, 1.0], [0.75, -1.0, 0.25]]];
+    xw = matmul(x, w);
+    output = sum_reduce(xw, axes = [2]);
+}
