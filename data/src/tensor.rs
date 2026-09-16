@@ -213,9 +213,15 @@ unsafe fn copy_blocks<T: Copy>(
 }
 
 impl Tensor {
+    /// Plain storage for this tensor's bytes, materializing it if the storage
+    /// keeps them elsewhere.
+    ///
+    /// Panics if the bytes cannot be produced, which is what the accessors
+    /// built on it (`as_bytes`, `as_ptr`, `as_slice_unchecked`) have always
+    /// done on non-plain storage. `try_as_plain` is the fallible way in.
     #[inline]
     fn plain_storage(&self) -> &PlainStorage {
-        self.storage.as_plain().expect("Non-plain storage")
+        self.storage.materialize_plain().expect("Non-plain storage")
     }
 
     #[inline]
@@ -255,9 +261,26 @@ impl Tensor {
     }
 
     /// Returns an immutable [`PlainView`], or an error if storage is not plain.
+    ///
+    /// Unlike `as_plain`, this materializes storage that holds its bytes
+    /// elsewhere, so it is the way to read a tensor whose storage may be
+    /// lazily host-backed.
     #[inline]
     pub fn try_as_plain(&self) -> TractResult<PlainView<'_>> {
-        self.as_plain().context("Tensor storage is not plain")
+        let storage = self.storage.materialize_plain()?;
+        Ok(PlainView::new(self, storage))
+    }
+
+    /// Plain storage already held by this tensor, if any. Never materializes.
+    #[inline]
+    pub fn as_plain_storage(&self) -> Option<&PlainStorage> {
+        self.storage.as_plain()
+    }
+
+    /// Mutable plain storage already held by this tensor, if any. Never materializes.
+    #[inline]
+    pub fn as_plain_storage_mut(&mut self) -> Option<&mut PlainStorage> {
+        self.storage.as_plain_mut()
     }
 
     /// Returns `true` if this tensor uses plain (contiguous) storage.
@@ -1939,6 +1962,13 @@ impl Tensor {
         if start > self.shape[axis] || end > self.shape[axis] || start >= end {
             bail!("Invalid slicing range {start}..{end} on axis {axis} for {self:?}");
         }
+        // Storage gets first refusal: one that can serve the slice without a
+        // copy does so, anything else falls through to the copy below.
+        if let Some(sliced) =
+            self.storage.as_storage().slice(self.dt, self.shape(), axis, start, end)?
+        {
+            return Ok(sliced);
+        }
         let mut shape: TVec<usize> = self.shape().into();
         shape[axis] = end - start;
         unsafe {
@@ -2786,5 +2816,142 @@ mod tests {
     fn ulp_bounds_are_distinguished_by_equality() {
         assert_eq!(Approximation::Ulp(1), Approximation::Ulp(1));
         assert_ne!(Approximation::Ulp(1), Approximation::Ulp(2));
+    }
+
+    /// Storage that keeps its bytes "elsewhere" until asked, standing in for a
+    /// device-backed one so the seam can be tested without a GPU.
+    #[derive(Debug)]
+    struct LateStorage {
+        elsewhere: Vec<u8>,
+        here: std::sync::OnceLock<PlainStorage>,
+        materializations: std::sync::atomic::AtomicUsize,
+    }
+
+    impl LateStorage {
+        fn new(bytes: &[u8]) -> LateStorage {
+            LateStorage {
+                elsewhere: bytes.to_vec(),
+                here: std::sync::OnceLock::new(),
+                materializations: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+        fn count(t: &Tensor) -> usize {
+            t.storage_as::<LateStorage>()
+                .unwrap()
+                .materializations
+                .load(std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    impl PartialEq for LateStorage {
+        fn eq(&self, other: &Self) -> bool {
+            self.elsewhere == other.elsewhere
+        }
+    }
+    impl Eq for LateStorage {}
+
+    impl std::fmt::Display for LateStorage {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "LateStorage")
+        }
+    }
+
+    impl TensorStorage for LateStorage {
+        fn byte_len(&self) -> usize {
+            self.elsewhere.len()
+        }
+        fn is_empty(&self) -> bool {
+            self.elsewhere.is_empty()
+        }
+        fn deep_clone(&self) -> Box<dyn TensorStorage> {
+            Box::new(LateStorage::new(&self.elsewhere))
+        }
+        fn as_plain(&self) -> Option<&PlainStorage> {
+            self.here.get()
+        }
+        fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+            None
+        }
+        fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
+            None
+        }
+        fn dyn_hash(&self, _state: &mut dyn std::hash::Hasher) {}
+        fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+            Ok(None)
+        }
+        fn materialize_plain(&self) -> TractResult<&PlainStorage> {
+            if let Some(here) = self.here.get() {
+                return Ok(here);
+            }
+            self.materializations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let blob = Blob::from_bytes(&self.elsewhere)?;
+            Ok(self.here.get_or_init(|| PlainStorage::from(blob)))
+        }
+        fn slice(
+            &self,
+            dt: DatumType,
+            shape: &[usize],
+            axis: usize,
+            start: usize,
+            end: usize,
+        ) -> TractResult<Option<Tensor>> {
+            // Only the outermost axis is a contiguous byte range here.
+            if axis != 0 || shape[..axis].iter().product::<usize>() != 1 {
+                return Ok(None);
+            }
+            let row = shape[1..].iter().product::<usize>() * dt.size_of();
+            let mut sliced: TVec<usize> = shape.into();
+            sliced[0] = end - start;
+            Ok(Some(Tensor::from_storage(
+                dt,
+                &sliced,
+                LateStorage::new(&self.elsewhere[start * row..end * row]),
+            )))
+        }
+    }
+
+    fn late_tensor(shape: &[usize], values: &[f32]) -> Tensor {
+        let host = Tensor::from_shape(shape, values).unwrap();
+        Tensor::from_storage(f32::datum_type(), shape, LateStorage::new(host.as_bytes()))
+    }
+
+    #[test]
+    fn late_storage_stays_put_until_the_bytes_are_read() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        // Predicates must not drag the bytes back.
+        assert!(!t.is_plain());
+        assert!(t.as_plain().is_none());
+        assert_eq!(t.datum_type(), f32::datum_type());
+        assert_eq!(t.shape(), &[2, 3]);
+        assert_eq!(LateStorage::count(&t), 0);
+        // Reading them does, once.
+        assert_eq!(
+            t.try_as_plain().unwrap().as_slice::<f32>().unwrap(),
+            &[1f32, 2., 3., 4., 5., 6.]
+        );
+        assert_eq!(LateStorage::count(&t), 1);
+        assert_eq!(t.try_as_plain().unwrap().as_slice::<f32>().unwrap()[0], 1f32);
+        assert_eq!(LateStorage::count(&t), 1);
+    }
+
+    #[test]
+    fn late_storage_slices_without_materializing_when_it_can() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        let row = t.slice(0, 1, 2).unwrap();
+        assert_eq!(LateStorage::count(&t), 0);
+        assert!(row.storage_as::<LateStorage>().is_some());
+        assert_eq!(row.shape(), &[1, 3]);
+        assert_eq!(row.try_as_plain().unwrap().as_slice::<f32>().unwrap(), &[4f32, 5., 6.]);
+    }
+
+    #[test]
+    fn late_storage_falls_back_to_a_copy_on_a_gappy_slice() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        let col = t.slice(1, 1, 3).unwrap();
+        // Storage refused, so the generic path copied: plain, and correct.
+        assert!(col.is_plain());
+        assert_eq!(col.shape(), &[2, 2]);
+        assert_eq!(col.try_as_plain().unwrap().as_slice::<f32>().unwrap(), &[2f32, 3., 5., 6.]);
+        assert_eq!(LateStorage::count(&t), 1);
     }
 }

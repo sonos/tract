@@ -4,8 +4,10 @@ use std::hash::Hash;
 
 use crate::TractResult;
 use crate::blob::Blob;
+use crate::datum::DatumType;
 use crate::dyn_eq::DynEq;
 use crate::exotic::ExoticFact;
+use crate::tensor::Tensor;
 use downcast_rs::{Downcast, impl_downcast};
 
 /// Trait abstracting over tensor storage backends.
@@ -26,6 +28,34 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + DynEq + Downc
     /// appropriate fact so that `From<Arc<Tensor>> for TypedFact` preserves
     /// exotic-ness.
     fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>>;
+
+    /// Plain storage for the tensor's bytes, producing it if this storage can.
+    ///
+    /// This is the accessor path: `Tensor::as_bytes` and friends go through it,
+    /// so a storage that holds its bytes somewhere else (on a device, say) gets
+    /// a chance to bring them back here, and to keep the result so the next
+    /// access is free. `as_plain` stays the cheap predicate: it answers what is
+    /// available right now and never produces anything.
+    fn materialize_plain(&self) -> TractResult<&PlainStorage> {
+        self.as_plain().ok_or_else(|| anyhow::anyhow!("Tensor storage is not plain"))
+    }
+
+    /// Slice along `axis`, if this storage can do it without copying.
+    ///
+    /// `None` means "not capable" and the caller falls back to a generic copy,
+    /// so an implementation is free to refuse any case it cannot serve. What it
+    /// must not do is return a tensor that is not a valid dense one: `Some` is a
+    /// claim that the result stands on its own everywhere a tensor is accepted.
+    fn slice(
+        &self,
+        _dt: DatumType,
+        _shape: &[usize],
+        _axis: usize,
+        _start: usize,
+        _end: usize,
+    ) -> TractResult<Option<Tensor>> {
+        Ok(None)
+    }
 }
 impl_downcast!(TensorStorage);
 crate::eq_trait_object!(TensorStorage);
@@ -223,6 +253,14 @@ impl StorageKind {
         match self {
             StorageKind::Plain(d) => StorageKind::Plain(d.clone()),
             StorageKind::Exotic(o) => StorageKind::Exotic(o.deep_clone()),
+        }
+    }
+
+    #[inline]
+    pub fn materialize_plain(&self) -> TractResult<&PlainStorage> {
+        match self {
+            StorageKind::Plain(d) => Ok(d),
+            StorageKind::Exotic(o) => o.materialize_plain(),
         }
     }
 
