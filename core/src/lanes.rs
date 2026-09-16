@@ -611,6 +611,88 @@ struct Completer {
     done: Sender<TractResult<TVec<TValue>>>,
 }
 
+impl Call {
+    /// The inputs of each seat of this call: the batched ones sliced along
+    /// axis 0, the shared ones as they came. Every batched input says how many
+    /// seats the call asks for, so they must agree, and a call with none asks
+    /// for one.
+    fn explode(&self, batch_in: &[bool]) -> TractResult<Vec<TVec<TValue>>> {
+        ensure!(
+            self.inputs.len() == batch_in.len(),
+            "A call feeds {} inputs, the model takes {}",
+            self.inputs.len(),
+            batch_in.len()
+        );
+        let mut seats: Option<usize> = None;
+        for (ix, input) in self.inputs.iter().enumerate().filter(|(ix, _)| batch_in[*ix]) {
+            ensure!(
+                input.rank() > 0,
+                "Input {ix} carries the batch axis, so it can not be a scalar"
+            );
+            let asked = input.shape()[0];
+            ensure!(
+                seats.is_none_or(|seats| seats == asked),
+                "A call asks for as many seats as its batched inputs carry, and input {ix} carries \
+                 {asked} against {} before it",
+                seats.unwrap_or(0)
+            );
+            seats = Some(asked);
+        }
+        let seats = seats.unwrap_or(1);
+        ensure!(seats > 0, "A call asks for one seat at least");
+        if seats == 1 {
+            return Ok(vec![self.inputs.clone()]);
+        }
+        (0..seats)
+            .map(|seat| {
+                self.inputs
+                    .iter()
+                    .zip(batch_in)
+                    .map(|(input, is_batched)| {
+                        if *is_batched {
+                            Ok(input.slice(0, seat, seat + 1)?.into_tvalue())
+                        } else {
+                            Ok(input.clone())
+                        }
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+}
+
+impl Completer {
+    /// Whether every seat the call asked for has landed.
+    fn is_full(&self) -> bool {
+        self.served.iter().all(Option::is_some)
+    }
+
+    /// Answer the call with its seats' outputs: the batched ones stacked back
+    /// along axis 0 in the order it asked for its seats, the shared ones as the
+    /// first seat got them. Every seat must have landed.
+    fn answer(self, batch_out: &[bool]) {
+        let served: Vec<TVec<TValue>> =
+            self.served.into_iter().map(|outputs| outputs.unwrap()).collect();
+        let answer = if served.len() == 1 {
+            Ok(served.into_iter().next().unwrap())
+        } else {
+            let first = &served[0];
+            (0..first.len())
+                .map(|ix| {
+                    if batch_out.get(ix).copied().unwrap_or(false) {
+                        let seats: TVec<&Tensor> =
+                            served.iter().map(|outputs| &*outputs[ix]).collect();
+                        Ok(Tensor::stack_tensors(0, &seats)?.into_tvalue())
+                    } else {
+                        Ok(first[ix].clone())
+                    }
+                })
+                .collect()
+        };
+        let _ = self.done.send(answer);
+    }
+}
+
 /// The seats the worker has to seat, and the calls they answer. A call explodes
 /// into seats as it arrives, so what a turn picks from is a queue of seats: it
 /// fills to the free lanes from the head, and a call wider than they are is
@@ -629,7 +711,7 @@ impl Queue {
     fn push(&mut self, call: Call, batch_in: &[bool]) {
         let id = self.calls;
         self.calls += 1;
-        match explode(&call, batch_in) {
+        match call.explode(batch_in) {
             Ok(seats) => {
                 self.completers
                     .insert(id, Completer { served: vec![None; seats.len()], done: call.done });
@@ -661,77 +743,10 @@ impl Queue {
         };
         let completer = self.completers.get_mut(&seat.call).unwrap();
         completer.served[seat.ix] = Some(outputs);
-        if completer.served.iter().all(Option::is_some) {
-            let completer = self.completers.remove(&seat.call).unwrap();
-            let served: Vec<TVec<TValue>> =
-                completer.served.into_iter().map(|outputs| outputs.unwrap()).collect();
-            let _ = completer.done.send(assemble(served, batch_out));
+        if completer.is_full() {
+            self.completers.remove(&seat.call).unwrap().answer(batch_out);
         }
     }
-}
-
-/// The inputs of each seat of `call`: the batched ones sliced along axis 0, the
-/// shared ones as they came. Every batched input says how many seats the call
-/// asks for, so they must agree, and a call with none asks for one.
-fn explode(call: &Call, batch_in: &[bool]) -> TractResult<Vec<TVec<TValue>>> {
-    ensure!(
-        call.inputs.len() == batch_in.len(),
-        "A call feeds {} inputs, the model takes {}",
-        call.inputs.len(),
-        batch_in.len()
-    );
-    let mut seats: Option<usize> = None;
-    for (ix, input) in call.inputs.iter().enumerate().filter(|(ix, _)| batch_in[*ix]) {
-        ensure!(input.rank() > 0, "Input {ix} carries the batch axis, so it can not be a scalar");
-        let asked = input.shape()[0];
-        ensure!(
-            seats.is_none_or(|seats| seats == asked),
-            "A call asks for as many seats as its batched inputs carry, and input {ix} carries \
-             {asked} against {} before it",
-            seats.unwrap_or(0)
-        );
-        seats = Some(asked);
-    }
-    let seats = seats.unwrap_or(1);
-    ensure!(seats > 0, "A call asks for one seat at least");
-    if seats == 1 {
-        return Ok(vec![call.inputs.clone()]);
-    }
-    (0..seats)
-        .map(|seat| {
-            call.inputs
-                .iter()
-                .zip(batch_in)
-                .map(|(input, is_batched)| {
-                    if *is_batched {
-                        Ok(input.slice(0, seat, seat + 1)?.into_tvalue())
-                    } else {
-                        Ok(input.clone())
-                    }
-                })
-                .collect()
-        })
-        .collect()
-}
-
-/// One call's outputs from its seats': the batched ones stacked back along axis
-/// 0 in the order the call asked for its seats, the shared ones as the first
-/// seat got them.
-fn assemble(served: Vec<TVec<TValue>>, batch_out: &[bool]) -> TractResult<TVec<TValue>> {
-    if served.len() == 1 {
-        return Ok(served.into_iter().next().unwrap());
-    }
-    let first = &served[0];
-    (0..first.len())
-        .map(|ix| {
-            if batch_out.get(ix).copied().unwrap_or(false) {
-                let seats: TVec<&Tensor> = served.iter().map(|outputs| &*outputs[ix]).collect();
-                Ok(Tensor::stack_tensors(0, &seats)?.into_tvalue())
-            } else {
-                Ok(first[ix].clone())
-            }
-        })
-        .collect()
 }
 
 /// The worker thread's world: the one state it runs, the lanes it hands to
