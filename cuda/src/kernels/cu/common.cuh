@@ -136,6 +136,40 @@ static __device__ __forceinline__ int warp_reduce_all(int x) {
   return __all_sync(0xffffffff, x);
 }
 
+// ============================================================================
+// cp.async helpers (SM80+ / Ampere, Ada, Hopper, Blackwell)
+//
+// cp.async issues non-blocking copies from global to shared memory.
+// The hardware manages outstanding copies; threads can compute while
+// transfers proceed in the background.
+// ============================================================================
+#if __CUDA_ARCH__ >= 800
+
+static __device__ __forceinline__ void cp_async_ca_16B(uint32_t dst, const void *src) {
+    asm volatile("cp.async.ca.shared.global [%0], [%1], 16;" ::"r"(dst), "l"(src) : "memory");
+}
+
+static __device__ __forceinline__ void cp_async_ca_16B_pred(uint32_t dst, const void *src, bool pred) {
+    asm volatile("{\n\t"
+                 ".reg .pred p;\n\t"
+                 ".reg .b32 z;\n\t"
+                 "mov.b32 z, 0;\n\t"
+                 "setp.ne.b32 p, %2, 0;\n\t"
+                 "@p   cp.async.ca.shared.global [%0], [%1], 16;\n\t"
+                 "@!p  st.shared.v4.b32 [%0], {z, z, z, z};\n\t"
+                 "}\n\t" ::"r"(dst), "l"(src), "r"((int)pred) : "memory");
+}
+
+static __device__ __forceinline__ void cp_async_commit() {
+    asm volatile("cp.async.commit_group;" ::: "memory");
+}
+
+static __device__ __forceinline__ void cp_async_wait_all() {
+    asm volatile("cp.async.wait_all;" ::: "memory");
+}
+
+#endif // __CUDA_ARCH__ >= 800
+
 namespace cuda_mma {
 
 template <int I_, int J_, typename T> struct tile {

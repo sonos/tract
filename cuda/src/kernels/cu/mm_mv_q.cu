@@ -229,9 +229,13 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
       mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::load_tiles;
 
   extern __shared__ int data_mul_mat_q[];
-  int *tile_y = data_mul_mat_q + mmq_x;
-  int *tile_x = tile_y + PAD(mmq_x * (WARP_SIZE + WARP_SIZE / QI8_1),
-                             N_WARPS * WARP_SIZE);
+  int *tile_y0 = data_mul_mat_q + mmq_x;
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+  int *tile_y1 = tile_y0 + PAD(mmq_x * MMQ_TILE_Y_K, N_WARPS * WARP_SIZE);
+  int *tile_x = tile_y1 + PAD(mmq_x * MMQ_TILE_Y_K, N_WARPS * WARP_SIZE);
+#else
+  int *tile_x = tile_y0 + PAD(mmq_x * MMQ_TILE_Y_K, N_WARPS * WARP_SIZE);
+#endif
 
   constexpr vec_dot_mmq_t vec_dot =
       mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::vec_dot_mma;
@@ -245,6 +249,50 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
   for (int kb0 = kb0_start; kb0 < kb0_stop; kb0 += blocks_per_iter) {
     load_tiles(x, tile_x, offset_x + kb0, tile_x_max_i, stride_row_x);
 
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)
+    // --- Y tile 0: cp.async issue, then wait + sync ---
+    {
+      const int *by0 = y + ncols_y * (kb0 * (qk * sizeof(block_q8_1_mmq) /
+                                             (4 * QK8_1 * sizeof(int))) +
+                                      0 * sizeof(block_q8_1_mmq) / sizeof(int));
+      _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
+                             l0 += 4 * N_WARPS * WARP_SIZE) {
+        const int l = l0 + threadIdx.y * (4 * WARP_SIZE) + threadIdx.x * 4;
+        bool pred = (l + 3 < mmq_x * MMQ_TILE_Y_K);
+        cp_async_ca_16B_pred(__cvta_generic_to_shared(&tile_y0[l]), &by0[l], pred);
+      }
+      cp_async_commit();
+      cp_async_wait_all();
+      __syncthreads();
+    }
+
+    // --- Y tile 1: cp.async issue (non-blocking, overlaps with vec_dot) ---
+    {
+      const int *by0 = y + ncols_y * (kb0 * (qk * sizeof(block_q8_1_mmq) /
+                                             (4 * QK8_1 * sizeof(int))) +
+                                      1 * sizeof(block_q8_1_mmq) / sizeof(int));
+      _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
+                             l0 += 4 * N_WARPS * WARP_SIZE) {
+        const int l = l0 + threadIdx.y * (4 * WARP_SIZE) + threadIdx.x * 4;
+        bool pred = (l + 3 < mmq_x * MMQ_TILE_Y_K);
+        cp_async_ca_16B_pred(__cvta_generic_to_shared(&tile_y1[l]), &by0[l], pred);
+      }
+      cp_async_commit();
+    }
+
+    // vec_dot(X, Y[0]): Y[1] cp.async transfers complete in hardware
+    vec_dot(tile_x, tile_y0, sum, 0);
+    __syncthreads();
+
+    // Ensure Y[1] transfers are complete before reading
+    cp_async_wait_all();
+    __syncthreads();
+
+    vec_dot(tile_x, tile_y1, sum, WARP_SIZE);
+    __syncthreads();
+
+#else
+    // --- SM75 fallback: direct loads, single Y buffer ---
     {
       const int *by0 = y + ncols_y * (kb0 * (qk * sizeof(block_q8_1_mmq) /
                                              (4 * QK8_1 * sizeof(int))) +
@@ -252,14 +300,13 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
       _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
                              l0 += N_WARPS * WARP_SIZE) {
         int l = l0 + threadIdx.y * WARP_SIZE + threadIdx.x;
-
-        tile_y[l] = by0[l];
+        tile_y0[l] = by0[l];
       }
     }
 
     __syncthreads();
 
-    vec_dot(tile_x, tile_y, sum, 0);
+    vec_dot(tile_x, tile_y0, sum, 0);
 
     __syncthreads();
 
@@ -270,16 +317,16 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
       _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
                              l0 += N_WARPS * WARP_SIZE) {
         int l = l0 + threadIdx.y * WARP_SIZE + threadIdx.x;
-
-        tile_y[l] = by0[l];
+        tile_y0[l] = by0[l];
       }
     }
 
     __syncthreads();
 
-    vec_dot(tile_x, tile_y, sum, WARP_SIZE);
+    vec_dot(tile_x, tile_y0, sum, WARP_SIZE);
 
     __syncthreads();
+#endif
   }
 
   if (fixup) {
