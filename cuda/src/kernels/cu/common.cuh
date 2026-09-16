@@ -34,9 +34,11 @@ struct alignment_dummy {
 //   auto& my_array   = al.allocate<float, 256>();     // float[256]
 //   auto& my_matrix  = al.allocate<half, 8, 32>();    // half[8][32]
 //
-// Each allocate<>() call advances an internal pointer with proper alignment,
-// eliminating manual offset arithmetic and alignment bugs.
-template<int default_alignment = 16>
+// Each allocate<>() call advances an internal pointer. Alignment is the
+// caller's problem: ThunderKittens runs a runtime align_ptr() here, but
+// NVRTC cannot constant-fold it (extern __shared__ is a runtime address)
+// and that branch cost 4-18% prefill on SM80/SM89. alignment_dummy is
+// alignas(16) and every allocate() size in this crate is a multiple of 16.
 struct shared_allocator {
     int *ptr;
 
@@ -56,16 +58,6 @@ private:
     template<typename A, size_t... dims>
     using variadic_array_t = typename variadic_array<A, dims...>::type;
 
-    template<int alignment>
-    __device__ __forceinline__ void align_ptr() {
-        if constexpr (alignment > 0) {
-            uint64_t p = reinterpret_cast<uint64_t>(ptr);
-            if (p % alignment != 0) {
-                ptr = (int *)(p + (alignment - (p % alignment)));
-            }
-        }
-    }
-
 public:
     __device__ shared_allocator(int *_ptr) : ptr(_ptr) {}
 
@@ -73,20 +65,9 @@ public:
     // Returns a reference to the allocated object.
     template<typename A, size_t... dims>
     __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
-        align_ptr<default_alignment>();
         using at = variadic_array_t<A, dims...>;
         at *p = reinterpret_cast<at *>(ptr);
         // Ceiling division so sub-4-byte types (e.g. half) are handled correctly.
-        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
-        return *p;
-    }
-
-    // Allocate with a custom alignment override.
-    template<int alignment, typename A, size_t... dims>
-    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
-        align_ptr<alignment>();
-        using at = variadic_array_t<A, dims...>;
-        at *p = reinterpret_cast<at *>(ptr);
         ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
         return *p;
     }
