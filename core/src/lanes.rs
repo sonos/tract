@@ -142,9 +142,9 @@ crate::declare_knob!(
 /// state and the [`LaneTable`] both. The worker takes the turns queued at that
 /// moment, at most one per lane and at most [`TRACT_MAX_SEATS`] of them,
 /// concatenates their inputs along axis 0, publishes the seating and runs the
-/// state once, then hands each stream back its own row.
+/// state once, then hands each stream back its own seat.
 ///
-/// A stream feeds one row per turn: axis 0 carries streams, not data. Inputs and
+/// A stream feeds one seat per turn: axis 0 carries streams, not data. Inputs and
 /// outputs whose axis 0 is a symbol are the batched ones; the rest are shared,
 /// so one value of such an input serves the whole turn and every seat must feed
 /// the same one, and such an output is handed back to every stream.
@@ -278,7 +278,7 @@ impl LanedRunnable {
         &self.shared.inner
     }
 
-    /// The symbol axis 0 of the batched tensors carries. A stream feeds one row
+    /// The symbol axis 0 of the batched tensors carries. A stream feeds one seat
     /// per turn, so it stands for the turn's occupancy, never for a stream's
     /// own shapes.
     pub fn batch_symbol(&self) -> &Symbol {
@@ -494,15 +494,15 @@ fn run_turn(
     }
     for (ix, is_batched) in table.batch_in.iter().enumerate() {
         if *is_batched {
-            let rows: TVec<&Tensor> = seated.iter().map(|turn| &*turn.inputs[ix]).collect();
-            for row in &rows {
+            let seats: TVec<&Tensor> = seated.iter().map(|turn| &*turn.inputs[ix]).collect();
+            for seat in &seats {
                 ensure!(
-                    row.rank() > 0 && row.shape()[0] == 1,
-                    "A stream feeds one row per turn, input {ix} carries {:?}",
-                    row.shape()
+                    seat.rank() > 0 && seat.shape()[0] == 1,
+                    "A stream feeds one seat per turn, input {ix} carries {:?}",
+                    seat.shape()
                 );
             }
-            batched.push(Tensor::stack_tensors(0, &rows)?.into_tvalue());
+            batched.push(Tensor::stack_tensors(0, &seats)?.into_tvalue());
         } else {
             let shared = &seated[0].inputs[ix];
             for (seat, turn) in seated.iter().enumerate().skip(1) {
@@ -591,7 +591,7 @@ mod laned_test {
     }
 
     #[test]
-    fn every_stream_gets_its_own_row() -> TractResult<()> {
+    fn every_stream_gets_its_own_seat() -> TractResult<()> {
         let runnable = doubler(8)?;
         let streams: Vec<_> = (0..8)
             .map(|stream| {

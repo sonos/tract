@@ -437,7 +437,7 @@ where
         self.turn_state.scenario = None;
     }
 
-    /// Seat the lanes carrying the coming turn's streams, one lane per row of
+    /// Seat the lanes carrying the coming turn's streams, one lane per seat of
     /// axis 0 of its tensors.
     pub fn seat(&mut self, seating: Seating) {
         self.turn_state.seating = seating;
