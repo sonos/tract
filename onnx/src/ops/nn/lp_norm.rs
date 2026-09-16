@@ -56,6 +56,28 @@ impl Expansion for LpNorm {
             model,
             &inputs[0..1],
         )?;
+        // Both reducers are zero only where every element on the axis is, so dividing those
+        // slices by one keeps the zeros ONNX asks for there rather than making them NaN.
+        let dt = model.outlet_fact(inputs[0])?.datum_type;
+        let rank = rank as usize;
+        let zero = model.add_const(
+            format!("{prefix}.zero"),
+            Tensor::zero_dt(dt, &[])?.broadcast_into_rank(rank)?,
+        )?;
+        let one = model.add_const(
+            format!("{prefix}.one"),
+            tensor0(1f32).cast_to_dt(dt)?.into_owned().broadcast_into_rank(rank)?,
+        )?;
+        let degenerate = model.wire_node(
+            format!("{prefix}.degenerate"),
+            tract_core::ops::binary::TypedBinOp(tract_core::ops::logic::comp_eq(), None),
+            &[norm[0], zero],
+        )?;
+        let norm = model.wire_node(
+            format!("{prefix}.safe_norm"),
+            tract_core::ops::logic::Iff,
+            &[degenerate[0], one, norm[0]],
+        )?;
         wire_with_rank_broadcast(prefix, model, tract_hir::ops::math::div(), &[inputs[0], norm[0]])
     }
 }
