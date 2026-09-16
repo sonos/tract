@@ -43,9 +43,10 @@
 //!       +--------------------------------------------+
 //!       |        worker thread "tract-lanes"         |
 //!       |                                            |
-//!       |  LaneTable   which lanes are taken         |
-//!       |  Queue       seats waiting, completers     |
-//!       |  Box<dyn State>   the one state, laned     |
+//!       |  Worker  state   the one state, laned      |
+//!       |          lanes   which of them are taken   |
+//!       |          queued  seats waiting, and the    |
+//!       |                  calls they answer         |
 //!       +--------------------------------------------+
 //!                          |
 //!                          |   one answer channel per call
@@ -359,14 +360,15 @@ impl LanedRunnable {
         let counts = Arc::new(Counts::default());
         let max_seats = TRACT_MAX_SEATS.get().min(max_lanes);
         let linger = Duration::from_micros(TRACT_TURN_LINGER_US.get() as u64);
+        let lanes = LaneTable::new(max_lanes)?;
         let (requests, queue) = channel::<Request>();
         let (spawned, ready) = channel::<TractResult<()>>();
         let worker_counts = counts.clone();
         let worker_inner = inner.clone();
         let worker_thread = thread::Builder::new().name("tract-lanes".into()).spawn(move || {
-            let mut state = match worker_inner.spawn().and_then(|mut state| {
-                let lanes: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
-                state.reset_lanes(&lanes).context("Preparing a laned model")?;
+            let state = match worker_inner.spawn().and_then(|mut state| {
+                let every: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
+                state.reset_lanes(&every).context("Preparing a laned model")?;
                 Ok(state)
             }) {
                 Ok(state) => {
@@ -378,12 +380,17 @@ impl LanedRunnable {
                     return;
                 }
             };
-            worker(
-                &mut *state,
-                queue,
-                Config { batch_in, batch_out, max_seats, linger, max_lanes },
-                worker_counts,
-            );
+            Worker {
+                state,
+                lanes,
+                queued: Queue::default(),
+                batch_in,
+                batch_out,
+                max_seats,
+                linger,
+                counts: worker_counts,
+            }
+            .work(queue);
         })?;
         ready.recv().map_err(|_| format_err!("The laned worker died spawning the state"))??;
         Ok(LanedRunnable {
@@ -727,207 +734,208 @@ fn assemble(served: Vec<TVec<TValue>>, batch_out: &[bool]) -> TractResult<TVec<T
         .collect()
 }
 
-/// What the worker is set up with and never changes: what the model says about
-/// its batch axis, and how wide and how eagerly to run a turn.
-struct Config {
+/// The worker thread's world: the one state it runs, the lanes it hands to
+/// streams, the seats it has still to run, and what it was set up with.
+///
+/// It is built on the calling thread and moved to the worker, which is the only
+/// thread to touch it afterwards -- `state` and `lanes` go together because
+/// taking a lane resets it, and a reset writes the state.
+struct Worker {
+    /// The one state every turn runs, spawned from the model as prepared.
+    state: Box<dyn State>,
+    /// Which lanes streams hold, and what a turn's seating is drawn from.
+    lanes: LaneTable,
+    /// Seats waiting for a lane, and the calls they answer.
+    queued: Queue,
     /// One flag per input, true where axis 0 carries the batch symbol: those
     /// are sliced per seat, the rest serve the whole turn.
     batch_in: Vec<bool>,
     /// The same per output: batched ones are sliced back per seat, shared ones
     /// handed to every seat of the turn.
     batch_out: Vec<bool>,
-    /// The widest turn the worker will run, [`TRACT_MAX_SEATS`] clamped to the
-    /// state's lanes.
+    /// The widest turn to run, [`TRACT_MAX_SEATS`] clamped to the state's lanes.
     max_seats: usize,
     /// How long a turn waits for latecomers once its first seat is queued
     /// ([`TRACT_TURN_LINGER_US`]), zero to run as soon as one is ready.
     linger: Duration,
-    /// Lanes the state holds, hence the [`LaneTable`] the worker builds.
-    max_lanes: usize,
+    /// Turns and seats served, shared with the runnable the caller reads them
+    /// from.
+    counts: Arc<Counts>,
 }
 
-fn worker(state: &mut dyn State, queue: Receiver<Request>, config: Config, counts: Arc<Counts>) {
-    let mut lanes = match LaneTable::new(config.max_lanes) {
-        Ok(lanes) => lanes,
-        Err(_) => return,
-    };
-    let mut queued = Queue::default();
-    loop {
-        // The linger belongs to the turn a request opens, not to the request:
-        // taking or giving back a lane must not delay the turns behind it, and
-        // turns left waiting by a full one have lingered already.
-        while queued.seats.is_empty() {
-            match queue.recv() {
-                Ok(request) => serve(state, &mut lanes, &mut queued, &config, request),
-                Err(_) => return,
-            }
-            if !queued.seats.is_empty() && !config.linger.is_zero() {
-                thread::sleep(config.linger);
-            }
-        }
-        while let Ok(request) = queue.try_recv() {
-            serve(state, &mut lanes, &mut queued, &config, request);
-        }
-        let (seated, borrowed) = fill(state, &mut lanes, &mut queued, &config);
-        if seated.is_empty() {
-            continue;
-        }
-        counts.turns.fetch_add(1, Ordering::Relaxed);
-        counts.seats.fetch_add(seated.len() as u64, Ordering::Relaxed);
-        let served = run_turn(state, &lanes, &seated, &config);
-        for lane in borrowed {
-            let _ = lanes.give_back(lane);
-        }
-        match served {
-            Ok(per_seat) => {
-                for (seat, outputs) in seated.into_iter().zip(per_seat) {
-                    queued.serve(seat, Ok(outputs), &config.batch_out);
+impl Worker {
+    /// Serve `queue` until it closes, which is what dropping the runnable does.
+    fn work(mut self, queue: Receiver<Request>) {
+        loop {
+            // The linger belongs to the turn a request opens, not to the
+            // request: taking or giving back a lane must not delay the turns
+            // behind it, and turns left waiting by a full one have lingered
+            // already.
+            while self.queued.seats.is_empty() {
+                match queue.recv() {
+                    Ok(request) => self.serve(request),
+                    Err(_) => return,
+                }
+                if !self.queued.seats.is_empty() && !self.linger.is_zero() {
+                    thread::sleep(self.linger);
                 }
             }
-            Err(e) => {
-                let e = format!("{e:#}");
-                for seat in seated {
-                    queued.serve(
-                        seat,
-                        Err(format_err!("Laned turn failed: {e}")),
-                        &config.batch_out,
+            while let Ok(request) = queue.try_recv() {
+                self.serve(request);
+            }
+            let (seated, borrowed) = self.fill();
+            if seated.is_empty() {
+                continue;
+            }
+            self.counts.turns.fetch_add(1, Ordering::Relaxed);
+            self.counts.seats.fetch_add(seated.len() as u64, Ordering::Relaxed);
+            let served = self.run_turn(&seated);
+            for lane in borrowed {
+                let _ = self.lanes.give_back(lane);
+            }
+            match served {
+                Ok(per_seat) => {
+                    for (seat, outputs) in seated.into_iter().zip(per_seat) {
+                        self.queued.serve(seat, Ok(outputs), &self.batch_out);
+                    }
+                }
+                Err(e) => {
+                    let e = format!("{e:#}");
+                    for seat in seated {
+                        self.queued.serve(
+                            seat,
+                            Err(format_err!("Laned turn failed: {e}")),
+                            &self.batch_out,
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Hand out a lane or take it back there and then; queue the seats of a
+    /// call for the coming turns. Taking a lane resets it, which is why it
+    /// happens here rather than in the handle: it writes the state.
+    fn serve(&mut self, request: Request) {
+        match request {
+            Request::Spawn(taken) => {
+                let lane = match self.lanes.take() {
+                    None => Err(format_err!(
+                        "Every one of the {} lanes is taken",
+                        self.lanes.max_lanes()
+                    )),
+                    Some(lane) => match self.state.reset_lanes(&[lane]) {
+                        Ok(()) => Ok(lane),
+                        Err(e) => {
+                            let _ = self.lanes.give_back(lane);
+                            Err(e)
+                        }
+                    },
+                };
+                let _ = taken.send(lane);
+            }
+            Request::Call(call) => self.queued.push(call, &self.batch_in),
+            Request::Drop(lane) => {
+                let _ = self.lanes.give_back(lane);
+            }
+        }
+    }
+
+    /// Seat the head of the queue, and the lanes borrowed to do it. A seat sits
+    /// in the lane its call leased, and a call's second and later seats of one
+    /// turn in lanes borrowed from whatever is free -- which resets them, so a
+    /// seat is always served by a lane holding nothing of another caller's.
+    fn fill(&mut self) -> (Vec<Seat>, Vec<LaneId>) {
+        let mut seated: Vec<Seat> = vec![];
+        let mut taken: Vec<LaneId> = vec![];
+        let mut borrowed: Vec<LaneId> = vec![];
+        let mut waiting: VecDeque<Seat> = VecDeque::new();
+        while let Some(mut seat) = self.queued.seats.pop_front() {
+            if seated.len() >= self.max_seats {
+                waiting.push_back(seat);
+                continue;
+            }
+            let lane = if taken.contains(&seat.lane) {
+                match self.lanes.take() {
+                    Some(lane) => match self.state.reset_lanes(&[lane]) {
+                        Ok(()) => {
+                            borrowed.push(lane);
+                            Some(lane)
+                        }
+                        Err(_) => {
+                            let _ = self.lanes.give_back(lane);
+                            None
+                        }
+                    },
+                    None => None,
+                }
+            } else {
+                Some(seat.lane)
+            };
+            match lane {
+                Some(lane) => {
+                    seat.lane = lane;
+                    taken.push(lane);
+                    seated.push(seat);
+                }
+                None => waiting.push_back(seat),
+            }
+        }
+        self.queued.seats = waiting;
+        (seated, borrowed)
+    }
+
+    /// Run `seated` as one turn: their batched inputs stacked along axis 0 in
+    /// seat order, their shared ones checked to agree, and the outputs sliced
+    /// back per seat.
+    fn run_turn(&mut self, seated: &[Seat]) -> TractResult<Vec<TVec<TValue>>> {
+        let seating = self.lanes.seat(seated.iter().map(|seat| seat.lane))?;
+        let mut batched: TVec<TValue> = tvec!();
+        for (ix, is_batched) in self.batch_in.iter().enumerate() {
+            if *is_batched {
+                let seats: TVec<&Tensor> = seated.iter().map(|seat| &*seat.inputs[ix]).collect();
+                for (seat, input) in seats.iter().enumerate() {
+                    ensure!(
+                        input.rank() > 0 && input.shape()[0] == 1,
+                        "Seat {seat} feeds {:?} of input {ix}, which a turn seats one at a time",
+                        input.shape()
                     );
                 }
+                batched.push(Tensor::stack_tensors(0, &seats)?.into_tvalue());
+            } else {
+                let shared = &seated[0].inputs[ix];
+                for (seat, turn) in seated.iter().enumerate().skip(1) {
+                    ensure!(
+                        turn.inputs[ix] == *shared,
+                        "Input {ix} carries no batch axis, so one value of it serves the whole \
+                         turn, and seats 0 and {seat} feed it different ones"
+                    );
+                }
+                batched.push(shared.clone());
             }
         }
-    }
-}
-
-/// Hand out a lane or take it back there and then; queue the seats of a call
-/// for the coming turns. Taking a lane resets it, which is why it happens here
-/// rather than in the handle: it writes the state.
-fn serve(
-    state: &mut dyn State,
-    lanes: &mut LaneTable,
-    queued: &mut Queue,
-    config: &Config,
-    request: Request,
-) {
-    match request {
-        Request::Spawn(taken) => {
-            let lane = lanes.take().ok_or_else(|| {
-                format_err!("Every one of the {} lanes is taken", lanes.max_lanes())
-            });
-            let lane = lane.and_then(|lane| {
-                state.reset_lanes(&[lane]).map(|_| lane).inspect_err(|_| {
-                    let _ = lanes.give_back(lane);
-                })
-            });
-            let _ = taken.send(lane);
-        }
-        Request::Call(call) => queued.push(call, &config.batch_in),
-        Request::Drop(lane) => {
-            let _ = lanes.give_back(lane);
-        }
-    }
-}
-
-/// Seat the head of the queue, and the lanes borrowed to do it. A seat sits in
-/// its caller's own lane, and a call's second and later seats of one turn in
-/// lanes borrowed from whatever is free -- which resets them, so a seat is
-/// always served by a lane holding nothing of another caller's.
-fn fill(
-    state: &mut dyn State,
-    lanes: &mut LaneTable,
-    queued: &mut Queue,
-    config: &Config,
-) -> (Vec<Seat>, Vec<LaneId>) {
-    let mut seated: Vec<Seat> = vec![];
-    let mut taken: Vec<LaneId> = vec![];
-    let mut borrowed: Vec<LaneId> = vec![];
-    let mut waiting: VecDeque<Seat> = VecDeque::new();
-    while let Some(mut seat) = queued.seats.pop_front() {
-        if seated.len() >= config.max_seats {
-            waiting.push_back(seat);
-            continue;
-        }
-        let lane = if taken.contains(&seat.lane) {
-            match lanes.take() {
-                Some(lane) => match state.reset_lanes(&[lane]) {
-                    Ok(()) => {
-                        borrowed.push(lane);
-                        Some(lane)
-                    }
-                    Err(_) => {
-                        let _ = lanes.give_back(lane);
-                        None
-                    }
-                },
-                None => None,
-            }
-        } else {
-            Some(seat.lane)
-        };
-        match lane {
-            Some(lane) => {
-                seat.lane = lane;
-                taken.push(lane);
-                seated.push(seat);
-            }
-            None => waiting.push_back(seat),
-        }
-    }
-    queued.seats = waiting;
-    (seated, borrowed)
-}
-
-fn run_turn(
-    state: &mut dyn State,
-    lanes: &LaneTable,
-    seated: &[Seat],
-    config: &Config,
-) -> TractResult<Vec<TVec<TValue>>> {
-    let seating = lanes.seat(seated.iter().map(|seat| seat.lane))?;
-    let mut batched: TVec<TValue> = tvec!();
-    for (ix, is_batched) in config.batch_in.iter().enumerate() {
-        if *is_batched {
-            let seats: TVec<&Tensor> = seated.iter().map(|seat| &*seat.inputs[ix]).collect();
-            for (seat, input) in seats.iter().enumerate() {
+        self.state.seat(seating)?;
+        let outputs = self.state.run(batched)?;
+        let mut per_seat: Vec<TVec<TValue>> = seated.iter().map(|_| tvec!()).collect();
+        for (ix, output) in outputs.into_iter().enumerate() {
+            if self.batch_out.get(ix).copied().unwrap_or(false) {
                 ensure!(
-                    input.rank() > 0 && input.shape()[0] == 1,
-                    "Seat {seat} feeds {:?} of input {ix}, which a turn seats one at a time",
-                    input.shape()
+                    output.shape()[0] == seated.len(),
+                    "The turn fills {} seats, output {ix} carries {:?}",
+                    seated.len(),
+                    output.shape()
                 );
-            }
-            batched.push(Tensor::stack_tensors(0, &seats)?.into_tvalue());
-        } else {
-            let shared = &seated[0].inputs[ix];
-            for (seat, turn) in seated.iter().enumerate().skip(1) {
-                ensure!(
-                    turn.inputs[ix] == *shared,
-                    "Input {ix} carries no batch axis, so one value of it serves the whole \
-                     turn, and seats 0 and {seat} feed it different ones"
-                );
-            }
-            batched.push(shared.clone());
-        }
-    }
-    state.seat(seating)?;
-    let outputs = state.run(batched)?;
-    let mut per_seat: Vec<TVec<TValue>> = seated.iter().map(|_| tvec!()).collect();
-    for (ix, output) in outputs.into_iter().enumerate() {
-        if config.batch_out.get(ix).copied().unwrap_or(false) {
-            ensure!(
-                output.shape()[0] == seated.len(),
-                "The turn fills {} seats, output {ix} carries {:?}",
-                seated.len(),
-                output.shape()
-            );
-            for (seat, outputs) in per_seat.iter_mut().enumerate() {
-                outputs.push(output.slice(0, seat, seat + 1)?.into_tvalue());
-            }
-        } else {
-            for outputs in per_seat.iter_mut() {
-                outputs.push(output.clone());
+                for (seat, outputs) in per_seat.iter_mut().enumerate() {
+                    outputs.push(output.slice(0, seat, seat + 1)?.into_tvalue());
+                }
+            } else {
+                for outputs in per_seat.iter_mut() {
+                    outputs.push(output.clone());
+                }
             }
         }
+        Ok(per_seat)
     }
-    Ok(per_seat)
 }
 
 // The suite is disabled on Wasm because a laned runnable spawns a thread.
