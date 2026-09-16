@@ -7,7 +7,7 @@ set -ex
 
 PULSE='-t pulse(symbol:Some("T"),pulse:"2")'
 
-# Batch, and pulsified with the lane axis pinned to the one row a stream feeds.
+# Batch, and pulsified with the lane axis pinned to the one seat a stream feeds.
 $TRACT_RUN --nnef-tract-core --set T=16 --set B=1 . run --approx approximate \
     --input-from-bundle io.npz --assert-output-bundle io.npz
 $TRACT_RUN --nnef-tract-core . $PULSE --set B=1 run --approx approximate \
