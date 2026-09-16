@@ -447,9 +447,10 @@ struct Seat {
     inputs: TVec<TValue>,
 }
 
-/// What a call still owes its caller: its seats' outputs, in the order it asked
-/// for them, and where to answer.
-struct Answer {
+/// The half of a call's answer the worker holds: its seats' outputs as they
+/// land, in the order it asked for them, and where to send them once the last
+/// of them has. The caller holds the other half and blocks on it.
+struct Completer {
     served: Vec<Option<TVec<TValue>>>,
     done: Sender<TractResult<TVec<TValue>>>,
 }
@@ -461,7 +462,7 @@ struct Answer {
 #[derive(Default)]
 struct Queue {
     seats: VecDeque<Seat>,
-    answers: HashMap<u64, Answer>,
+    completers: HashMap<u64, Completer>,
     calls: u64,
 }
 
@@ -471,8 +472,8 @@ impl Queue {
         self.calls += 1;
         match explode(&call, batch_in) {
             Ok(seats) => {
-                self.answers
-                    .insert(id, Answer { served: vec![None; seats.len()], done: call.done });
+                self.completers
+                    .insert(id, Completer { served: vec![None; seats.len()], done: call.done });
                 for (ix, inputs) in seats.into_iter().enumerate() {
                     self.seats.push_back(Seat { call: id, lane: call.lane, ix, inputs });
                 }
@@ -487,25 +488,25 @@ impl Queue {
     /// last seat it was waiting for. A failed seat fails the whole call at
     /// once, and drops the seats of it still queued.
     fn serve(&mut self, seat: Seat, outputs: TractResult<TVec<TValue>>, batch_out: &[bool]) {
-        if !self.answers.contains_key(&seat.call) {
+        if !self.completers.contains_key(&seat.call) {
             return;
         }
         let outputs = match outputs {
             Ok(outputs) => outputs,
             Err(e) => {
-                let answer = self.answers.remove(&seat.call).unwrap();
+                let completer = self.completers.remove(&seat.call).unwrap();
                 self.seats.retain(|queued| queued.call != seat.call);
-                let _ = answer.done.send(Err(e));
+                let _ = completer.done.send(Err(e));
                 return;
             }
         };
-        let answer = self.answers.get_mut(&seat.call).unwrap();
-        answer.served[seat.ix] = Some(outputs);
-        if answer.served.iter().all(Option::is_some) {
-            let answer = self.answers.remove(&seat.call).unwrap();
+        let completer = self.completers.get_mut(&seat.call).unwrap();
+        completer.served[seat.ix] = Some(outputs);
+        if completer.served.iter().all(Option::is_some) {
+            let completer = self.completers.remove(&seat.call).unwrap();
             let served: Vec<TVec<TValue>> =
-                answer.served.into_iter().map(|outputs| outputs.unwrap()).collect();
-            let _ = answer.done.send(assemble(served, batch_out));
+                completer.served.into_iter().map(|outputs| outputs.unwrap()).collect();
+            let _ = completer.done.send(assemble(served, batch_out));
         }
     }
 }
