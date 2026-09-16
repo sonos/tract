@@ -364,7 +364,9 @@ impl Runnable for LanedRunnable {
     fn spawn(&self) -> TractResult<Box<dyn State>> {
         let requests = self.request()?;
         let (taken, lane) = channel();
-        requests.send(Request::Take(taken)).map_err(|_| format_err!("The laned worker is gone"))?;
+        requests
+            .send(Request::Spawn(taken))
+            .map_err(|_| format_err!("The laned worker is gone"))?;
         let lane = lane.recv().map_err(|_| format_err!("The laned worker dropped a lane"))??;
         Ok(Box::new(LanedStateHandle {
             lease: Arc::new(Lease { lane, requests }),
@@ -398,7 +400,7 @@ struct Lease {
 
 impl Drop for Lease {
     fn drop(&mut self) {
-        let _ = self.requests.send(Request::GiveBack(self.lane));
+        let _ = self.requests.send(Request::Drop(self.lane));
     }
 }
 
@@ -417,10 +419,13 @@ impl State for LanedStateHandle {
     }
 }
 
+/// What a handle asks the worker for, one variant per event of the handle's
+/// life: a lane when it is spawned, a turn per call, and its lane back when it
+/// is dropped.
 enum Request {
-    Take(Sender<TractResult<LaneId>>),
-    GiveBack(LaneId),
+    Spawn(Sender<TractResult<LaneId>>),
     Call(Call),
+    Drop(LaneId),
 }
 
 /// One `run()` on a handle. Its inputs carry one seat or several, and it is
@@ -632,9 +637,9 @@ fn worker(state: &mut dyn State, queue: Receiver<Request>, table: Table) {
     }
 }
 
-/// Take or give back a lane there and then; queue the seats of a call for the
-/// coming turns. Taking a lane resets it, which is why it happens here rather
-/// than in the handle: it writes the state.
+/// Hand out a lane or take it back there and then; queue the seats of a call
+/// for the coming turns. Taking a lane resets it, which is why it happens here
+/// rather than in the handle: it writes the state.
 fn serve(
     state: &mut dyn State,
     lanes: &mut LaneTable,
@@ -643,7 +648,7 @@ fn serve(
     request: Request,
 ) {
     match request {
-        Request::Take(taken) => {
+        Request::Spawn(taken) => {
             let lane = lanes.take().ok_or_else(|| {
                 format_err!("Every one of the {} lanes is taken", lanes.max_lanes())
             });
@@ -654,10 +659,10 @@ fn serve(
             });
             let _ = taken.send(lane);
         }
-        Request::GiveBack(lane) => {
+        Request::Call(call) => queued.push(call, &table.batch_in),
+        Request::Drop(lane) => {
             let _ = lanes.give_back(lane);
         }
-        Request::Call(call) => queued.push(call, &table.batch_in),
     }
 }
 
