@@ -243,6 +243,10 @@ test_log
 test_log_example
 test_logsoftmax.*
 test_l1normalization.*
+# The model is identical in every ONNX release and still declares opset 22: only the
+# expected data changed, at 1.21, when the reference stopped returning NaN for a zero
+# norm. since:26 tracks that release, not an operator version the parser could read.
+test_l2normalization_axis_0 since:26
 test_l2normalization.*
 test_lpnormalization.*
 test_lrn
