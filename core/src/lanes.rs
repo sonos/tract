@@ -206,24 +206,28 @@ impl LanedRunnable {
         let model = inner.typed_model().cloned();
         let plan = inner.typed_plan().cloned();
         let mut symbols: Vec<Symbol> = vec![];
+        let mut facts: Vec<(String, TypedFact)> = vec![];
         let mut batch_in: Vec<bool> = vec![];
         for ix in 0..inner.input_count() {
-            let symbol = batch_symbol(inner.input_fact(ix)?);
+            let fact = inner.input_fact(ix)?;
+            let symbol = batch_symbol(fact);
             batch_in.push(symbol.is_some());
             symbols.extend(symbol);
+            facts.push((format!("input {ix}"), fact.clone()));
         }
         let mut batch_out: Vec<bool> = vec![];
         for ix in 0..inner.output_count() {
-            let symbol = batch_symbol(inner.output_fact(ix)?);
+            let fact = inner.output_fact(ix)?;
+            let symbol = batch_symbol(fact);
             batch_out.push(symbol.is_some());
             symbols.extend(symbol);
+            facts.push((format!("output {ix}"), fact.clone()));
         }
         symbols.sort();
         symbols.dedup();
-        ensure!(
-            symbols.len() == 1,
-            "A laned model carries one batch symbol on axis 0, this one carries {symbols:?}"
-        );
+        if symbols.len() != 1 {
+            bail!(off_axis_zero(&facts, &symbols));
+        }
         ensure!(batch_out.iter().any(|b| *b), "A laned model must batch one output at least");
         let batch = symbols.remove(0);
         let counts = Arc::new(Counts::default());
@@ -312,6 +316,41 @@ fn batch_symbol(fact: &TypedFact) -> Option<Symbol> {
     match fact.shape.dims().first() {
         Some(TDim::Sym(sym)) => Some(sym.clone()),
         _ => None,
+    }
+}
+
+/// Why `facts` do not carry one batch symbol on axis 0: where the symbols they
+/// do carry sit, and that putting one on axis 0 is a graph edit.
+fn off_axis_zero(facts: &[(String, TypedFact)], symbols: &[Symbol]) -> TractError {
+    let elsewhere: Vec<String> = facts
+        .iter()
+        .filter_map(|(what, fact)| {
+            let dims = fact.shape.dims();
+            let axis = dims.iter().skip(1).position(|dim| matches!(dim, TDim::Sym(_)))? + 1;
+            Some(format!("{what} carries {} on axis {axis}", dims[axis]))
+        })
+        .collect();
+    let elsewhere = elsewhere.join(", ");
+    if symbols.is_empty() {
+        let found = if elsewhere.is_empty() {
+            "none of them carries a symbol at all".to_string()
+        } else {
+            elsewhere
+        };
+        format_err!(
+            "A laned model carries its batch symbol on axis 0 of the inputs and outputs it \
+             batches, and {found}. Axis 0 is where a seat's values are a contiguous run, so move \
+             the batch there as a graph edit -- Batchify, or an AddAxis/MoveAxis the optimiser \
+             can absorb -- rather than have every turn transpose"
+        )
+    } else {
+        let symbols: Vec<String> = symbols.iter().map(|s| s.to_string()).collect();
+        format_err!(
+            "A laned model carries one batch symbol on axis 0, this one carries {}. One symbol \
+             has to stand for the whole turn's occupancy, so share it across the batched inputs \
+             and outputs in the export",
+            symbols.join(" and ")
+        )
     }
 }
 
@@ -960,6 +999,36 @@ mod laned_test {
             .unwrap_err();
         let error = format!("{error:#}");
         assert!(error.contains("input 1 carries 1 against 2"), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn a_batch_off_axis_zero_says_which_axis_it_sits_on() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let batch = model.symbols.sym("B");
+        let input = model.add_source("input", f32::fact(dims!(3, batch)))?;
+        let two = model.add_const("two", tensor2(&[[2f32]]))?;
+        let doubled = model.wire_node("doubled", mul(), &[input, two])?;
+        model.select_output_outlets(&doubled)?;
+        let inner = DefaultRuntime.prepare(model)?;
+        let error = format!("{:#}", LanedRunnable::wrap(inner.into(), 2).unwrap_err());
+        assert!(error.contains("input 0 carries B on axis 1"), "{error}");
+        assert!(error.contains("Batchify"), "{error}");
+        Ok(())
+    }
+
+    #[test]
+    fn two_batch_symbols_are_named() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let left_batch = model.symbols.sym("L");
+        let right_batch = model.symbols.sym("R");
+        let left = model.add_source("left", f32::fact(dims!(left_batch, 3)))?;
+        let right = model.add_source("right", f32::fact(dims!(right_batch, 3)))?;
+        let sum = model.wire_node("sum", add(), &[left, right])?;
+        model.select_output_outlets(&sum)?;
+        let inner = DefaultRuntime.prepare(model)?;
+        let error = format!("{:#}", LanedRunnable::wrap(inner.into(), 2).unwrap_err());
+        assert!(error.contains("L and R"), "{error}");
         Ok(())
     }
 
