@@ -138,7 +138,7 @@ crate::declare_knob!(
 /// A model prepared to serve many streams at once: one state, one lane per
 /// stream, and turns seating whoever is ready.
 ///
-/// `spawn` hands out a [`SessionHandle`] per stream, each holding a lane, and
+/// `spawn` hands out a [`LanedStateHandle`] per stream, each holding a lane, and
 /// every `run` on a handle is a request to the worker thread which owns the
 /// state and the [`LaneTable`] both. The worker takes the turns queued at that
 /// moment, at most one per lane and at most [`TRACT_MAX_SEATS`] of them,
@@ -366,7 +366,7 @@ impl Runnable for LanedRunnable {
         let (taken, lane) = channel();
         requests.send(Request::Take(taken)).map_err(|_| format_err!("The laned worker is gone"))?;
         let lane = lane.recv().map_err(|_| format_err!("The laned worker dropped a lane"))??;
-        Ok(Box::new(SessionHandle {
+        Ok(Box::new(LanedStateHandle {
             lease: Arc::new(Lease { lane, requests }),
             runnable: self.clone(),
         }))
@@ -385,7 +385,7 @@ impl Runnable for LanedRunnable {
 /// the worker. Cloning it shares the lane -- clones are the same stream, and the
 /// lane goes back to the table once the last of them is dropped.
 #[derive(Clone, Debug)]
-pub struct SessionHandle {
+pub struct LanedStateHandle {
     lease: Arc<Lease>,
     runnable: LanedRunnable,
 }
@@ -402,7 +402,7 @@ impl Drop for Lease {
     }
 }
 
-impl State for SessionHandle {
+impl State for LanedStateHandle {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (done, outputs) = channel();
         self.lease
