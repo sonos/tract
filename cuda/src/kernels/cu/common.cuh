@@ -164,8 +164,12 @@ static __device__ __forceinline__ void cp_async_commit() {
     asm volatile("cp.async.commit_group;" ::: "memory");
 }
 
-static __device__ __forceinline__ void cp_async_wait_all() {
-    asm volatile("cp.async.wait_all;" ::: "memory");
+// Wait until at most N cp.async groups are still pending.
+// wait_group<0> == wait_all. wait_group<1> leaves the newest group in flight.
+template <int N>
+static __device__ __forceinline__ void cp_async_wait_group() {
+    static_assert(N >= 0 && N <= 7, "cp.async.wait_group N must be in [0, 7]");
+    asm volatile("cp.async.wait_group %0;" ::"n"(N) : "memory");
 }
 
 #endif // __CUDA_ARCH__ >= 800
