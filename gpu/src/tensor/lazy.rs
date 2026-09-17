@@ -37,6 +37,10 @@ impl LazyHostStorage {
     /// reader would be a wait on an empty queue and the bytes would be read
     /// before the device wrote them.
     pub fn new(device: DeviceTensor) -> TractResult<Self> {
+        ensure!(
+            !device.is_exotic(),
+            "A lazy host tensor stands in for plain host bytes, and {device:?} would come back as its own storage"
+        );
         get_context()?.synchronize()?;
         Ok(LazyHostStorage { device: Some(device), host: OnceLock::new() })
     }

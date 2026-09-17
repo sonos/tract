@@ -40,16 +40,20 @@ impl EvalOp for DeviceSync {
             DeviceSyncKind::ToHost => {
                 let device_tensor = input.to_device_tensor()?;
                 match device_tensor {
-                    // An owned device tensor crosses the boundary lazily: the
-                    // result is a host tensor, but the bytes only come back if
-                    // someone reads them. A caller that hands it straight to
-                    // the next run never pays the transfer.
-                    DeviceTensor::Owned(_) => Ok(tvec![
+                    // An owned device tensor of plain layout crosses the
+                    // boundary lazily: the result is a host tensor, but the
+                    // bytes only come back if someone reads them. A caller that
+                    // hands it straight to the next run never pays the
+                    // transfer.
+                    DeviceTensor::Owned(_) if !device_tensor.is_exotic() => Ok(tvec![
                         LazyHostStorage::new(device_tensor.clone())?.into_tensor().into_tvalue()
                     ]),
                     // An arena view borrows turn-scoped storage, so it cannot
-                    // outlive the turn: copy it out now.
-                    DeviceTensor::ArenaView(_) => {
+                    // outlive the turn; an exotic tensor comes back as its own
+                    // storage -- block-quant weights come back block-quant --
+                    // which a lazy host tensor has no way to stand in for.
+                    // Both copy out now.
+                    _ => {
                         let tensor = device_tensor
                             .to_host()
                             .with_context(|| "Error while syncing device tensor to host")?;
