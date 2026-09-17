@@ -322,8 +322,13 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
         if let Some(op) = node.op_as::<PrefixMatMul>() {
             let facts: Vec<TypedFact> = input_facts.iter().map(|f| (*f).clone()).collect();
             if !op.transpose_c && op.quantize_output.is_none() && check_matmul_in_dts(&facts) {
-                let mut device_inputs =
-                    sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                let mut device_inputs = sync_inputs_if_required(
+                    source,
+                    target,
+                    node,
+                    mapping,
+                    DeviceSyncKind::ToDevice,
+                )?;
                 let outlet_ids = convert_matmul_to_metal(
                     source,
                     node,
@@ -340,7 +345,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
@@ -364,7 +369,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             && DeviceTensor::is_supported_dt(op.val().datum_type())
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
@@ -402,12 +407,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             && gpu_op.output_facts(&target_input_post_sync_refs).is_ok()
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             sync_model_outputs_if_required(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }

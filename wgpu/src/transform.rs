@@ -157,7 +157,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(
                 node.name.clone(),
                 ops::matmul::WgpuGemm { op: *op, epilogue: vec![] },
@@ -172,7 +172,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             && conv.q_params.is_none()
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = ops::conv::wire_wgpu_conv(source, node, target, &device_inputs, conv)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
@@ -182,7 +182,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             && deconv.pool_spec.kernel_shape.len() == 2
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
@@ -204,7 +204,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             && op.exotic_fact().is_none()
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
@@ -231,12 +231,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             && gpu_op.output_facts(&target_input_post_sync_refs).is_ok()
         {
             let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             maybe_sync_outputs(source, node, target, outlet_ids)
         } else {
             let cpu_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+                sync_inputs_if_required(source, target, node, mapping, DeviceSyncKind::ToHost)?;
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
