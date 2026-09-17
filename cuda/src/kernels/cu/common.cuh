@@ -136,6 +136,61 @@ static __device__ __forceinline__ int warp_reduce_all(int x) {
   return __all_sync(0xffffffff, x);
 }
 
+// 128-byte tensor map (CUtensorMap). Defined for every arch so kernel
+// signatures can take it as a by-value / pointer argument.
+struct cuda_tensor_map {
+    uint64_t opaque[16];
+};
+static_assert(sizeof(cuda_tensor_map) == 128, "CUtensorMap must be 128 bytes");
+
+// ============================================================================
+// TMA helpers — Hopper SM90 only (TK educational level 06).
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900) && (__CUDA_ARCH__ < 1000)
+
+
+struct cuda_mbar {
+    uint64_t value;
+};
+
+// 2-D bulk tensor load. Rank must match cuTensorMapEncodeTiled.
+static __device__ __forceinline__ void
+cp_async_bulk_tensor_2d(uint32_t dst_smem, const cuda_tensor_map *tma_desc,
+                        uint32_t x, uint32_t y, uint32_t mbar_smem) {
+    asm volatile(
+        "cp.async.bulk.tensor.2d.shared::cta.global.tile.mbarrier::complete_tx::bytes "
+        "[%0], [%1, {%2, %3}], [%4];\n"
+        ::"r"(dst_smem), "l"(tma_desc), "r"(x), "r"(y), "r"(mbar_smem)
+        : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_init(cuda_mbar &bar, uint32_t count) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n" ::"r"(bar_ptr), "r"(count));
+}
+
+static __device__ __forceinline__ void mbarrier_arrive_expect_tx(cuda_mbar &bar, uint32_t bytes) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
+                 ::"r"(bar_ptr), "r"(bytes)
+                 : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_wait_parity(cuda_mbar &bar, uint32_t parity) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        "LAB_WAIT:\n\t"
+        "mbarrier.try_wait.parity.acquire.cta.shared::cta.b64 p, [%0], %1;\n\t"
+        "@!p bra LAB_WAIT;\n\t"
+        "}"
+        ::"r"(bar_ptr), "r"(parity)
+        : "memory");
+}
+
+#endif // Hopper SM90 only
+
 namespace cuda_mma {
 
 template <int I_, int J_, typename T> struct tile {
