@@ -534,3 +534,73 @@ struct cuda_unroll<1> {
         f(0, args...);
     }
 };
+
+// ============================================================================
+// WGMMA (Hopper SM90 only)
+//
+// ThunderKittens compiles this under KITTENS_SM90, not SM10X (tcgen05) and
+// not SM120 (consumer Blackwell has no wgmma.mma_async — ptxas rejects it).
+// Fence before the MMA; wait_group takes an immediate, as in
+// include/ops/group/mma/warpgroup.cuh.
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900) && (__CUDA_ARCH__ < 1000)
+
+namespace cuda_wgmma {
+
+static __device__ __forceinline__ uint64_t matrix_descriptor_encode(uint64_t x) {
+    return (x & 0x3FFFFULL) >> 4;
+}
+
+// SageAttention/CUTLASS 16-bit descriptor: leading 16 B, stride 8*row_bytes,
+// swizzle 3/2/1 for 32/64/128-byte rows. Row of 16 halfs is 32 B.
+template <int row_bytes>
+static __device__ __forceinline__ uint64_t make_smem_desc(const void *ptr) {
+    static_assert(row_bytes == 32 || row_bytes == 64 || row_bytes == 128,
+                  "WGMMA smem row must be 32, 64 or 128 bytes");
+    uint32_t addr = static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+    uint64_t desc = 0;
+    desc |= matrix_descriptor_encode(addr);
+    desc |= matrix_descriptor_encode(16) << 16;
+    desc |= matrix_descriptor_encode((uint64_t)(8 * row_bytes)) << 32;
+    desc |= ((row_bytes == 128) ? 1ULL : (row_bytes == 64) ? 2ULL : 3ULL) << 62;
+    return desc;
+}
+
+static __device__ __forceinline__ void fence() {
+    asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+    asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
+}
+
+static __device__ __forceinline__ void commit_group() {
+    asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+}
+
+template <int N = 0>
+static __device__ __forceinline__ void wait_group() {
+    static_assert(N >= 0 && N <= 7, "wgmma.wait_group N must be in [0, 7]");
+    asm volatile("wgmma.wait_group.sync.aligned %0;" ::"n"(N) : "memory");
+}
+
+// SS form: both A and B are 64-bit smem descriptors (not an address+stride
+// tuple). trans_b=1 when B is stored N×K (weight rows) rather than K×N.
+// trans_b=1: B is stored N×K (weight rows), matching global weights layout.
+static __device__ __forceinline__ void
+mma_m64n32k16_fp16_fp32(float2 *D, uint64_t desc_a, uint64_t desc_b) {
+    asm volatile(
+        "{\n\t"
+        "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16 "
+        "{%0, %1, %2, %3, %4, %5, %6, %7, "
+        " %8, %9, %10, %11, %12, %13, %14, %15}, "
+        "%16, %17, 1, 1, 1, 0, 1;\n\t"
+        "}\n\t"
+        : "+f"(D[0].x), "+f"(D[0].y), "+f"(D[1].x), "+f"(D[1].y),
+          "+f"(D[2].x), "+f"(D[2].y), "+f"(D[3].x), "+f"(D[3].y),
+          "+f"(D[4].x), "+f"(D[4].y), "+f"(D[5].x), "+f"(D[5].y),
+          "+f"(D[6].x), "+f"(D[6].y), "+f"(D[7].x), "+f"(D[7].y)
+        : "l"(desc_a), "l"(desc_b)
+        : "memory");
+}
+
+} // namespace cuda_wgmma
+
+#endif // Hopper SM90 only

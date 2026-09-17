@@ -172,10 +172,17 @@ impl TractCudaContext {
     /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
     /// `cuda-cudart-dev-<ver>`.
     fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
-        let arch = format!(
-            "--gpu-architecture=sm_{}{}",
-            self.device_properties.major, self.device_properties.minor
-        );
+        // Hopper architecture-specific ops (wgmma, TMA) need sm_90a, not sm_90.
+        // Consumer Blackwell is sm_120 and has no wgmma; leave it as sm_120 so
+        // those kernels stay compiled out.
+        let arch = if self.device_properties.major == 9 {
+            "--gpu-architecture=sm_90a".into()
+        } else {
+            format!(
+                "--gpu-architecture=sm_{}{}",
+                self.device_properties.major, self.device_properties.minor
+            )
+        };
         log::info!("tract-cuda: NVRTC target architecture {arch}");
 
         let cuda_inc = resolve_toolkit_include_dir()?;
