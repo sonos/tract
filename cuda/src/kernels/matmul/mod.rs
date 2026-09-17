@@ -324,6 +324,7 @@ const WGMMA_M_TILE: usize = 64;
 const WGMMA_N_TILE: usize = 32;
 const WGMMA_K_CHUNK: usize = 16;
 const WGMMA_BLOCK_DIM: usize = 128;
+const WGMMA_BLOCK_DIM_WG: usize = 256; // 4 load + 4 compute warps
 
 #[allow(clippy::too_many_arguments)]
 fn launch_wgmma_kernel<T: DeviceRepr + Copy + 'static>(
@@ -717,6 +718,202 @@ fn dispatch_wgmma_gemm_tma(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
+fn launch_wgmma_tma_wg_kernel<T: DeviceRepr + Copy + 'static>(
+    stream: &TractCudaStream,
+    func: &CudaFunction,
+    act_view: &CudaView<'_, f16>,
+    w_view: &CudaView<'_, f16>,
+    c_view: &mut CudaViewMut<'_, T>,
+    m: i32,
+    n: i32,
+    k: i32,
+    lda: i32,
+    ldb: i32,
+    ldc: i32,
+    stride_a: i32,
+    stride_b: i32,
+    stride_c: i32,
+    grid_x: u32,
+    grid_y: u32,
+    batch: u32,
+    shared_bytes: usize,
+    a_tma_desc_ptr: u64,
+    b_tma_desc_ptr: u64,
+) -> TractResult<()> {
+    let mut launch_args = TractLaunchArgs::new(stream, func);
+    launch_args.push_view(act_view);
+    launch_args.push_view(w_view);
+    launch_args.push_view_mut(c_view);
+    launch_args.push_i32(m);
+    launch_args.push_i32(n);
+    launch_args.push_i32(k);
+    launch_args.push_i32(lda);
+    launch_args.push_i32(ldb);
+    launch_args.push_i32(ldc);
+    launch_args.push_i32(stride_a);
+    launch_args.push_i32(stride_b);
+    launch_args.push_i32(stride_c);
+    launch_args.push_u64(a_tma_desc_ptr);
+    launch_args.push_u64(b_tma_desc_ptr);
+    let cfg = LaunchConfig {
+        grid_dim: (grid_x, grid_y, batch),
+        block_dim: (WGMMA_BLOCK_DIM_WG as u32, 1, 1),
+        shared_mem_bytes: shared_bytes as _,
+    };
+    unsafe { launch_args.launch(cfg) }
+}
+
+fn dispatch_wgmma_gemm_tma_wg(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    c: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    let context = cuda_context();
+    let props = context.properties();
+    ensure!(props.major >= 9, "Warpgroup TMA WGMMA GEMM requires SM90+");
+
+    let out_dt = params.dts[2];
+    let kernel_name = match out_dt {
+        F32 => "ggml_matmul_wgmma_tma_wg_f16_f32",
+        F16 => "ggml_matmul_wgmma_tma_wg_f16_f16",
+        dt => bail!("Warpgroup TMA WGMMA GEMM: unsupported output dtype {:?}", dt),
+    };
+
+    let func = context.load_pipeline(LibraryName::Ggml, kernel_name.to_string())?;
+    // Shared memory: double-buffered A+B tiles + 4 cuda_mbar (32 bytes) for
+    // TMA mbarrier synchronization (2 per matrix for double-buffering).
+    let shared_bytes = 2 * (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2 + 4 * 8;
+    func.set_attribute(
+        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        shared_bytes as i32,
+    )?;
+
+    let dispatch_params = CublasDispatchParams::compute_dispatch_params(&params)?;
+
+    for d in dispatch_params {
+        let act_len = params.dts[0].size_of() * params.act_strides[0] as usize;
+        let w_len = params.dts[1].size_of() * params.w_strides[0] as usize;
+        let out_len = params.dts[2].size_of() * params.out_strides[0] as usize;
+
+        let act_view = get_sliced_cuda_view(activs, d.act_offset, act_len)?;
+        let w_view = get_sliced_cuda_view(weights, d.w_offset, w_len)?;
+        let mut c_view = get_sliced_cuda_view_mut(c, d.c_offset, out_len)?;
+
+        let m = d.m as i32;
+        let n = params.n as i32;
+        let k = params.k as i32;
+        let lda = params.act_strides[1] as i32;
+        let ldb = params.w_strides[1] as i32;
+        let ldc = params.out_strides[1] as i32;
+        let stride_a = params.act_strides[0] as i32;
+        let stride_b = params.w_strides[0] as i32;
+        let stride_c = params.out_strides[0] as i32;
+
+        let grid_x = (m + WGMMA_M_TILE as i32 - 1) / WGMMA_M_TILE as i32;
+        let grid_y = (n + WGMMA_N_TILE as i32 - 1) / WGMMA_N_TILE as i32;
+        let batch = d.act_batch.max(1) as u32;
+
+        let act_view_typed =
+            unsafe { act_view.transmute::<f16>(act_view.len() / size_of::<f16>()).unwrap() };
+        let w_view_typed =
+            unsafe { w_view.transmute::<f16>(w_view.len() / size_of::<f16>()).unwrap() };
+
+        let b_tma_desc = make_tma_desc(
+            w_view.device_ptr(stream).0,
+            n as usize,
+            k as usize,
+            ldb,
+            WGMMA_M_TILE,
+            WGMMA_K_CHUNK,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA,
+        );
+        let a_tma_desc = make_tma_desc(
+            act_view.device_ptr(stream).0,
+            m as usize,
+            k as usize,
+            lda,
+            WGMMA_N_TILE,
+            WGMMA_K_CHUNK,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA,
+        );
+
+        let desc_bytes = unsafe {
+            let slice = std::slice::from_raw_parts(
+                &a_tma_desc as *const CUtensorMap as *const u8,
+                std::mem::size_of::<CUtensorMap>(),
+            );
+            stream.clone_htod(slice)?
+        };
+        let (a_tma_desc_ptr, _guard_a) = desc_bytes.device_ptr(stream);
+
+        let desc_bytes_b = unsafe {
+            let slice = std::slice::from_raw_parts(
+                &b_tma_desc as *const CUtensorMap as *const u8,
+                std::mem::size_of::<CUtensorMap>(),
+            );
+            stream.clone_htod(slice)?
+        };
+        let (b_tma_desc_ptr, _guard_b) = desc_bytes_b.device_ptr(stream);
+
+        if out_dt == F32 {
+            let mut c_view_typed =
+                unsafe { c_view.transmute_mut::<f32>(c_view.len() / size_of::<f32>()).unwrap() };
+            launch_wgmma_tma_wg_kernel(
+                stream,
+                &func,
+                &act_view_typed,
+                &w_view_typed,
+                &mut c_view_typed,
+                m,
+                n,
+                k,
+                lda,
+                ldb,
+                ldc,
+                stride_a,
+                stride_b,
+                stride_c,
+                grid_x as u32,
+                grid_y as u32,
+                batch,
+                shared_bytes,
+                a_tma_desc_ptr,
+                b_tma_desc_ptr,
+            )?;
+        } else {
+            let mut c_view_typed =
+                unsafe { c_view.transmute_mut::<f16>(c_view.len() / size_of::<f16>()).unwrap() };
+            launch_wgmma_tma_wg_kernel(
+                stream,
+                &func,
+                &act_view_typed,
+                &w_view_typed,
+                &mut c_view_typed,
+                m,
+                n,
+                k,
+                lda,
+                ldb,
+                ldc,
+                stride_a,
+                stride_b,
+                stride_c,
+                grid_x as u32,
+                grid_y as u32,
+                batch,
+                shared_bytes,
+                a_tma_desc_ptr,
+                b_tma_desc_ptr,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
 fn kernel_name_q40(
     params: &GemmParams,
     mmq_w: usize,
@@ -1068,7 +1265,7 @@ impl GgmlGemm {
             ensure!(activs.datum_type() == F16);
             let ctxt = cuda_context();
             if ctxt.properties().major >= 9 && params.k >= 16 {
-                dispatch_wgmma_gemm_tma(stream, weights, activs, out, params)?;
+                dispatch_wgmma_gemm_tma_wg(stream, weights, activs, out, params)?;
             } else {
                 dispatch_cublas_gemm::<f16>(stream, weights, activs, out, params)?;
             }

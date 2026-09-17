@@ -535,4 +535,187 @@ DEFINE_WGMMA_TMA_GEMM(ggml_matmul_wgmma_tma_f16_f32, float)
 DEFINE_WGMMA_TMA_GEMM(ggml_matmul_wgmma_tma_f16_f16, half)
 #undef DEFINE_WGMMA_TMA_GEMM
 
+// ============================================================================
+// Warpgroup-separated TMA WGMMA GEMM (256 threads: 4 load + 4 compute warps).
+//
+// Warps 0-3 handle TMA tile loading (tid==0 issues the bulk-tensor loads);
+// warps 4-7 handle WGMMA MMA and output store. This separates the load
+// and compute pipelines at the warp-group level, giving compute warps
+// dedicated registers and instruction cache.
+//
+// The TMA preload for the next K-chunk overlaps with the current WGMMA
+// computation via the wgmma async pipeline (fence/commit_group/wait_group).
+// ============================================================================
+
+template <typename T>
+__launch_bounds__(256) __global__
+void ggml_matmul_wgmma_tma_wg_impl(const half *__restrict__ A, // acts (m, k)
+                                   const half *__restrict__ B, // wts  (n, k)
+                                   T *__restrict__ C,          // out  (m, n)
+                                   int32_t m, int32_t n, int32_t k,
+                                   int32_t lda, int32_t ldb, int32_t ldc,
+                                   int32_t stride_a, int32_t stride_b, int32_t stride_c,
+                                   const cuda_tensor_map *a_tma_desc,
+                                   const cuda_tensor_map *b_tma_desc) {
+    using namespace cuda_wgmma;
+    using cuda::std::is_same_v;
+
+    constexpr int M_TILE = WGMMA_M_TILE, N_TILE = WGMMA_N_TILE, K_CHUNK = WGMMA_K_CHUNK;
+    constexpr int LOAD_WARPS = 4;
+    constexpr int COMPUTE_OFFSET = LOAD_WARPS * WARP_SIZE; // tid 128+
+
+    const int row_base = blockIdx.x * M_TILE;
+    const int col_base = blockIdx.y * N_TILE;
+    const int tid = threadIdx.x;
+    const int warp_id = tid / WARP_SIZE;
+    const bool is_compute = warp_id >= LOAD_WARPS;
+    const int c_tid = tid - COMPUTE_OFFSET; // 0-127 within compute warps
+
+    const int batch = blockIdx.z;
+    A += size_t(batch) * stride_a;
+    B += size_t(batch) * stride_b;
+    C += size_t(batch) * stride_c;
+
+    extern __shared__ alignment_dummy __shm[];
+    shared_allocator al((int *)&__shm[0]);
+
+    auto &a_smem0 = al.allocate<half, M_TILE * K_CHUNK>();
+    auto &b_smem0 = al.allocate<half, N_TILE * K_CHUNK>();
+    auto &a_smem1 = al.allocate<half, M_TILE * K_CHUNK>();
+    auto &b_smem1 = al.allocate<half, N_TILE * K_CHUNK>();
+    half *buf_a[2] = { &a_smem0[0], &a_smem1[0] };
+    half *buf_b[2] = { &b_smem0[0], &b_smem1[0] };
+    int cur = 0;
+
+    auto &mbar_a0 = al.allocate<cuda_mbar, 1>();
+    auto &mbar_a1 = al.allocate<cuda_mbar, 1>();
+    auto &mbar_b0 = al.allocate<cuda_mbar, 1>();
+    auto &mbar_b1 = al.allocate<cuda_mbar, 1>();
+    cuda_mbar *mbar_a[2] = { &mbar_a0[0], &mbar_a1[0] };
+    cuda_mbar *mbar_b[2] = { &mbar_b0[0], &mbar_b1[0] };
+
+    float2 D[8] = {};
+
+    constexpr uint32_t a_bytes = M_TILE * K_CHUNK * sizeof(half);
+    constexpr uint32_t b_bytes = N_TILE * K_CHUNK * sizeof(half);
+
+    // --- Preload K-chunk 0: TMA A + TMA B (issued by tid==0) ---
+    {
+        if (tid == 0) {
+            mbarrier_init(*mbar_a0, 0);
+            mbarrier_init(*mbar_b0, 0);
+            mbarrier_arrive_expect_tx(*mbar_a0, a_bytes);
+            cp_async_bulk_tensor_4d(
+                __cvta_generic_to_shared(buf_a[0]), a_tma_desc,
+                (uint32_t)row_base, 0u, 0, 0,
+                __cvta_generic_to_shared(&mbar_a0));
+            mbarrier_arrive_expect_tx(*mbar_b0, b_bytes);
+            cp_async_bulk_tensor_4d(
+                __cvta_generic_to_shared(buf_b[0]), b_tma_desc,
+                (uint32_t)col_base, 0u, 0, 0,
+                __cvta_generic_to_shared(&mbar_b0));
+        }
+        __syncthreads();
+        if (tid == 0) {
+            mbarrier_wait_parity(*mbar_a0, 0);
+            mbarrier_wait_parity(*mbar_b0, 0);
+        }
+        __syncthreads();
+    }
+
+    // --- K dimension loop: WGMMA computes while load warps fetch next tile ---
+    for (int kt = 0; kt < k; kt += K_CHUNK) {
+        const int nxt = 1 - cur;
+        const int next_kt = kt + K_CHUNK;
+
+        // Compute warps (tid 128-255): issue WGMMA on current tile
+        if (is_compute) {
+            const uint32_t a_addr = __cvta_generic_to_shared(buf_a[cur]);
+            const uint32_t b_addr = __cvta_generic_to_shared(buf_b[cur]);
+            const uint32_t a_stride = K_CHUNK * sizeof(half);
+            const uint64_t b_desc_val = make_b_desc(b_addr, N_TILE * sizeof(half), 0);
+            mma_m64n32k16_fp16_fp32(D, a_addr, a_stride, b_desc_val, 1, 0, 1);
+            fence();
+            commit_group();
+        }
+
+        // Load warps: preload next K-chunk via TMA (overlaps with WGMMA)
+        if (next_kt < k) {
+            if (tid == 0) {
+                mbarrier_init(*mbar_a[nxt], 0);
+                mbarrier_init(*mbar_b[nxt], 0);
+                mbarrier_arrive_expect_tx(*mbar_a[nxt], a_bytes);
+                cp_async_bulk_tensor_4d(
+                    __cvta_generic_to_shared(buf_a[nxt]), a_tma_desc,
+                    (uint32_t)row_base, (uint32_t)next_kt, 0, 0,
+                    __cvta_generic_to_shared(mbar_a[nxt]));
+                mbarrier_arrive_expect_tx(*mbar_b[nxt], b_bytes);
+                cp_async_bulk_tensor_4d(
+                    __cvta_generic_to_shared(buf_b[nxt]), b_tma_desc,
+                    (uint32_t)col_base, (uint32_t)next_kt, 0, 0,
+                    __cvta_generic_to_shared(mbar_b[nxt]));
+                mbarrier_wait_parity(*mbar_a[nxt], 0);
+                mbarrier_wait_parity(*mbar_b[nxt], 0);
+            }
+            __syncthreads();
+        }
+
+        // Compute warps: drain WGMMA pipeline
+        if (is_compute) {
+            wait_group(0);
+        }
+        __syncthreads();
+
+        if (next_kt < k) {
+            cur = nxt;
+        }
+    }
+
+    // --- Store output (compute warps only, tid 128-255 → c_tid 0-127) ---
+    if (is_compute) {
+        const int row = c_tid / 2;
+        const int col_off = (c_tid % 2) * 16;
+        if constexpr (is_same_v<T, float>) {
+            #pragma unroll
+            for (int i = 0; i < 8; i++) {
+                const int c = col_base + col_off + i * 2;
+                if (row_base + row < m) {
+                    if (c < n)      C[size_t(row_base + row) * ldc + c]     = D[i].x;
+                    if (c + 1 < n)  C[size_t(row_base + row) * ldc + c + 1] = D[i].y;
+                }
+            }
+        } else {
+            #pragma unroll
+            for (int i = 0; i < 8; i++) {
+                const int c = col_base + col_off + i * 2;
+                if (row_base + row < m) {
+                    if (c < n) {
+                        C[size_t(row_base + row) * ldc + c] = __float2half(D[i].x);
+                    }
+                    if (c + 1 < n) {
+                        C[size_t(row_base + row) * ldc + c + 1] = __float2half(D[i].y);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#define DEFINE_WGMMA_TMA_WG_GEMM(name, T) \
+    extern "C" __global__ void name( \
+        const half *__restrict__ A, const half *__restrict__ B, \
+        T *__restrict__ C, int32_t m, int32_t n, int32_t k, \
+        int32_t lda, int32_t ldb, int32_t ldc, \
+        int32_t stride_a, int32_t stride_b, int32_t stride_c, \
+        const cuda_tensor_map *a_tma_desc, \
+        const cuda_tensor_map *b_tma_desc) { \
+        ggml_matmul_wgmma_tma_wg_impl<T>(A, B, C, m, n, k, \
+            lda, ldb, ldc, stride_a, stride_b, stride_c, \
+            a_tma_desc, b_tma_desc); \
+    }
+
+DEFINE_WGMMA_TMA_WG_GEMM(ggml_matmul_wgmma_tma_wg_f16_f32, float)
+DEFINE_WGMMA_TMA_WG_GEMM(ggml_matmul_wgmma_tma_wg_f16_f16, half)
+#undef DEFINE_WGMMA_TMA_WG_GEMM
+
 #endif // __CUDA_ARCH__ >= 900
