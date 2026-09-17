@@ -1,0 +1,31 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol B;
+extension tract_symbol T;
+extension tract_assert B>=1;
+extension tract_assert T>=0;
+
+# A stream prefixed with a leading context, which is what pulsification turns
+# into a `PulsedSameAxisConcat`: the context belongs before the first pulse, so
+# the op has to know how far along the stream it is to tell whether the pulse
+# arriving now still overlaps it.
+#
+# `B` is the lane axis, not a shape of the signal. That position is per stream,
+# so a turn seating several of them needs one per lane: seated together on a
+# shared counter, a stream arriving late would have the context written into the
+# wrong pulse, or not at all.
+#
+# `pre` carries no streaming axis, so every turn feeds it and only the turns
+# overlapping the context read it. It comes second because the CLI binds the
+# streaming symbol off the pulse axis of input 0, which an input without one
+# does not have.
+#
+# Streaming axis: 2 on `a` and on the output. Pulse size P = 4.
+
+graph network(a, pre) -> (output)
+{
+    a = tract_core_external(shape = [B, 1, T], datum_type = 'f32');
+    pre = tract_core_external(shape = [B, 1, 6], datum_type = 'f32');
+    output = concat([pre, a], axis = 2);
+}

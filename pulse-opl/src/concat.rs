@@ -46,7 +46,11 @@ impl TypedOp for PulsedSameAxisConcat {
 
 #[derive(Clone, Debug, Default)]
 pub struct PulsedSameAxisConcatState {
-    current_pos: usize,
+    /// How far along the stream each lane stands, in frames of the pulse axis:
+    /// what says whether the pulse now arriving overlaps the leading context or
+    /// the trailing tail. One entry per lane, since a turn seats a position of
+    /// each of the streams it carries. Empty until the first turn sizes it.
+    positions: TVec<usize>,
 }
 
 impl OpState for PulsedSameAxisConcatState {
@@ -62,64 +66,104 @@ impl OpState for PulsedSameAxisConcatState {
         let (pre, input, post) = args_3!(inputs);
         let mut data = input.into_tensor();
         let pulse = data.shape()[op.axis];
-        let current_pos = self.current_pos;
-        self.current_pos += pulse;
+        let max_lanes = ctx.seating.max_lanes();
+        if self.positions.is_empty() {
+            ensure!(
+                max_lanes == 1 || op.axis > 0,
+                "PulsedSameAxisConcat on axis 0 leaves no axis 0 for the lanes"
+            );
+            self.positions = tvec!(0; max_lanes);
+        }
+        ensure!(
+            self.positions.len() == max_lanes,
+            "PulsedSameAxisConcat stands in {} lanes, this turn seats {max_lanes} of them",
+            self.positions.len()
+        );
+        if max_lanes > 1 {
+            ensure!(
+                data.shape()[0] == ctx.seating.occupancy(),
+                "PulsedSameAxisConcat input carries {} streams, this turn seats {}",
+                data.shape()[0],
+                ctx.seating.occupancy()
+            );
+        }
 
         let pre_length = pre.shape()[op.axis];
         let pre_offset = op.input_delay - pre_length;
-        overwrite_part_of_pulse(op.axis, &mut data, current_pos, &pre, pre_offset)?;
-        if let Some(l) = op.input_len.maybe_eval_to_i64(ctx.symbols) {
-            let post_offset = op.input_delay + l as usize;
-            overwrite_part_of_pulse(op.axis, &mut data, current_pos, &post, post_offset)?;
+        let post_offset =
+            op.input_len.maybe_eval_to_i64(ctx.symbols).map(|l| op.input_delay + l as usize);
+        for ix in 0..ctx.seating.occupancy() {
+            let (seat, lane) = ctx.seating.address(ix);
+            let position = self.positions[lane.unwrap_or(0)];
+            overwrite_part_of_pulse(op.axis, &mut data, position, &pre, pre_offset, seat)?;
+            if let Some(post_offset) = post_offset {
+                overwrite_part_of_pulse(op.axis, &mut data, position, &post, post_offset, seat)?;
+            }
+            self.positions[lane.unwrap_or(0)] = position + pulse;
         }
 
         Ok(tvec!(data.into_tvalue()))
     }
 
-    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
-        bail!("PulsedSameAxisConcat is not lane-aware: current_pos has no lane axis")
+    fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()> {
+        if self.positions.is_empty() {
+            return Ok(());
+        }
+        ensure!(
+            lanes.iter().all(|l| l.0 < self.positions.len()),
+            "PulsedSameAxisConcat stands in {} lanes, asked to reset {lanes:?}",
+            self.positions.len()
+        );
+        for lane in lanes {
+            self.positions[lane.0] = 0;
+        }
+        Ok(())
     }
 }
 
+/// Overwrite, in the seat's own sub-tensor, whatever of `pulse_data` the
+/// constant part covers: `const_data` sits at `const_offset` in the stream, the
+/// pulse at `current_pos`, and only their overlap is assigned.
 pub fn overwrite_part_of_pulse(
     axis: usize,
     pulse_data: &mut Tensor,
     current_pos: usize,
     const_data: &Tensor,
     const_offset: usize,
+    seat: Option<usize>,
 ) -> TractResult<()> {
     let pulse = pulse_data.shape()[axis];
     let const_length = const_data.shape()[axis];
     let const_range = const_offset..const_offset + const_length;
     let pulse_range = current_pos..current_pos + pulse;
+    let assign = |pulse_data: &mut Tensor, range: Range<usize>, src_range: Range<usize>| {
+        pulse_data.assign_slice_at_prefix(
+            seat.as_slice(),
+            range,
+            const_data,
+            seat.as_slice(),
+            src_range,
+            axis,
+        )
+    };
 
     match range_in_range(&pulse_range, &const_range) {
         RangeInRange::Before(_) | RangeInRange::After(_) => (),
         RangeInRange::Begin(offset) => {
             // ----[<----->HHH]HH----
-            pulse_data.assign_slice(offset..pulse, const_data, 0..pulse - offset, axis)?;
+            assign(pulse_data, offset..pulse, 0..pulse - offset)?;
         }
         RangeInRange::Contain(offset) => {
             // ----[<----->HHHHHHH-]---
-            pulse_data.assign_slice(
-                offset..offset + const_length,
-                const_data,
-                0..const_length,
-                axis,
-            )?;
+            assign(pulse_data, offset..offset + const_length, 0..const_length)?;
         }
         RangeInRange::Inside(offset) => {
             // ----------<H>[HH]HH----
-            pulse_data.assign_slice(0..pulse, const_data, offset..offset + pulse, axis)?;
+            assign(pulse_data, 0..pulse, offset..offset + pulse)?;
         }
         RangeInRange::End(offset) => {
             // --------<HHH>[HHHH-]---
-            pulse_data.assign_slice(
-                0..const_length - offset,
-                const_data,
-                offset..const_length,
-                axis,
-            )?;
+            assign(pulse_data, 0..const_length - offset, offset..const_length)?;
         }
     }
     Ok(())
