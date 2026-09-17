@@ -16,6 +16,80 @@
 #define MAX_THREADS 1024
 #define WARP_SIZE 32
 
+// Dummy type for aligning extern __shared__ declarations.
+// Always use alignment_dummy instead of raw types for extern __shared__
+// to ensure 16-byte alignment for cp.async / ldmatrix / mma operations.
+struct alignment_dummy {
+    alignas(16) int dummy;
+};
+
+// Type-safe shared memory allocator for dynamic shared memory.
+// Inspired by ThunderKittens (github.com/HazyResearch/ThunderKittens)
+// include/common/util.cuh shared_allocator.
+//
+// Usage:
+//   extern __shared__ alignment_dummy __shm[];
+//   shared_allocator al((int*)&__shm[0]);
+//   auto& my_struct  = al.allocate<my_type>();        // single instance
+//   auto& my_array   = al.allocate<float, 256>();     // float[256]
+//   auto& my_matrix  = al.allocate<half, 8, 32>();    // half[8][32]
+//
+// Each allocate<>() call advances an internal pointer with proper alignment,
+// eliminating manual offset arithmetic and alignment bugs.
+template<int default_alignment = 16>
+struct shared_allocator {
+    int *ptr;
+
+private:
+    // Recursive helper to generate N-dimensional array type from trailing
+    // size_t dimensions: allocate<T, 8, 32>() -> T&[8][32]
+    template<typename A, size_t... dims>
+    struct variadic_array;
+    template<typename A, size_t first_dim, size_t... rest_dims>
+    struct variadic_array<A, first_dim, rest_dims...> {
+        using type = typename variadic_array<A, rest_dims...>::type[first_dim];
+    };
+    template<typename A>
+    struct variadic_array<A> {
+        using type = A;
+    };
+    template<typename A, size_t... dims>
+    using variadic_array_t = typename variadic_array<A, dims...>::type;
+
+    template<int alignment>
+    __device__ __forceinline__ void align_ptr() {
+        // No-op: alignment_dummy has alignas(16), guaranteeing the
+        // shared memory block is 16-byte aligned at entry. All
+        // allocate() sizes in this codebase are multiples of 16
+        // bytes, so ptr stays aligned after each call.
+    }
+
+public:
+    __device__ shared_allocator(int *_ptr) : ptr(_ptr) {}
+
+    // Allocate a single instance or N-dimensional array of type A.
+    // Returns a reference to the allocated object.
+    template<typename A, size_t... dims>
+    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
+        align_ptr<default_alignment>();
+        using at = variadic_array_t<A, dims...>;
+        at *p = reinterpret_cast<at *>(ptr);
+        // Ceiling division so sub-4-byte types (e.g. half) are handled correctly.
+        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
+        return *p;
+    }
+
+    // Allocate with a custom alignment override.
+    template<int alignment, typename A, size_t... dims>
+    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
+        align_ptr<alignment>();
+        using at = variadic_array_t<A, dims...>;
+        at *p = reinterpret_cast<at *>(ptr);
+        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
+        return *p;
+    }
+};
+
 #define QK8_1 32
 #define QI8_1 (QK8_1 / (4 * QR8_1))
 #define QR8_1 1
@@ -419,6 +493,228 @@ load_ldmatrix_trans(tile<16, 8, T> &t, const T *__restrict__ xs0,
 #endif // __CUDA_ARCH__ >= CUDA_CC_AMPERE
     }
 } // namespace cuda_mma
+
+// ============================================================================
+// WGMMA intrinsics (SM90+ / Hopper, SM100+ / Blackwell)
+//
+// WGMMA (Warp General Matrix Multiply) operates on 4-warpgroup tiles and can
+// compute far more MACs per instruction than traditional mma.sync (e.g.
+// m64n32k16 = 32768 MACs vs 2048 for m16n8k16).  This section provides thin
+// wrappers around the raw PTX, modelled on ThunderKittens' educational Level-05
+// examples and the matrix-descriptor encoding from TK's `prototype/mma/`.
+//
+// On SM90 the accumulator for m64n32k16.f32.f16.f16 holds 16 f32 per thread
+// (8 × float2) across 4 warps (128 threads).  The row-major layout is:
+//   thread tid → row = tid/2, col_base = (tid%2)*16
+//   D[i].x → (row, col_base + i*2)
+//   D[i].y → (row, col_base + i*2 + 1)
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+
+/// cp.async 16-byte copy from global memory to shared memory (cache-at-shared).
+static __device__ __forceinline__ void cp_async_ca_16B(uint32_t dst, const void *src) {
+    asm volatile(
+        "cp.async.ca.shared.global [%0], [%1], 16;\n"
+        :: "r"(dst), "l"(src) : "memory");
+}
+
+/// Predicated cp.async 16-byte copy with zero-fill on miss.
+static __device__ __forceinline__ void cp_async_ca_16B_pred(uint32_t dst, const void *src, bool pred) {
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        ".reg .b32 z;\n\t"
+        "mov.b32 z, 0;\n\t"
+        "setp.ne.b32 p, %2, 0;\n\t"
+        "@p   cp.async.ca.shared.global [%0], [%1], 16;\n\t"
+        "@!p  st.shared.v4.b32 [%0], {z, z, z, z};\n\t"
+        "}\n\t"
+        :: "r"(dst), "l"(src), "r"((int)pred) : "memory");
+}
+
+/// Commit all pending cp.async copies.
+static __device__ __forceinline__ void cp_async_commit() {
+    asm volatile("cp.async.commit_group;" ::: "memory");
+}
+
+/// Wait until all pending cp.async copies have completed.
+static __device__ __forceinline__ void cp_async_wait_all() {
+    asm volatile("cp.async.wait_all;" ::: "memory");
+}
+
+/// Predicated cp.async 4-byte copy with zero-fill on miss.
+static __device__ __forceinline__ void cp_async_ca_4B_pred(uint32_t dst, const void *src, bool pred) {
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        ".reg .b32 z;\n\t"
+        "mov.b32 z, 0;\n\t"
+        "setp.ne.b32 p, %2, 0;\n\t"
+        "@p   cp.async.ca.shared.global [%0], [%1], 4;\n\t"
+        "@!p  st.shared.b32 [%0], z;\n\t"
+        "}\n\t"
+        :: "r"(dst), "l"(src), "r"((int)pred) : "memory");
+}
+
+namespace cuda_wgmma {
+
+/// Fence the WGMMA pipeline so subsequent cp.async loads are ordered
+/// before the next mma_async issue.
+static __device__ __forceinline__ void fence() {
+    asm volatile("wgmma.fence.sync.aligned;" ::: "memory");
+}
+
+/// Commit the current group of issued WGMMA operations to the pipeline.
+static __device__ __forceinline__ void commit_group() {
+    asm volatile("wgmma.commit_group.sync.aligned;" ::: "memory");
+}
+
+/// Wait until at least `n` committed WGMMA groups have completed.
+static __device__ __forceinline__ void wait_group(int n) {
+    asm volatile("wgmma.wait_group.sync.aligned %0;" ::"r"(n) : "memory");
+}
+
+/// Construct a 64-bit WGMMA shared-memory descriptor for matrix B
+/// (the K×N operand).  `smem_addr` is a raw shared-memory address (e.g.
+/// from `__cvta_generic_to_shared`); it must be 16-byte aligned.
+///
+/// Layout fields (SM90, descriptor is 64-bit):
+///   [13:0]   = addr bits [17:4]
+///   [29:16]  = (leading_dim / 16) & 0x3FFF
+///   [63:62]  = swizzle_mode (0=none, 1=16B, 2=32B, 3=64B)
+///
+/// On SM100+ (Blackwell, __CUDA_ARCH__ >= 1000) bit-46 is set as well.
+static __device__ __forceinline__ uint64_t
+make_b_desc(uint32_t smem_addr, uint32_t leading_dim_bytes, uint32_t swizzle_mode) {
+    uint64_t desc = ((uint64_t)smem_addr >> 4) & 0x3FFFULL;
+    desc |= ((((uint64_t)leading_dim_bytes >> 4) & 0x3FFFULL) << 16);
+    desc |= ((uint64_t)(swizzle_mode & 0x3) << 62);
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1000)
+    desc |= (1ULL << 46); // SM100+ requires this bit
+#endif
+    return desc;
+}
+
+/// WGMMA MMA: m64n32k16, fp16 (A,B) → fp32 accumulation.
+///
+/// Tile shapes (per 4-warpgroup / 128-thread call):
+///   A: 64×16 fp16, row-major in shared memory
+///   B: 16×32 fp16, in shared memory (descriptor-encoded layout)
+///   D: 64×32 fp32  (16 f32 = 8 float2 per thread, accumulated)
+///
+/// Parameters:
+///   D           – 8 float2 accumulators (in/out)
+///   A_smem_addr – raw shared-memory address of A tile
+///   A_stride    – byte stride between rows of A
+///   B_desc      – 64-bit B descriptor from make_b_desc()
+///   pred_en     – non-zero enables the WGMMA (predicate control)
+///   neg_b       – 0 = no negation, 1 = negate B
+///   trans_b     – 0 = row-major B, 1 = col-major B
+static __device__ __forceinline__ void
+mma_m64n32k16_fp16_fp32(float2 *D, uint32_t A_smem_addr, uint32_t A_stride,
+                        uint64_t B_desc, int pred_en, int neg_b, int trans_b) {
+    uint32_t a_desc[4] = {
+        A_smem_addr,
+        0u,
+        A_stride,
+        0u, // reserved
+    };
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        "setp.ne.b32 p, %21, 0;\n\t"
+        "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16 "
+        "{%0, %1, %2, %3, %4, %5, %6, %7, "
+        " %8, %9, %10, %11, %12, %13, %14, %15}, "
+        "{%16, %17, %18, %19}, "
+        "%20, "
+        "p, 1, %23, %22;\n\t"
+        "}\n\t"
+        : "+f"(D[0].x), "+f"(D[0].y), "+f"(D[1].x), "+f"(D[1].y),
+          "+f"(D[2].x), "+f"(D[2].y), "+f"(D[3].x), "+f"(D[3].y),
+          "+f"(D[4].x), "+f"(D[4].y), "+f"(D[5].x), "+f"(D[5].y),
+          "+f"(D[6].x), "+f"(D[6].y), "+f"(D[7].x), "+f"(D[7].y)
+        : "r"(a_desc[0]), "r"(a_desc[1]), "r"(a_desc[2]), "r"(a_desc[3]),
+          "l"(B_desc), "r"(pred_en), "r"(trans_b), "r"(neg_b)
+        : "memory");
+}
+
+} // namespace cuda_wgmma
+
+#endif // __CUDA_ARCH__ >= 900
+
+// ============================================================================
+// TMA (Tensor Memory Accelerator) helpers for SM90+ (Hopper, Blackwell, etc.)
+//
+// `cp.async.bulk.tensor` uses a CUtensorMap descriptor to describe the
+// global→shared layout, letting the hardware manage swizzling, coalescing
+// and border handling.  Each bulk copy also carries an mbarrier arrival,
+// so we supplement with explicit mbarrier init / arrive.expect_tx / wait
+// calls for group-level synchronization.
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+
+// 128-byte opaque CUDA tensor-map descriptor (matches CUtensorMap_st).
+struct cuda_tensor_map {
+    uint64_t opaque[16];
+};
+static_assert(sizeof(cuda_tensor_map) == 128, "CUtensorMap must be 128 bytes");
+
+// 8-byte mbarrier in shared memory (matches kittens::semaphore).
+struct cuda_mbar {
+    uint64_t value;
+};
+
+// Issue a TMA bulk-tensor 4D shared load.  coord c/r/d/b select the tile.
+static __device__ __forceinline__ void
+cp_async_bulk_tensor_4d(uint32_t dst_smem, const cuda_tensor_map *tma_desc,
+                        uint32_t c, uint32_t r, uint32_t d, uint32_t b,
+                        uint32_t mbar_smem) {
+    asm volatile(
+        "cp.async.bulk.tensor.4d.shared::cluster.global.tile.mbarrier::complete_tx::bytes "
+        "[%0], [%1, {%2, %3, %4, %5}], [%6];\n"
+        ::"r"(dst_smem), "l"(tma_desc), "r"(c), "r"(r), "d"(d), "b"(b),
+        "r"(mbar_smem)
+        : "memory");
+}
+
+static __device__ __forceinline__ void cp_async_bulk_commit_group() {
+    asm volatile("cp.async.bulk.commit_group;" ::: "memory");
+}
+
+static __device__ __forceinline__ void cp_async_bulk_wait_group(int N) {
+    asm volatile("cp.async.bulk.wait_group %0;" ::"n"(N) : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_init(cuda_mbar &bar, uint32_t count) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n" ::"r"(bar_ptr), "r"(count));
+}
+
+static __device__ __forceinline__ void mbarrier_arrive_expect_tx(cuda_mbar &bar, uint32_t bytes) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
+                 ::"r"(bar_ptr), "r"(bytes)
+                 : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_wait_parity(cuda_mbar &bar, uint32_t parity) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        "mbarrier.try_wait.parity.acquire.cluster.shared::cta.b64 p, [%0], %1;\n\t"
+        " @!p bra -;\n\t"
+        "}"
+        ::"r"(bar_ptr), "r"(parity)
+        : "memory");
+}
+
+static __device__ __forceinline__ void fence_proxy_async_shared() {
+    asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+}
+
+#endif // __CUDA_ARCH__ >= 900
 
 #if CUDART_VERSION >= 11080
 

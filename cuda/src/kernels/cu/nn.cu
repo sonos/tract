@@ -495,8 +495,8 @@ __device__ void scaled_masked_softmax(
     const int warp_id = threadIdx.x / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
 
-    extern __shared__ float data_soft_max_f32[];
-    float *buf_iw = data_soft_max_f32;
+    extern __shared__ alignment_dummy __shm[];
+    float *buf_iw = (float *)&__shm[0];
     float *vals = buf_iw + WARP_SIZE;
 
     float max_val = -CUDART_INF_F;
@@ -619,8 +619,8 @@ __device__ void scaled_bool_masked_softmax(
     const int warp_id = threadIdx.x / WARP_SIZE;
     const int lane_id = threadIdx.x % WARP_SIZE;
 
-    extern __shared__ float data_soft_max_f32[];
-    float *buf_iw = data_soft_max_f32;
+    extern __shared__ alignment_dummy __shm[];
+    float *buf_iw = (float *)&__shm[0];
     float *vals = buf_iw + WARP_SIZE;
 
     float max_val = -CUDART_INF_F;

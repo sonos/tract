@@ -1,5 +1,7 @@
 use core::{mem::size_of, ptr};
-use cudarc::driver::{CudaFunction, CudaView, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::{
+    CudaFunction, CudaView, CudaViewMut, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg,
+};
 use num_traits::AsPrimitive;
 use std::ops::Deref;
 use tract_core::prelude::TractResult;
@@ -75,10 +77,19 @@ impl<'a> TractLaunchArgs<'a> {
         self.inner.arg(x);
     }
 
+    pub fn push_view_mut<T>(&mut self, x: &'a mut CudaViewMut<'_, T>) {
+        self.inner.arg(x);
+    }
+
     /// A null pointer for an optional buffer argument: a view is pushed as its
     /// `CUdeviceptr`, so a zeroed one of the same width stands for none.
     pub fn push_null_ptr(&mut self) {
         self.arg_typed::<u64>(0);
+    }
+
+    /// Push a raw 64-bit device pointer (e.g. a TMA descriptor pointer).
+    pub fn push_u64(&mut self, x: u64) {
+        self.arg_typed::<u64>(x);
     }
 
     pub fn launch(&mut self, cfg: LaunchConfig) -> TractResult<()> {
