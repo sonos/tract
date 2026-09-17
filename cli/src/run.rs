@@ -205,7 +205,7 @@ where
                 .get("pulse.input_axes")
                 .context("Expect pulse.input_axes when pulse.streaming_symbol is set")?
                 .cast_to::<i64>()?;
-            let input_axis = input_axes.try_as_plain()?.as_slice::<i64>()?[0] as usize;
+            let input_axis = input_axes.try_as_plain_ram()?.as_slice::<i64>()?[0] as usize;
             let pulse_value = first_input.shape()[input_axis];
             // Linear case: stream.dim = pulse_value · symbol.  For non-linear
             // dims (e.g. `4·s + 1`) this would be wrong, but blockified models
@@ -268,7 +268,7 @@ where
                 }
                 if check_f16_overflow {
                     for (ix, o) in clarified_r.iter().enumerate() {
-                        if let Ok(plain) = o.try_as_plain() {
+                        if let Ok(plain) = o.try_as_plain_ram() {
                             if let Ok(f32s) = plain.as_slice::<f32>() {
                                 if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
                                     warn!("{node}, output {ix} overflows f16");
@@ -282,7 +282,7 @@ where
                         if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
                             continue;
                         }
-                        if let Ok(plain) = o.try_as_plain() {
+                        if let Ok(plain) = o.try_as_plain_ram() {
                             if let Ok(floats) = plain.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");

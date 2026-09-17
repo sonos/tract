@@ -125,7 +125,10 @@ mod tests {
             dispatch_eval(stream, &tract_core::ops::logic::Not {}, &input, &output)?;
             stream.wait_until_completed()?;
             let out = output.to_host()?.into_tensor();
-            assert_eq!(out.as_plain().unwrap().as_slice::<bool>()?, &[false, true, false, false]);
+            assert_eq!(
+                out.as_plain_ram().unwrap().as_slice::<bool>()?,
+                &[false, true, false, false]
+            );
             Ok(())
         })
     }

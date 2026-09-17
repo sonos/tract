@@ -131,7 +131,7 @@ impl ExpUnitNormState {
         use tract_ndarray::Axis;
         let (input, state0) = args_2!(inputs);
         let mut input = input.into_tensor();
-        let mut input_plain = input.try_as_plain_mut()?;
+        let mut input_plain = input.try_as_plain_ram_mut()?;
         let mut x_view = input_plain.to_array_view_mut::<f32>()?;
         if self.hidden.is_none() || op.stateless {
             self.hidden = Some(state0.into_tensor());
@@ -139,7 +139,7 @@ impl ExpUnitNormState {
         if op.complex {
             ensure!(x_view.shape()[x_view.ndim() - 1] == 2);
         }
-        let mut hidden_plain = self.hidden.as_mut().unwrap().try_as_plain_mut()?;
+        let mut hidden_plain = self.hidden.as_mut().unwrap().try_as_plain_ram_mut()?;
         let mut state = hidden_plain.to_array_view_mut::<f32>()?;
         for mut time_slice in x_view.axis_iter_mut(Axis(op.axis)) {
             if self.index >= op.skip {

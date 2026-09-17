@@ -72,11 +72,11 @@ impl OneHot {
         input: &Tensor,
         output: &mut Tensor,
     ) -> TractResult<()> {
-        let on_plain = self.on.try_as_plain()?;
+        let on_plain = self.on.try_as_plain_ram()?;
         let on = unsafe { on_plain.to_scalar_unchecked::<T>() };
         let mut shape: TVec<usize> = input.shape().into();
         shape.insert(self.axis, self.dim);
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut array = unsafe { output_plain.to_array_view_mut_unchecked::<T>() };
         let input = input.cast_to::<i32>()?;
         let input = input.to_plain_array_view::<i32>()?;

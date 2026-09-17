@@ -38,7 +38,7 @@ impl Expansion for Squeeze13 {
             s.given_2(&inputs[0].shape, &inputs[1].value, move |s, shape, axes| {
                 let axes = axes
                     .cast_to::<i64>()?
-                    .try_as_plain()?
+                    .try_as_plain_ram()?
                     .as_slice::<i64>()?
                     .iter()
                     .map(|i| *i as isize)
@@ -72,7 +72,7 @@ impl Expansion for Squeeze13 {
             if let Some(axes) = model.outlet_fact(inputs[1])?.konst.as_ref() {
                 let axes = axes
                     .cast_to::<i64>()?
-                    .try_as_plain()?
+                    .try_as_plain_ram()?
                     .as_slice::<i64>()?
                     .iter()
                     .map(|i| *i as isize)

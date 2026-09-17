@@ -97,7 +97,7 @@ impl Expansion for MatMulNBits {
             .konst
             .clone()
             .context("MatMulNBits: quantized weight B must be a constant")?;
-        let b_plain = b_k.try_as_plain()?;
+        let b_plain = b_k.try_as_plain_ram()?;
         let b: &[u8] = b_plain.as_slice()?;
         let scales_k = model
             .outlet_fact(inputs[2])?
@@ -105,7 +105,7 @@ impl Expansion for MatMulNBits {
             .clone()
             .context("MatMulNBits: scales must be a constant")?;
         let scales_f = scales_k.cast_to::<f32>()?;
-        let scales_plain = scales_f.try_as_plain()?;
+        let scales_plain = scales_f.try_as_plain_ram()?;
         let scales: &[f32] = scales_plain.as_slice()?;
         let zp_k = if let Some(i) = self.zp_input {
             Some(
@@ -119,7 +119,7 @@ impl Expansion for MatMulNBits {
             None
         };
         let zp_plain = match &zp_k {
-            Some(t) => Some(t.try_as_plain()?),
+            Some(t) => Some(t.try_as_plain_ram()?),
             None => None,
         };
         let zp: Option<&[u8]> = match &zp_plain {

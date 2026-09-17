@@ -388,7 +388,7 @@ mod tests {
         assert!(data.len() % b.block_len() == 0);
         let quant = b.quant_f32(data).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
-        let view = result.try_as_plain().unwrap().as_slice::<f32>().unwrap();
+        let view = result.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
         assert_eq!(data, view);
     }
 
@@ -397,7 +397,7 @@ mod tests {
         let input = data.iter().map(|f| f16::from_f32(*f)).collect_vec();
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
-        let view = result.try_as_plain().unwrap().as_slice::<f16>().unwrap();
+        let view = result.try_as_plain_ram().unwrap().as_slice::<f16>().unwrap();
         assert_eq!(&input, view);
     }
 
@@ -434,7 +434,7 @@ mod tests {
         let data = [3.0f32, -1.0, 0.0, -2.0];
         let quant = q.quant_f32(&data).unwrap();
         let deq = q.dequant_f32(&quant).unwrap();
-        let got = deq.try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
+        let got = deq.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap().to_vec();
         // scale = 1.5 ; codes: round(3/1.5)=2->clamp 1 ; round(-1/1.5)=-1 ; 0 ; round(-2/1.5)=-1
         assert_eq!(got, vec![1.5, -1.5, 0.0, -1.5]);
     }
@@ -451,7 +451,7 @@ mod tests {
                 .into_tensor();
         // abs-mean ternary quant is not idempotent, so derive both the f32 reference and
         // the packed form from a *single* quantization `qt`.
-        let qt = q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?;
+        let qt = q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let weights_f32 = q.dequant_f32(&qt)?.into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
@@ -469,7 +469,7 @@ mod tests {
                     panel,
                     panel_qt.as_bytes_mut().as_mut_ptr(),
                 )?;
-                assert_eq!(panel_qt.try_as_plain()?.as_slice::<f32>()?, panel_f32);
+                assert_eq!(panel_qt.try_as_plain_ram()?.as_slice::<f32>()?, panel_f32);
             }
         }
         Ok(())
@@ -500,7 +500,7 @@ mod tests {
         let weights_orig =
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 7) as f32 - 3.)
                 .into_tensor();
-        let qt = q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?;
+        let qt = q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let weights_f32 = q.dequant_f32(&qt)?.into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;

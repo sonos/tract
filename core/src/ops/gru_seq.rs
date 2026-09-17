@@ -217,7 +217,7 @@ impl GruSeq {
                 }
                 if let Some(rb) = &rb {
                     let rb = rb.as_slice().context("R-side bias not contiguous")?;
-                    for row in rh.try_as_plain_mut()?.as_slice_mut::<f32>()?.chunks_mut(3 * h) {
+                    for row in rh.try_as_plain_ram_mut()?.as_slice_mut::<f32>()?.chunks_mut(3 * h) {
                         for (o, b) in row.iter_mut().zip(rb) {
                             *o += b;
                         }
@@ -231,9 +231,9 @@ impl GruSeq {
                 h,
                 batch,
                 xh_row,
-                rh.try_as_plain()?.as_slice::<f32>()?,
-                ht.try_as_plain()?.as_slice::<f32>()?,
-                h_next.try_as_plain_mut()?.as_slice_mut::<f32>()?,
+                rh.try_as_plain_ram()?.as_slice::<f32>()?,
+                ht.try_as_plain_ram()?.as_slice::<f32>()?,
+                h_next.try_as_plain_ram_mut()?.as_slice_mut::<f32>()?,
                 &*sigmoid,
                 &*tanh,
             )?;

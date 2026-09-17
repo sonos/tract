@@ -58,9 +58,9 @@ fn block_quant_einsum_weights(
         let format = Q4_0;
         let mut patch = TypedModelPatch::default();
         let weights = if a.datum_type() == f16::datum_type() {
-            format.quant_f16(a.try_as_plain()?.as_slice::<f16>()?)?
+            format.quant_f16(a.try_as_plain_ram()?.as_slice::<f16>()?)?
         } else {
-            format.quant_f32(a.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?)?
+            format.quant_f32(a.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?)?
         };
         let act_slot = 1 - slot;
         let name = &model.node(node.inputs[slot].node).name;

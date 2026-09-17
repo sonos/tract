@@ -459,9 +459,9 @@ impl TryFrom<Arc<Tensor>> for TypedFact {
     fn try_from(t: Arc<Tensor>) -> TractResult<TypedFact> {
         let exotic_fact = t.exotic_fact()?;
         let uniform_tdim = if t.datum_type() == TDim::datum_type() && t.len() == 1 {
-            t.try_as_plain().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
+            t.try_as_plain_ram().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
         } else if t.len() == 1
-            && t.try_as_plain().is_ok()
+            && t.try_as_plain_ram().is_ok()
             && (t.datum_type().is_integer() || t.datum_type().is::<bool>())
         {
             t.cast_to_scalar::<i64>().ok().map(TDim::Val)

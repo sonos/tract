@@ -890,13 +890,13 @@ mod tests {
         let second = state.run(tvec![first[0].clone()])?;
         assert!(!first[0].storage_as::<LazyHostStorage>().unwrap().is_materialized());
         second[0]
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .tensor()
             .close_enough(&Tensor::from_shape(&[2, 3], &[2f32; 6])?, Approximation::Exact)?;
 
         // Reading the first output still gives the right values, late.
         first[0]
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .tensor()
             .close_enough(&Tensor::from_shape(&[2, 3], &[1f32; 6])?, Approximation::Exact)?;
         assert!(first[0].storage_as::<LazyHostStorage>().unwrap().is_materialized());
@@ -913,7 +913,10 @@ mod tests {
 
         let dense = lazy.slice(0, 1, 3)?;
         assert!(dense.storage_as::<LazyHostStorage>().is_some(), "dense slice left the device");
-        dense.try_as_plain()?.tensor().close_enough(&t.slice(0, 1, 3)?, Approximation::Exact)?;
+        dense
+            .try_as_plain_ram()?
+            .tensor()
+            .close_enough(&t.slice(0, 1, 3)?, Approximation::Exact)?;
 
         let gappy = lazy.slice(1, 1, 3)?;
         assert!(

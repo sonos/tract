@@ -125,7 +125,7 @@ impl ConvProblem {
         let (m, _, _, h, w) = mknhw(self.filters.shape(), self.input.shape());
         let output_shape = [m, h, w];
         let mut output = Tensor::zero::<f32>(&output_shape).unwrap();
-        let mut output_plain = output.try_as_plain_mut().unwrap();
+        let mut output_plain = output.try_as_plain_ram_mut().unwrap();
         let mut output_view = output_plain.to_array_view_mut::<f32>().unwrap();
         let input_view = self.input.to_plain_array_view::<f32>().unwrap();
         let filters_view = self.filters.to_plain_array_view::<f32>().unwrap();
@@ -218,7 +218,7 @@ impl Arbitrary for ConvProblem {
 fn tensor(shape: Vec<usize>) -> Tensor {
     let mut tensor = Tensor::zero::<f32>(&shape).unwrap();
     tensor
-        .try_as_plain_mut()
+        .try_as_plain_ram_mut()
         .unwrap()
         .as_slice_mut::<f32>()
         .unwrap()

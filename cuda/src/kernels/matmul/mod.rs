@@ -807,9 +807,9 @@ mod tests {
             // Lane `l` holds channel `c`'s window rotated by `rot = l + 1`: ring
             // slot `rot + s` holds window slot `s`, which is what the table's
             // rotation means, and the table sends channel `c` to that lane.
-            let window = window.as_plain().unwrap().as_slice::<f32>()?.to_vec();
+            let window = window.as_plain_ram().unwrap().as_slice::<f32>()?.to_vec();
             let mut ring = Tensor::zero::<f32>(&[lanes * channels, n, k])?;
-            let mut ring_plain = ring.as_plain_mut().unwrap();
+            let mut ring_plain = ring.as_plain_ram_mut().unwrap();
             let ring_slice = ring_plain.as_slice_mut::<f32>()?;
             let mut table: Vec<i32> = vec![0; 2 * channels];
             for c in 0..channels {
@@ -874,9 +874,9 @@ mod tests {
             // The ring turns on the contracted axis: lane `l` holds channel
             // `c`'s window with every row's columns rotated by `rot = l + 1`
             // whole slots of them, which is what the table's rotation means.
-            let window = window.as_plain().unwrap().as_slice::<f32>()?.to_vec();
+            let window = window.as_plain_ram().unwrap().as_slice::<f32>()?.to_vec();
             let mut ring = Tensor::zero::<f32>(&[lanes * channels, n, k])?;
-            let mut ring_plain = ring.as_plain_mut().unwrap();
+            let mut ring_plain = ring.as_plain_ram_mut().unwrap();
             let ring_slice = ring_plain.as_slice_mut::<f32>()?;
             let mut table: Vec<i32> = vec![0; 2 * channels];
             for c in 0..channels {

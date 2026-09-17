@@ -218,7 +218,7 @@ impl Tensor {
     ///
     /// Panics if the bytes cannot be produced, which is what the accessors
     /// built on it (`as_bytes`, `as_ptr`, `as_slice_unchecked`) have always
-    /// done on non-plain storage. `try_as_plain` is the fallible way in.
+    /// done on non-plain storage. `try_as_plain_ram` is the fallible way in.
     #[inline]
     fn plain_ram_storage(&self) -> &PlainStorage {
         self.storage.materialize_plain_ram().expect("Non-plain storage")
@@ -255,18 +255,18 @@ impl Tensor {
 
     /// Returns an immutable [`PlainView`] if this tensor has plain storage.
     #[inline]
-    pub fn as_plain(&self) -> Option<PlainView<'_>> {
+    pub fn as_plain_ram(&self) -> Option<PlainView<'_>> {
         let storage = self.storage.as_plain_ram()?;
         Some(PlainView::new(self, storage))
     }
 
     /// Returns an immutable [`PlainView`], or an error if storage is not plain.
     ///
-    /// Unlike `as_plain`, this materializes storage that holds its bytes
+    /// Unlike `as_plain_ram`, this materializes storage that holds its bytes
     /// elsewhere, so it is the way to read a tensor whose storage may be
     /// lazily host-backed.
     #[inline]
-    pub fn try_as_plain(&self) -> TractResult<PlainView<'_>> {
+    pub fn try_as_plain_ram(&self) -> TractResult<PlainView<'_>> {
         let storage = self.storage.materialize_plain_ram()?;
         Ok(PlainView::new(self, storage))
     }
@@ -324,15 +324,15 @@ impl Tensor {
 
     /// Returns a mutable [`PlainViewMut`] if this tensor has plain storage.
     #[inline]
-    pub fn as_plain_mut(&mut self) -> Option<PlainViewMut<'_>> {
+    pub fn as_plain_ram_mut(&mut self) -> Option<PlainViewMut<'_>> {
         let storage = self.storage.as_plain_ram_mut()?;
         Some(PlainViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
     }
 
     /// Returns a mutable [`PlainViewMut`], or an error if storage is not plain.
     #[inline]
-    pub fn try_as_plain_mut(&mut self) -> TractResult<PlainViewMut<'_>> {
-        self.as_plain_mut().context("Tensor storage is not plain")
+    pub fn try_as_plain_ram_mut(&mut self) -> TractResult<PlainViewMut<'_>> {
+        self.as_plain_ram_mut().context("Tensor storage is not plain")
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
@@ -529,7 +529,7 @@ impl Tensor {
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
-        self.try_as_plain_mut()?
+        self.try_as_plain_ram_mut()?
             .as_slice_mut::<T>()?
             .iter_mut()
             .for_each(|item| *item = value.clone());
@@ -550,17 +550,17 @@ impl Tensor {
                 let zp = dt.zp_scale().0;
                 match dt.unquantized() {
                     DatumType::I8 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<i8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::U8 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<u8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::I32 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<i32>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
@@ -1196,7 +1196,7 @@ impl Tensor {
         value: &Tensor,
         axis: usize,
     ) -> TractResult<()> {
-        let value = value.try_as_plain()?.to_scalar::<T>()?.clone();
+        let value = value.try_as_plain_ram()?.to_scalar::<T>()?.clone();
         let mut view = self.to_plain_array_view_mut::<T>()?;
         for (ax, ix) in prefix.iter().enumerate() {
             view.slice_axis_inplace(Axis(ax), (*ix..*ix + 1).into());
@@ -1404,7 +1404,7 @@ impl Tensor {
     /// Errors if the storage is not plain or the datum type does not match `D`.
     #[inline]
     pub fn to_plain_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
-        self.try_as_plain()?.to_array_view::<D>()
+        self.try_as_plain_ram()?.to_array_view::<D>()
     }
 
     /// Returns a mutable plain array view of the tensor.
@@ -1495,7 +1495,7 @@ impl Tensor {
     /// Make the tensor a scalar tensor (assumes it contains a single value).
     pub fn to_scalar_tensor(&self) -> TractResult<Tensor> {
         fn to_scalar_tensor_t<D: Datum>(t: &Tensor) -> TractResult<Tensor> {
-            Ok(litteral::tensor0(t.try_as_plain()?.to_scalar::<D>()?.clone()))
+            Ok(litteral::tensor0(t.try_as_plain_ram()?.to_scalar::<D>()?.clone()))
         }
         dispatch_datum!(to_scalar_tensor_t(self.datum_type())(self))
     }
@@ -1846,7 +1846,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
         let casted = self.cast_to::<D>()?;
-        casted.try_as_plain()?.to_scalar::<D>().copied()
+        casted.try_as_plain_ram()?.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
@@ -2042,7 +2042,7 @@ impl Tensor {
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.
     pub fn offset_u8_as_i8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::U8 = self.dt.unquantized() {
-            self.try_as_plain()
+            self.try_as_plain_ram()
                 .unwrap()
                 .to_array_view::<u8>()
                 .unwrap()
@@ -2066,7 +2066,7 @@ impl Tensor {
     /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
     pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::I8 = self.dt.unquantized() {
-            self.try_as_plain()
+            self.try_as_plain_ram()
                 .unwrap()
                 .to_array_view::<i8>()
                 .unwrap()
@@ -2096,17 +2096,17 @@ impl Tensor {
         } else {
             let mut t = Self::zero_dt(self.dt, &self.shape)?;
             if self.dt == String::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<String>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             } else if self.dt == Blob::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<Blob>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             } else if self.dt == TDim::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<TDim>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             }
             Ok(t)
         }
@@ -2982,17 +2982,17 @@ mod tests {
         let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
         // Predicates must not drag the bytes back.
         assert!(!t.in_ram());
-        assert!(t.as_plain().is_none());
+        assert!(t.as_plain_ram().is_none());
         assert_eq!(t.datum_type(), f32::datum_type());
         assert_eq!(t.shape(), &[2, 3]);
         assert_eq!(LateStorage::count(&t), 0);
         // Reading them does, once.
         assert_eq!(
-            t.try_as_plain().unwrap().as_slice::<f32>().unwrap(),
+            t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(),
             &[1f32, 2., 3., 4., 5., 6.]
         );
         assert_eq!(LateStorage::count(&t), 1);
-        assert_eq!(t.try_as_plain().unwrap().as_slice::<f32>().unwrap()[0], 1f32);
+        assert_eq!(t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()[0], 1f32);
         assert_eq!(LateStorage::count(&t), 1);
     }
 
@@ -3005,7 +3005,7 @@ mod tests {
         assert!(t.in_ram());
         assert!(t.has_plain_ram_storage());
         assert_eq!(
-            t.try_as_plain().unwrap().as_slice::<f32>().unwrap(),
+            t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(),
             &[1f32, 2., 3., 4., 5., 6.]
         );
     }
@@ -3017,7 +3017,7 @@ mod tests {
         assert_eq!(LateStorage::count(&t), 0);
         assert!(row.storage_as::<LateStorage>().is_some());
         assert_eq!(row.shape(), &[1, 3]);
-        assert_eq!(row.try_as_plain().unwrap().as_slice::<f32>().unwrap(), &[4f32, 5., 6.]);
+        assert_eq!(row.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(), &[4f32, 5., 6.]);
     }
 
     #[test]
@@ -3027,7 +3027,7 @@ mod tests {
         // Storage refused, so the generic path copied: material, and correct.
         assert!(col.in_ram());
         assert_eq!(col.shape(), &[2, 2]);
-        assert_eq!(col.try_as_plain().unwrap().as_slice::<f32>().unwrap(), &[2f32, 3., 5., 6.]);
+        assert_eq!(col.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(), &[2f32, 3., 5., 6.]);
         assert_eq!(LateStorage::count(&t), 1);
     }
 }

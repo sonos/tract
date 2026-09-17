@@ -41,7 +41,7 @@ impl<K: LutKer> LutImpl<K> {
 
 impl<K: LutKer> Lut for LutImpl<K> {
     fn table(&self) -> &[u8] {
-        self.table.try_as_plain().unwrap().as_slice().unwrap()
+        self.table.try_as_plain_ram().unwrap().as_slice().unwrap()
     }
 
     fn run(&self, buf: &mut [u8]) {

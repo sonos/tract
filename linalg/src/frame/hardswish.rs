@@ -37,7 +37,7 @@ pub mod test {
     {
         let data = tract_data::prelude::tensor1(values);
         let data = data.cast_to::<T>().unwrap();
-        let data = data.try_as_plain().unwrap().as_slice::<T>().unwrap();
+        let data = data.try_as_plain_ram().unwrap().as_slice::<T>().unwrap();
         crate::frame::element_wise::test::test_element_wise::<K, T, _>(data, |x: T| {
             let three: T = 3f32.as_();
             let six: T = 6f32.as_();

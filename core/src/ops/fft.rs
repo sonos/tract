@@ -21,7 +21,7 @@ impl Fft {
         let len = tensor.shape()[self.axis];
         let direction = if self.inverse { FftDirection::Inverse } else { FftDirection::Forward };
         let fft = rustfft::FftPlanner::new().plan_fft(len, direction);
-        let mut tensor_plain = tensor.try_as_plain_mut()?;
+        let mut tensor_plain = tensor.try_as_plain_ram_mut()?;
         let mut array = tensor_plain.to_array_view_mut::<T>()?;
         let mut v = Vec::with_capacity(len);
         for coords in tract_ndarray::indices(&*iterator_shape) {
@@ -143,7 +143,7 @@ impl Stft {
     /// pass; `None` when the op carries no window.
     fn padded_window<T: Datum + Float>(&self) -> TractResult<Option<Vec<T>>> {
         let Some(window) = &self.window else { return Ok(None) };
-        let window = window.try_as_plain()?.as_slice::<T>()?;
+        let window = window.try_as_plain_ram()?.as_slice::<T>()?;
         ensure!(
             window.len() <= self.frame,
             "Stft window ({}) is longer than the frame ({})",
@@ -180,9 +180,9 @@ impl Stft {
         let window = self.padded_window::<T>()?;
         let fft = rustfft::FftPlanner::new().plan_fft_forward(self.frame);
 
-        let input_plain = input.try_as_plain()?;
+        let input_plain = input.try_as_plain_ram()?;
         let data = input_plain.as_slice::<T>()?;
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let out = output_plain.as_slice_mut::<T>()?;
 
         let mut v = Vec::with_capacity(self.frame);

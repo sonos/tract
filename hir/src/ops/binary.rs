@@ -101,7 +101,7 @@ impl Nary {
         usize: tract_num_traits::AsPrimitive<T>,
     {
         use tract_num_traits::AsPrimitive;
-        let mut t_plain = t.try_as_plain_mut()?;
+        let mut t_plain = t.try_as_plain_ram_mut()?;
         let mut t = t_plain.to_array_view_mut::<T>()?;
         let n: T = n.as_();
         t /= &tract_ndarray::arr0(n);

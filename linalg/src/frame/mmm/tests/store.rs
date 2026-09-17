@@ -144,8 +144,8 @@ where
             .index_axis_move(Axis(2), 0)
             .into_tensor(),
     };
-    let expected = expected.try_as_plain().unwrap().as_slice::<TC>().unwrap();
-    let result = result.try_as_plain().unwrap().as_slice::<TC>().unwrap();
+    let expected = expected.try_as_plain_ram().unwrap().as_slice::<TC>().unwrap();
+    let result = result.try_as_plain_ram().unwrap().as_slice::<TC>().unwrap();
     display_error(result, expected, ker.mr(), ker.nr());
     assert_eq!(result, expected);
 }

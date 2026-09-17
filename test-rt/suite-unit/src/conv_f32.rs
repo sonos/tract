@@ -1432,9 +1432,10 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     let mut data = Tensor::zero::<f32>(&[1, 5, 6]).unwrap();
-    *data.try_as_plain_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    *data.try_as_plain_ram_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
     let mut kernel = Tensor::zero::<f32>(&[1, 1, 3, 2]).unwrap();
-    *kernel.try_as_plain_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() = 1.0;
+    *kernel.try_as_plain_ram_mut().unwrap().as_slice_mut::<f32>().unwrap().last_mut().unwrap() =
+        1.0;
     suite.add(
         "pack_0",
         ConvProblem {

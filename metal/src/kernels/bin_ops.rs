@@ -303,7 +303,7 @@ mod tests {
         let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
         let a_view = a.to_plain_array_view::<FI>()?;
         let b_view = b.to_plain_array_view::<FI>()?;
-        let mut plain_out = out.try_as_plain_mut()?;
+        let mut plain_out = out.try_as_plain_ram_mut()?;
         let mut c = plain_out.to_array_view_mut::<FO>()?;
         tract_core::ndarray::Zip::from(&mut c)
             .and_broadcast(a_view)

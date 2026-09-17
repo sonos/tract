@@ -98,7 +98,7 @@ impl EvalOp for OnnxMaxPoolIndices {
         let per_plane: usize = indices.shape()[2..].iter().product();
         let mut indices = indices.into_tensor();
         for (plane, chunk) in indices
-            .try_as_plain_mut()?
+            .try_as_plain_ram_mut()?
             .as_slice_mut::<i64>()?
             .chunks_mut(per_plane.max(1))
             .enumerate()

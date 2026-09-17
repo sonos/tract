@@ -213,7 +213,7 @@ impl PrefixMatMul {
         let a = casted_a.to_plain_array_view::<Acc>()?;
         let casted_b = b.cast_to::<Acc>()?;
         let b = casted_b.to_plain_array_view::<Acc>()?;
-        let mut c_plain = acc.try_as_plain_mut()?;
+        let mut c_plain = acc.try_as_plain_ram_mut()?;
         let mut c = c_plain.to_array_view_mut::<Acc>()?;
         for prefix in tract_ndarray::indices(&c.shape()[..c.ndim() - 2]) {
             let mut a = a.view();
@@ -268,13 +268,13 @@ impl EvalOp for PrefixMatMul {
             let mut acc = Tensor::zero_dt(i32::datum_type(), &output_shape)?;
             let mut a_i32 = inputs[0].cast_to::<i32>()?.into_owned();
             a_i32
-                .try_as_plain_mut()?
+                .try_as_plain_ram_mut()?
                 .as_slice_mut::<i32>()?
                 .iter_mut()
                 .for_each(|x| *x -= inputs[0].datum_type().zp_scale().0);
             let mut b_i32 = inputs[1].cast_to::<i32>()?.into_owned();
             b_i32
-                .try_as_plain_mut()?
+                .try_as_plain_ram_mut()?
                 .as_slice_mut::<i32>()?
                 .iter_mut()
                 .for_each(|x| *x -= inputs[1].datum_type().zp_scale().0);

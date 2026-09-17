@@ -233,10 +233,10 @@ impl GatherBlockQuantized {
             None
         };
 
-        let data_plain = data_k.try_as_plain()?;
+        let data_plain = data_k.try_as_plain_ram()?;
         let data: &[u8] = data_plain.as_slice()?;
         let scales_f = scales_k.cast_to::<f32>()?;
-        let scales_plain = scales_f.try_as_plain()?;
+        let scales_plain = scales_f.try_as_plain_ram()?;
         let scales: &[f32] = scales_plain.as_slice()?;
 
         // The table is already in the nibble layout Q4_0 packs from, so it goes over as is —
@@ -260,7 +260,7 @@ impl GatherBlockQuantized {
 
         // (8 - z) * f16(s), zero unless the export carries zero points that are not all 8.
         if let Some(zeros_k) = zeros_k {
-            let zeros_plain = zeros_k.try_as_plain()?;
+            let zeros_plain = zeros_k.try_as_plain_ram()?;
             let zeros: &[u8] = zeros_plain.as_slice()?;
             let row_bytes = zeros_k.shape()[1];
             let mut correction = vec![0f32; rows * blocks];

@@ -146,7 +146,7 @@ pub fn top_logits_rbo(test: &Tensor, reference: &Tensor, p: f64, depth: usize) -
         .map(|t| {
             t.cast_to::<f32>()
                 .unwrap()
-                .try_as_plain()
+                .try_as_plain_ram()
                 .unwrap()
                 .as_slice::<f32>()
                 .unwrap()

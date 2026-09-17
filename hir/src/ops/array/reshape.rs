@@ -25,7 +25,7 @@ impl Expansion for Reshape {
         let allowzero = self.allowzero;
         s.given_2(&inputs[0].shape, &inputs[1].value, move |s, ishape, shape| {
             let shape = shape.cast_to::<TDim>()?;
-            let shape = shape.try_as_plain()?.as_slice::<TDim>()?;
+            let shape = shape.try_as_plain_ram()?.as_slice::<TDim>()?;
             let oshape = tract_core::ops::change_axes::compute_shape_with_onnx_rules(
                 &ishape, shape, allowzero,
             )
@@ -43,7 +43,7 @@ impl Expansion for Reshape {
         if let Some(ref shape) = model.outlet_fact(inputs[1])?.konst {
             let input_shape: TVec<TDim> = model.outlet_fact(inputs[0])?.shape.to_tvec();
             let shape = shape.cast_to::<TDim>()?;
-            let shape = shape.try_as_plain()?.as_slice::<TDim>()?;
+            let shape = shape.try_as_plain_ram()?.as_slice::<TDim>()?;
             let mut wire = tvec!(inputs[0]);
             for (ix, op) in to_axis_ops_with_onnx_rules(&input_shape, shape, self.allowzero)?
                 .into_iter()

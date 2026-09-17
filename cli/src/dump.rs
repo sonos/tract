@@ -464,7 +464,7 @@ pub fn handle(
         .tract_model
         .properties()
         .get("tract_stage")
-        .and_then(|t| t.try_as_plain().ok()?.to_scalar::<String>().ok().cloned())
+        .and_then(|t| t.try_as_plain_ram().ok()?.to_scalar::<String>().ok().cloned())
         .is_some_and(|s| s == "optimized")
     {
         for n in 0..params.tract_model.nodes_len() {

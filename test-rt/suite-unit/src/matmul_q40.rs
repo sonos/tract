@@ -64,7 +64,7 @@ impl MatmulQ40Problem {
             if k_axis == 0 { [k.next_multiple_of(32), mn] } else { [mn, k.next_multiple_of(32)] };
         let mut padded_a = Tensor::zero::<f32>(&shape)?;
         {
-            let mut padded_a_plain = padded_a.try_as_plain_mut()?;
+            let mut padded_a_plain = padded_a.try_as_plain_ram_mut()?;
             padded_a_plain
                 .to_array_view_mut::<f32>()?
                 .slice_axis_move(Axis(k_axis), (0..k).into())
@@ -79,7 +79,7 @@ impl MatmulQ40Problem {
 
         let padded_a = Self::pad_tensor(&self.a, 1)?;
 
-        let quant_a = Q4_0.quant_f32(padded_a.try_as_plain()?.as_slice::<f32>()?)?;
+        let quant_a = Q4_0.quant_f32(padded_a.try_as_plain_ram()?.as_slice::<f32>()?)?;
 
         let m = padded_a.shape()[0];
         let k = padded_a.shape()[1];

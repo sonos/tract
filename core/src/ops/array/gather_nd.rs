@@ -38,7 +38,7 @@ impl GatherNd {
         let mut data_shape_op: TVec<usize> =
             data.shape().iter().skip(batch_dims).copied().collect();
         data_shape_op.insert(0, batch_size);
-        let data_plain = data.try_as_plain()?;
+        let data_plain = data.try_as_plain_ram()?;
         let reshaped_data = unsafe {
             data_plain
                 .to_array_view_unchecked::<T>()
@@ -49,7 +49,7 @@ impl GatherNd {
         let mut output_shape_op: TVec<usize> =
             data.shape().iter().skip(n + batch_dims).copied().collect();
         output_shape_op.insert(0, batch_size * remaining);
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut output = unsafe {
             output_plain
                 .to_array_view_mut_unchecked::<T>()
@@ -130,7 +130,7 @@ impl TypedOp for GatherNd {
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
             for (axis, &i) in
-                indices.cast_to::<i32>()?.try_as_plain()?.as_slice::<i32>()?.iter().enumerate()
+                indices.cast_to::<i32>()?.try_as_plain_ram()?.as_slice::<i32>()?.iter().enumerate()
             {
                 wire = patch.wire_node(
                     format!("{}-slice-axis-{}", node.name, axis),

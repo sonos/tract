@@ -31,7 +31,7 @@ impl Test for StreamingEinSum {
 
         let mut input = Tensor::zero::<f32>(&[5, 8, 2])?;
         input
-            .try_as_plain_mut()?
+            .try_as_plain_ram_mut()?
             .as_slice_mut::<f32>()?
             .iter_mut()
             .enumerate()
