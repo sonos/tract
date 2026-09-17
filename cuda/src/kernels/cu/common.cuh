@@ -16,6 +16,63 @@
 #define MAX_THREADS 1024
 #define WARP_SIZE 32
 
+// Dummy type for aligning extern __shared__ declarations.
+// Always use alignment_dummy instead of raw types for extern __shared__
+// to ensure 16-byte alignment for cp.async / ldmatrix / mma operations.
+struct alignment_dummy {
+    alignas(16) int dummy;
+};
+
+// Type-safe shared memory allocator for dynamic shared memory.
+// Inspired by ThunderKittens (github.com/HazyResearch/ThunderKittens)
+// include/common/util.cuh shared_allocator.
+//
+// Usage:
+//   extern __shared__ alignment_dummy __shm[];
+//   shared_allocator al((int*)&__shm[0]);
+//   auto& my_struct  = al.allocate<my_type>();        // single instance
+//   auto& my_array   = al.allocate<float, 256>();     // float[256]
+//   auto& my_matrix  = al.allocate<half, 8, 32>();    // half[8][32]
+//
+// Each allocate<>() call advances an internal pointer. Alignment is the
+// caller's problem: ThunderKittens runs a runtime align_ptr() here, but
+// NVRTC cannot constant-fold it (extern __shared__ is a runtime address)
+// and that branch cost 4-18% prefill on SM80/SM89. alignment_dummy is
+// alignas(16) and every allocate() size in this crate is a multiple of 16.
+struct shared_allocator {
+    int *ptr;
+
+private:
+    // Recursive helper to generate N-dimensional array type from trailing
+    // size_t dimensions: allocate<T, 8, 32>() -> T&[8][32]
+    template<typename A, size_t... dims>
+    struct variadic_array;
+    template<typename A, size_t first_dim, size_t... rest_dims>
+    struct variadic_array<A, first_dim, rest_dims...> {
+        using type = typename variadic_array<A, rest_dims...>::type[first_dim];
+    };
+    template<typename A>
+    struct variadic_array<A> {
+        using type = A;
+    };
+    template<typename A, size_t... dims>
+    using variadic_array_t = typename variadic_array<A, dims...>::type;
+
+public:
+    __device__ shared_allocator(int *_ptr) : ptr(_ptr) {}
+
+    // Allocate a single instance or N-dimensional array of type A.
+    // Returns a reference to the allocated object.
+    template<typename A, size_t... dims>
+    __device__ __forceinline__ variadic_array_t<A, dims...> &allocate() {
+        using at = variadic_array_t<A, dims...>;
+        at *p = reinterpret_cast<at *>(ptr);
+        // Ceiling division so sub-4-byte types (e.g. half) are handled correctly.
+        ptr += (sizeof(at) + sizeof(int) - 1) / sizeof(int);
+        return *p;
+    }
+};
+
 #define QK8_1 32
 #define QI8_1 (QK8_1 / (4 * QR8_1))
 #define QR8_1 1
@@ -477,3 +534,73 @@ struct cuda_unroll<1> {
         f(0, args...);
     }
 };
+
+// ============================================================================
+// WGMMA (Hopper SM90 only)
+//
+// ThunderKittens compiles this under KITTENS_SM90, not SM10X (tcgen05) and
+// not SM120 (consumer Blackwell has no wgmma.mma_async — ptxas rejects it).
+// Fence before the MMA; wait_group takes an immediate, as in
+// include/ops/group/mma/warpgroup.cuh.
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900) && (__CUDA_ARCH__ < 1000)
+
+namespace cuda_wgmma {
+
+static __device__ __forceinline__ uint64_t matrix_descriptor_encode(uint64_t x) {
+    return (x & 0x3FFFFULL) >> 4;
+}
+
+// SageAttention/CUTLASS 16-bit descriptor: leading 16 B, stride 8*row_bytes,
+// swizzle 3/2/1 for 32/64/128-byte rows. Row of 16 halfs is 32 B.
+template <int row_bytes>
+static __device__ __forceinline__ uint64_t make_smem_desc(const void *ptr) {
+    static_assert(row_bytes == 32 || row_bytes == 64 || row_bytes == 128,
+                  "WGMMA smem row must be 32, 64 or 128 bytes");
+    uint32_t addr = static_cast<uint32_t>(__cvta_generic_to_shared(ptr));
+    uint64_t desc = 0;
+    desc |= matrix_descriptor_encode(addr);
+    desc |= matrix_descriptor_encode(16) << 16;
+    desc |= matrix_descriptor_encode((uint64_t)(8 * row_bytes)) << 32;
+    desc |= ((row_bytes == 128) ? 1ULL : (row_bytes == 64) ? 2ULL : 3ULL) << 62;
+    return desc;
+}
+
+static __device__ __forceinline__ void fence() {
+    asm volatile("wgmma.fence.sync.aligned;\n" ::: "memory");
+    asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
+}
+
+static __device__ __forceinline__ void commit_group() {
+    asm volatile("wgmma.commit_group.sync.aligned;\n" ::: "memory");
+}
+
+template <int N = 0>
+static __device__ __forceinline__ void wait_group() {
+    static_assert(N >= 0 && N <= 7, "wgmma.wait_group N must be in [0, 7]");
+    asm volatile("wgmma.wait_group.sync.aligned %0;" ::"n"(N) : "memory");
+}
+
+// SS form: both A and B are 64-bit smem descriptors (not an address+stride
+// tuple). trans_b=1 when B is stored N×K (weight rows) rather than K×N.
+// trans_b=1: B is stored N×K (weight rows), matching global weights layout.
+static __device__ __forceinline__ void
+mma_m64n32k16_fp16_fp32(float2 *D, uint64_t desc_a, uint64_t desc_b) {
+    asm volatile(
+        "{\n\t"
+        "wgmma.mma_async.sync.aligned.m64n32k16.f32.f16.f16 "
+        "{%0, %1, %2, %3, %4, %5, %6, %7, "
+        " %8, %9, %10, %11, %12, %13, %14, %15}, "
+        "%16, %17, 1, 1, 1, 0, 1;\n\t"
+        "}\n\t"
+        : "+f"(D[0].x), "+f"(D[0].y), "+f"(D[1].x), "+f"(D[1].y),
+          "+f"(D[2].x), "+f"(D[2].y), "+f"(D[3].x), "+f"(D[3].y),
+          "+f"(D[4].x), "+f"(D[4].y), "+f"(D[5].x), "+f"(D[5].y),
+          "+f"(D[6].x), "+f"(D[6].y), "+f"(D[7].x), "+f"(D[7].y)
+        : "l"(desc_a), "l"(desc_b)
+        : "memory");
+}
+
+} // namespace cuda_wgmma
+
+#endif // Hopper SM90 only

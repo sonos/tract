@@ -75,6 +75,10 @@ impl<'a> TractLaunchArgs<'a> {
         self.inner.arg(x);
     }
 
+    pub fn push_view_mut<T>(&mut self, x: &'a mut CudaViewMut<'_, T>) {
+        self.inner.arg(x);
+    }
+
     /// A null pointer for an optional buffer argument: a view is pushed as its
     /// `CUdeviceptr`, so a zeroed one of the same width stands for none.
     pub fn push_null_ptr(&mut self) {
