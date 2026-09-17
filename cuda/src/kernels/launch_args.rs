@@ -71,6 +71,10 @@ impl<'a> TractLaunchArgs<'a> {
         self.arg_typed::<i32>(x.as_());
     }
 
+    pub fn push_copy<T: DeviceRepr + Copy + 'static>(&mut self, v: T) {
+        self.arg_typed(v);
+    }
+
     pub fn push_view<T>(&mut self, x: &'a CudaView<'_, T>) {
         self.inner.arg(x);
     }
@@ -79,6 +83,11 @@ impl<'a> TractLaunchArgs<'a> {
     /// `CUdeviceptr`, so a zeroed one of the same width stands for none.
     pub fn push_null_ptr(&mut self) {
         self.arg_typed::<u64>(0);
+    }
+
+    /// Push a raw device pointer (e.g. to a TMA descriptor in global memory).
+    pub fn push_u64(&mut self, x: u64) {
+        self.arg_typed::<u64>(x);
     }
 
     pub fn launch(&mut self, cfg: LaunchConfig) -> TractResult<()> {
