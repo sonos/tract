@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 use tract_core::internal::*;
 
 use super::DeviceTensor;
+use crate::device::get_context;
 
 /// Host storage for a tensor whose bytes are still on a device.
 ///
@@ -28,8 +29,16 @@ pub struct LazyHostStorage {
 }
 
 impl LazyHostStorage {
-    pub fn new(device: DeviceTensor) -> Self {
-        LazyHostStorage { device: Some(device), host: OnceLock::new() }
+    /// Wrap a device tensor whose bytes are to be read later.
+    ///
+    /// Waits for the work producing those bytes before wrapping: the wait
+    /// belongs to the thread that queued the work, and a reader is free to be
+    /// another one -- a Metal stream is thread-local, so a wait deferred to the
+    /// reader would be a wait on an empty queue and the bytes would be read
+    /// before the device wrote them.
+    pub fn new(device: DeviceTensor) -> TractResult<Self> {
+        get_context()?.synchronize()?;
+        Ok(LazyHostStorage { device: Some(device), host: OnceLock::new() })
     }
 
     /// The device tensor still backing this storage, if it has not been
