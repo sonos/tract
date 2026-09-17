@@ -903,27 +903,19 @@ mod tests {
         Ok(())
     }
 
-    /// Slicing a device-resident output on a dense axis keeps it on device;
-    /// a gappy slice falls back to the generic host copy.
+    /// Slicing a device-resident output copies it off the device: a view would
+    /// be read after the turn that produced its bytes had reused them.
     #[test]
-    fn slicing_a_device_output_stays_on_device_when_it_is_dense() -> TractResult<()> {
+    fn slicing_a_device_output_copies_it_off_the_device() -> TractResult<()> {
         use tract_gpu::tensor::LazyHostStorage;
         let t = Tensor::from_shape(&[4, 3], &(0..12).map(|i| i as f32).collect::<Vec<_>>())?;
         let lazy = LazyHostStorage::new(t.clone().into_device()?).into_tensor();
 
-        let dense = lazy.slice(0, 1, 3)?;
-        assert!(dense.storage_as::<LazyHostStorage>().is_some(), "dense slice left the device");
-        dense
-            .try_as_plain_ram()?
-            .tensor()
-            .close_enough(&t.slice(0, 1, 3)?, Approximation::Exact)?;
-
-        let gappy = lazy.slice(1, 1, 3)?;
-        assert!(
-            gappy.has_plain_ram_storage(),
-            "gappy slice should have fallen back to a host copy"
-        );
-        gappy.close_enough(&t.slice(1, 1, 3)?, Approximation::Exact)?;
+        for (axis, start, end) in [(0, 1, 3), (1, 1, 3)] {
+            let sliced = lazy.slice(axis, start, end)?;
+            assert!(sliced.has_plain_ram_storage(), "slice still aliases device memory");
+            sliced.close_enough(&t.slice(axis, start, end)?, Approximation::Exact)?;
+        }
         Ok(())
     }
 }
