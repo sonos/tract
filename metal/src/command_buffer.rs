@@ -26,6 +26,11 @@ impl TCommandBuffer {
     where
         EncodeCallback: Fn(&ComputeCommandEncoderRef),
     {
+        // Both Metal encoder constructors return autoreleased objects.
+        objc::rc::autoreleasepool(|| self.encode_in_pool(encode_cb));
+    }
+
+    fn encode_in_pool(&self, encode_cb: impl Fn(&ComputeCommandEncoderRef)) {
         if let Some(handle) = self.profile.as_ref() {
             let slot = handle.profile.borrow_mut().next_slot(handle.node_id.get());
             if let Some((buffer_ix, start, end)) = slot {
@@ -78,5 +83,72 @@ impl Deref for TCommandBuffer {
 impl DerefMut for TCommandBuffer {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::context::MetalStream;
+    use metal::foreign_types::ForeignTypeRef;
+    use objc::rc::{WeakPtr, autoreleasepool};
+
+    fn check_command_objects_released(profile: bool) -> tract_core::internal::TractResult<()> {
+        // An outer pool makes a missing inner drain observable without leaking
+        // test objects into the worker thread's lifetime.
+        autoreleasepool(|| {
+            let stream = MetalStream::new();
+            if profile {
+                let device = metal::Device::system_default().expect("Metal device");
+                if !device
+                    .supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+                {
+                    eprintln!(
+                        "Skipping profiled lifetime test: no stage-boundary counter sampling"
+                    );
+                    return Ok(());
+                }
+                stream.enable_profiling()?;
+            }
+            for _ in 0..4 {
+                let command = stream.command_buffer();
+                let weak_command = unsafe { WeakPtr::new(command.as_ptr().cast()) };
+                let encoders = RefCell::new(Vec::new());
+                for _ in 0..2 {
+                    command.encode(|encoder| {
+                        encoders
+                            .borrow_mut()
+                            .push(unsafe { WeakPtr::new(encoder.as_ptr().cast()) });
+                    });
+                }
+                // The owned command must survive its construction pool.
+                assert!(!weak_command.load().is_null());
+                stream.wait_until_completed()?;
+                assert_eq!(command.status(), metal::MTLCommandBufferStatus::Completed);
+                drop(command);
+                // GPU completion can precede the driver's final reference release.
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+                while !weak_command.load().is_null() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                }
+                assert!(weak_command.load().is_null(), "completed command retained by outer pool");
+                for encoder in encoders.into_inner() {
+                    assert!(encoder.load().is_null(), "completed encoder retained by outer pool");
+                }
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn command_objects_released_without_caller_pool_drain() -> tract_core::internal::TractResult<()>
+    {
+        check_command_objects_released(false)
+    }
+
+    #[test]
+    fn profiled_command_objects_released_without_caller_pool_drain()
+    -> tract_core::internal::TractResult<()> {
+        check_command_objects_released(true)
     }
 }

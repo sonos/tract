@@ -372,7 +372,11 @@ impl MetalStream {
         self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned(), profile)
+                // Keep Rust's owned reference without leaving temporary
+                // ownership in the caller's (possibly absent) autorelease pool.
+                objc::rc::autoreleasepool(|| {
+                    TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned(), profile)
+                })
             })
             .to_owned()
     }
