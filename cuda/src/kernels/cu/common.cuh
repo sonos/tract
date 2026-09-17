@@ -168,6 +168,18 @@ static __device__ __forceinline__ void cp_async_wait_all() {
     asm volatile("cp.async.wait_all;" ::: "memory");
 }
 
+// Wait for all cp.async transfers in the Nth-oldest outstanding group to
+// complete.  After the wait, the group slot is freed and subsequent
+// wait_group calls advance to the next oldest group.
+//
+// Using wait_group(0) instead of wait_all allows newer groups to remain
+// in flight while the oldest is drained — this is the cp.async group
+// management pattern from ThunderKittens Level 07 that enables deeper
+// pipeline overlap between async loads and synchronous MMA compute.
+static __device__ __forceinline__ void cp_async_wait_group(int N) {
+    asm volatile("cp.async.wait_group %0;" ::"n"(N) : "memory");
+}
+
 #endif // __CUDA_ARCH__ >= 800
 
 // ============================================================================
