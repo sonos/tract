@@ -140,6 +140,33 @@ fn ignore_onnx(t: &[String]) -> bool {
             pool_2d_same_lower
             test_cosh.*
             test_sinh.*
+
+            # tflite has no kernel for these element types. The 8-bit
+            # comparisons and int16 add/sub abort the runtime, see skip_onnx.
+            test_(add|sub|mul|div)_uint(16|32|64)
+            test_mul_int16
+            test_div_int16
+            test_div_int8
+            test_div_int32_trunc
+            test_(equal|greater|less)(_equal)?_(int16|uint16|uint32|uint64)(_expanded)?$
+            test_equal_string
+
+            # the CausalConvWithState decomposition reaches ops the tflite
+            # writer cannot express
+            test_causal_conv_with_state_b1_c1_degenerate_expanded
+            test_causal_conv_with_state_basic_expanded
+            test_causal_conv_with_state_fp16_expanded
+            test_causal_conv_with_state_kernel_size_one_expanded
+            test_causal_conv_with_state_short_input_no_past_state_expanded
+            test_causal_conv_with_state_silu_expanded
+            test_causal_conv_with_state_silu_fp16_expanded
+            test_causal_conv_with_state_silu_with_past_state_expanded
+            test_causal_conv_with_state_swish_alias_expanded
+            test_causal_conv_with_state_with_bias_expanded
+
+            test_attention_3d_transpose_verification$   # an Attention case, not a transpose one
+            test_reduce_sum_empty_axes_input_noop$
+            test_resize_upsample_scales_linear_half_pixel_symmetric
             ",
     );
     !included.iter().any(|pat| pat.is_match(name)) || excluded.iter().any(|pat| pat.is_match(name))
@@ -154,6 +181,23 @@ fn skip_onnx(t: &[String]) -> bool {
             test_BatchNorm3d_eval
             test_BatchNorm3d_momentum_eval
             test_PReLU_3d
+
+            test_add_int16
+            test_sub_int16
+            test_equal_int8
+            test_equal_uint8
+            test_greater_int8
+            test_greater_uint8
+            test_greater_equal_int8
+            test_greater_equal_int8_expanded
+            test_greater_equal_uint8
+            test_greater_equal_uint8_expanded
+            test_less_int8
+            test_less_uint8
+            test_less_equal_int8
+            test_less_equal_int8_expanded
+            test_less_equal_uint8
+            test_less_equal_uint8_expanded
             ";
     excluded.split_whitespace().any(|s| s == name)
 }
