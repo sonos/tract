@@ -489,6 +489,7 @@ fn make_tma_desc(
     row_stride_elements: i32,
     tile_rows: usize,
     tile_cols: usize,
+    oob_fill: CUtensorMapFloatOOBfill,
 ) -> CUtensorMap {
     let mut desc = CUtensorMap { opaque: [0u64; 16] };
     let global_dim: [u64; 2] = [rows as u64, cols as u64];
@@ -511,7 +512,7 @@ fn make_tma_desc(
             CUtensorMapInterleave::CU_TENSOR_MAP_INTERLEAVE_NONE,
             CUtensorMapSwizzle::CU_TENSOR_MAP_SWIZZLE_128B,
             CUtensorMapL2promotion::CU_TENSOR_MAP_L2_PROMOTION_NONE,
-            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
+            oob_fill,
         );
     }
     desc
@@ -538,6 +539,7 @@ fn launch_wgmma_tma_kernel<T: DeviceRepr + Copy + 'static>(
     batch: u32,
     shared_bytes: usize,
     a_tma_desc_ptr: u64,
+    b_tma_desc_ptr: u64,
 ) -> TractResult<()> {
     let mut launch_args = TractLaunchArgs::new(stream, func);
     launch_args.push_view(act_view);
@@ -553,6 +555,7 @@ fn launch_wgmma_tma_kernel<T: DeviceRepr + Copy + 'static>(
     launch_args.push_i32(stride_b);
     launch_args.push_i32(stride_c);
     launch_args.push_u64(a_tma_desc_ptr);
+    launch_args.push_u64(b_tma_desc_ptr);
     let cfg = LaunchConfig {
         grid_dim: (grid_x, grid_y, batch),
         block_dim: (WGMMA_BLOCK_DIM as u32, 1, 1),
@@ -580,9 +583,9 @@ fn dispatch_wgmma_gemm_tma(
     };
 
     let func = context.load_pipeline(LibraryName::Ggml, kernel_name.to_string())?;
-    // Shared memory: double-buffered A+B tiles + 2 cuda_mbar (16 bytes) for
-    // TMA mbarrier synchronization.
-    let shared_bytes = 2 * (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2 + 2 * 8;
+    // Shared memory: double-buffered A+B tiles + 4 cuda_mbar (32 bytes) for
+    // TMA mbarrier synchronization (2 per matrix for double-buffering).
+    let shared_bytes = 2 * (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2 + 4 * 8;
     func.set_attribute(
         CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
         shared_bytes as i32,
@@ -618,17 +621,26 @@ fn dispatch_wgmma_gemm_tma(
         let w_view_typed =
             unsafe { w_view.transmute::<f16>(w_view.len() / size_of::<f16>()).unwrap() };
 
-        // Create TMA descriptor for the weights matrix B (m×k row-major, f16).
-        // The descriptor describes the full per-batch weights tile; coordinates
-        // (row_base, kt) select sub-tiles at kernel runtime.
-        let w_ptr_val = w_view.device_ptr(stream).0;
-        let a_tma_desc = make_tma_desc(
-            w_ptr_val,
-            m as usize, // rows (M dimension in kernel)
-            k as usize, // cols (K dimension in kernel)
+        // Create TMA descriptors for both A (weights) and B (activations)
+        // matrices. The descriptors describe the full per-batch matrices;
+        // coordinates (row_base, kt) select sub-tiles at kernel runtime.
+        let b_tma_desc = make_tma_desc(
+            w_view.device_ptr(stream).0,
+            n as usize, // weights rows
+            k as usize, // weights cols
             ldb,        // row stride in elements
             WGMMA_M_TILE,
             WGMMA_K_CHUNK,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA,
+        );
+        let a_tma_desc = make_tma_desc(
+            act_view.device_ptr(stream).0,
+            m as usize, // activations rows
+            k as usize, // activations cols
+            lda,        // row stride in elements
+            WGMMA_N_TILE,
+            WGMMA_K_CHUNK,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NAN_REQUEST_ZERO_FMA,
         );
 
         let desc_bytes = unsafe {
@@ -638,8 +650,16 @@ fn dispatch_wgmma_gemm_tma(
             );
             stream.clone_htod(slice)?
         };
-        let (desc_ptr, _guard) = desc_bytes.device_ptr(stream);
-        let a_tma_desc_ptr = desc_ptr;
+        let (a_tma_desc_ptr, _guard_a) = desc_bytes.device_ptr(stream);
+
+        let desc_bytes_b = unsafe {
+            let slice = std::slice::from_raw_parts(
+                &b_tma_desc as *const CUtensorMap as *const u8,
+                std::mem::size_of::<CUtensorMap>(),
+            );
+            stream.clone_htod(slice)?
+        };
+        let (b_tma_desc_ptr, _guard_b) = desc_bytes_b.device_ptr(stream);
 
         if out_dt == F32 {
             let mut c_view_typed =
@@ -664,6 +684,7 @@ fn dispatch_wgmma_gemm_tma(
                 batch,
                 shared_bytes,
                 a_tma_desc_ptr,
+                b_tma_desc_ptr,
             )?;
         } else {
             let mut c_view_typed =
@@ -688,6 +709,7 @@ fn dispatch_wgmma_gemm_tma(
                 batch,
                 shared_bytes,
                 a_tma_desc_ptr,
+                b_tma_desc_ptr,
             )?;
         }
     }
