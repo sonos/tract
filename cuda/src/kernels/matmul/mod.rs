@@ -2,8 +2,12 @@ pub(crate) mod quant_act_q81;
 
 use cudarc::cublas::{self, CudaBlas, Gemm};
 use cudarc::driver::sys::CUfunction_attribute;
+use cudarc::driver::sys::{
+    CUtensorMap, CUtensorMapDataType, CUtensorMapFloatOOBfill, CUtensorMapInterleave,
+    CUtensorMapL2promotion, CUtensorMapSwizzle, cuTensorMapEncodeTiled,
+};
 use cudarc::driver::{
-    CudaFunction, CudaView, CudaViewMut, DeviceRepr, LaunchConfig, PushKernelArg,
+    CudaFunction, CudaView, CudaViewMut, DevicePtr, DeviceRepr, LaunchConfig, PushKernelArg,
 };
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
 
@@ -318,8 +322,10 @@ where
 // WGMMA M_TILE and N_TILE constants — must match the CUDA kernel.
 const WGMMA_M_TILE: usize = 64;
 const WGMMA_N_TILE: usize = 32;
+const WGMMA_K_CHUNK: usize = 16;
 const WGMMA_BLOCK_DIM: usize = 128;
 
+#[allow(clippy::too_many_arguments)]
 fn launch_wgmma_kernel<T: DeviceRepr + Copy + 'static>(
     stream: &TractCudaStream,
     func: &CudaFunction,
@@ -462,6 +468,226 @@ fn dispatch_wgmma_gemm(
                 grid_y as u32,
                 batch,
                 shared_bytes,
+            )?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Build a 2-D TMA tensor-map descriptor for a row-major half array `[rows, cols]`,
+/// with the tile box sized `[tile_rows, tile_cols]`.
+///
+/// Only called on SM90+ where TMA is available.  The descriptor is returned
+/// as a host-side `CUtensorMap` that the caller copies into device global
+/// memory and passes to the kernel.
+#[allow(clippy::too_many_arguments)]
+fn make_tma_desc(
+    global_addr: u64,
+    rows: usize,
+    cols: usize,
+    row_stride_elements: i32,
+    tile_rows: usize,
+    tile_cols: usize,
+) -> CUtensorMap {
+    let mut desc = CUtensorMap { opaque: [0u64; 16] };
+    let global_dim: [u64; 2] = [rows as u64, cols as u64];
+    // row stride (bytes), col stride (bytes) — half = 2 bytes
+    let global_strides: [u64; 2] = [(row_stride_elements * 2) as u64, 2u64];
+    // tile box in bytes: height × width
+    let box_dim: [u32; 2] = [(tile_rows * 2) as u32, (tile_cols * 2) as u32];
+    let element_strides: [u32; 2] = [1, 1];
+
+    unsafe {
+        cuTensorMapEncodeTiled(
+            &mut desc,
+            CUtensorMapDataType::CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
+            2,
+            global_addr as *mut std::ffi::c_void,
+            global_dim.as_ptr(),
+            global_strides.as_ptr(),
+            box_dim.as_ptr(),
+            element_strides.as_ptr(),
+            CUtensorMapInterleave::CU_TENSOR_MAP_INTERLEAVE_NONE,
+            CUtensorMapSwizzle::CU_TENSOR_MAP_SWIZZLE_128B,
+            CUtensorMapL2promotion::CU_TENSOR_MAP_L2_PROMOTION_NONE,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
+        );
+    }
+    desc
+}
+
+#[allow(clippy::too_many_arguments)]
+fn launch_wgmma_tma_kernel<T: DeviceRepr + Copy + 'static>(
+    stream: &TractCudaStream,
+    func: &CudaFunction,
+    act_view: &CudaView<'_, f16>,
+    w_view: &CudaView<'_, f16>,
+    c_view: &mut CudaViewMut<'_, T>,
+    m: i32,
+    n: i32,
+    k: i32,
+    lda: i32,
+    ldb: i32,
+    ldc: i32,
+    stride_a: i32,
+    stride_b: i32,
+    stride_c: i32,
+    grid_x: u32,
+    grid_y: u32,
+    batch: u32,
+    shared_bytes: usize,
+    a_tma_desc_ptr: u64,
+) -> TractResult<()> {
+    let mut launch_args = TractLaunchArgs::new(stream, func);
+    launch_args.push_view(act_view);
+    launch_args.push_view(w_view);
+    launch_args.push_view_mut(c_view);
+    launch_args.push_i32(m);
+    launch_args.push_i32(n);
+    launch_args.push_i32(k);
+    launch_args.push_i32(lda);
+    launch_args.push_i32(ldb);
+    launch_args.push_i32(ldc);
+    launch_args.push_i32(stride_a);
+    launch_args.push_i32(stride_b);
+    launch_args.push_i32(stride_c);
+    launch_args.push_u64(a_tma_desc_ptr);
+    let cfg = LaunchConfig {
+        grid_dim: (grid_x, grid_y, batch),
+        block_dim: (WGMMA_BLOCK_DIM as u32, 1, 1),
+        shared_mem_bytes: shared_bytes as _,
+    };
+    unsafe { launch_args.launch(cfg) }
+}
+
+fn dispatch_wgmma_gemm_tma(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    c: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    let context = cuda_context();
+    let props = context.properties();
+    ensure!(props.major >= 9, "TMA WGMMA GEMM requires SM90+");
+
+    let out_dt = params.dts[2];
+    let kernel_name = match out_dt {
+        F32 => "ggml_matmul_wgmma_tma_f16_f32",
+        F16 => "ggml_matmul_wgmma_tma_f16_f16",
+        dt => bail!("TMA WGMMA GEMM: unsupported output dtype {:?}", dt),
+    };
+
+    let func = context.load_pipeline(LibraryName::Ggml, kernel_name.to_string())?;
+    // Shared memory: double-buffered A+B tiles + 2 cuda_mbar (16 bytes) for
+    // TMA mbarrier synchronization.
+    let shared_bytes = 2 * (WGMMA_M_TILE * 16 + WGMMA_N_TILE * 16) * 2 + 2 * 8;
+    func.set_attribute(
+        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+        shared_bytes as i32,
+    )?;
+
+    let dispatch_params = CublasDispatchParams::compute_dispatch_params(&params)?;
+
+    for d in dispatch_params {
+        let act_len = params.dts[0].size_of() * params.act_strides[0] as usize;
+        let w_len = params.dts[1].size_of() * params.w_strides[0] as usize;
+        let out_len = params.dts[2].size_of() * params.out_strides[0] as usize;
+
+        let act_view = get_sliced_cuda_view(activs, d.act_offset, act_len)?;
+        let w_view = get_sliced_cuda_view(weights, d.w_offset, w_len)?;
+        let mut c_view = get_sliced_cuda_view_mut(c, d.c_offset, out_len)?;
+
+        let m = d.m as i32;
+        let n = params.n as i32;
+        let k = params.k as i32;
+        let lda = params.act_strides[1] as i32;
+        let ldb = params.w_strides[1] as i32;
+        let ldc = params.out_strides[1] as i32;
+        let stride_a = params.act_strides[0] as i32;
+        let stride_b = params.w_strides[0] as i32;
+        let stride_c = params.out_strides[0] as i32;
+
+        let grid_x = (m + WGMMA_M_TILE as i32 - 1) / WGMMA_M_TILE as i32;
+        let grid_y = (n + WGMMA_N_TILE as i32 - 1) / WGMMA_N_TILE as i32;
+        let batch = d.act_batch.max(1) as u32;
+
+        let act_view_typed =
+            unsafe { act_view.transmute::<f16>(act_view.len() / size_of::<f16>()).unwrap() };
+        let w_view_typed =
+            unsafe { w_view.transmute::<f16>(w_view.len() / size_of::<f16>()).unwrap() };
+
+        // Create TMA descriptor for the weights matrix B (m×k row-major, f16).
+        // The descriptor describes the full per-batch weights tile; coordinates
+        // (row_base, kt) select sub-tiles at kernel runtime.
+        let w_ptr_val = w_view.device_ptr(stream).0;
+        let a_tma_desc = make_tma_desc(
+            w_ptr_val,
+            m as usize, // rows (M dimension in kernel)
+            k as usize, // cols (K dimension in kernel)
+            ldb,        // row stride in elements
+            WGMMA_M_TILE,
+            WGMMA_K_CHUNK,
+        );
+
+        let desc_bytes = unsafe {
+            let slice = std::slice::from_raw_parts(
+                &a_tma_desc as *const CUtensorMap as *const u8,
+                std::mem::size_of::<CUtensorMap>(),
+            );
+            stream.clone_htod(slice)?
+        };
+        let (desc_ptr, _guard) = desc_bytes.device_ptr(stream);
+        let a_tma_desc_ptr = desc_ptr;
+
+        if out_dt == F32 {
+            let mut c_view_typed =
+                unsafe { c_view.transmute_mut::<f32>(c_view.len() / size_of::<f32>()).unwrap() };
+            launch_wgmma_tma_kernel(
+                stream,
+                &func,
+                &act_view_typed,
+                &w_view_typed,
+                &mut c_view_typed,
+                m,
+                n,
+                k,
+                lda,
+                ldb,
+                ldc,
+                stride_a,
+                stride_b,
+                stride_c,
+                grid_x as u32,
+                grid_y as u32,
+                batch,
+                shared_bytes,
+                a_tma_desc_ptr,
+            )?;
+        } else {
+            let mut c_view_typed =
+                unsafe { c_view.transmute_mut::<f16>(c_view.len() / size_of::<f16>()).unwrap() };
+            launch_wgmma_tma_kernel(
+                stream,
+                &func,
+                &act_view_typed,
+                &w_view_typed,
+                &mut c_view_typed,
+                m,
+                n,
+                k,
+                lda,
+                ldb,
+                ldc,
+                stride_a,
+                stride_b,
+                stride_c,
+                grid_x as u32,
+                grid_y as u32,
+                batch,
+                shared_bytes,
+                a_tma_desc_ptr,
             )?;
         }
     }
@@ -820,7 +1046,7 @@ impl GgmlGemm {
             ensure!(activs.datum_type() == F16);
             let ctxt = cuda_context();
             if ctxt.properties().major >= 9 && params.k >= 16 {
-                dispatch_wgmma_gemm(stream, weights, activs, out, params)?;
+                dispatch_wgmma_gemm_tma(stream, weights, activs, out, params)?;
             } else {
                 dispatch_cublas_gemm::<f16>(stream, weights, activs, out, params)?;
             }

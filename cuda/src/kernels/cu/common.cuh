@@ -643,6 +643,79 @@ mma_m64n32k16_fp16_fp32(float2 *D, uint32_t A_smem_addr, uint32_t A_stride,
 
 #endif // __CUDA_ARCH__ >= 900
 
+// ============================================================================
+// TMA (Tensor Memory Accelerator) helpers for SM90+ (Hopper, Blackwell, etc.)
+//
+// `cp.async.bulk.tensor` uses a CUtensorMap descriptor to describe the
+// global→shared layout, letting the hardware manage swizzling, coalescing
+// and border handling.  Each bulk copy also carries an mbarrier arrival,
+// so we supplement with explicit mbarrier init / arrive.expect_tx / wait
+// calls for group-level synchronization.
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+
+// 128-byte opaque CUDA tensor-map descriptor (matches CUtensorMap_st).
+struct cuda_tensor_map {
+    uint64_t opaque[16];
+};
+static_assert(sizeof(cuda_tensor_map) == 128, "CUtensorMap must be 128 bytes");
+
+// 8-byte mbarrier in shared memory (matches kittens::semaphore).
+struct cuda_mbar {
+    uint64_t value;
+};
+
+// Issue a TMA bulk-tensor 4D shared load.  coord c/r/d/b select the tile.
+static __device__ __forceinline__ void
+cp_async_bulk_tensor_4d(uint32_t dst_smem, const cuda_tensor_map *tma_desc,
+                        uint32_t c, uint32_t r, uint32_t d, uint32_t b,
+                        uint32_t mbar_smem) {
+    asm volatile(
+        "cp.async.bulk.tensor.4d.shared::cluster.global.tile.mbarrier::complete_tx::bytes "
+        "[%0], [%1, {%2, %3, %4, %5}], [%6];\n"
+        ::"r"(dst_smem), "l"(tma_desc), "r"(c), "r"(r), "d"(d), "b"(b),
+        "r"(mbar_smem)
+        : "memory");
+}
+
+static __device__ __forceinline__ void cp_async_bulk_commit_group() {
+    asm volatile("cp.async.bulk.commit_group;" ::: "memory");
+}
+
+static __device__ __forceinline__ void cp_async_bulk_wait_group(int N) {
+    asm volatile("cp.async.bulk.wait_group %0;" ::"n"(N) : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_init(cuda_mbar &bar, uint32_t count) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.init.shared::cta.b64 [%0], %1;\n" ::"r"(bar_ptr), "r"(count));
+}
+
+static __device__ __forceinline__ void mbarrier_arrive_expect_tx(cuda_mbar &bar, uint32_t bytes) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile("mbarrier.arrive.expect_tx.shared::cta.b64 _, [%0], %1;\n"
+                 ::"r"(bar_ptr), "r"(bytes)
+                 : "memory");
+}
+
+static __device__ __forceinline__ void mbarrier_wait_parity(cuda_mbar &bar, uint32_t parity) {
+    uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
+    asm volatile(
+        "{\n\t"
+        ".reg .pred p;\n\t"
+        "mbarrier.try_wait.parity.acquire.cluster.shared::cta.b64 p, [%0], %1;\n\t"
+        " @!p bra -;\n\t"
+        "}"
+        ::"r"(bar_ptr), "r"(parity)
+        : "memory");
+}
+
+static __device__ __forceinline__ void fence_proxy_async_shared() {
+    asm volatile("fence.proxy.async.shared::cta;" ::: "memory");
+}
+
+#endif // __CUDA_ARCH__ >= 900
+
 #if CUDART_VERSION >= 11080
 
 static __device__ __forceinline__ int cuda_movmatrix(const int x) {
