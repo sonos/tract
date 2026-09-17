@@ -16,7 +16,9 @@ use super::DeviceTensor;
 /// it.
 ///
 /// Only owned device tensors belong here. An arena view is turn-scoped
-/// storage, so it is copied out at the boundary rather than held.
+/// storage, so it is copied out at the boundary rather than held -- and for
+/// the same reason a slice of one is copied rather than aliased: a view would
+/// be read after the turn that produced its bytes.
 #[derive(Debug)]
 pub struct LazyHostStorage {
     /// Dropped once the host side is written to: a mutated tensor is a plain
@@ -177,22 +179,5 @@ impl TensorStorage for LazyHostStorage {
         self.materialize()?
             .as_plain_ram_storage()
             .context("Device readback did not produce plain storage")
-    }
-
-    fn slice(
-        &self,
-        _dt: DatumType,
-        _shape: &[usize],
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<Tensor>> {
-        if self.host.get().is_some() {
-            // Already back on host: the generic copy is cheaper than a readback.
-            return Ok(None);
-        }
-        let Some(device) = self.device.as_ref() else { return Ok(None) };
-        let Some(sliced) = device.dense_slice(axis, start, end)? else { return Ok(None) };
-        Ok(Some(LazyHostStorage::new(sliced).into_tensor()))
     }
 }

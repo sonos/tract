@@ -177,62 +177,6 @@ impl DeviceTensor {
         Tensor::from_storage(dt, &shape, self)
     }
 
-    /// A view over `axis`'s `start..end` range, when that range is a
-    /// contiguous piece of this tensor's buffer.
-    ///
-    /// `None` means the slice cannot be aliased and the caller should copy.
-    /// That is the case whenever the result would be gappy: kernels address
-    /// device memory as a base pointer plus an offset and do not honor
-    /// arbitrary strides, so a view is only ever handed out when it is dense
-    /// and naturally strided -- the same contract `check_strides_validity`
-    /// enforces elsewhere.
-    pub fn dense_slice(
-        &self,
-        axis: usize,
-        start: usize,
-        end: usize,
-    ) -> TractResult<Option<DeviceTensor>> {
-        let shape = self.shape();
-        ensure!(axis < shape.len(), "Can not slice axis {axis} of a rank {} tensor", shape.len());
-        ensure!(
-            start < end && end <= shape[axis],
-            "Invalid slicing range {start}..{end} on axis {axis} of {shape:?}"
-        );
-        if self.is_exotic() {
-            return Ok(None);
-        }
-        // Packed row-major only: anything else is not a plain byte range.
-        if self.strides() != Tensor::natural_strides(shape).as_slice() {
-            return Ok(None);
-        }
-        // The range is contiguous only when a single one of it exists, i.e.
-        // when every axis outside `axis` is a single element. For a [B, H, S, D]
-        // cache sliced on S that means B == H == 1; a [S, B, H, D] one slices
-        // densely whatever B and H are.
-        if shape[..axis].iter().product::<usize>() != 1 {
-            return Ok(None);
-        }
-        let dt = self.datum_type();
-        let mut sliced_shape: TVec<usize> = shape.into();
-        sliced_shape[axis] = end - start;
-        let offset = start * self.strides()[axis] as usize * dt.size_of();
-        let view = match self {
-            Self::Owned(owned) => DeviceArenaView::from_parts(
-                Arc::new(tract_core::dyn_clone::clone_box(&**owned)),
-                dt,
-                sliced_shape,
-                offset,
-            )?,
-            Self::ArenaView(view) => DeviceArenaView::from_parts(
-                Arc::clone(&view.arena),
-                dt,
-                sliced_shape,
-                view.offset_bytes + offset,
-            )?,
-        };
-        Ok(Some(DeviceTensor::ArenaView(view)))
-    }
-
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_host(&self) -> TractResult<Arc<Tensor>> {
