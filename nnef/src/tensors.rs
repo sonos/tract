@@ -155,7 +155,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     };
     if dt.is_copy() {
         let mut tensor = unsafe { Tensor::uninitialized_dt(dt, &shape)? };
-        let mut plain = tensor.try_as_plain_mut()?;
+        let mut plain = tensor.try_as_plain_ram_mut()?;
         if dt == DatumType::Bool && header.bits_per_item == 1 {
             let buf = plain.as_slice_mut::<bool>()?;
 
@@ -173,7 +173,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         Ok(tensor)
     } else if dt == DatumType::String {
         let mut tensor = Tensor::zero_dt(dt, &shape)?;
-        let mut plain = tensor.try_as_plain_mut()?;
+        let mut plain = tensor.try_as_plain_ram_mut()?;
         for item in plain.as_slice_mut::<String>()? {
             let len: u32 = reader.read_u32::<LE>()?;
             // SECURITY: `len` is read from the (untrusted) NNEF file. Do NOT pre-allocate or
@@ -200,7 +200,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     if tensor.storage_as::<BlockQuantStorage>().is_some() {
         return write_block_quant_value(w, tensor);
     }
-    let plain = tensor.try_as_plain()?;
+    let plain = tensor.try_as_plain_ram()?;
     let mut header = Header::default();
     if tensor.rank() > 8 {
         bail!("Only rank up to 8 are supported");

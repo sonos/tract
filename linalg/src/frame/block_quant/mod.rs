@@ -79,7 +79,7 @@ pub trait BlockQuant:
         unsafe {
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f32>(&[blocks * self.block_len()])?;
-            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let mut tensor_plain = tensor.try_as_plain_ram_mut()?;
             let slice = tensor_plain.as_slice_mut::<f32>()?;
             for b in 0..blocks {
                 let block = &mut slice[b * self.block_len()..][..self.block_len()];
@@ -94,7 +94,7 @@ pub trait BlockQuant:
         unsafe {
             let blocks = input.len() / self.block_bytes();
             let mut tensor = Tensor::uninitialized::<f16>(&[blocks * self.block_len()])?;
-            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let mut tensor_plain = tensor.try_as_plain_ram_mut()?;
             let slice = tensor_plain.as_slice_mut::<f16>()?;
             for b in 0..blocks {
                 let block = &mut slice[b * self.block_len()..][..self.block_len()];
@@ -136,14 +136,14 @@ pub trait BlockQuant:
         ensure!(tensor.shape()[block_axis] % self.block_len() == 0);
         let mut scratch = vec![0u8; self.block_bytes()];
         if tensor.datum_type() == f32::datum_type() {
-            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let mut tensor_plain = tensor.try_as_plain_ram_mut()?;
             for block in tensor_plain.as_slice_mut::<f32>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f32(block, &mut scratch);
                 self.dequant_block_f32(&scratch, block);
             }
             Ok(tensor)
         } else if tensor.datum_type() == f16::datum_type() {
-            let mut tensor_plain = tensor.try_as_plain_mut()?;
+            let mut tensor_plain = tensor.try_as_plain_ram_mut()?;
             for block in tensor_plain.as_slice_mut::<f16>()?.chunks_mut(self.block_len()) {
                 self.quant_block_f16(block, &mut scratch);
                 self.dequant_block_f16(&scratch, block);
@@ -298,9 +298,9 @@ impl MMMInputFormat for PackedBlockQuantFormat {
                 Cow::Owned(t.clone().move_axis(1, 0)?)
             };
             let quant = if t.datum_type() == f32::datum_type() {
-                self.bq.quant_f32(t.try_as_plain()?.as_slice()?)?
+                self.bq.quant_f32(t.try_as_plain_ram()?.as_slice()?)?
             } else if t.datum_type() == f16::datum_type() {
-                self.bq.quant_f16(t.try_as_plain()?.as_slice()?)?
+                self.bq.quant_f16(t.try_as_plain_ram()?.as_slice()?)?
             } else {
                 todo!()
             };

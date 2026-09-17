@@ -323,7 +323,7 @@ impl Resize {
             let mut shape = tvec!();
             for (i, s) in input_shape
                 .iter()
-                .zip(scale.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.iter())
+                .zip(scale.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.iter())
             {
                 if s.round() == *s {
                     shape.push(i.clone() * (*s as usize));
@@ -342,7 +342,7 @@ impl Resize {
         {
             return sizes
                 .cast_to::<TDim>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<TDim>()?
                 .iter()
                 .map(|i| i.try_into())
@@ -398,14 +398,14 @@ impl EvalOp for Resize {
         )?;
         let scales: TVec<f32> = if let Some(scales) = scales.filter(|s| s.len() == inputs[0].rank())
         {
-            scales.try_as_plain()?.as_slice::<f32>()?.into()
+            scales.try_as_plain_ram()?.as_slice::<f32>()?.into()
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
         let input = inputs.remove(0).into_tensor();
         let input = input.cast_to::<f32>()?;
         let mut shape: TVec<usize> = input.shape().into();
-        let mut data: Vec<f32> = input.try_as_plain()?.as_slice::<f32>()?.to_vec();
+        let mut data: Vec<f32> = input.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         for (axis, scale) in scales.into_iter().enumerate() {
             let (len_in, len_out) = (shape[axis], output_shape[axis]);
             if len_in == len_out && scale == 1.0 {
@@ -448,7 +448,7 @@ impl TypedOp for Resize {
         let scales_fact = model.outlet_fact(node.inputs[scales_input])?;
         rule_if_some!(scales_tensor = &scales_fact.konst);
         let scales: Vec<f32> =
-            scales_tensor.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.to_vec();
+            scales_tensor.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         let int_scales: Vec<usize> = scales.iter().map(|&s| s.round() as usize).collect();
         rule_if!(
             scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
@@ -594,7 +594,7 @@ fn nearest_generic<T: Datum + Copy>(
     scales: &[usize],
     out_shape: &[usize],
 ) -> TractResult<TVec<TValue>> {
-    let plain = input.try_as_plain()?;
+    let plain = input.try_as_plain_ram()?;
     let src = plain.as_slice::<T>()?;
     let mut output = unsafe { Tensor::uninitialized::<T>(out_shape)? };
     let rank = out_shape.len();
@@ -607,7 +607,7 @@ fn nearest_generic<T: Datum + Copy>(
         out_strides[i] = out_strides[i + 1] * out_shape[i + 1];
     }
     {
-        let mut out_plain = output.try_as_plain_mut()?;
+        let mut out_plain = output.try_as_plain_ram_mut()?;
         let dst = out_plain.as_slice_mut::<T>()?;
         for (i, slot) in dst.iter_mut().enumerate() {
             let mut rem = i;
@@ -774,7 +774,7 @@ mod tests {
     #[test]
     fn cubic_resize_1d_upsample() {
         let out = cubic_resize(tract_ndarray::arr1(&[0.0f32, 1.0, 2.0, 3.0]).into_tensor(), &[2.0]);
-        let plain = out.try_as_plain().unwrap();
+        let plain = out.try_as_plain_ram().unwrap();
         let output = plain.as_slice::<f32>().unwrap();
         assert_eq!(output.len(), 8);
         assert!((output[0] - (-0.10546875)).abs() < 1e-4, "got {}", output[0]);

@@ -159,7 +159,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
         qp_slot: InOut,
     ) -> TractResult<ArrayViewD<'a, f32>> {
         if qp.rank() == 0 {
-            qp.try_as_plain()?.to_array_view()
+            qp.try_as_plain_ram()?.to_array_view()
         } else {
             let data_rank = expr.rank(data_slot);
 
@@ -169,7 +169,7 @@ pub fn eval_q(expr: &AxesMapping, qp: DatumType, inputs: TVec<TValue>) -> TractR
 
             let mut shape = vec![1; data_rank];
             shape[pos_in_input] = qp.len();
-            Ok(qp.try_as_plain()?.to_array_view()?.into_shape_with_order(shape)?)
+            Ok(qp.try_as_plain_ram()?.to_array_view()?.into_shape_with_order(shape)?)
         }
     }
     let [a, b, bias, a0, a_scale, b0, b_scale, c0, c_scale] = &*inputs else {

@@ -37,10 +37,11 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         let props = params.tract_model.properties();
 
         let got: TValue = if got[ix].len() > 1 && props.get("pulse.output_axes").is_some() {
-            let axis = props.get("pulse.output_axes").unwrap().try_as_plain()?.as_slice::<i64>()?
-                [ix] as usize;
-            let delay =
-                props.get("pulse.delay").unwrap().try_as_plain()?.as_slice::<i64>()?[ix] as usize;
+            let axis =
+                props.get("pulse.output_axes").unwrap().try_as_plain_ram()?.as_slice::<i64>()?[ix]
+                    as usize;
+            let delay = props.get("pulse.delay").unwrap().try_as_plain_ram()?.as_slice::<i64>()?[ix]
+                as usize;
             let stacked = Tensor::stack_tensors(axis, &got[ix])?;
             let available = stacked.shape()[axis] - delay;
             let len = available.min(exp.shape()[axis]);

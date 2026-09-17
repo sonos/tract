@@ -55,13 +55,13 @@ impl StridedSlice {
             None
         } else {
             let begin = begin.cast_to::<TDim>()?;
-            begin.try_as_plain()?.as_slice::<TDim>()?.get(ix).cloned()
+            begin.try_as_plain_ram()?.as_slice::<TDim>()?.get(ix).cloned()
         };
 
         let mut end: Option<TDim> = if self.ignore_end(ix) || ix >= end.len() {
             None
         } else if end.datum_type() == i64::datum_type() {
-            let end = *end.try_as_plain()?.as_slice::<i64>()?.get(ix).unwrap();
+            let end = *end.try_as_plain_ram()?.as_slice::<i64>()?.get(ix).unwrap();
             if end == i64::MAX || end == i64::MIN || end == i64::MIN + 1 || end == (i32::MAX as i64)
             {
                 None
@@ -70,7 +70,7 @@ impl StridedSlice {
             }
         } else {
             let end = end.cast_to::<TDim>()?;
-            end.try_as_plain()?.as_slice::<TDim>()?.get(ix).cloned()
+            end.try_as_plain_ram()?.as_slice::<TDim>()?.get(ix).cloned()
         };
 
         let stride = strides.get(ix).cloned().unwrap_or(1);
@@ -172,7 +172,7 @@ impl StridedSlice {
                 .as_ref()
                 .context("StridedSlice is typable only if stride is a const")?
                 .cast_to::<i32>()?;
-            strides.try_as_plain()?.as_slice::<i32>()?.into()
+            strides.try_as_plain_ram()?.as_slice::<i32>()?.into()
         } else {
             tvec![1; input_shape.rank()]
         };
@@ -181,7 +181,7 @@ impl StridedSlice {
                 .as_ref()
                 .context("StridedSlice is typable only if axis is a const")?
                 .cast_to::<i32>()?;
-            axes.try_as_plain()?
+            axes.try_as_plain_ram()?
                 .as_slice::<i32>()?
                 .iter()
                 .map(|&i| if i < 0 { input_shape.rank() as i32 + i } else { i } as usize)
@@ -278,7 +278,12 @@ impl EvalOp for StridedSlice {
             if i.datum_type() != TDim::datum_type() {
                 return None;
             }
-            i.try_as_plain().ok()?.as_slice::<TDim>().ok()?.iter().find_map(|dim| dim.find_scope())
+            i.try_as_plain_ram()
+                .ok()?
+                .as_slice::<TDim>()
+                .ok()?
+                .iter()
+                .find_map(|dim| dim.find_scope())
         });
         model.symbols = scope.unwrap_or_default();
         let mut source = tvec!();

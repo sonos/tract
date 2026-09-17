@@ -127,7 +127,7 @@ impl TypedOp for ElementWiseOp {
                 let mut tmp = tensor0(tdim.clone());
                 if self.0.eval_in_place(&mut tmp, None).is_ok() {
                     fact.uniform_tdim = tmp
-                        .try_as_plain()
+                        .try_as_plain_ram()
                         .ok()
                         .and_then(|d| d.as_slice::<TDim>().ok())
                         .and_then(|s| s.first())
@@ -253,7 +253,7 @@ macro_rules! element_wise {
             fn eval_in_place(&self, t: &mut Tensor, out_dt: Option<DatumType>) -> TractResult<()> {
                 $(
                     $(if out_dt.unwrap_or(t.datum_type()) == $typ::datum_type() {
-                        let mut t_plain = t.try_as_plain_mut()?;
+                        let mut t_plain = t.try_as_plain_ram_mut()?;
                         let t: &mut[$typ] = t_plain.as_slice_mut::<$typ>()?;
                         let f: fn(&Self, &mut[$typ]) -> TractResult<()> = $f;
                         let len = t.len();
@@ -278,7 +278,7 @@ macro_rules! element_wise {
                                input_dt = t.datum_type(); // because zero_point change
                            }
                            unsafe { t.set_datum_type(sout_dt) } // force cast
-                           let mut t_plain = t.try_as_plain_mut()?;
+                           let mut t_plain = t.try_as_plain_ram_mut()?;
                            let t: &mut[$typ_dt] = t_plain.as_slice_mut::<$typ_dt>()?;
                            let f: fn(&Self, &mut[$typ_dt], DatumType, DatumType) -> TractResult<()> = |_, xs, input_dt, out_dt| {
                                let (izp, iscale) = input_dt.zp_scale();
@@ -382,9 +382,9 @@ macro_rules! element_wise_oop {
                     let mut dst = unsafe { Tensor::uninitialized_dt(<$typ_dst>::datum_type(), &t.shape())? };
                     $(if t.datum_type() == $typ::datum_type() {
                         let f: fn(&Self, &[$typ], &mut[$typ_dst]) -> TractResult<()> = $f;
-                        let t_plain = t.try_as_plain()?;
+                        let t_plain = t.try_as_plain_ram()?;
                         let in_slice: &[$typ] = t_plain.as_slice::<$typ>()?;
-                        let mut dst_plain = dst.try_as_plain_mut()?;
+                        let mut dst_plain = dst.try_as_plain_ram_mut()?;
                         let dst_slice: &mut[$typ_dst] = dst_plain.as_slice_mut::<$typ_dst>()?;
                         let len = dst_slice.len();
                         tract_linalg::multithread::par_chunks_mut(dst_slice, 1, len, |first_row, chunk| {

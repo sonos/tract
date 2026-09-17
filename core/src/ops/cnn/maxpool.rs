@@ -154,7 +154,7 @@ impl OptMaxPool {
             return Ok(tvec!(values.into_tvalue()));
         }
 
-        let input_plain = input.try_as_plain()?;
+        let input_plain = input.try_as_plain_ram()?;
         let input: ArrayViewD<T> = input_plain.to_array_view()?;
         let input_ptr = input.as_ptr();
 

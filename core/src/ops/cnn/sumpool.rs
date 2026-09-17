@@ -626,7 +626,7 @@ mod tests {
         // generic zoned kernel (knob off by default)
         let generic =
             op.eval(&EvalContext::out_of_plan(), tvec![input.clone().into_tvalue()]).unwrap();
-        let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
+        let generic = generic[0].try_as_plain_ram().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable kernel, called directly
         let geo = op.geometry.to_concrete(input.shape()).unwrap();
@@ -638,7 +638,7 @@ mod tests {
                 geo.as_ref(),
             );
         }
-        let sep = out.try_as_plain().unwrap().as_slice::<f32>().unwrap();
+        let sep = out.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
 
         let max_abs = generic.iter().zip(sep).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
         assert!(max_abs < 1e-4, "separable vs generic max abs diff {max_abs}");
@@ -672,7 +672,7 @@ mod tests {
         // generic zoned kernel (knob off by default)
         let generic =
             op.eval(&EvalContext::out_of_plan(), tvec![input.clone().into_tvalue()]).unwrap();
-        let generic = generic[0].try_as_plain().unwrap().as_slice::<f32>().unwrap().to_vec();
+        let generic = generic[0].try_as_plain_ram().unwrap().as_slice::<f32>().unwrap().to_vec();
 
         // separable NHWC kernel, called directly
         let geo = op.geometry.to_concrete(input.shape()).unwrap();
@@ -684,7 +684,7 @@ mod tests {
                 geo.as_ref(),
             );
         }
-        let sep = out.try_as_plain().unwrap().as_slice::<f32>().unwrap();
+        let sep = out.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
 
         let max_abs = generic.iter().zip(sep).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
         assert!(max_abs < 1e-4, "separable NHWC vs generic max abs diff {max_abs}");

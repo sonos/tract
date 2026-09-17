@@ -47,7 +47,7 @@ fn softmax_f32(c: &mut Criterion) {
     // path (no prefix/suffix scalar fixup) for a fair before/after comparison.
     group.throughput(Throughput::Elements(1536));
     let mut input = unsafe { Tensor::uninitialized_aligned::<f32>(&[1536], 64).unwrap() };
-    let mut plain = input.try_as_plain_mut().unwrap();
+    let mut plain = input.try_as_plain_ram_mut().unwrap();
     let input = plain.as_slice_mut::<f32>().unwrap();
     // Deterministic finite values so every kernel sees identical, well-behaved
     // input (uninitialized memory could contain NaN/huge values that perturb the

@@ -118,7 +118,7 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
         .konst
         .as_ref()
         .unwrap()
-        .try_as_plain()?
+        .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -145,7 +145,7 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .konst
         .as_ref()
         .unwrap()
-        .try_as_plain()?
+        .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -232,7 +232,7 @@ fn ser_resize(
         let scales = model.node_input_facts(node.id)?[slot].konst.clone();
         if let Some(scales) = scales.filter(|scales| scales.len() == input.rank()) {
             let scales = scales.cast_to::<f32>()?;
-            for (axis, scale) in scales.try_as_plain()?.as_slice::<f32>()?.iter().enumerate() {
+            for (axis, scale) in scales.try_as_plain_ram()?.as_slice::<f32>()?.iter().enumerate() {
                 ensure!(
                     *scale == output_shape[axis] as f32 / input_shape[axis] as f32,
                     "tflite resamples by the ratio of the sizes it carries, and scale {scale} on axis {axis} is not {} over {}",
@@ -314,7 +314,7 @@ fn de_resize(
     ensure!(input.rank() == 4, "Resize expects NHWC, got rank {}", input.rank());
     let sizes = sizes.konst.clone().context("Dynamic resize size is not supported")?;
     let sizes = sizes.cast_to::<i64>()?;
-    let sizes = sizes.try_as_plain()?.as_slice::<i64>()?;
+    let sizes = sizes.try_as_plain_ram()?.as_slice::<i64>()?;
     ensure!(sizes.len() == 2, "Resize expects a size per spatial axis, got {sizes:?}");
     let shape = &input.shape;
     let full = tensor1(&[shape[0].clone(), sizes[0].to_dim(), sizes[1].to_dim(), shape[3].clone()]);

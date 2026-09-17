@@ -111,7 +111,7 @@ impl EvalOp for DynTile {
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let multipliers = inputs[1].cast_to::<TDim>()?;
         let multipliers: TVec<usize> = multipliers
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .as_slice::<TDim>()?
             .iter()
             .map(|m| Ok(m.eval_to_i64(ctx.symbols)? as usize))
@@ -131,7 +131,7 @@ impl TypedOp for DynTile {
         if let Some(mult) = &model.outlet_fact(node.inputs[1])?.konst {
             let multipliers = mult
                 .cast_to::<TDim>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<TDim>()?
                 .iter()
                 .cloned()
@@ -149,7 +149,7 @@ impl TypedOp for DynTile {
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let multipliers = if let Some(k) = &inputs[1].konst {
-            k.cast_to::<TDim>()?.try_as_plain()?.as_slice::<TDim>()?.iter().cloned().collect()
+            k.cast_to::<TDim>()?.try_as_plain_ram()?.as_slice::<TDim>()?.iter().cloned().collect()
         } else {
             self.multiplier_placeholders.clone()
         };

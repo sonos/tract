@@ -514,7 +514,7 @@ mod tests {
         }
         let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
-        let view = &result.try_as_plain().unwrap().as_slice::<f32>().unwrap()[..data.len()];
+        let view = &result.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()[..data.len()];
         assert_eq!(data, view);
     }
 
@@ -525,7 +525,7 @@ mod tests {
         }
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
-        let view = &result.try_as_plain().unwrap().as_slice::<f16>().unwrap();
+        let view = &result.try_as_plain_ram().unwrap().as_slice::<f16>().unwrap();
         assert_eq!(&input, view);
     }
 
@@ -585,7 +585,7 @@ mod tests {
         let mut out = vec![0f32; m * n];
         Q4_0.w4a8_gemm(&qbytes, n, k, &a, m, &mut out)?;
         let wdeq = Q4_0.dequant_f32(&qbytes)?;
-        let wdeq = wdeq.try_as_plain()?.as_slice::<f32>()?;
+        let wdeq = wdeq.try_as_plain_ram()?.as_slice::<f32>()?;
         for mi in 0..m {
             for ni in 0..n {
                 let mut acc = 0f32;
@@ -631,12 +631,12 @@ mod tests {
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
         let weights_f32 = q
-            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?)?
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?)?
             .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.try_as_plain()?.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for panel in 0..packed_f32.panels_count() {
@@ -650,7 +650,7 @@ mod tests {
                     panel,
                     panel_q4.as_bytes_mut().as_mut_ptr(),
                 )?;
-                assert_eq!(panel_q4.try_as_plain()?.as_slice::<f32>()?, panel_f32);
+                assert_eq!(panel_q4.try_as_plain_ram()?.as_slice::<f32>()?, panel_f32);
             }
         }
         Ok(())
@@ -683,12 +683,12 @@ mod tests {
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
         let weights_f32 = q
-            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?)?
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?)?
             .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.try_as_plain()?.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for row in 0..packed_f32.mn() {
@@ -732,7 +732,7 @@ mod tests {
         let a: Vec<f32> = (0..k).map(|_| rnd()).collect();
         let blob = Q4_0.quant_f32(&w).unwrap();
         let deq = Q4_0.dequant_f32(&blob).unwrap();
-        let deq = deq.try_as_plain().unwrap();
+        let deq = deq.try_as_plain_ram().unwrap();
         let deq = deq.as_slice::<f32>().unwrap();
         let mut y_ref = vec![0f32; n];
         for ni in 0..n {
@@ -754,7 +754,7 @@ mod tests {
         let scales: Vec<f32> = vec![0.5, 0.25, 1.0, 2.0]; // [m, k/32]
         let blob = Q4_0.pack_prequantized(&q, &scales, m, k).unwrap();
         let deq = Q4_0.dequant_f32(&blob).unwrap();
-        let deq = deq.try_as_plain().unwrap();
+        let deq = deq.try_as_plain_ram().unwrap();
         let got = deq.as_slice::<f32>().unwrap();
         for row in 0..m {
             for kk in 0..k {

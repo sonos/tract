@@ -46,7 +46,7 @@ impl EvalOp for RandomUniform {
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]
             .cast_to::<i64>()?
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .as_slice::<i64>()?
             .iter()
             .map(|&x| x as usize)
@@ -73,7 +73,7 @@ impl InferenceRulesOp for RandomUniform {
         s.given(&inputs[0].value, move |s, value| {
             let shape: TVec<TDim> = value
                 .cast_to::<i64>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|&x| x.to_dim())
@@ -97,7 +97,7 @@ impl InferenceRulesOp for RandomUniform {
                 self.t,
                 self.seed1,
                 self.seed2,
-                shape.cast_to::<TDim>()?.try_as_plain()?.as_slice::<TDim>()?.into(),
+                shape.cast_to::<TDim>()?.try_as_plain_ram()?.as_slice::<TDim>()?.into(),
             );
             target.wire_node(&*node.name, op, &[node.inputs[0]])
         } else {
@@ -150,7 +150,7 @@ pub fn make_f32(shape: &[usize], seed1: u64, seed2: u64) -> TractResult<TValue> 
     let mut rng = Philox4x32x10::weird_tf_constructor(seed1, seed2).u32_iter();
     unsafe {
         let mut tensor = Tensor::uninitialized::<f32>(shape)?;
-        tensor.try_as_plain_mut()?.as_slice_mut::<f32>()?.iter_mut().for_each(|x| {
+        tensor.try_as_plain_ram_mut()?.as_slice_mut::<f32>()?.iter_mut().for_each(|x| {
             let mantissa = rng.next().unwrap() & 0x7fffff;
             let exp = 127u32;
             let f = (exp << 23) | mantissa;
@@ -172,7 +172,7 @@ impl RandomUniformInt {
         let mut rng = Philox4x32x10::weird_tf_constructor(self.seed1, self.seed2).u32_iter();
         unsafe {
             let mut tensor = Tensor::uninitialized::<i32>(shape)?;
-            tensor.try_as_plain_mut()?.as_slice_mut::<i32>()?.iter_mut().for_each(|x| {
+            tensor.try_as_plain_ram_mut()?.as_slice_mut::<i32>()?.iter_mut().for_each(|x| {
                 // reproduce TF casts, with no conviction
                 let lo = lo as u32;
                 let hi = hi as u32;
@@ -201,7 +201,7 @@ impl EvalOp for RandomUniformInt {
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let shape: TVec<usize> = inputs[0]
             .cast_to::<i64>()?
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .as_slice::<i64>()?
             .iter()
             .map(|&x| x as usize)
@@ -210,8 +210,8 @@ impl EvalOp for RandomUniformInt {
             DatumType::I32 => Ok(tvec!(Self::make_i32(
                 self,
                 &shape,
-                *inputs[1].try_as_plain()?.to_scalar::<i32>()?,
-                *inputs[2].try_as_plain()?.to_scalar::<i32>()?
+                *inputs[1].try_as_plain_ram()?.to_scalar::<i32>()?,
+                *inputs[2].try_as_plain_ram()?.to_scalar::<i32>()?
             )?)),
             dt => bail!("RandomUniformInt not implemented for {:?}", dt),
         }
@@ -237,7 +237,7 @@ impl InferenceRulesOp for RandomUniformInt {
         s.given(&inputs[0].value, move |s, value| {
             let shape: TVec<TDim> = value
                 .cast_to::<i64>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<i64>()?
                 .iter()
                 .map(|&x| x.to_dim())

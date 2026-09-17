@@ -390,7 +390,7 @@ pub mod test {
             let all: Vec<f16> =
                 (0..=u16::MAX).map(f16::from_bits).filter(|x| x.is_finite()).collect();
             let all = tensor1(&all).cast_to::<T>().unwrap().into_owned();
-            return all.try_as_plain().unwrap().as_slice::<T>().unwrap().to_vec();
+            return all.try_as_plain_ram().unwrap().as_slice::<T>().unwrap().to_vec();
         }
         (-30 * 4096..=30 * 4096).map(|i| (i as f32 / 4096.).as_()).collect()
     }

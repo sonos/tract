@@ -134,7 +134,7 @@ pub fn reshape(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> T
     let count = if count == -1 { input_shape.len() - start } else { count as usize };
     let replacement =
         convert_to_shape_input(builder, invocation, "shape")?.to::<Arc<Tensor>>(builder)?;
-    let mut replacement: TVec<TDim> = replacement.try_as_plain()?.as_slice::<TDim>()?.into();
+    let mut replacement: TVec<TDim> = replacement.try_as_plain_ram()?.as_slice::<TDim>()?.into();
     for i in 0..replacement.len() {
         if replacement[i] == 0.to_dim() {
             replacement[i] = input_shape[i + start].clone();
@@ -205,15 +205,15 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         let get_tdim_at = |outlet: OutletId| -> Option<TDim> {
             let konst = builder.model.outlet_fact(outlet).ok()?.konst.clone()?;
             if konst.datum_type() == TDim::datum_type() {
-                let view = konst.try_as_plain().ok()?;
+                let view = konst.try_as_plain_ram().ok()?;
                 return view.as_slice::<TDim>().ok()?.get(ix).cloned();
             }
             if konst.datum_type() == i64::datum_type() {
-                let view = konst.try_as_plain().ok()?;
+                let view = konst.try_as_plain_ram().ok()?;
                 return view.as_slice::<i64>().ok()?.get(ix).map(|&v| TDim::Val(v));
             }
             if konst.datum_type() == i32::datum_type() {
-                let view = konst.try_as_plain().ok()?;
+                let view = konst.try_as_plain_ram().ok()?;
                 return view.as_slice::<i32>().ok()?.get(ix).map(|&v| TDim::Val(v as i64));
             }
             None
@@ -278,8 +278,8 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
         } else if let (Some(ev), Some(bv)) =
             (&builder.model.outlet_fact(e)?.konst, &builder.model.outlet_fact(b)?.konst)
         {
-            ev.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone()
-                - bv.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?
+            ev.cast_to::<TDim>()?.try_as_plain_ram()?.to_scalar::<TDim>()?.clone()
+                - bv.cast_to::<TDim>()?.try_as_plain_ram()?.to_scalar::<TDim>()?
         } else {
             let s = builder.model.symbols.new_with_prefix("slice");
             builder.model.symbols.add_assertion(format!("{s} >= 0")).ok();

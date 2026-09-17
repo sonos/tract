@@ -30,13 +30,13 @@ impl EvalOp for DynSlice {
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let start = inputs[1]
             .cast_to::<TDim>()?
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .to_scalar::<TDim>()?
             .eval(ctx.symbols)
             .to_usize()?;
         let end = inputs[2]
             .cast_to::<TDim>()?
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .to_scalar::<TDim>()?
             .eval(ctx.symbols)
             .to_usize()?;
@@ -96,8 +96,8 @@ impl TypedOp for DynSlice {
         let inputs = model.node_input_facts(node.id)?;
         rule_if_some!(start = &inputs[1].konst);
         rule_if_some!(end = &inputs[2].konst);
-        let start = start.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone();
-        let end = end.cast_to::<TDim>()?.try_as_plain()?.to_scalar::<TDim>()?.clone();
+        let start = start.cast_to::<TDim>()?.try_as_plain_ram()?.to_scalar::<TDim>()?.clone();
+        let end = end.cast_to::<TDim>()?.try_as_plain_ram()?.to_scalar::<TDim>()?.clone();
 
         Ok(Some(TypedModelPatch::replace_single_op(
             model,

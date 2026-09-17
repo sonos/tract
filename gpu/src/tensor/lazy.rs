@@ -10,7 +10,7 @@ use super::DeviceTensor;
 /// A device tensor crosses the model boundary wrapped in one of these. The
 /// result is a host tensor as far as facts, datum type and shape go, but
 /// nothing is copied back until something reads the bytes: `as_bytes`,
-/// `as_slice`, `try_as_plain` and friends materialize it once and keep the
+/// `as_slice`, `try_as_plain_ram` and friends materialize it once and keep the
 /// result, and a caller that only hands it to the next `run()` never pays a
 /// readback at all, because `DeviceSync` takes the device tensor back out of
 /// it.

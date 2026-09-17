@@ -82,7 +82,7 @@ mod tests {
         let outputs = model.run(tvec![input.into()]).unwrap();
         let labels = load_labels();
         let label_id = outputs[0]
-            .try_as_plain()
+            .try_as_plain_ram()
             .unwrap()
             .to_array_view::<f32>()
             .unwrap()

@@ -389,7 +389,7 @@ mod tests {
         for pulse in 0..4 {
             let input = tensor1(&[f16::from_f32(pulse as f32), f16::from_f32(pulse as f32)]);
             let output = state.run(tvec!(input.into_tvalue()))?;
-            got.extend_from_slice(output[0].try_as_plain()?.as_slice::<f16>()?);
+            got.extend_from_slice(output[0].try_as_plain_ram()?.as_slice::<f16>()?);
         }
         assert_eq!(got[0..2], [minus_one; 2]);
         assert_eq!(

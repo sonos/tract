@@ -167,7 +167,7 @@ fn eval_reference<FI: Datum, FO: Datum>(
     let mut out = unsafe { Tensor::uninitialized_dt(FO::datum_type(), &out_shape)? };
     let a_view = a.to_plain_array_view::<FI>()?;
     let b_view = b.to_plain_array_view::<FI>()?;
-    let mut c_plain = out.try_as_plain_mut()?;
+    let mut c_plain = out.try_as_plain_ram_mut()?;
     let mut c = c_plain.to_array_view_mut::<FO>()?;
     tract_core::ndarray::Zip::from(&mut c)
         .and_broadcast(a_view)

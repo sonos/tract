@@ -52,7 +52,7 @@ impl EvalOp for Reduce {
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let (input, axes) = args_2!(inputs);
-        let axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_plain()?.as_slice::<i64>()?.to_vec();
+        let axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_plain_ram()?.as_slice::<i64>()?.to_vec();
         let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
         expand(op).eval(&EvalContext::out_of_plan(), tvec!(input))
     }
@@ -92,7 +92,7 @@ impl InferenceRulesOp for Reduce {
             move |s, irank, orank, axes| {
                 let axes: TVec<usize> = axes
                     .cast_to::<i64>()?
-                    .try_as_plain()?
+                    .try_as_plain_ram()?
                     .as_slice::<i64>()?
                     .iter()
                     .map(|&ax| if ax > 0 { ax } else { ax + irank } as usize)
@@ -123,7 +123,8 @@ impl InferenceRulesOp for Reduce {
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         if let Some(ref axes) = target.outlet_fact(mapping[&node.inputs[1]])?.konst {
-            let axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_plain()?.as_slice::<i64>()?.to_vec();
+            let axes: Vec<i64> =
+                axes.cast_to::<i64>()?.try_as_plain_ram()?.as_slice::<i64>()?.to_vec();
             let op = nn::Reduce::new(Some(axes), self.keep_dims, self.reducer);
             op.wire(&node.name, target, &[mapping[&node.inputs[0]]])
         } else {

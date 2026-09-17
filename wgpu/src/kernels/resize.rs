@@ -84,7 +84,7 @@ fn baked_plans(
     let output_shape: TVec<usize> =
         op.compute_output_shape(input_shape, scales_konst, sizes_konst)?;
     let scales: TVec<f32> = match scales_konst.filter(|s| s.len() == input_shape.len()) {
-        Some(scales) => scales.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.into(),
+        Some(scales) => scales.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.into(),
         None => output_shape.iter().zip(input_shape).map(|(o, i)| *o as f32 / *i as f32).collect(),
     };
     let (mut axes, mut windows, mut plans) = (tvec!(), tvec!(), tvec!());
