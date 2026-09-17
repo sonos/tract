@@ -1,5 +1,9 @@
-use cudarc::driver::sys::CUfunction_attribute;
-use cudarc::driver::{CudaFunction, LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::sys::cuTensorMapEncodeTiled;
+use cudarc::driver::sys::{
+    CUfunction_attribute, CUtensorMap, CUtensorMapDataType, CUtensorMapFloatOOBfill,
+    CUtensorMapInterleave, CUtensorMapL2promotion, CUtensorMapSwizzle,
+};
+use cudarc::driver::{CudaFunction, DevicePtr, LaunchArgs, LaunchConfig, PushKernelArg};
 use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
@@ -10,6 +14,47 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
+
+/// Build a 2-D TMA tensor-map descriptor for a row-major half array
+/// `[total_rows, dim]`, with the tile box sized `[block_kv, padded_dim]`.
+///
+/// Only called on SM90+ where TMA is available.  The descriptor is returned
+/// as a host-side `CUtensorMap` that the caller copies into device global
+/// memory and passes to the kernel.
+#[allow(clippy::too_many_arguments)]
+fn make_tma_desc(
+    global_addr: cudarc::driver::sys::CUdeviceptr,
+    total_rows: usize,
+    dim: usize,
+    padded_dim: usize,
+    block_kv: usize,
+) -> CUtensorMap {
+    let mut desc = CUtensorMap { opaque: [0u64; 16] };
+    let global_dim: [u64; 2] = [total_rows as u64, dim as u64];
+    // row stride (bytes), col stride (bytes) — half = 2 bytes
+    let global_strides: [u64; 2] = [(dim * 2) as u64, 2u64];
+    // tile box in bytes: height × width
+    let box_dim: [u32; 2] = [(block_kv * 2) as u32, (padded_dim * 2) as u32];
+    let element_strides: [u32; 2] = [1, 1];
+
+    unsafe {
+        cuTensorMapEncodeTiled(
+            &mut desc,
+            CUtensorMapDataType::CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
+            2, // tensorRank
+            global_addr as *mut std::ffi::c_void,
+            global_dim.as_ptr(),
+            global_strides.as_ptr(),
+            box_dim.as_ptr(),
+            element_strides.as_ptr(),
+            CUtensorMapInterleave::CU_TENSOR_MAP_INTERLEAVE_NONE,
+            CUtensorMapSwizzle::CU_TENSOR_MAP_SWIZZLE_128B,
+            CUtensorMapL2promotion::CU_TENSOR_MAP_L2_PROMOTION_NONE,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
+        );
+    }
+    desc
+}
 
 #[derive(Debug, Clone)]
 pub struct CudaFlashAttn;
@@ -117,7 +162,15 @@ impl CudaFlashAttn {
 
         let num_full_q_blocks = len_q / block_q;
         let tb_size = n_warps * WARP_SIZE;
-        let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
+        // PADDED_DIM — same rounding logic as the kernel instantiation
+        let padded_d = d.div_ceil(64) * 64;
+        let smem_size = block_q.max(block_kv * 3) * padded_d * size_of::<f16>();
+
+        // SM90+ needs two extra cuda_mbar (8 bytes each) in shared memory for
+        // TMA-based K/V tile loading.
+        let sm_major = ctxt.properties().major;
+        let use_tma = sm_major >= 9;
+        let smem_size = if use_tma { smem_size + 2 * size_of::<u64>() } else { smem_size };
 
         let mask_mode = if is_causal {
             "causal"
@@ -141,6 +194,56 @@ impl CudaFlashAttn {
         } else {
             (0, 0)
         };
+
+        // On SM90+, build TMA tensor-map descriptors for K and V so the kernel
+        // can issue hardware-managed bulk-tensor tile loads.  The descriptors
+        // are created on the host, copied to device global memory, and the
+        // device pointers are passed as the last two kernel parameters.
+        // On SM80 and earlier the descriptors are 0 (null) — the kernel falls
+        // back to the existing cp.async.cg code path.
+        let kv_heads = n_qh / head_ratio;
+        let total_kv_rows = b * kv_heads * len_kv;
+
+        let (_k_tma_desc_slice, k_tma_desc_ptr): (Option<cudarc::driver::CudaSlice<u8>>, u64) =
+            if use_tma {
+                let k_ptr_val = k_view.device_ptr(stream).0;
+                let desc = make_tma_desc(k_ptr_val, total_kv_rows, d, padded_d, block_kv);
+                // Copy the 128-byte descriptor to device global memory.
+                let desc_bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        &desc as *const _ as *const u8,
+                        std::mem::size_of::<CUtensorMap>(),
+                    )
+                };
+                let slice = stream.clone_htod(desc_bytes)?;
+                let ptr = {
+                    let (p, _guard) = slice.device_ptr(stream);
+                    p
+                };
+                (Some(slice), ptr)
+            } else {
+                (None, 0)
+            };
+
+        let (_v_tma_desc_slice, v_tma_desc_ptr): (Option<cudarc::driver::CudaSlice<u8>>, u64) =
+            if use_tma {
+                let v_ptr_val = v_view.device_ptr(stream).0;
+                let desc = make_tma_desc(v_ptr_val, total_kv_rows, d, padded_d, block_kv);
+                let desc_bytes = unsafe {
+                    std::slice::from_raw_parts(
+                        &desc as *const _ as *const u8,
+                        std::mem::size_of::<CUtensorMap>(),
+                    )
+                };
+                let slice = stream.clone_htod(desc_bytes)?;
+                let ptr = {
+                    let (p, _guard) = slice.device_ptr(stream);
+                    p
+                };
+                (Some(slice), ptr)
+            } else {
+                (None, 0)
+            };
 
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
             let func = ctxt.load_pipeline(
@@ -167,6 +270,13 @@ impl CudaFlashAttn {
             launch_args.push_i32(mask_strides.0);
             launch_args.push_i32(mask_strides.1);
             launch_args.push::<f32>(scale);
+            if use_tma {
+                launch_args.push_u64(k_tma_desc_ptr);
+                launch_args.push_u64(v_tma_desc_ptr);
+            } else {
+                launch_args.push_null_ptr();
+                launch_args.push_null_ptr();
+            }
 
             let cfg = LaunchConfig {
                 grid_dim: (num_q_blocks as _, n_qh as _, b as _),

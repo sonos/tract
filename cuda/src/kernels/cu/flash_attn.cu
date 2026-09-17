@@ -76,6 +76,37 @@ global_to_shared_swizzle_pad(uint32_t dst, const half *__restrict__ src, int tid
     }
 }
 
+// ----------------------------------------------------------------------------
+// TMA-based KV tile loading (SM90+). Issues a bulk-tensor tile copy with a
+// hardware-managed mbarrier.  Only thread 0 of warp 0 issues the instruction;
+// all other threads spin on the mbarrier so that the function is
+// collectively performed by the whole block.
+// ----------------------------------------------------------------------------
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+
+template <int BLOCK_KV, int PADDED_DIM>
+static __device__ __forceinline__ void
+tma_prefetch_kv(uint32_t dst_smem, const cuda_tensor_map *tma_desc,
+                uint32_t coord_row, cuda_mbar &mbar) {
+    constexpr uint32_t tile_bytes = (uint32_t)(BLOCK_KV * PADDED_DIM * sizeof(half));
+    const uint32_t mbar_smem = static_cast<uint32_t>(__cvta_generic_to_shared(&mbar));
+    if (threadIdx.x == 0) {
+        mbarrier_arrive_expect_tx(mbar, tile_bytes);
+        cp_async_bulk_tensor_4d(dst_smem, tma_desc, 0, coord_row, 0, 0, mbar_smem);
+    }
+    __syncthreads();
+}
+
+template <int BLOCK_KV, int PADDED_DIM>
+static __device__ __forceinline__ void
+tma_wait_kv(cuda_mbar &mbar, uint32_t phase) {
+    if (threadIdx.x == 0) {
+        mbarrier_wait_parity(mbar, phase);
+    }
+    __syncthreads();
+}
+#endif // __CUDA_ARCH__ >= 900
+
 // ============================================================================
 // Tensor Core helpers
 // ============================================================================
@@ -315,7 +346,9 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
                                         half *__restrict__ O,       // [bs, len_q, DIM]
                                         int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q,
                                         int32_t len_kv, int32_t mask_b_stride,
-                                        int32_t mask_h_stride, float scale) {
+                                        int32_t mask_h_stride, float scale,
+                                        const cuda_tensor_map *k_tma_desc,
+                                        const cuda_tensor_map *v_tma_desc) {
     constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
     constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
     constexpr int MMA_M = 16, MMA_N = 8, MMA_K = 16;
@@ -361,6 +394,29 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     const uint32_t Q_smem = __cvta_generic_to_shared(smem);
     const uint32_t K_smem = Q_smem; // double buffer for K
     const uint32_t V_smem = K_smem + 2 * BLOCK_KV * PADDED_DIM * sizeof(half);
+
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+    // Two mbarriers (K and V) placed after the tensor data, 8-byte aligned.
+    // BLOCK_KV * PADDED_DIM * sizeof(half) is always a multiple of 8, so the
+    // tensor region end is already 8-byte aligned.
+    constexpr uint32_t tensor_bytes =
+        (uint32_t)max(BLOCK_Q, 3 * BLOCK_KV) * PADDED_DIM * sizeof(half);
+    constexpr uint32_t mbar_offset = (tensor_bytes + 7u) & ~7u;
+    const uint32_t k_mbar_smem = Q_smem + mbar_offset;
+    const uint32_t v_mbar_smem = k_mbar_smem + sizeof(cuda_mbar);
+    cuda_mbar *k_mbar =
+        reinterpret_cast<cuda_mbar *>(reinterpret_cast<char *>(smem) + mbar_offset);
+    cuda_mbar *v_mbar = k_mbar + 1;
+    // KV row offset for TMA coordinates (= head_id * len_kv)
+    const uint32_t kv_base_row =
+        ((uint32_t)(bid * kv_heads + kv_head_id) * (uint32_t)len_kv);
+
+    if (tid == 0) {
+        mbarrier_init(*k_mbar, 0);
+        mbarrier_init(*v_mbar, 0);
+    }
+    __syncthreads();
+#endif
 
     // Per-thread swizzled bases
     uint32_t Q_smem_thread, K_smem_thread, V_smem_thread;
@@ -423,10 +479,14 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     const half *Vcur = Vptr;
 
     if (kv_full_iters > 0) {
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+        tma_prefetch_kv<BLOCK_KV, PADDED_DIM>(K_smem + 0, k_tma_desc, kv_base_row, *k_mbar);
+#else
         global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(K_smem + 0, Kcur, tid,
                                                                          BLOCK_KV);
-        Kcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
+#endif
+        Kcur += (size_t)BLOCK_KV * DIM;
     }
 
     // ----------------------------- FULL KV LOOP
@@ -436,14 +496,23 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
         // Prefetch V (unguarded)
         __syncthreads();
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+        tma_prefetch_kv<BLOCK_KV, PADDED_DIM>(V_smem, v_tma_desc,
+                                              kv_base_row + kv_tile_base, *v_mbar);
+#else
         global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(V_smem, Vcur, tid,
                                                                          BLOCK_KV);
-        Vcur += (size_t)BLOCK_KV * DIM;
         asm volatile("cp.async.commit_group;");
+#endif
+        Vcur += (size_t)BLOCK_KV * DIM;
 
         // Wait K, load K into regs
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+        tma_wait_kv<BLOCK_KV, PADDED_DIM>(*k_mbar, (uint32_t)(kv_id % 2));
+#else
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
+#endif
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_N; ++kvt)
             _Pragma("unroll") for (int dk = 0; dk < PADDED_DIM / MMA_K; dk++) {
             uint32_t addr = K_smem_thread + (kv_id % 2) * (BLOCK_KV * PADDED_DIM * sizeof(half));
@@ -464,10 +533,16 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
             if (kv_id + 1 < kv_full_iters) {
                 const uint32_t Kdst =
                     K_smem + ((kv_id + 1) % 2) * (BLOCK_KV * PADDED_DIM * sizeof(half));
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+                tma_prefetch_kv<BLOCK_KV, PADDED_DIM>(Kdst, k_tma_desc,
+                                                      kv_base_row + (kv_id + 1) * BLOCK_KV,
+                                                      *k_mbar);
+#else
                 global_to_shared_swizzle_pad<BLOCK_KV, DIM, PADDED_DIM, TB_SIZE>(Kdst, Kcur, tid,
                                                                                  BLOCK_KV);
-                Kcur += (size_t)BLOCK_KV * DIM;
                 asm volatile("cp.async.commit_group;");
+#endif
+                Kcur += (size_t)BLOCK_KV * DIM;
             }
 
             kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, PADDED_DIM, NUM_WARPS, MASK_MODE, Q_TILE_MODE,
@@ -476,9 +551,12 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         }
 
         // Wait V, load V and do O += P@V
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900)
+        tma_wait_kv<BLOCK_KV, PADDED_DIM>(*v_mbar, (uint32_t)(kv_id % 2));
+#else
         asm volatile("cp.async.wait_group 1;");
         __syncthreads();
-
+#endif
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
             _Pragma("unroll") for (int d = 0; d < PADDED_DIM / MMA_N; d++) {
             uint32_t addr = V_smem_thread + kvt * MMA_K * PADDED_DIM * sizeof(half);
@@ -495,6 +573,9 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
     // ----------------------------- KV TAIL (optional)
     // --------------------------
+    // Tail always uses cp.async.cg (predicated partial tile) on all arches.
+    // TMA descriptors have fixed box dimensions matching full BLOCK_KV tiles;
+    // the tail partial tile is handled by predicated cp.async.cg instead.
     const int kv_rem = len_kv % BLOCK_KV;
     if (kv_rem > 0) {
         const int kv_tile_base = kv_full_iters * BLOCK_KV;
@@ -590,10 +671,12 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         void name(const half *__restrict__ Q, const half *__restrict__ K,                          \
                   const half *__restrict__ V, const half *__restrict__ M, half *__restrict__ O,    \
                   int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv,       \
-                  int32_t mask_b_stride, int32_t mask_h_stride, float scale) {                     \
+                  int32_t mask_b_stride, int32_t mask_h_stride, float scale,                     \
+                  const cuda_tensor_map *k_tma_desc,                                               \
+                  const cuda_tensor_map *v_tma_desc) {                                             \
         attention_kernel<BLOCK_Q, BLOCK_KV, D, PADDED_D, 4, mask_mode, q_tile_mode>(               \
             Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, mask_b_stride, mask_h_stride,        \
-            scale);                                                                                \
+            scale, k_tma_desc, v_tma_desc);                                                        \
     }                                                                                              \
     }
 

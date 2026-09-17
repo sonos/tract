@@ -81,6 +81,11 @@ impl<'a> TractLaunchArgs<'a> {
         self.arg_typed::<u64>(0);
     }
 
+    /// Push a raw device pointer (e.g. to a TMA descriptor in global memory).
+    pub fn push_u64(&mut self, x: u64) {
+        self.arg_typed::<u64>(x);
+    }
+
     pub fn launch(&mut self, cfg: LaunchConfig) -> TractResult<()> {
         if let Some((start, end)) = self.stream.record_profile_events()? {
             unsafe {
