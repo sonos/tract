@@ -909,7 +909,7 @@ mod tests {
     fn slicing_a_device_output_copies_it_off_the_device() -> TractResult<()> {
         use tract_gpu::tensor::LazyHostStorage;
         let t = Tensor::from_shape(&[4, 3], &(0..12).map(|i| i as f32).collect::<Vec<_>>())?;
-        let lazy = LazyHostStorage::new(t.clone().into_device()?).into_tensor();
+        let lazy = LazyHostStorage::new(t.clone().into_device()?)?.into_tensor();
 
         for (axis, start, end) in [(0, 1, 3), (1, 1, 3)] {
             let sliced = lazy.slice(axis, start, end)?;
