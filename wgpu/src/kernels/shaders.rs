@@ -1739,6 +1739,143 @@ fn resize_axis_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// Resize over the two trailing axes in one launch: each output sums its
+/// `win_h x win_w` taps, weights being the product of the two axes' plans.
+pub fn resize_2d_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_ih: u32,
+    off_wh: u32,
+    off_iw: u32,
+    off_ww: u32,
+    off_out: u32,
+    outer: u32,
+    h_in: u32,
+    w_in: u32,
+    h_out: u32,
+    w_out: u32,
+    win_h: u32,
+    win_w: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> idx_h: array<i32>;
+@group(0) @binding(2) var<storage, read> wt_h: array<f32>;
+@group(0) @binding(3) var<storage, read> idx_w: array<i32>;
+@group(0) @binding(4) var<storage, read> wt_w: array<f32>;
+@group(0) @binding(5) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(6) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn resize_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.h_out * params.w_out;
+    if (i >= n) {{ return; }}
+    let xo = i % params.w_out;
+    let t = i / params.w_out;
+    let yo = t % params.h_out;
+    let outer_i = t / params.h_out;
+    let in_base = params.off_in + outer_i * params.h_in * params.w_in;
+    var acc = 0.0;
+    for (var a = 0u; a < params.win_h; a++) {{
+        let iy = u32(idx_h[params.off_ih + yo * params.win_h + a]);
+        let wy = wt_h[params.off_wh + yo * params.win_h + a];
+        let row = in_base + iy * params.w_in;
+        for (var b = 0u; b < params.win_w; b++) {{
+            let ix = u32(idx_w[params.off_iw + xo * params.win_w + b]);
+            let wx = wt_w[params.off_ww + xo * params.win_w + b];
+            acc += f32(inp[row + ix]) * wy * wx;
+        }}
+    }}
+    outp[params.off_out + i] = {t}(acc);
+}}
+"#
+    ));
+    s
+}
+
+/// Workgroup of the two-tap resize: 8 columns x 8 rows x 2 outer slices.
+pub const RESIZE_2D_WG: [u32; 3] = [8, 8, 2];
+
+/// [`resize_2d_module`] for two taps per axis — bilinear — with the taps
+/// unrolled and a 3-D grid over (columns, rows, outer slices), so a workgroup
+/// writes contiguous rows. Found by an OpenEvolve search scored in Chrome
+/// (6.8x over the generic kernel there, 144 -> 21 us per frame of the
+/// segmenter's three upsamples).
+pub fn resize_2d_bilinear_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let [wx, wy, wz] = RESIZE_2D_WG;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_ih: u32,
+    off_wh: u32,
+    off_iw: u32,
+    off_ww: u32,
+    off_out: u32,
+    outer: u32,
+    h_in: u32,
+    w_in: u32,
+    h_out: u32,
+    w_out: u32,
+    win_h: u32,
+    win_w: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> idx_h: array<i32>;
+@group(0) @binding(2) var<storage, read> wt_h: array<f32>;
+@group(0) @binding(3) var<storage, read> idx_w: array<i32>;
+@group(0) @binding(4) var<storage, read> wt_w: array<f32>;
+@group(0) @binding(5) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(6) var<uniform> params: Params;
+
+@compute @workgroup_size({wx}, {wy}, {wz})
+fn resize_2d_bilinear_{suf}(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+    let yo = wgid.y * {wy}u + lid.y;
+    let xo = wgid.x * {wx}u + lid.x;
+    if (yo >= params.h_out || xo >= params.w_out) {{ return; }}
+    let ih0 = u32(idx_h[params.off_ih + yo * 2u]);
+    let ih1 = u32(idx_h[params.off_ih + yo * 2u + 1u]);
+    let wh0 = wt_h[params.off_wh + yo * 2u];
+    let wh1 = wt_h[params.off_wh + yo * 2u + 1u];
+    let iw0 = u32(idx_w[params.off_iw + xo * 2u]);
+    let iw1 = u32(idx_w[params.off_iw + xo * 2u + 1u]);
+    let ww0 = wt_w[params.off_ww + xo * 2u];
+    let ww1 = wt_w[params.off_ww + xo * 2u + 1u];
+    let row0 = ih0 * params.w_in;
+    let row1 = ih1 * params.w_in;
+    let out_pos = yo * params.w_out + xo;
+    let c = wgid.z * {wz}u + lid.z;
+    if (c < params.outer) {{
+        let in_base = params.off_in + c * params.h_in * params.w_in;
+        let out_base = params.off_out + c * params.h_out * params.w_out;
+        let acc = f32(inp[in_base + row0 + iw0]) * wh0 * ww0
+            + f32(inp[in_base + row0 + iw1]) * wh0 * ww1
+            + f32(inp[in_base + row1 + iw0]) * wh1 * ww0
+            + f32(inp[in_base + row1 + iw1]) * wh1 * ww1;
+        outp[out_base + out_pos] = {t}(acc);
+    }}
+}}
+"#
+    ));
+    s
+}
+
 fn softmax_wgsl(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();

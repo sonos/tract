@@ -187,6 +187,25 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
                 ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
+        if let Some(plan) = crate::kernels::resize::wgpu_resize_2d(source, node)? {
+            let mut input = mapping[&node.inputs[0]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let mut inputs = tvec!(input);
+            for (tensor, what) in
+                plan.plans.iter().zip(["rows", "row-weights", "cols", "col-weights"])
+            {
+                let konst = convert_const(&Const::new(tensor.clone())?)?;
+                inputs.push(target.wire_node(format!("{}.{what}", node.name), konst, &[])?[0]);
+            }
+            let outlet_ids = target.wire_node(node.name.clone(), plan.op, &inputs)?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(gpu_op) = crate::kernels::resize::wgpu_resize(source, node)? {
             let mut input = mapping[&node.inputs[0]];
             if target.outlet_fact(input)?.as_device_fact().is_none() {
