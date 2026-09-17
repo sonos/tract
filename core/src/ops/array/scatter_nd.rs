@@ -182,7 +182,7 @@ impl TypedOp for ScatterNd {
         rule_if_some!(updates_shape = updates.shape.as_concrete());
         rule_if!(data.is_plain() && updates.is_plain());
         rule_if!(data.datum_type == updates.datum_type);
-        rule_if!(konst.rank() >= 2 && konst.is_plain());
+        rule_if!(konst.rank() >= 2 && konst.is_plain_ram());
         rule_if!(*konst.shape().last().unwrap() == data_shape.len());
         let tuples = konst.cast_to::<i64>()?;
         let tuples = tuples.try_as_plain_ram()?.as_slice::<i64>()?;

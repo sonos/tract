@@ -143,7 +143,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 }
                 Box::new(TypedSource::new(fact))
             } else if let Some(konst) = node.op_as::<Const>() {
-                if konst.val().datum_type() == self.from_dt && konst.val().is_plain() {
+                if konst.val().datum_type() == self.from_dt && konst.val().is_plain_ram() {
                     let wire = target.add_const(
                         format!("{}.{:?}", node.name, self.from_dt),
                         konst.val().clone(),

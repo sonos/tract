@@ -304,6 +304,14 @@ impl Tensor {
         self.storage.is_exotic()
     }
 
+    /// Returns `true` if this tensor's bytes can be read as plain host memory
+    /// right now: both axes at once, and what a caller gating an eager read or
+    /// an evaluation on cost is really asking.
+    #[inline]
+    pub fn is_plain_ram(&self) -> bool {
+        self.as_plain_ram_storage().is_some()
+    }
+
     /// Returns `true` if this tensor's bytes are in host memory, readable
     /// without a transfer.
     ///
