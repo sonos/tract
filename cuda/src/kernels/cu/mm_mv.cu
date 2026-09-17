@@ -438,6 +438,8 @@ void ggml_matmul_wgmma_tma_impl(const half *__restrict__ A, // acts     (m, k)
     auto &mbar_a1 = al.allocate<cuda_mbar, 1>();
     auto &mbar_b0 = al.allocate<cuda_mbar, 1>();
     auto &mbar_b1 = al.allocate<cuda_mbar, 1>();
+    cuda_mbar *mbar_a[2] = { &mbar_a0[0], &mbar_a1[0] };
+    cuda_mbar *mbar_b[2] = { &mbar_b0[0], &mbar_b1[0] };
 
     float2 D[8] = {};
 
