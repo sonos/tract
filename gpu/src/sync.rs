@@ -44,9 +44,12 @@ impl EvalOp for DeviceSync {
                     // result is a host tensor, but the bytes only come back if
                     // someone reads them. A caller that hands it straight to
                     // the next run never pays the transfer.
-                    DeviceTensor::Owned(_) => Ok(tvec![
-                        LazyHostStorage::new(device_tensor.clone())?.into_tensor().into_tvalue()
-                    ]),
+                    DeviceTensor::Owned(_) => {
+                        // PROBE: lazy handle built and immediately materialized,
+                        // so the plumbing is exercised but nothing is deferred.
+                        let lazy = LazyHostStorage::new(device_tensor.clone())?.into_tensor();
+                        Ok(tvec![lazy.into_plain_ram()?.into_tvalue()])
+                    }
                     // An arena view borrows turn-scoped storage, so it cannot
                     // outlive the turn: copy it out now.
                     DeviceTensor::ArenaView(_) => {
