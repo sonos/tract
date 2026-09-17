@@ -20,6 +20,14 @@ impl Const {
         fact: Option<Box<dyn ExoticFact>>,
     ) -> TractResult<Const> {
         ensure!(fact.is_some() || tensor.is_plain(), "Exotic tensor requires an exotic_fact");
+        // A plain constant holds plain host bytes: storage that left them on a
+        // device brings them back rather than pinning the buffer for the life
+        // of the model.
+        let tensor = if fact.is_none() && !tensor.has_plain_ram_storage() {
+            Arc::new(Arc::unwrap_or_clone(tensor).into_plain_ram()?)
+        } else {
+            tensor
+        };
         Ok(Const(tensor, fact))
     }
 
