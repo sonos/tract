@@ -71,7 +71,7 @@ impl LazyHostStorage {
     /// allocation and the backend keeps a share of it, so taking ownership is
     /// never possible and copying would spend a full readback to own bytes we
     /// can already read. Sharing them is free, and safe because everything
-    /// handed out from here is immutable -- a write goes through `as_plain_mut`,
+    /// handed out from here is immutable -- a write goes through `as_plain_ram_mut`,
     /// which copies out of the `Arc` first.
     fn materialize(&self) -> TractResult<&Arc<Tensor>> {
         if let Some(host) = self.host.get() {
@@ -132,22 +132,22 @@ impl TensorStorage for LazyHostStorage {
         Box::new(LazyHostStorage { device: self.device.clone(), host })
     }
 
-    fn as_plain(&self) -> Option<&PlainStorage> {
+    fn as_plain_ram(&self) -> Option<&PlainStorage> {
         // Cheap predicate: answers what is here now, never triggers a readback.
-        self.host.get().and_then(|h| h.as_plain_storage())
+        self.host.get().and_then(|h| h.as_plain_ram_storage())
     }
 
-    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+    fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
         self.materialize().ok()?;
         // Writing to the host side detaches the device tensor: from here on
         // this is an ordinary host tensor, and nothing aliases device memory.
         // make_mut copies the bytes out only if the backend is still sharing
         // them, which is exactly when writing through would reach the device.
         self.device = None;
-        Arc::make_mut(self.host.get_mut()?).as_plain_storage_mut()
+        Arc::make_mut(self.host.get_mut()?).as_plain_ram_storage_mut()
     }
 
-    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
+    fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage> {
         let me = *self;
         me.materialize().ok()?;
         let host = me.host.into_inner()?;
@@ -165,9 +165,17 @@ impl TensorStorage for LazyHostStorage {
         Ok(None)
     }
 
-    fn materialize_plain(&self) -> TractResult<&PlainStorage> {
+    fn is_exotic(&self) -> bool {
+        false
+    }
+
+    fn in_ram(&self) -> bool {
+        self.is_materialized()
+    }
+
+    fn materialize_plain_ram(&self) -> TractResult<&PlainStorage> {
         self.materialize()?
-            .as_plain_storage()
+            .as_plain_ram_storage()
             .context("Device readback did not produce plain storage")
     }
 

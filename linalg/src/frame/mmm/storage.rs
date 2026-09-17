@@ -109,15 +109,15 @@ impl TensorStorage for PackedMatrixStorage {
         Box::new(self.clone())
     }
 
-    fn as_plain(&self) -> Option<&PlainStorage> {
+    fn as_plain_ram(&self) -> Option<&PlainStorage> {
         None
     }
 
-    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+    fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
         None
     }
 
-    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
+    fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage> {
         None
     }
 

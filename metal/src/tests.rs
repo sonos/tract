@@ -916,7 +916,10 @@ mod tests {
         dense.try_as_plain()?.tensor().close_enough(&t.slice(0, 1, 3)?, Approximation::Exact)?;
 
         let gappy = lazy.slice(1, 1, 3)?;
-        assert!(gappy.is_plain(), "gappy slice should have fallen back to a host copy");
+        assert!(
+            gappy.has_plain_ram_storage(),
+            "gappy slice should have fallen back to a host copy"
+        );
         gappy.close_enough(&t.slice(1, 1, 3)?, Approximation::Exact)?;
         Ok(())
     }
