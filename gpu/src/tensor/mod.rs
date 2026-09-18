@@ -203,6 +203,10 @@ impl DeviceTensor {
         start: usize,
         end: usize,
     ) -> TractResult<Option<DeviceTensor>> {
+        ensure!(
+            axis < shape.len() && start < end && end <= shape[axis],
+            "Invalid slicing range {start}..{end} on axis {axis} of {shape:?}"
+        );
         let servable = dt == self.datum_type()
             && shape == self.shape()
             && !self.is_exotic()
