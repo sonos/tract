@@ -3,7 +3,7 @@ use crate::pb::NodeProto;
 use tract_hir::internal::*;
 use tract_hir::ops::array::Pad;
 use tract_hir::ops::cast::cast;
-use tract_hir::ops::math::div;
+use tract_hir::ops::math::{div, mul};
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("DFT", dft);
@@ -99,7 +99,7 @@ impl Expansion for Dft17 {
         }
         let length_input = if self.has_length_input { Some(1) } else { None };
         if self.axis >= 0 {
-            dft_rules(s, inputs, outputs, 1, self.onesided, length_input)
+            dft_rules(s, inputs, outputs, 1, self.inverse, self.onesided, length_input)
         } else {
             s.given(&inputs[0].rank, move |s, rank| {
                 dft_rules(
@@ -107,6 +107,7 @@ impl Expansion for Dft17 {
                     inputs,
                     outputs,
                     (self.axis + rank) as usize,
+                    self.inverse,
                     self.onesided,
                     length_input,
                 )
@@ -132,6 +133,21 @@ impl Expansion for Dft17 {
                 &wire,
             )?;
         };
+        if self.inverse && self.onesided {
+            let n = if self.has_length_input {
+                model
+                    .outlet_fact(inputs[1])?
+                    .konst
+                    .as_ref()
+                    .context("DFT length input must be constant")?
+                    .cast_to_scalar::<i64>()? as usize
+            } else {
+                let bins = fact.shape[axis].to_usize()?;
+                ensure!(bins > 1, "An inverse onesided DFT needs at least two frequency bins");
+                2 * (bins - 1)
+            };
+            return wire_irfft(prefix, model, wire[0], axis, n);
+        }
         wire = model.wire_node(
             format!("{prefix}.fft"),
             tract_core::ops::fft::Fft { axis, inverse: self.inverse },
@@ -192,7 +208,15 @@ impl Expansion for Dft {
             s.given(&inputs[axis_input].value, move |s, axis| {
                 let axis = axis.cast_to_scalar::<i64>()?;
                 if axis >= 0 {
-                    dft_rules(s, inputs, outputs, axis as usize, self.onesided, self.length_input)
+                    dft_rules(
+                        s,
+                        inputs,
+                        outputs,
+                        axis as usize,
+                        self.inverse,
+                        self.onesided,
+                        self.length_input,
+                    )
                 } else {
                     s.given(&inputs[0].rank, move |s, rank| {
                         dft_rules(
@@ -200,6 +224,7 @@ impl Expansion for Dft {
                             inputs,
                             outputs,
                             (axis + rank) as usize,
+                            self.inverse,
                             self.onesided,
                             self.length_input,
                         )
@@ -207,7 +232,7 @@ impl Expansion for Dft {
                 }
             })
         } else {
-            dft_rules(s, inputs, outputs, 1, self.onesided, self.length_input)
+            dft_rules(s, inputs, outputs, 1, self.inverse, self.onesided, self.length_input)
         }
     }
 
@@ -237,27 +262,100 @@ impl Expansion for Dft {
     }
 }
 
+/// Wires an ONNX DFT that is both `inverse` and `onesided`, that is an irfft: the input
+/// holds the non-redundant half of a Hermitian spectrum and the output is the real signal
+/// of length `n` it encodes.
+///
+/// The full spectrum is rebuilt so the plain complex inverse transform can run on it: bin
+/// `k >= n / 2 + 1` is the conjugate of bin `n - k`, which a gather and a sign flip on the
+/// imaginary half express. The one-sided input is trimmed or zero-padded first, as the
+/// requested `n` need not be the one its bin count implies.
+fn wire_irfft(
+    prefix: &str,
+    model: &mut TypedModel,
+    input: OutletId,
+    axis: usize,
+    n: usize,
+) -> TractResult<TVec<OutletId>> {
+    let fact = model.outlet_fact(input)?.clone();
+    let rank = fact.rank();
+    let bins = n / 2 + 1;
+    let have = fact.shape[axis].to_usize()?;
+    let mut wire = tvec!(input);
+    if have > bins {
+        wire = model.wire_node(
+            format!("{prefix}.trim_bins"),
+            tract_core::ops::array::Slice::new(axis, 0, bins),
+            &wire,
+        )?;
+    } else if have < bins {
+        let mut pads = vec![(0, 0); rank];
+        pads[axis] = (0, bins - have);
+        wire = model.wire_node(
+            format!("{prefix}.pad_bins"),
+            Pad { mode: tract_hir::ops::array::PadMode::Constant(rctensor0(0f32)), pads },
+            &wire,
+        )?;
+    }
+    let mirror: Vec<i64> =
+        (0..n).map(|k| if k < bins { k as i64 } else { (n - k) as i64 }).collect();
+    let mirror = model.add_const(format!("{prefix}.mirror"), tensor1(&mirror))?;
+    wire = model.wire_node(
+        format!("{prefix}.hermitian"),
+        tract_core::ops::array::Gather { axis, output_type: None },
+        &[wire[0], mirror],
+    )?;
+    let mut sign_shape = vec![1; rank];
+    sign_shape[axis] = n;
+    sign_shape[rank - 1] = 2;
+    let signs: Vec<f64> = (0..n).flat_map(|k| [1f64, if k < bins { 1. } else { -1. }]).collect();
+    let signs = Tensor::from_shape(&sign_shape, &signs)?.cast_to_dt(fact.datum_type)?.into_owned();
+    let signs = model.add_const(format!("{prefix}.conjugate"), signs)?;
+    wire = model.wire_node(format!("{prefix}.conjugated"), mul(), &[wire[0], signs])?;
+    wire = model.wire_node(
+        format!("{prefix}.fft"),
+        tract_core::ops::fft::Fft { axis, inverse: true },
+        &wire,
+    )?;
+    let len = model.add_const(
+        format!("{prefix}.len"),
+        tensor0(n as f64).cast_to_dt(fact.datum_type)?.into_owned().broadcast_into_rank(rank)?,
+    )?;
+    wire = model.wire_node(format!("{prefix}.norm"), div(), &[wire[0], len])?;
+    model.wire_node(
+        format!("{prefix}.real"),
+        tract_core::ops::array::Slice::new(rank - 1, 0, 1),
+        &wire,
+    )
+}
+
 fn dft_rules<'r, 'p: 'r>(
     s: &mut Solver<'r>,
     inputs: &'p [TensorProxy],
     outputs: &'p [TensorProxy],
     axis: usize,
+    inverse: bool,
     onesided: bool,
     length_input: Option<usize>,
 ) -> InferenceResult {
+    let irfft = inverse && onesided;
     s.given(&inputs[0].rank, move |s, rank| {
         for ax in 0..rank as usize - 1 {
             if ax != axis {
                 s.equals(&inputs[0].shape[ax], &outputs[0].shape[ax])?;
             }
         }
-        s.equals(&outputs[0].shape[rank as usize - 1], 2.to_dim())?;
+        s.equals(&outputs[0].shape[rank as usize - 1], if irfft { 1 } else { 2 }.to_dim())?;
         Ok(())
     })?;
     if let Some(len_input) = length_input {
         s.given(&inputs[len_input].value[0], move |s, len| {
             let len = len.to_dim();
-            s.equals(&outputs[0].shape[axis], if onesided { len / 2 + 1 } else { len })
+            s.equals(&outputs[0].shape[axis], if onesided && !inverse { len / 2 + 1 } else { len })
+        })?;
+    } else if irfft {
+        s.given(&inputs[0].shape[axis], move |s, bins| {
+            s.equals(&outputs[0].shape[axis], (bins - 1) * 2)
         })?;
     } else if onesided {
         s.given(&inputs[0].shape[axis], move |s, len| {
@@ -601,6 +699,28 @@ mod tests {
 
         // numpy.fft.rfft([0, 1, 2, 3]) = [6, -2+2j, -2]
         let expected = tensor3(&[[[6f32, 0.], [-2., 2.], [-2., 0.]]]);
+        output[0].close_enough(&expected, Approximation::Approximate)
+    }
+
+    // An inverse onesided DFT is an irfft: it takes the floor(N/2)+1 bins back to the real
+    // signal of length N, matching numpy.fft.irfft.
+    #[test]
+    fn dft_irfft() -> TractResult<()> {
+        let mut model = InferenceModel::default();
+        let source = model.add_source("x", f32::fact([1, 3, 2]).into())?;
+        let dft = model.wire_node(
+            "dft",
+            expand(Dft17 { axis: 1, inverse: true, onesided: true, has_length_input: false }),
+            &[source],
+        )?;
+        model.select_output_outlets(&dft)?;
+        let runnable = model.into_optimized()?.into_runnable()?;
+
+        // numpy.fft.rfft([0, 1, 2, 3]) = [6, -2+2j, -2]
+        let spectrum = tensor3(&[[[6f32, 0.], [-2., 2.], [-2., 0.]]]);
+        let output = runnable.run(tvec!(spectrum.into_tvalue()))?;
+
+        let expected = tensor3(&[[[0f32], [1.], [2.], [3.]]]);
         output[0].close_enough(&expected, Approximation::Approximate)
     }
 }
