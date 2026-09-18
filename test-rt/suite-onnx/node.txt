@@ -113,7 +113,7 @@ test_constant_pad_axes input:x
 test_constantlike_ones_with_input not-nnef
 test_constantlike_threes_with_shape_and_dtype not-nnef
 test_constantlike_zeros_without_input_dtype not-nnef
-test_convinteger_with_padding                                                       input:x 
+test_convinteger_with_padding                                                       input:x until:24
 test_convtranspose_1d input:X
 test_convtranspose_3d input:X
 test_convtranspose_dilations input:X
@@ -243,6 +243,10 @@ test_log
 test_log_example
 test_logsoftmax.*
 test_l1normalization.*
+# The model is identical in every ONNX release and still declares opset 22: only the
+# expected data changed, at 1.21, when the reference stopped returning NaN for a zero
+# norm. since:26 tracks that release, not an operator version the parser could read.
+test_l2normalization_axis_0 since:26
 test_l2normalization.*
 test_lpnormalization.*
 test_lrn
@@ -715,6 +719,8 @@ test_attention_3d_gqa_with_past_and_present_expanded since:24
 test_attention_3d_scaled since:24
 test_attention_3d_scaled_expanded since:24
 test_attention_3d_softcap_expanded since:24
+test_attention_3d_transpose_verification
+test_attention_3d_transpose_verification_expanded
 test_attention_3d_with_past_and_present since:24
 test_attention_3d_with_past_and_present_expanded since:24
 test_attention_3d_with_past_and_present_qk_matmul_bias_expanded since:24
@@ -770,6 +776,8 @@ test_attention_4d_gqa_with_past_and_present_fp16_expanded since:24
 test_attention_4d_scaled since:24
 test_attention_4d_scaled_expanded since:24
 test_attention_4d_softcap_expanded since:24
+test_attention_4d_softcap_neginf_mask_expanded
+test_attention_4d_softcap_neginf_mask_poison_expanded
 test_attention_4d_with_past_and_present since:24
 test_attention_4d_with_past_and_present_expanded since:24
 test_attention_4d_with_past_and_present_qk_matmul_bias_3d_mask_causal_expanded since:24
@@ -783,11 +791,35 @@ test_attention_4d_with_qk_matmul_expanded since:24
 test_attention_4d_with_qk_matmul_softcap_expanded since:24
 test_attention_4d_with_qk_matmul_softmax_expanded since:24
 test_averagepool_2d_ceil_last_window_starts_on_pad since:24
+test_causal_conv_with_state_b1_c1_degenerate_expanded
+test_causal_conv_with_state_basic_expanded
+test_causal_conv_with_state_decode_step_expanded
+test_causal_conv_with_state_fp16_expanded
+test_causal_conv_with_state_kernel_size_one_expanded
+test_causal_conv_with_state_short_input_no_past_state_expanded
+test_causal_conv_with_state_silu_expanded
+test_causal_conv_with_state_silu_fp16_expanded
+test_causal_conv_with_state_silu_with_past_state_expanded
+test_causal_conv_with_state_swish_alias_expanded
+test_causal_conv_with_state_with_bias_and_past_state_expanded
+test_causal_conv_with_state_with_bias_expanded
+test_causal_conv_with_state_with_past_state_expanded
 test_conv_with_autopad_same
 test_convinteger_without_padding
 test_convtranspose_autopad_same since:18
 test_convtranspose_group_2 since:24
 test_convtranspose_group_2_image_3 since:24
+test_flexattention_causal_mask_expanded_ver26
+test_flexattention_diff_head_sizes_expanded_ver26
+test_flexattention_double_expanded_ver26
+test_flexattention_expanded_ver26
+test_flexattention_fp16_expanded_ver26
+test_flexattention_gqa_expanded_ver26
+test_flexattention_prob_mod_expanded_ver26
+test_flexattention_relative_positional_expanded_ver26
+test_flexattention_scaled_expanded_ver26
+test_flexattention_score_mod_expanded_ver26
+test_flexattention_soft_cap_expanded_ver26
 test_gelu_default_1 since:24
 test_gelu_default_1_expanded since:24
 test_gelu_default_2 since:24
@@ -801,11 +833,18 @@ test_group_normalization_epsilon_expanded
 test_group_normalization_example
 test_group_normalization_example_expanded
 test_isnan_float16 since:24
+test_matmul_1d_3d
+test_matmul_4d_1d
+test_matmul_bcast
 test_maxpool_2d_ceil_output_size_reduce_by_one since:24
 test_mvn_expanded_ver18
+test_nonmaxsuppression_iou_threshold_boundary
 test_qlinearconv
+test_qlinearmatmul_2D_int8_float32 since:27
 test_qlinearmatmul_2D_uint8_float32 since:24
+test_qlinearmatmul_3D_int8_float32 since:27
 test_qlinearmatmul_3D_uint8_float32 since:24
+test_range_float16_type_positive_delta
 test_reduce_sum_empty_axes_input_noop since:24
 test_rms_normalization_2d_axis0 since:24
 test_rms_normalization_2d_axis0_expanded since:24
@@ -846,7 +885,10 @@ test_rms_normalization_4d_axis_negative_4_expanded since:24
 test_rms_normalization_default_axis since:24
 test_rms_normalization_default_axis_expanded since:24
 test_rotary_embedding.* since:24
+test_scan9_multi_state
+test_scan9_scalar
 test_scatter_elements_with_duplicate_indices
+test_scatter_elements_with_reduction_mul
 test_swish since:24
 test_swish_expanded since:24
 test_top_k_same_values since:24
