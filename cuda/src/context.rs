@@ -108,7 +108,16 @@ impl TractCudaContext {
 
     pub fn compile_cubins(&self) -> TractResult<()> {
         for lib in LibraryName::EAGER {
-            self.compile_cubin(lib)?;
+            if let Err(e) = self.compile_cubin(lib) {
+                if lib == LibraryName::FlashAttn {
+                    // TMA is 5090-only and experimental. A ptxas reject must
+                    // not take down relu/add/reshape with it (FlashAttn used
+                    // to be first in EAGER and TMA lived in common.cuh).
+                    log::error!("Skipping FlashAttn cubin: {e:#}");
+                    continue;
+                }
+                return Err(e);
+            }
         }
         Ok(())
     }
@@ -148,7 +157,7 @@ impl TractCudaContext {
             prog.assume_init()
         };
 
-        let nvrtc_opts = self.build_nvrtc_opts()?;
+        let nvrtc_opts = self.build_nvrtc_opts(lib)?;
         if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
             let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
             let _ = unsafe { destroy_program(prog) };
@@ -171,12 +180,19 @@ impl TractCudaContext {
     /// the libcudacxx headers — they have to be reachable on disk via `-I`. On
     /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
     /// `cuda-cudart-dev-<ver>`.
-    fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
-        let arch = format!(
-            "--gpu-architecture=sm_{}{}",
-            self.device_properties.major, self.device_properties.minor
-        );
-        log::info!("tract-cuda: NVRTC target architecture {arch}");
+    fn build_nvrtc_opts(&self, lib: LibraryName) -> TractResult<Vec<String>> {
+        // TMA on consumer Blackwell needs the architecture-specific target
+        // (sm_120a), same relationship as Hopper WGMMA vs sm_90a. Other
+        // libraries stay on the portable sm_120 so we do not change their ISA.
+        let arch = if lib == LibraryName::FlashAttn && self.device_properties.major == 12 {
+            "--gpu-architecture=sm_120a".into()
+        } else {
+            format!(
+                "--gpu-architecture=sm_{}{}",
+                self.device_properties.major, self.device_properties.minor
+            )
+        };
+        log::info!("tract-cuda: NVRTC target architecture {arch} ({lib:?})");
 
         let cuda_inc = resolve_toolkit_include_dir()?;
         log::info!("tract-cuda: toolkit include dir {}", cuda_inc.display());
