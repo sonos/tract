@@ -1,5 +1,11 @@
-use cudarc::driver::sys::CUfunction_attribute;
-use cudarc::driver::{CudaFunction, LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::sys::cuTensorMapEncodeTiled;
+use cudarc::driver::sys::{
+    CUfunction_attribute, CUresult, CUtensorMap, CUtensorMapDataType, CUtensorMapFloatOOBfill,
+    CUtensorMapInterleave, CUtensorMapL2promotion, CUtensorMapSwizzle,
+};
+use cudarc::driver::{
+    CudaFunction, DevicePtr, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg,
+};
 use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
@@ -10,6 +16,57 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
+
+/// 2-D TMA map for a row-major half array. `globalDim[0]` is the fastest
+/// axis (head dim). `boxDim` is in elements, not bytes. `globalStrides` has
+/// rank-1 entries (byte stride of dim 1).
+fn make_tma_desc(
+    global_addr: cudarc::driver::sys::CUdeviceptr,
+    total_rows: usize,
+    dim: usize,
+    padded_dim: usize,
+    block_kv: usize,
+) -> TractResult<CUtensorMap> {
+    let mut desc = CUtensorMap { opaque: [0u64; 16] };
+    let global_dim: [u64; 2] = [dim as u64, total_rows as u64];
+    let global_strides: [u64; 1] = [(dim * 2) as u64];
+    let box_dim: [u32; 2] = [padded_dim as u32, block_kv as u32];
+    let element_strides: [u32; 2] = [1, 1];
+
+    let result = unsafe {
+        cuTensorMapEncodeTiled(
+            &mut desc,
+            CUtensorMapDataType::CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
+            2,
+            global_addr as *mut std::ffi::c_void,
+            global_dim.as_ptr(),
+            global_strides.as_ptr(),
+            box_dim.as_ptr(),
+            element_strides.as_ptr(),
+            CUtensorMapInterleave::CU_TENSOR_MAP_INTERLEAVE_NONE,
+            CUtensorMapSwizzle::CU_TENSOR_MAP_SWIZZLE_128B,
+            CUtensorMapL2promotion::CU_TENSOR_MAP_L2_PROMOTION_NONE,
+            CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
+        )
+    };
+    ensure!(
+        result == CUresult::CUDA_SUCCESS,
+        "cuTensorMapEncodeTiled failed (CUresult = {:?}): invalid tensor map parameters",
+        result
+    );
+    Ok(desc)
+}
+
+#[repr(C)]
+#[derive(Copy, Clone)]
+struct TensorMapArg {
+    opaque: [u64; 16],
+}
+unsafe impl DeviceRepr for TensorMapArg {}
+
+fn tensor_map_arg(desc: CUtensorMap) -> TensorMapArg {
+    TensorMapArg { opaque: desc.opaque }
+}
 
 #[derive(Debug, Clone)]
 pub struct CudaFlashAttn;
@@ -117,7 +174,16 @@ impl CudaFlashAttn {
 
         let num_full_q_blocks = len_q / block_q;
         let tb_size = n_warps * WARP_SIZE;
-        let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
+        // PADDED_DIM — same rounding logic as the kernel instantiation
+        let padded_d = d.div_ceil(64) * 64;
+        let smem_size = block_q.max(block_kv * 3) * padded_d * size_of::<f16>();
+
+        // RTX 5090 (SM120) only, and only when the padded row is 128 B so
+        // TMA SWIZZLE_128B matches the software swizzle the MMA already uses.
+        // Jetson / 4060 have no TMA; Hopper SM90 is a separate path.
+        let sm_major = ctxt.properties().major;
+        let use_tma = sm_major == 12 && padded_d == 64 && d == 64;
+        let smem_size = if use_tma { smem_size + 2 * size_of::<u64>() } else { smem_size };
 
         let mask_mode = if is_causal {
             "causal"
@@ -140,6 +206,34 @@ impl CudaFlashAttn {
             (strides[0], strides[1])
         } else {
             (0, 0)
+        };
+
+        // By-value 128-byte maps (grid-constant). Avoids a device allocation
+        // that would be freed while the kernel is still running.
+        let kv_heads = n_qh / head_ratio;
+        let total_kv_rows = b * kv_heads * len_kv;
+        let zero_map = TensorMapArg { opaque: [0u64; 16] };
+        let k_tma = if use_tma {
+            tensor_map_arg(make_tma_desc(
+                k_view.device_ptr(stream).0,
+                total_kv_rows,
+                d,
+                padded_d,
+                block_kv,
+            )?)
+        } else {
+            zero_map
+        };
+        let v_tma = if use_tma {
+            tensor_map_arg(make_tma_desc(
+                v_view.device_ptr(stream).0,
+                total_kv_rows,
+                d,
+                padded_d,
+                block_kv,
+            )?)
+        } else {
+            zero_map
         };
 
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
@@ -167,6 +261,8 @@ impl CudaFlashAttn {
             launch_args.push_i32(mask_strides.0);
             launch_args.push_i32(mask_strides.1);
             launch_args.push::<f32>(scale);
+            launch_args.push_copy(k_tma);
+            launch_args.push_copy(v_tma);
 
             let cfg = LaunchConfig {
                 grid_dim: (num_q_blocks as _, n_qh as _, b as _),
@@ -283,6 +379,20 @@ mod tests {
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
+        // d=64, seq_len=64 (= block_q) so fullq_ is launched. kv_len is a
+        // multiple of BLOCK_KV (32), so every KV tile can take TMA on SM120.
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, true, false)?;
+        run_test_case(2, 4, 2, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 1, 1, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, false, true)?;
+        // kv_len = 96 (3 tiles)
+        run_test_case(1, 2, 2, 32, 64, 64, 1.0f32, false, false)?;
+        // kv_len = 128 (4 tiles)
+        run_test_case(2, 4, 2, 64, 64, 64, 1.0f32, false, false)?;
+        // kv_len = 50: one full TMA tile + 18-element cp.async.cg tail.
+        // seq_len = 50 < block_q, so Q uses tailq_; KV still hits TMA once.
+        run_test_case(1, 2, 2, 0, 50, 64, 1.0f32, false, false)?;
         Ok(())
     }
 }
