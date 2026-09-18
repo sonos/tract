@@ -155,7 +155,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"cuda").long_help("Convert supported operators to CUDA equivalent"))
         .arg(arg!(-r --runtime [runtime] "Run on alternative runtime (cuda, metal, ...)"))
         .arg(Arg::new("transform").short('t').long("transform").num_args(1).action(clap::ArgAction::Append).help("Apply a built-in transformation to the model"))
-        .arg(Arg::new("set").long("set").num_args(1).action(clap::ArgAction::Append).long_help("Set a symbol to a concrete value after decluttering"))
+        .arg(Arg::new("set").long("set").num_args(1).action(clap::ArgAction::Append).long_help("Set a model symbol before analysis for inferred models or after decluttering for typed models"))
         .arg(Arg::new("hint").long("hint").num_args(1).action(clap::ArgAction::Append).long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
         .arg(Arg::new("autobatch-sessions").long("autobatch-sessions").num_args(1).long_help("Autobatch the model: serve that many concurrent sessions off one prepared copy of it, batching whatever turns arrive together. Needs a batch axis on axis 0, and wants a hint on its symbol for the memory arena to size the widest turn (--autobatch-sessions 4 --hint B=4)"))
 
@@ -667,7 +667,7 @@ fn run_options(command: clap::Command) -> clap::Command {
                 .long("set")
                 .action(clap::ArgAction::Append)
                 .number_of_values(1)
-                .help("Bind a symbol before running the model.  RHS is a TDim expression \
+                .help("Bind a runtime symbol before running the model. RHS is a TDim expression \
                        reduced to i64 against symbols set so far (--set S=12, --set T=2*S)."),
         )
         .arg(
