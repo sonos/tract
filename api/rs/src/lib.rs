@@ -583,6 +583,13 @@ impl TensorInterface for Tensor {
         Ok((dt, self.0.shape(), self.0.try_as_plain_ram()?.as_bytes()))
     }
 
+    /// Metadata only: the default reads it out of `as_bytes`, which brings a
+    /// tensor still living on a device all the way back just to be asked its
+    /// shape.
+    fn shape(&self) -> Result<&[usize]> {
+        Ok(self.0.shape())
+    }
+
     fn convert_to(&self, to: DatumType) -> Result<Self> {
         let to = to_internal_dt(to);
         if self.0.datum_type() == to {
@@ -590,6 +597,16 @@ impl TensorInterface for Tensor {
         } else {
             Ok(Tensor(self.0.cast_to_dt(to)?.into_owned().into_arc_tensor()))
         }
+    }
+}
+
+impl Tensor {
+    /// Slice `[start, end)` along `axis`.
+    ///
+    /// A device-backed tensor is sliced on the device, without a round-trip
+    /// through the host. The result owns its data either way.
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
+        Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
     }
 }
 

@@ -17,6 +17,9 @@ use tract_data::itertools::Itertools;
 
 use crate::device::{DeviceBuffer, get_context};
 
+/// Highest rank the backends' `copy_nd` kernels are compiled for.
+const MAX_COPY_ND_RANK: usize = 6;
+
 /// This struct represents a GPU tensor that can be either a owned tensor
 /// or an arena view.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -177,6 +180,49 @@ impl DeviceTensor {
         Tensor::from_storage(dt, &shape, self)
     }
 
+    /// Slice `[start, end)` along `axis` by a copy made on the device, or `None`
+    /// where the backends' `copy_nd` kernels cannot serve the case and the
+    /// caller has to fall back.
+    ///
+    /// `dt` and `shape` are the owning tensor's, and storage whose geometry has
+    /// drifted from them is refused rather than sliced on stale dimensions.
+    ///
+    /// A copy rather than a view: a view would alias what it was cut from, which
+    /// outlives neither an arena's turn nor a later write to the source. The
+    /// result owns its buffer, and only the source of the copy is strided, which
+    /// is what lets any axis be sliced and not just a dense one.
+    ///
+    /// The copy is ordered on the stream behind whatever produced the source and
+    /// waits for nothing of its own; a caller that needs the bytes now is the
+    /// one that synchronizes.
+    pub(crate) fn slice_on_device(
+        &self,
+        dt: DatumType,
+        shape: &[usize],
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<DeviceTensor>> {
+        ensure!(
+            axis < shape.len() && start < end && end <= shape[axis],
+            "Invalid slicing range {start}..{end} on axis {axis} of {shape:?}"
+        );
+        let servable = dt == self.datum_type()
+            && shape == self.shape()
+            && !self.is_exotic()
+            && Self::is_supported_dt(dt)
+            && (1..=MAX_COPY_ND_RANK).contains(&self.rank())
+            && self.strides().iter().all(|s| *s > 0);
+        if !servable {
+            return Ok(None);
+        }
+        let mut sliced: TVec<usize> = shape.into();
+        sliced[axis] = end - start;
+        let output = DeviceTensor::uninitialized_dt(dt, &sliced)?;
+        get_context()?.assign_slice(&output, 0..end - start, self, start..end, axis)?;
+        Ok(Some(output))
+    }
+
     /// Synchronize the GPU Tensor by completing all current
     /// commands on GPU and returns the inner tensor.
     pub fn to_host(&self) -> TractResult<Arc<Tensor>> {
@@ -256,6 +302,17 @@ impl TensorStorage for DeviceTensor {
 
     fn in_ram(&self) -> bool {
         false
+    }
+
+    fn slice(
+        &self,
+        dt: DatumType,
+        shape: &[usize],
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<Tensor>> {
+        Ok(self.slice_on_device(dt, shape, axis, start, end)?.map(|t| t.into_tensor()))
     }
 
     fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
