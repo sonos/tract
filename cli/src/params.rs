@@ -463,13 +463,8 @@ impl Parameters {
         Ok(values)
     }
 
-    /// Parse `--set X=value` into a `Symbol → TDim` substitution map.
-    /// `value` may be a plain integer or any TDim expression parseable
-    /// against the model's symbol scope (e.g. `2*S` to rebase the
-    /// streaming symbol onto a finer-grained chunk symbol before
-    /// pulsification).  Feeds straight into `model.set_symbols`.
-    pub fn parse_set_subs(
-        typed_model: &TypedModel,
+    fn parse_set_subs(
+        symbols: &SymbolScope,
         set: impl Iterator<Item = impl AsRef<str>>,
     ) -> TractResult<std::collections::HashMap<Symbol, TDim>> {
         let mut subs = std::collections::HashMap::new();
@@ -478,9 +473,9 @@ impl Parameters {
             let (key, value) = set
                 .split_once('=')
                 .with_context(|| format!("--set must be in the X=value form, got {set}"))?;
-            let dim = tract_core::internal::parse_tdim(&typed_model.symbols, value)
+            let dim = tract_core::internal::parse_tdim(symbols, value)
                 .with_context(|| format!("--set: parsing TDim expression for {key}={value}"))?;
-            let sym = typed_model.get_or_intern_symbol(key);
+            let sym = symbols.sym(key);
             subs.insert(sym, dim);
         }
         Ok(subs)
@@ -635,7 +630,9 @@ impl Parameters {
         tf_model_extensions: Option<TfExt>,
         reference_stage: Option<&str>,
         keep_last: bool,
+        set_subs: &std::collections::HashMap<Symbol, TDim>,
     ) -> TractResult<(Arc<dyn Model>, Option<Arc<dyn Model>>)> {
+        let set_applied_before_analysis = raw_model.is::<InferenceModel>();
         let stop_at = matches
             .get_one::<String>("pass")
             .map(String::as_str)
@@ -784,16 +781,14 @@ impl Parameters {
             }
         }
 
-        if let Some(set) = matches.get_many::<String>("set") {
-            // --set delegates to model.set_symbols with a
-            // Symbol → TDim map (same path the `set_symbols`
-            // model transform takes).  Values may be plain integers or
-            // TDim expressions (e.g. `--set T=2*S` to rebase the
-            // streaming symbol).  Const TDim tensors are rewritten
-            // through Const's own set_symbols hook.
-            let subs = Self::parse_set_subs(typed_model.as_ref().unwrap(), set)?;
+        if !set_subs.is_empty() {
+            let subs = set_subs.clone();
             stage!("set", typed_model -> typed_model, move |m: TypedModel| {
-                m.set_symbols(&subs)
+                if set_applied_before_analysis {
+                    Ok(m)
+                } else {
+                    m.set_symbols(&subs)
+                }
             });
             stage!("set-declutter", typed_model -> typed_model, |mut m| {
                 let mut dec = tract_core::optim::Optimizer::declutter();
@@ -858,6 +853,11 @@ impl Parameters {
                 symbols.add_assertion(rule)?;
             }
         }
+        let set_subs = matches
+            .get_many::<String>("set")
+            .map(|set| Self::parse_set_subs(&symbols, set))
+            .transpose()?
+            .unwrap_or_default();
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
@@ -984,6 +984,9 @@ impl Parameters {
                     }
                 }
             }
+            if !set_subs.is_empty() {
+                infer.set_symbols(&set_subs)?;
+            }
         }
 
         if matches.get_flag("partial") {
@@ -1007,6 +1010,7 @@ impl Parameters {
             tf_model_extensions,
             need_reference_model,
             keep_last,
+            &set_subs,
         )?;
 
         info!("Model fully loaded");
