@@ -442,13 +442,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
 #if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 1200) && (__CUDA_ARCH__ < 1300)
     // Two mbarriers (K and V) placed after the tensor data, 8-byte aligned.
-    // BLOCK_KV * PADDED_DIM * sizeof(half) is always a multiple of 8, so the
-    // tensor region end is already 8-byte aligned.
-    constexpr uint32_t tensor_bytes =
-        (uint32_t)max(BLOCK_Q, 3 * BLOCK_KV) * PADDED_DIM * sizeof(half);
+    // NVRTC has no constexpr std::max; keep this a ternary of template ints.
+    constexpr uint32_t k_tensor_elems =
+        (BLOCK_Q > 3 * BLOCK_KV ? BLOCK_Q : 3 * BLOCK_KV) * PADDED_DIM;
+    constexpr uint32_t tensor_bytes = k_tensor_elems * (uint32_t)sizeof(half);
     constexpr uint32_t mbar_offset = (tensor_bytes + 7u) & ~7u;
-    const uint32_t k_mbar_smem = Q_smem + mbar_offset;
-    const uint32_t v_mbar_smem = k_mbar_smem + sizeof(cuda_mbar);
     cuda_mbar *k_mbar =
         reinterpret_cast<cuda_mbar *>(reinterpret_cast<char *>(smem) + mbar_offset);
     cuda_mbar *v_mbar = k_mbar + 1;
