@@ -119,7 +119,6 @@ impl LibraryName {
     // Libraries compiled when a CUDA context is created. Gated DeltaNet is
     // intentionally omitted: it is model-specific and compiled on first use.
     pub const EAGER: [LibraryName; 10] = [
-        Self::FlashAttn,
         Self::ElementWise,
         Self::Binary,
         Self::Array,
@@ -129,6 +128,7 @@ impl LibraryName {
         Self::GgmlQ,
         Self::Quant,
         Self::Fft,
+        Self::FlashAttn,
     ];
 
     pub fn content(&self) -> &str {
