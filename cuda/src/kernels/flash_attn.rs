@@ -1,6 +1,6 @@
 use cudarc::driver::sys::cuTensorMapEncodeTiled;
 use cudarc::driver::sys::{
-    CUfunction_attribute, CUtensorMap, CUtensorMapDataType, CUtensorMapFloatOOBfill,
+    CUfunction_attribute, CUresult, CUtensorMap, CUtensorMapDataType, CUtensorMapFloatOOBfill,
     CUtensorMapInterleave, CUtensorMapL2promotion, CUtensorMapSwizzle,
 };
 use cudarc::driver::{
@@ -26,14 +26,14 @@ fn make_tma_desc(
     dim: usize,
     padded_dim: usize,
     block_kv: usize,
-) -> CUtensorMap {
+) -> TractResult<CUtensorMap> {
     let mut desc = CUtensorMap { opaque: [0u64; 16] };
     let global_dim: [u64; 2] = [dim as u64, total_rows as u64];
     let global_strides: [u64; 1] = [(dim * 2) as u64];
     let box_dim: [u32; 2] = [padded_dim as u32, block_kv as u32];
     let element_strides: [u32; 2] = [1, 1];
 
-    unsafe {
+    let result = unsafe {
         cuTensorMapEncodeTiled(
             &mut desc,
             CUtensorMapDataType::CU_TENSOR_MAP_DATA_TYPE_FLOAT16,
@@ -47,9 +47,14 @@ fn make_tma_desc(
             CUtensorMapSwizzle::CU_TENSOR_MAP_SWIZZLE_128B,
             CUtensorMapL2promotion::CU_TENSOR_MAP_L2_PROMOTION_NONE,
             CUtensorMapFloatOOBfill::CU_TENSOR_MAP_FLOAT_OOB_FILL_NONE,
-        );
-    }
-    desc
+        )
+    };
+    ensure!(
+        result == CUresult::CUDA_SUCCESS,
+        "cuTensorMapEncodeTiled failed (CUresult = {:?}): invalid tensor map parameters",
+        result
+    );
+    Ok(desc)
 }
 
 #[repr(C)]
@@ -215,7 +220,7 @@ impl CudaFlashAttn {
                 d,
                 padded_d,
                 block_kv,
-            ))
+            )?)
         } else {
             zero_map
         };
@@ -226,7 +231,7 @@ impl CudaFlashAttn {
                 d,
                 padded_d,
                 block_kv,
-            ))
+            )?)
         } else {
             zero_map
         };
@@ -374,6 +379,20 @@ mod tests {
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
+        // d=64, seq_len=64 (= block_q) so fullq_ is launched. kv_len is a
+        // multiple of BLOCK_KV (32), so every KV tile can take TMA on SM120.
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, true, false)?;
+        run_test_case(2, 4, 2, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 1, 1, 0, 64, 64, 1.0f32, false, false)?;
+        run_test_case(1, 2, 2, 0, 64, 64, 1.0f32, false, true)?;
+        // kv_len = 96 (3 tiles)
+        run_test_case(1, 2, 2, 32, 64, 64, 1.0f32, false, false)?;
+        // kv_len = 128 (4 tiles)
+        run_test_case(2, 4, 2, 64, 64, 64, 1.0f32, false, false)?;
+        // kv_len = 50: one full TMA tile + 18-element cp.async.cg tail.
+        // seq_len = 50 < block_q, so Q uses tailq_; KV still hits TMA once.
+        run_test_case(1, 2, 2, 0, 50, 64, 1.0f32, false, false)?;
         Ok(())
     }
 }
