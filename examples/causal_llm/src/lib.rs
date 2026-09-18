@@ -395,14 +395,28 @@ impl CausalLlmState {
         Ok(results.remove(0))
     }
 
+    /// Cut every KV cache down to its first `len` positions on its cache axis.
+    ///
+    /// `Tensor::sliced` keeps a cache that is still on a device there, so a
+    /// rollback between runs does not drag the cache across the bus and send
+    /// most of it straight back.
+    fn slice_kv_caches_to(&mut self, len: usize) -> anyhow::Result<()> {
+        if len == 0 {
+            self.kv_caches = self.model.make_empty_kv_caches()?;
+            return Ok(());
+        }
+        for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
+            if len < kv.shape()?[info.axis] {
+                *kv = kv.sliced(info.axis, 0, len)?;
+            }
+        }
+        Ok(())
+    }
+
     /// Slice every KV cache to its first `cols` positions and mark them
     /// processed, dropping the K/V of rejected draft tokens.
     fn truncate_kv_to(&mut self, cols: usize) -> anyhow::Result<()> {
-        for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
-            if cols < kv.shape()?[info.axis] {
-                *kv = slice_value(kv, info.axis, 0, cols)?;
-            }
-        }
+        self.slice_kv_caches_to(cols)?;
         self.processed_tokens = cols;
         Ok(())
     }
@@ -469,36 +483,8 @@ impl CausalLlmState {
         // the next generate_next_token call to produce output logits.
         let cache_len = len - 1;
         self.processed_tokens = self.processed_tokens.min(cache_len);
-        for (kv, info) in self.kv_caches.iter_mut().zip(&self.model.kv_caches) {
-            *kv = slice_value(kv, info.axis, 0, cache_len)?;
-        }
-        Ok(())
+        self.slice_kv_caches_to(cache_len)
     }
-}
-
-/// Slice a Value along an axis, extracting elements [start..end].
-fn slice_value(value: &Tensor, axis: usize, start: usize, end: usize) -> anyhow::Result<Tensor> {
-    let (dt, shape, data) = value.as_bytes()?;
-    let elem_size = dt.size_of();
-    let new_len = end - start;
-    let mut new_shape = shape.to_vec();
-    new_shape[axis] = new_len;
-
-    let inner_size: usize = shape[axis + 1..].iter().product::<usize>() * elem_size;
-    let axis_stride = shape[axis] * inner_size;
-    let outer_count: usize = shape[..axis].iter().product::<usize>().max(1);
-
-    let new_data_len = outer_count * new_len * inner_size;
-    let mut new_data = vec![0u8; new_data_len];
-
-    for outer in 0..outer_count {
-        let src_offset = outer * axis_stride + start * inner_size;
-        let dst_offset = outer * new_len * inner_size;
-        new_data[dst_offset..dst_offset + new_len * inner_size]
-            .copy_from_slice(&data[src_offset..src_offset + new_len * inner_size]);
-    }
-
-    Tensor::from_bytes(dt, &new_shape, &new_data)
 }
 
 #[derive(Clone, Debug)]
