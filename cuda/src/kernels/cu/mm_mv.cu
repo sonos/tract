@@ -42,8 +42,13 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
   y += channel_y * stride_channel_y;
   dst += channel_dst * stride_channel_dst;
 
-  extern __shared__ char data_mmv[];
-  float *buf_iw = (float *)data_mmv;
+  extern __shared__ alignment_dummy __shm[];
+  shared_allocator al((int *)&__shm[0]);
+  constexpr int num_warps = (block_size + WARP_SIZE - 1) / WARP_SIZE;
+  // buf_iw needs max(WARP_SIZE, num_warps) entries: indexed by both lane_id
+  // (up to WARP_SIZE-1) and tid/WARP_SIZE (up to num_warps-1).
+  constexpr int buf_iw_size = (WARP_SIZE > num_warps) ? WARP_SIZE : num_warps;
+  float (&buf_iw)[buf_iw_size] = al.allocate<float, buf_iw_size>();
 
   if (block_size > WARP_SIZE) {
     if (tid < WARP_SIZE) {

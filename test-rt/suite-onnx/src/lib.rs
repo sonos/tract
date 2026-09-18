@@ -162,6 +162,15 @@ fn versions() -> Vec<(&'static str, usize)> {
     if cfg!(feature = "onnx_1_19_1") {
         versions.push(("1.19.1", 24));
     }
+    if cfg!(feature = "onnx_1_20_1") {
+        versions.push(("1.20.1", 25));
+    }
+    if cfg!(feature = "onnx_1_21_0") {
+        versions.push(("1.21.0", 26));
+    }
+    if cfg!(feature = "onnx_1_22_0") {
+        versions.push(("1.22.0", 27));
+    }
     versions
 }
 
@@ -204,7 +213,18 @@ pub fn ensure_onnx_git_checkout() {
     });
 }
 
+/// Builds the suite from the four manifests, one tag per ONNX version in `versions()`.
+///
+/// A manifest line is a test-name regex followed by optional space-separated qualifiers:
+/// `since:<opset>` and `until:<opset>` bound the opset range the test is expected to pass on,
+/// `input:<name>` runs the case with that input alone and the others turned into constants,
+/// `onnx-ignore-output-shape` and `onnx-ignore-output-type` relax the model's declared output
+/// fact. A test no line matches is registered as ignored, so the manifests are an allow-list.
 fn full() -> TestSuite {
+    assert!(
+        !versions().is_empty(),
+        "no onnx_x_y_z feature enabled, the suite would be silently empty"
+    );
     ensure_onnx_git_checkout();
     let mut suite = TestSuite::default();
     for (tests_set, manifest) in [
@@ -245,9 +265,13 @@ fn full() -> TestSuite {
                     working_list.iter().find(|pair| pair.0.is_match(t)).map(|pair| &*pair.1);
                 let ignored = details.is_none()
                     || details.unwrap().iter().any(|s| {
-                        s.strip_prefix("since:")
-                            .map(|since| since.parse::<usize>().unwrap() > opset)
-                            .unwrap_or(false)
+                        if let Some(since) = s.strip_prefix("since:") {
+                            since.parse::<usize>().unwrap() > opset
+                        } else if let Some(until) = s.strip_prefix("until:") {
+                            until.parse::<usize>().unwrap() < opset
+                        } else {
+                            false
+                        }
                     });
                 let ignore_output_shapes =
                     details.unwrap_or_default().iter().any(|s| s == "onnx-ignore-output-shape");
