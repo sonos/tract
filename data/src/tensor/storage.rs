@@ -67,12 +67,16 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + DynEq + Downc
         self.as_plain_ram().ok_or_else(|| anyhow::anyhow!("Tensor storage is not plain"))
     }
 
-    /// Slice along `axis`, if this storage can do it without copying.
+    /// Slice along `axis`, if this storage can serve it in its own memory --
+    /// for free where the slice is already a range it holds, by a copy it can
+    /// make where it is otherwise.
     ///
-    /// `None` means "not capable" and the caller falls back to a generic copy,
-    /// so an implementation is free to refuse any case it cannot serve. What it
-    /// must not do is return a tensor that is not a valid dense one: `Some` is a
-    /// claim that the result stands on its own everywhere a tensor is accepted.
+    /// `None` means "not capable" and the caller falls back to a generic copy
+    /// through host memory, so an implementation is free to refuse any case it
+    /// cannot serve -- but storage whose bytes are not host bytes has no such
+    /// fallback to decline to, and refusing there is a panic. What it must not
+    /// do is return a tensor that is not a valid dense one: `Some` is a claim
+    /// that the result stands on its own everywhere a tensor is accepted.
     fn slice(
         &self,
         _dt: DatumType,
