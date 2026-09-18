@@ -71,9 +71,18 @@ jobs:
 
       # The Blackwell-only kernels compile in under __CUDA_ARCH__ guards and are
       # launched under a props.major check, so a run that landed on a lesser GPU
-      # would go green having exercised only the fallback path.
+      # would go green having exercised only the fallback path. Inline rather
+      # than a script in the tree: the workflow always comes from the default
+      # branch, but the checkout is the PR head, which predates anything added
+      # here.
       - name: Assert this is a Blackwell GPU
-        run: .github/blackwell-guard.sh
+        run: |
+          nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader
+          cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')
+          case "$cc" in
+            12.*) ;;
+            *) echo "compute capability $cc is not Blackwell (want 12.x)"; exit 1 ;;
+          esac
 
       - name: Cargo test
         run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda
@@ -95,8 +104,20 @@ jobs:
           fetch-depth: 0          # bench-compare.sh needs the merge-base
           persist-credentials: false
 
+      # The Blackwell-only kernels compile in under __CUDA_ARCH__ guards and are
+      # launched under a props.major check, so a run that landed on a lesser GPU
+      # would go green having exercised only the fallback path. Inline rather
+      # than a script in the tree: the workflow always comes from the default
+      # branch, but the checkout is the PR head, which predates anything added
+      # here.
       - name: Assert this is a Blackwell GPU
-        run: .github/blackwell-guard.sh
+        run: |
+          nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader
+          cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')
+          case "$cc" in
+            12.*) ;;
+            *) echo "compute capability $cc is not Blackwell (want 12.x)"; exit 1 ;;
+          esac
 
       # A/B tolerates a busy box far better than a reference row does, but not
       # something taking the SMs partway through one of the two halves.
@@ -115,7 +136,12 @@ jobs:
           git fetch --no-tags --depth=200 origin main
           base=$(git merge-base FETCH_HEAD "$head")
           echo "A=$base B=$head"
-          .travis/bench-compare.sh "$base" "$head" | tee bench-diff.txt
+          # Harness from main, code under test from the PR: an older head carries
+          # a bench-compare.sh that ignores CARGO_TARGET_DIR and would look for a
+          # binary under ./target that the warm volume does not put there.
+          git show FETCH_HEAD:.travis/bench-compare.sh > "$RUNNER_TEMP/bench-compare.sh"
+          chmod +x "$RUNNER_TEMP/bench-compare.sh"
+          "$RUNNER_TEMP/bench-compare.sh" "$base" "$head" | tee bench-diff.txt
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
