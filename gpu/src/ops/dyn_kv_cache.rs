@@ -112,12 +112,20 @@ impl OpState for GpuDynKVCacheState {
 }
 
 impl GpuDynKVCacheState {
+    /// Drop everything past `len` on the cache axis.
+    ///
+    /// Cut on the device where the backend can: the cache is the one tensor an
+    /// application rolls back between runs, and bringing it to host to lose most
+    /// of it and sending it straight back is the transfer worth not making.
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
-        if let Some(v) = &mut self.kv_cache {
-            let mut t: Tensor = v.to_device_tensor()?.to_host()?.into_tensor();
-            t = t.slice(self.axis, 0, len)?;
-            *v = t.into_device()?.into_tensor().into_tvalue();
-        }
+        let Some(v) = &self.kv_cache else { return Ok(()) };
+        let device = v.to_device_tensor()?;
+        let dt = device.datum_type();
+        let truncated = match device.slice_on_device(dt, device.shape(), self.axis, 0, len)? {
+            Some(truncated) => truncated,
+            None => device.to_host()?.slice(self.axis, 0, len)?.into_device()?,
+        };
+        self.kv_cache = Some(truncated.into_tensor().into_tvalue());
         Ok(())
     }
 }
