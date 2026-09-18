@@ -193,4 +193,27 @@ impl TensorStorage for LazyHostStorage {
             .as_plain_ram_storage()
             .context("Device readback did not produce plain storage")
     }
+
+    /// Bytes still on the device are sliced there, and the slice stays lazy: an
+    /// application truncating state it hands straight back to the next `run()`
+    /// never brings either side across. Once they are here the generic copy is
+    /// the cheaper path, and a host-side write has detached the device tensor,
+    /// leaving nothing to ask.
+    fn slice(
+        &self,
+        dt: DatumType,
+        shape: &[usize],
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> TractResult<Option<Tensor>> {
+        if self.is_materialized() {
+            return Ok(None);
+        }
+        let Some(device) = self.device.as_ref() else { return Ok(None) };
+        let Some(sliced) = device.slice_on_device(dt, shape, axis, start, end)? else {
+            return Ok(None);
+        };
+        Ok(Some(Self::new(sliced)?.into_tensor()))
+    }
 }

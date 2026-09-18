@@ -231,3 +231,105 @@ impl OwnedDeviceTensor for CudaTensor {
         .unwrap()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::ops::Range;
+
+    use super::*;
+    use tract_gpu::device::get_context;
+    use tract_gpu::memory::{DeviceMemoryPool, DeviceResolvedMemSchema};
+    use tract_gpu::tensor::{DeviceTensorExt, IntoDevice, LazyHostStorage};
+
+    fn iota(shape: &[usize]) -> TractResult<Tensor> {
+        let len = shape.iter().product::<usize>();
+        Tensor::from_shape(shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())
+    }
+
+    /// Slice on device and check the result against the same slice done on host.
+    fn check_slice(
+        input: &Tensor,
+        device: &DeviceTensor,
+        axis: usize,
+        range: Range<usize>,
+    ) -> TractResult<()> {
+        let sliced = device.clone().into_tensor().slice(axis, range.start, range.end)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        device
+            .to_host()?
+            .close_enough(&input.slice(axis, range.start, range.end)?, Approximation::Exact)
+    }
+
+    #[test]
+    fn slice_owned_device_tensor_stays_on_device() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[4, 6])?;
+            let device = input.clone().into_device()?;
+            assert!(matches!(device, DeviceTensor::Owned(_)));
+            check_slice(&input, &device, 0, 1..3)
+        })
+    }
+
+    /// The inner axis: the copy is strided on the source, which is exactly what
+    /// a view could not have represented.
+    #[test]
+    fn slice_owned_device_tensor_on_inner_axis() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[4, 6])?;
+            let device = input.clone().into_device()?;
+            check_slice(&input, &device, 1, 1..4)
+        })
+    }
+
+    /// What the application actually holds: an output that crossed the boundary
+    /// still on device. The slice must stay there, and stay lazy, or the next
+    /// run pays a transfer both ways.
+    #[test]
+    fn slice_of_a_lazy_host_tensor_stays_on_device() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[4, 6])?;
+            let lazy = LazyHostStorage::new(input.clone().into_device()?)?.into_tensor();
+            let sliced = lazy.slice(0, 1, 3)?;
+            let storage = sliced
+                .storage_as::<LazyHostStorage>()
+                .context("slice of a lazy host tensor came back on host")?;
+            assert!(!storage.is_materialized());
+            assert!(storage.device().is_some());
+            sliced.close_enough(&input.slice(0, 1, 3)?, Approximation::Exact)
+        })
+    }
+
+    /// Once the bytes are back, the host copy is the cheap path and the device
+    /// is not asked again.
+    #[test]
+    fn slice_of_a_materialized_lazy_tensor_stays_on_host() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[4, 6])?;
+            let lazy = LazyHostStorage::new(input.clone().into_device()?)?.into_tensor();
+            lazy.try_as_plain_ram()?;
+            let sliced = lazy.slice(0, 1, 3)?;
+            assert!(sliced.storage_as::<LazyHostStorage>().is_none());
+            sliced.close_enough(&input.slice(0, 1, 3)?, Approximation::Exact)
+        })
+    }
+
+    /// An arena view sits at a non-zero byte offset in a buffer it does not own:
+    /// the slice must read from the view, and own its own buffer afterwards.
+    #[test]
+    fn slice_arena_view_owns_its_result() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[4, 6])?;
+            let pool = DeviceMemoryPool::from_schema(DeviceResolvedMemSchema {
+                offsets_by_node: vec![Some(tvec!(tvec!(256)))],
+                memory_size: 4096,
+            })?;
+            let view = pool.tensor_for_node(0, f32::datum_type(), &[4, 6])?;
+            assert!(matches!(view, DeviceTensor::ArenaView(_)));
+            let ctx = get_context()?;
+            ctx.flat_copy(&input.clone().into_device()?, 0, &view, 0, 4 * 6 * 4)?;
+            ctx.synchronize()?;
+            check_slice(&input, &view, 0, 2..4)
+        })
+    }
+}

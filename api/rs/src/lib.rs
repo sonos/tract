@@ -593,6 +593,16 @@ impl TensorInterface for Tensor {
     }
 }
 
+impl Tensor {
+    /// Slice `[start, end)` along `axis`.
+    ///
+    /// A device-backed tensor is sliced on the device, without a round-trip
+    /// through the host. The result owns its data either way.
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
+        Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
+    }
+}
+
 impl PartialEq for Tensor {
     fn eq(&self, other: &Self) -> bool {
         let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };
