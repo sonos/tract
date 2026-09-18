@@ -8,6 +8,9 @@ use crate::internal::*;
 use crate::prelude::TVec;
 
 pub trait InferenceModelExt {
+    /// Substitutes symbols in declared shape dimensions only, before shape and type analysis.
+    fn set_symbols(&mut self, subs: &HashMap<Symbol, TDim>) -> TractResult<()>;
+
     /// Analyse all nodes of the graph.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
@@ -36,6 +39,19 @@ pub trait InferenceModelExt {
 }
 
 impl InferenceModelExt for InferenceModel {
+    fn set_symbols(&mut self, subs: &HashMap<Symbol, TDim>) -> TractResult<()> {
+        for node in &mut self.nodes {
+            for output in &mut node.outputs {
+                for dim in &mut output.fact.shape.dims {
+                    if let GenericFactoid::Only(dim) = dim {
+                        *dim = dim.substitute_all(subs)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// Analyse all nodes of the graph.
     ///
     /// Will stop on first error unless `obstinate` is `true`.
