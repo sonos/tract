@@ -337,6 +337,30 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("nchw_2x2_s2_5x6", nchw_2x2_s2(1, 3, 4, 5, 6));
     suite.add("nchw_2x2_s2_wide", nchw_2x2_s2(2, 2, 3, 3, 9));
 
+    for (name, format, padding, group, width, stride) in [
+        ("nchw_rectangular", NCHW, PaddingSpec::Valid, 1, 17, 1),
+        ("nchw_rectangular_same", NCHW, PaddingSpec::SameUpper, 1, 17, 1),
+        ("nchw_rectangular_grouped", NCHW, PaddingSpec::SameUpper, 2, 17, 1),
+        ("chw_rectangular_same", CHW, PaddingSpec::SameUpper, 1, 17, 1),
+        ("nchw_rectangular_s2", NCHW, PaddingSpec::Valid, 1, 16, 2),
+        ("nchw_rectangular_s3", NCHW, PaddingSpec::SameUpper, 2, 17, 3),
+        ("nchw_rectangular_small", NCHW, PaddingSpec::Valid, 1, 15, 2),
+    ] {
+        let mut problem = nchw_2x2_s2(2, 4, 6, 3, width);
+        problem.data_format = format;
+        if format == CHW {
+            problem.input = problem.input.index_axis_move(Axis(0), 0);
+        }
+        problem.kernel = ArrayD::from_shape_fn(IxDyn(&[6, 4 / group, 3, 5]), |ix| {
+            ((ix[0] * 5 + ix[1] * 3 + ix[2] * 2 + ix[3]) % 7) as f32 - 3.0
+        });
+        problem.padding = padding;
+        problem.strides = tvec!(2, stride);
+        problem.dilations = tvec!(2, 3);
+        problem.group = group;
+        suite.add(name, problem);
+    }
+
     suite.add(
         "trivial_0",
         DeconvProblem {
