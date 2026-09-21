@@ -250,7 +250,15 @@
 <p>Tensors flow in and out of models: they are the inputs you feed to
 <code class="docutils literal notranslate"><span class="pre">Runnable.run()</span></code> and the outputs you get back. On the Python side,
 convert to and from numpy arrays with <a class="reference internal" href="#tract.tensor.Tensor.to_numpy" title="tract.tensor.Tensor.to_numpy"><code class="xref py py-meth docutils literal notranslate"><span class="pre">to_numpy()</span></code></a> and
-<code class="xref py py-func docutils literal notranslate"><span class="pre">from_numpy()</span></code>.</p>
+<a class="reference internal" href="#tract.tensor.Tensor.from_numpy" title="tract.tensor.Tensor.from_numpy"><code class="xref py py-func docutils literal notranslate"><span class="pre">from_numpy()</span></code></a>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.tensor.Tensor.from_numpy">
+<span class="sig-name descname"><span class="pre">from_numpy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.tensor.Tensor" title="tract.tensor.Tensor"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.from_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.from_numpy" title="Link to this definition">¶</a></dt>
+<dd><p>Builds a tensor from a numpy array, preserving its rank.</p>
+<p><cite>numpy.ascontiguousarray</cite> promotes 0-d arrays to rank 1, so the original rank is
+restored afterwards: a scalar input must stay a scalar to match a rank-0 fact.</p>
+</dd></dl>
+
 <dl class="py method">
 <dt class="sig sig-object py" id="tract.tensor.Tensor.to_numpy">
 <span class="sig-name descname"><span class="pre">to_numpy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">array</span></span></span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.to_numpy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.to_numpy" title="Link to this definition">¶</a></dt>
@@ -317,6 +325,7 @@ convert to and from numpy arrays with <a class="reference internal" href="#tract
 <li><a class="reference internal" href="#">Tensor</a><ul>
 <li><a class="reference internal" href="#tract.tensor.DatumType"><code class="docutils literal notranslate"><span class="pre">DatumType</span></code></a></li>
 <li><a class="reference internal" href="#tract.tensor.Tensor"><code class="docutils literal notranslate"><span class="pre">Tensor</span></code></a><ul>
+<li><a class="reference internal" href="#tract.tensor.Tensor.from_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.from_numpy()</span></code></a></li>
 <li><a class="reference internal" href="#tract.tensor.Tensor.to_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.to_numpy()</span></code></a></li>
 <li><a class="reference internal" href="#tract.tensor.Tensor.into_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.into_numpy()</span></code></a></li>
 </ul>

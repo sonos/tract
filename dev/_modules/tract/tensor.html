@@ -364,8 +364,18 @@
         <span class="n">shape</span> <span class="o">=</span> <span class="p">[</span> <span class="nb">int</span><span class="p">(</span><span class="n">shape</span><span class="p">[</span><span class="n">ix</span><span class="p">])</span> <span class="k">for</span> <span class="n">ix</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">rank</span><span class="p">)</span> <span class="p">]</span>
         <span class="k">return</span> <span class="p">(</span><span class="n">DatumType</span><span class="p">(</span><span class="n">dt</span><span class="o">.</span><span class="n">value</span><span class="p">),</span> <span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="p">)</span>
 
+<div class="viewcode-block" id="Tensor.from_numpy">
+<a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.from_numpy">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">from_numpy</span><span class="p">(</span><span class="n">array</span><span class="p">:</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Tensor"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Builds a tensor from a numpy array, preserving its rank.</span>
+
+<span class="sd">        `numpy.ascontiguousarray` promotes 0-d arrays to rank 1, so the original rank is</span>
+<span class="sd">        restored afterwards: a scalar input must stay a scalar to match a rank-0 fact.</span>
+<span class="sd">        """</span>
+        <span class="n">rank</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">ndim</span>
         <span class="n">array</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ascontiguousarray</span><span class="p">(</span><span class="n">array</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">rank</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>
+            <span class="n">array</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">reshape</span><span class="p">(())</span>
 
         <span class="n">data</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">__array_interface__</span><span class="p">[</span><span class="s1">'data'</span><span class="p">][</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">data</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
@@ -376,7 +386,8 @@
             <span class="n">shape</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span> <span class="o">=</span> <span class="n">array</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="n">ix</span><span class="p">]</span>
         <span class="n">dt</span> <span class="o">=</span> <span class="n">dt_numpy_to_tract</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">dtype</span><span class="p">)</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_from_bytes</span><span class="p">(</span><span class="n">dt</span><span class="p">,</span> <span class="n">c_size_t</span><span class="p">(</span><span class="n">array</span><span class="o">.</span><span class="n">ndim</span><span class="p">),</span> <span class="n">shape</span><span class="p">,</span> <span class="n">data</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
-        <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">ptr</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">ptr</span><span class="p">)</span></div>
+
 
 <div class="viewcode-block" id="Tensor.to_numpy">
 <a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.to_numpy">[docs]</a>
