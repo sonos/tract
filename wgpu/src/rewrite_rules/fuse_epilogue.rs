@@ -8,6 +8,7 @@ use tract_gpu::rule_ensure;
 use crate::kernels::shaders::{BINARY_OPS, ChainStep, ELEMENT_WISE_OPS};
 use crate::ops::chain::WgpuElementWiseChain;
 use crate::ops::conv::WgpuConv;
+use crate::ops::deconv::WgpuDeconv;
 use crate::ops::matmul::WgpuGemm;
 
 /// Epilogue operands ride in one `vec4` of offsets.
@@ -47,6 +48,22 @@ fn steps_of(node: &TypedNode, slot: usize, rhs: usize) -> Option<(Vec<ChainStep>
 }
 
 /// Folds the elementwise ops that follow a convolution into it, the same way.
+/// Folds the elementwise ops that follow a transposed convolution into it,
+/// the same way: on a segmenter that is the mask's bias and sigmoid.
+pub fn fuse_deconv_epilogue(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    node_name: &str,
+    op: &WgpuDeconv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let channels = op.op.pool_spec.output_channels.to_dim();
+    absorb(model, node, node_name, channels, &op.epilogue, |steps| WgpuDeconv {
+        op: op.op.clone(),
+        epilogue: steps,
+    })
+}
+
 pub fn fuse_conv_epilogue(
     _ctx: &(),
     model: &TypedModel,

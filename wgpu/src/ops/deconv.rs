@@ -1,5 +1,6 @@
 use crate::kernels::bin_ops::wgpu_bin_op;
 use crate::kernels::deconv::wgpu_deconv_dispatch;
+use crate::kernels::shaders::ChainStep;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Deconv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
@@ -20,7 +21,7 @@ pub fn wire_wgpu_deconv(
     let name = format!("{prefix}.deconv");
     let mut wire = target.wire_node(
         if need_bias { &name } else { &node.name },
-        WgpuDeconv { op: op.clone() },
+        WgpuDeconv { op: op.clone(), epilogue: vec![] },
         &inputs[0..2],
     )?[0];
     if need_bias {
@@ -41,9 +42,12 @@ pub fn wire_wgpu_deconv(
     Ok(tvec!(wire))
 }
 
+/// Inputs past the data and the weights belong to the epilogue, one per
+/// binary step, as for [`crate::ops::conv::WgpuConv`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WgpuDeconv {
     pub op: Deconv,
+    pub epilogue: Vec<ChainStep>,
 }
 
 impl Op for WgpuDeconv {
@@ -51,7 +55,11 @@ impl Op for WgpuDeconv {
         "WgpuConvTranspose".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
-        self.op.info()
+        let mut info = self.op.info()?;
+        if !self.epilogue.is_empty() {
+            info.push(format!("epilogue: {:?}", self.epilogue));
+        }
+        Ok(info)
     }
     op_as_typed_op!();
 }
@@ -73,7 +81,14 @@ impl EvalOp for WgpuDeconv {
             &output_shape,
         )?;
         if output.len() > 0 {
-            wgpu_deconv_dispatch(&self.op, inputs[0], inputs[1], &output)?;
+            wgpu_deconv_dispatch(
+                &self.op,
+                &self.epilogue,
+                inputs[0],
+                inputs[1],
+                &inputs[2..],
+                &output,
+            )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
@@ -84,10 +99,8 @@ impl TypedOp for WgpuDeconv {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let zero = facts[0].datum_type.scalar_fact();
-            let mut facts: TVec<&TypedFact> = facts.into();
-            if facts.len() == 2 {
-                facts.push(&zero);
-            }
+            let mut facts: TVec<&TypedFact> = facts[..2].into();
+            facts.push(&zero);
             self.op.output_facts(&facts)
         })
         .with_context(|| "Error while computing facts for WgpuDeconv")

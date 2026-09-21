@@ -1773,8 +1773,27 @@ fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }
 
 fn deconv_wgsl(dt: ShaderDtype) -> String {
+    deconv_module(dt, &[], 0)
+}
+
+/// The gather-based transposed convolution, with an epilogue as
+/// [`conv_module`] takes one.
+pub fn deconv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
     let mut s = preamble(dt);
     // Gather-based conv_transpose (ORT style). WGSL has no float atomics.
     s.push_str(&format!(
@@ -1814,13 +1833,16 @@ struct Params {{
     out_sc: i32,
     out_sh: i32,
     out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
 }}
 
 @group(0) @binding(0) var<storage, read> inp: array<{t}>;
 @group(0) @binding(1) var<storage, read> wgt: array<{t}>;
-@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding(3) var<uniform> params: Params;
-
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
 @compute @workgroup_size({WORKGROUP})
 fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i = gid.x;
@@ -1866,7 +1888,9 @@ fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
         + i32(oh) * params.out_sh
         + i32(ow) * params.out_sw
     );
-    outp[out_i] = {t}(acc);
+    var v = {t}(acc);
+{epilogue}
+    outp[out_i] = v;
 }}
 "#
     ));

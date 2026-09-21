@@ -3,7 +3,8 @@ use tract_core::ops::cnn::{Deconv, KernelFormat};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, pack_u32s,
+    ChainStep, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype,
+    deconv_module, keys_for, pack_u32s, program_key,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -18,19 +19,35 @@ fn as_u32_i32(v: i32) -> u32 {
 
 pub fn wgpu_deconv_dispatch(
     op: &Deconv,
+    epilogue: &[ChainStep],
     input: &DeviceTensor,
     weights: &DeviceTensor,
+    extras: &[&DeviceTensor],
     output: &DeviceTensor,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
         q.retain_tensor(weights);
+        for t in extras {
+            q.retain_tensor(t);
+        }
         q.retain_tensor(output);
         let dt = ShaderDtype::from_datum(input.datum_type())?;
-        let pipeline = q.context().pipeline(PipelineKey {
-            module: ModuleKey { kind: ModuleKind::Deconv, dtype: dt },
-            entry: EntryPoint::typed("conv_transpose2d", dt),
-        })?;
+        let layout = LayoutKind::Chain(3 + extras.len() as u8);
+        let pipeline = if epilogue.is_empty() {
+            q.context().pipeline(PipelineKey {
+                module: ModuleKey { kind: ModuleKind::Deconv, dtype: dt },
+                entry: EntryPoint::typed("conv_transpose2d", dt),
+            })?
+        } else {
+            let key = program_key("deconv", dt, epilogue, extras.len());
+            q.context().chain_pipeline(
+                &key,
+                layout,
+                EntryPoint::typed("conv_transpose2d", dt),
+                || deconv_module(dt, epilogue, extras.len()),
+            )?
+        };
         let in_shape = op.pool_spec.data_format.shape(input.shape())?;
         let out_shape = op.pool_spec.data_format.shape(output.shape())?;
         ensure!(in_shape.hw_rank() == 2, "tract-wgpu conv_transpose is 2D only");
@@ -76,12 +93,12 @@ pub fn wgpu_deconv_dispatch(
         let w_sh = ws[2];
         let w_sw = ws[3];
 
-        let in_buf = get_wgpu_buffer(input);
-        let w_buf = get_wgpu_buffer(weights);
-        let out_buf = get_wgpu_buffer(output);
-        let bg =
-            q.context().bind_group(LayoutKind::Binary, &[in_buf, w_buf, out_buf], q.uniform())?;
-        let params = pack_u32s(&[
+        let mut buffers: Vec<&crate::context::WgpuBuffer> =
+            vec![get_wgpu_buffer(input), get_wgpu_buffer(weights)];
+        buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
+        buffers.push(get_wgpu_buffer(output));
+        let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
+        let mut params = pack_u32s(&[
             element_offset(input, 0) as u32,
             element_offset(weights, 0) as u32,
             element_offset(output, 0) as u32,
@@ -117,6 +134,16 @@ pub fn wgpu_deconv_dispatch(
             as_u32_i32(out_sh as i32),
             as_u32_i32(out_sw as i32),
         ]);
+        let mut tail = vec![0u32; 2];
+        let mut off_extra = [0u32; 4];
+        let mut mode_extra = [0u32; 4];
+        for (i, t) in extras.iter().enumerate() {
+            off_extra[i] = element_offset(t, 0) as u32;
+            mode_extra[i] = crate::kernels::matmul::epilogue_mode(t, co)?;
+        }
+        tail.extend_from_slice(&off_extra);
+        tail.extend_from_slice(&mode_extra);
+        params.extend_from_slice(&pack_u32s(&tail));
         let dyn_off = q.alloc_uniform(&params)?;
         q.dispatch("deconv", &pipeline, &bg, dyn_off, (n * co * oh * ow) as u64)
     })

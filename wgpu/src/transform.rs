@@ -84,6 +84,7 @@ impl ModelTransform for WgpuTransform {
         Rewriter::default()
             .with_rule_for("fuse_gemm_epilogue", crate::rewrite_rules::fuse_gemm_epilogue)
             .with_rule_for("fuse_conv_epilogue", crate::rewrite_rules::fuse_conv_epilogue)
+            .with_rule_for("fuse_deconv_epilogue", crate::rewrite_rules::fuse_deconv_epilogue)
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", crate::rewrite_rules::fuse_move_axis)
