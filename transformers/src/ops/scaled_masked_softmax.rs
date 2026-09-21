@@ -1,9 +1,11 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::axes::{AxesMapping, Axis};
 use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_nnef::tract_core::ops::change_axes::{AxisChangeConsequence, AxisOp, InOut};
 use tract_nnef::tract_core::ops::logic::Iff;
 use tract_nnef::tract_core::ops::math::{Add, Mul};
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxKind};
+use tract_nnef::tract_core::rule_if;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_scaled_masked_softmax);
@@ -212,6 +214,34 @@ impl TypedOp for ScaledMaskedSoftmax {
     /// is *deliberately disconnected* between input side and output side:
     /// its size is preserved but it is not "the same axis" — splitting it
     /// through a reshape would break softmax's normalisation semantics.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        // Only an axis inserted ahead of the softmax's own: the reduction stays
+        // last, the scale is a scalar, and nothing of the values moves. The
+        // other changes would have to answer for how the mask, which broadcasts
+        // right-aligned and may be shorter, follows the input's axes around.
+        let facts = model.node_input_facts(node.id)?;
+        let (rank, mask_rank) = (facts[0].rank(), facts[1].rank());
+        rule_if!(rank >= 1);
+        rule_if!(matches!(change, AxisOp::Add(axis) if *axis <= rank - 1));
+        let mut wire_changes =
+            tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone()));
+        // A mask as long as the input answers to its axes one for one; a shorter
+        // one keeps its shape and goes on broadcasting onto the trailing axes.
+        if mask_rank == rank {
+            wire_changes.push((InOut::In(1), change.clone()));
+        }
+        Ok(Some(AxisChangeConsequence {
+            wire_changes,
+            substitute_op: Some(Box::new(self.clone())),
+        }))
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],

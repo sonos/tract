@@ -1257,6 +1257,18 @@ impl TypedOp for Conv {
         }
         let full_input_shape = model.outlet_fact(node.inputs[0])?.shape.to_tvec();
         let shape = self.pool_spec.data_format.shape(full_input_shape.clone())?;
+        // an export collapsed to one stream carries no batch axis, and hosting
+        // one is the inverse of disposing of it: the format gains its n.
+        if shape.n_axis().is_none() && change == &AxisOp::Add(0) {
+            let op = Conv { pool_spec: self.pool_spec.with_n_axis(), ..self.clone() };
+            return Ok(Some(AxisChangeConsequence {
+                substitute_op: Some(Box::new(op)),
+                wire_changes: tvec!(
+                    (InOut::In(0), change.clone()),
+                    (InOut::Out(0), change.clone())
+                ),
+            }));
+        }
         // remove n
         if let Some(n) = shape.n_axis() {
             assert_eq!(n, 0);

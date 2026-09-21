@@ -77,6 +77,10 @@ impl PoolSpec {
         PoolSpec { data_format: self.data_format.dispose_n_axis(), ..self.clone() }
     }
 
+    pub fn with_n_axis(&self) -> PoolSpec {
+        PoolSpec { data_format: self.data_format.with_n(), ..self.clone() }
+    }
+
     pub fn compute_geo(&self, input_full_shape: &[TDim]) -> TractResult<PoolGeometry> {
         let output_shape = self.output_shape(input_full_shape)?;
         let input_shape: SymDataShape = self.data_format.shape(input_full_shape.into())?;
