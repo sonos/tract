@@ -410,6 +410,59 @@ macro_rules! impl_eval {
                     let iy_len = input_shape.hw_dims()[1];
                     let kx_len = op.pool_spec.kernel_shape[0];
                     let ky_len = op.pool_spec.kernel_shape[1];
+                    if !op.pool_spec.data_format.c_is_last()
+                        && iy_len >= 16
+                        && let Some(temp) = n_o_hkwk_hw.as_slice()
+                        && let Some(output) = output.as_slice_mut()
+                    {
+                        for n in 0..n {
+                            for o in 0..output_c {
+                                let output_base = n * *output_shape.n_stride().unwrap_or(&0)
+                                    + o * output_c_stride as usize;
+                                let temp_base = n * temp_n_stride as usize + o * temp_o_stride as usize;
+                                for kx in 0..kx_len {
+                                    let x_base = (kx * x_dil) as isize - x_pad;
+                                    let ix_start = ((-x_base).max(0) as usize).div_ceil(x_stride);
+                                    let ix_end = ((ox_len as isize - x_base).max(0) as usize).div_ceil(x_stride).min(ix_len);
+                                    for ky in 0..ky_len {
+                                        let y_base = (ky * y_dil) as isize - y_pad;
+                                        let iy_start = ((-y_base).max(0) as usize).div_ceil(y_stride);
+                                        let iy_end = ((oy_len as isize - y_base).max(0) as usize).div_ceil(y_stride).min(iy_len);
+                                        if iy_start >= iy_end {
+                                            continue;
+                                        }
+                                        for ix in ix_start..ix_end {
+                                            let ox = (x_base + (ix * x_stride) as isize) as usize;
+                                            let oy = (y_base + (iy_start * y_stride) as isize) as usize;
+                                            let input_start = temp_base + (kx * ky_len + ky) * temp_k_stride as usize
+                                                + ix * iy_len + iy_start;
+                                            let output_start = output_base + ox * output_x_stride as usize + oy;
+                                            let input = &temp[input_start..input_start + iy_end - iy_start];
+                                            let output = &mut output[output_start..output_start + (input.len() - 1) * y_stride + 1];
+                                            if y_stride == 1 {
+                                                for (output, &input) in output.iter_mut().zip(input) {
+                                                    *output = add(*output, input);
+                                                }
+                                            } else {
+                                                let blocks = (input.len() - 1) / 8;
+                                                let (input_head, input_tail) = input.split_at(blocks * 8);
+                                                let (output_head, output_tail) = output.split_at_mut(blocks * 8 * y_stride);
+                                                for (output, input) in output_head.chunks_exact_mut(8 * y_stride).zip(input_head.chunks_exact(8)) {
+                                                    for i in 0..8 {
+                                                        output[i * y_stride] = add(output[i * y_stride], input[i]);
+                                                    }
+                                                }
+                                                for (output, &input) in output_tail.iter_mut().step_by(y_stride).zip(input_tail) {
+                                                    *output = add(*output, input);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
                     unsafe {
                         for n in 0..n {
                             let output = output.as_mut_ptr().add(n * *output_shape.n_stride().unwrap_or(&0));
