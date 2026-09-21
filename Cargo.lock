@@ -5251,8 +5251,10 @@ dependencies = [
  "derive-new",
  "downcast-rs",
  "dyn-hash",
+ "log",
  "num-traits",
  "tract-core",
+ "tract-metal",
  "tract-pulse-opl",
  "tract-transformers",
 ]
