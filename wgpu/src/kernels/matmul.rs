@@ -10,9 +10,9 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::RepackKey;
 use crate::kernels::shaders::{
-    ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, ModuleKey, ModuleKind, PipelineKey,
-    ShaderDtype, keys_for, matmul_blocked_module, matmul_module, pack_u32s, rpad8_dims,
-    rpad8_strides,
+    ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, MATMUL_SPLITK_MAX_M, MATMUL_SPLITK_WG,
+    ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, matmul_blocked_module,
+    matmul_module, matmul_splitk_module, pack_u32s, rpad8_dims, rpad8_strides,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -208,12 +208,22 @@ pub fn wgpu_matmul_dispatch(
 
         if blocked_applies(prefix, m, k, n, a, b, output, t) {
             let packed = repacked_b(q, b, k, n)?;
-            let pipeline = q.context().chain_pipeline(
-                ("matmul_blocked", dt, epilogue, extras.len()),
-                layout,
-                EntryPoint::typed("matmul_blocked", dt),
-                || matmul_blocked_module(dt, epilogue, extras.len()),
-            )?;
+            let split_k = m < MATMUL_SPLITK_MAX_M;
+            let pipeline = if split_k {
+                q.context().chain_pipeline(
+                    ("matmul_splitk", dt, epilogue, extras.len()),
+                    layout,
+                    EntryPoint::typed("matmul_splitk", dt),
+                    || matmul_splitk_module(dt, epilogue, extras.len()),
+                )?
+            } else {
+                q.context().chain_pipeline(
+                    ("matmul_blocked", dt, epilogue, extras.len()),
+                    layout,
+                    EntryPoint::typed("matmul_blocked", dt),
+                    || matmul_blocked_module(dt, epilogue, extras.len()),
+                )?
+            };
             q.retain_tensor(&packed);
             let mut buffers: Vec<&crate::context::WgpuBuffer> =
                 vec![get_wgpu_buffer(a), get_wgpu_buffer(&packed)];
@@ -239,7 +249,12 @@ pub fn wgpu_matmul_dispatch(
             vals.extend_from_slice(&off_extra);
             vals.extend_from_slice(&mode_extra);
             let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
-            let groups = ((m / 4) * (n / 4)).div_ceil(MATMUL_BLOCKED_WG as usize) as u32;
+            let tiles = (m / 4) * (n / 4);
+            let groups = if split_k {
+                (tiles * 4).div_ceil(MATMUL_SPLITK_WG as usize)
+            } else {
+                tiles.div_ceil(MATMUL_BLOCKED_WG as usize)
+            } as u32;
             return q.dispatch_grid("matmul_blocked", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
 
