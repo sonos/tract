@@ -230,35 +230,35 @@ zerofrom = "0.1.5"
 # building on an ubuntu runner must not pull tract-cuda in. The rest of the
 # facade's default set has to be named back, or every in-tree consumer loses
 # gzip, the ONNX parser, pulsification and the transformers extension.
-tract = { version = "=0.23.8", path = 'api/rs', default-features = false, features = [
+tract = { version = "0.23.9-pre", path = 'api/rs', default-features = false, features = [
   "flate2",
   "onnx",
   "pulse",
   "transformers",
 ] }
-tract-api = { version = "=0.23.8", path = 'api' }
-tract-cli = { version = "=0.23.8", path = 'cli' }
-tract-core = { version = "=0.23.8", path = 'core' }
-tract-cuda = { version = "=0.23.8", path = 'cuda', default-features = false }
-tract-data = { version = "=0.23.8", path = 'data' }
-tract-extra = { version = "=0.23.8", path = 'extra', default-features = false }
-tract-ffi = { version = "=0.23.8" }
-tract-gpu = { version = "=0.23.8", path = 'gpu' }
-tract-hir = { version = "=0.23.8", path = 'hir' }
-tract-libcli = { version = "=0.23.8", path = 'libcli', default-features = false }
-tract-linalg = { version = "=0.23.8", path = 'linalg' }
-tract-metal = { version = "=0.23.8", path = 'metal' }
-tract-nnef = { version = "=0.23.8", path = 'nnef', default-features = false }
-tract-nnef-resources = { version = "=0.23.8", path = 'nnef/nnef-resources' }
-tract-onnx = { version = "=0.23.8", path = 'onnx', default-features = false }
-tract-onnx-opl = { version = "=0.23.8", path = 'onnx-opl' }
-tract-proxy = { version = "=0.23.8" }
-tract-proxy-sys = { version = "=0.23.8", path = 'api/proxy/sys' }
-tract-pulse = { version = "=0.23.8", path = 'pulse' }
-tract-pulse-opl = { version = "=0.23.8", path = 'pulse-opl' }
-tract-tensorflow = { version = "=0.23.8", path = 'tensorflow' }
-tract-tflite = { version = "=0.23.8", path = 'tflite' }
-tract-transformers = { version = "=0.23.8", path = 'transformers' }
+tract-api = { version = "0.23.9-pre", path = 'api' }
+tract-cli = { version = "0.23.9-pre", path = 'cli' }
+tract-core = { version = "0.23.9-pre", path = 'core' }
+tract-cuda = { version = "0.23.9-pre", path = 'cuda', default-features = false }
+tract-data = { version = "0.23.9-pre", path = 'data' }
+tract-extra = { version = "0.23.9-pre", path = 'extra', default-features = false }
+tract-ffi = { version = "0.23.9-pre" }
+tract-gpu = { version = "0.23.9-pre", path = 'gpu' }
+tract-hir = { version = "0.23.9-pre", path = 'hir' }
+tract-libcli = { version = "0.23.9-pre", path = 'libcli', default-features = false }
+tract-linalg = { version = "0.23.9-pre", path = 'linalg' }
+tract-metal = { version = "0.23.9-pre", path = 'metal' }
+tract-nnef = { version = "0.23.9-pre", path = 'nnef', default-features = false }
+tract-nnef-resources = { version = "0.23.9-pre", path = 'nnef/nnef-resources' }
+tract-onnx = { version = "0.23.9-pre", path = 'onnx', default-features = false }
+tract-onnx-opl = { version = "0.23.9-pre", path = 'onnx-opl' }
+tract-proxy = { version = "0.23.9-pre" }
+tract-proxy-sys = { version = "0.23.9-pre", path = 'api/proxy/sys' }
+tract-pulse = { version = "0.23.9-pre", path = 'pulse' }
+tract-pulse-opl = { version = "0.23.9-pre", path = 'pulse-opl' }
+tract-tensorflow = { version = "0.23.9-pre", path = 'tensorflow' }
+tract-tflite = { version = "0.23.9-pre", path = 'tflite' }
+tract-transformers = { version = "0.23.9-pre", path = 'transformers' }
 tract-wgpu = { version = "0.23.8-pre", path = 'wgpu' }
 
 
