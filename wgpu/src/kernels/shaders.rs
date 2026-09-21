@@ -359,46 +359,11 @@ pub enum ChainStep {
 /// which inputs share the output's layout and can skip index arithmetic.
 /// How a chain operand is read: element for element with the output, one value
 /// splatted across the four a thread handles, or gathered through its strides.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ChainOperand {
     Contiguous,
     Splat,
     Gather,
-}
-
-pub fn chain_key(
-    dt: ShaderDtype,
-    steps: &[ChainStep],
-    contiguous: &[bool],
-    kinds: Option<&[ChainOperand]>,
-) -> String {
-    let mut key = format!("chain_{}", dt.suffix());
-    match kinds {
-        Some(kinds) => {
-            key.push_str("_v4");
-            for k in kinds {
-                key.push(match k {
-                    ChainOperand::Contiguous => 'c',
-                    ChainOperand::Splat => 's',
-                    ChainOperand::Gather => 'g',
-                });
-            }
-        }
-        None => {
-            for c in contiguous {
-                key.push(if *c { 'c' } else { 'b' });
-            }
-        }
-    }
-    for step in steps {
-        match step {
-            ChainStep::Unary(op) => key.push_str(&format!("_{op}")),
-            ChainStep::Binary { op, rhs, swapped } => {
-                key.push_str(&format!("_{op}{rhs}{}", if *swapped { "r" } else { "" }))
-            }
-        }
-    }
-    key
 }
 
 /// The chain over `vec4`s: a thread takes four values at a time, which is
@@ -1262,13 +1227,6 @@ impl DepthwiseShape {
 
     fn tile_w(&self) -> u32 {
         (DW_WG - 1) * self.stride_w + (self.kw - 1) * self.dil_w + 1
-    }
-
-    pub fn key(&self) -> String {
-        format!(
-            "{}x{}s{}x{}d{}x{}",
-            self.kh, self.kw, self.stride_h, self.stride_w, self.dil_h, self.dil_w
-        )
     }
 }
 
@@ -2153,20 +2111,6 @@ fn epilogue_body(steps: &[ChainStep], index: &str) -> String {
         }
     }
     s
-}
-
-/// Names a generated program by its kernel and fused epilogue.
-pub fn program_key(kind: &str, dt: ShaderDtype, steps: &[ChainStep], extras: usize) -> String {
-    let mut key = format!("{kind}_{}_{extras}", dt.suffix());
-    for step in steps {
-        match step {
-            ChainStep::Unary(op) => key.push_str(&format!("_{op}")),
-            ChainStep::Binary { op, rhs, swapped } => {
-                key.push_str(&format!("_{op}{rhs}{}", if *swapped { "r" } else { "" }))
-            }
-        }
-    }
-    key
 }
 
 fn matmul_wgsl(dt: ShaderDtype) -> String {

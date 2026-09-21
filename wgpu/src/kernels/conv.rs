@@ -5,7 +5,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::kernels::shaders::{
     CONV_PIXEL_WG, ChainStep, DepthwiseShape, EntryPoint, LayoutKind, ModuleKey, ModuleKind,
     PipelineKey, ShaderDtype, conv_depthwise_module, conv_module, conv_pixel_module, keys_for,
-    pack_u32s, program_key,
+    pack_u32s,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -54,10 +54,9 @@ fn dispatch_depthwise(
 ) -> TractResult<()> {
     let dt = ShaderDtype::from_datum(input.datum_type())?;
     let layout = LayoutKind::Chain(3 + extras.len() as u8);
-    let key = format!("convdw{}", shape.key());
-    let key = program_key(&key, dt, epilogue, extras.len());
+    let key = ("conv_dw", shape, dt, epilogue, extras.len());
     let pipeline =
-        q.context().chain_pipeline(&key, layout, EntryPoint::typed("conv_dw", dt), || {
+        q.context().chain_pipeline(key, layout, EntryPoint::typed("conv_dw", dt), || {
             conv_depthwise_module(dt, shape, epilogue, extras.len())
         })?;
 
@@ -168,7 +167,7 @@ pub fn wgpu_conv_dispatch(
             && (n * oh * ow).div_ceil(CONV_PIXEL_WG as usize) <= 65535;
         let pipeline = if per_pixel {
             q.context().chain_pipeline(
-                &program_key("conv_pixel", dt, epilogue, extras.len()),
+                ("conv_pixel", dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("conv2d_pixel", dt),
                 || conv_pixel_module(dt, epilogue, extras.len()),
@@ -179,8 +178,8 @@ pub fn wgpu_conv_dispatch(
                 entry: EntryPoint::typed("conv2d", dt),
             })?
         } else {
-            let key = program_key("conv", dt, epilogue, extras.len());
-            q.context().chain_pipeline(&key, layout, EntryPoint::typed("conv2d", dt), || {
+            let key = ("conv", dt, epilogue, extras.len());
+            q.context().chain_pipeline(key, layout, EntryPoint::typed("conv2d", dt), || {
                 conv_module(dt, epilogue, extras.len())
             })?
         };

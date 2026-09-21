@@ -11,7 +11,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::context::RepackKey;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for,
-    matmul_blocked_module, matmul_module, pack_u32s, program_key, rpad8_dims, rpad8_strides,
+    matmul_blocked_module, matmul_module, pack_u32s, rpad8_dims, rpad8_strides,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -176,9 +176,12 @@ pub fn wgpu_matmul_dispatch(
                 entry,
             })?
         } else {
-            let key = program_key("matmul", dt, epilogue, extras.len());
-            q.context()
-                .chain_pipeline(&key, layout, entry, || matmul_module(dt, epilogue, extras.len()))?
+            q.context().chain_pipeline(
+                ("matmul", dt, epilogue, extras.len()),
+                layout,
+                entry,
+                || matmul_module(dt, epilogue, extras.len()),
+            )?
         };
         let out_shape = output.shape();
         ensure!(
@@ -191,7 +194,7 @@ pub fn wgpu_matmul_dispatch(
         if blocked_applies(prefix, m, k, n, a, b, output, t) {
             let packed = repacked_b(q, b, k, n)?;
             let pipeline = q.context().chain_pipeline(
-                &program_key("matmul_blocked", dt, epilogue, extras.len()),
+                ("matmul_blocked", dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("matmul_blocked", dt),
                 || matmul_blocked_module(dt, epilogue, extras.len()),
