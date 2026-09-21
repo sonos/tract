@@ -36,6 +36,52 @@ pub fn is_supported(mini_op: &dyn BinMiniOp, dt: DatumType) -> bool {
         && (dt.is_number() || dt.is::<bool>())
 }
 
+/// The two operands and the output of one binary, as the kernel addresses them:
+/// a shape and a stride per axis, an operand broadcast along an axis holding a
+/// stride of zero there.
+struct BinaryGeometry {
+    lhs_shape: TVec<usize>,
+    rhs_shape: TVec<usize>,
+    out_shape: TVec<usize>,
+    lhs_strides: TVec<isize>,
+    rhs_strides: TVec<isize>,
+    out_strides: TVec<isize>,
+}
+
+impl BinaryGeometry {
+    /// Merges `axis` with the one after it, if the three tensors all walk the
+    /// pair as one run: either the outer stride is the inner one times its
+    /// extent, or the axis is broadcast on both halves and stays broadcast.
+    /// Answers whether it did.
+    fn merge(&mut self, axis: usize) -> bool {
+        let inner = self.out_shape[axis + 1];
+        let runs = |strides: &TVec<isize>| {
+            strides[axis] == strides[axis + 1] * inner as isize
+                || (strides[axis] == 0 && strides[axis + 1] == 0)
+        };
+        if !runs(&self.lhs_strides) || !runs(&self.rhs_strides) || !runs(&self.out_strides) {
+            return false;
+        }
+        for (shape, strides) in [
+            (&mut self.lhs_shape, &mut self.lhs_strides),
+            (&mut self.rhs_shape, &mut self.rhs_strides),
+            (&mut self.out_shape, &mut self.out_strides),
+        ] {
+            // An operand broadcast along both halves is broadcast along the
+            // merged axis, and says so with an extent of one.
+            shape[axis] = if strides[axis] == 0 && strides[axis + 1] == 0 {
+                1
+            } else {
+                shape[axis] * shape[axis + 1]
+            };
+            shape.remove(axis + 1);
+            strides[axis] = strides[axis + 1];
+            strides.remove(axis + 1);
+        }
+        true
+    }
+}
+
 pub fn dispatch_eval(
     stream: &TractCudaStream,
     mini_op: &dyn BinMiniOp,
@@ -45,7 +91,42 @@ pub fn dispatch_eval(
 ) -> TractResult<()> {
     let rank = lhs.rank();
     ensure!(rank == rhs.rank());
-    ensure!(rank <= BINARY_MAX_RANK);
+
+    let base_l_shape = lhs.shape();
+    let base_r_shape = rhs.shape();
+    let mut geo = BinaryGeometry {
+        lhs_shape: base_l_shape.into(),
+        rhs_shape: base_r_shape.into(),
+        out_shape: output.shape().into(),
+        lhs_strides: lhs.strides().into(),
+        rhs_strides: rhs.strides().into(),
+        out_strides: output.strides().into(),
+    };
+    for i in 0..rank {
+        // A tensor of extent one against a longer operand is read at the same
+        // place for every index of that axis.
+        if base_l_shape[i] == 1 && base_r_shape[i] != 1 {
+            geo.lhs_strides[i] = 0;
+        }
+        if base_r_shape[i] == 1 && base_l_shape[i] != 1 {
+            geo.rhs_strides[i] = 0;
+        }
+    }
+    // The kernel addresses BINARY_MAX_RANK axes. A deeper shape reaches it by
+    // merging the adjacent axes it can, which is exact and costs nothing: the
+    // pair is one axis of the same elements in the same order.
+    while geo.out_shape.len() > BINARY_MAX_RANK {
+        let merged = (0..geo.out_shape.len() - 1).find(|&axis| geo.merge(axis));
+        ensure!(
+            merged.is_some(),
+            "Binary of rank {} has no two adjacent axes to merge into {BINARY_MAX_RANK}: \
+             lhs {:?} rhs {:?}",
+            geo.out_shape.len(),
+            lhs.shape(),
+            rhs.shape(),
+        );
+    }
+    let rank = geo.out_shape.len();
 
     let rank_offset = BINARY_MAX_RANK - rank;
     let mut lhs_shape = [1usize; BINARY_MAX_RANK];
@@ -54,23 +135,14 @@ pub fn dispatch_eval(
     let mut lhs_strides = [0isize; BINARY_MAX_RANK];
     let mut rhs_strides = [0isize; BINARY_MAX_RANK];
     let mut out_strides = [0isize; BINARY_MAX_RANK];
-
-    let base_l_shape = lhs.shape();
-    let base_r_shape = rhs.shape();
-    let base_o_shape = output.shape();
-    let base_l_strides = lhs.strides();
-    let base_r_strides = rhs.strides();
-    let base_o_strides = output.strides();
     for i in 0..rank {
         let dst = rank_offset + i;
-        lhs_shape[dst] = base_l_shape[i];
-        rhs_shape[dst] = base_r_shape[i];
-        out_shape[dst] = base_o_shape[i];
-        lhs_strides[dst] =
-            if base_l_shape[i] == 1 && base_r_shape[i] != 1 { 0 } else { base_l_strides[i] };
-        rhs_strides[dst] =
-            if base_r_shape[i] == 1 && base_l_shape[i] != 1 { 0 } else { base_r_strides[i] };
-        out_strides[dst] = base_o_strides[i];
+        lhs_shape[dst] = geo.lhs_shape[i];
+        rhs_shape[dst] = geo.rhs_shape[i];
+        out_shape[dst] = geo.out_shape[i];
+        lhs_strides[dst] = geo.lhs_strides[i];
+        rhs_strides[dst] = geo.rhs_strides[i];
+        out_strides[dst] = geo.out_strides[i];
     }
 
     let total_elems: usize = out_shape.iter().product();
