@@ -46,14 +46,14 @@ pub fn wgpu_resize_2d_dispatch(
         let bilinear = rows.2 == 2 && cols.2 == 2 && grid.iter().all(|&g| g <= 65535);
         let pipeline = if bilinear {
             q.context().chain_pipeline(
-                &format!("resize_2d_bilinear_{}", dt.suffix()),
+                ("resize_2d_bilinear", dt),
                 layout,
                 EntryPoint::typed("resize_2d_bilinear", dt),
                 || resize_2d_bilinear_module(dt),
             )?
         } else {
             q.context().chain_pipeline(
-                &format!("resize_2d_{}", dt.suffix()),
+                ("resize_2d", dt),
                 layout,
                 EntryPoint::typed("resize_2d", dt),
                 || resize_2d_module(dt),

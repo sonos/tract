@@ -122,12 +122,52 @@ struct WgpuContextInner {
     queue: wgpu::Queue,
     shader_f16: bool,
     modules: RwLock<HashMap<ModuleKey, wgpu::ShaderModule>>,
-    pipelines: RwLock<HashMap<PipelineKey, (wgpu::ComputePipeline, u32)>>,
-    chain_pipelines: RwLock<HashMap<String, (wgpu::ComputePipeline, u32)>>,
+    pipelines: RwLock<HashMap<PipelineKey, (Arc<wgpu::ComputePipeline>, u32)>>,
+    /// Keyed by [`ProgramKey`], the pair of hashes of whatever names a
+    /// generated program: a frame looks these up once per dispatch, and
+    /// formatting a string for each of them was a measurable share of the
+    /// host time under wasm.
+    chain_pipelines: RwLock<HashMap<ProgramKey, (Arc<wgpu::ComputePipeline>, u32)>>,
     layouts: RwLock<HashMap<LayoutKind, (wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
-    bind_groups: Mutex<HashMap<BindGroupKey, (wgpu::BindGroup, u32)>>,
+    bind_groups: Mutex<HashMap<BindGroupKey, (Arc<wgpu::BindGroup>, u32)>>,
     staging: Mutex<Option<wgpu::Buffer>>,
     next_gpu_id: std::sync::atomic::AtomicU32,
+}
+
+/// The buffers one pool position has been handed, oldest first.
+type Slot = Vec<Arc<WgpuBuffer>>;
+
+/// What a generated program is keyed on: two independent 64-bit hashes of
+/// the values that name it (kernel, dtype, epilogue steps, flags), so the
+/// lookup costs a hash rather than a formatted string, and a collision would
+/// need both to agree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProgramKey(u64, u64);
+
+impl ProgramKey {
+    pub fn of(key: &impl std::hash::Hash) -> Self {
+        use std::hash::Hasher;
+        let mut sip = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut sip);
+        let mut fnv = Fnv1a(0xcbf2_9ce4_8422_2325);
+        key.hash(&mut fnv);
+        ProgramKey(sip.finish(), fnv.finish())
+    }
+}
+
+struct Fnv1a(u64);
+
+impl std::hash::Hasher for Fnv1a {
+    fn finish(&self) -> u64 {
+        self.0
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        for b in bytes {
+            self.0 ^= *b as u64;
+            self.0 = self.0.wrapping_mul(0x0100_0000_01b3);
+        }
+    }
 }
 
 /// Identity of a bind group. Buffer ids are stable for pooled slots, so a
@@ -314,7 +354,10 @@ impl WgpuContext {
         self.inner.next_gpu_id.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     }
 
-    pub fn pipeline(&self, key: PipelineKey) -> TractResult<wgpu::ComputePipeline> {
+    /// Handles come out of the caches behind an `Arc`: on the web backend a
+    /// `wgpu` handle clone is two calls into JavaScript, and a frame clones
+    /// each dispatch's pipeline and bind group several times over.
+    pub fn pipeline(&self, key: PipelineKey) -> TractResult<Arc<wgpu::ComputePipeline>> {
         {
             let cache = self.inner.pipelines.read().map_err(|e| anyhow!("{e}"))?;
             if let Some((p, id)) = cache.get(&key) {
@@ -342,6 +385,7 @@ impl WgpuContext {
                 cache: None,
             });
         LAST_PIPE_ID.with(|c| c.set(id));
+        let pipeline = Arc::new(pipeline);
         cache.insert(key, (pipeline.clone(), id));
         Ok(pipeline)
     }
@@ -350,20 +394,21 @@ impl WgpuContext {
     /// `source` is only called on a miss.
     pub fn chain_pipeline(
         &self,
-        key: &str,
+        key: impl std::hash::Hash,
         layout: LayoutKind,
         entry: EntryPoint,
         source: impl FnOnce() -> String,
-    ) -> TractResult<wgpu::ComputePipeline> {
+    ) -> TractResult<Arc<wgpu::ComputePipeline>> {
+        let key = ProgramKey::of(&key);
         {
             let cache = self.inner.chain_pipelines.read().map_err(|e| anyhow!("{e}"))?;
-            if let Some((p, id)) = cache.get(key) {
+            if let Some((p, id)) = cache.get(&key) {
                 LAST_PIPE_ID.with(|c| c.set(*id));
                 return Ok(p.clone());
             }
         }
         let mut cache = self.inner.chain_pipelines.write().map_err(|e| anyhow!("{e}"))?;
-        if let Some((p, id)) = cache.get(key) {
+        if let Some((p, id)) = cache.get(&key) {
             LAST_PIPE_ID.with(|c| c.set(*id));
             return Ok(p.clone());
         }
@@ -384,7 +429,8 @@ impl WgpuContext {
                 cache: None,
             });
         LAST_PIPE_ID.with(|c| c.set(id));
-        cache.insert(key.to_string(), (pipeline.clone(), id));
+        let pipeline = Arc::new(pipeline);
+        cache.insert(key, (pipeline.clone(), id));
         Ok(pipeline)
     }
 
@@ -393,7 +439,7 @@ impl WgpuContext {
         kind: LayoutKind,
         buffers: &[&WgpuBuffer],
         uniform: &wgpu::Buffer,
-    ) -> TractResult<wgpu::BindGroup> {
+    ) -> TractResult<Arc<wgpu::BindGroup>> {
         ensure!(kind != LayoutKind::Ingest, "Ingest layout binds a texture; use bind_group_ingest");
         ensure!(buffers.len() <= 8, "bind group has {} buffers, max 8", buffers.len());
         let mut ids = [0u64; 8];
@@ -428,6 +474,7 @@ impl WgpuContext {
         });
         LAST_BG_ID.with(|c| c.set(id));
         let mut cache = self.inner.bind_groups.lock().map_err(|e| anyhow!("{e}"))?;
+        let bg = Arc::new(bg);
         cache.insert(key, (bg.clone(), id));
         Ok(bg)
     }
@@ -438,7 +485,7 @@ impl WgpuContext {
         input: &wgpu::Buffer,
         view: &wgpu::TextureView,
         uniform: &wgpu::Buffer,
-    ) -> TractResult<wgpu::BindGroup> {
+    ) -> TractResult<Arc<wgpu::BindGroup>> {
         let (bgl, _) = self.layout(LayoutKind::Export)?;
         let entries = [
             wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
@@ -448,11 +495,11 @@ impl WgpuContext {
         let id = self.next_gpu_id();
         let label = format!("tb{id}");
         LAST_BG_ID.with(|c| c.set(id));
-        Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        Ok(Arc::new(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&label),
             layout: &bgl,
             entries: &entries,
-        }))
+        })))
     }
 
     pub fn bind_group_ingest(
@@ -460,7 +507,7 @@ impl WgpuContext {
         view: &wgpu::TextureView,
         output: &wgpu::Buffer,
         uniform: &wgpu::Buffer,
-    ) -> TractResult<wgpu::BindGroup> {
+    ) -> TractResult<Arc<wgpu::BindGroup>> {
         let (bgl, _) = self.layout(LayoutKind::Ingest)?;
         let entries = [
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
@@ -470,11 +517,11 @@ impl WgpuContext {
         let id = self.next_gpu_id();
         let label = format!("tb{id}");
         LAST_BG_ID.with(|c| c.set(id));
-        Ok(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        Ok(Arc::new(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some(&label),
             layout: &bgl,
             entries: &entries,
-        }))
+        })))
     }
 
     pub fn create_storage_buffer(&self, bytes: &[u8]) -> wgpu::Buffer {
@@ -738,8 +785,8 @@ impl DeviceContext for WgpuContext {
 
 struct Dispatch {
     label: &'static str,
-    pipeline: wgpu::ComputePipeline,
-    bind_group: wgpu::BindGroup,
+    pipeline: Arc<wgpu::ComputePipeline>,
+    bind_group: Arc<wgpu::BindGroup>,
     #[allow(dead_code)]
     pipe_id: u32,
     #[allow(dead_code)]
@@ -766,7 +813,10 @@ pub struct WgpuQueue {
     /// group built for it last frame still matches. Both maps belong to the
     /// thread that owns the frame: a buffer must not be handed to another
     /// thread while a dispatch this one recorded still reads it.
-    buffer_slots: RefCell<HashMap<(u64, u32), Arc<WgpuBuffer>>>,
+    /// Every buffer a position has ever been handed, oldest first: with a
+    /// frame still in flight the position's last buffer is alive, and the one
+    /// before it is what keeps the bind groups keyed on it from being rebuilt.
+    buffer_slots: RefCell<HashMap<(u64, u32), Slot>>,
     /// The blocked matmul's weights, transposed once. Keyed by everything the
     /// packing depends on, and only ever by an unpooled buffer, whose id no
     /// later tensor can take.
@@ -940,8 +990,11 @@ impl WgpuQueue {
     }
 
     /// A storage buffer of `size` bytes for this position in the frame's
-    /// allocation sequence. Reuses the buffer that position held last frame,
-    /// unless it is still alive.
+    /// allocation sequence. Reuses a buffer that position held before, the
+    /// oldest one nothing holds any more; a position whose buffers are all
+    /// alive — the previous frame not yet submitted — gets one more, and from
+    /// then on alternates between them, so every buffer id the position ever
+    /// binds is a stable one.
     pub fn alloc_storage(&self, size: u64) -> Arc<WgpuBuffer> {
         let size = size.max(4).next_multiple_of(4);
         let seq = {
@@ -952,16 +1005,15 @@ impl WgpuQueue {
             seq
         };
         let mut slots = self.buffer_slots.borrow_mut();
-        if let Some(held) = slots.get(&(size, seq))
-            && Arc::strong_count(held) == 1
-        {
+        let held = slots.entry((size, seq)).or_default();
+        if let Some(free) = held.iter().find(|b| Arc::strong_count(b) == 1) {
             bump(2);
-            return held.clone();
+            return free.clone();
         }
         let fresh =
             Arc::new(self.context.wrap_pooled_storage(self.context.create_empty_storage(size)));
         bump(3);
-        slots.insert((size, seq), fresh.clone());
+        held.push(fresh.clone());
         fresh
     }
 
@@ -1030,8 +1082,8 @@ impl WgpuQueue {
     pub fn dispatch(
         &self,
         label: &'static str,
-        pipeline: &wgpu::ComputePipeline,
-        bind_group: &wgpu::BindGroup,
+        pipeline: &Arc<wgpu::ComputePipeline>,
+        bind_group: &Arc<wgpu::BindGroup>,
         dynamic_offset: u32,
         n_elements: u64,
     ) -> TractResult<()> {
@@ -1048,8 +1100,8 @@ impl WgpuQueue {
     pub fn dispatch_grid(
         &self,
         label: &'static str,
-        pipeline: &wgpu::ComputePipeline,
-        bind_group: &wgpu::BindGroup,
+        pipeline: &Arc<wgpu::ComputePipeline>,
+        bind_group: &Arc<wgpu::BindGroup>,
         dynamic_offset: u32,
         groups: [u32; 3],
     ) -> TractResult<()> {
@@ -1093,7 +1145,7 @@ impl WgpuQueue {
         });
         for d in &pending {
             pass.set_pipeline(&d.pipeline);
-            pass.set_bind_group(0, &d.bind_group, &[d.dynamic_offset]);
+            pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
             pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
         }
     }
@@ -1155,7 +1207,7 @@ impl WgpuQueue {
                 }),
             });
             pass.set_pipeline(&d.pipeline);
-            pass.set_bind_group(0, &d.bind_group, &[d.dynamic_offset]);
+            pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
             pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
         }
     }

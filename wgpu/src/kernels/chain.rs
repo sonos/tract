@@ -4,8 +4,8 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    ChainOperand, ChainStep, EntryPoint, LayoutKind, ShaderDtype, broadcast_strides, chain_key,
-    chain_wgsl, pack_u32s, pad8_u32,
+    ChainOperand, ChainStep, EntryPoint, LayoutKind, ShaderDtype, broadcast_strides, chain_wgsl,
+    pack_u32s, pad8_u32,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -58,9 +58,9 @@ pub fn wgpu_chain_dispatch(
                 .collect::<Option<Vec<_>>>()
         })
         .flatten();
-        let key = chain_key(dt, steps, &contiguous, kinds.as_deref());
+        let key = ("chain", dt, steps, &contiguous, kinds.as_deref());
         let pipeline =
-            q.context().chain_pipeline(&key, layout, EntryPoint::plain("chain"), || {
+            q.context().chain_pipeline(key, layout, EntryPoint::plain("chain"), || {
                 chain_wgsl(dt, steps, &contiguous, kinds.as_deref())
             })?;
 

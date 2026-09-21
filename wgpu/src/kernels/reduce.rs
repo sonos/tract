@@ -100,7 +100,7 @@ pub fn wgpu_sum_run_launch(
         ensure!(outer <= 65535, "sum run over {outer} outputs exceeds one grid dimension");
         let layout = LayoutKind::Unary;
         let pipeline = q.context().chain_pipeline(
-            &format!("sum_run_{}", dt.suffix()),
+            ("sum_run", dt),
             layout,
             EntryPoint::typed("sum_run", dt),
             || sum_run_module(dt),

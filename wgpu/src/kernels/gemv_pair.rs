@@ -57,16 +57,9 @@ pub fn wgpu_gemv_pair_dispatch(
         let bound = extras.len() + scale.is_some() as usize;
         ensure!(bound <= MAX_ACT_OPERANDS, "gemv_pair carries at most {MAX_ACT_OPERANDS} operands");
         let layout = LayoutKind::Chain(4 + bound as u8);
-        let key = format!(
-            "gemv_pair_{}_{}_{}_{}_{}",
-            dt.suffix(),
-            bound,
-            act.iter().map(|s| format!("{s:?}")).collect::<String>(),
-            post.iter().map(|s| format!("{s:?}")).collect::<String>(),
-            scale.is_some()
-        );
+        let key = ("gemv_pair", dt, bound, act, post, scale.is_some());
         let pipeline =
-            q.context().chain_pipeline(&key, layout, EntryPoint::typed("gemv_pair", dt), || {
+            q.context().chain_pipeline(key, layout, EntryPoint::typed("gemv_pair", dt), || {
                 gemv_pair_module(dt, act, post, bound, scale.is_some())
             })?;
         let mut buffers = vec![get_wgpu_buffer(x), get_wgpu_buffer(w1), get_wgpu_buffer(w2)];
