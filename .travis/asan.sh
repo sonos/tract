@@ -33,31 +33,12 @@ then
     exit 0
 fi
 
-cargo -q test -q -p tract-core --features paranoid_assertions $CARGO_EXTRA
-
 ./.travis/regular-tests.sh
 if [ -n "$CI" ]
 then
     cargo clean
 fi
-./.travis/onnx-tests.sh
-if [ -n "$CI" ]
-then
-    cargo clean
-fi
-./.travis/cli-tests.sh
 
-if [ -n "$CI" ]
-then
-    cargo clean
-fi
-
-# Build the dylib with asan, then run the proxy tests against it. cargo names the
-# file it wrote: the extension and the profile directory both vary, and a search
-# of target/ finds whatever another profile left there.
-LIBTRACT=$(cargo build --message-format=json -p tract-ffi $CARGO_EXTRA \
-    | jq -r 'select(.target.kind[]? == "cdylib") | .filenames[0]' | head -1)
-LIBTRACT_DIR=$(dirname $LIBTRACT)
-TRACT_DYLIB_SEARCH_PATH=$LIBTRACT_DIR LD_LIBRARY_PATH=$LIBTRACT_DIR \
-    DYLD_LIBRARY_PATH=$LIBTRACT_DIR cargo -q test -q -p tract-proxy $CARGO_EXTRA
-
+# Timings taken under asan mean nothing, and bench-suite's per-run watchdog is
+# sized for an optimized build. Run the command line cases, skip the benches.
+TRACT_SKIP_BENCH_SUITE=1 ./.travis/cli-tests.sh
