@@ -12,7 +12,8 @@
 
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::array::{Pad, PadMode, Slice};
-use tract_nnef::tract_core::ops::change_axes::{AxisOp, InOut};
+use tract_nnef::tract_core::ops::change_axes::{AxisChangeConsequence, AxisOp, InOut};
+use tract_nnef::tract_core::rule_if;
 
 /// Diagonal gather: `output[…, i, k] = input[…, i, offset + k − i]`
 ///
@@ -102,6 +103,23 @@ impl TypedOp for DiagGather {
         // The last axis is semantically a gather (not element-wise), but
         // for axis tracking purposes it maps input-last to output-last.
         AxesMapping::natural_for_rank(1, 1, inputs[0].rank())
+    }
+
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        // Only an axis inserted ahead of the two the gather reads: those stay
+        // last and the axes ahead of them are along for the ride. A change that
+        // moves or drops one would renumber the coordinate symbols the region of
+        // interest is written in, which is that machinery's question.
+        let rank = model.node_input_facts(node.id)?[0].rank();
+        rule_if!(rank >= 2);
+        rule_if!(matches!(change, AxisOp::Add(axis) if *axis <= rank - 2));
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(self.clone())), change)))
     }
 
     fn input_roi(

@@ -284,6 +284,22 @@ impl TypedOp for Stft {
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        // Only an axis inserted ahead of the one the frames are cut along, or in
+        // its place: the insertion then falls at the same index on both sides,
+        // the frame axis the op adds staying just behind the time axis wherever
+        // that lands.
+        rule_if!(matches!(change, AxisOp::Add(axis) if *axis <= self.axis));
+        let op = Stft { axis: self.axis + 1, ..self.clone() };
+        Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
+    }
+
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
