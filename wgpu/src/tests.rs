@@ -522,3 +522,56 @@ fn conv_3x3_per_pixel() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// The bias and activation after a transposed convolution fold into its
+/// kernel, and the result matches the CPU: the segmenter's last layer.
+#[test]
+fn deconv_bias_activation_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Deconv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    for (ci, co, h, w) in [(16usize, 1usize, 9usize, 16usize), (3, 2, 5, 7)] {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, ci, h, w]))?;
+        let k =
+            model.add_const("k", Tensor::from_shape(&[co, ci, 2, 2], &fill(3, ci * co * 4))?)?;
+        let bias = model.add_const("bias", Tensor::from_shape(&[co], &fill(4, co))?)?;
+        let deconv = Deconv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![2, 2],
+                padding: PaddingSpec::Valid,
+                dilations: None,
+                strides: Some(tvec![2, 2]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_format: KernelFormat::OIHW,
+            adjustments: tvec![0, 0],
+            group: 1,
+        };
+        let y = model.wire_node("deconv", deconv, &[x, k, bias])?[0];
+        let y = model.wire_node("sigmoid", tract_core::ops::nn::sigmoid(), &[y])?[0];
+        model.select_output_outlets(&[y])?;
+        let mut folded = model.clone();
+        WgpuTransform.transform(&mut folded)?;
+        let deconv = folded
+            .nodes()
+            .iter()
+            .find_map(|n| n.op_as::<crate::ops::deconv::WgpuDeconv>())
+            .context("no WgpuDeconv after transform")?;
+        ensure!(
+            deconv.epilogue.len() == 2,
+            "epilogue not folded: {:?}\n{}",
+            deconv.epilogue,
+            folded
+                .nodes()
+                .iter()
+                .map(|n| format!("{} {}", n.op.name(), n.name))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        gpu_vs_cpu(model, Tensor::from_shape(&[1, ci, h, w], &fill(5, ci * h * w))?)
+            .with_context(|| format!("ci{ci} co{co} {h}x{w}"))?;
+    }
+    Ok(())
+}
