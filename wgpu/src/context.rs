@@ -130,12 +130,24 @@ struct WgpuContextInner {
     chain_pipelines: RwLock<HashMap<ProgramKey, (Arc<wgpu::ComputePipeline>, u32)>>,
     layouts: RwLock<HashMap<LayoutKind, (wgpu::BindGroupLayout, wgpu::PipelineLayout)>>,
     bind_groups: Mutex<HashMap<BindGroupKey, (Arc<wgpu::BindGroup>, u32)>>,
-    staging: Mutex<Option<wgpu::Buffer>>,
+    /// Staging buffers for downloads, each with whether a download still
+    /// holds it: a caller that starts the next frame before awaiting the last
+    /// frame's map needs a second one.
+    staging: Mutex<Vec<(wgpu::Buffer, Arc<std::sync::atomic::AtomicBool>)>>,
     next_gpu_id: std::sync::atomic::AtomicU32,
 }
 
 /// The buffers one pool position has been handed, oldest first.
 type Slot = Vec<Arc<WgpuBuffer>>;
+
+/// Frees a staging buffer when the download holding it ends, however it ends.
+struct Release(Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Release {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::Release);
+    }
+}
 
 /// What a generated program is keyed on: two independent 64-bit hashes of
 /// the values that name it (kernel, dtype, epilogue steps, flags), so the
@@ -246,7 +258,7 @@ impl WgpuContext {
                 chain_pipelines: RwLock::new(HashMap::new()),
                 layouts: RwLock::new(HashMap::new()),
                 bind_groups: Mutex::new(HashMap::new()),
-                staging: Mutex::new(None),
+                staging: Mutex::new(Vec::new()),
                 next_gpu_id: std::sync::atomic::AtomicU32::new(1),
             }),
         };
@@ -579,19 +591,26 @@ impl WgpuContext {
         })
     }
 
-    /// A `MAP_READ` buffer of at least `size`, kept between calls: a fresh one
-    /// per frame costs an allocation and a device sync.
-    fn staging_at_least(&self, size: u64) -> wgpu::Buffer {
-        let mut slot = self.inner.staging.lock().unwrap();
-        if slot.as_ref().is_none_or(|b| b.size() < size) {
-            *slot = Some(self.inner.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("tract-wgpu-staging"),
-                size: size.max(4),
-                usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
+    /// A free staging buffer of at least `size` bytes, marked busy until the
+    /// download that took it releases it. Buffers too small for a request are
+    /// replaced; a request while every buffer is busy gets a new one.
+    fn staging_at_least(&self, size: u64) -> (wgpu::Buffer, Arc<std::sync::atomic::AtomicBool>) {
+        use std::sync::atomic::Ordering;
+        let mut slots = self.inner.staging.lock().unwrap();
+        slots.retain(|(b, busy)| busy.load(Ordering::Acquire) || b.size() >= size);
+        if let Some((b, busy)) = slots.iter().find(|(_, busy)| !busy.load(Ordering::Acquire)) {
+            busy.store(true, Ordering::Release);
+            return (b.clone(), busy.clone());
         }
-        slot.as_ref().unwrap().clone()
+        let buffer = self.inner.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("tract-wgpu-staging"),
+            size: size.max(4),
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let busy = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        slots.push((buffer.clone(), busy.clone()));
+        (buffer, busy)
     }
 
     /// Awaitable GPU→CPU copy. On web this is the single yield at the end of
@@ -608,7 +627,8 @@ impl WgpuContext {
             return Ok(vec![]);
         }
         let copy_len = len.next_multiple_of(4);
-        let staging = self.staging_at_least(copy_len);
+        let (staging, busy) = self.staging_at_least(copy_len);
+        let release = Release(busy);
         with_wgpu_queue(|q| q.flush_after_copy(buffer, offset, &staging, copy_len))?;
 
         #[cfg(target_arch = "wasm32")]
@@ -645,6 +665,7 @@ impl WgpuContext {
         let out = data[..len as usize].to_vec();
         drop(data);
         staging.unmap();
+        drop(release);
         Ok(out)
     }
 
