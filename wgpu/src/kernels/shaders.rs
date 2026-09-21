@@ -2500,6 +2500,150 @@ pub fn broadcast_strides(shape: &[usize], strides: &[isize], out_shape: &[usize]
     out
 }
 
+/// Threads per workgroup of the split-k matmul: 32 tiles, four lanes each.
+pub const MATMUL_SPLITK_WG: u32 = 128;
+/// Below this `m` the blocked matmul runs split over k.
+pub const MATMUL_SPLITK_MAX_M: usize = 2304;
+
+/// The blocked matmul for small `m`: four lanes share a four-by-four output
+/// tile, each summing a quarter of `k`, and reduce through workgroup memory.
+/// The squeeze-excitation projections (m = 144, k up to 128) put only a few
+/// hundred threads on the device with the plain kernel, so its time is one
+/// thread's k loop; four lanes cut that chain and came out of a search scored
+/// in Chrome at 2-2.5x on those shapes (m = 144: 56 -> 22 us, m = 576 with
+/// k >= 72: 47 -> 23 us). Same contract and epilogue as
+/// [`matmul_blocked_module`]; `k` a multiple of four.
+pub fn matmul_splitk_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"));
+    let epi = epilogue_body_at(epilogue, "col", "oe");
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    m: u32,
+    k: u32,
+    n: u32,
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    _p0: u32,
+    _p1: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> b4: array<vec4<f32>>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<f32>>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+var<workgroup> sh0: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh1: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh2: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh3: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
+
+fn epi(v_in: f32, col: u32, oe: u32) -> f32 {{
+    var v = v_in;
+{epi}
+    return v;
+}}
+
+@compute @workgroup_size({MATMUL_SPLITK_WG})
+fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+    let m4 = params.m / 4u;
+    let n4 = params.n / 4u;
+    let tile_global = gid.x >> 2u;
+    let lane = gid.x & 3u;
+    let row_tile_raw = tile_global % m4;
+    let col_tile_raw = tile_global / m4;
+    let valid = (row_tile_raw < m4) && (col_tile_raw < n4);
+    let row_tile = min(row_tile_raw, m4 - 1u);
+    let col_tile = min(col_tile_raw, n4 - 1u);
+
+    var acc0 = vec4<f32>(0.0);
+    var acc1 = vec4<f32>(0.0);
+    var acc2 = vec4<f32>(0.0);
+    var acc3 = vec4<f32>(0.0);
+
+    let chunk = params.k >> 2u;
+    let k_start = lane * chunk;
+    let unroll_end = k_start + (chunk & ~3u);
+    var kk = k_start;
+    loop {{
+        if (kk >= unroll_end) {{ break; }}
+        let ab0 = params.off_a + kk * m4 + row_tile;
+        let bb0 = params.off_b + kk * n4 + col_tile;
+        let ab1 = ab0 + m4;
+        let bb1 = bb0 + n4;
+        let ab2 = ab1 + m4;
+        let bb2 = bb1 + n4;
+        let ab3 = ab2 + m4;
+        let bb3 = bb2 + n4;
+        let a0v = a4[ab0]; let b0v = b4[bb0];
+        let a1v = a4[ab1]; let b1v = b4[bb1];
+        let a2v = a4[ab2]; let b2v = b4[bb2];
+        let a3v = a4[ab3]; let b3v = b4[bb3];
+        acc0 += a0v * b0v.x + a1v * b1v.x + a2v * b2v.x + a3v * b3v.x;
+        acc1 += a0v * b0v.y + a1v * b1v.y + a2v * b2v.y + a3v * b3v.y;
+        acc2 += a0v * b0v.z + a1v * b1v.z + a2v * b2v.z + a3v * b3v.z;
+        acc3 += a0v * b0v.w + a1v * b1v.w + a2v * b2v.w + a3v * b3v.w;
+        kk += 4u;
+    }}
+    let k_end = k_start + chunk;
+    loop {{
+        if (kk >= k_end) {{ break; }}
+        let ab = params.off_a + kk * m4 + row_tile;
+        let bb = params.off_b + kk * n4 + col_tile;
+        let av = a4[ab];
+        let bv = b4[bb];
+        acc0 += av * bv.x;
+        acc1 += av * bv.y;
+        acc2 += av * bv.z;
+        acc3 += av * bv.w;
+        kk += 1u;
+    }}
+
+    let base = lid.x - lane;
+    sh0[lid.x] = acc0;
+    sh1[lid.x] = acc1;
+    sh2[lid.x] = acc2;
+    sh3[lid.x] = acc3;
+    workgroupBarrier();
+
+    if (lane == 0u) {{
+        let s0 = sh0[base] + sh0[base + 1u] + sh0[base + 2u] + sh0[base + 3u];
+        let s1 = sh1[base] + sh1[base + 1u] + sh1[base + 2u] + sh1[base + 3u];
+        let s2 = sh2[base] + sh2[base + 1u] + sh2[base + 2u] + sh2[base + 3u];
+        let s3 = sh3[base] + sh3[base + 1u] + sh3[base + 2u] + sh3[base + 3u];
+        if (valid) {{
+            let col0 = col_tile * 4u;
+            let cc = params.off_out + col0 * m4 + row_tile;
+            let row_base = row_tile * 4u;
+            let e0 = col0 * params.m + row_base;
+            let e1 = e0 + params.m;
+            let e2 = e1 + params.m;
+            let e3 = e2 + params.m;
+            c4[cc] = vec4<f32>(epi(s0.x, col0, e0), epi(s0.y, col0, e0 + 1u), epi(s0.z, col0, e0 + 2u), epi(s0.w, col0, e0 + 3u));
+            c4[cc + m4] = vec4<f32>(epi(s1.x, col0 + 1u, e1), epi(s1.y, col0 + 1u, e1 + 1u), epi(s1.z, col0 + 1u, e1 + 2u), epi(s1.w, col0 + 1u, e1 + 3u));
+            c4[cc + 2u * m4] = vec4<f32>(epi(s2.x, col0 + 2u, e2), epi(s2.y, col0 + 2u, e2 + 1u), epi(s2.z, col0 + 2u, e2 + 2u), epi(s2.w, col0 + 2u, e2 + 3u));
+            c4[cc + 3u * m4] = vec4<f32>(epi(s3.x, col0 + 3u, e3), epi(s3.y, col0 + 3u, e3 + 1u), epi(s3.z, col0 + 3u, e3 + 2u), epi(s3.w, col0 + 3u, e3 + 3u));
+        }}
+    }}
+}}
+"#
+    ));
+    s
+}
+
 pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
