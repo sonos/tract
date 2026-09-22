@@ -29,6 +29,8 @@ use super::routed_matmul::{
 use super::silu::silu;
 
 pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_moe_ffn);
+    registry.register_dumper(ser_opt_moe_ffn);
     registry.register_primitive(
         "tract_moe_ffn",
         &[
@@ -70,6 +72,63 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         deser_moe_ffn,
     );
+}
+
+fn ser_moe_ffn(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &MoeFfn,
+) -> TractResult<Option<Arc<RValue>>> {
+    let indexes = op.input_idx();
+    let optional = [
+        ("w3", indexes.w3),
+        ("wg_bias", indexes.wg_bias),
+        ("w1_bias", indexes.w1_bias),
+        ("w3_bias", indexes.w3_bias),
+        ("w2_bias", indexes.w2_bias),
+    ];
+    ensure!(node.inputs.len() == 4 + optional.iter().filter(|(_, ix)| ix.is_some()).count());
+    let gate = match op.gate {
+        GateMode::SoftmaxTopk => "softmax_topk",
+        GateMode::SoftmaxAll => "softmax_all",
+        GateMode::Sigmoid => "sigmoid",
+        GateMode::Raw => "raw",
+    };
+    let layout = match op.expert_layout {
+        ExpertLayout::Canonical => "canonical",
+        ExpertLayout::Linear => "linear",
+    };
+    let mut args = vec![
+        ("k", numeric(i64::try_from(op.k)?)),
+        ("activation", string(&op.activation)),
+        ("gate", string(gate)),
+        ("expert_layout", string(layout)),
+    ];
+    for (name, ix) in optional {
+        if let Some(ix) = ix {
+            args.push((name, ast.mapping[&node.inputs[ix]].as_ref().clone()));
+        }
+    }
+    for (name, bits) in [("act_alpha", op.act_alpha_bits), ("act_limit", op.act_limit_bits)] {
+        if let Some(bits) = bits {
+            let value = f32::from_bits(bits);
+            ensure!(
+                value.is_finite(),
+                "tract_moe_ffn {name} must be finite for NNEF serialization"
+            );
+            args.push((name, numeric(value)));
+        }
+    }
+    let inputs = node.inputs[..4].iter().map(|o| ast.mapping[o].clone()).collect::<Vec<_>>();
+    Ok(Some(invocation("tract_moe_ffn", &inputs, &args)))
+}
+
+fn ser_opt_moe_ffn(
+    _ast: &mut IntoAst,
+    _node: &TypedNode,
+    _op: &OptMoeFfn,
+) -> TractResult<Option<Arc<RValue>>> {
+    bail!("OptMoeFfn contains packed execution plans; serialize MoeFfn before CPU codegen")
 }
 
 fn deser_moe_ffn(
@@ -3564,6 +3623,145 @@ mod tests {
         // Compare against PyTorch reference output
         result[0].close_enough(&expected_output.into_tensor(), Approximation::Approximate)?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn nnef_moe_roundtrip_variants() -> TractResult<()> {
+        use crate::WithTractTransformers;
+
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        for layout in [ExpertLayout::Canonical, ExpertLayout::Linear] {
+            for gate in
+                [GateMode::SoftmaxTopk, GateMode::SoftmaxAll, GateMode::Sigmoid, GateMode::Raw]
+            {
+                for variant in 0..32 {
+                    let has_w3 = variant & 1 != 0;
+                    let mut op = MoeFfn::basic_with_layout(2, "silu", gate.clone(), has_w3, layout);
+                    op.has_wg_bias = variant & 2 != 0;
+                    op.has_w1_bias = variant & 4 != 0;
+                    op.has_w3_bias = variant & 8 != 0;
+                    op.has_w2_bias = variant & 16 != 0;
+                    if variant == 31 {
+                        op.act_alpha_bits = Some(1.702f32.to_bits());
+                        op.act_limit_bits = Some(0.5f32.to_bits());
+                    }
+                    let mut model = TypedModel::default();
+                    let x = model.add_source("x", f32::fact([2, 4]))?;
+                    let mut inputs = vec![x];
+                    let (w1, w2) = match layout {
+                        ExpertLayout::Canonical => (vec![3, 4, 8], vec![3, 8, 4]),
+                        ExpertLayout::Linear => (vec![3, 8, 4], vec![3, 4, 8]),
+                    };
+                    let mut tensors = vec![("wg", vec![3, 4]), ("w1", w1.clone()), ("w2", w2)];
+                    if has_w3 {
+                        tensors.push(("w3", w1));
+                    }
+                    for (name, enabled, shape) in [
+                        ("wg_bias", op.has_wg_bias, vec![3]),
+                        ("w1_bias", op.has_w1_bias, vec![3, 8]),
+                        ("w3_bias", op.has_w3_bias, vec![3, 8]),
+                        ("w2_bias", op.has_w2_bias, vec![3, 4]),
+                    ] {
+                        if enabled {
+                            tensors.push((name, shape));
+                        }
+                    }
+                    for (i, (name, shape)) in tensors.iter().enumerate() {
+                        let values: Vec<f32> = (0..shape.iter().product())
+                            .map(|j| ((j * 7 + i * 3) % 19) as f32 / 10.0 - 0.9)
+                            .collect();
+                        inputs.push(model.add_const(*name, Tensor::from_shape(shape, &values)?)?);
+                    }
+                    let output = model.wire_node("moe", op.clone(), &inputs)?;
+                    model.select_output_outlets(&output)?;
+                    let mut bytes = vec![];
+                    nnef.write_to_tar(&model, &mut bytes)?;
+                    let reloaded = nnef.model_for_read(&mut bytes.as_slice())?;
+                    let node = reloaded
+                        .nodes()
+                        .iter()
+                        .find(|n| n.op_is::<MoeFfn>())
+                        .context("Missing MoeFfn")?;
+                    assert_eq!(node.op_as::<MoeFfn>(), Some(&op));
+                    for (original, loaded) in inputs.iter().skip(1).zip(node.inputs.iter().skip(1))
+                    {
+                        assert_eq!(
+                            model.outlet_fact(*original)?.konst,
+                            reloaded.outlet_fact(*loaded)?.konst
+                        );
+                    }
+                    let input = Tensor::from_shape(
+                        &[2, 4],
+                        &[0.2f32, -0.3, 0.7, 0.1, 0.8, 0.4, -0.5, 0.6],
+                    )?;
+                    let expected = SimplePlan::new(model)?.run(tvec![input.clone().into()])?;
+                    let actual = SimplePlan::new(reloaded)?.run(tvec![input.into()])?;
+                    actual[0].close_enough(&expected[0], Approximation::Exact)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn nnef_moe_roundtrip_q40_storage() -> TractResult<()> {
+        use crate::WithTractTransformers;
+
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, 32]))?;
+        let wg = model.add_const("wg", Tensor::from_shape(&[2, 32], &vec![0.25f32; 64])?)?;
+        let weights = Tensor::from_shape(&[2, 32, 32], &vec![0.125f32; 2048])?;
+        let w1 = add_q40_const(&mut model, "w1", weights.clone())?;
+        let w2 = add_q40_const(&mut model, "w2", weights)?;
+        let op = MoeFfn::basic_with_layout(
+            1,
+            "silu",
+            GateMode::SoftmaxTopk,
+            false,
+            ExpertLayout::Linear,
+        );
+        let output = model.wire_node("moe", op, &[x, wg, w1, w2])?;
+        model.select_output_outlets(&output)?;
+        let nnef = tract_nnef::nnef().with_tract_transformers();
+        let mut bytes = vec![];
+        nnef.write_to_tar(&model, &mut bytes)?;
+        let reloaded = nnef.model_for_read(&mut bytes.as_slice())?;
+        let node =
+            reloaded.nodes().iter().find(|n| n.op_is::<MoeFfn>()).context("Missing MoeFfn")?;
+        for (original, loaded) in [w1, w2].iter().zip(node.inputs[2..].iter()) {
+            let original = model
+                .outlet_fact(*original)?
+                .konst
+                .as_ref()
+                .unwrap()
+                .try_storage_as::<BlockQuantStorage>()?;
+            let loaded = reloaded
+                .outlet_fact(*loaded)?
+                .konst
+                .as_ref()
+                .unwrap()
+                .try_storage_as::<BlockQuantStorage>()?;
+            assert_eq!(original.value(), loaded.value());
+        }
+        let input = Tensor::from_shape(&[1, 32], &[0.1f32; 32])?;
+        let expected = SimplePlan::new(model)?.run(tvec![input.clone().into()])?;
+        let actual = SimplePlan::new(reloaded)?.run(tvec![input.into()])?;
+        actual[0].close_enough(&expected[0], Approximation::Exact)?;
+        Ok(())
+    }
+
+    #[test]
+    fn nnef_optimized_moe_reports_export_boundary() -> TractResult<()> {
+        use crate::WithTractTransformers;
+
+        let (model, _) = make_moe_model(2, 4, 8, 3, 2, true)?;
+        let model = model.into_optimized()?;
+        let error = tract_nnef::nnef()
+            .with_tract_transformers()
+            .write_to_tar(&model, &mut vec![])
+            .unwrap_err();
+        assert!(format!("{error:#}").contains("serialize MoeFfn before CPU codegen"));
         Ok(())
     }
 }
