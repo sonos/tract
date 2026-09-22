@@ -23,6 +23,21 @@ pub type TypedSimpleState = SimpleState<TypedFact, Box<dyn TypedOp>>;
 /// A runnable model with fixed inputs and outputs.
 pub type RunnableModel<F, O> = SimplePlan<F, O>;
 
+/// Property key recording how far through the pipeline a graph went.
+pub const TRACT_STAGE: &str = "tract.stage";
+
+/// [`TRACT_STAGE`] value set by [`TypedModel::optimize_with_session`].
+pub const STAGE_OPTIMIZED: &str = "optimized";
+
+/// Whether `properties` carry [`TRACT_STAGE`] = [`STAGE_OPTIMIZED`], marking a
+/// graph the optimizer already lowered to target-specific ops.
+pub fn stage_is_optimized(properties: &HashMap<String, Arc<Tensor>>) -> bool {
+    properties
+        .get(TRACT_STAGE)
+        .and_then(|t| t.as_plain_ram()?.to_scalar::<String>().ok())
+        .is_some_and(|s| s == STAGE_OPTIMIZED)
+}
+
 impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
     fn is_source(op: &Box<dyn TypedOp>) -> bool {
         op.as_op().downcast_ref::<ops::source::TypedSource>().is_some()
@@ -247,7 +262,7 @@ impl TypedModel {
     /// Perform optimization passes on the model, using a given optimizer session.
     pub fn optimize_with_session(&mut self, session: &mut OptimizerSession) -> TractResult<()> {
         session.optimize(self)?;
-        self.properties.insert("tract_stage".to_string(), rctensor0("optimized".to_string()));
+        self.properties.insert(TRACT_STAGE.to_string(), rctensor0(STAGE_OPTIMIZED.to_string()));
         Ok(())
     }
 
@@ -263,7 +278,7 @@ impl TypedModel {
 
     /// Translate the graph to locally optimized operators (LIR or MIR ops).
     pub fn optimize(&mut self) -> TractResult<()> {
-        crate::optim::Optimizer::codegen().optimize(self)
+        self.optimize_with_session(&mut crate::optim::Optimizer::codegen().session())
     }
 
     pub fn node_axes_mapping(&self, id: usize) -> TractResult<AxesMapping> {
