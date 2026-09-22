@@ -4,6 +4,7 @@ mod tests {
     use std::ops::Range;
 
     use crate::MetalTransform;
+    use crate::kernels::matmul::mlx_sdpa::dispatch_mlx_sdpa;
     use crate::utils::with_borrowed_metal_stream;
     use tract_core::internal::*;
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
@@ -128,6 +129,51 @@ mod tests {
         let sliced = iota(&[2, 3])?.slice(1, 1, 3)?;
         assert!(sliced.as_device_tensor().is_none());
         sliced.close_enough(&tensor2(&[[1.0f32, 2.0], [4.0, 5.0]]), Approximation::Exact)
+    }
+
+    /// K and V as the live prefix of a buffer with spare capacity: what a KV
+    /// cache growing in place offers. Both kernel families read them through
+    /// strides, so the answer must not change and the tail must not reach it.
+    /// `ql = 1` picks the vector kernels, `ql = 64` the steel ones.
+    #[test]
+    fn mlx_sdpa_over_a_kv_cache_with_spare_capacity() -> TractResult<()> {
+        for ql in [1, 64] {
+            with_borrowed_metal_stream(|stream| {
+                let (b, qh, kvh, kl, d, capacity) = (2, 4, 2, 70, 64, 128);
+                let f32s = |n: usize, off: usize| {
+                    (0..n).map(|i| (i + off) as f32 / n as f32).collect::<Vec<_>>()
+                };
+                let q = Tensor::from_shape(&[b, qh, ql, d], &f32s(b * qh * ql * d, 0))?
+                    .into_device()?;
+                let kv_shape = [b, kvh, kl, d];
+                let kv = |off| Tensor::from_shape(&kv_shape, &f32s(b * kvh * kl * d, off));
+
+                let mut packed = tvec![];
+                let mut windowed = tvec![];
+                for off in [1, 2] {
+                    let t = kv(off)?;
+                    let mut buffer = Tensor::from_shape(
+                        &[b, kvh, capacity, d],
+                        &vec![-7f32; b * kvh * capacity * d],
+                    )?;
+                    buffer.assign_slice(0..kl, &t, 0..kl, 2)?;
+                    windowed.push(buffer.into_device()?.prefix_window(2, kl)?);
+                    packed.push(t.into_device()?);
+                }
+                assert!(matches!(windowed[0], DeviceTensor::View(_)));
+                assert_ne!(windowed[0].strides(), Tensor::natural_strides(&kv_shape).as_slice());
+
+                let run = |k: &DeviceTensor, v: &DeviceTensor| -> TractResult<Arc<Tensor>> {
+                    let out = DeviceTensor::uninitialized_dt(f32::datum_type(), q.shape())?;
+                    dispatch_mlx_sdpa(stream, 1.0, false, &q, k, v, None, &out)?;
+                    out.to_host()
+                };
+                let over_capacity = run(&windowed[0], &windowed[1])?;
+                let reference = run(&packed[0], &packed[1])?;
+                over_capacity.close_enough(&reference, Approximation::Exact)
+            })?;
+        }
+        Ok(())
     }
 
     fn wire_sdpa_layer(
