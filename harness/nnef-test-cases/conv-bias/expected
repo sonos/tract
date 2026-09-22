@@ -3,10 +3,10 @@ version 1.0;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
+  properties = [("tract.name", "check_bias_loading"), ("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
-graph network(input) -> (output) {
+graph check_bias_loading(input) -> (output) {
   input = external(shape = [1, 1, 3]);
   kernel1 = [[[0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0]]];
   output_bias_rm_0 = [1.0, 1.0];

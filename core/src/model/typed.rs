@@ -29,6 +29,9 @@ pub const TRACT_STAGE: &str = "tract.stage";
 /// [`TRACT_STAGE`] value set by [`TypedModel::optimize_with_session`].
 pub const STAGE_OPTIMIZED: &str = "optimized";
 
+/// Property key holding the mnemonic an application knows this graph by.
+pub const TRACT_NAME: &str = "tract.name";
+
 /// Whether `properties` carry [`TRACT_STAGE`] = [`STAGE_OPTIMIZED`], marking a
 /// graph the optimizer already lowered to target-specific ops.
 pub fn stage_is_optimized(properties: &HashMap<String, Arc<Tensor>>) -> bool {
@@ -168,6 +171,17 @@ impl SpecialOps<TypedFact, Box<dyn TypedOp>> for TypedModel {
 }
 
 impl TypedModel {
+    /// The mnemonic this graph is known by, from the [`TRACT_NAME`] property.
+    pub fn name(&self) -> Option<&str> {
+        let name = self.properties.get(TRACT_NAME)?;
+        Some(name.as_plain_ram()?.to_scalar::<String>().ok()?)
+    }
+
+    /// Set the [`TRACT_NAME`] property.
+    pub fn set_name(&mut self, name: impl Into<String>) {
+        self.properties.insert(TRACT_NAME.to_string(), rctensor0(name.into()));
+    }
+
     pub fn into_optimized(mut self) -> TractResult<TypedModel> {
         self.declutter()?;
         self.optimize()?;

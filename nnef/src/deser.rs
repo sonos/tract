@@ -113,6 +113,7 @@ impl<'mb> ModelBuilder<'mb> {
         self.model.select_output_outlets(&outputs)?;
 
         self.parse_properties().context("Parsing properties")?;
+        self.adopt_graph_id();
 
         for (ix, name) in self.proto_model.doc.graph_def.results.iter().enumerate() {
             self.model.set_outlet_label(outputs[ix], name.0.to_string())?;
@@ -152,6 +153,15 @@ impl<'mb> ModelBuilder<'mb> {
         match self.translate().context("In ModelBuilder::translate") {
             Ok(()) => Ok(self.model),
             Err(e) => Err((self.model, e)),
+        }
+    }
+
+    /// Name the model after the NNEF graph id, unless it is the anonymous
+    /// default or the file already carried a [`TRACT_NAME`] property.
+    fn adopt_graph_id(&mut self) {
+        let id = self.proto_model.doc.graph_def.id.0.clone();
+        if id != crate::ser::DEFAULT_GRAPH_ID && self.model.name().is_none() {
+            self.model.set_name(id);
         }
     }
 

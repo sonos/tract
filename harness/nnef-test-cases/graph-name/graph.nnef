@@ -1,0 +1,13 @@
+version 1.0;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("tract.name", "preproc")];
+}
+
+graph encoder(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 4]);
+    output = mul(input, 2.0);
+}
