@@ -37,6 +37,11 @@ pub fn rewrite_model(model: &mut TypedModel) -> TractResult<()> {
 }
 
 pub fn to_proto_model(framework: &Nnef, model: &TypedModel) -> TractResult<ProtoModel> {
+    if stage_is_optimized(&model.properties) {
+        warn!(
+            "Serializing an optimized model: NNEF is an interchange format, and optimized graphs carry target-specific ops. Serialize before optimizing."
+        );
+    }
     let mut fixed_model = model.clone();
     rewrite_model(&mut fixed_model)?;
     let mut into_ast = IntoAst::new(framework, &fixed_model);
