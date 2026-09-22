@@ -149,17 +149,6 @@ static __device__ __forceinline__ void cp_async_ca_16B(uint32_t dst, const void 
     asm volatile("cp.async.ca.shared.global [%0], [%1], 16;" ::"r"(dst), "l"(src) : "memory");
 }
 
-static __device__ __forceinline__ void cp_async_ca_16B_pred(uint32_t dst, const void *src, bool pred) {
-    asm volatile("{\n\t"
-                 ".reg .pred p;\n\t"
-                 ".reg .b32 z;\n\t"
-                 "mov.b32 z, 0;\n\t"
-                 "setp.ne.b32 p, %2, 0;\n\t"
-                 "@p   cp.async.ca.shared.global [%0], [%1], 16;\n\t"
-                 "@!p  st.shared.v4.b32 [%0], {z, z, z, z};\n\t"
-                 "}\n\t" ::"r"(dst), "l"(src), "r"((int)pred) : "memory");
-}
-
 static __device__ __forceinline__ void cp_async_commit() {
     asm volatile("cp.async.commit_group;" ::: "memory");
 }

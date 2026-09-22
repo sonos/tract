@@ -48,14 +48,14 @@ fn mmq_get_nbytes_shared_q40(mmq_weights: usize, mmq_act: usize, sm_major: i32) 
     let nb_ids = mmq_weights * size_of::<i32>();
     let mmq_tile_w_l = MMQ_MMA_TILE_X_K_Q8_0;
     let nbs_w = mmq_act * mmq_tile_w_l * size_of::<i32>();
-    // Y tile: mmq_weights * MMQ_TILE_Y_K * sizeof(int) = mmq_weights * 36 * 4 = mmq_weights * 144
     let nbs_y_tile = mmq_weights * 144;
     let pad = N_WARPS * WARP_SIZE * size_of::<i32>();
-    // Double-buffer Y tiles on SM80+ (cp.async overlap), single on SM75 fallback
+    // Each Y tile is padded on its own: the kernel places tile_y1 and tile_x
+    // at PAD(mmq_x * MMQ_TILE_Y_K, N_WARPS * WARP_SIZE) int strides.
     let n_y_tiles = if sm_major >= 8 { 2 } else { 1 };
-    let nbs_act = n_y_tiles * nbs_y_tile;
+    let nbs_act = n_y_tiles * nbs_y_tile.next_multiple_of(pad);
 
-    nb_ids + nbs_w + nbs_act.next_multiple_of(pad)
+    nb_ids + nbs_w + nbs_act
 }
 
 pub fn get_concrete_shapes(

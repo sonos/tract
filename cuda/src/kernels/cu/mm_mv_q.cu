@@ -260,8 +260,8 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
       _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
                              l0 += 4 * N_WARPS * WARP_SIZE) {
         const int l = l0 + threadIdx.y * (4 * WARP_SIZE) + threadIdx.x * 4;
-        bool pred = (l + 3 < mmq_x * MMQ_TILE_Y_K);
-        cp_async_ca_16B_pred(__cvta_generic_to_shared(&tile_y0[l]), &by0[l], pred);
+        if (l < mmq_x * MMQ_TILE_Y_K)
+          cp_async_ca_16B(__cvta_generic_to_shared(&tile_y0[l]), &by0[l]);
       }
       cp_async_commit();
     }
@@ -272,8 +272,8 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
       _Pragma("unroll") for (int l0 = 0; l0 < mmq_x * MMQ_TILE_Y_K;
                              l0 += 4 * N_WARPS * WARP_SIZE) {
         const int l = l0 + threadIdx.y * (4 * WARP_SIZE) + threadIdx.x * 4;
-        bool pred = (l + 3 < mmq_x * MMQ_TILE_Y_K);
-        cp_async_ca_16B_pred(__cvta_generic_to_shared(&tile_y1[l]), &by1[l], pred);
+        if (l < mmq_x * MMQ_TILE_Y_K)
+          cp_async_ca_16B(__cvta_generic_to_shared(&tile_y1[l]), &by1[l]);
       }
       cp_async_commit();
     }
