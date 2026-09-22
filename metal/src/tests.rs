@@ -1161,4 +1161,17 @@ mod tests {
             saved[0].close_enough(&kv_expected(&[0, 1, 2, 3, 4])?, Approximation::Exact)
         })
     }
+    /// A window with spare capacity is not its own bytes in order: reading it
+    /// back has to walk it, not take a flat run from the offset.
+    #[test]
+    fn a_strided_window_reads_back_whole() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let input = iota(&[2, 3, 8, 4])?;
+            let device = input.clone().into_device()?;
+            let window = device.prefix_window(2, 5)?;
+            assert!(matches!(window, DeviceTensor::View(_)));
+            assert_eq!(window.shape(), &[2, 3, 5, 4]);
+            window.to_host()?.close_enough(&input.slice(2, 0, 5)?, Approximation::Exact)
+        })
+    }
 }
