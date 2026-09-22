@@ -8,7 +8,7 @@ fragment tract_core_properties(
   properties = [("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
-graph preproc(input) -> (output) {
+graph i"my encoder"(input) -> (output) {
   input = external(shape = [1, 4]);
   output_2 = [[2.0]];
   output_3 = mul(input, output_2);

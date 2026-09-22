@@ -322,6 +322,13 @@ impl<'a> Dumper<'a> {
     }
 }
 
+/// Whether NNEF spells `id` as is, needing neither the extended syntax nor
+/// mangling.
+pub fn is_direct_identifier(id: &str) -> bool {
+    id.chars().next().is_some_and(|c| c.is_alphabetic() || c == '_')
+        && id.chars().all(|c| c.is_alphanumeric() || c == '_')
+}
+
 pub fn write_identifier(
     w: &mut dyn Write,
     id: &Identifier,
@@ -333,9 +340,7 @@ pub fn write_identifier(
     }
     let first = id.0.chars().next().unwrap();
     let force_double_quotes = if force_double_quotes { "\"" } else { "" };
-    if (first.is_alphabetic() || first == '_')
-        && id.0.chars().all(|c| c.is_alphanumeric() || c == '_')
-    {
+    if is_direct_identifier(&id.0) {
         write!(w, "{force_double_quotes}{}{force_double_quotes}", id.0)?;
     } else if allow_extended_identifier_syntax {
         write!(w, "i\"{}\"", id.0.replace('\\', "\\\\").replace('\"', "\\\""))?;
