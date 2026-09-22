@@ -175,7 +175,7 @@ fn tensor_size(t: &DeviceTensor) -> usize {
                 ot.downcast_ref::<CudaTensor>().expect("Non Cuda-Tensor in a Cuda Context");
             cuda_tensor.exotic_fact()
         }
-        DeviceTensor::ArenaView(av) => av.exotic_fact(),
+        DeviceTensor::View(av) => av.exotic_fact(),
     };
 
     if let Some(of) = exotic_fact {

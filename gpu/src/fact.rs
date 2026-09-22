@@ -5,7 +5,7 @@ use tract_core::internal::*;
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeviceTensorOrigin {
     /// Tensor outputted by a device operator
-    /// Can be either a Host or ArenaView tensor
+    /// Can be either a Host or View tensor
     /// Note: Tensors marked as Device are from asynchronous operations.
     FromDevice,
     /// Tensor built from a CPU tensor (CPU op output or Const)

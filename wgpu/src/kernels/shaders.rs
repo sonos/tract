@@ -2,7 +2,7 @@
 //!
 //! Flattened 1-D indexing: `dispatch_workgroups` is 3-D, tract tensors are
 //! routinely 4-D+, so shaders take a linear id and apply strides from uniforms.
-//! Byte offsets live in uniforms so arena views work without 256-byte-aligned
+//! Byte offsets live in uniforms so device views work without 256-byte-aligned
 //! `GPUBufferBinding.offset` (the whole storage buffer is bound at 0).
 //!
 //! Structure follows tfjs-backend-webgpu unary/binary (Apache-2.0): one entry

@@ -242,7 +242,7 @@ pub fn ensure_cuda_runtime_dependencies(context_msg: &'static str) -> TractResul
 pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     if let DeviceTensor::Owned(t) = t {
         t.exotic_fact().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).cloned()
-    } else if let DeviceTensor::ArenaView(t) = t {
+    } else if let DeviceTensor::View(t) = t {
         t.exotic_fact().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>()).cloned()
     } else {
         None
