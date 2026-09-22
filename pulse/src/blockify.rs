@@ -49,14 +49,22 @@
 //! * **uniform_tdim mask head** (`wire_uniform_tdim_initiator`): the
 //!   multi-T-axis Sub/Eq at the top of the mask-construction chain.
 //!   Each input is a single-T-axis chunk-id wire (`chunk_row`,
-//!   `chunk_col`); `chunkify_uniform_tdim_input` taps it, casts TDim →
-//!   I64 (PulsePad's `dispatch_copy_by_size!` fill needs `Copy`), splits
-//!   the T-axis, moves the chunk axis to position 0, and on the
-//!   contracted side wraps with `WindowOnAxis` using a **sentinel pad
-//!   value** so out-of-stream boundary slots produce values way outside
-//!   the band; downstream Ge/Le evaluate to `false` there.  After Sub,
-//!   the result is cast back to the source dtype so downstream body ops
-//!   that tap external constants (e.g. the `0` in `ge(diff, 0)`) match.
+//!   `chunk_col`), and `chunkify_uniform_tdim_input` replaces it with
+//!   **I64 zeros** of the same shape (PulsePad's
+//!   `dispatch_copy_by_size!` fill needs `Copy`, so not the source's
+//!   TDim), splits the T-axis, moves the chunk axis to position 0, and
+//!   on the contracted side wraps with `WindowOnAxis` using a
+//!   **sentinel pad value** — so out-of-stream boundary slots produce
+//!   values way outside the band and downstream Ge/Le evaluate to
+//!   `false` there — then adds the window's slot offsets.  The chunk
+//!   index itself is never read: `W` covers exactly the band, so every
+//!   in-window slot satisfies the predicate at any stream position, and
+//!   zeros plus `start + j` reproduce the source's in-window values with
+//!   no absolute position in them.  That is what keeps the mask correct
+//!   when a laned runtime seats a stream on some turns and not others.
+//!   After Sub, the result is cast back to the source dtype so
+//!   downstream body ops that tap external constants (e.g. the `0` in
+//!   `ge(diff, 0)`) match.
 //! * **MultiBroadcastTo** (`wire_initiator_multibroadcastto`): the
 //!   `select(mask, scores, scores * 0.0 + -inf)` false-branch pattern,
 //!   where declutter folds the chain to a `MultiBroadcastTo` of a small
@@ -107,13 +115,11 @@
 //!
 //! # Runtime dependencies
 //!
-//! * `tract_pulse_opl::ops::PulsedRange` — pulsifies the source's
-//!   `Range(0, T)` chunk-id chain that
-//!   `chunkify_uniform_tdim_input` taps.  Without it, `Range` falls
-//!   through `NonPulsingWrappingOp` and produces a fresh symbolic shape
-//!   the rest of pulsification can't match.
 //! * `WindowOnAxis::pad_value` — set per-input to either `zero` (data
 //!   wires) or a sentinel (chunk-id wires), depending on the initiator.
+//!   On the chunk-id wires it is the only thing the mask predicate
+//!   reads, so the per-lane `PulsePad` it pulsifies into is what makes a
+//!   mask section servable by several streams at once.
 //!
 //! # Known workarounds
 //!
@@ -122,11 +128,10 @@
 //!   larger sentinels truncate to small junk and the band predicate
 //!   evaluates true on boundary slots.  REVISIT: fix the cast upstream
 //!   and lift the cap.
-//! * TDim → I64 cast on chunk-id wires before windowing, then back to
-//!   TDim after the chunked Sub: `PulsePad`'s fill uses
-//!   `dispatch_copy_by_size!` which doesn't include TDim (not `Copy`).
-//!   REVISIT: add a clone-fill arm to `PulsePad` for TDim and drop the
-//!   round-trip.
+//! * I64 chunk-id wires cast back to TDim after the chunked Sub:
+//!   `PulsePad`'s fill uses `dispatch_copy_by_size!` which doesn't
+//!   include TDim (not `Copy`).  REVISIT: add a clone-fill arm to
+//!   `PulsePad` for TDim and drop the cast.
 
 use crate::internal::*;
 use std::collections::{BTreeSet, HashMap};
@@ -320,9 +325,10 @@ struct MaskForm {
     chunk_size: i64,
     lower: i64,
     upper: i64,
-    /// Axis whose chunk index appears with positive sign in the diff.
+    /// Axis whose chunk index appears with positive sign in the diff, in mask
+    /// frame: 0 or 1, whatever the wire carries in front of its two mask axes.
     axis_a: usize,
-    /// Axis whose chunk index appears negated in the diff.
+    /// Axis whose chunk index appears negated in the diff, in mask frame.
     axis_b: usize,
 }
 
@@ -555,6 +561,8 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         return None;
     }
     let want: BTreeSet<usize> = streaming_axes.iter().copied().collect();
+    // Coordinate symbols name absolute axes; the mask frame is the two of them.
+    let leading = streaming_axes[0].min(streaming_axes[1]);
 
     // Form 1 — block-diagonal Eq.
     if let TDim::Eq(lhs, rhs) = expr {
@@ -567,7 +575,13 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         if want != got {
             return None;
         }
-        return Some(MaskForm { chunk_size: k_a as i64, lower: 0, upper: 0, axis_a, axis_b });
+        return Some(MaskForm {
+            chunk_size: k_a as i64,
+            lower: 0,
+            upper: 0,
+            axis_a: axis_a - leading,
+            axis_b: axis_b - leading,
+        });
     }
 
     // Form 2 — banded Mul of two Ge's.
@@ -575,9 +589,11 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
         && terms.len() == 2
     {
         for (a, b) in [(&terms[0], &terms[1]), (&terms[1], &terms[0])] {
-            if let Some(form) = decode_banded_terms(a, b)
+            if let Some(mut form) = decode_banded_terms(a, b)
                 && want == [form.axis_a, form.axis_b].into_iter().collect()
             {
+                form.axis_a -= leading;
+                form.axis_b -= leading;
                 return Some(form);
             }
         }
@@ -1289,14 +1305,19 @@ fn wire_initiator_multibroadcastto_streaming(
 
 /// Initiator for a multi-T-axis `uniform_tdim` node — typically the
 /// `Eq`/`Sub` head of the mask-construction chain whose two inputs are
-/// single-T-axis chunk-index wires (`chunk_row` at axis 0, `chunk_col`
-/// at axis 1).  Tap each input, split its T-axis into `[..., S, k, ...]`,
-/// move the chunk axis to position 0 to align with the rest of the
-/// section, and (if its source T-axis equals the section's contracted
-/// axis) wrap with `WindowOnAxis` using a **sentinel pad value** so the
-/// downstream band predicate evaluates to false on out-of-stream
-/// boundary slots.  Then wire the same op (Eq/Sub/…) with the chunked
-/// inputs.
+/// single-T-axis chunk-index wires (`chunk_row` and `chunk_col`, the two
+/// mask axes).  Tap each input, split its T-axis into `[..., S, k, ...]`,
+/// move the chunk axis to the initiator's first streaming position to
+/// align with the rest of the section, and (if its source T-axis equals
+/// the section's contracted axis) wrap with `WindowOnAxis` using a
+/// **sentinel pad value** so the downstream band predicate evaluates to
+/// false on out-of-stream boundary slots.  Then wire the same op (Eq/Sub/…)
+/// with the chunked inputs.
+///
+/// The mask frame is the initiator output's last two axes; whatever it
+/// carries in front of them — a batch axis, once the chain is batchified —
+/// stays in front of the chunk axis, which is what keeps a lane axis
+/// available on the `Delay` / `PulsePad` pair the window pulsifies into.
 fn wire_uniform_tdim_initiator(
     patch: &mut TypedModelPatch,
     model: &TypedModel,
@@ -1306,6 +1327,15 @@ fn wire_uniform_tdim_initiator(
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
+    let out_streaming = streaming_positions(&node.outputs[0].fact, chunk_sym);
+    let leading = node.outputs[0].fact.rank().checked_sub(2).ok_or_else(|| {
+        format_err!("uniform_tdim initiator {node} has rank < 2, so it has no mask frame")
+    })?;
+    ensure!(
+        out_streaming == tvec!(leading, leading + 1),
+        "uniform_tdim initiator {node} must carry the mask frame on its last two axes, \
+         streaming axes are {out_streaming:?}"
+    );
     let mut chunked_inputs: TVec<OutletId> = tvec!();
     for (ix, &input) in node.inputs.iter().enumerate() {
         let chunked = chunkify_uniform_tdim_input(
@@ -1315,6 +1345,7 @@ fn wire_uniform_tdim_initiator(
             &format!("{}.in{ix}", node.name),
             mask,
             contracted_axis,
+            leading,
             chunk_sym,
             k,
         )?;
@@ -1338,11 +1369,22 @@ fn wire_uniform_tdim_initiator(
     Ok(out)
 }
 
-/// Tap a single-T-axis `uniform_tdim` wire (e.g. `chunk_row [T, 1]` or
-/// `chunk_col [1, T]`), split its T-axis at `k`, move the chunk axis to
-/// position 0, and — for the contracted side — `WindowOnAxis` with a
-/// sentinel pad so out-of-stream boundary slots produce out-of-band
-/// values for the downstream predicate.  Returns the chunked outlet.
+/// Wire the chunked counterpart of a single-T-axis `uniform_tdim` wire
+/// (e.g. `chunk_row [T, 1]` or `chunk_col [1, T]`): zeros of the same
+/// shape, T-axis split at `k`, chunk axis moved to position 0, and — for
+/// the contracted side — `WindowOnAxis` with a sentinel pad plus the
+/// window's own slot offsets.  Returns the chunked outlet.
+///
+/// The chunk index itself is not read.  `W` covers exactly the band, so
+/// every in-window slot satisfies `chunk(axis_a) - chunk(axis_b) ∈
+/// [lower, upper]` at any stream position; what the predicate has to
+/// decide is which slots the stream has reached, and that is
+/// `PulsePad`'s sentinel region, held per lane.  Zeros plus the slot
+/// offsets `start + j` reproduce the source's values on every in-window
+/// slot — the initiator's own sign structure turns them into
+/// `lower + j` on the `axis_a` side and `upper - j` on the `axis_b` one
+/// — while leaving no absolute position for a shared clock to get
+/// wrong.
 #[allow(clippy::too_many_arguments)]
 fn chunkify_uniform_tdim_input(
     patch: &mut TypedModelPatch,
@@ -1351,6 +1393,7 @@ fn chunkify_uniform_tdim_input(
     name_prefix: &str,
     mask: &MaskForm,
     contracted_axis: usize,
+    leading: usize,
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
@@ -1363,45 +1406,43 @@ fn chunkify_uniform_tdim_input(
     );
     let stream_axis = positions[0];
 
-    let tapped = patch.tap_model(model, input)?;
-
-    // Cast TDim → I64 up-front: PulsePad (used by WindowOnAxis pulsifier
-    // for the contracted side) fills with `dispatch_copy_by_size!`, which
-    // panics on non-Copy datum types like TDim.  Body ops downstream are
-    // Sub/Ge/Le/And — they don't care whether their numeric inputs are
-    // TDim or I64 (the final mask comes out as Bool either way).
-    //
-    // REVISIT: add a TDim arm to `pulse-opl/src/pad.rs` (clone-fill instead
-    // of `dispatch_copy_by_size`) and drop this round-trip.
-    let mut wire = tapped;
-    if patch.outlet_fact(wire)?.datum_type == TDim::datum_type() {
-        wire = patch.wire_node(
-            format!("{name_prefix}.cast_i64"),
-            tract_core::ops::cast::cast(i64::datum_type()),
-            &[wire],
-        )?[0];
-    }
-    let dt = patch.outlet_fact(wire)?.datum_type;
+    // I64 rather than the source's dtype: PulsePad (used by the
+    // WindowOnAxis pulsifier for the contracted side) fills with
+    // `dispatch_copy_by_size!`, which panics on non-Copy datum types like
+    // TDim.  Body ops downstream are Sub/Ge/Le/And — they don't care which
+    // numeric dtype carries the values (the final mask comes out as Bool
+    // either way) — and `wire_uniform_tdim_initiator` casts back after.
+    let dt = i64::datum_type();
+    // Rank-matched rather than scalar: an axis change reaching the broadcast
+    // is pushed into its input, and a rank-0 tensor has no axis to insert one
+    // in front of.
+    let zero = patch
+        .add_const(format!("{name_prefix}.zero"), Tensor::zero_dt(dt, &vec![1; in_fact.rank()])?)?;
+    let mut wire = patch.wire_node(
+        format!("{name_prefix}.position_free"),
+        tract_core::ops::array::MultiBroadcastTo { shape: in_fact.shape.clone() },
+        &[zero],
+    )?[0];
 
     // Split the T-axis at `k`.  Output rank = input rank + 1, with the
     // chunk axis at `stream_axis` and the within-block axis at
     // `stream_axis + 1`.
     wire = wire_chunk_split(patch, name_prefix, wire, stream_axis, chunk_sym, k)?;
 
-    // Move chunk axis to position 0 if it isn't already, so the section
-    // frame uniformly carries the chunk axis at 0.
-    if stream_axis != 0 {
+    // Move the chunk axis to the section frame's chunk position, right
+    // behind whatever the initiator carries in front of its mask frame.
+    if stream_axis != leading {
         wire = patch.wire_node(
             format!("{name_prefix}.move_chunk"),
-            AxisOp::Move(stream_axis, 0),
+            AxisOp::Move(stream_axis, leading),
             &[wire],
         )?[0];
     }
 
     // If this input's source T-axis is the contracted side, window the
-    // chunk axis (now at position 0) and flatten the W slot back into the
-    // within-block axis so downstream consumers see W·k along that axis.
-    let needs_window = !mask.is_block_diag() && stream_axis == contracted_axis;
+    // chunk axis and flatten the W slot back into the within-block axis so
+    // downstream consumers see W·k along that axis.
+    let needs_window = !mask.is_block_diag() && stream_axis - leading == contracted_axis;
     if needs_window {
         let window_size: usize = (mask.upper - mask.lower + 1) as usize;
         let start = window_start_for(mask, contracted_axis);
@@ -1412,7 +1453,7 @@ fn chunkify_uniform_tdim_input(
         wire = patch.wire_node(
             format!("{name_prefix}.window"),
             tract_pulse_opl::ops::WindowOnAxis {
-                axis: 0,
+                axis: leading,
                 window: window_size,
                 start,
                 pad_value: sentinel,
@@ -1420,15 +1461,15 @@ fn chunkify_uniform_tdim_input(
             &[wire],
         )?[0];
 
-        // Post-window shape: chunk at 0, W at 1, then the original axes
-        // (the within-block axis is at `stream_axis + 1` post-window:
-        // chunk was at 0 pre-window, W gets inserted at 1, so axes shift
-        // right by 1).  Flatten W (slice index 0) and within-block (slice
-        // index `stream_axis`) into a single (W·k) axis.
+        // Post-window shape: chunk at `leading`, W right behind it, then the
+        // original axes shifted right by one.  Flatten W (slice index 0) and
+        // within-block (slice index `stream_axis - leading`) into a single
+        // (W·k) axis, the slice starting behind the chunk axis.
         let post_window = patch.outlet_fact(wire)?.clone();
         let rank_after = post_window.rank();
-        let from: TVec<TDim> = (1..rank_after).map(|i| post_window.shape[i].clone()).collect();
-        let within_slice_idx = stream_axis;
+        let from: TVec<TDim> =
+            (leading + 1..rank_after).map(|i| post_window.shape[i].clone()).collect();
+        let within_slice_idx = stream_axis - leading;
         let mut to: TVec<TDim> = tvec!();
         for (i, dim) in from.iter().enumerate() {
             if i == 0 {
@@ -1441,10 +1482,27 @@ fn chunkify_uniform_tdim_input(
                 to.push(dim.clone());
             }
         }
+        let merged_axis = leading + 1 + within_slice_idx;
         wire = patch.wire_node(
             format!("{name_prefix}.flatten_window"),
-            AxisOp::Reshape(1, from, to),
+            AxisOp::Reshape(leading + 1, from, to),
             &[wire],
+        )?[0];
+
+        // The window slot's chunk offset relative to the consumer's own
+        // chunk, laid out W-major over the flattened (W·k) axis.  Broadcast
+        // against the chunk axis, so it holds at every stream position.
+        let mut offsets_shape = tvec!(1; patch.outlet_fact(wire)?.rank());
+        offsets_shape[merged_axis] = window_size * k as usize;
+        let offsets: Vec<i64> = (0..window_size as i64 * k).map(|slot| start + slot / k).collect();
+        let offsets = patch.add_const(
+            format!("{name_prefix}.slot_offsets"),
+            Tensor::from_shape(&offsets_shape, &offsets)?.cast_to_dt(dt)?.into_owned(),
+        )?;
+        wire = patch.wire_node(
+            format!("{name_prefix}.slot_offset"),
+            tract_core::ops::math::add(),
+            &[wire, offsets],
         )?[0];
     }
 

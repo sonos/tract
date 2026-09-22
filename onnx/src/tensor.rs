@@ -160,7 +160,17 @@ pub fn load_tensor(
     let dt = DataType::try_from(t.data_type)
         .map_err(|e| format_err!("unknown ONNX TensorProto.DataType ({}): {e}", t.data_type))?
         .try_into()?;
-    let shape: Vec<usize> = t.dims.iter().map(|&i| i as usize).collect();
+    let shape = t
+        .dims
+        .iter()
+        .map(|&i| {
+            if i < 0 {
+                bail!("Negative dimension in ONNX TensorProto dims: {i}")
+            } else {
+                Ok(i as usize)
+            }
+        })
+        .collect::<TractResult<Vec<usize>>>()?;
     // detect if the tensor is rather in an external file than inside the onnx file directly
     let is_external = t.data_location.is_some()
         && t.data_location == Some(tensor_proto::DataLocation::External as i32);

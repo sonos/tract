@@ -1,0 +1,33 @@
+[package]
+name = "test-wgpu"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+
+[build-dependencies]
+home.workspace = true
+lazy_static.workspace = true
+regex.workspace = true
+infra = { path = "../infra" }
+tract-core.workspace = true
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+suite-pulse = { path = "../suite-pulse" }
+tract-onnx-opl.workspace = true
+pastey.workspace = true
+
+[dev-dependencies]
+home.workspace = true
+regex.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+tract-core.workspace = true
+tract-wgpu.workspace = true
+tract-gpu.workspace = true
+tract-onnx-opl.workspace = true
+infra = { path = "../infra" }
+suite-onnx = { path = "../suite-onnx" }
+suite-unit = { path = "../suite-unit" }
+suite-pulse = { path = "../suite-pulse" }
+pastey.workspace = true

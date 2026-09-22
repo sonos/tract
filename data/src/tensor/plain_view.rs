@@ -20,7 +20,7 @@ fn check_for_access<D: Datum>(dt: DatumType) -> TractResult<()> {
 
 /// Immutable view into a [`Tensor`] verified to have plain storage.
 ///
-/// Construction is the single point of failure (`Tensor::as_plain()` returns
+/// Construction is the single point of failure (`Tensor::as_plain_ram()` returns
 /// `Option`). Once constructed, all data access is infallible with no
 /// `unwrap()`/`expect()` on the plain codepath.
 pub struct PlainView<'a> {
@@ -29,7 +29,7 @@ pub struct PlainView<'a> {
 }
 
 impl<'a> PlainView<'a> {
-    /// Private constructor used by `Tensor::as_plain()`.
+    /// Private constructor used by `Tensor::as_plain_ram()`.
     #[inline]
     pub(crate) fn new(tensor: &'a Tensor, storage: &'a PlainStorage) -> Self {
         PlainView { tensor, storage }
@@ -153,7 +153,7 @@ pub struct PlainViewMut<'a> {
 }
 
 impl<'a> PlainViewMut<'a> {
-    /// Private constructor used by `Tensor::as_plain_mut()`.
+    /// Private constructor used by `Tensor::as_plain_ram_mut()`.
     #[inline]
     pub(crate) fn new(
         dt: DatumType,

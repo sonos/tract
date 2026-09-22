@@ -307,6 +307,14 @@ struct BitNot {
     }
 };
 
+/* Core keeps Not and BitNot apart because BitNot also takes the integers, but
+   on bool they are the one operation. */
+struct Not {
+    bool operator()(bool x) {
+        return !x;
+    }
+};
+
 template<typename T, typename Op>
 [[kernel]] void eval_out_of_place(device const T *input[  [buffer(0)]],
                                   device T *output [[buffer(1)]],
@@ -389,3 +397,4 @@ INSTANTIATE_FLOAT(hardswish, HardSwish)
 INSTANTIATE_FLOAT(silu, Silu)
 INSTANTIATE_INTEGER(bitnot, BitNot)
 INSTANTIATE_ELEMENT_WISE_OP(bitnot, BitNot, bool, bool)
+INSTANTIATE_ELEMENT_WISE_OP(not, Not, bool, bool)

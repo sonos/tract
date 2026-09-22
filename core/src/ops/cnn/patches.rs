@@ -855,9 +855,9 @@ pub mod test {
             self.patch.visit_output(|visitor| {
                 for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                     for c in 0..*output_shape.c() {
-                        output.try_as_plain_mut().unwrap().as_slice_mut::<f32>().unwrap()
+                        output.try_as_plain_ram_mut().unwrap().as_slice_mut::<f32>().unwrap()
                             [visitor.output_offset as usize + c * output_shape.c_stride()] +=
-                            self.input.try_as_plain().unwrap().as_slice::<f32>().unwrap()
+                            self.input.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()
                                 [offset_in as usize + c * input_shape.c_stride()];
                     }
                 }
@@ -873,9 +873,13 @@ pub mod test {
                 zone.visit_output(&self.patch, |visitor| {
                     for (_k, offset_in) in visitor.valid_offsets_ker_in() {
                         for c in 0..*output_shape.c() {
-                            output.try_as_plain_mut().unwrap().as_slice_mut::<f32>().unwrap()
+                            output
+                                .try_as_plain_ram_mut()
+                                .unwrap()
+                                .as_slice_mut::<f32>()
+                                .unwrap()
                                 [visitor.output_offset as usize + c * output_shape.c_stride()] +=
-                                self.input.try_as_plain().unwrap().as_slice::<f32>().unwrap()
+                                self.input.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()
                                     [offset_in as usize + c * input_shape.c_stride()];
                         }
                     }

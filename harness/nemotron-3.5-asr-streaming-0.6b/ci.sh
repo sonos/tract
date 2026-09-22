@@ -12,8 +12,8 @@ for rt in $TRACT_RUNTIMES
 do
 	gpu_assert=""
 	case "$rt" in
-		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub,Not";;
-		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub,Not";;
+		--cuda) gpu_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub";;
+		--metal) gpu_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,Add,Range,Cast,Eq,Div,Sub";;
 	esac
 
 	for m in preprocessor encoder decoder joint
@@ -72,11 +72,11 @@ do
 	case "$rt" in
 		--cuda)
 			pp_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
-			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange,Not"
+			enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange"
 			;;
 		--metal)
 			pp_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,Pad,PulsedSameAxisConcat,OptMulByScalar,OptSubUnicast"
-			enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,PulsedRange,Not"
+			enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,PulsedRange"
 			;;
 		*) continue;;
 	esac
@@ -112,15 +112,73 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 # Check that pulsified encoder output matches batch output.
 # --drop-partial-pulse truncates the input to a multiple of the pulse size,
 # and the output comparison is trimmed accordingly.
+# Both GPU runtimes serve the pulse ops on device -- the translator that lowers
+# them is backend-agnostic -- so they run this too, cuda out of a ring its GEMM
+# rotates as it reads.
+pulse_runtimes=""
+for rt in $TRACT_RUNTIMES
+do
+	case "$rt" in
+		--cuda|--metal) pulse_runtimes="$pulse_runtimes $rt";;
+	esac
+done
+
+for rt in "" $pulse_runtimes
+do
+	$TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t 'set_symbols(values: {"BATCH": 1})' \
+		-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		run \
+		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--approx very \
+		--drop-partial-pulse
+done
+
+# The batch axis is the lane axis, so the autobatched form of the encoder keeps
+# BATCH symbolic: no set_symbols, and a shape-generic patch body, since `length`
+# as a scalar reshapes to [BATCH] and only typechecks at BATCH=1.
+batched_patch='patch(body: "length = tract_core_cast(squeeze(sum_reduce(audio_signal, axes=[1,2]), axes=[1,2]) * 0.0, to = \"i64\") + tract_core_cast(tract_core_shape_of(audio_signal)[2], to = \"i64\");")'
+
 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	--nnef-tract-transformers \
-	-t 'set_symbols(values: {"BATCH": 1})' \
-	-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+	-t "$batched_patch" \
 	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
 	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'batchify_data_free(symbol: Some("BATCH"))' \
 	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
-	run \
-	--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-	--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-	--approx very \
-	--drop-partial-pulse
+	dump -q \
+	--assert-output-fact BATCH,1024,4,f32
+
+# Four streams on four lanes of one state, seated wherever the worker finds them
+# queued, each against the same stream run alone. The linger widens the turns
+# whatever the box's scheduling, so the batch axis and the seating are exercised
+# rather than the model being served one stream at a time. On cuda a turn's
+# width decides how the GEMMs decompose their sums, so a seat does not match the
+# same stream run alone bit for bit; the tolerance stays far under what a seat
+# reading another's data would show, and the diff holds a ratio rather than
+# compounding turn over turn. Metal decomposes them the same at any width, and
+# matches to the bit.
+for rt in "" $pulse_runtimes
+do
+	case "$rt" in
+		--cuda) approx=approximate;;
+		*) approx=exact;;
+	esac
+	TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t "$batched_patch" \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'batchify_data_free(symbol: Some("BATCH"))' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		--autobatch-sessions 4 --hint BATCH=4 \
+		run --streams 4 --turns 3 --assert-occupancy 2.5 \
+		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--approx $approx \
+		--drop-partial-pulse
+done

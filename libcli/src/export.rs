@@ -24,6 +24,10 @@ pub struct Node {
 
     #[serde(skip_serializing_if = "Option::is_none")]
     secs_per_iter: Option<f64>,
+
+    /// Accelerator time attributed to this node, when the runtime reports it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    accel_secs_per_iter: Option<f64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -43,6 +47,7 @@ impl GraphPerfInfo {
                 node_name: id.model(model).unwrap().node_name(id.1).to_string(),
                 op_name: id.model(model).unwrap().node_op_name(id.1).to_string(),
                 secs_per_iter: node.profile.map(|s| s.as_secs_f64()),
+                accel_secs_per_iter: node.accelerator_profile.map(|s| s.as_secs_f64()),
             })
             .collect();
         let profiling_info = annotations.profile_summary.as_ref().map(|summary| ProfilingInfo {

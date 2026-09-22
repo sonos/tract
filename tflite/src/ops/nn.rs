@@ -7,7 +7,7 @@ use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::einsum::EinSum;
 use tract_core::ops::math::add;
 use tract_core::ops::nn::Softmax;
-use tract_core::ops::nn::{Reduce, Reducer};
+use tract_core::ops::nn::{CoordTransformer, Interpolator, Nearest, Reduce, Reducer, Resize};
 use tract_core::prelude::tract_itertools::Itertools;
 
 use crate::registry::{DeserOp, Registry};
@@ -22,6 +22,10 @@ use crate::tflite::ExpandDimsOptions;
 use crate::tflite::ExpandDimsOptionsArgs;
 use crate::tflite::ReducerOptions;
 use crate::tflite::ReducerOptionsArgs;
+use crate::tflite::ResizeBilinearOptions;
+use crate::tflite::ResizeBilinearOptionsArgs;
+use crate::tflite::ResizeNearestNeighborOptions;
+use crate::tflite::ResizeNearestNeighborOptionsArgs;
 use crate::tflite::SoftmaxOptions;
 use crate::tflite::SoftmaxOptionsArgs;
 use crate::tflite::TensorType;
@@ -35,6 +39,10 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::MEAN, de_reduce_mean);
     reg.reg_to_tflite(ser_softmax);
     reg.reg_to_tract(BuiltinOperator::SOFTMAX, de_softmax);
+
+    reg.reg_to_tflite(ser_resize);
+    reg.reg_to_tract(BuiltinOperator::RESIZE_BILINEAR, de_resize_bilinear);
+    reg.reg_to_tract(BuiltinOperator::RESIZE_NEAREST_NEIGHBOR, de_resize_nearest);
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
@@ -110,7 +118,7 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
         .konst
         .as_ref()
         .unwrap()
-        .try_as_plain()?
+        .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -137,7 +145,7 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .konst
         .as_ref()
         .unwrap()
-        .try_as_plain()?
+        .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
         .map(|d| *d as usize)
@@ -163,6 +171,165 @@ fn de_softmax(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let quant_output_dt = Some(input.datum_type).filter(|dt| !dt.is_float());
     let softmax = Softmax { axes: tvec!(input.rank() - 1), quant_output_dt, ..Softmax::default() };
     op.ctx.target.wire_node(op.prefix, softmax, op.inputs)
+}
+
+/// The size input names the two spatial axes only, and the coordinate
+/// transformation is spelled as two flags rather than a name: neither set is
+/// TensorFlow's original mapping, where the output grid simply spans the input
+/// one.
+fn de_resize_bilinear(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_resize_bilinear_options);
+    let coord_transformer = if options.align_corners() {
+        CoordTransformer::AlignCorners
+    } else if options.half_pixel_centers() {
+        CoordTransformer::HalfPixel
+    } else {
+        CoordTransformer::Asymmetric
+    };
+    de_resize(op, coord_transformer, Interpolator::Linear, Nearest::Floor)
+}
+
+/// Nearest neighbour reads its half-pixel mode through a transformation of its
+/// own, and truncates the source coordinate unless aligning corners, which
+/// rounds it and so rounds up on a tie.
+fn de_resize_nearest(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let options = builtin!(op, builtin_options_as_resize_nearest_neighbor_options);
+    let coord_transformer = if options.align_corners() {
+        CoordTransformer::AlignCorners
+    } else if options.half_pixel_centers() {
+        CoordTransformer::TfHalfPixelForNn
+    } else {
+        CoordTransformer::Asymmetric
+    };
+    let nearest = if options.align_corners() { Nearest::RoundPreferCeil } else { Nearest::Floor };
+    de_resize(op, coord_transformer, Interpolator::Nearest, nearest)
+}
+
+/// The size goes out as the two spatial extents, and the coordinate
+/// transformation as the pair of flags that name it here. Anything tract can
+/// express and tflite cannot — a non-spatial axis, an interpolator or a
+/// transformation with no flag for it, a scale the output size does not
+/// reproduce — is left for another serializer.
+fn ser_resize(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Resize,
+) -> TractResult<()> {
+    let input = model.node_input_facts(node.id)?[0];
+    let output = &node.outputs[0].fact;
+    ensure!(input.rank() == 4, "tflite resizes NHWC only, got rank {}", input.rank());
+    let (input_shape, output_shape) = (input.shape.as_concrete(), output.shape.as_concrete());
+    let (input_shape, output_shape) = (
+        input_shape.context("tflite resize needs a concrete input shape")?,
+        output_shape.context("tflite resize needs a concrete output shape")?,
+    );
+    ensure!(
+        input_shape[0] == output_shape[0] && input_shape[3] == output_shape[3],
+        "tflite resizes the spatial axes only, {input_shape:?} to {output_shape:?}"
+    );
+    if let Some(slot) = op.optional_scales_input {
+        let scales = model.node_input_facts(node.id)?[slot].konst.clone();
+        if let Some(scales) = scales.filter(|scales| scales.len() == input.rank()) {
+            let scales = scales.cast_to::<f32>()?;
+            for (axis, scale) in scales.try_as_plain_ram()?.as_slice::<f32>()?.iter().enumerate() {
+                ensure!(
+                    *scale == output_shape[axis] as f32 / input_shape[axis] as f32,
+                    "tflite resamples by the ratio of the sizes it carries, and scale {scale} on axis {axis} is not {} over {}",
+                    output_shape[axis],
+                    input_shape[axis]
+                );
+            }
+        }
+    }
+    let (align_corners, half_pixel_centers) = match &op.coord_transformer {
+        CoordTransformer::AlignCorners => (true, false),
+        CoordTransformer::Asymmetric => (false, false),
+        CoordTransformer::HalfPixel if op.interpolator == Interpolator::Linear => (false, true),
+        CoordTransformer::TfHalfPixelForNn if op.interpolator == Interpolator::Nearest => {
+            (false, true)
+        }
+        other => bail!("tflite has no flag for coordinate transformation {other:?}"),
+    };
+
+    let mut inputs = tvec!(builder.outlets_to_tensors[&node.inputs[0]]);
+    let sizes: Vec<i32> = vec![output_shape[1] as i32, output_shape[2] as i32];
+    inputs.push(
+        builder.write_fact(format!("{}.size", node.name), TypedFact::try_from(tensor1(&sizes))?)?,
+    );
+    let out = builder.outlets_to_tensors[&node.id.into()];
+
+    match &op.interpolator {
+        Interpolator::Linear => {
+            let options = ResizeBilinearOptions::create(
+                builder.fb(),
+                &ResizeBilinearOptionsArgs { align_corners, half_pixel_centers },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &[out],
+                BuiltinOp::new(
+                    23,
+                    1,
+                    BuiltinOperator::RESIZE_BILINEAR,
+                    BuiltinOptions::ResizeBilinearOptions,
+                ),
+                options.as_union_value(),
+            )
+        }
+        Interpolator::Nearest => {
+            let expected = if align_corners { Nearest::RoundPreferCeil } else { Nearest::Floor };
+            ensure!(
+                op.nearest == expected,
+                "tflite nearest resize rounds {expected:?}, this one rounds {:?}",
+                op.nearest
+            );
+            let options = ResizeNearestNeighborOptions::create(
+                builder.fb(),
+                &ResizeNearestNeighborOptionsArgs { align_corners, half_pixel_centers },
+            );
+            builder.write_op_with_options(
+                &inputs,
+                &[out],
+                BuiltinOp::new(
+                    97,
+                    1,
+                    BuiltinOperator::RESIZE_NEAREST_NEIGHBOR,
+                    BuiltinOptions::ResizeNearestNeighborOptions,
+                ),
+                options.as_union_value(),
+            )
+        }
+        other => bail!("tflite has no resize with interpolator {other:?}"),
+    }
+}
+
+fn de_resize(
+    op: &mut DeserOp,
+    coord_transformer: CoordTransformer,
+    interpolator: Interpolator,
+    nearest: Nearest,
+) -> TractResult<TVec<OutletId>> {
+    let (input, sizes) = args_2!(op.facts()?);
+    ensure!(input.rank() == 4, "Resize expects NHWC, got rank {}", input.rank());
+    let sizes = sizes.konst.clone().context("Dynamic resize size is not supported")?;
+    let sizes = sizes.cast_to::<i64>()?;
+    let sizes = sizes.try_as_plain_ram()?.as_slice::<i64>()?;
+    ensure!(sizes.len() == 2, "Resize expects a size per spatial axis, got {sizes:?}");
+    let shape = &input.shape;
+    let full = tensor1(&[shape[0].clone(), sizes[0].to_dim(), sizes[1].to_dim(), shape[3].clone()]);
+    let sizes = op.ctx.target.add_const(format!("{}.sizes", op.prefix), full)?;
+    op.ctx.target.wire_node(
+        op.prefix,
+        Resize {
+            coord_transformer,
+            interpolator,
+            nearest,
+            optional_scales_input: None,
+            optional_sizes_input: Some(1),
+        },
+        &[op.inputs[0], sizes],
+    )
 }
 
 pub fn de_relu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -316,4 +483,60 @@ fn ser_softmax(
         BuiltinOp::new(25, 1, BuiltinOperator::SOFTMAX, BuiltinOptions::SoftmaxOptions),
         options.as_union_value(),
     )
+}
+
+/// Both directions of the resize mapping, without a TensorFlow toolchain: the
+/// round-trip suite needs one, and the flags only make sense as a pair.
+#[cfg(test)]
+mod resize {
+    use super::*;
+
+    fn model(
+        coord: CoordTransformer,
+        interp: Interpolator,
+        nearest: Nearest,
+    ) -> TractResult<TypedModel> {
+        let mut m = TypedModel::default();
+        let x = m.add_source("x", f32::fact([1usize, 4, 6, 2]))?;
+        let sizes = m.add_const("sizes", tensor1(&[1i64, 8, 12, 2]))?;
+        let y = m.wire_node(
+            "resize",
+            Resize {
+                coord_transformer: coord,
+                interpolator: interp,
+                nearest,
+                optional_scales_input: None,
+                optional_sizes_input: Some(1),
+            },
+            &[x, sizes],
+        )?[0];
+        m.select_output_outlets(&[y])?;
+        m.into_decluttered()
+    }
+
+    #[test]
+    fn survives_a_tflite_round_trip() -> TractResult<()> {
+        for (coord, interp, nearest) in [
+            (CoordTransformer::HalfPixel, Interpolator::Linear, Nearest::Floor),
+            (CoordTransformer::AlignCorners, Interpolator::Linear, Nearest::Floor),
+            (CoordTransformer::Asymmetric, Interpolator::Linear, Nearest::Floor),
+            (CoordTransformer::TfHalfPixelForNn, Interpolator::Nearest, Nearest::Floor),
+            (CoordTransformer::Asymmetric, Interpolator::Nearest, Nearest::Floor),
+            (CoordTransformer::AlignCorners, Interpolator::Nearest, Nearest::RoundPreferCeil),
+        ] {
+            let m = model(coord.clone(), interp.clone(), nearest)?;
+            let mut buf = vec![];
+            crate::tflite().write(&m, &mut buf)?;
+            let back = crate::tflite().model_for_read(&mut std::io::Cursor::new(&buf))?;
+            let input = Tensor::from_shape(
+                &[1, 4, 6, 2],
+                &(0..48).map(|i| i as f32 * 0.25).collect::<Vec<_>>(),
+            )?;
+            let a = m.clone().into_runnable()?.run(tvec!(input.clone().into()))?;
+            let b = back.into_runnable()?.run(tvec!(input.into()))?;
+            a[0].close_enough(&b[0], Approximation::Exact)
+                .with_context(|| format!("{coord:?} {interp:?} {nearest:?}"))?;
+        }
+        Ok(())
+    }
 }

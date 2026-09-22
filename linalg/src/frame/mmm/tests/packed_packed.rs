@@ -260,7 +260,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let mut a = Tensor::zero::<f32>(&[m, k_aligned])?;
         for row in 0..m {
             for col in 0..k {
-                a.try_as_plain_mut()?.to_array_view_mut()?[[row, col]] = self.a[col + k * row];
+                a.try_as_plain_ram_mut()?.to_array_view_mut()?[[row, col]] = self.a[col + k * row];
             }
         }
         if let WeightType::Plain(dt) = pack_a.precursor() {
@@ -269,7 +269,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let mut b = Tensor::zero::<f32>(&[k_aligned, n])?;
         for row in 0..k {
             for col in 0..n {
-                b.try_as_plain_mut()?.to_array_view_mut()?[[row, col]] = self.b[col + n * row];
+                b.try_as_plain_ram_mut()?.to_array_view_mut()?[[row, col]] = self.b[col + n * row];
             }
         }
         if let WeightType::Plain(dt) = pack_b.precursor() {
@@ -289,10 +289,10 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let mut c = Tensor::zero::<K::Acc>(&[m, n])?;
 
         let a = a.cast_to::<K::Acc>()?;
-        let a = a.try_as_plain()?.as_slice::<K::Acc>()?;
+        let a = a.try_as_plain_ram()?.as_slice::<K::Acc>()?;
         let b = b.cast_to::<K::Acc>()?;
-        let b = b.try_as_plain()?.as_slice::<K::Acc>()?;
-        let mut c_plain = c.try_as_plain_mut()?;
+        let b = b.try_as_plain_ram()?.as_slice::<K::Acc>()?;
+        let mut c_plain = c.try_as_plain_ram_mut()?;
         let mut view = c_plain.to_array_view_mut::<K::Acc>()?.into_dimensionality()?;
         for ix_m in 0..m {
             for ix_n in 0..n {
@@ -369,8 +369,8 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         };
         let result = found.close_enough(&expected, app);
         if result.is_err() {
-            let exp = expected.try_as_plain()?.as_slice::<K::Acc>()?;
-            let found = found.try_as_plain()?.as_slice::<K::Acc>()?;
+            let exp = expected.try_as_plain_ram()?.as_slice::<K::Acc>()?;
+            let found = found.try_as_plain_ram()?.as_slice::<K::Acc>()?;
             let (m, _, n) = self.mkn();
             display_error(found, exp, m, n);
         }

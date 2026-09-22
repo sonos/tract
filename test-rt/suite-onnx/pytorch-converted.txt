@@ -52,6 +52,7 @@ test_LogSoftmax
 test_MaxPool1d
 test_MaxPool1d_stride
 test_MaxPool2d
+test_MaxPool2d_stride_padding_dilation
 test_MaxPool3d
 test_MaxPool3d_stride
 test_MaxPool3d_stride_padding

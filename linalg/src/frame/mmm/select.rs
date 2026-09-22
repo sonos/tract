@@ -11,7 +11,7 @@
 //! property of the platform, never of a kernel. A [`Suitable`] is one way to compute
 //! the matmul that fits the query — kernel, packing, extractor.
 
-use dyn_eq::DynEq;
+use tract_data::dyn_eq::DynEq;
 use tract_data::itertools::Itertools;
 use tract_data::prelude::{DatumType, TVec, tvec};
 

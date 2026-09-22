@@ -162,6 +162,9 @@ jobs:
           - target: i9-11900kb_rtx-4060
             runner: cuda-lovelace
             triple: x86_64-unknown-linux-gnu
+          - target: i9-9900k
+            runner: i99900k
+            triple: x86_64-unknown-linux-gnu
           - target: jetson-orin-nx
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
@@ -543,6 +546,9 @@ jobs:
           - target: i9-11900kb_rtx-4060
             runner: cuda-lovelace
             triple: x86_64-unknown-linux-gnu
+          - target: i9-9900k
+            runner: i99900k
+            triple: x86_64-unknown-linux-gnu
           - target: jetson-orin-nx
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
@@ -656,6 +662,9 @@ jobs:
             triple: aarch64-apple-darwin
           - target: i9-11900kb_rtx-4060
             runner: cuda-lovelace
+            triple: x86_64-unknown-linux-gnu
+          - target: i9-9900k
+            runner: i99900k
             triple: x86_64-unknown-linux-gnu
           - target: jetson-orin-nx
             runner: orin-nx-16g

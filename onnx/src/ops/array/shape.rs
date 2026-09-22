@@ -21,12 +21,12 @@ struct Shape {
 
 impl Shape {
     fn resolve(&self, rank: i64) -> Range<usize> {
-        let start =
-            if self.start >= 0 { self.start } else { (rank + self.start).clamp(0, rank) } as usize;
-        let end =
-            if let Some(end) = self.end { if end >= 0 { end } else { end + rank } } else { rank }
-                .clamp(0, rank) as usize;
-        start..end
+        let clamp =
+            |axis: i64| (if axis >= 0 { axis } else { axis + rank }).clamp(0, rank) as usize;
+        let start = clamp(self.start);
+        let end = self.end.map(clamp).unwrap_or(rank as usize);
+        // Both bounds are clamped to [0, rank]; a start past the end selects nothing.
+        start..end.max(start)
     }
 }
 

@@ -88,7 +88,7 @@ pub fn change_axes(
     if model
         .node(change.outlet.node)
         .op_as::<Const>()
-        .is_some_and(|c| c.val().volume() == 1 && c.val().is_plain())
+        .is_some_and(|c| c.val().volume() == 1 && c.val().is_plain_ram())
     {
         debug!("  Not considering change from const {change:?}");
         return Ok(None);

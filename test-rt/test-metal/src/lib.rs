@@ -22,9 +22,13 @@ impl DeviceTestBackend for MetalBackend {
             .transform_up_to_phase(model, self.phase)
     }
 
-    fn with_arena(&self, plan: TypedSimplePlan) -> TractResult<TypedSimplePlan> {
+    fn with_arena(
+        &self,
+        plan: TypedSimplePlan,
+        memory_hint: &SymbolValues,
+    ) -> TractResult<TypedSimplePlan> {
         let turn_handler =
-            tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&plan, &SymbolValues::default())?;
+            tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&plan, memory_hint)?;
         Ok(plan.with_turn_handler(turn_handler))
     }
 }

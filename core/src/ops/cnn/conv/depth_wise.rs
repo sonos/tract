@@ -195,6 +195,11 @@ macro_rules! impl_eval {
                     ioffset[i] = zone.values_offsets[i].1;
                 }
                 let mut k = [T::zero(); N];
+                let ker = if T::datum_type() == f32::datum_type() {
+                    tract_linalg::routines::depthwise_w_f32()
+                } else {
+                    None
+                };
                 for c in 0..*dw.input_shape.c() as isize {
                     visitor.reset();
                     let iptr = iptr.offset(c_stride_i * c);
@@ -206,6 +211,23 @@ macro_rules! impl_eval {
                     while !visitor.done {
                         let iptr = iptr.offset(visitor.input_center_offset);
                         let optr = optr.offset(visitor.output_offset);
+                        if let Some(ker) = ker
+                            && visitor.inner_loop_output_stride == 1
+                            && visitor.inner_loop_input_full_stride >= 1
+                        {
+                            let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
+                            ker(
+                                iptr as *const f32,
+                                optr as *mut f32,
+                                &k_f32,
+                                &ioffset,
+                                *(&bias as *const T as *const f32),
+                                visitor.inner_loop_len,
+                                visitor.inner_loop_input_full_stride,
+                            );
+                            visitor.next_non_inner_axis();
+                            continue;
+                        }
                         let mut i = 0isize;
                         while i + (UNROLL as isize) < visitor.inner_loop_len as isize {
                             let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
@@ -308,6 +330,7 @@ impl_eval! {
 #[cfg(target_arch = "aarch64")]
 aarch64fp16
 }
+
 //#[target_feature(enable = "fp16")] impl_eval!(aarch64fp16);
 
 /* partial alternative impl that may be relevant when simd gets better */
@@ -469,3 +492,113 @@ let sum = bias + p0 + p1 + p2 + p3;
      }
      }
      */
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::cnn::conv::{BlockedConv, Conv, KernelFormat};
+    use crate::ops::cnn::{PaddingSpec, PoolSpec};
+    use crate::ops::nn::DataFormat;
+
+    fn run_dw(
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        pad: PaddingSpec,
+        stride: (usize, usize),
+    ) {
+        let n = 1usize;
+        let x: Vec<f32> = (0..n * c * h * w).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
+        let kernel: Vec<f32> = (0..c * kh * kw).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
+        let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
+
+        let mut model = TypedModel::default();
+        let xv = model.add_source("x", f32::fact([n, c, h, w])).unwrap();
+        let kv =
+            model.add_const("k", Tensor::from_shape(&[c, 1, kh, kw], &kernel).unwrap()).unwrap();
+        let bv = model.add_const("b", Tensor::from_shape(&[c], &bias).unwrap()).unwrap();
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec!(kh, kw),
+                padding: pad.clone(),
+                dilations: None,
+                strides: Some(tvec!(stride.0, stride.1)),
+                input_channels: c,
+                output_channels: c,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: c,
+            q_params: None,
+        };
+        let out = model.wire_node("dw", conv, &[xv, kv, bv]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let model = model.into_decluttered().unwrap().into_optimized().unwrap();
+        if kw == 1 && model.nodes.iter().any(|node| node.op_as::<BlockedConv>().is_some()) {
+            // `BlockedConv` claims kw=1 NCHW f32 wherever it is enabled -- by default on
+            // wasm, opt-in elsewhere -- so this shape does not reach DepthWise there.
+            // `blocked_conv_matches_reference` covers it.
+            return;
+        }
+        assert!(
+            model.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
+            "expected DepthWiseConv, got {}",
+            model.nodes.iter().map(|node| node.op().name()).collect::<Vec<_>>().join(",")
+        );
+        let runnable = model.into_runnable().unwrap();
+        let got = runnable
+            .run(tvec![Tensor::from_shape(&[n, c, h, w], &x).unwrap().into_tvalue()])
+            .unwrap();
+        let got = got[0].to_plain_array_view::<f32>().unwrap();
+        let oshape = got.shape();
+        let oh = oshape[2];
+        let ow = oshape[3];
+        let (ph, pw) = match pad {
+            PaddingSpec::Valid => (0isize, 0isize),
+            _ => (((kh - 1) / 2) as isize, ((kw - 1) / 2) as isize),
+        };
+        let mut max_abs = 0f32;
+        for oc in 0..c {
+            for oy in 0..oh {
+                for ox in 0..ow {
+                    let mut acc = bias[oc];
+                    for ky in 0..kh {
+                        for kx in 0..kw {
+                            let iy = oy as isize * stride.0 as isize + ky as isize - ph;
+                            let ix = ox as isize * stride.1 as isize + kx as isize - pw;
+                            if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                continue;
+                            }
+                            let xv = x[((oc * h + iy as usize) * w) + ix as usize];
+                            let kv = kernel[((oc * kh + ky) * kw) + kx];
+                            acc += xv * kv;
+                        }
+                    }
+                    let g = got[[0, oc, oy, ox]];
+                    max_abs = max_abs.max((g - acc).abs());
+                }
+            }
+        }
+        assert!(
+            max_abs < 1e-5,
+            "DepthWise mismatch c={c} {h}x{w} k={kh}x{kw} stride={stride:?} pad={pad:?}: max_abs={max_abs}"
+        );
+    }
+
+    #[test]
+    fn depthwise_contig_w_matches_reference() {
+        // 48 kHz-like: NCHW, H=1, long W, kw=3. Inner loop is W.
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(32, 1, 481, 1, 3, PaddingSpec::Valid, (1, 1));
+        run_dw(8, 1, 17, 1, 3, PaddingSpec::SameUpper, (1, 1));
+        // kw=1: taps a row apart, output still contiguous along W.
+        run_dw(8, 12, 20, 3, 1, PaddingSpec::Valid, (1, 1));
+        run_dw(4, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
+        // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
+        run_dw(64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
+        run_dw(64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
+        run_dw(16, 1, 64, 1, 3, PaddingSpec::Valid, (1, 2));
+    }
+}

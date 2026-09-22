@@ -1,6 +1,5 @@
 use crate::internal::translator::Translate;
 use crate::internal::*;
-use crate::ops::array::{Pad, PadMode};
 use crate::ops::binary::TypedBinOp;
 use crate::ops::cast::{Cast, cast};
 use crate::ops::einsum::EinSum;
@@ -144,7 +143,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 }
                 Box::new(TypedSource::new(fact))
             } else if let Some(konst) = node.op_as::<Const>() {
-                if konst.val().datum_type() == self.from_dt && konst.val().is_plain() {
+                if konst.val().datum_type() == self.from_dt && konst.val().is_plain_ram() {
                     let wire = target.add_const(
                         format!("{}.{:?}", node.name, self.from_dt),
                         konst.val().clone(),
@@ -179,17 +178,6 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 let operating_dt =
                     if op.operating_dt == self.from_dt { self.to_dt } else { op.operating_dt };
                 Box::new(EinSum { operating_dt, ..op.clone() })
-            } else if let Some(op) = node.op_as::<Pad>() {
-                if let PadMode::Constant(t) = &op.mode {
-                    let new_t = if t.datum_type() == self.from_dt {
-                        t.cast_to_dt(self.to_dt)?.into_owned().into_arc_tensor()
-                    } else {
-                        Arc::clone(t)
-                    };
-                    Box::new(Pad { mode: PadMode::Constant(new_t), ..op.clone() })
-                } else {
-                    Box::new(op.clone())
-                }
             } else {
                 node.op.clone()
             };
@@ -240,7 +228,7 @@ mod test {
             .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -274,7 +262,7 @@ mod test {
         .into_runnable()?;
         assert!(
             runnable_model.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -301,7 +289,7 @@ mod test {
         let runnable_model_f16 = model_f16.clone().into_runnable()?;
         assert!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );
@@ -327,7 +315,7 @@ mod test {
         let runnable_model_f16 = model_f16_with_filter.clone().into_runnable()?;
         assert!(
             runnable_model_f16.run(tvec![tensor1(&[f16::from_f32(5.0)]).into()])?[0]
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .to_scalar::<f16>()?
                 .is_nan()
         );

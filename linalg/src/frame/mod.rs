@@ -33,11 +33,15 @@ pub mod by_scalar;
 #[macro_use]
 pub mod erf;
 #[macro_use]
+pub mod exp;
+#[macro_use]
 pub mod gelu;
 #[macro_use]
 pub mod hardswish;
 #[macro_use]
 pub mod leaky_relu;
+#[macro_use]
+pub mod ln;
 #[macro_use]
 pub mod lut;
 #[macro_use]

@@ -1,5 +1,8 @@
 use crate::internal::*;
 
+/// How a padded region is filled. A `Constant` value carries a single element
+/// in the datum type the model builder gave it, f32 for a float graph, and no
+/// pass retypes it: a consumer casts it to the datum type of the tensor it pads.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PadMode {
     Constant(Arc<Tensor>),

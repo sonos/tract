@@ -20,6 +20,14 @@ impl Const {
         fact: Option<Box<dyn ExoticFact>>,
     ) -> TractResult<Const> {
         ensure!(fact.is_some() || tensor.is_plain(), "Exotic tensor requires an exotic_fact");
+        // A plain constant holds plain host bytes: storage that left them on a
+        // device brings them back rather than pinning the buffer for the life
+        // of the model.
+        let tensor = if fact.is_none() && !tensor.has_plain_ram_storage() {
+            Arc::new(Arc::unwrap_or_clone(tensor).into_plain_ram()?)
+        } else {
+            tensor
+        };
         Ok(Const(tensor, fact))
     }
 
@@ -84,7 +92,7 @@ impl TypedOp for Const {
     ) -> TractResult<TVec<OutletId>> {
         let op = if self.0.datum_type() == TDim::datum_type() {
             let mut tensor = self.0.clone().into_tensor();
-            for d in tensor.try_as_plain_mut()?.as_slice_mut::<TDim>()? {
+            for d in tensor.try_as_plain_ram_mut()?.as_slice_mut::<TDim>()? {
                 *d = d.substitute_all(subs)?;
             }
             Const(tensor.into_arc_tensor(), self.1.clone())

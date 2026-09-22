@@ -83,7 +83,7 @@ bin_to_super_type!(mul, Mul,
                            let b = b.to_plain_array_view::<u8>()?;
                            let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                            let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
-                           let mut c_plain = c.try_as_plain_mut()?;
+                           let mut c_plain = c.try_as_plain_ram_mut()?;
                            let view = c_plain.to_array_view_mut::<u8>()?;
                            crate::ndarray::Zip::from(view)
                                .and_broadcast(a)
@@ -103,7 +103,7 @@ bin_to_super_type!(mul, Mul,
                                let a = a.to_plain_array_view::<TDim>()?;
                                let b = b.cast_to::<i32>()?;
                                let b = b.to_plain_array_view::<i32>()?;
-                               let mut c_plain = c.try_as_plain_mut()?;
+                               let mut c_plain = c.try_as_plain_ram_mut()?;
                                let c = c_plain.to_array_view_mut::<TDim>()?;
                                crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() * *b);
                                Ok(true)
@@ -114,7 +114,7 @@ bin_to_super_type!(mul, Mul,
                                    let (zp, scale) = params.zp_scale();
                                    let a = a.to_plain_array_view::<i8>()?;
                                    let b = b.to_plain_array_view::<i8>()?;
-                                   let mut c_plain = c.try_as_plain_mut()?;
+                                   let mut c_plain = c.try_as_plain_ram_mut()?;
                                    let c = c_plain.to_array_view_mut::<i8>()?;
                                    crate::ndarray::Zip::from(c)
                                        .and_broadcast(a)
@@ -126,7 +126,7 @@ bin_to_super_type!(mul, Mul,
                                    let (zp, scale) = params.zp_scale();
                                    let a = a.to_plain_array_view::<u8>()?;
                                    let b = b.to_plain_array_view::<u8>()?;
-                                   let mut c_plain = c.try_as_plain_mut()?;
+                                   let mut c_plain = c.try_as_plain_ram_mut()?;
                                    let c = c_plain.to_array_view_mut::<u8>()?;
                                    crate::ndarray::Zip::from(c)
                                        .and_broadcast(a)
@@ -160,7 +160,7 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 let a = a.broadcast(&*c_shape).unwrap();
                 let b = b.broadcast(&*c_shape).unwrap();
                 let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                let mut c_plain = c.try_as_plain_mut()?;
+                let mut c_plain = c.try_as_plain_ram_mut()?;
                 let mut view = c_plain.to_array_view_mut::<TDim>()?;
                 for coords in crate::ndarray::indices(&*c_shape) {
                     let (p, q) = a[&coords].maybe_div(&b[&coords])?;
@@ -178,7 +178,7 @@ eval_override: |a:TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
                 let b = b.to_plain_array_view::<u8>()?;
                 let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                 let mut c = Tensor::zero_dt(c_dt, &c_shape)?;
-                let mut c_plain = c.try_as_plain_mut()?;
+                let mut c_plain = c.try_as_plain_ram_mut()?;
                 let view = c_plain.to_array_view_mut::<u8>()?;
                 crate::ndarray::Zip::from(view)
                     .and_broadcast(a)
@@ -202,7 +202,7 @@ out_of_place: |c:&mut Tensor, a:&Tensor, b: &Tensor| -> TractResult<bool> {
             let a = a.to_plain_array_view::<TDim>()?;
             let b = b.cast_to::<i32>()?;
             let b = b.to_plain_array_view::<i32>()?;
-            let mut c_plain = c.try_as_plain_mut()?;
+            let mut c_plain = c.try_as_plain_ram_mut()?;
             let c = c_plain.to_array_view_mut::<TDim>()?;
             crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() / *b);
             Ok(true)
@@ -237,7 +237,7 @@ bin_to_super_type!(rem, Rem,
                                                   let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
                                                   unsafe {
                                                       let mut c = Tensor::uninitialized_dt(DatumType::TDim, &c_shape)?;
-                                                      let mut c_plain = c.try_as_plain_mut()?;
+                                                      let mut c_plain = c.try_as_plain_ram_mut()?;
                                                       let view = c_plain.to_array_view_mut::<TDim>()?;
                                                       crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                                       Ok(c)
@@ -252,7 +252,7 @@ bin_to_super_type!(rem, Rem,
                                                   let a = a.to_plain_array_view::<TDim>()?;
                                                   let b = b.cast_to::<i32>()?;
                                                   let b = b.to_plain_array_view::<i32>()?;
-                                                  let mut c_plain = c.try_as_plain_mut()?;
+                                                  let mut c_plain = c.try_as_plain_ram_mut()?;
                                                   let c = c_plain.to_array_view_mut::<TDim>()?;
                                                   crate::ndarray::Zip::from(c).and_broadcast(a).and_broadcast(b).for_each(|c,a,b| *c = a.clone() % *b);
                                                   Ok(true)
@@ -287,12 +287,12 @@ bin_to_super_type!(max, Max,
                                 (&a, &a_zp, &a_scale, &b, &b_zp, &b_scale)
                             };
                             if e.is_uniform() { // may be relu or any scalar
-                                let e = e.cast_to::<u8>()?.try_as_plain()?.as_slice::<u8>()?[0];
+                                let e = e.cast_to::<u8>()?.try_as_plain_ram()?.as_slice::<u8>()?[0];
                                 let e_val_as_d_aligned: i32 = scale_by(e as i32 - e_zp, e_scale / d_scale);
                                 let multiplier = d_scale  * (1.0/ c_scale);
                                 let d = d.to_plain_array_view::<u8>()?;
                                 let mut c = Tensor::zero_dt(c_dt, d.shape())?;
-                                let mut c_plain = c.try_as_plain_mut()?;
+                                let mut c_plain = c.try_as_plain_ram_mut()?;
                                 let view = c_plain.to_array_view_mut::<u8>()?;
                                 crate::ndarray::Zip::from(view)
                                     .and_broadcast(d)
@@ -528,7 +528,9 @@ q: [i8, u8, i32, i32] => f32::abs;
 operating_datum_type: |dt| if dt == TDim::datum_type() { i64::datum_type() } else { dt }
 );
 
-element_wise!(exp, Exp, [f16, f32, f64] => |_, xs| {
+element_wise!(exp, Exp,
+[f32] => |_, xs| { Func::Exp.ew_f32()?.run(xs) },
+[f16, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.exp());
     Ok(())
 };
@@ -536,7 +538,9 @@ q: [i8, u8, i32, i32] => f32::exp;
 validation: Validation::Rounding
 );
 
-element_wise!(ln, Ln, [f16, f32, f64] => |_, xs| {
+element_wise!(ln, Ln,
+[f32] => |_, xs| { Func::Ln.ew_f32()?.run(xs) },
+[f16, f64] => |_, xs| {
     xs.iter_mut().for_each(|x| *x = x.ln());
     Ok(())
 };
@@ -979,7 +983,7 @@ mod tests {
     fn sign_of_negative_zero_is_positive_zero() -> TractResult<()> {
         let mut t = tensor1(&[-0.0f32, 0.0, -2.0, 2.0]);
         Sign {}.eval_in_place(&mut t, None)?;
-        let got = t.try_as_plain()?.as_slice::<f32>()?;
+        let got = t.try_as_plain_ram()?.as_slice::<f32>()?;
         // Compared as bit patterns: -0.0 == 0.0 is true, so an equality check on the
         // values would pass even when -0.0 is returned.
         assert_eq!(got[0].to_bits(), 0f32.to_bits());

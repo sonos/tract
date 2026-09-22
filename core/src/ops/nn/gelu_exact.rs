@@ -73,24 +73,31 @@ pub fn detect_gelu_exact(
     rule_if_some!(out = model.single_succ(one_plus_erf.id)?);
     rule_if_some!(out_op = out.op_as::<TypedBinOp>());
     rule_if!(out_op.0.is::<Mul>());
-    rule_if_some!(
-        half_x = out
-            .inputs
-            .iter()
-            .filter_map(|i| {
-                let n = &model.nodes()[i.node];
-                n.op_as::<TypedBinOp>()?.0.is::<Mul>().then_some(n)
-            })
-            .next()
-    );
-    rule_if!(model.matches_single_input_const(half_x, 0.5));
-    rule_if!(half_x.inputs.contains(&x));
+    let half_x = out
+        .inputs
+        .iter()
+        .filter_map(|i| {
+            let n = &model.nodes()[i.node];
+            n.op_as::<TypedBinOp>()?.0.is::<Mul>().then_some(n)
+        })
+        .find(|n| model.matches_single_input_const(n, 0.5) && n.inputs.contains(&x));
+
+    // ((1 + erf(x / sqrt(2))) * x) * 0.5 keeps the same value with the half
+    // factored out of the chain, which is what PP-OCR's GELU expands to.
+    let last = match half_x {
+        Some(_) => out,
+        None => {
+            rule_if!(out.inputs.contains(&x));
+            rule_if_some!(scaled = model.find_succ_bin_with_const::<Mul>(out, 0.5));
+            scaled
+        }
+    };
 
     let mut patch = TypedModelPatch::default();
     let tap = patch.taps(model, &[x])?;
     let wired =
         patch.wire_node(format!("{}.gelu_exact", erf_node.name), gelu_exact(), &[tap[0]])?;
-    patch.shunt_outside(model, out.id.into(), wired[0])?;
+    patch.shunt_outside(model, last.id.into(), wired[0])?;
     Ok(Some(patch))
 }
 
@@ -115,6 +122,21 @@ mod tests {
         Ok(m)
     }
 
+    fn chain_trailing_half(dt: DatumType, len: usize) -> TractResult<TypedModel> {
+        let mut m = TypedModel::default();
+        let x = m.add_source("x", dt.fact([len]))?;
+        let c = m.add_const("c", tensor1(&[inv_sqrt2()]).cast_to_dt(dt)?.into_owned())?;
+        let scaled = m.wire_node("scale", mul(), &[x, c])?[0];
+        let e = m.wire_node("erf", erf(), &[scaled])?[0];
+        let one = m.add_const("one", tensor1(&[1f32]).cast_to_dt(dt)?.into_owned())?;
+        let ope = m.wire_node("add_one", add(), &[e, one])?[0];
+        let x_ope = m.wire_node("x_ope", mul(), &[x, ope])?[0];
+        let half = m.add_const("half", tensor1(&[0.5f32]).cast_to_dt(dt)?.into_owned())?;
+        let out = m.wire_node("out", mul(), &[x_ope, half])?;
+        m.select_output_outlets(&out)?;
+        Ok(m)
+    }
+
     fn is_mini<T: crate::ops::element_wise::ElementWiseMiniOp>(n: &TypedNode) -> bool {
         n.op_as::<ElementWiseOp>().map(|e| e.0.is::<T>()).unwrap_or(false)
     }
@@ -126,24 +148,27 @@ mod tests {
 
     #[test]
     fn fuses_the_chain_and_keeps_the_values() -> TractResult<()> {
-        for dt in [DatumType::F32, DatumType::F16] {
-            let len = 2050;
-            let raw = chain(dt, len)?;
-            let reference = raw.clone().into_runnable()?.run(tvec!(input(dt, len)?))?;
+        type Build = fn(DatumType, usize) -> TractResult<TypedModel>;
+        for build in [chain as Build, chain_trailing_half as Build] {
+            for dt in [DatumType::F32, DatumType::F16] {
+                let len = 2050;
+                let raw = build(dt, len)?;
+                let reference = raw.clone().into_runnable()?.run(tvec!(input(dt, len)?))?;
 
-            let fused = raw.into_decluttered()?;
-            assert!(
-                fused.nodes().iter().any(is_mini::<GeluExact>),
-                "{dt:?}: no GeluExact after declutter"
-            );
-            assert!(!fused.nodes().iter().any(is_mini::<Erf>), "{dt:?}: Erf survived");
+                let fused = raw.into_decluttered()?;
+                assert!(
+                    fused.nodes().iter().any(is_mini::<GeluExact>),
+                    "{dt:?}: no GeluExact after declutter"
+                );
+                assert!(!fused.nodes().iter().any(is_mini::<Erf>), "{dt:?}: Erf survived");
 
-            let got = fused.into_runnable()?.run(tvec!(input(dt, len)?))?;
-            assert_eq!(
-                got[0].as_bytes(),
-                reference[0].as_bytes(),
-                "{dt:?}: fused output differs from the chain"
-            );
+                let got = fused.into_runnable()?.run(tvec!(input(dt, len)?))?;
+                assert_eq!(
+                    got[0].as_bytes(),
+                    reference[0].as_bytes(),
+                    "{dt:?}: fused output differs from the chain"
+                );
+            }
         }
         Ok(())
     }

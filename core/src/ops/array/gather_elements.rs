@@ -75,7 +75,7 @@ impl GatherElements {
         data: TValue,
         indices: &ArrayViewD<i64>,
     ) -> TractResult<TValue> {
-        let data_plain = data.try_as_plain()?;
+        let data_plain = data.try_as_plain_ram()?;
         let data_view = unsafe { data_plain.to_array_view_unchecked::<T>() };
         let output = match self.eval_contiguous_last_axis::<T>(&data_view, indices)? {
             Some(output) => output,
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn last_axis_resolves_negative_indices() {
         let output = gather(&[1, 4], &[-1, 0, -4, 2]).unwrap();
-        assert_eq!(output.try_as_plain().unwrap().as_slice::<f32>().unwrap(), [3., 0., 0., 2.]);
+        assert_eq!(output.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(), [3., 0., 0., 2.]);
     }
 
     #[test]

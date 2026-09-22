@@ -170,5 +170,8 @@ DEFINE_UNARY_KERNEL(element_wise_bitnot, i16, int16_t, op_bitnot);
 DEFINE_UNARY_KERNEL(element_wise_bitnot, i32, int32_t, op_bitnot);
 DEFINE_UNARY_KERNEL(element_wise_bitnot, i64, int64_t, op_bitnot);
 
-static __device__ __forceinline__ bool op_bitnot_bool(bool x) { return !x; }
-DEFINE_UNARY_KERNEL(element_wise_bitnot, bool, bool, op_bitnot_bool);
+/* Core keeps Not and BitNot apart because BitNot also takes the integers, but
+   on bool they are the one operation. */
+static __device__ __forceinline__ bool op_not_bool(bool x) { return !x; }
+DEFINE_UNARY_KERNEL(element_wise_bitnot, bool, bool, op_not_bool);
+DEFINE_UNARY_KERNEL(element_wise_not, bool, bool, op_not_bool);

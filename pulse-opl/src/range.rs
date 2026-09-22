@@ -76,8 +76,10 @@ impl OpState for PulsedRangeState {
             // TDim-input form: `Range::make` materialises as i64 regardless
             // of `op.datum_type` (which is what `Range::output_facts` writes
             // for the TDim-input branch — see `core/src/ops/array/range.rs`).
-            let start = op.start.try_as_plain()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
-            let step = op.step.try_as_plain()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
+            let start =
+                op.start.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
+            let step =
+                op.step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(ctx.symbols).to_i64()?;
             let data: Vec<i64> =
                 (0..pulse).map(|i| start + step * (base as i64 + i as i64)).collect();
             tract_nnef::tract_core::ndarray::Array1::from_vec(data).into_dyn().into_tensor()
@@ -89,7 +91,7 @@ impl OpState for PulsedRangeState {
     }
 
     fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
-        bail!("PulsedRange is not lane-aware: current_pos has no lane axis")
+        bail!("PulsedRange is not lane-aware: current_pos counts the state's turns, not a stream's")
     }
 }
 
@@ -101,8 +103,8 @@ where
         + std::ops::Add<Output = T>
         + std::ops::Mul<Output = T>,
 {
-    let start = *start.try_as_plain()?.to_scalar::<T>()?;
-    let step = *step.try_as_plain()?.to_scalar::<T>()?;
+    let start = *start.try_as_plain_ram()?.to_scalar::<T>()?;
+    let step = *step.try_as_plain_ram()?.to_scalar::<T>()?;
     let base_t: T = tract_num_traits::cast(base as i64)
         .ok_or_else(|| format_err!("PulsedRange: base {base} doesn't fit in target dtype"))?;
     let mut data = Vec::with_capacity(pulse);

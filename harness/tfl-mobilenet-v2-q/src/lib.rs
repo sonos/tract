@@ -74,7 +74,7 @@ mod tests {
         let input = load_image(grace_hopper());
         let outputs = runnable.run(tvec![input.into()])?;
         let label_id =
-            outputs[0].try_as_plain()?.as_slice::<i8>()?.iter().enumerate().max().unwrap().0;
+            outputs[0].try_as_plain_ram()?.as_slice::<i8>()?.iter().enumerate().max().unwrap().0;
         let labels = load_labels();
         let label = &labels[label_id];
         assert_eq!(label, "military uniform");

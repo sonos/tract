@@ -718,50 +718,123 @@ __device__ void scaled_bool_masked_softmax(
             out_stride_2, out_stride_3, out_stride_4);                         \
     }
 
-#define INSTANTIATE_RMS_NORM(name, T, bname, block_size)                       \
-    extern "C" __global__ void rms_norm_##bname##name(                         \
-        const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,      \
-        const int32_t shape_2, const int32_t strides_0,                        \
-        const int32_t strides_1, const int32_t strides_2, const float eps) {   \
-        int base_idx = (blockIdx.x % shape_2) * strides_2 +                    \
-                       (blockIdx.x / shape_2) * strides_0;                     \
-                                                                               \
-        float tmp = 0.0f;                                                      \
-                                                                               \
-        for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
-            const float xi = x[base_idx + i * strides_1];                      \
-            tmp += xi * xi;                                                    \
-        }                                                                      \
-                                                                               \
-        tmp = warp_reduce_sum(tmp);                                            \
-        if constexpr (block_size > WARP_SIZE) {                                \
-            __shared__ float s_sum[32];                                        \
-            const int warp_id = threadIdx.x / WARP_SIZE;                       \
-            const int lane_id = threadIdx.x % WARP_SIZE;                       \
-            if (lane_id == 0) {                                                \
-                s_sum[warp_id] = tmp;                                          \
-            }                                                                  \
-            __syncthreads();                                                   \
-            tmp = s_sum[lane_id];                                              \
-            tmp = warp_reduce_sum(tmp);                                        \
-        }                                                                      \
-                                                                               \
-        const float mean = tmp / shape_1;                                      \
-        const float scale = rsqrtf(mean + eps);                                \
-                                                                               \
-        for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
-            int idx = base_idx + i * strides_1;                                \
-            dst[idx] = scale * (float)x[idx];                                  \
-        }                                                                      \
+// `HAS_RESIDUAL`/`HAS_SCALE` are compile-time: the dead branch (e.g. reading
+// `residual`/`scale`, writing `sum_out`) is eliminated by `if constexpr`, so
+// the plain variant never touches those pointers and callers may pass any
+// valid device pointer (e.g. `dst` itself) as a placeholder for the ones it
+// doesn't use. `InT`/`OutT` may differ (e.g. an f16 activation normalized
+// into an f32 buffer for a higher-precision downstream op): `residual` and
+// `sum_out` are always `InT` (the residual stream stays in the input
+// dtype, same contract as Metal's kernel), only `dst` is `OutT`.
+// Reads the value the norm operates on: the plain input, or `input +
+// residual` summed in InT. The two f16 operands add exactly in f32, so the
+// single cast back to InT is the correctly-rounded InT sum -- i.e. exactly
+// what a standalone Add dispatch (and Metal's kernel) produces.
+template <typename InT, bool HAS_RESIDUAL>
+__device__ __forceinline__ InT load_normed_input(const InT *x, const InT *residual,
+                                                 const int idx) {
+    if constexpr (HAS_RESIDUAL) {
+        return (InT)((float)x[idx] + (float)residual[idx]);
+    } else {
+        return x[idx];
     }
+}
+
+template <typename InT, typename OutT, int BLOCK_SIZE, bool HAS_RESIDUAL, bool HAS_SCALE,
+          bool ROUND_SCALE_F16>
+__device__ void rms_norm_body(const InT *x, const InT *residual, const float *scale,
+                               OutT *dst, InT *sum_out, const int32_t shape_0,
+                               const int32_t shape_1, const int32_t shape_2,
+                               const int32_t strides_0, const int32_t strides_1,
+                               const int32_t strides_2, const float eps) {
+    int base_idx =
+        (blockIdx.x % shape_2) * strides_2 + (blockIdx.x / shape_2) * strides_0;
+
+    float tmp = 0.0f;
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const int idx = base_idx + i * strides_1;
+        // The residual sum is ROUNDED BACK TO InT before it is used, so the
+        // fusion stays bit-identical to the standalone Add dispatch it
+        // replaces (and matches Metal's `input[idx] + res[idx]`). Summing in
+        // f32 and normalizing that unrounded value would drop a rounding
+        // step the source graph performs.
+        float xi = (float)load_normed_input<InT, HAS_RESIDUAL>(x, residual, idx);
+        tmp += xi * xi;
+    }
+
+    tmp = warp_reduce_sum(tmp);
+    if constexpr (BLOCK_SIZE > WARP_SIZE) {
+        __shared__ float s_sum[32];
+        const int warp_id = threadIdx.x / WARP_SIZE;
+        const int lane_id = threadIdx.x % WARP_SIZE;
+        if (lane_id == 0) {
+            s_sum[warp_id] = tmp;
+        }
+        __syncthreads();
+        tmp = s_sum[lane_id];
+        tmp = warp_reduce_sum(tmp);
+    }
+
+    const float mean = tmp / shape_1;
+    const float rscale = rsqrtf(mean + eps);
+
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const int idx = base_idx + i * strides_1;
+        const InT v = load_normed_input<InT, HAS_RESIDUAL>(x, residual, idx);
+        if constexpr (HAS_RESIDUAL) {
+            sum_out[idx] = v;
+        }
+        float normed = rscale * (float)v;
+        if constexpr (HAS_SCALE) {
+            // The graph this fusion replaces materializes the norm output at
+            // its own precision before the gamma multiply; keeping the f32
+            // accumulator here would make the op more precise than that graph.
+            if constexpr (ROUND_SCALE_F16) {
+                normed = (float)(__half)normed;
+            }
+            normed *= scale[i];
+        }
+        dst[idx] = (OutT)normed;
+    }
+}
+
+#define INSTANTIATE_RMS_NORM_VARIANT(suffix, has_residual, has_scale, round16,   \
+                                     iname, InT, oname, OutT, bname, block_size)  \
+    extern "C" __global__ void rms_norm##suffix##_##bname##iname##_##oname(     \
+        const InT *x, const InT *residual, const float *scale, OutT *dst,       \
+        InT *sum_out, const int32_t shape_0, const int32_t shape_1,             \
+        const int32_t shape_2, const int32_t strides_0, const int32_t strides_1, \
+        const int32_t strides_2, const float eps) {                             \
+        rms_norm_body<InT, OutT, block_size, has_residual, has_scale, round16>( \
+            x, residual, scale, dst, sum_out, shape_0, shape_1, shape_2,        \
+            strides_0, strides_1, strides_2, eps);                              \
+    }
+
+#define INSTANTIATE_RMS_NORM_INOUT(iname, InT, oname, OutT, bname, block_size)  \
+    INSTANTIATE_RMS_NORM_VARIANT(, false, false, false, iname, InT, oname,      \
+                                  OutT, bname, block_size)                      \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled, false, true, false, iname, InT,       \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16, false, true, true, iname, InT,    \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_add, true, false, false, iname, InT, oname,   \
+                                  OutT, bname, block_size)                      \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_add, true, true, false, iname, InT,    \
+                                  oname, OutT, bname, block_size)               \
+    INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16_add, true, true, true, iname, InT, \
+                                  oname, OutT, bname, block_size)
 
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)
 
-INSTANTIATE_RMS_NORM(f32, float, small_, 32)
-INSTANTIATE_RMS_NORM(f32, float, , 1024)
-INSTANTIATE_RMS_NORM(f16, __half, small_, 32)
-INSTANTIATE_RMS_NORM(f16, __half, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f32, float, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f32, float, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f16, __half, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f16, __half, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f32, float, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f16, __half, f32, float, , 1024)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, small_, 32)
+INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, , 1024)
 
 INSTANTIATE_SOFTMAX(f32, float, small_, 32)
 INSTANTIATE_SOFTMAX(f32, float, , 1024)

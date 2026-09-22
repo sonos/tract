@@ -44,7 +44,7 @@ pub trait InferenceOp: Op {
                 .map(|i| {
                     i.value
                         .concretize()
-                        .filter(|t| t.is_plain() && tensor_mem(t) <= CONST_FOLD_MEM_BUDGET)
+                        .filter(|t| t.is_plain_ram() && tensor_mem(t) <= CONST_FOLD_MEM_BUDGET)
                         .map(|t| t.into_tvalue())
                 })
                 .collect::<Option<TVec<_>>>()

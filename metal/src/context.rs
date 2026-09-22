@@ -1,6 +1,7 @@
 use crate::command_buffer::TCommandBuffer;
 use crate::func_constants::ConstantValues;
 use crate::kernels::{LibraryContent, LibraryName};
+use crate::profile::{MetalProfile, MetalProfileHandle};
 use crate::tensor::{MValue, MetalTensor};
 
 use metal::NSUInteger;
@@ -14,6 +15,7 @@ use std::cell::RefCell;
 use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
+use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -288,6 +290,7 @@ pub struct MetalStream {
     command_buffer: RefCell<Option<TCommandBuffer>>,
     command_buffer_id: AtomicUsize,
     retained_tensors: RefCell<Vec<DeviceTensor>>,
+    profile: RefCell<Option<Rc<MetalProfileHandle>>>,
 }
 
 impl Default for MetalStream {
@@ -306,7 +309,37 @@ impl MetalStream {
             command_buffer: RefCell::new(None),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
+            profile: RefCell::new(None),
         }
+    }
+
+    /// Time every dispatch from here on, each against the node that asked for
+    /// it. A profiled turn runs a pass per dispatch, so it is slower than the
+    /// turn it measures.
+    pub fn enable_profiling(&self) -> TractResult<()> {
+        let profile = MetalProfile::new(&self.context.device)?;
+        *self.profile.borrow_mut() =
+            Some(Rc::new(MetalProfileHandle { profile: RefCell::new(profile), node_id: 0.into() }));
+        Ok(())
+    }
+
+    pub fn is_profiling(&self) -> bool {
+        self.profile.borrow().is_some()
+    }
+
+    /// Which node the dispatches that follow belong to.
+    pub fn set_current_node(&self, node_id: usize) {
+        if let Some(handle) = self.profile.borrow().as_ref() {
+            handle.node_id.set(node_id);
+        }
+    }
+
+    /// What each dispatch spent on the device since the last drain. Call once
+    /// the work has completed.
+    pub fn drain_profile(&self) -> TractResult<Vec<(usize, std::time::Duration)>> {
+        let handle = self.profile.borrow().clone();
+        let Some(handle) = handle else { return Ok(vec![]) };
+        handle.profile.borrow_mut().drain(&self.context.device)
     }
 
     pub fn load_library(&self, name: LibraryName) -> TractResult<Library> {
@@ -335,10 +368,11 @@ impl MetalStream {
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
+        let profile = self.profile.borrow().clone();
         self.command_buffer
             .borrow_mut()
             .get_or_insert_with(|| {
-                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned())
+                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned(), profile)
             })
             .to_owned()
     }
@@ -346,7 +380,7 @@ impl MetalStream {
     pub fn wait_until_completed(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
 
-        command_buffer.encoder().end_encoding();
+        command_buffer.end_encoding();
 
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
@@ -407,7 +441,7 @@ impl Drop for MetalStream {
             _ => {}
         }
 
-        command_buffer.encoder().end_encoding();
+        command_buffer.end_encoding();
         command_buffer.commit();
         command_buffer.wait_until_completed();
     }

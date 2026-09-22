@@ -1,6 +1,8 @@
 use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
+use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -24,6 +26,11 @@ fn mk_suite() -> infra::TestSuite {
         QConvProblemParams::default(),
         compatible_conv_q,
     );
+    unit.get_sub_mut("max_pool").add_arbitrary_with_filter::<MaxPoolProblem>(
+        "proptest",
+        MaxPoolProblemParams::default(),
+        compatible_max_pool,
+    );
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
@@ -32,6 +39,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
+            return true;
+        }
+    }
+    #[allow(clippy::collapsible_if)]
+    if let Some(mp) = case.downcast_ref::<MaxPoolProblem>() {
+        if !compatible_max_pool(mp) {
             return true;
         }
     }
@@ -46,6 +59,8 @@ test_averagepool_2d_ceil
 test_averagepool_2d_pads_count_include_pad
 test_averagepool_2d_precomputed_pads_count_include_pad
 test_averagepool_2d_same_lower
+test_averagepool_3d_dilations_large_count_include_pad_is_0_ceil_mode_is_True
+test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True
 test_cast_STRING_to_FLOAT
 test_castlike_STRING_to_FLOAT_expanded
 test_constantlike_ones_with_input
@@ -54,6 +69,10 @@ test_constantlike_zeros_without_input_dtype
 test_cumsum_1d_exclusive
 test_cumsum_1d_reverse_exclusive
 test_cumsum_2d
+test_gelu_default_1
+test_gelu_default_1_expanded
+test_gelu_default_2
+test_gelu_default_2_expanded
 test_dequantizelinear
 test_dropout_random
 test_dynamicquantizelinear
@@ -64,7 +83,9 @@ test_gemm_nobroadcast
 test_if
 test_maxpool_2d_ceil
 test_maxpool_2d_same_lower
+test_maxpool_3d_dilations_use_ref_impl_large
 test_maxpool_with_argmax_2d_precomputed_pads
+test_maxpool_with_argmax_2d_precomputed_strides
 test_mod_broadcast
 test_mod_int64_fmod
 test_mod_mixed_sign_float16
@@ -99,4 +120,9 @@ test_unsqueeze
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {
     qcp.qp.iter().all(|t| t.len() == 1)
+}
+
+/// nnef_f16 goes through the NNEF dumper, which bails on SameLower.
+fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
+    mp.padding != PaddingSpec::SameLower
 }

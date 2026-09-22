@@ -83,11 +83,16 @@ fn tensor_from_repeated_field<T: Datum>(shape: &[usize], data: Vec<T>) -> TractR
 impl TryFrom<&TensorProto> for Tensor {
     type Error = TractError;
     fn try_from(t: &TensorProto) -> TractResult<Tensor> {
-        let dims: TVec<usize> =
-            t.tensor_shape.as_ref().unwrap().dim.iter().map(|x| x.size as _).collect();
+        let shape = t
+            .tensor_shape
+            .as_ref()
+            .ok_or_else(|| format_err!("TensorProto is missing its tensor_shape"))?;
+        // Go through the checked conversion instead of `as _`: it rejects
+        // negative dims instead of wrapping them into huge `usize` values.
+        let dims: TVec<usize> = shape.try_into()?;
         let rank = dims.len();
         let content = &t.tensor_content;
-        let dtype = DataType::try_from(t.dtype).unwrap();
+        let dtype = DataType::try_from(t.dtype)?;
         let mat: Tensor = if content.len() != 0 {
             unsafe {
                 match dtype {
@@ -95,7 +100,7 @@ impl TryFrom<&TensorProto> for Tensor {
                     DataType::DtDouble => Self::from_raw::<f64>(&dims, content)?,
                     DataType::DtInt32 => Self::from_raw::<i32>(&dims, content)?,
                     DataType::DtInt64 => Self::from_raw::<i64>(&dims, content)?,
-                    _ => unimplemented!("missing type (for get_tensor_content) {:?}", dtype),
+                    _ => bail!("unsupported tf DataType: {:?}", dtype),
                 }
             }
         } else {
@@ -112,7 +117,7 @@ impl TryFrom<&TensorProto> for Tensor {
                         .collect::<TractResult<Vec<Blob>>>()?;
                     tensor_from_repeated_field(&dims, strings)?
                 }
-                _ => unimplemented!("missing type (for _val()) {:?}", t.dtype),
+                _ => bail!("unsupported tf DataType: {:?}", t.dtype),
             }
         };
         assert_eq!(rank, mat.shape().len());
@@ -166,8 +171,40 @@ impl TryFrom<&Tensor> for TensorProto {
             DatumType::I64 => {
                 tensor.int64_val = from.to_plain_array_view::<i64>()?.iter().cloned().collect();
             }
-            _ => unimplemented!("missing type {:?}", from.datum_type()),
+            _ => bail!("unsupported datum type for protobuf export: {:?}", from.datum_type()),
         }
         Ok(tensor)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Regression: malformed `TensorProto` fields used to abort the process.
+    // `tensor_shape` and `dtype` were `unwrap()`-ed, and dtypes tract does not
+    // support fell into `unimplemented!()`. The ONNX loader was fixed the same
+    // way (see `onnx/src/tensor.rs`).
+    #[test]
+    fn malformed_tensor_proto_does_not_panic() {
+        // dtype that prost does not recognise
+        let unknown_dtype = TensorProto { dtype: 9999, ..empty_tensor_proto() };
+        assert!(Tensor::try_from(&unknown_dtype).is_err());
+
+        // no tensor_shape at all
+        let no_shape = TensorProto { dtype: DataType::DtFloat as i32, ..empty_tensor_proto() };
+        assert!(Tensor::try_from(&no_shape).is_err());
+
+        // -1 is legal in TF ("unknown" dim) but -2 is not, and neither may be
+        // cast to `usize` unchecked: -1 becomes usize::MAX.
+        let negative_dim = TensorProto {
+            dtype: DataType::DtFloat as i32,
+            tensor_shape: Some(TensorShapeProto {
+                dim: vec![Dim { size: -2, name: String::new() }],
+                unknown_rank: false,
+            }),
+            ..empty_tensor_proto()
+        };
+        assert!(Tensor::try_from(&negative_dim).is_err());
     }
 }

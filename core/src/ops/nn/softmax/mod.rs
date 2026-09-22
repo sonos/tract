@@ -153,7 +153,7 @@ impl Softmax {
             let row_len: usize = sm_axes.iter().map(|&a| output.shape()[a]).product();
             if row_len > 0 {
                 let kind = self.kind;
-                let mut output_plain = output.try_as_plain_mut()?;
+                let mut output_plain = output.try_as_plain_ram_mut()?;
                 // Dtype-concrete `as_slice_mut` (checked, no transmute) since T is
                 // f32/f16 here; keeps this core path free of new `unsafe`.
                 if T::datum_type() == f32::datum_type() {
@@ -189,7 +189,7 @@ impl Softmax {
             }
         }
 
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut view = output_plain.to_array_view_mut::<T>()?;
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {

@@ -30,20 +30,24 @@ trap 'git checkout --quiet "$orig"' EXIT
 
 slug() { echo "$1" | tr '/ :' '___'; }
 
+# A shared CARGO_TARGET_DIR (a CI runner reusing a warm cache across checkouts)
+# moves the binary out of ./target.
+target_dir="${CARGO_TARGET_DIR:-target}"
+
 run() {
   local ref="$1"; shift
   echo ">> $ref: building tract-cli --features bench-suite" >&2
   git checkout --quiet "$ref"
   cargo build --release -p tract-cli --features bench-suite >&2
   echo ">> $ref: running bench-suite" >&2
-  target/release/tract bench-suite --manifest .travis/benches.toml --output "$out/$(slug "$ref")" "$@"
+  "$target_dir/release/tract" bench-suite --manifest .travis/benches.toml --output "$out/$(slug "$ref")" "$@"
 }
 
 run "$a" "$@"
 run "$b" "$@"   # leaves the tree on B, whose binary renders the diff
 
 echo
-target/release/tract bench-diff --a "$out/$(slug "$a")" --b "$out/$(slug "$b")"
+"$target_dir/release/tract" bench-diff --a "$out/$(slug "$a")" --b "$out/$(slug "$b")"
 echo
 echo "metrics: $out/$(slug "$a") , $out/$(slug "$b")" >&2
 echo "re-view: tract bench-diff --a <A> --b <B> [--metric load|rss] [--threshold 5]" >&2

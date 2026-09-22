@@ -270,7 +270,7 @@ pub fn for_string(
             let values =
                 value.map(|v| parse_tdim(symbol_table, v)).collect::<TractResult<Vec<_>>>()?;
             tensor
-                .try_as_plain_mut()?
+                .try_as_plain_ram_mut()?
                 .as_slice_mut::<TDim>()?
                 .iter_mut()
                 .zip(values)
@@ -313,6 +313,25 @@ pub struct RunTensors {
     /// resolve `end_input` correctly at end-of-stream.  `None` for
     /// non-pulse runs.
     pub streaming_input_len: Option<usize>,
+}
+
+#[cfg(not(feature = "transformers"))]
+fn chunk_fact(
+    fact: &TypedFact,
+    _params: &RunParams,
+    _model: &Arc<dyn Model>,
+) -> TractResult<Vec<TypedFact>> {
+    Ok(vec![fact.clone()])
+}
+
+#[cfg(not(feature = "transformers"))]
+fn chunk_tensor(
+    tensor: Tensor,
+    _fact: &TypedFact,
+    _params: &RunParams,
+    _model: &Arc<dyn Model>,
+) -> TractResult<Vec<TValue>> {
+    Ok(vec![tensor.into_tvalue()])
 }
 
 #[cfg(feature = "transformers")]
@@ -411,6 +430,11 @@ fn get_or_make_tensors(
     target: &mut TVec<Vec<TValue>>,
     streaming_input_len: &mut Option<usize>,
 ) -> TractResult<()> {
+    // What the caller feeds is not what the model runs: an autobatched model keeps its
+    // batch axis symbolic while every stream feeds one row, so the shapes here
+    // come from `--set` rather than from the facts.
+    let mut fact = fact;
+    fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
     if let Some(mut value) = params
         .tensors_values
         .by_name(name)
@@ -463,7 +487,7 @@ fn get_or_make_tensors(
                 .get("pulse.input_axes")
                 .context("Expect pulse.input_axes property")?
                 .cast_to::<i64>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<i64>()?[input_idx] as usize;
             let input_pulse = fact.shape.get(input_pulse_axis).unwrap().to_usize().unwrap();
             let mut input_len = value.shape()[input_pulse_axis];
@@ -492,19 +516,23 @@ fn get_or_make_tensors(
                 .get("pulse.output_axes")
                 .context("Expect pulse.output_axes property")?
                 .cast_to::<i64>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<i64>()?[0] as usize;
             let output_fact = model.outlet_typedfact(model.output_outlets()[0])?;
             let output_pulse =
                 output_fact.shape.get(output_pulse_axis).unwrap().to_usize().unwrap();
             let output_len = input_len * output_pulse / input_pulse;
-            let output_delay =
-                model.properties()["pulse.delay"].try_as_plain()?.as_slice::<i64>()?[0] as usize;
+            let output_delay = model.properties()["pulse.delay"]
+                .try_as_plain_ram()?
+                .as_slice::<i64>()?[0] as usize;
             let last_frame = output_len + output_delay;
             let needed_pulses = last_frame.divceil(output_pulse);
             let mut values = vec![];
             for ix in 0..needed_pulses {
-                let mut t = Tensor::zero_dt(fact.datum_type, fact.shape.as_concrete().unwrap())?;
+                let shape = fact.shape.as_concrete().with_context(|| {
+                    format!("Input {name} pulses into {fact:?}, bind its free symbols with --set")
+                })?;
+                let mut t = Tensor::zero_dt(fact.datum_type, shape)?;
                 let start = ix * input_pulse;
                 let end = (start + input_pulse).min(input_len);
                 if end > start {
@@ -540,7 +568,6 @@ fn get_or_make_tensors(
 
         let mut chunked_tensors = Vec::with_capacity(chunked_facts.len());
         for fact in &mut chunked_facts {
-            fact.shape = fact.shape.iter().map(|dim| dim.eval(&params.symbols)).collect();
             chunked_tensors.push(tensor_for_fact(fact, None, tv)?.into());
         }
         target.push(chunked_tensors);
@@ -621,7 +648,7 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
     use rand::{RngExt, SeedableRng};
     let mut rng = rand::rngs::StdRng::seed_from_u64(21242);
     let mut tensor = Tensor::zero::<f32>(sizes).unwrap();
-    let mut tensor_plain = tensor.try_as_plain_mut().unwrap();
+    let mut tensor_plain = tensor.try_as_plain_ram_mut().unwrap();
     let slice = tensor_plain.as_slice_mut::<f32>().unwrap();
     if let Some(range) = tv.and_then(|tv| tv.random_range.as_ref()) {
         slice.iter_mut().for_each(|x| *x = rng.random_range(range.clone()))

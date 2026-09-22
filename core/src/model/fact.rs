@@ -1,8 +1,8 @@
 //! Partial and complete tensor types representations.
 use crate::internal::*;
 use downcast_rs::Downcast;
-use dyn_eq::DynEq;
 use std::fmt;
+use tract_data::dyn_eq::DynEq;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -174,7 +174,7 @@ impl<D: ToDim, T: IntoIterator<Item = D>> From<T> for ShapeFact {
 /// Type information about a tensor: shape, and element type, in various state
 /// of determination.
 pub trait Fact:
-    std::fmt::Debug + Downcast + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static
+    std::fmt::Debug + Downcast + dyn_clone::DynClone + DynEq + Send + Sync + 'static
 {
     fn to_typed_fact(&self) -> TractResult<Cow<'_, TypedFact>>;
 
@@ -281,6 +281,21 @@ impl TypedFact {
             uniform_tdim: None,
             region_of_interest: None,
         }
+    }
+
+    /// Parse a fact spec: the dims, then the element type, comma-separated, as
+    /// in `1,80,S,f32`. Dims are TDim expressions resolved against `symbols`,
+    /// so a spec with no dim at all (`f32`) is a scalar. Every dim must be
+    /// given: there is no wildcard, and no rank inference.
+    pub fn from_spec(symbols: &SymbolScope, spec: &str) -> TractResult<TypedFact> {
+        let mut parts = spec.split(',').map(|s| s.trim()).collect::<TVec<_>>();
+        let datum_type =
+            parts.pop().and_then(|last| last.parse::<DatumType>().ok()).with_context(|| {
+                format!("A fact spec ends with its element type, as in 1,80,f32; got {spec:?}")
+            })?;
+        let dims =
+            parts.iter().map(|dim| symbols.parse_tdim(dim)).collect::<TractResult<TVec<TDim>>>()?;
+        Ok(Self::dt_shape(datum_type, ShapeFact::from_dims(dims)))
     }
 
     pub fn dt_shape<S>(datum_type: DatumType, shape: S) -> TypedFact
@@ -444,9 +459,9 @@ impl TryFrom<Arc<Tensor>> for TypedFact {
     fn try_from(t: Arc<Tensor>) -> TractResult<TypedFact> {
         let exotic_fact = t.exotic_fact()?;
         let uniform_tdim = if t.datum_type() == TDim::datum_type() && t.len() == 1 {
-            t.try_as_plain().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
+            t.try_as_plain_ram().ok().and_then(|d| d.as_slice::<TDim>().ok()).map(|s| s[0].clone())
         } else if t.len() == 1
-            && t.try_as_plain().is_ok()
+            && t.try_as_plain_ram().is_ok()
             && (t.datum_type().is_integer() || t.datum_type().is::<bool>())
         {
             t.cast_to_scalar::<i64>().ok().map(TDim::Val)
@@ -543,5 +558,35 @@ impl DatumTypeExt for DatumType {
         S: Into<ShapeFact>,
     {
         TypedFact::dt_shape(*self, shape)
+    }
+}
+
+#[cfg(test)]
+mod from_spec_tests {
+    use super::*;
+
+    #[test]
+    fn scalar() {
+        let fact = TypedFact::from_spec(&SymbolScope::default(), "f32").unwrap();
+        assert_eq!(fact, f32::fact([0usize; 0]));
+    }
+
+    #[test]
+    fn concrete() {
+        let fact = TypedFact::from_spec(&SymbolScope::default(), "1,80,f16").unwrap();
+        assert_eq!(fact, f16::fact([1, 80]));
+    }
+
+    #[test]
+    fn symbolic() {
+        let symbols = SymbolScope::default();
+        let s = symbols.sym("S");
+        let fact = TypedFact::from_spec(&symbols, "1,80,2*S,f32").unwrap();
+        assert_eq!(fact, f32::fact(&[1.into(), 80.into(), s.to_dim() * 2]));
+    }
+
+    #[test]
+    fn missing_datum_type() {
+        assert!(TypedFact::from_spec(&SymbolScope::default(), "1,80").is_err());
     }
 }

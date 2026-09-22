@@ -125,6 +125,8 @@ $TRACT_RUN $MODELS/2024_06_25_elm_micro_export_with_kv_cache.nnef.tgz \
 $TRACT_RUN --nnef-tract-core $TEMP_ELM/with-asserts.nnef.tgz dump -q
 rm -rf $TEMP_ELM
 
+if [ -z "$TRACT_SKIP_BENCH_SUITE" ]
+then
 (
 echo
 echo $WHITE • benches on full models $NC
@@ -145,4 +147,4 @@ else
     exit 1
 fi
 )
-
+fi

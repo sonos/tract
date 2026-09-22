@@ -48,6 +48,7 @@ test_nllloss_NCd1d2d3d4d5_mean_weight_expanded
 test_nllloss_NCd1d2d3d4d5_none_no_weight_expanded
 test_tril_zero
 test_triu_zero
+test_matmul_bcast
 "#
     .trim()
     .lines()

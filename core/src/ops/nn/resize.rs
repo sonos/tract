@@ -1,5 +1,5 @@
 use crate::internal::*;
-use crate::ops::array::Tile;
+use crate::ops::array::MultiBroadcastTo;
 
 /// Maps an output coordinate back to the input axis. The ONNX coordinate
 /// transformation modes that have a well-defined inverse without an input ROI.
@@ -323,7 +323,7 @@ impl Resize {
             let mut shape = tvec!();
             for (i, s) in input_shape
                 .iter()
-                .zip(scale.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.iter())
+                .zip(scale.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.iter())
             {
                 if s.round() == *s {
                     shape.push(i.clone() * (*s as usize));
@@ -342,7 +342,7 @@ impl Resize {
         {
             return sizes
                 .cast_to::<TDim>()?
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<TDim>()?
                 .iter()
                 .map(|i| i.try_into())
@@ -398,14 +398,14 @@ impl EvalOp for Resize {
         )?;
         let scales: TVec<f32> = if let Some(scales) = scales.filter(|s| s.len() == inputs[0].rank())
         {
-            scales.try_as_plain()?.as_slice::<f32>()?.into()
+            scales.try_as_plain_ram()?.as_slice::<f32>()?.into()
         } else {
             output_shape.iter().zip(inputs[0].shape()).map(|(o, i)| *o as f32 / *i as f32).collect()
         };
         let input = inputs.remove(0).into_tensor();
         let input = input.cast_to::<f32>()?;
         let mut shape: TVec<usize> = input.shape().into();
-        let mut data: Vec<f32> = input.try_as_plain()?.as_slice::<f32>()?.to_vec();
+        let mut data: Vec<f32> = input.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         for (axis, scale) in scales.into_iter().enumerate() {
             let (len_in, len_out) = (shape[axis], output_shape[axis]);
             if len_in == len_out && scale == 1.0 {
@@ -448,7 +448,7 @@ impl TypedOp for Resize {
         let scales_fact = model.outlet_fact(node.inputs[scales_input])?;
         rule_if_some!(scales_tensor = &scales_fact.konst);
         let scales: Vec<f32> =
-            scales_tensor.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.to_vec();
+            scales_tensor.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         let int_scales: Vec<usize> = scales.iter().map(|&s| s.round() as usize).collect();
         rule_if!(
             scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
@@ -469,6 +469,160 @@ impl TypedOp for Resize {
     }
 }
 
+/// Integer nearest upsample, one scale per input axis. Output axis `a` has
+/// length `input[a] * scales[a]` and `out[.., i, ..] = in[.., i / scales[a], ..]`.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct NearestUpsample {
+    pub scales: TVec<usize>,
+}
+
+impl Op for NearestUpsample {
+    fn name(&self) -> StaticName {
+        "NearestUpsample".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("scales:{:?}", self.scales)])
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for NearestUpsample {
+    op_out_of_plan!();
+
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let input = args_1!(inputs);
+        ensure!(input.rank() == self.scales.len());
+        let out_shape: TVec<usize> =
+            input.shape().iter().zip(self.scales.iter()).map(|(d, s)| d * s).collect();
+        if input.datum_type() == f32::datum_type()
+            && let Some(out) = nearest_hw_f32(&input, &self.scales, &out_shape)?
+        {
+            return Ok(tvec!(out.into_tvalue()));
+        }
+        dispatch_copy!(nearest_generic(input.datum_type())(&input, &self.scales, &out_shape))
+    }
+}
+
+impl TypedOp for NearestUpsample {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs[0].rank() == self.scales.len());
+        let shape: TVec<TDim> =
+            inputs[0].shape.iter().zip(self.scales.iter()).map(|(d, s)| d.clone() * *s).collect();
+        Ok(tvec!(inputs[0].datum_type.fact(shape)))
+    }
+
+    as_op!();
+}
+
+fn nearest_hw_f32(
+    input: &Tensor,
+    scales: &[usize],
+    out_shape: &[usize],
+) -> TractResult<Option<Tensor>> {
+    if scales.len() < 2 {
+        return Ok(None);
+    }
+    if scales[..scales.len() - 2].iter().any(|&s| s != 1) {
+        return Ok(None);
+    }
+    let sh = scales[scales.len() - 2];
+    let sw = scales[scales.len() - 1];
+    if sh == 1 && sw == 1 {
+        return Ok(None);
+    }
+    if *input.strides().last().unwrap_or(&1) != 1 {
+        return Ok(None);
+    }
+    let h = input.shape()[input.rank() - 2];
+    let w = input.shape()[input.rank() - 1];
+    let planes = input.len() / (h * w);
+    let mut output = unsafe { Tensor::uninitialized::<f32>(out_shape)? };
+    unsafe {
+        let ip = input.as_ptr::<f32>()?;
+        let op = output.as_ptr_mut::<f32>()?;
+        let ow = w * sw;
+        for p in 0..planes {
+            let src = ip.add(p * h * w);
+            let dst = op.add(p * h * sh * ow);
+            for y in 0..h {
+                let srow = src.add(y * w);
+                let drow = dst.add(y * sh * ow);
+                expand_row_f32(srow, drow, w, sw);
+                for ry in 1..sh {
+                    std::ptr::copy_nonoverlapping(drow, drow.add(ry * ow), ow);
+                }
+            }
+        }
+    }
+    Ok(Some(output))
+}
+
+unsafe fn expand_row_f32(src: *const f32, dst: *mut f32, w: usize, sw: usize) {
+    unsafe {
+        if sw == 2 {
+            let mut x = 0usize;
+            #[cfg(target_arch = "aarch64")]
+            {
+                use std::arch::aarch64::*;
+                while x + 4 <= w {
+                    let v = vld1q_f32(src.add(x));
+                    vst2q_f32(dst.add(2 * x), float32x4x2_t(v, v));
+                    x += 4;
+                }
+            }
+            while x < w {
+                let v = *src.add(x);
+                *dst.add(2 * x) = v;
+                *dst.add(2 * x + 1) = v;
+                x += 1;
+            }
+            return;
+        }
+        for x in 0..w {
+            let v = *src.add(x);
+            for rx in 0..sw {
+                *dst.add(x * sw + rx) = v;
+            }
+        }
+    }
+}
+
+fn nearest_generic<T: Datum + Copy>(
+    input: &Tensor,
+    scales: &[usize],
+    out_shape: &[usize],
+) -> TractResult<TVec<TValue>> {
+    let plain = input.try_as_plain_ram()?;
+    let src = plain.as_slice::<T>()?;
+    let mut output = unsafe { Tensor::uninitialized::<T>(out_shape)? };
+    let rank = out_shape.len();
+    let mut in_strides = vec![1usize; rank];
+    for i in (0..rank - 1).rev() {
+        in_strides[i] = in_strides[i + 1] * input.shape()[i + 1];
+    }
+    let mut out_strides = vec![1usize; rank];
+    for i in (0..rank - 1).rev() {
+        out_strides[i] = out_strides[i + 1] * out_shape[i + 1];
+    }
+    {
+        let mut out_plain = output.try_as_plain_ram_mut()?;
+        let dst = out_plain.as_slice_mut::<T>()?;
+        for (i, slot) in dst.iter_mut().enumerate() {
+            let mut rem = i;
+            let mut src_ix = 0usize;
+            for ax in 0..rank {
+                let c = rem / out_strides[ax];
+                rem %= out_strides[ax];
+                src_ix += (c / scales[ax]) * in_strides[ax];
+            }
+            *slot = src[src_ix];
+        }
+    }
+    Ok(tvec!(output.into_tvalue()))
+}
+
 /// An axis length to build a probe plan on. `HalfPixel`, `Asymmetric` and
 /// `TfHalfPixelForNn` map coordinates without consulting the axis lengths, so a
 /// symbolic axis can still be probed on a stand-in; the others cannot.
@@ -481,61 +635,70 @@ pub fn probe_length(coord_transformer: &CoordTransformer, len: &TDim) -> Option<
     })
 }
 
-/// Lowers a nearest-neighbour integer upsample to Reshape → Tile → Reshape: each
-/// upsampled axis is split into a size-1 axis, tiled by its scale, then merged
-/// back. Shared by the core and ONNX Resize declutters.
+/// Lowers a nearest-neighbour integer upsample to [`NearestUpsample`]. Shared
+/// by the core and ONNX Resize declutters.
 pub fn lower_nearest_integer_upsample(
     model: &TypedModel,
     node: &TypedNode,
     int_scales: &[usize],
 ) -> TractResult<Option<TypedModelPatch>> {
-    let input_fact = model.outlet_fact(node.inputs[0])?;
-    let input_shape = &input_fact.shape;
+    let op = NearestUpsample { scales: int_scales.iter().cloned().collect() };
+    TypedModelPatch::replace_single_op(model, node, &node.inputs[..1], op).map(Some)
+}
+
+/// Expands [`NearestUpsample`] into Reshape → MultiBroadcastTo → Reshape: each
+/// upsampled axis is split into a size-1 axis, broadcast to its scale, then
+/// merged back. For the targets that take a broadcast but have no upsample of
+/// their own.
+pub fn rewrite_nearest_upsample_to_broadcast(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &NearestUpsample,
+) -> TractResult<Option<TypedModelPatch>> {
+    let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
 
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
 
     let mut from_dims: TVec<TDim> = tvec![];
     let mut to_dims: TVec<TDim> = tvec![];
-    let mut tile_multipliers: TVec<TDim> = tvec![];
     let mut first_upsampled = None;
 
-    for (i, &scale) in int_scales.iter().enumerate() {
+    for (i, &scale) in op.scales.iter().enumerate() {
         from_dims.push(input_shape[i].clone());
         to_dims.push(input_shape[i].clone());
-        tile_multipliers.push(1.into());
         if scale > 1 {
             if first_upsampled.is_none() {
                 first_upsampled = Some(i);
             }
             to_dims.push(1.into());
-            tile_multipliers.push(scale.into());
         }
     }
 
-    if to_dims.len() > from_dims.len() {
-        let first = first_upsampled.unwrap();
-        wire = patch.wire_node(
-            format!("{}.reshape_pre", node.name),
-            AxisOp::Reshape(first, from_dims[first..].into(), to_dims[first..].into()),
-            &[wire],
-        )?[0];
-    }
+    let Some(first) = first_upsampled else { return Ok(None) };
 
     wire = patch.wire_node(
-        format!("{}.tile", node.name),
-        Tile { multipliers: tile_multipliers },
+        format!("{}.reshape_pre", node.name),
+        AxisOp::Reshape(first, from_dims[first..].into(), to_dims[first..].into()),
         &[wire],
     )?[0];
 
     let tiled_shape: TVec<TDim> = to_dims
         .iter()
-        .zip(int_scales.iter().flat_map(|&s| if s > 1 { vec![1usize, s] } else { vec![1] }))
+        .zip(op.scales.iter().flat_map(|&s| if s > 1 { vec![1usize, s] } else { vec![1] }))
         .map(|(d, s)| d.clone() * s)
         .collect();
+
+    wire = patch.wire_node(
+        format!("{}.broadcast", node.name),
+        MultiBroadcastTo { shape: tiled_shape.clone().into() },
+        &[wire],
+    )?[0];
     let mut final_dims: TVec<TDim> = tvec![];
     let mut idx = 0;
-    for &scale in int_scales {
+    for &scale in &op.scales {
         if scale > 1 {
             final_dims.push(tiled_shape[idx].clone() * tiled_shape[idx + 1].clone());
             idx += 2;
@@ -545,14 +708,11 @@ pub fn lower_nearest_integer_upsample(
         }
     }
 
-    if tiled_shape.len() > final_dims.len() {
-        let first = first_upsampled.unwrap();
-        wire = patch.wire_node(
-            format!("{}.reshape_post", node.name),
-            AxisOp::Reshape(first, tiled_shape[first..].into(), final_dims[first..].into()),
-            &[wire],
-        )?[0];
-    }
+    wire = patch.wire_node(
+        format!("{}.reshape_post", node.name),
+        AxisOp::Reshape(first, tiled_shape[first..].into(), final_dims[first..].into()),
+        &[wire],
+    )?[0];
 
     patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
@@ -579,6 +739,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn nearest_upsample_2x2_replicates_pixels() {
+        let src = Tensor::from_shape(&[1, 1, 2, 2], &[1.0f32, 2.0, 3.0, 4.0]).unwrap();
+        let op = NearestUpsample { scales: tvec![1, 1, 2, 2] };
+        let out = op.eval(&EvalContext::out_of_plan(), tvec!(src.into_tvalue())).unwrap().remove(0);
+        let v = out.to_plain_array_view::<f32>().unwrap();
+        assert_eq!(v.shape(), &[1, 1, 4, 4]);
+        assert_eq!(v[[0, 0, 0, 0]], 1.0);
+        assert_eq!(v[[0, 0, 0, 1]], 1.0);
+        assert_eq!(v[[0, 0, 1, 0]], 1.0);
+        assert_eq!(v[[0, 0, 1, 1]], 1.0);
+        assert_eq!(v[[0, 0, 2, 2]], 4.0);
+        assert_eq!(v[[0, 0, 3, 3]], 4.0);
+        assert_eq!(v[[0, 0, 0, 2]], 2.0);
+        assert_eq!(v[[0, 0, 2, 0]], 3.0);
+    }
+
     fn cubic_resize(input: Tensor, scales: &[f32]) -> Tensor {
         let scales = tract_ndarray::Array1::from(scales.to_vec()).into_tensor();
         let op = Resize {
@@ -597,7 +774,7 @@ mod tests {
     #[test]
     fn cubic_resize_1d_upsample() {
         let out = cubic_resize(tract_ndarray::arr1(&[0.0f32, 1.0, 2.0, 3.0]).into_tensor(), &[2.0]);
-        let plain = out.try_as_plain().unwrap();
+        let plain = out.try_as_plain_ram().unwrap();
         let output = plain.as_slice::<f32>().unwrap();
         assert_eq!(output.len(), 8);
         assert!((output[0] - (-0.10546875)).abs() < 1e-4, "got {}", output[0]);

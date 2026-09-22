@@ -3,7 +3,9 @@ use regex::Regex;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
+use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
 use tract_core::internal::*;
+use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -31,6 +33,11 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         QConvProblemParams { conv: cv, tflite_rules: true, ..QConvProblemParams::default() },
         compatible_conv_q,
+    );
+    unit.get_sub_mut("max_pool").add_arbitrary_with_filter::<MaxPoolProblem>(
+        "proptest",
+        MaxPoolProblemParams::default(),
+        compatible_max_pool,
     );
 
     let einsum_params = BinEinsumProblemParams { max_dims: 4, ..BinEinsumProblemParams::default() };
@@ -81,6 +88,10 @@ fn ignore_onnx(t: &[String]) -> bool {
         test_or
 
         test_reduce
+        # tflite resamples by the ratio of the sizes it carries, with neither a
+        # cubic kernel, an antialias filter, a roi nor an aspect-ratio policy
+        test_resize_upsample_scales_linear
+        test_resize_upsample_scales_nearest$
         test_softmax
 
         test_abs
@@ -123,11 +134,39 @@ fn ignore_onnx(t: &[String]) -> bool {
             test_div_uint8
             test_reduce_log_sum_exp.*           # tflite does not support f64 reducers 🤷
             pool_2d_ceil
+            pool_2d_dilations                   # tflite pools have no dilation
             pool_2d_pads
             pool_2d_precomputed_pads_count_include_pad
             pool_2d_same_lower
             test_cosh.*
             test_sinh.*
+
+            # tflite has no kernel for these element types. The 8-bit
+            # comparisons and int16 add/sub abort the runtime, see skip_onnx.
+            test_(add|sub|mul|div)_uint(16|32|64)
+            test_mul_int16
+            test_div_int16
+            test_div_int8
+            test_div_int32_trunc
+            test_(equal|greater|less)(_equal)?_(int16|uint16|uint32|uint64)(_expanded)?$
+            test_equal_string
+
+            # the CausalConvWithState decomposition reaches ops the tflite
+            # writer cannot express
+            test_causal_conv_with_state_b1_c1_degenerate_expanded
+            test_causal_conv_with_state_basic_expanded
+            test_causal_conv_with_state_fp16_expanded
+            test_causal_conv_with_state_kernel_size_one_expanded
+            test_causal_conv_with_state_short_input_no_past_state_expanded
+            test_causal_conv_with_state_silu_expanded
+            test_causal_conv_with_state_silu_fp16_expanded
+            test_causal_conv_with_state_silu_with_past_state_expanded
+            test_causal_conv_with_state_swish_alias_expanded
+            test_causal_conv_with_state_with_bias_expanded
+
+            test_attention_3d_transpose_verification$   # an Attention case, not a transpose one
+            test_reduce_sum_empty_axes_input_noop$
+            test_resize_upsample_scales_linear_half_pixel_symmetric
             ",
     );
     !included.iter().any(|pat| pat.is_match(name)) || excluded.iter().any(|pat| pat.is_match(name))
@@ -142,6 +181,23 @@ fn skip_onnx(t: &[String]) -> bool {
             test_BatchNorm3d_eval
             test_BatchNorm3d_momentum_eval
             test_PReLU_3d
+
+            test_add_int16
+            test_sub_int16
+            test_equal_int8
+            test_equal_uint8
+            test_greater_int8
+            test_greater_uint8
+            test_greater_equal_int8
+            test_greater_equal_int8_expanded
+            test_greater_equal_uint8
+            test_greater_equal_uint8_expanded
+            test_less_int8
+            test_less_uint8
+            test_less_equal_int8
+            test_less_equal_int8_expanded
+            test_less_equal_uint8
+            test_less_equal_uint8_expanded
             ";
     excluded.split_whitespace().any(|s| s == name)
 }
@@ -156,6 +212,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
         if !compatible_conv_q(qcp) {
+            return true;
+        }
+    }
+    #[allow(clippy::collapsible_if)]
+    if let Some(mp) = case.downcast_ref::<MaxPoolProblem>() {
+        if !compatible_max_pool(mp) {
             return true;
         }
     }
@@ -189,6 +251,16 @@ fn compatible_conv_f32(qcp: &ConvProblem) -> bool {
     qcp.group == 1
         && (qcp.kernel.ndim() == 4 || qcp.kernel.ndim() == 3)
         && qcp.dilations.iter().all(|d| *d == 1)
+}
+
+/// What `pool_2d_options` can express: 2D, VALID or SAME (upper), and a batch axis, since
+/// the rewriter moves NCHW to NHWC but nothing adds a missing N. It drops a dilation
+/// silently rather than refusing it.
+fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
+    mp.data_format.has_n()
+        && mp.kernel_shape.len() == 2
+        && mp.dilations.iter().all(|d| *d == 1)
+        && (mp.padding == PaddingSpec::Valid || mp.padding == PaddingSpec::SameUpper)
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {

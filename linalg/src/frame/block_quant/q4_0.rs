@@ -57,9 +57,36 @@ impl<const QK: usize> BaseQ4_0<QK> {
         m: usize,
         k: usize,
     ) -> TractResult<Blob> {
+        ensure!(q.len() == m * k, "Expected {} nibbles, got {}", m * k, q.len());
+        self.pack_prequantized_by(scales, m, k, |ix| q[ix] & 0x0F)
+    }
+
+    /// Same, for nibbles packed two per byte, low nibble first — the layout ONNX stores int4
+    /// weights in. Saves an importer from widening a whole table to one byte per value just
+    /// to hand it over: a vocabulary-sized embedding is hundreds of megabytes.
+    pub fn pack_prequantized_nibbles(
+        &self,
+        q: &[u8],
+        scales: &[f32],
+        m: usize,
+        k: usize,
+    ) -> TractResult<Blob> {
+        ensure!(q.len() == m * k / 2, "Expected {} bytes, got {}", m * k / 2, q.len());
+        self.pack_prequantized_by(scales, m, k, |ix| {
+            if ix % 2 == 0 { q[ix / 2] & 0x0F } else { q[ix / 2] >> 4 }
+        })
+    }
+
+    fn pack_prequantized_by(
+        &self,
+        scales: &[f32],
+        m: usize,
+        k: usize,
+        nibble: impl Fn(usize) -> u8,
+    ) -> TractResult<Blob> {
         ensure!(k % QK == 0, "Q4_0 needs K a multiple of {QK}, got {k}");
         let n_blocks = k / QK;
-        ensure!(q.len() == m * k && scales.len() == m * n_blocks);
+        ensure!(scales.len() == m * n_blocks);
         let mut blob = unsafe {
             Blob::for_layout(Layout::from_size_align(m * n_blocks * self.block_bytes(), 128)?)
         };
@@ -72,7 +99,7 @@ impl<const QK: usize> BaseQ4_0<QK> {
                 let base = row * k + blk * QK;
                 for idx in 0..QK {
                     let ggml_idx = (QK / 2) * (idx % 2) + (idx / 2);
-                    writer.write_i4((q[base + ggml_idx] & 0x0F) as i8);
+                    writer.write_i4(nibble(base + ggml_idx) as i8);
                 }
             }
         }
@@ -487,7 +514,7 @@ mod tests {
         }
         let quant = b.quant_f32(&input).unwrap();
         let result = b.dequant_f32(&quant).unwrap();
-        let view = &result.try_as_plain().unwrap().as_slice::<f32>().unwrap()[..data.len()];
+        let view = &result.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()[..data.len()];
         assert_eq!(data, view);
     }
 
@@ -498,7 +525,7 @@ mod tests {
         }
         let quant = b.quant_f16(&input).unwrap();
         let result = b.dequant_f16(&quant).unwrap();
-        let view = &result.try_as_plain().unwrap().as_slice::<f16>().unwrap();
+        let view = &result.try_as_plain_ram().unwrap().as_slice::<f16>().unwrap();
         assert_eq!(&input, view);
     }
 
@@ -558,7 +585,7 @@ mod tests {
         let mut out = vec![0f32; m * n];
         Q4_0.w4a8_gemm(&qbytes, n, k, &a, m, &mut out)?;
         let wdeq = Q4_0.dequant_f32(&qbytes)?;
-        let wdeq = wdeq.try_as_plain()?.as_slice::<f32>()?;
+        let wdeq = wdeq.try_as_plain_ram()?.as_slice::<f32>()?;
         for mi in 0..m {
             for ni in 0..n {
                 let mut acc = 0f32;
@@ -604,12 +631,12 @@ mod tests {
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
         let weights_f32 = q
-            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?)?
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?)?
             .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.try_as_plain()?.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for panel in 0..packed_f32.panels_count() {
@@ -623,7 +650,7 @@ mod tests {
                     panel,
                     panel_q4.as_bytes_mut().as_mut_ptr(),
                 )?;
-                assert_eq!(panel_q4.try_as_plain()?.as_slice::<f32>()?, panel_f32);
+                assert_eq!(panel_q4.try_as_plain_ram()?.as_slice::<f32>()?, panel_f32);
             }
         }
         Ok(())
@@ -656,12 +683,12 @@ mod tests {
             Array2::from_shape_fn((m, k), |(m, k)| ((m * 31 + k * 17) % 20) as f32 - 10.)
                 .into_tensor();
         let weights_f32 = q
-            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain()?.as_slice::<f32>()?)?)?
+            .dequant_f32(&q.quant_f32(weights_orig.try_as_plain_ram()?.as_slice::<f32>()?)?)?
             .into_shape(&[m, k])?;
         let packer = PackedFormat::new(f32::datum_type(), r, 128);
         let packed_f32 = packer.pack_tensor(&weights_f32, 1, 0)?;
 
-        let q4 = q.quant_f32(weights_f32.try_as_plain()?.as_slice::<f32>()?)?;
+        let q4 = q.quant_f32(weights_f32.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let packed_q4 = q.pack(&q4, k, r, zip, scales_at_end)?;
 
         for row in 0..packed_f32.mn() {
@@ -705,7 +732,7 @@ mod tests {
         let a: Vec<f32> = (0..k).map(|_| rnd()).collect();
         let blob = Q4_0.quant_f32(&w).unwrap();
         let deq = Q4_0.dequant_f32(&blob).unwrap();
-        let deq = deq.try_as_plain().unwrap();
+        let deq = deq.try_as_plain_ram().unwrap();
         let deq = deq.as_slice::<f32>().unwrap();
         let mut y_ref = vec![0f32; n];
         for ni in 0..n {
@@ -727,7 +754,7 @@ mod tests {
         let scales: Vec<f32> = vec![0.5, 0.25, 1.0, 2.0]; // [m, k/32]
         let blob = Q4_0.pack_prequantized(&q, &scales, m, k).unwrap();
         let deq = Q4_0.dequant_f32(&blob).unwrap();
-        let deq = deq.try_as_plain().unwrap();
+        let deq = deq.try_as_plain_ram().unwrap();
         let got = deq.as_slice::<f32>().unwrap();
         for row in 0..m {
             for kk in 0..k {

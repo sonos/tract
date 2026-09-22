@@ -12,11 +12,13 @@ use super::binary::TypedBinOp;
 use super::math::round_ties_to_even;
 
 pub fn quantize_linear_f32_u8(x: f32, scale: f32, zero_point: i32) -> u8 {
-    (((x * scale).round() as i32) + zero_point).clamp(u8::MIN as i32, u8::MAX as i32) as u8
+    ((round_ties_to_even(x * scale) as i32) + zero_point).clamp(u8::MIN as i32, u8::MAX as i32)
+        as u8
 }
 
 pub fn quantize_linear_f32_i8(x: f32, scale: f32, zero_point: i32) -> i8 {
-    (((x * scale).round() as i32) + zero_point).clamp(i8::MIN as i32, i8::MAX as i32) as i8
+    ((round_ties_to_even(x * scale) as i32) + zero_point).clamp(i8::MIN as i32, i8::MAX as i32)
+        as i8
 }
 
 element_wise_oop!(quantize_linear_u8,
@@ -83,10 +85,10 @@ impl DequantizeLinearF32 {
     fn eval_t<T: Datum + AsPrimitive<i32>>(&self, input: &Tensor) -> TractResult<Tensor> {
         let mut output = unsafe { Tensor::uninitialized::<f32>(input.shape())? };
         input
-            .try_as_plain()?
+            .try_as_plain_ram()?
             .as_slice::<T>()?
             .iter()
-            .zip(output.try_as_plain_mut()?.as_slice_mut::<f32>()?.iter_mut())
+            .zip(output.try_as_plain_ram_mut()?.as_slice_mut::<f32>()?.iter_mut())
             .for_each(|(x, y)| *y = (x.as_() - self.zero_point) as f32 * self.scale);
         Ok(output)
     }
@@ -220,10 +222,10 @@ impl TypedOp for DequantizeLinearF32 {
                     let table: &[u8] = match dt {
                         DatumType::I8 => unsafe {
                             std::mem::transmute::<&[i8], &[u8]>(
-                                output.try_as_plain()?.as_slice::<i8>()?,
+                                output.try_as_plain_ram()?.as_slice::<i8>()?,
                             )
                         },
-                        DatumType::U8 => output.try_as_plain()?.as_slice::<u8>()?,
+                        DatumType::U8 => output.try_as_plain_ram()?.as_slice::<u8>()?,
                         _ => unreachable!(),
                     };
                     let op = lookup_table(tract_linalg::routines::lut_u8(table)?);
@@ -314,7 +316,7 @@ impl crate::ops::binary::BinMiniOp for Scale {
     }
 
     fn eval_in_a(&self, a: &mut Tensor, b: &Tensor) -> TractResult<()> {
-        let mut a_plain = a.try_as_plain_mut()?;
+        let mut a_plain = a.try_as_plain_ram_mut()?;
         let a = a_plain.to_array_view_mut::<f32>()?;
         let b = b.to_plain_array_view::<f32>()?;
         ndarray::Zip::from(a).and_broadcast(b).for_each(|a, b| *a = scale_by(*b, *a));
@@ -392,10 +394,10 @@ impl ElementWiseMiniOp for OffsetI8asU8 {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == i8::datum_type() {
-            t.try_as_plain()?
+            t.try_as_plain_ram()?
                 .as_slice::<i8>()?
                 .iter()
-                .zip(dst.try_as_plain_mut()?.as_slice_mut::<u8>()?.iter_mut())
+                .zip(dst.try_as_plain_ram_mut()?.as_slice_mut::<u8>()?.iter_mut())
                 .for_each(|(x, y)| *y = offset_i8_as_u8_elementwise(*x));
             return Ok(dst);
         }
@@ -433,10 +435,10 @@ impl ElementWiseMiniOp for OffsetU8asI8 {
         let output_type = out_dt.unwrap_or(self.output_type(t.datum_type()).unwrap());
         let mut dst = unsafe { Tensor::uninitialized_dt(output_type, t.shape())? };
         if t.datum_type().unquantized() == u8::datum_type() {
-            t.try_as_plain()?
+            t.try_as_plain_ram()?
                 .as_slice::<u8>()?
                 .iter()
-                .zip(dst.try_as_plain_mut()?.as_slice_mut::<i8>()?.iter_mut())
+                .zip(dst.try_as_plain_ram_mut()?.as_slice_mut::<i8>()?.iter_mut())
                 .for_each(|(x, y)| *y = offset_u8_as_i8_elementwise(*x));
             return Ok(dst);
         }
@@ -459,7 +461,6 @@ pub mod scale {
         let expected = (((a as i32) * (b as i32)) as f32) / scale;
         let expected = round_ties_to_even(expected.abs()) * expected.signum();
         let expected = (expected as i32).clamp(-128, 127);
-        let expected = tensor2(&[[expected as i8]]);
 
         let input = tvec!(tensor2(&[[b]]).into_tvalue());
         let mut model = TypedModel::default();
@@ -483,10 +484,14 @@ pub mod scale {
         model.select_output_outlets(&output).unwrap();
 
         let plain = model.clone().into_runnable().unwrap().run(input.clone()).unwrap();
-        assert_eq!(*plain[0], expected);
-
         let optim = model.into_optimized().unwrap().into_runnable().unwrap().run(input).unwrap();
-        assert_eq!(*optim[0], expected);
+
+        // The reference divides in f32, the plain path multiplies by the folded f32 scale, the
+        // optimized one by its Q0_31 fixed-point form: three roundings that can straddle a tie.
+        for (label, found) in [("plain", &plain[0]), ("optimized", &optim[0])] {
+            let found = found.cast_to_scalar::<i32>().unwrap();
+            assert!((found - expected).abs() <= 1, "{label}: expected {expected}, found {found}");
+        }
     }
 
     proptest! {
@@ -504,5 +509,10 @@ pub mod scale {
     #[test]
     fn t2() {
         test_scale(-4, -60, 475.21674);
+    }
+
+    #[test]
+    fn t3() {
+        test_scale(120, 101, 692.5715);
     }
 }

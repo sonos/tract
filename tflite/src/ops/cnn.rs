@@ -140,7 +140,7 @@ fn ser_conv(
         // 0 1 2 3  4  5  6  7  8
         // x w b x0 xs k0 ks y0 ys
         let k0_tract = facts[5].konst.as_ref().unwrap().cast_to_scalar::<i32>()? as i64;
-        let kscale = facts[6].konst.as_ref().unwrap().try_as_plain()?.as_slice::<f32>()?;
+        let kscale = facts[6].konst.as_ref().unwrap().try_as_plain_ram()?.as_slice::<f32>()?;
         let per_channel = !kscale.iter().all_equal();
         if per_channel {
             let kernel = model
@@ -313,7 +313,7 @@ fn de_dw_conv2d(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 
 fn ser_pad(
     builder: &mut SubgraphBuilder,
-    _model: &TypedModel,
+    model: &TypedModel,
     node: &TypedNode,
     pad: &Pad,
 ) -> TractResult<()> {
@@ -332,12 +332,12 @@ fn ser_pad(
     let PadMode::Constant(pad_value) = &pad.mode else {
         bail!("Only constant padding is supported by tflite");
     };
-    inputs.push(
-        builder.write_fact(
-            format!("{node_name}.pad_value"),
-            TypedFact::try_from(pad_value.clone())?,
-        )?,
-    );
+    // PADV2 takes constant_values in the type of the tensor it pads.
+    let dt = model.outlet_fact(node.inputs[0])?.datum_type;
+    inputs.push(builder.write_fact(
+        format!("{node_name}.pad_value"),
+        TypedFact::try_from(pad_value.cast_to_dt(dt)?.into_owned())?,
+    )?);
     let options = PadOptions::create(builder.fb(), &PadOptionsArgs {});
     builder.write_op_with_options(
         &inputs,

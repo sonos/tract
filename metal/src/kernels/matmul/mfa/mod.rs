@@ -454,7 +454,8 @@ pub fn mfa_attention_head_major(
 
 /// Metal device op: fused SDPA over `[B,H,Sq,D]` Q / `[B,H,Sk,D]` K,V via the
 /// vendored MFA kernel. `B>1` is folded to `B*H` heads; causal is realized as a
-/// `[Sq,Sk]` additive mask (the `triangular` constant is a no-op).
+/// bottom-right aligned `[Sq,Sk]` additive mask, never the kernel's `triangular`
+/// constant, whose effect varies by driver version.
 #[derive(Debug, Clone)]
 pub struct MetalMfaSdpa {
     pub scale: f32,
@@ -895,101 +896,6 @@ mod tests {
         })
     }
 
-    // FINDING (documented): the `triangular` FUNCTION-CONSTANT alone does NOT mask —
-    // output == full attention. MFA v1.0.1 causal needs the `triangular_pass` runtime
-    // arg + a block-mask pre-pass. Practical route for tract = causal via additive mask
-    // (the `masked` path, buffer 12) — see test_mfa_attention_masked.
-    #[test]
-    fn test_mfa_attention_causal_const_is_noop() -> TractResult<()> {
-        use crate::utils::get_metal_buffer;
-        use tract_gpu::tensor::{DeviceTensor, IntoDevice};
-        with_borrowed_metal_stream(|stream| {
-            let (h, s, d) = (1usize, 64usize, 64usize);
-            let (r, c) = (s, s);
-            let scale = 1.0f32 / (d as f32).sqrt();
-            let rng = |n: usize, seed: u64| -> Vec<f32> {
-                let mut st = seed;
-                (0..n)
-                    .map(|_| {
-                        st = st.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-                        ((st >> 40) as f32 / (1u64 << 24) as f32) - 0.5
-                    })
-                    .collect()
-            };
-            let qv = rng(r * d, 1);
-            let kdc = rng(d * c, 2);
-            let vv = rng(c * d, 3);
-            // reference attention keeping keys j where keep(i,j) is true
-            let reference = |keep: &dyn Fn(usize, usize) -> bool| -> Vec<f32> {
-                let mut want = vec![0f32; r * d];
-                for i in 0..r {
-                    let js: Vec<usize> = (0..c).filter(|&j| keep(i, j)).collect();
-                    let mut sc = vec![0f32; js.len()];
-                    for (jx, &j) in js.iter().enumerate() {
-                        let mut a = 0f32;
-                        for dd in 0..d {
-                            a += qv[i * d + dd] * kdc[dd * c + j];
-                        }
-                        sc[jx] = a * scale;
-                    }
-                    let m = sc.iter().copied().fold(f32::MIN, f32::max);
-                    let mut sum = 0f32;
-                    for x in sc.iter_mut() {
-                        *x = (*x - m).exp();
-                        sum += *x;
-                    }
-                    for x in sc.iter_mut() {
-                        *x /= sum;
-                    }
-                    for e in 0..d {
-                        let mut a = 0f32;
-                        for (jx, &j) in js.iter().enumerate() {
-                            a += sc[jx] * vv[j * d + e];
-                        }
-                        want[i * d + e] = a;
-                    }
-                }
-                want
-            };
-            let q = Tensor::from_shape(&[r, d], &qv)?.into_device()?;
-            let k = Tensor::from_shape(&[d, c], &kdc)?.into_device()?;
-            let v = Tensor::from_shape(&[c, d], &vv)?.into_device()?;
-            let o = unsafe { DeviceTensor::uninitialized_dt(DatumType::F32, &[r, d])? };
-            dispatch_metal_mfa_attention(
-                stream,
-                DatumType::F32,
-                (1, h, r, c, d),
-                scale,
-                true, // causal
-                None,
-                get_metal_buffer(&q),
-                0,
-                get_metal_buffer(&k),
-                0,
-                get_metal_buffer(&v),
-                0,
-                get_metal_buffer(&o),
-                0,
-            )?;
-            let got = o.to_host()?.into_tensor();
-            let gv = unsafe { got.as_slice_unchecked::<f32>() };
-            let cmp = |w: &[f32]| {
-                gv.iter().zip(w.iter()).map(|(&g, &x)| (g - x).abs()).fold(0f32, f32::max)
-            };
-            let lower = cmp(&reference(&|i, j| j <= i));
-            let upper = cmp(&reference(&|i, j| j >= i));
-            let full = cmp(&reference(&|_, _| true));
-            println!(
-                "  causal probe: lower(j<=i)={lower:.5} upper(j>=i)={upper:.5} full={full:.5}"
-            );
-            // Confirms the finding: triangular-const-alone == full (unmasked) attention.
-            ensure!(full < 1e-3, "expected triangular-const-alone == full attn, got full={full}");
-            ensure!(lower > 0.1, "triangular const unexpectedly applied a causal mask");
-            println!("FINDING confirmed: triangular const alone is a no-op (== full attention)");
-            Ok(())
-        })
-    }
-
     // Additive mask path (masked=true, buffer 12). Probe with a causal mask laid out
     // [R,C]: matching `lower` => mask works + layout is [R,C] + causal-via-mask works.
     #[test]
@@ -1328,6 +1234,13 @@ mod tests {
             let e2 = run(true, 1, 1, 64, 64, 64)?; // causal self-attention
             println!("  op causal B1 H1 S64 D64: max_abs={e2:.6}");
             ensure!(e2 < 1e-3, "op causal mismatch {e2}");
+            // causal against a cache: Sq != Sk, bottom-right aligned
+            let e3 = run(true, 1, 2, 16, 64, 32)?;
+            println!("  op causal B1 H2 Sq16 Sk64 D32: max_abs={e3:.6}");
+            ensure!(e3 < 1e-3, "op causal cross mismatch {e3}");
+            let e4 = run(true, 1, 1, 1, 64, 64)?; // decode step against a cache
+            println!("  op causal B1 H1 Sq1 Sk64 D64: max_abs={e4:.6}");
+            ensure!(e4 < 1e-3, "op causal decode mismatch {e4}");
             println!("MetalMfaSdpa op: matches host reference (non-causal + causal) ✓");
             Ok(())
         })

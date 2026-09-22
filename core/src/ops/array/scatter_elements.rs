@@ -24,7 +24,7 @@ impl ScatterElements {
         axis: usize,
     ) -> TractResult<TValue> {
         let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
-        let updates_plain = updates.try_as_plain()?;
+        let updates_plain = updates.try_as_plain_ram()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for (mut coords, value) in updates_view.indexed_iter() {
             let index = indices[&coords];
@@ -45,7 +45,7 @@ impl ScatterElements {
         reduction: ScatterReduction,
     ) -> TractResult<TValue> {
         let mut data = unsafe { data.into_tensor().into_array_unchecked::<T>() };
-        let updates_plain = updates.try_as_plain()?;
+        let updates_plain = updates.try_as_plain_ram()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for (mut coords, value) in updates_view.indexed_iter() {
             let index = indices[&coords];

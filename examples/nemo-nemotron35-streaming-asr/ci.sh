@@ -27,4 +27,12 @@ t2n_export_nemo \
     --fuse-prompt-into-encoder
 
 cargo run --release
+
+# Several sessions at once through the autobatch runtime: each has to transcribe
+# what it transcribes alone, and again on a lane a departed session left. Their
+# audio is staggered, so no two of them sit at the same position, and the linger
+# widens the turns whatever the box's scheduling.
+TRACT_TURN_LINGER_US=400000 cargo run --release -- \
+    assets 0 assets/2086-149220-0033.wav 4
+
 rm -rf assets

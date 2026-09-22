@@ -1,0 +1,193 @@
+name: CUDA Blackwell
+
+# SM120 (RTX 5090) coverage. There is one Blackwell box and it is a workstation
+# the rest of the time, so this workflow has no push and no pull_request
+# trigger: `/ci blackwell [tests|bench|both]` is the only way in, and
+# ci-command.yml restricts that command to the box's operator. The dispatched
+# job then waits in the queue until an ephemeral runner container is started on
+# the box (see the runner/ directory of this split). GitHub holds a queued
+# self-hosted job for 24h, so the comment does not have to be timed with the
+# box being up.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to test (from fork ok). Leave empty to run on the selected branch."
+        required: false
+        type: number
+      mode:
+        description: "tests: the CUDA suites. bench: A/B the PR head against its merge-base. both."
+        required: false
+        type: choice
+        default: tests
+        options: [ tests, bench, both ]
+
+permissions:
+  contents: read
+
+# No concurrency group: the box runs one agent at a time, so jobs serialise in
+# the queue on their own. A shared group would cancel one PR's queued run when
+# another PR's was dispatched, which is the opposite of what a box you fire by
+# hand should do.
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      ref: ${{ steps.gate.outputs.ref }}
+      pr_number: ${{ steps.gate.outputs.pr_number }}
+      mode: ${{ steps.gate.outputs.mode }}
+    steps:
+      - id: gate
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            core.setOutput('mode', context.payload.inputs?.mode || 'tests');
+            const prInput = context.payload.inputs?.pr_number;
+            if (!prInput) {
+              core.setOutput('pr_number', '');
+              core.setOutput('ref', context.sha);
+              return;
+            }
+            const pr = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(prInput),
+            });
+            core.setOutput('pr_number', String(prInput));
+            core.setOutput('ref', pr.data.head.sha);
+
+  test:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.mode != 'bench' }}
+    runs-on: cuda-blackwell
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+
+      # The Blackwell-only kernels compile in under __CUDA_ARCH__ guards and are
+      # launched under a props.major check, so a run that landed on a lesser GPU
+      # would go green having exercised only the fallback path. Inline rather
+      # than a script in the tree: the workflow always comes from the default
+      # branch, but the checkout is the PR head, which predates anything added
+      # here.
+      - name: Assert this is a Blackwell GPU
+        run: |
+          nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader
+          cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')
+          case "$cc" in
+            12.*) ;;
+            *) echo "compute capability $cc is not Blackwell (want 12.x)"; exit 1 ;;
+          esac
+
+      - name: Cargo test
+        run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda
+
+  # Back-to-back A/B on one box, not a bench-data row: the reference series in
+  # bench-data earns its noise threshold from a nightly cadence this box will
+  # never have, and rows measured while the workstation was in use would widen
+  # that threshold until the device stops gating anything. A/B is relative and
+  # survives the box's absolute thermal/governor state.
+  bench:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.mode == 'bench' || needs.prepare.outputs.mode == 'both' }}
+    runs-on: cuda-blackwell
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          fetch-depth: 0          # bench-compare.sh needs the merge-base
+          persist-credentials: false
+
+      # The Blackwell-only kernels compile in under __CUDA_ARCH__ guards and are
+      # launched under a props.major check, so a run that landed on a lesser GPU
+      # would go green having exercised only the fallback path. Inline rather
+      # than a script in the tree: the workflow always comes from the default
+      # branch, but the checkout is the PR head, which predates anything added
+      # here.
+      - name: Assert this is a Blackwell GPU
+        run: |
+          nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader
+          cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -1 | tr -d ' ')
+          case "$cc" in
+            12.*) ;;
+            *) echo "compute capability $cc is not Blackwell (want 12.x)"; exit 1 ;;
+          esac
+
+      # A/B tolerates a busy box far better than a reference row does, but not
+      # something taking the SMs partway through one of the two halves.
+      - name: Assert the GPU is idle
+        run: |
+          apps=$(nvidia-smi --query-compute-apps=pid,process_name,used_memory --format=csv,noheader)
+          if [ -n "$apps" ]; then
+            echo "GPU is in use, refusing to bench:"
+            echo "$apps"
+            exit 1
+          fi
+
+      - name: Bench the PR head against its merge-base
+        run: |
+          head=$(git rev-parse HEAD)
+          git fetch --no-tags --depth=200 origin main
+          base=$(git merge-base FETCH_HEAD "$head")
+          echo "A=$base B=$head"
+          # Harness from main, code under test from the PR: an older head carries
+          # a bench-compare.sh that ignores CARGO_TARGET_DIR and would look for a
+          # binary under ./target that the warm volume does not put there.
+          git show FETCH_HEAD:.travis/bench-compare.sh > "$RUNNER_TEMP/bench-compare.sh"
+          chmod +x "$RUNNER_TEMP/bench-compare.sh"
+          "$RUNNER_TEMP/bench-compare.sh" "$base" "$head" | tee bench-diff.txt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: blackwell-bench-diff
+          path: bench-diff.txt
+
+  # Unlike bench.yml, this workflow is always dispatched in the base repo, so its
+  # token can write; no workflow_run relay is needed to comment on a fork's PR.
+  report:
+    needs: [ prepare, test, bench ]
+    if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        if: ${{ needs.bench.result == 'success' }}
+        with:
+          name: blackwell-bench-diff
+          path: bench
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          BENCH_RESULT: ${{ needs.bench.result }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          PR: ${{ needs.prepare.outputs.pr_number }}
+        with:
+          script: |
+            const fs = require('fs');
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const short = process.env.REF.slice(0, 9);
+            const verdict = r => r === 'success' ? 'pass' : `**${r}**`;
+            const body = [`**CUDA Blackwell** (RTX 5090, SM120) at \`${short}\` — [run log](${run})`, ''];
+            if (process.env.TEST_RESULT !== 'skipped') {
+              body.push(`\`cargo test -q -p tract-gpu -p tract-cuda -p test-cuda\` — ${verdict(process.env.TEST_RESULT)}`);
+            }
+            if (process.env.BENCH_RESULT !== 'skipped') {
+              body.push(`bench, head vs merge-base — ${verdict(process.env.BENCH_RESULT)}`);
+              if (process.env.BENCH_RESULT === 'success') {
+                const diff = fs.readFileSync('bench/bench-diff.txt', 'utf8');
+                body.push('', '```', diff.slice(0, 50000), '```');
+              }
+            }
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(process.env.PR),
+              body: body.join('\n'),
+            });

@@ -1,13 +1,13 @@
 [package]
 name = "tract-cuda"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Louis Chouraki <louis.chouraki@sonos.com>",
 	"Mathieu Poumeyrol <kali@zoy.org>",
 ]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "CUDA" ]
 categories = [ "science" ]
 autobenches = false
@@ -19,11 +19,9 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+askama.workspace = true
 derive-new.workspace = true
-dyn-eq.workspace = true
-dirs.workspace = true
 downcast-rs.workspace = true
-minijinja.workspace = true
 num-traits.workspace = true
 tract-core.workspace = true
 tract-pulse-opl.workspace = true
@@ -63,4 +61,12 @@ default = ["cuda-13000"]
 
 [[bench]]
 name = "cuda_flash"
+harness = false
+
+[[bench]]
+name = "gdn_recurrent"
+harness = false
+
+[[bench]]
+name = "rms_norm_fusion"
 harness = false

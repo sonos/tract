@@ -105,8 +105,8 @@ where
     let err = found.close_enough(&expected, true);
     if err.is_err() {
         display_error(
-            found.try_as_plain()?.as_slice::<TC>()?,
-            expected.try_as_plain()?.as_slice::<TC>()?,
+            found.try_as_plain_ram()?.as_slice::<TC>()?,
+            expected.try_as_plain_ram()?.as_slice::<TC>()?,
             m,
             n,
         );

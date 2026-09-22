@@ -54,7 +54,7 @@ impl ScatterNd {
         updates: &TValue,
     ) -> TractResult<()> {
         let mut data = unsafe { data.to_array_view_mut_unchecked::<T>() };
-        let updates_plain = updates.try_as_plain()?;
+        let updates_plain = updates.try_as_plain_ram()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
             let mut indices_into_data = indices.view();
@@ -79,7 +79,7 @@ impl ScatterNd {
         reduction: ScatterReduction,
     ) -> TractResult<()> {
         let mut data = unsafe { data.to_array_view_mut_unchecked::<T>() };
-        let updates_plain = updates.try_as_plain()?;
+        let updates_plain = updates.try_as_plain_ram()?;
         let updates_view = unsafe { updates_plain.to_array_view_unchecked::<T>() };
         for coords in tract_ndarray::indices(&indices.shape()[..indices.ndim() - 1]) {
             let mut indices_into_data = indices.view();
@@ -182,10 +182,10 @@ impl TypedOp for ScatterNd {
         rule_if_some!(updates_shape = updates.shape.as_concrete());
         rule_if!(data.is_plain() && updates.is_plain());
         rule_if!(data.datum_type == updates.datum_type);
-        rule_if!(konst.rank() >= 2 && konst.is_plain());
+        rule_if!(konst.rank() >= 2 && konst.is_plain_ram());
         rule_if!(*konst.shape().last().unwrap() == data_shape.len());
         let tuples = konst.cast_to::<i64>()?;
-        let tuples = tuples.try_as_plain()?.as_slice::<i64>()?;
+        let tuples = tuples.try_as_plain_ram()?.as_slice::<i64>()?;
         rule_if_some!((axis, start, len) = scattered_block(tuples, data_shape));
         let mut block: TVec<usize> = data_shape.into();
         block[axis] = len;

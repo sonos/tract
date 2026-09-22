@@ -1,8 +1,10 @@
 use tract_nnef::internal::*;
-use tract_pulse::PulsedOp;
+#[cfg(feature = "pulse")]
 use tract_pulse::model::PulsedModel;
+#[cfg(feature = "pulse")]
 use tract_pulse::ops::OpPulsifier;
-use tract_pulse::{internal::*, pulsed_op_to_typed_op};
+#[cfg(feature = "pulse")]
+use tract_pulse::{PulsedOp, internal::PulsedFact, pulsed_op_to_typed_op};
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -37,6 +39,7 @@ pub fn register(registry: &mut Registry) {
         de_eun,
     );
 
+    #[cfg(feature = "pulse")]
     OpPulsifier::register::<ExpUnitNorm>(pulsify).unwrap();
 }
 
@@ -128,7 +131,7 @@ impl ExpUnitNormState {
         use tract_ndarray::Axis;
         let (input, state0) = args_2!(inputs);
         let mut input = input.into_tensor();
-        let mut input_plain = input.try_as_plain_mut()?;
+        let mut input_plain = input.try_as_plain_ram_mut()?;
         let mut x_view = input_plain.to_array_view_mut::<f32>()?;
         if self.hidden.is_none() || op.stateless {
             self.hidden = Some(state0.into_tensor());
@@ -136,7 +139,7 @@ impl ExpUnitNormState {
         if op.complex {
             ensure!(x_view.shape()[x_view.ndim() - 1] == 2);
         }
-        let mut hidden_plain = self.hidden.as_mut().unwrap().try_as_plain_mut()?;
+        let mut hidden_plain = self.hidden.as_mut().unwrap().try_as_plain_ram_mut()?;
         let mut state = hidden_plain.to_array_view_mut::<f32>()?;
         for mut time_slice in x_view.axis_iter_mut(Axis(op.axis)) {
             if self.index >= op.skip {
@@ -204,6 +207,7 @@ impl TypedOp for ExpUnitNorm {
     as_op!();
 }
 
+#[cfg(feature = "pulse")]
 impl PulsedOp for ExpUnitNorm {
     fn pulsed_output_facts(&self, inputs: &[&PulsedFact]) -> TractResult<TVec<PulsedFact>> {
         Ok(tvec!(inputs[0].clone()))
@@ -213,6 +217,7 @@ impl PulsedOp for ExpUnitNorm {
     pulsed_op_to_typed_op!();
 }
 
+#[cfg(feature = "pulse")]
 fn pulsify(
     _source: &TypedModel,
     node: &TypedNode,

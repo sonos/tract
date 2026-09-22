@@ -10,6 +10,20 @@ pub trait WireBody: Debug + DynClone + Send + Sync {
     fn wire_body(&self, prefix: &str, body: &mut TypedModel) -> TractResult<()>;
     fn w_b_multipliers(&self) -> (usize, usize);
     fn have_extra_c_state(&self) -> bool;
+    /// A whole-sequence op equivalent to this body, when one exists. Returning it
+    /// lets the recurrence run as a single op instead of a `Scan` that dispatches
+    /// its body once per timestep. `None` keeps the `Scan` lowering. `emit_y` says
+    /// whether the caller reads the whole-sequence output.
+    fn fused_sequence_op(
+        &self,
+        _hidden: usize,
+        _has_bias: bool,
+        _chunk: isize,
+        _seq_len: usize,
+        _emit_y: bool,
+    ) -> Option<Box<dyn TypedOp>> {
+        None
+    }
 }
 
 clone_trait_object!(WireBody);
@@ -74,7 +88,7 @@ impl CommonRec {
                 bail!("Non uniform seq_len is not supported");
             };
             let seqlen = seqlen.cast_to::<TDim>()?;
-            if seqlen.try_as_plain()?.to_scalar::<TDim>()?
+            if seqlen.try_as_plain_ram()?.to_scalar::<TDim>()?
                 != &x_fact.shape[self.batch_first as usize]
             {
                 bail!("seq_len only supported for trivial noop case");
@@ -246,8 +260,47 @@ impl CommonRec {
             });
         }
 
-        let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
-        let scan_outputs = target.wire_node(prefix, scan, &outer_inputs)?;
+        // A fused whole-sequence op, when the body has one and the scan carries
+        // nothing it cannot express: no peepholes, no extra cell state, no
+        // sequence_lens, a concrete hidden size, and a constant R, which a fused op
+        // may pack once instead of reading it every iteration as the Scan does.
+        let r_is_const = target.outlet_fact(inputs[2])?.konst.is_some();
+        let fused = (self.optional_p_input.is_none()
+            && !self.body.have_extra_c_state()
+            && self.optional_sequence_lens_input.is_none()
+            && r_is_const)
+            .then(|| h_size.to_usize().ok())
+            .flatten()
+            .and_then(|h| {
+                // Only worth it when the loop actually iterates. At one timestep the
+                // Scan is already collapsed to a plain body, which beats any
+                // whole-sequence op.
+                let seq_len = x_fact.shape[self.batch_first as usize].to_usize().ok()?;
+                self.body.fused_sequence_op(
+                    h,
+                    self.optional_bias_input.is_some(),
+                    chunk,
+                    seq_len,
+                    self.optional_y_output.is_some(),
+                )
+            });
+
+        let scan_outputs = if let Some(op) = fused {
+            let outs = target.wire_node(prefix, op, &outer_inputs)?;
+            // GruSeq yields (Y, Y_h); place them where the scan's mapping would.
+            let mut slots: TVec<OutletId> = tvec!();
+            for slot in 0..self.nboutputs()? {
+                if Some(slot) == self.optional_y_output {
+                    slots.push(outs[0]);
+                } else {
+                    slots.push(outs[1]);
+                }
+            }
+            slots
+        } else {
+            let scan = tract_core::ops::scan::Scan::new(body, input_mapping, output_mapping, 0)?;
+            target.wire_node(prefix, scan, &outer_inputs)?
+        };
 
         let mut result = tvec!();
         if let Some(slot) = self.optional_y_output {

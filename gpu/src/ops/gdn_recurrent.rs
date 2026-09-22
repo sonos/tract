@@ -1,5 +1,5 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt};
-use crate::turn_handler::make_tensor_for_node;
+use crate::turn_handler::make_tensor_for_node_output;
 use tract_core::internal::*;
 
 pub type DispatchGdnRecurrentFn = fn(
@@ -11,17 +11,19 @@ pub type DispatchGdnRecurrentFn = fn(
     &DeviceTensor,
     &DeviceTensor,
     &DeviceTensor,
+    bool, // sigmoid_beta: beta carries raw logits, kernel applies sigmoid
 ) -> TractResult<()>;
 
 #[derive(Clone, Debug)]
 pub struct GpuGatedDeltaNetRecurrent {
     pub backend_name: &'static str,
     pub dispatch: DispatchGdnRecurrentFn,
+    pub sigmoid_beta: bool,
 }
 
 impl PartialEq for GpuGatedDeltaNetRecurrent {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name
+        self.backend_name == other.backend_name && self.sigmoid_beta == other.sigmoid_beta
     }
 }
 impl Eq for GpuGatedDeltaNetRecurrent {}
@@ -47,10 +49,14 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             .iter()
             .map(|value| value.to_device_tensor())
             .collect::<TractResult<TVec<_>>>()?;
-        let output = make_tensor_for_node(ctx, DatumType::F16, tensors[0].shape())?;
-        // The memory arena is keyed by node, so a second output cannot use the
-        // same arena slot as the first one.
-        let final_state = DeviceTensor::uninitialized_dt(DatumType::F32, tensors[5].shape())?;
+        // Output takes the VALUE shape (with GQA groups q/k carry hk heads
+        // while v carries hv = G * hk) but the QUERY dtype, matching
+        // output_facts() and the CPU reference op. Each output has its own
+        // arena region in the schema (multi-output node).
+        let output =
+            make_tensor_for_node_output(ctx, 0, tensors[0].datum_type(), tensors[2].shape())?;
+        let final_state =
+            make_tensor_for_node_output(ctx, 1, tensors[5].datum_type(), tensors[5].shape())?;
         (self.dispatch)(
             tensors[0],
             tensors[1],
@@ -60,6 +66,7 @@ impl EvalOp for GpuGatedDeltaNetRecurrent {
             tensors[5],
             &output,
             &final_state,
+            self.sigmoid_beta,
         )?;
         Ok(tvec![output.into_tensor().into_tvalue(), final_state.into_tensor().into_tvalue()])
     }
@@ -74,8 +81,12 @@ impl TypedOp for GpuGatedDeltaNetRecurrent {
             ensure!(facts[2].datum_type == DatumType::F16);
             ensure!(facts[3].datum_type == DatumType::F32);
             ensure!(facts[4].datum_type == DatumType::F16);
-            ensure!(facts[5].datum_type == DatumType::F32);
-            Ok(tvec![facts[0].without_value(), facts[5].without_value()])
+            ensure!(matches!(facts[5].datum_type, DatumType::F16 | DatumType::F32));
+            // Output = value shape (hv heads), query dtype (matches the CPU
+            // reference op: `out.datum_type = inputs[0].datum_type`).
+            let mut out = facts[2].without_value();
+            out.datum_type = facts[0].datum_type;
+            Ok(tvec![out, facts[5].without_value()])
         })
         .with_context(|| format!("invalid facts for {}", self.name()))
     }

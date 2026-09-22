@@ -42,6 +42,11 @@ pub struct LaneId(pub usize);
 /// A lane appears at most once, which is what makes a stream's state sequential:
 /// two seats of one turn cannot both advance the same lane. A model with no
 /// session-scoped state has nothing to address, so its seating is inert.
+///
+/// Seats and lanes both index axis 0 -- of the turn's tensors and of a laned
+/// state's buffers respectively. A runtime seating more than one lane is what
+/// must have checked that axis 0 of every stateful node is the model's batch
+/// axis; ops only assert that their input carries one stream per seat.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Seating {
     lanes: Vec<LaneId>,
@@ -76,6 +81,14 @@ impl Seating {
     /// flowing through it.
     pub fn occupancy(&self) -> usize {
         self.lanes.len()
+    }
+
+    /// Where seat `ix` reads its stream and writes its state: the seat on axis 0
+    /// of the turn's tensors, the lane on axis 0 of the state's buffers. Both are
+    /// absent when the state is one lane wide, as its buffers then have no lane
+    /// axis and axis 0 of the tensors carries data rather than streams.
+    pub fn address(&self, ix: usize) -> (Option<usize>, Option<usize>) {
+        if self.max_lanes == 1 { (None, None) } else { (Some(ix), Some(self.lanes[ix].0)) }
     }
 }
 
@@ -422,6 +435,20 @@ where
     pub(crate) fn clear_resolved_symbols(&mut self) {
         self.turn_state.resolved_symbols = SymbolValues::default();
         self.turn_state.scenario = None;
+    }
+
+    /// Seat the lanes carrying the coming turn's streams, one lane per seat of
+    /// axis 0 of its tensors.
+    pub fn seat(&mut self, seating: Seating) {
+        self.turn_state.seating = seating;
+    }
+
+    /// Drop the session state `lanes` hold, handing them to new streams.
+    pub fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()> {
+        for op_state in self.op_states.iter_mut().flatten() {
+            op_state.reset_lanes(lanes)?;
+        }
+        Ok(())
     }
 
     /// Reset op inner state.

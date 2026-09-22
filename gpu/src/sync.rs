@@ -1,5 +1,5 @@
 use crate::fact::{DeviceFact, DeviceTypedFactExt};
-use crate::tensor::{DeviceTensorExt, IntoDevice};
+use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, LazyHostStorage};
 use derive_new::new;
 use std::collections::HashMap;
 use std::fmt;
@@ -39,13 +39,36 @@ impl EvalOp for DeviceSync {
         match self.kind {
             DeviceSyncKind::ToHost => {
                 let device_tensor = input.to_device_tensor()?;
-
-                let tensor = device_tensor
-                    .to_host()
-                    .with_context(|| "Error while syncing device tensor to host")?;
-                Ok(tvec![tensor.into_tvalue()])
+                match device_tensor {
+                    // An owned device tensor of plain layout crosses the
+                    // boundary lazily: the result is a host tensor, but the
+                    // bytes only come back if someone reads them. A caller that
+                    // hands it straight to the next run never pays the
+                    // transfer.
+                    DeviceTensor::Owned(_) if !device_tensor.is_exotic() => Ok(tvec![
+                        LazyHostStorage::new(device_tensor.clone())?.into_tensor().into_tvalue()
+                    ]),
+                    // An arena view borrows turn-scoped storage, so it cannot
+                    // outlive the turn; an exotic tensor comes back as its own
+                    // storage -- block-quant weights come back block-quant --
+                    // which a lazy host tensor has no way to stand in for.
+                    // Both copy out now.
+                    _ => {
+                        let tensor = device_tensor
+                            .to_host()
+                            .with_context(|| "Error while syncing device tensor to host")?;
+                        Ok(tvec![tensor.into_tvalue()])
+                    }
+                }
             }
             DeviceSyncKind::ToDevice => {
+                // A tensor that came back from a previous run still on device
+                // goes straight back in, with no round trip either way.
+                if let Some(device) =
+                    input.storage_as::<LazyHostStorage>().and_then(|lazy| lazy.device())
+                {
+                    return Ok(tvec![device.clone().into_tensor().into()]);
+                }
                 let device_input = if let Some(t) = input.as_arc_tensor() {
                     Arc::clone(t).into_device()?
                 } else {

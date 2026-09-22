@@ -198,7 +198,7 @@ pub fn padded_window(window: Option<&Arc<Tensor>>, frame: usize) -> TractResult<
     match window {
         Some(w) => {
             let w = w.cast_to::<f32>()?;
-            let w = w.try_as_plain()?;
+            let w = w.try_as_plain_ram()?;
             let w = w.as_slice::<f32>()?;
             ensure!(w.len() <= frame, "STFT window longer than frame");
             let pad_left = (frame - w.len()) / 2;

@@ -1,0 +1,24 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("onnx.ir_version", tract_core_cast(8, to = "i64")), ("tract_nnef_ser_version", "0.23.6-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph network(X) -> (Y, Y_h) {
+  X = external(shape = [6, 2, 3]);
+  Y_x_batch_first = transpose(X, axes = [1, 0, 2]);
+  Y_w = variable<scalar>(label = "Y.w", shape = [12, 3]);
+  Y_r = variable<scalar>(label = "Y.r", shape = [12, 4]);
+  Y_b_dir = variable<scalar>(label = "Y.b_dir", shape = [1, 24]);
+  Y_h0 = [[[0.0, 0.0, 0.0, 0.0]], [[0.0, 0.0, 0.0, 0.0]]];
+  ( Y, Y_1 ) = tract_core_gru_seq(x = Y_x_batch_first, w = Y_w, r = Y_r, b = Y_b_dir, initial_h = Y_h0, hidden = 4, chunk = 1, has_bias = 1, reset_every_turn = 0, emit_y = 1);
+  Y_y_batch_middle = transpose(Y, axes = [1, 0, 2]);
+  Y_y = unsqueeze(Y_y_batch_middle, axes = [1]);
+  Y_y_h_batch_middle = transpose(Y_1, axes = [1, 0, 2]);
+  Y = Y_y;
+  Y_h = Y_y_h_batch_middle;
+}

@@ -10,10 +10,15 @@ name: CI slash command
 #   /ci py             -> alias of wheels
 #   /ci examples       -> Examples                 (examples.yml)
 #   /ci ex             -> alias of examples
+#   /ci blackwell [tests|bench|both] -> RTX 5090 / SM120 (cuda-blackwell.yml);
+#                         mode defaults to tests. Operator-only, see below.
+#   /ci 5090           -> alias of blackwell
 #   /ci bench          -> Bench                    (bench.yml)
 #   /ci benches        -> alias of bench
 #   /ci bench-mt-ladder [ladder] -> thread-scaling run (bench.yml); ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
+# `blackwell` is narrower still: it runs on a single workstation GPU, so only the
+# logins in the BLACKWELL_OPERATORS repo variable (default `kali`) can queue it.
 
 on:
   issue_comment:
@@ -45,6 +50,8 @@ jobs:
     steps:
       - name: Route /ci target to its workflow
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          BLACKWELL_OPERATORS: ${{ vars.BLACKWELL_OPERATORS }}
         with:
           github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
           script: |
@@ -61,6 +68,8 @@ jobs:
               'py': 'wheels.yml',
               'examples': 'examples.yml',
               'ex': 'examples.yml',
+              'blackwell': 'cuda-blackwell.yml',
+              '5090': 'cuda-blackwell.yml',
               'bench': 'bench.yml',
               'benches': 'bench.yml',
               'bench-mt-ladder': 'bench.yml',
@@ -70,7 +79,7 @@ jobs:
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci bench` (alias: `benches`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), `/ci bench` (alias: `benches`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -82,6 +91,41 @@ jobs:
               return;
             }
             const inputs = { pr_number: String(pr) };
+
+            // `/ci blackwell [tests|bench|both]`. Write access to the repo is not
+            // consent to take someone's workstation GPU: the Blackwell box has one
+            // operator, who is also the person deciding when its runner is up at all.
+            if (workflow === 'cuda-blackwell.yml') {
+              const operators = (process.env.BLACKWELL_OPERATORS || 'kali')
+                .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
+              const who = (cp.github?.payload?.comment?.user?.login || '').toLowerCase();
+              if (!operators.includes(who)) {
+                const denied = `\`/ci ${target}\` runs on a single workstation GPU and is reserved to its operator (${operators.map(o => '@' + o).join(', ')}). Ask for a run rather than queueing one.`;
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr,
+                  body: denied,
+                });
+                core.setFailed(denied);
+                return;
+              }
+              // bench A/Bs the head against its merge-base on the box instead of
+              // running the CUDA suites.
+              const mode = (cp.slash_command.args.unnamed.arg2 || 'tests').toLowerCase();
+              if (!['tests', 'bench', 'both'].includes(mode)) {
+                const msg = `Unknown \`/ci ${target}\` mode: \`${mode}\`. Use \`tests\`, \`bench\` or \`both\`.`;
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr,
+                  body: msg,
+                });
+                core.setFailed(msg);
+                return;
+              }
+              inputs.mode = mode;
+            }
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
             // bench.yml runs the thread scaling sweep + scaling report instead of vs-main.
             if (target === 'bench-mt-ladder') {

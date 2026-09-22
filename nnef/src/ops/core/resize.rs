@@ -1,5 +1,8 @@
 use crate::internal::*;
-use tract_core::ops::nn::resize::{CoordTransformer, Interpolator, Nearest, Resize};
+use crate::ser::ints;
+use tract_core::ops::nn::resize::{
+    CoordTransformer, Interpolator, Nearest, NearestUpsample, Resize,
+};
 
 pub fn register(registry: &mut Registry) {
     registry.register_primitive(
@@ -9,6 +12,7 @@ pub fn register(registry: &mut Registry) {
         load,
     );
     registry.register_dumper(dump);
+    registry.register_dumper(dump_nearest_upsample);
     registry.register_primitive(
         "nearest_upsample",
         &upsample_parameters(),
@@ -51,6 +55,33 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<
             ("coord_transformer", string(op.coord_transformer.as_str())),
             ("interpolator", string(op.interpolator.as_str())),
             ("nearest_mode", string(op.nearest.as_str())),
+        ],
+    )))
+}
+
+fn dump_nearest_upsample(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &NearestUpsample,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    if op.scales.len() >= 2 && op.scales[..2] == [1, 1] {
+        return Ok(Some(invocation(
+            "nearest_upsample",
+            &[input],
+            &[("factor", ints(&op.scales[2..]))],
+        )));
+    }
+    let scales: Vec<f32> = op.scales.iter().map(|&s| s as f32).collect();
+    let scales = ast.konst(format!("{}_scales", node.name), &rctensor1(&scales))?;
+    Ok(Some(invocation(
+        "tract_core_resize",
+        &[input],
+        &[
+            ("scales", (*scales).clone()),
+            ("coord_transformer", string(CoordTransformer::Asymmetric.as_str())),
+            ("interpolator", string(Interpolator::Nearest.as_str())),
+            ("nearest_mode", string(Nearest::Floor.as_str())),
         ],
     )))
 }

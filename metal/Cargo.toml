@@ -1,13 +1,13 @@
 [package]
 name = "tract-metal"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Hubert de La Jonquière <hubert.delajonquiere@sonos.com>",
 	"Mathieu Poumeyrol <kali@zoy.org>",
 ]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
 categories = [ "science" ]
 autobenches = false
@@ -46,4 +46,12 @@ harness = false
 
 [[bench]]
 name = "metal_reduce"
+harness = false
+
+[[bench]]
+name = "gdn_recurrent"
+harness = false
+
+[[bench]]
+name = "rms_norm_fusion"
 harness = false

@@ -71,7 +71,7 @@ pub fn f32_to_bf16_rne(x: f32) -> u16 {
 /// unchanged. Lets a reference f32 matmul reproduce the kernel's bf16 rounding.
 fn truncate_to_bf16(mut tensor: Tensor) -> TractResult<Tensor> {
     if tensor.datum_type() == f32::datum_type() {
-        let mut plain = tensor.try_as_plain_mut()?;
+        let mut plain = tensor.try_as_plain_ram_mut()?;
         for x in plain.as_slice_mut::<f32>()? {
             *x = f32::from_bits((f32_to_bf16_rne(*x) as u32) << 16);
         }

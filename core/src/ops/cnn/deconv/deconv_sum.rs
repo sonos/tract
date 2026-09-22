@@ -76,14 +76,23 @@ impl DeconvSum {
         if !self.pool_spec.data_format.has_n() {
             tensor.insert_axis(0)?;
         }
-        eval(
+        if !try_fast_nchw_2x2_s2_f32(
             self,
             &input_shape,
             &output_shape,
             &spatial_output_details,
             &n_o_hkwk_hw,
             &mut tensor,
-        )?;
+        )? {
+            eval(
+                self,
+                &input_shape,
+                &output_shape,
+                &spatial_output_details,
+                &n_o_hkwk_hw,
+                &mut tensor,
+            )?;
+        }
         if !self.pool_spec.data_format.has_n() {
             tensor.remove_axis(0)?;
         }
@@ -115,6 +124,130 @@ impl TypedOp for DeconvSum {
     }
 
     as_op!();
+}
+
+/// NCHW 2×2 stride-2 unpack: write even/odd W with `vld2`/`vst2` instead of
+/// the generic loop's channel-inner scatter (C stride is `H*W` on NCHW).
+fn try_fast_nchw_2x2_s2_f32(
+    op: &DeconvSum,
+    input_shape: &DataShape,
+    output_shape: &DataShape,
+    spatial_output_details: &[ComputedPaddedDim<usize>],
+    gemm: &Tensor,
+    output: &mut Tensor,
+) -> TractResult<bool> {
+    if output.datum_type() != f32::datum_type() {
+        return Ok(false);
+    }
+    if op.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
+        return Ok(false);
+    }
+    if op.pool_spec.kernel_shape[..] != [2, 2] {
+        return Ok(false);
+    }
+    if op.pool_spec.strides()[..] != [2, 2] || op.pool_spec.dilations()[..] != [1, 1] {
+        return Ok(false);
+    }
+    if spatial_output_details.len() != 2
+        || spatial_output_details[0].pad_before != 0
+        || spatial_output_details[1].pad_before != 0
+    {
+        return Ok(false);
+    }
+    if *output_shape.w_stride() != 1 {
+        return Ok(false);
+    }
+    let ih = input_shape.hw_dims()[0];
+    let iw = input_shape.hw_dims()[1];
+    let oh = output_shape.hw_dims()[0];
+    let ow = output_shape.hw_dims()[1];
+    if oh != ih * 2 || ow != iw * 2 {
+        return Ok(false);
+    }
+    unsafe {
+        deconv_nchw_2x2_s2_f32(gemm, output, output_shape, ih, iw);
+    }
+    Ok(true)
+}
+
+unsafe fn deconv_nchw_2x2_s2_f32(
+    gemm: &Tensor,
+    output: &mut Tensor,
+    output_shape: &DataShape,
+    ih: usize,
+    iw: usize,
+) {
+    unsafe {
+        let gptr = gemm.as_ptr::<f32>().expect("f32 gemm");
+        let optr = output.as_ptr_mut::<f32>().expect("f32 out");
+        let n = *output_shape.n().unwrap_or(&1);
+        let oc = *output_shape.c();
+        let g_n = gemm.strides()[0];
+        let g_o = gemm.strides()[1];
+        let g_k = gemm.strides()[2];
+        let g_i = gemm.strides()[3];
+        let o_n = *output_shape.n_stride().unwrap_or(&0) as isize;
+        let o_c = *output_shape.c_stride() as isize;
+        let o_h = *output_shape.h_stride() as isize;
+        for ni in 0..n as isize {
+            for o in 0..oc as isize {
+                let g = gptr.offset(ni * g_n + o * g_o);
+                let dst = optr.offset(ni * o_n + o * o_c);
+                let src00 = g;
+                let src01 = g.offset(g_k);
+                let src10 = g.offset(2 * g_k);
+                let src11 = g.offset(3 * g_k);
+                for ix in 0..ih {
+                    let in_row = (ix * iw) as isize * g_i;
+                    interleave_add_row(
+                        dst.offset((2 * ix) as isize * o_h),
+                        src00.offset(in_row),
+                        src01.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                    interleave_add_row(
+                        dst.offset((2 * ix + 1) as isize * o_h),
+                        src10.offset(in_row),
+                        src11.offset(in_row),
+                        iw,
+                        g_i,
+                    );
+                }
+            }
+        }
+    }
+}
+
+unsafe fn interleave_add_row(
+    dst: *mut f32,
+    even: *const f32,
+    odd: *const f32,
+    iw: usize,
+    src_stride: isize,
+) {
+    unsafe {
+        let mut i = 0usize;
+        #[cfg(target_arch = "aarch64")]
+        if src_stride == 1 {
+            use std::arch::aarch64::*;
+            while i + 4 <= iw {
+                let e = vld1q_f32(even.add(i));
+                let o = vld1q_f32(odd.add(i));
+                let mut d = vld2q_f32(dst.add(2 * i));
+                d.0 = vaddq_f32(d.0, e);
+                d.1 = vaddq_f32(d.1, o);
+                vst2q_f32(dst.add(2 * i), d);
+                i += 4;
+            }
+        }
+        while i < iw {
+            let di = dst.add(2 * i);
+            *di += *even.offset(i as isize * src_stride);
+            *di.add(1) += *odd.offset(i as isize * src_stride);
+            i += 1;
+        }
+    }
 }
 
 fn eval(
@@ -164,7 +297,7 @@ macro_rules! impl_eval {
                         output: &mut Tensor,
                         add: impl Fn(T, T) -> T + Copy + 'static,
                         ) -> TractResult<()> {
-                        let mut output_plain = output.try_as_plain_mut()?;
+                        let mut output_plain = output.try_as_plain_ram_mut()?;
                         let output = output_plain.to_array_view_mut::<T>()?;
                         let n_o_hkwk_hw: ArrayView4<T> = n_o_hkwk_hw.to_plain_array_view::<T>()?.into_dimensionality()?;
                         match input_shape.hw_rank() {
@@ -277,6 +410,59 @@ macro_rules! impl_eval {
                     let iy_len = input_shape.hw_dims()[1];
                     let kx_len = op.pool_spec.kernel_shape[0];
                     let ky_len = op.pool_spec.kernel_shape[1];
+                    if !op.pool_spec.data_format.c_is_last()
+                        && iy_len >= 16
+                        && let Some(temp) = n_o_hkwk_hw.as_slice()
+                        && let Some(output) = output.as_slice_mut()
+                    {
+                        for n in 0..n {
+                            for o in 0..output_c {
+                                let output_base = n * *output_shape.n_stride().unwrap_or(&0)
+                                    + o * output_c_stride as usize;
+                                let temp_base = n * temp_n_stride as usize + o * temp_o_stride as usize;
+                                for kx in 0..kx_len {
+                                    let x_base = (kx * x_dil) as isize - x_pad;
+                                    let ix_start = ((-x_base).max(0) as usize).div_ceil(x_stride);
+                                    let ix_end = ((ox_len as isize - x_base).max(0) as usize).div_ceil(x_stride).min(ix_len);
+                                    for ky in 0..ky_len {
+                                        let y_base = (ky * y_dil) as isize - y_pad;
+                                        let iy_start = ((-y_base).max(0) as usize).div_ceil(y_stride);
+                                        let iy_end = ((oy_len as isize - y_base).max(0) as usize).div_ceil(y_stride).min(iy_len);
+                                        if iy_start >= iy_end {
+                                            continue;
+                                        }
+                                        for ix in ix_start..ix_end {
+                                            let ox = (x_base + (ix * x_stride) as isize) as usize;
+                                            let oy = (y_base + (iy_start * y_stride) as isize) as usize;
+                                            let input_start = temp_base + (kx * ky_len + ky) * temp_k_stride as usize
+                                                + ix * iy_len + iy_start;
+                                            let output_start = output_base + ox * output_x_stride as usize + oy;
+                                            let input = &temp[input_start..input_start + iy_end - iy_start];
+                                            let output = &mut output[output_start..output_start + (input.len() - 1) * y_stride + 1];
+                                            if y_stride == 1 {
+                                                for (output, &input) in output.iter_mut().zip(input) {
+                                                    *output = add(*output, input);
+                                                }
+                                            } else {
+                                                let blocks = (input.len() - 1) / 8;
+                                                let (input_head, input_tail) = input.split_at(blocks * 8);
+                                                let (output_head, output_tail) = output.split_at_mut(blocks * 8 * y_stride);
+                                                for (output, input) in output_head.chunks_exact_mut(8 * y_stride).zip(input_head.chunks_exact(8)) {
+                                                    for i in 0..8 {
+                                                        output[i * y_stride] = add(output[i * y_stride], input[i]);
+                                                    }
+                                                }
+                                                for (output, &input) in output_tail.iter_mut().step_by(y_stride).zip(input_tail) {
+                                                    *output = add(*output, input);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return Ok(());
+                    }
                     unsafe {
                         for n in 0..n {
                             let output = output.as_mut_ptr().add(n * *output_shape.n_stride().unwrap_or(&0));
@@ -674,7 +860,7 @@ impl DepthwiseDeconv {
         }
         let strides = self.pool_spec.strides();
         let dilations = self.pool_spec.dilations();
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut output = output_plain.to_array_view_mut::<T>()?;
         for n in 0..n {
             for o in 0..c {

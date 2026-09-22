@@ -458,8 +458,17 @@ MMMRustKernel!(generic; kernel::<f64, 4, 1> => generic_f64_4x1<f64>(4,1)
     store(f16, f32));
 
 // I32 kernels
+// 16 i32 accumulators plus operands and pointers outrun the register file wherever the
+// compiler has no SIMD to fold them into, and the tile spills through the stack. x86_64 is
+// the exception: SSE2 is baseline there, so the wide tile stays ahead and keeps precedence.
 MMMRustKernel! { generic; kernel::<i32, 4, 4> => generic_i32_4x4<i32>(4,4)
     packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(4));
+    boost(|| if cfg!(target_arch = "x86_64") { 0 } else { -1 })
+    store(i8)
+}
+
+MMMRustKernel! { generic; kernel::<i32, 4, 2> => generic_i32_4x2<i32>(4,2)
+    packing[1] = i8i8 => |k| k.with_packing(i8::packing(4), i8::packing(2));
     store(i8)
 }
 
@@ -494,7 +503,8 @@ fn generic_preferred(
         DatumType::F32 => generic_f32_4x4.name.as_str(),
         DatumType::F16 if vec => generic_f16_4x1.name.as_str(),
         DatumType::F16 => generic_f16_4x4.name.as_str(),
-        DatumType::I32 => generic_i32_4x4.name.as_str(),
+        DatumType::I32 if cfg!(target_arch = "x86_64") => generic_i32_4x4.name.as_str(),
+        DatumType::I32 => generic_i32_4x2.name.as_str(),
         _ => return None,
     };
     Some(name)

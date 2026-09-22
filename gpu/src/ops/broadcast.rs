@@ -30,8 +30,12 @@ impl EvalOp for GpuMultiBroadcastTo {
         let shape = self.shape.eval_to_usize(ctx.symbols)?;
         let output = crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), &shape)?;
 
-        // Pad input shape/strides to output rank for broadcasting
-        let mut input_strides = vec![input.strides()[0]; output.rank() - input.rank()];
+        // Pad input shape/strides to output rank for broadcasting.  The padded
+        // axes have dim 1, so `compute_broadcast_strides` zeroes their stride
+        // whatever it is given -- which is what lets a rank-0 input, whose
+        // `strides()` is empty, broadcast at all.
+        let pad_stride = input.strides().first().copied().unwrap_or(1);
+        let mut input_strides = vec![pad_stride; output.rank() - input.rank()];
         input_strides.extend(input.strides());
         let mut input_shape = vec![1usize; output.rank() - input.rank()];
         input_shape.extend(input.shape());

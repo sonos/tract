@@ -4,23 +4,26 @@ use std::hash::Hash;
 
 use crate::TractResult;
 use crate::blob::Blob;
+use crate::datum::DatumType;
+use crate::dyn_eq::DynEq;
 use crate::exotic::ExoticFact;
+use crate::tensor::Tensor;
 use downcast_rs::{Downcast, impl_downcast};
-use dyn_eq::DynEq;
 
 /// Trait abstracting over tensor storage backends.
 ///
-/// `PlainStorage` is the primary implementation backed by a contiguous `Blob`.
-/// Non-plain backends are held behind `StorageKind::Exotic(Box<dyn TensorStorage>)`.
-pub trait TensorStorage:
-    Send + Sync + fmt::Debug + fmt::Display + dyn_eq::DynEq + Downcast
-{
+/// Two independent axes describe one: layout, `is_exotic`, and placement,
+/// `in_ram`. `PlainStorage` is the primary implementation, plain and in ram by
+/// construction; every other backend is held behind
+/// `StorageKind::Exotic(Box<dyn TensorStorage>)`, whichever pair of answers it
+/// gives.
+pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + DynEq + Downcast {
     fn byte_len(&self) -> usize;
     fn is_empty(&self) -> bool;
     fn deep_clone(&self) -> Box<dyn TensorStorage>;
-    fn as_plain(&self) -> Option<&PlainStorage>;
-    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage>;
-    fn into_plain(self: Box<Self>) -> Option<PlainStorage>;
+    fn as_plain_ram(&self) -> Option<&PlainStorage>;
+    fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage>;
+    fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage>;
     fn dyn_hash(&self, state: &mut dyn std::hash::Hasher);
     /// Build the `ExoticFact` that describes this storage for use in `TypedFact`.
     ///
@@ -28,11 +31,64 @@ pub trait TensorStorage:
     /// appropriate fact so that `From<Arc<Tensor>> for TypedFact` preserves
     /// exotic-ness.
     fn exotic_fact(&self, shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>>;
+
+    /// True when the tensor's datum type and shape do not describe it on their
+    /// own, so a fact over it carries an `ExoticFact`.
+    ///
+    /// The layout axis, orthogonal to `in_ram`: all four combinations exist,
+    /// a dense tensor in device memory being plain and out of ram,
+    /// block-quant weights in device memory exotic and out of ram.
+    ///
+    /// Defaults to true: a storage is exotic until it says otherwise, so one
+    /// that forgets is refused where a fact is required rather than silently
+    /// mistyped.
+    fn is_exotic(&self) -> bool {
+        true
+    }
+
+    /// True when the bytes are in host memory, readable without a transfer.
+    ///
+    /// The placement axis. Defaults to true: storage holds its own bytes unless
+    /// it says otherwise. Answers for the bytes in whatever layout the storage
+    /// keeps them -- block-quant storage is in ram while packed -- so it takes
+    /// both axes, `as_plain_ram`, for a plain read to be sure to work.
+    fn in_ram(&self) -> bool {
+        true
+    }
+
+    /// Plain storage for the tensor's bytes, producing it if this storage can.
+    ///
+    /// This is the accessor path: `Tensor::as_bytes` and friends go through it,
+    /// so a storage that holds its bytes somewhere else (on a device, say) gets
+    /// a chance to bring them back here, and to keep the result so the next
+    /// access is free. `as_plain_ram` stays the cheap accessor: it answers with
+    /// what is available right now and never produces anything.
+    fn materialize_plain_ram(&self) -> TractResult<&PlainStorage> {
+        self.as_plain_ram().ok_or_else(|| anyhow::anyhow!("Tensor storage is not plain"))
+    }
+
+    /// Slice along `axis`, if this storage can do it without copying.
+    ///
+    /// `None` means "not capable" and the caller falls back to a generic copy,
+    /// so an implementation is free to refuse any case it cannot serve. What it
+    /// must not do is return a tensor that is not a valid dense one: `Some` is a
+    /// claim that the result stands on its own everywhere a tensor is accepted.
+    fn slice(
+        &self,
+        _dt: DatumType,
+        _shape: &[usize],
+        _axis: usize,
+        _start: usize,
+        _end: usize,
+    ) -> TractResult<Option<Tensor>> {
+        Ok(None)
+    }
 }
 impl_downcast!(TensorStorage);
-dyn_eq::eq_trait_object!(TensorStorage);
+crate::eq_trait_object!(TensorStorage);
 
-/// Plain, contiguous storage backed by a `Blob`.
+/// Plain, contiguous storage backed by a `Blob`: plain in layout and in ram,
+/// which is what every other storage is measured against.
 #[derive(Eq)]
 pub struct PlainStorage(pub(crate) Blob);
 
@@ -145,15 +201,15 @@ impl TensorStorage for PlainStorage {
         Box::new(PlainStorage(self.0.clone()))
     }
 
-    fn as_plain(&self) -> Option<&PlainStorage> {
+    fn as_plain_ram(&self) -> Option<&PlainStorage> {
         Some(self)
     }
 
-    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+    fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
         Some(self)
     }
 
-    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
+    fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage> {
         Some(*self)
     }
 
@@ -165,12 +221,17 @@ impl TensorStorage for PlainStorage {
     fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
         Ok(None)
     }
+
+    fn is_exotic(&self) -> bool {
+        false
+    }
 }
 
 /// Inline enum replacing `Box<dyn TensorStorage>`.
 ///
 /// The common `Plain` case stays inline (no heap alloc, no vtable indirection).
-/// `Exotic` covers non-plain backends behind a single Box indirection.
+/// `Exotic` covers every other backend behind a single Box indirection, whether
+/// or not it is exotic in the fact sense -- `is_exotic` answers that.
 #[derive(Debug, PartialEq, Eq)]
 #[allow(dead_code)]
 pub(crate) enum StorageKind {
@@ -180,26 +241,26 @@ pub(crate) enum StorageKind {
 
 impl StorageKind {
     #[inline]
-    pub fn as_plain(&self) -> Option<&PlainStorage> {
+    pub fn as_plain_ram(&self) -> Option<&PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.as_plain(),
+            StorageKind::Exotic(o) => o.as_plain_ram(),
         }
     }
 
     #[inline]
-    pub fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+    pub fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.as_plain_mut(),
+            StorageKind::Exotic(o) => o.as_plain_ram_mut(),
         }
     }
 
     #[inline]
-    pub fn into_plain(self) -> Option<PlainStorage> {
+    pub fn into_plain_ram(self) -> Option<PlainStorage> {
         match self {
             StorageKind::Plain(d) => Some(d),
-            StorageKind::Exotic(o) => o.into_plain(),
+            StorageKind::Exotic(o) => o.into_plain_ram(),
         }
     }
 
@@ -225,6 +286,30 @@ impl StorageKind {
         match self {
             StorageKind::Plain(d) => StorageKind::Plain(d.clone()),
             StorageKind::Exotic(o) => StorageKind::Exotic(o.deep_clone()),
+        }
+    }
+
+    #[inline]
+    pub fn is_exotic(&self) -> bool {
+        match self {
+            StorageKind::Plain(_) => false,
+            StorageKind::Exotic(o) => o.is_exotic(),
+        }
+    }
+
+    #[inline]
+    pub fn in_ram(&self) -> bool {
+        match self {
+            StorageKind::Plain(_) => true,
+            StorageKind::Exotic(o) => o.in_ram(),
+        }
+    }
+
+    #[inline]
+    pub fn materialize_plain_ram(&self) -> TractResult<&PlainStorage> {
+        match self {
+            StorageKind::Plain(d) => Ok(d),
+            StorageKind::Exotic(o) => o.materialize_plain_ram(),
         }
     }
 

@@ -7,20 +7,25 @@ use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::NodeProto;
 use crate::pb_helpers::OptionExt;
 
+#[cfg(feature = "transformers")]
 mod attention;
 mod batch_norm;
 mod conv_transpose;
 mod dropout;
+mod gather_block_quantized;
 mod gelu;
 mod gelu_contrib;
 mod group_norm;
+#[cfg(feature = "transformers")]
 mod group_query_attention;
 mod instance_norm;
 mod layer_norm;
 mod lp_norm;
 mod lrn;
 mod mat_mul_nbits;
+mod max_pool;
 mod mish;
+#[cfg(feature = "transformers")]
 mod multi_head_attention;
 mod mvn;
 mod reduce;
@@ -69,7 +74,7 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("LogSoftmax", layer_log_soft_max);
     reg.insert("LRN", lrn::lrn);
     reg.insert("MatMulNBits", mat_mul_nbits::mat_mul_nbits);
-    reg.insert("MaxPool", max_pool);
+    reg.insert("MaxPool", max_pool::max_pool);
     reg.insert("MeanVarianceNormalization", mvn::mean_variance_normalization);
     reg.insert("ParametricSoftplus", parametric_softplus);
     reg.insert("QLinearConv", conv_qlinear);
@@ -90,14 +95,18 @@ pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("ThresholdedRelu", thresholded_relu);
     reg.insert("Selu", selu);
     reg.insert("Sigmoid", |_, _| Ok((ops::nn::sigmoid().into_hir(), vec![])));
+    #[cfg(feature = "transformers")]
     reg.insert("Attention", attention::attention);
     reg.insert("Gelu", gelu::gelu);
     reg.insert("BiasGelu", gelu_contrib::bias_gelu);
     reg.insert("FastGelu", gelu_contrib::fast_gelu);
     reg.insert("QuickGelu", gelu_contrib::quick_gelu);
+    reg.insert("GatherBlockQuantized", gather_block_quantized::gather_block_quantized);
+    #[cfg(feature = "transformers")]
     reg.insert("GroupQueryAttention", group_query_attention::group_query_attention);
     reg.insert("HardSwish", |_, _| Ok((ops::nn::hard_swish().into_hir(), vec![])));
     reg.insert("Mish", |_, _| Ok((expand(mish::Mish), vec![])));
+    #[cfg(feature = "transformers")]
     reg.insert("MultiHeadAttention", multi_head_attention::multi_head_attention);
     reg.insert("RMSNormalization", rms_norm::rms_normalization);
     reg.insert("RotaryEmbedding", rotary_embedding::rotary_embedding);
@@ -247,10 +256,11 @@ pub fn average_pool(
     let kernel_shape = node.get_attr_tvec("kernel_shape")?;
     let pad = pad(node, true)?;
     let strides = strides(node)?;
+    let dilations = dilations(node)?;
     let count_include_pad = node.get_attr_opt("count_include_pad")?.unwrap_or(false);
     Ok((
         expand(cnn::HirSumPool::new(
-            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, 0, 0),
+            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, dilations, strides, 0, 0),
             count_include_pad,
             true,
         )),
@@ -333,22 +343,6 @@ pub fn leaky_relu(
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
     let alpha = node.get_attr_opt("alpha")?.unwrap_or(0.01);
     Ok((expand(ops::activations::LeakyRelu(alpha)), vec![]))
-}
-
-pub fn max_pool(
-    _ctx: &ParsingContext,
-    node: &NodeProto,
-) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let kernel_shape = node.get_attr_tvec("kernel_shape")?;
-    let pad = pad(node, true)?;
-    let strides = strides(node)?;
-    Ok((
-        expand(cnn::HirMaxPool::new(
-            cnn::PoolSpec::new(nn::DataFormat::NCHW, kernel_shape, pad, None, strides, 0, 0),
-            if node.output.len() == 2 { Some(DatumType::I64) } else { None },
-        )),
-        vec![],
-    ))
 }
 
 pub fn parametric_softplus(

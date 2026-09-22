@@ -39,7 +39,7 @@ then
     if [ `uname` = "Darwin" ]
     then
         python3 --version
-        brew install coreutils numpy python-setuptools jshon
+        brew install coreutils numpy python-setuptools jq
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
@@ -47,7 +47,7 @@ then
         then
             apt_retry apt-get update
             # apt_retry apt-get upgrade -y
-            apt_retry apt-get install -y llvm python3 python3-numpy jshon wget curl build-essential sudo jshon clang
+            apt_retry apt-get install -y llvm python3 python3-numpy jq wget curl build-essential sudo clang
         fi
     fi
 
@@ -80,7 +80,7 @@ fi
 
 if [ -z "$TRACT_RUN" ]
 then
-    TRACT_RUN="cargo run -p tract-cli $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers,pulse --"
+    TRACT_RUN="cargo run -p tract-cli $CARGO_EXTRA --profile opt-no-lto --no-default-features --features transformers,pulse,metal --"
     export TRACT_RUN
 fi
 

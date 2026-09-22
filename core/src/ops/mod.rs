@@ -4,7 +4,7 @@ use std::fmt;
 use downcast_rs::Downcast;
 
 use dyn_clone;
-use dyn_eq::DynEq;
+use tract_data::dyn_eq::DynEq;
 
 #[macro_use]
 pub mod macros;
@@ -22,6 +22,7 @@ pub mod dummy;
 pub mod einsum;
 pub mod fft;
 pub mod gru_cell;
+pub mod gru_seq;
 pub mod identity;
 pub mod konst;
 pub mod logic;
@@ -126,7 +127,7 @@ pub trait OpState: fmt::Debug + dyn_clone::DynClone + Downcast + Send {
 
     /// Discard what this state carries for `lanes`, so each can be handed to
     /// another stream. Required, with no default: an op holding per-lane state
-    /// clears those rows, one holding none says so with `Ok(())`, and one that
+    /// clears those lanes, one holding none says so with `Ok(())`, and one that
     /// cannot serve several streams at once fails here -- which is where a laned
     /// runtime finds out, since it resets every lane before the first turn.
     fn reset_lanes(&mut self, lanes: &[LaneId]) -> TractResult<()>;
@@ -143,6 +144,14 @@ pub trait EvalOp {
     #[allow(unused_variables)]
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         bail!("{} has neither eval nor state", std::any::type_name::<Self>())
+    }
+
+    /// The input this op hands straight back as its output when it has nothing
+    /// to do, if any: what reads the output then reads the producer's memory, so
+    /// an allocator pooling node outputs has to keep that region alive as long
+    /// as this op's own output. A wrapper delegates to what it wraps.
+    fn forwards_input(&self) -> Option<usize> {
+        None
     }
 
     /// Evaluate with no plan around the node -- const folding, shape inference,
@@ -170,7 +179,7 @@ pub trait EvalOp {
 
 /// A base operation
 pub trait Op:
-    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast + EvalOp
+    fmt::Debug + dyn_clone::DynClone + DynEq + Send + Sync + 'static + Downcast + EvalOp
 {
     fn name(&self) -> StaticName;
 

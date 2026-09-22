@@ -155,7 +155,7 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
     };
     if dt.is_copy() {
         let mut tensor = unsafe { Tensor::uninitialized_dt(dt, &shape)? };
-        let mut plain = tensor.try_as_plain_mut()?;
+        let mut plain = tensor.try_as_plain_ram_mut()?;
         if dt == DatumType::Bool && header.bits_per_item == 1 {
             let buf = plain.as_slice_mut::<bool>()?;
 
@@ -173,15 +173,20 @@ pub fn read_tensor(mut reader: impl Read) -> TractResult<Tensor> {
         Ok(tensor)
     } else if dt == DatumType::String {
         let mut tensor = Tensor::zero_dt(dt, &shape)?;
-        let mut plain = tensor.try_as_plain_mut()?;
+        let mut plain = tensor.try_as_plain_ram_mut()?;
         for item in plain.as_slice_mut::<String>()? {
             let len: u32 = reader.read_u32::<LE>()?;
-            let mut bytes = Vec::with_capacity(len as usize);
-            #[allow(clippy::uninit_vec)]
-            unsafe {
-                bytes.set_len(len as usize);
-            };
-            reader.read_exact(&mut bytes)?;
+            // SECURITY: `len` is read from the (untrusted) NNEF file. Do NOT pre-allocate or
+            // `set_len` an unbounded buffer from it (CWE-770): a malicious file advertising a
+            // multi-gigabyte string length forces a huge *upfront* allocation (abort on OOM, or
+            // memory exhaustion) before any byte is read, and the previous `unsafe set_len` also
+            // left the buffer uninitialized. Read at most `len` bytes, growing the buffer from what
+            // actually arrives, then verify the real length matches the declaration.
+            let mut bytes = Vec::new();
+            (&mut reader).take(len as u64).read_to_end(&mut bytes)?;
+            if bytes.len() != len as usize {
+                bail!("NNEF string item declared {len} bytes but only {} readable", bytes.len());
+            }
             *item = String::from_utf8(bytes)?;
         }
         Ok(tensor)
@@ -195,7 +200,7 @@ pub fn write_tensor(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     if tensor.storage_as::<BlockQuantStorage>().is_some() {
         return write_block_quant_value(w, tensor);
     }
-    let plain = tensor.try_as_plain()?;
+    let plain = tensor.try_as_plain_ram()?;
     let mut header = Header::default();
     if tensor.rank() > 8 {
         bail!("Only rank up to 8 are supported");

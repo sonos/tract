@@ -1,10 +1,12 @@
-#[cfg(target_vendor = "apple")]
+#[cfg(all(target_vendor = "apple", feature = "metal"))]
 extern crate tract_metal;
 
 #[cfg(all(any(target_os = "linux", target_os = "windows"), feature = "cuda"))]
 extern crate tract_cuda;
+#[cfg(feature = "transformers")]
 extern crate tract_transformers;
 
+#[cfg(feature = "onnx")]
 use std::borrow::Cow;
 use std::fmt::{Debug, Display};
 use std::io::Cursor;
@@ -21,9 +23,14 @@ use tract_nnef::prelude::{
     Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec,
     Tensor as InternalTensor, TractResult, TypedFact, TypedModel, TypedSimplePlan,
 };
+#[cfg(feature = "onnx")]
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
+#[cfg(feature = "pulse")]
 use tract_pulse::WithPulse;
+#[cfg(not(feature = "pulse"))]
+use tract_pulse_opl::WithPulse;
+#[cfg(feature = "transformers")]
 use tract_transformers::WithTractTransformers;
 
 use tract_api::*;
@@ -34,9 +41,10 @@ pub use ndarray_interop::__ndarray_interop;
 pub mod prelude {
     // Concrete types
     pub use crate::{
-        Dim, Fact, InferenceFact, InferenceModel, Model, Nnef, Onnx, Runnable, Runtime, State,
-        Tensor, nnef, onnx, runtime_for_name,
+        Dim, Fact, Model, Nnef, Runnable, Runtime, State, Tensor, nnef, runtime_for_name,
     };
+    #[cfg(feature = "onnx")]
+    pub use crate::{InferenceFact, InferenceModel, Onnx, onnx};
 
     // User-facing API types
     pub use tract_api::{
@@ -46,9 +54,12 @@ pub mod prelude {
 
     // Traits needed for method resolution — hidden from namespace
     pub use tract_api::{
-        DimInterface as _, FactInterface as _, InferenceFactInterface as _,
-        InferenceModelInterface as _, ModelInterface as _, NnefInterface as _, OnnxInterface as _,
+        DimInterface as _, FactInterface as _, ModelInterface as _, NnefInterface as _,
         RunnableInterface as _, RuntimeInterface as _, StateInterface as _, TensorInterface as _,
+    };
+    #[cfg(feature = "onnx")]
+    pub use tract_api::{
+        InferenceFactInterface as _, InferenceModelInterface as _, OnnxInterface as _,
     };
 }
 
@@ -57,12 +68,13 @@ pub fn nnef() -> Result<Nnef> {
     Ok(Nnef(tract_nnef::nnef()))
 }
 
+#[cfg(feature = "onnx")]
 pub fn onnx() -> Result<Onnx> {
     Ok(Onnx(tract_onnx::onnx()))
 }
 
 pub fn runtime_for_name(name: &str) -> Result<Runtime> {
-    if let Some(rt) = tract_onnx::tract_core::runtime::runtime_for_name(name)? {
+    if let Some(rt) = tract_core::runtime::runtime_for_name(name)? {
         Ok(Runtime(rt))
     } else {
         anyhow::bail!("Unknown runtime {name} (not compiled in tract?)")
@@ -105,8 +117,13 @@ impl NnefInterface for Nnef {
     }
 
     fn enable_tract_transformers(&mut self) -> Result<()> {
-        self.0.enable_tract_transformers();
-        Ok(())
+        #[cfg(not(feature = "transformers"))]
+        anyhow::bail!("Cannot enable tract-transformers without the transformers feature enabled.");
+        #[cfg(feature = "transformers")]
+        {
+            self.0.enable_tract_transformers();
+            Ok(())
+        }
     }
 
     fn enable_onnx(&mut self) -> Result<()> {
@@ -135,15 +152,25 @@ impl NnefInterface for Nnef {
     }
 
     fn write_model_to_tar_gz(&self, path: impl AsRef<Path>, model: &Model) -> Result<()> {
-        let file = std::fs::File::create(path)?;
-        let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
-        self.0.write_to_tar(&model.0, gz)?;
-        Ok(())
+        #[cfg(not(feature = "flate2"))]
+        {
+            let _ = (path, model);
+            anyhow::bail!("Cannot write gzip file without the flate2 feature enabled.")
+        }
+        #[cfg(feature = "flate2")]
+        {
+            let file = std::fs::File::create(path)?;
+            let gz = flate2::write::GzEncoder::new(file, flate2::Compression::default());
+            self.0.write_to_tar(&model.0, gz)?;
+            Ok(())
+        }
     }
 }
 
+#[cfg(feature = "onnx")]
 pub struct Onnx(tract_onnx::Onnx);
 
+#[cfg(feature = "onnx")]
 impl Debug for Onnx {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Onnx")
@@ -155,6 +182,7 @@ impl Debug for Onnx {
 /// They are applied after the parse on purpose: an assertion only has to hold
 /// before shapes are unified, which happens later, so nothing needs threading a
 /// SymbolScope into the ONNX parser.
+#[cfg(feature = "onnx")]
 fn apply_assertions(
     model: &tract_onnx::prelude::InferenceModel,
     assertions: &[String],
@@ -168,6 +196,7 @@ fn apply_assertions(
     Ok(())
 }
 
+#[cfg(feature = "onnx")]
 impl Onnx {
     /// The loader to parse with.
     ///
@@ -187,6 +216,7 @@ impl Onnx {
     }
 }
 
+#[cfg(feature = "onnx")]
 impl OnnxInterface for Onnx {
     type InferenceModel = InferenceModel;
 
@@ -213,14 +243,17 @@ impl OnnxInterface for Onnx {
     }
 }
 
+#[cfg(feature = "onnx")]
 pub struct InferenceModel(tract_onnx::prelude::InferenceModel);
 
+#[cfg(feature = "onnx")]
 impl Debug for InferenceModel {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "InferenceModel")
     }
 }
 
+#[cfg(feature = "onnx")]
 impl InferenceModelInterface for InferenceModel {
     type Model = Model;
     type InferenceFact = InferenceFact;
@@ -334,11 +367,11 @@ impl ModelInterface for Model {
             let mut params = v.clone();
             params.as_object_mut().unwrap().remove("name");
             let mut erased = <dyn erased_serde::Deserializer>::erase(params);
-            tract_onnx::tract_core::transform::get_transform_with_params(&name, &mut erased)?
+            tract_core::transform::get_transform_with_params(&name, &mut erased)?
                 .with_context(|| format!("transform `{name}' could not be found"))?
         } else {
             // Plain name (no params)
-            tract_onnx::tract_core::transform::get_transform(&transform)?
+            tract_core::transform::get_transform(&transform)?
                 .with_context(|| format!("transform `{transform}' could not be found"))?
         };
         transform_obj.transform(&mut self.0)?;
@@ -475,6 +508,22 @@ impl RunnableInterface for Runnable {
     }
 }
 
+#[cfg(feature = "unstable-autobatch")]
+impl Runnable {
+    /// Serve up to `max_sessions` concurrent sessions off this one prepared
+    /// model, batching the turns which arrive together into one run. Each
+    /// `spawn_state` is then one session.
+    ///
+    /// The model must carry a batch axis: one symbol, on axis 0, on at least
+    /// one input and one output. A session feeds one row of it per turn, and how
+    /// many rows a run carries is the load's business, not the caller's. A model
+    /// which cannot be served that way fails here.
+    pub fn autobatch(&self, max_sessions: usize) -> Result<Runnable> {
+        let laned = tract_core::lanes::LanedRunnable::wrap(self.0.clone(), max_sessions)?;
+        Ok(Runnable(Arc::new(laned)))
+    }
+}
+
 // STATE
 pub struct State(Option<Box<dyn tract_nnef::internal::State>>);
 
@@ -531,7 +580,7 @@ impl TensorInterface for Tensor {
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
         let dt = from_internal_dt(self.0.datum_type())?;
-        Ok((dt, self.0.shape(), self.0.try_as_plain()?.as_bytes()))
+        Ok((dt, self.0.shape(), self.0.try_as_plain_ram()?.as_bytes()))
     }
 
     fn convert_to(&self, to: DatumType) -> Result<Self> {
@@ -580,9 +629,7 @@ impl FactInterface for Fact {
 
 impl Fact {
     fn new(model: &Model, spec: impl ToString) -> Result<Fact> {
-        let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
-        let fact = tract_onnx::prelude::Fact::to_typed_fact(&fact)?.into_owned();
-        Ok(Fact(fact))
+        Ok(Fact(TypedFact::from_spec(&model.0.symbols, &spec.to_string())?))
     }
 }
 
@@ -602,15 +649,18 @@ impl Display for Fact {
     }
 }
 
+#[cfg(feature = "onnx")]
 #[derive(Default, Clone, Debug)]
 pub struct InferenceFact(tract_onnx::prelude::InferenceFact);
 
+#[cfg(feature = "onnx")]
 impl InferenceFactInterface for InferenceFact {
     fn empty() -> Result<InferenceFact> {
         Ok(InferenceFact(Default::default()))
     }
 }
 
+#[cfg(feature = "onnx")]
 impl InferenceFact {
     fn new(model: &InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
         let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
@@ -618,6 +668,7 @@ impl InferenceFact {
     }
 }
 
+#[cfg(feature = "onnx")]
 impl Display for InferenceFact {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = self.0.format_dt_shape();
@@ -633,6 +684,7 @@ impl Display for InferenceFact {
     }
 }
 
+#[cfg(feature = "onnx")]
 as_inference_fact_impl!(InferenceModel, InferenceFact);
 as_fact_impl!(Model, Fact);
 

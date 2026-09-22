@@ -2,6 +2,7 @@
 #[macro_use]
 pub mod macros;
 
+pub mod batchify_data_free;
 pub mod blockify;
 pub mod fact;
 pub mod model;
@@ -55,6 +56,12 @@ impl ModelTransform for PulseTransform {
 }
 
 register_model_transform!("pulse", PulseConfig, |config| Ok(Box::new(PulseTransform(config))));
+
+register_model_transform!(
+    "batchify_data_free",
+    batchify_data_free::BatchifyDataFreeConfig,
+    |config| Ok(Box::new(batchify_data_free::BatchifyDataFree(config)))
+);
 
 register_model_transform!("blockify", blockify::BlockifyConfig, |config| Ok(Box::new(
     blockify::BlockifyTransform(config)

@@ -129,10 +129,10 @@ impl NonMaxSuppression {
             };
 
         let mut max_output_boxes_per_class =
-            *max_output_boxes_per_class.try_as_plain()?.to_scalar::<i64>()?;
-        let iou_threshold = *iou_threshold.try_as_plain()?.to_scalar::<T>()?;
+            *max_output_boxes_per_class.try_as_plain_ram()?.to_scalar::<i64>()?;
+        let iou_threshold = *iou_threshold.try_as_plain_ram()?.to_scalar::<T>()?;
         let score_threshold = score_threshold.map_or(Ok::<_, TractError>(None), |val| {
-            Ok(Some(*val.try_as_plain()?.to_scalar::<T>()?))
+            Ok(Some(*val.try_as_plain_ram()?.to_scalar::<T>()?))
         })?;
 
         if max_output_boxes_per_class == 0 {

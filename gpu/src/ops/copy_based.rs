@@ -36,7 +36,8 @@ pub fn try_make_copy_based_op(
         return Ok(Some(Box::new(super::pulse::GpuDelay::new(op))));
     }
     if let Some(op) = node.op_as::<PulsePad>() {
-        return Ok(Some(Box::new(super::pulse::GpuPulsePad::new(op)?)));
+        let dt = source.node_input_facts(node.id)?[0].datum_type;
+        return Ok(Some(Box::new(super::pulse::GpuPulsePad::new(op, dt)?)));
     }
     if let Some(op) = node.op_as::<AffineChunkTrim>() {
         return Ok(Some(Box::new(super::pulse::GpuAffineChunkTrim::new(op))));

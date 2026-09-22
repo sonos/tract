@@ -37,12 +37,12 @@ impl Gather {
     }
 
     fn eval_t<T: Datum>(&self, data: TValue, indices: &TValue) -> TractResult<Tensor> {
-        let data_plain = data.try_as_plain()?;
+        let data_plain = data.try_as_plain_ram()?;
         let data_view = unsafe { data_plain.to_array_view_unchecked::<T>() };
         let indices = indices.to_plain_array_view::<i64>()?;
         let output_shape = &*self.compute_output_shape(data.shape(), indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<T>(output_shape)? };
-        let mut output_plain = output.try_as_plain_mut()?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut output_view = output_plain.to_array_view_mut::<T>()?;
 
         let data_shape = data.shape();
@@ -122,7 +122,7 @@ impl Gather {
         let data_shape = &[m, k];
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
-        let indices_plain = indices.try_as_plain()?;
+        let indices_plain = indices.try_as_plain_ram()?;
         let indices_slice = indices_plain.as_slice::<i64>()?;
         let vector_len = k;
         let blob = data.value();
@@ -130,7 +130,7 @@ impl Gather {
         let block_len = data.format().block_len();
         let block_bytes = data.format().block_bytes();
         if F::datum_type() == f16::datum_type() {
-            let mut output_plain = output.try_as_plain_mut()?;
+            let mut output_plain = output.try_as_plain_ram_mut()?;
             let output_slice = output_plain.as_slice_mut::<f16>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
@@ -144,7 +144,7 @@ impl Gather {
                 }
             }
         } else {
-            let mut output_plain = output.try_as_plain_mut()?;
+            let mut output_plain = output.try_as_plain_ram_mut()?;
             let output_slice = output_plain.as_slice_mut::<f32>()?;
             for (pos, ix) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
@@ -170,18 +170,18 @@ impl Gather {
         let data_shape = &[data.mn(), data.k()];
         let output_shape = &*self.compute_output_shape(data_shape, indices.shape())?;
         let mut output = unsafe { Tensor::uninitialized::<F>(output_shape)? };
-        let indices_plain = indices.try_as_plain()?;
+        let indices_plain = indices.try_as_plain_ram()?;
         let indices_slice = indices_plain.as_slice::<i64>()?;
         let vector_len = data_shape[1];
         if F::datum_type() == f16::datum_type() {
-            let mut output_plain = output.try_as_plain_mut()?;
+            let mut output_plain = output.try_as_plain_ram_mut()?;
             let output_slice = output_plain.as_slice_mut::<f16>()?;
             for (pos, m) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
                 data.extract_at_mn_f16(*m as usize, slice)?;
             }
         } else {
-            let mut output_plain = output.try_as_plain_mut()?;
+            let mut output_plain = output.try_as_plain_ram_mut()?;
             let output_slice = output_plain.as_slice_mut::<f32>()?;
             for (pos, m) in indices_slice.iter().enumerate() {
                 let slice = &mut output_slice[pos * vector_len..][..vector_len];
@@ -362,7 +362,7 @@ mod tests {
                 .unwrap();
             let output = &outputs[0];
             assert_eq!(output.shape().len(), 0);
-            assert_eq!(*output.try_as_plain().unwrap().to_scalar::<i64>().unwrap(), idx + 1);
+            assert_eq!(*output.try_as_plain_ram().unwrap().to_scalar::<i64>().unwrap(), idx + 1);
         }
     }
 }

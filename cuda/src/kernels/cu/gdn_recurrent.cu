@@ -72,6 +72,9 @@ extern "C" __global__ void tract_gdn_recurrent_f16(
 
 // One thread owns one depthwise channel. Qwen3.5 decoding always appends one
 // sample to a four-element causal-convolution cache.
+// Sliding-window causal conv update with fused silu, any S and batch
+// (direct port of the Metal kernel of the same name). Layout: input/output
+// [b, C, S], state [b, C, K], weight [C, K].
 extern "C" __global__ void tract_causal_conv1d_update_f16(
     const __half* input,
     const __half* weight,
@@ -79,19 +82,36 @@ extern "C" __global__ void tract_causal_conv1d_update_f16(
     __half* output,
     __half* final_state,
     int channels,
-    int kernel_width) {
-  const int channel = blockIdx.x * blockDim.x + threadIdx.x;
-  if (channel >= channels) return;
-  const int base = channel * kernel_width;
-  float sum = 0.0f;
-  for (int tap = 0; tap < kernel_width - 1; ++tap) {
-    const __half sample = initial_state[base + tap + 1];
-    final_state[base + tap] = sample;
-    sum = fmaf(__half2float(sample), __half2float(weight[base + tap]), sum);
+    int kernel_width,
+    int s_len,
+    int batch) {
+  const int gid = blockIdx.x * blockDim.x + threadIdx.x;
+  const int channel = gid % channels;
+  const int b = gid / channels;
+  if (b >= batch) return;
+  const int state_base = (b * channels + channel) * kernel_width;
+  const int input_base = (b * channels + channel) * s_len;
+  const int weight_base = channel * kernel_width;
+  // kernel_width is small (4 for Qwen3.5), keep the window in registers.
+  const int MAX_K = 8;
+  float window[MAX_K];
+  if (kernel_width > MAX_K) return;
+  for (int tap = 0; tap < kernel_width; ++tap) {
+    window[tap] = __half2float(initial_state[state_base + tap]);
   }
-  const __half newest = input[channel];
-  final_state[base + kernel_width - 1] = newest;
-  sum = fmaf(__half2float(newest),
-             __half2float(weight[base + kernel_width - 1]), sum);
-  output[channel] = __float2half(sum / (1.0f + expf(-sum)));
+  for (int t = 0; t < s_len; ++t) {
+    // shift left, append the new sample: window becomes full[t+1 .. t+k]
+    for (int tap = 0; tap < kernel_width - 1; ++tap) {
+      window[tap] = window[tap + 1];
+    }
+    window[kernel_width - 1] = __half2float(input[input_base + t]);
+    float sum = 0.0f;
+    for (int tap = 0; tap < kernel_width; ++tap) {
+      sum = fmaf(window[tap], __half2float(weight[weight_base + tap]), sum);
+    }
+    output[input_base + t] = __float2half(sum / (1.0f + expf(-sum)));
+  }
+  for (int tap = 0; tap < kernel_width; ++tap) {
+    final_state[state_base + tap] = __float2half(window[tap]);
+  }
 }

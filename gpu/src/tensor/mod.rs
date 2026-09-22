@@ -2,9 +2,11 @@
 #![allow(clippy::missing_transmute_annotations)]
 
 mod arena_view;
+mod lazy;
 mod owned;
 
 pub use arena_view::*;
+pub use lazy::*;
 pub use owned::*;
 
 use num_traits::AsPrimitive;
@@ -229,20 +231,31 @@ impl TensorStorage for DeviceTensor {
         Box::new(self.clone())
     }
 
-    fn as_plain(&self) -> Option<&PlainStorage> {
+    fn as_plain_ram(&self) -> Option<&PlainStorage> {
         None
     }
 
-    fn as_plain_mut(&mut self) -> Option<&mut PlainStorage> {
+    fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
         None
     }
 
-    fn into_plain(self: Box<Self>) -> Option<PlainStorage> {
+    fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage> {
         None
     }
 
     fn dyn_hash(&self, _state: &mut dyn std::hash::Hasher) {
         // no meaningful hash for device memory
+    }
+
+    fn is_exotic(&self) -> bool {
+        match self {
+            Self::Owned(owned) => owned.exotic_fact().is_some(),
+            Self::ArenaView(view) => view.exotic_fact().is_some(),
+        }
+    }
+
+    fn in_ram(&self) -> bool {
+        false
     }
 
     fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {

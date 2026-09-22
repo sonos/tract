@@ -26,12 +26,15 @@ tract_core::declare_knob!(
     false,
     "Log nodes that fail output-fact validation during CUDA translation."
 );
-use tract_core::ops::nn::Reduce;
+use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
-use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
+use tract_gpu::rewrite_rules::rms_norm::{
+    fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
+    fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
+};
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
@@ -89,6 +92,7 @@ impl CudaTransform {
         // Init CUDA Context if not done previously
         cuda_context();
 
+        rewire_sdpa_cuda(model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());
@@ -99,10 +103,15 @@ impl CudaTransform {
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
             .rewrite(&(), model)?;
 
         Rewriter::default()
+            .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
+            .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
 
@@ -116,8 +125,19 @@ impl CudaTransform {
             return Ok(());
         }
 
+        // After elementwise fusion: only residual adds that stayed standalone
+        // dispatches are worth absorbing into their norm consumer.
+        Rewriter::default()
+            .with_rule_for("fuse_rms_norm_residual", fuse_rms_norm_residual)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_output_axis_op", tract_gpu::ops::fused_output::fuse_output_axis_op)
+            .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_window_into_gemm", rewrite_rules::fuse_window_into_gemm)
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_axis_op", rewrite_rules::fuse_axis_op)
@@ -298,6 +318,46 @@ fn convert_matmul_to_cuda(
     Ok(matmul_output)
 }
 
+/// Shapes `CudaFlashAttention` takes: three or four inputs, rank 3 or 4 Q/K/V, K and V alike,
+/// and a head dim of 64 or 128, the two the kernel is specialised for. Everything else is
+/// exploded into primitives by `flatten_unfused_sdpa` instead.
+fn cuda_flash_attn_supported(facts: &[&TypedFact]) -> bool {
+    if !matches!(facts.len(), 3 | 4) {
+        return false;
+    }
+    let [qf, kf, vf] = [facts[0], facts[1], facts[2]];
+    if kf.datum_type() != vf.datum_type() || kf.shape != vf.shape {
+        return false;
+    }
+    if [qf, kf, vf].iter().any(|f| !matches!(f.rank(), 3 | 4)) {
+        return false;
+    }
+    kf.shape[kf.rank() - 1].to_i64().is_ok_and(|head_dim| matches!(head_dim, 64 | 128))
+}
+
+/// Explode the `Sdpa` nodes the fused kernel cannot take into primitives, so an unsupported
+/// head dim runs on the generic path rather than aborting the whole CUDA translation. The
+/// metal transform carries the same rule.
+fn flatten_unfused_sdpa(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    if cuda_flash_attn_supported(&model.node_input_facts(node.id)?) {
+        Ok(None)
+    } else {
+        op.patch_sdpa(model, node)
+    }
+}
+
+fn rewire_sdpa_cuda(model: &mut TypedModel) -> TractResult<()> {
+    Rewriter::default()
+        .with_rule_for("flatten-unfused-sdpa", flatten_unfused_sdpa)
+        .rewrite(&(), model)
+}
+
 fn convert_sdpa_to_cuda_flash_attn(
     model: &TypedModel,
     node: &TypedNode,
@@ -306,9 +366,9 @@ fn convert_sdpa_to_cuda_flash_attn(
     op: &Sdpa,
 ) -> TractResult<TVec<OutletId>> {
     let facts = model.node_input_facts(node.id)?;
+    ensure!(cuda_flash_attn_supported(&facts), "Sdpa shape the flash-attention kernel cannot take");
 
     let [qf, kf, vf] = [facts[0], facts[1], facts[2]];
-    ensure!(kf.datum_type() == vf.datum_type(), "K/V dtypes must match");
 
     let mask_fact = if facts.len() == 4 { Some(facts[3]) } else { None };
 
@@ -369,8 +429,6 @@ fn convert_sdpa_to_cuda_flash_attn(
     added_head_axis |= add_head_axis_if_rank3(target, &node.name, v, vf, ".reshape_v")?;
 
     let out_dim = kf.shape[kf.rank() - 1].to_i64()?;
-    ensure!(matches!(out_dim, 64 | 128), "Unsupported head dim (D): {out_dim}");
-    ensure!(kf.shape == vf.shape, "K and V shapes must be identical");
 
     // ----- mask: cast & reshape
     if let Some(mf) = mask_fact {
@@ -386,7 +444,7 @@ fn convert_sdpa_to_cuda_flash_attn(
     let scale = op
         .scale
         .as_ref()
-        .map(|s| *s.try_as_plain().unwrap().to_scalar::<f32>().unwrap())
+        .map(|s| *s.try_as_plain_ram().unwrap().to_scalar::<f32>().unwrap())
         .unwrap_or(1.0 / (out_dim as f32).sqrt());
     let sdpa = ops::CudaFlashAttention::new(scale, op.is_causal);
 
@@ -432,7 +490,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
                 return sync_model_outputs_if_required(source, node, target, outlet_ids);
             }
         }
-        if let Some(op) = node.op_as::<Sdpa>() {
+        if let Some(op) = node.op_as::<Sdpa>()
+            && cuda_flash_attn_supported(&input_facts)
+        {
             let mut device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
@@ -584,6 +644,64 @@ mod test {
 
         let cuda_runnable = model.into_runnable()?;
         let _ = cuda_runnable.run(inputs)?;
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sdpa_model(head_dim: usize) -> TractResult<(TypedModel, TVec<TValue>)> {
+        let (heads, seq) = (4usize, 32usize);
+        let shape = [1, heads, seq, head_dim];
+        let fact = f32::fact(shape.iter().map(|d| TDim::from(*d as i64)).collect::<TVec<_>>());
+        let mut model = TypedModel::default();
+        let q = model.add_source("q", fact.clone())?;
+        let k = model.add_source("k", fact.clone())?;
+        let v = model.add_source("v", fact.clone())?;
+        let out = model.wire_node(
+            "sdpa",
+            Sdpa {
+                scale: None,
+                datum_type: f32::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            },
+            &[q, k, v],
+        )?;
+        model.select_output_outlets(&out)?;
+        let mk = |seed: i64| -> TractResult<TValue> {
+            let data: Vec<f32> = (0..heads * seq * head_dim)
+                .map(|i| (((i as i64 * 2654435761 + seed).rem_euclid(1000)) as f32 / 1000.0) - 0.5)
+                .collect();
+            Ok(Tensor::from_shape(&shape, &data)?.into_tvalue())
+        };
+        Ok((model, tvec!(mk(1)?, mk(2)?, mk(3)?)))
+    }
+
+    #[test]
+    fn sdpa_at_supported_head_dim_routes_to_flash_attention() -> TractResult<()> {
+        let (model, _) = sdpa_model(64)?;
+        let cuda = CudaTransform.transform_into(model)?;
+        assert!(
+            cuda.nodes().iter().any(|n| n.op_is::<ops::CudaFlashAttention>()),
+            "a head dim of 64 should reach CudaFlashAttention"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sdpa_at_unsupported_head_dim_explodes_and_matches_cpu() -> TractResult<()> {
+        let (model, inputs) = sdpa_model(8)?;
+        let expected = model.clone().into_runnable()?.run(inputs.clone())?;
+        let cuda = CudaTransform.transform_into(model)?;
+        assert!(
+            !cuda.nodes().iter().any(|n| n.op_is::<ops::CudaFlashAttention>()),
+            "a head dim of 8 must not reach CudaFlashAttention"
+        );
+        let found = cuda.into_runnable()?.run(inputs)?;
+        found[0].close_enough(&expected[0], Approximation::Approximate)?;
         Ok(())
     }
 }

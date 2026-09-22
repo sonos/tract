@@ -1,6 +1,6 @@
 [package]
 name = "tract"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
@@ -16,20 +16,22 @@ include = ["Cargo.toml", "src/**/*.rs", "LICENSE*", "tests"]
 anyhow.workspace = true
 boow.workspace = true
 erased-serde.workspace = true
-flate2.workspace = true
+flate2 = { workspace = true, optional = true }
 half.workspace = true
 tract-api.workspace = true
+tract-core.workspace = true
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
-tract-onnx.workspace = true
+tract-onnx = { workspace = true, optional = true }
 tract-extra.workspace = true
-tract-pulse.workspace = true
+tract-pulse = { workspace = true, optional = true }
+tract-pulse-opl.workspace = true
 tract-libcli.workspace = true
-tract-transformers.workspace = true
+tract-transformers = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
-tract-metal.workspace = true
+tract-metal = { workspace = true, optional = true }
 
 [target.'cfg(any(target_os = "linux", target_os = "windows"))'.dependencies]
 tract-cuda = { workspace = true, default-features = false, optional = true }
@@ -44,11 +46,43 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000"]
+default = ["cuda-13000", "metal", "flate2", "onnx", "pulse", "transformers"]
 complex = []
+
+# Gzip support for NNEF archives: reading `.nnef.tgz` models and writing them
+# back. Enabled by default; consumers that only load uncompressed NNEF drop
+# flate2 and miniz_oxide with `default-features = false`.
+flate2 = ["dep:flate2", "tract-nnef/flate2"]
+
+# The ONNX parser: `onnx()`, the `Onnx` loader and the `InferenceModel` /
+# `InferenceFact` shape-inference types it produces. Enabled by default;
+# consumers that only load NNEF drop tract-onnx and its operator register with
+# `default-features = false`. `enable_onnx` is unaffected — the ONNX operators
+# an NNEF graph may carry live in tract-onnx-opl, which stays either way.
+onnx = ["dep:tract-onnx"]
+
+# Offline pulsification: the `pulse` and `blockify` model transforms, and the
+# write side of pulsed NNEF. Enabled by default; consumers that only load and
+# run an already pulsified model keep `enable_pulse` off tract-pulse-opl alone
+# with `default-features = false`. Implies `transformers`, which tract-pulse
+# needs for the DiagGather pulsifier and blockify.
+pulse = ["dep:tract-pulse", "tract-extra/pulse", "transformers"]
+
+# The tract_transformers NNEF extension: attention, KV cache and rope
+# operators, and the transforms that detect them, plus the ONNX attention
+# operators that lower onto them and libcli's causal-LLM tensor specs. Enabled
+# by default; with it off `enable_tract_transformers` fails and a model using
+# those operators does not load, so only drop it for a model known not to need
+# them.
+transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-libcli/transformers"]
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []
+
+# Gates the `extern crate tract_metal` that registers the Metal runtime, on the
+# Apple targets that have it. Enabled by default; CPU-only consumers drop the
+# backend, and the shader sources it embeds, with `default-features = false`.
+metal = ["dep:tract-metal", "tract-libcli/metal"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Gates the `extern crate tract_cuda` that registers the CUDA runtime.
@@ -72,3 +106,8 @@ cuda-12090 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-12090"]
 cuda-13000 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13000"]
 cuda-13010 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13010"]
 cuda-13020 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13020"]
+
+# Serve many concurrent sessions off one prepared model (`Runtime::autobatch`).
+# Unstable: the shape of the surface is still being settled against the server
+# it is meant for, so it is not covered by the no-breaking-change commitment.
+unstable-autobatch = []

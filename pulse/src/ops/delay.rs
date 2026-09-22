@@ -7,15 +7,15 @@ pub fn register(registry: &mut Registry) {
 
 fn ser_delay(ast: &mut IntoAst, node: &TypedNode, op: &Delay) -> TractResult<Option<Arc<RValue>>> {
     let wire = ast.mapping[&node.inputs[0]].clone();
-    Ok(Some(invocation(
-        "tract_pulse_delay",
-        &[wire],
-        &[
-            ("axis", numeric(op.axis)),
-            ("delay", numeric(op.delay)),
-            ("overlap", numeric(op.overlap)),
-        ],
-    )))
+    let mut params = tvec!(
+        ("axis", numeric(op.axis)),
+        ("delay", numeric(op.delay)),
+        ("overlap", numeric(op.overlap)),
+    );
+    if op.zero_pad {
+        params.push(("zero_pad", logical(true)));
+    }
+    Ok(Some(invocation("tract_pulse_delay", &[wire], &params)))
 }
 
 impl PulsedOp for Delay {
@@ -24,7 +24,12 @@ impl PulsedOp for Delay {
         let mut fact = inputs[0].clone();
         let stream = fact.stream.as_mut().unwrap();
         fact.shape.set(self.axis, fact.shape[self.axis].clone() + self.overlap);
-        stream.delay += self.delay + self.overlap;
+        stream.delay += self.delay;
+        if self.zero_pad {
+            stream.dim += self.overlap.to_dim();
+        } else {
+            stream.delay += self.overlap;
+        }
         Ok(tvec!(fact))
     }
 
@@ -67,7 +72,7 @@ mod test {
             let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             let skip = (delay + overlap).saturating_sub(i * pulse).min(pulse + overlap);
             assert_eq!(
-                &output[0].try_as_plain().unwrap().as_slice::<u8>().unwrap()[skip..],
+                &output[0].try_as_plain_ram().unwrap().as_slice::<u8>().unwrap()[skip..],
                 &expect[skip..]
             );
         }
@@ -128,7 +133,7 @@ mod test {
             let skip = 4usize.saturating_sub(i * pulse).min(pulse);
             let output = state.run(tvec!(tensor1(&input).into())).unwrap();
             assert_eq!(
-                &output[0].try_as_plain().unwrap().as_slice::<u8>().unwrap()[skip..],
+                &output[0].try_as_plain_ram().unwrap().as_slice::<u8>().unwrap()[skip..],
                 &expect[skip..]
             );
         }

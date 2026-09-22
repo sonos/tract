@@ -198,3 +198,81 @@ unsafe fn x86_64_avx512_erf_f32_64n_run(buf: &mut [f32]) {
         );
     }
 }
+
+// AVX2/FMA (ymm, 8-wide) error function kernel. Same polynomial and shape as
+// the AVX-512 kernel above, over 4 ymm registers per iteration (32 lanes per
+// loop step), for the x86_64 tier without AVX-512.
+routine_ew_rust!(x86_64;
+    f32,
+    x86_64_fma_erf_f32_32n,
+    32,
+    8,
+    #[inline(never)]
+    fn run(buf: &mut [f32], _: ()) {
+        debug_assert!(buf.len() % Self::nr() == 0);
+        debug_assert!(buf.as_ptr() as usize % Self::alignment_bytes() == 0);
+        if buf.is_empty() {
+            return;
+        }
+        unsafe { x86_64_fma_erf_f32_32n_run(buf) }
+    },
+    func(Erf),
+    isa(X86_64Fma)
+);
+
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx,fma")]
+unsafe fn x86_64_fma_erf_f32_32n_run(buf: &mut [f32]) {
+    unsafe {
+        use std::arch::x86_64::*;
+        const A1: f32 = 0.0705230784;
+        const A2: f32 = 0.0422820123;
+        const A3: f32 = 0.0092705272;
+        const A4: f32 = 0.0001520143;
+        const A5: f32 = 0.0002765672;
+        const A6: f32 = 0.0000430638;
+        // 0x7fffffff / 0x80000000 are bit masks, never numeric values: as f32
+        // the first is NaN. Used only through vandps/vorps.
+        let abs_mask = _mm256_set1_ps(f32::from_bits(0x7fffffff));
+        let sign_mask = _mm256_set1_ps(f32::from_bits(0x80000000));
+        let a1 = _mm256_set1_ps(A1);
+        let a2 = _mm256_set1_ps(A2);
+        let a3 = _mm256_set1_ps(A3);
+        let a4 = _mm256_set1_ps(A4);
+        let a5 = _mm256_set1_ps(A5);
+        let a6 = _mm256_set1_ps(A6);
+        let one = _mm256_set1_ps(1.0);
+
+        let erf8 = |x: __m256| -> __m256 {
+            let abs = _mm256_and_ps(x, abs_mask);
+            let sign = _mm256_and_ps(x, sign_mask);
+            let y = _mm256_fmadd_ps(a6, abs, a5);
+            let y = _mm256_fmadd_ps(y, abs, a4);
+            let y = _mm256_fmadd_ps(y, abs, a3);
+            let y = _mm256_fmadd_ps(y, abs, a2);
+            let y = _mm256_fmadd_ps(y, abs, a1);
+            let y = _mm256_fmadd_ps(y, abs, one);
+            let y = _mm256_mul_ps(y, y);
+            let y = _mm256_mul_ps(y, y);
+            let y = _mm256_mul_ps(y, y);
+            let y = _mm256_mul_ps(y, y);
+            let y = _mm256_sub_ps(one, _mm256_div_ps(one, y));
+            _mm256_or_ps(_mm256_and_ps(y, abs_mask), sign)
+        };
+
+        let ptr = buf.as_mut_ptr();
+        let mut i = 0;
+        while i < buf.len() {
+            let p = ptr.add(i);
+            let r0 = erf8(_mm256_loadu_ps(p));
+            let r1 = erf8(_mm256_loadu_ps(p.add(8)));
+            let r2 = erf8(_mm256_loadu_ps(p.add(16)));
+            let r3 = erf8(_mm256_loadu_ps(p.add(24)));
+            _mm256_storeu_ps(p, r0);
+            _mm256_storeu_ps(p.add(8), r1);
+            _mm256_storeu_ps(p.add(16), r2);
+            _mm256_storeu_ps(p.add(24), r3);
+            i += 32;
+        }
+    }
+}

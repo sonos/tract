@@ -73,6 +73,7 @@ pub fn handle(
                 .outlet_label(params.tract_model.output_outlets()[ix])
                 .map(|name| format!("{name}.dat"))
                 .unwrap_or_else(|| format!("output_{ix}.dat"));
+            tract_nnef::framework::ensure_label_is_relative_path(&name)?;
 
             if outputs.len() == 1 {
                 let mut f = fs::File::create(PathBuf::from_str(file_path)?.join(&name))?;
@@ -204,7 +205,7 @@ where
                 .get("pulse.input_axes")
                 .context("Expect pulse.input_axes when pulse.streaming_symbol is set")?
                 .cast_to::<i64>()?;
-            let input_axis = input_axes.try_as_plain()?.as_slice::<i64>()?[0] as usize;
+            let input_axis = input_axes.try_as_plain_ram()?.as_slice::<i64>()?[0] as usize;
             let pulse_value = first_input.shape()[input_axis];
             // Linear case: stream.dim = pulse_value · symbol.  For non-linear
             // dims (e.g. `4·s + 1`) this would be wrong, but blockified models
@@ -267,7 +268,7 @@ where
                 }
                 if check_f16_overflow {
                     for (ix, o) in clarified_r.iter().enumerate() {
-                        if let Ok(plain) = o.try_as_plain() {
+                        if let Ok(plain) = o.try_as_plain_ram() {
                             if let Ok(f32s) = plain.as_slice::<f32>() {
                                 if f32s.iter().any(|f| f.abs() > f16::MAX.to_f32()) {
                                     warn!("{node}, output {ix} overflows f16");
@@ -281,7 +282,7 @@ where
                         if node.op_is::<Im2Col>() || node.op_is::<OptMatMulPack>() {
                             continue;
                         }
-                        if let Ok(plain) = o.try_as_plain() {
+                        if let Ok(plain) = o.try_as_plain_ram() {
                             if let Ok(floats) = plain.as_slice::<f32>() {
                                 if let Some(pos) = floats.iter().position(|f| !f.is_finite()) {
                                     eprintln!("{floats:?}");
@@ -318,6 +319,19 @@ fn run_regular(
     _matches: &clap::ArgMatches,
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<TVec<Vec<TValue>>> {
+    // Several streams, or a runtime whose states are the lanes of one: either
+    // way a stream is a state of its own, driven through the runnable rather
+    // than through a plan of ours.
+    let streams: usize =
+        sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?.unwrap_or(1);
+    let laned = params
+        .runnable
+        .as_ref()
+        .is_some_and(|runnable| runnable.is::<tract_core::lanes::LanedRunnable>());
+    if streams > 1 || laned {
+        return crate::streams::run(params, sub_matches, streams);
+    }
+
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
 
     let steps = sub_matches.get_flag("steps");

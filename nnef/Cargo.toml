@@ -1,10 +1,10 @@
 [package]
 name = "tract-nnef"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "NeuralNetworks", "NNEF" ]
 categories = [ "science" ]
 autobenches = false
@@ -16,11 +16,11 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 byteorder.workspace = true
-minijinja.workspace = true
+minijinja = { workspace = true, optional = true }
 log.workspace = true
 nom.workspace = true
 nom-language.workspace = true
-safetensors.workspace = true
+safetensors = { workspace = true, optional = true }
 serde_json.workspace = true
 tar.workspace = true
 flate2 = { workspace = true, optional = true }
@@ -36,4 +36,15 @@ serde_json.workspace = true
 
 [features]
 default = ["flate2"]
+# Gzip support for NNEF archives: reading `.nnef.tgz` models and compressing
+# nested ones on the way out. Enabled by default; consumers that only load
+# uncompressed NNEF drop flate2 and miniz_oxide with
+# `default-features = false`.
+flate2 = ["dep:flate2"]
+# Templating graph.nnef through minijinja. Experimental, unsupported, and it
+# links the template engine in.
+unstable-jinja = ["dep:minijinja"]
+# Reading tensors out of a `.safetensors` file bundled in an NNEF archive.
+# Experimental, unsupported, and it links safetensors and hashbrown in.
+unstable-safetensors = ["dep:safetensors"]
 complex = [ "tract-core/complex" ]

@@ -147,7 +147,7 @@ impl Resize {
         let mut shape: TVec<D> = input_shape.into();
         if let Some(scale) = input_scale.filter(|s| s.len() == axes.len()) {
             let scale = scale.cast_to::<f32>()?;
-            for (&axis, s) in axes.iter().zip(scale.try_as_plain()?.as_slice::<f32>()?) {
+            for (&axis, s) in axes.iter().zip(scale.try_as_plain_ram()?.as_slice::<f32>()?) {
                 let i = &input_shape[axis];
                 shape[axis] = if s.round() == *s {
                     i.clone() * (*s as usize)
@@ -163,7 +163,7 @@ impl Resize {
         }
         if let Some(sizes) = input_sizes.filter(|s| s.len() == axes.len()) {
             let sizes = sizes.cast_to::<TDim>()?;
-            let sizes = sizes.try_as_plain()?.as_slice::<TDim>()?;
+            let sizes = sizes.try_as_plain_ram()?.as_slice::<TDim>()?;
             if self.keep_aspect_ratio_policy == AspectRatio::Stretch {
                 for (&axis, s) in axes.iter().zip(sizes) {
                     shape[axis] = s.try_into()?;
@@ -217,14 +217,14 @@ impl Resize {
         let mut per_axis: TVec<f32> = tvec!(1.0; input_shape.len());
         if let Some(scales) = scales.filter(|s| s.len() == axes.len()) {
             let scales = scales.cast_to::<f32>()?;
-            for (&axis, s) in axes.iter().zip(scales.try_as_plain()?.as_slice::<f32>()?) {
+            for (&axis, s) in axes.iter().zip(scales.try_as_plain_ram()?.as_slice::<f32>()?) {
                 per_axis[axis] = *s;
             }
         } else if self.keep_aspect_ratio_policy != AspectRatio::Stretch {
             let sizes =
                 sizes.context("Resize aspect ratio policy needs sizes")?.cast_to::<TDim>()?;
             let scale =
-                self.aspect_ratio_scale(input_shape, &axes, sizes.try_as_plain()?.as_slice()?)?;
+                self.aspect_ratio_scale(input_shape, &axes, sizes.try_as_plain_ram()?.as_slice()?)?;
             for &axis in &axes {
                 per_axis[axis] = scale;
             }
@@ -243,7 +243,7 @@ impl Resize {
             bail!("Resize in tf_crop_and_resize mode needs a roi of 2 x {} elements", axes.len())
         };
         let roi = roi.cast_to::<f32>()?;
-        let roi = roi.try_as_plain()?.as_slice::<f32>()?;
+        let roi = roi.try_as_plain_ram()?.as_slice::<f32>()?;
         let mut per_axis: TVec<(f32, f32)> = tvec!((0.0, 1.0); rank);
         for (i, &axis) in axes.iter().enumerate() {
             per_axis[axis] = (roi[i], roi[i + axes.len()]);
@@ -338,14 +338,14 @@ impl Resize {
                 *slot = dim.to_usize()? as i64;
             }
             let konst = konst.cast_to::<i64>()?;
-            for (&axis, v) in axes.iter().zip(konst.try_as_plain()?.as_slice::<i64>()?) {
+            for (&axis, v) in axes.iter().zip(konst.try_as_plain_ram()?.as_slice::<i64>()?) {
                 full[axis] = *v;
             }
             Ok(tract_ndarray::arr1(&full).into_arc_tensor())
         } else {
             let mut full = vec![1.0f32; input_shape.rank()];
             let konst = konst.cast_to::<f32>()?;
-            for (&axis, v) in axes.iter().zip(konst.try_as_plain()?.as_slice::<f32>()?) {
+            for (&axis, v) in axes.iter().zip(konst.try_as_plain_ram()?.as_slice::<f32>()?) {
                 full[axis] = *v;
             }
             Ok(tract_ndarray::arr1(&full).into_arc_tensor())
@@ -381,7 +381,7 @@ impl EvalOp for Resize {
         let input = inputs.remove(0).into_tensor();
         let input = input.cast_to::<f32>()?;
         let mut shape: TVec<usize> = input.shape().into();
-        let mut data: Vec<f32> = input.try_as_plain()?.as_slice::<f32>()?.to_vec();
+        let mut data: Vec<f32> = input.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         for (axis, scale) in scales.into_iter().enumerate() {
             let (len_in, len_out) = (shape[axis], output_shape[axis]);
             if len_in == len_out && scale == 1.0 && !tf_crop {
@@ -466,7 +466,7 @@ impl TypedOp for Resize {
         rule_if_some!(scales_tensor = &scales_fact.konst);
         rule_if!(scales_tensor.len() == rank);
         let scales: Vec<f32> =
-            scales_tensor.cast_to::<f32>()?.try_as_plain()?.as_slice::<f32>()?.to_vec();
+            scales_tensor.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
         let int_scales: Vec<usize> = scales.iter().map(|&s| s.round() as usize).collect();
         rule_if!(
             scales.iter().zip(&int_scales).all(|(&s, &i)| (s - i as f32).abs() <= 1e-5 && i != 0)
@@ -563,7 +563,7 @@ fn dump(ast: &mut IntoAst, node: &TypedNode, op: &Resize) -> TractResult<Option<
 /// Spreads a per-`axes` ROI over the full rank, the layout the NNEF op expects.
 fn full_rank_roi(axes: &[usize], rank: usize, roi: &Tensor) -> TractResult<Arc<Tensor>> {
     let roi = roi.cast_to::<f32>()?;
-    let roi = roi.try_as_plain()?.as_slice::<f32>()?;
+    let roi = roi.try_as_plain_ram()?.as_slice::<f32>()?;
     let mut full = vec![0.0f32; rank];
     full.extend(std::iter::repeat_n(1.0f32, rank));
     for (i, &axis) in axes.iter().enumerate() {

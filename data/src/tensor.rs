@@ -101,7 +101,7 @@ impl Hash for Tensor {
         use DatumType::*;
         self.dt.hash(state);
         self.shape.hash(state);
-        if let Some(plain) = self.storage.as_plain() {
+        if let Some(plain) = self.storage.as_plain_ram() {
             plain.layout().align().hash(state);
             unsafe {
                 match self.dt {
@@ -157,7 +157,7 @@ impl Default for Tensor {
 
 impl Drop for Tensor {
     fn drop(&mut self) {
-        if self.is_plain() {
+        if self.as_plain_ram_storage().is_some() {
             macro_rules! drop_in_place {
                 ($t: ty) => {
                     if self.dt == <$t>::datum_type() {
@@ -213,14 +213,20 @@ unsafe fn copy_blocks<T: Copy>(
 }
 
 impl Tensor {
+    /// Plain storage for this tensor's bytes, materializing it if the storage
+    /// keeps them elsewhere.
+    ///
+    /// Panics if the bytes cannot be produced, which is what the accessors
+    /// built on it (`as_bytes`, `as_ptr`, `as_slice_unchecked`) have always
+    /// done on non-plain storage. `try_as_plain_ram` is the fallible way in.
     #[inline]
-    fn plain_storage(&self) -> &PlainStorage {
-        self.storage.as_plain().expect("Non-plain storage")
+    fn plain_ram_storage(&self) -> &PlainStorage {
+        self.storage.materialize_plain_ram().expect("Non-plain storage")
     }
 
     #[inline]
-    fn plain_storage_mut(&mut self) -> &mut PlainStorage {
-        self.storage.as_plain_mut().expect("Non-plain storage")
+    fn plain_ram_storage_mut(&mut self) -> &mut PlainStorage {
+        self.storage.as_plain_ram_mut().expect("Non-plain storage")
     }
 
     pub fn storage_as<T: TensorStorage>(&self) -> Option<&T> {
@@ -249,27 +255,74 @@ impl Tensor {
 
     /// Returns an immutable [`PlainView`] if this tensor has plain storage.
     #[inline]
-    pub fn as_plain(&self) -> Option<PlainView<'_>> {
-        let storage = self.storage.as_plain()?;
+    pub fn as_plain_ram(&self) -> Option<PlainView<'_>> {
+        let storage = self.storage.as_plain_ram()?;
         Some(PlainView::new(self, storage))
     }
 
     /// Returns an immutable [`PlainView`], or an error if storage is not plain.
+    ///
+    /// Unlike `as_plain_ram`, this materializes storage that holds its bytes
+    /// elsewhere, so it is the way to read a tensor whose storage may be
+    /// lazily host-backed.
     #[inline]
-    pub fn try_as_plain(&self) -> TractResult<PlainView<'_>> {
-        self.as_plain().context("Tensor storage is not plain")
+    pub fn try_as_plain_ram(&self) -> TractResult<PlainView<'_>> {
+        let storage = self.storage.materialize_plain_ram()?;
+        Ok(PlainView::new(self, storage))
     }
 
-    /// Returns `true` if this tensor uses plain (contiguous) storage.
+    /// Plain storage this tensor already holds in ram, if any. Never
+    /// materializes: the two axes at once, and the accessor to reach for
+    /// before a plain read.
+    #[inline]
+    pub fn as_plain_ram_storage(&self) -> Option<&PlainStorage> {
+        self.storage.as_plain_ram()
+    }
+
+    /// Mutable plain storage this tensor already holds in ram, if any. Never
+    /// materializes.
+    #[inline]
+    pub fn as_plain_ram_storage_mut(&mut self) -> Option<&mut PlainStorage> {
+        self.storage.as_plain_ram_mut()
+    }
+
+    /// Returns `true` if datum type and shape describe this tensor's layout on
+    /// their own.
+    ///
+    /// The layout axis, orthogonal to placement: a dense tensor is plain
+    /// wherever its bytes sit, block-quant weights are exotic wherever theirs
+    /// sit. Matches `TypedFact::is_plain`.
     #[inline]
     pub fn is_plain(&self) -> bool {
-        self.storage.as_plain().is_some()
+        !self.storage.is_exotic()
     }
 
-    /// Returns `true` if this tensor uses exotic (non-plain) storage.
+    /// Returns `true` if datum type and shape do not describe this tensor's
+    /// layout on their own, so a fact over it carries an `ExoticFact`.
     #[inline]
     pub fn is_exotic(&self) -> bool {
-        !self.is_plain()
+        self.storage.is_exotic()
+    }
+
+    /// Returns `true` if this tensor's bytes can be read as plain host memory
+    /// right now: both axes at once, and what a caller gating an eager read or
+    /// an evaluation on cost is really asking.
+    #[inline]
+    pub fn is_plain_ram(&self) -> bool {
+        self.as_plain_ram_storage().is_some()
+    }
+
+    /// Returns `true` if this tensor's bytes are in host memory, readable
+    /// without a transfer.
+    ///
+    /// The placement axis, and a transient one: storage that leaves its bytes
+    /// on a device answers false until something materializes them, true
+    /// afterwards. It answers for the bytes in whatever layout the storage
+    /// keeps them, so it takes both axes -- `as_plain_ram_storage` -- for a
+    /// plain read to be sure to work.
+    #[inline]
+    pub fn in_ram(&self) -> bool {
+        self.storage.in_ram()
     }
 
     /// Build the `ExoticFact` matching this tensor's storage, or `None` for plain tensors.
@@ -279,15 +332,15 @@ impl Tensor {
 
     /// Returns a mutable [`PlainViewMut`] if this tensor has plain storage.
     #[inline]
-    pub fn as_plain_mut(&mut self) -> Option<PlainViewMut<'_>> {
-        let storage = self.storage.as_plain_mut()?;
+    pub fn as_plain_ram_mut(&mut self) -> Option<PlainViewMut<'_>> {
+        let storage = self.storage.as_plain_ram_mut()?;
         Some(PlainViewMut::new(self.dt, &self.shape, &self.strides, self.len, storage))
     }
 
     /// Returns a mutable [`PlainViewMut`], or an error if storage is not plain.
     #[inline]
-    pub fn try_as_plain_mut(&mut self) -> TractResult<PlainViewMut<'_>> {
-        self.as_plain_mut().context("Tensor storage is not plain")
+    pub fn try_as_plain_ram_mut(&mut self) -> TractResult<PlainViewMut<'_>> {
+        self.as_plain_ram_mut().context("Tensor storage is not plain")
     }
 
     /// Create an uninitialized tensor (dt as type paramater).
@@ -317,7 +370,15 @@ impl Tensor {
         shape: &[usize],
         alignment: usize,
     ) -> TractResult<Tensor> {
-        let bytes = shape.iter().cloned().product::<usize>() * dt.size_of();
+        // `shape` and `dt` come from the model file. Computing the byte count
+        // with a plain product used to wrap around on overflow, silently
+        // allocating a buffer much smaller than the tensor claims (or asking
+        // the allocator for an absurd one). Check instead.
+        let bytes = shape
+            .iter()
+            .try_fold(dt.size_of(), |acc, &d| acc.checked_mul(d))
+            .filter(|&b| b <= isize::MAX as usize)
+            .ok_or_else(|| format_err!("tensor shape {shape:?} of {dt:?} is too large"))?;
         let storage = StorageKind::Plain(PlainStorage::from(unsafe {
             Blob::new_for_size_and_align(bytes, alignment)
         }));
@@ -389,14 +450,14 @@ impl Tensor {
             const SMALL_BLOCK_BYTES: usize = 64;
             if dt.is_copy()
                 && outer > 0
-                && tensors.iter().all(|t| t.borrow().storage.as_plain().is_some())
+                && tensors.iter().all(|t| t.borrow().storage.as_plain_ram().is_some())
             {
-                let out = result.plain_storage_mut().as_mut_ptr();
+                let out = result.plain_ram_storage_mut().as_mut_ptr();
                 let mut offset = 0isize;
                 for v in tensors {
                     let v = v.borrow();
                     let block = v.storage.byte_len() / outer;
-                    let src = v.plain_storage().as_ptr();
+                    let src = v.plain_ram_storage().as_ptr();
                     let dst = out.offset(offset);
                     if outer == 1 {
                         std::ptr::copy_nonoverlapping(src, dst, block);
@@ -435,7 +496,14 @@ impl Tensor {
                 for t in tensors {
                     let t = t.borrow();
                     let len = t.shape()[axis];
-                    result.assign_slice_from_resolved(offset..offset + len, t, 0..len, axis);
+                    result.assign_slice_from_resolved(
+                        &[],
+                        offset..offset + len,
+                        t,
+                        &[],
+                        0..len,
+                        axis,
+                    );
                     offset += len;
                 }
             }
@@ -469,7 +537,7 @@ impl Tensor {
     }
 
     pub fn fill_t<T: Datum + Clone>(&mut self, value: T) -> TractResult<()> {
-        self.try_as_plain_mut()?
+        self.try_as_plain_ram_mut()?
             .as_slice_mut::<T>()?
             .iter_mut()
             .for_each(|item| *item = value.clone());
@@ -490,17 +558,17 @@ impl Tensor {
                 let zp = dt.zp_scale().0;
                 match dt.unquantized() {
                     DatumType::I8 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<i8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::U8 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<u8>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
                     DatumType::I32 => t
-                        .try_as_plain_mut()?
+                        .try_as_plain_ram_mut()?
                         .as_slice_mut::<i32>()?
                         .iter_mut()
                         .for_each(|item| *item = zp as _),
@@ -584,8 +652,17 @@ impl Tensor {
         content: &[u8],
         align: usize,
     ) -> TractResult<Tensor> {
-        let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
-        let expected = tensor.as_bytes().len();
+        // Check the declared shape against the payload *before* allocating.
+        // The shape is attacker-controlled, so allocating first lets a
+        // malformed model request an allocation of any size it likes, even
+        // when the payload that follows is a few bytes long.
+        let len = shape
+            .iter()
+            .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+            .ok_or_else(|| format_err!("tensor shape {shape:?} overflows"))?;
+        let expected = len
+            .checked_mul(dt.size_of())
+            .ok_or_else(|| format_err!("tensor shape {shape:?} of {dt:?} is too large"))?;
         ensure!(
             content.len() == expected,
             "Raw tensor data length ({}) does not match shape {:?} of {:?} ({} bytes)",
@@ -594,6 +671,7 @@ impl Tensor {
             dt,
             expected
         );
+        let mut tensor = unsafe { Tensor::uninitialized_aligned_dt(dt, shape, align) }?;
         tensor.as_bytes_mut().copy_from_slice(content);
         Ok(tensor)
     }
@@ -883,11 +961,27 @@ impl Tensor {
             Ok(output)
         }
     }
-
     pub fn assign_slice(
         &mut self,
         range: impl std::ops::RangeBounds<usize>,
         src: &Tensor,
+        src_range: impl std::ops::RangeBounds<usize>,
+        axis: usize,
+    ) -> TractResult<()> {
+        self.assign_slice_at_prefix(&[], range, src, &[], src_range, axis)
+    }
+
+    /// Assign `src`'s `src_range` along `axis` into `range` along `axis`, each
+    /// taken in the sub-tensor at its prefix. A prefix indexes the leading axes
+    /// as [`Tensor::view_at_prefix`] does, and both prefixes cover the same
+    /// axes, whose extents may then differ. `axis` stays an axis of the whole
+    /// tensors, so it has to sit past the prefixes.
+    pub fn assign_slice_at_prefix(
+        &mut self,
+        prefix: &[usize],
+        range: impl std::ops::RangeBounds<usize>,
+        src: &Tensor,
+        src_prefix: &[usize],
         src_range: impl std::ops::RangeBounds<usize>,
         axis: usize,
     ) -> TractResult<()> {
@@ -908,7 +1002,16 @@ impl Tensor {
             src_range,
         );
         ensure!(
-            itertools::izip!(0.., self.shape(), src.shape())
+            prefix.len() == src_prefix.len() && prefix.len() <= axis,
+            "Attempt to assign axis {axis} at prefixes {prefix:?} and {src_prefix:?}"
+        );
+        ensure!(
+            izip!(prefix, self.shape()).all(|(ix, dim)| ix < dim)
+                && izip!(src_prefix, src.shape()).all(|(ix, dim)| ix < dim),
+            "Attempt to assign into {self:?} at {prefix:?} from {src:?} at {src_prefix:?}"
+        );
+        ensure!(
+            izip!(prefix.len().., &self.shape[prefix.len()..], &src.shape[prefix.len()..])
                 .all(|(ix, dst, src)| ix == axis || src == dst),
             "Attempt to assign a {}-axis range of {:?} from a range of {:?}",
             axis,
@@ -929,7 +1032,7 @@ impl Tensor {
             range,
             self
         );
-        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
+        unsafe { self.assign_slice_from_resolved(prefix, range, src, src_prefix, src_range, axis) };
         Ok(())
     }
 
@@ -942,14 +1045,23 @@ impl Tensor {
     ) {
         let range = clip_range_bounds(self.shape[axis], range);
         let src_range = clip_range_bounds(src.shape[axis], src_range);
-        unsafe { self.assign_slice_from_resolved(range, src, src_range, axis) };
+        unsafe { self.assign_slice_from_resolved(&[], range, src, &[], src_range, axis) };
+    }
+
+    /// The byte offset of the sub-tensor at `prefix`, which indexes the leading
+    /// axes as [`Tensor::view_at_prefix`] does.
+    fn prefix_offset(&self, prefix: &[usize]) -> usize {
+        izip!(prefix, &self.strides).map(|(ix, stride)| ix * *stride as usize).sum::<usize>()
+            * self.datum_type().size_of()
     }
 
     #[allow(clippy::ptr_eq)]
     unsafe fn assign_slice_from_resolved(
         &mut self,
+        prefix: &[usize],
         range: std::ops::Range<usize>,
         src: &Tensor,
+        src_prefix: &[usize],
         src_range: std::ops::Range<usize>,
         axis: usize,
     ) {
@@ -957,34 +1069,44 @@ impl Tensor {
             use ndarray::Slice;
             unsafe fn assign_slice_t<T: Datum>(
                 to: &mut Tensor,
+                to_prefix: &[usize],
                 to_range: Range<usize>,
                 from: &Tensor,
+                from_prefix: &[usize],
                 from_range: Range<usize>,
                 axis: usize,
             ) {
                 unsafe {
-                    to.to_array_view_mut_unchecked::<T>()
+                    let mut to_view = to.to_array_view_mut_unchecked::<T>();
+                    let mut from_view = from.to_array_view_unchecked::<T>();
+                    for (ax, (to, from)) in izip!(to_prefix, from_prefix).enumerate() {
+                        to_view.slice_axis_inplace(Axis(ax), Slice::from(*to..*to + 1));
+                        from_view.slice_axis_inplace(Axis(ax), Slice::from(*from..*from + 1));
+                    }
+                    to_view
                         .slice_axis_mut(Axis(axis), Slice::from(to_range))
-                        .assign(
-                            &from
-                                .to_array_view_unchecked::<T>()
-                                .slice_axis(Axis(axis), Slice::from(from_range)),
-                        )
+                        .assign(&from_view.slice_axis(Axis(axis), Slice::from(from_range)))
                 }
             }
             if self.datum_type().is_copy() {
                 // Tensors carry natural strides, so a range along `axis` is one
-                // contiguous run per coordinate of the axes before it, and both
-                // sides share the run length and the trailing block.
+                // contiguous run per coordinate of the axes between the prefix
+                // and it, and both sides share the run length and the trailing
+                // block.
                 let post = self.strides[axis] as usize * self.datum_type().size_of();
                 let len = post * range.len();
                 if len > 0 {
-                    let outer: usize = self.shape[..axis].iter().product();
+                    let outer: usize = self.shape[prefix.len()..axis].iter().product();
                     let dst_block = post * self.shape[axis];
                     let src_block = post * src.shape[axis];
-                    let src_ptr = src.plain_storage().as_ptr().add(post * src_range.start);
-                    let aliasing = self.plain_storage().as_ptr() == src.plain_storage().as_ptr();
-                    let dst_ptr = self.plain_storage_mut().as_mut_ptr().add(post * range.start);
+                    let src_ptr = src
+                        .plain_ram_storage()
+                        .as_ptr()
+                        .add(src.prefix_offset(src_prefix) + post * src_range.start);
+                    let aliasing =
+                        self.plain_ram_storage().as_ptr() == src.plain_ram_storage().as_ptr();
+                    let dst_offset = self.prefix_offset(prefix) + post * range.start;
+                    let dst_ptr = self.plain_ram_storage_mut().as_mut_ptr().add(dst_offset);
                     for run in 0..outer {
                         let from = src_ptr.add(run * src_block);
                         let to = dst_ptr.add(run * dst_block);
@@ -997,12 +1119,11 @@ impl Tensor {
                 }
             } else {
                 dispatch_datum!(assign_slice_t(self.datum_type())(
-                    self, range, src, src_range, axis
+                    self, prefix, range, src, src_prefix, src_range, axis
                 ));
             }
         }
     }
-
     /// Fill `range` along `axis` with `value`, a one-element tensor of this
     /// tensor's datum type.
     pub fn fill_slice(
@@ -1011,7 +1132,29 @@ impl Tensor {
         value: &Tensor,
         axis: usize,
     ) -> TractResult<()> {
+        self.fill_slice_at_prefix(&[], range, value, axis)
+    }
+
+    /// Fill `range` along `axis` of the sub-tensor at `prefix`, which indexes
+    /// the leading axes as [`Tensor::view_at_prefix`] does, with `value`, a
+    /// one-element tensor of this tensor's datum type. `axis` stays an axis of
+    /// the whole tensor, so it has to sit past `prefix`.
+    pub fn fill_slice_at_prefix(
+        &mut self,
+        prefix: &[usize],
+        range: impl std::ops::RangeBounds<usize>,
+        value: &Tensor,
+        axis: usize,
+    ) -> TractResult<()> {
         ensure!(axis < self.rank(), "Filling axis {axis} of {self:?}");
+        ensure!(
+            prefix.len() <= axis,
+            "Filling axis {axis} of {self:?} at prefix {prefix:?}, which reaches it"
+        );
+        ensure!(
+            izip!(prefix, self.shape()).all(|(ix, dim)| ix < dim),
+            "Filling {self:?} at prefix {prefix:?}"
+        );
         ensure!(
             value.datum_type() == self.datum_type() && value.len() == 1,
             "Filling {:?} with {value:?}",
@@ -1024,12 +1167,12 @@ impl Tensor {
         );
         if !self.datum_type().is_copy() {
             return dispatch_datum!(Self::fill_slice_t(self.datum_type())(
-                self, range, value, axis
+                self, prefix, range, value, axis
             ));
         }
         // Tensors carry natural strides, so the range is one contiguous run per
-        // coordinate of the axes before `axis`, and a run of one datum grows to
-        // its whole length in log2(len) copies of itself.
+        // coordinate of the axes between the prefix and `axis`, and a run of one
+        // datum grows to its whole length in log2(len) copies of itself.
         let dt_size = self.datum_type().size_of();
         let post = self.strides[axis] as usize * dt_size;
         let len = post * range.len();
@@ -1037,8 +1180,8 @@ impl Tensor {
             return Ok(());
         }
         let block = post * self.shape[axis];
-        let runs: usize = self.shape[..axis].iter().product();
-        let start = range.start * post;
+        let runs: usize = self.shape[prefix.len()..axis].iter().product();
+        let start = self.prefix_offset(prefix) + range.start * post;
         let value = &value.as_bytes()[..dt_size];
         let data = self.as_bytes_mut();
         for run in 0..runs {
@@ -1056,14 +1199,20 @@ impl Tensor {
 
     fn fill_slice_t<T: Datum>(
         &mut self,
+        prefix: &[usize],
         range: Range<usize>,
         value: &Tensor,
         axis: usize,
     ) -> TractResult<()> {
-        let value = value.try_as_plain()?.to_scalar::<T>()?.clone();
-        self.to_plain_array_view_mut::<T>()?.slice_axis_mut(Axis(axis), range.into()).fill(value);
+        let value = value.try_as_plain_ram()?.to_scalar::<T>()?.clone();
+        let mut view = self.to_plain_array_view_mut::<T>()?;
+        for (ax, ix) in prefix.iter().enumerate() {
+            view.slice_axis_inplace(Axis(ax), (*ix..*ix + 1).into());
+        }
+        view.slice_axis_mut(Axis(axis), range.into()).fill(value);
         Ok(())
     }
+
     /// Get the datum type of the tensor.
     #[inline]
     pub fn datum_type(&self) -> DatumType {
@@ -1080,7 +1229,7 @@ impl Tensor {
     ///
     /// `force_full` will force the tensor to be dump in full even if it is big.
     pub fn dump(&self, force_full: bool) -> TractResult<String> {
-        if self.is_exotic() {
+        if self.as_plain_ram_storage().is_none() {
             return Ok(format!(
                 "{},{:?} (non-plain storage)",
                 self.shape.iter().join(","),
@@ -1263,7 +1412,7 @@ impl Tensor {
     /// Errors if the storage is not plain or the datum type does not match `D`.
     #[inline]
     pub fn to_plain_array_view<D: Datum>(&self) -> TractResult<ArrayViewD<'_, D>> {
-        self.try_as_plain()?.to_array_view::<D>()
+        self.try_as_plain_ram()?.to_array_view::<D>()
     }
 
     /// Returns a mutable plain array view of the tensor.
@@ -1272,7 +1421,7 @@ impl Tensor {
     #[inline]
     pub fn to_plain_array_view_mut<D: Datum>(&mut self) -> TractResult<ArrayViewMutD<'_, D>> {
         self.check_for_access::<D>()?;
-        ensure!(self.storage.as_plain_mut().is_some(), "Tensor storage is not plain");
+        ensure!(self.storage.as_plain_ram_mut().is_some(), "Tensor storage is not plain");
         unsafe { Ok(self.to_array_view_mut_unchecked()) }
     }
 
@@ -1290,7 +1439,10 @@ impl Tensor {
     pub unsafe fn to_array_view_unchecked<D: Datum>(&self) -> ArrayViewD<'_, D> {
         if self.len() != 0 {
             unsafe {
-                ArrayViewD::from_shape_ptr(&*self.shape, self.plain_storage().as_ptr() as *const D)
+                ArrayViewD::from_shape_ptr(
+                    &*self.shape,
+                    self.plain_ram_storage().as_ptr() as *const D,
+                )
             }
         } else {
             ArrayViewD::from_shape(&*self.shape, &[]).unwrap()
@@ -1301,7 +1453,7 @@ impl Tensor {
     pub unsafe fn to_array_view_mut_unchecked<D: Datum>(&mut self) -> ArrayViewMutD<'_, D> {
         if self.len() != 0 {
             unsafe {
-                let ptr = self.plain_storage_mut().as_mut_ptr() as *mut D;
+                let ptr = self.plain_ram_storage_mut().as_mut_ptr() as *mut D;
                 ArrayViewMutD::from_shape_ptr(&*self.shape, ptr)
             }
         } else {
@@ -1312,17 +1464,17 @@ impl Tensor {
     /// Access the data as a pointer.
     pub fn as_ptr<D: Datum>(&self) -> TractResult<*const D> {
         self.check_for_access::<D>()?;
-        Ok(self.plain_storage().as_ptr() as *const D)
+        Ok(self.plain_ram_storage().as_ptr() as *const D)
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_unchecked<D: Datum>(&self) -> *const D {
-        self.plain_storage().as_ptr() as *const D
+        self.plain_ram_storage().as_ptr() as *const D
     }
 
     /// Access the data as a pointer.
     pub unsafe fn as_ptr_mut_unchecked<D: Datum>(&mut self) -> *mut D {
-        self.plain_storage_mut().as_mut_ptr() as *mut D
+        self.plain_ram_storage_mut().as_mut_ptr() as *mut D
     }
 
     /// Access the data as a mutable pointer.
@@ -1351,14 +1503,14 @@ impl Tensor {
     /// Make the tensor a scalar tensor (assumes it contains a single value).
     pub fn to_scalar_tensor(&self) -> TractResult<Tensor> {
         fn to_scalar_tensor_t<D: Datum>(t: &Tensor) -> TractResult<Tensor> {
-            Ok(litteral::tensor0(t.try_as_plain()?.to_scalar::<D>()?.clone()))
+            Ok(litteral::tensor0(t.try_as_plain_ram()?.to_scalar::<D>()?.clone()))
         }
         dispatch_datum!(to_scalar_tensor_t(self.datum_type())(self))
     }
 
     /// Access the data as a scalar.
     pub unsafe fn to_scalar_unchecked<D: Datum>(&self) -> &D {
-        unsafe { &*(self.plain_storage().as_ptr() as *const D) }
+        unsafe { &*(self.plain_ram_storage().as_ptr() as *const D) }
     }
 
     /// Mutable access the data as a scalar.
@@ -1375,15 +1527,15 @@ impl Tensor {
 
     /// Mutable access the data as a scalar.
     pub unsafe fn to_scalar_mut_unchecked<D: Datum>(&mut self) -> &mut D {
-        unsafe { &mut *(self.plain_storage_mut().as_mut_ptr() as *mut D) }
+        unsafe { &mut *(self.plain_ram_storage_mut().as_mut_ptr() as *mut D) }
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.plain_storage().as_bytes()
+        self.plain_ram_storage().as_bytes()
     }
 
     pub fn as_bytes_mut(&mut self) -> &mut [u8] {
-        self.plain_storage_mut().as_bytes_mut()
+        self.plain_ram_storage_mut().as_bytes_mut()
     }
 
     unsafe fn is_uniform_t<T: Datum>(&self) -> bool {
@@ -1392,7 +1544,7 @@ impl Tensor {
     }
 
     pub fn is_uniform(&self) -> bool {
-        if self.is_exotic() {
+        if self.as_plain_ram_storage().is_none() {
             return false;
         }
         if self.len() <= 1 {
@@ -1702,7 +1854,7 @@ impl Tensor {
     /// Access the data as a scalar, after a cast.
     pub fn cast_to_scalar<D: Datum + Copy>(&self) -> TractResult<D> {
         let casted = self.cast_to::<D>()?;
-        casted.try_as_plain()?.to_scalar::<D>().copied()
+        casted.try_as_plain_ram()?.to_scalar::<D>().copied()
     }
 
     /// Access the nth element of the tensor, returned as a 0-rank Tensor
@@ -1762,7 +1914,7 @@ impl Tensor {
                     std::ptr::copy_nonoverlapping(
                         slice.as_ptr() as *const i8,
                         t.as_ptr_mut_unchecked(),
-                        t.plain_storage().layout().size(),
+                        t.plain_ram_storage().layout().size(),
                     );
                 } else {
                     t.as_slice_mut_unchecked::<T>()
@@ -1802,7 +1954,7 @@ impl Tensor {
     }
 
     pub fn deep_clone(&self) -> Tensor {
-        if self.is_exotic() {
+        if self.as_plain_ram_storage().is_none() {
             return Tensor {
                 dt: self.dt,
                 shape: self.shape.clone(),
@@ -1815,9 +1967,9 @@ impl Tensor {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), self.shape()).unwrap();
             if self.len() > 0 {
                 if self.dt.is_copy() {
-                    self.plain_storage().as_ptr().copy_to_nonoverlapping(
+                    self.plain_ram_storage().as_ptr().copy_to_nonoverlapping(
                         tensor.as_bytes_mut().as_mut_ptr(),
-                        self.plain_storage().layout().size(),
+                        self.plain_ram_storage().layout().size(),
                     )
                 } else if self.dt == DatumType::String {
                     tensor
@@ -1844,11 +1996,18 @@ impl Tensor {
         if start > self.shape[axis] || end > self.shape[axis] || start >= end {
             bail!("Invalid slicing range {start}..{end} on axis {axis} for {self:?}");
         }
+        // Storage gets first refusal: one that can serve the slice without a
+        // copy does so, anything else falls through to the copy below.
+        if let Some(sliced) =
+            self.storage.as_storage().slice(self.dt, self.shape(), axis, start, end)?
+        {
+            return Ok(sliced);
+        }
         let mut shape: TVec<usize> = self.shape().into();
         shape[axis] = end - start;
         unsafe {
             let mut tensor = Tensor::uninitialized_dt(self.datum_type(), &shape)?;
-            tensor.assign_slice_from_resolved(0..end - start, self, start..end, axis);
+            tensor.assign_slice_from_resolved(&[], 0..end - start, self, &[], start..end, axis);
             Ok(tensor)
         }
     }
@@ -1891,7 +2050,7 @@ impl Tensor {
     /// Offsets the tensor as an i8 type if it's an u8 type, otherwise passes it unchanged.
     pub fn offset_u8_as_i8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::U8 = self.dt.unquantized() {
-            self.try_as_plain()
+            self.try_as_plain_ram()
                 .unwrap()
                 .to_array_view::<u8>()
                 .unwrap()
@@ -1915,7 +2074,7 @@ impl Tensor {
     /// Offsets the tensor as an u8 type if it's an i8 type, otherwise passes it unchanged.
     pub fn offset_i8_as_u8(self: &Arc<Self>) -> Arc<Self> {
         let mut t = if let DatumType::I8 = self.dt.unquantized() {
-            self.try_as_plain()
+            self.try_as_plain_ram()
                 .unwrap()
                 .to_array_view::<i8>()
                 .unwrap()
@@ -1945,17 +2104,17 @@ impl Tensor {
         } else {
             let mut t = Self::zero_dt(self.dt, &self.shape)?;
             if self.dt == String::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<String>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             } else if self.dt == Blob::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<Blob>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             } else if self.dt == TDim::datum_type() {
-                t.try_as_plain_mut()?
+                t.try_as_plain_ram_mut()?
                     .as_slice_mut::<TDim>()?
-                    .clone_from_slice(self.try_as_plain()?.as_slice()?);
+                    .clone_from_slice(self.try_as_plain_ram()?.as_slice()?);
             }
             Ok(t)
         }
@@ -1967,11 +2126,39 @@ impl Tensor {
         strides
     }
 
+    /// Returns `true` if this tensor owns plain ram storage outright, rather
+    /// than storage that produces or holds some -- a device readback that has
+    /// come back still keeps its device tensor.
+    #[inline]
+    pub fn has_plain_ram_storage(&self) -> bool {
+        matches!(self.storage, StorageKind::Plain(_))
+    }
+
+    /// This tensor backed by plain ram storage of its own: bytes left on a
+    /// device come back here, and exotic storage, which has no plain form,
+    /// errors.
+    pub fn into_plain_ram(mut self) -> TractResult<Tensor> {
+        if self.has_plain_ram_storage() {
+            return Ok(self);
+        }
+        ensure!(self.dt.is_copy());
+        let storage =
+            std::mem::replace(&mut self.storage, StorageKind::Plain(PlainStorage::default()));
+        let storage = storage.into_plain_ram().context("Storage can not produce plain bytes")?;
+        Ok(Tensor {
+            dt: self.dt,
+            shape: self.shape.clone(),
+            strides: self.strides.clone(),
+            len: self.len,
+            storage: StorageKind::Plain(storage),
+        })
+    }
+
     pub fn into_blob(mut self) -> TractResult<Blob> {
         ensure!(self.dt.is_copy());
         let storage =
             std::mem::replace(&mut self.storage, StorageKind::Plain(PlainStorage::default()));
-        Ok(storage.into_plain().context("Storage is not plain")?.into_blob())
+        Ok(storage.into_plain_ram().context("Storage is not plain")?.into_blob())
     }
 }
 
@@ -1980,7 +2167,7 @@ impl PartialEq for Tensor {
         if self.dt != other.dt || self.shape != other.shape {
             return false;
         }
-        match (self.storage.as_plain(), other.storage.as_plain()) {
+        match (self.storage.as_plain_ram(), other.storage.as_plain_ram()) {
             (Some(_), Some(_)) => self.eq_dt(other).unwrap_or(false),
             (None, None) => self.storage == other.storage,
             _ => false,
@@ -2496,11 +2683,72 @@ mod tests {
     assign_slice_agrees_for!(assign_slice_agrees_u32, u32);
     assign_slice_agrees_for!(assign_slice_agrees_u64, u64);
 
-    // fill_slice writes one contiguous run per coordinate of the axes before
-    // `axis`; the runs must agree with plain index arithmetic, including on the
-    // trailing axis where each run is a single datum.
+    // The prefixed assign copies the same runs inside one sub-tensor of each
+    // side, and the prefixed axes are free to differ in extent.
+    macro_rules! assign_slice_at_prefix_agrees_for {
+        ($name:ident, $t:ty) => {
+            #[test]
+            fn $name() {
+                for (shape, prefix, src_lead, src_prefix, axis, start, len, src_start) in [
+                    (tvec!(3usize, 5, 7), tvec!(2usize), 4, tvec!(3usize), 2, 3, 4, 0),
+                    (tvec!(3usize, 5, 7), tvec!(0usize), 1, tvec!(0usize), 1, 1, 3, 2),
+                    (tvec!(2usize, 4, 8, 3), tvec!(1usize, 2), 2, tvec!(0usize, 1), 3, 0, 3, 0),
+                    (tvec!(4usize, 6), tvec!(), 4, tvec!(), 1, 2, 4, 2),
+                ] {
+                    let mut src_shape = shape.clone();
+                    src_shape[0] = src_lead;
+                    let mut got: Tensor = ramp::<$t>(&shape, 1);
+                    let src: Tensor = ramp::<$t>(&src_shape, 100);
+                    // A prefixed assign is the same assign between the two
+                    // sub-tensors, which a slice materializes.
+                    let mut want_sub = sub_tensor(&got, &prefix);
+                    want_sub
+                        .assign_slice(
+                            start..start + len,
+                            &sub_tensor(&src, &src_prefix),
+                            src_start..src_start + len,
+                            axis - prefix.len(),
+                        )
+                        .unwrap();
+                    got.assign_slice_at_prefix(
+                        &prefix,
+                        start..start + len,
+                        &src,
+                        &src_prefix,
+                        src_start..src_start + len,
+                        axis,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        sub_tensor(&got, &prefix),
+                        want_sub,
+                        "shape {shape:?} prefix {prefix:?} axis {axis}"
+                    );
+                }
+            }
+        };
+    }
+
+    fn sub_tensor(t: &Tensor, prefix: &[usize]) -> Tensor {
+        let mut sub = t.clone();
+        for ix in prefix {
+            sub = sub.slice(0, *ix, ix + 1).unwrap();
+            sub.remove_axis(0).unwrap();
+        }
+        sub
+    }
+
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u8, u8);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u16, u16);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u32, u32);
+    assign_slice_at_prefix_agrees_for!(assign_slice_at_prefix_agrees_u64, u64);
+
+    // fill_slice writes one contiguous run per coordinate of the axes between
+    // the prefix and `axis`; the runs must agree with plain index arithmetic,
+    // including on the trailing axis where each run is a single datum.
     fn fill_slice_reference<T: Datum + Copy>(
         data: &Tensor,
+        prefix: &[usize],
         range: Range<usize>,
         value: T,
         axis: usize,
@@ -2509,12 +2757,13 @@ mod tests {
         let shape = data.shape().to_vec();
         let inner: usize = shape[axis + 1..].iter().product();
         let mid = shape[axis];
-        let outer: usize = shape[..axis].iter().product();
+        let outer: usize = shape[prefix.len()..axis].iter().product();
+        let at: usize = izip!(prefix, data.strides()).map(|(ix, s)| ix * *s as usize).sum();
         let ov = unsafe { out.as_slice_mut_unchecked::<T>() };
         for o in 0..outer {
             for j in range.clone() {
                 for i in 0..inner {
-                    ov[(o * mid + j) * inner + i] = value;
+                    ov[at + (o * mid + j) * inner + i] = value;
                 }
             }
         }
@@ -2525,19 +2774,22 @@ mod tests {
         ($name:ident, $t:ty) => {
             #[test]
             fn $name() {
-                for (shape, axis, start, len) in [
-                    (tvec!(1usize, 56, 24), 2, 16, 8),
-                    (tvec!(3usize, 5, 7), 1, 1, 3),
-                    (tvec!(3usize, 5, 7), 2, 3, 4),
-                    (tvec!(4usize, 3), 0, 1, 2),
-                    (tvec!(2usize, 8, 16, 64), 2, 3, 1),
-                    (tvec!(7usize), 0, 2, 0),
+                for (shape, prefix, axis, start, len) in [
+                    (tvec!(1usize, 56, 24), tvec!(), 2, 16, 8),
+                    (tvec!(3usize, 5, 7), tvec!(), 1, 1, 3),
+                    (tvec!(3usize, 5, 7), tvec!(2usize), 2, 3, 4),
+                    (tvec!(3usize, 5, 7), tvec!(1usize, 4), 2, 0, 7),
+                    (tvec!(4usize, 3), tvec!(), 0, 1, 2),
+                    (tvec!(2usize, 8, 16, 64), tvec!(1usize), 2, 3, 1),
+                    (tvec!(7usize), tvec!(), 0, 2, 0),
                 ] {
                     let value: $t = 42 as $t;
                     let mut got: Tensor = ramp::<$t>(&shape, 1);
-                    let want = fill_slice_reference::<$t>(&got, start..start + len, value, axis);
-                    got.fill_slice(start..start + len, &tensor0(value), axis).unwrap();
-                    assert_eq!(got, want, "shape {shape:?} axis {axis}");
+                    let want =
+                        fill_slice_reference::<$t>(&got, &prefix, start..start + len, value, axis);
+                    got.fill_slice_at_prefix(&prefix, start..start + len, &tensor0(value), axis)
+                        .unwrap();
+                    assert_eq!(got, want, "shape {shape:?} prefix {prefix:?} axis {axis}");
                 }
             }
         };
@@ -2626,5 +2878,164 @@ mod tests {
     fn ulp_bounds_are_distinguished_by_equality() {
         assert_eq!(Approximation::Ulp(1), Approximation::Ulp(1));
         assert_ne!(Approximation::Ulp(1), Approximation::Ulp(2));
+    }
+
+    /// Storage that keeps its bytes "elsewhere" until asked, standing in for a
+    /// device-backed one so the seam can be tested without a GPU.
+    #[derive(Debug)]
+    struct LateStorage {
+        elsewhere: Vec<u8>,
+        here: std::sync::OnceLock<PlainStorage>,
+        materializations: std::sync::atomic::AtomicUsize,
+    }
+
+    impl LateStorage {
+        fn new(bytes: &[u8]) -> LateStorage {
+            LateStorage {
+                elsewhere: bytes.to_vec(),
+                here: std::sync::OnceLock::new(),
+                materializations: std::sync::atomic::AtomicUsize::new(0),
+            }
+        }
+        fn count(t: &Tensor) -> usize {
+            t.storage_as::<LateStorage>()
+                .unwrap()
+                .materializations
+                .load(std::sync::atomic::Ordering::Relaxed)
+        }
+    }
+
+    impl PartialEq for LateStorage {
+        fn eq(&self, other: &Self) -> bool {
+            self.elsewhere == other.elsewhere
+        }
+    }
+    impl Eq for LateStorage {}
+
+    impl std::fmt::Display for LateStorage {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "LateStorage")
+        }
+    }
+
+    impl TensorStorage for LateStorage {
+        fn byte_len(&self) -> usize {
+            self.elsewhere.len()
+        }
+        fn is_empty(&self) -> bool {
+            self.elsewhere.is_empty()
+        }
+        fn deep_clone(&self) -> Box<dyn TensorStorage> {
+            Box::new(LateStorage::new(&self.elsewhere))
+        }
+        fn as_plain_ram(&self) -> Option<&PlainStorage> {
+            self.here.get()
+        }
+        fn as_plain_ram_mut(&mut self) -> Option<&mut PlainStorage> {
+            None
+        }
+        fn into_plain_ram(self: Box<Self>) -> Option<PlainStorage> {
+            let me = *self;
+            me.materialize_plain_ram().ok()?;
+            me.here.into_inner()
+        }
+        fn dyn_hash(&self, _state: &mut dyn std::hash::Hasher) {}
+        fn exotic_fact(&self, _shape: &[usize]) -> TractResult<Option<Box<dyn ExoticFact>>> {
+            Ok(None)
+        }
+        fn is_exotic(&self) -> bool {
+            false
+        }
+        fn in_ram(&self) -> bool {
+            self.here.get().is_some()
+        }
+        fn materialize_plain_ram(&self) -> TractResult<&PlainStorage> {
+            if let Some(here) = self.here.get() {
+                return Ok(here);
+            }
+            self.materializations.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            let blob = Blob::from_bytes(&self.elsewhere)?;
+            Ok(self.here.get_or_init(|| PlainStorage::from(blob)))
+        }
+        fn slice(
+            &self,
+            dt: DatumType,
+            shape: &[usize],
+            axis: usize,
+            start: usize,
+            end: usize,
+        ) -> TractResult<Option<Tensor>> {
+            // Only the outermost axis is a contiguous byte range here.
+            if axis != 0 || shape[..axis].iter().product::<usize>() != 1 {
+                return Ok(None);
+            }
+            let row = shape[1..].iter().product::<usize>() * dt.size_of();
+            let mut sliced: TVec<usize> = shape.into();
+            sliced[0] = end - start;
+            Ok(Some(Tensor::from_storage(
+                dt,
+                &sliced,
+                LateStorage::new(&self.elsewhere[start * row..end * row]),
+            )))
+        }
+    }
+
+    fn late_tensor(shape: &[usize], values: &[f32]) -> Tensor {
+        let host = Tensor::from_shape(shape, values).unwrap();
+        Tensor::from_storage(f32::datum_type(), shape, LateStorage::new(host.as_bytes()))
+    }
+
+    #[test]
+    fn late_storage_stays_put_until_the_bytes_are_read() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        // Predicates must not drag the bytes back.
+        assert!(!t.in_ram());
+        assert!(t.as_plain_ram().is_none());
+        assert_eq!(t.datum_type(), f32::datum_type());
+        assert_eq!(t.shape(), &[2, 3]);
+        assert_eq!(LateStorage::count(&t), 0);
+        // Reading them does, once.
+        assert_eq!(
+            t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(),
+            &[1f32, 2., 3., 4., 5., 6.]
+        );
+        assert_eq!(LateStorage::count(&t), 1);
+        assert_eq!(t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap()[0], 1f32);
+        assert_eq!(LateStorage::count(&t), 1);
+    }
+
+    #[test]
+    fn late_storage_is_plain_but_not_in_ram_until_asked() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        assert!(t.is_plain());
+        assert!(!t.in_ram());
+        let t = t.into_plain_ram().unwrap();
+        assert!(t.in_ram());
+        assert!(t.has_plain_ram_storage());
+        assert_eq!(
+            t.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(),
+            &[1f32, 2., 3., 4., 5., 6.]
+        );
+    }
+
+    #[test]
+    fn late_storage_slices_without_materializing_when_it_can() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        let row = t.slice(0, 1, 2).unwrap();
+        assert_eq!(LateStorage::count(&t), 0);
+        assert!(row.storage_as::<LateStorage>().is_some());
+        assert_eq!(row.shape(), &[1, 3]);
+        assert_eq!(row.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(), &[4f32, 5., 6.]);
+    }
+
+    #[test]
+    fn late_storage_falls_back_to_a_copy_on_a_gappy_slice() {
+        let t = late_tensor(&[2, 3], &[1f32, 2., 3., 4., 5., 6.]);
+        let col = t.slice(1, 1, 3).unwrap();
+        // Storage refused, so the generic path copied: material, and correct.
+        assert!(col.in_ram());
+        assert_eq!(col.shape(), &[2, 2]);
+        assert_eq!(col.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap(), &[2f32, 3., 5., 6.]);
+        assert_eq!(LateStorage::count(&t), 1);
     }
 }

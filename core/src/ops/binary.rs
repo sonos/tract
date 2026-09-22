@@ -1,7 +1,7 @@
 use crate::internal::*;
 use downcast_rs::Downcast;
-use dyn_eq::DynEq;
 use std::fmt::{self, Debug};
+use tract_data::dyn_eq::DynEq;
 use tract_data::itertools::izip;
 use tract_itertools::Itertools;
 use tract_linalg::multithread::BShare;
@@ -12,7 +12,7 @@ use super::{cast::cast, math::SubF};
 use tract_linalg::routines::Func;
 
 pub trait BinMiniOp:
-    fmt::Debug + dyn_clone::DynClone + dyn_eq::DynEq + Send + Sync + 'static + Downcast
+    fmt::Debug + dyn_clone::DynClone + DynEq + Send + Sync + 'static + Downcast
 {
     fn name(&self) -> &'static str;
     fn validation(&self) -> Validation {
@@ -161,7 +161,7 @@ impl TypedBinOp {
         let b = tensor0(b.clone()).into_tvalue();
         let result = self.0.eval(a, b, TDim::datum_type()).ok()?;
         result
-            .try_as_plain()
+            .try_as_plain_ram()
             .ok()
             .and_then(|d| d.as_slice::<TDim>().ok())
             .and_then(|s| s.first())
@@ -947,11 +947,11 @@ macro_rules! bin_to_super_type {
                         $(
                             $(if c.datum_type() == $typ::datum_type() {
                                 let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                                let a_plain = a.try_as_plain()?;
+                                let a_plain = a.try_as_plain_ram()?;
                                 let a_slice = a_plain.as_slice::<$typ>()?;
-                                let b_plain = b.try_as_plain()?;
+                                let b_plain = b.try_as_plain_ram()?;
                                 let b_slice = b_plain.as_slice::<$typ>()?;
-                                let mut c_plain = c.try_as_plain_mut()?;
+                                let mut c_plain = c.try_as_plain_ram_mut()?;
                                 let c_slice = c_plain.as_slice_mut::<$typ>()?;
                                 debug_assert_eq!(c_slice.len(), a_slice.len());
                                 debug_assert_eq!(c_slice.len(), b_slice.len());
@@ -973,11 +973,11 @@ macro_rules! bin_to_super_type {
                                 $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                     let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                     let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                    let a_plain = a.try_as_plain()?;
+                                    let a_plain = a.try_as_plain_ram()?;
                                     let a_slice = a_plain.as_slice::<$typ_dt>()?;
-                                    let b_plain = b.try_as_plain()?;
+                                    let b_plain = b.try_as_plain_ram()?;
                                     let b_slice = b_plain.as_slice::<$typ_dt>()?;
-                                    let mut c_plain = c.try_as_plain_mut()?;
+                                    let mut c_plain = c.try_as_plain_ram_mut()?;
                                     let c_slice = c_plain.as_slice_mut::<$typ_dt>()?;
                                     for ((cv, av), bv) in c_slice.iter_mut().zip(a_slice.iter()).zip(b_slice.iter()) {
                                         cab(cv, av, bv, zp, scale);
@@ -991,7 +991,7 @@ macro_rules! bin_to_super_type {
                         $(if c.datum_type() == $typ::datum_type() {
                             let a = a.to_plain_array_view::<$typ>()?;
                             let b = b.to_plain_array_view::<$typ>()?;
-                            let mut c_plain = c.try_as_plain_mut()?;
+                            let mut c_plain = c.try_as_plain_ram_mut()?;
                             let mut c = c_plain.to_array_view_mut::<$typ>()?;
                             $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each($cab);
                             return Ok(())
@@ -1004,7 +1004,7 @@ macro_rules! bin_to_super_type {
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
                                 let a = a.to_plain_array_view::<$typ_dt>()?;
                                 let b = b.to_plain_array_view::<$typ_dt>()?;
-                                let mut c_plain = c.try_as_plain_mut()?;
+                                let mut c_plain = c.try_as_plain_ram_mut()?;
                                 let mut c = c_plain.to_array_view_mut::<$typ_dt>()?;
                                 $crate::ndarray::Zip::from(&mut c).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| cab(c, a, b, zp, scale));
                                 return Ok(())
@@ -1033,9 +1033,9 @@ macro_rules! bin_to_super_type {
                     $(
                         $(if b.datum_type() == $typ::datum_type() {
                             let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
-                            let b_plain = b.try_as_plain()?;
+                            let b_plain = b.try_as_plain_ram()?;
                             let b_slice = b_plain.as_slice::<$typ>()?;
-                            let mut a_plain = a.try_as_plain_mut()?;
+                            let mut a_plain = a.try_as_plain_ram_mut()?;
                             let a_slice = a_plain.as_slice_mut::<$typ>()?;
                             debug_assert_eq!(a_slice.len(), b_slice.len());
                             let len = a_slice.len();
@@ -1055,9 +1055,9 @@ macro_rules! bin_to_super_type {
                             $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                                 let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                                 let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                                let b_plain = b.try_as_plain()?;
+                                let b_plain = b.try_as_plain_ram()?;
                                 let b_slice = b_plain.as_slice::<$typ_dt>()?;
-                                let mut a_plain = a.try_as_plain_mut()?;
+                                let mut a_plain = a.try_as_plain_ram_mut()?;
                                 let a_slice = a_plain.as_slice_mut::<$typ_dt>()?;
                                 for (av, bv) in a_slice.iter_mut().zip(b_slice.iter()) {
                                     cab(av, &(av.clone()), bv, zp, scale);
@@ -1071,7 +1071,7 @@ macro_rules! bin_to_super_type {
                     $(if b.datum_type() == $typ::datum_type() {
                         let cab: fn(&mut $typ, &$typ, &$typ) -> () = $cab;
                         let b = b.to_plain_array_view::<$typ>()?;
-                        let mut a_plain = a.try_as_plain_mut()?;
+                        let mut a_plain = a.try_as_plain_ram_mut()?;
                         let mut a = a_plain.to_array_view_mut::<$typ>()?;
                         $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| cab(a, &a.clone(), b));
                         return Ok(())
@@ -1082,7 +1082,7 @@ macro_rules! bin_to_super_type {
                         $(if a.datum_type().unquantized() == <$typ_dt>::datum_type().unquantized() {
                             let cab: fn(&mut $typ_dt, &$typ_dt, &$typ_dt, i32, f32) -> () = $cab_dt;
                             let (zp, scale) = a.datum_type().qparams().map(|q| q.zp_scale()).unwrap_or((0, 1.));
-                            let mut a_plain = a.try_as_plain_mut()?;
+                            let mut a_plain = a.try_as_plain_ram_mut()?;
                             let mut a = a_plain.to_array_view_mut::<$typ_dt>()?;
                             let b = b.to_plain_array_view::<$typ_dt>()?;
                             $crate::ndarray::Zip::from(&mut a).and_broadcast(b).for_each(|a, b| {
@@ -1180,7 +1180,7 @@ macro_rules! bin_to_super_type {
                             let b = b.to_plain_array_view::<u8>()?;
                             let c_shape = $crate::broadcast::multi_broadcast(&[a.shape(), b.shape()])?;
                             let mut c = Tensor::zero_dt(*c_dt, &c_shape)?;
-                            let mut c_plain = c.try_as_plain_mut()?;
+                            let mut c_plain = c.try_as_plain_ram_mut()?;
                             let view = c_plain.to_array_view_mut::<u8>()?;
                             $crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
                                 *c = (scale_by($q_op_on_f32(
@@ -1211,9 +1211,9 @@ macro_rules! bin_to_super_type {
                             let mut c = Tensor::zero_dt(accumulator_dt, &c_shape)?;
                             match accumulator_dt {
                                 DatumType::F32 => {
-                                    let mut c_plain = c.try_as_plain_mut()?;
+                                    let mut c_plain = c.try_as_plain_ram_mut()?;
                                     let view = c_plain.to_array_view_mut::<f32>()?;
-                                    $crate::ndarray::Zip::from(view).and_broadcast(a.try_as_plain()?.to_array_view()?).and_broadcast(b.try_as_plain()?.to_array_view()?).for_each(|c, a, b| {
+                                    $crate::ndarray::Zip::from(view).and_broadcast(a.try_as_plain_ram()?.to_array_view()?).and_broadcast(b.try_as_plain_ram()?.to_array_view()?).for_each(|c, a, b| {
                                         *c = $q_op_on_f32(*a,*b);
                                     })
                                 },
@@ -1315,7 +1315,7 @@ mod tests {
             op.eval(&EvalContext::out_of_plan(), tvec!(a.into_tvalue(), b.into_tvalue())).unwrap();
         let out = &out[0];
         assert_eq!(out.shape(), &[1, 1, 640]);
-        let plain = out.try_as_plain().unwrap();
+        let plain = out.try_as_plain_ram().unwrap();
         let out_slice = plain.as_slice::<f32>().unwrap();
         for (i, v) in out_slice.iter().enumerate() {
             assert_eq!(*v, i as f32 + 1.0, "mismatch at {i}");
@@ -1373,7 +1373,7 @@ mod tests {
         model.select_output_outlets(&[add])?;
 
         let mut input = Tensor::zero_dt(x_dt, &[4])?;
-        input.try_as_plain_mut()?.as_slice_mut::<u8>()?.copy_from_slice(&[10, 35, 60, 200]);
+        input.try_as_plain_ram_mut()?.as_slice_mut::<u8>()?.copy_from_slice(&[10, 35, 60, 200]);
         let input = tvec!(input.into_tvalue());
 
         let before = model.clone().into_runnable()?.run(input.clone())?;

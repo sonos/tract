@@ -182,7 +182,7 @@ mod tests {
                 stream.synchronize()?;
                 Ok(output.to_host()?.into_tensor())
             })?;
-            let got = got.try_as_plain()?;
+            let got = got.try_as_plain_ram()?;
             let got = got.as_slice::<f32>()?;
 
             let fft = FftPlanner::<f32>::new().plan_fft_forward(n);
@@ -222,7 +222,7 @@ mod tests {
                 stream.synchronize()?;
                 Ok(output.to_host()?.into_tensor())
             })?;
-            let got = got.try_as_plain()?;
+            let got = got.try_as_plain_ram()?;
             let got = got.as_slice::<f32>()?;
 
             let ifft = FftPlanner::<f32>::new().plan_fft_inverse(n); // unnormalized, like ours
@@ -324,7 +324,7 @@ mod tests {
                 stream.synchronize()?;
                 Ok(output.to_host()?.into_tensor())
             })?;
-            let got = got.try_as_plain()?;
+            let got = got.try_as_plain_ram()?;
             let got = got.as_slice::<f32>()?;
 
             let mut max_err = 0f32;

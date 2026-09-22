@@ -41,6 +41,9 @@ pub mod prelude {
 pub mod internal {
     pub use crate::datum::ClampCast;
     pub use crate::dim::{DimLike, parse_tdim, solve_for};
+    // The module only: see dyn_eq's docs for why the trait itself must not be
+    // re-exported here.
+    pub use crate::dyn_eq;
     pub use crate::exotic::ExoticFact;
     pub use crate::prelude::*;
     pub use crate::tensor::Approximation;
@@ -63,6 +66,7 @@ pub mod knobs;
 mod blob;
 mod datum;
 mod dim;
+pub mod dyn_eq;
 mod exotic;
 mod scatter;
 mod tensor;

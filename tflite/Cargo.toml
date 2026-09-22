@@ -1,10 +1,10 @@
 [package]
 name = "tract-tflite"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 license = "MIT OR Apache-2.0"
 description = "Tiny, no-nonsense, self contained, TensorFlow and ONNX inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 edition = "2021"
 
 [dependencies]

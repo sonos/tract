@@ -32,6 +32,8 @@ pub enum Func {
     Silu,
     Gelu,
     Erf,
+    Ln,
+    Exp,
     Hardswish,
     LeakyRelu,
     MulByScalar,
@@ -45,6 +47,8 @@ pub enum Func {
     BinByScalar(crate::BinOp),
     /// A binary operation between two slices of the same length.
     BinUnicast(crate::BinOp),
+    /// Depthwise convolution over an axis the output is contiguous on.
+    DepthwiseW,
 }
 
 impl Func {
@@ -67,12 +71,14 @@ impl Func {
         ]
     };
 
-    pub const ALL: [Func; 26] = [
+    pub const ALL: [Func; 29] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
         Func::Gelu,
         Func::Erf,
+        Func::Ln,
+        Func::Exp,
         Func::Hardswish,
         Func::ReduceMax,
         Func::ReduceMin,
@@ -94,6 +100,7 @@ impl Func {
         Func::BIN[9],
         Func::BIN[10],
         Func::BIN[11],
+        Func::DepthwiseW,
     ];
 
     /// Where this function sits in [`Self::ALL`], which is what indexes the dispatch table.
@@ -104,17 +111,20 @@ impl Func {
             Func::Silu => 2,
             Func::Gelu => 3,
             Func::Erf => 4,
-            Func::Hardswish => 5,
-            Func::ReduceMax => 6,
-            Func::ReduceMin => 7,
-            Func::ReduceSum => 8,
-            Func::Softmax2 => 9,
-            Func::RmsNorm => 10,
-            Func::Lut => 11,
-            Func::LeakyRelu => 12,
-            Func::MulByScalar => 13,
-            Func::BinByScalar(op) => 14 + op as usize,
-            Func::BinUnicast(op) => 20 + op as usize,
+            Func::Ln => 5,
+            Func::Exp => 6,
+            Func::Hardswish => 7,
+            Func::ReduceMax => 8,
+            Func::ReduceMin => 9,
+            Func::ReduceSum => 10,
+            Func::Softmax2 => 11,
+            Func::RmsNorm => 12,
+            Func::Lut => 13,
+            Func::LeakyRelu => 14,
+            Func::MulByScalar => 15,
+            Func::BinByScalar(op) => 16 + op as usize,
+            Func::BinUnicast(op) => 22 + op as usize,
+            Func::DepthwiseW => 28,
         }
     }
 
@@ -126,6 +136,8 @@ impl Func {
             Func::Silu => "silu",
             Func::Gelu => "gelu",
             Func::Erf => "erf",
+            Func::Ln => "ln",
+            Func::Exp => "exp",
             Func::Hardswish => "hardswish",
             Func::LeakyRelu => "leaky_relu",
             Func::MulByScalar => "mul_by_scalar",
@@ -151,6 +163,7 @@ impl Func {
                 crate::BinOp::Sub => "unicast_sub",
                 crate::BinOp::SubF => "unicast_subf",
             },
+            Func::DepthwiseW => "depthwise_w",
         }
     }
 
@@ -235,6 +248,15 @@ impl Func {
     }
 }
 
+/// One depthwise output run: `len` contiguous output points, each the bias plus every
+/// `taps[t] * input[offsets[t] + i * in_stride]`. `taps` and `offsets` are one kernel tap each
+/// and are the same length; `in_stride` is the input step one output point costs, in elements.
+///
+/// # Safety
+/// `input.offset(offsets[t] + i * in_stride)` must be readable for every tap and every `i` below
+/// `len`, and `len` output points writable from `output`.
+pub type DepthwiseWF32 = unsafe fn(*const f32, *mut f32, &[f32], &[isize], f32, usize, isize);
+
 /// Builds the kernel behind a descriptor. The arm is what says which datum type the descriptor
 /// is for, so nothing repeats it as a field.
 #[allow(clippy::type_complexity)]
@@ -270,6 +292,12 @@ pub enum RoutineFactory {
         name: fn() -> &'static str,
         make: fn() -> Box<crate::BinFn>,
     },
+    /// A depthwise inner-loop kernel, a plain function rather than a boxed object, so its name
+    /// is a field.
+    DepthwiseWF32 {
+        name: &'static str,
+        run: DepthwiseWF32,
+    },
 }
 
 /// One kernel, enumerable uniformly on every host.
@@ -301,7 +329,8 @@ impl Routine {
             | RoutineFactory::F32Param(_)
             | RoutineFactory::F32Reduce(_)
             | RoutineFactory::F32MapReduce(_)
-            | RoutineFactory::RmsNormF32 { .. } => DatumType::F32,
+            | RoutineFactory::RmsNormF32 { .. }
+            | RoutineFactory::DepthwiseWF32 { .. } => DatumType::F32,
             RoutineFactory::F16(_) | RoutineFactory::F16Param(_) | RoutineFactory::F16Reduce(_) => {
                 DatumType::F16
             }
@@ -324,6 +353,7 @@ impl Routine {
             RoutineFactory::F16Reduce(f) => f().name(),
             RoutineFactory::F32MapReduce(f) => f().name(),
             RoutineFactory::RmsNormF32 { name, .. } => name,
+            RoutineFactory::DepthwiseWF32 { name, .. } => name,
             RoutineFactory::LutU8 { name, .. } => name(),
             RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => name(),
         }
@@ -488,6 +518,16 @@ pub fn rms_norm_f32() -> TractResult<fn(&mut [f32], f32)> {
     }
 }
 
+/// The depthwise inner-loop kernel this host runs, `None` where none is written. Optional rather
+/// than fallible, like [`Func::bin`]: its caller keeps the scalar loop it needs anyway for the
+/// zones no kernel covers, so a machine without one is an ordinary answer.
+pub fn depthwise_w_f32() -> Option<DepthwiseWF32> {
+    match native_best(Func::DepthwiseW, DatumType::F32)?.factory {
+        RoutineFactory::DepthwiseWF32 { run, .. } => Some(run),
+        _ => None,
+    }
+}
+
 /// The look-up table kernel this host runs, over the table the caller owns.
 pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
     match Func::Lut.best_here(DatumType::U8)?.factory {
@@ -519,6 +559,12 @@ macro_rules! submit_routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::RmsNormF32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; DepthwiseWF32, $func:ident, $name:literal, $run:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        submit_routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::DepthwiseWF32 { name: $name, run: $run }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; BinF32, BinByScalar($op:ident), $ker:path
@@ -673,6 +719,14 @@ where
 mod tests {
     use super::*;
 
+    /// Every build declares kernels, generic ones at least. An empty registry is a build that
+    /// lost them, and every test reading the matrix would pass on a machine that can compute
+    /// nothing.
+    #[test]
+    fn the_registry_is_never_empty() {
+        assert!(declared().next().is_some());
+    }
+
     /// The dispatch table is indexed by [`Func::slot`], so every function must own one slot
     /// inside it, and the cache must answer what a fresh scan would.
     #[test]
@@ -753,7 +807,8 @@ mod tests {
                     RoutineFactory::F32Reduce(_) => func.reduce_f32().map(|k| k.name()),
                     RoutineFactory::F16Reduce(_) => func.reduce_f16().map(|k| k.name()),
                     RoutineFactory::F32MapReduce(_) => func.map_reduce_f32().map(|k| k.name()),
-                    RoutineFactory::RmsNormF32 { name, .. } => Ok(name),
+                    RoutineFactory::RmsNormF32 { name, .. }
+                    | RoutineFactory::DepthwiseWF32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
                     RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => {
                         func.bin(dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))

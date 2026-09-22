@@ -112,6 +112,24 @@ pub fn eval_device_mem_req_for_nodes(
         }
     }
 
+    // Walked backwards so a chain of forwarders carries the extension down to
+    // the region it all aliases.
+    for n in order.iter().rev() {
+        let Some(ix) = model.node(*n).op.forwards_input() else { continue };
+        let Some(end) = scoped_nodes
+            .iter()
+            .filter(|req| req.outlet_id.node == *n)
+            .map(|req| req.lifetime.end)
+            .max()
+        else {
+            continue;
+        };
+        let src = model.node(*n).inputs[ix];
+        for req in scoped_nodes.iter_mut().filter(|req| req.outlet_id == src) {
+            req.lifetime.end = req.lifetime.end.max(end);
+        }
+    }
+
     Ok(scoped_nodes)
 }
 

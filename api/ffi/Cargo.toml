@@ -1,10 +1,10 @@
 [package]
 name = "tract-ffi"
-version = "0.23.6-pre"
+version = "0.23.9-pre"
 license = "MIT OR Apache-2.0"
 authors = ["Mathieu Poumeyrol <kali@zoy.org>"]
 description = "Tiny, no-nonsense, self contained, neural network inference"
-repository = "https://github.com/snipsco/tract"
+repository = "https://github.com/sonos/tract"
 keywords = [ "TensorFlow", "NeuralNetworks" ]
 categories = [ "science" ]
 autobenches = false
@@ -20,14 +20,13 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
-flate2.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tract-api.workspace = true
 tract.workspace = true
 
 [features]
-default = ["cuda-13000"]
+default = ["cuda-13000", "metal"]
 
 # CUDA driver-API selectors, passed straight through to the tract facade
 # (linux/windows targets only). Exactly one must be active for CUDA support;
@@ -45,3 +44,7 @@ cuda-12090 = ["tract/cuda-12090"]
 cuda-13000 = ["tract/cuda-13000"]
 cuda-13010 = ["tract/cuda-13010"]
 cuda-13020 = ["tract/cuda-13020"]
+
+# Gates the Metal backend in the facade (Apple targets only). Enabled by
+# default; CPU-only cdylibs drop it with `--no-default-features`.
+metal = ["tract/metal"]

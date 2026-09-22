@@ -32,8 +32,8 @@ impl DirectLookup {
     }
 
     fn eval_t<T: Datum>(&self, input: &Tensor) -> TractResult<Tensor> {
-        let values = self.values.try_as_plain()?.as_slice::<T>()?;
-        let fallback_value = self.fallback_value.try_as_plain()?.to_scalar::<T>()?;
+        let values = self.values.try_as_plain_ram()?.as_slice::<T>()?;
+        let fallback_value = self.fallback_value.try_as_plain_ram()?.to_scalar::<T>()?;
         Ok(input
             .to_plain_array_view::<i32>()?
             .mapv(|ix| values.get(ix as usize).unwrap_or(fallback_value).clone())
@@ -136,7 +136,7 @@ impl ReverseLookup {
         unsafe {
             let mut output = Tensor::uninitialized_dt(i32::datum_type(), input.shape())?;
             for (i, o) in input
-                .try_as_plain()?
+                .try_as_plain_ram()?
                 .as_slice::<T>()?
                 .iter()
                 .zip(output.as_slice_mut_unchecked::<i32>().iter_mut())

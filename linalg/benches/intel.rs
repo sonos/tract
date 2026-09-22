@@ -46,7 +46,7 @@ fn bench_to_nanos<
     )
     .unwrap();
 
-    let mut a_plain = a.try_as_plain_mut().unwrap();
+    let mut a_plain = a.try_as_plain_ram_mut().unwrap();
     let mut v = a_plain.to_array_view_mut::<f32>().unwrap();
     v += 1.0;
     drop(v);
@@ -57,7 +57,7 @@ fn bench_to_nanos<
     )
     .unwrap();
 
-    let mut b_plain = b.try_as_plain_mut().unwrap();
+    let mut b_plain = b.try_as_plain_ram_mut().unwrap();
     let mut v = b_plain.to_array_view_mut::<f32>().unwrap();
     v += 1.0;
     drop(v);

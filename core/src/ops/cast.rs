@@ -48,8 +48,8 @@ impl EvalOp for Cast {
             Ok(tvec!(input))
         } else if input.datum_type() == TDim::datum_type() {
             let mut tmp = Tensor::zero_dt(i64::datum_type(), input.shape())?;
-            let input_plain = input.try_as_plain()?;
-            let mut tmp_plain = tmp.try_as_plain_mut()?;
+            let input_plain = input.try_as_plain_ram()?;
+            let mut tmp_plain = tmp.try_as_plain_ram_mut()?;
             for (dim, i) in tract_itertools::izip!(
                 input_plain.as_slice::<TDim>()?,
                 tmp_plain.as_slice_mut::<i64>()?

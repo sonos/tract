@@ -10,16 +10,20 @@ use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
 use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::Reduce;
+use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
-use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
+use tract_gpu::rewrite_rules::rms_norm::{
+    fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
+    fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
+};
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
@@ -61,8 +65,8 @@ macro_rules! register_metal_op {
 /// Metal-local SDPA flattening: explode only the `Sdpa` nodes neither fused
 /// kernel can take (MLX port first, vendored MFA metallib second), leaving
 /// fusable ones for the chooser translator in `kernels::matmul::mlx_sdpa`.
-/// (The shared `tract_gpu` `rewire_sdpa` explodes all of them; cuda still
-/// uses it.)
+/// (The shared `tract_gpu` `rewire_sdpa` explodes all of them; the cuda
+/// transform carries the same local rule.)
 fn flatten_unfused_sdpa(
     _ctx: &(),
     model: &TypedModel,
@@ -108,6 +112,48 @@ fn cast_sdpa_mask_to_query_dt(
     let out = patch.wire_node(&node.name, node.op.clone(), &inputs)?;
     patch.shunt_outside(model, node.id.into(), out[0])?;
     Ok(Some(patch))
+}
+
+/// Metal-local kernel reordering: the shared rule puts every conv kernel in
+/// `OIHW`, which the direct kernel indexes, but the ported MLX kernel wants
+/// `OHWI`. Eligible convs are moved to `OHWI` instead; everything else falls
+/// through to the shared rule. The kernel is normally a constant, so the
+/// reorder folds.
+fn rewrite_conv_kernel_metal(
+    ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let in_facts = model.node_input_facts(node.id)?;
+    // A depthwise kernel is already laid out the way the ported kernel wants it
+    // once the shared rule has put it in OIHW, so only regular convs are moved.
+    if crate::kernels::conv::mlx_conv::mlx_conv_eligible(conv, &in_facts) {
+        if conv.kernel_fmt == KernelFormat::OHWI {
+            return Ok(None);
+        }
+        // Reorder the constant here rather than wiring an axis move: the metal
+        // transform does not declutter afterwards, so a wired move would stay
+        // in the graph and run on every inference.
+        if let Some(kernel) = in_facts[1].konst.as_ref() {
+            let ohwi = match conv.kernel_fmt {
+                // [O,I,H,W] -> [O,H,W,I]
+                KernelFormat::OIHW => kernel.clone().into_tensor().move_axis(1, 3)?,
+                // [H,W,I,O] -> [O,H,W,I]
+                KernelFormat::HWIO => kernel.clone().into_tensor().move_axis(3, 0)?,
+                KernelFormat::OHWI => kernel.clone().into_tensor(),
+            };
+            let mut patch = TypedModelPatch::default();
+            let mut wire = patch.taps(model, &node.inputs)?;
+            wire[1] = patch.add_const(format!("{name}.kernel_ohwi"), ohwi)?;
+            let new = Conv { kernel_fmt: KernelFormat::OHWI, ..conv.clone() };
+            let wire = patch.wire_node(name, new, &wire)?;
+            patch.shunt_outside(model, node.id.into(), wire[0])?;
+            return Ok(Some(patch));
+        }
+    }
+    rewrite_kernel_conv_in_oihw(ctx, model, node, name, conv)
 }
 
 fn rewire_sdpa_metal(model: &mut TypedModel) -> TractResult<()> {
@@ -190,10 +236,16 @@ impl MetalTransform {
             .rewrite(self, model)?;
 
         Rewriter::default()
-            .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
+            .with_rule_for("rewrite_conv_kernel_metal", rewrite_conv_kernel_metal)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
+            .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
+            .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
+            .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
+            .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
             .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
@@ -206,6 +258,11 @@ impl MetalTransform {
             return Ok(());
         }
 
+        // After elementwise fusion: only residual adds that stayed standalone
+        // dispatches are worth absorbing into their norm consumer.
+        Rewriter::default()
+            .with_rule_for("fuse_rms_norm_residual", fuse_rms_norm_residual)
+            .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_move_axis", rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;

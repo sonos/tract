@@ -229,7 +229,7 @@ pub fn handle_stream(
         .get("pulse.input_axes")
         .context("Expect pulse.input_axes property")?
         .cast_to::<i64>()?
-        .try_as_plain()?
+        .try_as_plain_ram()?
         .as_slice::<i64>()?[0] as usize;
 
     let stream_symbol = ref_input_fact.shape[input_axis]

@@ -45,7 +45,8 @@ impl Expansion for InstanceNorm {
     ) -> TractResult<TVec<OutletId>> {
         let input_fact = model.outlet_fact(inputs[0])?.clone();
         let rank = input_fact.rank();
-        let axes: Vec<_> = (0..rank as i64).filter(|&axis| axis != 1).collect();
+        // Each (batch, channel) plane is normalized on its own, over the spatial axes.
+        let axes: Vec<_> = (2..rank as i64).collect();
         let mean = tract_hir::ops::nn::Reduce::new(
             Some(axes.clone()),
             true,

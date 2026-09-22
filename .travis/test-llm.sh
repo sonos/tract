@@ -15,6 +15,16 @@ if [ -z "$device" ]
 then
     device=cpu
 fi
+# "gpu" is the platform-agnostic token used by the CI matrix: resolve it to the
+# actual accelerator available here.
+if [ "$device" = "gpu" ]
+then
+    case $(uname) in
+        Darwin) device=metal;;
+        Linux) device=cuda;;
+        *) echo "No known GPU runtime for $(uname)"; exit 1;;
+    esac
+fi
 generation=541
 manifest=$ROOT/.travis/llm-models.tsv
 

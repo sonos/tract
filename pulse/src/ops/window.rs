@@ -19,6 +19,10 @@
 //! * `PulsedExposeWindow` reshapes the per-pulse `[W, ...]` view into
 //!   `[1, W, ...]`, exposing W as a static window axis.
 //!
+//! A causal window (`start = -(W-1)`) padded with zeros needs no pad node:
+//! `Delay`'s buffer already starts zeroed, so it carries the pad itself
+//! (`Delay::zero_pad`) and the chain is two ops.
+//!
 //! Constraint: `pulse == 1` on the windowed axis (the case Blockify
 //! produces today).  Constraints: `start ≤ 0` and `start + W - 1 ≥ 0`
 //! (the window must straddle the current chunk).
@@ -62,11 +66,15 @@ fn pulsify(
     let overlap = op.window - 1;
     let before: usize = (-op.start) as usize;
 
-    let delayed = target.wire_node(
-        format!("{}.delay", node.name),
-        Delay::new_typed(&(&fact).into(), op.axis, 0, overlap),
-        &[input],
-    )?[0];
+    // A leading pad of `overlap` zeros is what the Delay's zeroed buffer
+    // already hands back, so the Delay carries it and the PulsePad node goes.
+    // A shorter pad leaves buffered frames the pad does not cover, and a
+    // non-zero one (the chunk-index sentinel) is information the buffer does
+    // not hold.
+    let zero_pad = before == overlap && op.pad_value.is_all_zero()?;
+    let mut delay = Delay::new_typed(&(&fact).into(), op.axis, 0, overlap);
+    delay.zero_pad = zero_pad;
+    let mut wire = target.wire_node(format!("{}.delay", node.name), delay, &[input])?[0];
 
     // For `start < 0` (past-window): pad-fill the leading `before` chunks
     // of the post-delay buffer and shift `stream.delay` back by `before`,
@@ -76,28 +84,30 @@ fn pulsify(
     // change) but keeps the pulsifier's structure uniform.  The fill
     // value comes from `op.pad_value` — zero for data wires, sentinel
     // for chunk-index wires whose downstream band predicate keys off it.
-    let post_delay_fact = target.outlet_fact(delayed)?.clone();
-    let post_delay_stream = post_delay_fact.stream.as_ref().unwrap();
-    let begin_input = post_delay_stream.delay;
-    let end_input = post_delay_stream.delay.to_dim() + &post_delay_stream.dim;
-    let padded = target.wire_node(
-        format!("{}.pulse_pad", node.name),
-        PulsePad {
-            axis: op.axis,
-            before,
-            after: 0.to_dim(),
-            begin_input,
-            end_input,
-            mode: PadMode::Constant(op.pad_value.clone()),
-            overlap,
-        },
-        &[delayed],
-    )?[0];
+    if !zero_pad {
+        let post_delay_fact = target.outlet_fact(wire)?.clone();
+        let post_delay_stream = post_delay_fact.stream.as_ref().unwrap();
+        let begin_input = post_delay_stream.delay;
+        let end_input = post_delay_stream.delay.to_dim() + &post_delay_stream.dim;
+        wire = target.wire_node(
+            format!("{}.pulse_pad", node.name),
+            PulsePad {
+                axis: op.axis,
+                before,
+                after: 0.to_dim(),
+                begin_input,
+                end_input,
+                mode: PadMode::Constant(op.pad_value.clone()),
+                overlap,
+            },
+            &[wire],
+        )?[0];
+    }
 
     let exposed = target.wire_node(
         &*node.name,
         PulsedExposeWindow { axis: op.axis, window: op.window },
-        &[padded],
+        &[wire],
     )?;
     Ok(Some(exposed))
 }
@@ -106,8 +116,8 @@ fn pulsify(
 /// `1 + W - 1 = W` into `[1, W]`, exposing `W` as a static window axis.
 /// Logical streaming dim is preserved (1 chunk per pulse on the new
 /// streaming axis at the same position as before).  Stream-delay
-/// adjustment is handled upstream by the `PulsePad` the WindowOnAxis
-/// pulsifier wires before this op.
+/// adjustment happens upstream, in the `PulsePad` the WindowOnAxis pulsifier
+/// wires before this op or in the `Delay`'s own `zero_pad`.
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PulsedExposeWindow {
     pub axis: usize,
