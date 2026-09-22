@@ -302,7 +302,9 @@ fn select_block_quant_left_mmm(
             if !b_format.precursor().as_dt().is_some_and(|dt| dt == f32::datum_type()) {
                 continue;
             }
-            if k_dim % a_format.k_alignment() != 0 || k_dim % b_format.k_alignment() != 0 {
+            if !k_dim.is_multiple_of(a_format.k_alignment())
+                || !k_dim.is_multiple_of(b_format.k_alignment())
+            {
                 continue;
             }
 
@@ -604,7 +606,7 @@ pub(super) fn run_prepared_routed_matmul_accumulate_one(
             packing: plan.kernel.packing,
         },
         FusedSpec::BinScalar(scale, BinOp::Mul),
-        FusedSpec::AddUnicast(store.clone()),
+        FusedSpec::AddUnicast(store),
         FusedSpec::Store(store),
     ];
     unsafe { plan.kernel.mmm.run_with_scratch_space(out_dim, 1, scratch.as_mut(), &uops) }
