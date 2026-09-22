@@ -460,13 +460,7 @@ pub fn handle(
         }
     }
 
-    if params
-        .tract_model
-        .properties()
-        .get("tract_stage")
-        .and_then(|t| t.try_as_plain_ram().ok()?.to_scalar::<String>().ok().cloned())
-        .is_some_and(|s| s == "optimized")
-    {
+    if stage_is_optimized(params.tract_model.properties()) {
         for n in 0..params.tract_model.nodes_len() {
             if params.tract_model.node_op_name(n) == "EinSum" {
                 let tags = annotations.tags.entry(NodeQId(tvec!(), n)).or_default();
