@@ -4,7 +4,7 @@ use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype,
-    deconv_module, keys_for, pack_u32s, program_key,
+    deconv_module, keys_for, pack_u32s,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -40,9 +40,9 @@ pub fn wgpu_deconv_dispatch(
                 entry: EntryPoint::typed("conv_transpose2d", dt),
             })?
         } else {
-            let key = program_key("deconv", dt, epilogue, extras.len());
+            let key = ("deconv", dt, epilogue, extras.len());
             q.context().chain_pipeline(
-                &key,
+                key,
                 layout,
                 EntryPoint::typed("conv_transpose2d", dt),
                 || deconv_module(dt, epilogue, extras.len()),
