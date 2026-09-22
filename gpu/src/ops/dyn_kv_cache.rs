@@ -1,5 +1,6 @@
+use crate::device::get_context;
 use crate::fact::DeviceTypedFactExt;
-use crate::tensor::{DeviceTensorExt, IntoDevice};
+use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use derive_new::new;
 use tract_core::internal::*;
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
@@ -9,7 +10,78 @@ pub struct GpuDynKVCacheState {
     name: String,
     axis: usize,
     past_sequence_fact: TypedFact,
-    kv_cache: Option<TValue>,
+    /// Spare capacity along `axis`; the cache is the `[0..len]` prefix of it.
+    /// A decode appends one token per turn, so growing by concatenation would
+    /// copy the whole past into a new buffer every turn -- quadratic over a
+    /// decode. Doubling the buffer and writing at the cursor is the classic
+    /// `Vec` trade: amortized O(1) per turn, and the tail is never read.
+    #[new(default)]
+    buffer: Option<DeviceTensor>,
+    #[new(default)]
+    len: usize,
+    #[new(default)]
+    reallocs: usize,
+}
+
+impl GpuDynKVCacheState {
+    /// Extent of the buffer on the cache axis, live prefix and spare tail both.
+    pub fn capacity(&self) -> usize {
+        self.buffer.as_ref().map(|b| b.shape()[self.axis]).unwrap_or(0)
+    }
+
+    /// Shape of the live cache: the buffer's, cut to `len` on the cache axis.
+    fn valid_shape(&self) -> Option<TVec<usize>> {
+        let mut shape: TVec<usize> = self.buffer.as_ref()?.shape().into();
+        shape[self.axis] = self.len;
+        Some(shape)
+    }
+
+    /// The live cache as a tensor of its own, packed.
+    ///
+    /// Always a copy, even where the prefix fills the buffer exactly: the buffer
+    /// is written by the next append, and what leaves here is held by whoever
+    /// asked for as long as they like.
+    fn valid(&self) -> TractResult<DeviceTensor> {
+        let buffer = self.buffer.as_ref().context("KV cache was never initialized")?;
+        let shape = self.valid_shape().unwrap();
+        let out = DeviceTensor::uninitialized_dt(buffer.datum_type(), &shape)?;
+        get_context()?.assign_slice(&out, 0..self.len, buffer, 0..self.len, self.axis)?;
+        Ok(out)
+    }
+
+    /// Append `input` at the cursor, doubling the buffer when it no longer fits.
+    fn push(&mut self, input: &DeviceTensor) -> TractResult<()> {
+        let new = input.shape()[self.axis];
+        if new == 0 {
+            return Ok(());
+        }
+        if self.len + new > self.capacity() {
+            self.grow(self.len + new, input)?;
+        }
+        let buffer = self.buffer.as_ref().unwrap();
+        get_context()?.assign_slice(buffer, self.len..self.len + new, input, 0..new, self.axis)?;
+        self.len += new;
+        Ok(())
+    }
+
+    /// Re-seat the live prefix in a buffer of at least `needed` on the cache
+    /// axis. `template` carries the other axes, which the first grow has no
+    /// buffer to read them from.
+    fn grow(&mut self, needed: usize, template: &DeviceTensor) -> TractResult<()> {
+        let mut shape: TVec<usize> = self
+            .buffer
+            .as_ref()
+            .map(|b| b.shape().into())
+            .unwrap_or_else(|| template.shape().into());
+        shape[self.axis] = (self.capacity() * 2).max(needed);
+        let grown = DeviceTensor::uninitialized_dt(template.datum_type(), &shape)?;
+        if let Some(buffer) = self.buffer.as_ref() {
+            get_context()?.assign_slice(&grown, 0..self.len, buffer, 0..self.len, self.axis)?;
+        }
+        self.buffer = Some(grown);
+        self.reallocs += 1;
+        Ok(())
+    }
 }
 
 impl OpState for GpuDynKVCacheState {
@@ -24,13 +96,14 @@ impl OpState for GpuDynKVCacheState {
             self.past_sequence_fact.clone(),
             Some(kv_cache.shape()),
         )?;
-        self.kv_cache = Some(kv_cache.into_tensor().into_device()?.into_tensor().into_tvalue());
+        self.len = kv_cache.shape()[self.axis];
+        self.buffer = Some(kv_cache.into_tensor().into_device()?);
         Ok(())
     }
 
     fn save_to(&self, states: &mut Vec<TValue>) -> TractResult<()> {
-        if let Some(kv_cache) = &self.kv_cache {
-            states.push(kv_cache.to_device_tensor()?.to_host()?.into_tensor().into_tvalue());
+        if self.buffer.is_some() {
+            states.push(self.valid()?.to_host()?.into_tensor().into_tvalue());
             Ok(())
         } else {
             bail!("KV cache {} was never initialized", self.name)
@@ -46,64 +119,24 @@ impl OpState for GpuDynKVCacheState {
     }
 
     fn resolve_symbols(&mut self, state: &mut TurnState) -> TractResult<()> {
-        let shape = self
-            .kv_cache
-            .as_ref()
-            .map(|kv_cache| kv_cache.to_device_tensor().expect("Expected GPU Tensor").shape());
-        DynKeyValueCacheState::resolve_symbols(state, self.past_sequence_fact.clone(), shape)
+        let shape = self.valid_shape();
+        DynKeyValueCacheState::resolve_symbols(
+            state,
+            self.past_sequence_fact.clone(),
+            shape.as_deref(),
+        )
     }
 
     fn eval(
         &mut self,
-        ctx: &EvalContext,
-        op: &dyn Op,
+        _ctx: &EvalContext,
+        _op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         ensure!(inputs.len() == 1);
-        let mut op_inputs = TVec::new();
-
-        if let Some(kv_cache) = self.kv_cache.take() {
-            op_inputs.push(kv_cache);
-        }
-
-        op_inputs.push(inputs.into_iter().next().unwrap());
-
-        let gpu_op =
-            op.downcast_ref::<GpuDynKVCache>().ok_or_else(|| format_err!("Wrong Op type"))?;
-        let axis = gpu_op.axis;
-
-        let inputs =
-            op_inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
-        let mut output_shape = inputs[0].shape().to_vec();
-        output_shape[axis] = inputs.iter().map(|it| it.shape()[axis]).sum();
-        let output =
-            crate::turn_handler::make_tensor_for_node(ctx, inputs[0].datum_type(), &output_shape)?;
-
-        // Concat inputs into output
-        let ctx = crate::device::get_context()?;
-        let mut cursor = 0usize;
-        for input in &inputs {
-            let slice_len = input.shape()[axis];
-            if slice_len == 0 {
-                continue;
-            }
-            let dst_offset =
-                cursor * output.strides()[axis] as usize * output.datum_type().size_of();
-            ctx.copy_nd(
-                input,
-                0,
-                input.strides(),
-                &output,
-                dst_offset,
-                input.shape(),
-                output.strides(),
-            )?;
-            cursor += slice_len;
-        }
-
-        let res = output.into_tensor().into_tvalue();
-        self.kv_cache = Some(res.clone());
-        Ok(tvec!(res))
+        let input = inputs.into_iter().next().unwrap();
+        self.push(input.to_device_tensor()?)?;
+        Ok(tvec!(self.valid()?.into_tensor().into_tvalue()))
     }
 
     fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
@@ -112,20 +145,23 @@ impl OpState for GpuDynKVCacheState {
 }
 
 impl GpuDynKVCacheState {
+    /// How many times the buffer has been re-seated: logarithmic in the number
+    /// of tokens a decode appends, and the evidence that it is.
+    pub fn reallocs(&self) -> usize {
+        self.reallocs
+    }
+
     /// Drop everything past `len` on the cache axis.
     ///
-    /// Cut on the device where the backend can: the cache is the one tensor an
-    /// application rolls back between runs, and bringing it to host to lose most
-    /// of it and sending it straight back is the transfer worth not making.
+    /// The bytes stay where they are: the cache is the one tensor an application
+    /// rolls back between runs, and a shorter prefix of the same buffer is the
+    /// whole of it.
     pub fn truncate(&mut self, len: usize) -> TractResult<()> {
-        let Some(v) = &self.kv_cache else { return Ok(()) };
-        let device = v.to_device_tensor()?;
-        let dt = device.datum_type();
-        let truncated = match device.slice_on_device(dt, device.shape(), self.axis, 0, len)? {
-            Some(truncated) => truncated,
-            None => device.to_host()?.slice(self.axis, 0, len)?.into_device()?,
-        };
-        self.kv_cache = Some(truncated.into_tensor().into_tvalue());
+        if self.buffer.is_none() {
+            return Ok(());
+        }
+        ensure!(len <= self.len, "Can not truncate a cache of {} to {len}", self.len);
+        self.len = len;
         Ok(())
     }
 }
@@ -193,7 +229,6 @@ impl EvalOp for GpuDynKVCache {
             self.name.clone(),
             self.axis,
             self.past_sequence_fact.clone(),
-            None,
         ))))
     }
 }
