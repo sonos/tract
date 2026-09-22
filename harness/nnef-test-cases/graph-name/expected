@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+fragment tract_core_properties(
+) -> (properties: (string, tensor<scalar>)[])
+{
+  properties = [("tract.name", "preproc"), ("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
+}
+
+graph preproc(input) -> (output) {
+  input = external(shape = [1, 4]);
+  output_2 = [[2.0]];
+  output_3 = mul(input, output_2);
+  output = output_3;
+}

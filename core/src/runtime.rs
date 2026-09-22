@@ -38,6 +38,13 @@ pub trait Runnable: Any + Downcast + Debug + Send + Sync + 'static {
         self.spawn()?.run(inputs)
     }
     fn spawn(&self) -> TractResult<Box<dyn State>>;
+
+    /// The mnemonic this runnable is known by, from its model's [`TRACT_NAME`]
+    /// property.
+    fn name(&self) -> Option<&str> {
+        self.typed_model()?.name()
+    }
+
     fn input_count(&self) -> usize {
         self.typed_model().context("Fallback implementation on typed_model()").unwrap().inputs.len()
     }

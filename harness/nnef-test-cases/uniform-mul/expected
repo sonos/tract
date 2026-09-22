@@ -3,10 +3,10 @@ version 1.0;
 fragment tract_core_properties(
 ) -> (properties: (string, tensor<scalar>)[])
 {
-  properties = [("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
+  properties = [("tract.name", "check_uniform_mul_not_applied"), ("tract_nnef_ser_version", "0.18.3-pre"), ("tract_nnef_format_version", "beta1")];
 }
 
-graph network(input) -> (output) {
+graph check_uniform_mul_not_applied(input) -> (output) {
   input = external(shape = [2, 2, 33]);
   a = [[[2.0], [3.0]]];
   mul_1_0 = mul(input, a);
