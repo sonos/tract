@@ -96,6 +96,31 @@ fn natural_strides_of(shape: &[usize]) -> TVec<isize> {
     strides
 }
 
+/// K and V may be a `[B, H, L, D]` window of a `[B, H, C, D]` buffer holding
+/// spare capacity on the sequence axis -- what a KV cache growing in place hands
+/// out, and what saves it a repack a turn.
+///
+/// Both kernel families read K and V through strides the dispatch passes them
+/// (`AttnParams::K_strides` for steel, `k_head_stride`/`k_seq_stride` for the
+/// vector path), so the extent alone is `kL` and the capacity never shows. What
+/// is not free is the shape of the striding: rows are read as vectors along the
+/// head dim and by whole blocks along the sequence, and the vector kernels fold
+/// batch and head into one index they scale by the head stride alone.
+fn ensure_sequence_window(t: &DeviceTensor, what: &str) -> TractResult<()> {
+    let (shape, strides) = (t.shape(), t.strides());
+    let (h, l, d) = (shape[1] as isize, shape[2] as isize, shape[3] as isize);
+    ensure!(
+        strides[3] == 1
+            && strides[2] == d
+            && strides[1] >= l * d
+            && d > 0
+            && strides[1] % d == 0
+            && strides[0] == h * strides[1],
+        "MLX SDPA expects {what} packed, or a sequence window of a buffer that is, got shape {shape:?} strides {strides:?}"
+    );
+    Ok(())
+}
+
 fn ensure_natural(t: &DeviceTensor, what: &str) -> TractResult<()> {
     ensure!(
         t.strides() == natural_strides_of(t.shape()).as_slice(),
@@ -398,8 +423,11 @@ pub fn dispatch_mlx_sdpa(
     ensure!(k.shape()[3] == d && v.shape()[3] == d, "MLX SDPA expects equal head dims");
     ensure!(v.shape()[1] == hkv && v.shape()[2] == kl, "K/V layout mismatch");
     ensure!(hq % hkv == 0, "q heads ({hq}) must be a multiple of kv heads ({hkv})");
-    for (t, w) in [(q, "Q"), (k, "K"), (v, "V"), (out, "O")] {
+    for (t, w) in [(q, "Q"), (out, "O")] {
         ensure_natural(t, w)?;
+    }
+    for (t, w) in [(k, "K"), (v, "V")] {
+        ensure_sequence_window(t, w)?;
     }
 
     if let Some(m) = mask {
