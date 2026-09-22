@@ -48,8 +48,8 @@ impl EvalOp for DeviceSync {
                     DeviceTensor::Owned(_) if !device_tensor.is_exotic() => Ok(tvec![
                         LazyHostStorage::new(device_tensor.clone())?.into_tensor().into_tvalue()
                     ]),
-                    // An arena view borrows turn-scoped storage, so it cannot
-                    // outlive the turn; an exotic tensor comes back as its own
+                    // A view borrows a buffer whose contents are only good for
+                    // the turn, so it cannot outlive it; an exotic tensor comes back as its own
                     // storage -- block-quant weights come back block-quant --
                     // which a lazy host tensor has no way to stand in for.
                     // Both copy out now.

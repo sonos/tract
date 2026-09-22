@@ -116,7 +116,7 @@ impl OwnedDeviceTensor for WgpuTensor {
         self.exotic_fact.as_deref()
     }
 
-    /// Only reached through tract-gpu's arena view, which needs a
+    /// Only reached through tract-gpu's DeviceView, which needs a
     /// `DeviceSessionHandler` this backend never installs. The signature cannot
     /// report a failure, so were it reached, a device-side fetch that failed
     /// would abort instead: on web it cannot succeed at all without `jspi`.

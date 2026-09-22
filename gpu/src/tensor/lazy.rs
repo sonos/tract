@@ -16,10 +16,9 @@ use crate::device::get_context;
 /// readback at all, because `DeviceSync` takes the device tensor back out of
 /// it.
 ///
-/// Only owned device tensors belong here. An arena view is turn-scoped
-/// storage, so it is copied out at the boundary rather than held -- and for
-/// the same reason a slice of one is copied rather than aliased: a view would
-/// be read after the turn that produced its bytes.
+/// Only owned device tensors belong here. A view borrows a buffer whose
+/// contents are only good for the turn, so it is copied out at the boundary
+/// rather than held.
 #[derive(Debug)]
 pub struct LazyHostStorage {
     /// Dropped once the host side is written to: a mutated tensor is a plain

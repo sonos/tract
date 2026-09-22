@@ -1,13 +1,13 @@
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::missing_transmute_annotations)]
 
-mod arena_view;
 mod lazy;
 mod owned;
+mod view;
 
-pub use arena_view::*;
 pub use lazy::*;
 pub use owned::*;
+pub use view::*;
 
 use num_traits::AsPrimitive;
 use std::ffi::c_void;
@@ -20,12 +20,11 @@ use crate::device::{DeviceBuffer, get_context};
 /// Highest rank the backends' `copy_nd` kernels are compiled for.
 const MAX_COPY_ND_RANK: usize = 6;
 
-/// This struct represents a GPU tensor that can be either a owned tensor
-/// or an arena view.
+/// A GPU tensor: either a buffer of its own, or a window into someone else's.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub enum DeviceTensor {
     Owned(Box<dyn OwnedDeviceTensor>),
-    ArenaView(DeviceArenaView),
+    View(DeviceView),
 }
 
 impl DeviceTensor {
@@ -86,7 +85,7 @@ impl DeviceTensor {
     pub fn datum_type(&self) -> DatumType {
         match self {
             Self::Owned(owned) => owned.datum_type(),
-            Self::ArenaView(view) => view.datum_type(),
+            Self::View(view) => view.datum_type(),
         }
     }
 
@@ -101,7 +100,7 @@ impl DeviceTensor {
     pub fn shape(&self) -> &[usize] {
         match self {
             Self::Owned(t) => t.shape(),
-            Self::ArenaView(t) => t.shape(),
+            Self::View(t) => t.shape(),
         }
     }
 
@@ -111,7 +110,7 @@ impl DeviceTensor {
     pub fn len(&self) -> usize {
         match self {
             Self::Owned(t) => t.len(),
-            Self::ArenaView(t) => t.len(),
+            Self::View(t) => t.len(),
         }
     }
 
@@ -120,7 +119,7 @@ impl DeviceTensor {
     pub fn strides(&self) -> &[isize] {
         match self {
             Self::Owned(t) => t.strides(),
-            Self::ArenaView(t) => t.strides(),
+            Self::View(t) => t.strides(),
         }
     }
 
@@ -128,7 +127,7 @@ impl DeviceTensor {
     pub fn device_buffer(&self) -> &dyn DeviceBuffer {
         match self {
             Self::Owned(t) => t.device_buffer(),
-            Self::ArenaView(t) => t.device_buffer(),
+            Self::View(t) => t.device_buffer(),
         }
     }
 
@@ -139,14 +138,14 @@ impl DeviceTensor {
     {
         match self {
             Self::Owned(_) => 0.as_(),
-            Self::ArenaView(t) => t.buffer_offset(),
+            Self::View(t) => t.buffer_offset(),
         }
     }
 
     pub fn device_buffer_ptr(&self) -> *const c_void {
         match self {
             Self::Owned(t) => t.device_buffer().ptr(),
-            Self::ArenaView(t) => t.device_buffer().ptr(),
+            Self::View(t) => t.device_buffer().ptr(),
         }
     }
 
@@ -159,14 +158,14 @@ impl DeviceTensor {
     pub fn reshaped(&self, shape: TVec<usize>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(t.reshaped(shape)?),
-            Self::ArenaView(t) => Ok(Self::ArenaView(t.reshaped(shape)?)),
+            Self::View(t) => Ok(Self::View(t.reshaped(shape)?)),
         }
     }
 
     pub fn restrided(&self, strides: TVec<isize>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(t.restrided(strides)?),
-            Self::ArenaView(t) => Ok(Self::ArenaView(t.restrided(strides)?)),
+            Self::View(t) => Ok(Self::View(t.restrided(strides)?)),
         }
     }
 
@@ -230,7 +229,7 @@ impl DeviceTensor {
 
         Ok(match self {
             Self::Owned(o) => o.to_host()?,
-            Self::ArenaView(v) => v.to_host()?.into(),
+            Self::View(v) => v.to_host()?.into(),
         })
     }
 }
@@ -239,10 +238,10 @@ impl Display for DeviceTensor {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Owned(o) => o.fmt(f),
-            Self::ArenaView(v) => {
+            Self::View(v) => {
                 let content =
                     v.to_host().unwrap().dump(false).unwrap_or_else(|e| format!("Error : {e:?}"));
-                write!(f, "ArenaView: {{ {content} }}")
+                write!(f, "View: {{ {content} }}")
             }
         }
     }
@@ -296,7 +295,7 @@ impl TensorStorage for DeviceTensor {
     fn is_exotic(&self) -> bool {
         match self {
             Self::Owned(owned) => owned.exotic_fact().is_some(),
-            Self::ArenaView(view) => view.exotic_fact().is_some(),
+            Self::View(view) => view.exotic_fact().is_some(),
         }
     }
 
@@ -322,9 +321,9 @@ impl TensorStorage for DeviceTensor {
     }
 }
 
-impl From<DeviceArenaView> for DeviceTensor {
-    fn from(view: DeviceArenaView) -> Self {
-        Self::ArenaView(view)
+impl From<DeviceView> for DeviceTensor {
+    fn from(view: DeviceView) -> Self {
+        Self::View(view)
     }
 }
 

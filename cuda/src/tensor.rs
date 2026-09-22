@@ -325,7 +325,7 @@ mod tests {
                 memory_size: 4096,
             })?;
             let view = pool.tensor_for_node(0, f32::datum_type(), &[4, 6])?;
-            assert!(matches!(view, DeviceTensor::ArenaView(_)));
+            assert!(matches!(view, DeviceTensor::View(_)));
             let ctx = get_context()?;
             ctx.flat_copy(&input.clone().into_device()?, 0, &view, 0, 4 * 6 * 4)?;
             ctx.synchronize()?;

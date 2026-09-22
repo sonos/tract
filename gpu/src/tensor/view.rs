@@ -9,9 +9,18 @@ use crate::utils::check_strides_validity;
 
 use super::OwnedDeviceTensor;
 
+/// A window into a device buffer owned by someone else, described by shape,
+/// strides and a byte offset.
+///
+/// The buffer is kept alive by the `Arc`, but its *contents* are not: the turn
+/// arena hands out windows at offsets the memory schema deliberately reuses,
+/// and a state-owned buffer is written by the op that owns it. So a view is
+/// good for the turn that produced it and no longer -- it is read by the nodes
+/// downstream of its producer, and copied out at the model boundary rather
+/// than handed to the application.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
-pub struct DeviceArenaView {
-    pub(crate) arena: Arc<Box<dyn OwnedDeviceTensor>>,
+pub struct DeviceView {
+    pub(crate) buffer: Arc<Box<dyn OwnedDeviceTensor>>,
     pub(crate) dt: DatumType,
     pub(crate) len: usize,
     pub(crate) shape: TVec<usize>,
@@ -20,7 +29,7 @@ pub struct DeviceArenaView {
     pub(crate) exotic_fact: Option<Box<dyn ExoticFact>>,
 }
 
-impl DeviceArenaView {
+impl DeviceView {
     #[inline]
     pub fn shape(&self) -> &[usize] {
         self.shape.as_slice()
@@ -39,11 +48,11 @@ impl DeviceArenaView {
 
     /// Get underlying inner device buffer.
     pub fn device_buffer(&self) -> &dyn DeviceBuffer {
-        self.arena.device_buffer()
+        self.buffer.device_buffer()
     }
 
     pub fn device_buffer_ptr(&self) -> *const c_void {
-        self.arena.device_buffer().ptr()
+        self.buffer.device_buffer().ptr()
     }
 
     /// Get underlying inner device buffer offset
@@ -71,7 +80,7 @@ impl DeviceArenaView {
         } else {
             self.len() * self.dt.size_of()
         };
-        self.arena.get_bytes_slice(self.offset_bytes, len)
+        self.buffer.get_bytes_slice(self.offset_bytes, len)
     }
 
     /// Reshaped tensor with given shape.
@@ -83,7 +92,7 @@ impl DeviceArenaView {
         }
         if shape.as_slice() != self.shape() {
             Ok(Self {
-                arena: Arc::clone(&self.arena),
+                buffer: Arc::clone(&self.buffer),
                 dt: self.dt,
                 len: self.len,
                 strides: Tensor::natural_strides(&shape),
@@ -103,7 +112,7 @@ impl DeviceArenaView {
 
         if strides.as_slice() != self.strides() {
             Ok(Self {
-                arena: Arc::clone(&self.arena),
+                buffer: Arc::clone(&self.buffer),
                 dt: self.dt,
                 len: self.len,
                 strides,
@@ -137,7 +146,7 @@ impl DeviceArenaView {
     }
 }
 
-impl Display for DeviceArenaView {
+impl Display for DeviceView {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let content = self
             .clone()
@@ -145,6 +154,6 @@ impl Display for DeviceArenaView {
             .unwrap()
             .dump(false)
             .unwrap_or_else(|e| format!("Error : {e:?}"));
-        write!(f, "DeviceArenaView: {{ {content} }}")
+        write!(f, "DeviceView: {{ {content} }}")
     }
 }
