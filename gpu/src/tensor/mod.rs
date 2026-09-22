@@ -179,6 +179,41 @@ impl DeviceTensor {
         Tensor::from_storage(dt, &shape, self)
     }
 
+    /// The first `len` along `axis`, as a view keeping this tensor's strides.
+    ///
+    /// What a buffer holding spare capacity hands out: the live prefix costs
+    /// nothing to describe, and the tail it leaves behind is simply not part of
+    /// the shape. A [`DeviceView`] is turn-scoped, so this is for a reader
+    /// downstream of the producer, never for the application.
+    ///
+    /// The result is strided wherever `axis` is not the outermost: a consumer
+    /// has to read shape and strides rather than assume a packed tensor.
+    pub fn prefix_window(&self, axis: usize, len: usize) -> TractResult<DeviceTensor> {
+        ensure!(axis < self.rank(), "axis {axis} out of rank {}", self.rank());
+        ensure!(
+            len <= self.shape()[axis],
+            "window of {len} on axis {axis} of extent {}",
+            self.shape()[axis]
+        );
+        ensure!(!self.is_exotic(), "an exotic tensor carries no shape to window");
+        let mut shape: TVec<usize> = self.shape().into();
+        shape[axis] = len;
+        let (buffer, offset_bytes) = match self {
+            Self::Owned(owned) => (Arc::new(tract_core::dyn_clone::clone_box(&**owned)), 0),
+            Self::View(view) => (Arc::clone(&view.buffer), view.offset_bytes),
+        };
+        Ok(DeviceView {
+            buffer,
+            dt: self.datum_type(),
+            len: shape.iter().product(),
+            shape,
+            strides: self.strides().into(),
+            offset_bytes,
+            exotic_fact: None,
+        }
+        .into())
+    }
+
     /// Slice `[start, end)` along `axis` by a copy made on the device, or `None`
     /// where the backends' `copy_nd` kernels cannot serve the case and the
     /// caller has to fall back.

@@ -135,6 +135,27 @@ impl CudaFlashAttn {
         let m_view = mask.map(get_cuda_view).unwrap_or_else(|| null_ptr.as_view());
         let o_view = get_cuda_view(out);
 
+        // K and V may be a [B, H, L, D] window of a [B, H, C, D] buffer with spare
+        // capacity on the sequence axis, which is what a KV cache growing in
+        // place hands out. The kernel walks a head plane by its capacity and
+        // bounds every read on len_kv, so only the shape of the striding is
+        // constrained.
+        let capacity = |t: &DeviceTensor, what: &str| -> TractResult<i32> {
+            let (shape, strides) = (t.shape(), t.strides());
+            let head_stride = strides[1];
+            ensure!(
+                strides[3] == 1
+                    && strides[2] == d as isize
+                    && head_stride >= (shape[2] * d) as isize
+                    && head_stride % d as isize == 0
+                    && strides[0] == shape[1] as isize * head_stride,
+                "CUDA flash attention expects {what} packed, or a sequence window of a buffer that is, got shape {shape:?} strides {strides:?}"
+            );
+            Ok((head_stride / d as isize) as i32)
+        };
+        let k_cap = capacity(k, "K")?;
+        let v_cap = capacity(v, "V")?;
+
         let mask_strides = if let Some(m) = mask {
             let strides = compute_broadcast_strides(m.shape(), m.strides())?;
             (strides[0], strides[1])
@@ -164,6 +185,8 @@ impl CudaFlashAttn {
             launch_args.push_i32(head_ratio);
             launch_args.push_i32(len_q);
             launch_args.push_i32(k.shape()[2]);
+            launch_args.push_i32(k_cap);
+            launch_args.push_i32(v_cap);
             launch_args.push_i32(mask_strides.0);
             launch_args.push_i32(mask_strides.1);
             launch_args.push::<f32>(scale);
@@ -269,6 +292,54 @@ mod tests {
 
             cuda_output.to_host()?.close_enough(&ref_output[0], Approximation::Approximate)?;
             Ok(())
+        })
+    }
+
+    /// K and V as the live prefix of a buffer with spare capacity: what a KV
+    /// cache growing in place offers. The answer must not change, and the
+    /// garbage filling the tail must not reach it.
+    #[test]
+    fn attention_over_a_kv_cache_with_spare_capacity() -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            let (b, qh, kvh, ql, kl, d, capacity) = (2, 4, 2, 1, 70, 64, 128);
+            let f16s = |n: usize, off: usize| {
+                (0..n).map(|i| f16::from_f32((i + off) as f32 / n as f32)).collect::<Vec<_>>()
+            };
+            let q = Tensor::from_shape(&[b, qh, ql, d], &f16s(b * qh * ql * d, 0))?;
+            let kv_shape = [b, kvh, kl, d];
+            let k = Tensor::from_shape(&kv_shape, &f16s(b * kvh * kl * d, 1))?;
+            let v = Tensor::from_shape(&kv_shape, &f16s(b * kvh * kl * d, 2))?;
+
+            // The same K and V, sitting in a buffer whose tail is deliberately
+            // not what the answer should depend on.
+            let mut buffers = vec![];
+            for t in [&k, &v] {
+                let mut padded = Tensor::from_shape(
+                    &[b, kvh, capacity, d],
+                    &vec![f16::from_f32(-7.0); b * kvh * capacity * d],
+                )?;
+                padded.assign_slice(0..kl, t, 0..kl, 2)?;
+                buffers.push(padded.into_device()?);
+            }
+            let windowed: Vec<DeviceTensor> =
+                buffers.iter().map(|t| t.prefix_window(2, kl)).collect::<TractResult<Vec<_>>>()?;
+            assert!(matches!(windowed[0], DeviceTensor::View(_)));
+            assert_ne!(windowed[0].strides(), Tensor::natural_strides(&kv_shape).as_slice());
+
+            let q = q.into_device()?;
+            let packed = CudaFlashAttn.eval(
+                stream,
+                &q,
+                &k.into_device()?,
+                &v.into_device()?,
+                None,
+                1.0,
+                false,
+            )?;
+            let over_capacity =
+                CudaFlashAttn.eval(stream, &q, &windowed[0], &windowed[1], None, 1.0, false)?;
+            let (packed, over_capacity) = (packed.to_host()?, over_capacity.to_host()?);
+            over_capacity.close_enough(&packed, Approximation::Exact)
         })
     }
 
