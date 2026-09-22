@@ -181,17 +181,10 @@ impl TractCudaContext {
     /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
     /// `cuda-cudart-dev-<ver>`.
     fn build_nvrtc_opts(&self, lib: LibraryName) -> TractResult<Vec<String>> {
-        // TMA on consumer Blackwell needs the architecture-specific target
-        // (sm_120a), same relationship as Hopper WGMMA vs sm_90a. Other
-        // libraries stay on the portable sm_120 so we do not change their ISA.
-        let arch = if lib == LibraryName::FlashAttn && self.device_properties.major == 12 {
-            "--gpu-architecture=sm_120a".into()
-        } else {
-            format!(
-                "--gpu-architecture=sm_{}{}",
-                self.device_properties.major, self.device_properties.minor
-            )
-        };
+        let arch = format!(
+            "--gpu-architecture=sm_{}{}",
+            self.device_properties.major, self.device_properties.minor
+        );
         log::info!("tract-cuda: NVRTC target architecture {arch} ({lib:?})");
 
         let cuda_inc = resolve_toolkit_include_dir()?;
@@ -211,12 +204,15 @@ impl TractCudaContext {
             );
         }
 
-        let opts = vec![
+        let mut opts = vec![
             "--std=c++17".into(),
             arch,
             format!("-I{}", cuda_inc.display()),
             format!("-I{}", cccl_root.display()),
         ];
+        if lib == LibraryName::FlashAttn && tma_disabled_by_env() {
+            opts.push("-DTRACT_CUDA_NO_TMA=1".into());
+        }
         log::info!("tract-cuda: NVRTC opts = {opts:?}");
         Ok(opts)
     }
@@ -507,6 +503,12 @@ fn resolve_cuda_home() -> Option<(&'static str, PathBuf)> {
         "tract-cuda: no CUDA_HOME found (env vars unset, /usr/local/cuda absent, nvcc not in PATH)"
     );
     None
+}
+
+/// `TRACT_CUDA_NO_TMA=1` compiles the flash-attention library without TMA and keeps
+/// the launch on the `cp.async.cg` path, so both can be compared on one build.
+pub fn tma_disabled_by_env() -> bool {
+    std::env::var_os("TRACT_CUDA_NO_TMA").is_some_and(|v| v != "0" && !v.is_empty())
 }
 
 /// Resolve the toolkit include dir — the directory that holds `cuda_fp16.h`. CUDA 13
