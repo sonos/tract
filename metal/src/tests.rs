@@ -12,6 +12,7 @@ mod tests {
     use tract_core::transform::ModelTransform;
     use tract_gpu::device::get_context;
     use tract_gpu::memory::{DeviceMemSchema, DeviceMemoryPool, DeviceResolvedMemSchema};
+    use tract_gpu::ops::dyn_kv_cache::{GpuDynKVCache, GpuDynKVCacheState};
     use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, LazyHostStorage};
 
     #[test]
@@ -1013,5 +1014,105 @@ mod tests {
             .close_enough(&Tensor::from_shape(&[2, 3], &[1f32; 6])?, Approximation::Exact)?;
         assert!(first[0].storage_as::<LazyHostStorage>().unwrap().is_materialized());
         Ok(())
+    }
+
+    fn kv_op() -> GpuDynKVCache {
+        GpuDynKVCache {
+            name: "kv".to_string(),
+            axis: 2,
+            past_sequence_fact: f32::fact([1, 2, 0, 3]),
+            input_sequence_fact: f32::fact([1, 2, 1, 3]),
+        }
+    }
+
+    fn kv_state() -> GpuDynKVCacheState {
+        GpuDynKVCacheState::new("kv".to_string(), 2, f32::fact([1, 2, 0, 3]))
+    }
+
+    /// Token `t` of a `[1, 2, S, 3]` cache, every value `t`, so the cache at
+    /// length `n` is `[[0..n], [0..n]]` whatever order it was built in.
+    fn kv_token(t: usize) -> TractResult<Tensor> {
+        Tensor::from_shape(&[1, 2, 1, 3], &[t as f32; 6])
+    }
+
+    fn kv_expected(tokens: &[usize]) -> TractResult<Tensor> {
+        let n = tokens.len();
+        let mut data = vec![0f32; 2 * n * 3];
+        for h in 0..2 {
+            for (s, t) in tokens.iter().enumerate() {
+                for d in 0..3 {
+                    data[h * n * 3 + s * 3 + d] = *t as f32;
+                }
+            }
+        }
+        Tensor::from_shape(&[1, 2, n, 3], &data)
+    }
+
+    fn kv_push(
+        state: &mut GpuDynKVCacheState,
+        op: &GpuDynKVCache,
+        t: usize,
+    ) -> TractResult<Arc<Tensor>> {
+        let token = kv_token(t)?.into_device()?.into_tensor().into_tvalue();
+        let out = state.eval(&EvalContext::out_of_plan(), op, tvec!(token))?;
+        out[0].to_device_tensor()?.to_host()
+    }
+
+    /// One token per turn, the decode shape. The cache reads as everything
+    /// pushed, and re-seats its buffer a logarithmic number of times rather than
+    /// once a turn -- which is the whole point of holding spare capacity.
+    #[test]
+    fn kv_cache_grows_geometrically() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (op, mut state) = (kv_op(), kv_state());
+            for t in 0..64 {
+                let out = kv_push(&mut state, &op, t)?;
+                out.close_enough(
+                    &kv_expected(&(0..=t).collect::<Vec<_>>())?,
+                    Approximation::Exact,
+                )?;
+            }
+            assert!(
+                state.reallocs() <= 8,
+                "64 single-token appends re-seated the buffer {} times",
+                state.reallocs()
+            );
+            assert!(state.capacity() >= 64);
+            Ok(())
+        })
+    }
+
+    /// Rolling back to a shared prefix is a shorter read of the same buffer, and
+    /// the decode goes on appending over the tail it dropped.
+    #[test]
+    fn kv_cache_truncates_and_grows_again() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (op, mut state) = (kv_op(), kv_state());
+            for t in 0..10 {
+                kv_push(&mut state, &op, t)?;
+            }
+            let (capacity, reallocs) = (state.capacity(), state.reallocs());
+            state.truncate(4)?;
+            assert_eq!(state.capacity(), capacity, "truncation moved the buffer");
+            assert_eq!(state.reallocs(), reallocs);
+
+            let out = kv_push(&mut state, &op, 100)?;
+            out.close_enough(&kv_expected(&[0, 1, 2, 3, 100])?, Approximation::Exact)
+        })
+    }
+
+    /// A checkpoint carries the live prefix and nothing of the spare tail.
+    #[test]
+    fn kv_cache_checkpoint_carries_the_live_prefix() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (op, mut state) = (kv_op(), kv_state());
+            for t in 0..5 {
+                kv_push(&mut state, &op, t)?;
+            }
+            assert!(state.capacity() > 5, "this test wants a buffer with a spare tail");
+            let mut saved = vec![];
+            state.save_to(&mut saved)?;
+            saved[0].close_enough(&kv_expected(&[0, 1, 2, 3, 4])?, Approximation::Exact)
+        })
     }
 }
