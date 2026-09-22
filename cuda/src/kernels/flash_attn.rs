@@ -12,7 +12,7 @@ use tract_core::internal::*;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 
-use crate::context::{TractCudaStream, cuda_context};
+use crate::context::{TractCudaStream, cuda_context, tma_disabled_by_env};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::compute_broadcast_strides;
 use crate::kernels::{LibraryName, WARP_SIZE, get_cuda_view, launch_args};
@@ -182,7 +182,7 @@ impl CudaFlashAttn {
         // TMA SWIZZLE_128B matches the software swizzle the MMA already uses.
         // Jetson / 4060 have no TMA; Hopper SM90 is a separate path.
         let sm_major = ctxt.properties().major;
-        let use_tma = sm_major == 12 && padded_d == 64 && d == 64;
+        let use_tma = sm_major == 12 && padded_d == 64 && d == 64 && !tma_disabled_by_env();
         let smem_size = if use_tma { smem_size + 2 * size_of::<u64>() } else { smem_size };
 
         let mask_mode = if is_causal {
