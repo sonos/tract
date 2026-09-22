@@ -7,7 +7,7 @@ use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 use crate::device::{DeviceBuffer, get_context};
 use crate::utils::check_strides_validity;
 
-use super::OwnedDeviceTensor;
+use super::{DeviceTensor, OwnedDeviceTensor};
 
 /// A window into a device buffer owned by someone else, described by shape,
 /// strides and a byte offset.
@@ -125,7 +125,30 @@ impl DeviceView {
         }
     }
 
+    /// True where the bytes of this view are the tensor, in order and with no
+    /// gap: what a reader working from a pointer and a length may assume.
+    pub fn is_packed(&self) -> bool {
+        self.strides.as_slice() == Tensor::natural_strides(&self.shape).as_slice()
+    }
+
     pub fn to_host(&self) -> TractResult<Tensor> {
+        // A window with spare capacity is read by walking it, and `as_bytes`
+        // reads a flat run: pack it on the device first, where the copy is.
+        if !self.is_packed() {
+            ensure!(self.exotic_fact.is_none(), "an exotic tensor is never strided");
+            let packed = DeviceTensor::uninitialized_dt(self.dt, &self.shape)?;
+            let me: DeviceTensor = self.clone().into();
+            get_context()?.copy_nd(
+                &me,
+                0,
+                &self.strides,
+                &packed,
+                0,
+                &self.shape,
+                packed.strides(),
+            )?;
+            return Ok((*packed.to_host()?).clone());
+        }
         get_context()?.synchronize()?;
         let content = self.as_bytes();
         unsafe {
