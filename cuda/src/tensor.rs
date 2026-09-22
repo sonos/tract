@@ -340,6 +340,7 @@ mod tests {
             axis: 2,
             past_sequence_fact: f32::fact([1, 2, 0, 3]),
             input_sequence_fact: f32::fact([1, 2, 1, 3]),
+            window_output: false,
         }
     }
 

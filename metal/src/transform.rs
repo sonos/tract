@@ -271,6 +271,10 @@ impl MetalTransform {
             .rewrite(&(), model)?;
 
         rewire_syncs(model)?;
+
+        Rewriter::default()
+            .with_rule_for("window_kv_cache_output", window_kv_cache_output)
+            .rewrite(&(), model)?;
         Ok(())
     }
 }
@@ -642,4 +646,24 @@ fn split_multi_axis_reduce(
     }
     patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
+}
+
+/// The MLX kernels read K and V through strides, so a cache feeding one may hand
+/// out a window of its buffer instead of packing the live prefix every turn. A
+/// sync to host packs on the way out, so a cache the application also holds is
+/// served too. MFA is not here: it reads K and V packed.
+///
+/// Runs after `rewire_syncs`, or a cache that is also a model output would look
+/// like it had no consumer but the attention.
+fn window_kv_cache_output(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _node_name: &str,
+    op: &tract_gpu::ops::dyn_kv_cache::GpuDynKVCache,
+) -> TractResult<Option<TypedModelPatch>> {
+    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, |succ| {
+        succ.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
+            || succ.op_is::<tract_gpu::sync::DeviceSync>()
+    })
 }

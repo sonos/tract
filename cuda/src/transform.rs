@@ -148,6 +148,9 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("pad_q40_weights", rewrite_rules::pad_q40_weights)
             .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("window_kv_cache_output", window_kv_cache_output)
+            .rewrite(&(), model)?;
         Ok(())
     }
 }
@@ -651,6 +654,7 @@ mod test {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
     fn sdpa_model(head_dim: usize) -> TractResult<(TypedModel, TVec<TValue>)> {
         let (heads, seq) = (4usize, 32usize);
@@ -680,6 +684,76 @@ mod tests {
         Ok((model, tvec!(mk(1)?, mk(2)?, mk(3)?)))
     }
 
+    /// A cache whose K (or V) feeds the flash-attention kernel may hand out a
+    /// window; one whose consumer is the exploded attention may not, because
+    /// those primitives read a packed tensor.
+    fn kv_cache_sdpa_model(head_dim: usize) -> TractResult<TypedModel> {
+        let (heads, seq) = (4usize, 32usize);
+        let dims = |s: &[usize]| s.iter().map(|d| TDim::from(*d as i64)).collect::<TVec<_>>();
+        let q_fact = f16::fact(dims(&[1, heads, seq, head_dim]));
+        let step_fact = f16::fact(dims(&[1, heads, 1, head_dim]));
+        let mut model = TypedModel::default();
+        let q = model.add_source("q", q_fact)?;
+        let mut cached = tvec!();
+        for name in ["k", "v"] {
+            let src = model.add_source(name, step_fact.clone())?;
+            cached.push(
+                model.wire_node(
+                    format!("{name}_cache"),
+                    DynKeyValueCache {
+                        name: format!("{name}_cache"),
+                        axis: 2,
+                        past_sequence_fact: f16::fact(dims(&[1, heads, seq - 1, head_dim])),
+                        input_sequence_fact: step_fact.clone(),
+                    },
+                    &[src],
+                )?[0],
+            );
+        }
+        let out = model.wire_node(
+            "sdpa",
+            Sdpa {
+                scale: None,
+                datum_type: f16::datum_type(),
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            },
+            &[q, cached[0], cached[1]],
+        )?;
+        model.select_output_outlets(&out)?;
+        Ok(model)
+    }
+
+    fn caches_window_their_output(model: &TypedModel) -> Vec<bool> {
+        model
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>())
+            .map(|op| op.window_output)
+            .collect()
+    }
+
+    #[test]
+    fn kv_cache_feeding_flash_attention_windows_its_output() -> TractResult<()> {
+        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(64)?)?;
+        let windowing = caches_window_their_output(&cuda);
+        assert_eq!(windowing.len(), 2, "expected the K and V caches to survive");
+        assert!(windowing.iter().all(|w| *w), "a cache feeding flash attention should window");
+        Ok(())
+    }
+
+    #[test]
+    fn kv_cache_feeding_exploded_attention_packs_its_output() -> TractResult<()> {
+        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(8)?)?;
+        let windowing = caches_window_their_output(&cuda);
+        assert_eq!(windowing.len(), 2, "expected the K and V caches to survive");
+        assert!(
+            windowing.iter().all(|w| !*w),
+            "the exploded attention reads packed tensors, so its caches must pack"
+        );
+        Ok(())
+    }
+
     #[test]
     fn sdpa_at_supported_head_dim_routes_to_flash_attention() -> TractResult<()> {
         let (model, _) = sdpa_model(64)?;
@@ -704,4 +778,24 @@ mod tests {
         found[0].close_enough(&expected[0], Approximation::Approximate)?;
         Ok(())
     }
+}
+
+/// The flash attention kernel takes the K and V plane stride as an argument, so
+/// a cache feeding one may hand out a window of its buffer instead of packing
+/// the live prefix every turn. A sync to host packs on the way out, so a cache
+/// the application also holds is served too.
+///
+/// Runs after `rewire_syncs`, or a cache that is also a model output would look
+/// like it had no consumer but the attention.
+fn window_kv_cache_output(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _node_name: &str,
+    op: &tract_gpu::ops::dyn_kv_cache::GpuDynKVCache,
+) -> TractResult<Option<TypedModelPatch>> {
+    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, |succ| {
+        succ.op_is::<crate::ops::flash_attn::CudaFlashAttention>()
+            || succ.op_is::<tract_gpu::sync::DeviceSync>()
+    })
 }

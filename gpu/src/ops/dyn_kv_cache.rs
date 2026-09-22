@@ -1,5 +1,6 @@
 use crate::device::get_context;
 use crate::fact::DeviceTypedFactExt;
+use crate::rule_ensure;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use derive_new::new;
 use tract_core::internal::*;
@@ -21,6 +22,11 @@ pub struct GpuDynKVCacheState {
     len: usize,
     #[new(default)]
     reallocs: usize,
+    /// Hand the live prefix out as a window over the buffer instead of packing
+    /// it: set only where every consumer reads shape and strides. See
+    /// [`GpuDynKVCache::window_output`].
+    #[new(default)]
+    window_output: bool,
 }
 
 impl GpuDynKVCacheState {
@@ -136,7 +142,13 @@ impl OpState for GpuDynKVCacheState {
         ensure!(inputs.len() == 1);
         let input = inputs.into_iter().next().unwrap();
         self.push(input.to_device_tensor()?)?;
-        Ok(tvec!(self.valid()?.into_tensor().into_tvalue()))
+        let out = if self.window_output {
+            let buffer = self.buffer.as_ref().unwrap();
+            buffer.prefix_window(self.axis, self.len)?
+        } else {
+            self.valid()?
+        };
+        Ok(tvec!(out.into_tensor().into_tvalue()))
     }
 
     fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
@@ -166,12 +178,46 @@ impl GpuDynKVCacheState {
     }
 }
 
+/// Turn a cache's [`GpuDynKVCache::window_output`] on where `tolerates` accepts
+/// every one of its consumers.
+///
+/// A rewrite rather than a decision taken at translation, because only the
+/// finished graph says which kernel each `Sdpa` became -- and only the backend
+/// that chose it knows whether that kernel reads strides. Every consumer has to
+/// agree: one that assumes a packed tensor would read the spare capacity as if
+/// it were cache.
+pub fn window_output_for(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &GpuDynKVCache,
+    tolerates: impl Fn(&TypedNode) -> bool,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_ensure!(!op.window_output);
+    let succs = model.all_succ(node.id)?.context("A KV cache with no consumer")?;
+    rule_ensure!(!succs.is_empty() && succs.iter().copied().all(tolerates));
+    TypedModelPatch::replace_single_op(
+        model,
+        node,
+        &node.inputs,
+        GpuDynKVCache { window_output: true, ..op.clone() },
+    )
+    .map(Some)
+}
+
 #[derive(Clone)]
 pub struct GpuDynKVCache {
     pub name: String,
     pub past_sequence_fact: TypedFact,
     pub input_sequence_fact: TypedFact,
     pub axis: usize,
+    /// Emit the live cache as a window over the buffer that holds it, rather
+    /// than packing it into a tensor of its own every turn.
+    ///
+    /// The window is strided wherever the cache axis is not the outermost --
+    /// for `[B, H, S, D]` cut on `S` it always is -- so a consumer has to read
+    /// shape and strides. Off by default for that reason: a backend turns it on
+    /// through [`window_output_for`] once it knows which kernel won.
+    pub window_output: bool,
 }
 
 impl GpuDynKVCache {
@@ -181,6 +227,7 @@ impl GpuDynKVCache {
             axis: op.axis,
             past_sequence_fact: op.past_sequence_fact.clone(),
             input_sequence_fact: op.input_sequence_fact.clone(),
+            window_output: false,
         }
     }
 }
@@ -197,6 +244,7 @@ impl PartialEq for GpuDynKVCache {
             && self.axis == other.axis
             && self.past_sequence_fact == other.past_sequence_fact
             && self.input_sequence_fact == other.input_sequence_fact
+            && self.window_output == other.window_output
     }
 }
 
@@ -215,7 +263,7 @@ impl Op for GpuDynKVCache {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {}", self.axis)])
+        Ok(vec![format!("axis: {}, window_output: {}", self.axis, self.window_output)])
     }
 
     op_as_typed_op!();
@@ -225,11 +273,10 @@ impl EvalOp for GpuDynKVCache {
     not_out_of_plan!();
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
-        Ok(Some(Box::new(GpuDynKVCacheState::new(
-            self.name.clone(),
-            self.axis,
-            self.past_sequence_fact.clone(),
-        ))))
+        let mut state =
+            GpuDynKVCacheState::new(self.name.clone(), self.axis, self.past_sequence_fact.clone());
+        state.window_output = self.window_output;
+        Ok(Some(Box::new(state)))
     }
 }
 

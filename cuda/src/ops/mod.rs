@@ -1,5 +1,5 @@
 mod conv;
-mod flash_attn;
+pub mod flash_attn;
 mod fused_axis_op;
 mod gemm;
 mod iff;
