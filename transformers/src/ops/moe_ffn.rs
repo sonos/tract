@@ -485,7 +485,7 @@ fn router_weights_as_2d(view: ArrayViewD<'_, f32>) -> TractResult<ArrayView2<'_,
 
 fn plain_i64_slice<'a>(tensor: &'a Tensor, label: &str) -> TractResult<&'a [i64]> {
     tensor
-        .try_as_plain()
+        .try_as_plain_ram()
         .with_context(|| format!("{label} is not a plain tensor"))?
         .as_slice::<i64>()
         .with_context(|| format!("{label} is not an i64 slice"))
@@ -493,7 +493,7 @@ fn plain_i64_slice<'a>(tensor: &'a Tensor, label: &str) -> TractResult<&'a [i64]
 
 fn plain_f32_slice<'a>(tensor: &'a Tensor, label: &str) -> TractResult<&'a [f32]> {
     tensor
-        .try_as_plain()
+        .try_as_plain_ram()
         .with_context(|| format!("{label} is not a plain tensor"))?
         .as_slice::<f32>()
         .with_context(|| format!("{label} is not an f32 slice"))
@@ -575,8 +575,8 @@ impl TypedOp for RouteTopK {
         );
         let route_count = token_count_dim(&inputs[0].shape) * self.k;
         Ok(tvec![
-            i64::datum_type().fact(&[route_count.clone()]),
-            i64::datum_type().fact(&[route_count.clone()]),
+            i64::datum_type().fact(std::slice::from_ref(&route_count)),
+            i64::datum_type().fact(std::slice::from_ref(&route_count)),
             f32::datum_type().fact(&[route_count]),
         ])
     }
@@ -1107,7 +1107,7 @@ impl EvalOp for RoutedQ40MatMul {
         let mut state = PreparedRoutedMatMulState::default();
         let mut output = Tensor::zero_dt(f32::datum_type(), &[route_count, n_dim])?;
 
-        let input_plain = input_t.try_as_plain()?;
+        let input_plain = input_t.try_as_plain_ram()?;
         let input = input_plain.as_slice::<f32>()?;
         let base = input.as_ptr();
         let item_size = f32::datum_type().size_of() as isize;
@@ -1140,9 +1140,9 @@ impl EvalOp for RoutedQ40MatMul {
                 &mut state,
             )?;
 
-            let expert_plain = expert_output.try_as_plain()?;
+            let expert_plain = expert_output.try_as_plain_ram()?;
             let expert = expert_plain.as_slice::<f32>()?;
-            let mut output_plain = output.try_as_plain_mut()?;
+            let mut output_plain = output.try_as_plain_ram_mut()?;
             let output = output_plain.as_slice_mut::<f32>()?;
             for (slot, &route) in routes.iter().enumerate() {
                 output[route * n_dim..(route + 1) * n_dim]
@@ -1333,7 +1333,7 @@ pub fn transpose_block_quant_experts(input: &Tensor) -> TractResult<Tensor> {
     for group in 0..g {
         let q = block_quant_slice(bqs.value(), &*format, a, b, group);
         let deq_t = format.dequant_f32(q)?;
-        let deq = deq_t.try_as_plain()?.as_slice::<f32>()?;
+        let deq = deq_t.try_as_plain_ram()?.as_slice::<f32>()?;
         for i in 0..a {
             for j in 0..b {
                 transposed[j * a + i] = deq[i * b + j];
@@ -1620,14 +1620,12 @@ impl TypedOp for MoeFfn {
         let w2_const = model.node(node.inputs[3].node).op_as::<Const>();
         let w3_const =
             if self.has_w3 { model.node(node.inputs[4].node).op_as::<Const>() } else { None };
-        if wg_const.is_some()
-            && w1_const.is_some()
-            && w2_const.is_some()
+        if let (Some(wg_const), Some(w1_const), Some(w2_const)) = (wg_const, w1_const, w2_const)
             && (!self.has_w3 || w3_const.is_some())
         {
-            let wg_tensor = wg_const.unwrap().val().clone();
-            let w1_tensor = w1_const.unwrap().val().clone();
-            let w2_tensor = w2_const.unwrap().val().clone();
+            let wg_tensor = wg_const.val().clone();
+            let w1_tensor = w1_const.val().clone();
+            let w2_tensor = w2_const.val().clone();
             let w3_tensor = w3_const.map(|c| c.val().clone());
 
             // Biases must be constants too, otherwise the subplans cannot bake
@@ -1828,10 +1826,10 @@ impl TypedOp for MoeFfn {
 
         let expert_inputs: &[usize] = if self.has_w3 { &[2, 3, 4] } else { &[2, 3] };
         for &input_ix in expert_inputs {
-            if let Some(konst) = model.node(node.inputs[input_ix].node).op_as::<Const>() {
-                if !konst.val().is_plain() {
-                    return Ok(None);
-                }
+            if let Some(konst) = model.node(node.inputs[input_ix].node).op_as::<Const>()
+                && !konst.val().is_plain()
+            {
+                return Ok(None);
             }
         }
         let cache_weights = |input_ix: usize| {
@@ -2403,7 +2401,7 @@ impl Q40LinearExpertState {
             self.combine_scale = Some(Tensor::zero_dt(f32::datum_type(), &[])?);
         }
         let scale = self.combine_scale.as_mut().unwrap();
-        let mut plain = scale.try_as_plain_mut()?;
+        let mut plain = scale.try_as_plain_ram_mut()?;
         plain.as_slice_mut::<f32>()?[0] = value;
         Ok(())
     }
@@ -2539,7 +2537,7 @@ impl Q40LinearExpertState {
 
             let activation_start = profile_start(profile);
             {
-                let mut hidden_plain = hidden.try_as_plain_mut()?;
+                let mut hidden_plain = hidden.try_as_plain_ram_mut()?;
                 let hidden_slice = hidden_plain.as_slice_mut::<f32>()?;
                 apply_silu_gate(
                     &mut hidden_slice[..routed_rows * plan.gate_up_dim],
@@ -2551,7 +2549,7 @@ impl Q40LinearExpertState {
             }
             activation_elapsed += profile_elapsed(activation_start);
 
-            let hidden_plain = hidden.try_as_plain()?;
+            let hidden_plain = hidden.try_as_plain_ram()?;
             let hidden_slice = hidden_plain.as_slice::<f32>()?;
             let hidden_base = hidden_slice.as_ptr();
             let hidden_row_stride_bytes = plan.gate_up_dim as isize * item_size;
@@ -2599,9 +2597,9 @@ impl Q40LinearExpertState {
                     down_elapsed += profile_elapsed(down_start);
 
                     let scatter_start = profile_start(profile);
-                    let y_plain = expert_out.try_as_plain()?;
+                    let y_plain = expert_out.try_as_plain_ram()?;
                     let y = y_plain.as_slice::<f32>()?;
-                    let mut output_plain = output_tensor.try_as_plain_mut()?;
+                    let mut output_plain = output_tensor.try_as_plain_ram_mut()?;
                     let output = output_plain.as_slice_mut::<f32>()?;
                     for route in 0..route_count {
                         let flat_route = output_row_offset + route;
@@ -2752,7 +2750,7 @@ impl OpState for OptMoeFfnState {
                 let n = tokens.len();
                 let mut x_batch = Tensor::zero_dt(f32::datum_type(), &[n, d_model])?;
                 {
-                    let mut x_batch_plain = x_batch.try_as_plain_mut()?;
+                    let mut x_batch_plain = x_batch.try_as_plain_ram_mut()?;
                     let x_batch_slice = x_batch_plain.as_slice_mut::<f32>()?;
                     for (i, &(t, _)) in tokens.iter().enumerate() {
                         let src = x.row(t);
@@ -2892,7 +2890,7 @@ mod tests {
         let k = *shape.last().context("Q40 tensor has no last axis")?;
         ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
         let m = shape[..shape.len() - 1].iter().product();
-        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let quant = Q4_0.quant_f32(tensor.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
         let packed = Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &shape));
         let fact = BlockQuantFact::new(Box::new(Q4_0), shape.iter().copied().collect());
@@ -2904,7 +2902,7 @@ mod tests {
         let k = *shape.last().context("Q40 tensor has no last axis")?;
         ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
         let m = shape[..shape.len() - 1].iter().product();
-        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let quant = Q4_0.quant_f32(tensor.try_as_plain_ram()?.as_slice::<f32>()?)?;
         let storage = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant))?;
         Ok(storage.into_tensor_with_shape(f32::datum_type(), &shape))
     }
@@ -2913,7 +2911,7 @@ mod tests {
         let shape = tensor.shape().to_vec();
         let k = *shape.last().context("Q40 tensor has no last axis")?;
         ensure!(k % Q4_0.block_len() == 0, "Q40 K axis must be a multiple of 32");
-        let quant = Q4_0.quant_f32(tensor.try_as_plain()?.as_slice::<f32>()?)?;
+        let quant = Q4_0.quant_f32(tensor.try_as_plain_ram()?.as_slice::<f32>()?)?;
         Q4_0.dequant_f32(&quant)?.into_shape(&shape)
     }
 
