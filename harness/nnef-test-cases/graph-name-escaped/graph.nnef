@@ -1,0 +1,7 @@
+version 1.0;
+
+graph i"my encoder"(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 4]);
+    output = mul(input, 2.0);
+}

@@ -1,3 +1,4 @@
+use crate::ast::dump::is_direct_identifier;
 use crate::ast::*;
 use crate::internal::*;
 use tract_core::ndarray::ArrayViewD;
@@ -180,10 +181,14 @@ impl<'a> IntoAst<'a> {
     }
 
     pub fn into_proto_model(mut self) -> TractResult<ProtoModel> {
+        let name_as_graph_id = self.model.name().is_some_and(|name| {
+            self.framework.allow_extended_identifier_syntax || is_direct_identifier(name)
+        });
         let mut properties = self
             .model
             .properties
             .iter()
+            .filter(|(k, _v)| !(name_as_graph_id && *k == TRACT_NAME))
             .sorted_by_key(|(k, _v)| k.to_owned())
             .map(|(k, v)| Ok(tuple_2(string(k), self.konst(k, v)?.as_ref().clone())))
             .collect::<TractResult<Vec<_>>>()?;
