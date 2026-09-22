@@ -314,8 +314,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
                                         const half *__restrict__ M, // [bs, len_q, len_kv]
                                         half *__restrict__ O,       // [bs, len_q, DIM]
                                         int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q,
-                                        int32_t len_kv, int32_t mask_b_stride,
-                                        int32_t mask_h_stride, float scale) {
+                                        int32_t len_kv, int32_t k_cap, int32_t v_cap,
+                                        int32_t mask_b_stride, int32_t mask_h_stride, float scale) {
     constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
     constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
     constexpr int MMA_M = 16, MMA_N = 8, MMA_K = 16;
@@ -342,8 +342,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
     // Base pointers
     const half *Qptr = Q + (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
-    const half *Kptr = K + (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
-    const half *Vptr = V + (((size_t)bid * kv_heads + kv_head_id) * (size_t)len_kv) * DIM;
+    // K and V may hold spare capacity past len_kv on the sequence axis -- a KV
+    // cache that grows in place hands out a window of a longer buffer -- so the
+    // head plane is k_cap rows, not len_kv. Everything below bounds on len_kv.
+    const half *Kptr = K + (((size_t)bid * kv_heads + kv_head_id) * (size_t)k_cap) * DIM;
+    const half *Vptr = V + (((size_t)bid * kv_heads + kv_head_id) * (size_t)v_cap) * DIM;
     half *Optr = O + (((size_t)bid * q_heads + hid) * (size_t)len_q + q_block_base) * DIM;
 
     const half *__restrict__ MaskBase = nullptr;
@@ -590,10 +593,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         void name(const half *__restrict__ Q, const half *__restrict__ K,                          \
                   const half *__restrict__ V, const half *__restrict__ M, half *__restrict__ O,    \
                   int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv,       \
-                  int32_t mask_b_stride, int32_t mask_h_stride, float scale) {                     \
+                  int32_t k_cap, int32_t v_cap, int32_t mask_b_stride, int32_t mask_h_stride,      \
+                  float scale) {                                                                   \
         attention_kernel<BLOCK_Q, BLOCK_KV, D, PADDED_D, 4, mask_mode, q_tile_mode>(               \
-            Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, mask_b_stride, mask_h_stride,        \
-            scale);                                                                                \
+            Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, k_cap, v_cap, mask_b_stride,         \
+            mask_h_stride, scale);                                                                 \
     }                                                                                              \
     }
 
