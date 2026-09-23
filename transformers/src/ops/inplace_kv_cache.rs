@@ -15,7 +15,6 @@
 //! kernel (reading buffer + length) would use.
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::transform::ModelTransform;
 use tract_nnef::tract_ndarray::{Array4, Ix4};
 
 use crate::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
@@ -295,24 +294,25 @@ fn mask_as_4d(mask: &TValue, q_len: usize, kv_len: usize) -> TractResult<Array4<
     ))?)
 }
 
-/// Rewrite rule: fuse `{DynKeyValueCache(K), DynKeyValueCache(V), Sdpa(Q,K,V[,mask])}` into a
-/// single stateful `InPlaceKvSdpa`, so existing decode models adopt the in-place cache
-/// transparently. Fires where each of Sdpa's K/V inputs is the output of a
-/// single-consumer `DynKeyValueCache` on the same axis; an explicit mask rides along as
-/// the fused op's fourth input. Intended to run AFTER `fuse_kv_cache_broadcast_rule`
-/// strips the GQA unsqueeze/broadcast/reshape chain
-/// (so the cache feeds Sdpa directly) — `InPlaceKvSdpa` does the GQA expansion itself, so
-/// the fusion also removes those broadcast ops.
+/// Fuse `{DynKeyValueCache(K), DynKeyValueCache(V), Sdpa(Q,K,V[,mask])}` into a single
+/// stateful `InPlaceKvSdpa`, so a decode grows its cache in place instead of copying the
+/// whole past into a fresh buffer every turn. Fires where each of Sdpa's K/V inputs is
+/// the output of a single-consumer `DynKeyValueCache` on the same axis; an explicit mask
+/// rides along as the fused op's fourth input.
+///
+/// Called from [`Sdpa::codegen`], so it never touches the decluttered form NNEF
+/// serializes, and a backend that claimed the pattern earlier — every GPU transform runs
+/// before optimize — leaves nothing here to match. `fuse_kv_cache_broadcast_rule` has
+/// stripped the GQA unsqueeze/broadcast/reshape chain by then, and `InPlaceKvSdpa` does
+/// the GQA expansion itself.
 ///
 /// Note: the fused op self-initializes an empty cache, so this replaces the
 /// `DynKeyValueCache` state-init/restore contract with the op's own state — equivalent
 /// for fresh inference; a model that restores a pre-seeded cache would need that state
 /// threaded into the op (follow-up).
-pub fn fuse_inplace_kv_sdpa_rule(
-    _ctx: &(),
+pub fn fuse_inplace_kv_sdpa(
     model: &TypedModel,
     node: &TypedNode,
-    node_name: &str,
     op: &Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
     // (Q, K, V), with or without an explicit mask
@@ -345,7 +345,7 @@ pub fn fuse_inplace_kv_sdpa_rule(
     let mut patch = TypedModelPatch::default();
     let taps = patch.taps(model, &inputs)?;
     let fused = patch.wire_node(
-        format!("{node_name}.inplace_kv_sdpa"),
+        format!("{}.inplace_kv_sdpa", node.name),
         InPlaceKvSdpa {
             name: kc.name.clone(),
             past_sequence_fact: kc.past_sequence_fact.clone(),
@@ -357,23 +357,6 @@ pub fn fuse_inplace_kv_sdpa_rule(
     )?;
     patch.shunt_outside(model, node.id.into(), fused[0])?;
     Ok(Some(patch))
-}
-
-/// Strip the GQA broadcast chain, then fuse `cache -> Sdpa` into `InPlaceKvSdpa`.
-#[derive(Debug, Default)]
-pub struct InPlaceKvSdpaTransform;
-
-impl ModelTransform for InPlaceKvSdpaTransform {
-    fn name(&self) -> StaticName {
-        "fuse_inplace_kv_sdpa".into()
-    }
-    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        Rewriter::default()
-            .with_rule_for("fuse-kv-broadcast", crate::ops::sdpa::fuse_kv_cache_broadcast_rule)
-            .with_rule_for("fuse-inplace-kv-sdpa", fuse_inplace_kv_sdpa_rule)
-            .rewrite(&(), model)?;
-        model.compact()
-    }
 }
 
 #[cfg(test)]
@@ -782,20 +765,20 @@ mod tests {
         Ok(())
     }
 
-    // Auto-rewrite: a model with the {DynKeyValueCache(K), DynKeyValueCache(V), Sdpa}
-    // pattern is transparently fused to InPlaceKvSdpa, and the rewritten model runs and
-    // matches the concat-cache + FlashSdpaOp baseline.
+    // Optimizing a model with the {DynKeyValueCache(K), DynKeyValueCache(V), Sdpa}
+    // pattern fuses it to InPlaceKvSdpa, and the optimized model runs and matches the
+    // concat-cache + FlashSdpaOp baseline.
     #[test]
-    fn rewrite_fuses_cache_sdpa() -> TractResult<()> {
-        drive_rewrite(false)
+    fn codegen_fuses_cache_sdpa() -> TractResult<()> {
+        drive_codegen(false)
     }
 
     #[test]
-    fn rewrite_fuses_masked_cache_sdpa() -> TractResult<()> {
-        drive_rewrite(true)
+    fn codegen_fuses_masked_cache_sdpa() -> TractResult<()> {
+        drive_codegen(true)
     }
 
-    fn drive_rewrite(masked: bool) -> TractResult<()> {
+    fn drive_codegen(masked: bool) -> TractResult<()> {
         let (b, hq, hkv, d) = (1usize, 4usize, 2usize, 16usize);
         let mut model = TypedModel::default();
         let s = model.sym("S");
@@ -832,7 +815,7 @@ mod tests {
         model.select_output_outlets(&o)?;
 
         assert!(model.nodes().iter().any(|n| n.op_is::<DynKeyValueCache>()));
-        InPlaceKvSdpaTransform.transform(&mut model)?;
+        let model = model.into_optimized()?;
 
         // Structural: fused op present, caches + sdpa gone.
         assert!(model.nodes().iter().any(|n| n.op_is::<InPlaceKvSdpa>()), "fused op present");
@@ -845,7 +828,7 @@ mod tests {
             "fused op takes [Q, K_new, V_new] and the mask it was given"
         );
 
-        // Behavioral: the rewritten model runs and matches the baseline over decode.
+        // Behavioral: the optimized model runs and matches the baseline over decode.
         let runnable = model.into_runnable()?;
         let mut rt = runnable.spawn()?;
         let flash = FlashSdpaOp { causal: false, scale: None };
@@ -882,7 +865,7 @@ mod tests {
             base_ins.extend(mi.map(|m| m.into()));
             let o_base = flash.eval(&EvalContext::out_of_plan(), base_ins)?.remove(0).into_tensor();
             o_model.close_enough(&o_base, Approximation::Approximate).with_context(|| {
-                format!("rewritten model != baseline at step {t} (masked={masked})")
+                format!("optimized model != baseline at step {t} (masked={masked})")
             })?;
         }
         Ok(())
