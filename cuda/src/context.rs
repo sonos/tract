@@ -108,7 +108,16 @@ impl TractCudaContext {
 
     pub fn compile_cubins(&self) -> TractResult<()> {
         for lib in LibraryName::EAGER {
-            self.compile_cubin(lib)?;
+            if let Err(e) = self.compile_cubin(lib) {
+                if lib == LibraryName::FlashAttn {
+                    // TMA is 5090-only and experimental. A ptxas reject must
+                    // not take down relu/add/reshape with it (FlashAttn used
+                    // to be first in EAGER and TMA lived in common.cuh).
+                    log::error!("Skipping FlashAttn cubin: {e:#}");
+                    continue;
+                }
+                return Err(e);
+            }
         }
         Ok(())
     }
@@ -148,7 +157,7 @@ impl TractCudaContext {
             prog.assume_init()
         };
 
-        let nvrtc_opts = self.build_nvrtc_opts()?;
+        let nvrtc_opts = self.build_nvrtc_opts(lib)?;
         if let Err(_e) = unsafe { compile_program::<String>(prog, &nvrtc_opts) } {
             let log = self.read_nvrtc_log(prog).unwrap_or_else(|_| "<no log>".into());
             let _ = unsafe { destroy_program(prog) };
@@ -171,12 +180,12 @@ impl TractCudaContext {
     /// the libcudacxx headers — they have to be reachable on disk via `-I`. On
     /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
     /// `cuda-cudart-dev-<ver>`.
-    fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
+    fn build_nvrtc_opts(&self, lib: LibraryName) -> TractResult<Vec<String>> {
         let arch = format!(
             "--gpu-architecture=sm_{}{}",
             self.device_properties.major, self.device_properties.minor
         );
-        log::info!("tract-cuda: NVRTC target architecture {arch}");
+        log::info!("tract-cuda: NVRTC target architecture {arch} ({lib:?})");
 
         let cuda_inc = resolve_toolkit_include_dir()?;
         log::info!("tract-cuda: toolkit include dir {}", cuda_inc.display());
@@ -195,12 +204,15 @@ impl TractCudaContext {
             );
         }
 
-        let opts = vec![
+        let mut opts = vec![
             "--std=c++17".into(),
             arch,
             format!("-I{}", cuda_inc.display()),
             format!("-I{}", cccl_root.display()),
         ];
+        if lib == LibraryName::FlashAttn && tma_disabled_by_env() {
+            opts.push("-DTRACT_CUDA_NO_TMA=1".into());
+        }
         log::info!("tract-cuda: NVRTC opts = {opts:?}");
         Ok(opts)
     }
@@ -491,6 +503,12 @@ fn resolve_cuda_home() -> Option<(&'static str, PathBuf)> {
         "tract-cuda: no CUDA_HOME found (env vars unset, /usr/local/cuda absent, nvcc not in PATH)"
     );
     None
+}
+
+/// `TRACT_CUDA_NO_TMA=1` compiles the flash-attention library without TMA and keeps
+/// the launch on the `cp.async.cg` path, so both can be compared on one build.
+pub fn tma_disabled_by_env() -> bool {
+    std::env::var_os("TRACT_CUDA_NO_TMA").is_some_and(|v| v != "0" && !v.is_empty())
 }
 
 /// Resolve the toolkit include dir — the directory that holds `cuda_fp16.h`. CUDA 13
