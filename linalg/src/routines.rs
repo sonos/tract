@@ -49,6 +49,9 @@ pub enum Func {
     BinUnicast(crate::BinOp),
     /// Depthwise convolution over an axis the output is contiguous on.
     DepthwiseW,
+    /// Four output channels of a convolution over an axis the output is contiguous on, reading
+    /// each input point once for all four.
+    ConvW4,
 }
 
 impl Func {
@@ -71,7 +74,7 @@ impl Func {
         ]
     };
 
-    pub const ALL: [Func; 29] = [
+    pub const ALL: [Func; 30] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
@@ -101,6 +104,7 @@ impl Func {
         Func::BIN[10],
         Func::BIN[11],
         Func::DepthwiseW,
+        Func::ConvW4,
     ];
 
     /// Where this function sits in [`Self::ALL`], which is what indexes the dispatch table.
@@ -125,6 +129,7 @@ impl Func {
             Func::BinByScalar(op) => 16 + op as usize,
             Func::BinUnicast(op) => 22 + op as usize,
             Func::DepthwiseW => 28,
+            Func::ConvW4 => 29,
         }
     }
 
@@ -164,6 +169,7 @@ impl Func {
                 crate::BinOp::SubF => "unicast_subf",
             },
             Func::DepthwiseW => "depthwise_w",
+            Func::ConvW4 => "conv_w4",
         }
     }
 
@@ -257,6 +263,18 @@ impl Func {
 /// `len`, and `len` output points writable from `output`.
 pub type DepthwiseWF32 = unsafe fn(*const f32, *mut f32, &[f32], &[isize], f32, usize, isize);
 
+/// Four convolution output runs of `len` contiguous points, channel `o` written from
+/// `output.offset(o * oc_stride)`. Point `i` of channel `o` is `bias[o]` plus every
+/// `taps[o * offsets.len() + t] * input[offsets[t] + i * in_stride]`, so `taps` holds the four
+/// channels' taps one after another, each in the order of `offsets`.
+///
+/// # Safety
+/// `input.offset(offsets[t] + i * in_stride)` must be readable for every tap and every `i` below
+/// `len`, `taps` must be four times as long as `offsets`, and `len` points writable from
+/// `output.offset(o * oc_stride)` for every `o` below four.
+pub type ConvW4F32 =
+    unsafe fn(*const f32, *mut f32, &[f32], &[isize], &[f32; 4], usize, isize, isize);
+
 /// Builds the kernel behind a descriptor. The arm is what says which datum type the descriptor
 /// is for, so nothing repeats it as a field.
 #[allow(clippy::type_complexity)]
@@ -298,6 +316,11 @@ pub enum RoutineFactory {
         name: &'static str,
         run: DepthwiseWF32,
     },
+    /// A four-channel convolution inner-loop kernel, a plain function like the depthwise one.
+    ConvW4F32 {
+        name: &'static str,
+        run: ConvW4F32,
+    },
 }
 
 /// One kernel, enumerable uniformly on every host.
@@ -330,7 +353,8 @@ impl Routine {
             | RoutineFactory::F32Reduce(_)
             | RoutineFactory::F32MapReduce(_)
             | RoutineFactory::RmsNormF32 { .. }
-            | RoutineFactory::DepthwiseWF32 { .. } => DatumType::F32,
+            | RoutineFactory::DepthwiseWF32 { .. }
+            | RoutineFactory::ConvW4F32 { .. } => DatumType::F32,
             RoutineFactory::F16(_) | RoutineFactory::F16Param(_) | RoutineFactory::F16Reduce(_) => {
                 DatumType::F16
             }
@@ -354,6 +378,7 @@ impl Routine {
             RoutineFactory::F32MapReduce(f) => f().name(),
             RoutineFactory::RmsNormF32 { name, .. } => name,
             RoutineFactory::DepthwiseWF32 { name, .. } => name,
+            RoutineFactory::ConvW4F32 { name, .. } => name,
             RoutineFactory::LutU8 { name, .. } => name(),
             RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => name(),
         }
@@ -528,6 +553,15 @@ pub fn depthwise_w_f32() -> Option<DepthwiseWF32> {
     }
 }
 
+/// The four-channel convolution kernel this host runs, `None` where none is written. Optional
+/// like [`depthwise_w_f32`]: a machine without one lowers the convolution another way.
+pub fn conv_w4_f32() -> Option<ConvW4F32> {
+    match native_best(Func::ConvW4, DatumType::F32)?.factory {
+        RoutineFactory::ConvW4F32 { run, .. } => Some(run),
+        _ => None,
+    }
+}
+
 /// The look-up table kernel this host runs, over the table the caller owns.
 pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
     match Func::Lut.best_here(DatumType::U8)?.factory {
@@ -565,6 +599,12 @@ macro_rules! submit_routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::DepthwiseWF32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; ConvW4F32, $func:ident, $name:literal, $run:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        submit_routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::ConvW4F32 { name: $name, run: $run }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; BinF32, BinByScalar($op:ident), $ker:path
@@ -808,7 +848,8 @@ mod tests {
                     RoutineFactory::F16Reduce(_) => func.reduce_f16().map(|k| k.name()),
                     RoutineFactory::F32MapReduce(_) => func.map_reduce_f32().map(|k| k.name()),
                     RoutineFactory::RmsNormF32 { name, .. }
-                    | RoutineFactory::DepthwiseWF32 { name, .. } => Ok(name),
+                    | RoutineFactory::DepthwiseWF32 { name, .. }
+                    | RoutineFactory::ConvW4F32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
                     RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => {
                         func.bin(dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))

@@ -218,9 +218,14 @@ impl Arbitrary for ConvProblem {
     type Parameters = ConvProblemParams;
     type Strategy = BoxedStrategy<ConvProblem>;
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let direct_spatial = params
+            .geo_rank
+            .as_ref()
+            .is_none_or(|rank| rank.contains(&2))
+            .then(|| direct_spatial(&params));
         let batch_range = if params.no_batch { 1usize..=1 } else { 1usize..=3 };
         let geo_rank = params.geo_rank.unwrap_or(1..4);
-        (
+        let generic = (
             data_format(),
             kernel_format(),
             prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
@@ -320,8 +325,68 @@ impl Arbitrary for ConvProblem {
                     }
                 },
             )
-            .boxed()
+            .boxed();
+        match direct_spatial {
+            Some(direct_spatial) => prop_oneof![3 => generic, 1 => direct_spatial].boxed(),
+            None => generic,
+        }
     }
+}
+
+/// Group-1 NCHW problems with output rows long enough for the direct spatial convolution, which
+/// the generic strategy's rows of a few points never reach.
+fn direct_spatial(params: &ConvProblemParams) -> BoxedStrategy<ConvProblem> {
+    let batch = if params.no_batch { 1usize..=1 } else { 1usize..=2 };
+    let max_stride = if params.no_stride { 1 } else { 2 };
+    let max_dil = if params.no_dilations { 1 } else { 2 };
+    let no_bias = params.no_bias;
+    (
+        kernel_format(),
+        prop_oneof![Just(PaddingSpec::Valid), Just(PaddingSpec::SameUpper)],
+        batch,
+        1usize..=4,
+        prop_oneof![Just(4usize), Just(8), 1usize..=9],
+        vec(1usize..=3, 2..=2),
+        vec(1usize..=max_stride, 2..=2),
+        vec(1usize..=max_dil, 2..=2),
+        vec(0usize..=2, 2..=2),
+    )
+        .prop_flat_map(move |(kf, pad, n, ci, co, ker, strides, dilations, extra)| {
+            let reach = |axis: usize| (ker[axis] - 1) * dilations[axis] + 1;
+            let h = reach(0) + extra[0];
+            let w = 128 * strides[1] + reach(1) + extra[1];
+            let shape_in = DataFormat::NCHW.from_n_c_hw(n, ci, [h, w]).unwrap();
+            let ker_shape = match kf {
+                KernelFormat::HWIO => vec![ker[0], ker[1], ci, co],
+                KernelFormat::OIHW => vec![co, ci, ker[0], ker[1]],
+                KernelFormat::OHWI => vec![co, ker[0], ker[1], ci],
+            };
+            let bias = if no_bias {
+                Just(None).boxed()
+            } else {
+                proptest::option::of(tensor(&[co])).boxed()
+            };
+            (
+                Just((kf, pad, shape_in.clone(), strides, dilations)),
+                tensor(&*shape_in.shape),
+                tensor(&ker_shape),
+                bias,
+            )
+        })
+        .prop_map(|((kernel_format, pad, shape_in, strides, dilations), data, kernel, bias)| {
+            ConvProblem {
+                shape_in,
+                kernel_format,
+                group: 1,
+                data,
+                kernel,
+                bias,
+                pad,
+                strides: strides.into(),
+                dilations: dilations.into(),
+            }
+        })
+        .boxed()
 }
 
 impl Test for ConvProblem {
@@ -345,6 +410,41 @@ pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
     suite.add_arbitrary::<ConvProblem>("proptest", ConvProblemParams::default());
+
+    let ramp = |shape: &[usize]| {
+        ArrayD::from_shape_fn(shape, |ix| (ix.as_array_view().sum() % 11) as f32 - 5.0)
+    };
+    for (name, n, ci, co, h, w, ker, pad, strides) in [
+        ("direct_spatial_stem", 1, 3, 16, 9, 260, [3, 3], PaddingSpec::SameUpper, [2, 2]),
+        ("direct_spatial_fat_3x3", 2, 32, 8, 5, 130, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+        ("direct_spatial_oc_tail", 1, 2, 6, 4, 140, [2, 3], PaddingSpec::Valid, [1, 1]),
+        (
+            "direct_spatial_padding_only_windows",
+            1,
+            1,
+            4,
+            2,
+            140,
+            [1, 2],
+            PaddingSpec::Explicit(tvec!(0, 3), tvec!(0, 3)),
+            [1, 1],
+        ),
+    ] {
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::NCHW.from_n_c_hw(n, ci, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: 1,
+                data: ramp(&[n, ci, h, w]),
+                kernel: ramp(&[co, ci, ker[0], ker[1]]),
+                bias: Some(ramp(&[co])),
+                pad,
+                strides: strides.into_iter().collect(),
+                dilations: tvec!(1, 1),
+            },
+        );
+    }
 
     // Grouped conv (group>1, ci_per_group>1) with a unit spatial axis: the
     // im2col matmul is batched over the group, and reshape_group carries a unit

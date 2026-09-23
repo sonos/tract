@@ -1,5 +1,6 @@
 mod act_f16;
 mod by_scalar;
+mod conv_w4;
 mod depthwise;
 mod exp;
 mod gelu;
