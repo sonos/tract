@@ -24,6 +24,7 @@ use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
     fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
 };
+use tract_gpu::rewrite_rules::scaled_masked_softmax::drop_unit_axes_of_scaled_masked_softmax;
 use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
@@ -238,6 +239,10 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("rewrite_conv_kernel_metal", rewrite_conv_kernel_metal)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for(
+                "drop_unit_axes_of_scaled_masked_softmax",
+                drop_unit_axes_of_scaled_masked_softmax,
+            )
             .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
             .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)

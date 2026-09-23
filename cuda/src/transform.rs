@@ -35,6 +35,7 @@ use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
     fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
 };
+use tract_gpu::rewrite_rules::scaled_masked_softmax::drop_unit_axes_of_scaled_masked_softmax;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
@@ -103,6 +104,10 @@ impl CudaTransform {
             .with_rule_for("add_broadcast_pre_matmul", rewrite_rules::add_broadcast_pre_matmul)
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for(
+                "drop_unit_axes_of_scaled_masked_softmax",
+                drop_unit_axes_of_scaled_masked_softmax,
+            )
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
             .rewrite(&(), model)?;
 

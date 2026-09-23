@@ -1,6 +1,7 @@
 pub mod rewire_sdpa;
 pub mod rewire_syncs;
 pub mod rms_norm;
+pub mod scaled_masked_softmax;
 
 #[macro_export]
 macro_rules! rule_ensure {

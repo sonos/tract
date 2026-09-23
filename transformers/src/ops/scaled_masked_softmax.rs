@@ -228,7 +228,7 @@ impl TypedOp for ScaledMaskedSoftmax {
         let facts = model.node_input_facts(node.id)?;
         let (rank, mask_rank) = (facts[0].rank(), facts[1].rank());
         rule_if!(rank >= 1);
-        rule_if!(matches!(change, AxisOp::Add(axis) if *axis <= rank - 1));
+        rule_if!(matches!(change, AxisOp::Add(axis) if *axis < rank));
         let mut wire_changes =
             tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone()));
         // A mask as long as the input answers to its axes one for one; a shorter
