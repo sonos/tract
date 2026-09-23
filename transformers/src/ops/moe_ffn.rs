@@ -33,9 +33,12 @@
 //! It has no special declutter pass. CPU codegen captures constant weights and
 //! biases into [`OptMoeFfn`] router/expert plans. Supported linear block-quant
 //! experts have a direct packed CPU path; other supported constant variants
-//! use per-expert plans. Plain, canonical, bias-free dynamic weights lower to
+//! use per-expert plans. Plain, canonical, bias-free dynamic weights with
+//! concrete weight shapes lower to
 //! [`RouteTopK`], [`RoutedMatMul`], activation and [`RoutedCombine`]. Dynamic
-//! variants outside that lowering stay on the reference evaluator.
+//! variants outside that lowering stay on the reference evaluator, preserving
+//! runtime cross-projection checks for unresolved weight dimensions. Symbolic
+//! token counts do not prevent lowering.
 //! [`RoutedQ40MatMul`] is a routed linear block-quant execution helper.
 //! These helper operators are execution forms, not additional NNEF primitives.
 //! Serialize before codegen: packed [`OptMoeFfn`] plans deliberately reject
@@ -1138,6 +1141,15 @@ impl TypedOp for MoeFfn {
         let Some(act_op) = act_op else {
             return Ok(None);
         };
+
+        // Routed ops validate local bounds, not cross-projection constraints
+        // such as equal expert counts or non-broadcasting gate/up widths.
+        // Retain the reference runtime checks when weight shapes are unresolved.
+        for &input in &node.inputs[1..] {
+            if model.outlet_fact(input)?.shape.as_concrete().is_none() {
+                return Ok(None);
+            }
+        }
 
         let expert_inputs: &[usize] = if self.has_w3 { &[2, 3, 4] } else { &[2, 3] };
         for &input_ix in expert_inputs {
