@@ -1,4 +1,7 @@
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
+use tract_nnef::tract_core::ops::konst::Const;
+use tract_nnef::tract_core::ops::math::add;
 
 use super::*;
 use tract_nnef::tract_core::tract_linalg::block_quant::{
@@ -286,7 +289,7 @@ fn test_q40_linear_expert_layout_matches_dequantized_reference() -> TractResult<
         .nodes()
         .iter()
         .filter_map(|n| n.op_as::<OptMoeFfn>())
-        .any(|op| op.q40_linear_plan.is_some());
+        .any(|op| op.uses_direct_q40());
     assert!(uses_direct_q40, "Q40 linear experts should use the direct Q40 plan");
     let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
     assert!(!has_routed, "Q40 linear constants should use the direct optimized plan");
@@ -368,7 +371,7 @@ fn test_opt_moe_ffn_square_mixed_precision_long_sequence() -> TractResult<()> {
         .nodes()
         .iter()
         .filter_map(|n| n.op_as::<OptMoeFfn>())
-        .any(|op| op.q40_linear_plan.is_some());
+        .any(|op| op.uses_direct_q40());
     assert!(!uses_direct_q40, "a float w2 rules out the direct Q40 plan");
 
     let result = SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;

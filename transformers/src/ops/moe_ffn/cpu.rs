@@ -1,79 +1,29 @@
-use super::*;
-
-/// gpt-oss clamped SwiGLU, as an op so the expert subplans can express it:
-///   gate = min(gate, limit); up = clamp(up, -limit, limit)
-///   out  = (up + 1) * gate * sigmoid(alpha * gate)
-#[derive(Clone, Debug, PartialEq)]
-struct ClampedSwiGlu {
-    alpha: f32,
-    limit: f32,
-}
-
-impl Eq for ClampedSwiGlu {}
-
-impl Op for ClampedSwiGlu {
-    fn name(&self) -> StaticName {
-        "ClampedSwiGlu".into()
-    }
-
-    op_as_typed_op!();
-}
-
-impl EvalOp for ClampedSwiGlu {
-    op_out_of_plan!();
-
-    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        ensure!(inputs.len() == 2, "ClampedSwiGlu expects gate and up inputs");
-        let gate = inputs[0].cast_to::<f32>()?.into_owned();
-        let up = inputs[1].cast_to::<f32>()?.into_owned();
-        ensure!(
-            gate.shape() == up.shape(),
-            "ClampedSwiGlu gate/up shape mismatch: {:?} vs {:?}",
-            gate.shape(),
-            up.shape()
-        );
-        let mut output = Tensor::zero_dt(f32::datum_type(), gate.shape())?;
-        let gate_ram = gate.try_as_plain_ram()?;
-        let up_ram = up.try_as_plain_ram()?;
-        let mut output_ram = output.try_as_plain_ram_mut()?;
-        let gate = gate_ram.as_slice::<f32>()?;
-        let up = up_ram.as_slice::<f32>()?;
-        let output_slice = output_ram.as_slice_mut::<f32>()?;
-        for ((out, &gate), &up) in output_slice.iter_mut().zip(gate).zip(up) {
-            let gate = gate.min(self.limit);
-            let up = up.clamp(-self.limit, self.limit);
-            let glu = gate / (1.0 + (-self.alpha * gate).exp());
-            *out = (up + 1.0) * glu;
-        }
-        Ok(tvec![output.into_tvalue()])
-    }
-}
-
-impl TypedOp for ClampedSwiGlu {
-    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == 2, "ClampedSwiGlu expects gate and up inputs");
-        ensure!(
-            inputs[0].shape == inputs[1].shape,
-            "ClampedSwiGlu gate/up shape mismatch: {:?} vs {:?}",
-            inputs[0].shape,
-            inputs[1].shape
-        );
-        Ok(tvec!(f32::datum_type().fact(inputs[0].shape.clone())))
-    }
-
-    as_op!();
-}
-
-pub(super) fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {
-    match name {
-        "silu" => Some(Box::new(silu())),
-        // SwiGLU: the inner activation is silu, w3 provides the gate branch
-        "swiglu" if has_w3 => Some(Box::new(silu())),
-        "gelu" => Some(Box::new(gelu_approximate(false))),
-        "relu" => Some(Box::new(tract_nnef::tract_core::ops::nn::leaky_relu(0.0))),
-        _ => None,
-    }
-}
+use super::activation::{ClampedSwiGlu, activation_op};
+use super::{
+    ExpertLayout, GateMode, block_quant_group_tensor, concat_block_quant_rows,
+    scatter_add_weighted, select_routes,
+};
+use crate::ops::routed_matmul::{
+    PreparedRoutedMatMul, PreparedRoutedMatMulState, RoutedInputRows, RoutedMatMulGroup,
+    build_block_quant_routed_matmul, pack_prepared_routed_matmul_rhs, run_prepared_routed_matmul,
+    run_prepared_routed_matmul_accumulate_one, run_prepared_routed_matmul_many,
+    run_prepared_routed_matmul_many_same_rhs,
+};
+use std::{
+    fmt,
+    hash::{Hash, Hasher},
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tract_ndarray::{Array2, ArrayView2};
+use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::{
+    OpState,
+    array::Slice,
+    einsum::EinSum,
+    math::{add, mul},
+};
+use tract_nnef::tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
 pub(super) fn build_router_plan(
     wg: &Arc<Tensor>,
@@ -407,17 +357,59 @@ fn push_selected_routes(
 
 #[derive(Clone, Debug)]
 pub struct OptMoeFfn {
-    pub k: usize,
-    pub gate: GateMode,
-    pub num_experts: usize,
-    pub d_model: usize,
-    pub d_hidden: usize,
-    pub router_plan: Arc<TypedSimplePlan>,
+    pub(super) k: usize,
+    pub(super) gate: GateMode,
+    pub(super) num_experts: usize,
+    pub(super) d_model: usize,
+    pub(super) d_hidden: usize,
+    pub(super) router_plan: Arc<TypedSimplePlan>,
     /// Router bias, added to the logits after `router_plan` (which only holds
     /// the `x @ wg.T` matmul). gpt-oss routers carry one.
-    pub wg_bias: Option<Tensor>,
-    pub expert_plans: Vec<Arc<TypedSimplePlan>>,
-    pub(super) q40_linear_plan: Option<Arc<Q40LinearExpertPlan>>,
+    pub(super) wg_bias: Option<Tensor>,
+    pub(super) experts: CpuExpertPlan,
+}
+
+/// Mutually exclusive prepared CPU strategies; neither owns session scratch.
+#[derive(Clone, Debug)]
+pub(super) enum CpuExpertPlan {
+    PerExpert(Vec<Arc<TypedSimplePlan>>),
+    PackedQ40(Arc<Q40LinearExpertPlan>),
+}
+
+impl PartialEq for CpuExpertPlan {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::PerExpert(a), Self::PerExpert(b)) => {
+                a.len() == b.len() && a.iter().zip(b).all(|(a, b)| Arc::ptr_eq(a, b))
+            }
+            (Self::PackedQ40(a), Self::PackedQ40(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for CpuExpertPlan {}
+
+impl Hash for CpuExpertPlan {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            Self::PerExpert(plans) => {
+                plans.len().hash(state);
+                for plan in plans {
+                    Arc::as_ptr(plan).hash(state);
+                }
+            }
+            Self::PackedQ40(plan) => Arc::as_ptr(plan).hash(state),
+        }
+    }
+}
+
+impl OptMoeFfn {
+    #[cfg(test)]
+    pub(super) fn uses_direct_q40(&self) -> bool {
+        matches!(self.experts, CpuExpertPlan::PackedQ40(_))
+    }
 }
 
 impl Hash for OptMoeFfn {
@@ -427,14 +419,10 @@ impl Hash for OptMoeFfn {
         self.num_experts.hash(state);
         self.d_model.hash(state);
         self.d_hidden.hash(state);
-        self.q40_linear_plan.is_some().hash(state);
         // Independently compiled plans are conservatively distinct; clones
         // share plan identity. Comparing geometry alone would merge weights.
         Arc::as_ptr(&self.router_plan).hash(state);
-        for plan in &self.expert_plans {
-            Arc::as_ptr(plan).hash(state);
-        }
-        self.q40_linear_plan.as_ref().map(Arc::as_ptr).hash(state);
+        self.experts.hash(state);
         // Tensor equality equates signed zeros and NaN payloads, unlike its
         // bitwise hash. Bias is compared below but omitted from this hash.
     }
@@ -447,15 +435,8 @@ impl PartialEq for OptMoeFfn {
             && self.num_experts == other.num_experts
             && self.d_model == other.d_model
             && self.d_hidden == other.d_hidden
-            && self.q40_linear_plan.is_some() == other.q40_linear_plan.is_some()
             && Arc::ptr_eq(&self.router_plan, &other.router_plan)
-            && self.expert_plans.len() == other.expert_plans.len()
-            && self.expert_plans.iter().zip(&other.expert_plans).all(|(a, b)| Arc::ptr_eq(a, b))
-            && match (&self.q40_linear_plan, &other.q40_linear_plan) {
-                (Some(a), Some(b)) => Arc::ptr_eq(a, b),
-                (None, None) => true,
-                _ => false,
-            }
+            && self.experts == other.experts
             && self.wg_bias == other.wg_bias
     }
 }
@@ -474,8 +455,13 @@ impl EvalOp for OptMoeFfn {
 
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let router_state = self.router_plan.spawn()?;
-        let q40_state = self.q40_linear_plan.as_ref().map(|_| Q40LinearExpertState::default());
-        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, q40_state })))
+        let experts = match &self.experts {
+            CpuExpertPlan::PerExpert(plans) => CpuExpertState::PerExpert(plans.clone()),
+            CpuExpertPlan::PackedQ40(plan) => {
+                CpuExpertState::PackedQ40 { plan: plan.clone(), state: Box::default() }
+            }
+        };
+        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, experts })))
     }
 }
 
@@ -753,6 +739,12 @@ impl Q40LinearExpertState {
     }
 }
 
+#[derive(Clone, Debug)]
+enum CpuExpertState {
+    PerExpert(Vec<Arc<TypedSimplePlan>>),
+    PackedQ40 { plan: Arc<Q40LinearExpertPlan>, state: Box<Q40LinearExpertState> },
+}
+
 #[derive(Clone)]
 /// Only the router keeps a long-lived state. Expert plans are spawned per eval
 /// so they can run on the rayon pool; they are stateless matmuls, so there is
@@ -760,7 +752,7 @@ impl Q40LinearExpertState {
 struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
-    q40_state: Option<Q40LinearExpertState>,
+    experts: CpuExpertState,
 }
 
 impl fmt::Debug for OptMoeFfnState {
@@ -768,7 +760,7 @@ impl fmt::Debug for OptMoeFfnState {
         f.debug_struct("OptMoeFfnState")
             .field("op", &self.op)
             .field("router_state", &self.router_state)
-            .field("q40_state", &self.q40_state)
+            .field("experts", &self.experts)
             .finish()
     }
 }
@@ -828,23 +820,22 @@ impl OpState for OptMoeFfnState {
         let router_logits: ArrayView2<f32> =
             router_logits_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
-        if let Some(plan) = self.op.q40_linear_plan.clone() {
-            let q40_state = self
-                .q40_state
-                .as_mut()
-                .context("OptMoeFfn has a Q40 plan but no Q40 runtime state")?;
-            return q40_state.eval(
-                &self.op,
-                &plan,
-                x,
-                router_logits,
-                x_ndim,
-                &x_orig_shape,
-                dt,
-                router_elapsed,
-                profile,
-            );
-        }
+        let expert_plans = match &mut self.experts {
+            CpuExpertState::PackedQ40 { plan, state } => {
+                return state.eval(
+                    &self.op,
+                    plan,
+                    x,
+                    router_logits,
+                    x_ndim,
+                    &x_orig_shape,
+                    dt,
+                    router_elapsed,
+                    profile,
+                );
+            }
+            CpuExpertState::PerExpert(plans) => plans,
+        };
 
         let op = &self.op;
         let topk_start = profile_start(profile);
@@ -901,17 +892,14 @@ impl OpState for OptMoeFfnState {
         #[cfg(not(target_family = "wasm"))]
         let expert_outputs = {
             use rayon::prelude::*;
-            self.op
-                .expert_plans
+            expert_plans
                 .par_iter()
                 .zip(expert_tokens.par_iter())
                 .map(|(plan, tokens)| run_expert(plan, tokens))
                 .collect::<TractResult<Vec<_>>>()?
         };
         #[cfg(target_family = "wasm")]
-        let expert_outputs = self
-            .op
-            .expert_plans
+        let expert_outputs = expert_plans
             .iter()
             .zip(expert_tokens.iter())
             .map(|(plan, tokens)| run_expert(plan, tokens))
