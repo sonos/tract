@@ -35,6 +35,7 @@ macro_rules! bail_stub {
 
     (@ $built:meta; $vis:vis unsafe fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
         #[cfg(not($built))]
+        #[allow(clippy::too_many_arguments)]
         $vis unsafe fn $name($(_: $ty),*) $(-> $ret)? {
             panic!(concat!(stringify!($name), ": not built for this target"))
         }
@@ -42,6 +43,7 @@ macro_rules! bail_stub {
 
     (@ $built:meta; $vis:vis fn $name:ident($($ty:ty),* $(,)?) $(-> $ret:ty)?) => {
         #[cfg(not($built))]
+        #[allow(clippy::too_many_arguments)]
         $vis fn $name($(_: $ty),*) $(-> $ret)? {
             panic!(concat!(stringify!($name), ": not built for this target"))
         }
