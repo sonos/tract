@@ -60,6 +60,32 @@ impl EvalOp for AffineChunkTrim {
 }
 
 impl TypedOp for AffineChunkTrim {
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        _io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        if !matches!(change, AxisOp::Add(_)) {
+            return Ok(None);
+        }
+        if let Some(axis) = change.transform_axis(self.axis) {
+            if axis != self.axis {
+                Ok(Some(AxisChangeConsequence::new(
+                    model,
+                    node,
+                    Some(Box::new(Self { axis, ..self.clone() }) as _),
+                    change,
+                )))
+            } else {
+                Ok(Some(AxisChangeConsequence::new(model, node, None, change)))
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
     as_op!();
 
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
