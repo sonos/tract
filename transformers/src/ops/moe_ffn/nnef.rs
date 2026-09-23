@@ -1,4 +1,6 @@
-use super::*;
+use super::{ExpertLayout, GateMode, MoeFfn, OptMoeFfn};
+use std::sync::Arc;
+use tract_nnef::internal::*;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_moe_ffn);

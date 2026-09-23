@@ -1,4 +1,20 @@
-use super::*;
+use super::{
+    GateMode, as_2d_tokens, block_quant_group_tensor, plain_f32_slice, plain_i64_slice,
+    router_weights_as_2d, select_routes, token_count_dim,
+};
+use crate::ops::routed_matmul::{
+    PreparedRoutedMatMulState, RoutedInputRows, RoutedRowsInput, build_block_quant_routed_matmul,
+    run_prepared_routed_matmul,
+};
+use tract_ndarray::{Array2, ArrayView2, ArrayView3, s};
+use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::OpState;
+use tract_nnef::tract_core::tract_linalg::{
+    MmmDispatch,
+    block_quant::BlockQuantStorage,
+    mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul, Query},
+    pack::PackedFormat,
+};
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RouteTopK {
