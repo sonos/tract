@@ -168,7 +168,7 @@ def test_runtime_properties():
     runnable = typed.into_runnable()
     properties = runnable.property_keys()
     properties.sort()
-    assert properties == ["onnx.ir_version", "pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol"]
+    assert properties == ["onnx.ir_version", "pulse.delay", "pulse.input_axes", "pulse.output_axes", "pulse.streaming_symbol", "tract.stage"]
     assert runnable.property("pulse.delay").to_numpy() == [0]
 
 def test_f32_to_f16():
