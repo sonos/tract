@@ -154,6 +154,26 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	dump -q \
 	--assert-output-fact BATCH,1024,4,f32
 
+# The batch axis widens every wire, so an op whose kernel takes fewer axes than
+# the batched form carries spills to the host here and nowhere else. Assert the
+# batched encoder's op list on each GPU runtime as the unbatched one is.
+for rt in $TRACT_RUNTIMES
+do
+	case "$rt" in
+		--cuda) enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange";;
+		--metal) enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,PulsedRange";;
+		*) continue;;
+	esac
+	$TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t "$batched_patch" \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'batchify_data_free(symbol: Some("BATCH"))' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		dump -q $enc_assert
+done
+
 # Four streams on four lanes of one state, seated wherever the worker finds them
 # queued, each against the same stream run alone. The linger widens the turns
 # whatever the box's scheduling, so the batch axis and the seating are exercised

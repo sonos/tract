@@ -1,0 +1,10 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+
+graph network( input, mask ) -> ( output )
+{
+    input = external<scalar>(shape = [1, 2, 1, 3, 4, 5]);
+    mask = external<scalar>(shape = [1, 1, 1, 3, 4, 5]);
+    output = tract_transformers_scaled_masked_softmax(input, mask, scale = 0.125, post_softmax_mask = false);
+}
