@@ -442,7 +442,8 @@ fn test_opt_moe_ffn_top1() -> TractResult<()> {
 fn test_codegen_lowers_non_const_weights() -> TractResult<()> {
     // The routed primitive lowering does not require constant weights.
     let mut model = TypedModel::default();
-    let x = model.add_source("x", f32::datum_type().fact([4, 8]))?;
+    let tokens = model.symbols.sym("tokens");
+    let x = model.add_source("x", f32::fact([tokens.to_dim(), 8.to_dim()]))?;
     let wg = model.add_source("wg", f32::datum_type().fact([2, 8]))?;
     let w1 = model.add_source("w1", f32::datum_type().fact([2, 8, 16]))?;
     let w2 = model.add_source("w2", f32::datum_type().fact([2, 16, 8]))?;
@@ -451,12 +452,26 @@ fn test_codegen_lowers_non_const_weights() -> TractResult<()> {
     let outputs = model.wire_node("moe", op, &[x, wg, w1, w2])?;
     model.select_output_outlets(&outputs)?;
 
-    let opt_model = model.into_optimized()?;
+    let opt_model = model.clone().into_optimized()?;
 
     let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
     assert!(!has_moe, "Expected MoeFfn to lower even when weights are not constants");
     let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
     assert!(has_routed, "Expected RoutedMatMul in optimized model");
+
+    let reference = SimplePlan::new(model)?;
+    let optimized = SimplePlan::new(opt_model)?;
+    for tokens in [1, 4] {
+        let inputs = tvec![
+            Tensor::from_shape(&[tokens, 8], &vec![0.5f32; tokens * 8])?.into_tvalue(),
+            Tensor::from_shape(&[2, 8], &[0.25f32; 16])?.into_tvalue(),
+            Tensor::from_shape(&[2, 8, 16], &[0.25f32; 256])?.into_tvalue(),
+            Tensor::from_shape(&[2, 16, 8], &[0.25f32; 256])?.into_tvalue(),
+        ];
+        let expected = reference.run(inputs.clone())?;
+        let actual = optimized.run(inputs)?;
+        actual[0].close_enough(&expected[0], Approximation::Approximate)?;
+    }
 
     Ok(())
 }
@@ -799,6 +814,78 @@ fn routing_ties_have_one_order() {
         select_routes(&mut scores, k);
         assert_eq!(scores.iter().map(|s| s.0).collect::<Vec<_>>(), (0..k).collect::<Vec<_>>());
     }
+}
+
+#[test]
+fn optimized_moe_bias_equality_implies_equal_hashes() -> TractResult<()> {
+    let (model, _) = make_moe_model(2, 4, 8, 3, 2, true)?;
+    let optimized = model.into_optimized()?;
+    let op = optimized.nodes().iter().find_map(|n| n.op_as::<OptMoeFfn>()).unwrap();
+    let hash = |op: &OptMoeFfn| {
+        let mut hasher = std::collections::hash_map::DefaultHasher::new();
+        op.hash(&mut hasher);
+        hasher.finish()
+    };
+    for (a, b) in
+        [(0.0, -0.0), (f32::from_bits(0x7fc00001), f32::from_bits(0x7fc00002)), (1.0, 1.0)]
+    {
+        let mut lhs = op.clone();
+        let mut rhs = op.clone();
+        lhs.wg_bias = Some(Tensor::from_shape(&[3], &[a, 0.0, 1.0])?);
+        rhs.wg_bias = Some(Tensor::from_shape(&[3], &[b, 0.0, 1.0])?);
+        assert_eq!(lhs, rhs);
+        assert_eq!(hash(&lhs), hash(&rhs));
+        rhs.wg_bias = Some(Tensor::from_shape(&[3], &[2.0, 0.0, 1.0])?);
+        assert_ne!(lhs, rhs);
+    }
+    Ok(())
+}
+
+#[test]
+fn symbolic_moe_contract_survives_codegen() -> TractResult<()> {
+    for symbolic_up in [false, true] {
+        let mut model = TypedModel::default();
+        let e = model.symbols.sym("router_experts");
+        let h = model.symbols.sym("up_hidden");
+        let x = model.add_source("x", f32::fact([1, 2]))?;
+        let wg = model.add_source(
+            "wg",
+            f32::fact([if symbolic_up { 3.to_dim() } else { e.to_dim() }, 2.to_dim()]),
+        )?;
+        let w1 = model.add_const("w1", Tensor::from_shape(&[3, 2, 2], &[0.5f32; 12])?)?;
+        let w2 = model.add_const("w2", Tensor::from_shape(&[3, 2, 2], &[0.25f32; 12])?)?;
+        let mut inputs = tvec![x, wg, w1, w2];
+        if symbolic_up {
+            inputs.push(model.add_source("w3", f32::fact([3.to_dim(), 2.to_dim(), h.to_dim()]))?);
+        }
+        let op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, symbolic_up);
+        let out = model.wire_node("moe", op, &inputs)?;
+        model.select_output_outlets(&out)?;
+        let optimized = model.clone().into_optimized()?;
+        for valid in [false, true] {
+            let router_e = if valid || symbolic_up { 3 } else { 2 };
+            let mut values = tvec![
+                Tensor::from_shape(&[1, 2], &[1.0f32, 2.0])?.into_tvalue(),
+                Tensor::zero::<f32>(&[router_e, 2])?.into_tvalue()
+            ];
+            if symbolic_up {
+                let width = if valid { 2 } else { 1 };
+                values.push(
+                    Tensor::from_shape(&[3, 2, width], &vec![0.5f32; 6 * width])?.into_tvalue(),
+                );
+            }
+            let reference = SimplePlan::new(model.clone())?.run(values.clone());
+            let actual = SimplePlan::new(optimized.clone())?.run(values);
+            if valid {
+                actual?[0].close_enough(&reference?[0], Approximation::Approximate)?;
+            } else {
+                assert!(reference.is_err());
+                assert!(actual.is_err(), "codegen lost the symbolic MoE contract");
+            }
+        }
+        assert!(optimized.nodes().iter().any(|n| n.op_is::<MoeFfn>()));
+    }
+    Ok(())
 }
 
 #[test]

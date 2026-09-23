@@ -435,7 +435,8 @@ impl Hash for OptMoeFfn {
             Arc::as_ptr(plan).hash(state);
         }
         self.q40_linear_plan.as_ref().map(Arc::as_ptr).hash(state);
-        self.wg_bias.hash(state);
+        // Tensor equality equates signed zeros and NaN payloads, unlike its
+        // bitwise hash. Bias is compared below but omitted from this hash.
     }
 }
 
