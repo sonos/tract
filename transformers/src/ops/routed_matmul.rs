@@ -1,3 +1,12 @@
+//! CPU routed packing and packed block-quant matmul execution.
+//!
+//! The low-level MMM interface requires unsafe stores and kernel calls. Using
+//! ndarray matmul here would require unpacking quantized expert weights and
+//! would lose the fused scaled accumulation into the destination token row.
+//! Indirect row packing avoids a separate gathered activation tensor; kernel
+//! scratch is reused between synchronous calls. Callers validate route bounds
+//! and keep the source tensor alive and immutable until each call returns.
+
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -12,6 +21,13 @@ use tract_nnef::tract_core::tract_linalg::mmm::{
 };
 use tract_nnef::tract_core::tract_linalg::pack::{PackedFormat, PackingWriter};
 
+// Direct row packing avoids materializing a gathered [routes, K] tensor before
+// packing it again for MMM. In decode, several experts read the same token;
+// in prefill, selected rows are usually non-contiguous. PackedFormat's safe
+// tensor-view API describes strided rectangles, not arbitrary row selections.
+// The custom panel writer below supplies that missing indirection. Its unsafe
+// operations are confined to the existing MMM scratch-buffer interface and
+// reading caller-validated rows; no weight dequantization is needed.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum RoutedRowOffsets {
     Single(isize),
@@ -107,7 +123,7 @@ impl RoutedInputRows {
 // `base` points into an input tensor for the duration of one synchronous
 // `eval` call only: each call clears and repopulates it before touching the
 // pointer, and it is never dereferenced across a call boundary. Safe to hand
-// across threads for the same reason `RoutedRowsInput` below is.
+// across threads because workers only read the live, immutable input tensor.
 unsafe impl Send for RoutedInputRows {}
 unsafe impl Sync for RoutedInputRows {}
 
@@ -162,9 +178,6 @@ impl fmt::Display for RoutedRowsInput {
         write!(f, "RoutedRowsInput(mn={}, k={}, {})", self.mn(), self.k, self.format)
     }
 }
-
-unsafe impl Send for RoutedRowsInput {}
-unsafe impl Sync for RoutedRowsInput {}
 
 impl MMMInputValue for RoutedRowsInput {
     fn format(&self) -> &dyn MMMInputFormat {
