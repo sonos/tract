@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 #[cfg(feature = "multithread-mm")]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 #[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -12,6 +13,66 @@ use tract_data::internal::vector_size;
 use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
 
 use crate::BinFn;
+
+/// Workload signature for adaptive chunking.
+/// Captures the essential characteristics that affect optimal chunk size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct WorkloadSig {
+    row_len: usize,
+    n_rows: usize,
+    num_threads: usize,
+}
+
+/// Adaptive chunking state.
+/// Stores learned optimal chunk_rows per workload signature.
+#[cfg(feature = "multithread-mm")]
+#[derive(Default)]
+struct AdaptiveChunker {
+    /// Maps workload signature -> optimal chunk_rows
+    cache: Mutex<std::collections::HashMap<WorkloadSig, usize>>,
+    /// Whether adaptive tuning is enabled
+    enabled: AtomicBool,
+}
+
+#[cfg(feature = "multithread-mm")]
+impl AdaptiveChunker {
+    fn new() -> Self {
+        Self { cache: Mutex::new(std::collections::HashMap::new()), enabled: AtomicBool::new(true) }
+    }
+
+    fn get_chunk_rows(&self, sig: WorkloadSig, threshold: usize, _row_len: usize) -> usize {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return (threshold / sig.row_len).max(1);
+        }
+        let cache = self.cache.lock().unwrap();
+        cache.get(&sig).copied().unwrap_or_else(|| (threshold / sig.row_len).max(1))
+    }
+
+    fn record(&self, sig: WorkloadSig, chunk_rows: usize) {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut cache = self.cache.lock().unwrap();
+        cache.insert(sig, chunk_rows);
+    }
+
+    fn disable(&self) {
+        self.enabled.store(false, Ordering::Relaxed);
+    }
+
+    fn enable(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Global adaptive chunker instance.
+#[cfg(feature = "multithread-mm")]
+static ADAPTIVE_CHUNKER: std::sync::OnceLock<AdaptiveChunker> = std::sync::OnceLock::new();
+
+#[cfg(feature = "multithread-mm")]
+fn adaptive_chunker() -> &'static AdaptiveChunker {
+    ADAPTIVE_CHUNKER.get_or_init(AdaptiveChunker::new)
+}
 
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
@@ -156,7 +217,13 @@ pub fn par_chunks_mut<T: Send>(
             return f(0, out);
         }
         let run = |out: &mut [T]| -> TractResult<()> {
-            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
+            let threshold = current_threading_element_threshold();
+            let num_threads = rayon::current_num_threads();
+            let sig = WorkloadSig { row_len, n_rows, num_threads };
+            // Use adaptive chunker to get optimal chunk_rows
+            let chunk_rows = adaptive_chunker().get_chunk_rows(sig, threshold, row_len);
+            let n_chunks =
+                n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * rayon::current_num_threads());
             let chunk_rows = n_rows.div_ceil(n_chunks);
             out.par_chunks_mut(chunk_rows * row_len)
                 .enumerate()
@@ -307,4 +374,173 @@ pub fn par_bin(
         return eval_fn(&mut a.view(), &b.view());
     }
     (0..n_blocks).try_for_each(|block| call(block, 0, period))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+
+    fn run_par_chunks<T: Send + Clone>(
+        out: &mut [T],
+        row_len: usize,
+        total_elems: usize,
+        f: impl Fn(usize, &mut [T]) -> TractResult<()> + Sync + Send,
+    ) -> TractResult<()> {
+        par_chunks_mut(out, row_len, total_elems, f)
+    }
+
+    #[test]
+    fn par_chunks_mut_inline_when_single_row() {
+        let mut out = vec![0u32; 10];
+        let called = std::sync::Arc::new(std::sync::Mutex::new(0));
+        let c = called.clone();
+        run_par_chunks(&mut out, 10, 10, move |first, chunk| {
+            assert_eq!(first, 0);
+            assert_eq!(chunk.len(), 10);
+            *c.lock().unwrap() += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(*called.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn par_chunks_mut_inline_when_below_threshold() {
+        let mut out = vec![0u32; 100];
+        let called = std::sync::Arc::new(std::sync::Mutex::new(0));
+        let c = called.clone();
+        // 5 rows * 10 = 50 elements, below default 32768 threshold
+        // But inline path passes the FULL slice (100 elements)
+        run_par_chunks(&mut out, 10, 50, move |first, chunk| {
+            assert_eq!(first, 0);
+            assert_eq!(chunk.len(), 100); // inline passes full slice
+            *c.lock().unwrap() += 1;
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(*called.lock().unwrap(), 1);
+    }
+
+    #[test]
+    fn par_chunks_mut_chunks_correctly() {
+        let mut out = vec![0u32; 1000];
+        let called = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let c = called.clone();
+        // 100 rows of 10 elements = 1000 total, well above threshold
+        run_par_chunks(&mut out, 10, 1000, move |first, chunk| {
+            c.lock().unwrap().push((first, chunk.len()));
+            Ok(())
+        })
+        .unwrap();
+        let calls = called.lock().unwrap();
+        assert!(!calls.is_empty());
+        // Sum of chunk lengths should equal total
+        let sum: usize = calls.iter().map(|(_, len)| *len).sum();
+        assert_eq!(sum, 1000);
+        // Each chunk should be multiple of row_len (10)
+        for (_, len) in calls.iter() {
+            assert_eq!(*len % 10, 0);
+        }
+    }
+
+    #[test]
+    fn par_chunks_mut_chunk_size_respects_threshold() {
+        // row_len = 100, threshold = 32768
+        // chunk_rows = 32768 / 100 = 327, so ~327 rows per chunk
+        let row_len = 100;
+        let total_elems = 100000; // 1000 rows
+        let mut out = vec![0u32; total_elems];
+        let called = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let c = called.clone();
+        run_par_chunks(&mut out, row_len, total_elems, move |first, chunk| {
+            c.lock().unwrap().push((first, chunk.len()));
+            Ok(())
+        })
+        .unwrap();
+        let calls = called.lock().unwrap();
+        for (_, len) in calls.iter() {
+            // Each chunk should have at least threshold elements (except possibly last)
+            // chunk_rows = 32768/100 = 327, so chunk_size = 327*100 = 32700
+            assert!(*len >= 32700 || *len == total_elems % (327 * 100));
+        }
+    }
+}
+
+/// Tune the adaptive chunker for a specific workload by trying different chunk sizes
+/// and measuring execution time. This should be called during a warmup phase.
+#[cfg(feature = "multithread-mm")]
+pub fn tune_par_chunks_mut<T: Send + Clone>(
+    out: &mut [T],
+    row_len: usize,
+    total_elems: usize,
+    f: impl Fn(usize, &mut [T]) -> TractResult<()> + Sync + Send,
+) -> TractResult<usize> {
+    use rayon::prelude::*;
+
+    debug_assert!(row_len >= 1 && out.len() % row_len == 0);
+    let n_rows = out.len() / row_len;
+    if n_rows < 2 || total_elems < current_threading_element_threshold() {
+        return Ok(1);
+    }
+
+    let threshold = current_threading_element_threshold();
+    let num_threads = rayon::current_num_threads();
+    let sig = WorkloadSig { row_len, n_rows, num_threads };
+
+    // Try different chunk sizes and measure
+    let candidates = vec![
+        (threshold / row_len).max(1), // Static heuristic
+        (threshold / row_len / 2).max(1),
+        (threshold / row_len * 2).max(1),
+        (threshold / row_len * 4).max(1),
+        n_rows.div_ceil(4 * num_threads).max(1), // rayon default
+        n_rows,                                  // 1 chunk per row
+    ];
+
+    let mut best_chunk_rows = (threshold / row_len).max(1);
+    let mut best_time = Duration::MAX;
+
+    for chunk_rows in candidates {
+        let n_chunks = n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * num_threads);
+        let actual_chunk_rows = n_rows.div_ceil(n_chunks);
+
+        // Warmup run
+        let mut temp_out = out.to_vec();
+        let _ =
+            temp_out.par_chunks_mut(actual_chunk_rows * row_len).try_for_each(|chunk| f(0, chunk));
+
+        // Timed run
+        let start = Instant::now();
+        let _ = out.par_chunks_mut(actual_chunk_rows * row_len).try_for_each(|chunk| f(0, chunk));
+        let elapsed = start.elapsed();
+
+        if elapsed < best_time {
+            best_time = elapsed;
+            best_chunk_rows = actual_chunk_rows;
+        }
+    }
+
+    // Record the best chunk_rows
+    adaptive_chunker().record(sig, best_chunk_rows);
+
+    Ok(best_chunk_rows)
+}
+
+/// Enable or disable adaptive chunking globally.
+#[cfg(feature = "multithread-mm")]
+pub fn set_adaptive_chunking(enabled: bool) {
+    if let Some(chunker) = ADAPTIVE_CHUNKER.get() {
+        if enabled {
+            chunker.enable();
+        } else {
+            chunker.disable();
+        }
+    }
+}
+
+/// Check if adaptive chunking is enabled.
+#[cfg(feature = "multithread-mm")]
+pub fn is_adaptive_chunking_enabled() -> bool {
+    ADAPTIVE_CHUNKER.get().map(|c| c.enabled).unwrap_or(false)
 }
