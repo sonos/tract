@@ -1,6 +1,5 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use metal::{MTLSize, NSUInteger};
 use std::ffi::c_void;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -45,9 +44,7 @@ impl LeakyRelu {
                 &alpha as *const f32 as *const c_void,
             );
 
-            let grid_size = MTLSize { width: output.len() as NSUInteger, height: 1, depth: 1 };
-            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, output.len());
         });
         Ok(())
     }
