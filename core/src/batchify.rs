@@ -212,6 +212,27 @@ fn shifted_axis_op(op: &AxisOp) -> AxisOp {
 }
 
 /// The batchified model, rebuilt through its ops so that every fact comes from
+/// Moves a `pulse.*_axes` property right by one wherever the interface it
+/// indexes gained the batch axis. A negative entry marks an interface with no
+/// streaming axis and stays as it is.
+fn shift_pulse_axes(model: &mut TypedModel, key: &str, widened: &[bool]) -> TractResult<()> {
+    let Some(axes) = model.properties.get(key) else { return Ok(()) };
+    let mut axes: Vec<i64> = axes.cast_to::<i64>()?.try_as_plain_ram()?.as_slice::<i64>()?.to_vec();
+    ensure!(
+        axes.len() == widened.len(),
+        "{key} holds {} axes for {} interfaces",
+        axes.len(),
+        widened.len()
+    );
+    for (axis, widened) in axes.iter_mut().zip(widened) {
+        if *widened && *axis >= 0 {
+            *axis += 1;
+        }
+    }
+    model.properties.insert(key.to_string(), tensor1(&axes).into_arc_tensor());
+    Ok(())
+}
+
 /// `output_facts` with the batch extent in place rather than from the facts the
 /// unbatched model stored.
 fn wire(
@@ -291,8 +312,19 @@ fn wire(
     target.select_output_outlets(&outputs)?;
     // A batched model is the same model, so it keeps what the graph says about
     // itself -- its name, and the pulse properties a streaming caller reads to
-    // find the delay and the streaming axes.
+    // find the delay and the streaming axes. The axes among them are indices
+    // into shapes this transform has just widened.
     target.properties.clone_from(&model.properties);
+    if !join {
+        let batched_inputs: Vec<bool> = model
+            .input_outlets()?
+            .iter()
+            .map(|o| !shared.contains(&model.node(o.node).name))
+            .collect();
+        shift_pulse_axes(&mut target, "pulse.input_axes", &batched_inputs)?;
+        let batched_outputs = vec![true; model.output_outlets()?.len()];
+        shift_pulse_axes(&mut target, "pulse.output_axes", &batched_outputs)?;
+    }
     Ok(target)
 }
 
