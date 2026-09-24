@@ -226,6 +226,38 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
                   i0 * out_strides_0 + i1 * out_strides_1 +                    \
                       i2 * out_strides_2 + i3 * out_strides_3,                 \
                   out_strides_4, out_strides_5, out_shape_4, out_shape_5);     \
+  }                                                                            \
+                                                                               \
+  extern "C" __global__ void copy_nd7_##name(                                  \
+      const T *input, T *output, int32_t in_strides_0, int32_t in_strides_1,   \
+      int32_t in_strides_2, int32_t in_strides_3, int32_t in_strides_4,        \
+      int32_t in_strides_5, int32_t in_strides_6, int32_t out_shape_0,         \
+      int32_t out_shape_1, int32_t out_shape_2, int32_t out_shape_3,           \
+      int32_t out_shape_4, int32_t out_shape_5, int32_t out_shape_6,           \
+      int32_t out_strides_0, int32_t out_strides_1, int32_t out_strides_2,     \
+      int32_t out_strides_3, int32_t out_strides_4, int32_t out_strides_5,     \
+      int32_t out_strides_6) {                                                 \
+    int b = blockIdx.y + blockIdx.z * gridDim.y;                               \
+    const int i4 = b % out_shape_4;                                            \
+    b /= out_shape_4;                                                          \
+    const int i3 = b % out_shape_3;                                            \
+    b /= out_shape_3;                                                          \
+    const int i2 = b % out_shape_2;                                            \
+    b /= out_shape_2;                                                          \
+    const int i1 = b % out_shape_1;                                            \
+    b /= out_shape_1;                                                          \
+    const int i0 = b;                                                          \
+    if (i0 >= out_shape_0) {                                                   \
+      return;                                                                  \
+    }                                                                          \
+    copy_last2<T>(input,                                                       \
+                  i0 * in_strides_0 + i1 * in_strides_1 + i2 * in_strides_2 +  \
+                      i3 * in_strides_3 + i4 * in_strides_4,                   \
+                  in_strides_5, in_strides_6, output,                          \
+                  i0 * out_strides_0 + i1 * out_strides_1 +                    \
+                      i2 * out_strides_2 + i3 * out_strides_3 +                \
+                      i4 * out_strides_4,                                      \
+                  out_strides_5, out_strides_6, out_shape_5, out_shape_6);     \
   }
 
 #define INSTANTIATE_CAST_FROM(tname, type)                                     \

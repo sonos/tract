@@ -92,10 +92,11 @@ pub enum BroadcastKind {
     Nd4,
     Nd5,
     Nd6,
+    Nd7,
 }
 
 impl BroadcastKind {
-    pub const ALL: [BroadcastKind; 8] = [
+    pub const ALL: [BroadcastKind; 10] = [
         Self::Unicast,
         Self::ByScalarLeft,
         Self::ByScalarRight,
@@ -104,6 +105,8 @@ impl BroadcastKind {
         Self::Nd3,
         Self::Nd4,
         Self::Nd5,
+        Self::Nd6,
+        Self::Nd7,
     ];
 
     pub fn from_rank(rank: usize) -> TractResult<Self> {
@@ -114,6 +117,7 @@ impl BroadcastKind {
             4 => Ok(Self::Nd4),
             5 => Ok(Self::Nd5),
             6 => Ok(Self::Nd6),
+            7 => Ok(Self::Nd7),
             _ => bail!("Unsupported rank {rank} for broadcasting"),
         }
     }
@@ -129,6 +133,7 @@ impl BroadcastKind {
             Self::Nd4 => "nd4",
             Self::Nd5 => "nd5",
             Self::Nd6 => "nd6",
+            Self::Nd7 => "nd7",
         }
     }
 
