@@ -3,6 +3,7 @@ use tract_core::ops;
 
 mod broadcast;
 mod cast;
+mod clamped_swiglu;
 #[cfg(feature = "complex")]
 mod complex;
 mod downsample;
@@ -52,6 +53,7 @@ pub fn register(registry: &mut Registry) {
     registry.register_binary("tract_shr", &ops::math::ShiftRight);
     broadcast::register(registry);
     cast::register(registry);
+    clamped_swiglu::register(registry);
     #[cfg(feature = "complex")]
     complex::register(registry);
     downsample::register(registry);

@@ -1,4 +1,4 @@
-use super::activation::{ClampedSwiGlu, activation_op};
+use super::activation::activation_op;
 use super::{
     ExpertLayout, GateMode, block_quant_group_tensor, concat_block_quant_rows,
     scatter_add_weighted, select_routes,
@@ -17,6 +17,7 @@ use std::{
 };
 use tract_ndarray::{Array2, ArrayView2};
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::nn::ClampedSwiGlu;
 use tract_nnef::tract_core::ops::{
     OpState,
     array::Slice,

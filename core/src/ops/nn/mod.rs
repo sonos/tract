@@ -1,3 +1,4 @@
+pub mod clamped_swiglu;
 mod data_formats;
 pub mod gelu_approximate;
 pub mod gelu_exact;
@@ -8,6 +9,7 @@ pub mod rms_norm;
 pub mod silu;
 mod softmax;
 
+pub use self::clamped_swiglu::ClampedSwiGlu;
 pub use self::data_formats::{BaseDataShape, DataFormat, DataShape, SymDataShape};
 pub use self::gelu_approximate::GeluApproximate;
 pub use self::gelu_exact::GeluExact;
