@@ -360,10 +360,15 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     // Shared memory layout:
     // Q_smem (BLOCK_Q x DIM) overlaps K_smem (2 * BLOCK_KV x DIM), plus V_smem
     // (BLOCK_KV x DIM)
-    extern __shared__ half smem[];
-    const uint32_t Q_smem = __cvta_generic_to_shared(smem);
-    const uint32_t K_smem = Q_smem; // double buffer for K
-    const uint32_t V_smem = K_smem + 2 * BLOCK_KV * PADDED_DIM * sizeof(half);
+    // K needs double-buffering (2 * BLOCK_KV * PADDED_DIM half elements).
+    // Q fits within the same region (loaded first, consumed before K is loaded).
+    extern __shared__ alignment_dummy __shm[];
+    shared_allocator al((int *)&__shm[0]);
+    auto &qk_smem = al.allocate<half, 2 * BLOCK_KV * PADDED_DIM>();
+    const uint32_t Q_smem = __cvta_generic_to_shared(&qk_smem[0]);
+    const uint32_t K_smem = Q_smem; // Q and K share the same region
+    auto &v_smem = al.allocate<half, BLOCK_KV * PADDED_DIM>();
+    const uint32_t V_smem = __cvta_generic_to_shared(&v_smem[0]);
 
     // Per-thread swizzled bases
     uint32_t Q_smem_thread, K_smem_thread, V_smem_thread;
