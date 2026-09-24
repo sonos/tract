@@ -14,6 +14,10 @@ them on any conflict.
 - Format with stable rustfmt: `cargo fmt --all`. The repo's `rust-toolchain.toml`
   pins the stable channel, so bare `cargo fmt` picks the same rustfmt CI checks
   against — don't override the toolchain. Metal files too, on Linux.
+- One module path per `use` line — no nested brace groups
+  (`use a::b::{c::{d, e}, f};`). Stable rustfmt preserves the granularity you
+  wrote, so `cargo fmt` will not fix it; rust-analyzer emits nested groups by
+  default, set `imports.granularity.group = "module"`.
 - `cargo clippy --workspace` clean.
 
 ## Commit messages
