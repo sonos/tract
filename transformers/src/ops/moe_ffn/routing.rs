@@ -33,8 +33,9 @@ impl EvalOp for RouteTopK {
     op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let x_t = inputs[0].cast_to::<f32>()?.into_owned();
-        let wg_t = inputs[1].cast_to::<f32>()?.into_owned();
+        let (x_t, wg_t) = args_2!(inputs);
+        let x_t = x_t.cast_to::<f32>()?;
+        let wg_t = wg_t.cast_to::<f32>()?;
         let x = as_2d_tokens(x_t.to_plain_array_view::<f32>()?)?;
         let wg = router_weights_as_2d(wg_t.to_plain_array_view::<f32>()?)?;
 
@@ -110,11 +111,6 @@ pub enum RoutedInputMode {
 pub struct RoutedMatMul {
     pub input_mode: RoutedInputMode,
     pub cache_weights: bool,
-}
-
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
-pub struct RoutedQ40MatMul {
-    pub input_mode: RoutedInputMode,
 }
 
 #[derive(Clone, Debug)]
@@ -535,6 +531,11 @@ impl TypedOp for RoutedMatMul {
     }
 
     as_op!();
+}
+
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RoutedQ40MatMul {
+    pub input_mode: RoutedInputMode,
 }
 
 impl RoutedQ40MatMul {
