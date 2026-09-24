@@ -1,6 +1,8 @@
 //! Packed Q40 expert plans and reusable CPU execution scratch.
 use super::cpu::{OptMoeFfn, profile_elapsed, profile_start};
-use super::{GateMode, block_quant_group_tensor, concat_block_quant_rows, select_routes};
+use super::{
+    GateMode, as_2d_tokens, block_quant_group_tensor, concat_block_quant_rows, select_routes,
+};
 use crate::ops::routed_matmul::{
     PreparedRoutedMatMul, PreparedRoutedMatMulState, RoutedInputRows, RoutedMatMulGroup,
     build_block_quant_routed_matmul, pack_prepared_routed_matmul_rhs, run_prepared_routed_matmul,
@@ -156,7 +158,7 @@ fn push_selected_routes(
 pub(super) struct Q40LinearExpertState {
     gate_up_state: PreparedRoutedMatMulState,
     down_state: PreparedRoutedMatMulState,
-    hidden: Option<Tensor>,
+    hidden: Option<Arc<Tensor>>,
     expert_out: Option<Tensor>,
     expert_tokens: Vec<Vec<(usize, f32)>>,
     route_groups: Vec<RoutedMatMulGroup>,
@@ -211,7 +213,7 @@ impl Q40LinearExpertState {
         &mut self,
         op: &OptMoeFfn,
         plan: &Q40LinearExpertPlan,
-        x: ArrayView2<f32>,
+        x_tensor: &Arc<Tensor>,
         router_logits: ArrayView2<f32>,
         x_ndim: usize,
         x_orig_shape: &[usize],
@@ -222,6 +224,7 @@ impl Q40LinearExpertState {
         let total_start = profile_start(profile);
         let topk_start = profile_start(profile);
 
+        let x = as_2d_tokens(x_tensor.to_plain_array_view::<f32>()?)?;
         let t_tokens = x.shape()[0];
         let d_model = x.shape()[1];
         ensure!(
@@ -261,10 +264,8 @@ impl Q40LinearExpertState {
         };
         let mut output_tensor = Tensor::zero_dt(f32::datum_type(), &output_shape)?;
 
-        let item_size = f32::datum_type().size_of() as isize;
-        let x_base = x.as_ptr();
-        let x_row_stride_bytes = x.strides()[0] * item_size;
-        let x_k_stride_bytes = x.strides()[1] * item_size;
+        let x_row_stride = usize::try_from(x.strides()[0])?;
+        let x_k_stride = usize::try_from(x.strides()[1])?;
 
         let mut gate_up_elapsed = Duration::ZERO;
         let mut activation_elapsed = Duration::ZERO;
@@ -290,15 +291,11 @@ impl Q40LinearExpertState {
             self.route_weights.extend(tokens.iter().map(|&(_, weight)| weight));
 
             let rows = if route_count == 1 {
-                RoutedInputRows::single(
-                    x_base,
-                    x_row_stride_bytes * tokens[0].0 as isize,
-                    x_k_stride_bytes,
-                )
+                RoutedInputRows::single(x_row_stride * tokens[0].0, x_k_stride)
             } else {
-                let row_offsets: Vec<isize> =
-                    tokens.iter().map(|&(t, _)| x_row_stride_bytes * t as isize).collect();
-                RoutedInputRows::explicit(x_base, row_offsets, x_k_stride_bytes)
+                let row_offsets: Vec<usize> =
+                    tokens.iter().map(|&(t, _)| x_row_stride * t).collect();
+                RoutedInputRows::explicit(row_offsets, x_k_stride)
             };
             self.route_groups.push(RoutedMatMulGroup { group: eid, rows, output_row_offset });
             if t_tokens == 1 && route_count == 1 {
@@ -307,14 +304,19 @@ impl Q40LinearExpertState {
         }
 
         if routed_rows > 0 {
-            let hidden =
-                ensure_f32_tensor_capacity(&mut self.hidden, routed_rows * plan.gate_up_dim)?;
+            let hidden_len = routed_rows * plan.gate_up_dim;
+            if self.hidden.as_ref().is_none_or(|tensor| tensor.len() < hidden_len) {
+                self.hidden = Some(Arc::new(Tensor::zero::<f32>(&[hidden_len])?));
+            }
+            let hidden = Arc::get_mut(self.hidden.as_mut().unwrap())
+                .context("Q40 hidden scratch is still shared across evaluations")?;
 
             let gate_up_start = profile_start(profile);
             if self.shared_rhs_groups.len() == self.route_groups.len() {
                 let rhs = pack_prepared_routed_matmul_rhs(
                     &plan.gate_up,
-                    RoutedInputRows::single(x_base, 0, x_k_stride_bytes),
+                    x_tensor,
+                    RoutedInputRows::single(0, x_k_stride),
                 )?;
                 run_prepared_routed_matmul_many_same_rhs(
                     &plan.gate_up,
@@ -327,6 +329,7 @@ impl Q40LinearExpertState {
             } else {
                 run_prepared_routed_matmul_many(
                     &plan.gate_up,
+                    x_tensor,
                     &self.route_groups,
                     hidden,
                     &mut self.gate_up_state,
@@ -348,10 +351,8 @@ impl Q40LinearExpertState {
             }
             activation_elapsed += profile_elapsed(activation_start);
 
-            let hidden_plain = hidden.try_as_plain_ram()?;
-            let hidden_slice = hidden_plain.as_slice::<f32>()?;
-            let hidden_base = hidden_slice.as_ptr();
-            let hidden_row_stride_bytes = plan.gate_up_dim as isize * item_size;
+            let hidden_source = self.hidden.as_ref().unwrap().clone();
+            let hidden_row_stride = plan.gate_up_dim;
 
             for route_group_index in 0..self.route_groups.len() {
                 let group_id = self.route_groups[route_group_index].group;
@@ -365,11 +366,8 @@ impl Q40LinearExpertState {
                     run_prepared_routed_matmul_accumulate_one(
                         &plan.down,
                         group_id,
-                        RoutedInputRows::single(
-                            hidden_base,
-                            hidden_row_stride_bytes * route as isize,
-                            item_size,
-                        ),
+                        &hidden_source,
+                        RoutedInputRows::single(hidden_row_stride * route, 1),
                         &mut output_tensor,
                         self.route_tokens[route],
                         scale,
@@ -383,12 +381,12 @@ impl Q40LinearExpertState {
                     run_prepared_routed_matmul(
                         &plan.down,
                         group_id,
+                        &hidden_source,
                         RoutedInputRows::regular(
-                            hidden_base,
-                            hidden_row_stride_bytes * output_row_offset as isize,
+                            hidden_row_stride * output_row_offset,
                             route_count,
-                            hidden_row_stride_bytes,
-                            item_size,
+                            hidden_row_stride,
+                            1,
                         ),
                         expert_out,
                         &mut self.down_state,

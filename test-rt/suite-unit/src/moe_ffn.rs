@@ -14,6 +14,14 @@ enum Storage {
     Q40WithF16Down,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+enum WeightInputs {
+    #[default]
+    Constants,
+    Router,
+    All,
+}
+
 #[derive(Clone, Debug)]
 struct MoeProblem {
     x: Tensor,
@@ -25,6 +33,7 @@ struct MoeProblem {
     gate: GateMode,
     linear: bool,
     storage: Storage,
+    weight_inputs: WeightInputs,
 }
 
 fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
@@ -38,10 +47,10 @@ fn tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
 }
 
 impl Arbitrary for MoeProblem {
-    type Parameters = (bool, Storage);
+    type Parameters = (bool, Storage, WeightInputs);
     type Strategy = BoxedStrategy<Self>;
 
-    fn arbitrary_with((linear, storage): Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with((linear, storage, weight_inputs): Self::Parameters) -> Self::Strategy {
         let dimension = if matches!(storage, Storage::Float) { 1usize..33 } else { 1usize..3 };
         (1usize..17, dimension.clone(), dimension, 1usize..9, any::<bool>(), 0usize..4)
             .prop_flat_map(move |(tokens, d, h, experts, has_w3, gate)| {
@@ -74,6 +83,7 @@ impl Arbitrary for MoeProblem {
                 },
                 linear,
                 storage,
+                weight_inputs,
             })
             .boxed()
     }
@@ -182,13 +192,29 @@ impl Test for MoeProblem {
         let w3 = self.w3.as_ref().map(|w| weight(w, self.storage, false)).transpose()?;
         let expected = self.reference(&ref_w1, &ref_w2, w3.as_ref().map(|(_, plain)| plain))?;
         let mut model = TypedModel::default();
-        let x = model.add_source("x", TypedFact::shape_and_dt_of(&self.x))?;
-        let wg = model.add_const("wg", self.wg.clone())?;
-        let w1 = add_weight(&mut model, "w1", w1)?;
-        let w2 = add_weight(&mut model, "w2", w2)?;
+        let tokens = model.symbols.sym("tokens");
+        let x = model.add_source("x", f32::fact([tokens.to_dim(), self.x.shape()[1].to_dim()]))?;
+        let mut extra_inputs = tvec![];
+        let wg = if matches!(self.weight_inputs, WeightInputs::Constants) {
+            model.add_const("wg", self.wg.clone())?
+        } else {
+            extra_inputs.push(self.wg.clone().into_tvalue());
+            model.add_source("wg", TypedFact::shape_and_dt_of(&self.wg))?
+        };
+        let mut expert = |model: &mut TypedModel, name: &str, tensor: Tensor| {
+            if matches!(self.weight_inputs, WeightInputs::All) {
+                let outlet = model.add_source(name, TypedFact::shape_and_dt_of(&tensor))?;
+                extra_inputs.push(tensor.into_tvalue());
+                Ok(outlet)
+            } else {
+                add_weight(model, name, tensor)
+            }
+        };
+        let w1 = expert(&mut model, "w1", w1)?;
+        let w2 = expert(&mut model, "w2", w2)?;
         let mut inputs = tvec![x, wg, w1, w2];
         if let Some((w3, _)) = w3 {
-            inputs.push(add_weight(&mut model, "w3", w3)?);
+            inputs.push(expert(&mut model, "w3", w3)?);
         }
         let op = MoeFfn {
             k: self.k,
@@ -206,8 +232,23 @@ impl Test for MoeProblem {
         let output = model.wire_node("moe", op, &inputs)?;
         model.select_output_outlets(&output)?;
         model.properties.insert("tract-rt-test.id".into(), rctensor0(id.to_string()));
-        let actual = runtime.prepare(model)?.run(tvec![self.x.clone().into_tvalue()])?;
-        actual[0].close_enough(&expected, approx)
+        let run_inputs = |x: Tensor| {
+            let mut inputs = tvec![x.into_tvalue()];
+            inputs.extend(extra_inputs.iter().cloned());
+            inputs
+        };
+        let mut state = runtime.prepare(model)?.spawn()?;
+        let actual = state.run(run_inputs(self.x.clone()))?;
+        actual[0].close_enough(&expected, approx)?;
+        let mut cloned = tract_core::dyn_clone::clone_box(&*state);
+        let larger = Tensor::zero::<f32>(&[self.x.shape()[0] + 1, self.x.shape()[1]])?;
+        for state in [&mut state, &mut cloned] {
+            let actual = state.run(run_inputs(larger.clone()))?;
+            actual[0].close_enough(&larger, approx)?;
+            let actual = state.run(run_inputs(self.x.clone()))?;
+            actual[0].close_enough(&expected, approx)?;
+        }
+        Ok(())
     }
 }
 
@@ -217,9 +258,14 @@ pub fn suite() -> TractResult<TestSuite> {
         [("float", Storage::Float), ("q40", Storage::Q40), ("mixed", Storage::Q40WithF16Down)]
     {
         let mut layouts = TestSuite::default();
-        layouts.add_arbitrary::<MoeProblem>("canonical", (false, storage));
-        layouts.add_arbitrary::<MoeProblem>("linear", (true, storage));
+        layouts.add_arbitrary::<MoeProblem>("canonical", (false, storage, WeightInputs::Constants));
+        layouts.add_arbitrary::<MoeProblem>("linear", (true, storage, WeightInputs::Constants));
         suite.add(name, layouts);
     }
+    suite.add_arbitrary::<MoeProblem>(
+        "cached_routes",
+        (false, Storage::Float, WeightInputs::Router),
+    );
+    suite.add_arbitrary::<MoeProblem>("dynamic_routes", (false, Storage::Float, WeightInputs::All));
     Ok(suite)
 }

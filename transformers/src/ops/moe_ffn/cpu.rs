@@ -1,6 +1,7 @@
 use super::activation::activation_op;
 use super::q40::{Q40LinearExpertPlan, Q40LinearExpertState};
 use super::{ExpertLayout, GateMode, concat_block_quant_rows, scatter_add_weighted, select_routes};
+use crate::ops::routed_matmul::f32_input;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -320,10 +321,10 @@ enum CpuExpertState {
     PackedQ40 { plan: Arc<Q40LinearExpertPlan>, state: Box<Q40LinearExpertState> },
 }
 
+/// Execution workspace, not model history: retains the router's runnable
+/// state and Q40 allocation/kernel scratch between calls. Expert inputs are
+/// evaluation-local; cloning the Q40 workspace starts with fresh scratch.
 #[derive(Clone, Debug)]
-/// Only the router keeps a long-lived state. Expert plans are spawned per eval
-/// so they can run on the rayon pool; they are stateless matmuls, so there is
-/// nothing to carry between calls anyway.
 struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
@@ -351,7 +352,7 @@ impl OpState for OptMoeFfnState {
             "OptMoeFfn input feature dimension disagrees with its compiled weights"
         );
         let dt = x_input.datum_type();
-        let x_f32 = x_input.cast_to::<f32>()?;
+        let x_f32 = f32_input(x_input)?;
         let x_view = x_f32.to_plain_array_view::<f32>()?;
         let x_ndim = x_view.ndim();
         let x_orig_shape: Vec<usize> = x_view.shape().to_vec();
@@ -366,7 +367,7 @@ impl OpState for OptMoeFfnState {
 
         let t_tokens = x.shape()[0];
         let d_model = x.shape()[1];
-        let x_2d_tensor = x_f32.clone().into_owned().into_shape(&[t_tokens, d_model])?;
+        let x_2d_tensor = x_f32.as_ref().clone().into_shape(&[t_tokens, d_model])?;
 
         let router_start = profile_start(profile);
         let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
@@ -390,7 +391,7 @@ impl OpState for OptMoeFfnState {
                 return state.eval(
                     &self.op,
                     plan,
-                    x,
+                    &x_f32,
                     router_logits,
                     x_ndim,
                     &x_orig_shape,
@@ -425,15 +426,6 @@ impl OpState for OptMoeFfnState {
             }
         }
 
-        // Each active expert gathers its own token rows and runs its own plan,
-        // so the experts run concurrently. This matters most during prefill:
-        // with T tokens and top-k routing a prompt pass lights up nearly every
-        // expert in every layer, and each expert's matmuls are too narrow (a
-        // handful of token rows) to fill the machine on their own.
-        //
-        // Plans are spawned per call rather than reusing `expert_states`:
-        // `OpState` is deliberately not `Send`, and expert sub-models are
-        // stateless matmuls so nothing is carried between calls anyway.
         let run_expert =
             |plan: &Arc<TypedSimplePlan>, tokens: &[(usize, f32)]| -> TractResult<Option<Tensor>> {
                 if tokens.is_empty() {
