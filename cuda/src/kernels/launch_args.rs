@@ -1,5 +1,7 @@
 use core::{mem::size_of, ptr};
-use cudarc::driver::{CudaFunction, CudaView, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg};
+use cudarc::driver::{
+    CudaFunction, CudaView, CudaViewMut, DeviceRepr, LaunchArgs, LaunchConfig, PushKernelArg,
+};
 use num_traits::AsPrimitive;
 use std::ops::Deref;
 use tract_core::prelude::TractResult;
@@ -72,6 +74,10 @@ impl<'a> TractLaunchArgs<'a> {
     }
 
     pub fn push_view<T>(&mut self, x: &'a CudaView<'_, T>) {
+        self.inner.arg(x);
+    }
+
+    pub fn push_view_mut<T>(&mut self, x: &'a mut CudaViewMut<'_, T>) {
         self.inner.arg(x);
     }
 
