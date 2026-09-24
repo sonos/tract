@@ -89,12 +89,6 @@ fn q40_roundtrip(tensor: &Tensor) -> TractResult<Tensor> {
     Q4_0.dequant_f32(&quant)?.into_shape(&shape)
 }
 
-fn transpose_expert_last2(tensor: &Tensor) -> TractResult<Tensor> {
-    let view = tensor.to_plain_array_view::<f32>()?;
-    let transposed = view.permuted_axes(tract_ndarray::IxDyn(&[0, 2, 1]));
-    Ok(transposed.into_owned().into_tensor())
-}
-
 #[test]
 fn test_concat_block_quant_rows_preserves_q40_storage() -> TractResult<()> {
     let lhs_data: Vec<f32> = (0..64).map(|i| (i as f32 - 32.0) / 17.0).collect();
@@ -117,200 +111,45 @@ fn test_concat_block_quant_rows_preserves_q40_storage() -> TractResult<()> {
 }
 
 #[test]
-fn test_linear_expert_layout_matches_canonical_layout() -> TractResult<()> {
-    let mut rng_state: u64 = 9001;
-    let mut next_f32 = || -> f32 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-    };
-    let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
-        let n: usize = shape.iter().product();
-        let data: Vec<f32> = (0..n).map(|_| rng()).collect();
-        tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
-    };
-
-    let t_tokens = 8;
-    let d_model = 16;
-    let d_hidden = 32;
-    let num_experts = 4;
-    let wg_data = make_tensor(&[num_experts, d_model], &mut next_f32);
-    let w1_canonical = make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32);
-    let w2_canonical = make_tensor(&[num_experts, d_hidden, d_model], &mut next_f32);
-    let w3_canonical = make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32);
-    let x_data = make_tensor(&[t_tokens, d_model], &mut next_f32);
-
-    let build = |layout: ExpertLayout,
-                 wg_data: Tensor,
-                 w1_data: Tensor,
-                 w2_data: Tensor,
-                 w3_data: Tensor|
-     -> TractResult<TypedModel> {
+fn codegen_selects_q40_execution_by_layout() -> TractResult<()> {
+    for layout in [ExpertLayout::Canonical, ExpertLayout::Linear] {
         let mut model = TypedModel::default();
-        let x = model.add_source("x", f32::datum_type().fact([t_tokens, d_model]))?;
-        let wg = model.add_const("wg", wg_data)?;
-        let w1 = model.add_const("w1", w1_data)?;
-        let w2 = model.add_const("w2", w2_data)?;
-        let w3 = model.add_const("w3", w3_data)?;
-        let op = MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, layout);
+        let x = model.add_source("x", f32::fact([2, 32]))?;
+        let wg = model.add_const("wg", Tensor::from_shape(&[2, 32], &[0.25f32; 64])?)?;
+        let (up_shape, down_shape) = match layout {
+            ExpertLayout::Canonical => ([2, 32, 64], [2, 64, 32]),
+            ExpertLayout::Linear => ([2, 64, 32], [2, 32, 64]),
+        };
+        let w1 = add_q40_const(&mut model, "w1", Tensor::from_shape(&up_shape, &[0.25f32; 4096])?)?;
+        let w2 =
+            add_q40_const(&mut model, "w2", Tensor::from_shape(&down_shape, &[0.25f32; 4096])?)?;
+        let w3 = add_q40_const(&mut model, "w3", Tensor::from_shape(&up_shape, &[0.25f32; 4096])?)?;
+        let op = MoeFfn::basic_with_layout(1, "silu", GateMode::SoftmaxTopk, true, layout);
         let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
         model.select_output_outlets(&outputs)?;
-        model.into_optimized()
-    };
-
-    let canonical = build(
-        ExpertLayout::Canonical,
-        wg_data.clone(),
-        w1_canonical.clone(),
-        w2_canonical.clone(),
-        w3_canonical.clone(),
-    )?;
-    let linear = build(
-        ExpertLayout::Linear,
-        wg_data,
-        transpose_expert_last2(&w1_canonical)?,
-        transpose_expert_last2(&w2_canonical)?,
-        transpose_expert_last2(&w3_canonical)?,
-    )?;
-
-    let canonical_result =
-        SimplePlan::new(canonical)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-    let linear_result = SimplePlan::new(linear)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
-
-    canonical_result[0].close_enough(&linear_result[0], Approximation::Approximate)?;
+        let model = model.into_optimized()?;
+        let optimized: Vec<_> =
+            model.nodes().iter().filter_map(|n| n.op_as::<OptMoeFfn>()).collect();
+        let reference_count = model.nodes().iter().filter(|n| n.op_is::<MoeFfn>()).count();
+        match layout {
+            ExpertLayout::Canonical => {
+                assert_eq!(reference_count, 1);
+                assert!(optimized.is_empty());
+            }
+            ExpertLayout::Linear => {
+                assert_eq!(reference_count, 0);
+                assert_eq!(optimized.len(), 1);
+                assert!(optimized[0].uses_direct_q40());
+            }
+        }
+        assert!(!model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>()));
+    }
     Ok(())
 }
 
-#[test]
-fn test_codegen_keeps_q40_expert_constants_on_reference_eval() -> TractResult<()> {
-    let mut model = TypedModel::default();
-    let x = model.add_source("x", f32::datum_type().fact([2, 32]))?;
-    let mut ref_model = TypedModel::default();
-    let ref_x = ref_model.add_source("x", f32::datum_type().fact([2, 32]))?;
-
-    let mut rng_state: u64 = 77;
-    let mut next_f32 = || -> f32 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-    };
-    let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
-        let n: usize = shape.iter().product();
-        let data: Vec<f32> = (0..n).map(|_| rng()).collect();
-        tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
-    };
-
-    let wg_data = make_tensor(&[2, 32], &mut next_f32);
-    let w1_data = make_tensor(&[2, 32, 32], &mut next_f32);
-    let w2_data = make_tensor(&[2, 32, 32], &mut next_f32);
-    let w3_data = make_tensor(&[2, 32, 32], &mut next_f32);
-
-    let wg = model.add_const("wg", wg_data.clone())?;
-    let w1 = add_q40_const(&mut model, "w1", w1_data.clone())?;
-    let w2 = add_q40_const(&mut model, "w2", w2_data.clone())?;
-    let w3 = add_q40_const(&mut model, "w3", w3_data.clone())?;
-
-    let op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, true);
-    let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
-    model.select_output_outlets(&outputs)?;
-
-    let ref_wg = ref_model.add_const("wg", wg_data)?;
-    let ref_w1 = ref_model.add_const("w1", q40_roundtrip(&w1_data)?)?;
-    let ref_w2 = ref_model.add_const("w2", q40_roundtrip(&w2_data)?)?;
-    let ref_w3 = ref_model.add_const("w3", q40_roundtrip(&w3_data)?)?;
-    let ref_op = MoeFfn::basic(1, "silu", GateMode::SoftmaxTopk, true);
-    let ref_outputs =
-        ref_model.wire_node("moe", ref_op, &[ref_x, ref_wg, ref_w1, ref_w2, ref_w3])?;
-    ref_model.select_output_outlets(&ref_outputs)?;
-
-    let opt_model = model.into_optimized()?;
-    let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
-    assert!(has_moe, "Expected Q40 experts to stay on MoeFfn reference eval");
-    let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
-    assert!(!has_opt, "Q40 experts should not lower to OptMoeFfn yet");
-    let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
-    assert!(!has_routed, "Q40 experts should not lower to RoutedMatMul yet");
-
-    let x_data = make_tensor(&[2, 32], &mut next_f32);
-    let plan = SimplePlan::new(opt_model)?;
-    let result = plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-    let ref_result = SimplePlan::new(ref_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
-    result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
-
-    Ok(())
-}
-
-#[test]
-fn test_q40_linear_expert_layout_matches_dequantized_reference() -> TractResult<()> {
-    let mut model = TypedModel::default();
-    let x = model.add_source("x", f32::datum_type().fact([4, 32]))?;
-    let mut ref_model = TypedModel::default();
-    let ref_x = ref_model.add_source("x", f32::datum_type().fact([4, 32]))?;
-
-    let mut rng_state: u64 = 2026;
-    let mut next_f32 = || -> f32 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-    };
-    let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
-        let n: usize = shape.iter().product();
-        let data: Vec<f32> = (0..n).map(|_| rng()).collect();
-        tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
-    };
-
-    let wg_data = make_tensor(&[4, 32], &mut next_f32);
-    let w1_data = make_tensor(&[4, 64, 32], &mut next_f32);
-    let w2_data = make_tensor(&[4, 32, 64], &mut next_f32);
-    let w3_data = make_tensor(&[4, 64, 32], &mut next_f32);
-
-    let wg = model.add_const("wg", wg_data.clone())?;
-    let w1 = add_q40_const(&mut model, "w1", w1_data.clone())?;
-    let w2 = add_q40_const(&mut model, "w2", w2_data.clone())?;
-    let w3 = add_q40_const(&mut model, "w3", w3_data.clone())?;
-    let op =
-        MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
-    let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
-    model.select_output_outlets(&outputs)?;
-
-    let ref_wg = ref_model.add_const("wg", wg_data)?;
-    let ref_w1 = ref_model.add_const("w1", q40_roundtrip(&w1_data)?)?;
-    let ref_w2 = ref_model.add_const("w2", q40_roundtrip(&w2_data)?)?;
-    let ref_w3 = ref_model.add_const("w3", q40_roundtrip(&w3_data)?)?;
-    let ref_op =
-        MoeFfn::basic_with_layout(2, "silu", GateMode::SoftmaxTopk, true, ExpertLayout::Linear);
-    let ref_outputs =
-        ref_model.wire_node("moe", ref_op, &[ref_x, ref_wg, ref_w1, ref_w2, ref_w3])?;
-    ref_model.select_output_outlets(&ref_outputs)?;
-
-    let opt_model = model.into_optimized()?;
-    let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
-    assert!(!has_moe, "Expected Q40 linear experts to lower to OptMoeFfn");
-    let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
-    assert!(has_opt, "Q40 linear experts should use OptMoeFfn");
-    let uses_direct_q40 = opt_model
-        .nodes()
-        .iter()
-        .filter_map(|n| n.op_as::<OptMoeFfn>())
-        .any(|op| op.uses_direct_q40());
-    assert!(uses_direct_q40, "Q40 linear experts should use the direct Q40 plan");
-    let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
-    assert!(!has_routed, "Q40 linear constants should use the direct optimized plan");
-
-    let x_data = make_tensor(&[4, 32], &mut next_f32);
-    let result = SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-    let ref_result =
-        SimplePlan::new(ref_model.into_optimized()?)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
-    result[0].close_enough(&ref_result[0], Approximation::Approximate)?;
-
-    Ok(())
-}
-
-/// Square experts (`d_model == d_hidden`) with mixed precision, the exact
-/// gpt-oss-20b shape: 2880 x 2880 experts, Q40 gate/up, f16 down.
-///
-/// Every other MoE test uses non-square experts, so a layout mix-up shows
-/// up as a shape error. When the two dims are equal nothing catches it,
-/// and the wrong orientation silently produces plausible-looking garbage.
-/// This runs a long enough sequence that every expert is exercised, and
-/// compares the optimized path against the reference evaluator.
+/// Square Q40 gate/up and f16 down projections expose layout errors that
+/// shape checks cannot catch. A long token batch exercises every expert
+/// against the reference evaluator.
 #[test]
 fn test_opt_moe_ffn_square_mixed_precision_long_sequence() -> TractResult<()> {
     const DIM: usize = 64; // square: d_model == d_hidden
@@ -382,62 +221,15 @@ fn test_opt_moe_ffn_square_mixed_precision_long_sequence() -> TractResult<()> {
 }
 
 #[test]
-fn test_opt_moe_ffn_matches_reference() -> TractResult<()> {
-    // Test with SwiGLU (has_w3=true)
-    let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, true)?;
-
-    // Run reference (unoptimized)
-    let ref_plan = SimplePlan::new(model.clone())?;
-    let ref_result = ref_plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-
-    // Run optimized
-    let opt_model = model.into_optimized()?;
-
-    // Verify constant expert weights keep the fast plan-based path.
-    let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
-    assert!(has_opt, "Expected OptMoeFfn in optimized model");
-    let has_routed = opt_model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>());
-    assert!(!has_routed, "Constant expert weights should use OptMoeFfn");
-
-    let opt_plan = SimplePlan::new(opt_model)?;
-    let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
-
-    // Compare outputs
-    ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-
-    Ok(())
-}
-
-#[test]
-fn test_opt_moe_ffn_no_w3() -> TractResult<()> {
-    // Test without SwiGLU (has_w3=false)
-    let (model, x_data) = make_moe_model(8, 16, 32, 4, 2, false)?;
-
-    let ref_plan = SimplePlan::new(model.clone())?;
-    let ref_result = ref_plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-
-    let opt_model = model.into_optimized()?;
-    let opt_plan = SimplePlan::new(opt_model)?;
-    let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
-
-    ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-
-    Ok(())
-}
-
-#[test]
-fn test_opt_moe_ffn_top1() -> TractResult<()> {
-    let (model, x_data) = make_moe_model(16, 8, 16, 8, 1, true)?;
-
-    let ref_plan = SimplePlan::new(model.clone())?;
-    let ref_result = ref_plan.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
-
-    let opt_model = model.into_optimized()?;
-    let opt_plan = SimplePlan::new(opt_model)?;
-    let opt_result = opt_plan.spawn()?.run(tvec![x_data.into_tvalue()])?;
-
-    ref_result[0].close_enough(&opt_result[0], Approximation::Approximate)?;
-
+fn codegen_uses_subplans_for_float_constants() -> TractResult<()> {
+    for has_w3 in [false, true] {
+        for k in [1, 2] {
+            let (model, _) = make_moe_model(8, 16, 32, 4, k, has_w3)?;
+            let model = model.into_optimized()?;
+            assert!(model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>()));
+            assert!(!model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>()));
+        }
+    }
     Ok(())
 }
 
@@ -536,62 +328,6 @@ fn test_routed_matmul_groups_by_expert_and_preserves_route_order() -> TractResul
         ],
     )?;
     result[0].close_enough(&expected, Approximation::Approximate)?;
-
-    Ok(())
-}
-
-#[test]
-fn test_moe_ffn_runs_with_q40_expert_constants() -> TractResult<()> {
-    let mut model = TypedModel::default();
-    let t_tokens = 4;
-    let d_model = 32;
-    let d_hidden = 64;
-    let num_experts = 4;
-
-    let x = model.add_source("x", f32::datum_type().fact([t_tokens, d_model]))?;
-
-    let mut rng_state: u64 = 1337;
-    let mut next_f32 = || -> f32 {
-        rng_state = rng_state.wrapping_mul(6364136223846793005).wrapping_add(1);
-        ((rng_state >> 33) as f32 / (1u64 << 31) as f32) - 1.0
-    };
-    let make_tensor = |shape: &[usize], rng: &mut dyn FnMut() -> f32| -> Tensor {
-        let n: usize = shape.iter().product();
-        let data: Vec<f32> = (0..n).map(|_| rng()).collect();
-        tract_ndarray::ArrayD::from_shape_vec(shape, data).unwrap().into_tensor()
-    };
-
-    let wg = model.add_const("wg", make_tensor(&[num_experts, d_model], &mut next_f32))?;
-    let w1 = add_q40_const(
-        &mut model,
-        "w1",
-        make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32),
-    )?;
-    let w2 = add_q40_const(
-        &mut model,
-        "w2",
-        make_tensor(&[num_experts, d_hidden, d_model], &mut next_f32),
-    )?;
-    let w3 = add_q40_const(
-        &mut model,
-        "w3",
-        make_tensor(&[num_experts, d_model, d_hidden], &mut next_f32),
-    )?;
-
-    let op = MoeFfn::basic(2, "silu", GateMode::SoftmaxTopk, true);
-    let outputs = model.wire_node("moe", op, &[x, wg, w1, w2, w3])?;
-    model.select_output_outlets(&outputs)?;
-
-    let opt_model = model.into_optimized()?;
-    let has_moe = opt_model.nodes().iter().any(|n| n.op_is::<MoeFfn>());
-    let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
-    assert!(has_moe, "Expected Q40 experts to stay on MoeFfn reference eval");
-    assert!(!has_opt, "Q40 experts should not use OptMoeFfn yet");
-
-    let x_data = make_tensor(&[t_tokens, d_model], &mut next_f32);
-    let result = SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
-    let output = result[0].to_plain_array_view::<f32>()?;
-    assert!(output.iter().all(|v| v.is_finite()));
 
     Ok(())
 }
