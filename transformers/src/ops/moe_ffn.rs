@@ -45,7 +45,7 @@
 //! export rather than retaining a second copy of their source weights.
 //!
 //! `nnef` contains interchange handling, `routing` the routed operators,
-//! `activation` defines activation operators, `lowering` selects CPU execution
+//! `activation` selects core activation operators, `lowering` selects CPU execution
 //! forms, and `cpu` owns prepared plans and their state. Public operator paths
 //! remain available through this module for backend integrations.
 
