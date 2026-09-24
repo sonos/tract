@@ -289,6 +289,10 @@ fn wire(
     }
     target.set_input_outlets(&inputs)?;
     target.select_output_outlets(&outputs)?;
+    // A batched model is the same model, so it keeps what the graph says about
+    // itself -- its name, and the pulse properties a streaming caller reads to
+    // find the delay and the streaming axes.
+    target.properties.clone_from(&model.properties);
     Ok(target)
 }
 
