@@ -27,7 +27,7 @@ pub use tract_gpu::utils::{compute_broadcast_strides, reshape_to_rank_2, reshape
 /// through it.
 pub fn cuda_launch_cfg_for_cpy(shape: &[usize]) -> LaunchConfig {
     let rank = shape.len();
-    assert!((1..=6).contains(&rank), "Unsupported rank {rank} for cuda copy launch config");
+    assert!((1..=7).contains(&rank), "Unsupported rank {rank} for cuda copy launch config");
     if rank == 1 {
         let block = shape[0].clamp(1, COPY_THREADS);
         return LaunchConfig {
