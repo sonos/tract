@@ -47,8 +47,9 @@ impl EvalOp for ClampedSwiGlu {
         if output.len() == 0 {
             return Ok(tvec![output.into_tvalue()]);
         }
-        let gate = inputs[0].cast_to::<f32>()?.into_owned();
-        let up = inputs[1].cast_to::<f32>()?.into_owned();
+        let (gate, up) = args_2!(inputs);
+        let gate = gate.cast_to::<f32>()?;
+        let up = up.cast_to::<f32>()?;
         let gate_ram = gate.try_as_plain_ram()?;
         let up_ram = up.try_as_plain_ram()?;
         let mut output_ram = output.try_as_plain_ram_mut()?;
