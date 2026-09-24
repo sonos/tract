@@ -47,8 +47,6 @@ METAL_FUNC uint indices_to_outer_idx(uint3 indices,
     template [[host_name(                                                      \
         "array_ops::copy_nd6_" #tname)]] [[kernel]] copy_nd6_t copy_nd6<type>; \
     template [[host_name(                                                      \
-        "array_ops::copy_nd7_" #tname)]] [[kernel]] copy_nd7_t copy_nd7<type>; \
-    template [[host_name(                                                      \
         "array_ops::copy_unicast_" #tname)]] [[kernel]] copy_unicast_t         \
         copy_unicast<type>;
 
@@ -205,28 +203,6 @@ template <typename T>
 }
 
 typedef decltype(copy_nd6<float>) copy_nd6_t;
-
-template <typename T>
-[[kernel]] void copy_nd7(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 7);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 7);
-    for (size_t i = tpitg.x; i < out_shape[6]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[6]];
-    }
-}
-
-typedef decltype(copy_nd7<float>) copy_nd7_t;
 
 // Rotate half of the input buffer
 //
