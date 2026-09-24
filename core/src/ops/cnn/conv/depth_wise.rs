@@ -4,6 +4,12 @@ use crate::ops::cnn::patches::{Zone, ZoneScanner};
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
+/// Minimum output elements per (n, c) plane before the channels are split across
+/// the executor. Below it the per-channel work is too small to pay the dispatch
+/// overhead, so the parallel path stays off and the serial per-zone walk runs
+/// instead -- the same walk at any thread count.
+const DEPTHWISE_PLANE_ELEMENTS: usize = 4096;
+
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct DepthWise {
     patch: Patch,
@@ -112,8 +118,10 @@ macro_rules! impl_eval {
                 // The (n, c) planes are disjoint and each is contiguous, so when the output is
                 // laid out that way the channels split across the executor with no other
                 // change: every output element keeps the arithmetic it has serially, and the
-                // value it has serially. Small planes stay on the inline path -- the
-                // element threshold in `par_chunks_mut` is what decides, not this call site.
+                // value it has serially. Small planes stay on the serial path -- `plane` below
+                // `DEPTHWISE_PLANE_ELEMENTS` is too small to pay the dispatch overhead, and
+                // `par_chunks_mut` itself still runs the body inline for a single-threaded pool
+                // or work under its element threshold.
                 let total = output.len();
                 let planes = n * c as usize;
                 let plane = if planes > 0 { total / planes } else { 0 };
@@ -121,6 +129,7 @@ macro_rules! impl_eval {
                     || total % plane != 0
                     || *dw.output_shape.w_stride() != 1
                     || c_stride_o != plane as isize
+                    || plane < DEPTHWISE_PLANE_ELEMENTS
                 {
                     unsafe {
                         for n in 0..n as isize {
