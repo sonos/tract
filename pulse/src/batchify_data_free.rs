@@ -40,6 +40,7 @@ use tract_core::ops::change_axes::wire_rank_broadcast;
 use tract_core::ops::konst::Const;
 use tract_core::ops::source::TypedSource;
 use tract_core::transform::ModelTransform;
+use tract_pulse_opl::ops::{Delay, PulsePad};
 
 #[derive(Debug, Default, serde::Deserialize)]
 pub struct BatchifyDataFreeConfig {
@@ -117,6 +118,13 @@ fn data_free_facts(
     Ok(facts)
 }
 
+/// Whether the model has been pulsified already, which decides how the state
+/// ahead of the data-free wires is recognised: before pulsification it has to be
+/// predicted from the shapes, after it is a node.
+fn pulsified(model: &TypedModel) -> bool {
+    model.nodes.iter().any(|n| n.op_is::<Delay>() || n.op_is::<PulsePad>())
+}
+
 /// A shape carrying one symbol on two axes, which is what pulsification windows
 /// into a buffer.
 fn quadratic(fact: &TypedFact) -> bool {
@@ -129,8 +137,10 @@ fn quadratic(fact: &TypedFact) -> bool {
     per_symbol.values().any(|&axes| axes >= 2)
 }
 
-/// Outlets leaving the data-free subgraph towards state: quadratic in a symbol,
-/// read by a node that has a data input, and not batched already.
+/// Outlets leaving the data-free subgraph towards state, and not batched
+/// already. Before pulsification the state is still to come and what marks it is
+/// a shape quadratic in a symbol; after it, the state is a `Delay` or a
+/// `PulsePad` reading the wire, so the outlet is read off the graph instead.
 fn exits(
     model: &TypedModel,
     data_free: &HashSet<usize>,
@@ -143,13 +153,19 @@ fn exits(
         for slot in 0..model.node(id).outputs.len() {
             let outlet = OutletId::new(id, slot);
             let fact = &facts[&outlet];
-            if !quadratic(fact)
-                || fact.shape.first().is_some_and(|d| d == batch)
-                || !model.node(id).outputs[slot]
-                    .successors
-                    .iter()
-                    .any(|s| !data_free.contains(&s.node))
-            {
+            let feeds_state = if pulsified(model) {
+                model.node(id).outputs[slot].successors.iter().any(|s| {
+                    let succ = model.node(s.node);
+                    succ.op_is::<Delay>() || succ.op_is::<PulsePad>()
+                })
+            } else {
+                quadratic(fact)
+                    && model.node(id).outputs[slot]
+                        .successors
+                        .iter()
+                        .any(|s| !data_free.contains(&s.node))
+            };
+            if !feeds_state || fact.shape.first().is_some_and(|d| d == batch) {
                 continue;
             }
             ensure!(
@@ -199,6 +215,22 @@ fn find_placeholder(
     Ok(found.into_iter().next().unwrap())
 }
 
+/// The whole data-free component the exits belong to, walked both ways: what
+/// feeds the state and what reads it back out until the data-fed graph begins.
+fn island(model: &TypedModel, data_free: &HashSet<usize>, exits: &[OutletId]) -> HashSet<usize> {
+    let mut island: HashSet<usize> = Default::default();
+    let mut todo: Vec<usize> = exits.iter().map(|o| o.node).collect();
+    while let Some(id) = todo.pop() {
+        if !data_free.contains(&id) || !island.insert(id) {
+            continue;
+        }
+        let node = model.node(id);
+        todo.extend(node.inputs.iter().map(|i| i.node));
+        todo.extend(node.outputs.iter().flat_map(|o| o.successors.iter().map(|s| s.node)));
+    }
+    island
+}
+
 /// The data-free nodes feeding `node`: the ones whose wires gain the batch axis.
 fn nodes_to_widen(model: &TypedModel, data_free: &HashSet<usize>, node: usize) -> HashSet<usize> {
     let mut widened: HashSet<usize> = Default::default();
@@ -220,22 +252,68 @@ pub fn batchify_data_free(model: &TypedModel, batch: &TDim) -> TractResult<Typed
     if exits.is_empty() {
         return Ok(model.clone());
     }
-    let placeholder = find_placeholder(model, &data_free, &exits)?;
-    let widened = nodes_to_widen(model, &data_free, placeholder);
-    Widen { batch: batch.clone(), nodes: widened, placeholder, facts }.translate_model(model)
+    // Pulsification spends the placeholder axis on the window it builds, so
+    // after it the wires gain a rank instead of filling a slot, and every
+    // data-free node ahead of an exit is widened rather than those ahead of the
+    // placeholder.
+    let grow = !pulsified(model);
+    let (placeholder, widened) = if pulsified(model) {
+        // No slot to fill, so the axis runs the length of the island: every
+        // data-free node of it is widened, the state among them, rather than
+        // only what feeds the exits.
+        (None, island(model, &data_free, &exits))
+    } else {
+        let placeholder = find_placeholder(model, &data_free, &exits)?;
+        (Some(placeholder), nodes_to_widen(model, &data_free, placeholder))
+    };
+    Widen { batch: batch.clone(), nodes: widened, placeholder, facts, grow }.translate_model(model)
 }
 
 /// Prepends the batch axis to the wires of `nodes`, and drops `placeholder`.
 struct Widen {
     batch: TDim,
     nodes: HashSet<usize>,
-    placeholder: usize,
+    placeholder: Option<usize>,
     facts: HashMap<OutletId, TypedFact>,
+    /// Whether a widened wire gains a rank. It does not once the model is
+    /// pulsified: the island's edge already leads with an extent of one, which
+    /// is broadcast to the batch in place, so the mask keeps the rank the scores
+    /// it meets are still at.
+    grow: bool,
 }
 
 impl std::fmt::Debug for Widen {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Widen({}, {} wires)", self.batch, self.nodes.len())
+    }
+}
+
+impl Widen {
+    /// Prepends the batch axis to one wire and broadcasts it to the batch.
+    fn widen(&self, target: &mut TypedModel, name: &str, wire: OutletId) -> TractResult<OutletId> {
+        // A wire the walk reaches twice -- an island node downstream of the state
+        // whose other operand is a constant reads as an edge too -- already
+        // carries the axis, and a second one would batch it twice.
+        if target.outlet_fact(wire)?.shape.first().is_some_and(|d| *d == self.batch) {
+            return Ok(wire);
+        }
+        let wire = if self.grow {
+            target.wire_node(format!("{name}.batchify.axis"), AxisOp::Add(0), &[wire])?[0]
+        } else {
+            let leading = target.outlet_fact(wire)?.shape.first().cloned();
+            ensure!(
+                leading.as_ref().is_some_and(|d| d.is_one()),
+                "{name} leads with {leading:?}, so there is no extent of one for the batch axis"
+            );
+            wire
+        };
+        let mut shape = target.outlet_fact(wire)?.shape.to_tvec();
+        shape[0] = self.batch.clone();
+        Ok(target.wire_node(
+            format!("{name}.batchify.extent"),
+            MultiBroadcastTo { shape: shape.into() },
+            &[wire],
+        )?[0])
     }
 }
 
@@ -248,7 +326,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wid
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
         let inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
-        if node.id == self.placeholder {
+        if Some(node.id) == self.placeholder {
             return Ok(inputs);
         }
         if !self.nodes.contains(&node.id) {
@@ -259,33 +337,45 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wid
         // except where the op names axis 0 itself: there it reads the arriving
         // axis as the second of the two, which would leave the batch axis at 1
         // on that wire and at 0 on every other.
+        // Only an inserted axis displaces what the ops name: broadcasting the
+        // leading extent in place leaves every axis where it was.
         let op: Box<dyn TypedOp> = match node.op_as::<AxisOp>() {
-            Some(axis_op) => Box::new(axis_op.pad_left(1)),
-            None => node.op.clone(),
+            Some(axis_op) if self.grow => Box::new(axis_op.pad_left(1)),
+            _ => node.op.clone(),
         };
         // The extra axis breaks the rank match typed binary ops require, so the
         // operands that did not gain it -- constants, mostly -- are bumped the
         // way the model's own `bump_rank` wires already are.
+        // At the island's edge the axis has to be introduced. An inserted one
+        // goes on the way out, which is where the rank the ops were shifted for
+        // appears. Broadcasting in place instead leaves the ops naming their own
+        // axes, so they already read their input as batched and the edge's input
+        // wire is what carries the extent.
+        let entry = node.inputs.iter().all(|i| !self.nodes.contains(&i.node));
+        let inputs: TVec<OutletId> = if entry && !self.grow && !node.inputs.is_empty() {
+            inputs
+                .iter()
+                .enumerate()
+                .map(|(slot, input)| self.widen(target, &format!("{}.{slot}", node.name), *input))
+                .collect::<TractResult<_>>()?
+        } else {
+            inputs
+        };
         let inputs = if node.op_is::<TypedBinOp>() {
             wire_rank_broadcast(&node.name, target, &inputs)?
         } else {
             inputs
         };
         let mut wire = target.wire_node(&node.name, op, &inputs)?;
-        if node.inputs.iter().all(|i| !self.nodes.contains(&i.node)) {
-            wire =
-                target.wire_node(format!("{}.batchify.axis", node.name), AxisOp::Add(0), &wire)?;
-            let mut shape = target.outlet_fact(wire[0])?.shape.to_tvec();
-            shape[0] = self.batch.clone();
-            wire = target.wire_node(
-                format!("{}.batchify.extent", node.name),
-                MultiBroadcastTo { shape: shape.into() },
-                &wire,
-            )?;
+        if entry && (self.grow || node.inputs.is_empty()) {
+            wire = tvec!(self.widen(target, &node.name, wire[0])?);
         }
-        let expected: TVec<TDim> = std::iter::once(self.batch.clone())
-            .chain(self.facts[&node.id.into()].shape.iter().cloned())
-            .collect();
+        let old = self.facts[&node.id.into()].shape.to_tvec();
+        let expected: TVec<TDim> = if self.grow {
+            std::iter::once(self.batch.clone()).chain(old.iter().cloned()).collect()
+        } else {
+            std::iter::once(self.batch.clone()).chain(old.iter().skip(1).cloned()).collect()
+        };
         let got = target.outlet_fact(wire[0])?.shape.to_tvec();
         ensure!(got == expected, "Batchifying {node} gave shape {got:?}, expected {expected:?}");
         Ok(wire)
