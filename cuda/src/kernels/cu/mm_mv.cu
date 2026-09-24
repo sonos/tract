@@ -42,8 +42,13 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
   y += channel_y * stride_channel_y;
   dst += channel_dst * stride_channel_dst;
 
-  extern __shared__ char data_mmv[];
-  float *buf_iw = (float *)data_mmv;
+  extern __shared__ alignment_dummy __shm[];
+  shared_allocator al((int *)&__shm[0]);
+  constexpr int num_warps = (block_size + WARP_SIZE - 1) / WARP_SIZE;
+  // buf_iw needs max(WARP_SIZE, num_warps) entries: indexed by both lane_id
+  // (up to WARP_SIZE-1) and tid/WARP_SIZE (up to num_warps-1).
+  constexpr int buf_iw_size = (WARP_SIZE > num_warps) ? WARP_SIZE : num_warps;
+  float (&buf_iw)[buf_iw_size] = al.allocate<float, buf_iw_size>();
 
   if (block_size > WARP_SIZE) {
     if (tid < WARP_SIZE) {
@@ -161,3 +166,141 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
 
 INSTANTIATE_MAT_VEC_FOR_T(f32, float)
 INSTANTIATE_MAT_VEC_FOR_T(f16, half)
+
+// ============================================================================
+// Hopper WGMMA GEMM (SM90 only) — ThunderKittens educational level 05.
+//
+// C = Act @ Weights^T, Act (m,k) f16, Weights (n,k) f16.
+// 128-thread warpgroup, 64×32 output tile, K in chunks of 16.
+// A in smem is M×K; B in smem is N×K (trans_b=1). Both use 32 B rows so the
+// SageAttention 32-byte swizzle descriptor matches.
+// ============================================================================
+#if defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 900) && (__CUDA_ARCH__ < 1000)
+
+#define WGMMA_M_TILE 64
+#define WGMMA_N_TILE 32
+#define WGMMA_K_CHUNK 16
+
+// 32-byte row (16 halfs): same XOR as flash_attn.cu swizzle<32>.
+static __device__ __forceinline__ uint32_t wgmma_swizzle32(uint32_t byte_off) {
+    uint32_t row_idx = (byte_off / 32) % 8;
+    uint32_t bits_to_xor = row_idx / 2;
+    return byte_off ^ (bits_to_xor << 4);
+}
+
+template <typename T>
+__launch_bounds__(128) __global__
+void ggml_matmul_wgmma_impl(const half *__restrict__ A, // acts     (m, k)
+                            const half *__restrict__ B, // weights  (n, k)
+                            T *__restrict__ C,          // output   (m, n)
+                            int32_t m, int32_t n, int32_t k,
+                            int32_t lda, int32_t ldb, int32_t ldc,
+                            int32_t stride_a, int32_t stride_b, int32_t stride_c) {
+    using namespace cuda_wgmma;
+    using cuda::std::is_same_v;
+
+    constexpr int M_TILE = WGMMA_M_TILE, N_TILE = WGMMA_N_TILE, K_CHUNK = WGMMA_K_CHUNK;
+
+    const int row_base = blockIdx.x * M_TILE;
+    const int col_base = blockIdx.y * N_TILE;
+    const int tid = threadIdx.x;
+
+    const int batch = blockIdx.z;
+    A += size_t(batch) * stride_a;
+    B += size_t(batch) * stride_b;
+    C += size_t(batch) * stride_c;
+
+    extern __shared__ alignment_dummy __shm[];
+    shared_allocator al((int *)&__shm[0]);
+    auto &a_smem = al.allocate<half, M_TILE * K_CHUNK>();
+    auto &b_smem = al.allocate<half, N_TILE * K_CHUNK>();
+
+    float2 D[8] = {};
+
+    for (int kt = 0; kt < k; kt += K_CHUNK) {
+        // A tile: 64×16 from activations, 8 halfs / thread.
+        {
+            const int idx = tid * 8;
+            const int a_row = idx / K_CHUNK;
+            const int a_col = idx % K_CHUNK;
+            const int g_row = row_base + a_row;
+            #pragma unroll
+            for (int i = 0; i < 8; i++) {
+                const int col = a_col + i;
+                half v = (g_row < m && kt + col < k)
+                             ? A[size_t(g_row) * lda + kt + col]
+                             : __float2half(0.0f);
+                const uint32_t off = wgmma_swizzle32(uint32_t((a_row * K_CHUNK + col) * sizeof(half)));
+                *reinterpret_cast<half *>(reinterpret_cast<char *>(&a_smem[0]) + off) = v;
+            }
+        }
+        // B tile: 32×16 from weights (N×K, no transpose in smem).
+        {
+            const int idx = tid * 4;
+            const int b_row = idx / K_CHUNK; // 0..31 along N
+            const int b_col = idx % K_CHUNK; // 0..15 along K
+            #pragma unroll
+            for (int i = 0; i < 4; i++) {
+                const int col = b_col + i;
+                const int g_row = col_base + b_row;
+                half v = (g_row < n && kt + col < k)
+                             ? B[size_t(g_row) * ldb + kt + col]
+                             : __float2half(0.0f);
+                const uint32_t off = wgmma_swizzle32(uint32_t((b_row * K_CHUNK + col) * sizeof(half)));
+                *reinterpret_cast<half *>(reinterpret_cast<char *>(&b_smem[0]) + off) = v;
+            }
+        }
+
+        __syncthreads();
+
+        const uint64_t desc_a = make_smem_desc<32>(&a_smem[0]);
+        const uint64_t desc_b = make_smem_desc<32>(&b_smem[0]);
+        fence();
+        mma_m64n32k16_fp16_fp32(D, desc_a, desc_b);
+        commit_group();
+        wait_group<0>();
+        __syncthreads();
+    }
+
+    const int row = tid / 2;
+    const int col_off = (tid % 2) * 16;
+    if constexpr (is_same_v<T, float>) {
+        #pragma unroll
+        for (int i = 0; i < 8; i++) {
+            const int c = col_base + col_off + i * 2;
+            if (row_base + row < m) {
+                if (c < n)      C[size_t(row_base + row) * ldc + c]     = D[i].x;
+                if (c + 1 < n)  C[size_t(row_base + row) * ldc + c + 1] = D[i].y;
+            }
+        }
+    } else {
+        #pragma unroll
+        for (int i = 0; i < 8; i++) {
+            const int c = col_base + col_off + i * 2;
+            if (row_base + row < m) {
+                if (c < n) {
+                    C[size_t(row_base + row) * ldc + c] = __float2half(D[i].x);
+                }
+                if (c + 1 < n) {
+                    C[size_t(row_base + row) * ldc + c + 1] = __float2half(D[i].y);
+                }
+            }
+        }
+    }
+}
+
+#define DEFINE_WGMMA_GEMM(name, T) \
+    extern "C" __global__ void name( \
+        const half *__restrict__ A, const half *__restrict__ B, \
+        T *__restrict__ C, int32_t m, int32_t n, int32_t k, \
+        int32_t lda, int32_t ldb, int32_t ldc, \
+        int32_t stride_a, int32_t stride_b, int32_t stride_c) { \
+        ggml_matmul_wgmma_impl<T>(A, B, C, m, n, k, \
+            lda, ldb, ldc, stride_a, stride_b, stride_c); \
+    }
+
+DEFINE_WGMMA_GEMM(ggml_matmul_wgmma_f16_f32, float)
+DEFINE_WGMMA_GEMM(ggml_matmul_wgmma_f16_f16, half)
+#undef DEFINE_WGMMA_GEMM
+
+#endif // Hopper SM90 only
