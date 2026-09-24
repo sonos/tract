@@ -93,8 +93,8 @@ macro_rules! impl_eval {
             unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
                 dw: &DepthWise,
                 inputs: TVec<TValue>,
-                add: impl Fn(T, T) -> T + Copy + 'static,
-                mul: impl Fn(T, T) -> T + Copy + 'static,
+                add: impl Fn(T, T) -> T + Copy + Send + Sync + 'static,
+                mul: impl Fn(T, T) -> T + Copy + Send + Sync + 'static,
             ) -> TractResult<TVec<TValue>> {
                 let (img, kernel, bias) = args_3!(inputs);
                 let mut output = unsafe { Tensor::uninitialized::<T>(&dw.output_shape.shape)? };
@@ -108,18 +108,104 @@ macro_rules! impl_eval {
                 let c_stride_o = *dw.output_shape.c_stride() as isize;
                 let bias = bias.as_ptr::<T>()?;
                 let kptr = kernel.as_ptr::<T>()?;
-                unsafe {
-                    for n in 0..n as isize {
-                        let iptr = iptr.offset(n_stride_i * n);
-                        let optr = optr.offset(n_stride_o * n);
-                        for zone in &dw.patch.zones {
-                            [<process_zone_ $suffix>](
-                                dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
-                                add, mul,
-                            )
+                let c = *dw.input_shape.c() as isize;
+                // The (n, c) planes are disjoint and each is contiguous, so when the output is
+                // laid out that way the channels split across the executor with no other
+                // change: every output element keeps the arithmetic it has serially, and the
+                // value it has serially. Small planes stay on the inline path -- the
+                // element threshold in `par_chunks_mut` is what decides, not this call site.
+                let total = output.len();
+                let planes = n * c as usize;
+                let plane = if planes > 0 { total / planes } else { 0 };
+                if plane == 0
+                    || total % plane != 0
+                    || *dw.output_shape.w_stride() != 1
+                    || c_stride_o != plane as isize
+                {
+                    unsafe {
+                        for n in 0..n as isize {
+                            let iptr = iptr.offset(n_stride_i * n);
+                            let optr = optr.offset(n_stride_o * n);
+                            for zone in &dw.patch.zones {
+                                [<process_zone_ $suffix>](
+                                    dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias,
+                                    optr, add, mul, 0, c,
+                                )
+                            }
                         }
                     }
+                    return Ok(tvec!(output.into_tvalue()));
                 }
+                let i_base = iptr as usize;
+                let k_base = kptr as usize;
+                let b_base = bias as usize;
+                let c_us = c as usize;
+                tract_linalg::multithread::par_chunks_mut(
+                    unsafe { output.as_slice_mut_unchecked::<T>() },
+                    plane,
+                    total,
+                    |first, chunk| {
+                        // `par_chunks_mut` calls the body inline, with the whole slice, when the
+                        // executor is single-threaded (a one-thread pool included) or the work is
+                        // under its element threshold. Keep the per-zone shape there: the channels
+                        // loop inside it, so one `ZoneScanner` covers a whole zone rather than one
+                        // channel of it -- the difference was a 63% tax on small planes, which is
+                        // a third of the frame on the streaming models.
+                        if first == 0 && chunk.len() == total {
+                            unsafe {
+                                for ni in 0..n as isize {
+                                    let iptr = (i_base as *const T).offset(n_stride_i * ni);
+                                    let optr = chunk.as_mut_ptr().offset(n_stride_o * ni);
+                                    for zone in &dw.patch.zones {
+                                        [<process_zone_ $suffix>](
+                                            dw,
+                                            zone,
+                                            c_stride_i,
+                                            c_stride_o,
+                                            k_stride_i,
+                                            iptr,
+                                            k_base as *const T,
+                                            b_base as *const T,
+                                            optr,
+                                            add,
+                                            mul,
+                                            0,
+                                            c,
+                                        )
+                                    }
+                                }
+                            }
+                            return Ok(());
+                        }
+                        for (ix, out) in chunk.chunks_mut(plane).enumerate() {
+                            let row = first + ix;
+                            let (ni, ci) = (row / c_us, row % c_us);
+                            unsafe {
+                                let iptr = (i_base as *const T)
+                                    .offset(n_stride_i * ni as isize + c_stride_i * ci as isize);
+                                let optr = out.as_mut_ptr();
+                                for zone in &dw.patch.zones {
+                                    [<process_zone_ $suffix>](
+                                        dw,
+                                        zone,
+                                        0,
+                                        0,
+                                        k_stride_i,
+                                        iptr,
+                                        k_base as *const T,
+                                        b_base as *const T,
+                                        optr,
+                                        add,
+                                        mul,
+                                        ci as isize,
+                                        ci as isize + 1,
+                                    )
+                                }
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
                 Ok(tvec!(output.into_tvalue()))
             }
 
@@ -138,6 +224,8 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T + Copy + 'static,
                 mul: impl Fn(T, T) -> T + Copy + 'static,
+                c_start: isize,
+                c_end: isize,
                 ) { unsafe {
                 /*
                    if zone.values_offsets.len() == 2 {
@@ -151,19 +239,23 @@ macro_rules! impl_eval {
                    } else */
                 match zone.values_offsets.len() {
                     1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        mul, c_start, c_end,
                     ),
                     2 => [<process_zone_n_ $suffix>]::<T, 2, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        mul, c_start, c_end,
                     ),
                     3 => [<process_zone_n_ $suffix>]::<T, 3, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        mul, c_start, c_end,
                     ),
                     4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add, mul,
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        mul, c_start, c_end,
                     ),
                     _ => zone.visit_output(&dw.patch, |visitor| {
-                        for c in 0..*dw.input_shape.c() as isize {
+                        for c in c_start..c_end {
                             let iptr = iptr.offset(c_stride_i * c);
                             let optr = optr.offset(c_stride_o * c);
                             let kptr = kptr.offset(k_stride_i * c);
@@ -188,6 +280,8 @@ macro_rules! impl_eval {
                 optr: *mut T,
                 add: impl Fn(T, T) -> T,
                 mul: impl Fn(T, T) -> T,
+                c_start: isize,
+                c_end: isize,
                 ) { unsafe {
                 let mut visitor = ZoneScanner::new(zone, &dw.patch);
                 let mut ioffset = [0isize; N];
@@ -200,7 +294,7 @@ macro_rules! impl_eval {
                 } else {
                     None
                 };
-                for c in 0..*dw.input_shape.c() as isize {
+                for c in c_start..c_end {
                     visitor.reset();
                     let iptr = iptr.offset(c_stride_i * c);
                     let optr = optr.offset(c_stride_o * c);
