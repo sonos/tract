@@ -256,8 +256,11 @@ impl TypedOp for Delay {
         fact.shape.set(self.axis, fact.shape[self.axis].clone() + self.overlap.to_dim());
         // A pulse of a constant is not that constant: it is the buffered context
         // ahead of it, and it is one axis longer. Carrying the input's value over
-        // would both misreport the shape and offer the optimizer a fold.
+        // would both misreport the shape and offer the optimizer a fold. The
+        // buffer starts at zero, so a uniform input does not make a uniform pulse
+        // either.
         fact.konst = None;
+        fact.uniform = None;
         Ok(tvec!(fact))
     }
 
