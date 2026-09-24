@@ -67,9 +67,6 @@ impl TypedOp for AffineChunkTrim {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        if !matches!(change, AxisOp::Add(_)) {
-            return Ok(None);
-        }
         if let Some(axis) = change.transform_axis(self.axis) {
             if axis != self.axis {
                 Ok(Some(AxisChangeConsequence::new(
