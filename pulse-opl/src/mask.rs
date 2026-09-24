@@ -118,7 +118,12 @@ impl EvalOp for PulseMask {
 
 impl TypedOp for PulseMask {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        Ok(tvec!(inputs[0].clone()))
+        let mut fact = inputs[0].clone();
+        // The op writes over the positions outside the stream, so the output is
+        // not the input's value and not uniform for being so at the input.
+        fact.konst = None;
+        fact.uniform = None;
+        Ok(tvec!(fact))
     }
 
     as_op!();

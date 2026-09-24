@@ -41,6 +41,7 @@ impl TypedOp for DeconvDelay {
         let len = fact.shape[self.axis].clone();
         fact.shape.set(self.axis, len - self.overlap);
         fact.konst = None;
+        fact.uniform = None;
         Ok(tvec!(fact))
     }
 
