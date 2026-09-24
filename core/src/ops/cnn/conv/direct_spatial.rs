@@ -41,6 +41,50 @@ impl EvalOp for DirectSpatialConv {
     }
 }
 
+/// One run of output points: the kernel for the group, or a point at a time when the run is
+/// strided. Shared by the serial and the split loop structures.
+///
+/// # Safety
+/// `taps` holds `group * offsets.len()` taps in the order of `offsets`, and `ip`/`op` are
+/// valid for `len` points of the run at the strides given.
+#[allow(clippy::too_many_arguments)]
+unsafe fn one_run(
+    conv_w4: tract_linalg::routines::ConvW4F32,
+    conv_w1: Option<tract_linalg::routines::DepthwiseWF32>,
+    ip: *const f32,
+    op: *mut f32,
+    taps: &[f32],
+    offsets: &[isize],
+    b: &[f32],
+    group: usize,
+    len: usize,
+    in_stride: isize,
+    out_stride: isize,
+    oc_stride: isize,
+) {
+    unsafe {
+        if out_stride == 1 && in_stride >= 1 {
+            if group == 4 {
+                let b4 = [b[0], b[1], b[2], b[3]];
+                conv_w4(ip, op, taps, offsets, &b4, len, in_stride, oc_stride);
+            } else if let Some(conv_w1) = conv_w1 {
+                conv_w1(ip, op, taps, offsets, b[0], len, in_stride);
+            }
+            return;
+        }
+        let n_taps = offsets.len();
+        for g in 0..group {
+            let taps = &taps[g * n_taps..][..n_taps];
+            for i in 0..len as isize {
+                let ip = ip.offset(i * in_stride);
+                let sum =
+                    taps.iter().zip(offsets).fold(b[g], |sum, (t, off)| sum + t * *ip.offset(*off));
+                *op.offset(g as isize * oc_stride + i * out_stride) = sum;
+            }
+        }
+    }
+}
+
 impl DirectSpatialConv {
     /// Every run of output points along W in `zone`: the offsets of its first input center and
     /// first output point, its length, and the input and output steps between two points.
@@ -86,19 +130,99 @@ impl DirectSpatialConv {
         let c_stride_i = *self.input_shape.c_stride() as isize;
         let c_stride_o = *self.output_shape.c_stride() as isize;
         let mut output = unsafe { Tensor::uninitialized::<f32>(&self.output_shape.shape)? };
-        let mut offsets = Vec::with_capacity(ic * kvol);
-        let mut taps = Vec::with_capacity(4 * ic * kvol);
+        // The offsets a zone's taps read through depend on the zone and the input channels only,
+        // so they are built once per zone and shared by every output-channel group.
+        let zone_offsets: Vec<Vec<isize>> = self
+            .patch
+            .zones
+            .iter()
+            .map(|zone| {
+                let mut offsets = Vec::with_capacity(ic * kvol);
+                for c in 0..ic as isize {
+                    offsets.extend(zone.values_offsets.iter().map(|(_, off)| c * c_stride_i + off));
+                }
+                offsets
+            })
+            .collect();
         unsafe {
             let iptr = img.as_ptr::<f32>()?;
             let kptr = kernel.as_ptr::<f32>()?;
             let bptr = bias.as_ptr::<f32>()?;
+            let total = output.len();
+            let planes = n * oc;
+            let plane = total.checked_div(planes).unwrap_or(0);
+            let groups = oc / 4;
+            // A group of four output channels is four whole planes, contiguous in the output
+            // when the layout is NCHW, so a (batch, group) unit owns a block of the output that
+            // no other unit touches: the units split across the executor with no other change.
+            // Every output point keeps the arithmetic, and the value, it has serially.
+            if oc.is_multiple_of(4)
+                && groups > 0
+                && plane > 0
+                && plane * planes == total
+                && *self.output_shape.w_stride() == 1
+                && c_stride_o == plane as isize
+                && n_stride_o == (oc * plane) as isize
+            {
+                let (i_base, k_base, b_base) = (iptr as usize, kptr as usize, bptr as usize);
+                let zones = &self.patch.zones;
+                let offsets_per_zone = &zone_offsets;
+                tract_linalg::multithread::par_chunks_mut(
+                    output.as_slice_mut_unchecked::<f32>(),
+                    4 * plane,
+                    total,
+                    |first, chunk| {
+                        let mut taps = Vec::with_capacity(4 * ic * kvol);
+                        for (ix, unit_out) in chunk.chunks_mut(4 * plane).enumerate() {
+                            let unit = first + ix;
+                            let ni = (unit / groups) as isize;
+                            let o = (unit % groups) * 4;
+                            let iptr = (i_base as *const f32).offset(n_stride_i * ni);
+                            let optr = unit_out.as_mut_ptr();
+                            let b4 = [
+                                *(b_base as *const f32).add(o),
+                                *(b_base as *const f32).add(o + 1),
+                                *(b_base as *const f32).add(o + 2),
+                                *(b_base as *const f32).add(o + 3),
+                            ];
+                            for (zone_ix, zone) in zones.iter().enumerate() {
+                                let offsets = &offsets_per_zone[zone_ix];
+                                taps.clear();
+                                for g in o..o + 4 {
+                                    for c in 0..ic {
+                                        let k = (k_base as *const f32).add((g * ic + c) * kvol);
+                                        taps.extend(
+                                            zone.values_offsets.iter().map(|(ix, _)| *k.add(*ix)),
+                                        );
+                                    }
+                                }
+                                self.runs(zone, |center, out, len, in_stride, out_stride| {
+                                    one_run(
+                                        conv_w4,
+                                        conv_w1,
+                                        iptr.offset(center),
+                                        optr.offset(out),
+                                        &taps,
+                                        offsets,
+                                        &b4,
+                                        4,
+                                        len,
+                                        in_stride,
+                                        out_stride,
+                                        c_stride_o,
+                                    )
+                                });
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
+                return Ok(output);
+            }
             let optr = output.as_ptr_mut::<f32>()?;
-            for zone in &self.patch.zones {
-                offsets.clear();
-                for c in 0..ic as isize {
-                    offsets.extend(zone.values_offsets.iter().map(|(_, off)| c * c_stride_i + off));
-                }
-                let n_taps = offsets.len();
+            let mut taps = Vec::with_capacity(4 * ic * kvol);
+            for (zone_ix, zone) in self.patch.zones.iter().enumerate() {
+                let offsets = &zone_offsets[zone_ix];
                 let mut o = 0;
                 while o < oc {
                     let group = if o + 4 <= oc { 4 } else { 1 };
@@ -114,30 +238,20 @@ impl DirectSpatialConv {
                         let iptr = iptr.offset(n_stride_i * ni);
                         let optr = optr.offset(n_stride_o * ni + c_stride_o * o as isize);
                         self.runs(zone, |center, out, len, in_stride, out_stride| {
-                            let ip = iptr.offset(center);
-                            let op = optr.offset(out);
-                            if out_stride == 1 && in_stride >= 1 {
-                                if group == 4 {
-                                    let b4 = [b[0], b[1], b[2], b[3]];
-                                    conv_w4(
-                                        ip, op, &taps, &offsets, &b4, len, in_stride, c_stride_o,
-                                    );
-                                } else if let Some(conv_w1) = conv_w1 {
-                                    conv_w1(ip, op, &taps, &offsets, b[0], len, in_stride);
-                                }
-                                return;
-                            }
-                            for g in 0..group {
-                                let taps = &taps[g * n_taps..][..n_taps];
-                                for i in 0..len as isize {
-                                    let ip = ip.offset(i * in_stride);
-                                    let sum = taps
-                                        .iter()
-                                        .zip(&offsets)
-                                        .fold(b[g], |sum, (t, off)| sum + t * *ip.offset(*off));
-                                    *op.offset(g as isize * c_stride_o + i * out_stride) = sum;
-                                }
-                            }
+                            one_run(
+                                conv_w4,
+                                conv_w1,
+                                iptr.offset(center),
+                                optr.offset(out),
+                                &taps,
+                                offsets,
+                                b,
+                                group,
+                                len,
+                                in_stride,
+                                out_stride,
+                                c_stride_o,
+                            )
                         });
                     }
                     o += group;
