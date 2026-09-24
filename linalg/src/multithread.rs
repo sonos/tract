@@ -1,8 +1,9 @@
 use std::cell::RefCell;
 #[cfg(feature = "multithread-mm")]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 #[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -12,6 +13,66 @@ use tract_data::internal::vector_size;
 use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
 
 use crate::BinFn;
+
+/// Workload signature for adaptive chunking.
+/// Captures the essential characteristics that affect optimal chunk size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct WorkloadSig {
+    row_len: usize,
+    n_rows: usize,
+    num_threads: usize,
+}
+
+/// Adaptive chunking state.
+/// Stores learned optimal chunk_rows per workload signature.
+#[cfg(feature = "multithread-mm")]
+#[derive(Default)]
+struct AdaptiveChunker {
+    /// Maps workload signature -> optimal chunk_rows
+    cache: Mutex<std::collections::HashMap<WorkloadSig, usize>>,
+    /// Whether adaptive tuning is enabled
+    enabled: AtomicBool,
+}
+
+#[cfg(feature = "multithread-mm")]
+impl AdaptiveChunker {
+    fn new() -> Self {
+        Self { cache: Mutex::new(std::collections::HashMap::new()), enabled: AtomicBool::new(true) }
+    }
+
+    fn get_chunk_rows(&self, sig: WorkloadSig, threshold: usize, _row_len: usize) -> usize {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return (threshold / sig.row_len).max(1);
+        }
+        let cache = self.cache.lock().unwrap();
+        cache.get(&sig).copied().unwrap_or_else(|| (threshold / sig.row_len).max(1))
+    }
+
+    fn record(&self, sig: WorkloadSig, chunk_rows: usize) {
+        if !self.enabled.load(Ordering::Relaxed) {
+            return;
+        }
+        let mut cache = self.cache.lock().unwrap();
+        cache.insert(sig, chunk_rows);
+    }
+
+    fn disable(&self) {
+        self.enabled.store(false, Ordering::Relaxed);
+    }
+
+    fn enable(&self) {
+        self.enabled.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Global adaptive chunker instance.
+#[cfg(feature = "multithread-mm")]
+static ADAPTIVE_CHUNKER: std::sync::OnceLock<AdaptiveChunker> = std::sync::OnceLock::new();
+
+#[cfg(feature = "multithread-mm")]
+fn adaptive_chunker() -> &'static AdaptiveChunker {
+    ADAPTIVE_CHUNKER.get_or_init(AdaptiveChunker::new)
+}
 
 #[derive(Debug, Clone, Default)]
 pub enum Executor {
@@ -157,9 +218,10 @@ pub fn par_chunks_mut<T: Send>(
         }
         let run = |out: &mut [T]| -> TractResult<()> {
             let threshold = current_threading_element_threshold();
-            // Target at least `threshold` elements per chunk to amortize dispatch.
-            // `chunk_rows * row_len >= threshold` => `chunk_rows >= threshold / row_len`.
-            let chunk_rows = (threshold / row_len).max(1);
+            let num_threads = rayon::current_num_threads();
+            let sig = WorkloadSig { row_len, n_rows, num_threads };
+            // Use adaptive chunker to get optimal chunk_rows
+            let chunk_rows = adaptive_chunker().get_chunk_rows(sig, threshold, row_len);
             let n_chunks =
                 n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * rayon::current_num_threads());
             let chunk_rows = n_rows.div_ceil(n_chunks);
@@ -403,4 +465,82 @@ mod tests {
             assert!(*len >= 32700 || *len == total_elems % (327 * 100));
         }
     }
+}
+
+/// Tune the adaptive chunker for a specific workload by trying different chunk sizes
+/// and measuring execution time. This should be called during a warmup phase.
+#[cfg(feature = "multithread-mm")]
+pub fn tune_par_chunks_mut<T: Send + Clone>(
+    out: &mut [T],
+    row_len: usize,
+    total_elems: usize,
+    f: impl Fn(usize, &mut [T]) -> TractResult<()> + Sync + Send,
+) -> TractResult<usize> {
+    use rayon::prelude::*;
+
+    debug_assert!(row_len >= 1 && out.len() % row_len == 0);
+    let n_rows = out.len() / row_len;
+    if n_rows < 2 || total_elems < current_threading_element_threshold() {
+        return Ok(1);
+    }
+
+    let threshold = current_threading_element_threshold();
+    let num_threads = rayon::current_num_threads();
+    let sig = WorkloadSig { row_len, n_rows, num_threads };
+
+    // Try different chunk sizes and measure
+    let candidates = vec![
+        (threshold / row_len).max(1), // Static heuristic
+        (threshold / row_len / 2).max(1),
+        (threshold / row_len * 2).max(1),
+        (threshold / row_len * 4).max(1),
+        n_rows.div_ceil(4 * num_threads).max(1), // rayon default
+        n_rows,                                  // 1 chunk per row
+    ];
+
+    let mut best_chunk_rows = (threshold / row_len).max(1);
+    let mut best_time = Duration::MAX;
+
+    for chunk_rows in candidates {
+        let n_chunks = n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * num_threads);
+        let actual_chunk_rows = n_rows.div_ceil(n_chunks);
+
+        // Warmup run
+        let mut temp_out = out.to_vec();
+        let _ =
+            temp_out.par_chunks_mut(actual_chunk_rows * row_len).try_for_each(|chunk| f(0, chunk));
+
+        // Timed run
+        let start = Instant::now();
+        let _ = out.par_chunks_mut(actual_chunk_rows * row_len).try_for_each(|chunk| f(0, chunk));
+        let elapsed = start.elapsed();
+
+        if elapsed < best_time {
+            best_time = elapsed;
+            best_chunk_rows = actual_chunk_rows;
+        }
+    }
+
+    // Record the best chunk_rows
+    adaptive_chunker().record(sig, best_chunk_rows);
+
+    Ok(best_chunk_rows)
+}
+
+/// Enable or disable adaptive chunking globally.
+#[cfg(feature = "multithread-mm")]
+pub fn set_adaptive_chunking(enabled: bool) {
+    if let Some(chunker) = ADAPTIVE_CHUNKER.get() {
+        if enabled {
+            chunker.enable();
+        } else {
+            chunker.disable();
+        }
+    }
+}
+
+/// Check if adaptive chunking is enabled.
+#[cfg(feature = "multithread-mm")]
+pub fn is_adaptive_chunking_enabled() -> bool {
+    ADAPTIVE_CHUNKER.get().map(|c| c.enabled).unwrap_or(false)
 }
