@@ -659,6 +659,17 @@ fn distinct_moe_branches_survive_codegen() -> TractResult<()> {
         biased.wg_bias = Some(Tensor::zero::<f32>(&[3])?);
         assert_ne!(op, &biased);
         let mut state = op.state(&EvalContext::out_of_plan())?.unwrap();
+        let other = optimized
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<OptMoeFfn>())
+            .find(|other| !std::ptr::eq(*other, op))
+            .unwrap();
+        let error = state
+            .eval(&EvalContext::out_of_plan(), other, tvec![input.clone().into_tvalue()])
+            .unwrap_err();
+        assert!(error.to_string().contains("different plan"));
+        state.eval(&EvalContext::out_of_plan(), &cloned, tvec![input.clone().into_tvalue()])?;
         assert!(
             state
                 .eval(
