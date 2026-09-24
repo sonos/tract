@@ -906,6 +906,50 @@ impl Tensor {
         }
         let source = self.as_bytes();
         let dst = output.as_bytes_mut();
+        // When the innermost source axes broadcast, `run` collapses to a single element and
+        // the block walk below copies `dt_size` bytes per output element -- measured at ~15
+        // cycles each, which is 6.2 ms for a 6.5 MB `1x16x1x1` -> `1x16x320x320` bias
+        // broadcast. Every output cell is then one contiguous run of a single value, so lay
+        // the cell down once and double it instead of walking it. `run == dt_size` holds
+        // exactly when the innermost source axis is broadcast.
+        if run == dt_size {
+            let mut bs = shape.len();
+            while bs > 0 && src[bs - 1] == 1 {
+                bs -= 1;
+            }
+            let cell: usize = shape[bs..].iter().product();
+            let cells: usize = shape[..bs].iter().product();
+            if cell > 0 && cells > 0 {
+                let mut src_strides: TVec<usize> = tvec!(0; bs);
+                let mut acc = 1;
+                for ax in (0..bs).rev() {
+                    src_strides[ax] = if src[ax] == 1 { 0 } else { acc };
+                    acc *= src[ax];
+                }
+                let cell_bytes = cell * dt_size;
+                let mut coords: TVec<usize> = tvec!(0; bs);
+                for cell_ix in 0..cells {
+                    let from: usize =
+                        izip!(&coords, &src_strides).map(|(c, s)| c * s).sum::<usize>() * dt_size;
+                    let out = &mut dst[cell_ix * cell_bytes..][..cell_bytes];
+                    out[..dt_size].copy_from_slice(&source[from..][..dt_size]);
+                    let mut filled = dt_size;
+                    while filled < cell_bytes {
+                        let n = filled.min(cell_bytes - filled);
+                        out.copy_within(..n, filled);
+                        filled += n;
+                    }
+                    for ax in (0..bs).rev() {
+                        coords[ax] += 1;
+                        if coords[ax] < shape[ax] {
+                            break;
+                        }
+                        coords[ax] = 0;
+                    }
+                }
+                return Ok(output);
+            }
+        }
         let mut coords: TVec<usize> = tvec!(0; split);
         for block in 0..outer {
             let from: usize = izip!(&coords, &src_strides).map(|(c, s)| c * s).sum();
@@ -2839,6 +2883,13 @@ mod tests {
             (tvec!(2usize, 3), tvec!(2usize, 3)),
             (tvec!(1usize), tvec!(3usize, 1, 2)),
             (tvec!(3usize, 1), tvec!(3usize, 0)),
+            // Innermost-axis broadcasts take the repeated-cell path: one contiguous run of
+            // one value per cell, and cells that differ only on the axes below the walk.
+            (tvec!(3usize, 1), tvec!(3usize, 5)),
+            (tvec!(2usize, 1, 1), tvec!(2usize, 4, 3)),
+            (tvec!(1usize, 16, 1, 1), tvec!(1usize, 16, 4, 4)),
+            (tvec!(1usize, 1), tvec!(2usize, 3, 4)),
+            (tvec!(1024usize, 1, 1), tvec!(1024usize, 4, 1)),
         ] {
             for dt in [f32::datum_type(), u8::datum_type(), i32::datum_type()] {
                 let t = Tensor::zero_dt(dt, &src).unwrap().cast_to_dt(dt).unwrap().into_owned();
@@ -2847,6 +2898,26 @@ mod tests {
                 assert_eq!(got.shape(), &*dst, "{src:?} -> {dst:?}");
                 assert_eq!(got, want, "{src:?} -> {dst:?} {dt:?}");
             }
+        }
+    }
+
+    /// The repeated-cell path is only correct if every cell lands on the source element its
+    /// coordinates name, so check it against the reference on values rather than on zeros.
+    #[test]
+    fn broadcast_to_shape_repeats_innermost_cells_with_the_right_value() {
+        for (src, dst) in [
+            (tvec!(3usize, 1), tvec!(3usize, 5)),
+            (tvec!(2usize, 1, 1), tvec!(2usize, 4, 3)),
+            (tvec!(1usize, 16, 1, 1), tvec!(1usize, 16, 4, 4)),
+            (tvec!(1usize, 1), tvec!(2usize, 3, 4)),
+            (tvec!(1024usize, 1, 1), tvec!(1024usize, 4, 1)),
+            (tvec!(4usize, 1, 7), tvec!(4usize, 3, 7)),
+            (tvec!(2usize, 3, 1, 1), tvec!(2usize, 3, 5, 6)),
+        ] {
+            let t = ramp::<u32>(&src, 0);
+            let got = t.broadcast_to_shape(&dst).unwrap();
+            let want = Tensor::broadcast_to_shape_t::<u32>(&t, &dst).unwrap();
+            assert_eq!(got, want, "{src:?} -> {dst:?}");
         }
     }
 
