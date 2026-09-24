@@ -202,3 +202,39 @@ do
 		--approx $approx \
 		--drop-partial-pulse
 done
+
+# The same the other way round: batchify_data_free after pulsification rather
+# than before it. There the wires that will carry session state are still a
+# prediction from the shapes, here the state is a Delay or a PulsePad the wire
+# already feeds, and the batch axis is broadcast onto the leading extent of one
+# pulsification left rather than filling a placeholder slot. Same interface, and
+# the seats still each get what they get alone.
+$TRACT_RUN $model_prefix.encoder.nnef.tgz \
+	--nnef-tract-transformers \
+	-t "$batched_patch" \
+	-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+	-t 'select_outputs(outputs: ["outputs"])' \
+	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+	-t 'batchify_data_free(symbol: Some("BATCH"))' \
+	dump -q \
+	--assert-output-fact BATCH,1024,4,f32
+
+for rt in "" $pulse_runtimes
+do
+	case "$rt" in
+		--cuda) approx=approximate;;
+		*) approx=exact;;
+	esac
+	TRACT_TURN_LINGER_US=400000 $TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+		--nnef-tract-transformers \
+		-t "$batched_patch" \
+		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+		-t 'select_outputs(outputs: ["outputs"])' \
+		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
+		-t 'batchify_data_free(symbol: Some("BATCH"))' \
+		--autobatch-sessions 4 --hint BATCH=4 \
+		run --streams 4 --turns 3 --assert-occupancy 2.5 \
+		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+		--approx $approx \
+		--drop-partial-pulse
+done
