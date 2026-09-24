@@ -9,12 +9,12 @@ use crate::ops::routed_matmul::{
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, s};
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::ops::OpState;
-use tract_nnef::tract_core::tract_linalg::{
-    MmmDispatch,
-    block_quant::BlockQuantStorage,
-    mmm::{AsInputValue, FusedSpec, MMMInputValue, MatMatMul, Query},
-    pack::PackedFormat,
+use tract_nnef::tract_core::tract_linalg::MmmDispatch;
+use tract_nnef::tract_core::tract_linalg::block_quant::BlockQuantStorage;
+use tract_nnef::tract_core::tract_linalg::mmm::{
+    AsInputValue, FusedSpec, MMMInputValue, MatMatMul, Query,
 };
+use tract_nnef::tract_core::tract_linalg::pack::PackedFormat;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RouteTopK {
