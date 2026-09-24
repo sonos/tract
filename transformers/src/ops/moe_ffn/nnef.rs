@@ -1,8 +1,8 @@
 //! FFN interchange coverage includes Qwen3 MoE (exported NNEF fixture),
-//! Granite MoE (downstream model inference), and synthetic round trips for
-//! OLMoE-style full-softmax routing and GPT-OSS-style biased, clamped-SwiGLU
-//! blocks. This validates routed FFN interchange, not complete model-family
-//! support or all export variants.
+//! Granite MoE and OLMoE (downstream model inference), and GPT-OSS-style
+//! biased, clamped-SwiGLU blocks (synthetic round trips). This validates
+//! routed FFN interchange, not complete model-family support or all export
+//! variants.
 
 use super::{ExpertLayout, GateMode, MoeFfn, OptMoeFfn};
 use std::sync::Arc;
