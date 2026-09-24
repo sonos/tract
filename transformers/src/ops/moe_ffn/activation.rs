@@ -1,4 +1,5 @@
-use crate::ops::{gelu_approximate::gelu_approximate, silu::silu};
+use crate::ops::gelu_approximate::gelu_approximate;
+use crate::ops::silu::silu;
 use tract_nnef::internal::*;
 
 pub(super) fn activation_op(name: &str, has_w3: bool) -> Option<Box<dyn TypedOp>> {

@@ -9,21 +9,17 @@ use crate::ops::routed_matmul::{
     run_prepared_routed_matmul_accumulate_one, run_prepared_routed_matmul_many,
     run_prepared_routed_matmul_many_same_rhs,
 };
-use std::{
-    fmt,
-    hash::{Hash, Hasher},
-    sync::Arc,
-    time::{Duration, Instant},
-};
+use std::fmt;
+use std::hash::{Hash, Hasher};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tract_ndarray::{Array2, ArrayView2};
 use tract_nnef::internal::*;
+use tract_nnef::tract_core::ops::OpState;
+use tract_nnef::tract_core::ops::array::Slice;
+use tract_nnef::tract_core::ops::einsum::EinSum;
+use tract_nnef::tract_core::ops::math::{add, mul};
 use tract_nnef::tract_core::ops::nn::ClampedSwiGlu;
-use tract_nnef::tract_core::ops::{
-    OpState,
-    array::Slice,
-    einsum::EinSum,
-    math::{add, mul},
-};
 use tract_nnef::tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
 pub(super) fn build_router_plan(
@@ -746,7 +742,7 @@ enum CpuExpertState {
     PackedQ40 { plan: Arc<Q40LinearExpertPlan>, state: Box<Q40LinearExpertState> },
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// Only the router keeps a long-lived state. Expert plans are spawned per eval
 /// so they can run on the rayon pool; they are stateless matmuls, so there is
 /// nothing to carry between calls anyway.
@@ -754,16 +750,6 @@ struct OptMoeFfnState {
     op: OptMoeFfn,
     router_state: TypedSimpleState,
     experts: CpuExpertState,
-}
-
-impl fmt::Debug for OptMoeFfnState {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("OptMoeFfnState")
-            .field("op", &self.op)
-            .field("router_state", &self.router_state)
-            .field("experts", &self.experts)
-            .finish()
-    }
 }
 
 impl OpState for OptMoeFfnState {

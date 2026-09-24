@@ -9,7 +9,8 @@ use super::{
 };
 use std::sync::Arc;
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::ops::{konst::Const, math::mul};
+use tract_nnef::tract_core::ops::konst::Const;
+use tract_nnef::tract_core::ops::math::mul;
 use tract_nnef::tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
 impl TypedOp for MoeFfn {
