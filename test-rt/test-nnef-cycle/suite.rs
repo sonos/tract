@@ -11,6 +11,14 @@ pub fn suite() -> &'static infra::TestSuite {
     &SUITE
 }
 
+/// Serialization cases requiring only the default core NNEF registry.
+pub fn core_suite() -> infra::TestSuite {
+    let mut suite = infra::TestSuite::default()
+        .with("clamped_swiglu", suite_unit::clamped_swiglu::suite().unwrap());
+    suite.skip(&|path| path.last().is_some_and(|name| name == "contract"));
+    suite
+}
+
 #[allow(clippy::needless_update)]
 fn mk_suite() -> infra::TestSuite {
     let mut onnx = suite_onnx::suite().clone();
