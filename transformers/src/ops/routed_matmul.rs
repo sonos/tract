@@ -99,19 +99,25 @@ impl RoutedInputRows {
                 .and_then(|n| n.checked_add(1))
                 .context("routed row width overflow")?
         };
-        if let RoutedRowOffsets::Regular { start, len, stride } = self.row_offsets {
-            start
-                .checked_add(
-                    stride
-                        .checked_mul(len.saturating_sub(1))
-                        .context("routed row stride overflow")?,
-                )
-                .context("routed row offset overflow")?;
-        }
-        for row in 0..self.len() {
-            let end =
-                self.row_offsets.get(row).checked_add(width).context("routed row end overflow")?;
-            ensure!(end <= len, "routed row {row} ends at {end}, beyond input length {len}");
+        let check = |offset: usize| -> TractResult<()> {
+            let end = offset.checked_add(width).context("routed row end overflow")?;
+            ensure!(end <= len, "routed row ends at {end}, beyond input length {len}");
+            Ok(())
+        };
+        match &self.row_offsets {
+            RoutedRowOffsets::Single(offset) => check(*offset)?,
+            RoutedRowOffsets::Regular { start, len, stride } if *len > 0 => {
+                let last = start
+                    .checked_add(stride.checked_mul(len - 1).context("routed row stride overflow")?)
+                    .context("routed row offset overflow")?;
+                check(last)?;
+            }
+            RoutedRowOffsets::Regular { .. } => (),
+            RoutedRowOffsets::Explicit(offsets) => {
+                for &offset in offsets {
+                    check(offset)?;
+                }
+            }
         }
         Ok(())
     }

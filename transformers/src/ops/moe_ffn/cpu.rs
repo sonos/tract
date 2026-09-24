@@ -306,19 +306,17 @@ impl EvalOp for OptMoeFfn {
     fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
         let router_state = self.router_plan.spawn()?;
         let experts = match &self.experts {
-            CpuExpertPlan::PerExpert(plans) => CpuExpertState::PerExpert(plans.clone()),
-            CpuExpertPlan::PackedQ40(plan) => {
-                CpuExpertState::PackedQ40 { plan: plan.clone(), state: Box::default() }
-            }
+            CpuExpertPlan::PerExpert(_) => CpuExpertState::PerExpert,
+            CpuExpertPlan::PackedQ40(_) => CpuExpertState::PackedQ40(Box::default()),
         };
-        Ok(Some(Box::new(OptMoeFfnState { op: self.clone(), router_state, experts })))
+        Ok(Some(Box::new(OptMoeFfnState { router_state, experts })))
     }
 }
 
 #[derive(Clone, Debug)]
 enum CpuExpertState {
-    PerExpert(Vec<Arc<TypedSimplePlan>>),
-    PackedQ40 { plan: Arc<Q40LinearExpertPlan>, state: Box<Q40LinearExpertState> },
+    PerExpert,
+    PackedQ40(Box<Q40LinearExpertState>),
 }
 
 /// Execution workspace, not model history: retains the router's runnable
@@ -326,7 +324,6 @@ enum CpuExpertState {
 /// evaluation-local; cloning the Q40 workspace starts with fresh scratch.
 #[derive(Clone, Debug)]
 struct OptMoeFfnState {
-    op: OptMoeFfn,
     router_state: TypedSimpleState,
     experts: CpuExpertState,
 }
@@ -335,9 +332,15 @@ impl OpState for OptMoeFfnState {
     fn eval(
         &mut self,
         _ctx: &EvalContext,
-        _op: &dyn Op,
+        op: &dyn Op,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
+        let op =
+            op.downcast_ref::<OptMoeFfn>().context("OptMoeFfn workspace requires OptMoeFfn")?;
+        ensure!(
+            Arc::ptr_eq(self.router_state.plan(), &op.router_plan),
+            "OptMoeFfn router workspace belongs to a different plan"
+        );
         let profile = std::env::var_os("TRACT_MOE_PROFILE").is_some();
         let total_start = profile_start(profile);
         ensure!(inputs.len() == 1, "OptMoeFfn expects one input");
@@ -348,7 +351,7 @@ impl OpState for OptMoeFfnState {
             "OptMoeFfn input must be floating point"
         );
         ensure!(
-            x_input.shape()[x_input.rank() - 1] == self.op.d_model,
+            x_input.shape()[x_input.rank() - 1] == op.d_model,
             "OptMoeFfn input feature dimension disagrees with its compiled weights"
         );
         let dt = x_input.datum_type();
@@ -374,8 +377,8 @@ impl OpState for OptMoeFfnState {
         let router_elapsed = profile_elapsed(router_start);
         let router_logits_f32 = router_result[0].cast_to::<f32>()?;
         let mut router_logits_t = router_logits_f32.into_owned();
-        if let Some(bias) = self.op.wg_bias.clone() {
-            let num_experts = self.op.num_experts;
+        if let Some(bias) = op.wg_bias.clone() {
+            let num_experts = op.num_experts;
             let bias = bias.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
             let mut logits_ram = router_logits_t.try_as_plain_ram_mut()?;
             let logits = logits_ram.as_slice_mut::<f32>()?;
@@ -386,10 +389,10 @@ impl OpState for OptMoeFfnState {
         let router_logits: ArrayView2<f32> =
             router_logits_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
-        let expert_plans = match &mut self.experts {
-            CpuExpertState::PackedQ40 { plan, state } => {
+        let expert_plans = match (&op.experts, &mut self.experts) {
+            (CpuExpertPlan::PackedQ40(plan), CpuExpertState::PackedQ40(state)) => {
                 return state.eval(
-                    &self.op,
+                    op,
                     plan,
                     &x_f32,
                     router_logits,
@@ -400,10 +403,10 @@ impl OpState for OptMoeFfnState {
                     profile,
                 );
             }
-            CpuExpertState::PerExpert(plans) => plans,
+            (CpuExpertPlan::PerExpert(plans), CpuExpertState::PerExpert) => plans,
+            _ => bail!("OptMoeFfn expert workspace does not match its plan"),
         };
 
-        let op = &self.op;
         let topk_start = profile_start(profile);
         let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
         for t in 0..t_tokens {
