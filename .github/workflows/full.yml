@@ -120,7 +120,7 @@ jobs:
       run: |
         export ROOT=.
         . ./.travis/ci-system-setup.sh
-        cargo build -p tract-cli --profile opt-no-lto --no-default-features --features pulse,pulse-opl,cuda-13000
+        cargo build -p tract-cli --profile opt-no-lto --no-default-features --features pulse,pulse-opl,cuda-13000,transformers
         export TRACT_RUN=$PWD/target/opt-no-lto/tract
         for t in $(grep -rl TRACT_RUNTIMES --include=runme.sh harness)
         do
