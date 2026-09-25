@@ -12,6 +12,10 @@ pub struct Range {
 }
 
 impl Op for Range {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "Range".into()
     }

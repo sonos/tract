@@ -287,10 +287,89 @@ where
         let model = model.into();
         let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
+        // Symbol-level dependencies: a node whose facts mention a runtime symbol
+        // (a NonZero count, a dynamic Range length...) must not evaluate before
+        // the node that defines that symbol, as the shape-feedback loop binds
+        // symbols when their defining node produces a tensor. Tensor edges do
+        // not express this (a MultiBroadcastTo to a NonZero-count-shaped target
+        // has no edge to the NonZero), so derive extra ordering dependencies
+        // from the facts.
+        let mut all_deps = deps.to_vec();
+        {
+            fn tensor_value_symbols(t: &Tensor, acc: &mut std::collections::HashSet<Symbol>) {
+                if t.datum_type() == TDim::datum_type()
+                    && let Some(slice) =
+                        t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
+                {
+                    acc.extend(slice.iter().flat_map(|d| d.symbols()));
+                }
+            }
+            // Order on tensor edges alone, to pick each symbol's definer by
+            // dataflow rather than by node id.
+            let base_order = if options.skip_order_opt_ram {
+                eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
+            } else {
+                eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
+            };
+            #[allow(clippy::mutable_key_type)]
+            let mut definer: std::collections::HashMap<Symbol, usize> = Default::default();
+            for &id in &base_order {
+                let node = &model.nodes[id];
+                if !node.op.as_ref().mints_runtime_symbols() {
+                    continue;
+                }
+                for output in &node.outputs {
+                    if let Ok(fact) = output.fact.to_typed_fact() {
+                        for sym in fact.shape.iter().flat_map(|d| d.symbols()) {
+                            definer.entry(sym).or_insert(id);
+                        }
+                    }
+                }
+            }
+            for node in &model.nodes {
+                // Consumers: the symbol can be needed by the node's own output
+                // shape, or appear in symbolic tensor *values* flowing through
+                // it (a folded Shape materializes the dims as a TDim konst).
+                #[allow(clippy::mutable_key_type)]
+                let mut mentioned: std::collections::HashSet<Symbol> = Default::default();
+                for output in &node.outputs {
+                    if let Ok(fact) = output.fact.to_typed_fact() {
+                        mentioned.extend(fact.shape.iter().flat_map(|d| d.symbols()));
+                        for t in
+                            [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten()
+                        {
+                            tensor_value_symbols(t, &mut mentioned);
+                        }
+                    }
+                }
+                for sym in mentioned {
+                    let Some(&d) = definer.get(&sym) else { continue };
+                    if d == node.id || inputs.contains(&d) || all_deps.contains(&(node.id, d)) {
+                        // symbols defined by model inputs are bound by set_input
+                        continue;
+                    }
+                    // Skip pairs already related by tensor edges: if the
+                    // consumer is an ancestor of the definer, the extra dep
+                    // would close a cycle.
+                    let mut stack: TVec<usize> =
+                        model.nodes[d].inputs.iter().map(|i| i.node).collect();
+                    let mut ancestors: std::collections::HashSet<usize> = Default::default();
+                    while let Some(n) = stack.pop() {
+                        if ancestors.insert(n) {
+                            stack.extend(model.nodes[n].inputs.iter().map(|i| i.node));
+                        }
+                    }
+                    if !ancestors.contains(&node.id) {
+                        // deps pairs are (consumer, precursor)
+                        all_deps.push((node.id, d));
+                    }
+                }
+            }
+        }
         let mut order = if options.skip_order_opt_ram {
-            eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
+            eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, &all_deps)?
         } else {
-            eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &outputs_nodes, deps)?
+            eval_order_opt_ram_for_nodes(model.nodes(), &inputs, &outputs_nodes, &all_deps)?
         };
         order.retain(|node| !model.node(*node).op_is::<Const>());
         let flush_lists = build_flush_list(&*model, &order, outputs, |n| !n.op_is::<Const>());
@@ -942,5 +1021,37 @@ mod test {
     #[test]
     fn type_state_is_send() {
         is_send::<TypedSimpleState>();
+    }
+
+    // A runtime symbol (here: the length of a dynamic Range) can be consumed by
+    // a node with no tensor edge to its definer (a MultiBroadcastTo to a
+    // symbolic target shape). The shape-feedback loop binds the symbol when the
+    // definer evaluates, so the plan must order consumers after definers.
+    // Regression test for https://github.com/sonos/tract/issues/2931
+    #[test]
+    fn symbol_consumers_run_after_their_definer() -> TractResult<()> {
+        use crate::ops::array::MultiBroadcastTo;
+        use crate::ops::array::Range;
+
+        let mut model = TypedModel::default();
+        let r = model.symbols.sym("r").to_dim();
+        let limit = model.add_source("limit", i64::datum_type().scalar_fact())?;
+        let start = model.add_const("start", tensor0(0i64))?;
+        let step = model.add_const("step", tensor0(1i64))?;
+        let range = model.wire_node("range", Range::new(r.clone()), &[start, limit, step])?[0];
+        // broadcast of a zero to [r, 2]: no tensor edge to the Range
+        let zero = model.add_const("zero", tensor0(0i64))?;
+        let expand = model.wire_node(
+            "expand",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r, 2usize.to_dim()])),
+            &[zero],
+        )?[0];
+        // consumer first in the outputs, so a naive order evaluates it first
+        model.select_output_outlets(&[expand, range])?;
+
+        let found = TypedSimplePlan::new(model)?.run(tvec!(tensor0(5i64).into_tvalue()))?;
+        assert_eq!(*found[0], tensor2(&[[0i64, 0], [0, 0], [0, 0], [0, 0], [0, 0]]));
+        assert_eq!(*found[1], tensor1(&[0i64, 1, 2, 3, 4]));
+        Ok(())
     }
 }
