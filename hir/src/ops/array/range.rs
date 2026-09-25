@@ -60,6 +60,44 @@ impl Expansion for Range {
         .context("No supertype for inputs")?;
         let inputs = wire_cast(prefix, model, inputs, dt)?;
         let len = model.symbols.new_with_prefix("range");
+        // Core Range yields i64 for TDim inputs (both the konst and the
+        // dynamic branch of its output_facts), matching the i64 output our
+        // inference rules promise for TDim inputs.
         model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infer::InferenceModelExt;
+
+    // A dynamic-length Range whose limit comes from a cast-to-i64 wire (which we
+    // translate as a cast to TDim, see onnx's Cast). The expansion's inferred
+    // contract — an i64 output — must survive typed translation and evaluation.
+    // Regression test for https://github.com/sonos/tract/issues/2928
+    #[test]
+    fn tdim_limit_dynamic_range() -> TractResult<()> {
+        let mut model = InferenceModel::default();
+        let limit =
+            model.add_source("limit", InferenceFact::from(i64::datum_type().scalar_fact()))?;
+        let limit = model.wire_node(
+            "limit.tdim",
+            tract_core::ops::cast::cast(DatumType::TDim),
+            &[limit],
+        )?;
+        let start = model.add_const("start", tensor0(0i64))?;
+        let step = model.add_const("step", tensor0(1i64))?;
+        let range = model.wire_node("range", expand(Range), &[start, limit[0], step])?;
+        model.select_output_outlets(&range)?;
+
+        let typed = model.into_typed()?;
+        let fact = typed.output_fact(0)?;
+        assert_eq!(fact.datum_type, i64::datum_type());
+
+        let plan = tract_core::plan::SimplePlan::new(typed.into_optimized()?)?;
+        let found = plan.run(tvec!(tensor0(5i64).into_tvalue()))?;
+        assert_eq!(*found[0], tensor1(&[0i64, 1, 2, 3, 4]));
+        Ok(())
     }
 }

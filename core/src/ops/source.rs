@@ -34,7 +34,12 @@ impl TypedOp for TypedSource {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         let mut fact = self.fact.clone();
-        change.change_shape(&mut fact.shape, false)?;
+        // Block (rather than fail) on a change this source's shape cannot
+        // express: axis-change propagation reaching a scan body's input source
+        // with a wire-specific `Reshape` must stop the search, not error out.
+        if change.change_shape(&mut fact.shape, false).is_err() {
+            return Ok(None);
+        }
         Ok(Some(AxisChangeConsequence::new(
             model,
             node,
