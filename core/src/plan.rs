@@ -361,6 +361,11 @@ where
                         mentioned.extend(fact.uniform_tdim.iter().flat_map(TDim::symbols));
                     }
                 }
+                // Deterministic iteration: symbol HashSet order would randomize
+                // which (consumer, definer) pair lands in the deps first, and
+                // with it the plan order across processes.
+                let mut mentioned: Vec<_> = mentioned.into_iter().collect();
+                mentioned.sort_unstable();
                 for sym in mentioned {
                     let Some(&d) = definer.get(&sym) else { continue };
                     // symbols defined by model inputs are bound by set_input
@@ -1146,6 +1151,35 @@ mod test {
         model.select_output_outlets(&[expand, len])?;
         let found = TypedSimplePlan::new(model)?.run(tvec!(tensor1(&[7i64; 7]).into_tvalue()))?;
         assert_eq!(found[0].shape(), &[7, 2]);
+        Ok(())
+    }
+
+    // The #2931 mechanism end-to-end: a folded Shape materializes a TDim
+    // tensor whose *values* mention a runtime symbol; a consumer of that konst
+    // (here a Cast) has no tensor edge to the symbol's definer (the Range) and
+    // evaluates correctly only after it. Behavior test: on this small graph
+    // both orderings happen to be definer-first, so unlike the guard and
+    // regression tests above it does not pin a specific dep derivation.
+    #[test]
+    fn symbolic_konst_values_consumer_ordered_after_definer() -> TractResult<()> {
+        use crate::ops::array::Range;
+        use crate::ops::cast::cast;
+        use crate::runtime::RunOptions;
+
+        let mut model = TypedModel::default();
+        let r = model.symbols.sym("rk").to_dim();
+        let limit = model.add_source("limit_in", i64::datum_type().scalar_fact())?;
+        let start = model.add_const("start", tensor0(0i64))?;
+        let step = model.add_const("step", tensor0(1i64))?;
+        let range = model.wire_node("range", Range::new(r.clone()), &[start, limit, step])?[0];
+        let shape_konst = model.add_const("shape_konst", tensor1(&[r]))?;
+        let casted = model.wire_node("cast_konst", cast(i64::datum_type()), &[shape_konst])?;
+        model.select_output_outlets(&[casted[0], range])?;
+        let options = RunOptions { skip_order_opt_ram: true, ..Default::default() };
+        let found = TypedSimplePlan::new_with_options(model, &options)?
+            .run(tvec!(tensor0(4i64).into_tvalue()))?;
+        assert_eq!(*found[0], tensor1(&[4i64]));
+        assert_eq!(*found[1], tensor1(&[0i64, 1, 2, 3]));
         Ok(())
     }
 }
