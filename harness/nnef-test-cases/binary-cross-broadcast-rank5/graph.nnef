@@ -1,0 +1,15 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Two operands of the same rank broadcasting against each other on *different*
+# axes: `a` carries the fourth, `b` the fifth. Neither of those two axes can be
+# merged into its neighbour, so a device kernel addressing fewer axes than this
+# has to keep them apart rather than fold the pair.
+
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [1, 1, 1, 4, 1], datum_type = 'f32');
+    b = tract_core_external(shape = [1, 1, 1, 1, 60], datum_type = 'f32');
+    output = sub(a, b);
+}
