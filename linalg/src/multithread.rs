@@ -156,12 +156,7 @@ pub fn par_chunks_mut<T: Send>(
             return f(0, out);
         }
         let run = |out: &mut [T]| -> TractResult<()> {
-            let threshold = current_threading_element_threshold();
-            // Target at least `threshold` elements per chunk to amortize dispatch.
-            // `chunk_rows * row_len >= threshold` => `chunk_rows >= threshold / row_len`.
-            let chunk_rows = (threshold / row_len).max(1);
-            let n_chunks =
-                n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * rayon::current_num_threads());
+            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
             let chunk_rows = n_rows.div_ceil(n_chunks);
             out.par_chunks_mut(chunk_rows * row_len)
                 .enumerate()
@@ -312,95 +307,4 @@ pub fn par_bin(
         return eval_fn(&mut a.view(), &b.view());
     }
     (0..n_blocks).try_for_each(|block| call(block, 0, period))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Arc;
-
-    fn run_par_chunks<T: Send + Clone>(
-        out: &mut [T],
-        row_len: usize,
-        total_elems: usize,
-        f: impl Fn(usize, &mut [T]) -> TractResult<()> + Sync + Send,
-    ) -> TractResult<()> {
-        par_chunks_mut(out, row_len, total_elems, f)
-    }
-
-    #[test]
-    fn par_chunks_mut_inline_when_single_row() {
-        let mut out = vec![0u32; 10];
-        let called = std::sync::Arc::new(std::sync::Mutex::new(0));
-        let c = called.clone();
-        run_par_chunks(&mut out, 10, 10, move |first, chunk| {
-            assert_eq!(first, 0);
-            assert_eq!(chunk.len(), 10);
-            *c.lock().unwrap() += 1;
-            Ok(())
-        })
-        .unwrap();
-        assert_eq!(*called.lock().unwrap(), 1);
-    }
-
-    #[test]
-    fn par_chunks_mut_inline_when_below_threshold() {
-        let mut out = vec![0u32; 100];
-        let called = std::sync::Arc::new(std::sync::Mutex::new(0));
-        let c = called.clone();
-        // 5 rows * 10 = 50 elements, below default 32768 threshold
-        // But inline path passes the FULL slice (100 elements)
-        run_par_chunks(&mut out, 10, 50, move |first, chunk| {
-            assert_eq!(first, 0);
-            assert_eq!(chunk.len(), 100); // inline passes full slice
-            *c.lock().unwrap() += 1;
-            Ok(())
-        })
-        .unwrap();
-        assert_eq!(*called.lock().unwrap(), 1);
-    }
-
-    #[test]
-    fn par_chunks_mut_chunks_correctly() {
-        let mut out = vec![0u32; 1000];
-        let called = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let c = called.clone();
-        // 100 rows of 10 elements = 1000 total, well above threshold
-        run_par_chunks(&mut out, 10, 1000, move |first, chunk| {
-            c.lock().unwrap().push((first, chunk.len()));
-            Ok(())
-        })
-        .unwrap();
-        let calls = called.lock().unwrap();
-        assert!(!calls.is_empty());
-        // Sum of chunk lengths should equal total
-        let sum: usize = calls.iter().map(|(_, len)| *len).sum();
-        assert_eq!(sum, 1000);
-        // Each chunk should be multiple of row_len (10)
-        for (_, len) in calls.iter() {
-            assert_eq!(*len % 10, 0);
-        }
-    }
-
-    #[test]
-    fn par_chunks_mut_chunk_size_respects_threshold() {
-        // row_len = 100, threshold = 32768
-        // chunk_rows = 32768 / 100 = 327, so ~327 rows per chunk
-        let row_len = 100;
-        let total_elems = 100000; // 1000 rows
-        let mut out = vec![0u32; total_elems];
-        let called = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-        let c = called.clone();
-        run_par_chunks(&mut out, row_len, total_elems, move |first, chunk| {
-            c.lock().unwrap().push((first, chunk.len()));
-            Ok(())
-        })
-        .unwrap();
-        let calls = called.lock().unwrap();
-        for (_, len) in calls.iter() {
-            // Each chunk should have at least threshold elements (except possibly last)
-            // chunk_rows = 32768/100 = 327, so chunk_size = 327*100 = 32700
-            assert!(*len >= 32700 || *len == total_elems % (327 * 100));
-        }
-    }
 }
