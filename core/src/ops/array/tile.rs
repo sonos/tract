@@ -98,6 +98,10 @@ impl DynTile {
 }
 
 impl Op for DynTile {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "DynTile".into()
     }

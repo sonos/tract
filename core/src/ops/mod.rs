@@ -201,6 +201,11 @@ pub trait Op:
     /// as these nodes evaluate, and uses this marker to order other nodes that
     /// mention them (in their shapes or in symbolic tensor values) after their
     /// defining node.
+    ///
+    /// Sources must be marked even though `set_input` binds their symbols
+    /// before evaluation: they come first in dataflow, so they claim their
+    /// shape's symbols in the definer map before an over-eager marker (say, a
+    /// Scan propagating a source-defined symbol in its output shape) would.
     fn mints_runtime_symbols(&self) -> bool {
         false
     }
