@@ -263,12 +263,21 @@ template<typename In, typename Out, typename Op>
         device const In * rhs = (device const In *)rhs_b;
         device  Out * output = (device Out *)output_b;
 
-        auto lhs_idx = tgpig.z * lhs_strides[0] + tgpig.y * lhs_strides[1] + tgpig.x * lhs_strides[2];
-        auto rhs_idx = tgpig.z * rhs_strides[0] + tgpig.y * rhs_strides[1] + tgpig.x * rhs_strides[2];
-        auto out_idx = tgpig.z * out_strides[0] + tgpig.y * out_strides[1] + tgpig.x * out_strides[2];
+        // The grid carries three of the five axes, so its depth holds the two
+        // outermost folded together and the output's extent splits them again.
+        uint i1 = tgpig.z % out_shape[1];
+        uint i0 = tgpig.z / out_shape[1];
 
-        for (size_t i = tpitg.x; i < out_shape[3]; i += ntg.x) {
-            output[out_idx + i] = Op()(lhs[lhs_idx + i * lhs_strides[3]], rhs[rhs_idx + i * rhs_strides[3]]);
+        auto lhs_idx = i0 * lhs_strides[0] + i1 * lhs_strides[1]
+                     + tgpig.y * lhs_strides[2] + tgpig.x * lhs_strides[3];
+        auto rhs_idx = i0 * rhs_strides[0] + i1 * rhs_strides[1]
+                     + tgpig.y * rhs_strides[2] + tgpig.x * rhs_strides[3];
+        auto out_idx = i0 * out_strides[0] + i1 * out_strides[1]
+                     + tgpig.y * out_strides[2] + tgpig.x * out_strides[3];
+
+        for (size_t i = tpitg.x; i < out_shape[4]; i += ntg.x) {
+            output[out_idx + i * out_strides[4]] =
+                Op()(lhs[lhs_idx + i * lhs_strides[4]], rhs[rhs_idx + i * rhs_strides[4]]);
         }
 }
 
