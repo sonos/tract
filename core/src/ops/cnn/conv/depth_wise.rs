@@ -160,7 +160,7 @@ macro_rules! impl_eval {
                         // loop inside it, so one `ZoneScanner` covers a whole zone rather than one
                         // channel of it -- the difference was a 63% tax on small planes, which is
                         // a third of the frame on the streaming models.
-                        if first == 0 && chunk.len() == total {
+if first == 0 && chunk.len() == total {
                             unsafe {
                                 for ni in 0..n as isize {
                                     let iptr = (i_base as *const T).offset(n_stride_i * ni);
@@ -186,31 +186,20 @@ macro_rules! impl_eval {
                             }
                             return Ok(());
                         }
-                        for (ix, out) in chunk.chunks_mut(plane).enumerate() {
+                        // Parallel path: group by zone to reuse ZoneScanner across channels
+                        // Collect plane indices, then process each zone with a single ZoneScanner
+                        let planes: Vec<_> = chunk.chunks_mut(plane).enumerate().map(|(ix, out)| {
                             let row = first + ix;
                             let (ni, ci) = (row / c_us, row % c_us);
-                            unsafe {
-                                let iptr = (i_base as *const T)
-                                    .offset(n_stride_i * ni as isize + c_stride_i * ci as isize);
-                                let optr = out.as_mut_ptr();
-                                for zone in &dw.patch.zones {
-                                    [<process_zone_ $suffix>](
-                                        dw,
-                                        zone,
-                                        0,
-                                        0,
-                                        k_stride_i,
-                                        iptr,
-                                        k_base as *const T,
-                                        b_base as *const T,
-                                        optr,
-                                        add,
-                                        mul,
-                                        ci as isize,
-                                        ci as isize + 1,
-                                    )
-                                }
-                            }
+                            let optr = out.as_mut_ptr();
+                            (ni as isize, ci as isize, optr)
+                        }).collect();
+                        unsafe {
+                            [<eval_parallel_ $suffix>](
+                                dw, &planes, c_stride_i, c_stride_o, k_stride_i,
+                                i_base, k_base, b_base, n_stride_i, n_stride_o,
+                                add, mul, &dw.patch.zones,
+                            )
                         }
                         Ok(())
                     },
@@ -271,6 +260,177 @@ macro_rules! impl_eval {
                             [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
                         }
                     }),
+                }
+            }}
+
+            #[inline(never)]
+            #[allow(clippy::too_many_arguments)]
+            $(#[$meta])*
+            unsafe fn [<process_zone_multi_n_ $suffix>]<T: Datum + Copy + Zero, const N: usize, const UNROLL: usize>(
+                dw: &DepthWise,
+                zone: &Zone,
+                _c_stride_i: isize,
+                _c_stride_o: isize,
+                k_stride_i: isize,
+                i_base: usize,
+                k_base: usize,
+                b_base: usize,
+                n_stride_i: isize,
+                n_stride_o: isize,
+                c_stride_i: isize,
+                c_stride_o: isize,
+                add: impl Fn(T, T) -> T + Copy + 'static,
+                mul: impl Fn(T, T) -> T + Copy + 'static,
+                planes: &[(isize, isize, *mut T)],
+            ) { unsafe {
+                let i_base = i_base as *const T;
+                let k_base = k_base as *const T;
+                let bias = b_base as *const T;
+                let mut visitor = ZoneScanner::new(zone, &dw.patch);
+                let mut ioffset = [0isize; N];
+                for i in 0..N {
+                    ioffset[i] = zone.values_offsets[i].1;
+                }
+                let ker = if T::datum_type() == f32::datum_type() {
+                    tract_linalg::routines::depthwise_w_f32()
+                } else {
+                    None
+                };
+                for (ni, ci, optr) in planes.iter().copied() {
+                    let mut k = [T::zero(); N];
+                    for n in 0..N {
+                        k[n] = *k_base.offset(k_stride_i * ci).add(zone.values_offsets[n].0);
+                    }
+                    let bias = *bias.offset(ci);
+                    let mut current_iptr = i_base.offset(n_stride_i * ni + c_stride_i * ci);
+                    let mut current_optr = optr;
+                    visitor.reset();
+                    while !visitor.done {
+                        let iptr = current_iptr.offset(visitor.input_center_offset);
+                        let optr = current_optr.offset(visitor.output_offset);
+                        if let Some(ker) = ker
+                            && visitor.inner_loop_output_stride == 1
+                            && visitor.inner_loop_input_full_stride >= 1
+                        {
+                            let k_f32 = *(&k as *const [T; N] as *const [f32; N]);
+                            ker(
+                                iptr as *const f32,
+                                optr as *mut f32,
+                                &k_f32,
+                                &ioffset,
+                                *(&bias as *const T as *const f32),
+                                visitor.inner_loop_len,
+                                visitor.inner_loop_input_full_stride,
+                            );
+                            visitor.next_non_inner_axis();
+                            continue;
+                        }
+                        let mut i = 0isize;
+                        while i + (UNROLL as isize) < visitor.inner_loop_len as isize {
+                            let iptr = current_iptr.offset(visitor.inner_loop_input_full_stride * i);
+                            let optr = current_optr.offset(visitor.inner_loop_output_stride * i);
+                            let mut iptrs = [std::ptr::null(); UNROLL];
+                            for u in 0..UNROLL {
+                                iptrs[u] = iptr.offset(visitor.inner_loop_input_full_stride * u as isize);
+                            }
+                            let mut optrs = [std::ptr::null_mut(); UNROLL];
+                            for u in 0..UNROLL {
+                                optrs[u] = optr.offset(visitor.inner_loop_output_stride * u as isize);
+                            }
+                            let mut is = [[T::zero(); N]; UNROLL];
+                            for u in 0..UNROLL {
+                                for n in 0..N {
+                                    is[u][n] = *iptrs[u].offset(ioffset[n]);
+                                }
+                            }
+                            let mut ps = [[T::zero(); N]; UNROLL];
+                            for u in 0..UNROLL {
+                                for n in 0..N {
+                                    ps[u][n] = mul(is[u][n], k[n]);
+                                }
+                            }
+                            for u in 0..UNROLL {
+                                let mut sum = bias;
+                                for n in 0..N {
+                                    sum = add(sum, ps[u][n]);
+                                }
+                                *optrs[u] = sum;
+                            }
+                            i += UNROLL as isize;
+                        }
+                        while i < visitor.inner_loop_len as isize {
+                            let iptr = current_iptr.offset(visitor.inner_loop_input_full_stride * i);
+                            let optr = current_optr.offset(visitor.inner_loop_output_stride * i);
+                            let mut is = [T::zero(); N];
+                            for n in 0..N {
+                                is[n] = *iptr.offset(ioffset[n]);
+                            }
+                            let mut p = [T::zero(); N];
+                            for n in 0..N {
+                                p[n] = mul(is[n], k[n]);
+                            }
+                            let mut sum = bias;
+                            for n in 0..N {
+                                sum = add(sum, p[n]);
+                            }
+                            *optr = sum;
+                            i += 1;
+                        }
+                        visitor.next_non_inner_axis();
+                    }
+                }
+            }}
+
+            #[inline(never)]
+            #[allow(clippy::too_many_arguments)]
+            $(#[$meta])*
+            unsafe fn [<eval_parallel_ $suffix>]<T: Datum + Copy + Zero>(
+                dw: &DepthWise,
+                planes: &[(isize, isize, *mut T)],
+                c_stride_i: isize,
+                c_stride_o: isize,
+                k_stride_i: isize,
+                i_base: usize,
+                k_base: usize,
+                b_base: usize,
+                n_stride_i: isize,
+                n_stride_o: isize,
+                add: impl Fn(T, T) -> T + Copy + 'static,
+                mul: impl Fn(T, T) -> T + Copy + 'static,
+                zones: &[Zone],
+            ) { unsafe {
+                for zone in zones {
+                    match zone.values_offsets.len() {
+                        1 => [<process_zone_multi_n_ $suffix>]::<T, 1, 4>(
+                            dw, zone, c_stride_i, c_stride_o, k_stride_i,
+                            i_base, k_base, b_base, n_stride_i, n_stride_o, c_stride_i, c_stride_o, add, mul,
+                            &planes,
+                        ),
+                        2 => [<process_zone_multi_n_ $suffix>]::<T, 2, 4>(
+                            dw, zone, c_stride_i, c_stride_o, k_stride_i,
+                            i_base, k_base, b_base, n_stride_i, n_stride_o, c_stride_i, c_stride_o, add, mul,
+                            &planes,
+                        ),
+                        3 => [<process_zone_multi_n_ $suffix>]::<T, 3, 4>(
+                            dw, zone, c_stride_i, c_stride_o, k_stride_i,
+                            i_base, k_base, b_base, n_stride_i, n_stride_o, c_stride_i, c_stride_o, add, mul,
+                            &planes,
+                        ),
+                        4 => [<process_zone_multi_n_ $suffix>]::<T, 4, 4>(
+                            dw, zone, c_stride_i, c_stride_o, k_stride_i,
+                            i_base, k_base, b_base, n_stride_i, n_stride_o, c_stride_i, c_stride_o, add, mul,
+                            &planes,
+                        ),
+                        _ => zone.visit_output(&dw.patch, |visitor| {
+                            for (ni, ci, optr) in planes.iter().copied() {
+                                let iptr = (i_base as *const T).offset(n_stride_i * ni + c_stride_i * ci);
+                                let optr = optr;
+                                let kptr = (k_base as *const T).offset(k_stride_i * ci);
+                                let bias = (b_base as *const T).offset(ci);
+                                [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, ci, visitor, add, mul)
+                            }
+                        }),
+                    }
                 }
             }}
 
