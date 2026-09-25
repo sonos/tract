@@ -199,6 +199,10 @@ impl NonMaxSuppression {
 }
 
 impl Op for NonMaxSuppression {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "NonMaxSuppression".into()
     }

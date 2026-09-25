@@ -51,6 +51,10 @@ impl NonZero {
 }
 
 impl Op for NonZero {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "NonZero".into()
     }
