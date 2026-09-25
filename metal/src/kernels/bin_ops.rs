@@ -1,15 +1,19 @@
 use super::BroadcastKind;
 use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
-use crate::kernels::utils::compute_broadcast_strides;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use metal::{MTLSize, NSUInteger};
 use std::ffi::c_void;
-use tract_core::internal::tract_smallvec::SmallVec;
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::utils::Layout;
+use tract_gpu::utils::merge_axes_to_fit;
+
+/// The axes the generic binary kernel walks: the grid carries three, its depth
+/// folding the two outermost, and the innermost is the kernel's loop.
+const BINARY_MAX_RANK: usize = 5;
 
 const ALL_OP_NAMES: &[&str] = &[
     "mul", "add", "div", "sub", "pow", "min", "max", "gt", "gte", "eq", "ne", "lt", "lte", "and",
@@ -68,78 +72,69 @@ fn can_use_row_kernel(mini_op: &dyn BinMiniOp, lhs: &DeviceTensor, rhs: &DeviceT
         && rhs.shape()[rank - 1].is_multiple_of(4)
 }
 
-fn reshape_to_rank_4_with_broadcast(
+/// The two operands and the output as the kernel addresses them: a shape and a
+/// stride per axis, an operand broadcast along an axis holding a stride of zero
+/// there, merged down to the `BINARY_MAX_RANK` axes the kernel walks.
+fn binary_geometry(
     lhs: &DeviceTensor,
     rhs: &DeviceTensor,
-    out: &DeviceTensor,
-) -> TractResult<(TVec<usize>, TVec<usize>, TVec<usize>)> {
+    output: &DeviceTensor,
+) -> TractResult<[(TVec<usize>, TVec<usize>); 3]> {
     let rank = lhs.rank();
-
-    if rank <= 4 {
-        let mut pad = |shape: &[usize]| {
-            let mut result = [1; 4];
-            result[4 - shape.len()..].copy_from_slice(shape);
-            result.into()
-        };
-        return Ok((pad(lhs.shape()), pad(rhs.shape()), pad(out.shape())));
-    }
-
-    if lhs.shape() == rhs.shape() {
-        let mut shape = vec![lhs.shape()[..rank - 3].iter().product::<usize>()];
-        shape.extend(&lhs.shape()[rank - 3..]);
-
-        Ok((shape.clone().into(), shape.clone().into(), shape.into()))
-    } else {
-        let broadcast_axes: Vec<usize> = (0..lhs.rank())
-            .filter(|ix| lhs.shape()[*ix] != rhs.shape()[*ix] || lhs.shape()[*ix] == 1)
-            .collect();
-
-        let mut segments = vec![];
-        let mut current_segment = vec![0];
-        let mut current_is_broadcast = broadcast_axes.contains(&0);
-
-        for i in 1..rank {
-            let is_broadcast = broadcast_axes.contains(&i);
-            if is_broadcast == current_is_broadcast {
-                current_segment.push(i);
-            } else {
-                segments.push((current_is_broadcast, current_segment));
-                current_segment = vec![i];
-                current_is_broadcast = is_broadcast;
+    let mut shapes: [TVec<usize>; 3] =
+        [lhs.shape().into(), rhs.shape().into(), output.shape().into()];
+    let mut strides: [TVec<isize>; 3] =
+        [lhs.strides().into(), rhs.strides().into(), output.strides().into()];
+    // An axis no tensor steps costs a kernel axis and carries nothing, and its
+    // stride is arbitrary, which would block an otherwise exact merge.
+    for axis in (0..rank).rev() {
+        if shapes.iter().all(|shape| shape[axis] == 1) {
+            for (shape, strides) in shapes.iter_mut().zip(strides.iter_mut()) {
+                shape.remove(axis);
+                strides.remove(axis);
             }
         }
-        segments.push((current_is_broadcast, current_segment));
-
-        let mut reshaped_groups: Vec<Vec<usize>> = vec![vec![], vec![], vec![], vec![]];
-        let mut group_idx = 0;
-        for (_, segment) in segments {
-            reshaped_groups[group_idx].extend(segment);
-            group_idx += 1;
-            ensure!(group_idx < 4, "Cannot reshape to rank 4");
-        }
-
-        fn compute_shape(shape: &[usize], groups: &[Vec<usize>]) -> TVec<usize> {
-            let mut result = [1; 4];
-            for (i, group) in groups.iter().enumerate() {
-                result[i] = group.iter().map(|&dim| shape[dim]).product();
+    }
+    for axis in 0..shapes[2].len() {
+        // An operand shorter than the output is read at the same place for
+        // every index of that axis.
+        for operand in 0..2 {
+            if shapes[operand][axis] < shapes[2][axis] {
+                strides[operand][axis] = 0;
             }
-            result.into()
         }
-
-        Ok((
-            compute_shape(lhs.shape(), &reshaped_groups),
-            compute_shape(rhs.shape(), &reshaped_groups),
-            compute_shape(out.shape(), &reshaped_groups),
-        ))
     }
-}
 
-fn natural_strides(shape: &[usize]) -> SmallVec<[isize; 4]> {
-    let mut strides = SmallVec::from_elem(1, shape.len());
-    for i in (0..shape.len()).rev().skip(1) {
-        strides[i] = strides[i + 1] * shape[i + 1] as isize;
-    }
-    strides
+    let [ref mut lhs_shape, ref mut rhs_shape, ref mut out_shape] = shapes;
+    let [ref mut lhs_strides, ref mut rhs_strides, ref mut out_strides] = strides;
+    // The output goes last: `merge_axes_to_fit` reads the extent of the pair's
+    // inner half from it, and a broadcast operand holds one there.
+    let mut layouts = [
+        Layout { shape: lhs_shape, strides: lhs_strides },
+        Layout { shape: rhs_shape, strides: rhs_strides },
+        Layout { shape: out_shape, strides: out_strides },
+    ];
+    let merged = merge_axes_to_fit(&mut layouts, BINARY_MAX_RANK);
+    ensure!(
+        merged <= BINARY_MAX_RANK,
+        "Binary of rank {rank} has no adjacent axes to merge into {BINARY_MAX_RANK}: \
+         lhs {:?} rhs {:?}",
+        lhs.shape(),
+        rhs.shape(),
+    );
+
+    // The kernel takes the innermost axis as its loop and the outer ones as the
+    // grid, so a shorter shape is right-aligned into the five.
+    let pad = BINARY_MAX_RANK - merged;
+    Ok(std::array::from_fn(|i| {
+        let mut shape: TVec<usize> = tvec!(1; BINARY_MAX_RANK);
+        let mut stride: TVec<usize> = tvec!(0; BINARY_MAX_RANK);
+        for axis in 0..merged {
+            shape[pad + axis] = shapes[i][axis];
+            stride[pad + axis] = strides[i][axis] as usize;
+        }
+        (shape, stride)
+    }))
 }
 
 pub fn dispatch_eval(
@@ -182,14 +177,8 @@ pub fn dispatch_eval(
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
     } else {
-        let (lhs_shape, rhs_shape, out_shape) = reshape_to_rank_4_with_broadcast(lhs, rhs, output)?;
-
-        let lhs_strides =
-            compute_broadcast_strides::<usize>(&lhs_shape, &natural_strides(&lhs_shape))?;
-        let rhs_strides =
-            compute_broadcast_strides::<usize>(&rhs_shape, &natural_strides(&rhs_shape))?;
-        let out_strides =
-            compute_broadcast_strides::<usize>(&out_shape, &natural_strides(&out_shape))?;
+        let [(lhs_shape, lhs_strides), (rhs_shape, rhs_strides), (out_shape, out_strides)] =
+            binary_geometry(lhs, rhs, output)?;
 
         let pipeline = stream.load_pipeline(LibraryName::BinOps, &kname)?;
         let command_buffer = stream.command_buffer();
