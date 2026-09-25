@@ -58,14 +58,15 @@ impl Range {
         values: &SymbolValues,
     ) -> TractResult<Tensor> {
         if start.datum_type() == TDim::datum_type() {
-            let start = start.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            let step = step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
-            let len = {
-                let end = end.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
-                #[allow(clippy::cast_abs_to_unsigned)]
-                ((end - start).abs() as usize).divceil(step.abs() as usize)
-            };
-            Self::make_t::<i64>(&tensor0(start), &tensor0(step), len)
+            // Produce a TDim tensor: the dynamic branch of output_facts declares
+            // one, and the plan's fact-vs-value assertions check that.
+            let start = start.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
+            let step = step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
+            let end = end.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
+            #[allow(clippy::cast_abs_to_unsigned)]
+            let len = ((end.to_i64()? - start.to_i64()?).abs() as usize)
+                .divceil(step.to_i64()?.unsigned_abs() as usize);
+            Self::make_t::<TDim>(&tensor0(start), &tensor0(step), len)
         } else {
             let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
                 self, start, end, step

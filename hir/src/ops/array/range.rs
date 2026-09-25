@@ -60,6 +60,54 @@ impl Expansion for Range {
         .context("No supertype for inputs")?;
         let inputs = wire_cast(prefix, model, inputs, dt)?;
         let len = model.symbols.new_with_prefix("range");
-        model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)
+        let wires =
+            model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)?;
+        // Our inference rules promise an i64 output when the super type of the
+        // inputs is TDim (as happens when a limit comes from onnx Cast-to-i64,
+        // which we translate as a cast to TDim). Core Range honors that when it
+        // can compute the length from konst inputs, but its dynamic branch
+        // yields a TDim wire. Cast back to i64 so the expansion's outputs match
+        // the facts the solver inferred.
+        if model.outlet_fact(wires[0])?.datum_type.is_tdim() {
+            let name = model.unique_name(format!("{prefix}.cast"));
+            return model.wire_node(name, tract_core::ops::cast::cast(i64::datum_type()), &wires);
+        }
+        Ok(wires)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::infer::InferenceModelExt;
+
+    // A dynamic-length Range whose limit comes from a cast-to-i64 wire (which we
+    // translate as a cast to TDim, see onnx's Cast). The expansion must keep its
+    // inferred contract — an i64 output — even though core Range's dynamic
+    // branch produces a TDim wire.
+    // Regression test for https://github.com/sonos/tract/issues/2928
+    #[test]
+    fn tdim_limit_dynamic_range() -> TractResult<()> {
+        let mut model = InferenceModel::default();
+        let limit =
+            model.add_source("limit", InferenceFact::from(i64::datum_type().scalar_fact()))?;
+        let limit = model.wire_node(
+            "limit.tdim",
+            tract_core::ops::cast::cast(DatumType::TDim),
+            &[limit],
+        )?;
+        let start = model.add_const("start", tensor0(0i64))?;
+        let step = model.add_const("step", tensor0(1i64))?;
+        let range = model.wire_node("range", expand(Range), &[start, limit[0], step])?;
+        model.select_output_outlets(&range)?;
+
+        let typed = model.into_typed()?;
+        let fact = typed.output_fact(0)?;
+        assert_eq!(fact.datum_type, i64::datum_type());
+
+        let plan = tract_core::plan::SimplePlan::new(typed.into_optimized()?)?;
+        let found = plan.run(tvec!(tensor0(5i64).into_tvalue()))?;
+        assert_eq!(*found[0], tensor1(&[0i64, 1, 2, 3, 4]));
+        Ok(())
     }
 }

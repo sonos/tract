@@ -203,6 +203,15 @@ pub fn change_axes(
                     let const_node = model.node(outlet.node);
                     let mut value =
                         const_node.op_as::<Const>().unwrap().val().clone().into_tensor();
+                    // The alteration was designed against the op's interface, not
+                    // against this constant's rank: an Add(2) can reach a rank-1
+                    // [1] constant. Pad with leading one-axes (semantics-preserving
+                    // for a volume-1 tensor) until the alteration applies.
+                    while alteration.required_rank() > value.rank() {
+                        value
+                            .insert_axis(0)
+                            .with_context(|| format!("altering const {}", const_node.name))?;
+                    }
                     alteration.change_tensor(&mut value, false)?;
                     let name = model.unique_name(&const_node.name);
                     patch.add_const(name, value)?
