@@ -6,6 +6,10 @@ pub struct TypedSource {
 }
 
 impl Op for TypedSource {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "Source".into()
     }

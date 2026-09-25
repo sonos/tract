@@ -34,6 +34,10 @@ impl OptScan {
 }
 
 impl Op for OptScan {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "Scan".into()
     }

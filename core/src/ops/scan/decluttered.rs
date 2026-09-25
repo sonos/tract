@@ -738,6 +738,10 @@ impl Scan {
 }
 
 impl Op for Scan {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "Scan".into()
     }

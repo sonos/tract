@@ -195,6 +195,16 @@ pub trait Op:
         Ok(vec![])
     }
 
+    /// Whether evaluating this op can *bind* runtime symbols (symbols that only
+    /// get a value when tensors are produced: the length of a dynamic Range, a
+    /// NonZero count...). The plan's shape-feedback loop resolves such symbols
+    /// as these nodes evaluate, and uses this marker to order other nodes that
+    /// mention them (in their shapes or in symbolic tensor values) after their
+    /// defining node.
+    fn mints_runtime_symbols(&self) -> bool {
+        false
+    }
+
     fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
 
