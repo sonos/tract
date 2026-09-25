@@ -311,9 +311,10 @@ where
             // facts must not contribute dependencies.
             let base_order = eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, &[])?;
             // Definers are picked by dataflow rather than by node id, which
-            // optimization passes do not preserve. Note to_typed_fact() errors
-            // on unresolved inference facts: this analysis is inert (like on
-            // main) for plans built on InferenceModel.
+            // optimization passes do not preserve. The analysis is inert for
+            // plans built on InferenceModel: their ops are the hir wrappers,
+            // which do not override mints_runtime_symbols, so the definer map
+            // stays empty and no deps are derived.
             #[allow(clippy::mutable_key_type)]
             let mut definer: std::collections::HashMap<Symbol, usize> = Default::default();
             for &id in &base_order {
@@ -353,6 +354,11 @@ where
                         {
                             tensor_value_symbols(t, &mut mentioned);
                         }
+                        // uniform_tdim carries symbolic per-element values; it
+                        // is optimization-time metadata today, but scanning it
+                        // costs nothing and keeps the consumer set honest.
+                        // (exotic_fact is opaque and cannot be scanned.)
+                        mentioned.extend(fact.uniform_tdim.iter().flat_map(TDim::symbols));
                     }
                 }
                 for sym in mentioned {
@@ -1075,41 +1081,55 @@ mod test {
         assert_eq!(*found[1], tensor1(&[0i64, 1, 2, 3, 4]));
         Ok(())
     }
-
     // A consumer that is a tensor-edge ancestor of its definer must not get a
-    // symbol dep (that would close a cycle); the shape-feedback loop still
-    // binds the symbol through the definer's own evaluation.
+    // symbol dep: adding one would close a cycle and fail plan *construction*
+    // with "Loop detected". Here `expand` mentions both r_a (defined by the
+    // upstream Range) and r_b (defined by the downstream Range, whose limit is
+    // computed *from* expand).
     #[test]
     fn symbol_dep_skipped_when_consumer_is_ancestor() -> TractResult<()> {
         use crate::ops::array::MultiBroadcastTo;
         use crate::ops::array::Range;
 
         let mut model = TypedModel::default();
-        let r = model.symbols.sym("r2").to_dim();
-        // limit for the Range comes from a wire whose shape mentions r: the
-        // limit producer is thus an ancestor of the Range (the definer)
-        let limit = model.add_source("limit_in", i64::datum_type().fact([1usize]))?;
+        let r_a = model.symbols.sym("ra").to_dim();
+        let r_b = model.symbols.sym("rb").to_dim();
+        let limit = model.add_source("limit_in", i64::datum_type().scalar_fact())?;
         let start = model.add_const("start", tensor0(0i64))?;
         let step = model.add_const("step", tensor0(1i64))?;
-        let range = model.wire_node("range", Range::new(r.clone()), &[start, limit, step])?[0];
-        // downstream of the Range, consuming r in its output shape: gets a dep
-        // (already implied by its tensor edge, so the direct-edge shortcut
-        // applies)
+        let range_a =
+            model.wire_node("range_a", Range::new(r_a.clone()), &[start, limit, step])?[0];
         let zero = model.add_const("zero", tensor0(0i64))?;
         let expand = model.wire_node(
             "expand",
-            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r, 2usize.to_dim()])),
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r_a.clone(), r_b.clone()])),
             &[zero],
         )?[0];
-        model.select_output_outlets(&[expand, range])?;
-        let found = TypedSimplePlan::new(model)?
-            .run(tvec!(tensor1(&[5i64]).into_tensor().into_tvalue()))?;
-        assert_eq!(*found[1], tensor1(&[0i64, 1, 2, 3, 4]));
+        // r_b's definer sits downstream of expand: its limit is reduced out of
+        // expand's output
+        let summed = model.wire_node(
+            "summed",
+            crate::ops::nn::Reduce::new(tvec!(0, 1), crate::ops::nn::Reducer::Sum),
+            &[expand],
+        )?[0];
+        let summed =
+            model.wire_node("summed_rm0", crate::ops::change_axes::AxisOp::Rm(0), &[summed])?[0];
+        let summed =
+            model.wire_node("summed_rm1", crate::ops::change_axes::AxisOp::Rm(0), &[summed])?[0];
+        let range_b = model.wire_node("range_b", Range::new(r_b), &[start, summed, step])?;
+        model.select_output_outlets(&[range_b[0], range_a])?;
+        // The graph is deliberately runtime-unsatisfiable (expand needs r_b,
+        // whose definer consumes expand's output): the guard's job is to keep
+        // that a clear evaluation-time error instead of a bogus build-time
+        // "Loop detected". Delete the guard and this test fails at
+        // SimplePlan::new.
+        TypedSimplePlan::new(model)?;
         Ok(())
     }
 
     // Symbols defined by model inputs are bound by set_input before any
-    // evaluation; no ordering dep is needed for their consumers.
+    // evaluation, so their consumers need no ordering dep. Sanity test: it
+    // would only fail if input binding itself broke.
     #[test]
     fn input_defined_symbol_needs_no_dep() -> TractResult<()> {
         use crate::ops::array::MultiBroadcastTo;
