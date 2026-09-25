@@ -27,9 +27,22 @@ fn eval_tdim_symbolic(
     inputs: &TVec<TValue>,
     prove: impl Fn(&TDim, &TDim) -> TractResult<bool>,
 ) -> TractResult<Option<TVec<TValue>>> {
-    rule_if!(inputs[0].datum_type() == TDim::datum_type());
-    let mut a = inputs[0].clone().into_tensor();
-    let mut b = inputs[1].clone().into_tensor();
+    rule_if!(
+        inputs[0].datum_type() == TDim::datum_type()
+            || inputs[1].datum_type() == TDim::datum_type()
+    );
+    // a dynamic Range yields i64 while a TDim konst stays TDim: cast the
+    // integer side up so the pair goes through the symbolic path
+    let to_tdim = |t: &TValue| -> TractResult<Tensor> {
+        let t = t.clone().into_tensor();
+        if t.datum_type() == TDim::datum_type() {
+            Ok(t)
+        } else {
+            Ok(t.cast_to_dt(TDim::datum_type())?.into_owned())
+        }
+    };
+    let mut a = to_tdim(&inputs[0])?;
+    let mut b = to_tdim(&inputs[1])?;
     for a in a.try_as_plain_ram_mut()?.as_slice_mut::<TDim>()? {
         *a = a.eval(ctx.symbols);
     }
@@ -42,8 +55,8 @@ fn eval_tdim_symbolic(
         })?;
         return Ok(Some(tvec!(result.into_tvalue())));
     }
-    let a_view = inputs[0].to_plain_array_view::<TDim>()?;
-    let b_view = inputs[1].to_plain_array_view::<TDim>()?;
+    let a_view = a.to_plain_array_view::<TDim>()?;
+    let b_view = b.to_plain_array_view::<TDim>()?;
     let shape = multi_broadcast(&[a_view.shape(), b_view.shape()])?;
     let mut c = unsafe { Tensor::uninitialized::<bool>(&shape)? };
     let mut c_plain = c.try_as_plain_ram_mut()?;
@@ -212,4 +225,45 @@ pub fn comp_lte() -> Box<dyn BinMiniOp> {
 }
 pub fn comp_gte() -> Box<dyn BinMiniOp> {
     Box::new(CompGTE)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::internal::*;
+    #[allow(unused_imports)]
+    // A dynamic Range output (i64) compared against a TDim konst must evaluate
+    // through the symbolic path (the i64 side is cast up), not error on the
+    // mixed datum types.
+    #[test]
+    fn mixed_i64_tdim_comparison() -> TractResult<()> {
+        use crate::ops::array::Range;
+        use crate::ops::binary::TypedBinOp;
+
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::datum_type().fact([s.to_dim()]))?;
+        let start = model.add_const("start", tensor0(TDim::Val(0)))?;
+        let step = model.add_const("step", tensor0(TDim::Val(1)))?;
+        let end = model.wire_node(
+            "end",
+            crate::ops::konst::Const::new(tensor0(TDim::Sym(s.clone())).into_arc_tensor())?,
+            &[],
+        )?;
+        let range = model.wire_node("range", Range::new(s.to_dim()), &[start, end[0], step])?;
+        let t_const = model.wire_node(
+            "t_const",
+            crate::ops::konst::Const::new(tensor0(TDim::Sym(s.clone())).into_arc_tensor())?,
+            &[],
+        )?;
+        let t_unsq =
+            model.wire_node("t_unsq", crate::ops::change_axes::AxisOp::Add(0), &[t_const[0]])?;
+        let lt = model.wire_node("lt", TypedBinOp(comp_lt(), None), &[range[0], t_unsq[0]])?;
+        model.select_output_outlets(&[lt[0], definer])?;
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor1(&[0f32; 3]).into_tvalue()))?;
+        // all of range(0..S) is strictly below S: true, true, true
+        assert_eq!(*found[0], tensor1(&[true, true, true]));
+        Ok(())
+    }
 }

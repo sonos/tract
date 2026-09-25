@@ -31,6 +31,13 @@ pub fn equal_modulo_unmatched_symbols(a: &TDim, b: &TDim) -> bool {
     if a.clone().expand_polynomial() == b.clone().expand_polynomial() {
         return true;
     }
+    pairing_equal_modulo_unmatched_symbols(a, b)
+}
+
+/// The pairing clause of [`equal_modulo_unmatched_symbols`] without its
+/// polynomial-equality shortcut: true only when pairing each side's exclusive
+/// symbols one-to-one makes the volumes equal.
+fn pairing_equal_modulo_unmatched_symbols(a: &TDim, b: &TDim) -> bool {
     let mut a_syms: Vec<_> = a.symbols().into_iter().collect();
     let mut b_syms: Vec<_> = b.symbols().into_iter().collect();
     a_syms.sort_unstable();
@@ -1134,7 +1141,12 @@ pub fn compute_shape_with_onnx_rules(
         shape[pos] = div.0;
     } else {
         let shape_vol: TDim = shape.iter().product();
-        if input_vol != shape_vol && !equal_modulo_unmatched_symbols(&input_vol, &shape_vol) {
+        // Pairing-only at this site: accepting plain polynomial equality here
+        // (the first clause of equal_modulo_unmatched_symbols) would let
+        // inference propagate shapes that to_axis_ops' grouping search then
+        // fails to decompose with a worse diagnostic than this check.
+        if input_vol != shape_vol && !pairing_equal_modulo_unmatched_symbols(&input_vol, &shape_vol)
+        {
             bail!(
                 "Reshape volume mismatch: input {input:?} (vol={input_vol}) vs shape {shape:?} (vol={shape_vol})"
             );
