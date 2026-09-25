@@ -54,7 +54,7 @@ mod nnef_cycle {
 
     use super::*;
 
-    struct NnefCyclingRuntime(Nnef);
+    pub(super) struct NnefCyclingRuntime(pub(super) Nnef);
 
     impl Debug for NnefCyclingRuntime {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -92,4 +92,18 @@ mod nnef_cycle {
     }
 
     include!(concat!(env!("OUT_DIR"), "/tests/nnef_cycle.rs"));
+}
+
+mod nnef_core_cycle {
+    use super::nnef_cycle::NnefCyclingRuntime;
+    use super::*;
+
+    fn runtime() -> &'static NnefCyclingRuntime {
+        lazy_static::lazy_static! {
+            static ref RT: NnefCyclingRuntime = NnefCyclingRuntime(tract_nnef::nnef());
+        }
+        &RT
+    }
+
+    include!(concat!(env!("OUT_DIR"), "/tests/nnef_core_cycle.rs"));
 }
