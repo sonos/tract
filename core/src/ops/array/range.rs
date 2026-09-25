@@ -58,15 +58,19 @@ impl Range {
         values: &SymbolValues,
     ) -> TractResult<Tensor> {
         if start.datum_type() == TDim::datum_type() {
-            // Produce a TDim tensor: the dynamic branch of output_facts declares
-            // one, and the plan's fact-vs-value assertions check that.
-            let start = start.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
-            let step = step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
-            let end = end.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values);
-            #[allow(clippy::cast_abs_to_unsigned)]
-            let len = ((end.to_i64()? - start.to_i64()?).abs() as usize)
-                .divceil(step.to_i64()?.unsigned_abs() as usize);
-            Self::make_t::<TDim>(&tensor0(start), &tensor0(step), len)
+            // TDim inputs always yield an i64 tensor: both branches of
+            // output_facts declare i64 for TDim inputs (the symbolic value
+            // rides in uniform_tdim), and the plan's fact-vs-value assertions
+            // check that.
+            let start = start.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            let step = step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            let end = end.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
+            let len = {
+                #[allow(clippy::cast_abs_to_unsigned)]
+                let step = step.unsigned_abs() as usize;
+                ((end - start).abs() as usize).divceil(step)
+            };
+            Self::make_t::<i64>(&tensor0(start), &tensor0(step), len)
         } else {
             let len = dispatch_numbers!(Self::len_for_numbers(start.datum_type())(
                 self, start, end, step
@@ -147,7 +151,12 @@ impl TypedOp for Range {
                 Ok(tvec!(start.datum_type().fact([len])))
             }
         } else {
-            let mut fact = start.datum_type.fact(std::slice::from_ref(&self.len));
+            // TDim inputs yield i64, like the konst branch above: the
+            // symbolic per-element value rides in uniform_tdim, and
+            // Range::make materializes i64 regardless of the input datum
+            // type (a contract pulse-opl relies on).
+            let dt = if start.datum_type.is_tdim() { i64::datum_type() } else { start.datum_type };
+            let mut fact = dt.fact(std::slice::from_ref(&self.len));
             if let (Some(s), Some(k)) = (&start.uniform_tdim, &step.uniform_tdim)
                 && let Some(scope) = self.len.find_scope()
             {
@@ -164,4 +173,63 @@ impl TypedOp for Range {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn tdims_model(model: &mut TypedModel, end: OutletId) -> TractResult<TVec<OutletId>> {
+        let start = model.wire_node(
+            "start",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?,
+            &[],
+        )?;
+        let step = model.wire_node(
+            "step",
+            crate::ops::konst::Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?,
+            &[],
+        )?;
+        let s = model.symbols.sym("S");
+        model.wire_node("range", Range::new(s.to_dim()), &[start[0], end, step[0]])
+    }
+
+    // sdpa-style: all-konst TDim scalars (the konst branch of output_facts).
+    // Both the fact and the evaluated tensor must be i64. S is bound at
+    // runtime through the definer source' shape.
+    #[test]
+    fn konst_tdim_inputs_yield_i64() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::datum_type().fact([s.to_dim()]))?;
+        let end = model.wire_node(
+            "end",
+            crate::ops::konst::Const::new(tensor0(TDim::Sym(s)).into_arc_tensor())?,
+            &[],
+        )?;
+        let range = tdims_model(&mut model, end[0])?;
+        model.select_output_outlets(&[range[0], definer])?;
+        assert_eq!(model.outlet_fact(range[0])?.datum_type, i64::datum_type());
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor1(&[0f32; 5]).into_tvalue()))?;
+        assert_eq!(*found[0], tensor1(&[0i64, 1, 2, 3, 4]));
+        Ok(())
+    }
+
+    // dynamic end (the else branch of output_facts): i64 fact, i64 values,
+    // symbolic per-element value still tracked as uniform_tdim.
+    #[test]
+    fn dynamic_tdim_end_yields_i64() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let end = model.add_source("T_dyn", TDim::datum_type().scalar_fact())?;
+        let range = tdims_model(&mut model, end)?;
+        model.select_output_outlets(&range)?;
+        let fact = model.outlet_fact(range[0])?;
+        assert_eq!(fact.datum_type, i64::datum_type());
+        assert!(fact.uniform_tdim.is_some());
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor0(TDim::Val(5)).into_tvalue()))?;
+        assert_eq!(*found[0], tensor1(&[0i64, 1, 2, 3, 4]));
+        Ok(())
+    }
 }

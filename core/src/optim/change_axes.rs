@@ -264,3 +264,62 @@ pub fn change_axes(
     debug!("Patch ready for {change:?}");
     Ok(Some((patch, interface_change)))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // An axis alteration rewiring a volume-1 constant can need more rank than
+    // the constant has (an Add(2) reaching a rank-1 [1] const): the rewiring
+    // must pad with leading one-axes instead of failing the whole pass.
+    // Regression test for the "/enc_p/Constant_5.0 rewiring" failure on the
+    // MMS TTS graph (sonos/tract#2928 follow-up diagnostics).
+    #[test]
+    fn volume_one_const_rewiring_pads_rank() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::datum_type().fact([s.to_dim()]))?;
+        let c = model.add_const("c", tensor1(&[0f32]))?;
+        // symbolic target shape so wiring does not fold the broadcast away
+        let y = model.wire_node(
+            "y",
+            crate::ops::array::MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                s.to_dim(),
+                1usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[c],
+        )?;
+        let out = model.wire_node("out", AxisOp::Add(0), &[y[0]])?;
+        model.select_output_outlets(&[out[0], definer])?;
+        let change = AxisChange { outlet: out[0], op: AxisOp::Add(3) };
+        let mut explored = Default::default();
+        let (patch, _) = change_axes(&model, &change, &[], &[], &mut explored)
+            .with_context(|| "axis change through a volume-1 const should succeed")?
+            .context("axis change through a volume-1 const should apply")?;
+        patch.apply(&mut model)?;
+        model.compact()?;
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor1(&[0f32; 2]).into_tvalue()))?;
+        assert_eq!(found[0].shape(), &[1, 2, 1, 1, 1]);
+        Ok(())
+    }
+
+    // A source whose shape cannot express an incoming change must block it
+    // (Ok(None)) instead of erroring the optimization run.
+    #[test]
+    fn source_blocks_inapplicable_change() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.add_source("s", f32::datum_type().fact([2usize, 3]))?;
+        let node = model.node(s.node);
+        let change =
+            AxisOp::Reshape(0, tvec![4.to_dim(), 5.to_dim()].into(), tvec![20.to_dim()].into());
+        let blocked = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &change)
+            .map(|r| r.is_none())
+            .unwrap_or(false);
+        assert!(blocked, "expected the source to block the change");
+        Ok(())
+    }
+}

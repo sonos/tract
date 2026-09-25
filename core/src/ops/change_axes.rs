@@ -22,7 +22,11 @@ pub enum InOut {
 /// `Range`s over the same runtime value, say) yields two distinct fresh symbols
 /// for the same quantity. Reshaping between such shapes is legitimate but
 /// unprovable statically: accept the pairing (in symbol-id order) and let a
-/// genuinely wrong model fail at runtime.
+/// genuinely wrong model fail at runtime. The check is deliberately blind to
+/// symbol provenance — it also accepts reshapes between two genuinely
+/// independent symbols (two model inputs, say) — because nothing distinguishes
+/// "the same quantity computed twice" from "two quantities the model asserts
+/// equal" at this level.
 pub fn equal_modulo_unmatched_symbols(a: &TDim, b: &TDim) -> bool {
     if a.clone().expand_polynomial() == b.clone().expand_polynomial() {
         return true;
@@ -1163,11 +1167,12 @@ pub fn to_axis_ops_with_onnx_rules(
     let final_output = compute_shape_with_onnx_rules(input_orig, output_spec, allowzero)?;
     // Volumes that only match modulo unmatched symbols (see
     // `equal_modulo_unmatched_symbols`): the grouping search below must then
-    // accept group pairings with the same property.
+    // accept group pairings with the same property. Exactly-equal volumes,
+    // even factored differently, must not enable modulo matching.
     let modulo_symbols = {
         let i: TDim = input_orig.iter().product();
         let o: TDim = final_output.iter().product();
-        i != o
+        i != o && i.expand_polynomial() != o.expand_polynomial()
     };
     // A zero-length dimension makes every group volume zero, so the greedy volume matching below
     // finds spurious partial matches and builds an incoherent stack. There are no elements to

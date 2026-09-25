@@ -60,19 +60,10 @@ impl Expansion for Range {
         .context("No supertype for inputs")?;
         let inputs = wire_cast(prefix, model, inputs, dt)?;
         let len = model.symbols.new_with_prefix("range");
-        let wires =
-            model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)?;
-        // Our inference rules promise an i64 output when the super type of the
-        // inputs is TDim (as happens when a limit comes from onnx Cast-to-i64,
-        // which we translate as a cast to TDim). Core Range honors that when it
-        // can compute the length from konst inputs, but its dynamic branch
-        // yields a TDim wire. Cast back to i64 so the expansion's outputs match
-        // the facts the solver inferred.
-        if model.outlet_fact(wires[0])?.datum_type.is_tdim() {
-            let name = model.unique_name(format!("{prefix}.cast"));
-            return model.wire_node(name, tract_core::ops::cast::cast(i64::datum_type()), &wires);
-        }
-        Ok(wires)
+        // Core Range yields i64 for TDim inputs (both the konst and the
+        // dynamic branch of its output_facts), matching the i64 output our
+        // inference rules promise for TDim inputs.
+        model.wire_node(prefix, tract_core::ops::array::Range::new(len.into()), &inputs)
     }
 }
 
@@ -82,9 +73,8 @@ mod tests {
     use crate::infer::InferenceModelExt;
 
     // A dynamic-length Range whose limit comes from a cast-to-i64 wire (which we
-    // translate as a cast to TDim, see onnx's Cast). The expansion must keep its
-    // inferred contract — an i64 output — even though core Range's dynamic
-    // branch produces a TDim wire.
+    // translate as a cast to TDim, see onnx's Cast). The expansion's inferred
+    // contract — an i64 output — must survive typed translation and evaluation.
     // Regression test for https://github.com/sonos/tract/issues/2928
     #[test]
     fn tdim_limit_dynamic_range() -> TractResult<()> {
