@@ -1,0 +1,10 @@
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/memmap2-cd189a25968f54af.d: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/unix.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/advice.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/libmemmap2-cd189a25968f54af.rlib: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/unix.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/advice.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/libmemmap2-cd189a25968f54af.rmeta: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/unix.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/advice.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/lib.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/unix.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.11/src/advice.rs:
+/private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata:
