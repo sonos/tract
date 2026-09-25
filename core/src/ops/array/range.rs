@@ -66,9 +66,10 @@ impl Range {
             let step = step.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
             let end = end.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(values).to_i64()?;
             let len = {
-                #[allow(clippy::cast_abs_to_unsigned)]
-                let step = step.unsigned_abs() as usize;
-                ((end - start).abs() as usize).divceil(step)
+                // i128 intermediate: end - start can overflow i64
+                #[allow(clippy::cast_possible_truncation)]
+                let span = (end as i128 - start as i128).unsigned_abs() as usize;
+                span.divceil(step.unsigned_abs() as usize)
             };
             Self::make_t::<i64>(&tensor0(start), &tensor0(step), len)
         } else {
