@@ -1,0 +1,13 @@
+cargo:rustc-check-cfg=cfg(rustc_1_56)
+cargo:rustc-cfg=rustc_1_56
+cargo:rustc-check-cfg=cfg(rustc_1_63)
+cargo:rustc-cfg=rustc_1_63
+cargo:rustc-check-cfg=cfg(rustc_1_73)
+cargo:rustc-cfg=rustc_1_73
+cargo:rustc-check-cfg=cfg(rustc_1_75)
+cargo:rustc-cfg=rustc_1_75
+cargo:rustc-check-cfg=cfg(rustc_1_81)
+cargo:rustc-cfg=rustc_1_81
+cargo:rustc-check-cfg=cfg(rustc_1_89)
+cargo:rustc-cfg=rustc_1_89
+cargo:rerun-if-changed=build.rs

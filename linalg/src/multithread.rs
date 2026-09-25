@@ -141,6 +141,27 @@ pub fn set_threading_element_threshold(elements: usize) {
 ///
 /// The signature is identical with or without the `multithread-mm` feature so
 /// callers compile unchanged; without the feature the body is just `f(0, out)`.
+/// Process `out` in parallel over its outer (row) axis, dispatching across the
+/// executor installed by [`multithread_tract_scope`]. Falls back to a single
+/// inline `f(0, out)` when the executor is single-threaded (including a
+/// one-thread pool), when there are fewer than two rows, or when `total_elems`
+/// is below [`current_threading_element_threshold`].
+///
+/// `out` is viewed as `out.len() / row_len` contiguous rows of `row_len`
+/// elements (`row_len` must divide `out.len()`). Work is split only on row
+/// boundaries, never inside a row, so any per-row reduction the closure runs
+/// keeps its accumulation order and the output is bit-identical to the inline
+/// path regardless of thread count.
+///
+/// The closure receives `(first_row, chunk)`: `chunk` is a contiguous block of
+/// whole rows and `first_row` is the index of its first row within `out`, used
+/// to index sibling buffers captured from the caller (e.g. an out-of-place
+/// reduce whose input row is `reduced_dim` wide while `out` rows are width 1).
+/// For such callers `total_elems` is the size of the data actually read, which
+/// can exceed `out.len()`.
+///
+/// The signature is identical with or without the `multithread-mm` feature so
+/// callers compile unchanged; without the feature the body is just `f(0, out)`.
 pub fn par_chunks_mut<T: Send>(
     out: &mut [T],
     row_len: usize,
@@ -156,7 +177,22 @@ pub fn par_chunks_mut<T: Send>(
             return f(0, out);
         }
         let run = |out: &mut [T]| -> TractResult<()> {
-            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
+            // Use smarter chunking only when row_len is large enough that the
+            // per-chunk work amortizes dispatch overhead.
+            // Threshold of 1024 elements/row was chosen empirically: below this,
+            // the per-chunk dispatch overhead exceeds the benefit of parallelism
+            // for typical workloads. This is NOT SME-specific; it's an empirical
+            // threshold based on dispatch overhead vs. work-per-chunk tradeoffs.
+            const SMART_CHUNKING_ROW_LEN_THRESHOLD: usize = 1024;
+            let n_chunks = if row_len >= SMART_CHUNKING_ROW_LEN_THRESHOLD {
+                let threshold = current_threading_element_threshold();
+                let chunk_rows = (current_threading_element_threshold() / row_len).max(1);
+                let n_chunks =
+                    n_rows.div_ceil(chunk_rows).min(n_rows).min(4 * rayon::current_num_threads());
+                n_chunks
+            } else {
+                (4 * rayon::current_num_threads()).min(n_rows)
+            };
             let chunk_rows = n_rows.div_ceil(n_chunks);
             out.par_chunks_mut(chunk_rows * row_len)
                 .enumerate()

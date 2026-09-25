@@ -1,0 +1,10 @@
+/Users/ckristianzoli/coding/tract/target-pgo-opt/release/deps/num_integer-049ab386eb077800.d: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/roots.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/average.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-opt/release/deps/libnum_integer-049ab386eb077800.rlib: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/roots.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/average.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-opt/release/deps/libnum_integer-049ab386eb077800.rmeta: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/roots.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/average.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata
+
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/lib.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/roots.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/num-integer-0.1.46/src/average.rs:
+/private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata:

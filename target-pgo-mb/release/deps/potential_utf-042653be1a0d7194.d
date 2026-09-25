@@ -1,0 +1,10 @@
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/potential_utf-042653be1a0d7194.d: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/uchar.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/ustr.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/libpotential_utf-042653be1a0d7194.rlib: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/uchar.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/ustr.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-mb/release/deps/libpotential_utf-042653be1a0d7194.rmeta: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/uchar.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/ustr.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata
+
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/lib.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/uchar.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/potential_utf-0.1.5/src/ustr.rs:
+/private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/mobilenet.profdata:

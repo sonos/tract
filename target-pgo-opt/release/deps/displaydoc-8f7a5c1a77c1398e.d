@@ -1,0 +1,9 @@
+/Users/ckristianzoli/coding/tract/target-pgo-opt/release/deps/displaydoc-8f7a5c1a77c1398e.d: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/attr.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/expand.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/fmt.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata
+
+/Users/ckristianzoli/coding/tract/target-pgo-opt/release/deps/libdisplaydoc-8f7a5c1a77c1398e.dylib: /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/lib.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/attr.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/expand.rs /Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/fmt.rs /private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata
+
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/lib.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/attr.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/expand.rs:
+/Users/ckristianzoli/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/displaydoc-0.2.6/src/fmt.rs:
+/private/tmp/claude-502/-Users-ckristianzoli-coding-SVT-AV1/44fd5e6d-73f4-421b-9ce6-ad661818b267/scratchpad/basket.profdata:
