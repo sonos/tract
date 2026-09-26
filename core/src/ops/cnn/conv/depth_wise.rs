@@ -254,14 +254,10 @@ macro_rules! impl_eval {
                         dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
                         mul, c_start, c_end,
                     ),
-                    _ => zone.visit_output(&dw.patch, |visitor| {
-                        for c in c_start..c_end {
-                            let iptr = iptr.offset(c_stride_i * c);
-                            let optr = optr.offset(c_stride_o * c);
-                            let kptr = kptr.offset(k_stride_i * c);
-                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
-                        }
-                    }),
+                    _ => [<process_zone_any_ $suffix>](
+                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+                        add, mul, c_start, c_end,
+                    ),
                 }
             }}
 
@@ -369,6 +365,97 @@ macro_rules! impl_eval {
                             let mut sum = bias;
                             for n in 0..N {
                                 sum = add(sum, p[n]);
+                            }
+                            *optr = sum;
+                            i += 1;
+                        }
+                        visitor.next_non_inner_axis()
+                    }
+                }
+            }}
+
+            #[inline(never)]
+            #[allow(clippy::too_many_arguments)]
+            $(#[$meta])*
+            unsafe fn [<process_zone_any_ $suffix>]<T: Datum + Copy + Zero>(
+                dw: &DepthWise,
+                zone: &Zone,
+                c_stride_i: isize,
+                c_stride_o: isize,
+                k_stride_i: isize,
+                iptr: *const T,
+                kptr: *const T,
+                bias: *const T,
+                optr: *mut T,
+                add: impl Fn(T, T) -> T + Copy,
+                mul: impl Fn(T, T) -> T + Copy,
+                c_start: isize,
+                c_end: isize,
+                ) { unsafe {
+                // A zone whose tap count the const-generic paths cannot name -- which is every
+                // 3x3 and 5x5 convolution, at nine and twenty-five taps -- still walks the same
+                // inner loop, so hand it the whole tap list. The kernel takes the count at
+                // runtime; it was the compile-time count that kept this on the scalar path.
+                let ker = if T::datum_type() == f32::datum_type() {
+                    tract_linalg::routines::depthwise_w_f32()
+                } else {
+                    None
+                };
+                let Some(ker) = ker else {
+                    zone.visit_output(&dw.patch, |visitor| {
+                        for c in c_start..c_end {
+                            let iptr = iptr.offset(c_stride_i * c);
+                            let optr = optr.offset(c_stride_o * c);
+                            let kptr = kptr.offset(k_stride_i * c);
+                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
+                        }
+                    });
+                    return;
+                };
+                let mut k: Vec<T> = Vec::with_capacity(zone.values_offsets.len());
+                let mut ioffset: Vec<isize> = Vec::with_capacity(zone.values_offsets.len());
+                for c in c_start..c_end {
+                    let iptr = iptr.offset(c_stride_i * c);
+                    let optr = optr.offset(c_stride_o * c);
+                    let kptr = kptr.offset(k_stride_i * c);
+                    k.clear();
+                    ioffset.clear();
+                    for (ker_ix, offset) in zone.values_offsets.iter() {
+                        k.push(*kptr.add(*ker_ix));
+                        ioffset.push(*offset);
+                    }
+                    // `T` is f32 on the only path that gets here, checked above: the kernel reads
+                    // the taps and the bias as f32, so re-read the buffers rather than convert.
+                    let k_f32 =
+                        std::slice::from_raw_parts(k.as_ptr() as *const f32, k.len());
+                    let bias_t = *bias.offset(c);
+                    let bias = *(bias as *const T as *const f32).offset(c);
+                    let mut visitor = ZoneScanner::new(zone, &dw.patch);
+                    while !visitor.done {
+                        let iptr = iptr.offset(visitor.input_center_offset);
+                        let optr = optr.offset(visitor.output_offset);
+                        if visitor.inner_loop_output_stride == 1
+                            && visitor.inner_loop_input_full_stride >= 1
+                        {
+                            ker(
+                                iptr as *const f32,
+                                optr as *mut f32,
+                                k_f32,
+                                &ioffset,
+                                bias,
+                                visitor.inner_loop_len,
+                                visitor.inner_loop_input_full_stride,
+                            );
+                            visitor.next_non_inner_axis();
+                            continue;
+                        }
+                        let mut i = 0isize;
+                        while i < visitor.inner_loop_len as isize {
+                            let iptr = iptr.offset(visitor.inner_loop_input_full_stride * i);
+                            let optr = optr.offset(visitor.inner_loop_output_stride * i);
+                            let mut sum = bias_t;
+                            for n in 0..k.len() {
+                                sum = add(sum, mul(k[n], *iptr.offset(ioffset[n])));
                             }
                             *optr = sum;
                             i += 1;
@@ -690,6 +777,13 @@ mod tests {
         // kw=1: taps a row apart, output still contiguous along W.
         run_dw(8, 12, 20, 3, 1, PaddingSpec::Valid, (1, 1));
         run_dw(4, 9, 9, 3, 3, PaddingSpec::Valid, (1, 1));
+        // 5x5 / 5x1 / 3x5: tap counts past the compile-time paths, so the inner loop runs
+        // through the whole-tap-count kernel rather than a fallback.
+        run_dw(16, 40, 40, 5, 5, PaddingSpec::SameUpper, (1, 1));
+        run_dw(64, 20, 20, 5, 5, PaddingSpec::SameUpper, (1, 1));
+        run_dw(8, 24, 24, 5, 5, PaddingSpec::Valid, (1, 1));
+        run_dw(8, 12, 20, 5, 1, PaddingSpec::Valid, (1, 1));
+        run_dw(8, 12, 20, 3, 5, PaddingSpec::Valid, (1, 1));
         // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
         run_dw(64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
         run_dw(64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
