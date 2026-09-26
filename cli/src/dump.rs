@@ -563,29 +563,30 @@ pub fn mm_report(
                     repack.as_ref().map(|rp| rp.to_string()).unwrap_or("Ø".to_string())
                 })
                 .join(", ");
-            let (pack_a, pack_b) = facts
-                .iter()
-                .take(2)
-                .map(|fact| {
-                    fact.exotic_fact
-                        .as_ref()
-                        .and_then(|of| {
-                            of.downcast_ref::<DynPackedExoticFact>()
-                                .map(|of| of.packers.iter().map(|m| format!("{m}")).join(", "))
-                                .or_else(|| {
-                                    of.downcast_ref::<PackedExoticFact>()
-                                        .map(|pof| format!("{}", pof.format))
-                                })
-                                .or_else(|| {
-                                    of.downcast_ref::<PackedBlockQuantFact>()
-                                        .map(|pof| format!("{}", pof.format))
-                                })
-                        })
-                        .unwrap_or_else(|| format!("{fact:?}"))
-                    //                        .unwrap_or_default()
-                })
-                .collect_tuple()
-                .unwrap();
+            // A matmul can reach the report with fewer than two input facts, so index the pair
+            // rather than collecting it as a tuple: a node reporting none is still a node worth
+            // a line in the table.
+            let pack_of = |fact: Option<&TypedFact>| match fact {
+                Some(fact) => fact
+                    .exotic_fact
+                    .as_ref()
+                    .and_then(|of| {
+                        of.downcast_ref::<DynPackedExoticFact>()
+                            .map(|of| of.packers.iter().map(|m| format!("{m}")).join(", "))
+                            .or_else(|| {
+                                of.downcast_ref::<PackedExoticFact>()
+                                    .map(|pof| format!("{}", pof.format))
+                            })
+                            .or_else(|| {
+                                of.downcast_ref::<PackedBlockQuantFact>()
+                                    .map(|pof| format!("{}", pof.format))
+                            })
+                    })
+                    .unwrap_or_else(|| format!("{fact:?}")),
+                None => "-".to_string(),
+            };
+            let (pack_a, pack_b) =
+                (pack_of(facts.first().copied()), pack_of(facts.get(1).copied()));
             let iters = op
                 .c_fact
                 .shape
@@ -601,7 +602,7 @@ pub fn mm_report(
                     k,
                     n,
                     iters * mult,
-                    facts[0].konst.is_some(),
+                    facts.first().is_some_and(|fact| fact.konst.is_some()),
                     mmm,
                     pack_a,
                     panel_extractor,
