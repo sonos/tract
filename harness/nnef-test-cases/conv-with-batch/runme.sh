@@ -6,3 +6,4 @@ set -ex
 : ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 
 $TRACT_RUN -O . compare --allow-random-input --stage declutter
+$TRACT_RUN -O . dump --mm > /dev/null
