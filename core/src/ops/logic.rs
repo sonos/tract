@@ -379,10 +379,10 @@ mod tests {
         // sets uniform_tdim = start + step * x0 = x0
         let end = model.add_source("T_dyn", TDim::datum_type().scalar_fact())?;
 
-        // Range(start=0, end=T, step=1) → [T] TDim with uniform_tdim = x0
+        // Range(start=0, end=T, step=1) → [T] i64 with uniform_tdim = x0
         let range = model.wire_node("range", Range::new(t_dim.clone()), &[start, end, step])?[0];
 
-        // unsqueeze(0) → [1, T] TDim, remap x0→x1 → uniform_tdim = x1
+        // unsqueeze(0) → [1, T] i64, remap x0→x1 → uniform_tdim = x1
         let range_unsq = model.wire_node("range_unsq", AxisOp::Add(0), &[range])?[0];
 
         // T const for comparison, scalar TDim with uniform_tdim = Sym(T)
