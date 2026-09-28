@@ -259,6 +259,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     );
     if !no_cache {
         std::fs::create_dir_all(&cache_dir)?;
+        eprintln!("model cache: {}", cache_dir.display());
     }
 
     let output = params.output.as_deref().unwrap_or("metrics");
