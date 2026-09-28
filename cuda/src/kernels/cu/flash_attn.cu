@@ -55,6 +55,13 @@ static __device__ __forceinline__ void mbarrier_arrive_expect_tx(cuda_mbar &bar,
                  : "memory");
 }
 
+// Orders this thread's generic-proxy smem accesses (cp.async, ldmatrix)
+// before a later TMA write to the same bytes; must precede the barrier that
+// releases the TMA issuer.
+static __device__ __forceinline__ void fence_proxy_async_smem() {
+    asm volatile("fence.proxy.async.shared::cta;\n" ::: "memory");
+}
+
 static __device__ __forceinline__ void mbarrier_wait_parity(cuda_mbar &bar, uint32_t parity) {
     uint32_t bar_ptr = static_cast<uint32_t>(__cvta_generic_to_shared(&bar));
     asm volatile("{\n\t"
@@ -161,7 +168,6 @@ static __device__ __forceinline__ void tma_prefetch_kv(uint32_t dst_smem,
     }
 }
 
-template <int BLOCK_KV, int PADDED_DIM>
 static __device__ __forceinline__ void tma_wait_kv(cuda_mbar &mbar, uint32_t phase) {
     mbarrier_wait_parity(mbar, phase);
     __syncthreads();
@@ -463,7 +469,6 @@ attention_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
     // span takes TMA. The host encodes tensor maps under the same condition
     // (d == 64); every other head dim receives zeroed maps.
     constexpr bool kUseTma = FLASH_TMA_ARCH && DIM == 64 && PADDED_DIM == 64;
-    (void)kUseTma;
     const uint32_t Q_smem = __cvta_generic_to_shared(smem);
     const uint32_t K_smem = Q_smem; // double buffer for K
     const uint32_t V_smem = K_smem + 2 * BLOCK_KV * PADDED_DIM * sizeof(half);
@@ -545,6 +550,11 @@ attention_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         addr ^= dk * MMA_K * sizeof(half);
         ldmatrix_x4(Q_rmem[qi][dk], addr);
     }
+    if constexpr (kUseTma) {
+#if FLASH_TMA_ARCH
+        fence_proxy_async_smem();
+#endif
+    }
     __syncthreads();
 
     // ------------------ KV split: full tiles then optional tail
@@ -574,6 +584,11 @@ attention_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         const int kv_tile_base = kv_id * BLOCK_KV; // columns start for this tile
 
         // Prefetch V (unguarded)
+        if constexpr (kUseTma) {
+#if FLASH_TMA_ARCH
+            fence_proxy_async_smem();
+#endif
+        }
         __syncthreads();
         if constexpr (kUseTma) {
 #if FLASH_TMA_ARCH
@@ -590,7 +605,7 @@ attention_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         // Wait K, load K into regs
         if constexpr (kUseTma) {
 #if FLASH_TMA_ARCH
-            tma_wait_kv<BLOCK_KV, PADDED_DIM>(*k_mbar, (uint32_t)(kv_id % 2));
+            tma_wait_kv(*k_mbar, (uint32_t)(kv_id % 2));
 #endif
         } else {
             asm volatile("cp.async.wait_group 1;");
@@ -637,7 +652,7 @@ attention_kernel(const half *__restrict__ Q, // [bs, len_q, DIM]
         // Wait V, load V and do O += P@V
         if constexpr (kUseTma) {
 #if FLASH_TMA_ARCH
-            tma_wait_kv<BLOCK_KV, PADDED_DIM>(*v_mbar, (uint32_t)(kv_id % 2));
+            tma_wait_kv(*v_mbar, (uint32_t)(kv_id % 2));
 #endif
         } else {
             asm volatile("cp.async.wait_group 1;");
