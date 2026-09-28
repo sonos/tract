@@ -64,12 +64,12 @@ impl TypedOp for MultiBroadcastTo {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        // Only propagate axis changes that touch passthrough axes — those
-        // where the input and output shapes agree. Touching a broadcast
-        // axis (input=1, output=N) would make the input and output rank
-        // diverge through the change and break the broadcast relationship,
-        // and propagating Rm of a non-trivial axis into a Source produces
-        // the "Removing non-trivial axis" hard error from change_shape.
+        // The output always takes the change: the broadcast absorbs it in the
+        // target shape. The input only takes it when every touched axis is
+        // passthrough (input and output shapes agree there); an axis the input
+        // does not have, or on which it is broadcast (input=1, output=N), is
+        // none of the input's business — propagating the change there anyway
+        // asks a rank-1 [1] wire to grow an axis it cannot express.
         let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
         let canonical = change.canonical();
         let touched: TVec<usize> = match canonical.as_ref() {
@@ -80,23 +80,20 @@ impl TypedOp for MultiBroadcastTo {
             }
             _ => return Ok(None),
         };
-        for &ix in &touched {
-            if ix < self.shape.rank()
-                && ix < input_shape.rank()
-                && input_shape[ix] != self.shape[ix]
-            {
-                return Ok(None);
-            }
-        }
+        let passthrough = touched.iter().all(|&ix| {
+            ix < input_shape.rank() && ix < self.shape.rank() && input_shape[ix] == self.shape[ix]
+        });
 
         let mut shape = self.shape.clone();
         if change.change_shape(&mut shape, false).is_ok() {
-            return Ok(Some(AxisChangeConsequence::new(
-                model,
-                node,
-                Some(Box::new(MultiBroadcastTo { shape })),
-                change,
-            )));
+            let mut wire_changes: TVec<(InOut, AxisOp)> = tvec![(InOut::Out(0), change.clone())];
+            if passthrough {
+                wire_changes.push((InOut::In(0), change.clone()));
+            }
+            return Ok(Some(AxisChangeConsequence {
+                wire_changes,
+                substitute_op: Some(Box::new(MultiBroadcastTo { shape })),
+            }));
         }
         Ok(None)
     }
@@ -204,6 +201,7 @@ impl TypedOp for MultiBroadcastTo {
 mod tests {
     use super::*;
     use crate::ops::change_axes::AxisOp;
+    use crate::ops::change_axes::{AxisChange, InOut};
     use crate::ops::logic::And;
 
     /// `Broadcast → Move` with the broadcast feeding a SINGLE successor.
@@ -306,6 +304,86 @@ mod tests {
             model.output_fact(0)?.shape.to_tvec(),
             tvec![1.to_dim(), 512.to_dim(), 16.to_dim(), 1.to_dim()]
         );
+        Ok(())
+    }
+
+    /// An axis change touching an axis the input does not have is a broadcast
+    /// axis: it must be absorbed in the target shape, NOT propagated to the
+    /// input wire — a rank-1 [1] input cannot express it (the MMS graph hit
+    /// this as "required_rank 2 vs 1" when the change reached a [1] const).
+    #[test]
+    fn broadcast_axis_change_absorbed_not_propagated_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let c = model.add_const("c", tensor1(&[0f32]))?;
+        let s = model.symbols.sym("S");
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![s.to_dim(), 1usize.to_dim()])),
+            &[c],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Add(2))?
+            .context("expected the broadcast to absorb the change")?;
+        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Add(2))]);
+        Ok(())
+    }
+
+    /// Passthrough axis changes (input and output agree on the axis) still
+    /// reach the input.
+    #[test]
+    fn passthrough_axis_change_propagates_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let src = model.add_source("src", f32::fact([s.to_dim(), 1usize.into()]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![s.to_dim(), 1usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Add(1))?
+            .context("expected propagation")?;
+        assert_eq!(
+            consequence.wire_changes,
+            tvec![(InOut::Out(0), AxisOp::Add(1)), (InOut::In(0), AxisOp::Add(1))]
+        );
+        Ok(())
+    }
+
+    /// End-to-end through the ChangeAxes search: an axis change crossing a
+    /// broadcast fed by a volume-1 constant must produce an applicable patch
+    /// without any const rewiring.
+    #[test]
+    fn axis_change_through_broadcast_with_volume_one_const() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::fact([s.to_dim()]))?;
+        let c = model.add_const("c", tensor1(&[0f32]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                s.to_dim(),
+                1usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[c],
+        )?;
+        let out = model.wire_node("out", AxisOp::Add(0), &[y[0]])?;
+        model.select_output_outlets(&[out[0], definer])?;
+        let change = AxisChange { outlet: out[0], op: AxisOp::Add(3) };
+        let mut explored = Default::default();
+        let (patch, _) =
+            crate::optim::change_axes::change_axes(&model, &change, &[], &[], &mut explored)?
+                .context("axis change through a broadcast should apply")?;
+        patch.apply(&mut model)?;
+        model.compact()?;
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor1(&[0f32; 2]).into_tvalue()))?;
+        assert_eq!(found[0].shape(), &[1, 2, 1, 1, 1]);
         Ok(())
     }
 }
