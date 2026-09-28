@@ -237,6 +237,7 @@ mod tests {
     use super::*;
     use crate::frame::mmm::tests::packed_packed::PackedPackedProblem;
     use tract_data::internal::Approximation;
+    use tract_data::internal::TractResult;
 
     // Phase 1A correctness: AddMatMul + Clear + Store + Done on a few
     // shapes. Bypasses auto-tests (SME_OFF) by calling run/reference
@@ -289,6 +290,30 @@ mod tests {
         // 64x64 output (2x2 tiles), K=64 — exercises the framework
         // iterating across multiple kernel calls.
         check_shape(2, 64, 2);
+    }
+
+    #[test]
+    fn sme_qmmm_i8_output() -> TractResult<()> {
+        if !has_sme2() {
+            return Ok(());
+        }
+        let a = vec![7.0; 32 * 8];
+        let b = vec![5.0; 8 * 32];
+        PackedPackedProblem::kernel(&*sme_qmmm_i32_32x32, 1, a, b)
+            .with_output_type(DatumType::I8)
+            .check()
+    }
+
+    #[test]
+    fn sme_qmmm_i8_output_partial_tiles() -> TractResult<()> {
+        if !has_sme2() {
+            return Ok(());
+        }
+        let a: Vec<f32> = (0..35 * 8).map(|i| (i % 5) as f32 - 2.0).collect();
+        let b: Vec<f32> = (0..8 * 37).map(|i| (i % 7) as f32 - 3.0).collect();
+        PackedPackedProblem::frame(&*sme_qmmm_i32_32x32, 1, 35, 37, a, b)
+            .with_output_type(DatumType::I8)
+            .check()
     }
 
     // Strided store path: hand-built Clear + Store chain with non-contig C.
