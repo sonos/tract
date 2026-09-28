@@ -15,6 +15,44 @@ pub enum InOut {
     In(usize),
 }
 
+/// Equality of two volumes that cannot be decided symbolically, but holds if the
+/// symbols each side mentions exclusively are paired one-to-one.
+///
+/// A data-dependent length computed twice through independent subgraphs (two
+/// `Range`s over the same runtime value, say) yields two distinct fresh symbols
+/// for the same quantity. Reshaping between such shapes is legitimate but
+/// unprovable statically: accept the pairing (in symbol-id order) and let a
+/// genuinely wrong model fail at runtime. The check is deliberately blind to
+/// symbol provenance — it also accepts reshapes between two genuinely
+/// independent symbols (two model inputs, say) — because nothing distinguishes
+/// "the same quantity computed twice" from "two quantities the model asserts
+/// equal" at this level.
+pub fn equal_modulo_unmatched_symbols(a: &TDim, b: &TDim) -> bool {
+    if a.clone().expand_polynomial() == b.clone().expand_polynomial() {
+        return true;
+    }
+    pairing_equal_modulo_unmatched_symbols(a, b)
+}
+
+/// The pairing clause of [`equal_modulo_unmatched_symbols`] without its
+/// polynomial-equality shortcut: true only when pairing each side's exclusive
+/// symbols one-to-one makes the volumes equal.
+fn pairing_equal_modulo_unmatched_symbols(a: &TDim, b: &TDim) -> bool {
+    let mut a_syms: Vec<_> = a.symbols().into_iter().collect();
+    let mut b_syms: Vec<_> = b.symbols().into_iter().collect();
+    a_syms.sort_unstable();
+    b_syms.sort_unstable();
+    let a_only: Vec<_> = a_syms.iter().filter(|s| !b_syms.contains(s)).cloned().collect();
+    let b_only: Vec<_> = b_syms.iter().filter(|s| !a_syms.contains(s)).cloned().collect();
+    if a_only.len() != b_only.len() || a_only.is_empty() {
+        return false;
+    }
+    let map: std::collections::HashMap<Symbol, TDim> =
+        b_only.into_iter().zip(a_only.iter().map(|s| s.to_dim())).collect();
+    let substituted = b.clone().substitute_all(&map).ok().map(|sub| sub.expand_polynomial());
+    substituted.as_ref() == Some(&a.clone().expand_polynomial())
+}
+
 impl InOut {
     pub fn as_outlet<F: Clone + Fact, O: Clone>(&self, node: &Node<F, O>) -> OutletId {
         match self {
@@ -333,7 +371,8 @@ impl AxisOp {
                 // check.
                 ensure!(
                     from_volume.clone().expand_polynomial()
-                        == to_volume.clone().expand_polynomial(),
+                        == to_volume.clone().expand_polynomial()
+                        || equal_modulo_unmatched_symbols(&from_volume, &to_volume),
                     "{from_volume} should be equal to {to_volume}"
                 );
                 ensure!(*at + from.len() <= shape.len());
@@ -1102,7 +1141,12 @@ pub fn compute_shape_with_onnx_rules(
         shape[pos] = div.0;
     } else {
         let shape_vol: TDim = shape.iter().product();
-        if input_vol != shape_vol {
+        // Pairing-only at this site: accepting plain polynomial equality here
+        // (the first clause of equal_modulo_unmatched_symbols) would let
+        // inference propagate shapes that to_axis_ops' grouping search then
+        // fails to decompose with a worse diagnostic than this check.
+        if input_vol != shape_vol && !pairing_equal_modulo_unmatched_symbols(&input_vol, &shape_vol)
+        {
             bail!(
                 "Reshape volume mismatch: input {input:?} (vol={input_vol}) vs shape {shape:?} (vol={shape_vol})"
             );
@@ -1133,6 +1177,15 @@ pub fn to_axis_ops_with_onnx_rules(
     allowzero: bool,
 ) -> TractResult<TVec<AxisOp>> {
     let final_output = compute_shape_with_onnx_rules(input_orig, output_spec, allowzero)?;
+    // Volumes that only match modulo unmatched symbols (see
+    // `equal_modulo_unmatched_symbols`): the grouping search below must then
+    // accept group pairings with the same property. Exactly-equal volumes,
+    // even factored differently, must not enable modulo matching.
+    let modulo_symbols = {
+        let i: TDim = input_orig.iter().product();
+        let o: TDim = final_output.iter().product();
+        i != o && i.expand_polynomial() != o.expand_polynomial()
+    };
     // A zero-length dimension makes every group volume zero, so the greedy volume matching below
     // finds spurious partial matches and builds an incoherent stack. There are no elements to
     // move, so the whole reshape is one unambiguous operation.
@@ -1169,7 +1222,10 @@ pub fn to_axis_ops_with_onnx_rules(
                     for o in common..final_output.len() {
                         let o_group = &final_output[common..o + 1];
                         let o_volume: TDim = o_group.iter().product();
-                        if i_volume == o_volume {
+                        if i_volume == o_volume
+                            || (modulo_symbols
+                                && equal_modulo_unmatched_symbols(&i_volume, &o_volume))
+                        {
                             stack.push(AxisOp::Reshape(common, i_group.into(), o_group.into()));
                             continue 'top;
                         }
@@ -1813,6 +1869,70 @@ mod proptests {
     fn to_axis_ops_allowzero_keeps_a_literal_zero() {
         // The wiring path resolves the shape the same way, so it must agree with the rules path.
         assert!(to_axis_ops_with_onnx_rules(s![3, 0], s!(0), true).is_ok())
+    }
+
+    #[test]
+    fn equal_modulo_unmatched_symbols_pairs_exclusive_symbols() {
+        let table = SymbolScope::default();
+        let a = table.new_with_prefix("a");
+        let b = table.new_with_prefix("b");
+        let n = 57usize.to_dim();
+        assert!(equal_modulo_unmatched_symbols(
+            &(n.clone() * a.clone().to_dim()),
+            &(n * b.to_dim())
+        ));
+    }
+
+    #[test]
+    fn equal_modulo_unmatched_symbols_rejects_structural_mismatch() {
+        let table = SymbolScope::default();
+        let a = table.new_with_prefix("a");
+        let b = table.new_with_prefix("b");
+        assert!(!equal_modulo_unmatched_symbols(
+            &(2usize.to_dim() * a.to_dim()),
+            &(3usize.to_dim() * b.to_dim())
+        ));
+    }
+
+    #[test]
+    fn equal_modulo_unmatched_symbols_rejects_shared_symbols_mismatch() {
+        let table = SymbolScope::default();
+        let a = table.new_with_prefix("a");
+        let b = table.new_with_prefix("b");
+        // a appears on both sides: the pairing must not blind us to the difference
+        assert!(!equal_modulo_unmatched_symbols(
+            &(a.to_dim() * 2usize),
+            &(a.to_dim() * b.to_dim() * 3usize)
+        ));
+    }
+
+    #[test]
+    fn compute_accepts_volume_equal_modulo_unmatched_symbols() {
+        // Two data-dependent lengths computed by independent subgraphs (two Ranges
+        // over the same runtime value) yield distinct symbols for the same
+        // quantity: reshaping from one to the other is legitimate.
+        let table = SymbolScope::default();
+        let n = table.new_with_prefix("N");
+        let r1 = table.new_with_prefix("range");
+        let r2 = table.new_with_prefix("range");
+        assert_eq!(
+            &*compute_shape_with_onnx_rules(
+                s![n.clone().to_dim() * 57usize.to_dim(), r1.to_dim()],
+                s![n.to_dim(), 57usize, r2.to_dim()],
+                false
+            )
+            .unwrap(),
+            s![n.to_dim(), 57usize, r2.to_dim()]
+        );
+        // ...and to_axis_ops decomposes it, pairing the opaque dims
+        assert!(
+            to_axis_ops_with_onnx_rules(
+                s![n.clone().to_dim() * 57usize.to_dim(), r1.to_dim()],
+                s![n.to_dim(), 57usize, r2.to_dim()],
+                false
+            )
+            .is_ok()
+        );
     }
 
     #[test]
