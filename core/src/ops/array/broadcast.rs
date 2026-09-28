@@ -101,13 +101,29 @@ impl TypedOp for MultiBroadcastTo {
                 wire_changes.push((InOut::In(0), change.clone()));
             } else {
                 // The input keeps its shape while the target absorbs the
-                // change: it must still right-align-broadcast into the new
-                // target. Removing or adding a dim-1 axis shifts the pairing
-                // when the ranks differ (a [5,1] input into a [9,5,1] target
-                // must not become [9,5]).
+                // change. Two things must hold.
+                //
+                // Evaluability: the input must still right-align-broadcast
+                // into the new target (removing or adding a dim-1 axis shifts
+                // the pairing when ranks differ — a [5,1] input into a [9,5,1]
+                // target must not become [9,5]).
+                //
+                // Value preservation: the input pairs with the right-aligned
+                // window [offset, offset+r) of the target. A change INSIDE
+                // that window shifts every input axis left of it onto a
+                // neighboring target axis: when adjacent target dims are
+                // equal the result still evaluates — and computes permuted
+                // values ([5,1] into [5,5,1], absorbing Rm(2), yields the
+                // transpose). Such a change is only harmless when the input
+                // axes it would displace are all 1 (they broadcast anywhere),
+                // or when it falls outside the window.
+                let offset = self.shape.rank().saturating_sub(input_shape.rank());
+                let r = input_shape.rank();
+                let k = touched[0].saturating_sub(offset);
+                let window_safe = k == 0 || k >= r || (0..k).all(|i| input_shape[i] == 1.to_dim());
                 let broadcastable = multi_broadcast(&[input_shape, &shape])
                     .is_ok_and(|b| b.as_slice() == shape.as_ref());
-                if !broadcastable {
+                if !(window_safe && broadcastable) {
                     return Ok(None);
                 }
             }
@@ -511,6 +527,39 @@ mod tests {
         let found = crate::internal::TypedSimplePlan::new(optimized)?
             .run(tvec!(tensor2(&[[0f32; 1]; 5]).into_tvalue()))?;
         assert_eq!(found[0].shape(), &[9, 5]);
+        Ok(())
+    }
+
+    /// An absorbed change falling inside the input-paired window re-pairs the
+    /// input's axes onto neighboring target axes: with adjacent equal dims the
+    /// result still evaluates but computes permuted values. A [5,1] input into
+    /// a [5,5,1] target right-aligns the input's 5 onto target axis 1 (note
+    /// the alignment: the input's trailing 1 pairs with the target's trailing
+    /// 1), so absorbing Rm(2) would swap the pairing — the change must block
+    /// and the optimized model must keep the unoptimized values.
+    #[test]
+    fn absorbed_change_does_not_repair_input_axes() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                5usize.to_dim(),
+                5usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let squeezed = model.wire_node("squeezed", AxisOp::Rm(2), &[y])?[0];
+        model.select_output_outlets(&[squeezed])?;
+        let input: Vec<f32> = (0..5).map(|i| i as f32).collect();
+        let input = Tensor::from_shape(&[5, 1], &input)?.into_tvalue();
+        let raw =
+            crate::internal::TypedSimplePlan::new(model.clone())?.run(tvec!(input.clone()))?;
+        let optimized = model.into_optimized()?;
+        let optimized_values =
+            crate::internal::TypedSimplePlan::new(optimized)?.run(tvec!(input))?;
+        assert_eq!(*raw[0], *optimized_values[0]);
         Ok(())
     }
 }
