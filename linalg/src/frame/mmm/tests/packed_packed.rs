@@ -1,3 +1,4 @@
+use crate::DatumType;
 use crate::WeightType;
 use crate::mmm::tests::display_error;
 use crate::mmm::{AsInputValue, FusedKerSpec, FusedSpec, MatMatMul, MatMatMulKer, OutputStoreKer};
@@ -175,6 +176,7 @@ where
     pub frame_test: Option<(usize, usize)>,
     pub ker: K,
     pub packing: usize,
+    pub output_dt: DatumType,
     pub a: Vec<f32>,
     pub b: Vec<f32>,
 }
@@ -204,6 +206,7 @@ pub fn arbitrary_problem<K: MatMatMulKer>(
                 frame_test: frame_test.then_some(mn),
                 ker: ker.clone(),
                 packing,
+                output_dt: K::Acc::datum_type(),
                 a,
                 b,
             }
@@ -222,6 +225,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
             frame_test: None,
             ker: ker.clone(),
             packing,
+            output_dt: K::Acc::datum_type(),
             a: a.into(),
             b: b.into(),
         }
@@ -239,9 +243,17 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
             frame_test: Some((m, n)),
             ker: ker.clone(),
             packing,
+            output_dt: K::Acc::datum_type(),
             a: a.into(),
             b: b.into(),
         }
+    }
+
+    /// Selects the store dtype for a packed-matmul test; it must be supported by the kernel.
+    pub fn with_output_type(mut self, output_dt: DatumType) -> Self {
+        assert!(self.ker.stores().contains(&output_dt));
+        self.output_dt = output_dt;
+        self
     }
 
     pub fn mkn(&self) -> (usize, usize, usize) {
@@ -303,7 +315,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
                 }
             }
         }
-        Ok(c)
+        Ok(c.cast_to_dt(self.output_dt)?.into_owned())
     }
 
     pub fn run(&self) -> TractResult<Tensor> {
@@ -315,8 +327,8 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         let pa = pack_a.prepare_one(&a, 1, 0)?;
         let pb = pack_b.prepare_one(&b, 0, 1)?;
 
-        let mut v = unsafe { Tensor::uninitialized_dt(self.ker.internal_type(), &[m, n])? };
-        let item_size = self.ker.internal_type().size_of();
+        let mut v = unsafe { Tensor::uninitialized_dt(self.output_dt, &[m, n])? };
+        let item_size = self.output_dt.size_of();
 
         if self.frame_test.is_some() {
             unsafe {
@@ -369,8 +381,10 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         };
         let result = found.close_enough(&expected, app);
         if result.is_err() {
-            let exp = expected.try_as_plain_ram()?.as_slice::<K::Acc>()?;
-            let found = found.try_as_plain_ram()?.as_slice::<K::Acc>()?;
+            let expected_acc = expected.cast_to::<K::Acc>()?;
+            let found_acc = found.cast_to::<K::Acc>()?;
+            let exp = expected_acc.try_as_plain_ram()?.as_slice::<K::Acc>()?;
+            let found = found_acc.try_as_plain_ram()?.as_slice::<K::Acc>()?;
             let (m, _, n) = self.mkn();
             display_error(found, exp, m, n);
         }
@@ -415,5 +429,31 @@ mod single_thread_blocking {
     #[test]
     fn blocked_68x68_offset() -> TractResult<()> {
         check_large(68, 68, 10) // 17×17 panels (one full block + a 1-panel remainder)
+    }
+}
+
+#[cfg(test)]
+mod quantized_output {
+    use super::PackedPackedProblem;
+    use crate::generic::mmm::generic_i32_4x4;
+    use tract_data::internal::TractResult;
+    use tract_data::prelude::DatumType;
+
+    #[test]
+    fn packed_i8_output() -> TractResult<()> {
+        let a = vec![7.0; 4 * 8];
+        let b = vec![5.0; 8 * 4];
+        PackedPackedProblem::kernel(&*generic_i32_4x4, 1, a, b)
+            .with_output_type(DatumType::I8)
+            .check()
+    }
+
+    #[test]
+    fn framed_i8_output() -> TractResult<()> {
+        let a: Vec<f32> = (0..5 * 8).map(|i| (i % 5) as f32 - 2.0).collect();
+        let b: Vec<f32> = (0..8 * 6).map(|i| (i % 7) as f32 - 3.0).collect();
+        PackedPackedProblem::frame(&*generic_i32_4x4, 1, 5, 6, a, b)
+            .with_output_type(DatumType::I8)
+            .check()
     }
 }
