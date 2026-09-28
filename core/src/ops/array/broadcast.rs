@@ -65,11 +65,13 @@ impl TypedOp for MultiBroadcastTo {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         // The output always takes the change: the broadcast absorbs it in the
-        // target shape. The input only takes it when every touched axis is
-        // passthrough (input and output shapes agree there); an axis the input
-        // does not have, or on which it is broadcast (input=1, output=N), is
-        // none of the input's business — propagating the change there anyway
-        // asks a rank-1 [1] wire to grow an axis it cannot express.
+        // target shape. The input only takes it when every touched axis shows
+        // same-index agreement between input and target shapes — a true axis
+        // correspondence only when the ranks are equal (right-aligned
+        // broadcasting pairs axes by index only then). An axis the input does
+        // not have, or on which it is broadcast (input=1, output=N), is none
+        // of the input's business — propagating the change there anyway asks a
+        // rank-1 [1] wire to grow an axis it cannot express.
         let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
         let canonical = change.canonical();
         let touched: TVec<usize> = match canonical.as_ref() {
@@ -384,6 +386,58 @@ mod tests {
         let found = crate::internal::TypedSimplePlan::new(model)?
             .run(tvec!(tensor1(&[0f32; 2]).into_tvalue()))?;
         assert_eq!(found[0].shape(), &[1, 2, 1, 1, 1]);
+        Ok(())
+    }
+
+    /// Removing an output axis on which the input is broadcast (input=1,
+    /// output=N) is absorbed in the target; the input keeps its axis and the
+    /// right-aligned broadcast still pairs it correctly.
+    #[test]
+    fn rm_of_broadcast_axis_absorbed() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 7usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                1usize.to_dim(),
+                5usize.to_dim(),
+                7usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Rm(0))?
+            .context("expected the broadcast to absorb the removal")?;
+        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Rm(0))]);
+        let substitute = consequence
+            .substitute_op
+            .as_deref()
+            .and_then(|op| op.as_op().downcast_ref::<MultiBroadcastTo>())
+            .context("expected a MultiBroadcastTo substitute")?;
+        assert_eq!(substitute.shape.to_tvec(), tvec![5.to_dim(), 7.to_dim()]);
+        Ok(())
+    }
+
+    /// A Move touching an axis on which the input is broadcast (at equal rank,
+    /// the precondition the Move arm enforces) is absorbed on the output side
+    /// only.
+    #[test]
+    fn move_over_broadcast_axis_absorbed() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![5usize.to_dim(), 7usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))?
+            .context("expected the broadcast to absorb the move")?;
+        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Move(0, 1))]);
         Ok(())
     }
 }
