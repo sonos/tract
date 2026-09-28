@@ -55,3 +55,7 @@ harness = false
 [[bench]]
 name = "stack_tensors"
 harness = false
+
+[[bench]]
+name = "move_axis"
+harness = false
