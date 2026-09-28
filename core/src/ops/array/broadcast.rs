@@ -99,6 +99,17 @@ impl TypedOp for MultiBroadcastTo {
             let mut wire_changes: TVec<(InOut, AxisOp)> = tvec![(InOut::Out(0), change.clone())];
             if passthrough {
                 wire_changes.push((InOut::In(0), change.clone()));
+            } else {
+                // The input keeps its shape while the target absorbs the
+                // change: it must still right-align-broadcast into the new
+                // target. Removing or adding a dim-1 axis shifts the pairing
+                // when the ranks differ (a [5,1] input into a [9,5,1] target
+                // must not become [9,5]).
+                let broadcastable = multi_broadcast(&[input_shape, &shape])
+                    .is_ok_and(|b| b.as_slice() == shape.as_ref());
+                if !broadcastable {
+                    return Ok(None);
+                }
             }
             return Ok(Some(AxisChangeConsequence {
                 wire_changes,
@@ -472,6 +483,34 @@ mod tests {
             consequence.wire_changes,
             tvec![(InOut::Out(0), AxisOp::Move(0, 1)), (InOut::In(0), AxisOp::Move(0, 1))]
         );
+        Ok(())
+    }
+
+    /// Absorbing a change on the output side must keep the input
+    /// right-align-broadcastable into the new target. The ChangeAxes pass
+    /// proactively proposes removing any dim-1 output axis: for a [5,1] input
+    /// into a [9,5,1] target, absorbing Rm(2) yields a [9,5] target the input
+    /// cannot broadcast into — the change must block, and the optimized model
+    /// must keep running.
+    #[test]
+    fn absorbed_change_keeps_input_broadcastable() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                9usize.to_dim(),
+                5usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let squeezed = model.wire_node("squeezed", AxisOp::Rm(2), &[y])?[0];
+        model.select_output_outlets(&[squeezed])?;
+        let optimized = model.into_optimized()?;
+        let found = crate::internal::TypedSimplePlan::new(optimized)?
+            .run(tvec!(tensor2(&[[0f32; 1]; 5]).into_tvalue()))?;
+        assert_eq!(found[0].shape(), &[9, 5]);
         Ok(())
     }
 }
