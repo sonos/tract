@@ -85,6 +85,14 @@ impl TypedOp for MultiBroadcastTo {
         let passthrough = touched.iter().all(|&ix| {
             ix < input_shape.rank() && ix < self.shape.rank() && input_shape[ix] == self.shape[ix]
         });
+        // A Move can only ever propagate: absorbing a transpose in the target
+        // re-pairs the input's dims against transposed positions, and
+        // transpose-of-broadcast is NOT broadcast-into-transposed-target (a
+        // [1,7] input into a transposed [7,7] target silently yields the
+        // transposed tensor). Block instead, like the pre-rework guard did.
+        if matches!(canonical.as_ref(), AxisOp::Move(..)) && !passthrough {
+            return Ok(None);
+        }
 
         let mut shape = self.shape.clone();
         if change.change_shape(&mut shape, false).is_ok() {
@@ -420,13 +428,36 @@ mod tests {
         Ok(())
     }
 
-    /// A Move touching an axis on which the input is broadcast (at equal rank,
-    /// the precondition the Move arm enforces) is absorbed on the output side
-    /// only.
+    /// A Move touching an axis on which the input is broadcast must be
+    /// blocked: absorbing a transpose in the target would re-pair the input's
+    /// dims against transposed positions (transpose-of-broadcast is not
+    /// broadcast-into-transposed-target — a [1,7] input into a transposed
+    /// [7,7] target silently yields the transposed tensor).
     #[test]
-    fn move_over_broadcast_axis_absorbed() -> TractResult<()> {
+    fn move_over_broadcast_axis_blocked() -> TractResult<()> {
         let mut model = TypedModel::default();
         let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![5usize.to_dim(), 7usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let blocked = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))
+            .map(|r| r.is_none())
+            .unwrap_or(false);
+        assert!(blocked, "expected the broadcast to block the move");
+        Ok(())
+    }
+
+    /// A passthrough Move (input and target agree on both touched axes) still
+    /// propagates to the input.
+    #[test]
+    fn passthrough_move_propagates_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 7usize]))?;
         let y = model.wire_node(
             "y",
             MultiBroadcastTo::new(ShapeFact::from_dims(tvec![5usize.to_dim(), 7usize.to_dim()])),
@@ -436,8 +467,11 @@ mod tests {
         let consequence = node
             .op
             .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))?
-            .context("expected the broadcast to absorb the move")?;
-        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Move(0, 1))]);
+            .context("expected propagation")?;
+        assert_eq!(
+            consequence.wire_changes,
+            tvec![(InOut::Out(0), AxisOp::Move(0, 1)), (InOut::In(0), AxisOp::Move(0, 1))]
+        );
         Ok(())
     }
 }
