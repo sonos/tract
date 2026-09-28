@@ -162,7 +162,15 @@ impl LibraryName {
             Self::Fft => "fft",
         };
         let hash = fnv1a64(self.content());
-        cubin_dir().join(format!("{}_{}.cubin", basename, hash))
+        // The source alone does not identify the cubin: TRACT_CUDA_NO_TMA adds
+        // a -D to the flash library's NVRTC options, so the two builds of one
+        // source must not share a file.
+        let variant = if *self == Self::FlashAttn && crate::context::tma_disabled_by_env() {
+            "_notma"
+        } else {
+            ""
+        };
+        cubin_dir().join(format!("{basename}_{hash}{variant}.cubin"))
     }
 }
 

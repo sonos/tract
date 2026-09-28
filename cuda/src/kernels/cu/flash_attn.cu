@@ -4,10 +4,11 @@
 // 128-byte tensor map (CUtensorMap). Lives here, not in common.cuh, so TMA
 // PTX is only ever compiled into this library: a reject here is skipped by
 // context init instead of taking every other kernel down.
-struct cuda_tensor_map {
+struct __align__(64) cuda_tensor_map {
     uint64_t opaque[16];
 };
 static_assert(sizeof(cuda_tensor_map) == 128, "CUtensorMap must be 128 bytes");
+static_assert(alignof(cuda_tensor_map) == 64, "cp.async.bulk.tensor needs a 64-byte aligned map");
 
 // TMA (cp.async.bulk.tensor + mbarrier) is plain sm_90+ PTX, no "a" target
 // needed; enabled on consumer Blackwell only for now. The host passes
