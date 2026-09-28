@@ -1,6 +1,6 @@
 use crate::internal::*;
 use crate::ops::cnn::Patch;
-use crate::ops::cnn::patches::{Zone, ZoneScanner};
+use crate::ops::cnn::patches::ZoneScanner;
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
@@ -56,6 +56,10 @@ impl DepthWise {
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
         unsafe { eval_t_generic::<T>(self, inputs, |a, b| a + b, |a, b| a * b) }
+    }
+
+    fn zone_scanners(&self) -> Vec<ZoneScanner<'_>> {
+        self.patch.zones.iter().map(|zone| ZoneScanner::new(zone, &self.patch)).collect()
     }
 }
 
@@ -164,12 +168,13 @@ macro_rules! impl_eval {
                     || c_stride_o != plane as isize
                 {
                     unsafe {
+                        let mut scanners = dw.zone_scanners();
                         for n in 0..n as isize {
                             let iptr = iptr.offset(n_stride_i * n);
                             let optr = optr.offset(n_stride_o * n);
-                            for zone in &dw.patch.zones {
+                            for scanner in &mut scanners {
                                 [<process_zone_ $suffix>](
-                                    dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias,
+                                    scanner, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias,
                                     optr, add, mul, 0, c,
                                 )
                             }
@@ -193,14 +198,14 @@ macro_rules! impl_eval {
                         // channel of it -- the difference was a 63% tax on small planes, which is
                         // a third of the frame on the streaming models.
                         if first == 0 && chunk.len() == total {
+                            let mut scanners = dw.zone_scanners();
                             unsafe {
                                 for ni in 0..n as isize {
                                     let iptr = (i_base as *const T).offset(n_stride_i * ni);
                                     let optr = chunk.as_mut_ptr().offset(n_stride_o * ni);
-                                    for zone in &dw.patch.zones {
+                                    for scanner in &mut scanners {
                                         [<process_zone_ $suffix>](
-                                            dw,
-                                            zone,
+                                            scanner,
                                             c_stride_i,
                                             c_stride_o,
                                             k_stride_i,
@@ -218,6 +223,7 @@ macro_rules! impl_eval {
                             }
                             return Ok(());
                         }
+                        let mut scanners = dw.zone_scanners();
                         for (ix, out) in chunk.chunks_mut(plane).enumerate() {
                             let row = first + ix;
                             let (ni, ci) = (row / c_us, row % c_us);
@@ -225,10 +231,9 @@ macro_rules! impl_eval {
                                 let iptr = (i_base as *const T)
                                     .offset(n_stride_i * ni as isize + c_stride_i * ci as isize);
                                 let optr = out.as_mut_ptr();
-                                for zone in &dw.patch.zones {
+                                for scanner in &mut scanners {
                                     [<process_zone_ $suffix>](
-                                        dw,
-                                        zone,
+                                        scanner,
                                         0,
                                         0,
                                         k_stride_i,
@@ -338,8 +343,7 @@ macro_rules! impl_eval {
             #[allow(clippy::too_many_arguments)]
             $(#[$meta])*
             unsafe fn [<process_zone_ $suffix>]<T: Datum + Copy + Zero>(
-                dw: &DepthWise,
-                zone: &Zone,
+                visitor: &mut ZoneScanner,
                 c_stride_i: isize,
                 c_stride_o: isize,
                 k_stride_i: isize,
@@ -362,21 +366,21 @@ macro_rules! impl_eval {
                    zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
                    )
                    } else */
-                match zone.values_offsets.len() {
+                match visitor.zone.values_offsets.len() {
                     1 => [<process_zone_n_ $suffix>]::<T, 1, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
                         mul, c_start, c_end,
                     ),
                     2 => [<process_zone_n_ $suffix>]::<T, 2, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
                         mul, c_start, c_end,
                     ),
                     3 => [<process_zone_n_ $suffix>]::<T, 3, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
                         mul, c_start, c_end,
                     ),
                     4 => [<process_zone_n_ $suffix>]::<T, 4, 4>(
-                        dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
                         mul, c_start, c_end,
                     ),
                     // Without a vectorised kernel the zone keeps the plain inline walk:
@@ -386,11 +390,14 @@ macro_rules! impl_eval {
                         && c_stride_o != 1 =>
                     {
                         [<process_zone_any_ $suffix>](
-                            dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
+                            visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
                             add, mul, c_start, c_end,
                         )
                     }
-                    _ => zone.visit_output(&dw.patch, |visitor| {
+                    // A call covering many channels amortises a fresh scanner. A single-channel
+                    // call (the parallel path, one per plane) reuses the caller's allocation, but
+                    // walks it as a local: through `&mut` the inner loop runs measurably slower.
+                    _ if c_end - c_start > 1 => visitor.zone.visit_output(visitor.patch, |visitor| {
                         for c in c_start..c_end {
                             let iptr = iptr.offset(c_stride_i * c);
                             let optr = optr.offset(c_stride_o * c);
@@ -398,6 +405,22 @@ macro_rules! impl_eval {
                             [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
                         }
                     }),
+                    _ => {
+                        let mut local = ZoneScanner {
+                            output_coords: std::mem::take(&mut visitor.output_coords),
+                            inner_loop_output_range: visitor.inner_loop_output_range.clone(),
+                            ..*visitor
+                        };
+                        local.reset();
+                        while !local.done() {
+                            let iptr = iptr.offset(c_stride_i * c_start);
+                            let optr = optr.offset(c_stride_o * c_start);
+                            let kptr = kptr.offset(k_stride_i * c_start);
+                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c_start, &local, add, mul);
+                            local.next();
+                        }
+                        visitor.output_coords = local.output_coords;
+                    }
                 }
             }}
 
@@ -405,8 +428,7 @@ macro_rules! impl_eval {
             #[allow(clippy::too_many_arguments)]
             $(#[$meta])*
             unsafe fn [<process_zone_n_ $suffix>]<T: Datum + Copy + Zero, const N: usize, const UNROLL: usize>(
-                dw: &DepthWise,
-                zone: &Zone,
+                visitor: &mut ZoneScanner,
                 c_stride_i: isize,
                 c_stride_o: isize,
                 k_stride_i: isize,
@@ -419,7 +441,7 @@ macro_rules! impl_eval {
                 c_start: isize,
                 c_end: isize,
                 ) { unsafe {
-                let mut visitor = ZoneScanner::new(zone, &dw.patch);
+                let zone = visitor.zone;
                 let mut ioffset = [0isize; N];
                 for i in 0..N {
                     ioffset[i] = zone.values_offsets[i].1;
@@ -518,8 +540,7 @@ macro_rules! impl_eval {
             #[allow(clippy::too_many_arguments)]
             $(#[$meta])*
             unsafe fn [<process_zone_any_ $suffix>]<T: Datum + Copy + Zero>(
-                dw: &DepthWise,
-                zone: &Zone,
+                scanner: &mut ZoneScanner,
                 c_stride_i: isize,
                 c_stride_o: isize,
                 k_stride_i: isize,
@@ -541,9 +562,10 @@ macro_rules! impl_eval {
                 } else {
                     None
                 };
+                let zone = scanner.zone;
                 let taps = zone.values_offsets.len();
                 let Some(ker) = ker.filter(|_| taps <= MAX_VECTORISED_TAPS) else {
-                    zone.visit_output(&dw.patch, |visitor| {
+                    zone.visit_output(scanner.patch, |visitor| {
                         for c in c_start..c_end {
                             let iptr = iptr.offset(c_stride_i * c);
                             let optr = optr.offset(c_stride_o * c);
@@ -559,7 +581,12 @@ macro_rules! impl_eval {
                     ioffset[ix] = *offset;
                 }
                 let ioffset = &ioffset[..taps];
-                let mut visitor = ZoneScanner::new(zone, &dw.patch);
+                // Walked as a local, as in `process_zone`'s single-channel arm.
+                let mut visitor = ZoneScanner {
+                    output_coords: std::mem::take(&mut scanner.output_coords),
+                    inner_loop_output_range: scanner.inner_loop_output_range.clone(),
+                    ..*scanner
+                };
                 for c in c_start..c_end {
                     let iptr = iptr.offset(c_stride_i * c);
                     let optr = optr.offset(c_stride_o * c);
@@ -605,6 +632,7 @@ macro_rules! impl_eval {
                         visitor.next_non_inner_axis()
                     }
                 }
+                scanner.output_coords = visitor.output_coords;
             }}
 
             #[inline(never)]
@@ -849,7 +877,22 @@ mod tests {
         pad: PaddingSpec,
         stride: (usize, usize),
     ) {
-        let n = 1usize;
+        run_dw_batch(1, dt, fmt, c, h, w, kh, kw, pad, stride)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_dw_batch(
+        n: usize,
+        dt: DatumType,
+        fmt: DataFormat,
+        c: usize,
+        h: usize,
+        w: usize,
+        kh: usize,
+        kw: usize,
+        pad: PaddingSpec,
+        stride: (usize, usize),
+    ) {
         let x: Vec<f32> = (0..n * c * h * w).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
         let kernel: Vec<f32> = (0..c * kh * kw).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
         let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
@@ -897,28 +940,31 @@ mod tests {
         let (oh, ow) = if c_last { (oshape[1], oshape[2]) } else { (oshape[2], oshape[3]) };
         let (ph, pw) = (computed[0].pad_before as isize, computed[1].pad_before as isize);
         let mut max_abs = 0f32;
-        for oc in 0..c {
-            for oy in 0..oh {
-                for ox in 0..ow {
-                    let mut acc = bias[oc];
-                    for ky in 0..kh {
-                        for kx in 0..kw {
-                            let iy = oy as isize * stride.0 as isize + ky as isize - ph;
-                            let ix = ox as isize * stride.1 as isize + kx as isize - pw;
-                            if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
-                                continue;
+        for b in 0..n {
+            for oc in 0..c {
+                for oy in 0..oh {
+                    for ox in 0..ow {
+                        let mut acc = bias[oc];
+                        for ky in 0..kh {
+                            for kx in 0..kw {
+                                let iy = oy as isize * stride.0 as isize + ky as isize - ph;
+                                let ix = ox as isize * stride.1 as isize + kx as isize - pw;
+                                if iy < 0 || ix < 0 || iy >= h as isize || ix >= w as isize {
+                                    continue;
+                                }
+                                let (iy, ix) = (iy as usize, ix as usize);
+                                let xv = if c_last {
+                                    x[(((b * h + iy) * w) + ix) * c + oc]
+                                } else {
+                                    x[(((b * c + oc) * h + iy) * w) + ix]
+                                };
+                                let kv = kernel[((oc * kh + ky) * kw) + kx];
+                                acc += xv * kv;
                             }
-                            let xv = if c_last {
-                                x[((iy as usize * w) + ix as usize) * c + oc]
-                            } else {
-                                x[((oc * h + iy as usize) * w) + ix as usize]
-                            };
-                            let kv = kernel[((oc * kh + ky) * kw) + kx];
-                            acc += xv * kv;
                         }
+                        let g = if c_last { got[[b, oy, ox, oc]] } else { got[[b, oc, oy, ox]] };
+                        max_abs = max_abs.max((g - acc).abs());
                     }
-                    let g = if c_last { got[[0, oy, ox, oc]] } else { got[[0, oc, oy, ox]] };
-                    max_abs = max_abs.max((g - acc).abs());
                 }
             }
         }
@@ -928,6 +974,42 @@ mod tests {
             max_abs < tolerance,
             "DepthWise {dt:?} {fmt:?} mismatch c={c} {h}x{w} k={kh}x{kw} stride={stride:?} pad={pad:?}: max_abs={max_abs}"
         );
+    }
+
+    #[test]
+    fn depthwise_multithreaded_matches_reference() {
+        let pool = tract_linalg::multithread::Executor::multithread(4);
+        tract_linalg::multithread::multithread_tract_scope(pool, || {
+            run_dw(DataFormat::NCHW, 32, 64, 80, 3, 3, PaddingSpec::Valid, (1, 1));
+            run_dw(DataFormat::NCHW, 32, 200, 24, 3, 3, PaddingSpec::SameUpper, (1, 1));
+            run_dw(DataFormat::NCHW, 32, 70, 70, 5, 5, PaddingSpec::SameUpper, (1, 1));
+            run_dw(DataFormat::NCHW, 20, 91, 91, 3, 3, PaddingSpec::SameUpper, (2, 2));
+            run_dw(DataFormat::NCHW, 7, 130, 129, 3, 3, PaddingSpec::Valid, (1, 1));
+            run_dw_batch(
+                3,
+                f32::datum_type(),
+                DataFormat::NCHW,
+                11,
+                64,
+                70,
+                3,
+                3,
+                PaddingSpec::SameUpper,
+                (1, 1),
+            );
+            run_dw_batch(
+                2,
+                f32::datum_type(),
+                DataFormat::NCHW,
+                5,
+                120,
+                100,
+                5,
+                5,
+                PaddingSpec::Valid,
+                (1, 1),
+            );
+        });
     }
 
     #[test]
