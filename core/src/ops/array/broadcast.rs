@@ -64,14 +64,10 @@ impl TypedOp for MultiBroadcastTo {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        // The output always takes the change: the broadcast absorbs it in the
-        // target shape. The input only takes it when every touched axis shows
-        // same-index agreement between input and target shapes — a true axis
-        // correspondence only when the ranks are equal (right-aligned
-        // broadcasting pairs axes by index only then). An axis the input does
-        // not have, or on which it is broadcast (input=1, output=N), is none
-        // of the input's business — propagating the change there anyway asks a
-        // rank-1 [1] wire to grow an axis it cannot express.
+        // The output takes the change: the broadcast absorbs it in the target
+        // shape. The input takes it only when every touched axis has the same
+        // dim in input and target, which is a real correspondence only at
+        // equal ranks (right-aligned broadcasting pairs by index then).
         let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
         let canonical = change.canonical();
         let touched: TVec<usize> = match canonical.as_ref() {
@@ -85,11 +81,9 @@ impl TypedOp for MultiBroadcastTo {
         let passthrough = touched.iter().all(|&ix| {
             ix < input_shape.rank() && ix < self.shape.rank() && input_shape[ix] == self.shape[ix]
         });
-        // A Move can only ever propagate: absorbing a transpose in the target
-        // re-pairs the input's dims against transposed positions, and
-        // transpose-of-broadcast is NOT broadcast-into-transposed-target (a
-        // [1,7] input into a transposed [7,7] target silently yields the
-        // transposed tensor). Block instead, like the pre-rework guard did.
+        // A Move must propagate, never absorb: transpose-of-broadcast is not
+        // broadcast-into-transposed-target ([1,7] into a transposed [7,7]
+        // target yields the transposed tensor).
         if matches!(canonical.as_ref(), AxisOp::Move(..)) && !passthrough {
             return Ok(None);
         }
@@ -100,23 +94,14 @@ impl TypedOp for MultiBroadcastTo {
             if passthrough {
                 wire_changes.push((InOut::In(0), change.clone()));
             } else {
-                // The input keeps its shape while the target absorbs the
-                // change. Two things must hold.
-                //
-                // Evaluability: the input must still right-align-broadcast
-                // into the new target (removing or adding a dim-1 axis shifts
-                // the pairing when ranks differ — a [5,1] input into a [9,5,1]
-                // target must not become [9,5]).
-                //
-                // Value preservation: the input pairs with the right-aligned
-                // window [offset, offset+r) of the target. A change INSIDE
-                // that window shifts every input axis left of it onto a
-                // neighboring target axis: when adjacent target dims are
-                // equal the result still evaluates — and computes permuted
-                // values ([5,1] into [5,5,1], absorbing Rm(2), yields the
-                // transpose). Such a change is only harmless when the input
-                // axes it would displace are all 1 (they broadcast anywhere),
-                // or when it falls outside the window.
+                // Absorbed changes must not re-pair the input's axes. The
+                // input binds to the right-aligned window [offset, offset+r)
+                // of the target; a change inside the window shifts input axes
+                // onto neighbouring target axes (a silent permutation when
+                // adjacent dims are equal, e.g. [5,1] into [5,5,1] with Rm(2)
+                // absorbed), and a change of the dim-1 axes can leave the
+                // input un-broadcastable into the new target ([5,1] into
+                // [9,5,1] must not become [9,5]).
                 let offset = self.shape.rank().saturating_sub(input_shape.rank());
                 let r = input_shape.rank();
                 let k = touched[0].saturating_sub(offset);
@@ -344,10 +329,9 @@ mod tests {
         Ok(())
     }
 
-    /// An axis change touching an axis the input does not have is a broadcast
-    /// axis: it must be absorbed in the target shape, NOT propagated to the
-    /// input wire — a rank-1 [1] input cannot express it (the MMS graph hit
-    /// this as "required_rank 2 vs 1" when the change reached a [1] const).
+    /// An axis change touching an axis the input does not have must be
+    /// absorbed in the target shape, not propagated to the input wire: a
+    /// rank-1 [1] input cannot express it.
     #[test]
     fn broadcast_axis_change_absorbed_not_propagated_to_input() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -424,9 +408,8 @@ mod tests {
         Ok(())
     }
 
-    /// Removing an output axis on which the input is broadcast (input=1,
-    /// output=N) is absorbed in the target; the input keeps its axis and the
-    /// right-aligned broadcast still pairs it correctly.
+    /// Removing an output axis on which the input is broadcast is absorbed:
+    /// the right-aligned pairing is unaffected.
     #[test]
     fn rm_of_broadcast_axis_absorbed() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -455,11 +438,8 @@ mod tests {
         Ok(())
     }
 
-    /// A Move touching an axis on which the input is broadcast must be
-    /// blocked: absorbing a transpose in the target would re-pair the input's
-    /// dims against transposed positions (transpose-of-broadcast is not
-    /// broadcast-into-transposed-target — a [1,7] input into a transposed
-    /// [7,7] target silently yields the transposed tensor).
+    /// A Move touching an axis on which the input is broadcast must block:
+    /// transpose-of-broadcast is not broadcast-into-transposed-target.
     #[test]
     fn move_over_broadcast_axis_blocked() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -479,8 +459,7 @@ mod tests {
         Ok(())
     }
 
-    /// A passthrough Move (input and target agree on both touched axes) still
-    /// propagates to the input.
+    /// A passthrough Move still propagates to the input.
     #[test]
     fn passthrough_move_propagates_to_input() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -502,12 +481,9 @@ mod tests {
         Ok(())
     }
 
-    /// Absorbing a change on the output side must keep the input
-    /// right-align-broadcastable into the new target. The ChangeAxes pass
-    /// proactively proposes removing any dim-1 output axis: for a [5,1] input
-    /// into a [9,5,1] target, absorbing Rm(2) yields a [9,5] target the input
-    /// cannot broadcast into — the change must block, and the optimized model
-    /// must keep running.
+    /// The ChangeAxes pass proactively proposes removing any dim-1 output
+    /// axis; the absorb must keep the input broadcastable into the new target
+    /// ([5,1] into [9,5,1] must not become [9,5]).
     #[test]
     fn absorbed_change_keeps_input_broadcastable() -> TractResult<()> {
         let mut model = TypedModel::default();
@@ -530,13 +506,10 @@ mod tests {
         Ok(())
     }
 
-    /// An absorbed change falling inside the input-paired window re-pairs the
-    /// input's axes onto neighboring target axes: with adjacent equal dims the
-    /// result still evaluates but computes permuted values. A [5,1] input into
-    /// a [5,5,1] target right-aligns the input's 5 onto target axis 1 (note
-    /// the alignment: the input's trailing 1 pairs with the target's trailing
-    /// 1), so absorbing Rm(2) would swap the pairing — the change must block
-    /// and the optimized model must keep the unoptimized values.
+    /// An absorbed change falling inside the input-paired window would
+    /// re-pair the input's axes onto neighbouring target axes: with adjacent
+    /// equal dims the result still evaluates, with permuted values. The
+    /// optimized model must keep the unoptimized values.
     #[test]
     fn absorbed_change_does_not_repair_input_axes() -> TractResult<()> {
         let mut model = TypedModel::default();
