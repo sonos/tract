@@ -446,6 +446,54 @@ pub fn suite() -> TractResult<TestSuite> {
         );
     }
 
+    for (name, n, c, h, w, ker, pad, strides) in [
+        ("depthwise_nhwc_mobilenet_3x3", 1, 32, 14, 14, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+        ("depthwise_nhwc_mobilenet_3x3_s2", 1, 96, 28, 28, [3, 3], PaddingSpec::SameUpper, [2, 2]),
+        ("depthwise_nhwc_1x3_s2", 1, 64, 10, 32, [1, 3], PaddingSpec::SameUpper, [1, 2]),
+        ("depthwise_nhwc_5x1_valid", 1, 64, 12, 8, [5, 1], PaddingSpec::Valid, [1, 1]),
+        ("depthwise_nhwc_c_tail", 1, 7, 9, 9, [3, 3], PaddingSpec::Valid, [1, 1]),
+        ("depthwise_nhwc_batch2", 2, 16, 6, 6, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+    ] {
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::NHWC.from_n_c_hw(n, c, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: c,
+                data: ramp(&[n, h, w, c]),
+                kernel: ramp(&[c, 1, ker[0], ker[1]]),
+                bias: Some(ramp(&[c])),
+                pad,
+                strides: strides.into_iter().collect(),
+                dilations: tvec!(1, 1),
+            },
+        );
+    }
+
+    for (name, c, h, w, ker, pad, strides) in [
+        ("depthwise_hwc_mobilenet_3x3", 32, 14, 14, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+        ("depthwise_hwc_mobilenet_3x3_s2", 96, 28, 28, [3, 3], PaddingSpec::SameUpper, [2, 2]),
+        ("depthwise_hwc_1x3_s2", 64, 10, 32, [1, 3], PaddingSpec::SameUpper, [1, 2]),
+        ("depthwise_hwc_5x1_valid", 64, 12, 8, [5, 1], PaddingSpec::Valid, [1, 1]),
+        ("depthwise_hwc_c_tail", 7, 9, 9, [3, 3], PaddingSpec::Valid, [1, 1]),
+        ("depthwise_hwc_3x3_16ch", 16, 6, 6, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+    ] {
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::HWC.from_n_c_hw(1, c, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: c,
+                data: ramp(&[h, w, c]),
+                kernel: ramp(&[c, 1, ker[0], ker[1]]),
+                bias: Some(ramp(&[c])),
+                pad,
+                strides: strides.into_iter().collect(),
+                dilations: tvec!(1, 1),
+            },
+        );
+    }
+
     // Grouped conv (group>1, ci_per_group>1) with a unit spatial axis: the
     // im2col matmul is batched over the group, and reshape_group carries a unit
     // axis entangled with that batch. Absorbing the reshape into the matmul
