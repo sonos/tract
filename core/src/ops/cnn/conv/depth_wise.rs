@@ -742,6 +742,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(target_arch = "wasm32"))]
     fn depthwise_multithreaded_matches_reference() {
         let pool = tract_linalg::multithread::Executor::multithread(4);
         tract_linalg::multithread::multithread_tract_scope(pool, || {
