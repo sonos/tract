@@ -9,6 +9,10 @@ use tract_ndarray::prelude::*;
 /// call. The `usize` is which of the kernel's packings `R` was prepared in.
 type PackedR = (Box<dyn MatMatMul>, usize, Box<dyn MMMInputValue>);
 
+/// Up to this hidden size the input-side product stays in the op: the graph
+/// nodes projecting it out cost more to dispatch than the platform kernel saves.
+const MAX_UNPROJECTED_HIDDEN: usize = 64;
+
 /// Whole-sequence GRU: the ONNX GRU with `linear_before_reset != 0`, run as one op
 /// instead of a `Scan` that dispatches its body once per timestep.
 ///
@@ -19,7 +23,11 @@ type PackedR = (Box<dyn MatMatMul>, usize, Box<dyn MMMInputValue>);
 /// on its first call.
 ///
 /// The input-side product `X.Wt` does not depend on the recurrent state, so it is
-/// taken once over the whole sequence as a single GEMM rather than once per step.
+/// taken once over the whole sequence rather than once per step. Above a hidden size
+/// of 64, declutter moves it out of the op into the graph -- an `EinSum` plus the
+/// `W`-side bias -- so it gets
+/// the platform's matmul kernel with `W` packed once, and marks the op `projected`:
+/// input 0 is then `X.Wt + Wb`, `[batch, T, 3*hidden]`, and there is no `W` input.
 ///
 /// State: the op works both ways, as the `Scan` it replaces does. By default the
 /// hidden state lives in the session and persists across calls -- `initial_h`
@@ -39,6 +47,9 @@ pub struct GruSeq {
     /// Re-seed the hidden state from `initial_h` on every call instead of
     /// carrying it in the session. Same meaning as `Scan::reset_every_turn`.
     pub reset_every_turn: bool,
+    /// Input 0 is the input-side product `X.Wt + Wb` rather than `X`, and `W` is not
+    /// an input. Set by declutter; see the type's docs.
+    pub projected: bool,
     /// `R` packed by codegen. `None` until then, or when the batch size is symbolic.
     pub packed_r: Option<PackedR>,
 }
@@ -70,8 +81,13 @@ impl Op for GruSeq {
     }
     fn info(&self) -> TractResult<Vec<String>> {
         Ok(vec![format!(
-            "hidden={} bias={} chunk={} reset_every_turn={} emit_y={}",
-            self.hidden, self.has_bias, self.chunk, self.reset_every_turn, self.emit_y
+            "hidden={} bias={} chunk={} reset_every_turn={} emit_y={} projected={}",
+            self.hidden,
+            self.has_bias,
+            self.chunk,
+            self.reset_every_turn,
+            self.emit_y,
+            self.projected
         )])
     }
     op_as_typed_op!();
@@ -112,13 +128,14 @@ impl GruSeq {
         packed_r: &mut Option<PackedR>,
         inputs: TVec<TValue>,
     ) -> TractResult<TVec<TValue>> {
-        let (x, w, r) = (&inputs[0], &inputs[1], &inputs[2]);
-        let b = if self.has_bias { Some(&inputs[3]) } else { None };
+        let r_slot = if self.projected { 1 } else { 2 };
+        let r = &inputs[r_slot];
+        let b = if self.has_bias { Some(&inputs[r_slot + 1]) } else { None };
         let h0 = &inputs[inputs.len() - 1];
         let h = self.hidden;
 
-        let x = x.to_plain_array_view::<f32>()?.into_dimensionality::<Ix3>()?; // [batch, T, in]
-        let w = w.to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?; // [3h, in]
+        // [batch, T, in], or [batch, T, 3*hidden] once projected.
+        let x = inputs[0].to_plain_array_view::<f32>()?.into_dimensionality::<Ix3>()?;
         let (batch, t_len, in_size) = x.dim();
 
         let (wb, rb) = match b {
@@ -134,15 +151,22 @@ impl GruSeq {
             None => (None, None),
         };
 
-        // One GEMM for the whole sequence, and the W-side bias folded in once here
-        // rather than once per timestep. The step loop reads one timestep's rows at
-        // a time, so the rows are ordered by timestep, not by batch element.
+        // The step loop reads one timestep's rows at a time, so the rows are ordered
+        // by timestep, not by batch element.
         let x_permuted = x.permuted_axes([1, 0, 2]);
         let x_by_step = x_permuted.as_standard_layout();
-        let mut xw = x_by_step.to_shape((t_len * batch, in_size))?.dot(&w.t());
-        if let Some(wb) = &wb {
-            xw += &wb.view().insert_axis(Axis(0));
-        }
+        let x_by_step = x_by_step.to_shape((t_len * batch, in_size))?;
+        let mut xw = if self.projected {
+            x_by_step.to_owned()
+        } else {
+            // One GEMM for the whole sequence, the W-side bias folded in once here.
+            let w = inputs[1].to_plain_array_view::<f32>()?.into_dimensionality::<Ix2>()?;
+            let mut xw = x_by_step.dot(&w.t());
+            if let Some(wb) = &wb {
+                xw += &wb.view().insert_axis(Axis(0));
+            }
+            xw
+        };
 
         // Pack R once for the whole model's life, then run tract's own MMM per step
         // -- the same kernel the Scan body dispatches, so the arithmetic matches, but
@@ -268,6 +292,53 @@ fn squeeze_state(t: &Tensor, batch: usize, h: usize) -> TractResult<Tensor> {
 }
 
 impl TypedOp for GruSeq {
+    /// Moves the input-side product into the graph above a hidden size of 64, so it
+    /// runs on the platform's matmul kernel with `W` packed once rather than as a
+    /// generic GEMM per call.
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        if self.projected || self.hidden <= MAX_UNPROJECTED_HIDDEN {
+            return Ok(None);
+        }
+        let h = self.hidden;
+        let mut patch = TypedModelPatch::default();
+        let taps = patch.taps(model, &node.inputs)?;
+        let name = &node.name;
+        let mut xw = patch.wire_node(
+            format!("{name}.xw"),
+            crate::ops::einsum::EinSum {
+                axes: "btk,gk->btg".parse()?,
+                operating_dt: f32::datum_type(),
+                q_params: None,
+            },
+            &[taps[0], taps[1]],
+        )?[0];
+        if self.has_bias {
+            let b_rank = patch.outlet_fact(taps[3])?.rank();
+            let mut wb = patch.wire_node(
+                format!("{name}.wb"),
+                crate::ops::array::Slice::new(b_rank - 1, 0, 3 * h),
+                &[taps[3]],
+            )?[0];
+            for axis in 0..(3 - b_rank) {
+                wb =
+                    patch.wire_node(format!("{name}.wb.add_axis{axis}"), AxisOp::Add(0), &[wb])?[0];
+            }
+            xw = patch.wire_node(format!("{name}.xw_b"), crate::ops::math::add(), &[xw, wb])?[0];
+        }
+        let mut inputs = tvec!(xw);
+        inputs.extend(taps[2..].iter().copied());
+        let op = GruSeq { projected: true, ..self.clone() };
+        let outputs = patch.wire_node(name, op, &inputs)?;
+        for (ix, o) in outputs.iter().enumerate() {
+            patch.shunt_outside(model, OutletId::new(node.id, ix), *o)?;
+        }
+        Ok(Some(patch))
+    }
+
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let x = inputs[0];
         let batch = x.shape[0].clone();
@@ -289,7 +360,8 @@ impl TypedOp for GruSeq {
         if self.packed_r.is_some() {
             return Ok(None);
         }
-        let Some(r) = model.outlet_fact(node.inputs[2])?.konst.clone() else {
+        let r_slot = if self.projected { 1 } else { 2 };
+        let Some(r) = model.outlet_fact(node.inputs[r_slot])?.konst.clone() else {
             return Ok(None);
         };
         let Ok(batch) = model.outlet_fact(node.inputs[0])?.shape[0].to_usize() else {
@@ -369,6 +441,7 @@ mod tests {
             chunk: if backward { -1 } else { 1 },
             reset_every_turn: false,
             emit_y: true,
+            projected: false,
             packed_r: None,
         };
         let mut inputs: TVec<TValue> = tvec!(
@@ -431,6 +504,7 @@ mod tests {
             chunk: 1,
             reset_every_turn: false,
             emit_y: true,
+            projected: false,
             packed_r: None,
         };
         let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
@@ -468,6 +542,7 @@ mod tests {
             chunk: 1,
             reset_every_turn: true,
             emit_y: true,
+            projected: false,
             packed_r: None,
         };
         let x = Array3::<f32>::from_elem((1, 3, 2), 0.5);
@@ -511,6 +586,7 @@ mod tests {
             chunk: 1,
             reset_every_turn: true,
             emit_y: true,
+            projected: false,
             packed_r: None,
         };
         let x: TValue = x.into_tensor().into();
@@ -583,5 +659,75 @@ mod tests {
                 });
             }
         });
+    }
+
+    /// Above a hidden size of 64 declutter moves the input-side product into the
+    /// graph and codegen packs `R` into the projected op (the state packs it when the
+    /// batch is symbolic); the result still follows the step-by-step recurrence,
+    /// forwards and backwards, with and without bias.
+    #[test]
+    fn large_hidden_is_projected_and_packed() {
+        let (batch, input, hidden, t_len) = (2usize, 12usize, 80usize, 6usize);
+        let f = |n: usize, k: f32| Array1::from_iter((0..n).map(|i| ((i as f32) * k).sin() * 0.3));
+        for case in 0..8 {
+            let (backward, bias, symbolic) = (case & 1 != 0, case & 2 != 0, case & 4 != 0);
+            let x =
+                f(batch * t_len * input, 0.7).into_shape_with_order((batch, t_len, input)).unwrap();
+            let w = f(3 * hidden * input, 0.31).into_shape_with_order((3 * hidden, input)).unwrap();
+            let r =
+                f(3 * hidden * hidden, 0.17).into_shape_with_order((3 * hidden, hidden)).unwrap();
+            let b = bias.then(|| f(6 * hidden, 0.11));
+            let h0 = Array2::<f32>::zeros((batch, hidden));
+            let (want_y, want_h) = reference(&x, &w, &r, b.as_ref(), &h0, hidden, backward);
+
+            let mut model = TypedModel::default();
+            let batch_dim = if symbolic { model.symbols.sym("B").to_dim() } else { batch.to_dim() };
+            let source = model
+                .add_source("x", f32::fact(&[batch_dim, t_len.to_dim(), input.to_dim()]))
+                .unwrap();
+            let mut inputs = tvec!(
+                source,
+                model.add_const("w", w.into_tensor()).unwrap(),
+                model.add_const("r", r.into_tensor()).unwrap()
+            );
+            if let Some(b) = b {
+                inputs.push(model.add_const("b", b.into_tensor()).unwrap());
+            }
+            let h0_3 = h0.clone().insert_axis(Axis(1));
+            inputs.push(model.add_const("h0", h0_3.into_tensor()).unwrap());
+            let op = GruSeq {
+                hidden,
+                has_bias: bias,
+                chunk: if backward { -1 } else { 1 },
+                reset_every_turn: true,
+                emit_y: true,
+                projected: false,
+                packed_r: None,
+            };
+            let outputs = model.wire_node("gru", op, &inputs).unwrap();
+            model.select_output_outlets(&outputs).unwrap();
+            let model = model.into_optimized().unwrap();
+            let fused = model.nodes.iter().find_map(|n| n.op_as::<GruSeq>()).unwrap();
+            assert!(fused.projected, "declutter left the input-side product in the op");
+            assert_eq!(fused.packed_r.is_some(), !symbolic, "R packed by codegen iff batch known");
+
+            let got = model.into_runnable().unwrap().run(tvec!(x.into_tensor().into())).unwrap();
+            got[0]
+                .clone()
+                .into_tensor()
+                .close_enough(&want_y.into_tensor(), Approximation::Approximate)
+                .unwrap();
+            let got_h = got[1]
+                .to_plain_array_view::<f32>()
+                .unwrap()
+                .into_dimensionality::<Ix3>()
+                .unwrap()
+                .index_axis_move(Axis(1), 0)
+                .to_owned();
+            got_h
+                .into_tensor()
+                .close_enough(&want_h.into_tensor(), Approximation::Approximate)
+                .unwrap();
+        }
     }
 }
