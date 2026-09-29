@@ -1176,6 +1176,7 @@ mod test {
     }
 }
 
+#[cfg(test)]
 mod symbol_deps_tests {
     use super::*;
     use crate::ops::array::MultiBroadcastTo;
