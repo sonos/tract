@@ -76,6 +76,7 @@ impl WireBody for GRU {
                 // the fused op starts from the same contract.
                 reset_every_turn: false,
                 emit_y,
+                packed_r: None,
             }) as Box<dyn TypedOp>
         })
     }
