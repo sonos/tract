@@ -269,23 +269,46 @@ macro_rules! impl_eval {
                             [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, visitor, add, mul)
                         }
                     }),
-                    _ => {
-                        let mut local = ZoneScanner {
-                            output_coords: std::mem::take(&mut visitor.output_coords),
-                            inner_loop_output_range: visitor.inner_loop_output_range.clone(),
-                            ..*visitor
-                        };
-                        local.reset();
-                        while !local.done() {
-                            let iptr = iptr.offset(c_stride_i * c_start);
-                            let optr = optr.offset(c_stride_o * c_start);
-                            let kptr = kptr.offset(k_stride_i * c_start);
-                            [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c_start, &local, add, mul);
-                            local.next();
-                        }
-                        visitor.output_coords = local.output_coords;
-                    }
+                    _ => [<process_zone_one_channel_ $suffix>](
+                        visitor, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr, add,
+                        mul, c_start,
+                    ),
                 }
+            }}
+
+            /// One channel of a generic (more than four taps) zone, the parallel path's per-plane
+            /// call. The caller's scanner is walked as a local, its buffer moved out and back:
+            /// through `&mut` the inner loop runs measurably slower.
+            #[inline(never)]
+            #[allow(clippy::too_many_arguments)]
+            $(#[$meta])*
+            unsafe fn [<process_zone_one_channel_ $suffix>]<T: Datum + Copy + Zero>(
+                visitor: &mut ZoneScanner,
+                c_stride_i: isize,
+                c_stride_o: isize,
+                k_stride_i: isize,
+                iptr: *const T,
+                kptr: *const T,
+                bias: *const T,
+                optr: *mut T,
+                add: impl Fn(T, T) -> T + Copy + 'static,
+                mul: impl Fn(T, T) -> T + Copy + 'static,
+                c: isize,
+                ) { unsafe {
+                let mut local = ZoneScanner {
+                    output_coords: std::mem::take(&mut visitor.output_coords),
+                    inner_loop_output_range: visitor.inner_loop_output_range.clone(),
+                    ..*visitor
+                };
+                local.reset();
+                while !local.done() {
+                    let iptr = iptr.offset(c_stride_i * c);
+                    let optr = optr.offset(c_stride_o * c);
+                    let kptr = kptr.offset(k_stride_i * c);
+                    [<inner_loop_ $suffix>]::<T>(iptr, kptr, bias, optr, c, &local, add, mul);
+                    local.next();
+                }
+                visitor.output_coords = local.output_coords;
             }}
 
             #[inline(never)]
