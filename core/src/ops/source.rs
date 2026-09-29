@@ -67,7 +67,6 @@ impl TypedOp for TypedSource {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::*;
 
     // A change this source's shape cannot express must block the axis-change
     // search (Ok(None)) instead of erroring the whole optimization run. This
