@@ -7,7 +7,8 @@ pub fn register(registry: &mut Registry) {
         "tract_core_gru_seq",
         &[
             TypeName::Scalar.tensor().named("x"),
-            TypeName::Scalar.tensor().named("w"),
+            // Absent once `projected`: x already carries the input-side product.
+            TypeName::Scalar.tensor().named("w").default(0),
             TypeName::Scalar.tensor().named("r"),
             TypeName::Scalar.tensor().named("b").default(0),
             TypeName::Scalar.tensor().named("initial_h"),
@@ -20,6 +21,7 @@ pub fn register(registry: &mut Registry) {
             // The state contract travels with the model, as Scan's does.
             TypeName::Integer.spec().named("reset_every_turn").default(0),
             TypeName::Integer.spec().named("emit_y").default(1),
+            TypeName::Integer.spec().named("projected").default(0),
         ],
         &[("y", TypeName::Scalar.tensor()), ("y_h", TypeName::Scalar.tensor())],
         de_gru_seq,
@@ -28,7 +30,9 @@ pub fn register(registry: &mut Registry) {
 
 fn de_gru_seq(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let x = invocation.named_arg_as(builder, "x")?;
-    let w = invocation.named_arg_as(builder, "w")?;
+    let projected: bool = invocation.named_arg_as(builder, "projected")?;
+    let w: Option<OutletId> =
+        if projected { None } else { Some(invocation.named_arg_as(builder, "w")?) };
     let r = invocation.named_arg_as(builder, "r")?;
     let has_bias: bool = invocation.named_arg_as(builder, "has_bias")?;
     let b: Option<OutletId> =
@@ -39,7 +43,9 @@ fn de_gru_seq(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let reset_every_turn = invocation.named_arg_as(builder, "reset_every_turn")?;
     let emit_y = invocation.named_arg_as(builder, "emit_y")?;
 
-    let mut inputs: TVec<OutletId> = tvec!(x, w, r);
+    let mut inputs: TVec<OutletId> = tvec!(x);
+    inputs.extend(w);
+    inputs.push(r);
     inputs.extend(b);
     inputs.push(initial_h);
     builder.wire(
@@ -49,6 +55,7 @@ fn de_gru_seq(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
             chunk: chunk as isize,
             reset_every_turn,
             emit_y,
+            projected,
             packed_r: None,
         },
         &inputs,
@@ -63,9 +70,14 @@ fn ser_gru_seq(
     // b sits between r and initial_h and is optional, so every wire is named:
     // dumping them positionally would bind initial_h to b on a bias-less GRU.
     let wire = |ix: usize| (*ast.mapping[&node.inputs[ix]]).clone();
-    let mut named: Vec<(&str, RValue)> = vec![("x", wire(0)), ("w", wire(1)), ("r", wire(2))];
+    let mut named: Vec<(&str, RValue)> = vec![("x", wire(0))];
+    let r_slot = if op.projected { 1 } else { 2 };
+    if !op.projected {
+        named.push(("w", wire(1)));
+    }
+    named.push(("r", wire(r_slot)));
     if op.has_bias {
-        named.push(("b", wire(3)));
+        named.push(("b", wire(r_slot + 1)));
     }
     named.push(("initial_h", wire(node.inputs.len() - 1)));
     named.extend([
@@ -74,6 +86,7 @@ fn ser_gru_seq(
         ("has_bias", numeric(op.has_bias as usize)),
         ("reset_every_turn", numeric(op.reset_every_turn as usize)),
         ("emit_y", numeric(op.emit_y as usize)),
+        ("projected", numeric(op.projected as usize)),
     ]);
     Ok(Some(invocation("tract_core_gru_seq", &[], &named)))
 }
