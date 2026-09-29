@@ -42,8 +42,17 @@ fn de_gru_seq(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     let mut inputs: TVec<OutletId> = tvec!(x, w, r);
     inputs.extend(b);
     inputs.push(initial_h);
-    builder
-        .wire(GruSeq { hidden, has_bias, chunk: chunk as isize, reset_every_turn, emit_y }, &inputs)
+    builder.wire(
+        GruSeq {
+            hidden,
+            has_bias,
+            chunk: chunk as isize,
+            reset_every_turn,
+            emit_y,
+            packed_r: None,
+        },
+        &inputs,
+    )
 }
 
 fn ser_gru_seq(
