@@ -102,10 +102,19 @@ impl TypedOp for MultiBroadcastTo {
                 // absorbed), and a change of the dim-1 axes can leave the
                 // input un-broadcastable into the new target ([5,1] into
                 // [9,5,1] must not become [9,5]).
-                let offset = self.shape.rank().saturating_sub(input_shape.rank());
-                let r = input_shape.rank();
-                let k = touched[0].saturating_sub(offset);
-                let window_safe = k == 0 || k >= r || (0..k).all(|i| input_shape[i] == 1.to_dim());
+                let offset = self.shape.rank() as isize - input_shape.rank() as isize;
+                let k = touched[0] as isize - offset;
+                // the window is right-anchored: any rank change moves it, so
+                // only a change at or before its start (k <= 0 for Add, which
+                // shifts every partner uniformly, k < 0 for Rm, which must not
+                // eat a partner) keeps the pairing. Otherwise the displaced
+                // input axes must all be 1.
+                let displaced_all_ones =
+                    (0..k.max(0) as usize).all(|i| input_shape[i] == 1.to_dim());
+                let window_safe = match canonical.as_ref() {
+                    AxisOp::Add(_) => k <= 0,
+                    _ => k < 0,
+                } || displaced_all_ones;
                 let broadcastable = multi_broadcast(&[input_shape, &shape])
                     .is_ok_and(|b| b.as_slice() == shape.as_ref());
                 if !(window_safe && broadcastable) {
@@ -225,6 +234,7 @@ mod tests {
     use crate::ops::change_axes::AxisOp;
     use crate::ops::change_axes::{AxisChange, InOut};
     use crate::ops::logic::And;
+    use proptest::prelude::*;
 
     /// `Broadcast → Move` with the broadcast feeding a SINGLE successor.
     /// Pre-existing path: the swap rewrite kicks in.
@@ -534,5 +544,66 @@ mod tests {
             crate::internal::TypedSimplePlan::new(optimized)?.run(tvec!(input))?;
         assert_eq!(*raw[0], *optimized_values[0]);
         Ok(())
+    }
+
+    proptest! {
+        /// The optimizer must preserve what the unoptimized model computes,
+        /// whatever broadcast target and axis change it picks.
+        #[test]
+        fn prop_axis_changes_preserve_values(
+            input in proptest::collection::vec(1usize..4, 1usize..4),
+            leading in proptest::collection::vec(1usize..4, 0usize..3),
+            bumps in proptest::collection::vec(0usize..4, 0usize..6),
+            selector in 0usize..64,
+            ix in 0usize..8,
+            move_to in 0usize..8,
+        ) {
+            let mut bumps = bumps.into_iter();
+            let mut target: TVec<usize> = leading.clone().into();
+            for dim in &input {
+                let dim = if *dim == 1 { bumps.next().unwrap_or(0).max(1) } else { *dim };
+                target.push(dim);
+            }
+            let op = match selector % 3 {
+                0 => AxisOp::Add(ix.min(target.len())),
+                1 => {
+                    if ix < target.len() && target[ix] == 1 {
+                        AxisOp::Rm(ix)
+                    } else {
+                        AxisOp::Add(ix.min(target.len()))
+                    }
+                }
+                _ => {
+                    let a = ix.min(target.len().saturating_sub(1));
+                    let b = (move_to.min(target.len().saturating_sub(1)), a);
+                    let b = if b.0 == a { a.saturating_sub(1) } else { b.0 };
+                    AxisOp::Move(a, b)
+                }
+            };
+            let mut model = TypedModel::default();
+            let src = model.add_source("src", i32::datum_type().fact(&*input)).unwrap();
+            let bcast = model.wire_node(
+                "bcast",
+                MultiBroadcastTo::new(ShapeFact::from_dims(
+                    target.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                )),
+                &[src],
+            ).unwrap()[0];
+            let out = model.wire_node("out", op, &[bcast]).unwrap()[0];
+            model.select_output_outlets(&[out]).unwrap();
+            let volume: usize = input.iter().product();
+            let data: Vec<i32> = (0..volume as i32).collect();
+            let wire = Tensor::from_shape(&input, &data).unwrap().into_tvalue();
+            let raw = crate::internal::TypedSimplePlan::new(model.clone())
+                .unwrap()
+                .run(tvec!(wire.clone()))
+                .unwrap();
+            let optimized = model.into_optimized().unwrap();
+            let optimized_values = crate::internal::TypedSimplePlan::new(optimized)
+                .unwrap()
+                .run(tvec!(wire))
+                .unwrap();
+            prop_assert_eq!(&*raw[0], &*optimized_values[0]);
+        }
     }
 }
