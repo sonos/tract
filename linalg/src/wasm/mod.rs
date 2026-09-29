@@ -16,6 +16,7 @@ mod fuse;
 
 mod act;
 mod act_f32;
+mod depthwise;
 #[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod dispatch_tests;
 mod exp;
@@ -27,6 +28,7 @@ mod reduce;
 
 pub use act::*;
 pub use act_f32::*;
+pub use depthwise::*;
 pub use exp::*;
 pub use ln::*;
 pub use mmm_f32_gemm::*;
@@ -86,6 +88,13 @@ inventory::submit! {
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
     let mut set = IsaSet::of_arch(crate::isa::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
+    // The depthwise kernels are reached only through their registry entries, and wasm-ld drops
+    // an object nothing references, entries included; every registry query passes through here.
+    #[cfg(target_feature = "simd128")]
+    std::hint::black_box((
+        depthwise::depthwise_w_f32 as *const (),
+        depthwise::depthwise_c_f32 as *const (),
+    ));
     if cfg!(target_feature = "relaxed-simd") {
         set = set.with(Isa::Wasm32RelaxedSimd);
     }
