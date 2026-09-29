@@ -277,6 +277,107 @@ where
         Self::build_with_outputs_and_deps(model, &outputs, &[], options)
     }
 
+    /// Ordering dependencies derived from runtime symbols: symbols that only
+    /// get a value when their defining node produces a tensor (a dynamic
+    /// Range length, a NonZero count...), bound by the shape-feedback loop as
+    /// that node evaluates. Any other node mentioning such a symbol, in a
+    /// shape or in symbolic tensor values, must come after it. Tensor edges do
+    /// not express the relation, so the deps are derived from the facts.
+    #[allow(clippy::mutable_key_type)]
+    fn symbol_deps(
+        nodes: &[Node<F, O>],
+        inputs: &[usize],
+        outputs: &[usize],
+        deps: &[(usize, usize)],
+    ) -> TractResult<Vec<(usize, usize)>> {
+        fn tensor_value_symbols(t: &Tensor, acc: &mut std::collections::HashSet<Symbol>) {
+            if t.datum_type() == TDim::datum_type()
+                && let Some(slice) =
+                    t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
+            {
+                acc.extend(slice.iter().flat_map(|d| d.symbols()));
+            }
+        }
+        // A plain topological order on tensor edges: definer selection goes by
+        // dataflow, not node id (which optimization passes do not preserve),
+        // and dead nodes left behind by patches must not contribute.
+        let base_order = eval_order_for_nodes(nodes, inputs, outputs, &[])?;
+        // Inert on InferenceModel: the hir wrappers do not override
+        // mints_runtime_symbols, so the definer map stays empty.
+        let mut definer: std::collections::HashMap<Symbol, usize> = Default::default();
+        for &id in &base_order {
+            let node = &nodes[id];
+            if !node.op.as_ref().mints_runtime_symbols() {
+                continue;
+            }
+            for output in &node.outputs {
+                if let Ok(fact) = output.fact.to_typed_fact() {
+                    for sym in fact.shape.iter().flat_map(|d| d.symbols()) {
+                        definer.entry(sym).or_insert(id);
+                    }
+                }
+            }
+        }
+        let mut derived = vec![];
+        let mut seen: std::collections::HashSet<(usize, usize)> = deps.iter().copied().collect();
+        // Ancestor sets, memoized per definer: many consumers share one.
+        let mut definer_ancestors: std::collections::HashMap<
+            usize,
+            std::collections::HashSet<usize>,
+        > = Default::default();
+        for &id in &base_order {
+            let node = &nodes[id];
+            // The symbol can be needed by the node's own output shape, appear
+            // in symbolic tensor values flowing through it (a folded Shape
+            // materializes the dims as a TDim konst), or in uniform_tdim
+            // (optimization-time metadata today; scanned to keep the consumer
+            // set honest — exotic_fact is opaque).
+            let mut mentioned: std::collections::HashSet<Symbol> = Default::default();
+            for output in &node.outputs {
+                if let Ok(fact) = output.fact.to_typed_fact() {
+                    mentioned.extend(fact.shape.iter().flat_map(|d| d.symbols()));
+                    for t in [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten()
+                    {
+                        tensor_value_symbols(t, &mut mentioned);
+                    }
+                    mentioned.extend(fact.uniform_tdim.iter().flat_map(TDim::symbols));
+                }
+            }
+            // Deterministic iteration, so the deps and the plan order do not
+            // depend on HashSet randomization across processes.
+            let mut mentioned: Vec<_> = mentioned.into_iter().collect();
+            mentioned.sort_unstable();
+            for sym in mentioned {
+                let Some(&d) = definer.get(&sym) else { continue };
+                // symbols defined by model inputs are bound by set_input
+                if d == id || inputs.contains(&d) || !seen.insert((id, d)) {
+                    continue;
+                }
+                // Skip pairs already related by tensor edges: a direct input
+                // edge means the order is already right, and a consumer that
+                // is a transitive ancestor of its definer would close a cycle.
+                if node.inputs.iter().any(|i| i.node == d) {
+                    continue;
+                }
+                let ancestors = definer_ancestors.entry(d).or_insert_with(|| {
+                    let mut stack: TVec<usize> = nodes[d].inputs.iter().map(|i| i.node).collect();
+                    let mut set: std::collections::HashSet<usize> = Default::default();
+                    while let Some(n) = stack.pop() {
+                        if set.insert(n) {
+                            stack.extend(nodes[n].inputs.iter().map(|i| i.node));
+                        }
+                    }
+                    set
+                });
+                if !ancestors.contains(&id) {
+                    // deps pairs are (consumer, precursor)
+                    derived.push((id, d));
+                }
+            }
+        }
+        Ok(derived)
+    }
+
     #[deprecated]
     pub fn build_with_outputs_and_deps(
         model: impl Into<Arc<Graph<F, O>>>,
@@ -287,117 +388,8 @@ where
         let model = model.into();
         let inputs = model.input_outlets()?.iter().map(|n| n.node).collect::<Vec<usize>>();
         let outputs_nodes = outputs.iter().map(|n| n.node).collect::<Vec<usize>>();
-        // Symbol-level dependencies: a node whose facts mention a runtime symbol
-        // (a NonZero count, a dynamic Range length...) must not evaluate before
-        // the node that defines that symbol, as the shape-feedback loop binds
-        // symbols when their defining node produces a tensor. Tensor edges do
-        // not express this (a MultiBroadcastTo to a NonZero-count-shaped target
-        // has no edge to the NonZero), so derive extra ordering dependencies
-        // from the facts.
         let mut all_deps = deps.to_vec();
-        {
-            fn tensor_value_symbols(t: &Tensor, acc: &mut std::collections::HashSet<Symbol>) {
-                if t.datum_type() == TDim::datum_type()
-                    && let Some(slice) =
-                        t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
-                {
-                    acc.extend(slice.iter().flat_map(|d| d.symbols()));
-                }
-            }
-            // A plain topological order on tensor edges (the cheap variant:
-            // definer selection does not need the RAM-optimized heuristic).
-            // This also gives us the set of nodes reachable from the outputs —
-            // declutter patches can leave dead nodes behind, and their stale
-            // facts must not contribute dependencies.
-            let base_order = eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, &[])?;
-            // Definers are picked by dataflow rather than by node id, which
-            // optimization passes do not preserve. The analysis is inert for
-            // plans built on InferenceModel: their ops are the hir wrappers,
-            // which do not override mints_runtime_symbols, so the definer map
-            // stays empty and no deps are derived.
-            #[allow(clippy::mutable_key_type)]
-            let mut definer: std::collections::HashMap<Symbol, usize> = Default::default();
-            for &id in &base_order {
-                let node = &model.nodes[id];
-                if !node.op.as_ref().mints_runtime_symbols() {
-                    continue;
-                }
-                for output in &node.outputs {
-                    if let Ok(fact) = output.fact.to_typed_fact() {
-                        for sym in fact.shape.iter().flat_map(|d| d.symbols()) {
-                            definer.entry(sym).or_insert(id);
-                        }
-                    }
-                }
-            }
-            #[allow(clippy::mutable_key_type)]
-            let mut seen_deps: std::collections::HashSet<(usize, usize)> =
-                all_deps.iter().copied().collect();
-            // Ancestor sets, memoized per definer: many consumers typically
-            // share one definer.
-            let mut definer_ancestors: std::collections::HashMap<
-                usize,
-                std::collections::HashSet<usize>,
-            > = Default::default();
-            for &id in &base_order {
-                let node = &model.nodes[id];
-                // Consumers: the symbol can be needed by the node's own output
-                // shape, or appear in symbolic tensor *values* flowing through
-                // it (a folded Shape materializes the dims as a TDim konst).
-                #[allow(clippy::mutable_key_type)]
-                let mut mentioned: std::collections::HashSet<Symbol> = Default::default();
-                for output in &node.outputs {
-                    if let Ok(fact) = output.fact.to_typed_fact() {
-                        mentioned.extend(fact.shape.iter().flat_map(|d| d.symbols()));
-                        for t in
-                            [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten()
-                        {
-                            tensor_value_symbols(t, &mut mentioned);
-                        }
-                        // uniform_tdim carries symbolic per-element values; it
-                        // is optimization-time metadata today, but scanning it
-                        // costs nothing and keeps the consumer set honest.
-                        // (exotic_fact is opaque and cannot be scanned.)
-                        mentioned.extend(fact.uniform_tdim.iter().flat_map(TDim::symbols));
-                    }
-                }
-                // Deterministic iteration: symbol HashSet order would randomize
-                // which (consumer, definer) pair lands in the deps first, and
-                // with it the plan order across processes.
-                let mut mentioned: Vec<_> = mentioned.into_iter().collect();
-                mentioned.sort_unstable();
-                for sym in mentioned {
-                    let Some(&d) = definer.get(&sym) else { continue };
-                    // symbols defined by model inputs are bound by set_input
-                    // before any evaluation
-                    if d == id || inputs.contains(&d) || !seen_deps.insert((id, d)) {
-                        continue;
-                    }
-                    // Skip pairs already related by tensor edges: a direct
-                    // input edge means the order is already right, and if the
-                    // consumer is a (transitive) ancestor of the definer the
-                    // extra dep would close a cycle.
-                    if node.inputs.iter().any(|i| i.node == d) {
-                        continue;
-                    }
-                    let ancestors = definer_ancestors.entry(d).or_insert_with(|| {
-                        let mut stack: TVec<usize> =
-                            model.nodes[d].inputs.iter().map(|i| i.node).collect();
-                        let mut set: std::collections::HashSet<usize> = Default::default();
-                        while let Some(n) = stack.pop() {
-                            if set.insert(n) {
-                                stack.extend(model.nodes[n].inputs.iter().map(|i| i.node));
-                            }
-                        }
-                        set
-                    });
-                    if !ancestors.contains(&id) {
-                        // deps pairs are (consumer, precursor)
-                        all_deps.push((id, d));
-                    }
-                }
-            }
-        }
+        all_deps.extend(Self::symbol_deps(model.nodes(), &inputs, &outputs_nodes, deps)?);
         let mut order = if options.skip_order_opt_ram {
             eval_order_for_nodes(model.nodes(), &inputs, &outputs_nodes, &all_deps)?
         } else {
@@ -1180,6 +1172,101 @@ mod test {
             .run(tvec!(tensor0(4i64).into_tvalue()))?;
         assert_eq!(*found[0], tensor1(&[4i64]));
         assert_eq!(*found[1], tensor1(&[0i64, 1, 2, 3]));
+        Ok(())
+    }
+}
+
+mod symbol_deps_tests {
+    use super::*;
+    use crate::ops::array::MultiBroadcastTo;
+    use crate::ops::array::Range;
+
+    fn symbol_deps_of(model: &TypedModel) -> Vec<(usize, usize)> {
+        let inputs = model.input_outlets().unwrap().iter().map(|n| n.node).collect::<Vec<_>>();
+        let outputs = model.output_outlets().unwrap().iter().map(|n| n.node).collect::<Vec<_>>();
+        SimplePlan::<TypedFact, Box<dyn TypedOp>>::symbol_deps(
+            model.nodes(),
+            &inputs,
+            &outputs,
+            &[],
+        )
+        .unwrap()
+    }
+
+    fn range_over(model: &mut TypedModel, sym: &str) -> TractResult<TVec<OutletId>> {
+        let r = model.symbols.sym(sym).to_dim();
+        let start = model.add_const("start", tensor0(0i64))?;
+        let step = model.add_const("step", tensor0(1i64))?;
+        let limit = model.add_source("limit", i64::datum_type().scalar_fact())?;
+        model.wire_node("range", Range::new(r), &[start, limit, step])
+    }
+
+    #[test]
+    fn no_edge_consumer_gets_a_dep() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let range = range_over(&mut model, "r")?[0];
+        let zero = model.add_const("zero", tensor0(0i64))?;
+        let r = model.symbols.sym("r").to_dim();
+        let expand = model.wire_node(
+            "expand",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r, 2usize.to_dim()])),
+            &[zero],
+        )?[0];
+        model.select_output_outlets(&[expand, range])?;
+        // (consumer, precursor): expand waits for the Range
+        assert_eq!(symbol_deps_of(&model), vec![(expand.node, range.node)]);
+        Ok(())
+    }
+
+    #[test]
+    fn input_definers_yield_no_dep() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("s").to_dim();
+        let len = model.add_source("len", i64::datum_type().fact([s.clone()]))?;
+        let zero = model.add_const("zero", tensor0(0i64))?;
+        let expand = model.wire_node(
+            "expand",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![s, 2usize.to_dim()])),
+            &[zero],
+        )?[0];
+        model.select_output_outlets(&[expand, len])?;
+        assert!(symbol_deps_of(&model).is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_ancestor_consumer_gets_no_dep() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let range = range_over(&mut model, "r")?[0];
+        // a consumer downstream of the definer: the tensor edge already
+        // orders them
+        let casted =
+            model.wire_node("downstream", crate::ops::cast::cast(f32::datum_type()), &[range])?;
+        model.select_output_outlets(&[casted[0]])?;
+        assert!(symbol_deps_of(&model).is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn dead_nodes_contribute_nothing() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let range = range_over(&mut model, "r")?[0];
+        let zero = model.add_const("zero", tensor0(0i64))?;
+        let r = model.symbols.sym("r").to_dim();
+        let expand = model.wire_node(
+            "expand",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r.clone(), 2usize.to_dim()])),
+            &[zero],
+        )?[0];
+        model.select_output_outlets(&[expand, range])?;
+        let before = symbol_deps_of(&model);
+        // wire a dead consumer of the same symbol, not reachable from outputs
+        model.wire_node(
+            "dead",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![r, 3usize.to_dim()])),
+            &[zero],
+        )?;
+        assert_eq!(symbol_deps_of(&model), before);
         Ok(())
     }
 }
