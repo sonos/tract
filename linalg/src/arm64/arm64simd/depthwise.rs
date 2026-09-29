@@ -227,7 +227,92 @@ bail_stub!(aarch64; pub unsafe fn depthwise_w_f32(
     *const f32, *mut f32, &[f32], &[isize], f32, usize, isize
 ));
 
+/// Depthwise convolution with the channel as the contiguous dim: `len` output positions of
+/// `channels` channels each. Point `i`, channel `c`, is `bias[c]` plus every
+/// `kernel[tap_indices[t] * k_stride + c] * input[i * in_stride + offsets[t] + c]`.
+///
+/// `k_stride` is the kernel's per-tap stride, at least `channels`: a caller can run a block of
+/// channels by offsetting every pointer to the block's first channel. `tap_indices` and
+/// `offsets` hold one kernel tap each and must be the same length. `in_stride`
+/// and `out_stride` are the input and output steps one output position costs, in elements; both
+/// step over whole channel vectors, so every tap stays contiguous in `c`.
+///
+/// # Safety
+/// `input.offset(i * in_stride + offsets[t] + c)` and `kernel.add(tap_indices[t] * k_stride + c)`
+/// must be readable for every tap, every `i` below `len` and every `c` below `channels`;
+/// `channels` values must be readable from `bias`, and `channels` values writable from
+/// `output.offset(i * out_stride)` for every `i` below `len`.
+#[cfg(target_arch = "aarch64")]
+#[allow(clippy::too_many_arguments)]
+pub unsafe fn depthwise_c_f32(
+    input: *const f32,
+    output: *mut f32,
+    kernel: *const f32,
+    tap_indices: &[usize],
+    offsets: &[isize],
+    bias: *const f32,
+    channels: usize,
+    k_stride: usize,
+    len: usize,
+    in_stride: isize,
+    out_stride: isize,
+) {
+    unsafe {
+        use std::arch::aarch64::*;
+        for i in 0..len {
+            let iptr = input.offset(i as isize * in_stride);
+            let optr = output.offset(i as isize * out_stride);
+            let mut c = 0usize;
+            while c + 16 <= channels {
+                let mut acc0 = vld1q_f32(bias.add(c));
+                let mut acc1 = vld1q_f32(bias.add(c + 4));
+                let mut acc2 = vld1q_f32(bias.add(c + 8));
+                let mut acc3 = vld1q_f32(bias.add(c + 12));
+                for (&kix, &off) in tap_indices.iter().zip(offsets) {
+                    let kt = kernel.add(kix * k_stride + c);
+                    let xt = iptr.offset(off).add(c);
+                    acc0 = vfmaq_f32(acc0, vld1q_f32(xt), vld1q_f32(kt));
+                    acc1 = vfmaq_f32(acc1, vld1q_f32(xt.add(4)), vld1q_f32(kt.add(4)));
+                    acc2 = vfmaq_f32(acc2, vld1q_f32(xt.add(8)), vld1q_f32(kt.add(8)));
+                    acc3 = vfmaq_f32(acc3, vld1q_f32(xt.add(12)), vld1q_f32(kt.add(12)));
+                }
+                vst1q_f32(optr.add(c), acc0);
+                vst1q_f32(optr.add(c + 4), acc1);
+                vst1q_f32(optr.add(c + 8), acc2);
+                vst1q_f32(optr.add(c + 12), acc3);
+                c += 16;
+            }
+            while c + 4 <= channels {
+                let mut acc = vld1q_f32(bias.add(c));
+                for (&kix, &off) in tap_indices.iter().zip(offsets) {
+                    acc = vfmaq_f32(
+                        acc,
+                        vld1q_f32(iptr.offset(off).add(c)),
+                        vld1q_f32(kernel.add(kix * k_stride + c)),
+                    );
+                }
+                vst1q_f32(optr.add(c), acc);
+                c += 4;
+            }
+            while c < channels {
+                let mut sum = *bias.add(c);
+                for (&kix, &off) in tap_indices.iter().zip(offsets) {
+                    sum += *kernel.add(kix * k_stride + c) * *iptr.offset(off).add(c);
+                }
+                *optr.add(c) = sum;
+                c += 1;
+            }
+        }
+    }
+}
+
+bail_stub!(aarch64; pub unsafe fn depthwise_c_f32(
+    *const f32, *mut f32, *const f32, &[usize], &[isize], *const f32, usize, usize, usize, isize,
+    isize
+));
+
 submit_routine!(aarch64; DepthwiseWF32, DepthwiseW, "arm64simd_depthwise_w_f32", depthwise_w_f32);
+submit_routine!(aarch64; DepthwiseCF32, DepthwiseC, "arm64simd_depthwise_c_f32", depthwise_c_f32);
 
 #[cfg(all(test, target_arch = "aarch64"))]
 mod tests {
@@ -285,6 +370,89 @@ mod tests {
             for in_stride in [1isize, 2, 3, 4] {
                 for len in [1usize, 3, 4, 7, 8, 9, 15, 16, 33, 481] {
                     compare(taps, len, in_stride);
+                }
+            }
+        }
+    }
+
+    fn compare_c(
+        taps: usize,
+        channels: usize,
+        block: std::ops::Range<usize>,
+        len: usize,
+        s: isize,
+    ) {
+        let kernel: Vec<f32> = (0..taps * channels).map(|i| (i as f32 * 0.7).sin()).collect();
+        let tap_indices: Vec<usize> = (0..taps).rev().collect();
+        let offsets: Vec<isize> =
+            (0..taps as isize).map(|t| (t - taps as isize / 2) * channels as isize).collect();
+        let bias: Vec<f32> = (0..channels).map(|i| i as f32 * 0.05 - 0.1).collect();
+        let in_stride = channels as isize * s;
+        let out_stride = channels as isize;
+        let center = (taps / 2) * channels;
+        let input: Vec<f32> =
+            (0..center + (len - 1) * in_stride as usize + (taps - taps / 2) * channels)
+                .map(|i| (i as f32 * 0.11).cos())
+                .collect();
+        let out_len = (len - 1) * out_stride as usize + channels;
+        let mut want = vec![0f32; out_len];
+        for i in 0..len {
+            for c in 0..channels {
+                let mut sum = bias[c];
+                for (t, &kix) in tap_indices.iter().enumerate() {
+                    sum += kernel[kix * channels + c]
+                        * input
+                            [(center as isize + i as isize * in_stride + offsets[t]) as usize + c];
+                }
+                want[i * out_stride as usize + c] = sum;
+            }
+        }
+        let mut got = want.clone();
+        for i in 0..len {
+            got[i * out_stride as usize..][block.clone()].fill(f32::NAN);
+        }
+        unsafe {
+            depthwise_c_f32(
+                input.as_ptr().add(center + block.start),
+                got.as_mut_ptr().add(block.start),
+                kernel.as_ptr().add(block.start),
+                &tap_indices,
+                &offsets,
+                bias.as_ptr().add(block.start),
+                block.len(),
+                channels,
+                len,
+                in_stride,
+                out_stride,
+            )
+        };
+        for (i, (g, w)) in got.iter().zip(&want).enumerate() {
+            assert!(
+                (g - w).abs() < 1e-5,
+                "taps={taps} ch={channels} len={len} s={s} at {i}: got {g}, want {w}"
+            );
+        }
+    }
+
+    #[test]
+    fn depthwise_c_matches_reference() {
+        for taps in [1usize, 2, 3, 4, 5, 9] {
+            for channels in [1usize, 3, 4, 7, 8, 15, 16, 17, 64] {
+                for len in [1usize, 5, 8] {
+                    for s in [1isize, 2, 3] {
+                        compare_c(taps, channels, 0..channels, len, s);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn depthwise_c_block_matches_reference() {
+        for taps in [1usize, 3, 9] {
+            for block in [0..16, 16..32, 16..48, 32..64, 5..27, 63..64] {
+                for len in [1usize, 5] {
+                    compare_c(taps, 64, block.clone(), len, 1);
                 }
             }
         }

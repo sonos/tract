@@ -44,6 +44,7 @@ paranoid_assertions = []
 
 [dev-dependencies]
 env_logger.workspace = true
+tract-linalg = { workspace = true, features = [ "multithread-mm" ] }
 lazy_static.workspace = true
 approx.workspace = true
 
