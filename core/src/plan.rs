@@ -208,6 +208,9 @@ where
     symbols: Vec<Symbol>,
     executor: Option<Executor>,
     turn_handler: Option<Arc<dyn TurnStateHandler + 'static>>,
+    /// The `Const` nodes and their values, seeded into the value table of every fresh
+    /// session's first turn.
+    const_values: Vec<(usize, TValue)>,
 }
 
 impl<F, O> SimplePlan<F, O>
@@ -407,6 +410,11 @@ where
                 }
             }
         }
+        let const_values = model
+            .nodes
+            .iter()
+            .filter_map(|n| n.op_as::<Const>().map(|k| (n.id, k.val().clone().into_tvalue())))
+            .collect();
         Ok(SimplePlan {
             model,
             order,
@@ -416,6 +424,7 @@ where
             symbols: symbols.into_iter().collect(),
             executor: options.executor.clone(),
             turn_handler: None,
+            const_values,
         })
     }
 
@@ -508,10 +517,8 @@ where
     fn ready_turn(&mut self) {
         if self.turn_state.values.len() == 0 {
             self.turn_state.values = vec![None; self.plan.model.nodes().len()];
-            for node in &self.plan.model.nodes {
-                if let Some(k) = node.op_as::<Const>() {
-                    self.turn_state.values[node.id] = Some(tvec!(k.val().clone().into_tvalue()));
-                }
+            for (id, value) in &self.plan.const_values {
+                self.turn_state.values[*id] = Some(tvec!(value.clone()));
             }
         }
     }
