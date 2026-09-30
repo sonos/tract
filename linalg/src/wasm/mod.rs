@@ -26,6 +26,7 @@ mod mmm_f32_gemm;
 mod mmm_f32_gemv;
 mod mmm_i32;
 mod reduce;
+mod softmax_rows;
 
 pub use act::*;
 pub use act_f32::*;
@@ -36,6 +37,7 @@ pub use ln::*;
 pub use mmm_f32_gemm::*;
 pub use mmm_f32_gemv::*;
 pub use mmm_i32::*;
+pub use softmax_rows::*;
 
 /// Every kernel this tier names must be one written for wasm: its answer is held to the suitable
 /// list, and a generic kernel counts as no opinion, leaving the N>1 rule to pick max(nr*mr) among
@@ -84,9 +86,9 @@ inventory::submit! {
 pub fn isa_set() -> crate::isa::IsaSet {
     use crate::isa::{Isa, IsaSet};
     let mut set = IsaSet::of_arch(crate::isa::Arch::Wasm32Simd128).with(Isa::Wasm32Simd128);
-    // The depthwise and by-scalar kernels are reached only through their registry entries, and
-    // wasm-ld drops an object nothing references, entries included; every registry query passes
-    // through here.
+    // The depthwise, by-scalar and row softmax kernels are reached only through their registry
+    // entries, and wasm-ld drops an object nothing references, entries included; every registry
+    // query passes through here.
     #[cfg(target_feature = "simd128")]
     std::hint::black_box((
         depthwise::depthwise_w_f32 as *const (),
@@ -95,6 +97,7 @@ pub fn isa_set() -> crate::isa::IsaSet {
             as *const (),
         <wasm_min_by_scalar_f32_16n as crate::frame::element_wise::ElementWiseKer<f32, f32>>::run
             as *const (),
+        softmax_rows::softmax_rows_f32 as *const (),
     ));
     if cfg!(target_feature = "relaxed-simd") {
         set = set.with(Isa::Wasm32RelaxedSimd);
