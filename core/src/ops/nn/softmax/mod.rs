@@ -156,7 +156,18 @@ impl Softmax {
                 let mut output_plain = output.try_as_plain_ram_mut()?;
                 // Dtype-concrete `as_slice_mut` (checked, no transmute) since T is
                 // f32/f16 here; keeps this core path free of new `unsafe`.
-                if T::datum_type() == f32::datum_type() {
+                if T::datum_type() == f32::datum_type()
+                    && kind == SoftmaxKind::Softmax
+                    && row_len.is_multiple_of(4)
+                    && let Some(rows_kernel) = tract_linalg::routines::softmax_rows_f32()
+                {
+                    let data = output_plain.as_slice_mut::<f32>()?;
+                    let total = data.len();
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        rows_kernel(chunk, row_len);
+                        Ok(())
+                    })?;
+                } else if T::datum_type() == f32::datum_type() {
                     let data = output_plain.as_slice_mut::<f32>()?;
                     let total = data.len();
                     let kernels = F32Kernels::new()?;
