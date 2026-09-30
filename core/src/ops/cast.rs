@@ -67,6 +67,21 @@ impl TypedOp for Cast {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         let mut fact = self.to.fact(inputs[0].shape.clone());
         fact.uniform_tdim = inputs[0].uniform_tdim.clone();
+        if fact.uniform_tdim.is_none() {
+            // a symbolic scalar konst or uniform keeps its value as metadata:
+            // the concrete cast cannot evaluate it, but downstream consumers
+            // (a Range limit, say) can still reason about it
+            for t in
+                [inputs[0].uniform.as_deref(), inputs[0].konst.as_deref()].into_iter().flatten()
+            {
+                if t.datum_type() == TDim::datum_type() && t.volume() == 1 {
+                    fact.uniform_tdim = Some(
+                        t.try_as_plain_ram()?.to_scalar::<TDim>()?.eval(&SymbolValues::default()),
+                    );
+                    break;
+                }
+            }
+        }
         if let Some(u) = &inputs[0].uniform
             && let Ok(cast_u) = u.cast_to_dt(self.to)
         {
