@@ -326,28 +326,20 @@ mod fastenhancer_gate {
     }
 
     #[test]
-    fn gate_picks_4x16_only_on_multiples_of_16() {
-        for (m, k, n) in [(64, 192, 64), (64, 128, 64), (64, 64, 32), (64, 64, 48)] {
-            assert_eq!(
-                pick(m, k, Some(n)),
-                "wasm_f32_4x16",
-                "m={m} k={k} n={n}: n fills the 16-wide tile, so the wide kernel should win"
-            );
+    fn gemm_picks_8x8_at_every_n() {
+        for (m, k, n) in [
+            (64, 192, 64),
+            (64, 128, 64),
+            (64, 64, 32),
+            (64, 64, 48),
+            (64, 64, 8),
+            (64, 64, 12),
+            (64, 64, 24),
+            (36, 36, 36),
+            (768, 256, 100),
+        ] {
+            assert_eq!(pick(m, k, Some(n)), "wasm_f32_8x8", "m={m} k={k} n={n}");
         }
-        for (m, k, n) in [(64, 64, 8), (64, 64, 12), (64, 64, 24), (36, 36, 36)] {
-            assert_eq!(
-                pick(m, k, Some(n)),
-                "wasm_f32_8x8",
-                "m={m} k={k} n={n}: a 16-wide tile wastes columns here — n=8 runs at 0.58x, \
-                 and n=24 pays that on its second tile"
-            );
-        }
-    }
-
-    /// An n unknown at optimisation time stays on 8x8: the gate cannot know the
-    /// tile would be filled, and guessing wrong costs 0.58x at n=8.
-    #[test]
-    fn unknown_n_stays_on_8x8() {
         assert_eq!(pick(64, 64, None), "wasm_f32_8x8");
     }
 }

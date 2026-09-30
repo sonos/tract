@@ -13,6 +13,10 @@ pub struct Topk {
 }
 
 impl Op for Topk {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "Topk".into()
     }

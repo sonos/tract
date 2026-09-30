@@ -13,6 +13,10 @@ impl DynSlice {
 }
 
 impl Op for DynSlice {
+    fn mints_runtime_symbols(&self) -> bool {
+        true
+    }
+
     fn name(&self) -> StaticName {
         "DynSlice".into()
     }

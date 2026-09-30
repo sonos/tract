@@ -64,12 +64,10 @@ impl TypedOp for MultiBroadcastTo {
         _io: InOut,
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
-        // Only propagate axis changes that touch passthrough axes — those
-        // where the input and output shapes agree. Touching a broadcast
-        // axis (input=1, output=N) would make the input and output rank
-        // diverge through the change and break the broadcast relationship,
-        // and propagating Rm of a non-trivial axis into a Source produces
-        // the "Removing non-trivial axis" hard error from change_shape.
+        // The output takes the change: the broadcast absorbs it in the target
+        // shape. The input takes it only when every touched axis has the same
+        // dim in input and target, which is a real correspondence only at
+        // equal ranks (right-aligned broadcasting pairs by index then).
         let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
         let canonical = change.canonical();
         let touched: TVec<usize> = match canonical.as_ref() {
@@ -80,23 +78,53 @@ impl TypedOp for MultiBroadcastTo {
             }
             _ => return Ok(None),
         };
-        for &ix in &touched {
-            if ix < self.shape.rank()
-                && ix < input_shape.rank()
-                && input_shape[ix] != self.shape[ix]
-            {
-                return Ok(None);
-            }
+        let passthrough = touched.iter().all(|&ix| {
+            ix < input_shape.rank() && ix < self.shape.rank() && input_shape[ix] == self.shape[ix]
+        });
+        // A Move must propagate, never absorb: transpose-of-broadcast is not
+        // broadcast-into-transposed-target ([1,7] into a transposed [7,7]
+        // target yields the transposed tensor).
+        if matches!(canonical.as_ref(), AxisOp::Move(..)) && !passthrough {
+            return Ok(None);
         }
 
         let mut shape = self.shape.clone();
         if change.change_shape(&mut shape, false).is_ok() {
-            return Ok(Some(AxisChangeConsequence::new(
-                model,
-                node,
-                Some(Box::new(MultiBroadcastTo { shape })),
-                change,
-            )));
+            let mut wire_changes: TVec<(InOut, AxisOp)> = tvec![(InOut::Out(0), change.clone())];
+            if passthrough {
+                wire_changes.push((InOut::In(0), change.clone()));
+            } else {
+                // Absorbed changes must not re-pair the input's axes. The
+                // input binds to the right-aligned window [offset, offset+r)
+                // of the target; a change inside the window shifts input axes
+                // onto neighbouring target axes (a silent permutation when
+                // adjacent dims are equal, e.g. [5,1] into [5,5,1] with Rm(2)
+                // absorbed), and a change of the dim-1 axes can leave the
+                // input un-broadcastable into the new target ([5,1] into
+                // [9,5,1] must not become [9,5]).
+                let offset = self.shape.rank() as isize - input_shape.rank() as isize;
+                let k = touched[0] as isize - offset;
+                // the window is right-anchored: any rank change moves it, so
+                // only a change at or before its start (k <= 0 for Add, which
+                // shifts every partner uniformly, k < 0 for Rm, which must not
+                // eat a partner) keeps the pairing. Otherwise the displaced
+                // input axes must all be 1.
+                let displaced_all_ones =
+                    (0..k.max(0) as usize).all(|i| input_shape[i] == 1.to_dim());
+                let window_safe = match canonical.as_ref() {
+                    AxisOp::Add(_) => k <= 0,
+                    _ => k < 0,
+                } || displaced_all_ones;
+                let broadcastable = multi_broadcast(&[input_shape, &shape])
+                    .is_ok_and(|b| b.as_slice() == shape.as_ref());
+                if !(window_safe && broadcastable) {
+                    return Ok(None);
+                }
+            }
+            return Ok(Some(AxisChangeConsequence {
+                wire_changes,
+                substitute_op: Some(Box::new(MultiBroadcastTo { shape })),
+            }));
         }
         Ok(None)
     }
@@ -204,7 +232,9 @@ impl TypedOp for MultiBroadcastTo {
 mod tests {
     use super::*;
     use crate::ops::change_axes::AxisOp;
+    use crate::ops::change_axes::{AxisChange, InOut};
     use crate::ops::logic::And;
+    use proptest::prelude::*;
 
     /// `Broadcast → Move` with the broadcast feeding a SINGLE successor.
     /// Pre-existing path: the swap rewrite kicks in.
@@ -307,5 +337,273 @@ mod tests {
             tvec![1.to_dim(), 512.to_dim(), 16.to_dim(), 1.to_dim()]
         );
         Ok(())
+    }
+
+    /// An axis change touching an axis the input does not have must be
+    /// absorbed in the target shape, not propagated to the input wire: a
+    /// rank-1 [1] input cannot express it.
+    #[test]
+    fn broadcast_axis_change_absorbed_not_propagated_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let c = model.add_const("c", tensor1(&[0f32]))?;
+        let s = model.symbols.sym("S");
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![s.to_dim(), 1usize.to_dim()])),
+            &[c],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Add(2))?
+            .context("expected the broadcast to absorb the change")?;
+        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Add(2))]);
+        Ok(())
+    }
+
+    /// Passthrough axis changes (input and output agree on the axis) still
+    /// reach the input.
+    #[test]
+    fn passthrough_axis_change_propagates_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let src = model.add_source("src", f32::fact([s.to_dim(), 1usize.into()]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![s.to_dim(), 1usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Add(1))?
+            .context("expected propagation")?;
+        assert_eq!(
+            consequence.wire_changes,
+            tvec![(InOut::Out(0), AxisOp::Add(1)), (InOut::In(0), AxisOp::Add(1))]
+        );
+        Ok(())
+    }
+
+    /// End-to-end through the ChangeAxes search: an axis change crossing a
+    /// broadcast fed by a volume-1 constant must produce an applicable patch
+    /// without any const rewiring.
+    #[test]
+    fn axis_change_through_broadcast_with_volume_one_const() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::fact([s.to_dim()]))?;
+        let c = model.add_const("c", tensor1(&[0f32]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                s.to_dim(),
+                1usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[c],
+        )?;
+        let out = model.wire_node("out", AxisOp::Add(0), &[y[0]])?;
+        model.select_output_outlets(&[out[0], definer])?;
+        let change = AxisChange { outlet: out[0], op: AxisOp::Add(3) };
+        let mut explored = Default::default();
+        let (patch, _) =
+            crate::optim::change_axes::change_axes(&model, &change, &[], &[], &mut explored)?
+                .context("axis change through a broadcast should apply")?;
+        patch.apply(&mut model)?;
+        model.compact()?;
+        let found = crate::internal::TypedSimplePlan::new(model)?
+            .run(tvec!(tensor1(&[0f32; 2]).into_tvalue()))?;
+        assert_eq!(found[0].shape(), &[1, 2, 1, 1, 1]);
+        Ok(())
+    }
+
+    /// Removing an output axis on which the input is broadcast is absorbed:
+    /// the right-aligned pairing is unaffected.
+    #[test]
+    fn rm_of_broadcast_axis_absorbed() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 7usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                1usize.to_dim(),
+                5usize.to_dim(),
+                7usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Rm(0))?
+            .context("expected the broadcast to absorb the removal")?;
+        assert_eq!(consequence.wire_changes, tvec![(InOut::Out(0), AxisOp::Rm(0))]);
+        let substitute = consequence
+            .substitute_op
+            .as_deref()
+            .and_then(|op| op.as_op().downcast_ref::<MultiBroadcastTo>())
+            .context("expected a MultiBroadcastTo substitute")?;
+        assert_eq!(substitute.shape.to_tvec(), tvec![5.to_dim(), 7.to_dim()]);
+        Ok(())
+    }
+
+    /// A Move touching an axis on which the input is broadcast must block:
+    /// transpose-of-broadcast is not broadcast-into-transposed-target.
+    #[test]
+    fn move_over_broadcast_axis_blocked() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![5usize.to_dim(), 7usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let blocked = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))
+            .map(|r| r.is_none())
+            .unwrap_or(false);
+        assert!(blocked, "expected the broadcast to block the move");
+        Ok(())
+    }
+
+    /// A passthrough Move still propagates to the input.
+    #[test]
+    fn passthrough_move_propagates_to_input() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 7usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![5usize.to_dim(), 7usize.to_dim()])),
+            &[src],
+        )?[0];
+        let node = model.node(y.node);
+        let consequence = node
+            .op
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))?
+            .context("expected propagation")?;
+        assert_eq!(
+            consequence.wire_changes,
+            tvec![(InOut::Out(0), AxisOp::Move(0, 1)), (InOut::In(0), AxisOp::Move(0, 1))]
+        );
+        Ok(())
+    }
+
+    /// The ChangeAxes pass proactively proposes removing any dim-1 output
+    /// axis; the absorb must keep the input broadcastable into the new target
+    /// ([5,1] into [9,5,1] must not become [9,5]).
+    #[test]
+    fn absorbed_change_keeps_input_broadcastable() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                9usize.to_dim(),
+                5usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let squeezed = model.wire_node("squeezed", AxisOp::Rm(2), &[y])?[0];
+        model.select_output_outlets(&[squeezed])?;
+        let optimized = model.into_optimized()?;
+        let found = crate::internal::TypedSimplePlan::new(optimized)?
+            .run(tvec!(tensor2(&[[0f32; 1]; 5]).into_tvalue()))?;
+        assert_eq!(found[0].shape(), &[9, 5]);
+        Ok(())
+    }
+
+    /// An absorbed change falling inside the input-paired window would
+    /// re-pair the input's axes onto neighbouring target axes: with adjacent
+    /// equal dims the result still evaluates, with permuted values. The
+    /// optimized model must keep the unoptimized values.
+    #[test]
+    fn absorbed_change_does_not_repair_input_axes() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
+        let y = model.wire_node(
+            "y",
+            MultiBroadcastTo::new(ShapeFact::from_dims(tvec![
+                5usize.to_dim(),
+                5usize.to_dim(),
+                1usize.to_dim()
+            ])),
+            &[src],
+        )?[0];
+        let squeezed = model.wire_node("squeezed", AxisOp::Rm(2), &[y])?[0];
+        model.select_output_outlets(&[squeezed])?;
+        let input: Vec<f32> = (0..5).map(|i| i as f32).collect();
+        let input = Tensor::from_shape(&[5, 1], &input)?.into_tvalue();
+        let raw =
+            crate::internal::TypedSimplePlan::new(model.clone())?.run(tvec!(input.clone()))?;
+        let optimized = model.into_optimized()?;
+        let optimized_values =
+            crate::internal::TypedSimplePlan::new(optimized)?.run(tvec!(input))?;
+        assert_eq!(*raw[0], *optimized_values[0]);
+        Ok(())
+    }
+
+    proptest! {
+        /// The optimizer must preserve what the unoptimized model computes,
+        /// whatever broadcast target and axis change it picks.
+        #[test]
+        fn prop_axis_changes_preserve_values(
+            input in proptest::collection::vec(1usize..4, 1usize..4),
+            leading in proptest::collection::vec(1usize..4, 0usize..3),
+            bumps in proptest::collection::vec(0usize..4, 0usize..6),
+            selector in 0usize..64,
+            ix in 0usize..8,
+            move_to in 0usize..8,
+        ) {
+            let mut bumps = bumps.into_iter();
+            let mut target: TVec<usize> = leading.clone().into();
+            for dim in &input {
+                let dim = if *dim == 1 { bumps.next().unwrap_or(0).max(1) } else { *dim };
+                target.push(dim);
+            }
+            let op = match selector % 3 {
+                0 => AxisOp::Add(ix.min(target.len())),
+                1 => {
+                    if ix < target.len() && target[ix] == 1 {
+                        AxisOp::Rm(ix)
+                    } else {
+                        AxisOp::Add(ix.min(target.len()))
+                    }
+                }
+                _ => {
+                    let a = ix.min(target.len().saturating_sub(1));
+                    let b = (move_to.min(target.len().saturating_sub(1)), a);
+                    let b = if b.0 == a { a.saturating_sub(1) } else { b.0 };
+                    AxisOp::Move(a, b)
+                }
+            };
+            let mut model = TypedModel::default();
+            let src = model.add_source("src", i32::datum_type().fact(&*input)).unwrap();
+            let bcast = model.wire_node(
+                "bcast",
+                MultiBroadcastTo::new(ShapeFact::from_dims(
+                    target.iter().map(|d| d.to_dim()).collect::<TVec<_>>(),
+                )),
+                &[src],
+            ).unwrap()[0];
+            let out = model.wire_node("out", op, &[bcast]).unwrap()[0];
+            model.select_output_outlets(&[out]).unwrap();
+            let volume: usize = input.iter().product();
+            let data: Vec<i32> = (0..volume as i32).collect();
+            let wire = Tensor::from_shape(&input, &data).unwrap().into_tvalue();
+            let raw = crate::internal::TypedSimplePlan::new(model.clone())
+                .unwrap()
+                .run(tvec!(wire.clone()))
+                .unwrap();
+            let optimized = model.into_optimized().unwrap();
+            let optimized_values = crate::internal::TypedSimplePlan::new(optimized)
+                .unwrap()
+                .run(tvec!(wire))
+                .unwrap();
+            prop_assert_eq!(&*raw[0], &*optimized_values[0]);
+        }
     }
 }

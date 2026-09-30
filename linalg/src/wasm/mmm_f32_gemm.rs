@@ -377,38 +377,40 @@ unsafe fn kernel_f32_8x8(mut pnl: *const FusedKerSpec<f32>) -> isize {
                     }
                 }
                 FusedKerSpec::AddMatMul { k, pa, pb, packing: _ } => {
-                    // A: packed [k][MR=8] = each k iter loads 8 row values
+                    // A: packed [k][MR=8], read as 2 v128 and broadcast lane by lane with a
+                    // shuffle; V8 runs 8 scalar loads + splats per k-step markedly slower.
                     // B: packed [k][NR=8] = each k iter loads 8 col values as 2 v128
-                    let a = pa as *const f32;
+                    let a = pa as *const v128;
                     let b = pb as *const v128;
                     for i in 0..k {
-                        let arow = std::slice::from_raw_parts(a.offset(8 * i as isize), 8);
-                        let blo = v128_load(b.offset((2 * i) as isize));
-                        let bhi = v128_load(b.offset((2 * i + 1) as isize));
-                        let s = f32x4_splat(arow[0]);
-                        a0lo = madd_f32x4!(a0lo, s, blo);
-                        a0hi = madd_f32x4!(a0hi, s, bhi);
-                        let s = f32x4_splat(arow[1]);
-                        a1lo = madd_f32x4!(a1lo, s, blo);
-                        a1hi = madd_f32x4!(a1hi, s, bhi);
-                        let s = f32x4_splat(arow[2]);
-                        a2lo = madd_f32x4!(a2lo, s, blo);
-                        a2hi = madd_f32x4!(a2hi, s, bhi);
-                        let s = f32x4_splat(arow[3]);
-                        a3lo = madd_f32x4!(a3lo, s, blo);
-                        a3hi = madd_f32x4!(a3hi, s, bhi);
-                        let s = f32x4_splat(arow[4]);
-                        a4lo = madd_f32x4!(a4lo, s, blo);
-                        a4hi = madd_f32x4!(a4hi, s, bhi);
-                        let s = f32x4_splat(arow[5]);
-                        a5lo = madd_f32x4!(a5lo, s, blo);
-                        a5hi = madd_f32x4!(a5hi, s, bhi);
-                        let s = f32x4_splat(arow[6]);
-                        a6lo = madd_f32x4!(a6lo, s, blo);
-                        a6hi = madd_f32x4!(a6hi, s, bhi);
-                        let s = f32x4_splat(arow[7]);
-                        a7lo = madd_f32x4!(a7lo, s, blo);
-                        a7hi = madd_f32x4!(a7hi, s, bhi);
+                        let alo = v128_load(a.add(2 * i));
+                        let ahi = v128_load(a.add(2 * i + 1));
+                        let blo = v128_load(b.add(2 * i));
+                        let bhi = v128_load(b.add(2 * i + 1));
+                        let s0 = i32x4_shuffle::<0, 0, 0, 0>(alo, alo);
+                        let s1 = i32x4_shuffle::<1, 1, 1, 1>(alo, alo);
+                        let s2 = i32x4_shuffle::<2, 2, 2, 2>(alo, alo);
+                        let s3 = i32x4_shuffle::<3, 3, 3, 3>(alo, alo);
+                        let s4 = i32x4_shuffle::<0, 0, 0, 0>(ahi, ahi);
+                        let s5 = i32x4_shuffle::<1, 1, 1, 1>(ahi, ahi);
+                        let s6 = i32x4_shuffle::<2, 2, 2, 2>(ahi, ahi);
+                        let s7 = i32x4_shuffle::<3, 3, 3, 3>(ahi, ahi);
+                        a0lo = madd_f32x4!(a0lo, s0, blo);
+                        a0hi = madd_f32x4!(a0hi, s0, bhi);
+                        a1lo = madd_f32x4!(a1lo, s1, blo);
+                        a1hi = madd_f32x4!(a1hi, s1, bhi);
+                        a2lo = madd_f32x4!(a2lo, s2, blo);
+                        a2hi = madd_f32x4!(a2hi, s2, bhi);
+                        a3lo = madd_f32x4!(a3lo, s3, blo);
+                        a3hi = madd_f32x4!(a3hi, s3, bhi);
+                        a4lo = madd_f32x4!(a4lo, s4, blo);
+                        a4hi = madd_f32x4!(a4hi, s4, bhi);
+                        a5lo = madd_f32x4!(a5lo, s5, blo);
+                        a5hi = madd_f32x4!(a5hi, s5, bhi);
+                        a6lo = madd_f32x4!(a6lo, s6, blo);
+                        a6hi = madd_f32x4!(a6hi, s6, bhi);
+                        a7lo = madd_f32x4!(a7lo, s7, blo);
+                        a7hi = madd_f32x4!(a7hi, s7, bhi);
                     }
                 }
             }
