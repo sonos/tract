@@ -305,6 +305,19 @@ where
         // Inert on InferenceModel: the hir wrappers do not override
         // mints_runtime_symbols, so the definer map stays empty.
         let mut definer: std::collections::HashMap<Symbol, usize> = Default::default();
+        // Model inputs claim their symbols first: they may sit late in the
+        // dataflow order (an output-only definer, say), and letting a marked
+        // downstream op claim such a symbol instead would derive deps that
+        // order the input after that op.
+        for &id in inputs {
+            for output in &nodes[id].outputs {
+                if let Ok(fact) = output.fact.to_typed_fact() {
+                    for sym in fact.shape.iter().flat_map(|d| d.symbols()) {
+                        definer.entry(sym).or_insert(id);
+                    }
+                }
+            }
+        }
         for &id in &base_order {
             let node = &nodes[id];
             if !node.op.as_ref().mints_runtime_symbols() {
@@ -1268,6 +1281,31 @@ mod symbol_deps_tests {
             &[zero],
         )?;
         assert_eq!(symbol_deps_of(&model), before);
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod late_input_definer_tests {
+    use super::*;
+    use crate::ops::array::Range;
+
+    // An input source mentioning a symbol that a marked op (a Range with that
+    // symbol as its length) also outputs: the input must stay the definer
+    // even though it sits late in the dataflow order, or the derived deps
+    // order the input after the Range and the RAM-optimized ordering trips
+    // its revisit assertion.
+    #[test]
+    fn late_input_definer_wins() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let definer = model.add_source("definer", f32::datum_type().fact([s.to_dim()]))?;
+        let start = model.add_const("start", tensor0(TDim::Val(0)))?;
+        let step = model.add_const("step", tensor0(TDim::Val(1)))?;
+        let end = model.add_const("end", tensor0(TDim::Sym(s.clone())))?;
+        let range = model.wire_node("range", Range::new(s.to_dim()), &[start, end, step])?;
+        model.select_output_outlets(&[range[0], definer])?;
+        crate::internal::TypedSimplePlan::new(model)?;
         Ok(())
     }
 }
