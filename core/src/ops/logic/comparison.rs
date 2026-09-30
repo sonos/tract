@@ -225,8 +225,7 @@ pub fn comp_gte() -> Box<dyn BinMiniOp> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::internal::*;
-    #[allow(unused_imports)]
+
     // A dynamic Range output (i64) compared against a TDim konst must evaluate
     // through the symbolic path (the i64 side is cast up), not error on the
     // mixed datum types.
