@@ -74,8 +74,10 @@ impl Expansion for Range {
         let start = scalar_tdim(model.outlet_fact(inputs[0])?);
         let step = scalar_tdim(model.outlet_fact(inputs[2])?);
         let len = match (limit, start, step) {
-            (Some(limit), Some(start), Some(step)) => {
-                (limit - start).divceil(step.as_i64().unwrap_or(1).max(1) as _)
+            // only a strictly positive integer step keeps the symbolic length
+            // exact; anything else falls back to a fresh symbol
+            (Some(limit), Some(start), Some(step)) if step.as_i64().is_some_and(|s| s > 0) => {
+                (limit - start).divceil(step.as_i64().unwrap() as usize)
             }
             _ => model.symbols.new_with_prefix("range").into(),
         };

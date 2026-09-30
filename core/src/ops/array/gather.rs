@@ -223,18 +223,18 @@ impl TypedOp for Gather {
                 .fact(&*self.compute_output_shape(&inputs[0].shape, &inputs[1].shape)?);
             // a symbolic-dim konst gathered by konst indices stays a konst,
             // so the symbolic values keep flowing (through Cast, down to
-            // things like a Range limit)
+            // things like a Range limit); a failed fold just leaves the
+            // fact as it was
             if inputs[0].datum_type == TDim::datum_type()
                 && let (Some(data), Some(indices)) = (&inputs[0].konst, &inputs[1].konst)
-            {
-                let out = EvalOp::eval(
+                && let Ok(out) = EvalOp::eval(
                     self,
                     &EvalContext::out_of_plan(),
                     tvec!(data.clone().into_tvalue(), indices.clone().into_tvalue()),
-                )?;
-                if let Some(t) = out.into_iter().next() {
-                    fact.konst = Some(t.into_tensor().into_arc_tensor());
-                }
+                )
+                && let Some(t) = out.into_iter().next()
+            {
+                fact.konst = Some(t.into_tensor().into_arc_tensor());
             }
             Ok(tvec!(fact))
         }
