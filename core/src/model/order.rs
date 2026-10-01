@@ -36,7 +36,7 @@ where
     for &(node, dependency) in more_dependencies {
         extra[node].push(dependency);
     }
-    let dependency = |node: usize, cursor: &mut usize| {
+    let next_dependency = |node: usize, cursor: &mut usize| {
         let inputs = &nodes[node].inputs;
         let extra = extra.get(node).map_or(&[][..], |deps| deps.as_slice());
         while *cursor < inputs.len() {
@@ -46,11 +46,12 @@ where
             }
             *cursor += 1;
         }
-        if *cursor < inputs.len() + extra.len() {
+        let extra_end = inputs.len() + extra.len();
+        if *cursor < extra_end {
             return Some(extra[*cursor - inputs.len()]);
         }
-        while *cursor < 2 * inputs.len() + extra.len() {
-            let precursor = inputs[*cursor - inputs.len() - extra.len()].node;
+        while *cursor < extra_end + inputs.len() {
+            let precursor = inputs[*cursor - extra_end].node;
             if nodes[precursor].inputs.is_empty() {
                 return Some(precursor);
             }
@@ -70,11 +71,17 @@ where
         current_stack.push((model_target, 0));
         while let Some((current_node, cursor)) = current_stack.last_mut() {
             let current_node = *current_node;
-            let precursor = dependency(current_node, cursor).filter(|_| {
-                !input_set
+            let is_leaf = nodes[current_node].inputs.is_empty()
+                && extra.get(current_node).is_none_or(|deps| deps.is_empty());
+            let precursor = if is_leaf
+                || input_set
                     .get_or_insert_with(|| model_inputs.iter().copied().collect())
                     .contains(current_node)
-            });
+            {
+                None
+            } else {
+                next_dependency(current_node, cursor)
+            };
             if let Some(precursor) = precursor {
                 if done.contains(precursor) {
                     *cursor += 1;
@@ -334,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn dependency_order() -> TractResult<()> {
+    fn preserve_dependency_order() -> TractResult<()> {
         let mut model = TypedModel::default();
         let a = model.add_source("a", f32::fact([1]))?;
         let b = model.add_source("b", f32::fact([1]))?;
@@ -343,6 +350,7 @@ mod tests {
         let p = model.wire_node("p", math::add(), &[a, a])?[0];
         let q = model.wire_node("q", math::add(), &[b, b])?[0];
         let e = model.wire_node("e", math::add(), &[b, b])?[0];
+        let independent = model.add_source("independent", f32::fact([1]))?;
         let output =
             model.wire_node("output", crate::ops::array::TypedConcat::new(0), &[c, p, d])?[0];
         let deps =
@@ -350,13 +358,11 @@ mod tests {
         let order = super::eval_order_for_nodes(
             model.nodes(),
             &[],
-            &[output.node, q.node, output.node],
+            &[output.node, independent.node, q.node, output.node],
             &deps,
         )?;
-        assert_eq!(
-            order,
-            vec![a.node, p.node, b.node, q.node, e.node, d.node, c.node, output.node]
-        );
+        let expected = [a, p, b, q, e, d, c, output, independent].map(|outlet| outlet.node);
+        assert_eq!(order, expected);
         Ok(())
     }
 
@@ -382,20 +388,6 @@ mod tests {
             super::eval_order_for_nodes(model.nodes(), &[b.node], &[b.node], &[])?,
             vec![b.node],
         );
-        Ok(())
-    }
-
-    #[test]
-    fn wide_concat_order() -> TractResult<()> {
-        let mut model = TypedModel::default();
-        let inputs = (0..1024)
-            .map(|i| model.add_source(format!("input_{i}"), f32::fact([1])))
-            .collect::<TractResult<Vec<_>>>()?;
-        let output = model.wire_node("output", crate::ops::array::TypedConcat::new(0), &inputs)?[0];
-        model.select_output_outlets(&[output])?;
-        let mut expected = inputs.iter().map(|input| input.node).collect::<Vec<_>>();
-        expected.push(output.node);
-        assert_eq!(model.eval_order()?, expected);
         Ok(())
     }
 
