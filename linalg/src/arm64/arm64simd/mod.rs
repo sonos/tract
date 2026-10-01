@@ -14,6 +14,7 @@ mod panel_extract;
 mod rms_norm;
 mod silu;
 mod silu_fused;
+mod softmax_rows;
 mod sum;
 mod unicast;
 
