@@ -361,6 +361,7 @@ where
             let mut mentioned: Vec<_> = mentioned.into_iter().collect();
             mentioned.sort_unstable();
             for sym in mentioned {
+                if sym.to_string() == "range" {}
                 let Some(&d) = definer.get(&sym) else { continue };
                 // symbols defined by model inputs are bound by set_input
                 if d == id || inputs.contains(&d) || !seen.insert((id, d)) {

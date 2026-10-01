@@ -64,13 +64,6 @@ impl Expansion for Range {
         // then yields the *same* symbol instead of a fresh one, so downstream
         // volume checks match exactly.
         let limit = model.outlet_fact(inputs[1])?.uniform_tdim.clone();
-        eprintln!(
-            "DEBUG Range::wire {} limit_utdim={:?} konst={:?} uniform={:?}",
-            prefix,
-            limit,
-            model.outlet_fact(inputs[1])?.konst.as_ref().map(|t| (t.datum_type(), t.volume())),
-            model.outlet_fact(inputs[1])?.uniform.as_ref().map(|t| (t.datum_type(), t.volume()))
-        );
         let start = scalar_tdim(model.outlet_fact(inputs[0])?);
         let step = scalar_tdim(model.outlet_fact(inputs[2])?);
         let len = match (limit, start, step) {
