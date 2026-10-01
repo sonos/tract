@@ -6,7 +6,7 @@ use tract_core::ops::array::TypedConcat;
 
 fn eval_order(c: &mut Criterion) {
     let mut group = c.benchmark_group("eval_order");
-    for n in [8, 64, 512, 2048] {
+    for n in [8, 2048] {
         let mut model = TypedModel::default();
         let inputs = (0..n)
             .map(|i| model.add_source(format!("input_{i}"), f32::fact([1])).unwrap())

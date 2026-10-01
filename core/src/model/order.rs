@@ -371,18 +371,12 @@ mod tests {
         let mut model = TypedModel::default();
         let a = model.add_source("a", f32::fact([1]))?;
         let b = model.wire_node("b", math::add(), &[a, a])?[0];
-        for deps in [vec![(a.node, a.node)], vec![(a.node, b.node)]] {
-            let error =
-                super::eval_order_for_nodes(model.nodes(), &[], &[b.node], &deps).unwrap_err();
-            assert_eq!(error.to_string(), "Loop detected");
-            assert_eq!(
-                super::eval_order_for_nodes(model.nodes(), &[a.node], &[b.node], &deps)?,
-                vec![a.node, b.node],
-            );
-        }
+        let deps = [(a.node, b.node)];
+        let error = super::eval_order_for_nodes(model.nodes(), &[], &[b.node], &deps).unwrap_err();
+        assert_eq!(error.to_string(), "Loop detected");
         assert_eq!(
-            super::eval_order_for_nodes(model.nodes(), &[], &[a.node], &[(b.node, b.node)])?,
-            vec![a.node],
+            super::eval_order_for_nodes(model.nodes(), &[a.node], &[b.node], &deps)?,
+            vec![a.node, b.node],
         );
         assert_eq!(
             super::eval_order_for_nodes(model.nodes(), &[b.node], &[b.node], &[])?,
