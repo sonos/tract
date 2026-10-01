@@ -8,4 +8,10 @@ fn main() {
         "runtime()",
         "Approximation::Approximate",
     );
+    suite::core_suite().test_runtime(
+        "nnef_core_cycle",
+        "suite::core_suite()",
+        "runtime()",
+        "Approximation::Approximate",
+    );
 }
