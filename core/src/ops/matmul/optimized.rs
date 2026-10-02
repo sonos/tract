@@ -429,7 +429,8 @@ impl Op for OptMatMul {
 /// picked kernel cannot use the one already there -- and `stores` memoizes the
 /// trivial path's output-store descriptors per node, since those depend on that
 /// node's micro-ops. Thread-local, so nothing here has to be `Send`; a session's
-/// entry goes when the plan calls [`EvalOp::drop_session`].
+/// entry goes when the plan calls [`EvalOp::drop_session`], and its kernel buffer is
+/// kept to start the thread's next session, whose first op would otherwise allocate one.
 #[derive(Default)]
 struct MmmScratch {
     space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
@@ -448,6 +449,8 @@ struct StoreMemo {
 thread_local! {
     static MMM_SCRATCH: std::cell::RefCell<HashMap<SessionId, MmmScratch>> =
         std::cell::RefCell::new(HashMap::new());
+    static SPARE_SPACE: std::cell::RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>> =
+        const { std::cell::RefCell::new(None) };
 }
 
 impl EvalOp for OptMatMul {
@@ -455,12 +458,19 @@ impl EvalOp for OptMatMul {
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         MMM_SCRATCH.with_borrow_mut(|per_session| {
-            self.eval_with_scratch(ctx, inputs, per_session.entry(ctx.session).or_default())
+            let scratch = per_session.entry(ctx.session).or_insert_with(|| MmmScratch {
+                space: SPARE_SPACE.take(),
+                stores: HashMap::new(),
+            });
+            self.eval_with_scratch(ctx, inputs, scratch)
         })
     }
 
     fn drop_session(&self, session: SessionId, _node_id: usize) {
-        MMM_SCRATCH.with_borrow_mut(|per_session| per_session.remove(&session));
+        let space = MMM_SCRATCH.with_borrow_mut(|per_session| per_session.remove(&session));
+        if let Some(space) = space.and_then(|scratch| scratch.space) {
+            SPARE_SPACE.set(Some(space));
+        }
     }
 }
 
