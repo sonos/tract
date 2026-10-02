@@ -65,6 +65,13 @@ impl ScatterNd {
             }
             let mut data = data.view_mut();
             for x in indices_into_data {
+                if *x < 0 || *x as usize >= data.shape()[0] {
+                    anyhow::bail!(
+                        "ScatterND index {x} out of bounds for data shape {:?} (indices tensor {:?})",
+                        data.shape(),
+                        indices
+                    );
+                }
                 data.index_axis_inplace(Axis(0), *x as usize);
             }
             data.assign(&updates)
