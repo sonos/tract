@@ -19,6 +19,8 @@ where
 
 /// Find a working evaluation order for a list of nodes.
 /// This algorithm starts from the outputs, so it will only compute what is necessary.
+/// Dependencies keep their input order within three groups: inputs with predecessors,
+/// extra dependencies, then inputs without predecessors.
 pub fn eval_order_for_nodes<F, O>(
     nodes: &[Node<F, O>],
     model_inputs: &[usize],
@@ -29,54 +31,79 @@ where
     F: Fact + Clone + 'static,
     O: Debug + Display + AsRef<dyn Op> + AsMut<dyn Op> + Clone + 'static,
 {
+    let mut extra =
+        if more_dependencies.is_empty() { vec![] } else { vec![TVec::<usize>::new(); nodes.len()] };
+    for &(node, dependency) in more_dependencies {
+        extra[node].push(dependency);
+    }
+    let next_dependency = |node: usize, cursor: &mut usize| {
+        let inputs = &nodes[node].inputs;
+        let extra = extra.get(node).map_or(&[][..], |deps| deps.as_slice());
+        while *cursor < inputs.len() {
+            let precursor = inputs[*cursor].node;
+            if !nodes[precursor].inputs.is_empty() {
+                return Some(precursor);
+            }
+            *cursor += 1;
+        }
+        let extra_end = inputs.len() + extra.len();
+        if *cursor < extra_end {
+            return Some(extra[*cursor - inputs.len()]);
+        }
+        while *cursor < extra_end + inputs.len() {
+            let precursor = inputs[*cursor - extra_end].node;
+            if nodes[precursor].inputs.is_empty() {
+                return Some(precursor);
+            }
+            *cursor += 1;
+        }
+        None
+    };
+    let mut input_set: Option<BitSet> = None;
     let mut done = BitSet::with_capacity(nodes.len());
+    let mut pending = BitSet::with_capacity(nodes.len());
     let mut order: Vec<usize> = vec![];
+    let mut current_stack = vec![];
     for &model_target in model_outputs {
         if done.contains(model_target) {
             continue;
         }
-        let mut current_stack: Vec<(usize, usize)> = vec![(model_target, 0)];
-        let mut pending = BitSet::with_capacity(nodes.len());
-        while let Some((current_node, current_input)) = current_stack.pop() {
-            let deps_from_inputs = nodes[current_node].inputs.len();
-            let all_deps_count =
-                deps_from_inputs + more_dependencies.iter().filter(|a| a.0 == current_node).count();
-            if model_inputs.contains(&current_node) || current_input == all_deps_count {
-                order.push(current_node);
-                done.insert(current_node);
-                pending.remove(current_node);
+        current_stack.push((model_target, 0));
+        while let Some((current_node, cursor)) = current_stack.last_mut() {
+            let current_node = *current_node;
+            let is_leaf = nodes[current_node].inputs.is_empty()
+                && extra.get(current_node).is_none_or(|deps| deps.is_empty());
+            let precursor = if is_leaf
+                || input_set
+                    .get_or_insert_with(|| model_inputs.iter().copied().collect())
+                    .contains(current_node)
+            {
+                None
             } else {
-                let precursor: usize = nodes[current_node]
-                    .inputs
-                    .iter()
-                    .filter(|n| nodes[n.node].inputs.len() > 0)
-                    .map(|n| n.node)
-                    .chain(more_dependencies.iter().filter(|a| a.0 == current_node).map(|n| n.1))
-                    .chain(
-                        nodes[current_node]
-                            .inputs
-                            .iter()
-                            .filter(|n| nodes[n.node].inputs.len() == 0)
-                            .map(|n| n.node),
-                    )
-                    .nth(current_input)
-                    .unwrap();
+                next_dependency(current_node, cursor)
+            };
+            if let Some(precursor) = precursor {
                 if done.contains(precursor) {
-                    current_stack.push((current_node, current_input + 1));
+                    *cursor += 1;
                 } else if pending.contains(precursor) {
                     if log_enabled!(log::Level::Debug) {
                         debug!("Loop detected:");
                         current_stack
                             .iter()
+                            .take(current_stack.len() - 1)
                             .skip_while(|s| s.0 != precursor)
                             .for_each(|n| debug!("  {}", nodes[n.0]));
                     }
                     bail!("Loop detected")
                 } else {
                     pending.insert(precursor);
-                    current_stack.push((current_node, current_input));
                     current_stack.push((precursor, 0));
                 }
+            } else {
+                order.push(current_node);
+                done.insert(current_node);
+                pending.remove(current_node);
+                current_stack.pop();
             }
         }
     }
@@ -311,6 +338,51 @@ mod tests {
             rx.send(model.eval_order_opt_ram()).unwrap();
         });
         assert!(tx.recv_timeout(std::time::Duration::from_secs(1)).unwrap().is_err());
+    }
+
+    #[test]
+    fn preserve_dependency_order() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([1]))?;
+        let b = model.add_source("b", f32::fact([1]))?;
+        let c = model.add_source("c", f32::fact([1]))?;
+        let d = model.add_source("d", f32::fact([1]))?;
+        let p = model.wire_node("p", math::add(), &[a, a])?[0];
+        let q = model.wire_node("q", math::add(), &[b, b])?[0];
+        let e = model.wire_node("e", math::add(), &[b, b])?[0];
+        let independent = model.add_source("independent", f32::fact([1]))?;
+        let output =
+            model.wire_node("output", crate::ops::array::TypedConcat::new(0), &[c, p, d])?[0];
+        let deps =
+            [(output.node, q.node), (c.node, d.node), (output.node, e.node), (output.node, q.node)];
+        let order = super::eval_order_for_nodes(
+            model.nodes(),
+            &[],
+            &[output.node, independent.node, q.node, output.node],
+            &deps,
+        )?;
+        let expected = [a, p, b, q, e, d, c, output, independent].map(|outlet| outlet.node);
+        assert_eq!(order, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn dependency_cycles_and_input_boundary() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([1]))?;
+        let b = model.wire_node("b", math::add(), &[a, a])?[0];
+        let deps = [(a.node, b.node)];
+        let error = super::eval_order_for_nodes(model.nodes(), &[], &[b.node], &deps).unwrap_err();
+        assert_eq!(error.to_string(), "Loop detected");
+        assert_eq!(
+            super::eval_order_for_nodes(model.nodes(), &[a.node], &[b.node], &deps)?,
+            vec![a.node, b.node],
+        );
+        assert_eq!(
+            super::eval_order_for_nodes(model.nodes(), &[b.node], &[b.node], &[])?,
+            vec![b.node],
+        );
+        Ok(())
     }
 
     #[test]
