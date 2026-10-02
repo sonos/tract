@@ -43,6 +43,10 @@ fn main() {
     eprintln!("=== ln/exp: wasm simd128 vs generic scalar ({target}) ===");
     bench_ln_exp::run();
 
+    eprintln!();
+    eprintln!("=== depthwise: wasm simd128 kernel vs the scalar walk ({target}) ===");
+    bench_depthwise::run();
+
     #[cfg(target_feature = "relaxed-simd")]
     {
         eprintln!();
@@ -765,6 +769,91 @@ mod bench_ln_exp {
         bench("frame=256", 256, 5_000);
         bench("frame=512", 512, 3_000);
         bench("frame=1024", 1024, 2_000);
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
+mod bench_depthwise {
+    //! Microbench: the WASM SIMD depthwise kernel against the scalar walk the op
+    //! runs when `depthwise_w_f32` is absent. Contiguous input (in_stride 1), the
+    //! only stride this kernel takes, over the tap counts a 3x3 / 5x5 / 7x7
+    //! convolution reaches it with.
+
+    use std::time::Instant;
+    use tract_linalg::routines::depthwise_w_f32;
+
+    fn scalar_walk(
+        input: &[f32],
+        center: usize,
+        output: &mut [f32],
+        taps: &[f32],
+        offsets: &[isize],
+        bias: f32,
+    ) {
+        for (i, out) in output.iter_mut().enumerate() {
+            let mut sum = bias;
+            for (tap, offset) in taps.iter().zip(offsets) {
+                sum += tap * input[(center as isize + offset + i as isize) as usize];
+            }
+            *out = sum;
+        }
+    }
+
+    fn bench(label: &str, taps_n: usize, len: usize, iters: usize) {
+        let Some(ker) = depthwise_w_f32() else {
+            eprintln!("{label}: no depthwise kernel on this host, skipping");
+            return;
+        };
+        let taps: Vec<f32> = (0..taps_n).map(|t| (t as f32 * 0.7).sin()).collect();
+        let offsets: Vec<isize> = (0..taps_n as isize).map(|t| t - taps_n as isize / 2).collect();
+        let bias = 0.25f32;
+        let center = taps_n;
+        let input: Vec<f32> =
+            (0..center + len - 1 + center).map(|i| (i as f32 * 0.11).cos()).collect();
+        let mut out = vec![0f32; len];
+
+        for _ in 0..20 {
+            unsafe {
+                ker(input.as_ptr().add(center), out.as_mut_ptr(), &taps, &offsets, bias, len, 1)
+            };
+        }
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            unsafe {
+                ker(input.as_ptr().add(center), out.as_mut_ptr(), &taps, &offsets, bias, len, 1)
+            };
+            std::hint::black_box(&out);
+        }
+        let simd = t0.elapsed().as_secs_f64() / iters as f64 * 1e9;
+
+        for _ in 0..20 {
+            scalar_walk(&input, center, &mut out, &taps, &offsets, bias);
+        }
+        let t0 = Instant::now();
+        for _ in 0..iters {
+            scalar_walk(&input, center, &mut out, &taps, &offsets, bias);
+            std::hint::black_box(&out);
+        }
+        let scalar = t0.elapsed().as_secs_f64() / iters as f64 * 1e9;
+
+        let points = len * taps_n;
+        eprintln!(
+            "{label} taps={taps_n} len={len}: scalar={scalar:.0} ns simd={simd:.0} ns \
+             ({:.2}x, {:.2} vs {:.2} GFMA/s)",
+            scalar / simd,
+            points as f64 / scalar,
+            points as f64 / simd,
+        );
+    }
+
+    pub fn run() {
+        for (label, taps_n) in
+            [("1x1", 1usize), ("1x3", 3), ("2x2", 4), ("3x3", 9), ("5x5", 25), ("7x7", 49)]
+        {
+            for len in [100usize, 256, 481, 1024] {
+                bench(label, taps_n, len, 2_000);
+            }
+        }
     }
 }
 

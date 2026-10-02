@@ -2,16 +2,14 @@
 /// the bias plus every `taps[t] * input[offsets[t] + i * in_stride]`.
 ///
 /// `taps` and `offsets` hold one kernel tap each and must be the same length. `in_stride` is the
-/// input step one output point costs, in elements: 1 is a plain load, 2 and 3 are de-interleaved
-/// by `vld2q`/`vld3q`, and anything else stays scalar. Strides 2 and 3 vectorise one to four taps;
-/// stride 1 vectorises any count. The vector loops stop early enough that
-/// no lane reads past `offsets[t] + (len - 1) * in_stride`, so a run ending on the tensor's last
-/// element is safe.
+/// input step one output point costs, in elements: 1 is a plain load and vectorises at any tap
+/// count, anything else stays scalar. The vector loops stop early enough that no lane reads past
+/// `offsets[t] + (len - 1) * in_stride`, so a run ending on the tensor's last element is safe.
 ///
 /// # Safety
 /// `input.offset(offsets[t] + i * in_stride)` must be readable for every tap and every `i` below
 /// `len`, and `len` output points writable from `output`.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 pub unsafe fn depthwise_w_f32(
     input: *const f32,
     output: *mut f32,
@@ -22,23 +20,20 @@ pub unsafe fn depthwise_w_f32(
     in_stride: isize,
 ) {
     unsafe {
-        match taps.len() {
-            1 => vectorised::<1>(input, output, taps, offsets, bias, len, in_stride),
-            2 => vectorised::<2>(input, output, taps, offsets, bias, len, in_stride),
-            3 => vectorised::<3>(input, output, taps, offsets, bias, len, in_stride),
-            4 => vectorised::<4>(input, output, taps, offsets, bias, len, in_stride),
-            _ if in_stride == 1 => contiguous(input, output, taps, offsets, bias, len),
+        match in_stride {
+            1 => contiguous(input, output, taps, offsets, bias, len),
             _ => scalar(input, output, taps, offsets, bias, 0, len, in_stride),
         }
     }
 }
 
-/// The `in_stride == 1` case for more than four taps, with the count taken at runtime.
+/// The `in_stride == 1` case, with the tap count taken at runtime.
 ///
 /// Taps are the outer loop and 32 output points the inner one, so the eight accumulators give the
 /// FMA unit eight independent chains to interleave and each tap's broadcast is paid once per 32
-/// points rather than once per vector.
-#[cfg(target_arch = "aarch64")]
+/// points rather than once per vector. A real 3x3 or 5x5 convolution reaches here with nine or
+/// twenty-five taps, which a compile-time tap count could not serve.
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 unsafe fn contiguous(
     input: *const f32,
     output: *mut f32,
@@ -48,9 +43,8 @@ unsafe fn contiguous(
     len: usize,
 ) {
     unsafe {
-        use std::arch::aarch64::*;
-        let n = taps.len();
-        let biasv = vdupq_n_f32(bias);
+        use std::arch::wasm32::*;
+        let biasv = f32x4_splat(bias);
         let mut i = 0usize;
         while i + 32 <= len {
             let mut a0 = biasv;
@@ -61,146 +55,45 @@ unsafe fn contiguous(
             let mut a5 = biasv;
             let mut a6 = biasv;
             let mut a7 = biasv;
-            for t in 0..n {
-                let kn = vdupq_n_f32(taps[t]);
-                let p = input.offset(offsets[t]).add(i);
-                a0 = vfmaq_f32(a0, vld1q_f32(p), kn);
-                a1 = vfmaq_f32(a1, vld1q_f32(p.add(4)), kn);
-                a2 = vfmaq_f32(a2, vld1q_f32(p.add(8)), kn);
-                a3 = vfmaq_f32(a3, vld1q_f32(p.add(12)), kn);
-                a4 = vfmaq_f32(a4, vld1q_f32(p.add(16)), kn);
-                a5 = vfmaq_f32(a5, vld1q_f32(p.add(20)), kn);
-                a6 = vfmaq_f32(a6, vld1q_f32(p.add(24)), kn);
-                a7 = vfmaq_f32(a7, vld1q_f32(p.add(28)), kn);
+            for (tap, offset) in taps.iter().zip(offsets) {
+                let kn = f32x4_splat(*tap);
+                let p = input.offset(*offset).add(i);
+                a0 = madd_f32x4!(a0, v128_load(p as *const v128), kn);
+                a1 = madd_f32x4!(a1, v128_load(p.add(4) as *const v128), kn);
+                a2 = madd_f32x4!(a2, v128_load(p.add(8) as *const v128), kn);
+                a3 = madd_f32x4!(a3, v128_load(p.add(12) as *const v128), kn);
+                a4 = madd_f32x4!(a4, v128_load(p.add(16) as *const v128), kn);
+                a5 = madd_f32x4!(a5, v128_load(p.add(20) as *const v128), kn);
+                a6 = madd_f32x4!(a6, v128_load(p.add(24) as *const v128), kn);
+                a7 = madd_f32x4!(a7, v128_load(p.add(28) as *const v128), kn);
             }
-            vst1q_f32(output.add(i), a0);
-            vst1q_f32(output.add(i + 4), a1);
-            vst1q_f32(output.add(i + 8), a2);
-            vst1q_f32(output.add(i + 12), a3);
-            vst1q_f32(output.add(i + 16), a4);
-            vst1q_f32(output.add(i + 20), a5);
-            vst1q_f32(output.add(i + 24), a6);
-            vst1q_f32(output.add(i + 28), a7);
+            v128_store(output.add(i) as *mut v128, a0);
+            v128_store(output.add(i + 4) as *mut v128, a1);
+            v128_store(output.add(i + 8) as *mut v128, a2);
+            v128_store(output.add(i + 12) as *mut v128, a3);
+            v128_store(output.add(i + 16) as *mut v128, a4);
+            v128_store(output.add(i + 20) as *mut v128, a5);
+            v128_store(output.add(i + 24) as *mut v128, a6);
+            v128_store(output.add(i + 28) as *mut v128, a7);
             i += 32;
         }
         while i + 4 <= len {
             let mut acc = biasv;
-            for t in 0..n {
-                acc = vfmaq_f32(
+            for (tap, offset) in taps.iter().zip(offsets) {
+                acc = madd_f32x4!(
                     acc,
-                    vld1q_f32(input.offset(offsets[t]).add(i)),
-                    vdupq_n_f32(taps[t]),
+                    v128_load(input.offset(*offset).add(i) as *const v128),
+                    f32x4_splat(*tap)
                 );
             }
-            vst1q_f32(output.add(i), acc);
+            v128_store(output.add(i) as *mut v128, acc);
             i += 4;
         }
         scalar(input, output, taps, offsets, bias, i, len, 1);
     }
 }
 
-#[cfg(target_arch = "aarch64")]
-#[allow(clippy::too_many_arguments)]
-unsafe fn vectorised<const N: usize>(
-    input: *const f32,
-    output: *mut f32,
-    taps: &[f32],
-    offsets: &[isize],
-    bias: f32,
-    len: usize,
-    in_stride: isize,
-) {
-    unsafe {
-        use std::arch::aarch64::*;
-        let mut k = [0f32; N];
-        k.copy_from_slice(&taps[..N]);
-        let mut off = [0isize; N];
-        off.copy_from_slice(&offsets[..N]);
-        let biasv = vdupq_n_f32(bias);
-        let mut i = 0usize;
-        if in_stride == 1 {
-            while i + 8 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = input.offset(off[n]).add(i);
-                    acc0 = vfmaq_f32(acc0, vld1q_f32(p), kn);
-                    acc1 = vfmaq_f32(acc1, vld1q_f32(p.add(4)), kn);
-                }
-                vst1q_f32(output.add(i), acc0);
-                vst1q_f32(output.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 4 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    acc = vfmaq_f32(acc, vld1q_f32(input.offset(off[n]).add(i)), kn);
-                }
-                vst1q_f32(output.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 2 {
-            while i + 9 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = input.offset(off[n]).offset(i as isize * 2);
-                    acc0 = vfmaq_f32(acc0, vld2q_f32(p).0, kn);
-                    acc1 = vfmaq_f32(acc1, vld2q_f32(p.add(8)).0, kn);
-                }
-                vst1q_f32(output.add(i), acc0);
-                vst1q_f32(output.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 5 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    acc = vfmaq_f32(
-                        acc,
-                        vld2q_f32(input.offset(off[n]).offset(i as isize * 2)).0,
-                        kn,
-                    );
-                }
-                vst1q_f32(output.add(i), acc);
-                i += 4;
-            }
-        } else if in_stride == 3 {
-            while i + 9 <= len {
-                let mut acc0 = biasv;
-                let mut acc1 = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    let p = input.offset(off[n]).offset(i as isize * 3);
-                    acc0 = vfmaq_f32(acc0, vld3q_f32(p).0, kn);
-                    acc1 = vfmaq_f32(acc1, vld3q_f32(p.add(12)).0, kn);
-                }
-                vst1q_f32(output.add(i), acc0);
-                vst1q_f32(output.add(i + 4), acc1);
-                i += 8;
-            }
-            while i + 5 <= len {
-                let mut acc = biasv;
-                for n in 0..N {
-                    let kn = vdupq_n_f32(k[n]);
-                    acc = vfmaq_f32(
-                        acc,
-                        vld3q_f32(input.offset(off[n]).offset(i as isize * 3)).0,
-                        kn,
-                    );
-                }
-                vst1q_f32(output.add(i), acc);
-                i += 4;
-            }
-        }
-        scalar(input, output, taps, offsets, bias, i, len, in_stride);
-    }
-}
-
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[allow(clippy::too_many_arguments)]
 unsafe fn scalar(
     input: *const f32,
@@ -216,14 +109,14 @@ unsafe fn scalar(
         for i in from..len {
             let mut sum = bias;
             for (tap, offset) in taps.iter().zip(offsets) {
-                sum += tap * *input.offset(offset + i as isize * in_stride);
+                sum += tap * *input.offset(*offset + i as isize * in_stride);
             }
             *output.add(i) = sum;
         }
     }
 }
 
-bail_stub!(aarch64; pub unsafe fn depthwise_w_f32(
+bail_stub!(wasm32; pub unsafe fn depthwise_w_f32(
     *const f32, *mut f32, &[f32], &[isize], f32, usize, isize
 ));
 
@@ -233,16 +126,15 @@ bail_stub!(aarch64; pub unsafe fn depthwise_w_f32(
 ///
 /// `k_stride` is the kernel's per-tap stride, at least `channels`: a caller can run a block of
 /// channels by offsetting every pointer to the block's first channel. `tap_indices` and
-/// `offsets` hold one kernel tap each and must be the same length. `in_stride`
-/// and `out_stride` are the input and output steps one output position costs, in elements; both
-/// step over whole channel vectors, so every tap stays contiguous in `c`.
+/// `offsets` hold one kernel tap each and must be the same length. `in_stride` and `out_stride`
+/// are the input and output steps one output position costs, in elements.
 ///
 /// # Safety
 /// `input.offset(i * in_stride + offsets[t] + c)` and `kernel.add(tap_indices[t] * k_stride + c)`
 /// must be readable for every tap, every `i` below `len` and every `c` below `channels`;
 /// `channels` values must be readable from `bias`, and `channels` values writable from
 /// `output.offset(i * out_stride)` for every `i` below `len`.
-#[cfg(target_arch = "aarch64")]
+#[cfg(all(target_arch = "wasm32", target_feature = "simd128"))]
 #[allow(clippy::too_many_arguments)]
 pub unsafe fn depthwise_c_f32(
     input: *const f32,
@@ -258,40 +150,56 @@ pub unsafe fn depthwise_c_f32(
     out_stride: isize,
 ) {
     unsafe {
-        use std::arch::aarch64::*;
+        use std::arch::wasm32::*;
         for i in 0..len {
             let iptr = input.offset(i as isize * in_stride);
             let optr = output.offset(i as isize * out_stride);
             let mut c = 0usize;
             while c + 16 <= channels {
-                let mut acc0 = vld1q_f32(bias.add(c));
-                let mut acc1 = vld1q_f32(bias.add(c + 4));
-                let mut acc2 = vld1q_f32(bias.add(c + 8));
-                let mut acc3 = vld1q_f32(bias.add(c + 12));
+                let mut acc0 = v128_load(bias.add(c) as *const v128);
+                let mut acc1 = v128_load(bias.add(c + 4) as *const v128);
+                let mut acc2 = v128_load(bias.add(c + 8) as *const v128);
+                let mut acc3 = v128_load(bias.add(c + 12) as *const v128);
                 for (&kix, &off) in tap_indices.iter().zip(offsets) {
                     let kt = kernel.add(kix * k_stride + c);
                     let xt = iptr.offset(off).add(c);
-                    acc0 = vfmaq_f32(acc0, vld1q_f32(xt), vld1q_f32(kt));
-                    acc1 = vfmaq_f32(acc1, vld1q_f32(xt.add(4)), vld1q_f32(kt.add(4)));
-                    acc2 = vfmaq_f32(acc2, vld1q_f32(xt.add(8)), vld1q_f32(kt.add(8)));
-                    acc3 = vfmaq_f32(acc3, vld1q_f32(xt.add(12)), vld1q_f32(kt.add(12)));
+                    acc0 = madd_f32x4!(
+                        acc0,
+                        v128_load(xt as *const v128),
+                        v128_load(kt as *const v128)
+                    );
+                    acc1 = madd_f32x4!(
+                        acc1,
+                        v128_load(xt.add(4) as *const v128),
+                        v128_load(kt.add(4) as *const v128)
+                    );
+                    acc2 = madd_f32x4!(
+                        acc2,
+                        v128_load(xt.add(8) as *const v128),
+                        v128_load(kt.add(8) as *const v128)
+                    );
+                    acc3 = madd_f32x4!(
+                        acc3,
+                        v128_load(xt.add(12) as *const v128),
+                        v128_load(kt.add(12) as *const v128)
+                    );
                 }
-                vst1q_f32(optr.add(c), acc0);
-                vst1q_f32(optr.add(c + 4), acc1);
-                vst1q_f32(optr.add(c + 8), acc2);
-                vst1q_f32(optr.add(c + 12), acc3);
+                v128_store(optr.add(c) as *mut v128, acc0);
+                v128_store(optr.add(c + 4) as *mut v128, acc1);
+                v128_store(optr.add(c + 8) as *mut v128, acc2);
+                v128_store(optr.add(c + 12) as *mut v128, acc3);
                 c += 16;
             }
             while c + 4 <= channels {
-                let mut acc = vld1q_f32(bias.add(c));
+                let mut acc = v128_load(bias.add(c) as *const v128);
                 for (&kix, &off) in tap_indices.iter().zip(offsets) {
-                    acc = vfmaq_f32(
+                    acc = madd_f32x4!(
                         acc,
-                        vld1q_f32(iptr.offset(off).add(c)),
-                        vld1q_f32(kernel.add(kix * k_stride + c)),
+                        v128_load(iptr.offset(off).add(c) as *const v128),
+                        v128_load(kernel.add(kix * k_stride + c) as *const v128)
                     );
                 }
-                vst1q_f32(optr.add(c), acc);
+                v128_store(optr.add(c) as *mut v128, acc);
                 c += 4;
             }
             while c < channels {
@@ -306,15 +214,15 @@ pub unsafe fn depthwise_c_f32(
     }
 }
 
-bail_stub!(aarch64; pub unsafe fn depthwise_c_f32(
+bail_stub!(wasm32; pub unsafe fn depthwise_c_f32(
     *const f32, *mut f32, *const f32, &[usize], &[isize], *const f32, usize, usize, usize, isize,
     isize
 ));
 
-submit_routine!(aarch64; DepthwiseWF32, DepthwiseW, "arm64simd_depthwise_w_f32", depthwise_w_f32);
-submit_routine!(aarch64; DepthwiseCF32, DepthwiseC, "arm64simd_depthwise_c_f32", depthwise_c_f32);
+submit_routine!(wasm32; DepthwiseWF32, DepthwiseW, "wasm_simd128_depthwise_w_f32", depthwise_w_f32);
+submit_routine!(wasm32; DepthwiseCF32, DepthwiseC, "wasm_simd128_depthwise_c_f32", depthwise_c_f32);
 
-#[cfg(all(test, target_arch = "aarch64"))]
+#[cfg(all(test, target_arch = "wasm32", target_feature = "simd128"))]
 mod tests {
     use super::*;
 
@@ -373,6 +281,29 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// The op asks for the kernel by name and takes `None` as an ordinary answer, so a routine
+    /// that stopped being reachable would cost nothing at build time and the whole op would fall
+    /// back to its scalar walk. Hold the registration down.
+    #[test]
+    fn registered_as_this_hosts_depthwise_kernel() {
+        let routine = crate::routines::best_for(
+            crate::routines::Func::DepthwiseW,
+            tract_data::prelude::DatumType::F32,
+            &crate::isa::native(),
+        )
+        .expect("a wasm simd128 build has a depthwise kernel");
+        assert_eq!(routine.name(), "wasm_simd128_depthwise_w_f32");
+        assert!(crate::routines::depthwise_w_f32().is_some());
+        let routine = crate::routines::best_for(
+            crate::routines::Func::DepthwiseC,
+            tract_data::prelude::DatumType::F32,
+            &crate::isa::native(),
+        )
+        .expect("a wasm simd128 build has a channel-inner depthwise kernel");
+        assert_eq!(routine.name(), "wasm_simd128_depthwise_c_f32");
+        assert!(crate::routines::depthwise_c_f32().is_some());
     }
 
     fn compare_c(
@@ -436,7 +367,7 @@ mod tests {
 
     #[test]
     fn depthwise_c_matches_reference() {
-        for taps in [1usize, 2, 3, 4, 5, 9] {
+        for taps in [1usize, 2, 3, 4, 5, 9, 25] {
             for channels in [1usize, 3, 4, 7, 8, 15, 16, 17, 64] {
                 for len in [1usize, 5, 8] {
                     for s in [1isize, 2, 3] {
