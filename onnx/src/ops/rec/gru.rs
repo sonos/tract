@@ -59,11 +59,8 @@ impl WireBody for GRU {
         emit_y: bool,
     ) -> Option<Box<dyn TypedOp>> {
         // GruSeq's loop body IS GruEpilogue, so the fused form is valid exactly
-        // where the epilogue is. Fusing trades per-iteration dispatch for an in-op
-        // loop, so it pays only below the hidden size at which the per-step product,
-        // rather than dispatch, dominates the step.
-        (hidden <= 64
-            && seq_len >= 4
+        // where the epilogue is.
+        (seq_len >= 4
             && self.linear_before_reset
             && is_element_wise::<tract_hir::tract_core::ops::nn::Sigmoid>(self.f.as_ref())
             && is_element_wise::<tract_hir::tract_core::ops::math::Tanh>(self.g.as_ref()))
@@ -76,6 +73,8 @@ impl WireBody for GRU {
                 // the fused op starts from the same contract.
                 reset_every_turn: false,
                 emit_y,
+                projected: false,
+                packed_r: None,
             }) as Box<dyn TypedOp>
         })
     }
