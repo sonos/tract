@@ -22,6 +22,7 @@ pub use act_f16::arm64simd_silu_f16_4n;
 pub use act_f16::arm64simd_silu_f16_lut_8n;
 pub use act_f16::arm64simd_tanh_f16_4n;
 pub use by_scalar::*;
+pub use depthwise::depthwise_c_f32 as arm64simd_depthwise_c_f32;
 pub use depthwise::depthwise_w_f32 as arm64simd_depthwise_w_f32;
 pub use exp::arm64simd_exp_f32_16n;
 pub use gelu::arm64simd_gelu_f32_4n;

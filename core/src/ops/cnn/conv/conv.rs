@@ -659,6 +659,14 @@ impl Conv {
         let ConcretePoolGeometry { input_shape, patch, output_shape } =
             self.pool_spec.compute_geo(&x_fact.shape)?.to_concrete(x_shape)?.into_owned();
         let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
+        // Channel-last DepthWise reads the kernel tap-major, [G, HW, O]: one channel vector per tap.
+        let kernel = if self.pool_spec.data_format.c_is_last()
+            && !model.outlet_fact(kernel[0])?.is_exotic()
+        {
+            model.wire_node(format!("{name}.kernel_c_inner"), AxisOp::Move(0, 2), &kernel)?
+        } else {
+            kernel
+        };
         let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
         bias = wire_reshape_bias_for_bin(
             model,
@@ -1237,6 +1245,31 @@ impl TypedOp for Conv {
                 * kernel_surface
                 / self.group
         )))
+    }
+
+    /// Depthwise convs run faster channel-last (channel-inner vectorised path),
+    /// so they advertise a c-to-last axis move on their input. `ChangeAxes`
+    /// applies it only if the whole graph can carry the layout — the format
+    /// swap is absorbed by `Conv::change_axes` and moves fold into neighbours;
+    /// when propagation is blocked (locked interfaces, ops without
+    /// `change_axes`), nothing changes. Below 16 channels the channel-inner
+    /// path cannot fill a vector, so W-inner stays the better default. Hosts
+    /// without a `depthwise_c_f32` kernel get no suggestion: their channel-last
+    /// path is scalar.
+    fn suggested_axis_changes(&self) -> TractResult<TVec<(InOut, AxisOp)>> {
+        if tract_linalg::routines::depthwise_c_f32().is_none() {
+            return Ok(tvec!());
+        }
+        let fmt = self.pool_spec.data_format;
+        let depthwise = self.group > 1
+            && self.group == self.input_channels()
+            && self.group == self.output_channels();
+        if !depthwise || self.q_params.is_some() || self.input_channels() < 16 || fmt.c_is_last() {
+            return Ok(tvec!());
+        }
+        let rank = self.pool_spec.rank() + 1 + fmt.has_n() as usize;
+        let c_axis = if fmt.has_n() { 1 } else { 0 };
+        Ok(tvec!((InOut::In(0), AxisOp::Move(c_axis, rank - 1))))
     }
 
     fn change_axes(

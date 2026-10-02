@@ -6,6 +6,7 @@ mod depth_wise;
 mod direct_spatial;
 mod im2col;
 mod lazy_im2col;
+mod nhwc;
 mod q_sum_b;
 
 use crate::internal::*;
