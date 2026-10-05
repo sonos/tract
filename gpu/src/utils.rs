@@ -207,6 +207,40 @@ pub fn merge_axes_to_fit(layouts: &mut [Layout], max_rank: usize) -> usize {
     rank
 }
 
+/// Highest rank the backends' `copy_nd` kernels address.
+pub const MAX_COPY_RANK: usize = 6;
+
+/// A `copy_nd` zone: the output's extents, and the strides each side walks it by.
+pub struct CopyGeometry {
+    pub shape: TVec<usize>,
+    pub input_strides: TVec<isize>,
+    pub output_strides: TVec<isize>,
+}
+
+/// Merges a copy's adjacent axes with [`merge_axes_to_fit`] until it fits
+/// [`MAX_COPY_RANK`]. The rank answered still exceeds it when the two layouts
+/// leave no pair to merge, which a caller must check before dispatching.
+pub fn merge_copy_axes(
+    input_strides: &[isize],
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> CopyGeometry {
+    let mut in_shape: TVec<usize> = output_shape.into();
+    let mut geo = CopyGeometry {
+        shape: output_shape.into(),
+        input_strides: input_strides.into(),
+        output_strides: output_strides.into(),
+    };
+    merge_axes_to_fit(
+        &mut [
+            Layout { shape: &mut in_shape, strides: &mut geo.input_strides },
+            Layout { shape: &mut geo.shape, strides: &mut geo.output_strides },
+        ],
+        MAX_COPY_RANK,
+    );
+    geo
+}
+
 pub fn compute_broadcast_strides<T: num_traits::Zero + Copy + 'static>(
     shape: &[usize],
     strides: &[isize],

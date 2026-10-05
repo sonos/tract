@@ -283,6 +283,17 @@ mod tests {
         })
     }
 
+    /// Seven axes, two of them extent one: the copy merges down to what the
+    /// kernels address, so the slice stays on device.
+    #[test]
+    fn slice_rank_7_device_tensor() -> TractResult<()> {
+        crate::with_cuda_stream(|_| {
+            let input = iota(&[2, 1, 3, 1, 4, 5, 6])?;
+            let device = input.clone().into_device()?;
+            check_slice(&input, &device, 4, 1..3)
+        })
+    }
+
     /// What the application actually holds: an output that crossed the boundary
     /// still on device. The slice must stay there, and stay lazy, or the next
     /// run pays a transfer both ways.
