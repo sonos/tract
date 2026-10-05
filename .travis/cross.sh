@@ -281,8 +281,8 @@ case "$PLATFORM" in
         if [ -z "$SKIP_QEMU_TEST" ]
         then
             qemu-$QEMU_ARCH --version
-            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-linalg -- --nocapture
-            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-no-lto -p tract-core
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-test -p tract-linalg -- --nocapture
+            cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS test --profile opt-test -p tract-core
         fi
 
         # TRACT_CUDA_FEATURE is the only signal that a leg targets a CUDA board; every
@@ -322,12 +322,12 @@ case "$PLATFORM" in
         rustup target add $PLATFORM
         cargo check --target $PLATFORM --features getrandom-js -p tract-onnx -p tract-tensorflow
         RUSTFLAGS='-C target-feature=+simd128' CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
-            cargo test --target=$PLATFORM -p tract-linalg -p tract-core -p test-unit-core
+            cargo test --target=$PLATFORM --profile opt-test -p tract-linalg -p tract-core -p test-unit-core
         # The wasm backend picks its multiply-add form, its int8 packing and its
         # sigmoid/tanh kernels at compile time on +relaxed-simd, so the run above
         # leaves that half of it untested.
         RUSTFLAGS='-C target-feature=+simd128,+relaxed-simd' CARGO_TARGET_WASM32_WASIP1_RUNNER=wasmtime \
-            cargo test --target=$PLATFORM -p tract-linalg -p tract-core -p test-unit-core
+            cargo test --target=$PLATFORM --profile opt-test -p tract-linalg -p tract-core -p test-unit-core
         ;;
     wasm32-*)
         rustup target add $PLATFORM
