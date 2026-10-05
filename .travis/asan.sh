@@ -12,7 +12,7 @@ rustup component add rust-src --toolchain nightly-$TARGET
 export RUSTFLAGS=-Zsanitizer=address
 export RUSTUP_TOOLCHAIN=nightly
 export RUST_VERSION=nightly
-export CARGO_EXTRA="--target $TARGET"
+export CARGO_EXTRA="--target $TARGET --profile opt-test"
 
 # asan's global redzones break the __DATA,__mod_init_func entries `inventory`
 # writes: ld-prime rejects them with "initializer pointer has no target", and
