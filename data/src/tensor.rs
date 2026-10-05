@@ -365,7 +365,7 @@ fn move_axis_blocks(
 /// If `axes` is the identity permutation with one element moved — the shape of
 /// permutation `move_axis` produces — return the `(from, to)` of that move.
 fn move_axis_pair(axes: &[usize]) -> Option<(usize, usize)> {
-    let Some(lo) = (0..axes.len()).find(|&i| axes[i] != i) else { return Some((0, 0)) };
+    let lo = (0..axes.len()).find(|&i| axes[i] != i)?;
     let hi = (0..axes.len()).rev().find(|&i| axes[i] != i).unwrap();
     if axes[hi] == lo && (lo..hi).all(|i| axes[i] == i + 1) {
         return Some((lo, hi));
@@ -978,6 +978,9 @@ impl Tensor {
     pub fn permute_axes(self, axes: &[usize]) -> TractResult<Tensor> {
         ensure!(axes.iter().duplicates().next().is_none());
         ensure!(axes.iter().all(|a| *a < self.rank()));
+        if axes.iter().enumerate().all(|(i, a)| i == *a) {
+            return Ok(self);
+        }
         if let Some((from, to)) = move_axis_pair(axes)
             && self.can_move_axis_blocks()
         {
@@ -2753,6 +2756,12 @@ mod tests {
         };
         assert_eq!(got.shape(), reference.shape());
         assert_eq!(got.as_bytes(), reference.as_bytes());
+    }
+
+    #[test]
+    fn permute_axes_scalar() {
+        let t = tensor0(1f32);
+        assert_eq!(t.clone().permute_axes(&[]).unwrap(), t);
     }
 
     #[derive(Debug)]
