@@ -52,6 +52,8 @@ pub enum Func {
     /// Four output channels of a convolution over an axis the output is contiguous on, reading
     /// each input point once for all four.
     ConvW4,
+    /// Softmax over every row of a row-major buffer, in one call.
+    SoftmaxRows,
 }
 
 impl Func {
@@ -74,7 +76,7 @@ impl Func {
         ]
     };
 
-    pub const ALL: [Func; 30] = [
+    pub const ALL: [Func; 31] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
@@ -105,6 +107,7 @@ impl Func {
         Func::BIN[11],
         Func::DepthwiseW,
         Func::ConvW4,
+        Func::SoftmaxRows,
     ];
 
     /// Where this function sits in [`Self::ALL`], which is what indexes the dispatch table.
@@ -130,6 +133,7 @@ impl Func {
             Func::BinUnicast(op) => 22 + op as usize,
             Func::DepthwiseW => 28,
             Func::ConvW4 => 29,
+            Func::SoftmaxRows => 30,
         }
     }
 
@@ -170,6 +174,7 @@ impl Func {
             },
             Func::DepthwiseW => "depthwise_w",
             Func::ConvW4 => "conv_w4",
+            Func::SoftmaxRows => "softmax_rows",
         }
     }
 
@@ -263,6 +268,12 @@ impl Func {
 /// `len`, and `len` output points writable from `output`.
 pub type DepthwiseWF32 = unsafe fn(*const f32, *mut f32, &[f32], &[isize], f32, usize, isize);
 
+/// Softmax in place over each `row_len` row of a row-major buffer, `row_len` a non-zero
+/// multiple of 4: per row, the row max, `exp(x - max)` summed, then a multiply by `1 / sum`,
+/// with the same arithmetic and summation order as the per-row [`Func::ReduceMax`],
+/// [`Func::Softmax2`] and [`Func::MulByScalar`] kernels of the same host.
+pub type SoftmaxRowsF32 = fn(&mut [f32], usize);
+
 /// Four convolution output runs of `len` contiguous points, channel `o` written from
 /// `output.offset(o * oc_stride)`. Point `i` of channel `o` is `bias[o]` plus every
 /// `taps[o * offsets.len() + t] * input[offsets[t] + i * in_stride]`, so `taps` holds the four
@@ -321,6 +332,11 @@ pub enum RoutineFactory {
         name: &'static str,
         run: ConvW4F32,
     },
+    /// A whole-buffer row softmax, a plain function like the depthwise one.
+    SoftmaxRowsF32 {
+        name: &'static str,
+        run: SoftmaxRowsF32,
+    },
 }
 
 /// One kernel, enumerable uniformly on every host.
@@ -354,7 +370,8 @@ impl Routine {
             | RoutineFactory::F32MapReduce(_)
             | RoutineFactory::RmsNormF32 { .. }
             | RoutineFactory::DepthwiseWF32 { .. }
-            | RoutineFactory::ConvW4F32 { .. } => DatumType::F32,
+            | RoutineFactory::ConvW4F32 { .. }
+            | RoutineFactory::SoftmaxRowsF32 { .. } => DatumType::F32,
             RoutineFactory::F16(_) | RoutineFactory::F16Param(_) | RoutineFactory::F16Reduce(_) => {
                 DatumType::F16
             }
@@ -379,6 +396,7 @@ impl Routine {
             RoutineFactory::RmsNormF32 { name, .. } => name,
             RoutineFactory::DepthwiseWF32 { name, .. } => name,
             RoutineFactory::ConvW4F32 { name, .. } => name,
+            RoutineFactory::SoftmaxRowsF32 { name, .. } => name,
             RoutineFactory::LutU8 { name, .. } => name(),
             RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => name(),
         }
@@ -562,6 +580,15 @@ pub fn conv_w4_f32() -> Option<ConvW4F32> {
     }
 }
 
+/// The whole-buffer row softmax this host runs, `None` where none is written. Optional like
+/// [`depthwise_w_f32`]: the softmax op keeps its per-row kernels for the machines without one.
+pub fn softmax_rows_f32() -> Option<SoftmaxRowsF32> {
+    match native_best(Func::SoftmaxRows, DatumType::F32)?.factory {
+        RoutineFactory::SoftmaxRowsF32 { run, .. } => Some(run),
+        _ => None,
+    }
+}
+
 /// The look-up table kernel this host runs, over the table the caller owns.
 pub fn lut_u8(table: &[u8]) -> TractResult<Box<dyn Lut>> {
     match Func::Lut.best_here(DatumType::U8)?.factory {
@@ -605,6 +632,12 @@ macro_rules! submit_routine {
      $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
         submit_routine!(@@ $arch, $func,
             $crate::routines::RoutineFactory::ConvW4F32 { name: $name, run: $run }
+            $(, isa($($isa),+))? $(, boost($boost))?);
+    };
+    (@ $arch:expr; SoftmaxRowsF32, $func:ident, $name:literal, $run:path
+     $(, isa($($isa:ident),+))? $(, boost($boost:expr))?) => {
+        submit_routine!(@@ $arch, $func,
+            $crate::routines::RoutineFactory::SoftmaxRowsF32 { name: $name, run: $run }
             $(, isa($($isa),+))? $(, boost($boost))?);
     };
     (@ $arch:expr; BinF32, BinByScalar($op:ident), $ker:path
@@ -849,7 +882,8 @@ mod tests {
                     RoutineFactory::F32MapReduce(_) => func.map_reduce_f32().map(|k| k.name()),
                     RoutineFactory::RmsNormF32 { name, .. }
                     | RoutineFactory::DepthwiseWF32 { name, .. }
-                    | RoutineFactory::ConvW4F32 { name, .. } => Ok(name),
+                    | RoutineFactory::ConvW4F32 { name, .. }
+                    | RoutineFactory::SoftmaxRowsF32 { name, .. } => Ok(name),
                     RoutineFactory::LutU8 { name, .. } => lut_u8(&[0u8; 256]).map(|_| name()),
                     RoutineFactory::BinF32 { name, .. } | RoutineFactory::BinF16 { name, .. } => {
                         func.bin(dt).map(|_| name()).ok_or_else(|| format_err!("no bin kernel"))
