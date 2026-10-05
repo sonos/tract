@@ -134,7 +134,14 @@ impl MoeProblem {
                 .map(|e| (0..d).map(|i| f64::from(x[[t, i]]) * f64::from(wg[[e, i]])).sum())
                 .collect();
             let mut selected: Vec<usize> = (0..experts).collect();
-            selected.sort_by(|&a, &b| logits[b].total_cmp(&logits[a]).then(a.cmp(&b)));
+            selected.sort_by(|&a, &b| {
+                let order = if logits[a] == logits[b] {
+                    std::cmp::Ordering::Equal
+                } else {
+                    logits[b].total_cmp(&logits[a])
+                };
+                order.then(a.cmp(&b))
+            });
             selected.truncate(self.k);
             let denominator: f64 = match self.gate {
                 GateMode::SoftmaxTopk => selected.iter().map(|&e| logits[e].exp()).sum(),
@@ -267,5 +274,20 @@ pub fn suite() -> TractResult<TestSuite> {
         (false, Storage::Float, WeightInputs::Router),
     );
     suite.add_arbitrary::<MoeProblem>("dynamic_routes", (false, Storage::Float, WeightInputs::All));
+    suite.add(
+        "signed_zero_tie",
+        MoeProblem {
+            x: tensor2(&[[-0.25f32, -0.25]]),
+            wg: tensor2(&[[0f32, 0.], [0.25, -0.25]]),
+            w1: tensor3(&[[[0f32]; 2], [[1.]; 2]]),
+            w2: tensor3(&[[[0f32; 2]], [[1.; 2]]]),
+            w3: None,
+            k: 1,
+            gate: GateMode::Sigmoid,
+            linear: false,
+            storage: Storage::Float,
+            weight_inputs: WeightInputs::All,
+        },
+    );
     Ok(suite)
 }
