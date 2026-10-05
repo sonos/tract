@@ -553,6 +553,18 @@ pub fn depthwise_w_f32() -> Option<DepthwiseWF32> {
     }
 }
 
+/// [`depthwise_w_f32`] for zones of more than four taps, `None` on cores where that path loses to
+/// the scalar walk. The more-than-four-taps loop is eight accumulators over eight unaligned
+/// vector loads per tap, which the in-order Cortex-A53 and A55 run slower than the scalar loop
+/// (mobilenet depthwise, `/ci bench`); the one-to-four-tap kernels are unaffected.
+pub fn depthwise_w_f32_wide() -> Option<DepthwiseWF32> {
+    #[cfg(target_arch = "aarch64")]
+    if !crate::arm64::wide_depthwise_taps() {
+        return None;
+    }
+    depthwise_w_f32()
+}
+
 /// The four-channel convolution kernel this host runs, `None` where none is written. Optional
 /// like [`depthwise_w_f32`]: a machine without one lowers the convolution another way.
 pub fn conv_w4_f32() -> Option<ConvW4F32> {

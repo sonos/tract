@@ -268,6 +268,11 @@ pub unsafe fn mul_f16(a: f16, b: f16) -> f16 {
     }
 }
 
+/// Whether the runtime-tap-count depthwise loop beats the scalar walk on this core.
+pub fn wide_depthwise_taps() -> bool {
+    !matches!(*KIND, Kind::CortexA53 | Kind::CortexA55)
+}
+
 #[derive(Debug, PartialEq, Eq, Copy, Clone)]
 pub enum Kind {
     Generic,
