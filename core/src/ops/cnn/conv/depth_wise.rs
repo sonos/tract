@@ -260,7 +260,8 @@ macro_rules! impl_eval {
                     // Without a vectorised kernel the zone keeps the plain inline walk:
                     // routed through `process_zone_any` it runs measurably slower on wasm.
                     _ if T::datum_type() == f32::datum_type()
-                        && tract_linalg::routines::depthwise_w_f32().is_some() =>
+                        && tract_linalg::routines::depthwise_w_f32().is_some()
+                        && c_stride_o != 1 =>
                     {
                         [<process_zone_any_ $suffix>](
                             dw, zone, c_stride_i, c_stride_o, k_stride_i, iptr, kptr, bias, optr,
