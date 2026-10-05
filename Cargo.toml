@@ -266,6 +266,11 @@ tract-wgpu = { version = "0.23.8-pre", path = 'wgpu' }
 inherits="release"
 lto=false
 
+[profile.opt-test]
+inherits="opt-no-lto"
+debug-assertions=true
+overflow-checks=true
+
 [profile.release]
 # debug = true
 lto = true
