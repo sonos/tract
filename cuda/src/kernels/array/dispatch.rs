@@ -5,9 +5,7 @@ use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
 use cudarc::driver::PushKernelArg;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-
-/// The widest rank the copy kernels address.
-const MAX_COPY_RANK: usize = 6;
+use tract_gpu::utils::merge_copy_axes;
 
 /// Single dispatch function for all copy_nd kernel launches.
 /// Used by GpuMultiBroadcastTo, GpuSlice, GpuConcat, and GpuAxisOp.
@@ -23,23 +21,9 @@ pub fn cuda_copy_nd_dispatch(
     if output_shape.contains(&0) {
         return Ok(());
     }
-    // A blockified pulse window reaches seven axes of which five carry nothing,
-    // and the kernels address six. Merge the adjacent axes both sides walk as one
-    // run until it fits -- the window is contiguous, so it collapses far past
-    // that -- rather than naming a kernel per rank.
-    let mut in_shape: TVec<usize> = output_shape.into();
-    let mut in_strides: TVec<isize> = input_strides.into();
-    let mut out_shape: TVec<usize> = output_shape.into();
-    let mut out_strides: TVec<isize> = output_strides.into();
-    tract_gpu::utils::merge_axes_to_fit(
-        &mut [
-            tract_gpu::utils::Layout { shape: &mut in_shape, strides: &mut in_strides },
-            tract_gpu::utils::Layout { shape: &mut out_shape, strides: &mut out_strides },
-        ],
-        MAX_COPY_RANK,
-    );
+    let geo = merge_copy_axes(input_strides, output_shape, output_strides);
     let (output_shape, input_strides, output_strides) =
-        (&out_shape[..], &in_strides[..], &out_strides[..]);
+        (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
 
     crate::with_cuda_stream(|stream| {
         let kernel_name = BroadcastKind::from_rank(output_shape.len())?
@@ -118,6 +102,7 @@ mod tests {
         run_copy_case(&[2, 3, 4, 5, 6, 7], &[2, 3, 4, 5, 6, 9], &[2, 3, 4, 5, 6, 7])?;
         run_copy_case(&[2, 3, 4, 5, 6, 7], &[2, 3, 4, 5, 6, 7], &[1, 2, 3, 4, 5, 6])?;
         run_copy_case(&[4, 5], &[4, 5], &[0, 5])?;
+        run_copy_case(&[2, 1, 3, 1, 4, 5, 7], &[2, 1, 3, 1, 4, 5, 9], &[2, 1, 3, 1, 4, 5, 7])?;
         // More rows than a grid dimension other than x holds.
         run_copy_case(&[70000, 300], &[70000, 300], &[70000, 300])?;
         run_copy_case(&[70000, 8], &[70000, 9], &[70000, 8])?;

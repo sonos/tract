@@ -3,7 +3,7 @@
 use tract_core::internal::*;
 use tract_core::ops::math::mul;
 use tract_core::transform::ModelTransform;
-use tract_gpu::tensor::{DeviceTensor, IntoDevice};
+use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 
 use crate::kernels::cast::wgpu_cast_dispatch;
 use crate::kernels::copy::wgpu_copy_nd_dispatch;
@@ -34,6 +34,37 @@ fn copy_nd_transposed_matches_cpu() -> TractResult<()> {
         wgpu_copy_nd_dispatch(&src, 0, &[1, 3], &dst, 0, &[3, 2], &[2, 1])?;
         q.flush()?;
         close(&dst.to_host()?.into_tensor(), &t.clone().permute_axes(&[1, 0])?)
+    })
+}
+
+/// Nine axes, more than the shader takes, of which the extent-one ones merge
+/// away.
+#[test]
+fn copy_nd_merges_past_the_shader_rank() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        let shape = [2, 1, 3, 1, 1, 2, 1, 4, 5];
+        let t = Tensor::from_shape(&shape, &(0..240).map(|i| i as f32).collect::<Vec<_>>())?;
+        let src = t.clone().into_device()?;
+        let dst = DeviceTensor::uninitialized_dt(DatumType::F32, &shape)?;
+        wgpu_copy_nd_dispatch(&src, 0, src.strides(), &dst, 0, &shape, dst.strides())?;
+        q.flush()?;
+        close(&dst.to_host()?.into_tensor(), &t)
+    })
+}
+
+/// A slice of a rank-7 tensor merges down to what the copy addresses, so it
+/// stays on device.
+#[test]
+fn slice_rank_7_device_tensor() -> TractResult<()> {
+    with_wgpu_queue(|_| {
+        let input = Tensor::from_shape(
+            &[2, 1, 3, 1, 4, 5, 6],
+            &(0..720).map(|i| i as f32).collect::<Vec<_>>(),
+        )?;
+        let sliced = input.clone().into_device()?.into_tensor().slice(4, 1, 3)?;
+        let device = sliced.to_device_tensor()?;
+        assert!(matches!(device, DeviceTensor::Owned(_)));
+        close(&device.to_host()?.into_tensor(), &input.slice(4, 1, 3)?)
     })
 }
 

@@ -4,6 +4,7 @@ use crate::{LibraryName, MetalStream};
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::BroadcastKind;
+use tract_gpu::utils::merge_copy_axes;
 
 /// Single dispatch function for all copy_nd kernel launches.
 /// Used by GpuMultiBroadcastTo, GpuSlice, GpuConcat, and GpuAxisOp.
@@ -16,6 +17,9 @@ pub fn metal_copy_nd_dispatch(
     output_shape: &[usize],
     output_strides: &[isize],
 ) -> TractResult<()> {
+    let geo = merge_copy_axes(input_strides, output_shape, output_strides);
+    let (output_shape, input_strides, output_strides) =
+        (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
     crate::with_metal_stream(|stream| {
         stream.retain_tensor(input);
         stream.retain_tensor(output);

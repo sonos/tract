@@ -63,6 +63,17 @@ mod tests {
         })
     }
 
+    /// Seven axes, two of them extent one: the copy merges down to what the
+    /// kernels address, so the slice stays on device.
+    #[test]
+    fn slice_rank_7_device_tensor() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let input = iota(&[2, 1, 3, 1, 4, 5, 6])?;
+            let device = input.clone().into_device()?;
+            check_slice(&input, &device, 4, 1..3)
+        })
+    }
+
     #[test]
     fn slice_reshaped_device_tensor() -> TractResult<()> {
         with_borrowed_metal_stream(|_| {

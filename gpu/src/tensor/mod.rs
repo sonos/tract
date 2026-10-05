@@ -16,9 +16,8 @@ use tract_core::internal::*;
 use tract_data::itertools::Itertools;
 
 use crate::device::{DeviceBuffer, get_context};
-
-/// Highest rank the backends' `copy_nd` kernels are compiled for.
-const MAX_COPY_ND_RANK: usize = 6;
+use crate::utils::MAX_COPY_RANK;
+use crate::utils::merge_copy_axes;
 
 /// A GPU tensor: either a buffer of its own, or a window into someone else's.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
@@ -241,17 +240,21 @@ impl DeviceTensor {
             axis < shape.len() && start < end && end <= shape[axis],
             "Invalid slicing range {start}..{end} on axis {axis} of {shape:?}"
         );
+        let mut sliced: TVec<usize> = shape.into();
+        sliced[axis] = end - start;
         let servable = dt == self.datum_type()
             && shape == self.shape()
             && !self.is_exotic()
             && Self::is_supported_dt(dt)
-            && (1..=MAX_COPY_ND_RANK).contains(&self.rank())
-            && self.strides().iter().all(|s| *s > 0);
+            && self.strides().iter().all(|s| *s > 0)
+            && (1..=MAX_COPY_RANK).contains(
+                &merge_copy_axes(self.strides(), &sliced, &Tensor::natural_strides(&sliced))
+                    .shape
+                    .len(),
+            );
         if !servable {
             return Ok(None);
         }
-        let mut sliced: TVec<usize> = shape.into();
-        sliced[axis] = end - start;
         let output = DeviceTensor::uninitialized_dt(dt, &sliced)?;
         get_context()?.assign_slice(&output, 0..end - start, self, start..end, axis)?;
         Ok(Some(output))

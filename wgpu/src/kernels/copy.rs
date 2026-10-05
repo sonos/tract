@@ -1,5 +1,6 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::utils::merge_copy_axes;
 
 use crate::kernels::shaders::{
     EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, pack_u32s,
@@ -7,6 +8,9 @@ use crate::kernels::shaders::{
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
+
+/// Axes the copy shader's `Params` carries a shape and two strides for.
+const PARAM_AXES: usize = 8;
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Copy, &["copy"], shader_f16)
@@ -21,6 +25,14 @@ pub fn wgpu_copy_nd_dispatch(
     output_shape: &[usize],
     output_strides: &[isize],
 ) -> TractResult<()> {
+    let geo = merge_copy_axes(input_strides, output_shape, output_strides);
+    ensure!(
+        geo.shape.len() <= PARAM_AXES,
+        "A copy of {output_shape:?} merges to rank {}, past the {PARAM_AXES} axes the shader takes",
+        geo.shape.len()
+    );
+    let (output_shape, input_strides, output_strides) =
+        (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
         q.retain_tensor(output);
