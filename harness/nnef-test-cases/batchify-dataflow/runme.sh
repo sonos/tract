@@ -22,10 +22,11 @@ $TRACT_RUN --nnef-tract-core . $BATCHIFY dump -q \
 $TRACT_RUN --nnef-tract-core . $BATCHIFY --set B=2 --set T=5 run \
     --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz
 
-# The same batchify, from a deployment config.
-$TRACT_RUN --nnef-tract-core . --deploy-config tract.toml dump -q \
+# The same batchify, from the deploy runtime, which applies it as it prepares
+# the model: by its graph id, then renamed by set_property.
+TRACT_CONFIG=tract.toml $TRACT_RUN --nnef-tract-core . --runtime deploy dump -q \
     --assert-output-fact "B,T,1,F32"
-$TRACT_RUN --nnef-tract-core . --deploy-config tract.toml --set B=2 --set T=5 run \
+TRACT_CONFIG=tract.toml $TRACT_RUN --nnef-tract-core . --runtime deploy --set T=5 run \
     --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz
-$TRACT_RUN --nnef-tract-core . -t 'set_property(key:"tract.name",value:"renamed")' \
-    --deploy-config tract.toml dump -q --assert-output-fact "B,T,1,F32"
+TRACT_CONFIG=tract.toml $TRACT_RUN --nnef-tract-core . --runtime deploy \
+    -t 'set_property(key:"tract.name",value:"renamed")' dump -q --assert-output-fact "B,T,1,F32"

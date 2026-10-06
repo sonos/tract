@@ -1,2 +1,6 @@
+[conv]
+runtime = "cpu"
+
 [conv.knobs]
+TRACT_AUTOBATCH_LANES = 4
 TRACT_TURN_LINGER_US = 100000

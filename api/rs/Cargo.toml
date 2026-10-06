@@ -108,7 +108,7 @@ cuda-13010 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13010"]
 cuda-13020 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13020"]
 
 # Serve many concurrent sessions off one prepared model (`Runnable::autobatch`),
-# and transform and prepare models from a deployment config (`DeployConfig`).
+# and the `deploy` runtime, which prepares models as a deployment config says.
 # Unstable: the shape of the surface is still being settled against the server
 # it is meant for, so it is not covered by the no-breaking-change commitment.
 unstable-autobatch = ["tract-core/deploy"]

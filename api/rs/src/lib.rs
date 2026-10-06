@@ -524,49 +524,6 @@ impl Runnable {
     }
 }
 
-/// How the models a host loads are transformed and prepared, and the knobs
-/// they run with, read from TOML outside the host: the bundle config the host
-/// hands over, then the file named by `TRACT_CONFIG`, then
-/// `TRACT_<MODEL>__<KEY>` environment variables. A section applies to the
-/// model whose name (the `tract.name` property, the NNEF graph id) is its key;
-/// a model without a section, or without a name, is prepared on `gpu-or-cpu`
-/// with no transform.
-///
-/// Load it before preparing any model: the config's global knobs include
-/// machine facts read once per process.
-#[cfg(feature = "unstable-autobatch")]
-#[derive(Debug)]
-pub struct DeployConfig(tract_core::deploy::DeployConfig);
-
-#[cfg(feature = "unstable-autobatch")]
-impl DeployConfig {
-    /// Load with the bundle config at `bundle`, which must exist.
-    pub fn load(bundle: impl AsRef<Path>) -> Result<DeployConfig> {
-        Ok(DeployConfig(tract_core::deploy::DeployConfig::load(bundle)?))
-    }
-
-    /// Load with the bundle config given as TOML text.
-    pub fn load_str(bundle: &str) -> Result<DeployConfig> {
-        Ok(DeployConfig(tract_core::deploy::DeployConfig::load_str(bundle)?))
-    }
-
-    /// Load without a bundle config: `TRACT_CONFIG` and the environment only.
-    pub fn from_env() -> Result<DeployConfig> {
-        Ok(DeployConfig(tract_core::deploy::DeployConfig::from_env()?))
-    }
-
-    /// Apply the transforms of `model`'s section, in order.
-    pub fn transform(&self, model: &mut Model) -> Result<()> {
-        self.0.transform(&mut model.0)
-    }
-
-    /// Prepare `model` on its section's runtime, autobatched if the section
-    /// sets `TRACT_AUTOBATCH_LANES`.
-    pub fn prepare(&self, model: Model) -> Result<Runnable> {
-        Ok(Runnable(self.0.prepare(model.0)?))
-    }
-}
-
 // STATE
 pub struct State(Option<Box<dyn tract_nnef::internal::State>>);
 
