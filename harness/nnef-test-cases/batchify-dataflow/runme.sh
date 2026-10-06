@@ -27,3 +27,5 @@ $TRACT_RUN --nnef-tract-core . --deploy-config tract.toml dump -q \
     --assert-output-fact "B,T,1,F32"
 $TRACT_RUN --nnef-tract-core . --deploy-config tract.toml --set B=2 --set T=5 run \
     --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz
+$TRACT_RUN --nnef-tract-core . -t 'set_property(key:"tract.name",value:"renamed")' \
+    --deploy-config tract.toml dump -q --assert-output-fact "B,T,1,F32"

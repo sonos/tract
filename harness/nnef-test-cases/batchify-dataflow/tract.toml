@@ -1,3 +1,7 @@
 [dataflow]
 runtime = "cpu"
 transforms = [{ name = "batchify", symbol = "B", shared = ["scale"] }]
+
+[renamed]
+runtime = "cpu"
+transforms = [{ name = "batchify", symbol = "B", shared = ["scale"] }]
