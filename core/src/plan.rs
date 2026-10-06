@@ -356,6 +356,13 @@ where
                     mentioned.extend(fact.uniform_tdim.iter().flat_map(TDim::symbols));
                 }
             }
+            let input_facts: Vec<Cow<'_, TypedFact>> = node
+                .inputs
+                .iter()
+                .filter_map(|i| nodes[i.node].outputs[i.slot].fact.to_typed_fact().ok())
+                .collect();
+            let input_facts: Vec<&TypedFact> = input_facts.iter().map(|f| f.as_ref()).collect();
+            mentioned.extend(node.op.as_ref().required_bound_symbols(&input_facts));
             // Deterministic iteration, so the deps and the plan order do not
             // depend on HashSet randomization across processes.
             let mut mentioned: Vec<_> = mentioned.into_iter().collect();
@@ -664,54 +671,109 @@ where
                     .iter()
                     .all(|s| self.turn_state.resolved_symbols.get(s).is_some());
 
-            // A node whose evaluation needs a runtime symbol that later nodes
-            // bind (the shape-feedback loop above) can fail ahead of its time:
-            // its limit konst mentions a length only a downstream Range
-            // determines. Park such failures and retry after each pass; the
-            // inputs of parked nodes stay alive.
-            let mut deferred: Vec<usize> = vec![];
-            let mut pinned: std::collections::HashSet<usize> = Default::default();
-            let mut first_error: Option<anyhow::Error> = None;
-            let order: Vec<usize> = self.plan.order.clone();
-            for (step, n) in order.iter().enumerate() {
-                let outcome = self.eval_node(&mut eval, *n, &mut syms_done);
-                let flushes = self.plan.flush_lists[step].clone();
-                for flush in &flushes {
-                    if !pinned.contains(flush) {
-                        self.turn_state.values[*flush] = None;
-                    }
+            for (step, n) in self.plan.order.iter().enumerate() {
+                let node = self.plan.model.node(*n);
+                trace!("Running step {step}, node {node}");
+                let mut inputs: TVec<TValue> = tvec![];
+                for i in &node.inputs {
+                    trace!("  use input {i:?}");
+                    let prec_node = self.plan.model.node(i.node);
+                    let prec = self.turn_state.values[i.node].as_ref().ok_or_else(|| {
+                        format_err!("Computing {}, precursor {} not done:", node, prec_node)
+                    })?;
+                    inputs.push(prec[i.slot].clone())
                 }
-                if let Err(e) = outcome {
-                    if !self.plan.has_unresolved_symbols {
-                        return Err(e);
-                    }
-                    let inputs: Vec<usize> =
-                        self.plan.model.node(*n).inputs.iter().map(|i| i.node).collect();
-                    for i in inputs {
-                        pinned.insert(i);
-                    }
-                    first_error.get_or_insert(e.into());
-                    deferred.push(*n);
+                for flush in &self.plan.flush_lists[step] {
+                    trace!("  Ran {} can now flush {}", node, self.plan.model.node(*flush));
+                    self.turn_state.values[*flush] = None;
                 }
-            }
-            while !deferred.is_empty() {
-                let mut progress = false;
-                let mut parked = vec![];
-                for id in deferred.drain(..) {
-                    match self.eval_node(&mut eval, id, &mut syms_done) {
-                        Ok(()) => progress = true,
-                        Err(e) => {
-                            first_error.get_or_insert(e.into());
-                            parked.push(id);
+
+                if cfg!(debug_assertions) {
+                    let facts = self.plan.model.node_input_facts(node.id)?;
+                    if facts.len() != inputs.len() {
+                        bail!(
+                            "Evaluating {}: expected {} inputs, got {}",
+                            node,
+                            facts.len(),
+                            inputs.len()
+                        );
+                    }
+                    for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
+                        if !f.matches(v, Some(&self.turn_state.resolved_symbols))? {
+                            bail!(
+                                "Evaluating {}: input {:?}, expected {:?}, got {:?}",
+                                node,
+                                ix,
+                                f,
+                                v
+                            );
                         }
                     }
                 }
-                deferred = parked;
-                if !progress {
-                    return Err(first_error.unwrap().context(
-                        "evaluation did not converge: nodes kept failing after all retry passes",
-                    ));
+
+                // A node with no precursors whose value is already set is a model
+                // input: `set_inputs` wrote it and `reset_turn` clears everything
+                // else, so hand it in rather than have the op reach for it. After
+                // the checks above, which are stated against the node's declared
+                // inputs -- a source declares none.
+                if node.inputs.is_empty()
+                    && let Some(preset) = self.turn_state.values[*n].as_ref()
+                {
+                    inputs = preset.clone();
                 }
+
+                let ctx = self.turn_state.context(self.session, node.id);
+                let vs = eval(&ctx, self.op_states[node.id].as_deref_mut(), node, inputs)
+                    .map_err(|e| e.into())?;
+
+                if !syms_done && self.plan.has_unresolved_symbols {
+                    for (o, v) in node.outputs.iter().zip(vs.iter()) {
+                        if let Ok(f) = o.fact.to_typed_fact() {
+                            for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
+                                Self::resolve(
+                                    &mut self.turn_state,
+                                    dim_abstract,
+                                    *dim_concrete as i64,
+                                )?;
+                            }
+                        }
+                    }
+                    if self
+                        .plan
+                        .symbols
+                        .iter()
+                        .all(|s| self.turn_state.resolved_symbols.get(s).is_some())
+                    {
+                        syms_done = true;
+                    }
+                }
+                if cfg!(debug_assertions) {
+                    let facts = self.plan.model.node_output_facts(node.id)?;
+                    if facts.len() != vs.len() {
+                        bail!(
+                            "Evaluating {}: expected {} outputs, got {}",
+                            node,
+                            facts.len(),
+                            vs.len()
+                        );
+                    }
+                    for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
+                        if node.outputs[ix].successors.len() == 0 {
+                            continue;
+                        }
+                        if !f.matches(v, Some(&self.turn_state.resolved_symbols))? {
+                            bail!(
+                                "Evaluating {}: output {:?}, expected {:?}, got {:?}",
+                                node,
+                                ix,
+                                f,
+                                v
+                            );
+                        }
+                    }
+                }
+
+                self.turn_state.values[node.id] = Some(vs);
             }
             self.plan
                 .turn_handler
@@ -719,80 +781,6 @@ where
                 .map(|it| it.after_plan_eval(&mut self.turn_state))
                 .transpose()?;
         }
-        Ok(())
-    }
-
-    fn eval_node<Eval, E>(
-        &mut self,
-        eval: &mut Eval,
-        id: usize,
-        syms_done: &mut bool,
-    ) -> TractResult<()>
-    where
-        Eval: for<'a, 'b, 'c> FnMut(
-            &'a EvalContext<'a>,
-            Option<&'b mut (dyn OpState + 'static)>,
-            &'c Node<F, O>,
-            TVec<TValue>,
-        ) -> Result<TVec<TValue>, E>,
-        E: Into<anyhow::Error> + Send + Sync + 'static,
-    {
-        let node = self.plan.model.node(id);
-        let mut inputs: TVec<TValue> = tvec![];
-        for i in &node.inputs {
-            let prec_node = self.plan.model.node(i.node);
-            let prec = self.turn_state.values[i.node]
-                .as_ref()
-                .with_context(|| format!("Computing {node}: precursor {prec_node} not done"))?;
-            inputs.push(prec[i.slot].clone())
-        }
-        if cfg!(debug_assertions) {
-            let facts = self.plan.model.node_input_facts(node.id).unwrap();
-            assert_eq!(facts.len(), inputs.len(), "Evaluating {node}: wrong input count");
-            for (ix, (v, f)) in inputs.iter().zip(facts.iter()).enumerate() {
-                assert!(
-                    f.matches(v, Some(&self.turn_state.resolved_symbols)).unwrap_or(false),
-                    "Evaluating {node}: input {ix:?} mismatch: {v:?} vs {f:?}"
-                );
-            }
-        }
-        // A node with no precursors whose value is already set is a model
-        // input: `set_inputs` wrote it and `reset_turn` clears everything
-        // else, so hand it in rather than have the op reach for it.
-        if node.inputs.is_empty()
-            && let Some(preset) = self.turn_state.values[id].as_ref()
-        {
-            inputs = preset.clone();
-        }
-        let ctx = self.turn_state.context(self.session, node.id);
-        let vs = eval(&ctx, self.op_states[node.id].as_deref_mut(), node, inputs)
-            .map_err(|e| e.into())?;
-        if !*syms_done && self.plan.has_unresolved_symbols {
-            for (o, v) in node.outputs.iter().zip(vs.iter()) {
-                if let Ok(f) = o.fact.to_typed_fact() {
-                    for (dim_abstract, dim_concrete) in f.shape.iter().zip(v.shape()) {
-                        Self::resolve(&mut self.turn_state, dim_abstract, *dim_concrete as i64)?;
-                    }
-                }
-            }
-            if self.plan.symbols.iter().all(|s| self.turn_state.resolved_symbols.get(s).is_some()) {
-                *syms_done = true;
-            }
-        }
-        if cfg!(debug_assertions) {
-            let facts = self.plan.model.node_output_facts(node.id).unwrap();
-            assert_eq!(facts.len(), vs.len(), "Evaluating {node}: wrong output count");
-            for (ix, (v, f)) in vs.iter().zip(facts.iter()).enumerate() {
-                if node.outputs[ix].successors.len() == 0 {
-                    continue;
-                }
-                assert!(
-                    f.matches(v, Some(&self.turn_state.resolved_symbols)).unwrap_or(false),
-                    "Evaluating {node}: output {ix:?} mismatch: {v:?} vs {f:?}"
-                );
-            }
-        }
-        self.turn_state.values[node.id] = Some(vs);
         Ok(())
     }
 
@@ -1281,6 +1269,37 @@ mod symbol_deps_tests {
     }
 
     #[test]
+    fn hidden_input_konst_mention_yields_dep() -> TractResult<()> {
+        use crate::ops::array::Range;
+        use crate::ops::cast::cast;
+        let mut model = TypedModel::default();
+        let limit = model.add_source("limit", i64::datum_type().scalar_fact())?;
+        let limit = model.wire_node("limit_tdim", cast(TDim::datum_type()), &[limit])?;
+        let start = model.add_const("start", tensor0(TDim::Val(0)))?;
+        let step = model.add_const("step", tensor0(TDim::Val(1)))?;
+        let r = model.symbols.sym("h");
+        let range = model.wire_node("range", Range::new(r.to_dim()), &[start, limit[0], step])?;
+        // a multi-element symbolic konst (like a folded Shape): uniform_tdim
+        // only represents scalars, so this mention is invisible on the output
+        // side — only required_bound_symbols catches it
+        let konst = model.wire_node(
+            "konst",
+            crate::ops::konst::Const::new(
+                tensor1(&[TDim::Sym(r.clone()), TDim::Sym(r)]).into_arc_tensor(),
+            )?,
+            &[],
+        )?;
+        let casted = model.wire_node("cast", cast(f32::datum_type()), &[konst[0]])?;
+        model.select_output_outlets(&[casted[0], range[0]])?;
+        let deps = symbol_deps_of(&model);
+        assert!(
+            deps.contains(&(casted[0].node, range[0].node)),
+            "expected the cast ordered after the binder, got {deps:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn dead_nodes_contribute_nothing() -> TractResult<()> {
         let mut model = TypedModel::default();
         let range = range_over(&mut model, "r")?[0];
@@ -1325,38 +1344,6 @@ mod late_input_definer_tests {
         let range = model.wire_node("range", Range::new(s.to_dim()), &[start, end, step])?;
         model.select_output_outlets(&[range[0], definer])?;
         crate::internal::TypedSimplePlan::new(model)?;
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod defer_tests {
-    use super::*;
-    use crate::ops::array::Range;
-    use crate::ops::cast::cast;
-    use crate::ops::konst::Const;
-
-    // A value-level cycle: the Cast's konst mentions a symbol only the Range
-    // (its own consumer) binds, and the Range needs the Cast's value. The
-    // deferral machinery must park both, make no progress, and surface the
-    // original error — not panic, not loop forever.
-    #[test]
-    fn mutual_symbol_dependency_reports_no_convergence() -> TractResult<()> {
-        let mut model = TypedModel::default();
-        let s = model.symbols.sym("m");
-        let shape_konst = model.wire_node(
-            "shape_konst",
-            Const::new(tensor0(TDim::Sym(s.clone())).into_arc_tensor())?,
-            &[],
-        )?;
-        let casted = model.wire_node("cast", cast(f32::datum_type()), &[shape_konst[0]])?;
-        let start = model.add_const("start", tensor0(0f32))?;
-        let step = model.add_const("step", tensor0(1f32))?;
-        let range = model.wire_node("range", Range::new(s.to_dim()), &[start, casted[0], step])?;
-        model.select_output_outlets(&range)?;
-        let plan = crate::internal::TypedSimplePlan::new(model)?;
-        let err = plan.run(tvec!()).unwrap_err();
-        assert!(err.to_string().contains("did not converge"), "{err}");
         Ok(())
     }
 }
