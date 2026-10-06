@@ -19,7 +19,7 @@ armv7neon_mmm_f32_8x1_{{core}}_{{suffix}}:
     beq     .non_linear_loop
 
     mov     r1, r4 // packed A ptr
-    pld     [r3]
+    pld     [r1]
     pld     [r5]
 
     pld     [r1, #128]
@@ -31,7 +31,7 @@ armv7neon_mmm_f32_8x1_{{core}}_{{suffix}}:
     pld     [r1, #512]
 
 .packed_packed_loop_1:
-    pld     [r5]                           // packed B ptr
+    pld     [r1, #512]
 
     vldmia          r1!, { q0-q1 }
     vldmia          r5!, { s30 }
