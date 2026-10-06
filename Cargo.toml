@@ -156,6 +156,7 @@ dyn-clone = "1.0.4"
 dyn-hash = "1.0"
 env_logger = "0.11"
 erased-serde = "0.4"
+figment2 = { version = "0.11.5", default-features = false, features = ["toml"] }
 flatbuffers = "25.12.19"
 flate2 = "1.0.20"
 float-ord = "0.3.2"

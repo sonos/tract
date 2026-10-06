@@ -158,6 +158,7 @@ fn main() -> TractResult<()> {
         .arg(Arg::new("set").long("set").num_args(1).action(clap::ArgAction::Append).long_help("Set a model symbol before analysis for inferred models or after decluttering for typed models"))
         .arg(Arg::new("hint").long("hint").num_args(1).action(clap::ArgAction::Append).long_help("Provide a typical value to a symbol to be used during planning (--hint S=12)"))
         .arg(Arg::new("autobatch-sessions").long("autobatch-sessions").num_args(1).long_help("Autobatch the model: serve that many concurrent sessions off one prepared copy of it, batching whatever turns arrive together. Needs a batch axis on axis 0, and wants a hint on its symbol for the memory arena to size the widest turn (--autobatch-sessions 4 --hint B=4)"))
+        .arg(Arg::new("deploy-config").long("deploy-config").num_args(1).value_name("PATH").conflicts_with_all(["runtime", "cuda", "metal", "autobatch-sessions"]).long_help("Transform and prepare the model from the section of a deployment config named after it (its tract.name, the NNEF graph id), TRACT_CONFIG and TRACT_<MODEL>__* applying over it. The config picks the runtime and the autobatching"))
 
         .arg(arg!(--"causal-llm-hints" "Figures out P and S and gives them suitable hints"))
         .arg(arg!(--llm "Shortcut setting --opl (aka all nnef extensions) --causal-llm-hints -t transformers_detect_all"))
@@ -843,7 +844,12 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 let default = shown((k.default)());
                 let suffix =
                     if current != default { format!(", default {default}") } else { String::new() };
-                println!("{} = {current}  [{}{suffix}]", name_style.paint(k.name), k.type_name);
+                let scopable = if k.scopable { ", scopable" } else { "" };
+                println!(
+                    "{} = {current}  [{}{scopable}{suffix}]",
+                    name_style.paint(k.name),
+                    k.type_name
+                );
                 println!("    {}\n", k.doc);
             }
             return Ok(());
@@ -1081,6 +1087,7 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
             && !matches.get_flag("metal")
             && !matches.get_flag("optimize")
             && !matches.contains_id("runtime")
+            && !matches.contains_id("deploy-config")
         {
             warn!("{}", style.paint("Profiling a non-optimized model. Use -O or a runtime."));
         }

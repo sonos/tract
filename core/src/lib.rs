@@ -76,6 +76,8 @@ pub mod ops;
 pub mod axes;
 pub mod batchify;
 pub mod broadcast;
+#[cfg(feature = "deploy")]
+pub mod deploy;
 pub mod floats;
 pub mod framework;
 pub mod lanes;

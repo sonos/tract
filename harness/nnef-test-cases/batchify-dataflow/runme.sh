@@ -21,3 +21,9 @@ $TRACT_RUN --nnef-tract-core . $BATCHIFY dump -q \
 # happens -- answers both seats the same and fails here.
 $TRACT_RUN --nnef-tract-core . $BATCHIFY --set B=2 --set T=5 run \
     --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz
+
+# The same batchify, from a deployment config.
+$TRACT_RUN --nnef-tract-core . --deploy-config tract.toml dump -q \
+    --assert-output-fact "B,T,1,F32"
+$TRACT_RUN --nnef-tract-core . --deploy-config tract.toml --set B=2 --set T=5 run \
+    --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz

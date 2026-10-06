@@ -246,6 +246,13 @@ crate::declare_knob!(
 );
 
 crate::declare_knob!(
+    scopable TRACT_AUTOBATCH_LANES,
+    Option<usize>,
+    None,
+    "Sessions a deployment config's subnet is autobatched for; unset, it is not autobatched."
+);
+
+crate::declare_knob!(
     scopable TRACT_TURN_LINGER_US,
     usize,
     0,

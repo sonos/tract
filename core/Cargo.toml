@@ -21,6 +21,7 @@ bit-set.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
 erased-serde.workspace = true
+figment2 = { workspace = true, optional = true }
 dyn-clone.workspace = true
 lazy_static.workspace = true
 log.workspace = true
@@ -41,6 +42,7 @@ inventory.workspace = true
 default = [ ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
 paranoid_assertions = []
+deploy = ["dep:figment2"]
 
 [dev-dependencies]
 env_logger.workspace = true
