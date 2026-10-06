@@ -303,6 +303,9 @@ pub fn list() -> String {
         let current = shown((k.current)());
         let default = shown((k.default)());
         write!(out, "{} = {}  [{}", k.name, current, k.type_name).unwrap();
+        if k.scopable {
+            write!(out, ", scopable").unwrap();
+        }
         if current != default {
             write!(out, ", default {default}").unwrap();
         }

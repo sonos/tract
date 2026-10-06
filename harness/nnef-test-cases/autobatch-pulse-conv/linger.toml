@@ -1,0 +1,2 @@
+[conv.knobs]
+TRACT_TURN_LINGER_US = 100000

@@ -6,6 +6,7 @@ use std::io::Cursor;
 use std::io::Read;
 use std::path::PathBuf;
 use std::str::FromStr;
+use tract_core::deploy::DeployConfig;
 use tract_core::internal::*;
 use tract_core::model::TypedModel;
 use tract_core::model::translator::Translate;
@@ -623,6 +624,7 @@ impl Parameters {
 
     #[allow(unused_variables)]
     #[allow(clippy::type_complexity)]
+    #[allow(clippy::too_many_arguments)]
     fn load_and_declutter(
         matches: &clap::ArgMatches,
         probe: Option<&readings_probe::Probe>,
@@ -631,6 +633,7 @@ impl Parameters {
         reference_stage: Option<&str>,
         keep_last: bool,
         set_subs: &std::collections::HashMap<Symbol, TDim>,
+        deploy: Option<&DeployConfig>,
     ) -> TractResult<(Arc<dyn Model>, Option<Arc<dyn Model>>)> {
         let set_applied_before_analysis = raw_model.is::<InferenceModel>();
         let stop_at = matches
@@ -729,6 +732,12 @@ impl Parameters {
             dec.optimize(&mut m)?;
             Ok(m)
         });
+        if let Some(deploy) = deploy {
+            stage!("deploy", typed_model -> typed_model, |mut m: TypedModel| {
+                deploy.transform(&mut m)?;
+                Ok(m)
+            });
+        }
         #[cfg(not(feature = "pulse"))]
         {
             if matches.get_one::<String>("pulse").is_some() {
@@ -858,6 +867,8 @@ impl Parameters {
             .map(|set| Self::parse_set_subs(&symbols, set))
             .transpose()?
             .unwrap_or_default();
+        let deploy =
+            matches.get_one::<String>("deploy-config").map(DeployConfig::load).transpose()?;
         let (filename, onnx_tc) = Self::disco_model(matches)?;
         let tensors_values = Self::parse_tensors(matches, &filename, onnx_tc, &symbols)?;
         let (mut graph, mut raw_model, tf_model_extensions) =
@@ -1011,6 +1022,7 @@ impl Parameters {
             need_reference_model,
             keep_last,
             &set_subs,
+            deploy.as_ref(),
         )?;
 
         info!("Model fully loaded");
@@ -1050,8 +1062,11 @@ impl Parameters {
                 };
 
                 let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
-                let runnable: Arc<dyn Runnable> =
-                    runtime.prepare_with_options(typed_model, &options)?.into();
+                let runnable: Arc<dyn Runnable> = if let Some(deploy) = &deploy {
+                    deploy.prepare_with_options(typed_model, &options)?
+                } else {
+                    runtime.prepare_with_options(typed_model, &options)?.into()
+                };
                 // Autobatching decorates whatever runtime was picked: the lanes
                 // live in the state the worker owns, so it wraps the prepared
                 // model rather than replacing the runtime that prepared it.
