@@ -1,12 +1,18 @@
-//! Deployment config: how each model a host loads is transformed and prepared,
-//! and the knobs it runs with, kept outside the host.
+//! The `deploy` runtime: prepares each model the way a deployment config says,
+//! outside the host. The host only asks for the `deploy` runtime by name.
 //!
-//! A config is TOML. A global `[knobs]` table sets process-wide knob values;
-//! every other table is a model section, keyed by the model's name (its
-//! `tract.name`, which NNEF carries as the graph id), with an optional
-//! `runtime` (default `gpu-or-cpu`), `transforms` (applied in order, each a
-//! transform name or a table carrying `name` and the transform's parameters)
-//! and a `knobs` table scoped to that model.
+//! The config is TOML, read from the file named by `TRACT_CONFIG`, then from
+//! environment variables `TRACT_<MODEL>__<KEY>`, where `<MODEL>` is a
+//! lower-case model name upper-cased and `<KEY>` is `RUNTIME` or a knob name
+//! without its `TRACT_` prefix. It is loaded once, when the runtime is first
+//! used.
+//!
+//! A global `[knobs]` table sets process-wide knob values; every other table is
+//! a model section, keyed by the model's name (its `tract.name`, which NNEF
+//! carries as the graph id and the `set_property` transform sets), with an
+//! optional `runtime` (default `gpu-or-cpu`), `transforms` (applied in order,
+//! each a transform name or a table carrying `name` and the transform's
+//! parameters) and a `knobs` table scoped to that model.
 //!
 //! ```toml
 //! [knobs]
@@ -21,19 +27,19 @@
 //! TRACT_TURN_LINGER_US = 0
 //! ```
 //!
-//! Sources, later ones winning per key (arrays are replaced, never
-//! concatenated): the bundle config the host hands over, the file named by
-//! `TRACT_CONFIG`, then environment variables `TRACT_<MODEL>__<KEY>`, where
-//! `<MODEL>` is the model name, which must be lower-case, upper-cased, and `<KEY>` is `RUNTIME` or a knob
-//! name without its `TRACT_` prefix. A model's knobs beat the plain
+//! Preparing a model applies its section's transforms, prepares it on the
+//! section's runtime and autobatches it if `TRACT_AUTOBATCH_LANES` is set, all
+//! under the section's knob scope. A model's knobs beat the plain
 //! `TRACT_<KNOB>` environment variable, which beats the global `[knobs]` table.
+//! A model without a section, unnamed models included, is prepared on
+//! `gpu-or-cpu` with no transform.
 //!
-//! Global knobs are installed when the config is loaded, so load it before
-//! anything reads the machine-fact knobs linalg caches for the process.
+//! Global knobs are installed when the config is loaded: machine-fact knobs
+//! linalg caches for the process are only reached by a config loaded before
+//! anything reads them.
 
 use std::collections::BTreeMap;
-use std::path::Path;
-use std::sync::Arc;
+use std::sync::OnceLock;
 
 use figment2::Figment;
 use figment2::providers::Format;
@@ -53,6 +59,7 @@ use crate::transform::get_transform;
 use crate::transform::get_transform_with_params;
 
 const DEFAULT_RUNTIME: &str = "gpu-or-cpu";
+const DEPLOY: &str = "deploy";
 
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
@@ -71,35 +78,16 @@ struct Section {
     scope: KnobScope,
 }
 
-/// A loaded deployment config. A model it has no section for, unnamed models
-/// included, is prepared on `gpu-or-cpu` with no transform and global knobs
-/// only.
 #[derive(Debug, Default)]
-pub struct DeployConfig {
+struct DeployConfig {
     sections: BTreeMap<String, Section>,
 }
 
 impl DeployConfig {
-    /// Load the bundle config at `bundle`, then `TRACT_CONFIG` and the
-    /// environment over it.
-    pub fn load(bundle: impl AsRef<Path>) -> TractResult<DeployConfig> {
-        Self::from_figment(Figment::from(Toml::file(bundle.as_ref()).search(false).required(true)))
-    }
-
-    /// Like [`load`](Self::load), with the bundle config given as TOML text.
-    pub fn load_str(bundle: &str) -> TractResult<DeployConfig> {
-        Self::from_figment(Figment::from(Toml::string(bundle)))
-    }
-
-    /// `TRACT_CONFIG` and the environment alone, for a host without a bundle
-    /// config.
-    pub fn from_env() -> TractResult<DeployConfig> {
-        Self::from_figment(Figment::new())
-    }
-
-    fn from_figment(mut figment: Figment) -> TractResult<DeployConfig> {
-        if let Ok(ops) = std::env::var("TRACT_CONFIG") {
-            figment = figment.merge(Toml::file(ops).search(false).required(true));
+    fn from_env() -> TractResult<DeployConfig> {
+        let mut figment = Figment::new();
+        if let Ok(path) = std::env::var("TRACT_CONFIG") {
+            figment = figment.merge(Toml::file(path).search(false).required(true));
         }
         figment = figment.merge(Serialized::defaults(scoped_env()?));
         let root: BTreeMap<String, Value> = figment.extract()?;
@@ -129,52 +117,67 @@ impl DeployConfig {
         Ok(config)
     }
 
-    fn section(&self, model: &TypedModel) -> Option<&Section> {
-        self.sections.get(model.name()?)
-    }
-
-    /// Apply the transforms of `model`'s section, in order, each followed by a
-    /// declutter, under the section's knob scope.
-    pub fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        let Some(section) = self.section(model) else { return Ok(()) };
+    fn prepare(
+        &self,
+        mut model: TypedModel,
+        options: &RunOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        let default = Section::default();
+        let section = model.name().and_then(|n| self.sections.get(n)).unwrap_or(&default);
+        let runtime = section.runtime.as_deref().unwrap_or(DEFAULT_RUNTIME);
+        ensure!(runtime != DEPLOY, "A deploy config section can not use the deploy runtime");
         section.scope.enter(|| {
             for spec in &section.transforms {
                 build_transform(spec)
-                    .and_then(|t| t.transform(model))
+                    .and_then(|t| t.transform(&mut model))
                     .and_then(|_| model.declutter())
                     .with_context(|| format!("Applying transform {spec:?}"))?;
             }
-            Ok(())
-        })
-    }
-
-    /// Prepare `model` on its section's runtime, then wrapped to serve
-    /// `TRACT_AUTOBATCH_LANES` sessions if that knob is set, under the
-    /// section's knob scope.
-    pub fn prepare(&self, model: TypedModel) -> TractResult<Arc<dyn Runnable>> {
-        self.prepare_with_options(model, &RunOptions::default())
-    }
-
-    /// [`prepare`](Self::prepare), with `options` for the runtime.
-    pub fn prepare_with_options(
-        &self,
-        model: TypedModel,
-        options: &RunOptions,
-    ) -> TractResult<Arc<dyn Runnable>> {
-        let default = Section::default();
-        let section = self.section(&model).unwrap_or(&default);
-        let runtime = section.runtime.as_deref().unwrap_or(DEFAULT_RUNTIME);
-        section.scope.enter(|| {
             let rt =
                 runtime_for_name(runtime)?.with_context(|| format!("Unknown runtime {runtime}"))?;
-            let runnable: Arc<dyn Runnable> = rt.prepare_with_options(model, options)?.into();
+            let runnable = rt.prepare_with_options(model, options)?;
             match TRACT_AUTOBATCH_LANES.get() {
-                Some(lanes) => Ok(Arc::new(LanedRunnable::wrap(runnable, lanes)?) as _),
+                Some(lanes) => Ok(Box::new(LanedRunnable::wrap(runnable.into(), lanes)?) as _),
                 None => Ok(runnable),
             }
         })
     }
 }
+
+/// The runtime registered as `deploy`, see the module documentation.
+#[derive(Debug)]
+pub struct DeployRuntime {
+    config: OnceLock<Result<DeployConfig, String>>,
+}
+
+impl DeployRuntime {
+    fn config(&self) -> TractResult<&DeployConfig> {
+        self.config
+            .get_or_init(|| DeployConfig::from_env().map_err(|e| format!("{e:?}")))
+            .as_ref()
+            .map_err(|e| format_err!("Loading the deploy config: {e}"))
+    }
+}
+
+impl Runtime for DeployRuntime {
+    fn name(&self) -> StaticName {
+        DEPLOY.into()
+    }
+
+    fn check(&self) -> TractResult<()> {
+        self.config().map(|_| ())
+    }
+
+    fn prepare_with_options(
+        &self,
+        model: TypedModel,
+        options: &RunOptions,
+    ) -> TractResult<Box<dyn Runnable>> {
+        self.config()?.prepare(model, options)
+    }
+}
+
+register_runtime!(DeployRuntime = DeployRuntime { config: OnceLock::new() });
 
 fn build_transform(spec: &Value) -> TractResult<Box<dyn ModelTransform>> {
     if let Some(name) = spec.as_str() {

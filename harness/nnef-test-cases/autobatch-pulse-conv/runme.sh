@@ -47,14 +47,14 @@ $TRACT_RUN --nnef-tract-core . $PULSE --autobatch-sessions 4 --hint B=4 bench \
     --input-from-bundle io.npz --streams 4 --turn-period 20 --max-time 400 \
     --session-duration 60
 
-# Lanes and linger from a deployment config instead of flags. The bundle config
-# does not linger, so a wide turn shows the override reached the worker: an ops
-# file, then a scoped variable, and a global variable does not beat a scoped
-# value.
-DEPLOY='--deploy-config tract.toml --hint B=4'
+# Lanes and linger from the deploy runtime instead of flags. tract.toml does not
+# linger, so a wide turn shows a lingering value reached the worker: from the
+# config, from a variable scoped to the model, and not beaten by a global
+# variable.
+DEPLOY='--runtime deploy --hint B=4'
 TRACT_CONFIG=linger.toml $TRACT_RUN --nnef-tract-core . $PULSE $DEPLOY run --streams 4 \
     --approx exact --assert-occupancy 3.0 --input-from-bundle io.npz
-TRACT_CONV__TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE $DEPLOY run \
-    --streams 4 --approx exact --assert-occupancy 3.0 --input-from-bundle io.npz
+TRACT_CONFIG=tract.toml TRACT_CONV__TURN_LINGER_US=100000 $TRACT_RUN --nnef-tract-core . $PULSE \
+    $DEPLOY run --streams 4 --approx exact --assert-occupancy 3.0 --input-from-bundle io.npz
 TRACT_CONFIG=linger.toml TRACT_TURN_LINGER_US=0 $TRACT_RUN --nnef-tract-core . $PULSE $DEPLOY \
     run --streams 4 --approx exact --assert-occupancy 3.0 --input-from-bundle io.npz
