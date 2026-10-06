@@ -153,6 +153,11 @@ impl OptMaxPool {
         {
             return Ok(tvec!(values.into_tvalue()));
         }
+        if self.with_index_outputs.is_none()
+            && let Some(values) = self.try_nchw_planes::<T>(input, geo)?
+        {
+            return Ok(tvec!(values.into_tvalue()));
+        }
 
         let input_plain = input.try_as_plain_ram()?;
         let input: ArrayViewD<T> = input_plain.to_array_view()?;
@@ -229,6 +234,78 @@ impl OptMaxPool {
             maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
         }
         Ok(Some(values))
+    }
+
+    /// Any 2D pool over contiguous NCHW channel planes, walked one output row at a time:
+    /// each kernel tap folds into the row over the span of columns where it lands in
+    /// bounds, so a stride-1 tap reduces two contiguous slices. Taps fold in the generic
+    /// walk's order with its comparison, so both pick the same values.
+    fn try_nchw_planes<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+        &self,
+        input: &Tensor,
+        geo: &ConcretePoolGeometry,
+    ) -> TractResult<Option<Tensor>> {
+        let patch = &geo.patch;
+        let ish = &geo.input_shape;
+        if self.pool_spec.data_format.c_is_last() || patch.rank() != 2 {
+            return Ok(None);
+        }
+        let (h, w) = (ish.hw_dims()[0], ish.hw_dims()[1]);
+        if *ish.w_stride() != 1 || *ish.h_stride() != w || *ish.c_stride() != h * w {
+            return Ok(None);
+        }
+        let (oh, ow) = (patch.output_shape[0], patch.output_shape[1]);
+        let spec = &patch.spec;
+        let (kh, kw) = (spec.kernel_shape[0], spec.kernel_shape[1]);
+        let (sh, sw) = (spec.strides[0], spec.strides[1]);
+        let (dh, dw) = (spec.dilations[0], spec.dilations[1]);
+        let (pt, pl) = (patch.pad_before[0] as isize, patch.pad_before[1] as isize);
+        let mut output = Tensor::zero_dt(input.datum_type(), &geo.output_shape.shape)?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
+        let output_slice = output_plain.as_slice_mut::<T>()?;
+        output_slice.fill(T::min_value());
+        let input_plain = input.try_as_plain_ram()?;
+        let input_slice = input_plain.as_slice::<T>()?;
+        let column_spans: TVec<(usize, usize, usize)> = (0..kw)
+            .filter_map(|kx| {
+                let offset = (kx * dw) as isize - pl;
+                let last = w as isize - 1 - offset;
+                if last < 0 {
+                    return None;
+                }
+                let lo = if offset >= 0 { 0 } else { (-offset as usize).div_ceil(sw) };
+                let hi = (last as usize / sw + 1).min(ow);
+                (lo < hi).then(|| (lo, hi, ((lo * sw) as isize + offset) as usize))
+            })
+            .collect();
+        for (plane, out_plane) in
+            input_slice.chunks_exact(h * w).zip(output_slice.chunks_exact_mut(oh * ow))
+        {
+            for (oy, row) in out_plane.chunks_exact_mut(ow).enumerate() {
+                for ky in 0..kh {
+                    let iy = (oy * sh + ky * dh) as isize - pt;
+                    if iy < 0 || iy >= h as isize {
+                        continue;
+                    }
+                    let irow = &plane[iy as usize * w..][..w];
+                    for &(lo, hi, start) in &column_spans {
+                        let taps = &irow[start..];
+                        if sw == 1 {
+                            fold_max(&mut row[lo..hi], taps.iter());
+                        } else {
+                            fold_max(&mut row[lo..hi], taps.iter().step_by(sw));
+                        }
+                    }
+                }
+            }
+        }
+        Ok(Some(output))
+    }
+}
+
+fn fold_max<'a, T: Copy + PartialOrd + 'a>(row: &mut [T], taps: impl Iterator<Item = &'a T>) {
+    for (o, &v) in row.iter_mut().zip(taps) {
+        *o = if *o < v { v } else { *o };
     }
 }
 
