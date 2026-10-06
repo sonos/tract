@@ -431,6 +431,32 @@ register_model_transform!("select_inputs", SelectInputsConfig, |config| Ok(Box::
     SelectInputsTransform(config)
 )));
 
+/// Set the model property `key` to the string scalar `value`, e.g. `tract.name`,
+/// which names the model for a deployment config.
+#[derive(Debug, serde::Deserialize, Default)]
+pub struct SetPropertyConfig {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug)]
+struct SetPropertyTransform(SetPropertyConfig);
+
+impl ModelTransform for SetPropertyTransform {
+    fn name(&self) -> StaticName {
+        "set_property".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        model.properties.insert(self.0.key.clone(), rctensor0(self.0.value.clone()));
+        Ok(())
+    }
+}
+
+register_model_transform!("set_property", SetPropertyConfig, |config| Ok(Box::new(
+    SetPropertyTransform(config)
+)));
+
 inventory::submit! {
     ModelTransformFactory {
         name: "f32_to_f16",
