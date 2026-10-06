@@ -732,12 +732,6 @@ impl Parameters {
             dec.optimize(&mut m)?;
             Ok(m)
         });
-        if let Some(deploy) = deploy {
-            stage!("deploy", typed_model -> typed_model, |mut m: TypedModel| {
-                deploy.transform(&mut m)?;
-                Ok(m)
-            });
-        }
         #[cfg(not(feature = "pulse"))]
         {
             if matches.get_one::<String>("pulse").is_some() {
@@ -841,6 +835,12 @@ impl Parameters {
             stage!("extract", typed_model -> typed_model, |m:TypedModel| {
                 let node = m.node_id_by_name(sub)?;
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
+            });
+        }
+        if let Some(deploy) = deploy {
+            stage!("deploy", typed_model -> typed_model, |mut m: TypedModel| {
+                deploy.transform(&mut m)?;
+                Ok(m)
             });
         }
         stage!("before-optimize", typed_model -> typed_model, Ok);
