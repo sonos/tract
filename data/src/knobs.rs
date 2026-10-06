@@ -2,8 +2,14 @@
 //!
 //! A knob is a named, typed runtime setting — a kernel-selection toggle or a
 //! heuristic threshold. Its value is resolved, in priority order, from an
-//! explicit programmatic override, then the process environment, then a
-//! compiled-in default.
+//! explicit programmatic override, then the calling thread's [`KnobScope`],
+//! then the process environment, then the global values a deployment config
+//! installed ([`set_config_global`]), then a compiled-in default.
+//!
+//! A knob declared `scopable` is read while a model is transformed or
+//! prepared, so a [`KnobScope`] entered around those calls tunes it for that
+//! one model. Every other knob is read elsewhere (machine detection, eval) and
+//! only takes a process-wide value.
 //!
 //! Knobs are declared with [`declare_knob!`] and register themselves into a
 //! stack-wide inventory (this crate is the lowest in the stack, so `linalg` and
@@ -14,10 +20,15 @@
 //! A knob is the lowest, deployer-facing layer of configuration; it is not a
 //! substitute for settings that must travel with a model.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::str::FromStr;
+use std::sync::Arc;
 
+use anyhow::bail;
 use parking_lot::RwLock;
+
+use crate::TractResult;
 
 pub use inventory;
 
@@ -90,9 +101,92 @@ impl<T: KnobValue> KnobValue for Option<T> {
 
 static OVERRIDES: RwLock<Option<HashMap<&'static str, String>>> = RwLock::new(None);
 
+static CONFIG_GLOBALS: RwLock<Option<HashMap<&'static str, String>>> = RwLock::new(None);
+
+thread_local! {
+    static SCOPE: RefCell<Option<KnobScope>> = const { RefCell::new(None) };
+}
+
 fn with_override<R>(name: &str, f: impl FnOnce(Option<&String>) -> R) -> R {
     let guard = OVERRIDES.read();
     f(guard.as_ref().and_then(|m| m.get(name)))
+}
+
+fn scoped_value<T: KnobValue>(name: &str) -> Option<T> {
+    SCOPE.with_borrow(|s| s.as_ref().and_then(|s| s.0.get(name)).and_then(|v| T::parse_knob(v)))
+}
+
+fn config_global_value<T: KnobValue>(name: &str) -> Option<T> {
+    CONFIG_GLOBALS.read().as_ref().and_then(|m| m.get(name)).and_then(|v| T::parse_knob(v))
+}
+
+fn find(name: &str) -> TractResult<&'static KnobInfo> {
+    match all().into_iter().find(|k| k.name == name) {
+        Some(info) => Ok(info),
+        None => bail!("No knob named {name}"),
+    }
+}
+
+fn checked(name: &str, value: &str) -> TractResult<&'static KnobInfo> {
+    let info = find(name)?;
+    if !(info.parses)(value) {
+        bail!("{value:?} is not a valid {} for knob {name}", info.type_name);
+    }
+    Ok(info)
+}
+
+/// Knob values tuned for one model: entered around the calls that transform
+/// and prepare it, they reach every [`scopable`](KnobInfo::scopable) knob read
+/// on this thread meanwhile.
+#[derive(Clone, Debug, Default)]
+pub struct KnobScope(Arc<HashMap<&'static str, String>>);
+
+impl KnobScope {
+    /// Fails on a name no knob carries, a knob that is not scopable, or a value
+    /// that does not parse as the knob's type.
+    pub fn new<'a>(values: impl IntoIterator<Item = (&'a str, &'a str)>) -> TractResult<Self> {
+        let mut map = HashMap::new();
+        for (name, value) in values {
+            let info = checked(name, value)?;
+            if !info.scopable {
+                bail!(
+                    "Knob {name} is not read while a model is prepared: it only takes a global value"
+                );
+            }
+            map.insert(info.name, value.to_string());
+        }
+        Ok(KnobScope(Arc::new(map)))
+    }
+
+    /// Run `f` with this scope active on the calling thread. The previously
+    /// active scope, if any, is restored afterwards.
+    pub fn enter<R>(&self, f: impl FnOnce() -> R) -> R {
+        let previous = SCOPE.replace(Some(self.clone()));
+        struct Restore(Option<KnobScope>);
+        impl Drop for Restore {
+            fn drop(&mut self) {
+                SCOPE.set(self.0.take());
+            }
+        }
+        let _restore = Restore(previous);
+        f()
+    }
+}
+
+/// Install a process-wide value below the environment, for a deployment
+/// config. Setting a knob again to a different value fails: two configs in one
+/// process must agree on what they both set globally.
+pub fn set_config_global(name: &str, value: &str) -> TractResult<()> {
+    let info = checked(name, value)?;
+    let mut globals = CONFIG_GLOBALS.write();
+    let globals = globals.get_or_insert_with(HashMap::new);
+    if let Some(previous) = globals.get(info.name)
+        && previous != value
+    {
+        bail!("Knob {name} already set to {previous:?} by another config, refusing {value:?}");
+    }
+    globals.insert(info.name, value.to_string());
+    Ok(())
 }
 
 /// A declared knob. Construct via [`declare_knob!`] rather than directly so it
@@ -113,15 +207,21 @@ impl<T: KnobValue> Knob<T> {
         (self.default)()
     }
 
-    /// Resolve the current value: programmatic override, then environment, then
-    /// default.
+    /// Resolve the current value: programmatic override, then the thread's
+    /// [`KnobScope`], then environment, then config globals, then default.
     pub fn get(&self) -> T {
         if let Some(v) = with_override(self.name, |o| o.and_then(|s| T::parse_knob(s))) {
+            return v;
+        }
+        if let Some(v) = scoped_value(self.name) {
             return v;
         }
         if let Ok(s) = std::env::var(self.name)
             && let Some(v) = T::parse_knob(&s)
         {
+            return v;
+        }
+        if let Some(v) = config_global_value(self.name) {
             return v;
         }
         self.default_value()
@@ -148,6 +248,11 @@ pub struct KnobInfo {
     pub name: &'static str,
     pub doc: &'static str,
     pub type_name: &'static str,
+    /// Read while a model is transformed or prepared, so a [`KnobScope`] may
+    /// set it for one model.
+    pub scopable: bool,
+    /// Whether a source string is a valid value.
+    pub parses: fn(&str) -> bool,
     /// The default value, rendered.
     pub default: fn() -> String,
     /// The currently-resolved value, rendered.
@@ -214,14 +319,25 @@ pub fn list() -> String {
 /// the env-var name is derived from the identifier — there is no separate
 /// string to drift.
 ///
+/// Prefix the name with `scopable` for a knob read only while a model is
+/// transformed or prepared, never at eval nor cached for the process: such a
+/// knob honours a [`KnobScope`].
+///
 /// ```ignore
 /// declare_knob!(TRACT_MY_FLAG, bool, false, "Enable the thing.");
+/// declare_knob!(scopable TRACT_MY_RULE_OFF, bool, false, "Skip my rewrite rule.");
 /// // ... later ...
 /// if TRACT_MY_FLAG.get() { /* ... */ }
 /// ```
 #[macro_export]
 macro_rules! declare_knob {
+    (scopable $ident:ident, $ty:ty, $default:expr, $doc:literal) => {
+        $crate::declare_knob!(@ $ident, $ty, $default, $doc, true);
+    };
     ($ident:ident, $ty:ty, $default:expr, $doc:literal) => {
+        $crate::declare_knob!(@ $ident, $ty, $default, $doc, false);
+    };
+    (@ $ident:ident, $ty:ty, $default:expr, $doc:literal, $scopable:literal) => {
         #[doc = $doc]
         pub static $ident: $crate::knobs::Knob<$ty> =
             $crate::knobs::Knob::new(stringify!($ident), || $default, $doc);
@@ -231,6 +347,8 @@ macro_rules! declare_knob {
                 name: stringify!($ident),
                 doc: $doc,
                 type_name: <$ty as $crate::knobs::KnobValue>::TYPE_NAME,
+                scopable: $scopable,
+                parses: |s| <$ty as $crate::knobs::KnobValue>::parse_knob(s).is_some(),
                 default: || $crate::knobs::KnobValue::render_knob(&$ident.default_value()),
                 current: || $crate::knobs::KnobValue::render_knob(&$ident.get()),
             }
@@ -245,6 +363,35 @@ mod tests {
     declare_knob!(TRACT_TEST_KNOB_BOOL, bool, false, "Test bool knob.");
     declare_knob!(TRACT_TEST_KNOB_INT, usize, 7, "Test int knob.");
     declare_knob!(TRACT_TEST_KNOB_SET_INT, usize, 7, "Test int knob for set-by-name.");
+    declare_knob!(scopable TRACT_TEST_KNOB_SCOPED, usize, 7, "Test scopable knob.");
+    declare_knob!(TRACT_TEST_KNOB_GLOBAL, usize, 7, "Test global knob.");
+
+    #[test]
+    fn scope_applies_inside_enter_only() {
+        let scope = KnobScope::new([("TRACT_TEST_KNOB_SCOPED", "3")]).unwrap();
+        assert_eq!(scope.enter(|| TRACT_TEST_KNOB_SCOPED.get()), 3);
+        assert_eq!(TRACT_TEST_KNOB_SCOPED.get(), 7);
+        let other = std::thread::spawn(move || scope.enter(|| TRACT_TEST_KNOB_SCOPED.get()));
+        assert_eq!(other.join().unwrap(), 3);
+    }
+
+    #[test]
+    fn scope_rejects_bad_entries() {
+        assert!(KnobScope::new([("TRACT_TEST_KNOB_GLOBAL", "3")]).is_err());
+        assert!(KnobScope::new([("TRACT_TEST_KNOB_SCOPED", "three")]).is_err());
+        assert!(KnobScope::new([("TRACT_TEST_KNOB_DOES_NOT_EXIST", "3")]).is_err());
+    }
+
+    #[test]
+    fn config_global_below_override_and_scope() {
+        set_config_global("TRACT_TEST_KNOB_GLOBAL", "5").unwrap();
+        assert_eq!(TRACT_TEST_KNOB_GLOBAL.get(), 5);
+        set_config_global("TRACT_TEST_KNOB_GLOBAL", "5").unwrap();
+        assert!(set_config_global("TRACT_TEST_KNOB_GLOBAL", "6").is_err());
+        TRACT_TEST_KNOB_GLOBAL.set(9);
+        assert_eq!(TRACT_TEST_KNOB_GLOBAL.get(), 9);
+        TRACT_TEST_KNOB_GLOBAL.clear();
+    }
 
     #[test]
     fn default_then_override_then_clear() {

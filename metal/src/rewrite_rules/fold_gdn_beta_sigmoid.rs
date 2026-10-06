@@ -5,7 +5,7 @@ use tract_gpu::rule_ensure;
 use tract_transformers::ops::gdn_recurrent::GatedDeltaNetRecurrent;
 
 tract_core::declare_knob!(
-    TRACT_METAL_DISABLE_GDN_BETA_SIGMOID,
+    scopable TRACT_METAL_DISABLE_GDN_BETA_SIGMOID,
     bool,
     false,
     "Disable folding a singleton Sigmoid feeding GatedDeltaNetRecurrent's \

@@ -108,13 +108,7 @@ pub fn last_level_cache() -> Option<(usize, LlcKind)> {
         // never pays for the recursive filesystem probe.
         let slc =
             if override_bytes.is_some() || ci.l3 > ci.l2 { 0 } else { system_level_cache_bytes() };
-        resolve_llc(
-            override_bytes,
-            std::env::var_os("TRACT_LLC_CONTENDED").is_some(),
-            ci.l2,
-            ci.l3,
-            slc,
-        )
+        resolve_llc(override_bytes, crate::knobs::TRACT_LLC_CONTENDED.get(), ci.l2, ci.l3, slc)
     })
 }
 
@@ -141,7 +135,7 @@ fn resolve_llc(
 }
 
 fn env_llc_override() -> Option<usize> {
-    let b = parse_cache_size(&std::env::var("TRACT_LLC_BYTES").ok()?);
+    let b = parse_cache_size(&crate::knobs::TRACT_LLC_BYTES.get());
     (b > 0).then_some(b)
 }
 

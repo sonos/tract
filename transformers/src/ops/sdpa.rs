@@ -249,7 +249,7 @@ impl Sdpa {
 }
 
 tract_core::declare_knob!(
-    TRACT_FLASH_SDPA_MIN_SEQ_LEN,
+    scopable TRACT_FLASH_SDPA_MIN_SEQ_LEN,
     usize,
     0,
     "Minimum K/V sequence length for head-parallel flash SDPA on CPU; below it the decomposed matmul+softmax path is used."

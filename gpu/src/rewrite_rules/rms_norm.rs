@@ -11,6 +11,20 @@ use crate::ops::binary::GpuBinOp;
 use crate::ops::rms_norm::GpuRmsNorm;
 use crate::rule_ensure;
 
+tract_core::declare_knob!(
+    scopable TRACT_GPU_DISABLE_RMS_NORM_SPLIT_SCALE,
+    bool,
+    false,
+    "GPU: do not fuse an RmsNorm whose scale multiply was split across slices into one ScaledRmsNorm."
+);
+
+tract_core::declare_knob!(
+    scopable TRACT_GPU_DISABLE_RMS_NORM_RESIDUAL,
+    bool,
+    false,
+    "GPU: do not fold the residual Add before RmsNorm into the kernel."
+);
+
 /// Search pattern => A = CAST(RMS_NORM(CAST(A, F32)), F16)
 pub fn remove_rms_norm_cast(
     _ctx: &(),
@@ -156,7 +170,7 @@ pub fn fuse_rms_norm_split_scale(
 ) -> TractResult<Option<TypedModelPatch>> {
     use tract_core::ops::array::Slice;
 
-    if std::env::var_os("TRACT_GPU_DISABLE_RMS_NORM_SPLIT_SCALE").is_some() {
+    if TRACT_GPU_DISABLE_RMS_NORM_SPLIT_SCALE.get() {
         return Ok(None);
     }
     let in_fact = model.node_input_facts(node.id)?[0];
@@ -334,7 +348,7 @@ pub fn fuse_rms_norm_residual(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(!op.has_residual);
     rule_ensure!(matches!(op.backend_name, "Metal" | "Cuda"));
-    rule_ensure!(std::env::var_os("TRACT_GPU_DISABLE_RMS_NORM_RESIDUAL").is_none());
+    rule_ensure!(!TRACT_GPU_DISABLE_RMS_NORM_RESIDUAL.get());
     let add_outlet = node.inputs[0];
     let add_node = model.node(add_outlet.node);
     let is_add = add_node

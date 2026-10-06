@@ -681,7 +681,7 @@ impl_eval! {
     }
 
 crate::declare_knob!(
-    TRACT_DISABLE_DEPTHWISE_DECONV,
+    scopable TRACT_DISABLE_DEPTHWISE_DECONV,
     bool,
     false,
     "Disable the fused depthwise-deconvolution path, falling back to einsum + DeconvSum."
