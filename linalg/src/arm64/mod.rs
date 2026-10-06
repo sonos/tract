@@ -212,13 +212,16 @@ pub fn has_dotprod() -> bool {
     if crate::knobs::TRACT_DOTPROD_DISABLE.get() {
         return false;
     }
-    // HWCAP_ASIMDDP = 1 << 20 on aarch64.
+    // HWCAP_ASIMDDP = 1 << 20 on aarch64. Kernels before 4.15 never report it, so the
+    // cores known to implement FEAT_DotProd are trusted by part number.
     const HWCAP_ASIMDDP: u64 = 1 << 20;
     const AT_HWCAP: u64 = 16;
     unsafe extern "C" {
         fn getauxval(t: u64) -> u64;
     }
-    unsafe { (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0 }
+    *KIND == Kind::CortexA55
+        || *KIND == Kind::CortexA75
+        || unsafe { (getauxval(AT_HWCAP) & HWCAP_ASIMDDP) != 0 }
 }
 
 #[cfg(not(all(
