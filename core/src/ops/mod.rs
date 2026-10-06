@@ -210,6 +210,28 @@ pub trait Op:
         false
     }
 
+    /// Symbols that must be bound before this op's evaluation can succeed,
+    /// beyond those visible in its output facts. The default collects the
+    /// symbols carried by symbolic tensor *values* on the input side (a TDim
+    /// konst or uniform, e.g. a folded Shape feeding a Cast): the plan's
+    /// static ordering uses these to place the node after whatever binds
+    /// them, so hidden mentions are not missed. Ops whose needs are fully
+    /// covered by their output facts need not override this.
+    fn required_bound_symbols(&self, inputs: &[&TypedFact]) -> TVec<Symbol> {
+        let mut syms: TVec<Symbol> = tvec![];
+        for fact in inputs {
+            for t in [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten() {
+                if t.datum_type() == TDim::datum_type()
+                    && let Some(slice) =
+                        t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
+                {
+                    syms.extend(slice.iter().flat_map(|d| d.symbols()));
+                }
+            }
+        }
+        syms
+    }
+
     fn as_typed(&self) -> Option<&dyn TypedOp>;
 }
 
