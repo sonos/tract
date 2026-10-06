@@ -32,7 +32,7 @@ armv7neon_mmm_i32_8x4_{{suffix}}:
     beq     .non_linear_loop
 
     mov     r1, r4 // packed A ptr
-    pld     [r3]
+    pld     [r1]
     pld     [r5]
 
     cmp     r6, #1

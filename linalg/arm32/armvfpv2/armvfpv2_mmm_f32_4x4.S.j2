@@ -67,7 +67,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     beq     .non_linear_loop
 
     mov     r1, r4 // packed A ptr
-    pld     [r3]
+    pld     [r1]
     pld     [r5]
 
     .packed_packed:
@@ -156,7 +156,7 @@ armvfpv2_mmm_f32_4x4_{{suffix}}:
     vmla.f32        s30, s2, s11
     vmla.f32        s31, s3, s11
 
-    pld [r6]
+    pld [r5]
 
     // 4
     vmla.f32        s16, s4, s12
