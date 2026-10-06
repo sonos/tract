@@ -15,13 +15,13 @@ use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_pre
 use tract_core::ops::konst::Const;
 
 tract_core::declare_knob!(
-    TRACT_CUDA_FORCE_CPU,
+    scopable TRACT_CUDA_FORCE_CPU,
     String,
     String::new(),
     "Comma-separated node-name substrings forced onto the CPU instead of CUDA."
 );
 tract_core::declare_knob!(
-    TRACT_CUDA_TRANSLATE_DEBUG,
+    scopable TRACT_CUDA_TRANSLATE_DEBUG,
     bool,
     false,
     "Log nodes that fail output-fact validation during CUDA translation."

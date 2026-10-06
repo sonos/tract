@@ -742,13 +742,12 @@ fn chunk_gate_env() -> (usize, usize, Option<usize>) {
     use std::sync::OnceLock;
     static ENV: OnceLock<(usize, usize, Option<usize>)> = OnceLock::new();
     *ENV.get_or_init(|| {
-        let usize_var =
-            |k: &str| std::env::var(k).ok().and_then(|v| v.trim().parse::<usize>().ok());
         let llc = crate::cache::last_level_cache()
             .map(|(bytes, _)| bytes)
             .unwrap_or_else(|| crate::cache::cache_info().l2);
-        let slack = usize_var("TRACT_MMM_CHUNK_SLACK_BYTES").unwrap_or(CHUNK_SLACK_OPERAND_BYTES);
-        (llc, slack, usize_var("TRACT_MMM_CHUNKS_PER_THREAD"))
+        let slack =
+            crate::knobs::TRACT_MMM_CHUNK_SLACK_BYTES.get().unwrap_or(CHUNK_SLACK_OPERAND_BYTES);
+        (llc, slack, crate::knobs::TRACT_MMM_CHUNKS_PER_THREAD.get())
     })
 }
 

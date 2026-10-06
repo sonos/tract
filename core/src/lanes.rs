@@ -239,14 +239,14 @@ impl LaneTable {
 }
 
 crate::declare_knob!(
-    TRACT_MAX_SEATS,
+    scopable TRACT_MAX_SEATS,
     usize,
     256,
     "Most streams a laned runtime serves in one turn, clamped to the state's lanes."
 );
 
 crate::declare_knob!(
-    TRACT_TURN_LINGER_US,
+    scopable TRACT_TURN_LINGER_US,
     usize,
     0,
     "How long a laned runtime waits for more streams once one is ready to run."
