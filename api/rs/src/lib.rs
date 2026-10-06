@@ -397,6 +397,16 @@ impl ModelInterface for Model {
     }
 }
 
+#[cfg(feature = "unstable-autobatch")]
+impl Model {
+    /// Set the model property `name` to `value`, replacing any previous one.
+    /// `tract.name` is the name a [`DeployConfig`] section is keyed by:
+    /// `model.set_property("tract.name", "transcriber")`.
+    pub fn set_property(&mut self, name: impl Into<String>, value: impl Into<Tensor>) {
+        self.0.properties.insert(name.into(), value.into().0);
+    }
+}
+
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 
@@ -650,6 +660,22 @@ impl Tensor {
     /// through the host. The result owns its data either way.
     pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
         Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
+    }
+}
+
+/// A scalar string tensor, as string-valued model properties (`tract.name`)
+/// hold.
+#[cfg(feature = "unstable-autobatch")]
+impl From<&str> for Tensor {
+    fn from(s: &str) -> Tensor {
+        Tensor(tract_nnef::internal::rctensor0(s.to_string()))
+    }
+}
+
+#[cfg(feature = "unstable-autobatch")]
+impl From<String> for Tensor {
+    fn from(s: String) -> Tensor {
+        Tensor(tract_nnef::internal::rctensor0(s))
     }
 }
 
