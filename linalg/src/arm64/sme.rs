@@ -61,7 +61,7 @@ MMMExternKernel!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     isa(Aarch64Sme)
     can_fuse(CAN_FUSE)
-
+    row_major_store(true)
 );
 
 MMMExternKernel!(aarch64;
