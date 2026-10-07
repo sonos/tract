@@ -402,7 +402,8 @@ impl MetalStream {
         *self.command_buffer.borrow_mut() = None;
         anyhow::ensure!(
             command_buffer.status() != metal::MTLCommandBufferStatus::Error,
-            "Metal command buffer {command_buffer_id:?} failed on the GPU"
+            "Metal command buffer {command_buffer_id:?} failed on the GPU: {}",
+            command_buffer_error(&command_buffer)
         );
         Ok(())
     }
@@ -479,5 +480,30 @@ impl DerefMut for MetalBuffer {
 impl DeviceBuffer for MetalBuffer {
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
+    }
+}
+
+/// The description of the `NSError` a failed command buffer carries, which the
+/// `metal` crate does not expose.
+// The objc msg_send!/sel! macros expand to a cargo-clippy cfg check that older
+// toolchains report at the call site; the allow covers it.
+#[allow(unexpected_cfgs)]
+fn command_buffer_error(command_buffer: &metal::CommandBufferRef) -> String {
+    use metal::foreign_types::ForeignTypeRef;
+    use objc::runtime::Object;
+    use objc::{msg_send, sel, sel_impl};
+
+    unsafe {
+        let command_buffer = command_buffer.as_ptr() as *mut Object;
+        let error: *mut Object = msg_send![command_buffer, error];
+        if error.is_null() {
+            return "no error reported".to_string();
+        }
+        let description: *mut Object = msg_send![error, description];
+        let chars: *const std::os::raw::c_char = msg_send![description, UTF8String];
+        if chars.is_null() {
+            return "an error without a description".to_string();
+        }
+        std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
     }
 }
