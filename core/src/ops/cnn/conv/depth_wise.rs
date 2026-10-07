@@ -4,8 +4,9 @@ use crate::ops::cnn::patches::ZoneScanner;
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
-/// Largest zone `process_zone_any` hands to the vectorised kernel; 7x7 is 49 taps.
-const MAX_VECTORISED_TAPS: usize = 64;
+/// Largest zone `process_zone_any` hands to the vectorised kernel; 9x9 is 81 taps and 11x11
+/// is 121. The taps live in stack arrays of this size, two per call.
+const MAX_VECTORISED_TAPS: usize = 128;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct DepthWise {
