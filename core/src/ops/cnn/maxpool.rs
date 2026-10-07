@@ -154,7 +154,7 @@ impl OptMaxPool {
             return Ok(tvec!(values.into_tvalue()));
         }
         if self.with_index_outputs.is_none()
-            && let Some(values) = self.try_nchw_planes::<T>(input, geo)?
+            && let Some(values) = self.try_row_spans::<T>(input, geo)?
         {
             return Ok(tvec!(values.into_tvalue()));
         }
@@ -236,22 +236,30 @@ impl OptMaxPool {
         Ok(Some(values))
     }
 
-    /// Any 2D pool over contiguous NCHW channel planes, walked one output row at a time:
-    /// each kernel tap folds into the row over the span of columns where it lands in
-    /// bounds, so a stride-1 tap reduces two contiguous slices. Taps fold in the generic
-    /// walk's order with its comparison, so both pick the same values.
-    fn try_nchw_planes<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+    /// Any 2D pool, walked one output row at a time over images of contiguous pixels: a
+    /// channel plane of 1-element pixels when channels come first, a whole image of
+    /// C-element pixels when they come last. Each kernel tap folds into the row over the
+    /// span of pixels where it lands in bounds, so a stride-1 tap reduces two contiguous
+    /// slices. Taps fold in the generic walk's order with its comparison, so both pick the
+    /// same values.
+    fn try_row_spans<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
         &self,
         input: &Tensor,
         geo: &ConcretePoolGeometry,
     ) -> TractResult<Option<Tensor>> {
         let patch = &geo.patch;
         let ish = &geo.input_shape;
-        if self.pool_spec.data_format.c_is_last() || patch.rank() != 2 {
+        if patch.rank() != 2 {
             return Ok(None);
         }
-        let (h, w) = (ish.hw_dims()[0], ish.hw_dims()[1]);
-        if *ish.w_stride() != 1 || *ish.h_stride() != w || *ish.c_stride() != h * w {
+        let (h, w, c) = (ish.hw_dims()[0], ish.hw_dims()[1], *ish.c());
+        let px = if self.pool_spec.data_format.c_is_last() { c } else { 1 };
+        let contiguous = if px == 1 {
+            *ish.w_stride() == 1 && *ish.h_stride() == w && *ish.c_stride() == h * w
+        } else {
+            *ish.c_stride() == 1 && *ish.w_stride() == c && *ish.h_stride() == w * c
+        };
+        if !contiguous {
             return Ok(None);
         }
         let (oh, ow) = (patch.output_shape[0], patch.output_shape[1]);
@@ -278,22 +286,27 @@ impl OptMaxPool {
                 (lo < hi).then(|| (lo, hi, ((lo * sw) as isize + offset) as usize))
             })
             .collect();
-        for (plane, out_plane) in
-            input_slice.chunks_exact(h * w).zip(output_slice.chunks_exact_mut(oh * ow))
+        for (image, out_image) in
+            input_slice.chunks_exact(h * w * px).zip(output_slice.chunks_exact_mut(oh * ow * px))
         {
-            for (oy, row) in out_plane.chunks_exact_mut(ow).enumerate() {
+            for (oy, row) in out_image.chunks_exact_mut(ow * px).enumerate() {
                 for ky in 0..kh {
                     let iy = (oy * sh + ky * dh) as isize - pt;
                     if iy < 0 || iy >= h as isize {
                         continue;
                     }
-                    let irow = &plane[iy as usize * w..][..w];
+                    let irow = &image[iy as usize * w * px..][..w * px];
                     for &(lo, hi, start) in &column_spans {
-                        let taps = &irow[start..];
+                        let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
                         if sw == 1 {
-                            fold_max(&mut row[lo..hi], taps.iter());
+                            fold_max(row, taps.iter());
+                        } else if px == 1 {
+                            fold_max(row, taps.iter().step_by(sw));
                         } else {
-                            fold_max(&mut row[lo..hi], taps.iter().step_by(sw));
+                            for (pixel, taps) in row.chunks_exact_mut(px).zip(taps.chunks(sw * px))
+                            {
+                                fold_max(pixel, taps.iter());
+                            }
                         }
                     }
                 }
