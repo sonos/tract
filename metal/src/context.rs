@@ -400,6 +400,10 @@ impl MetalStream {
         self.retained_tensors.borrow_mut().clear();
 
         *self.command_buffer.borrow_mut() = None;
+        anyhow::ensure!(
+            command_buffer.status() != metal::MTLCommandBufferStatus::Error,
+            "Metal command buffer {command_buffer_id:?} failed on the GPU"
+        );
         Ok(())
     }
 
