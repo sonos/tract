@@ -40,10 +40,10 @@ impl Runtime for MetalRuntime {
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
-            let turn_handler =
-                tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
-                    .context("While sizing memory arena. Missing hint ?")?;
+        if let Some(turn_handler) = tract_gpu::turn_handler::DeviceTurnHandler::for_plan(
+            &runnable,
+            options.memory_sizing_hints.as_ref(),
+        )? {
             runnable = runnable.with_turn_handler(turn_handler);
         }
 

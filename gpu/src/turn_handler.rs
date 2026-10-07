@@ -14,6 +14,31 @@ impl DeviceTurnHandler {
             DeviceMemSchema::build(plan.model(), plan.order_without_consts(), memory_hint)?;
         Ok(Self { mem_schema })
     }
+
+    /// The arena a runtime installs on `plan`: sized by `hints` when given, and
+    /// without any when every shape in the model is concrete. A symbolic model
+    /// with no hints gets none, and its device tensors are allocated one by one.
+    /// wgpu does not call it: its dispatches cannot bind two regions of one
+    /// arena buffer as a read and a write.
+    pub fn for_plan(
+        plan: &TypedSimplePlan,
+        hints: Option<&SymbolValues>,
+    ) -> TractResult<Option<Self>> {
+        let no_hints = SymbolValues::default();
+        let hints = match hints {
+            Some(hints) => hints,
+            None if plan
+                .model()
+                .nodes
+                .iter()
+                .all(|n| n.outputs.iter().all(|o| o.fact.shape.is_concrete())) =>
+            {
+                &no_hints
+            }
+            None => return Ok(None),
+        };
+        Self::from_plan(plan, hints).context("While sizing memory arena. Missing hint ?").map(Some)
+    }
 }
 
 impl TurnStateHandler for DeviceTurnHandler {
