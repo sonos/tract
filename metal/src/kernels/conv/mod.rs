@@ -125,8 +125,8 @@ fn metal_conv_dispatch_inner(
         if let Some(b) = bias {
             encoder.set_metal_tensor(6, b, metal::MTLResourceUsage::Read);
         } else {
-            // Empty buffer — kernel checks bias_stride < 0
-            encoder.set_bytes(6, 0, std::ptr::null());
+            // Never read (bias_stride < 0), but Metal requires every declared buffer bound.
+            encoder.set_metal_tensor(6, weights, metal::MTLResourceUsage::Read);
         }
         encoder.set_slice(7, &[bias_stride]);
         encoder.set_slice(8, &pad_buf);
