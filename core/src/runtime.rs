@@ -18,6 +18,10 @@ pub struct RunOptions {
 
     /// Memory sizing hints
     pub memory_sizing_hints: Option<SymbolValues>,
+
+    /// Enable or disable the GPU transient-memory arena for this prepared
+    /// runtime. `None` keeps the backend default.
+    pub enable_gpu_memory_arena: Option<bool>,
 }
 
 pub trait Runtime: Debug + Send + Sync + 'static {

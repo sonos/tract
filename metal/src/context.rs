@@ -16,6 +16,7 @@ use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::rc::Rc;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
@@ -29,6 +30,16 @@ use tract_core::internal::*;
 
 thread_local! {
     static METAL_STREAM: RefCell<Option<MetalStream>> = const { RefCell::new(None) };
+}
+
+const MAX_POOLED_PER_KEY: usize = 16;
+const MIN_POOLED_BYTES: usize = 4 * 1024;
+const MAX_POOLED_BYTES: usize = 512 * 1024 * 1024;
+
+#[derive(Debug, Default)]
+struct PoolLiveness {
+    active_command_buffers: usize,
+    deferred: Vec<(Arc<Tensor>, Buffer)>,
 }
 
 pub fn with_metal_stream<R>(f: impl FnOnce(&MetalStream) -> TractResult<R>) -> TractResult<R> {
@@ -63,9 +74,98 @@ pub struct MetalContext {
     #[allow(clippy::type_complexity)]
     cache_pipelines:
         Arc<RwLock<HashMap<(LibraryName, String, Option<ConstantValues>), ComputePipelineState>>>,
+    /// Recycled host allocation and Metal-buffer pairs keyed by dtype and shape.
+    #[allow(clippy::type_complexity)]
+    buffer_pool: Arc<Mutex<HashMap<(DatumType, TVec<usize>), Vec<(Arc<Tensor>, Buffer, u64)>>>>,
+    pooled_bytes: Arc<std::sync::atomic::AtomicUsize>,
+    /// Monotonic insertion stamp driving oldest-first pool eviction.
+    pool_stamp: Arc<std::sync::atomic::AtomicU64>,
+    /// Pairs released while a command buffer is active, retained until completion.
+    pool_liveness: Arc<Mutex<PoolLiveness>>,
 }
 
 impl MetalContext {
+    fn pool_take(&self, dt: DatumType, shape: &[usize]) -> Option<(Arc<Tensor>, Buffer)> {
+        let mut pool = self.buffer_pool.lock().ok()?;
+        let entry = pool.get_mut(&(dt, TVec::from_slice(shape)));
+        let hit = entry?.pop()?;
+        self.pooled_bytes
+            .fetch_sub(hit.0.len() * dt.size_of(), std::sync::atomic::Ordering::Relaxed);
+        Some(hit.0.clone()).map(|host| (host, hit.1))
+    }
+
+    fn pool_put(&self, host: Arc<Tensor>, buffer: Buffer) {
+        let dt = host.datum_type();
+        if !DeviceTensor::is_supported_dt(dt) {
+            return;
+        }
+        let bytes = host.len() * dt.size_of();
+        if !(MIN_POOLED_BYTES..=MAX_POOLED_BYTES).contains(&bytes) {
+            return;
+        }
+        let Ok(mut pool) = self.buffer_pool.lock() else { return };
+        // Evict oldest entries until the new buffer fits the budget.
+        while self.pooled_bytes.load(std::sync::atomic::Ordering::Relaxed) + bytes
+            > MAX_POOLED_BYTES
+        {
+            let oldest_key = pool
+                .iter()
+                .filter(|(_, v)| !v.is_empty())
+                .min_by_key(|(_, v)| v.first().map(|e| e.2).unwrap_or(u64::MAX))
+                .map(|(k, _)| k.clone());
+            let Some(key) = oldest_key else { break };
+            let Some(entry) = pool.get_mut(&key) else { break };
+            let (evicted_host, _, _) = entry.remove(0);
+            let evicted_bytes = evicted_host.len() * evicted_host.datum_type().size_of();
+            self.pooled_bytes.fetch_sub(evicted_bytes, std::sync::atomic::Ordering::Relaxed);
+            if entry.is_empty() {
+                pool.remove(&key);
+            }
+        }
+        let entry = pool.entry((dt, TVec::from_slice(host.shape()))).or_default();
+        if entry.len() >= MAX_POOLED_PER_KEY {
+            return;
+        }
+        let stamp = self.pool_stamp.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        self.pooled_bytes.fetch_add(bytes, std::sync::atomic::Ordering::Relaxed);
+        entry.push((host, buffer, stamp));
+    }
+
+    fn command_buffer_started(&self) {
+        self.pool_liveness.lock().unwrap().active_command_buffers += 1;
+    }
+
+    fn command_buffer_completed(&self) {
+        let deferred = {
+            let mut liveness = self.pool_liveness.lock().unwrap();
+            debug_assert!(liveness.active_command_buffers > 0);
+            liveness.active_command_buffers -= 1;
+            if liveness.active_command_buffers == 0 {
+                std::mem::take(&mut liveness.deferred)
+            } else {
+                vec![]
+            }
+        };
+        for (host, buffer) in deferred {
+            self.pool_put(host, buffer);
+        }
+    }
+
+    fn recycle_pool_pair(&self, host: Arc<Tensor>, buffer: Buffer) {
+        let pair = {
+            let mut liveness = self.pool_liveness.lock().unwrap();
+            if liveness.active_command_buffers > 0 {
+                liveness.deferred.push((host, buffer));
+                None
+            } else {
+                Some((host, buffer))
+            }
+        };
+        if let Some((host, buffer)) = pair {
+            self.pool_put(host, buffer);
+        }
+    }
+
     pub fn new() -> TractResult<Self> {
         let device = Device::system_default()
             .with_context(|| "Could not find system default Metal device")?;
@@ -74,6 +174,10 @@ impl MetalContext {
             device,
             cache_libraries: Arc::new(RwLock::new(HashMap::new())),
             cache_pipelines: Arc::new(RwLock::new(HashMap::new())),
+            buffer_pool: Arc::new(Mutex::new(HashMap::new())),
+            pooled_bytes: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            pool_stamp: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+            pool_liveness: Arc::new(Mutex::new(PoolLiveness::default())),
         };
         ctxt.preload_pipelines()?;
         Ok(ctxt)
@@ -211,20 +315,23 @@ impl DeviceContext for MetalContext {
         let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
+        let buffer = self.device.new_buffer_with_bytes_no_copy(
+            data.as_ptr() as *const core::ffi::c_void,
+            size,
+            MTLResourceOptions::StorageModeShared,
+            None,
+        );
+        let host = tensor.into_arc_tensor();
         let device_buffer = MetalBuffer {
-            inner: self.device.new_buffer_with_bytes_no_copy(
-                data.as_ptr() as *const core::ffi::c_void,
-                size,
-                MTLResourceOptions::StorageModeShared,
-                None,
-            ),
+            inner: buffer.clone(),
+            _pool: if bqf.is_none() {
+                Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer }))
+            } else {
+                None
+            },
         };
 
-        Ok(Box::new(MetalTensor {
-            inner: MValue::Natural(tensor.into_arc_tensor()),
-            device_buffer,
-            exotic_fact: bqf,
-        }))
+        Ok(Box::new(MetalTensor { inner: MValue::Natural(host), device_buffer, exotic_fact: bqf }))
     }
 
     fn uninitialized_device_tensor(
@@ -232,6 +339,17 @@ impl DeviceContext for MetalContext {
         shape: &[usize],
         dt: DatumType,
     ) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        if let Some((host, buffer)) = self.pool_take(dt, shape) {
+            let device_buffer = MetalBuffer {
+                inner: buffer.clone(),
+                _pool: Some(Arc::new(BufferPoolGuard { host: host.clone(), buffer })),
+            };
+            return Ok(Box::new(MetalTensor {
+                inner: MValue::Natural(host),
+                device_buffer,
+                exotic_fact: None,
+            }));
+        }
         let tensor = unsafe {
             Tensor::uninitialized_dt(dt, shape).with_context(|| {
                 format!("Error while allocating a {dt:?} tensor of shape {shape:?}")
@@ -368,13 +486,16 @@ impl MetalStream {
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let profile = self.profile.borrow().clone();
-        self.command_buffer
-            .borrow_mut()
-            .get_or_insert_with(|| {
-                TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned(), profile)
-            })
-            .to_owned()
+        let mut command_buffer = self.command_buffer.borrow_mut();
+        if command_buffer.is_none() {
+            let profile = self.profile.borrow().clone();
+            *command_buffer = Some(TCommandBuffer::new(
+                self.command_queue.new_command_buffer().to_owned(),
+                profile,
+            ));
+            self.context.command_buffer_started();
+        }
+        command_buffer.as_ref().unwrap().to_owned()
     }
 
     pub fn wait_until_completed(&self) -> TractResult<()> {
@@ -395,6 +516,7 @@ impl MetalStream {
         log::trace!("Command buffer {:?} commit", command_buffer_id);
         command_buffer.wait_until_completed();
         log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+        self.context.command_buffer_completed();
 
         // Clear local retained values used by the command buffer
         self.retained_tensors.borrow_mut().clear();
@@ -430,26 +552,45 @@ impl MetalStream {
 
 impl Drop for MetalStream {
     fn drop(&mut self) {
-        let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
-
-        match command_buffer.status() {
-            metal::MTLCommandBufferStatus::Committed
-            | metal::MTLCommandBufferStatus::Scheduled
-            | metal::MTLCommandBufferStatus::Completed => {
-                panic!("Current Metal command buffer is already committed.")
+        if let Some(command_buffer) = self.command_buffer.borrow_mut().take() {
+            match command_buffer.status() {
+                metal::MTLCommandBufferStatus::Committed
+                | metal::MTLCommandBufferStatus::Scheduled
+                | metal::MTLCommandBufferStatus::Completed => {
+                    panic!("Current Metal command buffer is already committed.")
+                }
+                _ => {}
             }
-            _ => {}
-        }
 
-        command_buffer.end_encoding();
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
+            command_buffer.end_encoding();
+            command_buffer.commit();
+            command_buffer.wait_until_completed();
+            self.context.command_buffer_completed();
+        }
+    }
+}
+
+/// Returns its host allocation and Metal buffer to the context pool on last drop.
+#[derive(Debug)]
+pub(crate) struct BufferPoolGuard {
+    pub(crate) host: Arc<Tensor>,
+    pub(crate) buffer: Buffer,
+}
+
+impl Drop for BufferPoolGuard {
+    fn drop(&mut self) {
+        if Arc::strong_count(&self.host) != 1 {
+            return;
+        }
+        metal_context().recycle_pool_pair(self.host.clone(), self.buffer.clone());
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct MetalBuffer {
     pub inner: Buffer,
+    /// Shared across clones of the owning tensor; the last drop recycles.
+    pub(crate) _pool: Option<Arc<BufferPoolGuard>>,
 }
 
 impl PartialEq for MetalBuffer {
@@ -475,5 +616,73 @@ impl DerefMut for MetalBuffer {
 impl DeviceBuffer for MetalBuffer {
     fn ptr(&self) -> *const c_void {
         self.inner.gpu_address() as *const c_void
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A pooled tensor released during GPU work is recycled after completion.
+    #[test]
+    fn pool_recycling_defers_to_command_buffer_completion() -> TractResult<()> {
+        crate::utils::with_borrowed_metal_stream(|stream| {
+            // A shape no other test uses, so pool state is ours alone.
+            let shape = [4099usize];
+            let dt = DatumType::F32;
+            let context = metal_context();
+            // Drain anything a previous run of this test left behind.
+            while context.pool_take(dt, &shape).is_some() {}
+
+            // Idle stream: a drop recycles immediately (historical behavior).
+            let t = DeviceTensor::uninitialized_dt(dt, &shape)?;
+            drop(t);
+            ensure!(
+                context.pool_take(dt, &shape).is_some(),
+                "idle-stream drop must recycle immediately"
+            );
+
+            // Busy stream: dropping the tensor from another thread must still
+            // defer recycling while this stream owns an open command buffer.
+            let t = DeviceTensor::uninitialized_dt(dt, &shape)?;
+            let _cb = stream.command_buffer();
+            std::thread::scope(|scope| scope.spawn(|| drop(t)).join().unwrap());
+            ensure!(
+                context.pool_take(dt, &shape).is_none(),
+                "drop under an open command buffer must not recycle yet"
+            );
+
+            // Fully waited: the pair is either back in the pool or deferred
+            // behind unrelated work from another thread.
+            stream.wait_until_completed()?;
+            let deferred = context
+                .pool_liveness
+                .lock()
+                .unwrap()
+                .deferred
+                .iter()
+                .any(|(host, _)| host.datum_type() == dt && host.shape() == shape);
+            ensure!(
+                deferred || context.pool_take(dt, &shape).is_some(),
+                "the pair must recycle once all Metal work completed"
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn tiny_buffers_are_not_pooled() -> TractResult<()> {
+        let shape = [4usize];
+        let dt = DatumType::F32;
+        let context = metal_context();
+        while context.pool_take(dt, &shape).is_some() {}
+
+        let t = DeviceTensor::uninitialized_dt(dt, &shape)?;
+        drop(t);
+        ensure!(
+            context.pool_take(dt, &shape).is_none(),
+            "tiny buffers should not be kept in the Metal buffer pool"
+        );
+        Ok(())
     }
 }

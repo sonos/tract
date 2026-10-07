@@ -79,16 +79,22 @@ fn lcm(a: i32, b: i32) -> i32 {
     a / gcd(a, b) * b
 }
 
-/// Whether the ported kernel can take this convolution: NHWC f16/f32, one
-/// group, rank-2 spatial, `OHWI` weights, no output padding tricks.
+/// Whether the ported kernel can take this convolution: batched NHWC f16/f32, one
+/// group, rank-2 spatial, `OHWI` weights, no dilation/output padding tricks.
 pub fn mlx_conv_eligible(op: &Conv, in_facts: &[&TypedFact]) -> bool {
     if op.group != 1 || op.q_params.is_some() {
+        return false;
+    }
+    if op.pool_spec.dilations().iter().any(|&d| d != 1) {
         return false;
     }
     if !matches!(in_facts[0].datum_type, DatumType::F16 | DatumType::F32) {
         return false;
     }
     if in_facts[0].datum_type != in_facts[1].datum_type {
+        return false;
+    }
+    if in_facts[0].rank() != 4 || in_facts[1].rank() != 4 {
         return false;
     }
     let Ok(shape) = op.pool_spec.data_format.shape(in_facts[0].shape.to_tvec()) else {
@@ -263,6 +269,9 @@ pub fn mlx_conv_dispatchable(op: &Conv, input: &DeviceTensor, weights: &DeviceTe
     if !op.pool_spec.data_format.c_is_last() || input.rank() != 4 || weights.rank() != 4 {
         return false;
     }
+    if op.pool_spec.dilations().iter().any(|&d| d != 1) {
+        return false;
+    }
     let natural = |t: &DeviceTensor| {
         let mut s = 1isize;
         t.shape().iter().rev().zip(t.strides().iter().rev()).all(|(&d, &st)| {
@@ -407,4 +416,30 @@ pub fn dispatch_mlx_depthwise_conv_2d(
         encoder.dispatch_thread_groups(grid, group);
     });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tract_core::ops::cnn::{PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+
+    #[test]
+    fn mlx_conv_eligible_rejects_unbatched_hwc() -> TractResult<()> {
+        let pool_spec = PoolSpec::new(
+            DataFormat::HWC,
+            tvec![1, 2],
+            PaddingSpec::SameUpper,
+            Some(tvec![1, 1]),
+            Some(tvec![1, 1]),
+            1,
+            1,
+        );
+        let conv = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: 1, q_params: None };
+        let input = DatumType::F32.fact(&[2, 2, 1]);
+        let weights = DatumType::F32.fact(&[1, 1, 1, 2]);
+
+        assert!(!mlx_conv_eligible(&conv, &[&input, &weights]));
+        Ok(())
+    }
 }
