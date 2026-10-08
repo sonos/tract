@@ -16,6 +16,11 @@
 // Calling convention (extern "C", AAPCS64):
 //   x0 = const *FusedKerSpec<f32>, advanced 40 B per dispatcher iteration.
 //   x1 = stack-resident 4 KiB scratch buffer for tile spills (Phase 1B+).
+//   [x1, #4096] = live M rows for this call. 32 unless AddMatMul's packing
+//   word carries a count in bits 8..15 (1..=31). That hint is only set when
+//   the store is the horizontal fast path. 1..=16 also skips the bottom
+//   FMOPAs; 17..31 still runs all four but stores only the live rows. Full
+//   tiles pass packing unchanged and keep the 32-row stores.
 //
 // Streaming mode: PSTATE.SM=1 from prologue smstart to epilogue smstop.
 // V0..V31 (low 128 bits = Z0..Z31 low) are destroyed by the smstart/smstop
@@ -36,9 +41,13 @@
     stp     q12, q13, [sp, #64]
     stp     q14, q15, [sp, #96]
 
-    // Allocate 4 KiB tile-spill scratch (kept live across the whole call).
+    // 4 KiB tile spill, plus 16 B for the live-M count just past it.
+    // 4112 is not a single add/sub immediate.
     sub     sp, sp, #4096
+    sub     sp, sp, #16
     mov     x1, sp
+    mov     w9, #32
+    str     w9, [x1, #4096]
 
     smstart
     ptrue   p0.b
@@ -48,11 +57,30 @@
 // -------- supported fuse ops ---------------------------------------------
 
 .add_mat_mul:
+    ldr     x9, [x0, #32]       // packing. bits 8..15 = live M, 0 means 32
+    lsr     x10, x9, #8
+    and     x10, x10, #0xff
+    cmp     x10, #0
+    b.eq    .Lmmm_m32
+    cmp     x10, #31
+    b.gt    .Lmmm_m32
+    str     w10, [x1, #4096]
+    b       .Lmmm_masked
+.Lmmm_m32:
+    mov     w12, #32
+    str     w12, [x1, #4096]
+    mov     x10, #32
+.Lmmm_masked:
+    and     x9, x9, #0xff
     ldr     x2, [x0, #24]       // b
     ldp     x3, x4, [x0, #8]    // k, a
 
     cmp     x3, #0
     b.eq    .non_linear_loop
+    // A live-M hint on a packed panel skips ZA2/ZA3. The matching store
+    // writes only those rows, and Clear left the bottom tiles at zero.
+    cmp     x10, #16
+    b.le    .Lmatmul_partial
 
 .Lmatmul_loop:
     ld1w    {z0.s}, p0/z, [x4]
@@ -71,6 +99,24 @@
     b.ne    .Lmatmul_loop
     b       .non_linear_loop
 
+// Packed panel, live M in 1..=16. One A vector covers rows 0..15 (the
+// packer zeros the lanes past the live rows). The panel is still 32 wide,
+// so the pointer advance stays 128 even though the second A vector is not
+// loaded. B is still both halves: N is a full 32.
+.Lmatmul_partial:
+    ld1w    {z0.s}, p0/z, [x4]
+    ld1w    {z1.s}, p0/z, [x2]
+    ld1w    {z3.s}, p0/z, [x2, #1, mul vl]
+    add     x4, x4, #128
+    add     x2, x2, #128
+
+    fmopa   za0.s, p0/m, p0/m, z0.s, z1.s    // C[0..16,  0..16]
+    fmopa   za1.s, p0/m, p0/m, z0.s, z3.s    // C[0..16, 16..32]
+
+    subs    x3, x3, #1
+    b.ne    .Lmatmul_partial
+    b       .non_linear_loop
+
 .clear:
     zero    {za}
     b       .non_linear_loop
@@ -87,10 +133,30 @@
     // st1w-from-ZA does not accept "[Xn, #imm, MUL VL]" offsets, so we keep
     // two parallel base pointers for the left and right halves of each row.
     cmp     x7, #4
-    b.ne    .Lstore_generic
+    b.ne    .Lstore_m_contiguous
     cmp     x8, #4
     b.ne    .Lstore_generic
 
+    // Live M <= 16 stays in ZA0/ZA1. 17..31 writes a full top half plus the
+    // live rows of the bottom; 32 (the default and every full tile) writes
+    // both halves in full.
+    ldr     w9, [x1, #4096]
+    cmp     w9, #16
+    b.gt    .Lstore_horiz_full
+
+    add     x4, x5, #64
+    mov     w12, #0
+.Lstore_partial:
+    cmp     w12, w9
+    b.ge    .non_linear_loop
+    st1w    {za0h.s[w12, 0]}, p0, [x5]
+    st1w    {za1h.s[w12, 0]}, p0, [x4]
+    add     x5, x5, x6
+    add     x4, x4, x6
+    add     w12, w12, #1
+    b       .Lstore_partial
+
+.Lstore_horiz_full:
     add     x4, x5, #64         // right-half base
     mov     w12, #0
 .Lstore_top:
@@ -101,6 +167,7 @@
     add     w12, w12, #1
     cmp     w12, #16
     b.lt    .Lstore_top
+    sub     w13, w9, #16        // 16 on a full tile, w9-16 live rows otherwise
     mov     w12, #0
 .Lstore_bot:
     st1w    {za2h.s[w12, 0]}, p0, [x5]
@@ -108,8 +175,44 @@
     add     x5, x5, x6
     add     x4, x4, x6
     add     w12, w12, #1
-    cmp     w12, #16
+    cmp     w12, w13
     b.lt    .Lstore_bot
+    b       .non_linear_loop
+
+// M is contiguous (row_byte_stride == 4) and N is not. A horizontal slice is
+// then a strided row, which is what the scalar loop below walks, and SVE
+// scatter is illegal in streaming mode unless FEAT_SME_FA64 is enabled.
+// Apple does not advertise that feature. A vertical ZA slice is the
+// contiguous run of M, so it stores with an ordinary st1w. Columns 0..15 are
+// ZA0 over ZA2; columns 16..31 are ZA1 over ZA3. x5 walks the columns.
+.Lstore_m_contiguous:
+    cmp     x6, #4
+    b.ne    .Lstore_generic
+    cmp     x8, #4
+    b.ne    .Lstore_generic
+
+    mov     w12, #0
+.Lstore_m_left:
+    mov     z6.s, p0/m, za0v.s[w12, 0]
+    mov     z7.s, p0/m, za2v.s[w12, 0]
+    st1w    {z6.s}, p0, [x5]
+    add     x4, x5, #64
+    st1w    {z7.s}, p0, [x4]
+    add     x5, x5, x7
+    add     w12, w12, #1
+    cmp     w12, #16
+    b.lt    .Lstore_m_left
+    mov     w12, #0
+.Lstore_m_right:
+    mov     z6.s, p0/m, za1v.s[w12, 0]
+    mov     z7.s, p0/m, za3v.s[w12, 0]
+    st1w    {z6.s}, p0, [x5]
+    add     x4, x5, #64
+    st1w    {z7.s}, p0, [x4]
+    add     x5, x5, x7
+    add     w12, w12, #1
+    cmp     w12, #16
+    b.lt    .Lstore_m_right
     b       .non_linear_loop
 
 .Lstore_generic:
@@ -466,6 +569,7 @@
 
 .return:
     smstop
+    add     sp, sp, #16
     add     sp, sp, #4096
     ldp     q14, q15, [sp, #96]
     ldp     q12, q13, [sp, #64]
