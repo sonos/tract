@@ -231,7 +231,11 @@ impl OptMaxPool {
         let mut values =
             unsafe { Tensor::uninitialized_dt(input.datum_type(), &geo.output_shape.shape)? };
         unsafe {
-            maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
+            maxpool_2x2_f32(
+                input.as_ptr::<f32>()? as usize,
+                values.as_slice_mut_unchecked::<f32>(),
+                geo,
+            )?;
         }
         Ok(Some(values))
     }
@@ -322,71 +326,88 @@ fn fold_max<'a, T: Copy + PartialOrd + 'a>(row: &mut [T], taps: impl Iterator<It
     }
 }
 
-unsafe fn maxpool_2x2_f32(iptr: *const f32, optr: *mut f32, geo: &ConcretePoolGeometry) {
-    unsafe {
-        let ish = &geo.input_shape;
-        let osh = &geo.output_shape;
-        let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
-        let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
-        let sh = geo.patch.spec.strides[0] as isize;
-        let sw = geo.patch.spec.strides[1] as isize;
-        let pt = geo.patch.pad_before[0] as isize;
-        let pl = geo.patch.pad_before[1] as isize;
-        let ih_stride = *ish.h_stride() as isize;
-        let oh_stride = *osh.h_stride() as isize;
-        let n = *ish.n().unwrap_or(&1) as isize;
-        let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
-        let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
-        let c = *ish.c() as isize;
-        let ic_stride = *ish.c_stride() as isize;
-        let oc_stride = *osh.c_stride() as isize;
-        // Fully-valid 2×2 windows (both taps in-bounds). SameUpper 2×2 s=1
-        // keeps H/W and pads after, so the last row/col are partial.
-        let simd_s1 = sh == 1 && sw == 1;
-        let y0 = pt.max(0) as usize;
-        let y1 = ((h - 1 + pt).max(0) as usize).min(oh);
-        let x0 = pl.max(0) as usize;
-        let x1 = ((w - 1 + pl).max(0) as usize).min(ow);
-        for nn in 0..n {
-            for cc in 0..c {
-                let in_base = nn * in_stride + cc * ic_stride;
-                let out_base = nn * on_stride + cc * oc_stride;
-                if simd_s1 && y1 > y0 && x1 > x0 {
-                    maxpool_2x2_s1_valid_f32(
-                        iptr.offset(in_base + (y0 as isize - pt) * ih_stride + (x0 as isize - pl)),
-                        optr.offset(out_base + y0 as isize * oh_stride + x0 as isize),
-                        y1 - y0,
-                        x1 - x0,
-                        ih_stride,
-                        oh_stride,
-                    );
+unsafe fn maxpool_2x2_f32(
+    i_base: usize,
+    out: &mut [f32],
+    geo: &ConcretePoolGeometry,
+) -> TractResult<()> {
+    let ish = &geo.input_shape;
+    let osh = &geo.output_shape;
+    let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
+    let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
+    let sh = geo.patch.spec.strides[0] as isize;
+    let sw = geo.patch.spec.strides[1] as isize;
+    let pt = geo.patch.pad_before[0] as isize;
+    let pl = geo.patch.pad_before[1] as isize;
+    let ih_stride = *ish.h_stride() as isize;
+    let oh_stride = *osh.h_stride() as isize;
+    let n = *ish.n().unwrap_or(&1) as isize;
+    let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
+    let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
+    let c = *ish.c() as isize;
+    let ic_stride = *ish.c_stride() as isize;
+    let oc_stride = *osh.c_stride() as isize;
+    // Fully-valid 2×2 windows (both taps in-bounds). SameUpper 2×2 s=1
+    // keeps H/W and pads after, so the last row/col are partial.
+    let simd_s1 = sh == 1 && sw == 1;
+    let y0 = pt.max(0) as usize;
+    let y1 = ((h - 1 + pt).max(0) as usize).min(oh);
+    let x0 = pl.max(0) as usize;
+    let x1 = ((w - 1 + pl).max(0) as usize).min(ow);
+    let plane_len = oh * ow;
+    let one_plane = |p: isize, plane_out: *mut f32| unsafe {
+        let iptr = i_base as *const f32;
+        let nn = p / c;
+        let cc = p % c;
+        let in_base = nn * in_stride + cc * ic_stride;
+        if simd_s1 && y1 > y0 && x1 > x0 {
+            maxpool_2x2_s1_valid_f32(
+                iptr.offset(in_base + (y0 as isize - pt) * ih_stride + (x0 as isize - pl)),
+                plane_out.offset(y0 as isize * oh_stride + x0 as isize),
+                y1 - y0,
+                x1 - x0,
+                ih_stride,
+                oh_stride,
+            );
+        }
+        for oy in 0..oh {
+            let interior_y = simd_s1 && oy >= y0 && oy < y1;
+            for ox in 0..ow {
+                if interior_y && ox >= x0 && ox < x1 {
+                    continue;
                 }
-                for oy in 0..oh {
-                    let interior_y = simd_s1 && oy >= y0 && oy < y1;
-                    for ox in 0..ow {
-                        if interior_y && ox >= x0 && ox < x1 {
+                let mut m = f32::MIN;
+                for ky in 0..2 {
+                    let iy = oy as isize * sh + ky - pt;
+                    if iy < 0 || iy >= h {
+                        continue;
+                    }
+                    let row = iptr.offset(in_base + iy * ih_stride);
+                    for kx in 0..2 {
+                        let ix = ox as isize * sw + kx - pl;
+                        if ix < 0 || ix >= w {
                             continue;
                         }
-                        let mut m = f32::MIN;
-                        for ky in 0..2 {
-                            let iy = oy as isize * sh + ky - pt;
-                            if iy < 0 || iy >= h {
-                                continue;
-                            }
-                            let row = iptr.offset(in_base + iy * ih_stride);
-                            for kx in 0..2 {
-                                let ix = ox as isize * sw + kx - pl;
-                                if ix < 0 || ix >= w {
-                                    continue;
-                                }
-                                m = m.max(*row.offset(ix));
-                            }
-                        }
-                        *optr.offset(out_base + oy as isize * oh_stride + ox as isize) = m;
+                        m = m.max(*row.offset(ix));
                     }
                 }
+                *plane_out.offset(oy as isize * oh_stride + ox as isize) = m;
             }
         }
+    };
+    if oc_stride == plane_len as isize && on_stride == c * oc_stride {
+        tract_linalg::multithread::par_chunks_mut(out, plane_len, out.len(), |first, chunk| {
+            for (i, plane_out) in chunk.chunks_mut(plane_len).enumerate() {
+                one_plane(first as isize + i as isize, plane_out.as_mut_ptr());
+            }
+            Ok(())
+        })
+    } else {
+        for p in 0..(n * c) {
+            let out_base = (p / c) * on_stride + (p % c) * oc_stride;
+            unsafe { one_plane(p, out.as_mut_ptr().offset(out_base)) };
+        }
+        Ok(())
     }
 }
 
@@ -472,6 +493,43 @@ mod tests {
         .into_tensor()
         .into_tvalue();
         (model, tvec!(input))
+    }
+
+    // wasi has no thread spawning at all; other wasm targets use the shared
+    // rayon global pool instead of a private ThreadPool.
+    #[test]
+    #[cfg(not(target_os = "wasi"))]
+    fn maxpool_2x2_multithreaded_matches_reference() {
+        let cases = [
+            ((1usize, 24, 320, 320), PaddingSpec::SameUpper, tvec![1usize, 1]),
+            ((2, 8, 33, 17), PaddingSpec::Valid, tvec![2, 2]),
+        ];
+        for (shape, padding, strides) in cases {
+            let c = shape.1;
+            let pool_spec =
+                PoolSpec::new(DataFormat::NCHW, tvec![2, 2], padding, None, Some(strides), c, c);
+            let input = ndarray::Array4::from_shape_fn(shape, |(n, c, y, x)| {
+                ((n * 31 + c * 7 + y * 13 + x * 3) % 97) as f32 * 0.25 - 12.0
+            })
+            .into_tensor()
+            .into_tvalue();
+            // The index-outputs variant never takes the 2x2 fast path, so its
+            // output 0 is the visit_output reference.
+            let reference =
+                MaxPool { pool_spec: pool_spec.clone(), with_index_outputs: Some(DatumType::I32) }
+                    .eval(&EvalContext::out_of_plan(), tvec!(input.clone()))
+                    .unwrap();
+            let op = MaxPool { pool_spec, with_index_outputs: None };
+            #[cfg(target_family = "wasm")]
+            let pool = tract_linalg::multithread::Executor::RayonGlobal;
+            #[cfg(not(target_family = "wasm"))]
+            let pool = tract_linalg::multithread::Executor::multithread(4);
+            let fast = tract_linalg::multithread::multithread_tract_scope(pool, || {
+                op.eval(&EvalContext::out_of_plan(), tvec!(input))
+            })
+            .unwrap();
+            assert_eq!(*fast[0], *reference[0]);
+        }
     }
 
     #[test]
