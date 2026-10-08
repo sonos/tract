@@ -100,6 +100,46 @@ struct AddMatMulTemp {
     panel_b_id: usize,
 }
 
+/// True when this border tile can store its live rows straight into C.
+///
+/// Only `sme_mmm_f32_32x32` understands the packing hint, and only for a
+/// full N panel whose columns are contiguous. The tile must also contain a
+/// matmul: the hint travels in that op, and without it the kernel stores
+/// all 32 rows. A count of 16 or less also skips the bottom-tile FMOPAs;
+/// 17..31 only shortens the store.
+fn partial_m_direct<TI: LADatum>(
+    ker: &impl MatMatMulKer<Acc = TI>,
+    specs: &[FusedSpec],
+    m_remnant: usize,
+    n_remnant: usize,
+) -> bool {
+    if ker.name() != "sme_mmm_f32_32x32" {
+        return false;
+    }
+    if m_remnant == 0
+        || m_remnant >= ker.mr()
+        || n_remnant != ker.nr()
+        || !ker.stores_row_major_tile()
+    {
+        return false;
+    }
+    let mut saw_store = false;
+    let mut saw_matmul = false;
+    for spec in specs {
+        match spec {
+            FusedSpec::Store(store) => {
+                saw_store = true;
+                if store.col_byte_stride != store.item_size as isize || store.item_size != 4 {
+                    return false;
+                }
+            }
+            FusedSpec::AddMatMul { .. } => saw_matmul = true,
+            _ => {}
+        }
+    }
+    saw_store && saw_matmul
+}
+
 impl<TI: LADatum> ScratchSpaceImpl<TI> {
     pub unsafe fn prepare(
         &mut self,
@@ -262,10 +302,20 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     if down < self.valid_down_tiles { ker.mr() } else { self.remnant_down };
                 let remnant_right =
                     if right < self.valid_right_tiles { ker.nr() } else { self.remnant_right };
-                self.for_border_tile(ker, specs, tls, down, right, remnant_down, remnant_right)?;
+                let direct = self.for_border_tile(
+                    ker,
+                    specs,
+                    tls,
+                    down,
+                    right,
+                    remnant_down,
+                    remnant_right,
+                )?;
                 let err = ker.kernel(tls.ker_specs());
                 ensure!(err == 0, "Kernel {} returned error {err}", ker.name());
-                self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
+                if !direct {
+                    self.postprocess_tile(specs, tls, down, right, remnant_down, remnant_right)?;
+                }
             }
             Ok(())
         }
@@ -361,10 +411,16 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         right: usize,
         m_remnant: usize,
         n_remnant: usize,
-    ) -> TractResult<()> {
+    ) -> TractResult<bool> {
         unsafe {
             use FusedKerSpec as FKS;
             use FusedSpec as FS;
+            // sme_mmm_f32_32x32 reads a live-M count from packing bits 8..15
+            // and, on the horizontal store, writes that many rows. The count
+            // is set only together with a direct store, so the scratch copy
+            // is skipped for the same tile. Every other kernel and every
+            // short-N or non-contiguous store stays on the scratch path.
+            let direct = partial_m_direct(ker, specs, m_remnant, n_remnant);
             for LocDependent { spec, ker_spec: uspec, loc, buffer_a, buffer_b } in
                 &self.loc_dependent
             {
@@ -489,24 +545,33 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                         })
                     }
                     FS::Store(c_store) => {
-                        let row_major = ker.stores_row_major_tile()
-                            && c_store.col_byte_stride == c_store.item_size as isize;
-                        let (row_byte_stride, col_byte_stride) = if row_major {
-                            // Pad the row stride to 128 bytes so it stays aligned
-                            // for the kernel's bulk-store path.
-                            let row =
-                                Integer::next_multiple_of(&(c_store.item_size * ker.nr()), &128);
-                            (row as isize, c_store.item_size as isize)
+                        if direct {
+                            FKS::Store(c_store.tile_c(down, right))
                         } else {
-                            (c_store.item_size as isize, (c_store.item_size * ker.mr()) as isize)
-                        };
-                        let tmpc = OutputStoreKer {
-                            ptr: loc as _,
-                            item_size: c_store.item_size,
-                            row_byte_stride,
-                            col_byte_stride,
-                        };
-                        FKS::Store(tmpc)
+                            let row_major = ker.stores_row_major_tile()
+                                && c_store.col_byte_stride == c_store.item_size as isize;
+                            let (row_byte_stride, col_byte_stride) = if row_major {
+                                // Pad the row stride to 128 bytes so it stays aligned
+                                // for the kernel's bulk-store path.
+                                let row = Integer::next_multiple_of(
+                                    &(c_store.item_size * ker.nr()),
+                                    &128,
+                                );
+                                (row as isize, c_store.item_size as isize)
+                            } else {
+                                (
+                                    c_store.item_size as isize,
+                                    (c_store.item_size * ker.mr()) as isize,
+                                )
+                            };
+                            let tmpc = OutputStoreKer {
+                                ptr: loc as _,
+                                item_size: c_store.item_size,
+                                row_byte_stride,
+                                col_byte_stride,
+                            };
+                            FKS::Store(tmpc)
+                        }
                     }
                     FS::AddMatMul { a, b, packing } => {
                         let scratch = (loc as *mut AddMatMulTemp).as_mut().unwrap();
@@ -524,18 +589,14 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             )?;
                             scratch.panel_b_id = right;
                         }
-                        FKS::AddMatMul {
-                            k: b.k(),
-                            pa: scratch.ptr_a,
-                            pb: scratch.ptr_b,
-                            packing: *packing,
-                        }
+                        let packing = if direct { *packing | (m_remnant << 8) } else { *packing };
+                        FKS::AddMatMul { k: b.k(), pa: scratch.ptr_a, pb: scratch.ptr_b, packing }
                     }
                     _ => std::hint::unreachable_unchecked(),
                 };
                 *tls.ker_specs().get_unchecked_mut(*uspec) = it;
             }
-            Ok(())
+            Ok(direct)
         }
     }
 

@@ -18,6 +18,44 @@ fn single_strat(it: Impl) -> Strat {
     (ModePicker::Single, it.0.packings()[it.1].0.clone(), vec![it])
 }
 
+/// True when C's n axis is the innermost non-unit axis, so a row-major AMX/SME
+/// store hits its aligned bulk path (`col_byte_stride == item_size`).
+fn n_axis_contiguous(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> bool {
+    let Some(cn) = op.c_n() else {
+        return true;
+    };
+    let Ok(fact) = model.outlet_fact(node.id.into()) else {
+        return true;
+    };
+    fact.shape.iter().skip(cn + 1).all(|d| d.is_one())
+}
+
+/// AMX and SME 32×32 `stz`/`st1w` write a contiguous 128-byte row. A strided n
+/// axis makes that kernel 20× slower in-graph than isolated (50 µs vs 2.4 µs
+/// on DPDFNet 48 kHz 160×64×64) when the store falls through to a scalar
+/// scatter. Scatter itself is illegal in streaming mode without
+/// FEAT_SME_FA64, which Apple does not enable. `sme_mmm_f32_32x32` is the
+/// exception once M is the contiguous axis: it stores a vertical ZA slice with
+/// an ordinary `st1w`. GEMV (nr==1) is unaffected.
+fn tile_store_needs_n_contiguous(name: &str, nr: usize) -> bool {
+    nr > 1
+        && (name.starts_with("apple_amx")
+            || name.starts_with("sme_mmm")
+            || name.starts_with("sme_qmmm"))
+}
+
+/// True when C's m axis is the innermost non-unit axis, so a vertical SME
+/// slice is a contiguous vector.
+fn m_axis_contiguous(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> bool {
+    let Some(cm) = op.c_m() else {
+        return true;
+    };
+    let Ok(fact) = model.outlet_fact(node.id.into()) else {
+        return true;
+    };
+    fact.shape.iter().skip(cm + 1).all(|d| d.is_one())
+}
+
 pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
     let query = query(model, node, op)?;
     let mut suitable = tract_linalg::MmmDispatch::native().suitable(&query);
@@ -27,7 +65,26 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     if query.n.is_some()
         && let Some(chosen) = tract_linalg::MmmDispatch::native().preferred(&query, &suitable)
     {
-        return Ok(single_strat(chosen));
+        let n_ok = n_axis_contiguous(model, node, op);
+        let m_ok = m_axis_contiguous(model, node, op);
+        // A strided N is fine for the f32 SME tile when M is the contiguous
+        // axis: the kernel stores that direction as a vertical slice. Every
+        // other wide tile still scatters and stays out.
+        let vertical_sme = |name: &str| m_ok && name == "sme_mmm_f32_32x32";
+        if tile_store_needs_n_contiguous(chosen.0.name(), chosen.0.nr())
+            && !n_ok
+            && !vertical_sme(chosen.0.name())
+        {
+            suitable.retain(|(k, _, _)| {
+                !tile_store_needs_n_contiguous(k.name(), k.nr()) || vertical_sme(k.name())
+            });
+            if let Some(fallback) = tract_linalg::MmmDispatch::native().preferred(&query, &suitable)
+            {
+                return Ok(single_strat(fallback));
+            }
+        } else {
+            return Ok(single_strat(chosen));
+        }
     }
     retain_best(&mut suitable);
     if suitable.len() == 1 {
@@ -114,4 +171,73 @@ pub fn query(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractRe
         k: op.k.as_i64().map(|d| d as usize),
         n: op.n.as_i64().map(|d| d as usize),
     })
+}
+
+#[cfg(test)]
+mod amx_strided_store {
+    use super::*;
+    use crate::ops::einsum::EinSum;
+    use crate::ops::matmul::optimized::OptMatMul;
+
+    fn optimize_mn(m: usize, k: usize, n: usize) -> TypedModel {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([m, k])).unwrap();
+        let b = model.add_source("b", f32::fact([k, n])).unwrap();
+        let out = model
+            .wire_node(
+                "gemm",
+                EinSum::new("mk,kn->mn".parse().unwrap(), f32::datum_type()),
+                &[a, b],
+            )
+            .unwrap();
+        model.select_output_outlets(&out).unwrap();
+        model.optimize().unwrap();
+        model
+    }
+
+    fn has_tile_kernel() -> bool {
+        tract_linalg::MmmDispatch::native()
+            .runnable()
+            .iter()
+            .any(|k| tile_store_needs_n_contiguous(k.name(), k.nr()))
+    }
+
+    /// m<n transposes so n is no longer innermost and m is. The f32 SME tile
+    /// stores that direction; AMX and the i32 SME tile still must not.
+    #[test]
+    fn strided_n_does_not_select_amx_32x32() {
+        if !has_tile_kernel() {
+            return;
+        }
+        let model = optimize_mn(64, 64, 160);
+        let mm = model.nodes.iter().find_map(|n| n.op_as::<OptMatMul>()).expect("OptMatMul");
+        let name = mm.mmm[0].name();
+        let sme_f32 = tract_linalg::MmmDispatch::native()
+            .runnable()
+            .iter()
+            .any(|k| k.name() == "sme_mmm_f32_32x32");
+        if sme_f32 {
+            assert_eq!(name, "sme_mmm_f32_32x32", "m-contiguous GEMM selected {name}");
+        } else {
+            assert!(
+                !tile_store_needs_n_contiguous(name, mm.mmm[0].nr()),
+                "strided-n GEMM selected {name}"
+            );
+        }
+    }
+
+    /// m>n keeps n innermost. AMX 32x32 (M1–M3) or SME 32x32 (M4+) is correct.
+    #[test]
+    fn contiguous_n_selects_wide_tile() {
+        if !has_tile_kernel() {
+            return;
+        }
+        let model = optimize_mn(160, 64, 64);
+        let mm = model.nodes.iter().find_map(|n| n.op_as::<OptMatMul>()).expect("OptMatMul");
+        assert!(
+            tile_store_needs_n_contiguous(mm.mmm[0].name(), mm.mmm[0].nr()),
+            "contiguous-n GEMM selected {}",
+            mm.mmm[0].name()
+        );
+    }
 }
