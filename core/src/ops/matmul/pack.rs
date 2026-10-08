@@ -75,10 +75,42 @@ impl TypedOp for OptMatMulPack {
 
 impl OptMatMulPack {
     fn do_eval(&self, _ctx: &EvalContext, input: TValue) -> TractResult<TVec<TValue>> {
+        let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
+        let packer = &self.packers[mode];
+        let output_shape: TVec<usize> = self.output_shape(input.shape());
+        if let Some(strided) = packer.downcast_ref::<tract_linalg::strided_panel::StridedKMajor>() {
+            // Share the activation allocation. A copy here is the pack this format exists to skip.
+            let arc = input.as_arc_tensor().unwrap().clone();
+            let values = if output_shape.iter().all(|d| *d == 1) {
+                tvec![strided.panel_from_arc(arc, 0, self.k_axis, self.mn_axis)?]
+            } else {
+                let mut bc_shape: TVec<usize> = input.shape().into();
+                bc_shape[self.k_axis] = 1;
+                bc_shape[self.mn_axis] = 1;
+                let mut values: TVec<Box<dyn MMMInputValue>> =
+                    TVec::with_capacity(output_shape.iter().product());
+                for coord in indices(&*bc_shape) {
+                    let offset = coord
+                        .as_array_view()
+                        .iter()
+                        .zip(input.strides())
+                        .map(|(x, s)| *x as isize * s)
+                        .sum::<isize>()
+                        * input.datum_type().size_of() as isize;
+                    values.push(strided.panel_from_arc(
+                        arc.clone(),
+                        offset,
+                        self.k_axis,
+                        self.mn_axis,
+                    )?);
+                }
+                values
+            };
+            let stores = PackedMatrixStorage::new_batched(&output_shape, values)
+                .into_tensor(input.datum_type());
+            return Ok(tvec!(stores.into_tvalue()));
+        }
         unsafe {
-            let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
-            let packer = &self.packers[mode];
-            let output_shape: TVec<usize> = self.output_shape(input.shape());
             let stores = if output_shape.iter().all(|d| *d == 1) {
                 let packed = packer.prepare_one_view(&input.view(), self.k_axis, self.mn_axis)?;
                 PackedMatrixStorage::new_batched(&output_shape, tvec![packed])

@@ -38,6 +38,8 @@ impl From<&dyn MMMInputFormat> for WeightType {
             WeightType::Plain(pf.dt)
         } else if let Some(pbqf) = value.downcast_ref::<PackedBlockQuantFormat>() {
             WeightType::BlockQuant(dyn_clone::clone_box(&*pbqf.bq))
+        } else if value.is::<crate::strided_panel::StridedKMajor>() {
+            WeightType::Plain(DatumType::F32)
         } else {
             todo!()
         }
