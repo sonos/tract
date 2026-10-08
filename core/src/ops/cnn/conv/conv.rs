@@ -1674,4 +1674,140 @@ mod test {
         assert_eq!(cv.pool_spec.padding, Explicit(tvec![1], tvec![0])); // source + conv
         Ok(())
     }
+
+    fn filled(shape: &[usize], mut f: impl FnMut(usize) -> f32) -> Tensor {
+        let n: usize = shape.iter().product();
+        let data: Vec<f32> = (0..n).map(|i| f(i)).collect();
+        Tensor::from_shape(shape, &data).unwrap()
+    }
+
+    fn run_lazy(
+        fmt: DataFormat,
+        input: &Tensor,
+        kernel: &Tensor,
+        padding: crate::ops::cnn::PaddingSpec,
+        strides: Option<TVec<usize>>,
+        dilations: Option<TVec<usize>>,
+        group: usize,
+        ic: usize,
+        oc: usize,
+        kernel_shape: TVec<usize>,
+    ) -> TractResult<(TypedModel, Tensor)> {
+        let mut model = TypedModel::default();
+        let wire = tvec!(model.add_source("input", f32::fact(input.shape().to_vec()))?);
+        let k = model.add_const("kernel", kernel.clone().into_arc_tensor())?;
+        let bias = model.add_const("bias", rctensor0(0f32))?;
+        let op = Conv {
+            pool_spec: PoolSpec {
+                data_format: fmt,
+                kernel_shape,
+                padding,
+                dilations,
+                strides,
+                input_channels: ic,
+                output_channels: oc,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group,
+            q_params: None,
+        };
+        let wire = model.wire_node("conv", op, &[wire[0], k, bias])?;
+        model.select_output_outlets(&wire)?;
+        let model = model.into_optimized()?;
+        let out = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+        Ok((model, (*out[0]).clone()))
+    }
+
+    /// 1x1 NCHW is an einsum. When the SME 32x32 kernel runs it, the activation
+    /// packer is a strided view and the result still matches a scalar 1x1.
+    #[test]
+    fn pointwise_nchw_strided_pack() -> TractResult<()> {
+        // Large enough that the M4 model picks sme_mmm_f32_32x32. 81*79 = 6399,
+        // so the last panel has 31 live lanes.
+        check_pointwise(81, 79, 16, 32, true)?;
+        check_pointwise(5, 7, 3, 5, false)?;
+        check_pointwise(4, 16, 4, 8, false)?;
+        Ok(())
+    }
+
+    fn sme_on_this_cpu() -> bool {
+        #[cfg(target_arch = "aarch64")]
+        {
+            tract_linalg::arm64::has_sme()
+        }
+        #[cfg(not(target_arch = "aarch64"))]
+        {
+            false
+        }
+    }
+
+    fn check_pointwise(
+        h: usize,
+        w: usize,
+        ic: usize,
+        oc: usize,
+        require_sme: bool,
+    ) -> TractResult<()> {
+        use tract_linalg::strided_panel::StridedKMajor;
+        let input = filled(&[1, ic, h, w], |i| (i % 7) as f32 + 1.0);
+        let kernel = filled(&[oc, ic, 1, 1], |i| (i % 5) as f32 - 2.0);
+        let (model, out) =
+            run_lazy(NCHW, &input, &kernel, Valid, None, None, 1, ic, oc, tvec![1, 1])?;
+        let uses_sme = model.nodes().iter().any(|n| {
+            n.op_as::<OptMatMul>()
+                .is_some_and(|op| op.mmm.iter().any(|m| m.name() == "sme_mmm_f32_32x32"))
+        });
+        if require_sme && sme_on_this_cpu() {
+            let names: Vec<_> = model
+                .nodes()
+                .iter()
+                .filter_map(|n| n.op_as::<OptMatMul>())
+                .flat_map(|op| op.mmm.iter().map(|m| m.name().to_string()))
+                .collect();
+            ensure!(uses_sme, "{h}x{w} ic{ic} oc{oc} picked {names:?}");
+        }
+        if uses_sme {
+            ensure!(
+                model.nodes().iter().any(|n| {
+                    n.op_as::<OptMatMulPack>().is_some_and(|op| {
+                        op.packers.iter().any(|p| p.downcast_ref::<StridedKMajor>().is_some())
+                    })
+                }),
+                "{h}x{w}: SME matmul still packs the activation"
+            );
+            ensure!(
+                model
+                    .nodes()
+                    .iter()
+                    .any(|n| { n.op_as::<OptMatMul>().is_some_and(|op| op.trivial_path) }),
+                "{h}x{w}: strided pack turned off the trivial matmul path"
+            );
+        }
+        let want = pointwise_reference(&input, &kernel);
+        out.close_enough(&want, Approximation::Approximate)
+            .with_context(|| format!("pointwise {h}x{w} ic{ic} oc{oc}"))?;
+        Ok(())
+    }
+
+    fn pointwise_reference(input: &Tensor, kernel: &Tensor) -> Tensor {
+        let (ic, h, w) = (input.shape()[1], input.shape()[2], input.shape()[3]);
+        let oc = kernel.shape()[0];
+        let iv = input.to_plain_array_view::<f32>().unwrap();
+        let iv = iv.as_slice().unwrap();
+        let kv = kernel.to_plain_array_view::<f32>().unwrap();
+        let kv = kv.as_slice().unwrap();
+        let mut out = vec![0f32; oc * h * w];
+        for o in 0..oc {
+            for y in 0..h {
+                for x in 0..w {
+                    let mut acc = 0f32;
+                    for c in 0..ic {
+                        acc += iv[c * h * w + y * w + x] * kv[o * ic + c];
+                    }
+                    out[o * h * w + y * w + x] = acc;
+                }
+            }
+        }
+        Tensor::from_shape(&[1, oc, h, w], &out).unwrap()
+    }
 }
