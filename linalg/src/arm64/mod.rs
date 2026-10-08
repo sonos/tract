@@ -14,6 +14,12 @@ mod cortex_a55_mmv_linear;
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
+#[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
+pub use sme::has_sme;
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), tract_sme)))]
+pub fn has_sme() -> bool {
+    false
+}
 mod sve;
 pub use arm64simd::*;
 

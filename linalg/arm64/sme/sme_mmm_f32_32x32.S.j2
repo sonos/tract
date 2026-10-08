@@ -48,11 +48,13 @@
 // -------- supported fuse ops ---------------------------------------------
 
 .add_mat_mul:
+    ldr     x9, [x0, #32]       // packing: 0 packed panel, else strided-A descriptor
     ldr     x2, [x0, #24]       // b
     ldp     x3, x4, [x0, #8]    // k, a
 
     cmp     x3, #0
     b.eq    .non_linear_loop
+    cbnz    x9, .Lstrided_a
 
 .Lmatmul_loop:
     ld1w    {z0.s}, p0/z, [x4]
@@ -69,6 +71,77 @@
 
     subs    x3, x3, #1
     b.ne    .Lmatmul_loop
+    b       .non_linear_loop
+
+// x4 is the descriptor. x5 walks A, x6 is the K byte stride, w7 is valid.
+// A full panel (valid == 32), including a packed fallback whose tail is
+// already zero, uses the same fmopa sequence with A's real stride.
+// A short panel is predicated. valid <= 16 must not issue the +1 VL load:
+// that address is one past the row, and this CPU has no FEAT_SME_FA64.
+.Lstrided_a:
+    ldr     x5, [x4]
+    ldr     x6, [x4, #8]
+    ldr     w7, [x4, #16]
+    cmp     w7, #32
+    b.ne    .Lstrided_partial
+
+.Lstrided_full:
+    ld1w    {z0.s}, p0/z, [x5]
+    ld1w    {z2.s}, p0/z, [x5, #1, mul vl]
+    ld1w    {z1.s}, p0/z, [x2]
+    ld1w    {z3.s}, p0/z, [x2, #1, mul vl]
+    add     x5, x5, x6
+    add     x2, x2, #128
+
+    fmopa   za0.s, p0/m, p0/m, z0.s, z1.s
+    fmopa   za1.s, p0/m, p0/m, z0.s, z3.s
+    fmopa   za2.s, p0/m, p0/m, z2.s, z1.s
+    fmopa   za3.s, p0/m, p0/m, z2.s, z3.s
+
+    subs    x3, x3, #1
+    b.ne    .Lstrided_full
+    b       .non_linear_loop
+
+.Lstrided_partial:
+    cmp     w7, #16
+    b.le    .Lstrided_le16
+    mov     w11, #16
+    whilelt p1.s, w11, w7
+.Lstrided_gt16:
+    ld1w    {z0.s}, p0/z, [x5]
+    ld1w    {z2.s}, p1/z, [x5, #1, mul vl]
+    ld1w    {z1.s}, p0/z, [x2]
+    ld1w    {z3.s}, p0/z, [x2, #1, mul vl]
+    add     x5, x5, x6
+    add     x2, x2, #128
+
+    fmopa   za0.s, p0/m, p0/m, z0.s, z1.s
+    fmopa   za1.s, p0/m, p0/m, z0.s, z3.s
+    fmopa   za2.s, p0/m, p0/m, z2.s, z1.s
+    fmopa   za3.s, p0/m, p0/m, z2.s, z3.s
+
+    subs    x3, x3, #1
+    b.ne    .Lstrided_gt16
+    b       .non_linear_loop
+
+.Lstrided_le16:
+    mov     w10, #0
+    whilelt p1.s, w10, w7
+    eor     z2.d, z2.d, z2.d
+.Lstrided_le16_loop:
+    ld1w    {z0.s}, p1/z, [x5]
+    ld1w    {z1.s}, p0/z, [x2]
+    ld1w    {z3.s}, p0/z, [x2, #1, mul vl]
+    add     x5, x5, x6
+    add     x2, x2, #128
+
+    fmopa   za0.s, p0/m, p0/m, z0.s, z1.s
+    fmopa   za1.s, p0/m, p0/m, z0.s, z3.s
+    fmopa   za2.s, p0/m, p0/m, z2.s, z1.s
+    fmopa   za3.s, p0/m, p0/m, z2.s, z3.s
+
+    subs    x3, x3, #1
+    b.ne    .Lstrided_le16_loop
     b       .non_linear_loop
 
 .clear:
