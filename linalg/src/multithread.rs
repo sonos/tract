@@ -55,6 +55,22 @@ thread_local! {
     static TLS_EXECUTOR_OVERRIDE: RefCell<Option<Executor>> = Default::default();
 }
 
+/// Threads in the executor that will run an op. One when tract is single-threaded.
+///
+/// Read at kernel-pick time, which is before the rayon install at dispatch, so
+/// the Apple matrix policy can score a kernel by the pool that will run it.
+/// The policy is macOS-only; other targets compile this and do not call it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn current_executor_threads() -> usize {
+    match current_tract_executor() {
+        Executor::SingleThread => 1,
+        #[cfg(feature = "multithread-mm")]
+        Executor::MultiThread(pool) => pool.current_num_threads().max(1),
+        #[cfg(feature = "multithread-mm")]
+        Executor::RayonGlobal => rayon::current_num_threads().max(1),
+    }
+}
+
 pub fn current_tract_executor() -> Executor {
     if let Some(over_ride) = TLS_EXECUTOR_OVERRIDE.with_borrow(|tls| tls.clone()) {
         over_ride
@@ -141,6 +157,12 @@ pub fn set_threading_element_threshold(elements: usize) {
 ///
 /// The signature is identical with or without the `multithread-mm` feature so
 /// callers compile unchanged; without the feature the body is just `f(0, out)`.
+///
+/// A launch needs two chunks, and each chunk needs a full
+/// [`current_threading_element_threshold`] of elements. A tensor that only just
+/// clears the threshold used to be cut into `4 * threads` pieces, and that
+/// launch was slower than doing the work on the caller. The split itself stays
+/// bounded by both the work present and `4 * threads` for load balance.
 pub fn par_chunks_mut<T: Send>(
     out: &mut [T],
     row_len: usize,
@@ -152,12 +174,20 @@ pub fn par_chunks_mut<T: Send>(
         use rayon::prelude::*;
         debug_assert!(row_len >= 1 && out.len() % row_len == 0);
         let n_rows = out.len() / row_len;
-        if n_rows < 2 || total_elems < current_threading_element_threshold() {
+        // Checked before the executor lock. Hundreds of nodes sit under the threshold.
+        let threshold = current_threading_element_threshold();
+        if n_rows < 2 || (threshold > 0 && total_elems / threshold < 2) {
             return f(0, out);
         }
+        let threads = current_executor_threads().max(1);
+        let n_chunks = total_elems
+            .checked_div(threshold)
+            .map_or_else(|| n_rows.min(threads), |work| work.min(n_rows).min(4 * threads));
+        if n_chunks < 2 {
+            return f(0, out);
+        }
+        let chunk_rows = n_rows.div_ceil(n_chunks);
         let run = |out: &mut [T]| -> TractResult<()> {
-            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
-            let chunk_rows = n_rows.div_ceil(n_chunks);
             out.par_chunks_mut(chunk_rows * row_len)
                 .enumerate()
                 .try_for_each(|(i, chunk)| f(i * chunk_rows, chunk))
@@ -273,7 +303,10 @@ pub fn par_bin(
         use rayon::prelude::*;
         // Threshold first: reading the executor takes a global lock, and a graph
         // has hundreds of these nodes sitting below the threshold.
-        if a.len() >= current_threading_element_threshold() {
+        let threshold = current_threading_element_threshold();
+        // Two full thresholds, or the launch is larger than the work. The old
+        // `4 * threads` split did that to every tensor that merely cleared one.
+        if threshold == 0 || a.len() / threshold >= 2 {
             let executor = current_tract_executor();
             let nth = match &executor {
                 Executor::MultiThread(pool) => pool.current_num_threads(),
@@ -281,7 +314,8 @@ pub fn par_bin(
                 Executor::SingleThread => 1,
             };
             if nth > 1 {
-                let per_block = (4 * nth).div_ceil(n_blocks).max(1);
+                let by_work = a.len().checked_div(threshold).map_or(nth, |w| w.min(4 * nth));
+                let per_block = by_work.div_ceil(n_blocks).max(1);
                 let chunk = period.div_ceil(per_block).next_multiple_of(vector_size()).min(period);
                 let per_block = period.div_ceil(chunk);
                 if n_blocks * per_block > 1 {
@@ -307,4 +341,65 @@ pub fn par_bin(
         return eval_fn(&mut a.view(), &b.view());
     }
     (0..n_blocks).try_for_each(|block| call(block, 0, period))
+}
+
+// wasi has no thread spawning at all; other wasm targets run the shared rayon
+// global pool instead of a private ThreadPool.
+#[cfg(all(test, feature = "multithread-mm", not(target_os = "wasi")))]
+mod chunk_tests {
+    use super::{
+        Executor, current_threading_element_threshold, multithread_tract_scope, par_chunks_mut,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn pool() -> Executor {
+        #[cfg(target_family = "wasm")]
+        return Executor::RayonGlobal;
+        #[cfg(not(target_family = "wasm"))]
+        Executor::multithread(4)
+    }
+
+    /// A tensor that only just clears the element threshold stays one call on
+    /// the caller. Cutting it into `4 * threads` pieces was slower than the work.
+    #[test]
+    fn one_threshold_stays_inline() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold + 1024];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        multithread_tract_scope(pool(), || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert!(data.iter().all(|b| *b == 1));
+    }
+
+    /// Eight thresholds of work gives eight chunks, and every element is
+    /// visited once. The split is bounded by the work present, not threads.
+    #[test]
+    fn several_thresholds_split_once_per_thread() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold * 8];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        let seen = AtomicUsize::new(0);
+        multithread_tract_scope(pool(), || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                seen.fetch_add(chunk.len(), Ordering::Relaxed);
+                assert!(chunk.len() >= threshold);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 8);
+        assert_eq!(seen.load(Ordering::Relaxed), len);
+        assert!(data.iter().all(|b| *b == 1));
+    }
 }
