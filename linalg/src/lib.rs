@@ -58,6 +58,7 @@ pub mod cache;
 pub mod generic;
 pub mod knobs;
 pub mod multithread;
+pub(crate) mod topology;
 pub use frame::weights::WeightType;
 pub use generic::{ScaleShiftAndRound, Scaler};
 use tract_data::internal::TensorView;

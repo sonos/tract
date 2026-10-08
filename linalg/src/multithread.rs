@@ -55,6 +55,22 @@ thread_local! {
     static TLS_EXECUTOR_OVERRIDE: RefCell<Option<Executor>> = Default::default();
 }
 
+/// Threads in the executor that will run an op. One when tract is single-threaded.
+///
+/// Read at kernel-pick time, which is before the rayon install at dispatch, so
+/// the Apple matrix policy can score a kernel by the pool that will run it.
+/// The policy is macOS-only; other targets compile this and do not call it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn current_executor_threads() -> usize {
+    match current_tract_executor() {
+        Executor::SingleThread => 1,
+        #[cfg(feature = "multithread-mm")]
+        Executor::MultiThread(pool) => pool.current_num_threads().max(1),
+        #[cfg(feature = "multithread-mm")]
+        Executor::RayonGlobal => rayon::current_num_threads().max(1),
+    }
+}
+
 pub fn current_tract_executor() -> Executor {
     if let Some(over_ride) = TLS_EXECUTOR_OVERRIDE.with_borrow(|tls| tls.clone()) {
         over_ride
