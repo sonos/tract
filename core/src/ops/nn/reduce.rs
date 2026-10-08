@@ -159,6 +159,50 @@ impl Reducer {
 
         // use tract-optimized path only when single reuction axis and is at end
         if axes.len() > 1 || axes[0] != input.rank() - 1 {
+            // f32 sum over the leading axes of a C-contiguous input is a column
+            // sum of the [rows, inner] matrix. Fixed-size blocks, not
+            // thread-count-sized ones: the partials land in the same order at
+            // any thread count, so the result is bit-identical threaded or not.
+            if T::datum_type() == f32::datum_type()
+                && axes.iter().enumerate().all(|(ix, &a)| a == ix)
+                && let Some(full) = unsafe { input.to_array_view_unchecked::<f32>() }.as_slice()
+            {
+                let k = axes.len();
+                let rows: usize = input.shape()[..k].iter().product();
+                let inner: usize = input.shape()[k..].iter().product();
+                if rows > 0 && inner > 0 {
+                    let block = (32768 / inner).max(1);
+                    let n_blocks = rows.div_ceil(block);
+                    let mut partials = vec![0f32; n_blocks * inner];
+                    tract_linalg::multithread::par_chunks_mut(
+                        &mut partials,
+                        inner,
+                        rows * inner,
+                        |first_block, chunk| {
+                            for (i, p) in chunk.chunks_mut(inner).enumerate() {
+                                let lo = (first_block + i) * block;
+                                let hi = (lo + block).min(rows);
+                                for r in lo..hi {
+                                    for (p, v) in p.iter_mut().zip(&full[r * inner..][..inner]) {
+                                        *p += *v;
+                                    }
+                                }
+                            }
+                            Ok(())
+                        },
+                    )
+                    .unwrap();
+                    let mut out = vec![0f32; inner];
+                    for p in partials.chunks_exact(inner) {
+                        for (o, v) in out.iter_mut().zip(p) {
+                            *o += *v;
+                        }
+                    }
+                    let mut out_shape: Vec<usize> = vec![1; k];
+                    out_shape.extend_from_slice(&input.shape()[k..]);
+                    return ArrayD::from_shape_vec(IxDyn(&out_shape), out).unwrap().into_tensor();
+                }
+            }
             let mut operative_axes = vec![];
             let mut operative_shape: Vec<usize> = vec![];
             for (ix, dim) in input.shape().iter().enumerate() {
@@ -691,6 +735,46 @@ mod tests {
         let t1 = Tensor::from_shape(&[3, 1], &[1.0f32, -2.0, 3.0]).unwrap();
         let got = Reducer::Max.reduce(&[1], &t1).unwrap();
         assert_eq!(unsafe { got.as_slice_unchecked::<f32>() }, &[1.0, -2.0, 3.0]);
+    }
+
+    // The leading-axes column-sum path sums in a different order than the
+    // ndarray fallback, so the comparison is Close; the threaded run must be
+    // bit-identical to the serial fast-path result.
+    // wasi has no thread spawning at all, so the 4-thread half cannot run there.
+    #[cfg(not(target_os = "wasi"))]
+    #[test]
+    fn sum_over_leading_axes_matches_ndarray() {
+        for (shape, axes) in [
+            (vec![160usize, 160, 48], vec![0usize, 1]),
+            (vec![7, 5, 3], vec![0]),
+            (vec![2, 3, 4, 5], vec![0, 1, 2]),
+        ] {
+            let len: usize = shape.iter().product();
+            let data: Vec<f32> = (0..len).map(|i| ((i * 37 % 113) as f32) - 56.0).collect();
+            let t = Tensor::from_shape(&shape, &data).unwrap();
+            let got = Reducer::Sum.reduce(&axes, &t).unwrap();
+            let mut want = t.to_plain_array_view::<f32>().unwrap().to_owned();
+            for _ in 0..axes.len() {
+                want = want.sum_axis(tract_ndarray::Axis(0));
+            }
+            let mut want = want.into_tensor();
+            for &ax in &axes {
+                want.insert_axis(ax).unwrap();
+            }
+            assert_eq!(got.shape(), want.shape());
+            got.close_enough(&want, Approximation::Close).unwrap();
+            // wasi has no thread spawning; other wasm targets use the shared
+            // rayon global pool instead of a private ThreadPool.
+            #[cfg(target_family = "wasm")]
+            let pool = tract_linalg::multithread::Executor::RayonGlobal;
+            #[cfg(not(target_family = "wasm"))]
+            let pool = tract_linalg::multithread::Executor::multithread(4);
+            let got4 = tract_linalg::multithread::multithread_tract_scope(pool, || {
+                Reducer::Sum.reduce(&axes, &t)
+            })
+            .unwrap();
+            assert_eq!(got4, got);
+        }
     }
 
     // Same coverage for the f32 min reduction (min_t -> SIMD min_f32 / scalar fold).
