@@ -18,7 +18,7 @@ fn single_strat(it: Impl) -> Strat {
     (ModePicker::Single, it.0.packings()[it.1].0.clone(), vec![it])
 }
 
-/// True when C's n axis is the innermost non-unit axis, so a row-major AMX/SME
+/// True when C's n axis is the innermost non-unit axis, so a row-major SME
 /// store hits its aligned bulk path (`col_byte_stride == item_size`).
 fn n_axis_contiguous(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> bool {
     let Some(cn) = op.c_n() else {
@@ -30,18 +30,13 @@ fn n_axis_contiguous(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) ->
     fact.shape.iter().skip(cn + 1).all(|d| d.is_one())
 }
 
-/// AMX and SME 32×32 `stz`/`st1w` write a contiguous 128-byte row. A strided n
-/// axis makes that kernel 20× slower in-graph than isolated (50 µs vs 2.4 µs
-/// on DPDFNet 48 kHz 160×64×64) when the store falls through to a scalar
-/// scatter. Scatter itself is illegal in streaming mode without
+/// SME 32×32 `st1w` writes a contiguous 128-byte row; a strided n axis would
+/// need a scatter, which is illegal in streaming mode without
 /// FEAT_SME_FA64, which Apple does not enable. `sme_mmm_f32_32x32` is the
 /// exception once M is the contiguous axis: it stores a vertical ZA slice with
 /// an ordinary `st1w`. GEMV (nr==1) is unaffected.
 fn tile_store_needs_n_contiguous(name: &str, nr: usize) -> bool {
-    nr > 1
-        && (name.starts_with("apple_amx")
-            || name.starts_with("sme_mmm")
-            || name.starts_with("sme_qmmm"))
+    nr > 1 && (name.starts_with("sme_mmm") || name.starts_with("sme_qmmm"))
 }
 
 /// True when C's m axis is the innermost non-unit axis, so a vertical SME
@@ -174,7 +169,7 @@ pub fn query(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractRe
 }
 
 #[cfg(test)]
-mod amx_strided_store {
+mod sme_strided_store {
     use super::*;
     use crate::ops::einsum::EinSum;
     use crate::ops::matmul::optimized::OptMatMul;
@@ -203,9 +198,9 @@ mod amx_strided_store {
     }
 
     /// m<n transposes so n is no longer innermost and m is. The f32 SME tile
-    /// stores that direction; AMX and the i32 SME tile still must not.
+    /// stores that direction; the i32 SME tile still must not.
     #[test]
-    fn strided_n_does_not_select_amx_32x32() {
+    fn strided_n_does_not_select_scattering_tile() {
         if !has_tile_kernel() {
             return;
         }
@@ -226,7 +221,7 @@ mod amx_strided_store {
         }
     }
 
-    /// m>n keeps n innermost. AMX 32x32 (M1–M3) or SME 32x32 (M4+) is correct.
+    /// m>n keeps n innermost, so the SME 32x32 tile is correct.
     #[test]
     fn contiguous_n_selects_wide_tile() {
         if !has_tile_kernel() {
