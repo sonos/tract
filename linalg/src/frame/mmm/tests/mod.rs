@@ -10,6 +10,8 @@ pub mod packed_packed;
 pub mod q_scale;
 #[macro_use]
 pub mod store;
+#[macro_use]
+pub mod strided;
 
 #[cfg(test)]
 macro_rules! test_mmm_kernel {

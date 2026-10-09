@@ -61,7 +61,10 @@ MMMExternKernel!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     isa(Aarch64Sme)
     can_fuse(CAN_FUSE)
-
+    // Packing 1: A is a K-strided NCHW row. B stays the aligned packed panel,
+    // the same format packing 0 uses, so a const kernel packed from packing 0
+    // still matches this kernel.
+    packing[1] = strided_a => |k| k.with_packing(crate::strided_panel::StridedKMajor::new(32), f32::packing(32).align(128));
 );
 
 MMMExternKernel!(aarch64;
@@ -315,6 +318,8 @@ mod tests {
             .with_output_type(DatumType::I8)
             .check()
     }
+
+    mmm_strided_tests!(&*sme_mmm_f32_32x32, strided_a: 1);
 
     // Strided store path: hand-built Clear + Store chain with non-contig C.
     #[test]

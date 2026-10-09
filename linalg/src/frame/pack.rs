@@ -228,16 +228,44 @@ impl PackedFormat {
                 // denormals and stall the fp pipeline. Zero the partial panel.
                 packed.as_bytes_mut()[(mn / self.r) * panel_bytes..].fill(0u8);
             }
-            dispatch_copy!(Self::pack_t(t.datum_type())(
-                self,
-                packed.as_mut_ptr() as _,
-                t.as_ptr_unchecked(),
-                mn,
-                strides[k_axis],
-                strides[mn_axis],
-                0..k,
-                0..mn
-            ));
+            let (k_stride, mn_stride) = (strides[k_axis], strides[mn_axis]);
+            if panel_bytes > 0 && (mn_stride == 1 || k_stride == 1) {
+                // For these two layouts `pack_t` writes a column range from the range's first
+                // panel, so panels split freely; the strided fallback lays out all of mn at once.
+                let src = t.as_ptr_unchecked::<u8>() as usize;
+                let dt = t.datum_type();
+                crate::multithread::par_chunks_mut(
+                    packed.as_bytes_mut(),
+                    panel_bytes,
+                    packed_len,
+                    |first, chunk| {
+                        let panels = chunk.len() / panel_bytes;
+                        let mn_range = first * self.r..((first + panels) * self.r);
+                        dispatch_copy!(Self::pack_t(dt)(
+                            self,
+                            chunk.as_mut_ptr() as _,
+                            src as *const _,
+                            mn,
+                            k_stride,
+                            mn_stride,
+                            0..k,
+                            mn_range
+                        ));
+                        Ok(())
+                    },
+                )?;
+            } else {
+                dispatch_copy!(Self::pack_t(t.datum_type())(
+                    self,
+                    packed.as_mut_ptr() as _,
+                    t.as_ptr_unchecked(),
+                    mn,
+                    k_stride,
+                    mn_stride,
+                    0..k,
+                    0..mn
+                ));
+            }
             Ok(Box::new(EagerPackedInput {
                 fact: PackedExoticFact { format: Box::new(self.clone()), mn: mn.to_dim(), k },
                 packed: packed.into(),
@@ -1991,5 +2019,47 @@ mod test {
             align_panel: 3,
         }
         .check();
+    }
+
+    // wasi has no thread spawning at all; other wasm targets run the shared
+    // rayon global pool instead of a private ThreadPool.
+    #[cfg(all(feature = "multithread-mm", not(target_os = "wasi")))]
+    #[test]
+    fn multithreaded_pack_matches_serial() {
+        use crate::frame::mmm::EagerPackedInput;
+        use crate::multithread::{Executor, multithread_tract_scope};
+        // Panel tails (end padding record, alignment) are never written: compare the k * r values.
+        let pack = |format: &super::PackedFormat, t: &Tensor, k_axis: usize, mn_axis: usize| {
+            let k = t.shape()[k_axis];
+            let packed = format.pack_tensor_view(&t.view(), k_axis, mn_axis).unwrap();
+            let packed = packed.downcast_ref::<EagerPackedInput>().unwrap();
+            let values = k * format.r * 4;
+            packed
+                .packed
+                .as_bytes()
+                .chunks(packed.panel_bytes)
+                .flat_map(|panel| panel[..values].to_vec())
+                .collect::<Vec<u8>>()
+        };
+        for (k, mn) in [(64, 600), (37, 1001), (9, 5000)] {
+            for r in [4, 5, 8, 16, 24, 32] {
+                let format = super::PackedFormat::new(f32::datum_type(), r, 16);
+                let data: Vec<f32> = (0..k * mn).map(|i| i as f32 * 0.5).collect();
+                // (k, mn) is mn-contiguous; (mn, k) is k-contiguous.
+                for (shape, k_axis, mn_axis) in [([k, mn], 0, 1), ([mn, k], 1, 0)] {
+                    let t = Tensor::from_shape(&shape, &data).unwrap();
+                    let serial = multithread_tract_scope(Executor::SingleThread, || {
+                        pack(&format, &t, k_axis, mn_axis)
+                    });
+                    #[cfg(target_family = "wasm")]
+                    let pool = Executor::RayonGlobal;
+                    #[cfg(not(target_family = "wasm"))]
+                    let pool = Executor::multithread(4);
+                    let parallel =
+                        multithread_tract_scope(pool, || pack(&format, &t, k_axis, mn_axis));
+                    assert_eq!(serial, parallel, "k {k} mn {mn} r {r} shape {shape:?}");
+                }
+            }
+        }
     }
 }
