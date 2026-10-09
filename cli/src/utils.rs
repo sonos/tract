@@ -34,7 +34,7 @@ pub fn check_outputs(got: &[Vec<TValue>], params: &Parameters) -> TractResult<()
         })?[0]
             .clone();
 
-        let props = params.tract_model.properties();
+        let props = params.interface.properties();
 
         let got: TValue = if got[ix].len() > 1 && props.get("pulse.output_axes").is_some() {
             let axis =

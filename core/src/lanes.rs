@@ -590,6 +590,13 @@ impl LanedRunnable {
         &self.shared.batch
     }
 
+    /// Whether streams feed and get back tensors without the batch axis: the
+    /// model got it from batchify, and the runnable answers to the contract of
+    /// the model as it was before. See [`LanedRunnable::wrap_batchified`].
+    pub fn hides_batch_axis(&self) -> bool {
+        self.shared.one_stream.is_some()
+    }
+
     /// Turns run and seats filled since the model was prepared: how wide the
     /// turns the queue actually offers are.
     pub fn turns_and_seats(&self) -> (u64, u64) {
