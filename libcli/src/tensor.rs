@@ -80,69 +80,6 @@ pub struct TensorValues {
     pub only_output: bool,
 }
 
-fn parse_dt(dt: &str) -> TractResult<DatumType> {
-    Ok(match dt.to_lowercase().as_ref() {
-        "bool" => DatumType::Bool,
-        "f16" => DatumType::F16,
-        "f32" => DatumType::F32,
-        "f64" => DatumType::F64,
-        "i8" => DatumType::I8,
-        "i16" => DatumType::I16,
-        "i32" => DatumType::I32,
-        "i64" => DatumType::I64,
-        "u8" => DatumType::U8,
-        "u16" => DatumType::U16,
-        "u32" => DatumType::U32,
-        "u64" => DatumType::U64,
-        "tdim" => DatumType::TDim,
-        _ => bail!(
-            "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
-        ),
-    })
-}
-
-pub fn parse_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<InferenceFact> {
-    if size.is_empty() {
-        return Ok(InferenceFact::default());
-    }
-    parse_coma_spec(symbol_table, size)
-}
-
-pub fn parse_coma_spec(symbol_table: &SymbolScope, size: &str) -> TractResult<InferenceFact> {
-    let splits = size.split(',').collect::<Vec<_>>();
-
-    #[allow(clippy::literal_string_with_formatting_args)]
-    if splits.is_empty() {
-        bail!("The <size> argument should be formatted as {{size}},{{...}},{{type}}.");
-    }
-
-    let last = splits.last().unwrap();
-    let (datum_type, shape) = if let Ok(dt) = parse_dt(last) {
-        (Some(dt), &splits[0..splits.len() - 1])
-    } else {
-        (None, &*splits)
-    };
-
-    let shape = ShapeFactoid::closed(
-        shape
-            .iter()
-            .map(|&s| {
-                Ok(if s == "_" {
-                    GenericFactoid::Any
-                } else {
-                    GenericFactoid::Only(parse_tdim(symbol_table, s)?)
-                })
-            })
-            .collect::<TractResult<TVec<DimFact>>>()?,
-    );
-
-    if let Some(dt) = datum_type {
-        Ok(InferenceFact::dt_shape(dt, shape))
-    } else {
-        Ok(InferenceFact::shape(shape))
-    }
-}
-
 fn parse_values<T: Datum + FromStr>(shape: &[usize], it: Vec<&str>) -> TractResult<Tensor> {
     let values = it
         .into_iter()
@@ -160,7 +97,7 @@ fn tensor_for_text_data(
     reader.read_to_string(&mut data)?;
 
     let mut lines = data.lines();
-    let proto = parse_spec(symbol_table, lines.next().context("Empty data file")?)?;
+    let proto = InferenceFact::from_spec(symbol_table, lines.next().context("Empty data file")?)?;
     let shape = proto.shape.concretize().unwrap();
 
     let values = lines.flat_map(|l| l.split_whitespace()).collect::<Vec<&str>>();
@@ -257,7 +194,7 @@ pub fn for_string(
     };
     if value.contains('=') {
         let mut split = value.split('=');
-        let spec = parse_spec(symbol_table, split.next().unwrap())?;
+        let spec = InferenceFact::from_spec(symbol_table, split.next().unwrap())?;
         let value = split.next().unwrap().split(',');
         let dt =
             spec.datum_type.concretize().context("Must specify type when giving tensor value")?;
@@ -281,7 +218,7 @@ pub fn for_string(
         };
         Ok((name, tensor.into()))
     } else {
-        Ok((name, parse_spec(symbol_table, value)?))
+        Ok((name, InferenceFact::from_spec(symbol_table, value)?))
     }
 }
 
