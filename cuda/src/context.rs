@@ -281,6 +281,18 @@ impl TractCudaContext {
         library_name: LibraryName,
         func_name: String,
     ) -> TractResult<Arc<CudaFunction>> {
+        self.load_pipeline_with(library_name, func_name, |_| Ok(()))
+    }
+
+    /// Like `load_pipeline`, running `prepare` once on the function when it is first loaded,
+    /// before any caller can launch it: the place to set per-function driver attributes, which
+    /// persist for the process.
+    pub fn load_pipeline_with(
+        &self,
+        library_name: LibraryName,
+        func_name: String,
+        prepare: impl FnOnce(&CudaFunction) -> TractResult<()>,
+    ) -> TractResult<Arc<CudaFunction>> {
         // Check pipeline cache
         let key = (library_name, func_name.to_string());
         {
@@ -300,6 +312,7 @@ impl TractCudaContext {
                 )
             })?;
 
+        prepare(&func)?;
         let func = Arc::new(func);
 
         // Store in cache
