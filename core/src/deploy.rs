@@ -29,7 +29,10 @@
 //!
 //! Preparing a model applies its section's transforms, prepares it on the
 //! section's runtime and autobatches it if `TRACT_AUTOBATCH_LANES` is set, all
-//! under the section's knob scope. A model's knobs beat the plain
+//! under the section's knob scope. An autobatched model whose batch axis the
+//! transforms added keeps the contract it was handed over with: its facts and
+//! properties are the unbatched ones, and a stream feeds and gets back tensors
+//! without the axis. A model's knobs beat the plain
 //! `TRACT_<KNOB>` environment variable, which beats the global `[knobs]` table.
 //! A model without a section, unnamed models included, is prepared on
 //! `gpu-or-cpu` with no transform.
@@ -127,6 +130,8 @@ impl DeployConfig {
         let runtime = section.runtime.as_deref().unwrap_or(DEFAULT_RUNTIME);
         ensure!(runtime != DEPLOY, "A deploy config section can not use the deploy runtime");
         section.scope.enter(|| {
+            let lanes = TRACT_AUTOBATCH_LANES.get();
+            let original = lanes.map(|_| model.clone());
             for spec in &section.transforms {
                 build_transform(spec)
                     .and_then(|t| t.transform(&mut model))
@@ -136,8 +141,11 @@ impl DeployConfig {
             let rt =
                 runtime_for_name(runtime)?.with_context(|| format!("Unknown runtime {runtime}"))?;
             let runnable = rt.prepare_with_options(model, options)?;
-            match TRACT_AUTOBATCH_LANES.get() {
-                Some(lanes) => Ok(Box::new(LanedRunnable::wrap(runnable.into(), lanes)?) as _),
+            match lanes.zip(original) {
+                Some((lanes, original)) => {
+                    Ok(Box::new(LanedRunnable::wrap_batchified(runnable.into(), lanes, &original)?)
+                        as _)
+                }
                 None => Ok(runnable),
             }
         })

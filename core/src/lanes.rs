@@ -302,6 +302,77 @@ struct Shared {
     max_lanes: usize,
     /// Turns and seats served, shared with the worker which is what counts them.
     counts: Arc<Counts>,
+    /// Which inputs and outputs carry the batch axis, as the worker has them.
+    batch_in: Vec<bool>,
+    batch_out: Vec<bool>,
+    /// The contract a stream sees when the batch axis came from batchifying the
+    /// model rather than from the model itself; `None` when it is the model's
+    /// own, and streams feed and get back axis 0.
+    one_stream: Option<OneStream>,
+}
+
+/// A stream's view of a model batchified for autobatch: its facts without the
+/// batch axis, and the properties of the model before batchify, whose
+/// `pulse.*_axes` count without it. A handle adds axis 0 to the batched inputs
+/// and drops it from the batched outputs.
+struct OneStream {
+    inputs: Vec<TypedFact>,
+    outputs: Vec<TypedFact>,
+    properties: HashMap<String, Arc<Tensor>>,
+}
+
+impl OneStream {
+    /// The one-stream contract of `inner` when it is `original` with the batch
+    /// symbol prepended to every batched input and output, every other one as
+    /// it was. `None` otherwise: the batch axis is then the model's own.
+    fn of(
+        inner: &dyn Runnable,
+        original: &TypedModel,
+        batch: &Symbol,
+        batch_in: &[bool],
+        batch_out: &[bool],
+    ) -> TractResult<Option<OneStream>> {
+        if original.inputs.len() != batch_in.len() || original.outputs.len() != batch_out.len() {
+            return Ok(None);
+        }
+        fn unbatched(
+            fact: &TypedFact,
+            before: &TypedFact,
+            batch: &Symbol,
+            batched: bool,
+        ) -> Option<TypedFact> {
+            let dims = fact.shape.dims();
+            if !batched {
+                return (dims == before.shape.dims()).then(|| fact.clone());
+            }
+            if dims.first() != Some(&TDim::Sym(batch.clone())) || &dims[1..] != before.shape.dims()
+            {
+                return None;
+            }
+            let mut fact = fact.clone();
+            fact.shape = dims[1..].into();
+            Some(fact)
+        }
+        let mut inputs = vec![];
+        for (ix, batched) in batch_in.iter().enumerate() {
+            let Some(fact) =
+                unbatched(inner.input_fact(ix)?, original.input_fact(ix)?, batch, *batched)
+            else {
+                return Ok(None);
+            };
+            inputs.push(fact);
+        }
+        let mut outputs = vec![];
+        for (ix, batched) in batch_out.iter().enumerate() {
+            let Some(fact) =
+                unbatched(inner.output_fact(ix)?, original.output_fact(ix)?, batch, *batched)
+            else {
+                return Ok(None);
+            };
+            outputs.push(fact);
+        }
+        Ok(Some(OneStream { inputs, outputs, properties: original.properties.clone() }))
+    }
 }
 
 /// The worker owns per-thread device state -- a CUDA stream, its cuBLAS and
@@ -391,8 +462,30 @@ impl Meters {
 impl LanedRunnable {
     /// Serve `max_lanes` streams through `inner`, which must be prepared from a
     /// model carrying a batch axis: at least one input and one output with a
-    /// symbol on axis 0, and one symbol for all of them.
+    /// symbol on axis 0, and one symbol for all of them. Streams feed and get
+    /// back that axis, one row of it per seat.
     pub fn wrap(inner: Arc<dyn Runnable>, max_lanes: usize) -> TractResult<LanedRunnable> {
+        LanedRunnable::wrap_with(inner, max_lanes, None)
+    }
+
+    /// Serve `max_lanes` streams through `inner`, prepared from `original` once
+    /// batchified. When batchify gave the model its batch axis, the runnable
+    /// answers to `original`'s contract: facts and properties without the
+    /// axis, and streams feed and get back tensors without it. When `original`
+    /// carried the axis already, this is [`LanedRunnable::wrap`].
+    pub fn wrap_batchified(
+        inner: Arc<dyn Runnable>,
+        max_lanes: usize,
+        original: &TypedModel,
+    ) -> TractResult<LanedRunnable> {
+        LanedRunnable::wrap_with(inner, max_lanes, Some(original))
+    }
+
+    fn wrap_with(
+        inner: Arc<dyn Runnable>,
+        max_lanes: usize,
+        original: Option<&TypedModel>,
+    ) -> TractResult<LanedRunnable> {
         let model = inner.typed_model().cloned();
         let plan = inner.typed_plan().cloned();
         let mut symbols: Vec<Symbol> = vec![];
@@ -420,6 +513,10 @@ impl LanedRunnable {
         }
         ensure!(batch_out.iter().any(|b| *b), "A laned model must batch one output at least");
         let batch = symbols.remove(0);
+        let one_stream = original
+            .map(|original| OneStream::of(&*inner, original, &batch, &batch_in, &batch_out))
+            .transpose()?
+            .flatten();
         let counts = Arc::new(Counts::default());
         let meters = Meters::new(model.as_ref().and_then(|model| model.name()));
         let max_seats = TRACT_MAX_SEATS.get().min(max_lanes);
@@ -429,6 +526,7 @@ impl LanedRunnable {
         let (spawned, ready) = channel::<TractResult<()>>();
         let worker_counts = counts.clone();
         let worker_inner = inner.clone();
+        let (worker_batch_in, worker_batch_out) = (batch_in.clone(), batch_out.clone());
         let worker_thread = thread::Builder::new().name("tract-lanes".into()).spawn(move || {
             let state = match worker_inner.spawn().and_then(|mut state| {
                 let every: Vec<LaneId> = (0..max_lanes).map(LaneId).collect();
@@ -448,8 +546,8 @@ impl LanedRunnable {
                 state,
                 lanes,
                 queued: Queue::default(),
-                batch_in,
-                batch_out,
+                batch_in: worker_batch_in,
+                batch_out: worker_batch_out,
                 max_seats,
                 linger,
                 counts: worker_counts,
@@ -468,6 +566,9 @@ impl LanedRunnable {
                 batch,
                 max_lanes,
                 counts,
+                batch_in,
+                batch_out,
+                one_stream,
             }),
         })
     }
@@ -580,6 +681,27 @@ impl Runnable for LanedRunnable {
     fn typed_model(&self) -> Option<&Arc<TypedModel>> {
         self.shared.model.as_ref()
     }
+
+    fn input_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        match &self.shared.one_stream {
+            Some(one) => one.inputs.get(ix).with_context(|| format!("No input {ix}")),
+            None => self.shared.inner.input_fact(ix),
+        }
+    }
+
+    fn output_fact(&self, ix: usize) -> TractResult<&TypedFact> {
+        match &self.shared.one_stream {
+            Some(one) => one.outputs.get(ix).with_context(|| format!("No output {ix}")),
+            None => self.shared.inner.output_fact(ix),
+        }
+    }
+
+    fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
+        match &self.shared.one_stream {
+            Some(one) => &one.properties,
+            None => self.shared.inner.properties(),
+        }
+    }
 }
 
 /// One stream's view of a [`LanedRunnable`]: the lane it holds, and the queue to
@@ -610,17 +732,51 @@ impl Drop for Lease {
 
 impl State for LanedStateHandle {
     fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let shared = &self.runnable.shared;
+        let one_stream = shared.one_stream.is_some();
+        let inputs = if one_stream {
+            reshape_batched(inputs, &shared.batch_in, Tensor::insert_axis)?
+        } else {
+            inputs
+        };
         let (done, outputs) = channel();
         self.lease
             .requests
             .send(Request::Call(Call { leased: self.lease.lane, inputs, done }))
             .map_err(|_| format_err!("The laned worker is gone"))?;
-        outputs.recv().map_err(|_| format_err!("The laned worker dropped a turn"))?
+        let outputs =
+            outputs.recv().map_err(|_| format_err!("The laned worker dropped a turn"))??;
+        if one_stream {
+            reshape_batched(outputs, &shared.batch_out, Tensor::remove_axis)
+        } else {
+            Ok(outputs)
+        }
     }
 
     fn runnable(&self) -> &dyn Runnable {
         &self.runnable
     }
+}
+
+/// Apply `edit` at axis 0 of the `values` flagged in `batched`, leaving the
+/// others as they are.
+fn reshape_batched(
+    values: TVec<TValue>,
+    batched: &[bool],
+    edit: fn(&mut Tensor, usize) -> TractResult<()>,
+) -> TractResult<TVec<TValue>> {
+    values
+        .into_iter()
+        .enumerate()
+        .map(|(ix, value)| {
+            if !batched.get(ix).copied().unwrap_or(false) {
+                return Ok(value);
+            }
+            let mut tensor = value.into_tensor();
+            edit(&mut tensor, 0)?;
+            Ok(tensor.into_tvalue())
+        })
+        .collect()
 }
 
 /// What a handle asks the worker for, one variant per event of the handle's
@@ -1083,6 +1239,48 @@ mod laned_test {
             turn(&mut handle, 0, t)?;
         }
         Ok(())
+    }
+
+    /// `[3] * 2`, batchified on `B`, its `pulse.input_axes` claiming axis 0.
+    fn batchified_doubler(max_lanes: usize) -> TractResult<LanedRunnable> {
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([3]))?;
+        let two = model.add_const("two", tensor1(&[2f32]))?;
+        let doubled = model.wire_node("doubled", mul(), &[input, two])?;
+        model.select_output_outlets(&doubled)?;
+        model.properties.insert("pulse.input_axes".into(), rctensor1(&[0i64]));
+        let batch = model.symbols.sym("B");
+        let batched = crate::batchify::batchify(&model, &batch, &[])?;
+        assert_eq!(*batched.properties["pulse.input_axes"], tensor1(&[1i64]));
+        let inner = DefaultRuntime.prepare(batched)?;
+        LanedRunnable::wrap_batchified(inner.into(), max_lanes, &model)
+    }
+
+    #[test]
+    fn a_batchified_model_keeps_the_contract_it_was_handed_over_with() -> TractResult<()> {
+        let runnable = batchified_doubler(4)?;
+        assert_eq!(runnable.input_fact(0)?.shape.dims(), &[3.to_dim()]);
+        assert_eq!(runnable.output_fact(0)?.shape.dims(), &[3.to_dim()]);
+        assert_eq!(*runnable.properties()["pulse.input_axes"], tensor1(&[0i64]));
+        let mut handle = runnable.spawn()?;
+        let output = handle.run(tvec!(tensor1(&[1f32, 2., 3.]).into_tvalue()))?;
+        assert_eq!(*output[0], tensor1(&[2f32, 4., 6.]));
+        Ok(())
+    }
+
+    #[test]
+    fn a_batch_axis_the_model_carried_already_stays() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let batch = model.symbols.sym("B");
+        let input = model.add_source("input", f32::fact(dims!(batch, 3)))?;
+        let two = model.add_const("two", tensor2(&[[2f32]]))?;
+        let doubled = model.wire_node("doubled", mul(), &[input, two])?;
+        model.select_output_outlets(&doubled)?;
+        let inner = DefaultRuntime.prepare(model.clone())?;
+        let runnable = LanedRunnable::wrap_batchified(inner.into(), 4, &model)?;
+        assert_eq!(runnable.input_fact(0)?.shape.dims(), &[batch.to_dim(), 3.to_dim()]);
+        let mut handle = runnable.spawn()?;
+        turn(&mut handle, 1, 2)
     }
 
     /// What the worker reported to `recorder`, by metric name, for the
