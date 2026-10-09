@@ -19,7 +19,7 @@ pub fn criterion(
     let mut group = crit.benchmark_group("net");
 
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.interface, &run_params)?;
 
     let runnable = params.req_runnable()?;
     let mut state = runnable.spawn()?;
@@ -43,7 +43,7 @@ pub fn run(
     if let Some(laned) = params.req_runnable()?.downcast_ref::<tract_core::lanes::LanedRunnable>() {
         run_params.symbols.set(laned.batch_symbol(), 1);
     }
-    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.interface, &run_params)?;
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
 

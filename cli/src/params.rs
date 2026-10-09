@@ -145,6 +145,10 @@ pub struct Parameters {
 
     pub runnable: Option<Arc<dyn Runnable>>,
     pub tract_model: Arc<dyn Model>,
+    /// The model whose inputs, outputs and properties the runnable answers to,
+    /// which inputs are made for: `tract_model`, or the model as handed to the
+    /// runtime when the runnable hides a batch axis the runtime gave it.
+    pub interface: Arc<dyn Model>,
     pub reference_model: Option<Arc<dyn Model>>,
 
     pub tensors_values: TensorsValues,
@@ -1030,49 +1034,63 @@ impl Parameters {
 
         let runtime =
             runtime_for_name(runtime)?.with_context(|| format!("Runtime `{runtime}' not found"))?;
-        let (tract_model, runnable): (Arc<dyn Model>, Option<Arc<dyn Runnable>>) =
-            if tract_model.downcast_ref::<TypedModel>().is_some() {
-                let tract_model: Arc<TypedModel> = Arc::downcast(tract_model).unwrap();
-                let typed_model = Arc::try_unwrap(tract_model).unwrap();
-                let hints = if let Some(hints) = matches.get_many::<String>("hint") {
-                    Some(Self::parse_set_and_hint(&typed_model, hints)?)
-                } else if matches.get_flag("llm") || matches.get_flag("causal-llm-hints") {
-                    #[cfg(feature = "transformers")]
-                    {
-                        Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
-                    }
-                    #[cfg(not(feature = "transformers"))]
-                    {
-                        bail!("transformers feature is required for llms")
-                    }
-                } else {
-                    None
-                };
-
-                let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
-                let runnable: Arc<dyn Runnable> =
-                    runtime.prepare_with_options(typed_model, &options)?.into();
-                // Autobatching decorates whatever runtime was picked: the lanes
-                // live in the state the worker owns, so it wraps the prepared
-                // model rather than replacing the runtime that prepared it.
-                let runnable = if let Some(lanes) = matches.get_one::<String>("autobatch-sessions")
+        #[allow(clippy::type_complexity)]
+        let (tract_model, runnable, interface): (
+            Arc<dyn Model>,
+            Option<Arc<dyn Runnable>>,
+            Arc<dyn Model>,
+        ) = if tract_model.downcast_ref::<TypedModel>().is_some() {
+            let tract_model: Arc<TypedModel> = Arc::downcast(tract_model).unwrap();
+            let typed_model = Arc::try_unwrap(tract_model).unwrap();
+            let hints = if let Some(hints) = matches.get_many::<String>("hint") {
+                Some(Self::parse_set_and_hint(&typed_model, hints)?)
+            } else if matches.get_flag("llm") || matches.get_flag("causal-llm-hints") {
+                #[cfg(feature = "transformers")]
                 {
-                    let lanes = lanes.parse().with_context(|| {
-                        format!("--autobatch-sessions expects a count, got {lanes}")
-                    })?;
-                    Arc::new(tract_core::lanes::LanedRunnable::wrap(runnable, lanes)?)
-                        as Arc<dyn Runnable>
-                } else {
-                    runnable
-                };
-                // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
-                // so we consume tract_model knowning the runnable will give us a new one later.
-                // we should hold on the old model in the general case, but this leads to dup models weights in memory
-                let typed_model = runnable.typed_model().unwrap();
-                (typed_model.clone(), Some(runnable))
+                    Some(tract_transformers::memory_arena_hints_for_causal_llm(&typed_model)?)
+                }
+                #[cfg(not(feature = "transformers"))]
+                {
+                    bail!("transformers feature is required for llms")
+                }
             } else {
-                (tract_model, None)
+                None
             };
+
+            let options = RunOptions { memory_sizing_hints: hints, ..Default::default() };
+            // The deploy runtime can batchify and autobatch a model and hand back a
+            // runnable answering to the model as it came in, which inputs are then
+            // made for: it is kept until the runnable says which contract it has.
+            let handed = (runtime.name() == "deploy").then(|| typed_model.clone());
+            let runnable: Arc<dyn Runnable> =
+                runtime.prepare_with_options(typed_model, &options)?.into();
+            // Autobatching decorates whatever runtime was picked: the lanes
+            // live in the state the worker owns, so it wraps the prepared
+            // model rather than replacing the runtime that prepared it.
+            let runnable = if let Some(lanes) = matches.get_one::<String>("autobatch-sessions") {
+                let lanes = lanes.parse().with_context(|| {
+                    format!("--autobatch-sessions expects a count, got {lanes}")
+                })?;
+                Arc::new(tract_core::lanes::LanedRunnable::wrap(runnable, lanes)?)
+                    as Arc<dyn Runnable>
+            } else {
+                runnable
+            };
+            // we assume the runnable will be a typed_model() (it is the case for all current runtimes)
+            // so we consume tract_model knowning the runnable will give us a new one later.
+            // we should hold on the old model in the general case, but this leads to dup models weights in memory
+            let typed_model: Arc<dyn Model> = runnable.typed_model().unwrap().clone();
+            let hides_batch_axis = runnable
+                .downcast_ref::<tract_core::lanes::LanedRunnable>()
+                .is_some_and(|laned| laned.hides_batch_axis());
+            let interface: Arc<dyn Model> = match handed {
+                Some(handed) if hides_batch_axis => Arc::new(handed),
+                _ => typed_model.clone(),
+            };
+            (typed_model, Some(runnable), interface)
+        } else {
+            (tract_model.clone(), None, tract_model)
+        };
 
         info!("Model ready");
         info_usage("model ready", probe);
@@ -1080,6 +1098,7 @@ impl Parameters {
             graph,
             runnable,
             tract_model,
+            interface,
             reference_model,
             tensors_values,
             assertions,

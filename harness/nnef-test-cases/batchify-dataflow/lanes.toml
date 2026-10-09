@@ -1,0 +1,6 @@
+[dataflow]
+runtime = "cpu"
+transforms = [{ name = "batchify", symbol = "B", shared = ["scale"] }]
+
+[dataflow.knobs]
+TRACT_AUTOBATCH_LANES = 4

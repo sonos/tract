@@ -30,3 +30,11 @@ TRACT_CONFIG=tract.toml $TRACT_RUN --nnef-tract-core . --runtime deploy --set T=
     --input-from-bundle io-b2.npz --assert-output-bundle io-b2.npz
 TRACT_CONFIG=tract.toml $TRACT_RUN --nnef-tract-core . --runtime deploy \
     -t 'set_property(key:"tract.name",value:"renamed")' dump -q --assert-output-fact "B,T,1,F32"
+
+# Batchified and autobatched by the deploy runtime: the runnable keeps the
+# contract the model came in with, so a stream feeds and gets back tensors
+# without the batch axis the prepared graph carries.
+TRACT_CONFIG=lanes.toml $TRACT_RUN --nnef-tract-core . --runtime deploy dump -q \
+    --assert-output-fact "B,T,1,F32"
+TRACT_CONFIG=lanes.toml $TRACT_RUN --nnef-tract-core . --runtime deploy --set T=5 run \
+    --input-from-bundle io.npz --assert-output-bundle io.npz --assert-output-fact "5,1,F32"
