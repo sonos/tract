@@ -230,10 +230,11 @@ zerofrom = "0.1.5"
 # default-features off so the GPU backends stay opt-in per crate: an example
 # building on an ubuntu runner must not pull tract-cuda in. The rest of the
 # facade's default set has to be named back, or every in-tree consumer loses
-# gzip, the ONNX parser, pulsification and the transformers extension.
+# gzip, the ONNX parser, profiling, pulsification and the transformers extension.
 tract = { version = "0.23.9-pre", path = 'api/rs', default-features = false, features = [
   "flate2",
   "onnx",
+  "profile",
   "pulse",
   "transformers",
 ] }

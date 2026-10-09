@@ -26,7 +26,7 @@ tract-onnx = { workspace = true, optional = true }
 tract-extra.workspace = true
 tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl.workspace = true
-tract-libcli.workspace = true
+tract-libcli = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
 serde_json.workspace = true
 
@@ -46,7 +46,7 @@ tempfile.workspace = true
 serde_json.workspace = true
 
 [features]
-default = ["cuda-13000", "metal", "flate2", "onnx", "pulse", "transformers"]
+default = ["cuda-13000", "metal", "flate2", "onnx", "profile", "pulse", "transformers"]
 complex = []
 
 # Gzip support for NNEF archives: reading `.nnef.tgz` models and writing them
@@ -61,6 +61,11 @@ flate2 = ["dep:flate2", "tract-nnef/flate2"]
 # an NNEF graph may carry live in tract-onnx-opl, which stays either way.
 onnx = ["dep:tract-onnx"]
 
+# `Runnable::cost_json` and `Runnable::profile_json`, backed by tract-libcli.
+# Enabled by default; with it off both return an error, and tract-libcli, with
+# clap and its other CLI dependencies, stays out of the build.
+profile = ["dep:tract-libcli"]
+
 # Offline pulsification: the `pulse` and `blockify` model transforms, and the
 # write side of pulsed NNEF. Enabled by default; consumers that only load and
 # run an already pulsified model keep `enable_pulse` off tract-pulse-opl alone
@@ -74,7 +79,7 @@ pulse = ["dep:tract-pulse", "tract-extra/pulse", "transformers"]
 # by default; with it off `enable_tract_transformers` fails and a model using
 # those operators does not load, so only drop it for a model known not to need
 # them.
-transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-libcli/transformers"]
+transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-libcli?/transformers"]
 # default = [ "dylib" ]
 # dylib = []
 # staticlib = []
@@ -82,7 +87,7 @@ transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-lib
 # Gates the `extern crate tract_metal` that registers the Metal runtime, on the
 # Apple targets that have it. Enabled by default; CPU-only consumers drop the
 # backend, and the shader sources it embeds, with `default-features = false`.
-metal = ["dep:tract-metal", "tract-libcli/metal"]
+metal = ["dep:tract-metal", "tract-libcli?/metal"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Gates the `extern crate tract_cuda` that registers the CUDA runtime.

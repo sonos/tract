@@ -15,14 +15,19 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use tract_extra::WithTractExtra;
+#[cfg(feature = "profile")]
 use tract_libcli::annotations::Annotations;
+#[cfg(feature = "profile")]
 use tract_libcli::profile::BenchLimits;
+#[cfg(feature = "profile")]
 use tract_libcli::tensor::RunTensors;
 use tract_nnef::internal::Runtime as _;
 use tract_nnef::prelude::{
     Framework, IntoArcTensor, IntoTValue, SymbolValues, TDim, TValue, TVec,
-    Tensor as InternalTensor, TractResult, TypedFact, TypedModel, TypedSimplePlan,
+    Tensor as InternalTensor, TypedFact, TypedModel,
 };
+#[cfg(feature = "profile")]
+use tract_nnef::prelude::{TractResult, TypedSimplePlan};
 #[cfg(feature = "onnx")]
 use tract_onnx::prelude::InferenceModelExt;
 use tract_onnx_opl::WithOnnx;
@@ -475,6 +480,7 @@ impl RunnableInterface for Runnable {
         self.profile_json(input)
     }
 
+    #[cfg(feature = "profile")]
     fn profile_json<I, IV, IE>(&self, inputs: Option<I>) -> Result<String>
     where
         I: IntoIterator<Item = IV>,
@@ -505,6 +511,16 @@ impl RunnableInterface for Runnable {
         };
         let export = tract_libcli::export::GraphPerfInfo::from(model, &annotations);
         Ok(serde_json::to_string(&export)?)
+    }
+
+    #[cfg(not(feature = "profile"))]
+    fn profile_json<I, IV, IE>(&self, _inputs: Option<I>) -> Result<String>
+    where
+        I: IntoIterator<Item = IV>,
+        IV: TryInto<Self::Tensor, Error = IE>,
+        IE: Into<anyhow::Error> + Debug,
+    {
+        anyhow::bail!("tract was built without the `profile` feature")
     }
 }
 
@@ -680,7 +696,8 @@ impl InferenceFactInterface for InferenceFact {
 #[cfg(feature = "onnx")]
 impl InferenceFact {
     fn new(model: &InferenceModel, spec: impl ToString) -> Result<InferenceFact> {
-        let fact = tract_libcli::tensor::parse_spec(&model.0.symbols, &spec.to_string())?;
+        let fact =
+            tract_onnx::prelude::InferenceFact::from_spec(&model.0.symbols, &spec.to_string())?;
         Ok(InferenceFact(fact))
     }
 }
