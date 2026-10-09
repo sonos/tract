@@ -96,7 +96,7 @@ impl InferenceFact {
         }
         let splits = spec.split(',').collect::<Vec<_>>();
         let last = splits.last().unwrap();
-        let (datum_type, shape) = if let Ok(dt) = parse_dt(last) {
+        let (datum_type, shape) = if let Ok(dt) = last.parse::<DatumType>() {
             (Some(dt), &splits[0..splits.len() - 1])
         } else {
             (None, &*splits)
@@ -119,27 +119,6 @@ impl InferenceFact {
             Ok(InferenceFact::shape(shape))
         }
     }
-}
-
-fn parse_dt(dt: &str) -> TractResult<DatumType> {
-    Ok(match dt.to_lowercase().as_ref() {
-        "bool" => DatumType::Bool,
-        "f16" => DatumType::F16,
-        "f32" => DatumType::F32,
-        "f64" => DatumType::F64,
-        "i8" => DatumType::I8,
-        "i16" => DatumType::I16,
-        "i32" => DatumType::I32,
-        "i64" => DatumType::I64,
-        "u8" => DatumType::U8,
-        "u16" => DatumType::U16,
-        "u32" => DatumType::U32,
-        "u64" => DatumType::U64,
-        "tdim" => DatumType::TDim,
-        _ => bail!(
-            "Type of the input should be f16, f32, f64, i8, i16, i16, i32, u8, u16, u32, u64, TDim."
-        ),
-    })
 }
 
 impl Factoid for InferenceFact {
