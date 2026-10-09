@@ -1,4 +1,3 @@
-use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaFunction, LaunchArgs, LaunchConfig, PushKernelArg};
 use num_traits::One;
 use std::fmt;
@@ -167,11 +166,6 @@ impl CudaFlashAttn {
             let func = ctxt.load_pipeline(
                 LibraryName::FlashAttn,
                 format!("attention_{suffix}{block_q}_{block_kv}_{d}_{mask_mode}"),
-            )?;
-
-            func.set_attribute(
-                CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-                smem_size as _,
             )?;
 
             let mut launch_args = TractLaunchArgs::new(stream, &func);

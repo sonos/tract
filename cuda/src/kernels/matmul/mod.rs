@@ -363,11 +363,13 @@ fn launch_matmul_q40(
 
     let context = cuda_context();
     let props = context.properties();
-    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
-    func.set_attribute(
-        CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
-        nbytes_shared as i32,
-    )?;
+    let func = context.load_pipeline_with(LibraryName::GgmlQ, kernel_name, |func| {
+        func.set_attribute(
+            CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
+            nbytes_shared as i32,
+        )?;
+        Ok(())
+    })?;
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(weights);
     launch_args.push_view(quant_activ);
@@ -988,6 +990,25 @@ mod tests {
             let output = pb.run().unwrap();
             prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
         }
+    }
+
+    /// Tiles over 64 rows need more shared memory than a kernel is granted by default.
+    #[test]
+    fn mmm_ggml_q4_tall_tile() -> TractResult<()> {
+        let (b, m, k, n) = (1, 128, 64, 128);
+        let data = |len: usize| (0..len).map(|i| (i % 7) as f32 / 7.0).collect();
+        let pb = MmmProblem::<f32> {
+            b,
+            m,
+            k,
+            n,
+            lhs: data(b * m * k),
+            transpose_lhs: false,
+            rhs: data(b * n * k),
+            transpose_rhs: true,
+            q4_0: true,
+        };
+        pb.run()?.close_enough(&pb.reference()?, Approximation::VeryApproximate)
     }
 
     #[derive(Default, Debug, Clone)]
