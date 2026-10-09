@@ -1038,25 +1038,28 @@ impl Op for OptBinChain {
 impl EvalOp for OptBinChain {
     op_out_of_plan!();
 
-    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+    fn eval(&self, _ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let natural = |t: &Tensor| {
             t.len() == t.shape().iter().product::<usize>()
                 && t.strides() == &*Tensor::natural_strides(t.shape())
         };
+        let all_natural = inputs.iter().all(|t| natural(t));
+        let acc = inputs.remove(0);
+        let operands = inputs;
         let sequential = |acc: TValue| -> TractResult<TValue> {
             self.steps
                 .iter()
-                .zip(inputs[1..].iter())
+                .zip(operands.iter())
                 .try_fold(acc, |acc, (step, b)| eval_bin_chain_step(step, acc, b.clone()))
         };
-        if !inputs.iter().all(|t| natural(t)) {
-            return Ok(tvec!(sequential(inputs[0].clone())?));
+        if !all_natural {
+            return Ok(tvec!(sequential(acc)?));
         }
-        let mut a = inputs[0].clone().into_tensor();
+        let mut a = acc.into_tensor();
         // A PerBlock operand sharing one scalar with fewer than a vector's
         // worth of elements belongs on `repeat_broadcast`; run the chain one
         // step at a time so that step can take it.
-        let tiny_period = self.steps.iter().zip(inputs[1..].iter()).any(|(s, b)| {
+        let tiny_period = self.steps.iter().zip(operands.iter()).any(|(s, b)| {
             s.share == BShare::PerBlock && {
                 let period = a.len() / b.len().max(1);
                 period > 1 && period < 16
@@ -1068,7 +1071,7 @@ impl EvalOp for OptBinChain {
         let steps: Vec<tract_linalg::multithread::BinChainStep> = self
             .steps
             .iter()
-            .zip(inputs[1..].iter())
+            .zip(operands.iter())
             .map(|(s, b)| tract_linalg::multithread::BinChainStep {
                 eval_fn: &*s.eval_fn,
                 b,
