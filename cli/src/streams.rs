@@ -1,6 +1,6 @@
 use std::time::Instant;
 
-use tract_core::lanes::LanedRunnable;
+use tract_core::unbatched::UnbatchedRunnable;
 use tract_hir::internal::*;
 use tract_libcli::tensor::get_or_make_inputs;
 
@@ -34,7 +34,7 @@ pub fn run(
          --steps and --save-steps can not reach"
     );
     let runnable = params.req_runnable()?;
-    let laned = runnable.downcast_ref::<LanedRunnable>();
+    let laned = params.laned();
     if let Some(laned) = laned {
         ensure!(
             streams <= laned.max_lanes(),
@@ -47,13 +47,18 @@ pub fn run(
             "Occupancy is what an autobatched turn carries: --assert-occupancy wants --autobatch-sessions"
         );
     }
-    let solo = laned.map(|laned| laned.inner()).unwrap_or(&runnable);
+    // The reference is the prepared model alone, or, when the runnable hides
+    // the batch axis the prepared model runs on, one stream alone through it.
+    let solo = match laned {
+        Some(laned) if !runnable.is::<UnbatchedRunnable>() => laned.inner(),
+        _ => &runnable,
+    };
 
     let mut run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
     if let Some(laned) = laned {
         run_params.symbols.set(laned.batch_symbol(), 1);
     }
-    let sources = get_or_make_inputs(&params.tract_model, &run_params)?.sources;
+    let sources = get_or_make_inputs(&params.interface, &run_params)?.sources;
     let turns: usize = sub_matches
         .get_one::<String>("turns")
         .map(|s| s.parse())

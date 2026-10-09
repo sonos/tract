@@ -11,6 +11,7 @@ use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
+use tract_core::unbatched::UnbatchedRunnable;
 use tract_hir::internal::*;
 use tract_libcli::tensor::{RunTensors, get_or_make_inputs};
 use tract_nnef::tensors::write_tensor;
@@ -324,11 +325,9 @@ fn run_regular(
     // than through a plan of ours.
     let streams: usize =
         sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?.unwrap_or(1);
-    let laned = params
-        .runnable
-        .as_ref()
-        .is_some_and(|runnable| runnable.is::<tract_core::lanes::LanedRunnable>());
-    if streams > 1 || laned {
+    let own_states = params.laned().is_some()
+        || params.runnable.as_ref().is_some_and(|runnable| runnable.is::<UnbatchedRunnable>());
+    if streams > 1 || own_states {
         return crate::streams::run(params, sub_matches, streams);
     }
 
