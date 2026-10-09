@@ -20,9 +20,12 @@ use crate::tensor::CudaTensor;
 
 use cudarc::nvrtc::result::{compile_program, destroy_program, get_program_log};
 use cudarc::nvrtc::sys::{
-    nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult,
+    nvrtcCreateProgram, nvrtcGetCUBIN, nvrtcGetCUBINSize, nvrtcProgram, nvrtcResult, nvrtcVersion,
 };
-use std::ffi::{CStr, CString, c_char};
+use std::ffi::{CStr, CString, c_char, c_int};
+use std::hash::BuildHasher;
+use std::hash::Hasher;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 pub fn cuda_context() -> &'static TractCudaContext {
@@ -46,6 +49,8 @@ pub fn with_cuda_stream<R>(f: impl FnOnce(&TractCudaStream) -> TractResult<R>) -
 pub struct TractCudaContext {
     inner: Arc<CudaContext>,
     device_properties: cudaDeviceProp,
+    cubin_dir: PathBuf,
+    cubin_target: String,
     cached_modules: Arc<RwLock<HashMap<LibraryName, Arc<CudaModule>>>>,
     #[allow(clippy::type_complexity)]
     cached_pipelines: Arc<RwLock<HashMap<(LibraryName, String), Arc<CudaFunction>>>>,
@@ -91,8 +96,14 @@ impl TractCudaContext {
             log::warn!("tract-cuda: cudaRuntimeGetVersion failed");
         }
 
+        let (nvrtc_major, nvrtc_minor) = nvrtc_version()?;
+        log::info!("tract-cuda: NVRTC version {nvrtc_major}.{nvrtc_minor}");
+        let nvrtc = format!("nvrtc-{nvrtc_major}.{nvrtc_minor}");
+
         let ctxt = Self {
             inner: context,
+            cubin_dir: cubin_dir().join(format!("sm_{}{}", prop.major, prop.minor)).join(&nvrtc),
+            cubin_target: format!("{} {nvrtc}", nvrtc_target_opts(&prop).join(" ")),
             device_properties: prop,
             cached_modules: Arc::new(RwLock::new(HashMap::new())),
             cached_pipelines: Arc::new(RwLock::new(HashMap::new())),
@@ -106,6 +117,10 @@ impl TractCudaContext {
         &self.device_properties
     }
 
+    fn cubin_path(&self, lib: LibraryName) -> PathBuf {
+        lib.cubin_path(&self.cubin_dir, &self.cubin_target)
+    }
+
     pub fn compile_cubins(&self) -> TractResult<()> {
         for lib in LibraryName::EAGER {
             self.compile_cubin(lib)?;
@@ -114,14 +129,13 @@ impl TractCudaContext {
     }
 
     fn compile_cubin(&self, lib: LibraryName) -> TractResult<()> {
-        let cubin_dir = cubin_dir();
-        if !cubin_dir.exists() {
-            log::info!("Creating cache folder for CUDA cubins at {}", cubin_dir.display());
-            std::fs::create_dir_all(cubin_dir)
-                .with_context(|| format!("Failed to create {}", cubin_dir.display()))?;
+        if !self.cubin_dir.exists() {
+            log::info!("Creating cache folder for CUDA cubins at {}", self.cubin_dir.display());
+            std::fs::create_dir_all(&self.cubin_dir)
+                .with_context(|| format!("Failed to create {}", self.cubin_dir.display()))?;
         }
 
-        let out_path = lib.cubin_path();
+        let out_path = self.cubin_path(lib);
         if out_path.exists() {
             return Ok(());
         }
@@ -160,9 +174,7 @@ impl TractCudaContext {
 
         unsafe { destroy_program(prog) }.context("nvrtcDestroyProgram failed")?;
 
-        std::fs::write(&out_path, &cubin)
-            .with_context(|| format!("Failed to write {:?}", out_path))?;
-        Ok(())
+        write_atomically(&out_path, &cubin)
     }
 
     /// Build NVRTC options: GPU arch + include paths for the CUDA toolkit's host/device
@@ -172,12 +184,6 @@ impl TractCudaContext {
     /// Debian/Ubuntu the matching packages are `cuda-cccl-<ver>` and
     /// `cuda-cudart-dev-<ver>`.
     fn build_nvrtc_opts(&self) -> TractResult<Vec<String>> {
-        let arch = format!(
-            "--gpu-architecture=sm_{}{}",
-            self.device_properties.major, self.device_properties.minor
-        );
-        log::info!("tract-cuda: NVRTC target architecture {arch}");
-
         let cuda_inc = resolve_toolkit_include_dir()?;
         log::info!("tract-cuda: toolkit include dir {}", cuda_inc.display());
 
@@ -195,12 +201,9 @@ impl TractCudaContext {
             );
         }
 
-        let opts = vec![
-            "--std=c++17".into(),
-            arch,
-            format!("-I{}", cuda_inc.display()),
-            format!("-I{}", cccl_root.display()),
-        ];
+        let mut opts = nvrtc_target_opts(&self.device_properties);
+        opts.push(format!("-I{}", cuda_inc.display()));
+        opts.push(format!("-I{}", cccl_root.display()));
         log::info!("tract-cuda: NVRTC opts = {opts:?}");
         Ok(opts)
     }
@@ -267,7 +270,7 @@ impl TractCudaContext {
             return Ok(module.clone());
         }
         self.compile_cubin(*name)?;
-        let module = self.inner.load_module(Ptx::from_file(name.cubin_path()))?;
+        let module = self.inner.load_module(Ptx::from_file(self.cubin_path(*name)))?;
         cache.insert(*name, module.clone());
 
         Ok(module)
@@ -293,7 +296,7 @@ impl TractCudaContext {
             module.load_function(&func_name).map_err(|e| anyhow!("{e}")).with_context(|| {
                 format!(
                     "Failed to load function `{func_name}` from library `{}`",
-                    library_name.cubin_path().display()
+                    self.cubin_path(library_name).display()
                 )
             })?;
 
@@ -452,6 +455,34 @@ impl Deref for TractCudaStream {
     fn deref(&self) -> &Self::Target {
         &self.inner
     }
+}
+
+/// Write `bytes` to `path` so that readers, possibly on other machines sharing the
+/// filesystem, see either no file or the complete one: the cache trusts any cubin it finds.
+fn write_atomically(path: &Path, bytes: &[u8]) -> TractResult<()> {
+    let nonce = std::hash::RandomState::new().build_hasher().finish();
+    let tmp_path = path.with_extension(format!("{nonce:016x}.tmp"));
+    let written = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&tmp_path)
+        .and_then(|mut f| f.write_all(bytes).and_then(|_| f.sync_all()))
+        .and_then(|_| std::fs::rename(&tmp_path, path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&tmp_path);
+    }
+    written.with_context(|| format!("Failed to write {}", path.display()))
+}
+
+fn nvrtc_version() -> TractResult<(c_int, c_int)> {
+    let (mut major, mut minor) = (0, 0);
+    unsafe { nvrtcVersion(&mut major, &mut minor) }.result()?;
+    Ok((major, minor))
+}
+
+/// NVRTC options that shape the generated code, as opposed to where headers are found.
+fn nvrtc_target_opts(prop: &cudaDeviceProp) -> Vec<String> {
+    vec!["--std=c++17".into(), format!("--gpu-architecture=sm_{}{}", prop.major, prop.minor)]
 }
 
 /// Resolve a CUDA toolkit root containing an `include/` directory, if any is available.
