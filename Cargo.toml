@@ -182,6 +182,8 @@ log = "0.4.14"
 maplit = "1.0.2"
 memmap2 = "0.9"
 metal = { version = "0.33.0" }
+metrics = "0.24.6"
+metrics-util = { version = "0.20.4", default-features = false, features = ["debugging"] }
 minijinja = "2.19.0"
 ndarray = "0.17"
 ndarray-npy = { version = "0.10", features = [ "compressed_npz" ] }
