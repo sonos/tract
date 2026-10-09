@@ -1148,9 +1148,9 @@ fn fuse_elementwise_chain(
     // head of the run builds the patch.
     let pred_out = node.inputs[0];
     let pred = model.node(pred_out.node);
-    if steps_of(&*pred.op).is_some()
-        && pred.outputs[pred_out.slot].successors.len() == 1
+    if pred.outputs[pred_out.slot].successors.len() == 1
         && !model.output_outlets()?.contains(&pred_out)
+        && (steps_of(&*pred.op).is_some() || pred.op.fuse(model, pred)?.is_some())
     {
         return Ok(None);
     }
