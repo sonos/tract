@@ -85,7 +85,7 @@ impl GgmlQuantQ81 {
                 block_dim: (128, 1, 1),
                 shared_mem_bytes: 0,
             };
-            unsafe { launch_args.launch(cfg) };
+            launch_args.launch(cfg)?;
         } else {
             let func = context
                 .load_pipeline(LibraryName::Quant, format!("quantize_q8_1_nd{}", input.rank()))?;
@@ -101,7 +101,7 @@ impl GgmlQuantQ81 {
                 block_dim: (QUANTIZE_BLOCK_SIZE as _, 1, 1),
                 shared_mem_bytes: 0,
             };
-            unsafe { launch_args.launch(cfg) };
+            launch_args.launch(cfg)?;
         }
         Ok(())
     }

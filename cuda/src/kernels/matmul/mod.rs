@@ -249,7 +249,7 @@ fn dispatch_ggml_matvec(
         shared_mem_bytes: (WARP_SIZE * size_of::<f32>()) as u32,
     };
 
-    unsafe { launch_args.launch(cfg) };
+    launch_args.launch(cfg)?;
     Ok(())
 }
 
@@ -393,9 +393,7 @@ fn launch_matmul_q40(
         shared_mem_bytes: nbytes_shared as _,
     };
 
-    unsafe {
-        launch_args.launch(cfg);
-    }
+    launch_args.launch(cfg)?;
     Ok(())
 }
 
@@ -427,9 +425,7 @@ fn launch_fixup_q40(
         shared_mem_bytes: 0,
     };
 
-    unsafe {
-        launch_args.launch(cfg);
-    }
+    launch_args.launch(cfg)?;
     Ok(())
 }
 
