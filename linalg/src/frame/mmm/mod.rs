@@ -315,6 +315,7 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     unsafe {
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
+                crate::topology::trace_simd(ker.name(), ker.isa());
                 for ia in 0..m.divceil(ker.mr()) {
                     scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
                 }
@@ -334,7 +335,9 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 // re-reads is a vector.
                 0,
                 0,
+                kernel_worker_cap(ker, m, 0, 1),
                 |ia_start, ia_end, _, _, _| {
+                    crate::topology::trace_simd(ker.name(), ker.isa());
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
                             scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
@@ -357,7 +360,9 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 // re-reads is a vector.
                 0,
                 0,
+                kernel_worker_cap(ker, m, 0, 1),
                 |ia_start, ia_end, _, _, _| {
+                    crate::topology::trace_simd(ker.name(), ker.isa());
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
                             scratch.run_one_tile(ker, non_linear, tls, ia, 0)?;
@@ -642,6 +647,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
         let (m_panels, n_panels) = (m.divceil(ker.mr()), n.divceil(ker.nr()));
         #[cfg(feature = "multithread-mm")]
         let chunk = |ia_start, ia_end, ib_start, ib_end, concurrency| {
+            crate::topology::trace_simd(ker.name(), ker.isa());
             run_blocked(
                 ker,
                 ia_start..ia_end,
@@ -655,6 +661,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
         };
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => {
+                crate::topology::trace_simd(ker.name(), ker.isa());
                 run_blocked(ker, 0..m_panels, 0..n_panels, k, col_outer, 1, scratch, non_linear)
             }
             #[cfg(feature = "multithread-mm")]
@@ -666,6 +673,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
+                kernel_worker_cap(ker, m, k, n),
                 chunk,
             ),
             #[cfg(feature = "multithread-mm")]
@@ -677,6 +685,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
+                kernel_worker_cap(ker, m, k, n),
                 chunk,
             ),
         }
@@ -845,10 +854,51 @@ fn chunk_grid(
     (n_panels_m.div_ceil(dr_m), n_panels_n.div_ceil(dr_n), dr_m, dr_n)
 }
 
+/// How many chunks of this kernel may run at once.
+///
+/// On Apple silicon the cost model scores it: one AMX worker per cluster pipe,
+/// one SME or NEON worker per performance core, with the entry-cost comparison
+/// deciding whether a split pays. Everywhere else a grid smaller than
+/// [`crate::multithread::current_threading_panel_threshold`] is capped at one
+/// worker outright — there is no kernel cost model to price the split — and a
+/// larger grid takes the [`crate::topology::hardware_workers`] roof: one worker
+/// per physical core, and one per TMUL when the kernel is Intel AMX. A machine
+/// with no probe stays at [`usize::MAX`].
+#[cfg(feature = "multithread-mm")]
+fn kernel_worker_cap<K: MatMatMulKer>(ker: &K, m: usize, k: usize, n: usize) -> usize {
+    #[cfg(all(target_os = "macos", any(target_arch = "aarch64", feature = "foreign-inventory")))]
+    {
+        crate::arm64::matmul_workers(
+            ker.name(),
+            m,
+            k,
+            n,
+            ker.mr(),
+            ker.nr(),
+            crate::topology::uses_amx_cluster_pipe(ker.isa()),
+        )
+    }
+    #[cfg(not(all(
+        target_os = "macos",
+        any(target_arch = "aarch64", feature = "foreign-inventory")
+    )))]
+    {
+        let _ = k;
+        if m.div_ceil(ker.mr()) * n.div_ceil(ker.nr())
+            < crate::multithread::current_threading_panel_threshold()
+        {
+            1
+        } else {
+            let pool = crate::multithread::current_executor_threads().max(1);
+            crate::topology::hardware_workers(pool, crate::topology::uses_matrix_unit(ker.isa()))
+        }
+    }
+}
+
 /// Dispatch the `m_panels × n_panels` panel grid across the rayon path, split into
-/// the 2D chunk grid [`chunk_grid`] picks. Grids below
-/// [`crate::multithread::current_threading_panel_threshold`] run whole on the
-/// calling thread instead.
+/// the 2D chunk grid [`chunk_grid`] picks. Whether the grid splits at all is the
+/// concurrency cap's decision: a grid the cap leaves at one worker runs whole on
+/// the calling thread.
 ///
 /// The closure receives **chunk bounds** (`ia_start, ia_end, ib_start, ib_end`)
 /// plus the number of chunks running concurrently, not per-tile indices. Chunk
@@ -856,7 +906,7 @@ fn chunk_grid(
 /// `ScratchSpaceImpl::run_in_tls_scope`) over all the tiles in the chunk; the
 /// concurrency lets it size shared-cache blocking against the share it actually
 /// gets. The closure is invoked exactly once per rayon work item, and once in
-/// total with a concurrency of 1 on the below-threshold path.
+/// total with a concurrency of 1 when the concurrency cap leaves a single thread.
 ///
 /// `pool`:
 ///   * `Some(p)` with `p.current_num_threads() > 1` → scoped via `p.install`
@@ -865,6 +915,11 @@ fn chunk_grid(
 ///     `into_par_iter` directly, which uses rayon's GLOBAL pool. This is
 ///     the only working path on `wasm32-unknown-unknown` via
 ///     `wasm_bindgen_rayon::init_thread_pool`.
+///
+/// `concurrency_cap` is how many chunks of this kernel may run at once. It is
+/// applied to the pool that will actually run the body, and when it binds the
+/// slack multiplier is dropped: extra chunks are how a larger pool steals work,
+/// and they would also let that pool exceed the cap.
 #[cfg(feature = "multithread-mm")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn chunked_dispatch_rayon<F>(
@@ -875,6 +930,7 @@ unsafe fn chunked_dispatch_rayon<F>(
     nr: usize,
     k: usize,
     elem: usize,
+    concurrency_cap: usize,
     run_chunk: F,
 ) -> TractResult<()>
 where
@@ -884,15 +940,19 @@ where
     if n_panels_m == 0 || n_panels_n == 0 {
         return Ok(());
     }
-    if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold() {
-        // Below the threading threshold: run the whole grid as a single chunk
-        // on the calling thread. Closure handles its own TLS scope.
+    let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
+    let pool_nth =
+        if use_global { rayon::current_num_threads() } else { pool.unwrap().current_num_threads() };
+    let nth = pool_nth.min(concurrency_cap).max(1);
+    if nth <= 1 {
         return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
     }
-    let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
-    let cpt = chunks_per_thread(packed_operand_bytes(n_panels_m, n_panels_n, mr, nr, k, elem));
+    let cpt = if nth < pool_nth {
+        1
+    } else {
+        chunks_per_thread(packed_operand_bytes(n_panels_m, n_panels_n, mr, nr, k, elem))
+    };
     let body = || {
-        let nth = rayon::current_num_threads();
         let (nchunks_m, nchunks_n, dr_m, dr_n) =
             chunk_grid(n_panels_m, n_panels_n, mr, nr, nth, cpt);
         let total = nchunks_m * nchunks_n;
@@ -1165,6 +1225,30 @@ mod blocked_walk_tests {
         assert_eq!(resolve_chunks_per_thread(Some(1), CHUNK_SLACK_LLC_BYTES, slack, 0), 1);
         assert_eq!(resolve_chunks_per_thread(Some(8), 0, slack, usize::MAX), 8);
         assert_eq!(resolve_chunks_per_thread(Some(0), 0, slack, usize::MAX), 1);
+    }
+
+    /// A binding hardware cap asks `chunk_grid` for one chunk per admitted
+    /// thread. That only caps concurrency if the grid never emits more work
+    /// items than it was asked for — rayon will run every item the pool can
+    /// hold.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn chunk_grid_does_not_emit_more_chunks_than_requested() {
+        for &(m, n) in GRIDS {
+            for &(mr, nr) in RATIOS {
+                for nth in [1usize, 2, 3, 4, 6, 8, 16, 64] {
+                    for cpt in [1usize, CHUNKS_PER_THREAD] {
+                        let (cm, cn, ..) = chunk_grid(m, n, mr, nr, nth, cpt);
+                        let asked = cpt.saturating_mul(nth).max(1);
+                        assert!(
+                            cm * cn <= asked,
+                            "{cm}x{cn} chunks > {asked} on {m}x{n} panels, {mr}x{nr}, \
+                             nth {nth}, cpt {cpt}"
+                        );
+                    }
+                }
+            }
+        }
     }
 
     /// The footprint the gate reads is what the packers actually wrote: both

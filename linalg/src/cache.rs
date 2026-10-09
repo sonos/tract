@@ -201,39 +201,40 @@ fn parse_cache_size(s: &str) -> usize {
     num.trim().parse::<usize>().unwrap_or(0) * mult
 }
 
+/// Read a scalar `hw.*` sysctl by name via the libc FFI (no subprocess).
+/// macOS returns these as a little-endian integer (4 or 8 bytes); a zeroed
+/// 8-byte buffer reads either width correctly on little-endian Apple silicon
+/// and Intel. `0` and a failed lookup are both "absent".
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub(crate) fn sysctl_usize(name: &str) -> Option<usize> {
+    use std::ffi::CString;
+    use std::os::raw::{c_char, c_int, c_void};
+    unsafe extern "C" {
+        fn sysctlbyname(
+            name: *const c_char,
+            oldp: *mut c_void,
+            oldlenp: *mut usize,
+            newp: *mut c_void,
+            newlen: usize,
+        ) -> c_int;
+    }
+    let cname = CString::new(name).ok()?;
+    let mut val: u64 = 0;
+    let mut len = std::mem::size_of::<u64>();
+    let rc = unsafe {
+        sysctlbyname(
+            cname.as_ptr(),
+            &mut val as *mut u64 as *mut c_void,
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if rc != 0 || val == 0 { None } else { Some(val as usize) }
+}
+
 #[cfg(any(target_os = "macos", target_os = "ios"))]
 fn detect() -> CacheInfo {
-    // Read a scalar `hw.*` sysctl by name via the libc FFI (no subprocess).
-    // macOS returns these as a little-endian integer (4 or 8 bytes); a zeroed
-    // 8-byte buffer reads either width correctly on little-endian Apple silicon
-    // and Intel.
-    fn sysctl_usize(name: &str) -> Option<usize> {
-        use std::ffi::CString;
-        use std::os::raw::{c_char, c_int, c_void};
-        unsafe extern "C" {
-            fn sysctlbyname(
-                name: *const c_char,
-                oldp: *mut c_void,
-                oldlenp: *mut usize,
-                newp: *mut c_void,
-                newlen: usize,
-            ) -> c_int;
-        }
-        let cname = CString::new(name).ok()?;
-        let mut val: u64 = 0;
-        let mut len = std::mem::size_of::<u64>();
-        let rc = unsafe {
-            sysctlbyname(
-                cname.as_ptr(),
-                &mut val as *mut u64 as *mut c_void,
-                &mut len,
-                std::ptr::null_mut(),
-                0,
-            )
-        };
-        if rc != 0 || val == 0 { None } else { Some(val as usize) }
-    }
-
     CacheInfo {
         // perflevel0 is the performance cluster on hybrid Apple Silicon.
         l1_data: sysctl_usize("hw.perflevel0.l1dcachesize")
@@ -245,8 +246,10 @@ fn detect() -> CacheInfo {
         l3: sysctl_usize("hw.perflevel0.l3cachesize")
             .or_else(|| sysctl_usize("hw.l3cachesize"))
             .unwrap_or(0),
-        // Apple L2 is per-cluster (shared across a perflevel's cores), but sysctl
-        // does not expose the sharing degree; report unknown (treated as private).
+        // Per-cluster, and the degree is `hw.perflevel0.cpusperl2`, which the
+        // matrix-pipe policy reads. Blocking still treats this L2 as private:
+        // sizing the panel block for a shared L2 is a different decision from
+        // counting matrix pipes.
         l2_sharers: 0,
     }
 }
@@ -254,7 +257,7 @@ fn detect() -> CacheInfo {
 /// Count the CPUs named by a Linux cpu-list string (`"0-3"`, `"0,8"`,
 /// `"0-3,8-11"`). Malformed fields are skipped, so a garbled file counts 0.
 #[cfg_attr(not(any(target_os = "linux", target_os = "android")), allow(dead_code))]
-fn count_cpu_list(s: &str) -> usize {
+pub(crate) fn count_cpu_list(s: &str) -> usize {
     s.split(',')
         .filter_map(|part| {
             let part = part.trim();

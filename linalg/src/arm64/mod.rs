@@ -14,6 +14,12 @@ mod cortex_a55_mmv_linear;
 // (gates out e.g. the old Debian stretch aarch64 toolchain).
 #[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
 mod sme;
+#[cfg(all(any(target_os = "macos", target_os = "linux"), tract_sme))]
+pub use sme::has_sme;
+#[cfg(not(all(any(target_os = "macos", target_os = "linux"), tract_sme)))]
+pub fn has_sme() -> bool {
+    false
+}
 mod sve;
 pub use arm64simd::*;
 
@@ -453,9 +459,24 @@ inventory::submit! {
 /// cohort is runnable is the instruction set's business, so on a virtualised host the same model
 /// still speaks for the NEON kernels it was fitted over.
 ///
+/// The coefficients are single-thread. A wider pool does not get a flat divisor. Each candidate
+/// is scored by [`crate::mmm::schedule_workers`]: streaming and per-tile time shrink with the
+/// worker count, the fixed term does not, and leaving the inline path pays
+/// [`crate::mmm::PARALLEL_ENTRY_SECONDS`] once. An AMX kernel that already fills its pipe takes
+/// one worker per matrix pipe: the first thread fills the first pipe, the next thread the next
+/// pipe, and a pool larger than the pipe count does not stack more workers onto a pipe that is
+/// already full. A short-K AMX kernel, or one whose M or N does not cover a tile, does not fill
+/// the pipe, so it may take one worker per performance core of that same kernel. SME and NEON
+/// kernels scale across the performance cores, one worker per core. Threads past the
+/// performance cluster are efficiency cores and are in neither roof. The roofs come from
+/// sysctl, so an M1 and an M4, a Max, and an Ultra differ only in that count and in which
+/// coefficient table `apple_chip` selects. x86 reads the same pipe type at launch: one worker
+/// per physical core, and one TMUL per physical core when the kernel is Intel AMX. Those cost
+/// models stay on the one-thread pick.
+///
 /// Every term it weighs is a shape term, so a dim the caller could not pin leaves it nothing to
 /// say: it declines, and the tier below states what a wide AMX or SME tile is worth at an unknown
-/// shape.
+/// shape. `n == 1` declines too: the nr==1 rows in this table were not fitted as a GEMV model.
 #[cfg(target_os = "macos")]
 fn apple_chip_preferred(
     _isa: &IsaSet,
@@ -463,16 +484,183 @@ fn apple_chip_preferred(
     query: &Query,
     suitable: &[Suitable],
 ) -> Option<&'static str> {
-    let pinned = query.m.is_some() && query.k.is_some() && query.n.is_some();
-    if dt != DatumType::F32 || query.n == Some(1) || !pinned {
+    let (Some(m), Some(k), Some(n)) = (query.m, query.k, query.n) else {
+        return None;
+    };
+    if dt != DatumType::F32 || n == 1 {
         return None;
     }
-    let model = match apple_chip()? {
-        "m1" => apple_m1_linear::linear_model(),
-        "m4" => apple_m4_linear::linear_model(),
-        _ => return None,
+    let model = apple_cost_model()?;
+    let pool = crate::multithread::current_executor_threads().max(1);
+    let cluster = crate::topology::perf_cluster();
+    model.preferred_parallel(
+        suitable,
+        m,
+        k,
+        n,
+        |mmm, stream_dominates| match cluster {
+            Some(cluster) => kernel_roof(
+                pool,
+                cluster,
+                crate::topology::uses_amx_cluster_pipe(mmm.isa()),
+                stream_dominates,
+                m,
+                k,
+                n,
+                mmm.mr(),
+                mmm.nr(),
+            ),
+            None => pool,
+        },
+        0,
+        crate::mmm::PARALLEL_ENTRY_SECONDS,
+    )
+}
+
+/// Fitted table for this chip. Built once: the launch path asks on every
+/// non-vector product, and building it reads the brand string.
+#[cfg(target_os = "macos")]
+fn apple_cost_model() -> Option<&'static crate::mmm::LinearCostModel<'static>> {
+    use std::sync::OnceLock;
+    static MODEL: OnceLock<Option<crate::mmm::LinearCostModel<'static>>> = OnceLock::new();
+    MODEL
+        .get_or_init(|| match apple_chip() {
+            Some("m1") => Some(apple_m1_linear::linear_model()),
+            Some("m4") => Some(apple_m4_linear::linear_model()),
+            _ => None,
+        })
+        .as_ref()
+}
+
+/// Whether one thread of this AMX kernel already fills its cluster's matrix
+/// pipe.
+///
+/// A side shorter than the tile is one partial panel. The fit's streaming
+/// coefficient was measured on full tiles, so it calls a long-K partial panel
+/// stream-dominated and full; a second thread still reduces that time, so a
+/// partial panel does not count as a full pipe.
+///
+/// On a full tile, `stream_dominates` is the fitted split, with a floor: a K
+/// of at least an eighth of the tile area counts as full even when the fit
+/// still calls the shape tile-dominated, so a long-K full tile keeps the
+/// per-cluster roof rather than taking a worker per core.
+#[cfg(target_os = "macos")]
+fn matrix_pipe_is_full(
+    stream_dominates: bool,
+    m: usize,
+    k: usize,
+    n: usize,
+    mr: usize,
+    nr: usize,
+) -> bool {
+    if m < mr || n < nr {
+        return false;
+    }
+    stream_dominates || k >= mr.saturating_mul(nr) / 8
+}
+
+/// Most workers this kernel may use on `cluster` for a pool of `pool`.
+///
+/// `matrix` marks a kernel on the per-cluster matrix unit, Apple AMX. When it
+/// fills its pipe it gets one worker per pipe: the pool fills the next free
+/// pipe and stops when every pipe has a worker. Every other kernel — NEON,
+/// SME, or an AMX kernel that does not fill its pipe — gets one worker per
+/// performance core. The short-K case, and a partial panel, are more workers of
+/// the same kernel. It does not pack the matmul a second time for NEON, and it
+/// does not run on efficiency cores.
+#[cfg(target_os = "macos")]
+fn worker_roof(
+    pool: usize,
+    cluster: crate::topology::PerfCluster,
+    matrix: bool,
+    fills_pipe: bool,
+) -> usize {
+    let budget = crate::topology::dispatch_threads(pool, cluster);
+    if matrix && fills_pipe { budget.matrix } else { budget.neon }
+}
+
+/// [`worker_roof`] for a kernel whose shape terms are known; `matrix` is the
+/// per-cluster (AMX) flag.
+#[cfg(target_os = "macos")]
+#[allow(clippy::too_many_arguments)]
+fn kernel_roof(
+    pool: usize,
+    cluster: crate::topology::PerfCluster,
+    matrix: bool,
+    stream_dominates: bool,
+    m: usize,
+    k: usize,
+    n: usize,
+    mr: usize,
+    nr: usize,
+) -> usize {
+    let fills = matrix && matrix_pipe_is_full(stream_dominates, m, k, n, mr, nr);
+    worker_roof(pool, cluster, matrix, fills)
+}
+
+#[cfg(all(target_os = "macos", feature = "multithread-mm"))]
+fn threading_panel_threshold() -> usize {
+    crate::multithread::current_threading_panel_threshold()
+}
+
+/// Workers for a kernel the dispatch has already chosen.
+///
+/// Same roof and same entry cost as [`apple_chip_preferred`]: `matrix` marks an
+/// AMX kernel, capped at one worker per cluster pipe, while SME and NEON take
+/// one worker per performance core. A GEMV, a kernel the Apple table does not
+/// name, or a chip without that table keeps that hardware roof, and the flat
+/// panel gate inside `hardware` is the only economics those paths have — they
+/// have no cost model to price the split. A GEMV has one column and cannot be
+/// split on N, so it does not take the short-K core roof. No performance
+/// cluster leaves the pool as it is.
+///
+/// A kernel the model can score takes the entry-cost comparison in
+/// [`crate::mmm::schedule_workers`] instead of that gate: a panel count cannot
+/// tell a 60-panel K=864 grid from a 60-panel K=4 one.
+#[cfg(all(target_os = "macos", feature = "multithread-mm"))]
+pub fn matmul_workers(
+    name: &str,
+    m: usize,
+    k: usize,
+    n: usize,
+    mr: usize,
+    nr: usize,
+    matrix: bool,
+) -> usize {
+    let pool = crate::multithread::current_executor_threads().max(1);
+    let Some(cluster) = crate::topology::perf_cluster() else {
+        return pool;
     };
-    model.preferred(suitable, query.m, query.k, query.n)
+    let panels = m.div_ceil(mr) * n.div_ceil(nr.max(1));
+    let threshold = threading_panel_threshold();
+    let hardware = |matrix: bool| {
+        // No shape term to say the pipe is idle, so an AMX kernel stays at
+        // one worker per pipe.
+        if panels < threshold { 1 } else { worker_roof(pool, cluster, matrix, true) }
+    };
+    // nr==1 rows were fit at n >= 2, so they are not a model of this path.
+    // A gemv has one column and cannot be split on N.
+    if nr == 1 || n == 1 {
+        return hardware(matrix);
+    }
+    let Some(model) = apple_cost_model() else {
+        return hardware(matrix);
+    };
+    let Some(ix) = model.kernels.iter().position(|kernel| *kernel == name) else {
+        return hardware(matrix);
+    };
+    let (stream, tile, fixed) = model.terms(ix, m, k, n, mr, nr);
+    let roof = kernel_roof(pool, cluster, matrix, stream > tile + fixed, m, k, n, mr, nr);
+    crate::mmm::schedule_workers(
+        stream,
+        tile,
+        fixed,
+        roof,
+        panels,
+        0,
+        crate::mmm::PARALLEL_ENTRY_SECONDS,
+    )
+    .0
 }
 
 #[cfg(target_os = "macos")]
@@ -521,4 +709,310 @@ pub fn isa_set() -> crate::isa::IsaSet {
         set = set.with(Isa::Aarch64AppleAmx);
     }
     set
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod apple_thread_policy {
+    use super::*;
+    use crate::mmm::{PARALLEL_ENTRY_SECONDS, Query, schedule_workers};
+    use crate::topology::{PerfCluster, uses_amx_cluster_pipe, uses_apple_matrix_pipe};
+
+    fn suitable_f32(m: usize, k: usize, n: usize) -> Vec<Suitable> {
+        let query = Query::plain(DatumType::F32, Some(m), Some(k), Some(n));
+        crate::MmmDispatch::for_isa(crate::isa::native()).suitable(&query)
+    }
+
+    fn is_matrix(suitable: &[Suitable], name: &str) -> bool {
+        suitable
+            .iter()
+            .find(|(mmm, _, _)| mmm.name() == name)
+            .is_some_and(|(mmm, _, _)| uses_apple_matrix_pipe(mmm.isa()))
+    }
+
+    /// Kernel the parallel model picks, and how many workers that kernel gets,
+    /// on an explicit cluster. Same fill test as [`super::kernel_roof`].
+    fn scored(
+        model: &crate::mmm::LinearCostModel<'_>,
+        suitable: &[Suitable],
+        m: usize,
+        k: usize,
+        n: usize,
+        pool: usize,
+        cluster: PerfCluster,
+    ) -> (String, usize) {
+        let name = model
+            .preferred_parallel(
+                suitable,
+                m,
+                k,
+                n,
+                |mmm, stream_dominates| {
+                    kernel_roof(
+                        pool,
+                        cluster,
+                        uses_amx_cluster_pipe(mmm.isa()),
+                        stream_dominates,
+                        m,
+                        k,
+                        n,
+                        mmm.mr(),
+                        mmm.nr(),
+                    )
+                },
+                0,
+                PARALLEL_ENTRY_SECONDS,
+            )
+            .unwrap()
+            .to_string();
+        let (mmm, _, _) = suitable.iter().find(|(mmm, _, _)| mmm.name() == name).unwrap();
+        let ix = model.kernels.iter().position(|kernel| *kernel == name).unwrap();
+        let (stream, tile, fixed) = model.terms(ix, m, k, n, mmm.mr(), mmm.nr());
+        let roof = kernel_roof(
+            pool,
+            cluster,
+            uses_amx_cluster_pipe(mmm.isa()),
+            stream > tile + fixed,
+            m,
+            k,
+            n,
+            mmm.mr(),
+            mmm.nr(),
+        );
+        let panels = m.div_ceil(mmm.mr()) * n.div_ceil(mmm.nr());
+        let (workers, _) =
+            schedule_workers(stream, tile, fixed, roof, panels, 0, PARALLEL_ENTRY_SECONDS);
+        (name, workers)
+    }
+
+    #[test]
+    fn one_thread_matches_the_unscaled_table() {
+        let Some(chip) = apple_chip() else { return };
+        let model = match chip {
+            "m1" => apple_m1_linear::linear_model(),
+            "m4" => apple_m4_linear::linear_model(),
+            _ => return,
+        };
+        for (m, k, n) in [(32, 32, 32), (64, 8, 64), (128, 16, 128), (512, 512, 120), (7, 13, 9)] {
+            let suitable = suitable_f32(m, k, n);
+            let unscaled = model.preferred(&suitable, Some(m), Some(k), Some(n)).unwrap();
+            let parallel = model
+                .preferred_parallel(&suitable, m, k, n, |_, _| 1, 64, PARALLEL_ENTRY_SECONDS)
+                .unwrap();
+            assert_eq!(parallel, unscaled, "{chip} {m}x{k}x{n}");
+        }
+    }
+
+    /// The M4 table, scored as a base M4 (one L2 cluster, four performance
+    /// cores) and as a wider part with the same table (three clusters, twelve
+    /// performance cores). SME scales across the performance cores: a fat GEMM
+    /// takes one worker per core, past the cluster-pipe count that caps AMX.
+    /// A short-K matmul keeps the same performance-core roof: two threads do
+    /// not earn the entry cost, four do. A handful of panels stays at one
+    /// worker and at the one-thread kernel.
+    #[test]
+    fn m4_sme_workers_scale_one_per_performance_core() {
+        if apple_chip() != Some("m4") {
+            return;
+        }
+        let model = apple_m4_linear::linear_model();
+        let base = PerfCluster { physical_cpus: 4, cpus_per_l2: Some(4) };
+        let wide = PerfCluster { physical_cpus: 12, cpus_per_l2: Some(4) };
+        let big = suitable_f32(512, 512, 512);
+
+        for pool in [4usize, 8] {
+            let (name, workers) = scored(&model, &big, 512, 512, 512, pool, base);
+            assert!(is_matrix(&big, &name), "512³ pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, 4, "512³ takes the four performance cores, pool {pool}");
+        }
+        let (name, workers) = scored(&model, &big, 512, 512, 512, 2, wide);
+        assert!(is_matrix(&big, &name), "512³ at 2 threads picked {name}");
+        assert!(!name.contains("amx"), "picked {name}");
+        assert_eq!(workers, 2);
+        for pool in [8usize, 12] {
+            let (name, workers) = scored(&model, &big, 512, 512, 512, pool, wide);
+            assert!(is_matrix(&big, &name), "512³ pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, pool, "512³ scales past the pipe count, pool {pool}");
+        }
+
+        // K = 48 does not fill the pipe. Two threads do not earn the entry cost.
+        // Four do, and the roof is the performance-core count of this same SME
+        // kernel: four on the base, and one per core on the wide part.
+        let short = suitable_f32(960, 48, 96);
+        let (name, workers) = scored(&model, &short, 960, 48, 96, 2, base);
+        assert!(is_matrix(&short, &name), "short-K at 2 threads picked {name}");
+        assert!(!name.contains("amx"), "picked {name}");
+        assert_eq!(workers, 1, "two threads do not earn the entry");
+        for pool in [4usize, 8] {
+            let (name, workers) = scored(&model, &short, 960, 48, 96, pool, base);
+            assert!(is_matrix(&short, &name), "short-K pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, 4, "short-K stacks on the idle pipe, pool {pool}");
+        }
+        let (name, workers) = scored(&model, &short, 960, 48, 96, 2, wide);
+        assert!(is_matrix(&short, &name), "wide short-K at 2 threads picked {name}");
+        assert_eq!(workers, 1, "two threads do not earn the entry on a wide part");
+        for (pool, expect) in [(4usize, 4), (8, 8), (12, 12)] {
+            let (name, workers) = scored(&model, &short, 960, 48, 96, pool, wide);
+            assert!(is_matrix(&short, &name), "wide short-K pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, expect, "wide short-K pool {pool}");
+        }
+
+        // 16×576×25600 is a tiny-det convolution: K is long, the stream term
+        // dominates, and the channel side is one partial 32-wide panel. That
+        // does not fill the pipe. Two threads earn the split, four take the
+        // performance cores, and the kernel stays SME. Swapping M and N is the
+        // same roof. One thread stays on the unscaled pick.
+        let partial = suitable_f32(16, 576, 25600);
+        let unscaled = model.preferred(&partial, Some(16), Some(576), Some(25600)).unwrap();
+        let (name, workers) = scored(&model, &partial, 16, 576, 25600, 1, base);
+        assert_eq!(name, unscaled, "partial panel at one thread");
+        assert_eq!(workers, 1);
+        let (name, workers) = scored(&model, &partial, 16, 576, 25600, 2, base);
+        assert!(is_matrix(&partial, &name), "partial panel at 2 threads picked {name}");
+        assert!(!name.contains("amx"), "picked {name}");
+        assert_eq!(workers, 2, "the second thread earns its entry");
+        for pool in [4usize, 8] {
+            let (name, workers) = scored(&model, &partial, 16, 576, 25600, pool, base);
+            assert!(is_matrix(&partial, &name), "partial panel pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, 4, "partial panel pool {pool}");
+        }
+        let (name, workers) = scored(&model, &partial, 16, 576, 25600, 12, wide);
+        assert!(is_matrix(&partial, &name), "wide partial panel picked {name}");
+        assert!(!name.contains("amx"), "picked {name}");
+        assert_eq!(workers, 12, "a partial panel takes the performance cores");
+        let swapped = suitable_f32(25600, 576, 16);
+        for (pool, expect) in [(2usize, 2), (4, 4), (8, 4)] {
+            let (name, workers) = scored(&model, &swapped, 25600, 576, 16, pool, base);
+            assert!(is_matrix(&swapped, &name), "swapped partial pool {pool} picked {name}");
+            assert!(!name.contains("amx"), "picked {name}");
+            assert_eq!(workers, expect, "swapped partial pool {pool}");
+        }
+
+        // 32x1568x400 is thirteen panels of a K-heavy conv. A panel count
+        // alone calls that too small to split; the stream term says each of
+        // the four performance cores earns its entry cost.
+        let kheavy = suitable_f32(32, 1568, 400);
+        let (name, workers) = scored(&model, &kheavy, 32, 1568, 400, 4, base);
+        assert_eq!(workers, 4, "32x1568x400 earns four workers, picked {name}");
+
+        let few = suitable_f32(64, 8, 64);
+        let unscaled = model.preferred(&few, Some(64), Some(8), Some(64)).unwrap();
+        for (pool, cluster) in [(8usize, base), (12, wide)] {
+            let (name, workers) = scored(&model, &few, 64, 8, 64, pool, cluster);
+            assert_eq!(workers, 1, "64x8x64 does not earn the entry cost");
+            assert_eq!(name, unscaled);
+        }
+    }
+
+    /// The M1 coefficient table on the same pipe roof. This host may be an M4:
+    /// SME kernels are absent from the M1 table, so they are not candidates, and
+    /// the M1 AMX and NEON kernels are ones this machine can run. A fat GEMM
+    /// stays on AMX and takes one worker per pipe: one on a base M1, two on a
+    /// Pro or Max, four on an Ultra, and no more when the pool is larger.
+    /// 256³ is not asserted to stay there. Once the pool can pay, NEON on the
+    /// performance cores beats AMX held to the pipe count.
+    #[test]
+    fn m1_workers_fill_each_pipe_and_then_stop() {
+        let big = suitable_f32(512, 512, 512);
+        if !big.iter().any(|(mmm, _, _)| mmm.name().contains("apple_amx")) {
+            return;
+        }
+        let model = apple_m1_linear::linear_model();
+        let base = PerfCluster { physical_cpus: 4, cpus_per_l2: Some(4) };
+        let pro = PerfCluster { physical_cpus: 8, cpus_per_l2: Some(4) };
+        let ultra = PerfCluster { physical_cpus: 16, cpus_per_l2: Some(4) };
+
+        for (m, k, n) in [(512, 512, 512), (128, 32, 128), (64, 8, 64)] {
+            let suitable = suitable_f32(m, k, n);
+            let unscaled = model.preferred(&suitable, Some(m), Some(k), Some(n)).unwrap();
+            let (name, workers) = scored(&model, &suitable, m, k, n, 1, base);
+            assert_eq!(name, unscaled, "m1 one thread {m}x{k}x{n}");
+            assert_eq!(workers, 1);
+        }
+
+        for pool in [1usize, 4, 8] {
+            let (name, workers) = scored(&model, &big, 512, 512, 512, pool, base);
+            assert_eq!(name, "apple_amx_mmm_f32_32x32", "512³ on one M1 pipe, pool {pool}");
+            assert_eq!(workers, 1, "pool {pool}");
+        }
+        for pool in [2usize, 8, 16] {
+            let (name, workers) = scored(&model, &big, 512, 512, 512, pool, pro);
+            assert_eq!(name, "apple_amx_mmm_f32_32x32", "512³ on two M1 pipes, pool {pool}");
+            assert_eq!(workers, 2, "pool {pool}");
+        }
+        for pool in [4usize, 8, 16] {
+            let (name, workers) = scored(&model, &big, 512, 512, 512, pool, ultra);
+            assert_eq!(name, "apple_amx_mmm_f32_32x32", "512³ on four M1 pipes, pool {pool}");
+            assert_eq!(workers, 4, "pool {pool}");
+        }
+
+        // The split does not earn its entry cost, so the one-thread NEON kernel stays.
+        let narrow = suitable_f32(128, 32, 128);
+        let unscaled = model.preferred(&narrow, Some(128), Some(32), Some(128)).unwrap();
+        let (name, workers) = scored(&model, &narrow, 128, 32, 128, 8, base);
+        assert_eq!(name, unscaled);
+        assert_eq!(name, "arm64simd_mmm_f32_12x8_gen");
+        assert_eq!(workers, 1);
+
+        // Honest leave: NEON at the performance-core roof beats AMX stuck on one pipe.
+        let mid = suitable_f32(256, 256, 256);
+        let (name, workers) = scored(&model, &mid, 256, 256, 256, 4, base);
+        assert_eq!(name, "arm64simd_mmm_f32_8x8_gen");
+        assert_eq!(workers, 4);
+        let (name, workers) = scored(&model, &mid, 256, 256, 256, 8, pro);
+        assert_eq!(name, "arm64simd_mmm_f32_8x8_gen");
+        assert_eq!(workers, 8);
+    }
+
+    /// `apple_chip_preferred` and [`super::matmul_workers`] have to see the
+    /// executor installed for the run. The TLS scope is what the CLI's
+    /// `--threads` installs before optimisation.
+    #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn the_pick_reads_the_executor_pool() {
+        use crate::multithread::{Executor, multithread_tract_scope};
+        use crate::topology::perf_cluster;
+
+        let Some(chip) = apple_chip() else { return };
+        if chip != "m4" {
+            return;
+        }
+        let Some(cluster) = perf_cluster() else { return };
+        let query = Query::plain(DatumType::F32, Some(960), Some(48), Some(96));
+        let dispatch = crate::MmmDispatch::for_isa(crate::isa::native());
+        let model = apple_m4_linear::linear_model();
+        let suitable = dispatch.suitable(&query);
+
+        let expect = |pool: usize| {
+            let (name, workers) = scored(&model, &suitable, 960, 48, 96, pool, cluster);
+            (name, workers)
+        };
+        let check = |pool: Executor, nth: usize| {
+            multithread_tract_scope(pool, || {
+                let from_tier =
+                    apple_chip_preferred(&crate::isa::native(), DatumType::F32, &query, &suitable)
+                        .unwrap()
+                        .to_string();
+                let (name, workers) = expect(nth);
+                assert_eq!(from_tier, name);
+                assert_eq!(
+                    matmul_workers("sme_mmm_f32_32x32", 960, 48, 96, 32, 32, false),
+                    workers
+                );
+            })
+        };
+        check(Executor::SingleThread, 1);
+        check(Executor::multithread(2), 2);
+        check(Executor::multithread(4), 4);
+        check(Executor::multithread(8), 8);
+        if cluster.matrix_units() == 1 {
+            assert_eq!(expect(2).1, 1);
+            assert_eq!(expect(4).1, 4.min(cluster.physical_cpus));
+            assert_eq!(expect(8).1, 8.min(cluster.physical_cpus));
+        }
+    }
 }
