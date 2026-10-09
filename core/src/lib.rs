@@ -84,6 +84,7 @@ pub mod lanes;
 pub mod model;
 pub mod optim;
 pub mod plan;
+pub mod unbatched;
 #[macro_use]
 pub mod runtime;
 #[macro_use]
