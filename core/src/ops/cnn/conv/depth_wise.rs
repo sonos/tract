@@ -1053,9 +1053,11 @@ mod tests {
         run_dw(DataFormat::NCHW, 8, 24, 24, 5, 5, PaddingSpec::Valid, (1, 1));
         run_dw(DataFormat::NCHW, 8, 12, 20, 5, 1, PaddingSpec::Valid, (1, 1));
         run_dw(DataFormat::NCHW, 8, 12, 20, 3, 5, PaddingSpec::Valid, (1, 1));
-        // 49 taps is the vectorised limit's side, 81 the scalar fallback's.
+        // 49, 81 and 121 taps take the vectorised kernel; 169 is past the limit and stays scalar.
         run_dw(DataFormat::NCHW, 8, 30, 30, 7, 7, PaddingSpec::SameUpper, (1, 1));
         run_dw(DataFormat::NCHW, 8, 30, 30, 9, 9, PaddingSpec::SameUpper, (1, 1));
+        run_dw(DataFormat::NCHW, 8, 30, 30, 11, 11, PaddingSpec::SameUpper, (1, 1));
+        run_dw(DataFormat::NCHW, 8, 30, 30, 13, 13, PaddingSpec::SameUpper, (1, 1));
         // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
         run_dw(DataFormat::NCHW, 64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
         run_dw(DataFormat::NCHW, 64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
