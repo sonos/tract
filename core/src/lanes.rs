@@ -171,7 +171,9 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
+
+use metrics::{Counter, Gauge, Histogram, Label, Unit};
 
 use crate::internal::*;
 
@@ -332,6 +334,60 @@ struct Counts {
     seats: AtomicU64,
 }
 
+/// What the worker reports through the `metrics` facade, labelled `runnable`
+/// with the model's `tract.name` when it has one. tract installs no recorder:
+/// the host does, before the runnable is wrapped, which is when the handles
+/// bind to it.
+struct Meters {
+    turns: Counter,
+    seats: Counter,
+    seats_per_turn: Histogram,
+    lanes_taken: Gauge,
+    queue_wait: Histogram,
+    turn: Histogram,
+}
+
+impl Meters {
+    fn new(name: Option<&str>) -> Meters {
+        metrics::describe_counter!(
+            "tract_autobatch_turns_total",
+            "Turns an autobatched runnable ran"
+        );
+        metrics::describe_counter!(
+            "tract_autobatch_seats_total",
+            "Seats an autobatched runnable filled over its turns"
+        );
+        metrics::describe_histogram!(
+            "tract_autobatch_seats_per_turn",
+            "Seats one turn of an autobatched runnable filled"
+        );
+        metrics::describe_gauge!(
+            "tract_autobatch_lanes_taken",
+            "Lanes held by the streams of an autobatched runnable"
+        );
+        metrics::describe_histogram!(
+            "tract_autobatch_queue_wait_seconds",
+            Unit::Seconds,
+            "From a seat queued to the start of the turn seating it, linger included"
+        );
+        metrics::describe_histogram!(
+            "tract_autobatch_turn_seconds",
+            Unit::Seconds,
+            "One turn of an autobatched runnable, stacking and slicing included"
+        );
+        let labels: Vec<Label> =
+            name.map(|name| Label::new("runnable", name.to_string())).into_iter().collect();
+        Meters {
+            turns: metrics::counter!("tract_autobatch_turns_total", labels.clone()),
+            seats: metrics::counter!("tract_autobatch_seats_total", labels.clone()),
+            seats_per_turn: metrics::histogram!("tract_autobatch_seats_per_turn", labels.clone()),
+            lanes_taken: metrics::gauge!("tract_autobatch_lanes_taken", labels.clone()),
+            queue_wait: metrics::histogram!("tract_autobatch_queue_wait_seconds", labels.clone()),
+            turn: metrics::histogram!("tract_autobatch_turn_seconds", labels),
+        }
+    }
+}
+
 impl LanedRunnable {
     /// Serve `max_lanes` streams through `inner`, which must be prepared from a
     /// model carrying a batch axis: at least one input and one output with a
@@ -365,6 +421,7 @@ impl LanedRunnable {
         ensure!(batch_out.iter().any(|b| *b), "A laned model must batch one output at least");
         let batch = symbols.remove(0);
         let counts = Arc::new(Counts::default());
+        let meters = Meters::new(model.as_ref().and_then(|model| model.name()));
         let max_seats = TRACT_MAX_SEATS.get().min(max_lanes);
         let linger = Duration::from_micros(TRACT_TURN_LINGER_US.get() as u64);
         let lanes = LaneTable::new(max_lanes)?;
@@ -396,6 +453,7 @@ impl LanedRunnable {
                 max_seats,
                 linger,
                 counts: worker_counts,
+                meters,
             }
             .work(queue);
         })?;
@@ -605,6 +663,8 @@ struct Seat {
     ix: usize,
     /// One seat's slice of the call's inputs, shared inputs whole.
     inputs: TVec<TValue>,
+    /// When its call reached the worker.
+    queued: Instant,
 }
 
 /// The half of a call's answer the worker holds: its seats' outputs as they
@@ -718,12 +778,13 @@ impl Queue {
     fn push(&mut self, call: Call, batch_in: &[bool]) {
         let id = self.calls;
         self.calls += 1;
+        let queued = Instant::now();
         match call.explode(batch_in) {
             Ok(seats) => {
                 self.completers
                     .insert(id, Completer { served: vec![None; seats.len()], done: call.done });
                 for (ix, inputs) in seats.into_iter().enumerate() {
-                    self.seats.push_back(Seat { call: id, lane: call.leased, ix, inputs });
+                    self.seats.push_back(Seat { call: id, lane: call.leased, ix, inputs, queued });
                 }
             }
             Err(e) => {
@@ -783,6 +844,7 @@ struct Worker {
     /// Turns and seats served, shared with the runnable the caller reads them
     /// from.
     counts: Arc<Counts>,
+    meters: Meters,
 }
 
 impl Worker {
@@ -811,7 +873,15 @@ impl Worker {
             }
             self.counts.turns.fetch_add(1, Ordering::Relaxed);
             self.counts.seats.fetch_add(seated.len() as u64, Ordering::Relaxed);
+            let started = Instant::now();
+            self.meters.turns.increment(1);
+            self.meters.seats.increment(seated.len() as u64);
+            self.meters.seats_per_turn.record(seated.len() as f64);
+            for seat in &seated {
+                self.meters.queue_wait.record(started.duration_since(seat.queued));
+            }
             let served = self.run_turn(&seated);
+            self.meters.turn.record(started.elapsed());
             for lane in borrowed {
                 let _ = self.lanes.give_back(lane);
             }
@@ -854,11 +924,13 @@ impl Worker {
                         }
                     },
                 };
+                self.meters.lanes_taken.set(self.lanes.taken() as f64);
                 let _ = taken.send(lane);
             }
             Request::Call(call) => self.queued.push(call, &self.batch_in),
             Request::Drop(lane) => {
                 let _ = self.lanes.give_back(lane);
+                self.meters.lanes_taken.set(self.lanes.taken() as f64);
             }
         }
     }
@@ -970,6 +1042,7 @@ mod laned_test {
     /// address nothing and only the seating of the batch axis is exercised.
     fn doubler(max_lanes: usize) -> TractResult<LanedRunnable> {
         let mut model = TypedModel::default();
+        model.set_name("doubler");
         let batch = model.symbols.sym("B");
         let input = model.add_source("input", f32::fact(dims!(batch, 3)))?;
         let two = model.add_const("two", tensor2(&[[2f32]]))?;
@@ -1009,6 +1082,54 @@ mod laned_test {
         for t in 0..4 {
             turn(&mut handle, 0, t)?;
         }
+        Ok(())
+    }
+
+    /// What the worker reported to `recorder`, by metric name, for the
+    /// runnable named `doubler`.
+    fn reported(
+        recorder: &metrics_util::debugging::DebuggingRecorder,
+    ) -> HashMap<String, metrics_util::debugging::DebugValue> {
+        recorder
+            .snapshotter()
+            .snapshot()
+            .into_vec()
+            .into_iter()
+            .filter(|(key, ..)| {
+                key.key().labels().any(|l| l.key() == "runnable" && l.value() == "doubler")
+            })
+            .map(|(key, _, _, value)| (key.key().name().to_string(), value))
+            .collect()
+    }
+
+    #[test]
+    fn the_worker_reports_what_it_serves() -> TractResult<()> {
+        use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+        let recorder = DebuggingRecorder::new();
+        let runnable = metrics::with_local_recorder(&recorder, || doubler(4))?;
+        let mut handles: Vec<Box<dyn State>> =
+            (0..2).map(|_| runnable.spawn()).collect::<TractResult<_>>()?;
+        for t in 0..3 {
+            for (stream, handle) in handles.iter_mut().enumerate() {
+                turn(handle, stream, t)?;
+            }
+        }
+        let (turns, seats) = runnable.turns_and_seats();
+        let reported = reported(&recorder);
+        let samples = |name: &str| match &reported[name] {
+            DebugValue::Histogram(samples) => samples.iter().map(|s| s.0).collect::<Vec<f64>>(),
+            other => panic!("{name} is {other:?}"),
+        };
+        assert_eq!(reported["tract_autobatch_turns_total"], DebugValue::Counter(turns));
+        assert_eq!(reported["tract_autobatch_seats_total"], DebugValue::Counter(seats));
+        assert_eq!(reported["tract_autobatch_lanes_taken"], DebugValue::Gauge(2f64.into()));
+        let per_turn = samples("tract_autobatch_seats_per_turn");
+        assert_eq!(per_turn.len() as u64, turns);
+        assert_eq!(per_turn.iter().sum::<f64>() as u64, seats);
+        assert_eq!(samples("tract_autobatch_queue_wait_seconds").len() as u64, seats);
+        let runs = samples("tract_autobatch_turn_seconds");
+        assert_eq!(runs.len() as u64, turns);
+        assert!(runs.iter().all(|run| *run > 0.));
         Ok(())
     }
 
