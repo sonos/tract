@@ -2022,6 +2022,7 @@ mod test {
     }
 
     #[cfg(feature = "multithread-mm")]
+    #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn multithreaded_pack_matches_serial() {
         use crate::frame::mmm::EagerPackedInput;
