@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 #[cfg(feature = "multithread-mm")]
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-#[cfg(feature = "multithread-mm")]
+use tract_data::internal::num_integer::Integer;
 use tract_data::internal::vector_size;
 use tract_data::internal::{Tensor, TensorView, TractResult, ensure};
 
@@ -307,4 +307,281 @@ pub fn par_bin(
         return eval_fn(&mut a.view(), &b.view());
     }
     (0..n_blocks).try_for_each(|block| call(block, 0, period))
+}
+
+/// One kernel application inside a [`par_bin_chain`] walk, with `b`, `period`
+/// and `share` carrying the same contract as the [`par_bin`] arguments.
+pub struct BinChainStep<'a> {
+    pub eval_fn: &'a BinFn,
+    pub b: &'a Tensor,
+    pub period: usize,
+    pub share: BShare,
+}
+
+fn chain_workers(len: usize) -> usize {
+    #[cfg(feature = "multithread-mm")]
+    {
+        // Threshold first: reading the executor takes a global lock.
+        if len < current_threading_element_threshold() {
+            return 1;
+        }
+        match current_tract_executor() {
+            Executor::MultiThread(pool) => pool.current_num_threads(),
+            Executor::RayonGlobal => rayon::current_num_threads(),
+            Executor::SingleThread => 1,
+        }
+    }
+    #[cfg(not(feature = "multithread-mm"))]
+    {
+        let _ = len;
+        1
+    }
+}
+
+/// Apply every step of `steps` to `a` in place, chunk by chunk, so each chunk
+/// of `a` is still cache-hot when the next step's kernel runs over it instead
+/// of streaming the whole tensor once per step. A chunk may not cross any
+/// step's block boundary, so its length must divide every step period; any
+/// `vector_size()` multiple dividing the gcd of the periods works. The walk
+/// picks the largest such chunk under `CHAIN_CHUNK` elements that still
+/// splits `a` into `4 * threads` pieces — giving the same operand mapping
+/// `par_bin` would produce and a bit-identical result.
+///
+/// Falls back to sequential `par_bin` calls when no usable chunk exists, and
+/// launches like `par_bin` does, so a chain is never less parallel than the
+/// steps it replaces.
+pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> {
+    /// Largest chunk that keeps `a` plus one operand slice inside L1/L2.
+    const CHAIN_CHUNK: usize = 16384;
+    if steps.is_empty() || a.len() == 0 {
+        return Ok(());
+    }
+    let a_len = a.len();
+    let a_item = a.datum_type().size_of() as isize;
+    for s in steps {
+        ensure!(
+            a_len.is_multiple_of(s.period),
+            "par_bin_chain: period {} does not divide a.len() {}",
+            s.period,
+            a_len
+        );
+        match s.share {
+            BShare::Lockstep => ensure!(
+                s.b.len() == s.period,
+                "par_bin_chain: Lockstep wants b.len() {} == period {}",
+                s.b.len(),
+                s.period
+            ),
+            BShare::PerBlock => ensure!(
+                s.b.len() == a_len / s.period,
+                "par_bin_chain: PerBlock wants b.len() {} == {} blocks",
+                s.b.len(),
+                a_len / s.period
+            ),
+        }
+    }
+    let workers = chain_workers(a_len);
+    let max_chunk = if workers > 1 { CHAIN_CHUNK.min(a_len / (4 * workers)) } else { CHAIN_CHUNK }
+        .max(4 * vector_size());
+    // A short Lockstep period (a per-channel operand over channel-last data)
+    // would cap the chunk at one period; tile its `b` so the chunk can span
+    // many periods.
+    let tiled = steps
+        .iter()
+        .map(|s| {
+            if s.share != BShare::Lockstep || s.period * 2 > max_chunk {
+                return Ok(None);
+            }
+            let blocks = a_len / s.period;
+            let k = (1..=blocks.min(max_chunk / s.period))
+                .rev()
+                .find(|k| blocks.is_multiple_of(*k))
+                .unwrap_or(1);
+            if k == 1 {
+                return Ok(None);
+            }
+            Ok(Some(
+                s.b.clone()
+                    .into_shape(&[s.period])?
+                    .broadcast_to_shape(&[k, s.period])?
+                    .into_shape(&[k * s.period])?,
+            ))
+        })
+        .collect::<TractResult<Vec<Option<Tensor>>>>()?;
+    let chain_b = |ix: usize| tiled[ix].as_ref().unwrap_or(steps[ix].b);
+    let chain_period = |ix: usize| tiled[ix].as_ref().map_or(steps[ix].period, |t| t.len());
+    let unit = (0..steps.len()).fold(a_len, |u, ix| u.gcd(&chain_period(ix)));
+    if unit % vector_size() != 0 {
+        for s in steps {
+            par_bin(s.eval_fn, a, s.b, s.period, s.share)?;
+        }
+        return Ok(());
+    }
+    let q = unit / vector_size();
+    // Largest `chunk = vector_size() * t` with `t | q` and `chunk <=
+    // max_chunk`.
+    let mut t = 1;
+    let mut d = 1;
+    while d * d <= q {
+        if q % d == 0 {
+            for cand in [d, q / d] {
+                if cand <= max_chunk / vector_size() {
+                    t = t.max(cand);
+                }
+            }
+        }
+        d += 1;
+    }
+    let chunk = t * vector_size();
+    if chunk < 4 * vector_size() {
+        for s in steps {
+            par_bin(s.eval_fn, a, s.b, s.period, s.share)?;
+        }
+        return Ok(());
+    }
+    let n_chunks = a_len / chunk;
+    let a = &*a;
+    static STRIDES: [isize; 1] = [1];
+    let a_shape = [chunk];
+    // `chunk` divides every step's period, so within a chunk each step's
+    // `g % period` offset and its `chunk` neighbours stay inside one block,
+    // and the disjoint chunks partition `a`: concurrent writes through the
+    // views do not alias.
+    let call = |ix: usize| -> TractResult<()> {
+        let g = ix * chunk;
+        unsafe {
+            let mut a_chunk = TensorView::from_bytes(a, g as isize * a_item, &a_shape, &STRIDES);
+            for (sx, s) in steps.iter().enumerate() {
+                let (b, period) = (chain_b(sx), chain_period(sx));
+                let b_item = b.datum_type().size_of() as isize;
+                let (b_offset, b_shape) = match s.share {
+                    BShare::Lockstep => ((g % period) as isize * b_item, [chunk]),
+                    BShare::PerBlock => ((g / period) as isize * b_item, [1]),
+                };
+                let b_chunk = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES);
+                (s.eval_fn)(&mut a_chunk, &b_chunk)?;
+            }
+            Ok(())
+        }
+    };
+
+    #[cfg(feature = "multithread-mm")]
+    {
+        use rayon::prelude::*;
+        if a_len >= current_threading_element_threshold() && n_chunks > 1 {
+            let executor = current_tract_executor();
+            let nth = match &executor {
+                Executor::MultiThread(pool) => pool.current_num_threads(),
+                Executor::RayonGlobal => rayon::current_num_threads(),
+                Executor::SingleThread => 1,
+            };
+            if nth > 1 {
+                let per_worker = n_chunks.div_ceil(nth);
+                let n_workers = n_chunks.div_ceil(per_worker);
+                let run = || {
+                    (0..n_workers).into_par_iter().try_for_each(|w| {
+                        let first = w * per_worker;
+                        (first..(first + per_worker).min(n_chunks)).try_for_each(&call)
+                    })
+                };
+                return match executor {
+                    Executor::MultiThread(pool) => pool.install(run),
+                    _ => run(),
+                };
+            }
+        }
+    }
+    (0..n_chunks).try_for_each(call)
+}
+
+// wasi has no thread spawning at all; other wasm targets run the shared rayon
+// global pool instead of a private ThreadPool.
+#[cfg(all(test, feature = "multithread-mm", not(target_os = "wasi")))]
+mod chain_tests {
+    use super::{BShare, BinChainStep, Executor, multithread_tract_scope, par_bin, par_bin_chain};
+    use crate::BinFn;
+    use tract_data::internal::{Tensor, TensorView, TractResult};
+
+    fn add() -> impl Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync {
+        |a: &mut TensorView, b: &TensorView| {
+            let av = a.as_slice_mut::<f32>()?;
+            let bv = b.as_slice::<f32>()?;
+            if bv.len() == 1 {
+                av.iter_mut().for_each(|x| *x += bv[0]);
+            } else {
+                av.iter_mut().zip(bv).for_each(|(x, y)| *x += *y);
+            }
+            Ok(())
+        }
+    }
+
+    fn mul() -> impl Fn(&mut TensorView, &TensorView) -> TractResult<()> + Send + Sync {
+        |a: &mut TensorView, b: &TensorView| {
+            let av = a.as_slice_mut::<f32>()?;
+            let bv = b.as_slice::<f32>()?;
+            if bv.len() == 1 {
+                av.iter_mut().for_each(|x| *x *= bv[0]);
+            } else {
+                av.iter_mut().zip(bv).for_each(|(x, y)| *x *= *y);
+            }
+            Ok(())
+        }
+    }
+
+    /// Mixed Lockstep and PerBlock steps must produce the same bytes through
+    /// `par_bin_chain` as through sequential `par_bin` calls, inline or on a
+    /// pool, including a gcd of periods that is not vector-aligned.
+    #[test]
+    fn chain_matches_sequential_par_bin() {
+        let add = add();
+        let mul = mul();
+        let len = 12288usize;
+        for periods in [[768usize, 256, 256], [768, 24, 768], [96, 96, 12288]] {
+            let b0 = Tensor::from_shape(&[1, 1, periods[0]], &vec![2f32; periods[0]]).unwrap();
+            let b1 = Tensor::from_shape(&[periods[1]], &vec![3f32; periods[1]]).unwrap();
+            let b2 =
+                Tensor::from_shape(&[len / periods[2]], &vec![0.5f32; len / periods[2]]).unwrap();
+            let steps = vec![
+                BinChainStep {
+                    eval_fn: &add as &BinFn,
+                    b: &b0,
+                    period: periods[0],
+                    share: BShare::Lockstep,
+                },
+                BinChainStep {
+                    eval_fn: &mul as &BinFn,
+                    b: &b1,
+                    period: periods[1],
+                    share: BShare::Lockstep,
+                },
+                BinChainStep {
+                    eval_fn: &add as &BinFn,
+                    b: &b2,
+                    period: periods[2],
+                    share: BShare::PerBlock,
+                },
+            ];
+            let input = Tensor::from_shape(&[len], &(0..len).map(|i| i as f32).collect::<Vec<_>>())
+                .unwrap();
+            let mut reference = input.clone();
+            for s in &steps {
+                par_bin(s.eval_fn, &mut reference, s.b, s.period, s.share).unwrap();
+            }
+            for nth in [0usize, 4] {
+                let mut a = input.clone();
+                if nth == 0 {
+                    par_bin_chain(&steps, &mut a).unwrap();
+                } else {
+                    #[cfg(target_family = "wasm")]
+                    let pool = Executor::RayonGlobal;
+                    #[cfg(not(target_family = "wasm"))]
+                    let pool = Executor::multithread(nth);
+                    multithread_tract_scope(pool, || par_bin_chain(&steps, &mut a).unwrap());
+                }
+                let got = a.view().as_slice::<f32>().unwrap();
+                let want = reference.view().as_slice::<f32>().unwrap();
+                assert_eq!(got, want, "len={len} periods={periods:?} nth={nth}");
+            }
+        }
+    }
 }
