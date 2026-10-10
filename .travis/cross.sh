@@ -32,7 +32,7 @@ ensure_cargo_dinghy() {
     fi
 }
 
-# The release CLI is only wanted by callers that ship it to a device (bench.yml); other
+# The release CLI is only wanted by callers that ship it to a device (cli.yml); other
 # callers just need it to compile for the target.
 if [ -n "$TRACT_CROSS_BUILD_CLI" ]
 then

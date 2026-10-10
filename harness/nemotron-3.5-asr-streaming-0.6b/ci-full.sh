@@ -1,4 +1,5 @@
 #!/bin/sh
+# ci-runners: macOS cuda-lovelace
 
 set -ex
 

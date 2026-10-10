@@ -1,18 +1,23 @@
-name: Bench
+name: CLI
 
-# Build tract on GitHub-hosted runners, run the bench suite on the self-hosted bench
-# machines, and either (nightly) append one row per run to the bench-data branch, or
-# (PR) compare against that reference and post a single fan-in comment.
+# Build the tract CLI once per platform on GitHub-hosted runners, then everything that
+# runs it:
+# - harness cases: every harness/*/ci.sh, plus every ci-full.sh off PRs, each on the
+#   runners its `# ci-runners:` line names (ubuntu-latest when it has none);
+# - the LLM matrix (off PRs);
+# - the bench suite on the self-hosted bench machines, which either (nightly) appends
+#   one row per run to the bench-data branch, or (PR) compares against that reference
+#   and posts a single fan-in comment, plus the nightly kernel-pick and smoke gates.
 # The Jetson (aarch64 + CUDA 12) can't be built on a hosted runner natively, so it
 # reuses cross.sh's debian-stretch cross-build.
 
 on:
   schedule:
-    - cron: '0 4 * * *'   # after large-models (3am) so they don't fight for the self-hosted boxes
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       pr_number:
-        description: "Optional PR number to bench (from fork ok). Leave empty to run on selected branch."
+        description: "Optional PR number to run on (from fork ok). Leave empty to run on selected branch."
         required: false
         type: number
       mt_ladder:
@@ -31,12 +36,15 @@ permissions:
 
 concurrency:
   # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
-  group: bench-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
+  group: cli-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write     # pending "CI / cli" status on a dispatched PR run
     outputs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
@@ -45,6 +53,7 @@ jobs:
       is_pr: ${{ steps.gate.outputs.is_pr }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
+      cases: ${{ steps.cases.outputs.cases }}
     steps:
       # Resolves this run's target ref and whether it should behave like a PR run
       # (compare + comment) or a reference run (append to bench-data): a manual
@@ -55,6 +64,7 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             if (process.env.BENCH_ENABLED === 'false') {
@@ -94,10 +104,44 @@ jobs:
             core.setOutput('pr_number', String(prInput));
             core.setOutput('same_repo', String(pr.data.head.repo.full_name === baseRepo));
             core.setOutput('ref', pr.data.head.sha);
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: pr.data.head.sha,
+              state: 'pending',
+              context: 'CI / cli',
+              target_url: process.env.RUN_URL,
+              description: 'Running',
+            });
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.gate.outputs.ref }}
+          persist-credentials: false
+      # One test leg per (case, runner): a case is a harness/*/ci.sh, plus off PRs a
+      # harness/*/ci-full.sh, run on every runner its `# ci-runners:` line names.
+      - id: cases
+        env:
+          FULL: ${{ github.event_name != 'pull_request' }}
+        run: |
+          names="-name ci.sh"
+          if [ "$FULL" = true ]; then names="$names -o -name ci-full.sh"; fi
+          cases=$(find harness \( $names \) | sort | while read -r script
+          do
+            runners=$(sed -n 's/^# ci-runners: *//p' "$script" | head -1)
+            for runner in ${runners:-ubuntu-latest}
+            do
+              case "$runner" in
+                ubuntu-latest|cuda-lovelace) triple=x86_64-unknown-linux-gnu ;;
+                macos-latest|macOS) triple=aarch64-apple-darwin ;;
+                *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
+              esac
+              jq -nc --arg script "$script" --arg runner "$runner" --arg triple "$triple" '$ARGS.named'
+            done
+          done | jq -sc .)
+          echo "cases=$cases" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
-    if: needs.prepare.outputs.enabled == 'true'
     runs-on: ${{ matrix.host }}
     timeout-minutes: 30
     permissions:
@@ -142,6 +186,135 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
+
+  test:
+    name: ${{ matrix.script }} / ${{ matrix.runner }}
+    needs: [ prepare, build ]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    env:
+      LARGE_MODELS: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.cases) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.triple }}
+          path: tract-cli
+      - name: Run case
+        env:
+          SCRIPT: ${{ matrix.script }}
+        run: |
+          chmod +x tract-cli/tract
+          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
+          "./$SCRIPT"
+
+  llm-combos:
+    needs: prepare
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      combos: ${{ steps.set-matrix.outputs.combos }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - id: set-matrix
+        run: |
+          combos=$(awk -F'\t' 'BEGIN{printf "["} /^#/||NF<3{next} {n=split($3,qs,","); for(i=1;i<=n;i++){printf "%s{\"model\":\"%s\",\"q\":\"%s\"}", (c++?",":""), $1, qs[i]}} END{print "]"}' .travis/llm-models.tsv)
+          echo "combos=$combos" >> $GITHUB_OUTPUT
+
+  llm:
+    name: ${{ matrix.os }} / ${{ matrix.rt }} / ${{ matrix.combo.model }} / ${{ matrix.combo.q }}
+    needs: [ prepare, build, llm-combos ]
+    runs-on: ${{ matrix.os }}
+    env:
+      LARGE_MODELS: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ macOS, cuda-lovelace ]
+        rt: [ cpu, gpu ]
+        combo: ${{ fromJson(needs.llm-combos.outputs.combos) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-${{ matrix.os == 'macOS' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
+          path: tract-cli
+      - name: Download and run
+        env:
+          RT_MATRIX: ${{ matrix.rt }}
+          MODEL: ${{ matrix.combo.model }}
+          Q: ${{ matrix.combo.q }}
+        run: |
+          chmod +x tract-cli/tract
+          export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
+          .travis/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
+
+  # A pull_request run shows each leg as a check; a `/ci` dispatch on a PR reports
+  # back through a commit status and a sticky comment instead.
+  report-tests:
+    name: Report tests to PR
+    needs: [ prepare, build, test, llm-combos, llm ]
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          HEAD_SHA: ${{ needs.prepare.outputs.ref }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          STATUS_CONTEXT: "CI / cli"
+        with:
+          script: |
+            const needs = JSON.parse(process.env.NEEDS);
+            const prNumber = Number(process.env.PR_NUMBER);
+            const sha = process.env.HEAD_SHA;
+            const runUrl = process.env.RUN_URL;
+            const statusContext = process.env.STATUS_CONTEXT;
+            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
+            const jobs = Object.entries(needs).filter(([k]) => k !== 'prepare');
+            const failed = jobs.filter(([, v]) => v.result !== 'success' && v.result !== 'skipped');
+            const state = failed.length ? 'failure' : 'success';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner, repo: context.repo.repo, sha, state,
+              context: statusContext, target_url: runUrl,
+              description: failed.length ? `${failed.length} job(s) failed` : 'All jobs passed',
+            });
+            const marker = `<!-- ${statusContext} -->`;
+            const body = [
+              marker,
+              `### ${icon(state)} ${statusContext}: ${state}`,
+              '',
+              ...jobs.map(([k, v]) => `- ${icon(v.result)} \`${k}\`: ${v.result}`),
+              '',
+              `[View workflow run](${runUrl})`,
+            ].join('\n');
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+            });
+            const prev = comments.find(c => c.body?.includes(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body });
+            }
 
   bench:
     needs: [ prepare, build ]

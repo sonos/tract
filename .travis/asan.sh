@@ -39,6 +39,4 @@ then
     cargo clean
 fi
 
-# Timings taken under asan mean nothing, and bench-suite's per-run watchdog is
-# sized for an optimized build. Run the command line cases, skip the benches.
-TRACT_SKIP_BENCH_SUITE=1 ./.travis/cli-tests.sh
+./.travis/cli-tests.sh
