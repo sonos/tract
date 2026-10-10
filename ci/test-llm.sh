@@ -6,7 +6,7 @@ set -o pipefail
 export LC_ALL=C
 
 ROOT=$(dirname $(dirname $(realpath $0)))
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 model=$1
 q=$2
@@ -26,7 +26,7 @@ then
     esac
 fi
 generation=541
-manifest=$ROOT/.travis/llm-models.tsv
+manifest=$ROOT/ci/llm-models.tsv
 
 if [ "$model" = "all" ]
 then
@@ -124,7 +124,7 @@ do
     $CACHE_FILE $npz
 
     key=$id.$t.$(arch).$device
-    expectations="$ROOT/.travis/llm-expectations-541"
+    expectations="$ROOT/ci/llm-expectations-541"
 
     echo
     echo "      Key: $key"

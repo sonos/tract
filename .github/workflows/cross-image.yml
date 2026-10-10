@@ -7,7 +7,7 @@ name: Cross-build image
 on:
   push:
     paths:
-      - '.travis/docker-debian-stretch/**'
+      - 'ci/docker-debian-stretch/**'
       - '.github/workflows/cross-image.yml'
   schedule:
     - cron: '0 6 * * 1'   # Monday, refresh stable rustc
@@ -31,5 +31,5 @@ jobs:
           IMAGE: ghcr.io/${{ github.repository }}/cross-debian-stretch
         run: |
           echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
-          docker build -t "$IMAGE:latest" .travis/docker-debian-stretch
+          docker build -t "$IMAGE:latest" ci/docker-debian-stretch
           docker push "$IMAGE:latest"

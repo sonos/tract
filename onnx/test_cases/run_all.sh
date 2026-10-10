@@ -30,7 +30,7 @@ do
     . $tc/vars.sh
     for file in $CACHE_FILES
     do
-        $TEST_CASE_DIR/../../.travis/cache_file.sh $file
+        $TEST_CASE_DIR/../../ci/cache_file.sh $file
     done
     : ${MODEL:=$tc/model.onnx}
     for pass in plain decl opti nnef

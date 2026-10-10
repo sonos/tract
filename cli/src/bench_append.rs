@@ -1,5 +1,4 @@
 //! `tract bench-append`: append one nightly run to the columnar bench-data branch.
-//! Port of `.travis/bench-append.py`.
 //!
 //! File `<out>/<triple>/<device>.json` = {"start_day":"YYYY-MM-DD","metrics":{"<m>":[v0,v1,...]}}.
 //! Column i of every array is start_day + i days; null = no run that day. Values are

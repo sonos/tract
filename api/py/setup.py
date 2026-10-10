@@ -12,7 +12,7 @@ if not os.path.exists("rust-workspace"):
     shutil.copytree(
         "../..",
         "rust-workspace",
-        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", ".travis", "assets", ".github", "py")
+        ignore = shutil.ignore_patterns(".cached", "target", ".git", "issue-*", "ci", "assets", ".github", "py")
     )
     atexit.register(lambda: shutil.rmtree("rust-workspace", ignore_errors=True))
 

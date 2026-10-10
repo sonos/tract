@@ -6,8 +6,8 @@
 # `bench-diff` subcommand. Anything after the two refs is forwarded to bench-suite
 # (e.g. --filter en_tdnn to scope the battery).
 #
-#   .travis/bench-compare.sh <ref-a> <ref-b> [bench-suite args...]
-#   .travis/bench-compare.sh main task/mmm-restream-term --filter en_tdnn
+#   ci/bench-compare.sh <ref-a> <ref-b> [bench-suite args...]
+#   ci/bench-compare.sh main task/mmm-restream-term --filter en_tdnn
 #
 # B must carry the `bench-diff` subcommand (it renders the comparison) — so pass the newer
 # commit as B. Checks each ref out in place and restores the original on exit, so the working
@@ -40,7 +40,10 @@ run() {
   git checkout --quiet "$ref"
   cargo build --release -p tract-cli --features bench-suite >&2
   echo ">> $ref: running bench-suite" >&2
-  "$target_dir/release/tract" bench-suite --manifest .travis/benches.toml --output "$out/$(slug "$ref")" "$@"
+  # Refs older than the ci/ directory keep their manifest under .travis/.
+  local manifest=ci/benches.toml
+  [ -e "$manifest" ] || manifest=.travis/benches.toml
+  "$target_dir/release/tract" bench-suite --manifest "$manifest" --output "$out/$(slug "$ref")" "$@"
 }
 
 run "$a" "$@"

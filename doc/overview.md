@@ -63,7 +63,7 @@ cargo clippy --workspace
 ```
 
 The `harness/` directory contains integration tests that run against real
-models. `.travis/native.sh` runs the full native Linux CI suite; running it
+models. `ci/native.sh` runs the full native Linux CI suite; running it
 locally requires `libssl-dev` (needed by the `tflite` step).
 
 Synthetic NNEF tests under `harness/nnef-test-cases/`

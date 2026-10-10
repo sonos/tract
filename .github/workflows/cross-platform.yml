@@ -125,7 +125,7 @@ jobs:
         PLATFORM: ${{matrix.platform}}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
       run: |
-        .travis/cross.sh
+        ci/cross.sh
 
   apple:
     needs: prepare
@@ -158,4 +158,4 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
       run: |
-        .travis/cross.sh
+        ci/cross.sh

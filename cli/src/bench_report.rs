@@ -3,7 +3,7 @@
 //! `meta.json` = {device, triple} and a `metrics` file) plus the bench-data checkout
 //! (the nightly-main reference), and emits the PR-comment markdown (`--out`, movers
 //! only, worst first) and, if `$GITHUB_STEP_SUMMARY` is set, the full per-device
-//! table. Port of `.travis/bench-report.py`; the markdown layout lives in the
+//! table. The markdown layout lives in the
 //! `bench-comment.md.j2` / `bench-report.md.j2` templates so it can be tuned without
 //! a rebuild. Single-shot vs the reference; |Δ| must reach the adaptive threshold
 //! (`bench_common::red_threshold`) to count as a mover. Throughput (tok/s) is inverted
@@ -528,7 +528,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let bench_data = get("bench-data").context("--bench-data is required")?;
     let pr_sha = get("pr-sha").context("--pr-sha is required")?;
     let out = get("out").context("--out is required")?;
-    let templates = get("templates").unwrap_or(".travis");
+    let templates = get("templates").unwrap_or("ci");
     let cfg = Thresholds::load(get("thresholds").context("--thresholds is required")?)?;
     let today = match get("today") {
         Some(s) => parse_date(s)?,
@@ -836,7 +836,7 @@ mod tests {
         assert_eq!(ds[0].stable, 2);
 
         let md = render_report(
-            "../.travis",
+            "../ci",
             "2026-06-19",
             "abcdef123",
             &star_matrix_md(&rows, &toml::Table::new()),
