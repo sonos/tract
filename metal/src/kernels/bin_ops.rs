@@ -3,7 +3,6 @@ use super::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
-use metal::{MTLSize, NSUInteger};
 use std::ffi::c_void;
 use tract_core::internal::*;
 use tract_core::ops::binary::BinMiniOp;
@@ -171,10 +170,7 @@ pub fn dispatch_eval(
                 &b.len() as *const usize as *const c_void,
             );
 
-            let grid_size =
-                MTLSize { width: (output.len() / 4) as NSUInteger, height: 1, depth: 1 };
-            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, output.len() / 4);
         });
     } else {
         let [(lhs_shape, lhs_strides), (rhs_shape, rhs_strides), (out_shape, out_strides)] =
@@ -268,9 +264,7 @@ pub fn metal_iff_dispatch(
             encoder.set_slice(7, &else_strides_usize);
             encoder.set_slice(8, &out_strides_usize);
 
-            let grid_size = MTLSize { width: total_elems as NSUInteger, height: 1, depth: 1 };
-            let group_size = MTLSize { width: 1, height: 1, depth: 1 };
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            crate::kernels::utils::dispatch_threads_1d(encoder, &pipeline, total_elems);
         });
         Ok(())
     })
