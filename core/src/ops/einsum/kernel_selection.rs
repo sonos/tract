@@ -39,6 +39,17 @@ fn tile_store_needs_n_contiguous(name: &str, nr: usize) -> bool {
     nr > 1 && (name.starts_with("sme_mmm") || name.starts_with("sme_qmmm"))
 }
 
+/// AMX 32×32 `stz` writes a contiguous row, so with a strided n axis the tile
+/// goes through a scatter whose cost grows with C while the arithmetic it saves
+/// grows with K. NEON wins while K is short: up to 96 on any C, up to 256 once C
+/// outgrows the caches. Symbolic shapes keep the AMX pick.
+fn amx_scatter_dominates(name: &str, nr: usize, query: &Query) -> bool {
+    let (Some(m), Some(k), Some(n)) = (query.m, query.k, query.n) else {
+        return false;
+    };
+    nr > 1 && name.starts_with("apple_amx") && (k <= 96 || (k <= 256 && m * n >= 1 << 19))
+}
+
 /// True when C's m axis is the innermost non-unit axis, so a vertical SME
 /// slice is a contiguous vector.
 fn m_axis_contiguous(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> bool {
@@ -66,13 +77,12 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
         // axis: the kernel stores that direction as a vertical slice. Every
         // other wide tile still scatters and stays out.
         let vertical_sme = |name: &str| m_ok && name == "sme_mmm_f32_32x32";
-        if tile_store_needs_n_contiguous(chosen.0.name(), chosen.0.nr())
-            && !n_ok
-            && !vertical_sme(chosen.0.name())
-        {
-            suitable.retain(|(k, _, _)| {
-                !tile_store_needs_n_contiguous(k.name(), k.nr()) || vertical_sme(k.name())
-            });
+        let scatters = |name: &str, nr: usize| {
+            (tile_store_needs_n_contiguous(name, nr) && !vertical_sme(name))
+                || amx_scatter_dominates(name, nr, &query)
+        };
+        if !n_ok && scatters(chosen.0.name(), chosen.0.nr()) {
+            suitable.retain(|(k, _, _)| !scatters(k.name(), k.nr()));
             if let Some(fallback) = tract_linalg::MmmDispatch::native().preferred(&query, &suitable)
             {
                 return Ok(single_strat(fallback));
@@ -234,5 +244,36 @@ mod sme_strided_store {
             "contiguous-n GEMM selected {}",
             mm.mmm[0].name()
         );
+    }
+
+    fn has_amx_tile() -> bool {
+        tract_linalg::MmmDispatch::native()
+            .runnable()
+            .iter()
+            .any(|k| k.nr() > 1 && k.name().starts_with("apple_amx"))
+    }
+
+    /// m<n leaves n strided; with a short K the AMX scatter costs more than NEON.
+    #[test]
+    fn short_k_strided_n_avoids_amx() {
+        if !has_amx_tile() {
+            return;
+        }
+        let model = optimize_mn(64, 64, 160);
+        let mm = model.nodes.iter().find_map(|n| n.op_as::<OptMatMul>()).expect("OptMatMul");
+        let name = mm.mmm[0].name();
+        assert!(!name.starts_with("apple_amx"), "short-K strided-n GEMM selected {name}");
+    }
+
+    /// With a long K the AMX arithmetic outweighs its scatter, so AMX stays.
+    #[test]
+    fn long_k_strided_n_keeps_amx() {
+        if !has_amx_tile() {
+            return;
+        }
+        let model = optimize_mn(64, 512, 160);
+        let mm = model.nodes.iter().find_map(|n| n.op_as::<OptMatMul>()).expect("OptMatMul");
+        let name = mm.mmm[0].name();
+        assert!(name.starts_with("apple_amx"), "long-K strided-n GEMM selected {name}");
     }
 }
