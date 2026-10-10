@@ -318,19 +318,38 @@ pub struct BinChainStep<'a> {
     pub share: BShare,
 }
 
+fn chain_workers(len: usize) -> usize {
+    #[cfg(feature = "multithread-mm")]
+    {
+        // Threshold first: reading the executor takes a global lock.
+        if len < current_threading_element_threshold() {
+            return 1;
+        }
+        match current_tract_executor() {
+            Executor::MultiThread(pool) => pool.current_num_threads(),
+            Executor::RayonGlobal => rayon::current_num_threads(),
+            Executor::SingleThread => 1,
+        }
+    }
+    #[cfg(not(feature = "multithread-mm"))]
+    {
+        let _ = len;
+        1
+    }
+}
+
 /// Apply every step of `steps` to `a` in place, chunk by chunk, so each chunk
 /// of `a` is still cache-hot when the next step's kernel runs over it instead
 /// of streaming the whole tensor once per step. A chunk may not cross any
 /// step's block boundary, so its length must divide every step period; any
 /// `vector_size()` multiple dividing the gcd of the periods works. The walk
-/// picks the largest such chunk under `CHAIN_CHUNK` elements — big enough to
-/// amortise the kernel call, small enough that every step still finds the
-/// chunk in cache — giving the same operand mapping `par_bin` would produce
-/// and a bit-identical result.
+/// picks the largest such chunk under `CHAIN_CHUNK` elements that still
+/// splits `a` into `4 * threads` pieces — giving the same operand mapping
+/// `par_bin` would produce and a bit-identical result.
 ///
 /// Falls back to sequential `par_bin` calls when no usable chunk exists, and
-/// shares `par_chunks_mut`'s launch policy: two thresholds of work and at
-/// most one chunk range per thread.
+/// launches like `par_bin` does, so a chain is never less parallel than the
+/// steps it replaces.
 pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> {
     /// Largest chunk that keeps `a` plus one operand slice inside L1/L2.
     const CHAIN_CHUNK: usize = 16384;
@@ -361,17 +380,20 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
             ),
         }
     }
+    let workers = chain_workers(a_len);
+    let max_chunk = if workers > 1 { CHAIN_CHUNK.min(a_len / (4 * workers)) } else { CHAIN_CHUNK }
+        .max(4 * vector_size());
     // A short Lockstep period (a per-channel operand over channel-last data)
     // would cap the chunk at one period; tile its `b` so the chunk can span
     // many periods.
     let tiled = steps
         .iter()
         .map(|s| {
-            if s.share != BShare::Lockstep || s.period * 2 > CHAIN_CHUNK {
+            if s.share != BShare::Lockstep || s.period * 2 > max_chunk {
                 return Ok(None);
             }
             let blocks = a_len / s.period;
-            let k = (1..=blocks.min(CHAIN_CHUNK / s.period))
+            let k = (1..=blocks.min(max_chunk / s.period))
                 .rev()
                 .find(|k| blocks.is_multiple_of(*k))
                 .unwrap_or(1);
@@ -397,13 +419,13 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     }
     let q = unit / vector_size();
     // Largest `chunk = vector_size() * t` with `t | q` and `chunk <=
-    // CHAIN_CHUNK`; `t == q` (chunk = gcd) is always a candidate.
+    // max_chunk`.
     let mut t = 1;
     let mut d = 1;
     while d * d <= q {
         if q % d == 0 {
             for cand in [d, q / d] {
-                if cand <= CHAIN_CHUNK / vector_size() {
+                if cand <= max_chunk / vector_size() {
                     t = t.max(cand);
                 }
             }
@@ -446,8 +468,7 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     #[cfg(feature = "multithread-mm")]
     {
         use rayon::prelude::*;
-        let threshold = current_threading_element_threshold();
-        if (threshold == 0 || a_len / threshold >= 2) && n_chunks > 1 {
+        if a_len >= current_threading_element_threshold() && n_chunks > 1 {
             let executor = current_tract_executor();
             let nth = match &executor {
                 Executor::MultiThread(pool) => pool.current_num_threads(),
@@ -455,21 +476,18 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
                 Executor::SingleThread => 1,
             };
             if nth > 1 {
-                let by_work = a_len.checked_div(threshold).map_or(nth, |w| w.min(nth));
-                let per_worker = n_chunks.div_ceil(by_work).max(1);
+                let per_worker = n_chunks.div_ceil(nth);
                 let n_workers = n_chunks.div_ceil(per_worker);
-                if n_workers > 1 {
-                    let run = || {
-                        (0..n_workers).into_par_iter().try_for_each(|w| {
-                            let first = w * per_worker;
-                            (first..(first + per_worker).min(n_chunks)).try_for_each(&call)
-                        })
-                    };
-                    return match executor {
-                        Executor::MultiThread(pool) => pool.install(run),
-                        _ => run(),
-                    };
-                }
+                let run = || {
+                    (0..n_workers).into_par_iter().try_for_each(|w| {
+                        let first = w * per_worker;
+                        (first..(first + per_worker).min(n_chunks)).try_for_each(&call)
+                    })
+                };
+                return match executor {
+                    Executor::MultiThread(pool) => pool.install(run),
+                    _ => run(),
+                };
             }
         }
     }
