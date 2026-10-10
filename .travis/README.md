@@ -2,7 +2,7 @@
 
 ## Principles
 
-* `.github/workflows/bench.yml` builds the `tract` CLI on GitHub-hosted runners and
+* `.github/workflows/cli.yml` builds the `tract` CLI on GitHub-hosted runners and
   runs the bench suite on self-hosted bench machines. Nightly it appends one row per
   run to the `bench-data` branch; on a pull request it compares against that reference
   and posts a single fan-in comment (plus a full table in the run's job summary).

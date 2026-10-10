@@ -143,7 +143,7 @@ jobs:
           chmod +x "$RUNNER_TEMP/bench-compare.sh"
           # --skip-cpu: the CPU arm of every bench, and the runtime-less net
           # benches, are two thirds of a pass here and say nothing about SM120 —
-          # bench.yml covers that cohort on a box that is not a workstation
+          # cli.yml covers that cohort on a box that is not a workstation
           # between rows.
           "$RUNNER_TEMP/bench-compare.sh" "$base" "$head" --skip-cpu | tee bench-diff.txt
 
@@ -152,7 +152,7 @@ jobs:
           name: blackwell-bench-diff
           path: bench-diff.txt
 
-  # Unlike bench.yml, this workflow is always dispatched in the base repo, so its
+  # Unlike cli.yml, this workflow is always dispatched in the base repo, so its
   # token can write; no workflow_run relay is needed to comment on a fork's PR.
   report:
     needs: [ prepare, test, bench ]
