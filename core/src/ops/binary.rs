@@ -1096,7 +1096,7 @@ impl TypedOp for OptBinChain {
                     == inputs[0].datum_type
             );
         }
-        Ok(tvec!(inputs[0].clone()))
+        Ok(tvec!(inputs[0].without_value()))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
