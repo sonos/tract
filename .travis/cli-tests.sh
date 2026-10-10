@@ -91,11 +91,20 @@ $TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
     --allow-random-input \
     --assert-output-fact 1,3,f32
 
-$CACHE_FILE mdl-en-2019-Q3-librispeech.onnx
+$CACHE_FILE mdl-en-2019-Q3-librispeech.onnx mdl-en-2019-Q3-librispeech.io.npz
+$TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
+    --input-facts-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    -O --output-node output \
+    run -q \
+    --input-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --assert-output-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --approx approximate
 $TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
     -O -i S,40,f32 --output-node output --pulse 24 \
     run -q \
-    --allow-random-input
+    --input-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --assert-output-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --approx approximate
     
 $CACHE_FILE hey_snips_v4_model17.pb
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
