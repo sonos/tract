@@ -6,7 +6,7 @@
   runs the bench suite on self-hosted bench machines. Nightly it appends one row per
   run to the `bench-data` branch; on a pull request it compares against that reference
   and posts a single fan-in comment (plus a full table in the run's job summary).
-* The suite is `tract bench-suite`, driven by the `.travis/benches.toml` manifest. Each
+* The suite is `tract bench-suite`, driven by the `ci/benches.toml` manifest. Each
   `[[bench]]` runs in a fresh child process so the memory readings get a cold process;
   models are fetched over HTTP from the manifest's `base_url`.
 * Small embedded boards that can't host a runner or build are driven as *dinghy
@@ -21,7 +21,7 @@ mirror (default: the public bucket in `benches.toml`):
 
 ```
 cargo run -p tract-cli --features bench-suite -- \
-    bench-suite --manifest .travis/benches.toml --skip-runtimes
+    bench-suite --manifest ci/benches.toml --skip-runtimes
 ```
 
 `--skip-runtimes` keeps it to the plain-CPU net benches; drop it to also sweep the

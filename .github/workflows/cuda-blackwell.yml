@@ -139,7 +139,7 @@ jobs:
           # Harness from main, code under test from the PR: an older head carries
           # a bench-compare.sh that ignores CARGO_TARGET_DIR and would look for a
           # binary under ./target that the warm volume does not put there.
-          git show FETCH_HEAD:.travis/bench-compare.sh > "$RUNNER_TEMP/bench-compare.sh"
+          git show FETCH_HEAD:ci/bench-compare.sh > "$RUNNER_TEMP/bench-compare.sh"
           chmod +x "$RUNNER_TEMP/bench-compare.sh"
           # --skip-cpu: the CPU arm of every bench, and the runtime-less net
           # benches, are two thirds of a pass here and say nothing about SM120 —

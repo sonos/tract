@@ -81,7 +81,7 @@ jobs:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
 
     - name: Full test
-      run: .travis/test-harness.sh
+      run: ci/test-harness.sh
 
   onnx-tests:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
-      run: .travis/onnx-tests.sh ${{ matrix.opset }}
+      run: ci/onnx-tests.sh ${{ matrix.opset }}
 
   tflite:
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
       with:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Full test
-      run: .travis/tflite.sh
+      run: ci/tflite.sh
 
   some-tests-with-paranoid-asserts:
     runs-on: ubuntu-latest
@@ -157,7 +157,7 @@ jobs:
     - name: Feature configurations
       run: |
         rustup update
-        .travis/feature-configs.sh
+        ci/feature-configs.sh
 
   check-all-targets:
     runs-on: ubuntu-latest
@@ -175,7 +175,7 @@ jobs:
         save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
     - name: Check all targets
       run: |
-        ROOT=$(pwd) ./.travis/ci-system-setup.sh
+        ROOT=$(pwd) ./ci/ci-system-setup.sh
         cargo check --all-targets --workspace --exclude test-metal --exclude tract-metal
 
   feature-configs-apple:
@@ -195,7 +195,7 @@ jobs:
     - name: Apple feature configurations
       run: |
         rustup update
-        .travis/feature-configs-apple.sh
+        ci/feature-configs-apple.sh
 
   C:
     runs-on: ubuntu-latest

@@ -31,4 +31,4 @@ jobs:
     - name: Rustup update
       run: rustup update
     - name: Run sanitized tests
-      run: .travis/asan.sh
+      run: ci/asan.sh

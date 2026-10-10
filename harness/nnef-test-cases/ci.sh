@@ -5,7 +5,7 @@ set -e
 
 HERE=$(dirname $(realpath $0))
 ROOT=$(realpath $HERE/../..)
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 # With an accelerator present, only the cases looping over TRACT_RUNTIMES have
 # anything to add to the CPU-only run on the hosted runner.

@@ -1,6 +1,6 @@
 //! `tract bench-expectations`: emit per-metric `metric expected threshold` lines for
 //! one (triple, device), so the suite retries exactly the benches whose value would
-//! show as a PR red. Port of `.travis/bench-expectations.py`.
+//! show as a PR red.
 //!
 //! `expected` is the latest nightly-main value (the same baseline the report's red uses,
 //! so the retry and the red judge against the same number); `threshold` is the |Δ%| that

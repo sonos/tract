@@ -307,7 +307,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
                 .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
                 .arg(arg!(--out <PATH> "PR comment markdown output path"))
-                .arg(arg!(--templates [DIR] "Template dir (default: .travis)"))
+                .arg(arg!(--templates [DIR] "Template dir (default: ci)"))
                 .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
         );
         app = app.subcommand(

@@ -153,15 +153,15 @@ jobs:
         include:
           - triple: aarch64-apple-darwin
             host: macos-latest
-            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
+            build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: x86_64-unknown-linux-gnu
             host: ubuntu-latest
-            build: ROOT=. ./.travis/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
+            build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
-            build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
+            build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh
             bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -228,7 +228,7 @@ jobs:
           persist-credentials: false
       - id: set-matrix
         run: |
-          combos=$(awk -F'\t' 'BEGIN{printf "["} /^#/||NF<3{next} {n=split($3,qs,","); for(i=1;i<=n;i++){printf "%s{\"model\":\"%s\",\"q\":\"%s\"}", (c++?",":""), $1, qs[i]}} END{print "]"}' .travis/llm-models.tsv)
+          combos=$(awk -F'\t' 'BEGIN{printf "["} /^#/||NF<3{next} {n=split($3,qs,","); for(i=1;i<=n;i++){printf "%s{\"model\":\"%s\",\"q\":\"%s\"}", (c++?",":""), $1, qs[i]}} END{print "]"}' ci/llm-models.tsv)
           echo "combos=$combos" >> $GITHUB_OUTPUT
 
   llm:
@@ -260,7 +260,7 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
-          .travis/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
+          ci/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
 
   # A pull_request run shows each leg as a check; a `/ci` dispatch on a PR reports
   # back through a commit status and a sticky comment instead.
@@ -368,9 +368,9 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
-            --manifest .travis/benches.toml \
+            --manifest ci/benches.toml \
             --bench-data bench-ref \
-            --thresholds .travis/bench-thresholds.toml \
+            --thresholds ci/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
             ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
             ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }} \
@@ -464,7 +464,7 @@ jobs:
       - run: >-
           SKIP_QEMU_TEST=skip SUDO=sudo TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target
           TRACT_CLI_FEATURES=onnx,tf,pulse,pulse-opl,transformers,extra,bench-suite
-          PLATFORM=${{ matrix.triple }} ./.travis/cross.sh
+          PLATFORM=${{ matrix.triple }} ./ci/cross.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
@@ -531,12 +531,12 @@ jobs:
           # Scope the copy to just the bench manifest with a gitignore-style allowlist; the exe
           # is copied separately. Written into the ephemeral work folder, never committed: a
           # repo .dinghyignore would strip fixtures from everyone else's `cargo dinghy test`.
-          printf '%s\n' '/*' '!/.travis/' '/.travis/*' '!/.travis/benches.toml' > .dinghyignore
+          printf '%s\n' '/*' '!/ci/' '/ci/*' '!/ci/benches.toml' > .dinghyignore
           # --cleanup also tears the deploy down afterwards. It must precede -d: after -d
           # consumes its value cargo-dinghy misparses a later -c and bails with -Zscript.
           if CARGO_PKG_NAME=tract cargo-dinghy --cleanup -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
-               --manifest .travis/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
+               --manifest ci/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
                ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
@@ -685,7 +685,7 @@ jobs:
             tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
           else
             tract-cli/tract bench-report --results results --bench-data bench-data \
-              --thresholds .travis/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+              --thresholds ci/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
           fi
       # Only an automatic `pull_request` event on a fork gets a read-only token; every other
       # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
@@ -878,7 +878,7 @@ jobs:
       - name: Load-and-run every bench model
         run: |
           chmod +x tract-cli/tract
-          tract-cli/tract bench-suite --smoke --manifest .travis/benches.toml ${{ matrix.smoke_args }}
+          tract-cli/tract bench-suite --smoke --manifest ci/benches.toml ${{ matrix.smoke_args }}
 
   hwbench-dinghy:
     needs: [ prepare, build-dinghy ]

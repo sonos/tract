@@ -6,7 +6,7 @@ HERE=$(dirname $(realpath $0))
 cd $HERE
 
 ROOT=$HERE/../../..
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 : ${TRACT_RUN:=cargo run -p tract-cli $CARGO_OPTS --}
 

@@ -7,9 +7,9 @@ rustup update
 cargo update
 cargo check --all-targets --workspace --exclude test-tflite --exclude test-metal --exclude tract-metal
 
-./.travis/onnx-tests.sh
-./.travis/regular-tests.sh
-./.travis/test-harness.sh
+./ci/onnx-tests.sh
+./ci/regular-tests.sh
+./ci/test-harness.sh
 
 if [ -n "$CI" ]
 then
@@ -18,7 +18,7 @@ fi
 
 if [ `uname` = "Linux" ]
 then
-    ./.travis/tflite.sh
+    ./ci/tflite.sh
 fi
 
 if [ -n "$CI" ]
@@ -31,4 +31,4 @@ then
     cargo test -p test-cuda
 fi
 
-./.travis/cli-tests.sh
+./ci/cli-tests.sh

@@ -4,7 +4,7 @@
 set -ex
 
 ROOT=$(realpath $(dirname $(realpath $0))/../..)
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 MODEL=nvidia--nemotron-speech-streaming-en-0.6b-f32f32
 S3DIR=asr/613/$MODEL

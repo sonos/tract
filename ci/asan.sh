@@ -33,10 +33,10 @@ then
     exit 0
 fi
 
-./.travis/regular-tests.sh
+./ci/regular-tests.sh
 if [ -n "$CI" ]
 then
     cargo clean
 fi
 
-./.travis/cli-tests.sh
+./ci/cli-tests.sh

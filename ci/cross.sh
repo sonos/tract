@@ -3,7 +3,7 @@
 set -ex
 
 ROOT=$(dirname $(dirname $(realpath $0)))
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 ensure_cargo_dinghy() {
     if which cargo-dinghy
@@ -88,7 +88,7 @@ case "$PLATFORM" in
             export ANDROID_NDK_HOME=/usr/local/lib/android/sdk/ndk-bundle
         else
             export ANDROID_SDK_HOME=$HOME/cached/android-sdk
-            [ -e $ANDROID_SDK_HOME ] || ./.travis/android-ndk.sh
+            [ -e $ANDROID_SDK_HOME ] || ./ci/android-ndk.sh
         fi
 
         rustup target add $RUSTC_TRIPLE
@@ -129,7 +129,7 @@ case "$PLATFORM" in
         then
             STRETCH_TAG="$STRETCH_IMAGE"
         else
-            (cd .travis/docker-debian-stretch; docker build --tag debian-stretch .)
+            (cd ci/docker-debian-stretch; docker build --tag debian-stretch .)
             STRETCH_TAG=debian-stretch
         fi
         mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
@@ -145,7 +145,7 @@ case "$PLATFORM" in
             -e TRACT_CROSS_BUILD_CLI \
             ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
             -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV "$STRETCH_TAG" \
-            ./.travis/cross.sh
+            ./ci/cross.sh
         sudo chown -R `whoami` "$HOME/.cargo" .
         export RUSTC_TRIPLE=$INNER_PLATFORM
         ;;

@@ -4,7 +4,7 @@ HERE=$(dirname $(realpath $0))
 cd $HERE
 
 ROOT=$HERE/../../..
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 set -ex
 

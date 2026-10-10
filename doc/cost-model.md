@@ -189,8 +189,8 @@ cost-model change — on a machine CI does not bench (one of your own PCs/Macs) 
 commits end to end. This is the local equivalent of the CI bench comment:
 
 ```
-.travis/bench-compare.sh <ref-a> <ref-b> [bench-suite args...]
-.travis/bench-compare.sh main task/my-branch --filter en_tdnn
+ci/bench-compare.sh <ref-a> <ref-b> [bench-suite args...]
+ci/bench-compare.sh main task/my-branch --filter en_tdnn
 ```
 
 It builds `tract-cli --features bench-suite` at each ref, runs the model battery from
