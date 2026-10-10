@@ -32,6 +32,15 @@ ensure_cargo_dinghy() {
     fi
 }
 
+# The release CLI is only wanted by callers that ship it to a device (bench.yml); other
+# callers just need it to compile for the target.
+if [ -n "$TRACT_CROSS_BUILD_CLI" ]
+then
+    CLI_CMD="build --release"
+else
+    CLI_CMD=check
+fi
+
 if [ -z "$PLATFORM" -a -n "$1" ]
 then
     PLATFORM=$1
@@ -46,7 +55,7 @@ case "$PLATFORM" in
         rustup target add $RUSTC_TRIPLE
         echo "[platforms.$PLATFORM]\nrustc_triple='$RUSTC_TRIPLE'\ntoolchain='$TOOLCHAIN'" > .dinghy.toml
         cargo dinghy --platform $PLATFORM build --release -p tract-ffi --no-default-features
-        cargo dinghy --platform $PLATFORM build --release -p tract-cli \
+        cargo dinghy --platform $PLATFORM $CLI_CMD -p tract-cli \
             --no-default-features \
             --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra"
         ;;
@@ -95,7 +104,7 @@ case "$PLATFORM" in
     "aarch64-apple-darwin" | "x86_64-unknown-linux-gnu")
         RUSTC_TRIPLE=$PLATFORM
         rustup target add $RUSTC_TRIPLE
-        cargo build --target $RUSTC_TRIPLE -p tract-cli --release
+        cargo $CLI_CMD --target $RUSTC_TRIPLE -p tract-cli
         ;;
 
     "aarch64-unknown-linux-gnu-stretch" | "armv7-unknown-linux-gnueabihf-stretch" | "x86_64-unknown-linux-gnu-stretch")
@@ -133,6 +142,7 @@ case "$PLATFORM" in
             -e CARGO_HTTP_MULTIPLEXING \
             -e CARGO_REGISTRIES_CRATES_IO_PROTOCOL \
             -e TRACT_CLI_FEATURES \
+            -e TRACT_CROSS_BUILD_CLI \
             ${CARGO_TARGET_DIR:+-e CARGO_TARGET_DIR=$CARGO_TARGET_DIR} \
             -e PLATFORM=$INNER_PLATFORM $CUDA_FEATURE_ENV "$STRETCH_TAG" \
             ./.travis/cross.sh
@@ -295,20 +305,19 @@ case "$PLATFORM" in
             cargo dinghy --platform $PLATFORM $DINGHY_TEST_ARGS check -p tract-ffi \
                 --no-default-features
         fi
-        # keep lto for these two are they're going to devices.
         if [ -n "$TRACT_CUDA_FEATURE" ]
         then
-            cargo dinghy --platform $PLATFORM build --release \
+            cargo dinghy --platform $PLATFORM $CLI_CMD \
                 --no-default-features \
                 --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra,bench-suite,$TRACT_CUDA_FEATURE" \
                 -p tract-cli
         elif [ -n "$TRACT_CLI_FEATURES" ]
         then
-            cargo dinghy --platform $PLATFORM build --release \
+            cargo dinghy --platform $PLATFORM $CLI_CMD \
                 --no-default-features --features "$TRACT_CLI_FEATURES" \
                 -p tract-cli
         else
-            cargo dinghy --platform $PLATFORM build --release \
+            cargo dinghy --platform $PLATFORM $CLI_CMD \
                 --no-default-features \
                 --features "onnx,tf,pulse,pulse-opl,tflite,transformers,extra" \
                 -p tract-cli
