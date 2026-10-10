@@ -117,7 +117,7 @@ jobs:
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
             host: ubuntu-latest
-            build: CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
+            build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./.travis/cross.sh
             bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -289,7 +289,7 @@ jobs:
       # debian-stretch container: bench-suite on, cuda/tflite off; SKIP_QEMU_TEST builds only.
       # TRACT_CLI_FEATURES suppresses the stretch leg's default cuda forcing (see cross.sh).
       - run: >-
-          SKIP_QEMU_TEST=skip SUDO=sudo CARGO_TARGET_DIR=.cross-cache/target
+          SKIP_QEMU_TEST=skip SUDO=sudo TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target
           TRACT_CLI_FEATURES=onnx,tf,pulse,pulse-opl,transformers,extra,bench-suite
           PLATFORM=${{ matrix.triple }} ./.travis/cross.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

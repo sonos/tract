@@ -31,7 +31,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
-      tract_bench_branch_name: ${{ steps.set.outputs.tract_bench_branch_name }}
     steps:
       - id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -42,7 +41,7 @@ jobs:
             core.info(`payload.pull_request.number: ${context.payload.pull_request?.number}`);
             const prInput = context.payload.inputs?.pr_number ?? context.payload.pull_request?.number;
             core.info(`prInput: ${prInput} (type: ${typeof prInput})`);
-            let ref, branch;
+            let ref;
             if (prInput) {
               const pr = await github.rest.pulls.get({
                 owner: context.repo.owner,
@@ -50,16 +49,11 @@ jobs:
                 pull_number: Number(prInput),
               });
               ref = pr.data.head.sha;
-              branch = `pr-${prInput}-${pr.data.head.ref}`;
             } else {
               ref = process.env.GITHUB_SHA;
-              branch = process.env.GITHUB_HEAD_REF || process.env.GITHUB_REF_NAME || 'main';
             }
-            const benchBranch = branch.replace(/\//g, '_');
             core.info(`test_ref: ${ref}`);
-            core.info(`tract_bench_branch_name: ${benchBranch}`);
             core.setOutput('test_ref', ref);
-            core.setOutput('tract_bench_branch_name', benchBranch);
 
   windows-arm64:
     needs: prepare
@@ -130,11 +124,7 @@ jobs:
       env:
         PLATFORM: ${{matrix.platform}}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
-        NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
-        NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |
-        export TRACT_BENCH_BRANCH_NAME="${NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME}"
-        export GITHUB_SHA="${NEEDS_PREPARE_OUTPUTS_TEST_REF}"
         .travis/cross.sh
 
   apple:
@@ -167,9 +157,5 @@ jobs:
     - name: Cross script
       env:
         PLATFORM: ${{matrix.platform}}
-        NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME: ${{ needs.prepare.outputs.tract_bench_branch_name }}
-        NEEDS_PREPARE_OUTPUTS_TEST_REF: ${{ needs.prepare.outputs.test_ref }}
       run: |
-        export TRACT_BENCH_BRANCH_NAME="${NEEDS_PREPARE_OUTPUTS_TRACT_BENCH_BRANCH_NAME}"
-        export GITHUB_SHA="${NEEDS_PREPARE_OUTPUTS_TEST_REF}"
         .travis/cross.sh
