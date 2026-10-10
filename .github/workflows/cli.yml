@@ -634,6 +634,25 @@ jobs:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
     steps:
+      # always() also lets a run cancelled by a newer push get here; its numbers are for a
+      # head the PR has moved past, so it renders nothing and leaves the report to the new run.
+      - id: head
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
+          REF: ${{ needs.prepare.outputs.ref }}
+        with:
+          script: |
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: Number(process.env.PR_NUMBER),
+            });
+            const superseded = pr.head.sha !== process.env.REF;
+            if (superseded) {
+              core.notice(`PR head is now ${pr.head.sha.slice(0, 9)}; not reporting on ${process.env.REF.slice(0, 9)}`);
+            }
+            core.setOutput('superseded', String(superseded));
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
@@ -655,6 +674,7 @@ jobs:
       # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
       # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
+        if: steps.head.outputs.superseded != 'true'
         env:
           PR_SHA: ${{ needs.prepare.outputs.ref }}
           MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
