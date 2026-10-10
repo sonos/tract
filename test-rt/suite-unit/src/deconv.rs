@@ -36,10 +36,66 @@ impl Arbitrary for DeconvProblem {
     type Strategy = BoxedStrategy<DeconvProblem>;
     type Parameters = DeconvProblemParams;
     fn arbitrary_with(_args: Self::Parameters) -> Self::Strategy {
-        // The 2x2 stride-2 NCHW shape has a dedicated kernel and comes up about once
-        // in fifty thousand uniform draws, so half the cases are that shape.
-        prop_oneof![general(), fast_2x2_s2()].boxed()
+        // Kernels whose taps never overlap take a dedicated path and come up about once
+        // in fifty thousand uniform draws, so two thirds of the cases are that geometry.
+        prop_oneof![general(), fast_2x2_s2(), non_overlapping()].boxed()
     }
+}
+
+fn non_overlapping() -> BoxedStrategy<DeconvProblem> {
+    (1usize..3)
+        .prop_flat_map(|georank| {
+            (
+                data_format(),
+                kernel_format(),
+                Just(PaddingSpec::Valid),
+                1usize..3,
+                1usize..4,
+                1usize..4,
+                vec(1usize..5, georank..=georank),
+                vec(1usize..7, georank..=georank),
+                1usize..3,
+            )
+        })
+        .prop_flat_map(|(df, kf, pad, n, ci_over_group, co_over_group, hwk, hwi, group)| {
+            let mut kernel_shape = hwk.clone();
+            match kf {
+                OIHW => {
+                    kernel_shape.insert(0, co_over_group * group);
+                    kernel_shape.insert(1, ci_over_group);
+                }
+                HWIO => {
+                    kernel_shape.push(ci_over_group * group);
+                    kernel_shape.push(co_over_group);
+                }
+                OHWI => {
+                    kernel_shape.insert(0, co_over_group);
+                    kernel_shape.push(ci_over_group * group);
+                }
+            };
+            let data_shape = df.from_n_c_hw(n, ci_over_group * group, hwi).unwrap();
+            (
+                Just((df, kf, pad, hwk, group)),
+                tensor(&data_shape.shape),
+                tensor(&kernel_shape),
+                proptest::option::of(tensor(&[co_over_group * group])),
+            )
+        })
+        .prop_map(|((data_format, kernel_format, padding, hwk, group), input, kernel, bias)| {
+            DeconvProblem {
+                data_format,
+                kernel_format,
+                padding,
+                input,
+                kernel,
+                bias,
+                strides: hwk.iter().copied().collect(),
+                dilations: tvec!(1; hwk.len()),
+                adjustments: tvec!(0; hwk.len()),
+                group,
+            }
+        })
+        .boxed()
 }
 
 fn general() -> BoxedStrategy<DeconvProblem> {

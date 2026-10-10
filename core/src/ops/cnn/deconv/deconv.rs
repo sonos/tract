@@ -14,6 +14,20 @@ pub struct Deconv {
 }
 
 impl Deconv {
+    /// Whether every output pixel receives exactly one kernel tap whatever the input size:
+    /// on each spatial axis the kernel extent equals the stride, with no dilation, no
+    /// adjustment and no padding. `DeconvSum` then takes the bias unbroadcast.
+    fn taps_never_overlap(&self) -> bool {
+        let strides = self.pool_spec.strides();
+        let dilations = self.pool_spec.dilations();
+        (0..self.pool_spec.rank()).all(|ax| {
+            self.pool_spec.kernel_shape[ax] == strides[ax]
+                && dilations[ax] == 1
+                && self.adjustments[ax] == 0
+                && self.pool_spec.padding.valid_dim(ax, false)
+        })
+    }
+
     fn wire_with_deconv_sum(
         &self,
         name: &str,
@@ -144,12 +158,15 @@ impl Deconv {
             shape.c_axis(),
             self.pool_spec.output_channels,
         )?[0];
-        let output_shape = super::output_shape(&self.pool_spec, &shape.shape, &self.adjustments)?;
-        bias = target.wire_node(
-            format!("{name}.broadcast_bias"),
-            MultiBroadcastTo { shape: output_shape.into() },
-            &[bias],
-        )?[0];
+        if !self.taps_never_overlap() {
+            let output_shape =
+                super::output_shape(&self.pool_spec, &shape.shape, &self.adjustments)?;
+            bias = target.wire_node(
+                format!("{name}.broadcast_bias"),
+                MultiBroadcastTo { shape: output_shape.into() },
+                &[bias],
+            )?[0];
+        }
 
         // einsum must be (N_)CHkWk_HW
         let deconv_sum = target.wire_node(
