@@ -16,7 +16,7 @@ use super::packers::{PackedAceBf16K2, PackedAceScaledBlock};
 use crate::frame::mmm::*;
 use crate::mmm::DynKernel;
 use crate::pack::{PackedI8K4, Packing};
-use crate::{Ops, ScaleShiftAndRound, Scaler};
+use crate::{ScaleShiftAndRound, Scaler};
 use tract_data::prelude::f16;
 
 const MR: usize = ACE_TILE_DIM; // 16
@@ -407,7 +407,6 @@ unsafe fn per_col<T: Copy>(ab: &mut [[T; NR]; MR], m: *const T, f: impl Fn(T, T)
 
 MMMRustKernel! { ace_kernel_i32_16x16 => ace_mmm_i32_16x16<i32>(16, 16)
     packing[1] = i8i8 => |k| k.with_packing(PackedI8K4::new(16), PackedI8K4::new(16));
-    quality(ImplementationQuality::Generic)
     store(i8)
 }
 
@@ -439,7 +438,6 @@ lazy_static::lazy_static! {
         ace_rusty_f32::<0>,
         f32::packing(16),
         f32::packing(16),
-        ImplementationQuality::Generic,
     )
     .with_packing(PackedAceBf16K2::new(16), PackedAceBf16K2::new(16))
     .with_store::<f16>()
@@ -450,7 +448,6 @@ lazy_static::lazy_static! {
         ace_rusty_f32::<1>,
         f32::packing(16),
         f32::packing(16),
-        ImplementationQuality::Generic,
     )
     .with_packing(PackedAceScaledBlock::mxfp8(16), PackedAceScaledBlock::mxfp8(16))
     .with_store::<f16>()
@@ -461,21 +458,10 @@ lazy_static::lazy_static! {
         ace_rusty_f32::<2>,
         f32::packing(16),
         f32::packing(16),
-        ImplementationQuality::Generic,
     )
     .with_packing(PackedAceScaledBlock::mxint8(16), PackedAceScaledBlock::mxint8(16))
     .with_store::<f16>()
     .with_can_fuse(ace_f32_can_fuse);
-}
-
-/// Opt-in registration of the ACE kernels into an `Ops` registry. Not called from
-/// production dispatch: without ACE the kernels run the scalar model, and with it
-/// their Rust epilogues still need a tuned, register-blocked successor.
-pub fn plug(ops: &mut Ops) {
-    ops.mmm_impls.push(ace_mmm_i32_16x16.mmm());
-    ops.mmm_impls.push(ace_mmm_f32_bf16_16x16.mmm());
-    ops.mmm_impls.push(ace_mmm_mxfp8_16x16.mmm());
-    ops.mmm_impls.push(ace_mmm_mxint8_16x16.mmm());
 }
 
 #[cfg(test)]

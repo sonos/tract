@@ -16,7 +16,10 @@
 //!   * [`format`] — OCP MX numeric decodes/encoders and the `VUNPACKB`/`VPERM`
 //!     marshalling models.
 //!   * [`packers`] — bf16 K=2-inner and MX scaled-block packers.
-//!   * [`mmm`] — the matrix-multiply kernels, dispatching to `hw` or `isa`.
+//!   * [`mmm`] — the matrix-multiply kernels, dispatching to `hw` or `isa`. They are
+//!     not submitted to the kernel registry, so planning never selects them: without
+//!     ACE they run the scalar model, and with it their Rust epilogues still need a
+//!     tuned, register-blocked successor.
 
 pub mod detect;
 pub mod format;
@@ -27,4 +30,3 @@ pub mod mmm;
 pub mod packers;
 
 pub use detect::has_ace;
-pub use mmm::plug;
