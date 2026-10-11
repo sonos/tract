@@ -1,5 +1,4 @@
 use tract_hir::internal::*;
-use tract_hir::tract_core::ops::scan::ScanInfo;
 
 use crate::model::{OnnxOpRegister, ParsingContext};
 use crate::pb::*;
@@ -34,53 +33,20 @@ impl Expansion for CumSum {
         model: &mut TypedModel,
         inputs: &[OutletId],
     ) -> TractResult<TVec<OutletId>> {
-        use tract_core::ops::scan;
         let axis =
             model.outlet_fact(inputs[1])?.konst.as_ref().context("Axis expected to be a const")?;
         let axis = axis.cast_to_scalar::<i64>()?;
-        let data = model.outlet_fact(inputs[0])?.clone();
-        let mut var_shape = data.shape.clone();
-        let axis = if axis < 0 { (axis + data.rank() as i64) as usize } else { axis as usize };
-        let zero = model.add_const(
-            format!("{prefix}.zero"),
-            Tensor::zero_dt(data.datum_type, &[])?.into_arc_tensor(),
-        )?;
-        var_shape.set(axis, 1.to_dim());
-        let init = model.wire_node(
-            format!("{prefix}.init"),
-            tract_core::ops::array::MultiBroadcastTo::new(var_shape.clone()),
-            &[zero],
-        )?[0];
-        let chunk = if self.reverse { -1 } else { 1 };
-        let input_mapping =
-            vec![scan::InputMapping::Scan(ScanInfo { axis, chunk }), scan::InputMapping::State];
-        // outputs will be
-        // acc + x (!exclusive)
-        // acc input (exclusive)
-        let output_mapping = vec![
-            scan::OutputMapping {
-                scan: Some((0, ScanInfo { axis, chunk })),
-                full_dim_hint: None,
-                last_value_slot: None,
-                state: true,
+        let rank = model.outlet_fact(inputs[0])?.rank() as i64;
+        let axis = if axis < 0 { axis + rank } else { axis } as usize;
+        model.wire_node(
+            prefix,
+            tract_core::ops::array::CumSum {
+                axis,
+                exclusive: self.exclusive,
+                reverse: self.reverse,
             },
-            scan::OutputMapping {
-                scan: Some((1, ScanInfo { axis, chunk })),
-                full_dim_hint: None,
-                last_value_slot: None,
-                state: false,
-            },
-        ];
-        let mut body = TypedModel { symbols: model.symbols.clone(), ..TypedModel::default() };
-        let var_fact = data.datum_type.fact(var_shape);
-        let x = body.add_source("scan_input", var_fact.clone())?;
-        let acc = body.add_source("acc_input", var_fact)?;
-        let sum = body.wire_node("add", tract_core::ops::math::add(), &[x, acc])?[0];
-        body.select_output_outlets(&[sum, acc])?;
-        let scan = scan::Scan::new(body, input_mapping, output_mapping, 0)?;
-        let wires = model.wire_node(prefix, scan, &[inputs[0], init])?;
-        let output = wires[self.exclusive as usize];
-        Ok(tvec![output])
+            &[inputs[0]],
+        )
     }
 
     fn rules<'r, 'p: 'r, 's: 'r>(

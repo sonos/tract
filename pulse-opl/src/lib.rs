@@ -3,6 +3,7 @@ use tract_nnef::internal::*;
 
 mod affine_trim;
 pub mod concat;
+mod cumsum;
 mod deconv_delay;
 mod delay;
 mod lane;
@@ -22,6 +23,7 @@ pub mod prelude {
 
 pub mod ops {
     pub use super::affine_trim::AffineChunkTrim;
+    pub use super::cumsum::PulsedCumSum;
     pub use super::deconv_delay::DeconvDelay;
     pub use super::delay::{Delay, DelayState};
     pub use super::mask::PulseMask;
@@ -54,6 +56,7 @@ pub fn tract_nnef_registry() -> Registry {
         .with_doc("Add `extension tract_pulse` to `graph.nnef`");
 
     reg.aliases.push("pulse".into());
+    cumsum::register(&mut reg);
     delay::register(&mut reg);
     mask::register(&mut reg);
     pad::register(&mut reg);

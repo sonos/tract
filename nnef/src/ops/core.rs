@@ -6,6 +6,7 @@ mod cast;
 mod clamped_swiglu;
 #[cfg(feature = "complex")]
 mod complex;
+mod cumsum;
 mod downsample;
 mod dyn_slice;
 mod einsum;
@@ -56,6 +57,7 @@ pub fn register(registry: &mut Registry) {
     clamped_swiglu::register(registry);
     #[cfg(feature = "complex")]
     complex::register(registry);
+    cumsum::register(registry);
     downsample::register(registry);
     dyn_slice::register(registry);
     einsum::register(registry);
