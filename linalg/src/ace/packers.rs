@@ -103,13 +103,13 @@ impl MMMInputFormat for PackedAceBf16K2 {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(f32::datum_type())
@@ -246,13 +246,13 @@ impl MMMInputFormat for PackedAceScaledBlock {
         Ok(PackedMatrixStorage::new(self.prepare_one(t, k_axis, mn_axis)?)
             .into_tensor(t.datum_type()))
     }
-    fn prepare_one(
+    fn prepare_one_view(
         &self,
-        t: &Tensor,
+        t: &TensorView,
         k_axis: usize,
         mn_axis: usize,
     ) -> TractResult<Box<dyn MMMInputValue>> {
-        self.pack_view(&t.view(), k_axis, mn_axis)
+        self.pack_view(t, k_axis, mn_axis)
     }
     fn precursor(&self) -> WeightType {
         WeightType::Plain(f32::datum_type())
