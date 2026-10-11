@@ -19,7 +19,8 @@
 
 use tract_data::internal::f16;
 
-// hardswish(x) = x * clamp(x + 3, 0, 6) * (1/6).
+// hardswish(x) = x * (clamp(x + 3, 0, 6) * (1/6)), scaled before the multiply by x
+// so that x * 6 cannot overflow f16 for x above 10920.
 // 128 f16 per iter (4 zmm × 32 lanes), 256 bytes / iter — same memory throughput
 // as the f32 kernel's 64 f32 / iter.
 routine_ew_rust!(x86_64;
@@ -75,15 +76,15 @@ unsafe fn hardswish_f16_run(buf: &mut [f16]) {
                 vmaxph  zmm10, zmm10, zmm3
                 vmaxph  zmm11, zmm11, zmm3
 
-                vmulph  zmm8,  zmm8,  zmm4
-                vmulph  zmm9,  zmm9,  zmm5
-                vmulph  zmm10, zmm10, zmm6
-                vmulph  zmm11, zmm11, zmm7
-
                 vmulph  zmm8,  zmm8,  zmm2
                 vmulph  zmm9,  zmm9,  zmm2
                 vmulph  zmm10, zmm10, zmm2
                 vmulph  zmm11, zmm11, zmm2
+
+                vmulph  zmm8,  zmm8,  zmm4
+                vmulph  zmm9,  zmm9,  zmm5
+                vmulph  zmm10, zmm10, zmm6
+                vmulph  zmm11, zmm11, zmm7
 
                 vmovdqa64 [{ptr}],       zmm8
                 vmovdqa64 [{ptr} + 64],  zmm9

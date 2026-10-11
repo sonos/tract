@@ -32,7 +32,7 @@ routine_ew_rust!(generic;
         let inv6 = f16::from_f32(1.0 / 6.0);
         x.iter_mut().for_each(|px| {
             let relu6 = ((*px + three).min(six)).max(f16::zero());
-            *px = *px * relu6 * inv6;
+            *px *= relu6 * inv6;
         });
     },
     func(Hardswish)
