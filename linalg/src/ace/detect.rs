@@ -13,7 +13,7 @@ mod imp {
     use std::sync::OnceLock;
 
     /// `__cpuid_count` is an `unsafe fn` on the MSRV toolchain but safe on
-    /// older than the one where the intrinsic became safe.
+    /// current stable.
     #[allow(unused_unsafe)]
     pub(super) fn cpuid(leaf: u32, sub_leaf: u32) -> CpuidResult {
         unsafe { __cpuid_count(leaf, sub_leaf) }
