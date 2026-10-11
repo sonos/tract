@@ -9,8 +9,15 @@
 
 #[cfg(target_arch = "x86_64")]
 mod imp {
-    use std::arch::x86_64::{__cpuid_count, __get_cpuid_max};
+    use std::arch::x86_64::{__cpuid_count, CpuidResult};
     use std::sync::OnceLock;
+
+    /// `__cpuid_count` is an `unsafe fn` on the MSRV toolchain but safe on
+    /// older than the one where the intrinsic became safe.
+    #[allow(unused_unsafe)]
+    pub(super) fn cpuid(leaf: u32, sub_leaf: u32) -> CpuidResult {
+        unsafe { __cpuid_count(leaf, sub_leaf) }
+    }
 
     fn bit(x: u32, b: u32) -> bool {
         (x >> b) & 1 == 1
@@ -26,20 +33,20 @@ mod imp {
     }
 
     fn cpu_has_ace() -> bool {
-        let (max_leaf, _) = __get_cpuid_max(0);
-        if max_leaf < 0x24 || !bit(__cpuid_count(1, 0).ecx, 27) {
+        let max_leaf = cpuid(0, 0).eax;
+        if max_leaf < 0x24 || !bit(cpuid(1, 0).ecx, 27) {
             return false;
         }
-        let l7_1 = __cpuid_count(7, 1);
+        let l7_1 = cpuid(7, 1);
         let (avx10, ace) = (bit(l7_1.edx, 19), bit(l7_1.ecx, 11));
-        if !avx10 || !ace || !bit(__cpuid_count(7, 0).edx, 24) {
+        if !avx10 || !ace || !bit(cpuid(7, 0).edx, 24) {
             return false;
         }
-        let avx10_vsn = __cpuid_count(0x24, 0).ebx & 0xFF;
-        let aux = __cpuid_count(0x24, 1).ecx;
+        let avx10_vsn = cpuid(0x24, 0).ebx & 0xFF;
+        let aux = cpuid(0x24, 1).ecx;
         let avx10_ok = (avx10_vsn >= 1 && bit(aux, 2)) || avx10_vsn >= 2;
-        let palette_ok = __cpuid_count(0x1D, 0).eax >= 2;
-        let ace_vsn = __cpuid_count(0x1D, 2).eax & 0xFF;
+        let palette_ok = cpuid(0x1D, 0).eax >= 2;
+        let ace_vsn = cpuid(0x1D, 2).eax & 0xFF;
         // XCR0: x87|SSE|AVX (2:1), opmask|ZMM_Hi256|Hi16_ZMM (7:5), TILECFG|TILEDATA
         // (18:17), SCALEDATA (20).
         const XCR0_ACE: u64 = 0b110 | (0b111 << 5) | (0b11 << 17) | (1 << 20);
@@ -88,7 +95,7 @@ pub use imp::has_ace;
 mod tests {
     #[test]
     fn has_ace_implies_the_ace_cpuid_flag() {
-        let flag = (std::arch::x86_64::__cpuid_count(7, 1).ecx >> 11) & 1 == 1;
+        let flag = (super::imp::cpuid(7, 1).ecx >> 11) & 1 == 1;
         assert!(!super::has_ace() || flag);
     }
 }
