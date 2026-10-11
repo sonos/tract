@@ -130,14 +130,14 @@ test_cos
 test_cos_example
 test_cosh
 test_cosh_example
-test_cumsum_1d_exclusive not-nnef input:x since:13
+test_cumsum_1d_exclusive input:x since:13
 test_cumsum_1d input:x since:13
-test_cumsum_1d_reverse_exclusive not-nnef input:x since:13
+test_cumsum_1d_reverse_exclusive input:x since:13
 test_cumsum_1d_reverse input:x since:13
 test_cumsum_2d_axis_0 input:x since:13
 test_cumsum_2d_axis_1 input:x since:13
 test_cumsum_2d_negative_axis input:x since:13
-test_cumsum_2d not-nnef input:x since:13
+test_cumsum_2d input:x since:13
 test_depthtospace.*
 test_dequantizelinear                                                               input:x not-nnef
 test_dequantizelinear_axis input:x

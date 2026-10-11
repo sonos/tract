@@ -1,6 +1,7 @@
 /// # Operators on array and shapes
 mod broadcast;
 pub(crate) mod concat;
+mod cumsum;
 pub mod dyn_slice;
 mod gather;
 mod gather_elements;
@@ -19,6 +20,7 @@ mod trilu;
 
 pub use self::broadcast::MultiBroadcastTo;
 pub use self::concat::TypedConcat;
+pub use self::cumsum::CumSum;
 pub use self::dyn_slice::DynSlice;
 pub use self::gather::Gather;
 pub use self::gather_elements::GatherElements;

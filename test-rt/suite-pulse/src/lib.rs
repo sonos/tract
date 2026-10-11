@@ -7,6 +7,7 @@ use tract_pulse::internal::PulsedModel;
 use tract_pulse::model::PulsedModelExt;
 
 pub mod conv_plus_conv;
+pub mod cumsum;
 pub mod deconv;
 pub mod delay_plus_downsample;
 pub mod delay_plus_pool;
@@ -20,6 +21,7 @@ pub mod stft;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
+    suite.add("cumsum", cumsum::suite()?);
     suite.add("deconv", deconv::suite()?);
     suite.add("delay_plus_downsample", delay_plus_downsample::suite()?);
     suite.add("delay_plus_pool", delay_plus_pool::suite()?);
