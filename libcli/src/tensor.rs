@@ -186,6 +186,11 @@ pub fn for_string(
     symbol_table: &SymbolScope,
     value: &str,
 ) -> TractResult<(Option<String>, InferenceFact)> {
+    if let Some(path) = value.strip_prefix('@') {
+        bail!(
+            "Tensor specs do not read files (got @{path}): use --input-facts-from-bundle for shapes and types, or run --input-from-npz for values"
+        );
+    }
     let (name, value) = if value.contains(':') {
         let mut splits = value.split(':');
         (Some(splits.next().unwrap().to_string()), splits.next().unwrap())
@@ -593,4 +598,22 @@ pub fn random(sizes: &[usize], datum_type: DatumType, tv: Option<&TensorValues>)
         slice.iter_mut().for_each(|x| *x = rng.random())
     };
     tensor.cast_to_dt(datum_type).unwrap().into_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn named_spec_with_value() {
+        let (name, fact) = for_string(&SymbolScope::default(), "x:2,f32=1,2").unwrap();
+        assert_eq!(name.as_deref(), Some("x"));
+        assert_eq!(fact.value.concretize().unwrap().into_tensor(), tensor1(&[1f32, 2.]));
+    }
+
+    #[test]
+    fn file_spec_is_rejected() {
+        let err = for_string(&SymbolScope::default(), "@inputs.npz:x.npy").unwrap_err();
+        assert!(err.to_string().contains("do not read files"), "{err}");
+    }
 }

@@ -112,7 +112,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').num_args(1).action(clap::ArgAction::Append).long_help(
-                "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
+                "Set input shape and type, optionally by name and with a value (3,4,i32 or name:3,4,i32 or name:2,f32=1,2)."))
         .arg(Arg::new("constantize").long("constantize").num_args(1).action(clap::ArgAction::Append).long_help(
                 "Transorm an input into a Constant"))
 
