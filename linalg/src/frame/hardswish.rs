@@ -26,6 +26,15 @@ pub mod test {
                     .unwrap();
                 }
             }
+            #[test]
+            fn large() {
+                if $cond {
+                    $crate::frame::hardswish::test::test_hardswish::<$ker, $t>(&[
+                        -65504f32, -20000.0, -300.0, 300.0, 10920.0, 20000.0, 40000.0, 65504.0,
+                    ])
+                    .unwrap();
+                }
+            }
         };
     }
 
@@ -44,7 +53,7 @@ pub mod test {
             let zero: T = T::zero();
             let inv6: T = (1f32 / 6f32).as_();
             let relu6 = ((x + three).min(six)).max(zero);
-            x * relu6 * inv6
+            x * (relu6 * inv6)
         })
     }
 }
