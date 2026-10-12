@@ -69,15 +69,15 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   <h1>tract bench</h1>
   <p class="muted">Nightly results for <code>main</code> on every bench device, read live from the <a href="https://github.com/sonos/tract/tree/bench-data">bench-data</a> branch. Hover a point to see the commit it measured; click it to open the commits since the previous point.</p>
   <nav class="views" aria-label="View">
-    <a href="#explorer" data-view="explorer">Explorer</a>
     <a href="#overview" data-view="overview">Overview</a>
+    <a href="#explorer" data-view="explorer">Explorer</a>
   </nav>
   <div class="controls">
     <div class="lbl">Window<div class="seg" id="windows" role="group" aria-label="Window"></div></div>
   </div>
   <div id="status" role="status"></div>
 
-  <section id="view-explorer">
+  <section id="view-explorer" hidden>
     <div class="controls">
       <label for="dev">Device<select id="dev"></select></label>
       <label for="rd">Reading<select id="rd"></select></label>
@@ -88,7 +88,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     <div class="card" id="chart"></div>
   </section>
 
-  <section id="view-overview" hidden>
+  <section id="view-overview">
     <div class="controls">
       <div class="lbl">Reading<div class="seg" id="ovReadings" role="group" aria-label="Reading"></div></div>
     </div>
@@ -149,7 +149,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   const short = n => { const p = n.split('.'); return (p[0] === 'net' || p[0] === 'llm') ? p[1] + ' · ' + p.slice(3).join('.') : p.slice(1).join('.'); };
   const deviceOf = f => f.split('/').pop();
 
-  const state = { view: 'explorer', win: '90d', file: null, reading: 'evaltime', metric: null, ovReading: 'evaltime' };
+  const state = { view: 'overview', win: '90d', file: null, reading: 'evaltime', metric: null, ovReading: 'evaltime' };
   const files = {}, loading = {};
   let index = [];
 
