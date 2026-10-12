@@ -78,7 +78,7 @@ jobs:
           python3 -c "
           import json, os, re
           dirs = sorted(
-              [d for d in os.listdir('.') if os.path.isdir(d) and d != '.git'],
+              [d for d in os.listdir('.') if os.path.isdir(d) and d not in ('.git', 'bench')],
               key=lambda v: [int(x) if x.isdigit() else x for x in re.split(r'(\d+)', v)],
               reverse=True,
           )
