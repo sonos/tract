@@ -95,7 +95,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     <p class="muted" id="ovNote"></p>
     <div class="grid" id="tiles"></div>
     <h2>Biggest movers</h2>
-    <p class="muted">Series whose median over the last 7 points moved at least 5% from the first 7 points of the window, and at least 3× their own day-to-day noise.</p>
+    <p class="muted">Series whose median over the last 7 points moved at least 5% from the first 7 points of the window, and at least 3× their own day-to-day noise (90th percentile). Load times under 30 ms are left out, as in the PR gate.</p>
     <div class="pair">
       <div class="tablewrap"><table><thead><tr><th>Worse</th><th>Device</th><th>Δ</th></tr></thead><tbody id="worse"></tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Better</th><th>Device</th><th>Δ</th></tr></thead><tbody id="better"></tbody></table></div>
@@ -123,6 +123,8 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   ];
   // Points before this day come from the previous bench infrastructure.
   const REWORK = '2026-06-16';
+  // Same guard as min_load_seconds in ci/bench-thresholds.toml: shorter loads are below the timer resolution.
+  const MIN_LOAD_SECONDS = 0.03;
   const WINDOWS = [['30d', 30], ['90d', 90], ['180d', 180], ['1y', 365], ['All', 1e6]];
   const OV_READINGS = [['evaltime', 'Eval time'], ['time_to_model_ready', 'Load time'], ['rsz_at_model_ready', 'Load RSS'], ['tok', 'LLM tok/s']];
 
@@ -130,6 +132,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   const dayNum = s => Math.round(Date.parse(s + 'T00:00:00Z') / MS);
   const dateOf = d => new Date(d * MS).toISOString().slice(0, 10);
   const median = a => { const s = [...a].sort((x, y) => x - y), n = s.length; return n % 2 ? s[n >> 1] : (s[n / 2 - 1] + s[n / 2]) / 2; };
+  const p90 = a => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * 0.9))]; };
   const fmtPct = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1) + '%';
   const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
@@ -192,7 +195,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     if (pts.length < 14) return null;
     const v = pts.map(p => p[1]), base = median(v.slice(0, 7)), cur = median(v.slice(-7));
     const rel = []; for (let i = 1; i < v.length; i++) rel.push(Math.abs(Math.log(v[i] / v[i - 1])));
-    return { base, cur, delta: (cur / base - 1) * 100, noise: median(rel) * 100 };
+    return { base, cur, delta: (cur / base - 1) * 100, noise: p90(rel) * 100 };
   }
   const winDays = () => WINDOWS.find(w => w[0] === state.win)[1];
   const worse = (r, d) => higherIsBetter(r) ? -d : d;
@@ -314,7 +317,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     const all = data.series[n], from = last - wd + 1, shown = all.filter(p => p[0] >= from);
     const s = summarize(clip(f, n, all, wd, last));
     $('stats').innerHTML = s
-      ? `<span>First 7 points <b>${u(s.base)}</b></span><span>Last 7 points <b>${u(s.cur)}</b></span><span>Δ <b class="${tone(r, s.delta)}">${fmtPct(s.delta)}</b></span><span>Day-to-day noise <b>${s.noise.toFixed(1)}%</b></span><span class="muted mono">${esc(n)}</span>`
+      ? `<span>First 7 points <b>${u(s.base)}</b></span><span>Last 7 points <b>${u(s.cur)}</b></span><span>Δ <b class="${tone(r, s.delta)}">${fmtPct(s.delta)}</b></span><span>Day-to-day noise, p90 <b>${s.noise.toFixed(1)}%</b></span><span class="muted mono">${esc(n)}</span>`
       : `<span class="muted">Fewer than 14 comparable points in this window.</span><span class="muted mono">${esc(n)}</span>`;
     const notes = [...BREAKS, ...CAVEATS].filter(b => b.file.test(f) && b.metric.test(n) && (!b.before || dayNum(b.before) > from)).map(b => b.note);
     $('caveat').hidden = !notes.length; $('caveat').textContent = notes.join(' ');
@@ -369,7 +372,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
         nSeries++;
         for (const [day, v, c] of pts) { const a = acc.get(day) || [0, 0, c]; a[0] += Math.log(v / s.base); a[1]++; acc.set(day, a); }
         const caveat = CAVEATS.some(c => c.file.test(f) && c.metric.test(n));
-        if (!caveat && Math.abs(s.delta) >= 5 && Math.abs(s.delta) >= 3 * s.noise) movers.push({ f, n, d: s.delta, w: worse(r, s.delta) });
+        if (!caveat && !(/^time_to/.test(readingOf(n)) && s.base < MIN_LOAD_SECONDS) && Math.abs(s.delta) >= 5 && Math.abs(s.delta) >= 3 * s.noise) movers.push({ f, n, d: s.delta, w: worse(r, s.delta) });
       }
       const max = Math.max(0, ...[...acc.values()].map(a => a[1]));
       const pts = [...acc.entries()].filter(([, a]) => a[1] >= 0.6 * max).sort((a, b) => a[0] - b[0]).map(([day, a]) => [day, (Math.exp(a[0] / a[1]) - 1) * 100, a[2], a[1]]);
