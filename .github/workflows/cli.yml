@@ -360,6 +360,11 @@ jobs:
           path: bench-ref
           fetch-depth: 1
           persist-credentials: false
+      # Every Metal process loads the whole compiler-cache index at startup, so a cache grown
+      # by earlier jobs inflates load time and RSS. Start each bench from an empty cache.
+      - name: Reset the Metal compiler cache
+        if: runner.os == 'macOS'
+        run: rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.metal"
       - name: Run bench suite
         env:
           TRIPLE: ${{ matrix.triple }}
