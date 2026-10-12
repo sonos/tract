@@ -107,6 +107,32 @@ pub fn set_threading_panel_threshold(panels: usize) {
     THREADING_PANEL_THRESHOLD.store(panels, Ordering::Relaxed);
 }
 
+/// Multiply-accumulate count at or above which the rayon MMM dispatcher
+/// threads a matrix-vector product even when it has fewer panels than
+/// [`current_threading_panel_threshold`]: a long-`k` GEMV over few panels
+/// carries enough work per panel to amortise the dispatch. It only ever adds
+/// threading on top of the panel gate, and leaves matrix-matrix products to
+/// the panel gate alone.
+///
+/// Default `2^21` on native targets; `usize::MAX` (off) on wasm, where the
+/// per-dispatch cost is an order of magnitude higher.
+#[cfg(feature = "multithread-mm")]
+static THREADING_MAC_THRESHOLD: AtomicUsize =
+    AtomicUsize::new(if cfg!(target_family = "wasm") { usize::MAX } else { 1 << 21 });
+
+/// Read the current MMM multiply-accumulate threshold for the rayon path.
+#[cfg(feature = "multithread-mm")]
+pub fn current_threading_mac_threshold() -> usize {
+    THREADING_MAC_THRESHOLD.load(Ordering::Relaxed)
+}
+
+/// Set the MMM multiply-accumulate threshold for the rayon path. Pass
+/// `usize::MAX` to leave the decision to the panel gate alone.
+#[cfg(feature = "multithread-mm")]
+pub fn set_threading_mac_threshold(macs: usize) {
+    THREADING_MAC_THRESHOLD.store(macs, Ordering::Relaxed);
+}
+
 /// Threshold (in tensor elements) below which [`par_chunks_mut`] skips
 /// parallelism and runs its body inline single-threaded. Below this much work,
 /// per-dispatch overhead exceeds the parallel speedup. Distinct from
