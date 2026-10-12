@@ -1,0 +1,4 @@
+[dataflow]
+runtime = "cpu"
+transforms = [{ name = "batchify", symbol = "B", shared = ["scale"] }]
+hints = { B = 4 }
