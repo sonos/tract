@@ -495,10 +495,7 @@ mod tests {
         (model, tvec!(input))
     }
 
-    // wasi has no thread spawning at all; other wasm targets use the shared
-    // rayon global pool instead of a private ThreadPool.
     #[test]
-    #[cfg(not(target_os = "wasi"))]
     fn maxpool_2x2_multithreaded_matches_reference() {
         let cases = [
             ((1usize, 24, 320, 320), PaddingSpec::SameUpper, tvec![1usize, 1]),
@@ -520,9 +517,6 @@ mod tests {
                     .eval(&EvalContext::out_of_plan(), tvec!(input.clone()))
                     .unwrap();
             let op = MaxPool { pool_spec, with_index_outputs: None };
-            #[cfg(target_family = "wasm")]
-            let pool = tract_linalg::multithread::Executor::RayonGlobal;
-            #[cfg(not(target_family = "wasm"))]
             let pool = tract_linalg::multithread::Executor::multithread(4);
             let fast = tract_linalg::multithread::multithread_tract_scope(pool, || {
                 op.eval(&EvalContext::out_of_plan(), tvec!(input))
