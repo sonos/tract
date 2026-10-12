@@ -12,7 +12,9 @@
 //! carries as the graph id and the `set_property` transform sets), with an
 //! optional `runtime` (default `gpu-or-cpu`), `transforms` (applied in order,
 //! each a transform name or a table carrying `name` and the transform's
-//! parameters) and a `knobs` table scoped to that model.
+//! parameters), `hints` (symbol values the runtime sizes its memory for, see
+//! [`RunOptions::memory_sizing_hints`]; a symbol the transformed model does not
+//! have is an error) and a `knobs` table scoped to that model.
 //!
 //! ```toml
 //! [knobs]
@@ -21,6 +23,7 @@
 //! [encoder]
 //! runtime = "cuda"
 //! transforms = [{ name = "batchify", symbol = "BATCH" }, "batchify_data_free"]
+//! hints = { BATCH = 64 }
 //!
 //! [encoder.knobs]
 //! TRACT_AUTOBATCH_LANES = 64
@@ -72,6 +75,8 @@ struct SectionSpec {
     #[serde(default)]
     transforms: Vec<Value>,
     #[serde(default)]
+    hints: BTreeMap<String, i64>,
+    #[serde(default)]
     knobs: BTreeMap<String, Value>,
 }
 
@@ -79,6 +84,7 @@ struct SectionSpec {
 struct Section {
     runtime: Option<String>,
     transforms: Vec<Value>,
+    hints: BTreeMap<String, i64>,
     scope: KnobScope,
 }
 
@@ -114,7 +120,12 @@ impl DeployConfig {
                     .with_context(|| format!("In section {key}"))?;
                 config.sections.insert(
                     key,
-                    Section { runtime: spec.runtime, transforms: spec.transforms, scope },
+                    Section {
+                        runtime: spec.runtime,
+                        transforms: spec.transforms,
+                        hints: spec.hints,
+                        scope,
+                    },
                 );
             }
         }
@@ -140,7 +151,8 @@ impl DeployConfig {
             }
             let rt =
                 runtime_for_name(runtime)?.with_context(|| format!("Unknown runtime {runtime}"))?;
-            let mut runnable = rt.prepare_with_options(model, options)?;
+            let options = section.options_for(&model, options)?;
+            let mut runnable = rt.prepare_with_options(model, &options)?;
             if let Some(lanes) = TRACT_AUTOBATCH_LANES.get() {
                 runnable = Box::new(LanedRunnable::wrap(runnable.into(), lanes)?);
             }
@@ -149,6 +161,20 @@ impl DeployConfig {
                 None => Ok(runnable),
             }
         })
+    }
+}
+
+impl Section {
+    fn options_for(&self, model: &TypedModel, options: &RunOptions) -> TractResult<RunOptions> {
+        let mut options = options.clone();
+        for (name, value) in &self.hints {
+            let symbol = model
+                .symbols
+                .get(name)
+                .with_context(|| format!("Hint for {name}, which is not a symbol of the model"))?;
+            options.memory_sizing_hints.get_or_insert_with(Default::default).set(&symbol, *value);
+        }
+        Ok(options)
     }
 }
 
@@ -238,6 +264,7 @@ fn scoped_env() -> TractResult<BTreeMap<String, EnvSection>> {
             "TRANSFORMS" => {
                 bail!("{key}: transforms are set in a config file, not in the environment")
             }
+            "HINTS" => bail!("{key}: hints are set in a config file, not in the environment"),
             knob => {
                 section.knobs.insert(format!("TRACT_{knob}"), value);
             }

@@ -38,3 +38,11 @@ TRACT_CONFIG=lanes.toml $TRACT_RUN --nnef-tract-core . --runtime deploy dump -q 
     --assert-output-fact "B,T,1,F32"
 TRACT_CONFIG=lanes.toml $TRACT_RUN --nnef-tract-core . --runtime deploy --set T=5 run \
     --input-from-bundle io.npz --assert-output-bundle io.npz --assert-output-fact "5,1,F32"
+
+# Memory hints name symbols of the model as the transforms leave it: the batch
+# symbol once batchified, an error before.
+TRACT_CONFIG=hints.toml $TRACT_RUN --nnef-tract-core . --runtime deploy --set T=5 run \
+    --input-from-bundle io.npz --assert-output-bundle io.npz
+if TRACT_CONFIG=hints-unknown.toml $TRACT_RUN --nnef-tract-core . --runtime deploy dump -q; then
+    exit 1
+fi
