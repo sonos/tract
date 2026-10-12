@@ -11,6 +11,41 @@ use crate::mmm::{
 
 use crate::WeightType;
 
+#[cfg(feature = "multithread-mm")]
+const PACKING_MIN_CHUNK_BYTES: usize = 32 * 1024;
+
+/// Require enough useful input bytes per target executor chunk, excluding padding.
+#[cfg(feature = "multithread-mm")]
+fn packing_has_enough_work(panels: usize, bytes: usize, threads: usize) -> bool {
+    threads > 1 && panels > 1 && bytes / (4 * threads).min(panels) >= PACKING_MIN_CHUNK_BYTES
+}
+
+/// Gate packing before dispatch; the shared element threshold still applies afterwards.
+fn should_parallel_pack(panels: usize, bytes: usize, elements: usize) -> bool {
+    #[cfg(feature = "multithread-mm")]
+    {
+        use crate::multithread::{Executor, current_tract_executor};
+
+        if panels < 2
+            || bytes < 2 * PACKING_MIN_CHUNK_BYTES
+            || elements < crate::multithread::current_threading_element_threshold()
+        {
+            return false;
+        }
+        let threads = match current_tract_executor() {
+            Executor::MultiThread(pool) => pool.current_num_threads(),
+            Executor::RayonGlobal => rayon::current_num_threads(),
+            Executor::SingleThread => 1,
+        };
+        packing_has_enough_work(panels, bytes, threads)
+    }
+    #[cfg(not(feature = "multithread-mm"))]
+    {
+        let _ = (panels, bytes, elements);
+        false
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct PackedFormat {
     pub dt: DatumType,
@@ -229,7 +264,14 @@ impl PackedFormat {
                 packed.as_bytes_mut()[(mn / self.r) * panel_bytes..].fill(0u8);
             }
             let (k_stride, mn_stride) = (strides[k_axis], strides[mn_axis]);
-            if panel_bytes > 0 && (mn_stride == 1 || k_stride == 1) {
+            if panel_bytes > 0
+                && (mn_stride == 1 || k_stride == 1)
+                && should_parallel_pack(
+                    mn.divceil(self.r),
+                    k * mn * t.datum_type().size_of(),
+                    packed_len,
+                )
+            {
                 // For these two layouts `pack_t` writes a column range from the range's first
                 // panel, so panels split freely; the strided fallback lays out all of mn at once.
                 let src = t.as_ptr_unchecked::<u8>() as usize;
@@ -2022,6 +2064,26 @@ mod test {
     }
 
     #[cfg(feature = "multithread-mm")]
+    #[test]
+    fn packing_work_threshold() {
+        use super::{PACKING_MIN_CHUNK_BYTES, packing_has_enough_work};
+
+        for threads in [2, 4, 8] {
+            for panels in [2, 3, 4 * threads - 1, 4 * threads, 4 * threads + 1, 1001] {
+                let boundary = (4 * threads).min(panels) * PACKING_MIN_CHUNK_BYTES;
+                assert!(!packing_has_enough_work(panels, boundary - 1, threads));
+                assert!(packing_has_enough_work(panels, boundary, threads));
+                assert!(packing_has_enough_work(panels, boundary + 1, threads));
+            }
+        }
+        for threads in [0, 1, 4] {
+            assert!(!packing_has_enough_work(0, usize::MAX, threads));
+            assert!(!packing_has_enough_work(1, usize::MAX, threads));
+        }
+        assert!(!packing_has_enough_work(1001, usize::MAX, 1));
+    }
+
+    #[cfg(feature = "multithread-mm")]
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn multithreaded_pack_matches_serial() {
@@ -2032,7 +2094,7 @@ mod test {
             let k = t.shape()[k_axis];
             let packed = format.pack_tensor_view(&t.view(), k_axis, mn_axis).unwrap();
             let packed = packed.downcast_ref::<EagerPackedInput>().unwrap();
-            let values = k * format.r * 4;
+            let values = k * format.r * t.datum_type().size_of();
             packed
                 .packed
                 .as_bytes()
@@ -2040,20 +2102,41 @@ mod test {
                 .flat_map(|panel| panel[..values].to_vec())
                 .collect::<Vec<u8>>()
         };
-        for (k, mn) in [(64, 600), (37, 1001), (9, 5000)] {
-            for r in [4, 5, 8, 16, 24, 32] {
-                let format = super::PackedFormat::new(f32::datum_type(), r, 16);
-                let data: Vec<f32> = (0..k * mn).map(|i| i as f32 * 0.5).collect();
-                // (k, mn) is mn-contiguous; (mn, k) is k-contiguous.
-                for (shape, k_axis, mn_axis) in [([k, mn], 0, 1), ([mn, k], 1, 0)] {
-                    let t = Tensor::from_shape(&shape, &data).unwrap();
-                    let serial = multithread_tract_scope(Executor::SingleThread, || {
-                        pack(&format, &t, k_axis, mn_axis)
-                    });
-                    let parallel = multithread_tract_scope(Executor::multithread(4), || {
-                        pack(&format, &t, k_axis, mn_axis)
-                    });
-                    assert_eq!(serial, parallel, "k {k} mn {mn} r {r} shape {shape:?}");
+        let executors = [Executor::multithread(1), Executor::multithread(4)];
+        for dt in [DatumType::U8, DatumType::F16, DatumType::F32] {
+            let boundary_mn = 16 * super::PACKING_MIN_CHUNK_BYTES / (128 * dt.size_of());
+            for (k, mn) in [
+                (64, 600),
+                (37, 1001),
+                (9, 5000),
+                (16384, 9),
+                (128, boundary_mn - 1),
+                (128, boundary_mn),
+                (128, boundary_mn + 1),
+            ] {
+                for r in [4, 5, 8, 16, 24, 32] {
+                    let format = super::PackedFormat::new(dt, r, 16);
+                    for (shape, k_axis, mn_axis) in
+                        [(vec![k, mn], 0, 1), (vec![mn, k], 1, 0), (vec![k, mn, 2], 0, 1)]
+                    {
+                        let data: Vec<f32> = (0..shape.iter().product::<usize>())
+                            .map(|i| (i % 257) as f32 * 0.5)
+                            .collect();
+                        let t = Tensor::from_shape(&shape, &data).unwrap();
+                        let t = t.cast_to_dt(dt).unwrap().into_owned();
+                        let serial = multithread_tract_scope(Executor::SingleThread, || {
+                            pack(&format, &t, k_axis, mn_axis)
+                        });
+                        for executor in &executors {
+                            let parallel = multithread_tract_scope(executor.clone(), || {
+                                pack(&format, &t, k_axis, mn_axis)
+                            });
+                            assert_eq!(
+                                serial, parallel,
+                                "k {k} mn {mn} r {r} {dt:?} shape {shape:?}"
+                            );
+                        }
+                    }
                 }
             }
         }
