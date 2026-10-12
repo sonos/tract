@@ -37,15 +37,24 @@ impl Executor {
         Executor::multithread_with_name(n, "tract-default")
     }
 
+    /// A private `n`-thread rayon pool.
+    ///
+    /// On wasm targets that cannot spawn threads (`wasm32-wasip1`,
+    /// `wasm32-unknown-unknown`) this quietly returns [`Executor::RayonGlobal`]
+    /// instead: the pool `wasm_bindgen_rayon` set up if there is one, else
+    /// rayon's current-thread fallback, so callers need no wasm special case.
     #[cfg(feature = "multithread-mm")]
     pub fn multithread_with_name(n: usize, name: &str) -> Executor {
         let name = name.to_string();
-        let pool = ThreadPoolBuilder::new()
+        match ThreadPoolBuilder::new()
             .thread_name(move |n| format!("{name}-{n}"))
             .num_threads(n)
             .build()
-            .unwrap();
-        Executor::MultiThread(Arc::new(pool))
+        {
+            Ok(pool) => Executor::MultiThread(Arc::new(pool)),
+            Err(_) if cfg!(target_family = "wasm") => Executor::RayonGlobal,
+            Err(e) => panic!("Failed to build a {n}-thread pool: {e}"),
+        }
     }
 }
 
