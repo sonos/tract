@@ -59,6 +59,19 @@ impl DepthWise {
         unsafe { eval_t_generic::<T>(self, inputs, |a, b| a + b, |a, b| a * b) }
     }
 
+    /// The work `par_chunks_mut` is told about for `outputs` output points. The launch
+    /// decision stays on the output size: weighting small planes by their taps launched
+    /// threads on depthwise ops too short to repay it. Once a plane is large enough to
+    /// launch anyway, each output point counts its whole kernel of multiply-adds, so the
+    /// split is sized by the work rather than the output.
+    fn threading_work(&self, outputs: usize) -> usize {
+        let threshold = tract_linalg::multithread::current_threading_element_threshold();
+        if threshold == 0 || outputs / threshold < 2 {
+            return outputs;
+        }
+        outputs * self.patch.spec.kernel_shape.iter().product::<usize>()
+    }
+
     fn zone_scanners(&self) -> Vec<ZoneScanner<'_>> {
         self.patch.zones.iter().map(|zone| ZoneScanner::new(zone, &self.patch)).collect()
     }
@@ -125,11 +138,11 @@ macro_rules! impl_eval {
                     let block = (64 / T::datum_type().size_of()).max(16);
                     let (i_base, k_base, b_base, o_base) =
                         (iptr as usize, kptr as usize, bias as usize, optr as usize);
-                    let total = output.len();
+                    let work = dw.threading_work(output.len());
                     tract_linalg::multithread::par_chunks_mut(
                         &mut vec![(); channels.div_ceil(block)],
                         1,
-                        total,
+                        work,
                         |first, blocks| {
                             let c0 = first * block;
                             let c1 = channels.min((first + blocks.len()) * block);
@@ -187,10 +200,11 @@ macro_rules! impl_eval {
                 let k_base = kptr as usize;
                 let b_base = bias as usize;
                 let c_us = c as usize;
+                let work = dw.threading_work(total);
                 tract_linalg::multithread::par_chunks_mut(
                     unsafe { output.as_slice_mut_unchecked::<T>() },
                     plane,
-                    total,
+                    work,
                     |first, chunk| {
                         // `par_chunks_mut` calls the body inline, with the whole slice, when the
                         // executor is single-threaded (a one-thread pool included) or the work is
