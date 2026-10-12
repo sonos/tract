@@ -167,11 +167,12 @@ pub fn set_threading_element_threshold(elements: usize) {
 /// The signature is identical with or without the `multithread-mm` feature so
 /// callers compile unchanged; without the feature the body is just `f(0, out)`.
 ///
-/// A launch needs two chunks, and each chunk needs a full
-/// [`current_threading_element_threshold`] of elements. A tensor that only just
-/// clears the threshold used to be cut into `4 * threads` pieces, and that
-/// launch was slower than doing the work on the caller. The split itself stays
-/// bounded by both the work present and `4 * threads` for load balance.
+/// A launch needs two full [`current_threading_element_threshold`]s of work. A
+/// tensor that only just cleared one used to be cut into `4 * threads` pieces,
+/// and that launch was slower than doing the work on the caller. Once launched,
+/// the split gives every thread a chunk, since the launch is already paid and an
+/// idle core is the larger loss on slow cores, and grows with the work up to
+/// `4 * threads` for load balance.
 pub fn par_chunks_mut<T: Send>(
     out: &mut [T],
     row_len: usize,
@@ -189,9 +190,10 @@ pub fn par_chunks_mut<T: Send>(
             return f(0, out);
         }
         let threads = current_executor_threads().max(1);
-        let n_chunks = total_elems
-            .checked_div(threshold)
-            .map_or_else(|| n_rows.min(threads), |work| work.min(n_rows).min(4 * threads));
+        let n_chunks = total_elems.checked_div(threshold).map_or_else(
+            || n_rows.min(threads),
+            |work| work.max(threads).min(4 * threads).min(n_rows),
+        );
         if n_chunks < 2 {
             return f(0, out);
         }
@@ -323,7 +325,9 @@ pub fn par_bin(
                 Executor::SingleThread => 1,
             };
             if nth > 1 {
-                let by_work = a.len().checked_div(threshold).map_or(nth, |w| w.min(4 * nth));
+                // Every thread gets a block once launched; more with the work, up to `4 * nth`.
+                let by_work =
+                    a.len().checked_div(threshold).map_or(nth, |w| w.max(nth).min(4 * nth));
                 let per_block = by_work.div_ceil(n_blocks).max(1);
                 let chunk = period.div_ceil(per_block).next_multiple_of(vector_size()).min(period);
                 let per_block = period.div_ceil(chunk);
@@ -662,6 +666,34 @@ mod chunk_tests {
             .unwrap();
         });
         assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert!(data.iter().all(|b| *b == 1));
+    }
+
+    /// Two thresholds of work on four threads still gives every thread a chunk.
+    /// Splitting by work alone left half the cores idle once the launch was paid.
+    #[test]
+    fn two_thresholds_fill_every_thread() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold * 2];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        let seen = AtomicUsize::new(0);
+        let executor = pool();
+        let threads = match &executor {
+            Executor::MultiThread(pool) => pool.current_num_threads(),
+            _ => rayon::current_num_threads(),
+        };
+        multithread_tract_scope(executor, || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                seen.fetch_add(chunk.len(), Ordering::Relaxed);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), threads.max(2));
+        assert_eq!(seen.load(Ordering::Relaxed), len);
         assert!(data.iter().all(|b| *b == 1));
     }
 
