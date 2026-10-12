@@ -395,7 +395,7 @@ jobs:
           DAY: ${{ needs.prepare.outputs.day }}
         run: |
           tract-cli/tract bench-append --metrics metrics --out bench-data \
-            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
+            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY" --commit "$REF"
           cd bench-data
           git config user.name "tract-ci"
           git config user.email "tract-ci@users.noreply.github.com"
@@ -611,7 +611,7 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-append --metrics result/metrics --out bench-data \
-            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY"
+            --triple "$TRIPLE" --device "$DEVICE" --day "$DAY" --commit "$REF"
           cd bench-data
           git config user.name "tract-ci"
           git config user.email "tract-ci@users.noreply.github.com"

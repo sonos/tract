@@ -296,7 +296,8 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--out <DIR> "bench-data checkout root"))
                 .arg(arg!(--triple <TRIPLE> "Target triple"))
                 .arg(arg!(--device <DEVICE> "Device key"))
-                .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)")),
+                .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)"))
+                .arg(arg!(--commit [SHA] "Benched commit, recorded against the run day")),
         );
         app = app.subcommand(bench_suite::diff_command());
         app = app.subcommand(
