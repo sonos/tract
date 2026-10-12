@@ -285,13 +285,7 @@ impl<K: MatMatMulKer> MatMatMul for K {
                 }
                 // k drives the cache-block size; read it from the first
                 // AddMatMul's packed input (0 if none → max block).
-                let k = non_linear
-                    .iter()
-                    .find_map(|f| match f {
-                        FusedSpec::AddMatMul { a, .. } => Some(a.k()),
-                        _ => None,
-                    })
-                    .unwrap_or(0);
+                let k = matmul_k(non_linear);
                 run_with_scratch_space_2d(
                     self,
                     m,
@@ -306,6 +300,17 @@ impl<K: MatMatMulKer> MatMatMul for K {
     }
 }
 
+/// `k` of the first `AddMatMul` in `non_linear`, or 0 if there is none.
+fn matmul_k(non_linear: &[FusedSpec]) -> usize {
+    non_linear
+        .iter()
+        .find_map(|f| match f {
+            FusedSpec::AddMatMul { a, .. } => Some(a.k()),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
 unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     ker: &K,
     m: usize,
@@ -313,6 +318,8 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
     non_linear: &[FusedSpec],
 ) -> TractResult<()> {
     unsafe {
+        #[cfg(feature = "multithread-mm")]
+        let k = matmul_k(non_linear);
         match crate::multithread::current_tract_executor() {
             Executor::SingleThread => scratch.run_in_tls_scope(|scratch, tls| {
                 for ia in 0..m.divceil(ker.mr()) {
@@ -334,6 +341,7 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 // re-reads is a vector.
                 0,
                 0,
+                m.saturating_mul(k),
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -357,6 +365,7 @@ unsafe fn run_with_scratch_space_vec<K: MatMatMulKer>(
                 // re-reads is a vector.
                 0,
                 0,
+                m.saturating_mul(k),
                 |ia_start, ia_end, _, _, _| {
                     scratch.run_in_tls_scope(|scratch, tls| {
                         for ia in ia_start..ia_end {
@@ -666,6 +675,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
+                0,
                 chunk,
             ),
             #[cfg(feature = "multithread-mm")]
@@ -677,6 +687,7 @@ unsafe fn run_with_scratch_space_2d<K: MatMatMulKer>(
                 ker.nr(),
                 k,
                 K::Acc::datum_type().size_of(),
+                0,
                 chunk,
             ),
         }
@@ -875,6 +886,7 @@ unsafe fn chunked_dispatch_rayon<F>(
     nr: usize,
     k: usize,
     elem: usize,
+    macs: usize,
     run_chunk: F,
 ) -> TractResult<()>
 where
@@ -884,7 +896,9 @@ where
     if n_panels_m == 0 || n_panels_n == 0 {
         return Ok(());
     }
-    if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold() {
+    if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold()
+        && macs < crate::multithread::current_threading_mac_threshold()
+    {
         // Below the threading threshold: run the whole grid as a single chunk
         // on the calling thread. Closure handles its own TLS scope.
         return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
@@ -1125,6 +1139,40 @@ mod blocked_walk_tests {
                 }
             }
         }
+    }
+
+    /// A GEMV under the panel gate threads once its multiply-accumulates clear
+    /// the MAC threshold, and stays inline below it. 32 panels of a 64x1 kernel
+    /// is a 2048-row projection.
+    #[cfg(all(feature = "multithread-mm", not(target_family = "wasm")))]
+    #[test]
+    fn long_k_gemv_threads_below_the_panel_gate() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(4).build().unwrap();
+        let work_items = |k: usize| {
+            let calls = AtomicUsize::new(0);
+            unsafe {
+                chunked_dispatch_rayon(
+                    Some(&pool),
+                    32,
+                    1,
+                    64,
+                    1,
+                    0,
+                    0,
+                    2048 * k,
+                    |_, _, _, _, _| {
+                        calls.fetch_add(1, Ordering::Relaxed);
+                        Ok(())
+                    },
+                )
+            }
+            .unwrap();
+            calls.into_inner()
+        };
+        assert_eq!(work_items(64), 1);
+        assert!(work_items(2048) > 1);
     }
 
     /// The gate is a property of the problem, not only of the machine. On a part
