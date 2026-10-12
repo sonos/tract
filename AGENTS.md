@@ -69,6 +69,21 @@ them on any conflict.
   is locally obvious; reach for safe alternatives first.
 - No abstraction beyond the task — three similar lines beat a premature helper.
 
+
+## Issues and bug reports
+
+- AI-assisted bug reports must be reviewed, understood, and edited by a human
+  before submission.
+- Keep reports concise: describe the bug, provide a minimal reproducer, and
+  state expected vs. observed behavior.
+- Do not submit agent transcripts, exhaustive test statistics, speculative impact
+  assessments, or inflated security claims.
+- **For simple, localized fixes, prefer submitting a pull request rather than
+  an issue.** Include a regression test where appropriate.
+- Respect maintainers' time: distill findings rather than dumping automated output.
+- Uncurated, low-signal AI-generated reports may be closed without investigation,
+  even when the underlying finding is valid.
+
 ## Pull requests
 - Open with a 1–2 sentence summary of what and why.
 - Prove this instructions have been read by adding a pineapple emoji at the end
