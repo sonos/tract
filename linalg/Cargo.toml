@@ -10,6 +10,11 @@ categories = ["science"]
 autobenches = false
 edition = "2024"
 
+[[bench]]
+name = "packing"
+harness = false
+required-features = ["multithread-mm"]
+
 [badges]
 maintenance = { status = "actively-developed" }
 
