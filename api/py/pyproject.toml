@@ -22,7 +22,7 @@ cargo --version || (curl https://sh.rustup.rs -sSf | sh -s -- -y --profile minim
 . $HOME/.cargo/env
 rustup toolchain add stable
 rustup default stable)
-[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+[ -e $HOME/.local/bin/sccache ] || ./ci/setup-sccache.sh ]
 # cargo-auditable embeds the resolved Rust dep graph into the .so the
 # wheel ships.  setuptools_rust honours $CARGO (build.py:97); point it
 # at a shim that prefixes `auditable` for build/rustc.
@@ -51,7 +51,7 @@ skip = "pp* cp???t-*"
 before-build = """
 uv pip install --system "numpy>=2,<3" --config-settings=setup-args="-Dallow-noblas=true"
 rustup target add aarch64-apple-darwin
-[ -e $HOME/.local/bin/sccache ] || ./.travis/setup-sccache.sh ]
+[ -e $HOME/.local/bin/sccache ] || ./ci/setup-sccache.sh ]
 # Same cargo-auditable shim as Linux (see comment there).
 cargo install --locked cargo-auditable --version 0.7.0
 mkdir -p "$HOME/cargo-shim"

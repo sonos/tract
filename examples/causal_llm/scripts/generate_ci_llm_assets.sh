@@ -15,7 +15,7 @@ else
 fi
 
 ROOT=$(cd "$(dirname "$0")/../../.." && pwd)
-MANIFEST=$ROOT/.travis/llm-models.tsv
+MANIFEST=$ROOT/ci/llm-models.tsv
 
 while IFS=$'\t' read -r id hf_id quants
 do

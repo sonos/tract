@@ -19,6 +19,11 @@ DeconvSum      (N) (G) O   H'  W'
 
 // f32, ndarray::indices in order
 
+/// Scatters a deconvolution's `(N) C HkWk HW` gemm into its output and adds the bias.
+///
+/// The bias has the output's rank and broadcasts to it, unit or full on each axis: a
+/// scalar or per-channel bias is never materialised to the output shape when every output
+/// pixel receives exactly one tap.
 #[derive(Clone, Debug, new, Hash, PartialEq, Eq)]
 pub struct DeconvSum {
     pub pool_spec: PoolSpec,
@@ -64,7 +69,6 @@ impl DeconvSum {
             &self.pool_spec.strides(),
             &self.adjustments,
         )?;
-        let mut tensor = bias.into_tensor();
         let hw = *gemm.shape().last().unwrap();
         let n = *output_shape.n().unwrap_or(&1);
         let n_o_hkwk_hw = gemm.into_tensor().into_shape(&[
@@ -73,17 +77,33 @@ impl DeconvSum {
             self.pool_spec.kernel_shape.iter().product(),
             hw,
         ])?;
-        if !self.pool_spec.data_format.has_n() {
-            tensor.insert_axis(0)?;
-        }
-        if !try_fast_nchw_2x2_s2_f32(
-            self,
-            &input_shape,
-            &output_shape,
-            &spatial_output_details,
-            &n_o_hkwk_hw,
-            &mut tensor,
-        )? {
+        let per_channel_bias = bias.len() == 1 || bias.len() == *output_shape.c();
+        let geometry =
+            non_overlapping_geometry(self, &input_shape, &output_shape, &spatial_output_details);
+        let mut tensor = if let (Some((input_hw, strides)), true) = (geometry, per_channel_bias) {
+            let mut tensor = Tensor::zero_dt(n_o_hkwk_hw.datum_type(), &output_shape.shape)?;
+            if !self.pool_spec.data_format.has_n() {
+                tensor.insert_axis(0)?;
+            }
+            eval_non_overlapping(
+                &n_o_hkwk_hw,
+                &bias,
+                &mut tensor,
+                *output_shape.c(),
+                input_hw,
+                strides,
+                self.pool_spec.data_format.c_is_last(),
+            )?;
+            tensor
+        } else {
+            let mut tensor = if bias.shape() == &*output_shape.shape {
+                bias.into_tensor()
+            } else {
+                bias.broadcast_to_shape(&output_shape.shape)?
+            };
+            if !self.pool_spec.data_format.has_n() {
+                tensor.insert_axis(0)?;
+            }
             eval(
                 self,
                 &input_shape,
@@ -92,7 +112,8 @@ impl DeconvSum {
                 &n_o_hkwk_hw,
                 &mut tensor,
             )?;
-        }
+            tensor
+        };
         if !self.pool_spec.data_format.has_n() {
             tensor.remove_axis(0)?;
         }
@@ -104,7 +125,13 @@ impl TypedOp for DeconvSum {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(inputs.len() == 2);
         let shape = super::output_shape(&self.pool_spec, &self.input_shape, &self.adjustments)?;
-        ensure!(*inputs[1].shape == *shape);
+        ensure!(inputs[1].rank() == shape.len());
+        ensure!(
+            inputs[1].shape.iter().zip(shape.iter()).all(|(b, o)| b.is_one() || b == o),
+            "DeconvSum bias {:?} does not broadcast to output {:?}",
+            inputs[1].shape,
+            shape
+        );
         Ok(tvec!(inputs[0].datum_type.fact(shape)))
     }
 
@@ -126,128 +153,130 @@ impl TypedOp for DeconvSum {
     as_op!();
 }
 
-/// NCHW 2×2 stride-2 unpack: write even/odd W with `vld2`/`vst2` instead of
-/// the generic loop's channel-inner scatter (C stride is `H*W` on NCHW).
-fn try_fast_nchw_2x2_s2_f32(
+/// The input extents and strides, rank 1 padded to rank 2 with a leading unit axis, of a
+/// deconvolution whose kernel taps never share an output pixel: on every spatial axis the
+/// kernel extent equals the stride, with no dilation, no leading padding and an output
+/// exactly `input * stride` long. Each output pixel is then one gemm value plus bias.
+fn non_overlapping_geometry(
     op: &DeconvSum,
     input_shape: &DataShape,
     output_shape: &DataShape,
     spatial_output_details: &[ComputedPaddedDim<usize>],
-    gemm: &Tensor,
-    output: &mut Tensor,
-) -> TractResult<bool> {
-    if output.datum_type() != f32::datum_type() {
-        return Ok(false);
+) -> Option<([usize; 2], [usize; 2])> {
+    let rank = input_shape.hw_rank();
+    if rank == 0 || rank > 2 {
+        return None;
     }
-    if op.pool_spec.data_format != crate::ops::nn::DataFormat::NCHW {
-        return Ok(false);
+    let strides = op.pool_spec.strides();
+    let dilations = op.pool_spec.dilations();
+    let input_hw = input_shape.hw_dims();
+    for ax in 0..rank {
+        if op.pool_spec.kernel_shape[ax] != strides[ax]
+            || dilations[ax] != 1
+            || spatial_output_details[ax].pad_before != 0
+            || output_shape.hw_dims()[ax] != input_hw[ax] * strides[ax]
+        {
+            return None;
+        }
     }
-    if op.pool_spec.kernel_shape[..] != [2, 2] {
-        return Ok(false);
-    }
-    if op.pool_spec.strides()[..] != [2, 2] || op.pool_spec.dilations()[..] != [1, 1] {
-        return Ok(false);
-    }
-    if spatial_output_details.len() != 2
-        || spatial_output_details[0].pad_before != 0
-        || spatial_output_details[1].pad_before != 0
-    {
-        return Ok(false);
-    }
-    if *output_shape.w_stride() != 1 {
-        return Ok(false);
-    }
-    let ih = input_shape.hw_dims()[0];
-    let iw = input_shape.hw_dims()[1];
-    let oh = output_shape.hw_dims()[0];
-    let ow = output_shape.hw_dims()[1];
-    if oh != ih * 2 || ow != iw * 2 {
-        return Ok(false);
-    }
-    unsafe {
-        deconv_nchw_2x2_s2_f32(gemm, output, output_shape, ih, iw);
-    }
-    Ok(true)
+    Some(if rank == 1 {
+        ([1, input_hw[0]], [1, strides[0]])
+    } else {
+        ([input_hw[0], input_hw[1]], [strides[0], strides[1]])
+    })
 }
 
-unsafe fn deconv_nchw_2x2_s2_f32(
+/// Write the output of a deconvolution [`non_overlapping_geometry`] accepts from its
+/// `N C HkWk HW` gemm and a bias of one value or one per channel, each pixel once.
+/// `output` carries the N axis and is fully overwritten.
+fn eval_non_overlapping(
     gemm: &Tensor,
+    bias: &Tensor,
     output: &mut Tensor,
-    output_shape: &DataShape,
-    ih: usize,
-    iw: usize,
-) {
-    unsafe {
-        let gptr = gemm.as_ptr::<f32>().expect("f32 gemm");
-        let optr = output.as_ptr_mut::<f32>().expect("f32 out");
-        let n = *output_shape.n().unwrap_or(&1);
-        let oc = *output_shape.c();
-        let g_n = gemm.strides()[0];
-        let g_o = gemm.strides()[1];
-        let g_k = gemm.strides()[2];
-        let g_i = gemm.strides()[3];
-        let o_n = *output_shape.n_stride().unwrap_or(&0) as isize;
-        let o_c = *output_shape.c_stride() as isize;
-        let o_h = *output_shape.h_stride() as isize;
-        for ni in 0..n as isize {
-            for o in 0..oc as isize {
-                let g = gptr.offset(ni * g_n + o * g_o);
-                let dst = optr.offset(ni * o_n + o * o_c);
-                let src00 = g;
-                let src01 = g.offset(g_k);
-                let src10 = g.offset(2 * g_k);
-                let src11 = g.offset(3 * g_k);
-                for ix in 0..ih {
-                    let in_row = (ix * iw) as isize * g_i;
-                    interleave_add_row(
-                        dst.offset((2 * ix) as isize * o_h),
-                        src00.offset(in_row),
-                        src01.offset(in_row),
-                        iw,
-                        g_i,
-                    );
-                    interleave_add_row(
-                        dst.offset((2 * ix + 1) as isize * o_h),
-                        src10.offset(in_row),
-                        src11.offset(in_row),
-                        iw,
-                        g_i,
-                    );
+    channels: usize,
+    input_hw: [usize; 2],
+    strides: [usize; 2],
+    c_is_last: bool,
+) -> TractResult<()> {
+    ensure!(bias.len() == 1 || bias.len() == channels);
+    let dt = output.datum_type();
+    dispatch_floatlike!(write_non_overlapping(dt)(
+        gemm,
+        bias,
+        output,
+        channels,
+        input_hw,
+        strides,
+        c_is_last,
+        |a, b| a + b
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_non_overlapping<T: Datum + Copy>(
+    gemm: &Tensor,
+    bias: &Tensor,
+    output: &mut Tensor,
+    channels: usize,
+    input_hw: [usize; 2],
+    strides: [usize; 2],
+    c_is_last: bool,
+    add: impl Fn(T, T) -> T + Copy,
+) -> TractResult<()> {
+    let gemm_view = gemm.try_as_plain_ram()?;
+    let gemm = gemm_view.as_slice::<T>()?;
+    let bias_view = bias.try_as_plain_ram()?;
+    let bias = bias_view.as_slice::<T>()?;
+    let mut output_view = output.try_as_plain_ram_mut()?;
+    let output = output_view.as_slice_mut::<T>()?;
+    let bias_at = |c: usize| if bias.len() == 1 { bias[0] } else { bias[c] };
+    let [ih, iw] = input_hw;
+    let [sh, sw] = strides;
+    let (oh, ow) = (ih * sh, iw * sw);
+    let plane = ih * iw;
+    let taps = sh * sw;
+    if c_is_last {
+        for (gemm_n, output_n) in gemm
+            .chunks_exact(channels * taps * plane)
+            .zip(output.chunks_exact_mut(oh * ow * channels))
+        {
+            for (oy, row) in output_n.chunks_exact_mut(ow * channels).enumerate() {
+                let (iy, ky) = (oy / sh, oy % sh);
+                for (ox, pixel) in row.chunks_exact_mut(channels).enumerate() {
+                    let (ix, kx) = (ox / sw, ox % sw);
+                    let tap = (ky * sw + kx) * plane + iy * iw + ix;
+                    for (c, out) in pixel.iter_mut().enumerate() {
+                        *out = add(gemm_n[c * taps * plane + tap], bias_at(c));
+                    }
+                }
+            }
+        }
+    } else {
+        for (nc, (gemm_nc, output_nc)) in
+            gemm.chunks_exact(taps * plane).zip(output.chunks_exact_mut(oh * ow)).enumerate()
+        {
+            let b = bias_at(nc % channels);
+            for (oy, row) in output_nc.chunks_exact_mut(ow).enumerate() {
+                let (iy, ky) = (oy / sh, oy % sh);
+                let tap_row = |kx: usize| &gemm_nc[(ky * sw + kx) * plane + iy * iw..][..iw];
+                if sw == 2 {
+                    for (pair, (&even, &odd)) in
+                        row.chunks_exact_mut(2).zip(tap_row(0).iter().zip(tap_row(1)))
+                    {
+                        pair[0] = add(even, b);
+                        pair[1] = add(odd, b);
+                    }
+                } else {
+                    for kx in 0..sw {
+                        for (out, &g) in row[kx..].iter_mut().step_by(sw).zip(tap_row(kx)) {
+                            *out = add(g, b);
+                        }
+                    }
                 }
             }
         }
     }
-}
-
-unsafe fn interleave_add_row(
-    dst: *mut f32,
-    even: *const f32,
-    odd: *const f32,
-    iw: usize,
-    src_stride: isize,
-) {
-    unsafe {
-        let mut i = 0usize;
-        #[cfg(target_arch = "aarch64")]
-        if src_stride == 1 {
-            use std::arch::aarch64::*;
-            while i + 4 <= iw {
-                let e = vld1q_f32(even.add(i));
-                let o = vld1q_f32(odd.add(i));
-                let mut d = vld2q_f32(dst.add(2 * i));
-                d.0 = vaddq_f32(d.0, e);
-                d.1 = vaddq_f32(d.1, o);
-                vst2q_f32(dst.add(2 * i), d);
-                i += 4;
-            }
-        }
-        while i < iw {
-            let di = dst.add(2 * i);
-            *di += *even.offset(i as isize * src_stride);
-            *di.add(1) += *odd.offset(i as isize * src_stride);
-            i += 1;
-        }
-    }
+    Ok(())
 }
 
 fn eval(
@@ -681,7 +710,7 @@ impl_eval! {
     }
 
 crate::declare_knob!(
-    TRACT_DISABLE_DEPTHWISE_DECONV,
+    scopable TRACT_DISABLE_DEPTHWISE_DECONV,
     bool,
     false,
     "Disable the fused depthwise-deconvolution path, falling back to einsum + DeconvSum."

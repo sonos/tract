@@ -76,12 +76,15 @@ pub mod ops;
 pub mod axes;
 pub mod batchify;
 pub mod broadcast;
+#[cfg(feature = "deploy")]
+pub mod deploy;
 pub mod floats;
 pub mod framework;
 pub mod lanes;
 pub mod model;
 pub mod optim;
 pub mod plan;
+pub mod unbatched;
 #[macro_use]
 pub mod runtime;
 #[macro_use]

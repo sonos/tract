@@ -153,6 +153,11 @@ impl OptMaxPool {
         {
             return Ok(tvec!(values.into_tvalue()));
         }
+        if self.with_index_outputs.is_none()
+            && let Some(values) = self.try_row_spans::<T>(input, geo)?
+        {
+            return Ok(tvec!(values.into_tvalue()));
+        }
 
         let input_plain = input.try_as_plain_ram()?;
         let input: ArrayViewD<T> = input_plain.to_array_view()?;
@@ -226,77 +231,183 @@ impl OptMaxPool {
         let mut values =
             unsafe { Tensor::uninitialized_dt(input.datum_type(), &geo.output_shape.shape)? };
         unsafe {
-            maxpool_2x2_f32(input.as_ptr::<f32>()?, values.as_ptr_mut::<f32>()?, geo);
+            maxpool_2x2_f32(
+                input.as_ptr::<f32>()? as usize,
+                values.as_slice_mut_unchecked::<f32>(),
+                geo,
+            )?;
         }
         Ok(Some(values))
     }
-}
 
-unsafe fn maxpool_2x2_f32(iptr: *const f32, optr: *mut f32, geo: &ConcretePoolGeometry) {
-    unsafe {
+    /// Any 2D pool, walked one output row at a time over images of contiguous pixels: a
+    /// channel plane of 1-element pixels when channels come first, a whole image of
+    /// C-element pixels when they come last. Each kernel tap folds into the row over the
+    /// span of pixels where it lands in bounds, so a stride-1 tap reduces two contiguous
+    /// slices. Taps fold in the generic walk's order with its comparison, so both pick the
+    /// same values.
+    fn try_row_spans<T: Datum + Copy + num_traits::Bounded + PartialOrd>(
+        &self,
+        input: &Tensor,
+        geo: &ConcretePoolGeometry,
+    ) -> TractResult<Option<Tensor>> {
+        let patch = &geo.patch;
         let ish = &geo.input_shape;
-        let osh = &geo.output_shape;
-        let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
-        let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
-        let sh = geo.patch.spec.strides[0] as isize;
-        let sw = geo.patch.spec.strides[1] as isize;
-        let pt = geo.patch.pad_before[0] as isize;
-        let pl = geo.patch.pad_before[1] as isize;
-        let ih_stride = *ish.h_stride() as isize;
-        let oh_stride = *osh.h_stride() as isize;
-        let n = *ish.n().unwrap_or(&1) as isize;
-        let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
-        let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
-        let c = *ish.c() as isize;
-        let ic_stride = *ish.c_stride() as isize;
-        let oc_stride = *osh.c_stride() as isize;
-        // Fully-valid 2×2 windows (both taps in-bounds). SameUpper 2×2 s=1
-        // keeps H/W and pads after, so the last row/col are partial.
-        let simd_s1 = sh == 1 && sw == 1;
-        let y0 = pt.max(0) as usize;
-        let y1 = ((h - 1 + pt).max(0) as usize).min(oh);
-        let x0 = pl.max(0) as usize;
-        let x1 = ((w - 1 + pl).max(0) as usize).min(ow);
-        for nn in 0..n {
-            for cc in 0..c {
-                let in_base = nn * in_stride + cc * ic_stride;
-                let out_base = nn * on_stride + cc * oc_stride;
-                if simd_s1 && y1 > y0 && x1 > x0 {
-                    maxpool_2x2_s1_valid_f32(
-                        iptr.offset(in_base + (y0 as isize - pt) * ih_stride + (x0 as isize - pl)),
-                        optr.offset(out_base + y0 as isize * oh_stride + x0 as isize),
-                        y1 - y0,
-                        x1 - x0,
-                        ih_stride,
-                        oh_stride,
-                    );
+        if patch.rank() != 2 {
+            return Ok(None);
+        }
+        let (h, w, c) = (ish.hw_dims()[0], ish.hw_dims()[1], *ish.c());
+        let px = if self.pool_spec.data_format.c_is_last() { c } else { 1 };
+        let contiguous = if px == 1 {
+            *ish.w_stride() == 1 && *ish.h_stride() == w && *ish.c_stride() == h * w
+        } else {
+            *ish.c_stride() == 1 && *ish.w_stride() == c && *ish.h_stride() == w * c
+        };
+        if !contiguous {
+            return Ok(None);
+        }
+        let (oh, ow) = (patch.output_shape[0], patch.output_shape[1]);
+        let spec = &patch.spec;
+        let (kh, kw) = (spec.kernel_shape[0], spec.kernel_shape[1]);
+        let (sh, sw) = (spec.strides[0], spec.strides[1]);
+        let (dh, dw) = (spec.dilations[0], spec.dilations[1]);
+        let (pt, pl) = (patch.pad_before[0] as isize, patch.pad_before[1] as isize);
+        let mut output = Tensor::zero_dt(input.datum_type(), &geo.output_shape.shape)?;
+        let mut output_plain = output.try_as_plain_ram_mut()?;
+        let output_slice = output_plain.as_slice_mut::<T>()?;
+        output_slice.fill(T::min_value());
+        let input_plain = input.try_as_plain_ram()?;
+        let input_slice = input_plain.as_slice::<T>()?;
+        let column_spans: TVec<(usize, usize, usize)> = (0..kw)
+            .filter_map(|kx| {
+                let offset = (kx * dw) as isize - pl;
+                let last = w as isize - 1 - offset;
+                if last < 0 {
+                    return None;
                 }
-                for oy in 0..oh {
-                    let interior_y = simd_s1 && oy >= y0 && oy < y1;
-                    for ox in 0..ow {
-                        if interior_y && ox >= x0 && ox < x1 {
-                            continue;
-                        }
-                        let mut m = f32::MIN;
-                        for ky in 0..2 {
-                            let iy = oy as isize * sh + ky - pt;
-                            if iy < 0 || iy >= h {
-                                continue;
+                let lo = if offset >= 0 { 0 } else { (-offset as usize).div_ceil(sw) };
+                let hi = (last as usize / sw + 1).min(ow);
+                (lo < hi).then(|| (lo, hi, ((lo * sw) as isize + offset) as usize))
+            })
+            .collect();
+        for (image, out_image) in
+            input_slice.chunks_exact(h * w * px).zip(output_slice.chunks_exact_mut(oh * ow * px))
+        {
+            for (oy, row) in out_image.chunks_exact_mut(ow * px).enumerate() {
+                for ky in 0..kh {
+                    let iy = (oy * sh + ky * dh) as isize - pt;
+                    if iy < 0 || iy >= h as isize {
+                        continue;
+                    }
+                    let irow = &image[iy as usize * w * px..][..w * px];
+                    for &(lo, hi, start) in &column_spans {
+                        let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
+                        if sw == 1 {
+                            fold_max(row, taps.iter());
+                        } else if px == 1 {
+                            fold_max(row, taps.iter().step_by(sw));
+                        } else {
+                            for (pixel, taps) in row.chunks_exact_mut(px).zip(taps.chunks(sw * px))
+                            {
+                                fold_max(pixel, taps.iter());
                             }
-                            let row = iptr.offset(in_base + iy * ih_stride);
-                            for kx in 0..2 {
-                                let ix = ox as isize * sw + kx - pl;
-                                if ix < 0 || ix >= w {
-                                    continue;
-                                }
-                                m = m.max(*row.offset(ix));
-                            }
                         }
-                        *optr.offset(out_base + oy as isize * oh_stride + ox as isize) = m;
                     }
                 }
             }
         }
+        Ok(Some(output))
+    }
+}
+
+fn fold_max<'a, T: Copy + PartialOrd + 'a>(row: &mut [T], taps: impl Iterator<Item = &'a T>) {
+    for (o, &v) in row.iter_mut().zip(taps) {
+        *o = if *o < v { v } else { *o };
+    }
+}
+
+unsafe fn maxpool_2x2_f32(
+    i_base: usize,
+    out: &mut [f32],
+    geo: &ConcretePoolGeometry,
+) -> TractResult<()> {
+    let ish = &geo.input_shape;
+    let osh = &geo.output_shape;
+    let (h, w) = (ish.hw_dims()[0] as isize, ish.hw_dims()[1] as isize);
+    let (oh, ow) = (geo.patch.output_shape[0], geo.patch.output_shape[1]);
+    let sh = geo.patch.spec.strides[0] as isize;
+    let sw = geo.patch.spec.strides[1] as isize;
+    let pt = geo.patch.pad_before[0] as isize;
+    let pl = geo.patch.pad_before[1] as isize;
+    let ih_stride = *ish.h_stride() as isize;
+    let oh_stride = *osh.h_stride() as isize;
+    let n = *ish.n().unwrap_or(&1) as isize;
+    let in_stride = *ish.n_stride().unwrap_or(&0) as isize;
+    let on_stride = *osh.n_stride().unwrap_or(&0) as isize;
+    let c = *ish.c() as isize;
+    let ic_stride = *ish.c_stride() as isize;
+    let oc_stride = *osh.c_stride() as isize;
+    // Fully-valid 2×2 windows (both taps in-bounds). SameUpper 2×2 s=1
+    // keeps H/W and pads after, so the last row/col are partial.
+    let simd_s1 = sh == 1 && sw == 1;
+    let y0 = pt.max(0) as usize;
+    let y1 = ((h - 1 + pt).max(0) as usize).min(oh);
+    let x0 = pl.max(0) as usize;
+    let x1 = ((w - 1 + pl).max(0) as usize).min(ow);
+    let plane_len = oh * ow;
+    let one_plane = |p: isize, plane_out: *mut f32| unsafe {
+        let iptr = i_base as *const f32;
+        let nn = p / c;
+        let cc = p % c;
+        let in_base = nn * in_stride + cc * ic_stride;
+        if simd_s1 && y1 > y0 && x1 > x0 {
+            maxpool_2x2_s1_valid_f32(
+                iptr.offset(in_base + (y0 as isize - pt) * ih_stride + (x0 as isize - pl)),
+                plane_out.offset(y0 as isize * oh_stride + x0 as isize),
+                y1 - y0,
+                x1 - x0,
+                ih_stride,
+                oh_stride,
+            );
+        }
+        for oy in 0..oh {
+            let interior_y = simd_s1 && oy >= y0 && oy < y1;
+            for ox in 0..ow {
+                if interior_y && ox >= x0 && ox < x1 {
+                    continue;
+                }
+                let mut m = f32::MIN;
+                for ky in 0..2 {
+                    let iy = oy as isize * sh + ky - pt;
+                    if iy < 0 || iy >= h {
+                        continue;
+                    }
+                    let row = iptr.offset(in_base + iy * ih_stride);
+                    for kx in 0..2 {
+                        let ix = ox as isize * sw + kx - pl;
+                        if ix < 0 || ix >= w {
+                            continue;
+                        }
+                        m = m.max(*row.offset(ix));
+                    }
+                }
+                *plane_out.offset(oy as isize * oh_stride + ox as isize) = m;
+            }
+        }
+    };
+    if oc_stride == plane_len as isize && on_stride == c * oc_stride {
+        tract_linalg::multithread::par_chunks_mut(out, plane_len, out.len(), |first, chunk| {
+            for (i, plane_out) in chunk.chunks_mut(plane_len).enumerate() {
+                one_plane(first as isize + i as isize, plane_out.as_mut_ptr());
+            }
+            Ok(())
+        })
+    } else {
+        for p in 0..(n * c) {
+            let out_base = (p / c) * on_stride + (p % c) * oc_stride;
+            unsafe { one_plane(p, out.as_mut_ptr().offset(out_base)) };
+        }
+        Ok(())
     }
 }
 
@@ -382,6 +493,37 @@ mod tests {
         .into_tensor()
         .into_tvalue();
         (model, tvec!(input))
+    }
+
+    #[test]
+    fn maxpool_2x2_multithreaded_matches_reference() {
+        let cases = [
+            ((1usize, 24, 320, 320), PaddingSpec::SameUpper, tvec![1usize, 1]),
+            ((2, 8, 33, 17), PaddingSpec::Valid, tvec![2, 2]),
+        ];
+        for (shape, padding, strides) in cases {
+            let c = shape.1;
+            let pool_spec =
+                PoolSpec::new(DataFormat::NCHW, tvec![2, 2], padding, None, Some(strides), c, c);
+            let input = ndarray::Array4::from_shape_fn(shape, |(n, c, y, x)| {
+                ((n * 31 + c * 7 + y * 13 + x * 3) % 97) as f32 * 0.25 - 12.0
+            })
+            .into_tensor()
+            .into_tvalue();
+            // The index-outputs variant never takes the 2x2 fast path, so its
+            // output 0 is the visit_output reference.
+            let reference =
+                MaxPool { pool_spec: pool_spec.clone(), with_index_outputs: Some(DatumType::I32) }
+                    .eval(&EvalContext::out_of_plan(), tvec!(input.clone()))
+                    .unwrap();
+            let op = MaxPool { pool_spec, with_index_outputs: None };
+            let pool = tract_linalg::multithread::Executor::multithread(4);
+            let fast = tract_linalg::multithread::multithread_tract_scope(pool, || {
+                op.eval(&EvalContext::out_of_plan(), tvec!(input))
+            })
+            .unwrap();
+            assert_eq!(*fast[0], *reference[0]);
+        }
     }
 
     #[test]

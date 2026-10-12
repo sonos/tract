@@ -53,7 +53,7 @@ tar = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
 toml = { workspace = true, optional = true, features = ["preserve_order"] }
 tract-linalg = { workspace = true, features = ["hwbench"] }
-tract-core.workspace = true
+tract-core = { workspace = true, features = ["deploy"] }
 tract-hir.workspace = true
 tract-nnef = { workspace = true, features = ["flate2"] }
 tract-nnef-resources.workspace = true

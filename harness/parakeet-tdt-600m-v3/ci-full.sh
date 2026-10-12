@@ -1,9 +1,10 @@
 #!/bin/sh
+# ci-runners: macOS cuda-lovelace
 
 set -ex
 
 ROOT=$(realpath $(dirname $(realpath $0))/../..)
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 for rt in $TRACT_RUNTIMES
 do

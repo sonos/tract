@@ -67,9 +67,7 @@ impl GeluApproximate {
         launch_args.push_i32(len);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
-        unsafe {
-            launch_args.launch(cfg);
-        }
+        launch_args.launch(cfg)?;
         Ok(())
     }
 }

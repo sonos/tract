@@ -1276,6 +1276,64 @@ mod symbol_deps_tests {
     }
 
     #[test]
+    fn scan_forwards_body_requirements() -> TractResult<()> {
+        use crate::ops::array::Range;
+        use crate::ops::cast::cast;
+        use crate::ops::konst::Const;
+        use crate::ops::scan::{InputMapping, OutputMapping, Scan, ScanInfo};
+        let mut model = TypedModel::default();
+        let r = model.symbols.sym("b");
+
+        // top-level binder of r
+        let limit = model.add_source("limit", i64::datum_type().scalar_fact())?;
+        let limit = model.wire_node("limit_tdim", cast(TDim::datum_type()), &[limit])?;
+        let start =
+            model.wire_node("start", Const::new(tensor0(TDim::Val(0)).into_arc_tensor())?, &[])?;
+        let step =
+            model.wire_node("step", Const::new(tensor0(TDim::Val(1)).into_arc_tensor())?, &[])?;
+        let range =
+            model.wire_node("range", Range::new(r.to_dim()), &[start[0], limit[0], step[0]])?;
+
+        // scan whose body requires r: a Cast over a symbolic konst inside the
+        // body, invisible from the top level except through the forwarding
+        let mut body = TypedModel { symbols: model.symbols.clone(), ..TypedModel::default() };
+        let state = body.add_source("state_in", i64::datum_type().fact([1usize]))?;
+        let scan_in = body.add_source("scan_in", i64::datum_type().fact([1usize]))?;
+        let konst = body.wire_node(
+            "body_konst",
+            Const::new(tensor0(TDim::Sym(r)).into_arc_tensor())?,
+            &[],
+        )?;
+        let _casted = body.wire_node("body_cast", cast(f32::datum_type()), &[konst[0]])?;
+        let sum = body.wire_node("sum", crate::ops::math::add(), &[state, scan_in])?;
+        body.select_output_outlets(&[sum[0]])?;
+        let init = model.add_const("init", tensor1(&[0i64]))?;
+        let scanned = model.add_source("scanned", i64::datum_type().fact([3usize]))?;
+        let scan = model.wire_node(
+            "scan",
+            Scan::new(
+                body,
+                vec![InputMapping::Scan(ScanInfo { axis: 0, chunk: 1 }), InputMapping::State],
+                vec![OutputMapping {
+                    scan: Some((0, ScanInfo { axis: 0, chunk: 1 })),
+                    full_dim_hint: None,
+                    last_value_slot: None,
+                    state: true,
+                }],
+                0,
+            )?,
+            &[scanned, init],
+        )?;
+        model.select_output_outlets(&[scan[0], range[0]])?;
+        let deps = symbol_deps_of(&model);
+        assert!(
+            deps.contains(&(scan[0].node, range[0].node)),
+            "expected the scan ordered after the top-level binder, got {deps:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn hidden_input_konst_mention_yields_dep() -> TractResult<()> {
         use crate::ops::array::Range;
         use crate::ops::cast::cast;

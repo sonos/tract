@@ -19,7 +19,7 @@ pub fn criterion(
     let mut group = crit.benchmark_group("net");
 
     let run_params = crate::tensor::run_params_from_subcommand(params, sub_matches)?;
-    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.interface, &run_params)?;
 
     let runnable = params.req_runnable()?;
     let mut state = runnable.spawn()?;
@@ -40,10 +40,10 @@ pub fn run(
     // A stream feeds one row per turn, whatever the lanes the worker holds, so
     // the batch symbol is what an input of one seat carries.
     #[cfg(not(target_family = "wasm"))]
-    if let Some(laned) = params.req_runnable()?.downcast_ref::<tract_core::lanes::LanedRunnable>() {
+    if let Some(laned) = params.laned() {
         run_params.symbols.set(laned.batch_symbol(), 1);
     }
-    let inputs = get_or_make_inputs(&params.tract_model, &run_params)?;
+    let inputs = get_or_make_inputs(&params.interface, &run_params)?;
 
     limits.warmup(&params.req_runnable()?, &inputs)?;
 
@@ -86,7 +86,7 @@ fn bench_streams(
     streams: usize,
 ) -> TractResult<BenchResult> {
     let runnable = params.req_runnable()?;
-    let laned = runnable.downcast_ref::<tract_core::lanes::LanedRunnable>();
+    let laned = params.laned();
     if let Some(laned) = laned {
         ensure!(
             streams <= laned.max_lanes(),
@@ -162,7 +162,7 @@ fn bench_paced(
     sub_matches: &clap::ArgMatches,
 ) -> TractResult<BenchResult> {
     let runnable = params.req_runnable()?;
-    let laned = runnable.downcast_ref::<tract_core::lanes::LanedRunnable>();
+    let laned = params.laned();
     let asked: Option<usize> =
         sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?;
     let ceiling = match (asked, laned.map(|laned| laned.max_lanes())) {

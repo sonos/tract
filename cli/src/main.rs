@@ -112,7 +112,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(-f --format [format]
                   "Hint the model format ('onnx', 'nnef', 'tflite' or 'tf') instead of guess from extension."))
         .arg(Arg::new("input").long("input").short('i').num_args(1).action(clap::ArgAction::Append).long_help(
-                "Set input shape and type (@file.pb or @file.npz:thing.npy or 3,4,i32)."))
+                "Set input shape and type, optionally by name and with a value (3,4,i32 or name:3,4,i32 or name:2,f32=1,2)."))
         .arg(Arg::new("constantize").long("constantize").num_args(1).action(clap::ArgAction::Append).long_help(
                 "Transorm an input into a Constant"))
 
@@ -296,7 +296,8 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--out <DIR> "bench-data checkout root"))
                 .arg(arg!(--triple <TRIPLE> "Target triple"))
                 .arg(arg!(--device <DEVICE> "Device key"))
-                .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)")),
+                .arg(arg!(--day [DATE] "Run day YYYY-MM-DD (default: today)"))
+                .arg(arg!(--commit [SHA] "Benched commit, recorded against the run day")),
         );
         app = app.subcommand(bench_suite::diff_command());
         app = app.subcommand(
@@ -307,7 +308,7 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
                 .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
                 .arg(arg!(--out <PATH> "PR comment markdown output path"))
-                .arg(arg!(--templates [DIR] "Template dir (default: .travis)"))
+                .arg(arg!(--templates [DIR] "Template dir (default: ci)"))
                 .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
         );
         app = app.subcommand(
@@ -843,7 +844,12 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
                 let default = shown((k.default)());
                 let suffix =
                     if current != default { format!(", default {default}") } else { String::new() };
-                println!("{} = {current}  [{}{suffix}]", name_style.paint(k.name), k.type_name);
+                let scopable = if k.scopable { ", scopable" } else { "" };
+                println!(
+                    "{} = {current}  [{}{scopable}{suffix}]",
+                    name_style.paint(k.name),
+                    k.type_name
+                );
                 println!("    {}\n", k.doc);
             }
             return Ok(());

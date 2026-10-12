@@ -1,9 +1,9 @@
 #!/bin/sh
 set -e
 
-[ -d $ROOT/.travis ] || exit 1 "\$ROOT not set correctly '$ROOT'"
+[ -d $ROOT/ci ] || exit 1 "\$ROOT not set correctly '$ROOT'"
 
-sh $ROOT/.travis/cpu-features.sh
+sh $ROOT/ci/cpu-features.sh
 
 export RUSTUP_TOOLCHAIN
 PATH=$PATH:$HOME/.cargo/bin
@@ -63,7 +63,7 @@ export TRACT_MODELS_URL=${TRACT_MODELS_URL:-https://tract-test-assets.tract.rs}
 
 if  [ -n "$LARGE_MODELS" ]
 then
-    export CACHE_FILE=$ROOT/.travis/cache_file.sh
+    export CACHE_FILE=$ROOT/ci/cache_file.sh
     export MODELS=$HOME/.cache/tract-test-assets
     export CACHEDIR=$MODELS
     mkdir -p $MODELS
@@ -72,7 +72,7 @@ then
     MODELS=$TRACT_MODELS_URL
     CACHE_FILE=true
 else
-    CACHE_FILE=$ROOT/.travis/cache_file.sh
+    CACHE_FILE=$ROOT/ci/cache_file.sh
     MODELS=${MODELS:-$HOME/.cache/tract-test-assets}
     export CACHEDIR=${CACHEDIR:-$MODELS}
     mkdir -p $MODELS

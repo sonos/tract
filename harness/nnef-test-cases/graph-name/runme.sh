@@ -13,3 +13,7 @@ version=`cargo metadata --format-version 1 | jq -r '.packages | map(select( (.na
 perl -pi -e "s/$version/0.18.3-pre/" found
 
 diff -u expected found
+
+# The set_property transform renames a model whose graph id names nothing.
+$TRACT_RUN . -t 'set_property(key:"tract.name",value:"renamed")' dump -q --nnef-graph found.renamed
+grep -q '^graph renamed(' found.renamed

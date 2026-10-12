@@ -4,8 +4,9 @@ use crate::ops::cnn::patches::ZoneScanner;
 use crate::ops::nn::DataShape;
 use num_traits::Zero;
 
-/// Largest zone `process_zone_any` hands to the vectorised kernel; 7x7 is 49 taps.
-const MAX_VECTORISED_TAPS: usize = 64;
+/// Largest zone `process_zone_any` hands to the vectorised kernel; 9x9 is 81 taps and 11x11
+/// is 121. The taps live in stack arrays of this size, two per call.
+const MAX_VECTORISED_TAPS: usize = 128;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct DepthWise {
@@ -1000,7 +1001,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_arch = "wasm32"))]
     fn depthwise_multithreaded_matches_reference() {
         let pool = tract_linalg::multithread::Executor::multithread(4);
         tract_linalg::multithread::multithread_tract_scope(pool, || {
@@ -1052,9 +1052,11 @@ mod tests {
         run_dw(DataFormat::NCHW, 8, 24, 24, 5, 5, PaddingSpec::Valid, (1, 1));
         run_dw(DataFormat::NCHW, 8, 12, 20, 5, 1, PaddingSpec::Valid, (1, 1));
         run_dw(DataFormat::NCHW, 8, 12, 20, 3, 5, PaddingSpec::Valid, (1, 1));
-        // 49 taps is the vectorised limit's side, 81 the scalar fallback's.
+        // 49, 81 and 121 taps take the vectorised kernel; 169 is past the limit and stays scalar.
         run_dw(DataFormat::NCHW, 8, 30, 30, 7, 7, PaddingSpec::SameUpper, (1, 1));
         run_dw(DataFormat::NCHW, 8, 30, 30, 9, 9, PaddingSpec::SameUpper, (1, 1));
+        run_dw(DataFormat::NCHW, 8, 30, 30, 11, 11, PaddingSpec::SameUpper, (1, 1));
+        run_dw(DataFormat::NCHW, 8, 30, 30, 13, 13, PaddingSpec::SameUpper, (1, 1));
         // Encoder DW: stride 2 / 3 along W (vld2 / vld3 path).
         run_dw(DataFormat::NCHW, 64, 1, 481, 1, 3, PaddingSpec::SameUpper, (1, 3));
         run_dw(DataFormat::NCHW, 64, 1, 161, 1, 3, PaddingSpec::SameUpper, (1, 2));
@@ -1070,7 +1072,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(target_arch = "wasm32"))]
     fn depthwise_nhwc_multithreaded_matches_reference() {
         let pool = tract_linalg::multithread::Executor::multithread(4);
         tract_linalg::multithread::multithread_tract_scope(pool, || {

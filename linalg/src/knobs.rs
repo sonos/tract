@@ -66,3 +66,31 @@ tract_data::declare_knob!(
     None,
     "Edit the detected instruction-set features, comma-separated with +/- (e.g. '-sve2,+fp16'). Applies to every architecture; a removed feature takes its kernels out of the pool and the dispatch policies that would have named them."
 );
+
+tract_data::declare_knob!(
+    TRACT_LLC_BYTES,
+    String,
+    String::new(),
+    "Last-level cache size (e.g. `8M`, `33554432`) for SoCs whose OS does not expose it."
+);
+
+tract_data::declare_knob!(
+    TRACT_LLC_CONTENDED,
+    bool,
+    false,
+    "Treat the `TRACT_LLC_BYTES` cache as a contended system-level cache."
+);
+
+tract_data::declare_knob!(
+    TRACT_MMM_CHUNK_SLACK_BYTES,
+    Option<usize>,
+    None,
+    "Packed-operand footprint up to which a small-LLC part still splits a matmul in several chunks per thread."
+);
+
+tract_data::declare_knob!(
+    TRACT_MMM_CHUNKS_PER_THREAD,
+    Option<usize>,
+    None,
+    "Force the number of chunks per thread a multithreaded matmul is split in."
+);

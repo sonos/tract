@@ -38,6 +38,21 @@ impl Op for OptScan {
         true
     }
 
+    fn required_bound_symbols(&self, inputs: &[&TypedFact]) -> TVec<Symbol> {
+        let mut syms = super::decluttered::scan_required_bound_symbols(&self.0.plan.model);
+        for fact in inputs {
+            for t in [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten() {
+                if t.datum_type() == TDim::datum_type()
+                    && let Some(slice) =
+                        t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
+                {
+                    syms.extend(slice.iter().flat_map(|d| d.symbols()));
+                }
+            }
+        }
+        syms
+    }
+
     fn name(&self) -> StaticName {
         "Scan".into()
     }

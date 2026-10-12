@@ -1481,32 +1481,32 @@ fn amx_owns_fat_spatial() -> bool {
 }
 
 crate::declare_knob!(
-    TRACT_DISABLE_DIRECT_SPATIAL,
+    scopable TRACT_DISABLE_DIRECT_SPATIAL,
     bool,
     false,
     "Disable the direct spatial convolution, falling back to im2col and a matrix product."
 );
 
 crate::declare_knob!(
-    TRACT_ENABLE_BLOCKED_CONV,
+    scopable TRACT_ENABLE_BLOCKED_CONV,
     bool,
     false,
     "Force-enable the direct blocked convolution on native targets (on by default on wasm)."
 );
 crate::declare_knob!(
-    TRACT_DISABLE_BLOCKED_CONV,
+    scopable TRACT_DISABLE_BLOCKED_CONV,
     bool,
     false,
     "Force-disable the direct blocked convolution on wasm targets (off by default on native)."
 );
 crate::declare_knob!(
-    TRACT_LAZY_IM2COL_MIN_KERNEL,
+    scopable TRACT_LAZY_IM2COL_MIN_KERNEL,
     usize,
     DEFAULT_LAZY_IM2COL_MIN_KERNEL,
     "Minimum convolution kernel volume before lazy im2col is preferred over eager."
 );
 crate::declare_knob!(
-    TRACT_LAZY_IM2COL_MAX_EAGER_BYTES,
+    scopable TRACT_LAZY_IM2COL_MAX_EAGER_BYTES,
     usize,
     DEFAULT_LAZY_IM2COL_MAX_EAGER_BYTES,
     "Eager-im2col scratch-size ceiling, in bytes, above which lazy im2col is preferred."

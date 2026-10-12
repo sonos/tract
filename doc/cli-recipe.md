@@ -185,7 +185,7 @@ power-of-two `nr` kernels; for a fair cross-kernel throughput comparison pick an
 `N` divisible by every `nr` (e.g. `120`).
 
 To compare the whole *model* battery between two commits on a machine CI does not bench
-(the local equivalent of the CI bench comment), use `.travis/bench-compare.sh <ref-a>
+(the local equivalent of the CI bench comment), use `ci/bench-compare.sh <ref-a>
 <ref-b>` — it builds and runs `bench-suite` at each ref and prints the per-metric evaltime
 delta via `tract bench-diff`. See `doc/cost-model.md` "Validating the picks".
 

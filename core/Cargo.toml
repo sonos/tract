@@ -21,10 +21,12 @@ bit-set.workspace = true
 derive-new.workspace = true
 downcast-rs.workspace = true
 erased-serde.workspace = true
+figment2 = { workspace = true, optional = true }
 dyn-clone.workspace = true
 lazy_static.workspace = true
 log.workspace = true
 maplit.workspace = true
+metrics.workspace = true
 ndarray.workspace = true
 num-integer.workspace = true
 num-traits.workspace = true
@@ -41,6 +43,7 @@ inventory.workspace = true
 default = [ ]
 complex = [ "tract-data/complex", "tract-linalg/complex" ]
 paranoid_assertions = []
+deploy = ["dep:figment2"]
 
 [dev-dependencies]
 env_logger.workspace = true
@@ -49,6 +52,7 @@ lazy_static.workspace = true
 approx.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
+metrics-util.workspace = true
 criterion.workspace = true
 proptest.workspace = true
 

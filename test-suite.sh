@@ -1,2 +1,2 @@
 #!/bin/sh
-exec ./.travis/native.sh
+exec ./ci/native.sh

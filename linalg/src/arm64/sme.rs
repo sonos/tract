@@ -61,7 +61,7 @@ MMMExternKernel!(aarch64;
     sme_mmm_f32_32x32<f32>(32, 32)@(128, 128)
     isa(Aarch64Sme)
     can_fuse(CAN_FUSE)
-
+    row_major_store(true)
 );
 
 MMMExternKernel!(aarch64;
@@ -314,6 +314,161 @@ mod tests {
         PackedPackedProblem::frame(&*sme_qmmm_i32_32x32, 1, 35, 37, a, b)
             .with_output_type(DatumType::I8)
             .check()
+    }
+
+    // Output laid out [n, m], so M is contiguous and N is strided. That is the
+    // recognition matmul layout, and it has to match a row-major reference.
+    #[test]
+    fn sme_matmul_stores_along_m() {
+        if !has_sme() {
+            return;
+        }
+        use crate::mmm::{AsInputValue, FusedSpec};
+        for (m, k, n) in [(32usize, 8usize, 32usize), (40, 8, 40), (48, 4, 96), (12, 8, 32)] {
+            let a: Vec<f32> = (0..m * k).map(|i| (i as f32 * 0.013) - 1.5).collect();
+            let b: Vec<f32> = (0..k * n).map(|i| (i as f32 * 0.017) + 0.25).collect();
+            let problem = PackedPackedProblem::frame(&*sme_mmm_f32_32x32, 0, m, n, a, b);
+            let expected = problem.reference().unwrap();
+            let (packed_a, packed_b) = problem.padded_inputs().unwrap();
+            let (pack_a, pack_b) =
+                &crate::frame::mmm::kernel::MatMatMulKer::packings(&*sme_mmm_f32_32x32)[0];
+            let pa = pack_a.prepare_one(&packed_a, 1, 0).unwrap();
+            let pb = pack_b.prepare_one(&packed_b, 0, 1).unwrap();
+            let mut found = tract_data::internal::Tensor::zero::<f32>(&[n, m]).unwrap();
+            unsafe {
+                let c = sme_mmm_f32_32x32.c_view(Some(1), Some(0)).wrap(&found.view_mut());
+                sme_mmm_f32_32x32
+                    .run(
+                        m,
+                        n,
+                        &[
+                            FusedSpec::AddMatMul {
+                                a: AsInputValue::Borrowed(&*pa),
+                                b: AsInputValue::Borrowed(&*pb),
+                                packing: 0,
+                            },
+                            FusedSpec::Store(c),
+                        ],
+                    )
+                    .unwrap();
+            }
+            let exp = expected.to_plain_array_view::<f32>().unwrap();
+            let got = found.to_plain_array_view::<f32>().unwrap();
+            for mi in 0..m {
+                for ni in 0..n {
+                    let g = got[[ni, mi]];
+                    let e = exp[[mi, ni]];
+                    assert!((g - e).abs() < 1e-3, "{m}x{k}x{n} ({mi},{ni}) got {g} expected {e}");
+                }
+            }
+        }
+    }
+
+    // LoadTile writes a known pattern. Row-major hits the contiguous-N store,
+    // column-major hits the vertical-slice store, arbitrary strides stay on
+    // the scalar path.
+    #[test]
+    fn sme_store_layouts() {
+        if !has_sme() {
+            return;
+        }
+        use crate::frame::mmm::tests::store::{StoreLayout, store_pattern};
+        for layout in [StoreLayout::RowMajor, StoreLayout::ColMajor, StoreLayout::Arbitrary] {
+            store_pattern::<_, f32, f32>(&*sme_mmm_f32_32x32, layout);
+        }
+    }
+
+    // m <= 16 on a full N panel stores those rows directly. m > 16, a short
+    // N panel, a full 32-row panel, and strided A stay on the old tile walk.
+    // Guard rows past m must stay untouched, including with the fused
+    // row-add + scalar-max that Relu.1.low runs.
+    fn check_live_rows(packing: usize, m: usize, k: usize, n: usize, fuse: bool) {
+        use crate::BinOp;
+        use crate::mmm::{AsInputValue, FusedSpec};
+        let a_data: Vec<f32> = (0..m * k).map(|i| (i as f32 * 0.013) - 1.5).collect();
+        let b_data: Vec<f32> = (0..k * n).map(|i| (i as f32 * 0.017) + 0.25).collect();
+        let bias: Vec<f32> = (0..m).map(|i| (i as f32) * 0.1 - 0.3).collect();
+        let cap = 0.25f32;
+        let problem = PackedPackedProblem::frame(
+            &*sme_mmm_f32_32x32,
+            packing,
+            m,
+            n,
+            a_data.clone(),
+            b_data.clone(),
+        );
+        let (packed_a, packed_b) = problem.padded_inputs().unwrap();
+        let (pack_a, pack_b) =
+            &crate::frame::mmm::kernel::MatMatMulKer::packings(&*sme_mmm_f32_32x32)[packing];
+        let pa = pack_a.prepare_one(&packed_a, 1, 0).unwrap();
+        let pb = pack_b.prepare_one(&packed_b, 0, 1).unwrap();
+        let rows = m + 32;
+        let storage = vec![7.5f32; rows * n];
+        let mut found = tract_data::internal::Tensor::from_shape(&[rows, n], &storage).unwrap();
+        let bias_t = tract_data::internal::Tensor::from_shape(&[m], &bias).unwrap();
+        let cap_t = tract_data::internal::tensor0(cap);
+        unsafe {
+            let c = sme_mmm_f32_32x32.c_view(Some(0), Some(1)).wrap(&found.view_mut());
+            let mut ops = vec![FusedSpec::AddMatMul {
+                a: AsInputValue::Borrowed(&*pa),
+                b: AsInputValue::Borrowed(&*pb),
+                packing,
+            }];
+            if fuse {
+                ops.push(FusedSpec::BinPerRow(bias_t.view(), BinOp::Add));
+                ops.push(FusedSpec::BinScalar(&cap_t, BinOp::Max));
+            }
+            ops.push(FusedSpec::Store(c));
+            sme_mmm_f32_32x32.run(m, n, &ops).unwrap();
+        }
+        let got = found.to_plain_array_view::<f32>().unwrap();
+        for mi in 0..m {
+            for ni in 0..n {
+                let mut acc = 0f32;
+                for ki in 0..k {
+                    acc += a_data[ki + k * mi] * b_data[ni + n * ki];
+                }
+                if fuse {
+                    acc = (acc + bias[mi]).max(cap);
+                }
+                let g = got[[mi, ni]];
+                let tol = 1e-4 * acc.abs().max(1.0);
+                assert!(
+                    (g - acc).abs() <= tol,
+                    "pack {packing} fuse {fuse} {m}x{k}x{n} ({mi},{ni}) got {g} expected {acc}"
+                );
+            }
+        }
+        for mi in m..rows {
+            for ni in 0..n {
+                let g = got[[mi, ni]];
+                assert_eq!(g, 7.5, "wrote past live m at ({mi},{ni}): {g}");
+            }
+        }
+    }
+
+    #[test]
+    fn sme_partial_m_rows() {
+        if !has_sme() {
+            return;
+        }
+        for fuse in [false, true] {
+            for (m, k, n) in
+                [(1usize, 4usize, 32usize), (12, 96, 64), (12, 96, 40), (16, 8, 32), (16, 3, 96)]
+            {
+                check_live_rows(0, m, k, n, fuse);
+            }
+        }
+        for (m, k, n) in [
+            (17usize, 8usize, 32usize),
+            (24, 8, 64),
+            (32, 8, 32),
+            (40, 8, 64),
+            (48, 4, 32),
+            (64, 4, 64),
+        ] {
+            check_live_rows(0, m, k, n, true);
+        }
     }
 
     // Strided store path: hand-built Clear + Store chain with non-contig C.

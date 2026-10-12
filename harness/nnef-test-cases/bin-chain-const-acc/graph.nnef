@@ -1,0 +1,14 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A constant non-uniform tensor feeds slot 0 of an elementwise chain, so the
+# chain's accumulator is a const while its result is not.
+graph bin_chain_const_acc(input) -> (output)
+{
+    input = external<scalar>(shape = [1, 768]);
+    w = reshape(tract_core_cast(tract_core_range(0, 768, 1), to = 'f32'), shape = [1, 768]);
+    a = mul(w, input);
+    b = add(a, input);
+    output = sigmoid(b);
+}

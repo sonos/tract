@@ -16,7 +16,7 @@ else
   exit 0
 fi
 
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 set -ex
 

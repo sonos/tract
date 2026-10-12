@@ -6,7 +6,7 @@ NC='\033[0m' # No Color
 set -x
 
 ROOT=$(dirname $0)/..
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 set -e
 

@@ -18,10 +18,10 @@ $TRACT_RUN . -O run --allow-random-input --save-outputs ref.npz
 # atol=rtol=0). Comparing against a same-platform serial run keeps this
 # independent of which SIMD kernel the host registers.
 #
-# A default build (including the CI cli-tests harness) has no multithread-mm, so
-# `--threads` bails; drive this case with a multithread-mm TRACT_RUN (the plan's
-# verification step does) to exercise the parallel leg. We warn rather than skip
-# silently so a serial-only run is never mistaken for threaded coverage.
+# A default build has no multithread-mm (the CI CLI has, through bench-suite), so
+# `--threads` bails; drive this case with a multithread-mm TRACT_RUN to exercise
+# the parallel leg. We warn rather than skip silently so a serial-only run is
+# never mistaken for threaded coverage.
 if $TRACT_RUN --threads 2 . dump -q >/dev/null 2>&1; then
     $TRACT_RUN --threads 8 --threading-threshold 0 . -O run \
         --allow-random-input --assert-output-bundle ref.npz --approx exact

@@ -1,11 +1,11 @@
 //! Shared bench-comparison math: the one place that answers "what move makes this
 //! metric a PR red?". Used by `bench-expectations` (so the suite retries exactly the
-//! would-be reds) and, later, the report. Port of `.travis/bench_common.py`.
+//! would-be reds) and the report.
 
 use serde::Deserialize;
 use tract_hir::internal::*;
 
-/// Noise guards for the PR-vs-main comparison (`.travis/bench-thresholds.toml`).
+/// Noise guards for the PR-vs-main comparison (`ci/bench-thresholds.toml`).
 #[derive(Deserialize)]
 pub struct Thresholds {
     #[serde(default = "default_k")]

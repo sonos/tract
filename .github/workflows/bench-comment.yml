@@ -1,6 +1,6 @@
 name: Bench comment
 
-# Trampoline for the Bench report. The Bench workflow's automatic `pull_request` trigger
+# Trampoline for the bench report. The CLI workflow's automatic `pull_request` trigger
 # gets a read-only token on fork PRs and so cannot comment (a `/ci bench` workflow_dispatch
 # run, by contrast, always has a write token and comments directly, fork or not). It instead
 # uploads the rendered comparison as the `bench-comment` artifact; this workflow runs on
@@ -15,10 +15,10 @@ name: Bench comment
 # way to get a write token for fork-PR comments.
 on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
-    workflows: ["Bench"]
+    workflows: ["CLI"]
     types: [completed]
-  # Re-runs of the Bench workflow do not re-fire workflow_run, so a re-run never posts. This
-  # lets a maintainer re-post from an already-finished Bench run (reusing its artifact) without
+  # Re-runs of the CLI workflow do not re-fire workflow_run, so a re-run never posts. This
+  # lets a maintainer re-post from an already-finished CLI run (reusing its artifact) without
   # re-running the bench or pushing a commit: `gh workflow run bench-comment.yml -f run_id=<id>`.
   workflow_dispatch:
     inputs:

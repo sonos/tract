@@ -56,9 +56,7 @@ impl LeakyRelu {
         launch_args.push::<f32>(alpha);
 
         let cfg = LaunchConfig::for_num_elems(input.len() as _);
-        unsafe {
-            launch_args.launch(cfg);
-        }
+        launch_args.launch(cfg)?;
         Ok(())
     }
 }

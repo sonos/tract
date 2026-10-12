@@ -2,9 +2,10 @@ name: CI slash command
 
 # Lets maintainers trigger heavy CI on a PR by commenting:
 #   /ci full           -> Full test harness        (full.yml)
-#   /ci large-models   -> Large models             (large_models.yml)
-#   /ci large          -> alias of large-models
-#   /ci llm            -> alias of large-models
+#   /ci cli            -> CLI: harness cases incl. ci-full.sh, LLMs, bench (cli.yml)
+#   /ci large-models   -> alias of cli
+#   /ci large          -> alias of cli
+#   /ci llm            -> alias of cli
 #   /ci wheels         -> Python wheels            (wheels.yml)
 #   /ci python         -> alias of wheels
 #   /ci py             -> alias of wheels
@@ -13,9 +14,9 @@ name: CI slash command
 #   /ci blackwell [tests|bench|both] -> RTX 5090 / SM120 (cuda-blackwell.yml);
 #                         mode defaults to tests. Operator-only, see below.
 #   /ci 5090           -> alias of blackwell
-#   /ci bench          -> Bench                    (bench.yml)
+#   /ci bench          -> alias of cli
 #   /ci benches        -> alias of bench
-#   /ci bench-mt-ladder [ladder] -> thread-scaling run (bench.yml); ladder defaults to 2,4,0
+#   /ci bench-mt-ladder [ladder] -> cli.yml with a thread-scaling bench; ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 # `blackwell` is narrower still: it runs on a single workstation GPU, so only the
 # logins in the BLACKWELL_OPERATORS repo variable (default `kali`) can queue it.
@@ -60,9 +61,10 @@ jobs:
             const pr = cp.pull_request.number;
             const map = {
               'full': 'full.yml',
-              'large-models': 'large_models.yml',
-              'large': 'large_models.yml',
-              'llm': 'large_models.yml',
+              'cli': 'cli.yml',
+              'large-models': 'cli.yml',
+              'large': 'cli.yml',
+              'llm': 'cli.yml',
               'wheels': 'wheels.yml',
               'python': 'wheels.yml',
               'py': 'wheels.yml',
@@ -70,16 +72,16 @@ jobs:
               'ex': 'examples.yml',
               'blackwell': 'cuda-blackwell.yml',
               '5090': 'cuda-blackwell.yml',
-              'bench': 'bench.yml',
-              'benches': 'bench.yml',
-              'bench-mt-ladder': 'bench.yml',
+              'bench': 'cli.yml',
+              'benches': 'cli.yml',
+              'bench-mt-ladder': 'cli.yml',
             };
             const workflow = map[target];
             if (!workflow) {
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci large-models` (aliases: `large`, `llm`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), `/ci bench` (alias: `benches`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`, `bench`, `benches`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -127,7 +129,7 @@ jobs:
               inputs.mode = mode;
             }
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
-            // bench.yml runs the thread scaling sweep + scaling report instead of vs-main.
+            // cli.yml runs the thread scaling sweep + scaling report instead of vs-main.
             if (target === 'bench-mt-ladder') {
               inputs.mt_ladder = cp.slash_command.args.unnamed.arg2 || '2,4,0';
             }

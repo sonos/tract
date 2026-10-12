@@ -3,7 +3,7 @@
 set -ex
 
 ROOT=$(dirname $(dirname $(realpath $0)))
-. $ROOT/.travis/ci-system-setup.sh
+. $ROOT/ci/ci-system-setup.sh
 
 which java || apt_retry apt-get install -y default-jdk
 

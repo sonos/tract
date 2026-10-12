@@ -84,6 +84,41 @@ impl InferenceFact {
     pub fn without_value(self) -> InferenceFact {
         InferenceFact { value: GenericFactoid::Any, ..self }
     }
+
+    /// Parse a fact spec: comma-separated dims, optionally followed by the
+    /// element type, as in `1,3,S,f32`. Dims are TDim expressions resolved
+    /// against `symbols`, and `_` leaves a dim unknown. Without a trailing
+    /// element type the fact constrains the shape only; an empty spec
+    /// constrains nothing. The rank is always closed.
+    pub fn from_spec(symbols: &SymbolScope, spec: &str) -> TractResult<InferenceFact> {
+        if spec.is_empty() {
+            return Ok(InferenceFact::default());
+        }
+        let splits = spec.split(',').collect::<Vec<_>>();
+        let last = splits.last().unwrap();
+        let (datum_type, shape) = if let Ok(dt) = last.parse::<DatumType>() {
+            (Some(dt), &splits[0..splits.len() - 1])
+        } else {
+            (None, &*splits)
+        };
+        let shape = ShapeFactoid::closed(
+            shape
+                .iter()
+                .map(|&s| {
+                    Ok(if s == "_" {
+                        GenericFactoid::Any
+                    } else {
+                        GenericFactoid::Only(parse_tdim(symbols, s)?)
+                    })
+                })
+                .collect::<TractResult<TVec<DimFact>>>()?,
+        );
+        if let Some(dt) = datum_type {
+            Ok(InferenceFact::dt_shape(dt, shape))
+        } else {
+            Ok(InferenceFact::shape(shape))
+        }
+    }
 }
 
 impl Factoid for InferenceFact {
@@ -222,5 +257,36 @@ impl From<Tensor> for InferenceFact {
         let mut fact = InferenceFact::dt_shape(t.datum_type(), t.shape());
         fact.value = t.into_arc_tensor().into();
         fact
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn from_spec() {
+        let symbols = SymbolScope::default();
+        let s = symbols.sym("S");
+        assert_eq!(
+            InferenceFact::from_spec(&symbols, "1,S,_,f32").unwrap(),
+            InferenceFact::dt_shape(
+                DatumType::F32,
+                ShapeFactoid::closed(tvec!(
+                    GenericFactoid::Only(1.to_dim()),
+                    GenericFactoid::Only(s.to_dim()),
+                    GenericFactoid::Any
+                ))
+            )
+        );
+        assert_eq!(
+            InferenceFact::from_spec(&symbols, "2,3").unwrap(),
+            InferenceFact::shape(shapefactoid!(2, 3))
+        );
+        assert_eq!(
+            InferenceFact::from_spec(&symbols, "f32").unwrap(),
+            InferenceFact::dt_shape(DatumType::F32, ShapeFactoid::closed(tvec!()))
+        );
+        assert_eq!(InferenceFact::from_spec(&symbols, "").unwrap(), InferenceFact::default());
     }
 }

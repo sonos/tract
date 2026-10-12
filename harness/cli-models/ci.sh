@@ -5,30 +5,8 @@ NC='\033[0m' # No Color
 
 set -e
 
-ROOT=$(dirname $(dirname $(realpath $0)))
-. $ROOT/.travis/ci-system-setup.sh
-
-echo
-echo $WHITE • build tract $NC
-echo
-
-TRACT_RUN=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
-echo TRACT_RUN=$TRACT_RUN
-export TRACT_RUN
-
-echo
-echo $WHITE • harness runme.sh cases $NC
-echo
-
-for t in `find harness -name runme.sh`
-do
-    echo $WHITE$t$NC
-    $t
-done
-
-echo
-echo $WHITE • full models command line test cases $NC
-echo
+ROOT=$(realpath $(dirname $(realpath $0))/../..)
+. $ROOT/ci/ci-system-setup.sh
 
 echo $WHITE     image $NC
 
@@ -91,11 +69,20 @@ $TRACT_RUN $MODELS/GRU128KeywordSpotter-v2-10epochs.onnx \
     --allow-random-input \
     --assert-output-fact 1,3,f32
 
-$CACHE_FILE mdl-en-2019-Q3-librispeech.onnx
+$CACHE_FILE mdl-en-2019-Q3-librispeech.onnx mdl-en-2019-Q3-librispeech.io.npz
+$TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
+    --input-facts-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    -O --output-node output \
+    run -q \
+    --input-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --assert-output-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --approx approximate
 $TRACT_RUN $MODELS/mdl-en-2019-Q3-librispeech.onnx \
     -O -i S,40,f32 --output-node output --pulse 24 \
     run -q \
-    --allow-random-input
+    --input-from-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --assert-output-bundle $MODELS/mdl-en-2019-Q3-librispeech.io.npz \
+    --approx approximate
     
 $CACHE_FILE hey_snips_v4_model17.pb
 $TRACT_RUN $MODELS/hey_snips_v4_model17.pb \
@@ -124,27 +111,3 @@ $TRACT_RUN $MODELS/2024_06_25_elm_micro_export_with_kv_cache.nnef.tgz \
     dump -q --nnef $TEMP_ELM/with-asserts.nnef.tgz
 $TRACT_RUN --nnef-tract-core $TEMP_ELM/with-asserts.nnef.tgz dump -q
 rm -rf $TEMP_ELM
-
-if [ -z "$TRACT_SKIP_BENCH_SUITE" ]
-then
-(
-echo
-echo $WHITE • benches on full models $NC
-echo
-
-TRACT_BENCH=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --features bench-suite --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
-if "$TRACT_BENCH" bench-suite --manifest .travis/benches.toml 2> bench-suite.err
-then
-    cat bench-suite.err
-    if grep -q '!! ' bench-suite.err
-    then
-        echo "bench-suite: a bench failed" >&2
-        exit 1
-    fi
-else
-    cat bench-suite.err >&2
-    echo "bench-suite: run failed" >&2
-    exit 1
-fi
-)
-fi

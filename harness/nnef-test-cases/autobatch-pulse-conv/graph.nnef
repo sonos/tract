@@ -16,7 +16,7 @@ extension tract_assert T>=0;
 #
 # Streaming axis: 2 on the input and on the output. Pulse size P = 2.
 
-graph network(a) -> (output)
+graph conv(a) -> (output)
 {
     a = tract_core_external(shape = [B, 1, T], datum_type = 'f32');
 

@@ -1046,6 +1046,7 @@ template <typename F>
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     max_val = buf_iw[0];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     // 2) exp(vals - max) and sum
     float sum = 0.0f;
@@ -1164,6 +1165,7 @@ template <typename F>
     }
     threadgroup_barrier(mem_flags::mem_threadgroup);
     max_val = buf_iw[0];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
 
     // 2) exp(vals - max) and row sum
     float sum = 0.0f;

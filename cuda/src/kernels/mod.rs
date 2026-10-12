@@ -103,12 +103,12 @@ pub enum LibraryName {
     Fft,
 }
 
-fn fnv1a64(text: &str) -> u64 {
+fn fnv1a64(parts: &[&str]) -> u64 {
     const FNV_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
     const FNV_PRIME: u64 = 0x00000100000001B3;
 
     let mut hash = FNV_OFFSET_BASIS;
-    for b in text.as_bytes() {
+    for b in parts.iter().flat_map(|p| p.as_bytes().iter().chain(&[0])) {
         hash ^= *b as u64;
         hash = hash.wrapping_mul(FNV_PRIME);
     }
@@ -147,7 +147,9 @@ impl LibraryName {
         }
     }
 
-    pub fn cubin_path(&self) -> PathBuf {
+    /// The cache file in `dir` for this library compiled for `target`, a key naming everything
+    /// besides the sources that shapes the cubin: GPU architecture, compiler and options.
+    pub fn cubin_path(&self, dir: &Path, target: &str) -> PathBuf {
         let basename = match self {
             Self::ElementWise => "element_wise",
             Self::Binary => "binary",
@@ -161,8 +163,8 @@ impl LibraryName {
             Self::FlashAttn => "flash_attn",
             Self::Fft => "fft",
         };
-        let hash = fnv1a64(self.content());
-        cubin_dir().join(format!("{}_{}.cubin", basename, hash))
+        let hash = fnv1a64(&[target, COMMON_H, self.content()]);
+        dir.join(format!("{}_{}.cubin", basename, hash))
     }
 }
 

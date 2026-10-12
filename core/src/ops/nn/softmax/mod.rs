@@ -156,12 +156,24 @@ impl Softmax {
                 let mut output_plain = output.try_as_plain_ram_mut()?;
                 // Dtype-concrete `as_slice_mut` (checked, no transmute) since T is
                 // f32/f16 here; keeps this core path free of new `unsafe`.
-                if T::datum_type() == f32::datum_type() {
+                if T::datum_type() == f32::datum_type()
+                    && kind == SoftmaxKind::Softmax
+                    && row_len.is_multiple_of(4)
+                    && let Some(rows_kernel) = tract_linalg::routines::softmax_rows_f32()
+                {
                     let data = output_plain.as_slice_mut::<f32>()?;
                     let total = data.len();
                     tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
+                        rows_kernel(chunk, row_len);
+                        Ok(())
+                    })?;
+                } else if T::datum_type() == f32::datum_type() {
+                    let data = output_plain.as_slice_mut::<f32>()?;
+                    let total = data.len();
+                    let kernels = F32Kernels::new()?;
+                    tract_linalg::multithread::par_chunks_mut(data, row_len, total, |_, chunk| {
                         for row in chunk.chunks_mut(row_len) {
-                            self.softmax_inner_slice_f32(row, kind)?;
+                            softmax_inner_slice_f32(row, kind, &kernels)?;
                         }
                         Ok(())
                     })?;
@@ -191,6 +203,8 @@ impl Softmax {
 
         let mut output_plain = output.try_as_plain_ram_mut()?;
         let mut view = output_plain.to_array_view_mut::<T>()?;
+        let kernels =
+            if T::datum_type() == f32::datum_type() { Some(F32Kernels::new()?) } else { None };
 
         for it_coords in tract_ndarray::indices(&*iterating_shape) {
             let mut view = view.view_mut();
@@ -203,7 +217,11 @@ impl Softmax {
                 view.as_slice_mut().filter(|_| T::datum_type() == f32::datum_type())
             {
                 let slice: &mut [f32] = unsafe { std::mem::transmute(slice) };
-                self.softmax_inner_slice_f32(slice, self.kind)?;
+                softmax_inner_slice_f32(
+                    slice,
+                    self.kind,
+                    kernels.as_ref().context("f32 kernels")?,
+                )?;
             } else if let Some(slice) =
                 view.as_slice_mut().filter(|_| T::datum_type() == f16::datum_type())
             {
@@ -282,27 +300,48 @@ impl Softmax {
         }
         Ok(())
     }
+}
 
-    fn softmax_inner_slice_f32(&self, slice: &mut [f32], kind: SoftmaxKind) -> TractResult<()> {
-        let max = Func::ReduceMax.reduce_f32()?.run(slice)?;
-        match kind {
-            SoftmaxKind::Softmax => {
-                let sum = Func::Softmax2.map_reduce_f32()?.run_with_params(slice, max)?;
-                let rsum = sum.recip();
-                Func::MulByScalar.ew_f32_param()?.run_with_params(slice, rsum)?;
-            }
-            SoftmaxKind::LogSoftmax => {
-                let mut exp_sum = f32::zero();
-                slice.iter_mut().for_each(|x| {
-                    *x -= max;
-                    exp_sum += x.exp();
-                });
-                let log_sum = exp_sum.ln();
-                slice.iter_mut().for_each(|x| *x -= log_sum);
-            }
-        }
-        Ok(())
+/// The f32 row kernels, built once per evaluation: a softmax over many short rows would
+/// otherwise build them again for every row.
+struct F32Kernels {
+    max: Box<dyn tract_linalg::reduce::Reduce<f32>>,
+    exp_sum: Box<dyn tract_linalg::reduce::MapReduce<f32, f32>>,
+    scale: Box<dyn tract_linalg::element_wise::ElementWise<f32, f32>>,
+}
+
+impl F32Kernels {
+    fn new() -> TractResult<F32Kernels> {
+        Ok(F32Kernels {
+            max: Func::ReduceMax.reduce_f32()?,
+            exp_sum: Func::Softmax2.map_reduce_f32()?,
+            scale: Func::MulByScalar.ew_f32_param()?,
+        })
     }
+}
+
+fn softmax_inner_slice_f32(
+    slice: &mut [f32],
+    kind: SoftmaxKind,
+    kernels: &F32Kernels,
+) -> TractResult<()> {
+    let max = kernels.max.run(slice)?;
+    match kind {
+        SoftmaxKind::Softmax => {
+            let sum = kernels.exp_sum.run_with_params(slice, max)?;
+            kernels.scale.run_with_params(slice, sum.recip())?;
+        }
+        SoftmaxKind::LogSoftmax => {
+            let mut exp_sum = f32::zero();
+            slice.iter_mut().for_each(|x| {
+                *x -= max;
+                exp_sum += x.exp();
+            });
+            let log_sum = exp_sum.ln();
+            slice.iter_mut().for_each(|x| *x -= log_sum);
+        }
+    }
+    Ok(())
 }
 
 fn softmax_inner<T: Float + Datum + std::iter::Sum, D: Dimension>(

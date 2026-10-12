@@ -737,9 +737,47 @@ impl Scan {
     }
 }
 
+/// Symbols the body needs bound before the scan can run: the union of the
+/// body ops' required symbols. Body-internal symbols also appear here — the
+/// surrounding model's definer map simply has no binder for them, so the
+/// consumer scan ignores those.
+pub(crate) fn scan_required_bound_symbols(body: &TypedModel) -> TVec<Symbol> {
+    let mut required: TVec<Symbol> = tvec![];
+    for node in &body.nodes {
+        let facts: Vec<Cow<'_, TypedFact>> = node
+            .inputs
+            .iter()
+            .filter_map(|i| body.nodes[i.node].outputs[i.slot].fact.to_typed_fact().ok())
+            .collect();
+        let facts: Vec<&TypedFact> = facts.iter().map(|f| f.as_ref()).collect();
+        let op: &dyn Op = node.op.as_ref() as &dyn Op;
+        for sym in op.required_bound_symbols(&facts) {
+            if !required.contains(&sym) {
+                required.push(sym);
+            }
+        }
+    }
+    required
+}
+
 impl Op for Scan {
     fn mints_runtime_symbols(&self) -> bool {
         true
+    }
+
+    fn required_bound_symbols(&self, inputs: &[&TypedFact]) -> TVec<Symbol> {
+        let mut syms = scan_required_bound_symbols(&self.body);
+        for fact in inputs {
+            for t in [fact.konst.as_deref(), fact.uniform.as_deref()].into_iter().flatten() {
+                if t.datum_type() == TDim::datum_type()
+                    && let Some(slice) =
+                        t.try_as_plain_ram().ok().and_then(|v| v.as_slice::<TDim>().ok())
+                {
+                    syms.extend(slice.iter().flat_map(|d| d.symbols()));
+                }
+            }
+        }
+        syms
     }
 
     fn name(&self) -> StaticName {
