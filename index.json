@@ -1,0 +1,12 @@
+[
+"aarch64-apple-darwin/apple-m1-max",
+"aarch64-unknown-linux-gnu-stretch/cortex-a53",
+"aarch64-unknown-linux-gnu-stretch/cortex-a55",
+"aarch64-unknown-linux-gnu-stretch/jetson-orin-nx",
+"armv7-unknown-linux-gnueabihf-stretch/cortex-a7",
+"armv7-unknown-linux-gnueabihf-stretch/cortex-a9",
+"riscv64gc-unknown-linux-musl/beaglev-ahead",
+"riscv64gc-unknown-linux-musl/orangepi-rv2",
+"x86_64-unknown-linux-gnu/i9-11900kb_rtx-4060",
+"x86_64-unknown-linux-gnu/i9-9900k"
+]
