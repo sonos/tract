@@ -64,6 +64,7 @@ pub fn eval_device_mem_req_for_nodes(
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
             nodes.iter().any(|it| {
                 it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost)
+                    || it.outputs.iter().any(|o| o.fact.as_device_fact().is_none())
             })
         });
 
