@@ -8,7 +8,9 @@ set -e
 ROOT=$(dirname $(dirname $(realpath $0)))
 . $ROOT/ci/ci-system-setup.sh
 
-TRACT_RUN=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA --profile opt-no-lto | jq -r 'select(.target.name == "tract" and .executable).executable')
+case "$CARGO_EXTRA" in *--profile*) PROFILE= ;; *) PROFILE="--profile opt-no-lto" ;; esac
+
+TRACT_RUN=$(cargo build --message-format json -p tract-cli $CARGO_EXTRA $PROFILE | jq -r 'select(.target.name == "tract" and .executable).executable')
 echo TRACT_RUN=$TRACT_RUN
 export TRACT_RUN
 
