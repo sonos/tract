@@ -25,7 +25,7 @@ pub struct Pad {
 impl Pad {
     fn eval_t<T>(&self, input_tensor: TValue) -> TractResult<TValue>
     where
-        T: Copy + Datum,
+        T: Copy + Datum + num_traits::Zero + num_traits::ToPrimitive,
     {
         use tract_ndarray::*;
         let input = input_tensor.to_plain_array_view::<T>()?;
@@ -35,55 +35,114 @@ impl Pad {
             PadMode::Constant(f) => f.cast_to_scalar::<T>()?,
             _ => T::default(),
         };
-        let mut output = ArrayD::<T>::from_elem(output_shape, element);
-        let slice_spec: Vec<SliceInfoElem> = self
-            .pads
-            .iter()
-            .map(|&(a, b)| SliceInfoElem::Slice {
-                start: a as isize,
-                end: if b != 0 { Some(-(b as isize)) } else { None },
-                step: 1,
-            })
-            .collect();
-        let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
-        output.slice_mut(slice_info.as_ref()).assign(&input);
-        if self.mode == PadMode::Reflect || self.mode == PadMode::Edge {
-            for (ax, &(bef, aft)) in self.pads.iter().enumerate() {
-                let axis = Axis(ax);
-                let dim = output.shape()[ax];
-                {
-                    let (mut pad, data) = output.view_mut().split_at(axis, bef);
-                    for i in 0..bef {
-                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
-                        let source_slice = match self.mode {
-                            PadMode::Edge => 0,
-                            PadMode::Reflect => bef - i,
-                            _ => panic!(),
-                        };
-                        let source =
-                            data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
-                        target.assign(&source);
+        let mut output = if matches!(self.mode, PadMode::Constant(_))
+            && let Some(source) = input.as_slice()
+        {
+            let mut output = Tensor::zero::<T>(&output_shape)?;
+            if element != T::zero() || element.to_f64().is_some_and(f64::is_sign_negative) {
+                output.fill_t(element)?;
+            }
+            self.copy_constant_rows(
+                input.shape(),
+                source,
+                &output_shape,
+                output.try_as_plain_ram_mut()?.as_slice_mut::<T>()?,
+            )?;
+            output
+        } else {
+            let mut output = ArrayD::<T>::from_elem(output_shape, element);
+            let slice_spec: Vec<SliceInfoElem> = self
+                .pads
+                .iter()
+                .map(|&(a, b)| SliceInfoElem::Slice {
+                    start: a as isize,
+                    end: if b != 0 { Some(-(b as isize)) } else { None },
+                    step: 1,
+                })
+                .collect();
+            let slice_info = SliceInfo::<_, IxDyn, IxDyn>::try_from(slice_spec).unwrap();
+            output.slice_mut(slice_info.as_ref()).assign(&input);
+            if self.mode == PadMode::Reflect || self.mode == PadMode::Edge {
+                for (ax, &(bef, aft)) in self.pads.iter().enumerate() {
+                    let axis = Axis(ax);
+                    let dim = output.shape()[ax];
+                    {
+                        let (mut pad, data) = output.view_mut().split_at(axis, bef);
+                        for i in 0..bef {
+                            let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
+                            let source_slice = match self.mode {
+                                PadMode::Edge => 0,
+                                PadMode::Reflect => bef - i,
+                                _ => panic!(),
+                            };
+                            let source =
+                                data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
+                            target.assign(&source);
+                        }
                     }
-                }
-                {
-                    let (data, mut pad) = output.view_mut().split_at(axis, dim - aft);
-                    for i in 0..aft {
-                        let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
-                        let source_slice = match self.mode {
-                            PadMode::Edge => dim - aft - 1,
-                            PadMode::Reflect => dim - aft - 2 - i,
-                            _ => panic!(),
-                        };
-                        let source =
-                            data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
-                        target.assign(&source);
+                    {
+                        let (data, mut pad) = output.view_mut().split_at(axis, dim - aft);
+                        for i in 0..aft {
+                            let mut target = pad.slice_axis_mut(axis, Slice::from(i..i + 1));
+                            let source_slice = match self.mode {
+                                PadMode::Edge => dim - aft - 1,
+                                PadMode::Reflect => dim - aft - 2 - i,
+                                _ => panic!(),
+                            };
+                            let source =
+                                data.slice_axis(axis, Slice::from(source_slice..source_slice + 1));
+                            target.assign(&source);
+                        }
                     }
                 }
             }
-        }
-        let mut output = output.into_tensor();
+            output.into_tensor()
+        };
         unsafe { output.set_datum_type(input_tensor.datum_type()) }
         Ok(output.into_tvalue())
+    }
+
+    /// Copies contiguous input runs into constant-filled rows, splitting only at row boundaries.
+    fn copy_constant_rows<T: Datum + Copy>(
+        &self,
+        input_shape: &[usize],
+        source: &[T],
+        output_shape: &[usize],
+        output: &mut [T],
+    ) -> TractResult<()> {
+        if source.is_empty() || output.is_empty() {
+            return Ok(());
+        }
+        let axis = self.pads.iter().rposition(|p| *p != (0, 0)).unwrap_or(0);
+        let row_len: usize = output_shape[axis..].iter().product();
+        let copy_len: usize = input_shape[axis..].iter().product();
+        let inner: usize = input_shape.get(axis + 1..).unwrap_or(&[]).iter().product();
+        let start = self.pads.get(axis).map_or(0, |p| p.0) * inner;
+        tract_linalg::multithread::par_chunks_mut(output, row_len, source.len(), |first, chunk| {
+            for (ix, row) in chunk.chunks_mut(row_len).enumerate() {
+                let mut coord = first + ix;
+                let mut source_row = 0;
+                let mut stride = 1;
+                let mut inside = true;
+                for ax in (0..axis).rev() {
+                    let output_coord = coord % output_shape[ax];
+                    coord /= output_shape[ax];
+                    let Some(input_coord) =
+                        output_coord.checked_sub(self.pads[ax].0).filter(|c| *c < input_shape[ax])
+                    else {
+                        inside = false;
+                        break;
+                    };
+                    source_row += input_coord * stride;
+                    stride *= input_shape[ax];
+                }
+                if inside {
+                    let from = source_row * copy_len;
+                    row[start..][..copy_len].copy_from_slice(&source[from..][..copy_len]);
+                }
+            }
+            Ok(())
+        })
     }
 }
 
