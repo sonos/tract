@@ -99,8 +99,8 @@ done
 
 # Check that the encoder can be pulsified.
 # The encoder subsamples by 8x (three stride-2 convolutions) before the transformer.
-# The chunk-window mask has P=4 transformer tokens per chunk (one attention chunk),
-# so the input pulse must be 4 * 8 = 32 audio frames.
+# The chunk-window mask has P=4 transformer tokens per chunk, so the input pulse
+# must be a multiple of 4 * 8 = 32 audio frames.
 $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	--nnef-tract-transformers \
 	-t 'set_symbols(values: {"BATCH": 1})' \
@@ -110,7 +110,8 @@ $TRACT_RUN $model_prefix.encoder.nnef.tgz \
 	-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
 	dump -q
 
-# Check that pulsified encoder output matches batch output.
+# Check that pulsified encoder output matches batch output, at one attention
+# chunk per pulse and at two.
 # --drop-partial-pulse truncates the input to a multiple of the pulse size,
 # and the output comparison is trimmed accordingly.
 # Both GPU runtimes serve the pulse ops on device -- the translator that lowers
@@ -126,18 +127,26 @@ done
 
 for rt in "" $pulse_runtimes
 do
-	$TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
-		--nnef-tract-transformers \
-		-t 'set_symbols(values: {"BATCH": 1})' \
-		-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
-		-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
-		-t 'select_outputs(outputs: ["outputs"])' \
-		-t 'pulse(symbol: Some("AUDIO_SIGNAL__TIME"), pulse: "32")' \
-		run \
-		--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-		--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
-		--approx very \
-		--drop-partial-pulse
+	case "$rt" in
+		--cuda) enc_assert="--assert-op-only Cuda*,Gpu*,DeviceSync*,Const,Source,PulsedRange";;
+		--metal) enc_assert="--assert-op-only Metal*,Gpu*,DeviceSync*,Const,Source,PulsedRange";;
+		*) enc_assert="";;
+	esac
+	for pulse in 32 64
+	do
+		$TRACT_RUN $model_prefix.encoder.nnef.tgz $rt \
+			--nnef-tract-transformers \
+			-t 'set_symbols(values: {"BATCH": 1})' \
+			-t 'patch(body: "length = tract_core_shape_of(audio_signal)[2];")' \
+			-t 'select_inputs(inputs: ["audio_signal", "lang_id"])' \
+			-t 'select_outputs(outputs: ["outputs"])' \
+			-t "pulse(symbol: Some(\"AUDIO_SIGNAL__TIME\"), pulse: \"$pulse\")" \
+			run \
+			--input-from-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+			--assert-output-bundle $MODELS/$S3DIR/$MODEL.encoder.io.npz \
+			--approx very \
+			--drop-partial-pulse $enc_assert
+	done
 done
 
 # The batch axis is the lane axis, so the autobatched form of the encoder keeps

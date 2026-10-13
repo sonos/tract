@@ -16,16 +16,15 @@
 //!   (past window, ex04) it cancels the Delay's increment, leaving
 //!   `stream.delay = 0` (causal).  For mixed bands the residue is
 //!   `stream.delay = end = start + W - 1`.
-//! * `PulsedExposeWindow` reshapes the per-pulse `[W, ...]` view into
-//!   `[1, W, ...]`, exposing W as a static window axis.
+//! * `PulsedExposeWindow` unfolds the per-pulse `[P + W - 1, ...]` view
+//!   into `[P, W, ...]`, exposing W as a static window axis.
 //!
 //! A causal window (`start = -(W-1)`) padded with zeros needs no pad node:
 //! `Delay`'s buffer already starts zeroed, so it carries the pad itself
 //! (`Delay::zero_pad`) and the chain is two ops.
 //!
-//! Constraint: `pulse == 1` on the windowed axis (the case Blockify
-//! produces today).  Constraints: `start ≤ 0` and `start + W - 1 ≥ 0`
-//! (the window must straddle the current chunk).
+//! Constraints: `start ≤ 0` and `start + W - 1 ≥ 0` (the window must
+//! straddle the current chunk).
 
 use crate::internal::*;
 use tract_core::ops::array::PadMode;
@@ -46,12 +45,7 @@ fn pulsify(
     let fact = target.outlet_fact(input)?.clone();
     rule_if_some!(stream = fact.stream.as_ref());
     rule_if!(stream.axis == op.axis);
-    let pulse = fact.pulse().unwrap();
-    let pulse_size = pulse.to_usize()?;
-    ensure!(
-        pulse_size == 1,
-        "WindowOnAxis pulsifier currently requires pulse=1 on the windowed axis (got {pulse_size})"
-    );
+    let pulse = fact.pulse().unwrap().to_usize()?;
 
     // Bail on `start > 0` (purely-future skip-current) and on
     // `start + window - 1 < 0` (purely-past) — neither is needed yet.
@@ -104,24 +98,37 @@ fn pulsify(
         )?[0];
     }
 
+    let mut inputs = tvec!(wire);
+    if pulse > 1 {
+        let indices: Vec<i64> =
+            (0..pulse).flat_map(|p| (0..op.window).map(move |w| (p + w) as i64)).collect();
+        let indices = Tensor::from_shape(&[pulse, op.window], &indices)?;
+        inputs.push(target.add_const(format!("{}.window_indices", node.name), indices)?);
+    }
     let exposed = target.wire_node(
         &*node.name,
-        PulsedExposeWindow { axis: op.axis, window: op.window },
-        &[wire],
+        PulsedExposeWindow { axis: op.axis, window: op.window, pulse },
+        &inputs,
     )?;
     Ok(Some(exposed))
 }
 
-/// Pulse-only op: splits the per-pulse streaming-axis buffer of size
-/// `1 + W - 1 = W` into `[1, W]`, exposing `W` as a static window axis.
-/// Logical streaming dim is preserved (1 chunk per pulse on the new
-/// streaming axis at the same position as before).  Stream-delay
-/// adjustment happens upstream, in the `PulsePad` the WindowOnAxis pulsifier
-/// wires before this op or in the `Delay`'s own `zero_pad`.
+/// Pulse-only op: unfolds the per-pulse streaming-axis buffer of size
+/// `pulse + W - 1` into `[pulse, W]`, slot `w` of chunk `p` reading buffer
+/// entry `p + w`, exposing `W` as a static window axis.  Logical streaming
+/// dim is preserved (`pulse` chunks per pulse on the streaming axis at the
+/// same position as before).  Stream-delay adjustment happens upstream, in
+/// the `PulsePad` the WindowOnAxis pulsifier wires before this op or in the
+/// `Delay`'s own `zero_pad`.
+///
+/// At `pulse == 1` the unfold is a reshape and the op takes the buffer
+/// alone.  Otherwise it is a `Gather` and takes the `[pulse, W]` buffer
+/// indices as a second input.
 #[derive(Debug, Clone, Default, Hash, PartialEq, Eq)]
 pub struct PulsedExposeWindow {
     pub axis: usize,
     pub window: usize,
+    pub pulse: usize,
 }
 
 impl Op for PulsedExposeWindow {
@@ -130,7 +137,7 @@ impl Op for PulsedExposeWindow {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("axis: {} window: {}", self.axis, self.window)])
+        Ok(vec![format!("axis: {} window: {} pulse: {}", self.axis, self.window, self.pulse)])
     }
 
     not_a_typed_op!();
@@ -139,23 +146,15 @@ impl Op for PulsedExposeWindow {
 impl EvalOp for PulsedExposeWindow {
     op_out_of_plan!();
 
-    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let input = args_1!(inputs).into_tensor();
-        let mut new_shape: TVec<usize> = input.shape().into();
-        // input shape on `axis` is W (= pulse + overlap, with pulse=1).
-        // Output shape on `axis` is 1, with a new W axis at `axis + 1`.
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let buffered = inputs[0].shape()[self.axis];
         ensure!(
-            new_shape[self.axis] == self.window,
-            "PulsedExposeWindow: per-pulse axis {} has size {} but expected window {}",
+            buffered == self.pulse + self.window - 1,
+            "PulsedExposeWindow: per-pulse axis {} has size {buffered}, expected {}",
             self.axis,
-            new_shape[self.axis],
-            self.window
+            self.pulse + self.window - 1
         );
-        new_shape[self.axis] = 1;
-        new_shape.insert(self.axis + 1, self.window);
-        let mut t = input;
-        unsafe { t.set_shape_unchecked(&new_shape) };
-        Ok(tvec!(t.into_tvalue()))
+        self.to_typed().eval(ctx, inputs)
     }
 }
 
@@ -170,23 +169,24 @@ impl PulsedOp for PulsedExposeWindow {
             self.axis
         );
         let mut shape: TVec<TDim> = fact.shape.iter().cloned().collect();
-        shape[self.axis] = 1.to_dim();
+        shape[self.axis] = self.pulse.to_dim();
         shape.insert(self.axis + 1, self.window.to_dim());
         fact.shape = shape.into();
         Ok(tvec!(fact))
     }
 
     fn to_typed(&self) -> Box<dyn TypedOp> {
-        // Typed equivalent: factor the pulse-axis (size W) into [1, W].
-        // After this reshape the typed output matches eval's output shape:
-        // [..., 1, W, ...] with the streaming axis at `self.axis` and the
-        // static window at `self.axis + 1`.
+        use tract_pulse_opl::tract_core::ops::array::Gather;
         use tract_pulse_opl::tract_core::ops::change_axes::AxisOp;
-        Box::new(AxisOp::Reshape(
-            self.axis,
-            tvec!(self.window.to_dim()),
-            tvec!(1.to_dim(), self.window.to_dim()),
-        ))
+        if self.pulse == 1 {
+            Box::new(AxisOp::Reshape(
+                self.axis,
+                tvec!(self.window.to_dim()),
+                tvec!(1.to_dim(), self.window.to_dim()),
+            ))
+        } else {
+            Box::new(Gather::new(self.axis))
+        }
     }
 
     as_op!();
@@ -339,5 +339,44 @@ mod tests {
         let p3 = &got[3];
         assert_eq!(p3[..2], [input[[2, 0]], input[[2, 1]]]);
         assert_eq!(p3[2..], [input[[3, 0]], input[[3, 1]]]);
+    }
+
+    /// Two chunks per pulse: each pulse yields the windows of both of its
+    /// chunks, and matches the typed batch eval chunk for chunk.
+    #[test]
+    fn window_on_axis_past_window_two_chunks_per_pulse() {
+        use tract_core::ndarray::{Array2, ArrayD, Axis};
+        let op = WindowOnAxis {
+            axis: 0,
+            window: 3,
+            start: -2,
+            pad_value: tensor0(-1f32).into_arc_tensor(),
+        };
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let a = model.add_source("a", f32::fact(dims![s.clone(), 2_usize].as_ref())).unwrap();
+        let win = model.wire_node("win", op.clone(), &[a]).unwrap();
+        model.select_output_outlets(&win).unwrap();
+
+        let input = Array2::<f32>::from_shape_fn((6, 2), |(i, j)| (i * 10 + j) as f32);
+        let expected = op
+            .eval(&EvalContext::out_of_plan(), tvec!(input.clone().into_dyn().into_tvalue()))
+            .unwrap()[0]
+            .to_plain_array_view::<f32>()
+            .unwrap()
+            .to_owned();
+
+        let pulsed = PulsedModel::new(&model, s.clone(), &2.to_dim()).unwrap();
+        let plan = SimplePlan::new(pulsed.into_typed().unwrap()).unwrap();
+        let mut state = SimpleState::new(&plan).unwrap();
+        let mut got: Vec<ArrayD<f32>> = vec![];
+        for p in 0..3 {
+            let chunk = input.slice_axis(Axis(0), (2 * p..2 * p + 2).into()).to_owned();
+            let out = state.run(tvec!(chunk.into_dyn().into_tvalue())).unwrap();
+            got.push(out[0].to_plain_array_view::<f32>().unwrap().to_owned());
+        }
+        let views: Vec<_> = got.iter().map(|g| g.view()).collect();
+        let got = tract_core::ndarray::concatenate(Axis(0), &views).unwrap();
+        assert_eq!(got, expected);
     }
 }
