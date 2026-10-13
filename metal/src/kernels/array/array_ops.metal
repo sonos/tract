@@ -421,9 +421,10 @@ INSTANTIATE_ROTATE_HALF_OP(f16, half)
 INSTANTIATE_DIAG_GATHER(f32, float)
 INSTANTIATE_DIAG_GATHER(f16, half)
 
-// Axis Gather: f32 and f16 only (indices are int64).
+// Axis Gather: f32, f16 and i64 (indices are int64).
 INSTANTIATE_GATHER(f32, float)
 INSTANTIATE_GATHER(f16, half)
+INSTANTIATE_GATHER(i64, int64_t)
 
 // Axis resample: f32 and f16 only (plan indices are int32, weights f32).
 INSTANTIATE_RESIZE_AXIS(f32, float)
