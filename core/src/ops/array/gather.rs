@@ -273,6 +273,33 @@ impl TypedOp for Gather {
         AxesMapping::new(2, 1, axes)
     }
 
+    /// Accepts a change confined to the axes in front of the gathered one,
+    /// which data and output share position for position.
+    fn change_axes(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+        io: InOut,
+        change: &AxisOp,
+    ) -> TractResult<Option<AxisChangeConsequence>> {
+        rule_if!(io != InOut::In(1));
+        rule_if!(model.outlet_fact(node.inputs[0])?.is_plain());
+        let in_front = match change {
+            AxisOp::Add(k) => *k <= self.axis,
+            AxisOp::Rm(k) => *k < self.axis,
+            AxisOp::Move(from, to) => *from < self.axis && *to < self.axis,
+            AxisOp::Reshape(at, from, _) => at + from.len() <= self.axis,
+        };
+        rule_if!(in_front);
+        rule_if_some!(axis = change.transform_axis(self.axis));
+        let substitute_op =
+            (axis != self.axis).then(|| Box::new(Gather { axis, ..self.clone() }) as _);
+        Ok(Some(AxisChangeConsequence {
+            substitute_op,
+            wire_changes: tvec!((InOut::In(0), change.clone()), (InOut::Out(0), change.clone())),
+        }))
+    }
+
     fn declutter(
         &self,
         model: &TypedModel,
