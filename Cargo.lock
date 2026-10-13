@@ -5211,6 +5211,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tar",
+ "tikv-jemalloc-sys",
  "tikv-jemallocator",
  "time",
  "toml",
