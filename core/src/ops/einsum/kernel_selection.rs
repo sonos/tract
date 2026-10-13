@@ -139,6 +139,114 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
     }
 }
 
+/// The strategy codegen uses for this node: the tuning table's choice for its
+/// [`tuning_key`] when the table names one of the node's [`candidates`], the
+/// [`strategize`] heuristic otherwise. With no tuning table in effect this is
+/// exactly [`strategize`].
+pub fn select(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Strat> {
+    if crate::tuning::recording() {
+        crate::tuning::record(crate::tuning::CandidateReport {
+            node: node.name.clone(),
+            key: tuning_key(model, node, op)?,
+            candidates: candidates(model, node, op)?
+                .iter()
+                .map(|s| (s.2[0].0.name().to_string(), s.2[0].1))
+                .collect(),
+        });
+    }
+    if crate::tuning::active()
+        && let Some(key) = tuning_key(model, node, op)?
+        && let Some(choice) = crate::tuning::lookup(&key)
+    {
+        let tuned = candidates(model, node, op)?.into_iter().find(|s| {
+            s.2.len() == 1 && s.2[0].0.name() == choice.kernel && s.2[0].1 == choice.packing
+        });
+        if let Some(tuned) = tuned {
+            return Ok(tuned);
+        }
+    }
+    strategize(model, node, op)
+}
+
+/// Every legal strategy for this node, the [`strategize`] pick first, then each
+/// other suitable kernel and packing on its own. Legality is the store rule
+/// `strategize` applies: an SME tile that scatters on a strided `n` is left out.
+/// A node with a symbolic `n` has no alternatives: it keeps the heuristic's
+/// vector/matrix pair.
+pub fn candidates(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &EinSumMatMul,
+) -> TractResult<Vec<Strat>> {
+    let first = strategize(model, node, op)?;
+    let query = query(model, node, op)?;
+    if query.n.is_none() {
+        return Ok(vec![first]);
+    }
+    let n_ok = n_axis_contiguous(model, node, op);
+    let m_ok = m_axis_contiguous(model, node, op);
+    let mut all = vec![first];
+    for it in tract_linalg::MmmDispatch::native().suitable(&query) {
+        let name = it.0.name();
+        let vertical_sme = m_ok && name == "sme_mmm_f32_32x32";
+        if tile_store_needs_n_contiguous(name, it.0.nr()) && !n_ok && !vertical_sme {
+            continue;
+        }
+        let known = all.iter().any(|s| {
+            s.2.len() == 1 && s.2[0].0.name() == name && s.2[0].1 == it.1 && s.2[0].2.is_none()
+        });
+        if !known {
+            all.push(single_strat(it));
+        }
+    }
+    Ok(all)
+}
+
+/// Identity of this node's matmul for the tuning table: the einsum expression,
+/// operand and accumulator types, batch, m, k and n, whether A is a constant
+/// (which decides how it is packed) and which of m and n is strided in C. Two
+/// nodes with the same key take the same choice. `None` while any of those dims
+/// is symbolic.
+pub fn tuning_key(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &EinSumMatMul,
+) -> TractResult<Option<String>> {
+    let query = query(model, node, op)?;
+    let (Some(m), Some(k), Some(n)) = (query.m, query.k, query.n) else {
+        return Ok(None);
+    };
+    let c_fact = model.outlet_fact(node.id.into())?;
+    let mut batch = 1i64;
+    for (ix, d) in c_fact.shape.iter().enumerate() {
+        if Some(ix) != op.c_m() && Some(ix) != op.c_n() {
+            let Some(d) = d.as_i64() else { return Ok(None) };
+            batch *= d;
+        }
+    }
+    let a_const = model.node_input_facts(node.id)?[0].konst.is_some();
+    let raw = format!(
+        "einsum_{}_{:?}_{:?}_{:?}_b{batch}_m{m}_k{k}_n{n}{}{}{}",
+        op.op.axes,
+        query.weight,
+        query.activation,
+        op.operating_dt.unquantized(),
+        if a_const { "_aconst" } else { "" },
+        if n_axis_contiguous(model, node, op) { "" } else { "_nstrided" },
+        if m_axis_contiguous(model, node, op) { "" } else { "_mstrided" },
+    );
+    Ok(Some(raw.chars().filter(|c| c.is_ascii_alphanumeric() || "_,->".contains(*c)).collect()))
+}
+
+/// The tuning key and candidates of every matmul codegen meets while
+/// optimising `model`, in the order it meets them. The keys are the ones codegen
+/// looks up, since they are recorded from the same call.
+pub fn report(model: &TypedModel) -> TractResult<Vec<crate::tuning::CandidateReport>> {
+    let (optimized, reports) = crate::tuning::with_recorder(|| model.clone().into_optimized());
+    optimized?;
+    Ok(reports)
+}
+
 /// The node's matmul as kernel selection sees it: operand types from the input facts, dims
 /// wherever they are already concrete.
 pub fn query(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Query> {
@@ -234,5 +342,133 @@ mod sme_strided_store {
             "contiguous-n GEMM selected {}",
             mm.mmm[0].name()
         );
+    }
+}
+
+#[cfg(test)]
+mod tuning {
+    use super::*;
+    use crate::ops::einsum::EinSum;
+    use crate::ops::matmul::optimized::OptMatMul;
+    use crate::tuning::Tuning;
+    use crate::tuning::with_tuning;
+
+    fn gemm(m: impl Into<TDim>, k: usize, n: usize) -> TypedModel {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact(&[m.into(), k.into()])).unwrap();
+        let b = model.add_source("b", f32::fact([k, n])).unwrap();
+        let out = model
+            .wire_node(
+                "gemm",
+                EinSum::new("mk,kn->mn".parse().unwrap(), f32::datum_type()),
+                &[a, b],
+            )
+            .unwrap();
+        model.select_output_outlets(&out).unwrap();
+        let mut model = model.into_decluttered().unwrap();
+        let (node, op) =
+            model.nodes.iter().find_map(|n| n.op_as::<EinSum>().map(|op| (n, op))).unwrap();
+        let patch =
+            crate::ops::einsum::einsum_matmul::detect_rule(&(), &model, node, &node.name, op)
+                .unwrap()
+                .unwrap();
+        patch.apply(&mut model).unwrap();
+        model
+    }
+
+    fn matmul_node(model: &TypedModel) -> (&TypedNode, &EinSumMatMul) {
+        model.nodes.iter().find_map(|n| n.op_as::<EinSumMatMul>().map(|op| (n, op))).unwrap()
+    }
+
+    fn kernel_after_codegen(model: TypedModel) -> String {
+        let model = model.into_optimized().unwrap();
+        let mm = model.nodes.iter().find_map(|n| n.op_as::<OptMatMul>()).unwrap();
+        mm.mmm[0].name().to_string()
+    }
+
+    #[test]
+    fn candidates_start_with_the_heuristic_pick() {
+        let model = gemm(64, 64, 64);
+        let (node, op) = matmul_node(&model);
+        let heuristic = strategize(&model, node, op).unwrap();
+        let all = candidates(&model, node, op).unwrap();
+        assert_eq!(all[0].2[0].0.name(), heuristic.2[0].0.name());
+        assert!(all.iter().skip(1).all(|s| s.2.len() == 1));
+    }
+
+    #[test]
+    fn key_needs_concrete_dims() {
+        let model = gemm(64, 32, 16);
+        let (node, op) = matmul_node(&model);
+        let key = tuning_key(&model, node, op).unwrap().unwrap();
+        assert!(key.starts_with("einsum_mk,kn->mn_"), "{key}");
+        assert!(key.contains("_m64_k32_n16"), "{key}");
+        let symbolic = gemm(model.symbols.sym("M"), 32, 16);
+        let (node, op) = matmul_node(&symbolic);
+        assert!(tuning_key(&symbolic, node, op).unwrap().is_none());
+    }
+
+    #[test]
+    fn tuning_table_overrides_the_heuristic() {
+        let model = gemm(64, 64, 64);
+        let (node, op) = matmul_node(&model);
+        let all = candidates(&model, node, op).unwrap();
+        let Some(other) = all.iter().skip(1).find(|s| s.2[0].0.name() != all[0].2[0].0.name())
+        else {
+            return;
+        };
+        let (kernel, packing) = (other.2[0].0.name().to_string(), other.2[0].1);
+        let key = tuning_key(&model, node, op).unwrap().unwrap();
+        let table = Tuning::parse(&format!("{key} {kernel} {packing}")).unwrap();
+        assert_eq!(with_tuning(table, || kernel_after_codegen(model.clone())), kernel);
+        assert_eq!(kernel_after_codegen(model), all[0].2[0].0.name());
+    }
+}
+
+#[cfg(test)]
+mod report_keys {
+    use super::*;
+    use crate::ops::einsum::EinSum;
+    use crate::ops::matmul::optimized::OptMatMul;
+    use crate::tuning::Tuning;
+    use crate::tuning::with_tuning;
+
+    fn const_weight_gemm() -> TypedModel {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([64, 96])).unwrap();
+        let w = model.add_const("w", Tensor::zero::<f32>(&[288, 96]).unwrap()).unwrap();
+        let out = model
+            .wire_node(
+                "proj",
+                EinSum::new("mk,nk->mn".parse().unwrap(), f32::datum_type()),
+                &[x, w],
+            )
+            .unwrap();
+        model.select_output_outlets(&out).unwrap();
+        model.into_decluttered().unwrap()
+    }
+
+    fn kernels(model: TypedModel) -> Vec<String> {
+        let model = model.into_optimized().unwrap();
+        model
+            .nodes
+            .iter()
+            .filter_map(|n| n.op_as::<OptMatMul>())
+            .map(|mm| mm.mmm[0].name().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn report_keys_are_the_ones_codegen_looks_up() {
+        let model = const_weight_gemm();
+        let reports = report(&model).unwrap();
+        let r = &reports[0];
+        let key = r.key.clone().unwrap();
+        let Some((kernel, packing)) = r.candidates.iter().find(|c| c.0 != r.candidates[0].0) else {
+            return;
+        };
+        let table = Tuning::parse(&format!("{key} {kernel} {packing}")).unwrap();
+        assert_eq!(with_tuning(table, || kernels(model.clone())), vec![kernel.clone()]);
+        assert_eq!(kernels(model), vec![r.candidates[0].0.clone()]);
     }
 }
