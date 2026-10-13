@@ -10,10 +10,11 @@ fn pulsify(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     _symbol: &Symbol,
-    _pulse: &TDim,
+    pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input = mapping[&node.inputs[0]];
-    target.wire_node(&*node.name, op.clone(), &[input]).map(Some)
+    let op = AffineChunkTrim { target_per_pulse: op.target_per_pulse * pulse.to_usize()?, ..*op };
+    target.wire_node(&*node.name, op, &[input]).map(Some)
 }
 
 impl PulsedOp for AffineChunkTrim {

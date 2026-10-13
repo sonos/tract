@@ -16,7 +16,7 @@
 //! provided `start ≤ 0 ≤ start + W - 1` (the window straddles current).
 //!
 //! Pulsification (in `tract_pulse::ops::window`) emits `Delay(0, W-1)` plus a
-//! per-pulse reshape that splits the streaming-axis pulse into `[1, W]` and
+//! per-pulse unfold of the `P + W - 1` buffered chunks into `[P, W]`, and
 //! retimes `stream.delay` by `-start` so the consumer's logical time anchors
 //! to the *latest* chunk in the buffer when `start < 0` (vs the oldest when
 //! `start = 0`).  The op only ever lives between the Blockify rewrite pass

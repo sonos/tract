@@ -15,3 +15,7 @@ $TRACT_RUN --nnef-tract-core --set T=6 . run --approx approximate \
 # the warmup tokens before comparing against the batch reference.
 $TRACT_RUN --nnef-tract-core . --pulse 'T=2' run --approx approximate \
     --input-from-bundle io.npz --assert-output-bundle io.npz
+
+# Two chunks per pulse.
+$TRACT_RUN --nnef-tract-core . --pulse 'T=4' run --approx approximate \
+    --input-from-bundle io.npz --assert-output-bundle io.npz

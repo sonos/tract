@@ -208,6 +208,22 @@ pub fn has_quadratic_sections(model: &TypedModel, stream_sym: &Symbol) -> TractR
     Ok(!find_quadratic_sections(model, stream_sym)?.is_empty())
 }
 
+/// For each quadratic section, the dim of its first initiator's first
+/// streaming axis (the token count the mask spans) and the mask's chunk size.
+pub fn section_stream_dims(
+    model: &TypedModel,
+    stream_sym: &Symbol,
+) -> TractResult<TVec<(TDim, i64)>> {
+    find_quadratic_sections(model, stream_sym)?
+        .iter()
+        .map(|sec| {
+            let fact = &model.nodes[sec.initiators[0]].outputs[0].fact;
+            let axis = streaming_positions(fact, stream_sym)[0];
+            Ok((fact.shape[axis].clone(), sec.mask.chunk_size))
+        })
+        .collect()
+}
+
 /// Rewrite every quadratic section in `model`.  The model is expected to
 /// already be in post-substitute form (streaming dim = `multiplier · chunk_sym`).
 /// `substitute_multiplier` is recorded as `BLOCKIFY_CHUNK_SIZE` for downstream

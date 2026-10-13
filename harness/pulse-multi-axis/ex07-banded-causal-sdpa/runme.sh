@@ -19,3 +19,8 @@ $TRACT_RUN --nnef-tract-core --nnef-tract-transformers --set T=6 . run \
 $TRACT_RUN --nnef-tract-core --nnef-tract-transformers . --pulse 'T=2' run \
     --approx approximate \
     --input-from-bundle io.npz --assert-output-bundle io.npz
+
+# Two chunks per pulse.
+$TRACT_RUN --nnef-tract-core --nnef-tract-transformers . --pulse 'T=4' run \
+    --approx approximate \
+    --input-from-bundle io.npz --assert-output-bundle io.npz

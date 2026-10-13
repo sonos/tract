@@ -85,31 +85,75 @@ pub fn stream_axis_lcm(inputs: &[&PulsedFact]) -> Option<TDim> {
 }
 
 /// Pulse-driven path: the pulse value is concrete, so we mint S, substitute
-/// `T → pulse_value · S` ourselves, and call blockify just for the section
-/// rewrites.  The audio-side multiplier is user-driven — required when
-/// there's subsampling between the streaming source and the section's mask
-/// wire (e.g. a stride-2 pool: audio chunk = 2 × post-pool chunk).
+/// `T → (pulse_value / m) · S` ourselves, and call blockify just for the
+/// section rewrites.  S counts attention chunks and a pulse covers `m` of
+/// them; the audio-side multiplier accounts for subsampling between the
+/// streaming source and the section's mask wire (e.g. a stride-2 pool: audio
+/// chunk = 2 × post-pool chunk).
 fn pulse_driven_blockify(
     model: &mut TypedModel,
     symbol: &Symbol,
     pulse_value: i64,
 ) -> TractResult<(Symbol, TDim)> {
-    let chunk_sym = model.symbols.new_with_prefix("S");
-    // `S >= 0` is the precondition for the `Div(Add([k·X, …, c]), k) → X`
-    // simplification (commit 11b310622).  Without it, post-substitute shapes
-    // like `1 + (3 + 56·S)/4` stay unreduced and blockify's chunked Reshape
-    // volume check fails comparing them to `14·S`.
-    model.symbols.add_assertion(format!("{chunk_sym} >= 0"))?;
-    let subs: HashMap<Symbol, TDim> =
-        HashMap::from([(symbol.clone(), chunk_sym.to_dim() * pulse_value)]);
-    *model = model.set_symbols(&subs)?;
-    crate::blockify::rewrite_sections(model, &chunk_sym, pulse_value)?;
+    let chunks = chunks_per_pulse(model, symbol, pulse_value)?;
+    ensure!(
+        pulse_value % chunks == 0,
+        "Pulse {pulse_value} spans {chunks} attention chunks but is not a multiple of {chunks}"
+    );
+    let multiplier = pulse_value / chunks;
+    let chunk_sym = substitute_chunk_symbol(model, symbol, multiplier)?;
+    crate::blockify::rewrite_sections(model, &chunk_sym, multiplier)?;
     model.properties.insert(
         crate::blockify::BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
         tensor1(&[format!("{symbol}")]).into_arc_tensor(),
     );
-    // Streaming dim is now `pulse_value · S`, so one pulse covers exactly one S.
-    Ok((chunk_sym, 1.to_dim()))
+    Ok((chunk_sym, chunks.to_dim()))
+}
+
+/// Substitute `symbol → multiplier · S` for a fresh S and return S.
+fn substitute_chunk_symbol(
+    model: &mut TypedModel,
+    symbol: &Symbol,
+    multiplier: i64,
+) -> TractResult<Symbol> {
+    let chunk_sym = model.symbols.new_with_prefix("S");
+    // `S >= 0` is the precondition for the `Div(Add([k·X, …, c]), k) → X`
+    // simplification.  Without it, post-substitute shapes like
+    // `1 + (3 + 56·S)/4` stay unreduced and blockify's chunked Reshape
+    // volume check fails comparing them to `14·S`.
+    model.symbols.add_assertion(format!("{chunk_sym} >= 0"))?;
+    let subs: HashMap<Symbol, TDim> =
+        HashMap::from([(symbol.clone(), chunk_sym.to_dim() * multiplier)]);
+    *model = model.set_symbols(&subs)?;
+    Ok(chunk_sym)
+}
+
+/// Number of attention chunks a pulse of `pulse_value` covers, agreed on by
+/// every quadratic section.  Read off a probe substitution
+/// `symbol → pulse_value · S`: a section's streaming dim then grows by one
+/// pulse's worth of tokens per unit of S.
+fn chunks_per_pulse(model: &TypedModel, symbol: &Symbol, pulse_value: i64) -> TractResult<i64> {
+    let mut probe = model.clone();
+    let probe_sym = substitute_chunk_symbol(&mut probe, symbol, pulse_value)?;
+    let mut chunks: Option<i64> = None;
+    for (dim, chunk_size) in crate::blockify::section_stream_dims(&probe, &probe_sym)? {
+        let tokens = (dim.substitute(&probe_sym, &1.to_dim())?
+            - dim.substitute(&probe_sym, &0.to_dim())?)
+        .to_i64()
+        .with_context(|| format!("Section streaming dim {dim} is not affine in {probe_sym}"))?;
+        ensure!(
+            tokens > 0 && tokens % chunk_size == 0,
+            "Pulse {pulse_value} covers {tokens} tokens of a section, not a multiple of its \
+             attention chunk {chunk_size}"
+        );
+        let m = tokens / chunk_size;
+        ensure!(
+            chunks.is_none_or(|c| c == m),
+            "Quadratic sections disagree on attention chunks per pulse"
+        );
+        chunks = Some(m);
+    }
+    chunks.context("No quadratic section")
 }
 
 #[allow(clippy::new_ret_no_self)]

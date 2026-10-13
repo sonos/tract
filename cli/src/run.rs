@@ -207,13 +207,21 @@ where
                 .context("Expect pulse.input_axes when pulse.streaming_symbol is set")?
                 .cast_to::<i64>()?;
             let input_axis = input_axes.try_as_plain_ram()?.as_slice::<i64>()?[0] as usize;
-            let pulse_value = first_input.shape()[input_axis];
-            // Linear case: stream.dim = pulse_value · symbol.  For non-linear
-            // dims (e.g. `4·s + 1`) this would be wrong, but blockified models
-            // arrive here with a chunk-aligned linear dim by construction.
-            if pulse_value > 0 && stream_len % pulse_value == 0 {
+            // Linear case: stream.dim = frames_per_symbol · symbol, the
+            // symbol counting pulses, or attention chunks once blockified.
+            // For non-linear dims (e.g. `4·s + 1`) this would be wrong, but
+            // blockified models arrive here with a chunk-aligned linear dim by
+            // construction.
+            let frames_per_symbol = state
+                .model()
+                .properties
+                .get("blockify.chunk_size")
+                .and_then(|t| t.cast_to_scalar::<i64>().ok())
+                .map(|k| k as usize)
+                .unwrap_or(first_input.shape()[input_axis]);
+            if frames_per_symbol > 0 && stream_len % frames_per_symbol == 0 {
                 let sym = state.model().symbols.sym(&sym_name);
-                Some((sym, (stream_len / pulse_value) as i64))
+                Some((sym, (stream_len / frames_per_symbol) as i64))
             } else {
                 None
             }
