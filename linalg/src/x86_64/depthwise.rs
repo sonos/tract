@@ -4,7 +4,7 @@
 /// Same contract as the aarch64 and wasm kernels. The arithmetic is the scalar walk's, in the
 /// same order: the bias, then one multiply and one add per tap. It uses no FMA, so every output
 /// is bit-identical to the scalar path and a plan gives the same results with or without this
-/// kernel. `in_stride == 1` is vectorised at any tap count; any other stride stays scalar.
+/// kernel. Input strides 1 and 2 are vectorised at any tap count; other strides stay scalar.
 ///
 /// # Safety
 /// `input.offset(offsets[t] + i * in_stride)` must be readable for every tap and every `i` below
@@ -21,20 +21,40 @@ pub unsafe fn depthwise_w_f32(
 ) {
     unsafe {
         match in_stride {
-            1 => contiguous(input, output, taps, offsets, bias, len),
+            1 => vectorized::<1>(input, output, taps, offsets, bias, len),
+            2 => vectorized::<2>(input, output, taps, offsets, bias, len),
             _ => scalar(input, output, taps, offsets, bias, 0, len, in_stride),
         }
     }
 }
 
-/// The `in_stride == 1` case, with the tap count taken at runtime.
+/// Loads eight points at input stride 1 or 2. Stride 2 reads one unused element after
+/// its last point, so its caller must retain a following point inside the input run.
+#[cfg(target_arch = "x86_64")]
+#[target_feature(enable = "avx")]
+unsafe fn load8<const STRIDE: isize>(p: *const f32) -> std::arch::x86_64::__m256 {
+    use std::arch::x86_64::*;
+    unsafe {
+        if STRIDE == 1 {
+            _mm256_loadu_ps(p)
+        } else {
+            let a = _mm256_loadu_ps(p);
+            let b = _mm256_loadu_ps(p.add(8));
+            let lo = _mm256_permute2f128_ps(a, b, 0x20);
+            let hi = _mm256_permute2f128_ps(a, b, 0x31);
+            _mm256_shuffle_ps(lo, hi, 0x88)
+        }
+    }
+}
+
+/// Input strides 1 and 2, with the tap count taken at runtime.
 ///
 /// Taps are the outer loop and 32 output points the inner one: four 8-lane accumulators give
 /// the adder independent chains, and each tap's broadcast is paid once per 32 points. Real 3x3,
 /// 7x7 or 9x9 kernels reach here with 9, 49 or 81 taps.
 #[cfg(target_arch = "x86_64")]
 #[target_feature(enable = "avx")]
-unsafe fn contiguous(
+unsafe fn vectorized<const STRIDE: isize>(
     input: *const f32,
     output: *mut f32,
     taps: &[f32],
@@ -45,19 +65,21 @@ unsafe fn contiguous(
     use std::arch::x86_64::*;
     unsafe {
         let biasv = _mm256_set1_ps(bias);
+        let in_stride = STRIDE;
+        let extra = usize::from(STRIDE == 2);
         let mut i = 0usize;
-        while i + 32 <= len {
+        while i + 32 + extra <= len {
             let mut a0 = biasv;
             let mut a1 = biasv;
             let mut a2 = biasv;
             let mut a3 = biasv;
             for (tap, offset) in taps.iter().zip(offsets) {
                 let k = _mm256_set1_ps(*tap);
-                let p = input.offset(*offset).add(i);
-                a0 = _mm256_add_ps(a0, _mm256_mul_ps(_mm256_loadu_ps(p), k));
-                a1 = _mm256_add_ps(a1, _mm256_mul_ps(_mm256_loadu_ps(p.add(8)), k));
-                a2 = _mm256_add_ps(a2, _mm256_mul_ps(_mm256_loadu_ps(p.add(16)), k));
-                a3 = _mm256_add_ps(a3, _mm256_mul_ps(_mm256_loadu_ps(p.add(24)), k));
+                let p = input.offset(*offset + i as isize * in_stride);
+                a0 = _mm256_add_ps(a0, _mm256_mul_ps(load8::<STRIDE>(p), k));
+                a1 = _mm256_add_ps(a1, _mm256_mul_ps(load8::<STRIDE>(p.offset(8 * in_stride)), k));
+                a2 = _mm256_add_ps(a2, _mm256_mul_ps(load8::<STRIDE>(p.offset(16 * in_stride)), k));
+                a3 = _mm256_add_ps(a3, _mm256_mul_ps(load8::<STRIDE>(p.offset(24 * in_stride)), k));
             }
             _mm256_storeu_ps(output.add(i), a0);
             _mm256_storeu_ps(output.add(i + 8), a1);
@@ -65,16 +87,16 @@ unsafe fn contiguous(
             _mm256_storeu_ps(output.add(i + 24), a3);
             i += 32;
         }
-        while i + 8 <= len {
+        while i + 8 + extra <= len {
             let mut acc = biasv;
             for (tap, offset) in taps.iter().zip(offsets) {
-                let x = _mm256_loadu_ps(input.offset(*offset).add(i));
+                let x = load8::<STRIDE>(input.offset(*offset + i as isize * in_stride));
                 acc = _mm256_add_ps(acc, _mm256_mul_ps(x, _mm256_set1_ps(*tap)));
             }
             _mm256_storeu_ps(output.add(i), acc);
             i += 8;
         }
-        scalar(input, output, taps, offsets, bias, i, len, 1);
+        scalar(input, output, taps, offsets, bias, i, len, in_stride);
     }
 }
 
@@ -137,9 +159,13 @@ mod tests {
         let k: Vec<f32> = (0..taps).map(|t| (t as f32 * 0.7).sin()).collect();
         let offsets: Vec<isize> = (0..taps as isize).map(|t| t - taps as isize / 2).collect();
         let center = taps;
-        let input: Vec<f32> = (0..center * 2 + len * in_stride as usize + 1)
-            .map(|i| (i as f32 * 0.37).cos())
-            .collect();
+        let extent = if len == 0 {
+            center * 2
+        } else {
+            (center as isize + offsets.last().unwrap() + (len - 1) as isize * in_stride + 1)
+                as usize
+        };
+        let input: Vec<f32> = (0..extent).map(|i| (i as f32 * 0.37).cos()).collect();
         let expected = reference(&input, &k, &offsets, 0.25, len, in_stride, center);
         let mut output = vec![0f32; len];
         unsafe {
@@ -161,9 +187,10 @@ mod tests {
     #[test]
     fn matches_scalar_bit_for_bit() {
         for taps in [1, 2, 3, 4, 5, 9, 25, 49, 81] {
-            for len in [0, 1, 7, 8, 9, 31, 32, 33, 64, 100, 224] {
+            for len in [0, 1, 7, 8, 9, 15, 16, 17, 31, 32, 33, 64, 100, 224] {
                 compare(taps, len, 1);
                 compare(taps, len, 2);
+                compare(taps, len, 3);
             }
         }
     }
