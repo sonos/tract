@@ -292,6 +292,8 @@ impl<K: MatMatMulKer> MatMatMul for K {
                         _ => None,
                     })
                     .unwrap_or(0);
+                #[cfg(target_arch = "riscv64")]
+                crate::riscv64::refresh_tlb_before_matmul(m * n * k);
                 run_with_scratch_space_2d(
                     self,
                     m,

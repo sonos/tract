@@ -94,3 +94,10 @@ tract_data::declare_knob!(
     None,
     "Force the number of chunks per thread a multithreaded matmul is split in."
 );
+
+tract_data::declare_knob!(
+    TRACT_RISCV64_TLB_REFRESH_FMAS,
+    Option<usize>,
+    None,
+    "riscv64: matmul size, in multiply-adds, from which a TLB flush precedes the run. Unset applies the SpacemiT X60 default and does nothing elsewhere; 0 turns it off; any other value forces it on with that threshold."
+);
