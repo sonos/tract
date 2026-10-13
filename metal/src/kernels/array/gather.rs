@@ -17,7 +17,7 @@ impl fmt::Display for Gather {
 
 impl Gather {
     pub fn is_supported_dt(dt: DatumType) -> bool {
-        matches!(dt, DatumType::F32 | DatumType::F16)
+        matches!(dt, DatumType::F32 | DatumType::F16 | DatumType::I64)
     }
 
     pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
