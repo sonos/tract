@@ -271,6 +271,16 @@ fn print_host() {
     println!("# Cores");
     println!("cpus: {}", num_cpus::get());
     println!("physical cpus: {}", num_cpus::get_physical());
+    if let Some(t) = tract_linalg::topology::topology() {
+        for (ix, level) in t.levels.iter().enumerate() {
+            let per_l2 = level.cpus_per_l2.map(|p| p.to_string()).unwrap_or_else(|| "?".into());
+            println!(
+                "level {ix}: {} cores, {per_l2} per L2, {} cluster(s)",
+                level.physical_cpus,
+                level.clusters()
+            );
+        }
+    }
     println!();
 
     if let Ok(cpuinfo) = std::fs::read_to_string("/proc/cpuinfo") {
