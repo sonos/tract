@@ -1,7 +1,9 @@
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::axes::{AxesMapping, Axis};
 use tract_nnef::tract_core::ops::binary::{BinMiniOp, TypedBinOp};
+use tract_nnef::tract_core::ops::cast::Cast;
 use tract_nnef::tract_core::ops::change_axes::{AxisChangeConsequence, AxisOp, InOut};
+use tract_nnef::tract_core::ops::logic::And;
 use tract_nnef::tract_core::ops::logic::Iff;
 use tract_nnef::tract_core::ops::math::{Add, Mul};
 use tract_nnef::tract_core::ops::nn::{Softmax, SoftmaxKind};
@@ -117,6 +119,39 @@ impl EvalOp for ScaledMaskedSoftmax {
     }
 }
 
+/// A boolean expression in coordinate symbols that is false wherever the mask
+/// at `outlet` is false: its `uniform_tdim` when known, else the conjunction of
+/// the known factors of an `And`, followed through ops that move or cast values
+/// without changing them.
+fn mask_upper_bound(model: &TypedModel, outlet: OutletId) -> TractResult<Option<TDim>> {
+    let fact = model.outlet_fact(outlet)?;
+    if fact.uniform_tdim.is_some() {
+        return Ok(fact.uniform_tdim.clone());
+    }
+    let node = model.node(outlet.node);
+    if node.op_as::<TypedBinOp>().is_some_and(|op| op.0.is::<And>()) {
+        let mut factors = vec![];
+        for input in &node.inputs {
+            if let Some(bound) = mask_upper_bound(model, *input)? {
+                factors.push(bound);
+            }
+        }
+        return Ok(match factors.len() {
+            0 => None,
+            1 => factors.pop(),
+            _ => Some(TDim::Mul(factors).reduce()),
+        });
+    }
+    if node.inputs.len() == 1 && (node.op_is::<AxisOp>() || node.op_is::<Cast>()) {
+        let Some(bound) = mask_upper_bound(model, node.inputs[0])? else { return Ok(None) };
+        let mut input_fact = model.outlet_fact(node.inputs[0])?.clone();
+        input_fact.uniform_tdim = Some(bound);
+        let output_facts = node.op.as_typed().unwrap().output_facts(&[&input_fact])?;
+        return Ok(output_facts[outlet.slot].uniform_tdim.clone());
+    }
+    Ok(None)
+}
+
 impl TypedOp for ScaledMaskedSoftmax {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         ensure!(!self.scale.is_zero()?);
@@ -172,13 +207,13 @@ impl TypedOp for ScaledMaskedSoftmax {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TVec<Option<TDim>>>> {
-        // Introduction: mask's uniform_tdim defines which positions matter for scores.
+        // Introduction: an upper bound of the mask defines which positions matter for scores.
         // When the mask has lower rank than the scores, its coord symbols are
         // expressed in mask-frame (🎯0 = mask axis 0).  Scores broadcasting
         // right-aligns the mask, so mask axis K corresponds to scores axis
         // K + rank_diff — remap each coord symbol accordingly before planting.
         let mask_fact = model.outlet_fact(node.inputs[1])?;
-        if let Some(mask_expr) = &mask_fact.uniform_tdim {
+        if let Some(mask_expr) = &mask_upper_bound(model, node.inputs[1])? {
             let scores_fact = model.outlet_fact(node.inputs[0])?;
             let rank_diff = scores_fact.shape.rank().saturating_sub(mask_fact.shape.rank());
             let remapped = if rank_diff == 0 {
@@ -643,6 +678,36 @@ mod tests {
         assert!(
             !uses_axis_2,
             "expected planted ROI to NOT mention scores axis 2 (the un-shifted mask axis 2), got {printed}"
+        );
+        Ok(())
+    }
+
+    /// A band mask ANDed with a data-dependent mask (e.g. a padding mask built
+    /// from a runtime length) has no `uniform_tdim`, but the band still bounds
+    /// it: SMS must plant the band as the scores ROI.
+    #[test]
+    fn input_roi_bounds_mask_by_known_and_factor() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let scores = model.add_source("scores", f32::fact([8usize, 4, 4]))?;
+        let k = model.symbols.coord_sym(1);
+        let band = TDim::Ge(Box::new(TDim::Val(2)), Box::new(TDim::Sym(k)));
+        let mut band_fact = bool::fact([4usize, 4]);
+        band_fact.uniform_tdim = Some(band);
+        let band = model.add_source("band", band_fact)?;
+        let padding = model.add_source("padding", bool::fact([4usize, 4]))?;
+        let mask =
+            model.wire_node("and", tract_nnef::tract_core::ops::logic::and(), &[band, padding])?;
+        let mask = model.wire_node("add_axis", AxisOp::Add(0), &mask)?[0];
+        let sms = model.wire_node("sms", smsoftmax(), &[scores, mask])?[0];
+        model.select_output_outlets(&[sms])?;
+
+        let sms_node = &model.nodes()[sms.node];
+        let input_rois = sms_node.op.as_typed().unwrap().input_roi(&model, sms_node)?;
+        let scores_roi = input_rois.expect("SMS should return Some")[0].clone();
+        let k_scores = model.symbols.coord_sym(2);
+        assert_eq!(
+            scores_roi,
+            Some(TDim::Ge(Box::new(TDim::Val(2)), Box::new(TDim::Sym(k_scores))))
         );
         Ok(())
     }
