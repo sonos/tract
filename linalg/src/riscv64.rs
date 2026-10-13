@@ -41,9 +41,23 @@ pub use rvv::*;
 #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
 const NR_RISCV_HWPROBE: libc::c_long = 258;
 
+/// `RISCV_HWPROBE_KEY_MVENDORID`.
+const HWPROBE_KEY_MVENDORID: i64 = 0;
+
+/// `RISCV_HWPROBE_KEY_MARCHID`.
+const HWPROBE_KEY_MARCHID: i64 = 1;
+
 /// `RISCV_HWPROBE_KEY_IMA_EXT_0`, the extension bitmap.
-#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
 const HWPROBE_KEY_IMA_EXT_0: i64 = 4;
+
+/// SpacemiT's JEDEC vendor id and the X60 core's architecture id, as found on
+/// the K1 / Ky X1 SoCs.
+const SPACEMIT_MVENDORID: u64 = 0x710;
+const SPACEMIT_X60_MARCHID: u64 = 0x8000_0000_5800_0001;
+
+/// Matmul size, in multiply-adds, from which the X60 gets a TLB flush ahead of
+/// the run: below it the flush costs more than the run can lose.
+const X60_TLB_REFRESH_FMAS: usize = 8 << 20;
 
 /// `RISCV_HWPROBE_IMA_V`, which the kernel sets only for the ratified vector
 /// extension.
@@ -62,23 +76,10 @@ struct HwprobePair {
     value: u64,
 }
 
-/// The extension bitmap, asked through `riscv_hwprobe(2)`; 0 where it cannot
-/// be asked.
-///
-/// The `AT_HWCAP` 'V' bit cannot answer this. Linux derives that bitmap from
-/// the ISA string the firmware reports, and a T-Head C910 — BeagleV-Ahead,
-/// Sipeed LicheePi 4A — advertises a bare `v` while implementing the
-/// incompatible 0.7.1 draft, so the bit is set on a hart that faults on, or
-/// silently misdecodes, every 1.0 encoding. `hwprobe` is the interface that
-/// distinguishes them, and a kernel too old to have it is treated as having no
-/// vector unit: the draft parts are the old-kernel population, and losing the
-/// kernels on a 1.0 hart running an old kernel costs speed, not correctness.
-/// It is also the only interface carrying the multi-letter extensions —
-/// `AT_HWCAP` has bits for the single-letter ones alone, so Zvfh has no answer
-/// there at all.
+/// One `riscv_hwprobe(2)` key, or `None` where the kernel cannot answer it.
 #[cfg(all(target_arch = "riscv64", target_os = "linux"))]
-fn probe_ima_ext_0() -> u64 {
-    let mut pair = HwprobePair { key: HWPROBE_KEY_IMA_EXT_0, value: 0 };
+fn hwprobe(key: i64) -> Option<u64> {
+    let mut pair = HwprobePair { key, value: 0 };
     // SAFETY: the syscall writes only through the pointer we hand it, to one
     // pair of the layout it expects. A kernel without it fails with ENOSYS and
     // writes nothing, leaving `pair` as initialised here.
@@ -93,12 +94,30 @@ fn probe_ima_ext_0() -> u64 {
         )
     };
     // An unrecognised key comes back as -1 with the value left at 0.
-    if rc == 0 && pair.key == HWPROBE_KEY_IMA_EXT_0 { pair.value } else { 0 }
+    (rc == 0 && pair.key == key).then_some(pair.value)
 }
 
 #[cfg(not(all(target_arch = "riscv64", target_os = "linux")))]
+fn hwprobe(_key: i64) -> Option<u64> {
+    None
+}
+
+/// The extension bitmap, asked through `riscv_hwprobe(2)`; 0 where it cannot
+/// be asked.
+///
+/// The `AT_HWCAP` 'V' bit cannot answer this. Linux derives that bitmap from
+/// the ISA string the firmware reports, and a T-Head C910 — BeagleV-Ahead,
+/// Sipeed LicheePi 4A — advertises a bare `v` while implementing the
+/// incompatible 0.7.1 draft, so the bit is set on a hart that faults on, or
+/// silently misdecodes, every 1.0 encoding. `hwprobe` is the interface that
+/// distinguishes them, and a kernel too old to have it is treated as having no
+/// vector unit: the draft parts are the old-kernel population, and losing the
+/// kernels on a 1.0 hart running an old kernel costs speed, not correctness.
+/// It is also the only interface carrying the multi-letter extensions —
+/// `AT_HWCAP` has bits for the single-letter ones alone, so Zvfh has no answer
+/// there at all.
 fn probe_ima_ext_0() -> u64 {
-    0
+    hwprobe(HWPROBE_KEY_IMA_EXT_0).unwrap_or(0)
 }
 
 /// Reads `vlenb`, the read-only CSR holding `VLEN / 8`.
@@ -131,7 +150,73 @@ lazy_static::lazy_static! {
     static ref HAS_ZVFH: bool = *HAS_RVV && *IMA_EXT_0 & HWPROBE_EXT_ZVFH != 0;
 
     static ref VLENB: usize = if *HAS_RVV { read_vlenb() } else { 0 };
+
+    static ref IS_SPACEMIT_X60: bool = hwprobe(HWPROBE_KEY_MVENDORID) == Some(SPACEMIT_MVENDORID)
+        && hwprobe(HWPROBE_KEY_MARCHID) == Some(SPACEMIT_X60_MARCHID);
+
+    static ref TLB_REFRESH_FMAS: Option<usize> =
+        match crate::knobs::TRACT_RISCV64_TLB_REFRESH_FMAS.get() {
+            Some(0) => None,
+            Some(n) => Some(n),
+            None => IS_SPACEMIT_X60.then_some(X60_TLB_REFRESH_FMAS),
+        };
 }
+
+/// Flush the TLB ahead of a matmul of `fmas` multiply-adds, on the cores that
+/// need it.
+///
+/// The SpacemiT X60's L1 data prefetcher drifts, over a run without TLB
+/// maintenance, into a state where it stops covering the matmul operand
+/// streams, and stays there until the TLB is flushed. A process taking page
+/// faults gets those flushes as a side effect; one recycling its memory does
+/// not. User code cannot issue `sfence.vma`, so this changes the protection of
+/// a private page, which makes the kernel flush on every hart running the
+/// process. Matmuls under the threshold are left alone. The threshold comes
+/// from `TRACT_RISCV64_TLB_REFRESH_FMAS`, read once.
+pub fn refresh_tlb_before_matmul(fmas: usize) {
+    if TLB_REFRESH_FMAS.is_some_and(|threshold| fmas >= threshold) {
+        flush_tlb();
+    }
+}
+
+#[cfg(all(target_arch = "riscv64", target_os = "linux"))]
+fn flush_tlb() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    static PAGE: std::sync::OnceLock<Option<usize>> = std::sync::OnceLock::new();
+    static WRITABLE: AtomicBool = AtomicBool::new(true);
+    let Some(page) = *PAGE.get_or_init(|| {
+        // SAFETY: a fresh private anonymous page, owned by this static for the
+        // life of the process and never handed out. It is written once so a PTE
+        // exists: changing the protection of an unpopulated page flushes nothing.
+        unsafe {
+            let p = libc::mmap(
+                std::ptr::null_mut(),
+                4096,
+                libc::PROT_READ | libc::PROT_WRITE,
+                libc::MAP_PRIVATE | libc::MAP_ANONYMOUS,
+                -1,
+                0,
+            );
+            if p == libc::MAP_FAILED {
+                return None;
+            }
+            (p as *mut u8).write_volatile(1);
+            Some(p as usize)
+        }
+    }) else {
+        return;
+    };
+    let prot = if WRITABLE.fetch_xor(true, Ordering::Relaxed) {
+        libc::PROT_READ
+    } else {
+        libc::PROT_READ | libc::PROT_WRITE
+    };
+    // SAFETY: the page is ours and nothing reads or writes it after setup.
+    unsafe { libc::mprotect(page as *mut libc::c_void, 4096, prot) };
+}
+
+#[cfg(not(all(target_arch = "riscv64", target_os = "linux")))]
+fn flush_tlb() {}
 
 /// Whether the hart implements the ratified RVV 1.0 vector extension.
 pub fn has_rvv() -> bool {
