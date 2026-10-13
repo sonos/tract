@@ -909,7 +909,7 @@ fn optimized_mat_mul(
     node: &TypedNode,
     op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let (mode_picker, left_pack, impls) = kernel_selection::strategize(model, node, op)?;
+    let (mode_picker, left_pack, impls) = kernel_selection::select(model, node, op)?;
     let input_facts = model.node_input_facts(node.id)?;
     let input_shapes = op.actual_input_shapes_from_facts(&input_facts)?;
     let prefix = &node.name;

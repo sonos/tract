@@ -89,6 +89,7 @@ pub mod unbatched;
 pub mod runtime;
 #[macro_use]
 pub mod transform;
+pub mod tuning;
 pub mod value;
 
 pub use dyn_clone;

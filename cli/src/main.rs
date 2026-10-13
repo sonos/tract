@@ -182,6 +182,7 @@ fn main() -> TractResult<()> {
 
         .arg(arg!(--"threads" [THREADS] "Setup a thread pool for computing. 0 will guess the number of physical cores"))
         .arg(arg!(--"threading-threshold" [ELEMENTS] "Element-count below which row-parallel ops (softmax, norm, elementwise) run inline. 0 always threads"))
+        .arg(arg!(--"tuning" [FILE] "Tuning table consulted by codegen: `<key> <kernel> <packing>` per line (see the tuning-candidates subcommand)"))
 
         .arg(arg!(-O --optimize "Optimize before running"))
         .arg(arg!(--"assert-maximal-mm-quality-cost" [MAX] "Maximum value for quality category (0=assembly, 4=dreadful rust code)"))
@@ -390,6 +391,13 @@ fn main() -> TractResult<()> {
     let run = output_options(run);
     let run = assertions_options(run);
     app = app.subcommand(run);
+
+    {
+        let tuning_candidates = clap::Command::new("tuning-candidates").long_about(
+            "List each matmul's tuning key and candidate kernels, the heuristic pick first. Run without -O.",
+        );
+        app = app.subcommand(run_options(assertions_options(tuning_candidates)));
+    }
 
     #[cfg(feature = "transformers")]
     {
@@ -981,6 +989,10 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         _ => (),
     }
 
+    if let Some(path) = matches.get_one::<String>("tuning") {
+        tract_core::tuning::set_default_tuning(Some(tract_core::tuning::Tuning::load(path)?));
+    }
+
     let builder_result = Parameters::from_clap(&matches, probe);
     #[allow(unused_mut)]
     let mut params = match builder_result {
@@ -1073,6 +1085,15 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("llm-bench", m)) => {
             need_optimisations = true;
             llm::handle(&params, &matches, m, &params::bench_limits_from_clap(m)?, probe)
+        }
+
+        Some(("tuning-candidates", _)) => {
+            for r in tract_core::ops::einsum::kernel_selection::report(&params.req_typed_model())? {
+                let key = r.key.as_deref().unwrap_or("(symbolic)");
+                let cands = r.candidates.iter().map(|(k, p)| format!("{k}:{p}")).join(" ");
+                println!("{}\t{key}\t{cands}", r.node);
+            }
+            Ok(())
         }
 
         Some((s, _)) => bail!("Unknown subcommand {}.", s),
