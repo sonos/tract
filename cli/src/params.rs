@@ -840,6 +840,7 @@ impl Parameters {
                 Ok(m.nested_models(node)[0].1.downcast_ref::<TypedModel>().unwrap().clone())
             });
         }
+        crate::allocator::purge();
         stage!("before-optimize", typed_model -> typed_model, Ok);
         Ok((typed_model.clone().unwrap(), reference_model))
     }
@@ -1092,6 +1093,7 @@ impl Parameters {
         };
 
         info!("Model ready");
+        crate::allocator::purge();
         info_usage("model ready", probe);
         Ok(Parameters {
             graph,

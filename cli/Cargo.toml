@@ -97,6 +97,7 @@ tract-cuda = { workspace = true, optional = true }
 rustix = { version = "1", features = ["fs"] }
 
 [target.'cfg(not(any(target_family = "wasm", target_os = "windows", target_vendor = "apple")))'.dependencies]
+tikv-jemalloc-sys = { workspace = true, optional = true }
 tikv-jemallocator = { workspace = true, optional = true }
 
 [features]
@@ -125,7 +126,7 @@ tflite = ["dep:tract-tflite"]
 transformers = ["dep:tract-transformers", "tract-libcli/transformers", "tract-onnx?/transformers"]
 multithread-mm = ["tract-linalg/multithread-mm"]
 bench-suite = ["dep:toml", "dep:tar", "dep:minijinja", "dep:time", "multithread-mm", "jemalloc"]
-jemalloc = ["dep:tikv-jemallocator"]
+jemalloc = ["dep:tikv-jemalloc-sys", "dep:tikv-jemallocator"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Use to gate cudarc-specific code paths in tract-cli. Not meant to be
