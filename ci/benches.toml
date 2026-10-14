@@ -376,7 +376,6 @@ kind = "net"
 name = "fastenhancer_t"
 variant = "frame"
 model = "ns-panel/fastenhancer_t.spec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,16,20,f32 -i 1,16,20,f32"
 samples = 5
 
@@ -385,7 +384,6 @@ kind = "net"
 name = "fastenhancer_b"
 variant = "frame"
 model = "ns-panel/fastenhancer_b.spec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,24,36,f32 -i 1,24,36,f32 -i 1,24,36,f32"
 
 [[bench]]
@@ -393,7 +391,6 @@ kind = "net"
 name = "fastenhancer_s"
 variant = "frame"
 model = "ns-panel/fastenhancer_s.spec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,36,48,f32 -i 1,36,48,f32 -i 1,36,48,f32"
 
 [[bench]]
@@ -401,7 +398,6 @@ kind = "net"
 name = "fastenhancer_m"
 variant = "frame"
 model = "ns-panel/fastenhancer_m.spec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32"
 
 [[bench]]
@@ -409,7 +405,6 @@ kind = "net"
 name = "fastenhancer_l"
 variant = "frame"
 model = "ns-panel/fastenhancer_l.spec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32"
 
 [[bench]]
@@ -417,7 +412,6 @@ kind = "net"
 name = "gtcrn"
 variant = "frame"
 model = "ns-panel/gtcrn.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 2,1,16,16,33,f32 -i 2,3,1,1,16,f32 -i 2,1,33,16,f32"
 
 [[bench]]
@@ -425,7 +419,6 @@ kind = "net"
 name = "dtln_1"
 variant = "frame"
 model = "ns-panel/dtln_model_1.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,257,f32 -i 1,2,128,2,f32"
 samples = 5
 
@@ -434,7 +427,6 @@ kind = "net"
 name = "dtln_2"
 variant = "frame"
 model = "ns-panel/dtln_model_2.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,512,f32 -i 1,2,128,2,f32"
 samples = 5
 
@@ -443,7 +435,6 @@ kind = "net"
 name = "dfn3_enc"
 variant = "s100"
 model = "ns-panel/dfn3_enc.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,100,32,f32 -i 1,2,100,96,f32"
 
 [[bench]]
@@ -451,7 +442,6 @@ kind = "net"
 name = "dfn3_erb_dec"
 variant = "s100"
 model = "ns-panel/dfn3_erb_dec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,8,f32 -i 1,64,100,8,f32 -i 1,64,100,16,f32 -i 1,64,100,32,f32"
 
 [[bench]]
@@ -459,5 +449,4 @@ kind = "net"
 name = "dfn3_df_dec"
 variant = "s100"
 model = "ns-panel/dfn3_df_dec.onnx"
-archive = "ns-panel.tar.gz"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,96,f32"
