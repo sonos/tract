@@ -31,6 +31,17 @@ pub struct Conv {
 }
 
 impl Conv {
+    /// Integer accumulation and explicit quantization parameters use independent operand types.
+    fn is_quantized(&self) -> bool {
+        self.override_output_datum_type == Some(DatumType::I32)
+            || self.k_zero_point_input.is_some()
+            || self.k_scale_input.is_some()
+            || self.x_zero_point_input.is_some()
+            || self.x_scale_input.is_some()
+            || self.y_zero_point_input.is_some()
+            || self.y_scale_input.is_some()
+    }
+
     pub fn hwc(self) -> Conv {
         Conv { data_format: DataFormat::HWC, ..self }
     }
@@ -132,9 +143,19 @@ impl Expansion for Conv {
         s.equals(&inputs[0].rank, k_input.rank.bex() + (has_n as usize as i64 - 1))?;
         s.equals(&outputs[0].rank, &inputs[0].rank)?;
         check_output_arity(outputs, 1)?;
-        s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
+        if !self.is_quantized() {
+            s.equals(&inputs[0].datum_type, &k_input.datum_type)?;
+        }
+        if let Some(zp) = self.x_zero_point_input {
+            s.equals(&inputs[0].datum_type, &inputs[zp].datum_type)?;
+        }
+        if let Some(zp) = self.k_zero_point_input {
+            s.equals(&k_input.datum_type, &inputs[zp].datum_type)?;
+        }
         if let Some(dt) = self.override_output_datum_type {
             s.equals(&outputs[0].datum_type, dt)?;
+        } else if let Some(zp) = self.y_zero_point_input {
+            s.equals(&outputs[0].datum_type, &inputs[zp].datum_type)?;
         } else {
             s.equals(&outputs[0].datum_type, &inputs[0].datum_type)?;
         }
@@ -224,13 +245,14 @@ impl Expansion for Conv {
             output_channels,
         };
 
-        let quantized = self.k_zero_point_input.is_some()
-            || self.k_scale_input.is_some()
-            || self.x_zero_point_input.is_some()
-            || self.x_scale_input.is_some()
-            || self.y_zero_point_input.is_some()
-            || self.y_scale_input.is_some();
-        let output_type = self.override_output_datum_type.unwrap_or(input.datum_type);
+        let quantized = self.is_quantized();
+        let output_type = if let Some(dt) = self.override_output_datum_type {
+            dt
+        } else if let Some(zp) = self.y_zero_point_input {
+            model.outlet_fact(inputs[zp])?.datum_type
+        } else {
+            input.datum_type
+        };
         if quantized {
             let zero = model.add_const(format!("{prefix}.zero"), tensor0(0i32))?;
             let one = model.add_const(format!("{prefix}.one"), tensor0(1f32))?;

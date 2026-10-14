@@ -829,19 +829,14 @@ fn dequant(
     let k_axis = op.k_axis();
 
     let mut taps = patch.taps(model, &node.inputs)?;
-    for ab in [0, 1] {
-        let scale_input = 4 + ab * 2;
-        if !patch.outlet_fact(taps[scale_input])?.shape.volume().is_one() {
-            let q_axis_in_output = op.axes.axis((InOut::In(scale_input), 0))?.outputs[0][0];
-            let output_rank = node.outputs[0].fact.rank();
-            for i in 1..(output_rank - q_axis_in_output) {
-                taps[scale_input] = patch.wire_node(
-                    format!("{name}.scale_input{ab}_axis_fix_{i}"),
-                    AxisOp::Add(i),
-                    &[taps[scale_input]],
-                )?[0];
-            }
-        }
+    for (slot, tap) in taps.iter_mut().enumerate().skip(3) {
+        *tap = wire_axes_fix(
+            &mut patch,
+            name,
+            &format!("quant_param{slot}"),
+            &op.axes.extract_sub_mapping(&[slot], &[0])?,
+            tvec!(*tap),
+        )?[0];
     }
 
     let [mut a, mut b, bias, mut a0, a_scale, mut b0, b_scale, c0, c_scale] = *taps else {

@@ -41,3 +41,9 @@ onnx_1_20_1 = []
 onnx_1_21_0 = []
 onnx_1_22_0 = []
 default = [ "onnx_1_22_0" ]
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+proptest.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+proptest = { version = "1.0.0", default-features = false, features = ["std", "bit-set"] }

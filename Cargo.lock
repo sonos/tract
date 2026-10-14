@@ -4515,6 +4515,7 @@ dependencies = [
  "itertools 0.15.0",
  "lazy_static",
  "log",
+ "proptest",
  "prost",
  "regex",
  "tract-core",

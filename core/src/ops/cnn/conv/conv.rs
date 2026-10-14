@@ -190,6 +190,22 @@ impl Conv {
         let (mmm, packing) = self.choose_impl(&b_fact, &a_fact, m, k, &n)?;
         let output_shape = self.pool_spec.output_shape(&b_fact.shape)?;
 
+        let k0_fact = model.outlet_fact(k0)?;
+        if k0_fact.rank() == 1 && !k0_fact.shape.volume().is_one() {
+            k0 = model.wire_node(
+                format!("{name}.k0_group_channels"),
+                AxisOp::Reshape(
+                    0,
+                    k0_fact.shape.to_tvec(),
+                    tvec!(self.group.to_dim(), (self.output_channels() / self.group).to_dim(),),
+                ),
+                &[k0],
+            )?[0];
+            if !output_shape.fmt.c_is_last() {
+                k0 = model.wire_node(format!("{name}.k0_spatial_axis"), AxisOp::Add(2), &[k0])?[0];
+            }
+        }
+
         if !model.outlet_fact(k_scale)?.shape.volume().is_one() {
             // requant is performed before geo_reshape, so we need at most one geo axis to the
             // right
