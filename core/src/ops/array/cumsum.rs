@@ -1,3 +1,4 @@
+use super::MultiBroadcastTo;
 use crate::internal::*;
 use tract_itertools::Itertools;
 use tract_num_traits::Zero;
@@ -7,7 +8,8 @@ use tract_num_traits::Zero;
 /// Output `i` is the sum of inputs `0..=i` (`0..i` when `exclusive`), counted from the
 /// end of the axis when `reverse`. Shape and type are the input's; every numeric type is
 /// accepted. The axes mapping leaves `axis` disconnected so no rule slices, pulses or
-/// moves through it as if positions were independent.
+/// moves through it as if positions were independent. Declutter folds a sum over a
+/// length-1 axis to the identity, or to zeros when `exclusive`.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct CumSum {
     pub axis: usize,
@@ -116,6 +118,26 @@ impl TypedOp for CumSum {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        let fact = model.outlet_fact(node.inputs[0])?;
+        rule_if!(fact.shape[self.axis].is_one());
+        if !self.exclusive {
+            return TypedModelPatch::shunt_one_op(model, node);
+        }
+        // An exclusive sum over a single position is all zeros.
+        let zero = Tensor::zero_dt(fact.datum_type, &tvec![1; fact.rank()])?;
+        let mut patch = TypedModelPatch::default();
+        let zero = patch.add_const(format!("{}.zero", node.name), zero)?;
+        let wire =
+            patch.wire_node(&node.name, MultiBroadcastTo::new(fact.shape.clone()), &[zero])?;
+        patch.shunt_outside(model, node.id.into(), wire[0])?;
+        Ok(Some(patch))
+    }
+
     fn change_axes(
         &self,
         model: &TypedModel,
@@ -144,4 +166,36 @@ impl TypedOp for CumSum {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn declutter_single_step(exclusive: bool) -> TractResult<TypedModel> {
+        let mut model = TypedModel::default();
+        let t = model.symbols.sym("T");
+        let input = model.add_source("input", f32::fact(&[1.to_dim(), t.to_dim()]))?;
+        let op = CumSum { axis: 0, exclusive, reverse: false };
+        let output = model.wire_node("cumsum", op, &[input])?;
+        model.select_output_outlets(&output)?;
+        model.into_decluttered()
+    }
+
+    #[test]
+    fn single_step_inclusive_is_identity() -> TractResult<()> {
+        let model = declutter_single_step(false)?;
+        assert_eq!(model.nodes().len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn single_step_exclusive_is_zeros() -> TractResult<()> {
+        let model = declutter_single_step(true)?;
+        assert!(model.nodes().iter().all(|n| !n.op_is::<CumSum>()));
+        let input = tensor2(&[[1f32, 2., 3.]]);
+        let output = model.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+        output[0].close_enough(&tensor2(&[[0f32, 0., 0.]]), Approximation::Exact)?;
+        Ok(())
+    }
 }

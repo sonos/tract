@@ -16,6 +16,8 @@ fn pulsify(
     let input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     rule_if_some!(stream = fact.stream.as_ref());
+    // Off the streaming axis, positions along the stream are independent: returning
+    // None hands the op to the generic PulseWrappingOp, which pulses it per frame.
     rule_if!(stream.axis == op.axis);
     ensure!(
         !op.reverse,
