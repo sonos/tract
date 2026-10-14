@@ -30,6 +30,7 @@ jobs:
           ACTOR: ${{ github.actor }}
           IMAGE: ghcr.io/${{ github.repository }}/cross-debian-stretch
         run: |
+          IMAGE=$(printf '%s' "$IMAGE" | tr '[:upper:]' '[:lower:]')
           echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
           docker build -t "$IMAGE:latest" ci/docker-debian-stretch
           docker push "$IMAGE:latest"
