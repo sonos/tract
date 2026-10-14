@@ -23,8 +23,13 @@ ensure_cargo_dinghy() {
          mkdir -p /tmp/cargo-dinghy
          # Subshell: the callers below all use paths relative to the checkout.
          ( cd /tmp/cargo-dinghy
-           # wget gives up on a TLS error whatever --tries says, so retry from the shell.
-           wget -nv $URL -O cargo-dinghy.tgz || ( sleep 5 ; wget -nv $URL -O cargo-dinghy.tgz )
+           # wget treats TLS errors and HTTP 500 as fatal, so retry from the shell.
+           for attempt in 1 2 3 4 5
+           do
+               wget -nv --tries=1 --timeout=60 "$URL" -O cargo-dinghy.tgz && break
+               [ "$attempt" -lt 5 ] || exit 1
+               sleep 5
+           done
            tar vzxf cargo-dinghy.tgz --strip-components 1
            mv cargo-dinghy $HOME/.cargo/bin )
     else
@@ -123,7 +128,8 @@ case "$PLATFORM" in
         # Prefer the prebuilt toolchain image (private ghcr package); log in when a token is
         # present (CI), otherwise build the bare image locally. A failed pull also falls back
         # to a local build, so forks and offline runs still work.
-        STRETCH_IMAGE="${TRACT_CROSS_IMAGE:-ghcr.io/sonos/tract/cross-debian-stretch:latest}"
+        STRETCH_REPOSITORY=$(printf '%s' "${GITHUB_REPOSITORY:-sonos/tract}" | tr '[:upper:]' '[:lower:]')
+        STRETCH_IMAGE="${TRACT_CROSS_IMAGE:-ghcr.io/$STRETCH_REPOSITORY/cross-debian-stretch:latest}"
         [ -n "$GITHUB_TOKEN" ] && echo "$GITHUB_TOKEN" | docker login ghcr.io -u "${GITHUB_ACTOR:-x}" --password-stdin
         if docker pull "$STRETCH_IMAGE"
         then
