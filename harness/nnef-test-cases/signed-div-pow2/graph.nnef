@@ -1,0 +1,10 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph signed_div_pow2(input) -> (output)
+{
+    input = tract_core_external(shape = [2], datum_type = 'i32');
+    divisor = tract_core_cast([2], to = 'i32');
+    output = div(input, divisor);
+}
