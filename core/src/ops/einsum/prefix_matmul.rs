@@ -1,4 +1,3 @@
-use tract_data::itertools::Itertools;
 use tract_linalg::Scaler;
 use tract_ndarray::Ix2;
 use tract_num_traits::One;
@@ -31,19 +30,8 @@ fn rule(
     node_name: &str,
     op: &EinSumMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
-    // F: 2 inputs
-    // Q: 9 inputs
-    let is_fp_mm = op.q_params.is_none() && node.inputs.len() == 2;
-    let is_q_mm = op.q_params.is_some() && node.inputs.len() == 9;
-    rule_if!(is_fp_mm || is_q_mm);
-    // PrefixMatMul carries no bias; the quantized fusion would drop the einsum
-    // bias input. Only the serialization path (strict) relies on this form, so
-    // on exec backends leave quantized einsums to lower through requant.
-    rule_if!(ctx.ensure_strict_matmul_semantic || op.q_params.is_none());
-    rule_if!(
-        op.q_params.is_none()
-            || model.node_input_facts(node.id)?.iter().skip(3).all(|i| i.konst.is_some())
-    );
+    // PrefixMatMul cannot carry the bias and input quantization parameters of a quantized einsum.
+    rule_if!(op.q_params.is_none() && node.inputs.len() == 2);
     let prefix: String = op
         .axes
         .iter_all_axes()
@@ -105,30 +93,12 @@ fn rule(
         format!("{c_order_mm_t}->{c_order_es}").parse::<AxesMapping>()?.translate_to_axis_ops()?;
     let transpose_c = c_transform.len() > c_transform_t.len();
     let c_transform = if transpose_c { c_transform_t } else { c_transform };
-    let quantize_output = if let Some(qp) = op.q_params {
-        let qparams: Vec<&Tensor> = inputs[3..9]
-            .iter()
-            .map(|f| {
-                patch
-                    .outlet_fact(*f)?
-                    .konst
-                    .as_deref()
-                    .context("Can only translate fixed scalar quantization")
-            })
-            .try_collect()?;
-        Some(qp.with_qparams(QParams::ZpScale {
-            zero_point: qparams[4].cast_to_scalar::<i32>()?,
-            scale: qparams[5].cast_to_scalar::<f32>()?,
-        }))
-    } else {
-        None
-    };
 
     let operating_dt = if ctx.ensure_strict_matmul_semantic {
         let input_facts = model.node_input_facts(node.id)?;
         let a_dt = input_facts[0].datum_type;
         let b_dt = input_facts[1].datum_type;
-        let operating_dt = quantize_output.unwrap_or(op.operating_dt);
+        let operating_dt = op.operating_dt;
         let a_plain = input_facts[0].is_plain();
         let b_plain = input_facts[1].is_plain();
         let allowed_dt = matmul_semantic_output_dt(&a_dt, a_plain, &b_dt, b_plain);
@@ -149,7 +119,7 @@ fn rule(
 
     wire = patch.wire_node(
         node_name,
-        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output, operating_dt },
+        PrefixMatMul { transpose_a, transpose_b, transpose_c, quantize_output: None, operating_dt },
         &wire,
     )?;
 

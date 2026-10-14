@@ -1,3 +1,5 @@
+mod generated;
+
 use log::*;
 use prost::Message;
 use regex::Regex;
@@ -44,6 +46,9 @@ struct OnnxTestCase {
     ignore_output_shapes: bool,
     ignore_output_type: bool,
     input: Option<String>,
+    exact: bool,
+    approximation: Option<Approximation>,
+    transform: Option<&'static str>,
 }
 
 impl Test for OnnxTestCase {
@@ -54,7 +59,11 @@ impl Test for OnnxTestCase {
         approx: Approximation,
     ) -> TractResult<()> {
         setup_test_logger();
-        let approx = ulp_override().unwrap_or(approx);
+        let approx = if self.exact {
+            Approximation::Exact
+        } else {
+            ulp_override().or(self.approximation).unwrap_or(approx)
+        };
         let model_file = self.path.join("model.onnx");
         info!("Loading {model_file:?}");
         let mut onnx = tract_onnx::onnx();
@@ -101,10 +110,15 @@ impl Test for OnnxTestCase {
                 trace!("Model:\n{model:#?}");
                 model.analyse(false)?;
                 model = model.incorporate()?;
-                let model = model.into_typed()?.into_decluttered()?;
+                let mut model = model.into_typed()?.into_decluttered()?;
+                if let Some(name) = self.transform {
+                    tract_core::transform::get_transform(name)?
+                        .context("Missing transform")?
+                        .transform(&mut model)?;
+                }
                 info!("Test model (mode: {}) {:#?}", runtime.name(), self.path);
                 let runnable = runtime.prepare(model)?;
-                run_model(&*runnable, inputs, &data_path, approx)?;
+                run_model(&*runnable, inputs, &data_path, approx, self.exact)?;
                 info!("Test model (mode: {}) {:#?} OK.", runtime.name(), self.path);
             }
         }
@@ -289,6 +303,9 @@ fn full() -> TestSuite {
                         ignore_output_type,
                         ignore_output_shapes,
                         input,
+                        exact: false,
+                        approximation: None,
+                        transform: None,
                     },
                     if ignored { TestStatus::Ignored } else { TestStatus::OK },
                 );
@@ -297,6 +314,7 @@ fn full() -> TestSuite {
         }
         suite.add(tests_set.replace('-', "_"), tags);
     }
+    suite.add("generated", generated::suite());
     suite
 }
 
@@ -328,6 +346,7 @@ fn run_model(
     inputs: TVec<Tensor>,
     data_path: &std::path::Path,
     approx: Approximation,
+    exact: bool,
 ) -> TractResult<()> {
     let expected = load_half_dataset("output", data_path);
     trace!("Loaded output asserts: {expected:?}");
@@ -342,6 +361,14 @@ fn run_model(
         );
     }
     for (ix, (a, b)) in computed.iter().zip(expected.iter()).enumerate() {
+        if exact {
+            ensure!(
+                a.datum_type() == b.datum_type(),
+                "Output #{ix}: expected {:?}, got {:?}",
+                b.datum_type(),
+                a.datum_type()
+            );
+        }
         if let Err(e) = a.close_enough(b, approx) {
             bail!(
                 "For {:?}, different ({approx:?}) result for output #{}:\ngot:\n{:?}\nexpected:\n{:?} \n{}",
