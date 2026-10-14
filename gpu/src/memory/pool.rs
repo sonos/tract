@@ -12,7 +12,55 @@ pub struct DeviceMemoryPool {
     resolved_schema: DeviceResolvedMemSchema,
 }
 
+/// Reusable arena storage held in a turn's shared resources.
+///
+/// Storage is reused only when the cache is its sole owner. Live arena views
+/// retain their backing allocation and force a new allocation on the next turn.
+#[derive(Debug, Default)]
+pub(crate) struct ArenaStorageCache {
+    storage: std::sync::Mutex<Option<ArenaStorage>>,
+}
+
+#[derive(Debug)]
+struct ArenaStorage {
+    tensor: Arc<Box<dyn OwnedDeviceTensor>>,
+    capacity: usize,
+}
+
 impl DeviceMemoryPool {
+    /// Reuses storage when it has no live views and capacity is within twice
+    /// the resolved demand. Growth reserves 25% headroom; shrinking below half
+    /// the cached capacity releases it.
+    pub(crate) fn from_schema_with_cache(
+        resolved_schema: DeviceResolvedMemSchema,
+        cache: &ArenaStorageCache,
+    ) -> TractResult<Self> {
+        let needed = resolved_schema.memory_size;
+        let mut cached = cache.storage.lock().map_err(|e| anyhow!("{e:?}"))?;
+        let storage = match &*cached {
+            Some(storage)
+                if storage.capacity >= needed
+                    && storage.capacity <= needed.saturating_mul(2)
+                    && Arc::strong_count(&storage.tensor) == 1 =>
+            {
+                Arc::clone(&storage.tensor)
+            }
+            _ => {
+                let capacity = if cached.as_ref().is_some_and(|s| s.capacity < needed) {
+                    needed.saturating_add(needed / 4)
+                } else {
+                    needed
+                };
+                let tensor = Arc::new(
+                    get_context()?.uninitialized_device_tensor(&[capacity], DatumType::U8)?,
+                );
+                *cached = Some(ArenaStorage { tensor: Arc::clone(&tensor), capacity });
+                tensor
+            }
+        };
+        Ok(Self { storage, resolved_schema })
+    }
+
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
         Ok(Self {
             storage: Arc::new(
