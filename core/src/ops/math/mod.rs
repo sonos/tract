@@ -454,7 +454,7 @@ fn declutter_div(
         if let Some(q) = &q.uniform
             && let Ok(integer) = q.cast_to_scalar::<i64>()
             && tensor0(integer).cast_to_dt(dt)?.close_enough(q, false).is_ok()
-            && dt.is_integer()
+            && dt.is_unsigned()
             && q.cast_to_scalar::<i64>()?.count_ones() == 1
         {
             let shift = integer.trailing_zeros();
@@ -959,17 +959,17 @@ mod tests {
     #[test]
     fn div_as_shift() -> TractResult<()> {
         let mut model = TypedModel::default();
-        let x = model.add_source("a", i32::fact([2usize, 2]))?;
-        let s = model.add_const("shift", tensor2(&[[4]]))?;
+        let x = model.add_source("a", u32::fact([2usize, 2]))?;
+        let s = model.add_const("shift", tensor2(&[[4u32]]))?;
         let y = model.wire_node("c", div(), [x, s].as_ref())?[0];
         model.select_output_outlets(&[y])?;
         let result =
-            SimplePlan::new(model.clone())?.run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
-        assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
+            SimplePlan::new(model.clone())?.run(tvec!(tensor2(&[[16u32, 32], [64, 68]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4u32, 8], [16, 17]]));
         let decluttered = model.into_decluttered()?;
         let result = SimplePlan::new(decluttered.clone())?
-            .run(tvec!(tensor2(&[[16, 32], [64, 68]]).into()))?;
-        assert_eq!(*result[0], tensor2(&[[4, 8], [16, 17]]));
+            .run(tvec!(tensor2(&[[16u32, 32], [64, 68]]).into()))?;
+        assert_eq!(*result[0], tensor2(&[[4u32, 8], [16, 17]]));
         let op = decluttered
             .node(decluttered.output_outlets()?[0].node)
             .op()
