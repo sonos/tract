@@ -769,7 +769,7 @@ jobs:
   # nothing to keep in bench-data.
   build-wasm:
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -791,12 +791,13 @@ jobs:
         with:
           key: wasm32-wasip1-${{ matrix.config }}
           save-if: ${{ github.ref == 'refs/heads/main' }}
-      # hwbench needs no model loader, so the featureless CLI keeps the build small.
+      # No cuda/metal; the model loaders are for bench-wasm.
       - env:
           RUSTFLAGS: ${{ matrix.rustflags }}
         run: |
           rustup target add wasm32-wasip1
-          cargo build -p tract-cli --release --target wasm32-wasip1 --no-default-features
+          cargo build -p tract-cli --release --target wasm32-wasip1 --no-default-features \
+            --features onnx,tf,tflite,pulse,pulse-opl,transformers,extra
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: tract-wasm-${{ matrix.config }}
@@ -842,6 +843,74 @@ jobs:
           wasmtime run tract-wasm/tract.wasm hwbench \
             512,512,120,f32 256,256,256,f32 192,288,1225,f32 64,64,64,f32 \
             --no-cache --no-memory --include-generic --assert --tolerance 20
+
+  # --- nightly wasm model bench: the plain-CPU net suite, each bench a wasm32-wasip1
+  # tract under wasmtime, appended to bench-data as its own device. Off the PR path so
+  # it costs the bench boxes no daytime minutes; on the 9900k, which carries no GPU
+  # jobs.
+  bench-wasm:
+    needs: [ prepare, build, build-wasm ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.mt_ladder == '' }}
+    runs-on: i99900k
+    timeout-minutes: 90
+    permissions:
+      contents: write     # push to bench-data
+    strategy:
+      fail-fast: false
+      matrix:
+        config: [ simd128 ]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-cli-x86_64-unknown-linux-gnu
+          path: tract-cli
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: tract-wasm-${{ matrix.config }}
+          path: tract-wasm
+      # Same pin as hwbench-wasm: a wasmtime bump moves the numbers.
+      - name: Setup wasmtime
+        env:
+          WASMTIME_VERSION: v48.0.0
+        run: |
+          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
+          echo "$PWD/wasmtime-$WASMTIME_VERSION-x86_64-linux" >> "$GITHUB_PATH"
+      - name: Run bench suite
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-suite --manifest ci/benches.toml \
+            --wasm tract-wasm/tract.wasm --samples 5
+      - name: Checkout bench-data
+        # zizmor: ignore[artipacked] credentials are needed to push the row back to
+        # bench-data; this checkout is never uploaded as an artifact.
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: bench-data
+          path: bench-data
+          fetch-depth: 1
+      - name: Append and push
+        env:
+          DEVICE: i9-9900k_${{ matrix.config }}
+          REF: ${{ needs.prepare.outputs.ref }}
+          DAY: ${{ needs.prepare.outputs.day }}
+        run: |
+          tract-cli/tract bench-append --metrics metrics --out bench-data \
+            --triple wasm32-wasip1 --device "$DEVICE" --day "$DAY" --commit "$REF"
+          cd bench-data
+          git config user.name "tract-ci"
+          git config user.email "tract-ci@users.noreply.github.com"
+          git add -A
+          git commit -m "bench: $DEVICE $DAY ${REF:0:9}"
+          for i in 1 2 3 4 5; do
+            git push origin HEAD:bench-data && exit 0
+            git fetch origin bench-data
+            git rebase origin/bench-data || git rebase --abort
+          done
+          echo "push failed after retries" >&2; exit 1
 
   # --- daily load-and-run gate: every model in the bench manifest must load,
   # optimize and run once on each runtime the box offers (CPU + accelerator).
