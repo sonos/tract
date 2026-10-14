@@ -405,6 +405,13 @@ impl AxisOp {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
+                if move_keeps_memory_order(tensor.shape(), *from, *to, |d| *d == 1)
+                    && tensor.strides() == &*Tensor::natural_strides(tensor.shape())
+                {
+                    let mut shape: TVec<usize> = tensor.shape().into();
+                    self.change_shape_array(&mut shape, false)?;
+                    return tensor.set_shape(&shape);
+                }
                 *tensor = tensor.moved_axis(*from, *to)?;
                 Ok(())
             }
@@ -964,7 +971,13 @@ impl TypedOp for AxisOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         rule_if!(node.outputs[0].fact.exotic_fact.is_none());
         if let Some(shape) = node.outputs[0].fact.shape.as_concrete()
-            && !matches!(self, AxisOp::Move(_, _))
+            && match self {
+                Move(from, to) => {
+                    let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+                    move_keeps_memory_order(input_shape, *from, *to, |d| d.is_one())
+                }
+                _ => true,
+            }
         {
             let (inputs, outputs) = model.node_facts(node.id)?;
             let mapping = self.axes_mapping(&inputs, &outputs)?;
@@ -978,6 +991,19 @@ impl TypedOp for AxisOp {
         }
         Ok(None)
     }
+}
+
+/// `true` when moving axis `from` to `to` leaves the elements in the same
+/// memory order: either the moved axis or every axis it crosses has extent 1.
+/// Such a move is a reshape, not a transpose.
+fn move_keeps_memory_order<D>(
+    shape: &[D],
+    from: usize,
+    to: usize,
+    is_one: impl Fn(&D) -> bool,
+) -> bool {
+    let (lo, hi) = (from.min(to), from.max(to));
+    is_one(&shape[from]) || (lo..=hi).filter(|a| *a != from).all(|a| is_one(&shape[a]))
 }
 
 // a, b, c is a <- b, b <- c, c <- a
@@ -1407,6 +1433,68 @@ mod test {
         let change = Move(0, 2);
         let op = Rm(2);
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(1)), Some(Move(0, 1)))));
+    }
+
+    #[test]
+    fn move_across_unit_axes_codegens_to_into_shape() -> TractResult<()> {
+        for (shape, from, to) in [
+            (tvec![1usize, 1, 64, 32], 1, 2),
+            (tvec![2, 64, 1, 32], 2, 1),
+            (tvec![4, 1, 1, 32], 3, 1),
+        ] {
+            let mut model = TypedModel::default();
+            let source = model.add_source("x", f32::fact(&shape))?;
+            let moved = model.wire_node("mv", Move(from, to), &[source])?;
+            model.select_output_outlets(&moved)?;
+            let model = model.into_optimized()?;
+            assert!(model.nodes().iter().any(|n| n.op_is::<IntoShape>()));
+            assert!(
+                model
+                    .nodes()
+                    .iter()
+                    .all(|n| n.op_as::<AxisOp>().is_none_or(|op| !matches!(op, Move(..))))
+            );
+            let len = shape.iter().product::<usize>();
+            let input =
+                Tensor::from_shape(&shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())?;
+            let output = model.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+            assert_eq!(*output[0], input.move_axis(from, to)?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn move_keeping_memory_order_does_not_copy() -> TractResult<()> {
+        for (shape, from, to) in [(tvec![1usize, 1, 32, 128], 1, 2), (tvec![3, 1, 5], 2, 1)] {
+            let len = shape.iter().product::<usize>();
+            let input =
+                Tensor::from_shape(&shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())?;
+            let expected = input.clone().move_axis(from, to)?;
+            let mut tensor = input.clone();
+            let ptr = tensor.as_ptr::<f32>()?;
+            Move(from, to).change_tensor(&mut tensor, false)?;
+            assert_eq!(tensor, expected);
+            assert_eq!(tensor.as_ptr::<f32>()?, ptr);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn move_with_symbolic_unit_axis_matches_permute() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let source = model.add_source("x", f32::fact(dims![1, s, 32, 128]))?;
+        let moved = model.wire_node("mv", Move(1, 2), &[source])?;
+        model.select_output_outlets(&moved)?;
+        let plan = model.into_optimized()?.into_runnable()?;
+        for seq in [1usize, 3] {
+            let shape = [1, seq, 32, 128];
+            let input =
+                Tensor::from_shape(&shape, &(0..seq * 4096).map(|i| i as f32).collect::<Vec<_>>())?;
+            let output = plan.run(tvec!(input.clone().into_tvalue()))?;
+            assert_eq!(*output[0], input.move_axis(1, 2)?);
+        }
+        Ok(())
     }
 }
 
