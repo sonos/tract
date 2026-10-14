@@ -233,6 +233,42 @@ pub(crate) struct BenchSuiteParams {
     /// series already covers serial.
     #[arg(long, value_delimiter = ',')]
     threads_ladder: Option<Vec<usize>>,
+    /// Run each bench in this wasm32-wasip1 tract build under `wasmtime` (on PATH) instead of a native child. Plain-CPU net benches only, single-threaded, evaltime only. Needs the model cache.
+    #[arg(long)]
+    wasm: Option<String>,
+}
+
+/// Guest path the model cache is preopened at in a wasm child.
+const WASM_MODELS: &str = "/models";
+
+/// The program each bench run spawns: this binary, or a wasm32-wasip1 tract under
+/// wasmtime with the model cache preopened at [`WASM_MODELS`]. wasip1 has no threads,
+/// so the wasm child gets neither the `--readings` heartbeat nor the in-process
+/// `--timeout` watchdog; wasmtime's own `-W timeout` instruments the generated code and
+/// would skew evaltime, so coreutils `timeout` bounds it from outside, with the same 124
+/// exit.
+enum Child {
+    Native(PathBuf),
+    Wasm { module: PathBuf, models: PathBuf },
+}
+
+impl Child {
+    fn is_wasm(&self) -> bool {
+        matches!(self, Child::Wasm { .. })
+    }
+
+    fn command(&self) -> Command {
+        match self {
+            Child::Native(exe) => Command::new(exe),
+            Child::Wasm { module, models } => {
+                let mut cmd = Command::new("timeout");
+                cmd.args(["180", "wasmtime", "run", "--dir"]);
+                cmd.arg(format!("{}::{WASM_MODELS}", models.display()));
+                cmd.arg(module);
+                cmd
+            }
+        }
+    }
 }
 
 pub(crate) fn command() -> clap::Command {
@@ -278,7 +314,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         .get()
         .filter(|s| !s.is_empty())
         .unwrap_or_else(|| manifest.base_url.clone());
-    let model_source = if no_cache {
+    let child = match &params.wasm {
+        Some(module) => {
+            ensure!(!no_cache, "--wasm reads models from the cache, not from --no-cache");
+            Child::Wasm { module: PathBuf::from(module), models: cache_dir.clone() }
+        }
+        None => Child::Native(std::env::current_exe()?),
+    };
+    let model_source = if child.is_wasm() {
+        ModelSource::WasmPreopen
+    } else if no_cache {
         ModelSource::Url(base_url.clone())
     } else {
         ModelSource::Cache(cache_dir.clone())
@@ -295,7 +340,6 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let second_pass_max = params.second_pass_max;
     let samples = params.samples;
 
-    let exe = std::env::current_exe()?;
     set_governor();
     let _gpu_clock = GpuClock::pin(); // reset on drop, when the suite finishes
 
@@ -307,7 +351,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
             continue;
         }
-        if skip_runtimes && !bench.runtimes.is_empty() {
+        if (skip_runtimes || child.is_wasm()) && !bench.runtimes.is_empty() {
             continue;
         }
 
@@ -319,6 +363,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 .into_iter()
                 .filter(|b| b.available())
                 .filter(|b| !(skip_cpu && matches!(b, RuntimeKind::Cpu)))
+                .filter(|b| !child.is_wasm() || matches!(b, RuntimeKind::Cpu))
                 .map(|b| {
                     let label = match &bench.variant {
                         Some(v) => format!("{v}/{}", b.label()),
@@ -355,6 +400,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             .flat_map(|(rt, variant)| {
                 let mut out = vec![(rt, variant.clone(), None)];
                 let eligible = !smoke
+                    && !child.is_wasm()
                     && !bench.threads.is_empty()
                     && matches!(rt, None | Some(RuntimeKind::Cpu));
                 if eligible {
@@ -398,7 +444,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         for (runtime, variant, threads) in runs {
             eprintln!("  {} {}", bench.name, variant);
             let run = || {
-                run_one(&exe, &staged.arg, staged.format, bench, runtime, &variant, threads, smoke)
+                run_one(
+                    &child,
+                    &staged.arg,
+                    staged.format,
+                    bench,
+                    runtime,
+                    &variant,
+                    threads,
+                    smoke,
+                )
             };
             let bench_samples = bench.samples.unwrap_or(1).max(samples);
             let outcome = if smoke {
@@ -434,7 +489,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     // Reference mode (median) is not a PR comparison, so it has no reds to chase.
     if samples <= 1 {
         second_pass(
-            &exe,
+            &child,
             &model_source,
             &manifest,
             &expectations,
@@ -466,6 +521,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 enum ModelSource {
     Cache(PathBuf),
     Url(String),
+    /// The cache, read by a wasm child through its [`WASM_MODELS`] preopen.
+    WasmPreopen,
 }
 
 /// A model staged for the child to load. On Linux `arg` is `/proc/self/fd/N` for an
@@ -484,6 +541,9 @@ struct Staged {
 /// `time_to_*` a fetch-free, file-vs-http-independent signal. Non-Linux: pass through.
 fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
     let format = format_hint(&bench.model);
+    if let ModelSource::WasmPreopen = source {
+        return Ok(Staged { _hold: None, arg: format!("{WASM_MODELS}/{}", bench.model), format });
+    }
     #[cfg(target_os = "linux")]
     {
         let (hold, arg) = match source {
@@ -496,6 +556,7 @@ fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
                 ensure!(resp.status().is_success(), "GET {url} -> {}", resp.status());
                 memfd_load(&bench.name, resp)?
             }
+            ModelSource::WasmPreopen => unreachable!(),
         };
         Ok(Staged { _hold: Some(hold), arg, format })
     }
@@ -504,6 +565,7 @@ fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
         let arg = match source {
             ModelSource::Cache(dir) => dir.join(&bench.model).to_string_lossy().into_owned(),
             ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), bench.model),
+            ModelSource::WasmPreopen => unreachable!(),
         };
         Ok(Staged { _hold: None, arg, format })
     }
@@ -543,7 +605,7 @@ fn format_hint(model: &str) -> Option<&'static str> {
 /// error for this run (the caller logs it and moves on).
 #[allow(clippy::too_many_arguments)]
 fn run_one(
-    exe: &Path,
+    child: &Child,
     model_arg: &str,
     format: Option<&str>,
     bench: &Bench,
@@ -560,7 +622,7 @@ fn run_one(
     // selected — the bench watchdog `--timeout` is dropped so a slow-but-healthy run
     // (e.g. an 8B LLM on CPU) is not killed; the CI job bounds the wall time instead.
     if smoke {
-        let mut cmd = Command::new(exe);
+        let mut cmd = child.command();
         cmd.arg(model_arg);
         if let Some(f) = format {
             cmd.args(["-f", f]);
@@ -583,17 +645,20 @@ fn run_one(
         return Ok(vec![]);
     }
 
-    let mut cmd = Command::new(exe);
+    let mut cmd = child.command();
     cmd.arg(model_arg);
     if let Some(f) = format {
         cmd.args(["-f", f]);
     }
     cmd.args(&bench.args);
-    cmd.args(global_flags);
+    if !child.is_wasm() {
+        cmd.args(global_flags);
+        cmd.args(["--readings", "--readings-heartbeat", "1000"]);
+    }
     if let Some(n) = threads {
         cmd.args(["--threads", &n.to_string()]);
     }
-    cmd.args(["--readings", "--readings-heartbeat", "1000", "--emit-jsonl"]);
+    cmd.arg("--emit-jsonl");
     if bench.kind == Kind::Llm {
         cmd.arg("--llm");
     }
@@ -652,7 +717,7 @@ fn bench_run(
 /// more reds than that is a real regression or a suite-long problem, not a transient,
 /// so they are left standing. No-op without expectations.
 fn second_pass(
-    exe: &Path,
+    child: &Child,
     source: &ModelSource,
     manifest: &Manifest,
     expectations: &HashMap<String, (f64, f64)>,
@@ -700,7 +765,7 @@ fn second_pass(
             }
         };
         let run =
-            || run_one(exe, &staged.arg, staged.format, bench, runtime, &variant, threads, false);
+            || run_one(child, &staged.arg, staged.format, bench, runtime, &variant, threads, false);
         match bench_run(run, expectations, retry_max) {
             Ok(cand) => {
                 let mut best: BTreeMap<String, f64> =
