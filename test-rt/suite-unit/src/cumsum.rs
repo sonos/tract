@@ -91,5 +91,6 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_test("outer_axis", case(&[5, 3, 2], 0, false, false));
     suite.add_test("exclusive_reverse", case(&[3, 4, 2], 1, true, true));
     suite.add_test("single_step", case(&[1, 4], 0, true, false));
+    suite.add_test("single_step_inclusive", case(&[1, 4], 0, false, true));
     Ok(suite)
 }
