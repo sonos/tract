@@ -593,6 +593,14 @@ impl TypedOp for OptMatMul {
         rule_if!(node.outputs[0].successors.len() == 1);
         rule_if!(!model.output_outlets()?.contains(&node.id.into()));
         let succ = model.node(node.outputs[0].successors[0].node);
+        // A narrower floating-point store is a rounding boundary before any
+        // subsequent arithmetic or cast, even when the accumulator is wider.
+        rule_if!(
+            !self.c_fact.datum_type.is_float()
+                || self.mmm.iter().all(|m| m.internal_type() == self.c_fact.datum_type)
+                || succ.op_is::<AxisOp>()
+                || succ.op_is::<IntoShape>()
+        );
         let mut patch = TypedModelPatch::new(format!("fusing {succ}"));
 
         if let Some(op) = succ.op_as::<ops::binary::TypedBinOp>() {
