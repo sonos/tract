@@ -6,22 +6,22 @@ use tract_gpu::tensor::DeviceTensorExt;
 use tract_gpu::utils::{as_quant_fact, facts_to_device_facts};
 use tract_transformers::ops::moe_ffn::RoutedInputMode;
 
-/// Fused routed expert up-projection: g = w1 x (+bias1), u = w3 x (+bias3),
-/// output = act(g, u), in one kernel dispatch at decode and with a shared
-/// expert sort + activation gather at prefill. Replaces the unfused
-/// w1-matmul / w3-matmul / (bias adds) / activation dispatch chain.
+/// Activation applied to the paired expert projections.
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub enum RoutedActivation {
+    Plain,
+    Clamped { alpha_bits: u32, limit_bits: u32 },
+}
+
+/// Paired Q40 expert projections with an optional bias and SwiGLU activation.
+/// Prefill shares expert sorting and activation gathering between projections.
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalRoutedQ40SwiGlu {
     pub input_mode: RoutedInputMode,
-    /// Clamped-swiglu parameters (gpt-oss style) as bit patterns; None is the
-    /// plain silu(g)*u epilogue.
-    pub act_alpha_bits: Option<u32>,
-    pub act_limit_bits: Option<u32>,
+    pub activation: RoutedActivation,
     pub has_bias: bool,
-    /// Same command-buffer-boundary medicine as MetalRoutedQ40MatMul (see
-    /// that op for the full story); one boundary per MoE block instead of
-    /// the three the unfused lowering paid.
-    pub sync_after_dispatch: bool,
+    /// Submit large routed batches without blocking for GPU completion.
+    pub commit_after_dispatch: bool,
 }
 
 impl MetalRoutedQ40SwiGlu {
@@ -33,12 +33,12 @@ impl MetalRoutedQ40SwiGlu {
     }
 
     fn act(&self) -> RoutedSwigluAct {
-        match (self.act_alpha_bits, self.act_limit_bits) {
-            (alpha, Some(limit)) => RoutedSwigluAct::Clamped {
-                alpha: alpha.map(f32::from_bits).unwrap_or(1.0),
-                limit: f32::from_bits(limit),
+        match self.activation {
+            RoutedActivation::Plain => RoutedSwigluAct::Plain,
+            RoutedActivation::Clamped { alpha_bits, limit_bits } => RoutedSwigluAct::Clamped {
+                alpha: f32::from_bits(alpha_bits),
+                limit: f32::from_bits(limit_bits),
             },
-            _ => RoutedSwigluAct::Plain,
         }
     }
 
@@ -108,10 +108,8 @@ impl EvalOp for MetalRoutedQ40SwiGlu {
                 self.act(),
                 &output,
             )?;
-            // Same prefill-only command-buffer boundary as
-            // MetalRoutedQ40MatMul (see that op).
             let min_routes = crate::tuning::tuning().moe_commit_min_routes;
-            if self.sync_after_dispatch && route_token_ids.shape()[0] > min_routes {
+            if self.commit_after_dispatch && route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }
             Ok(())
