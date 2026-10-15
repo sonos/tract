@@ -93,7 +93,11 @@ mod tests {
     use metal::foreign_types::ForeignTypeRef;
     use objc::rc::{WeakPtr, autoreleasepool};
 
-    fn check_tensor_storage_retained(profile: bool) -> tract_core::internal::TractResult<()> {
+    fn check_tensor_storage_retained(
+        profile: bool,
+        commit: bool,
+        open_tail: bool,
+    ) -> tract_core::internal::TractResult<()> {
         use crate::encoder::EncoderExt;
         use crate::kernels::LibraryName;
         use tract_core::internal::*;
@@ -125,6 +129,16 @@ mod tests {
         drop(input);
         drop(host);
         ensure!(weak.upgrade().is_some(), "encoded buffer lost its backing allocation");
+        if commit {
+            stream.commit_current()?;
+            for _ in 0..16 {
+                stream.command_buffer();
+                stream.commit_current()?;
+            }
+            if open_tail {
+                stream.command_buffer();
+            }
+        }
         stream.wait_until_completed()?;
         output.to_host()?.close_enough(&tensor1(&[1u32, 2, 3, 4]), Approximation::Exact)?;
         drop(command);
@@ -138,13 +152,23 @@ mod tests {
 
     #[test]
     fn tensor_storage_retained_until_command_release() -> tract_core::internal::TractResult<()> {
-        check_tensor_storage_retained(false)
+        check_tensor_storage_retained(false, false, false)
     }
 
     #[test]
     fn profiled_tensor_storage_retained_until_command_release()
     -> tract_core::internal::TractResult<()> {
-        check_tensor_storage_retained(true)
+        check_tensor_storage_retained(true, false, false)
+    }
+
+    #[test]
+    fn tensor_storage_retained_across_async_commits() -> tract_core::internal::TractResult<()> {
+        for profile in [false, true] {
+            for open_tail in [false, true] {
+                check_tensor_storage_retained(profile, true, open_tail)?;
+            }
+        }
+        Ok(())
     }
 
     fn check_command_objects_released(profile: bool) -> tract_core::internal::TractResult<()> {

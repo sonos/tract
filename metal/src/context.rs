@@ -335,6 +335,7 @@ pub struct MetalStream {
     /// first, each with the tensors that must stay alive until it completes.
     /// The queue is FIFO, so waiting on the newest implies all have completed.
     committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
+    command_error: RefCell<Option<String>>,
     /// Kernel names dispatched into the current (open) command buffer, only
     /// populated under TRACT_METAL_PROFILE_KERNELS.
     pending_kernel_names: RefCell<Vec<String>>,
@@ -362,6 +363,7 @@ impl MetalStream {
             command_queue,
             command_buffer: RefCell::new(None),
             committed_command_buffers: RefCell::new(VecDeque::new()),
+            command_error: RefCell::new(None),
             pending_kernel_names: RefCell::new(Vec::new()),
             command_buffer_id: AtomicUsize::new(0),
             retained_tensors: RefCell::new(vec![]),
@@ -454,8 +456,9 @@ impl MetalStream {
         if cadence > 0 {
             let n = self.dispatches_since_commit.get() + 1;
             if n > cadence && self.command_buffer.borrow().is_some() {
-                // Ignore failure modes commit_current already guards against.
-                let _ = self.commit_current();
+                if let Err(error) = self.commit_current() {
+                    self.command_error.borrow_mut().get_or_insert_with(|| error.to_string());
+                }
                 self.dispatches_since_commit.set(1);
             } else {
                 self.dispatches_since_commit.set(n);
@@ -492,14 +495,29 @@ impl MetalStream {
         crate::tuning::tuning().max_command_buffers_in_flight
     }
 
+    fn record_command_error(&self, buffer: &TCommandBuffer) {
+        if buffer.status() == metal::MTLCommandBufferStatus::Error {
+            self.command_error.borrow_mut().get_or_insert_with(|| {
+                format!("Metal command buffer failed on the GPU: {}", command_buffer_error(buffer))
+            });
+        }
+    }
+
+    fn check_command_error(&self) -> TractResult<()> {
+        if let Some(error) = self.command_error.borrow().as_ref() {
+            bail!("{error}");
+        }
+        Ok(())
+    }
+
     /// Commit the current command buffer without blocking the CPU on its
     /// completion. The next `command_buffer()` call opens a fresh one; the
     /// queue guarantees the committed buffer executes before it. Tensors
     /// retained so far move into the in-flight entry and are released once
-    /// that buffer completes.
+    /// that buffer completes. GPU failures remain visible to subsequent commits and waits.
     pub fn commit_current(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow_mut().take() else {
-            return Ok(());
+            return self.check_command_error();
         };
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
@@ -520,21 +538,26 @@ impl MetalStream {
             kernel_names: names,
         });
         loop {
-            let done = committed
-                .front()
-                .is_some_and(|e| e.buffer.status() == metal::MTLCommandBufferStatus::Completed);
+            let done = committed.front().is_some_and(|e| {
+                matches!(
+                    e.buffer.status(),
+                    metal::MTLCommandBufferStatus::Completed | metal::MTLCommandBufferStatus::Error
+                )
+            });
             if !done && committed.len() <= Self::max_committed_in_flight() {
                 break;
             }
             let oldest = committed.pop_front().unwrap();
             oldest.buffer.wait_until_completed();
+            self.record_command_error(&oldest.buffer);
             Self::log_completed_kernels(&oldest.buffer, "segment", &oldest.kernel_names);
 
             drop(oldest.retained);
         }
-        Ok(())
+        self.check_command_error()
     }
 
+    /// Wait for all submitted work and report any GPU failure recorded by this stream.
     pub fn wait_until_completed(&self) -> TractResult<()> {
         let Some(command_buffer) = self.command_buffer.borrow().to_owned() else {
             // No open buffer, but commit_current buffers may still be in
@@ -545,13 +568,14 @@ impl MetalStream {
                 newest.buffer.wait_until_completed();
             }
             for entry in &drained {
+                self.record_command_error(&entry.buffer);
                 Self::log_completed_kernels(&entry.buffer, "segment-tail", &entry.kernel_names);
             }
             for entry in drained {
                 drop(entry.retained);
             }
             self.retained_tensors.borrow_mut().clear();
-            return Ok(());
+            return self.check_command_error();
         };
 
         command_buffer.end_encoding();
@@ -575,6 +599,7 @@ impl MetalStream {
         // committed earlier by commit_current has completed too.
         let drained: Vec<_> = self.committed_command_buffers.borrow_mut().drain(..).collect();
         for entry in drained {
+            self.record_command_error(&entry.buffer);
             drop(entry.retained);
         }
 
@@ -582,12 +607,8 @@ impl MetalStream {
         self.retained_tensors.borrow_mut().clear();
 
         *self.command_buffer.borrow_mut() = None;
-        anyhow::ensure!(
-            command_buffer.status() != metal::MTLCommandBufferStatus::Error,
-            "Metal command buffer {command_buffer_id:?} failed on the GPU: {}",
-            command_buffer_error(&command_buffer)
-        );
-        Ok(())
+        self.record_command_error(&command_buffer);
+        self.check_command_error()
     }
 
     pub fn capture_trace<P, F>(&self, path: P, compute: F) -> TractResult<()>
