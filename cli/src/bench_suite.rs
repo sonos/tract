@@ -486,18 +486,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         return Ok(());
     }
 
-    // Reference mode (median) is not a PR comparison, so it has no reds to chase.
-    if samples <= 1 {
-        second_pass(
-            &child,
-            &model_source,
-            &manifest,
-            &expectations,
-            retry_max,
-            second_pass_max,
-            &mut results,
-        );
-    }
+    second_pass(
+        &child,
+        &model_source,
+        &manifest,
+        &expectations,
+        retry_max,
+        second_pass_max,
+        samples,
+        &mut results,
+    );
 
     let mut metrics: Vec<(String, f64)> = results.into_iter().flat_map(|r| r.metrics).collect();
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
@@ -713,9 +711,15 @@ fn bench_run(
 /// After the whole suite has run, re-run the benches still over threshold. A brief
 /// (dozens of seconds) disruption traps a bench *and* its adjacent inline retries in
 /// the same window; re-running now, minutes removed from any mid-suite glitch, lets a
-/// transient clear while keeping the per-metric best. Bounded by `second_pass_max`:
-/// more reds than that is a real regression or a suite-long problem, not a transient,
-/// so they are left standing. No-op without expectations.
+/// transient clear. Bounded by `second_pass_max`: more reds than that is a real
+/// regression or a suite-long problem, not a transient, so they are left standing.
+/// No-op without expectations.
+///
+/// PR mode keeps the per-metric best. Reference mode (`samples > 1`) guards the stored
+/// nightly instead: a bench off-trend in either direction is re-measured as a fresh
+/// median and each metric keeps the median nearer its expectation, so a real step on
+/// main (which the re-run reproduces) lands while a one-window glitch does not.
+#[allow(clippy::too_many_arguments)]
 fn second_pass(
     child: &Child,
     source: &ModelSource,
@@ -723,18 +727,20 @@ fn second_pass(
     expectations: &HashMap<String, (f64, f64)>,
     retry_max: usize,
     second_pass_max: usize,
+    samples: usize,
     results: &mut [RunResult],
 ) {
     if expectations.is_empty() {
         return;
     }
+    let reference = samples > 1;
     let red: Vec<usize> = results
         .iter()
         .enumerate()
-        .filter(|(_, r)| manifest.benches[r.bench_idx].samples.unwrap_or(1) <= 1)
+        .filter(|(_, r)| reference || manifest.benches[r.bench_idx].samples.unwrap_or(1) <= 1)
         .filter(|(_, r)| {
             let m: BTreeMap<String, f64> = r.metrics.iter().cloned().collect();
-            out_of_threshold(&m, expectations)
+            if reference { off_trend(&m, expectations) } else { out_of_threshold(&m, expectations) }
         })
         .map(|(i, _)| i)
         .collect();
@@ -766,12 +772,21 @@ fn second_pass(
         };
         let run =
             || run_one(child, &staged.arg, staged.format, bench, runtime, &variant, threads, false);
-        match bench_run(run, expectations, retry_max) {
+        let outcome = if reference {
+            bench_median(run, bench.samples.unwrap_or(1).max(samples))
+        } else {
+            bench_run(run, expectations, retry_max)
+        };
+        match outcome {
             Ok(cand) => {
-                let mut best: BTreeMap<String, f64> =
+                let mut kept: BTreeMap<String, f64> =
                     std::mem::take(&mut results[i].metrics).into_iter().collect();
-                merge_best(&mut best, cand);
-                results[i].metrics = best.into_iter().collect();
+                if reference {
+                    merge_nearest(&mut kept, cand, expectations);
+                } else {
+                    merge_best(&mut kept, cand);
+                }
+                results[i].metrics = kept.into_iter().collect();
             }
             Err(e) => eprintln!("  !! second pass {} {} failed: {e:#}", bench.name, variant),
         }
@@ -841,6 +856,35 @@ fn offenders(
         .collect();
     hits.sort_by(|a, b| b.0.total_cmp(&a.0));
     hits.into_iter().map(|(_, s)| s).collect()
+}
+
+/// True if some metric moved away from its expectation, either way, by at least its
+/// threshold.
+fn off_trend(metrics: &BTreeMap<String, f64>, expectations: &HashMap<String, (f64, f64)>) -> bool {
+    metrics.iter().any(|(name, &v)| {
+        expectations.get(name).is_some_and(|&(expected, thr)| {
+            expected > 0.0 && ((v - expected) / expected * 100.0).abs() >= thr
+        })
+    })
+}
+
+/// Fold `cand` into `kept`, keeping per metric the value nearer its expectation; metrics
+/// without one keep their first value.
+fn merge_nearest(
+    kept: &mut BTreeMap<String, f64>,
+    cand: Vec<(String, f64)>,
+    expectations: &HashMap<String, (f64, f64)>,
+) {
+    for (k, v) in cand {
+        let expected = expectations.get(&k).map(|e| e.0);
+        kept.entry(k)
+            .and_modify(|kv| {
+                if expected.is_some_and(|e| (v - e).abs() < (*kv - e).abs()) {
+                    *kv = v;
+                }
+            })
+            .or_insert(v);
+    }
 }
 
 /// Fold `cand` into `best`, keeping the better value per metric (max for throughput,
