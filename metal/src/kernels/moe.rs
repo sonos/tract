@@ -51,7 +51,8 @@ pub fn dispatch_route_topk_f32(
     ensure!(k <= 16, "Metal RouteTopK supports k <= 16, got {k}");
 
     let d_model = *x.shape().last().context("x has no feature axis")?;
-    let token_count = x.len() / d_model;
+    ensure!(d_model > 0, "Metal RouteTopK requires a nonzero feature dimension");
+    let token_count: usize = x.shape()[..x.rank() - 1].iter().product();
     let (num_experts, wg_d_model) = match wg.rank() {
         2 => (wg.shape()[0], wg.shape()[1]),
         3 => {
@@ -189,7 +190,7 @@ pub fn dispatch_routed_combine_f32(
     ensure!(route_weights.shape()[0] == route_count);
 
     let d_model = *output.shape().last().context("output has no feature axis")?;
-    let token_count = output.len() / d_model;
+    let token_count: usize = output.shape()[..output.rank() - 1].iter().product();
     ensure!(
         route_values.shape()[1] == d_model,
         "route value dim {} does not match output dim {d_model}",

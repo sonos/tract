@@ -43,10 +43,12 @@ enum RouteGateMode : uint {
     // ascending-scan strict-'>' insertion of the reference implementation.
     device const float *scores = scores_in + token * num_experts;
     float s[REGS];
+    uint valid_mask = 0;
     for (uint r = 0; r < REGS; r++) {
         const uint e = r * 32 + lane;
         float v = -INFINITY;
         if (e < num_experts) {
+            valid_mask |= 1u << r;
             v = scores[e];
             if (has_wg_bias != 0) {
                 v += wg_bias[e];
@@ -73,20 +75,21 @@ enum RouteGateMode : uint {
     float s0 = 0.0f;
     float denom_topk = 0.0f;
     for (uint slot = 0; slot < k; slot++) {
-        float lbest = s[0];
-        uint lbest_r = 0;
-        for (uint r = 1; r < REGS; r++) {
-            if (s[r] > lbest) {
-                lbest = s[r];
-                lbest_r = r;
+        uint best_key = 0;
+        uint best_expert = 0xFFFFFFFFu;
+        for (uint r = 0; r < REGS; r++) {
+            if ((valid_mask & (1u << r)) == 0) {
+                continue;
+            }
+            const uint bits = as_type<uint>(s[r] == 0.0f ? 0.0f : s[r]);
+            const uint key = (bits & 0x80000000u) ? ~bits : (bits | 0x80000000u);
+            if (best_expert == 0xFFFFFFFFu || key > best_key) {
+                best_key = key;
+                best_expert = r * 32 + lane;
             }
         }
-        // Order-preserving uint key: max score via simd_max, then the
-        // smallest expert id among the lanes holding that score.
-        const uint b = as_type<uint>(lbest == 0.0f ? 0.0f : lbest);
-        const uint mono = (b & 0x80000000u) ? ~b : (b | 0x80000000u);
-        const uint win_mono = simd_max(mono);
-        const uint cand = (mono == win_mono) ? (lbest_r * 32 + lane) : 0xFFFFFFFFu;
+        const uint win_mono = simd_max(best_key);
+        const uint cand = best_key == win_mono ? best_expert : 0xFFFFFFFFu;
         const uint win_e = simd_min(cand);
         const float win_s = as_type<float>(
             (win_mono & 0x80000000u) ? (win_mono ^ 0x80000000u) : ~win_mono);
@@ -97,12 +100,7 @@ enum RouteGateMode : uint {
         denom_topk += exp(win_s - s0);
 
         if (lane == win_e % 32) {
-            const uint win_r = win_e / 32;
-            for (uint r = 0; r < REGS; r++) {
-                if (r == win_r) {
-                    s[r] = -INFINITY;
-                }
-            }
+            valid_mask &= ~(1u << (win_e / 32));
         }
 
         if (lane == 0) {
