@@ -5,7 +5,10 @@ mod mlx_gemm;
 pub mod mlx_sdpa;
 
 pub use basic::BasicMatMul;
-pub use ggml_gemm::GgmlGemm;
+pub use ggml_gemm::{
+    GgmlGemm, RoutedQ40InputMode, RoutedSwigluAct, dispatch_routed_q40_f32,
+    dispatch_routed_q40_swiglu_f32, eval_routed_q40_f32,
+};
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
