@@ -94,6 +94,11 @@ crate::register_metal_op!(RoutedCombine, |source, node, _op| {
     rule_if!(facts[1].datum_type == f32::datum_type());
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == f32::datum_type());
+    let token_count = facts[0].shape.iter().take(facts[0].rank() - 1).cloned().product::<TDim>();
+    let (Some(ids), Some(token_count)) = (facts[2].konst.as_ref(), token_count.as_i64()) else {
+        return Ok(None);
+    };
+    rule_if!(ids.to_plain_array_view::<i64>()?.iter().all(|&id| id >= 0 && id < token_count));
     Ok(Some(Box::new(MetalRoutedCombine { routes_per_token: 0 })))
 });
 

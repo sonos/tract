@@ -79,7 +79,8 @@ impl EvalOp for MetalRouteTopK {
         };
 
         let d_model = *x.shape().last().context("x has no feature axis")?;
-        let token_count = x.len() / d_model;
+        ensure!(d_model > 0, "MetalRouteTopK requires a nonzero feature dimension");
+        let token_count: usize = x.shape()[..x.rank() - 1].iter().product();
         let route_count = token_count * self.k;
         let route_token_ids = DeviceTensor::uninitialized_dt(i64::datum_type(), &[route_count])?;
         let route_expert_ids = DeviceTensor::uninitialized_dt(i64::datum_type(), &[route_count])?;
@@ -121,6 +122,7 @@ crate::register_metal_op!(RouteTopK, |source, node, op| {
     rule_if!(op.k <= 16);
     rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
     rule_if!(facts[1].datum_type == f32::datum_type());
+    rule_if!(facts[0].shape.last().and_then(|d| d.as_i64()).is_some_and(|d| d > 0));
     // The kernel scores at most 256 experts per token: larger (or
     // non-concrete) routers stay on the CPU op.
     rule_if!(facts[1].rank() >= 2);

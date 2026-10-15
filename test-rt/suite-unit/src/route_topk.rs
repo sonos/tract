@@ -58,6 +58,50 @@ impl Test for RouterCase {
     }
 }
 
+#[derive(Clone)]
+struct EdgeCase {
+    width: usize,
+    experts: usize,
+    k: usize,
+    finite_first: bool,
+}
+
+impl Test for EdgeCase {
+    fn run_with_approx(
+        &self,
+        _: &'static str,
+        runtime: &dyn Runtime,
+        _: Approximation,
+    ) -> TestResult {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([2, self.width]))?;
+        let mut weights = vec![f32::NEG_INFINITY; self.experts * self.width];
+        if self.finite_first && self.width > 0 {
+            weights[..self.width].fill(1.);
+        }
+        let weights = model
+            .add_const("weights", Tensor::from_shape(&[self.experts, self.width], &weights)?)?;
+        let routes = model.wire_node(
+            "routes",
+            RouteTopK { k: self.k, gate: GateMode::Raw },
+            &[x, weights],
+        )?;
+        model.select_output_outlets(&routes)?;
+        let outputs = runtime.prepare(model)?.run(tvec![
+            Tensor::from_shape(&[2, self.width], &vec![1f32; 2 * self.width])?.into_tvalue()
+        ])?;
+        let expected_ids: Vec<i64> = (0..2).flat_map(|_| 0..self.k as i64).collect();
+        outputs[1].close_enough(
+            &Tensor::from_shape(&[2 * self.k], &expected_ids)?,
+            Approximation::Exact,
+        )?;
+        if self.width == 0 {
+            outputs[2].close_enough(&Tensor::zero::<f32>(&[2 * self.k])?, Approximation::Exact)?;
+        }
+        Ok(())
+    }
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     for tokens in [1, 5] {
@@ -74,5 +118,14 @@ pub fn suite() -> TractResult<TestSuite> {
         "invalid_topk",
         RouterCase { tokens: 1, invalid_k: true, large_weights: false, dt: DatumType::F32 },
     );
+    suite.add("zero_width", EdgeCase { width: 0, experts: 3, k: 2, finite_first: false });
+    for experts in [2, 33] {
+        for finite_first in [false, true] {
+            suite.add(
+                format!("negative_infinity_experts{experts}_finite{finite_first}"),
+                EdgeCase { width: 1, experts, k: experts.min(16), finite_first },
+            );
+        }
+    }
     Ok(suite)
 }
