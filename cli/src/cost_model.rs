@@ -301,8 +301,9 @@ fn fit(f: Fit) -> TractResult<()> {
         let per: Vec<([f64; 3], f64, f64)> =
             rows.iter().filter(|r| &r.0 == kern).map(|r| (r.1, r.2, 1.0)).collect();
         let c = fit_nnls(&per);
+        // The fourth term is `skinny_k_penalty`, which this fit does not calibrate.
         src.push_str(&format!(
-            "            [{:e}, {:e}, {:e}],\n",
+            "            [{:e}, {:e}, {:e}, 0e0],\n",
             c[0] as f32, c[1] as f32, c[2] as f32
         ));
     }
@@ -510,7 +511,7 @@ fn render_rs(
     src.push_str("        ],\n        coeffs: &[\n");
     for c in coeffs {
         src.push_str(&format!(
-            "            [{:e}, {:e}, {:e}],\n",
+            "            [{:e}, {:e}, {:e}, 0e0],\n",
             c[0] as f32, c[1] as f32, c[2] as f32
         ));
     }
