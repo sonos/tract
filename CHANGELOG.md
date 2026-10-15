@@ -9,6 +9,84 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.9 - 2025-10-15
+
+### Core
+
+- **Elementwise binary chains fuse into one pass.** A sole-consumer chain of float binary ops (a scale then an offset, a clip after an add) becomes an `OptBinChain` that applies each step to a cache-resident chunk while it is still hot. Results are bit-identical. A chain right after a matmul leaves the epilogue ops for the matmul to absorb.
+- **CumSum is a core op**, with any numeric type, exclusive and reverse, and a `tract_core_cumsum` NNEF form. Before, ONNX lowered it to a Scan adding one element per iteration. It pulsifies along the streaming axis into a stateful `PulsedCumSum`, and a CumSum over a length-1 axis folds away.
+- **Runtime symbols are ordered in the plan.** A node that uses a symbol bound at runtime (a dynamic `Range` length, a `NonZero` count) but has no tensor edge to the node defining it now runs after that node, through a new `required_bound_symbols` op declaration that covers Scan bodies too. A node that still fails before its symbol is bound waits and is retried. Symbolic lengths also flow through `Cast` and `Gather`, so a `Range` that re-derives an earlier length gets the same symbol. (Contributed by willwade.)
+- **A GRU of any hidden size fuses into `GruSeq`.** Above 64 the input-side product moves out of the op into an EinSum that runs on the platform kernel with W packed once, and a constant `R` is packed at codegen rather than in every new state.
+- A fresh session's first turn costs less: the plan lists its constants once, and a matmul's scratch buffer is passed on to the next session on the same thread.
+- `MoveAxis` copies once through a tiled transpose. `broadcast_to_shape` writes contiguous runs when the innermost source axis is broadcast (6.2 ms to 0.12 ms for a per-channel bias spread over 320x320).
+- Fix: **signed integer `Div` by a power of two was rewritten to a right shift**, which rounds negative quotients down instead of toward zero. The shift is now kept for unsigned types only (#3003).
+- Fix: `MultiBroadcastTo` passed axis changes to a broadcast input and re-paired input axes. `TypedSource::change_axes` errored instead of blocking. Axis changes can now cross `Gather` ahead of the gathered axis.
+
+### Streaming / pulse
+
+- **A pulse can cover several attention chunks.** A model with a chunked attention mask used to pulsify only at exactly one chunk per pulse.
+- An attention mask built from a band ANDed with a runtime-length padding mask is bounded by its known factor, so rel-pos attention blockifies for pulsing.
+- Fix: `PulsePad` and `AffineChunkTrim` refused every axis change, and claimed their input's value. A delayed constant was reported as that same constant.
+
+### Transformers / LLM
+
+- **A `tract_moe_ffn` operator for Mixture-of-Experts FFN blocks**: router top-k, softmax/sigmoid/raw gating, grouped expert GEMMs with SwiGLU and weighted scatter-add, covering the Mixtral, OLMoE, GPT-OSS, Qwen3 and Granite variants. Experts run through per-expert subplans, so f16/bf16/Q40 and biased or clamped exports work, and block-quantized weights take a routed-matmul fast path. The op has a portable NNEF form, and `ClampedSwiGlu` is a core op on its own. (Contributed by Julien Balian.)
+- **CPU decode updates its KV cache in place.** The fusion was only reachable through a transform nobody applied, so every turn copied the whole past. `Sdpa::codegen` now decides it.
+- **The GPU KV cache is no longer rebuilt every turn.** It is a buffer with spare capacity written at the cursor, so appending is amortized O(1) instead of O(T) a turn, and truncation and rollback stay on the device.
+
+### [WIP] Deployment / autobatch
+
+- **A `deploy` runtime prepares models from a TOML deployment config.** `runtime_for_name("deploy")` reads `TRACT_CONFIG` and `TRACT_<MODEL>__<KEY>` variables, with one section per model keyed by its name, and for each model applies that section's transforms, prepares the model on the section's runtime, sizes device memory from its `hints` table and autobatches it. A model the config batchifies keeps the input and output contract it was handed over with. Available behind `unstable-autobatch`.
+- **Knobs can be scoped to a model.** Knobs read while a model is transformed or prepared can be overridden per model, under the environment; the LLC, mmm chunk and GPU RmsNorm settings become knobs.
+- **Models and runnables have names.** `TypedModel::name` and `Runnable::name` read the `tract.name` property, and NNEF stores it as the graph id instead of dropping it for the constant `"network"`. A `set_property` transform names a model whose export did not.
+- Autobatch reports turns, seats, lanes, queue wait and turn time through the `metrics` facade, labelled by runnable name.
+- `batchify` keeps the model properties (pulse delay and axes, blockify chunking, provenance), accepts an export whose batch axis was collapsed into an `AddAxis(0)`, and runs before or after pulsification.
+
+### CPU / linalg
+
+- **Depthwise convolution is vectorised and threaded everywhere.** A channel-last NEON kernel is suggested to depthwise convs of 16+ channels. Zones of more than four taps (up to 128, so 9x9) are vectorised on aarch64. x86_64 gets an AVX `depthwise_w` and wasm gets simd128 kernels. The (n, c) planes split across the executor (32.5 ms to 8.8 ms on a detection model).
+- **Direct spatial convolution along W** for group-1 NCHW f32 convolutions with a small kernel over a long row, skipping im2col through a new `conv_w4` routine (AVX2/FMA, NEON). Threaded over (batch, channel-group). `TRACT_DISABLE_DIRECT_SPATIAL` turns it off.
+- More work spread across threads: activation packing, f32 reductions over leading axes, NCHW 2x2 maxpool, and GEMVs with a long k, which used to run on one thread below the panel gate (every projection of a 1B LLM decode step).
+- Deconvolution whose kernel extent equals its stride adds the bias per channel in one write, replacing the NCHW 2x2 special case. Generic NCHW deconvolution accumulates contiguous input rows. NCHW and channel-last max pools walk by plane and row span.
+- A softmax over every row runs in one call on arm64 and wasm, bit-identical to the per-row kernels.
+- Apple SME: the f32 kernel stores straight from ZA to C, and reads an A that is already K-major in place instead of packing it. AMX is skipped on a strided n axis when K is short.
+- The SDOT i8 kernel is enabled with binutils 2.32–2.37 and pre-4.15 kernels; Cortex-A55/A75 are trusted by part number.
+- SpacemiT X60 (RISC-V): a TLB flush before matmuls of 8M+ multiply-adds keeps the L1 prefetcher working; `TRACT_RISCV64_TLB_REFRESH_FMAS` sets the threshold, and 0 turns it off.
+- wasm: the 8x8 GEMM broadcasts A from vector loads and is picked at every N; simd128 max and min by scalar; a target that cannot build a thread pool falls back to rayon's global pool.
+- Fix: f16 hardswish overflowed to +inf for x >= 10920. armv7 mmm prefetch addresses were wrong.
+
+### GPU
+
+- **A model with concrete shapes gets its memory arena without hints** on CUDA and Metal. Before, every intermediate had its own buffer, held until the stream committed; an SDXL VAE decoder needed ~61 GB instead of a 2.9 GB arena.
+- A batched attention softmax at rank 6 stays on the device, copies merge axes before checking rank, and a CUDA binary merges adjacent axes instead of refusing rank 6.
+- Slicing a tensor still on the device, or asking for its shape, no longer reads it back to host.
+- `Gather` on i64 data runs on CUDA and Metal.
+- CUDA: kernel launch errors are reported instead of ignored on seven launch sites (Q4_0, Q8_1, leaky ReLU, GELU). The cubin cache is keyed on architecture, NVRTC version, options and the common header, and written atomically. Shared-memory attributes are set once.
+- Metal: failed command buffers report why; autoreleased command buffers and encoders are drained; a barrier fixes a masked-softmax scratch race; a binary merging two axes that broadcast opposite ways is fixed.
+- Fix: outputs synced to host through a fused axis op were placed in the arena.
+- wgpu: blocked matmul over repacked weights, a per-pixel 3x3 convolution kernel, residual reads and elementwise ops after a transposed convolution folded into epilogues, single-launch resize, large dispatches spread over two grid dimensions, and a pool of staging buffers. (Contributed by Ckristian Zoli.)
+
+### NNEF / ONNX
+
+- Quantized convolution infers activation, filter and output types independently and aligns grouped per-channel zero points.
+- ONNX `Cast` wires core `Cast` for everything but string parsing.
+- NNEF warns when serializing an optimized model.
+- Fix: `ScatterND` with an out-of-bounds index now returns an error instead of failing an ndarray assertion.
+
+### CLI
+
+- **The CLI uses jemalloc** (feature `jemalloc`, enabled by bench-suite, not on Apple targets) with `retain:false`, after glibc settled into an mmap/munmap per eval on some graphs. `doc/` explains how an application should choose and configure its allocator.
+- `--set` symbols are bound before inference analysis; `@file` tensor specs are rejected instead of misparsed; `dump --mm` no longer panics on a matmul with fewer than two input facts.
+
+### Security
+
+- ONNX external data paths could follow symlinks out of the model directory. The model root and each candidate path are now canonicalized and the path must stay inside the root.
+
+### Dependencies / footprint
+
+- **`tract-libcli` is optional in the facade.** `Runnable::profile_json`/`cost_json` are behind a new default `profile` feature, and the ONNX fact spec parser moves to `InferenceFact::from_spec` in `tract-hir`, so `default-features = false` no longer pulls clap.
+- rustls 0.23.46, cargo-deny 0.20.2, routine dependency bumps.
+
 # 0.23.8 - 2026-09-21
 
 ### Platforms
