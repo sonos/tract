@@ -129,7 +129,7 @@ void kernel_mul_mv_impl(
 
             float sumf = 0;
             for (int i = tiisg; i < args.ne00; i += 32) {
-                sumf += (T0) x[i] * (T1) y[i];
+                sumf += (float) x[i] * (float) y[i];
             }
 
             float all_sum = simd_sum(sumf);
@@ -157,7 +157,7 @@ void kernel_mul_mv_impl(
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
+                for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) x[i] * (float) y[i];
                 dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
@@ -237,7 +237,7 @@ kernel void kernel_mul_mv_1row(
         float all_sum = simd_sum(sumf);
 
         if (tiisg == 0) {
-            for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
+            for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) x[i] * (float) y[i];
             dst_f32[r0] = all_sum;
         }
     }

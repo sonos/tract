@@ -21,6 +21,7 @@ pub mod downsample;
 pub mod elmwise;
 pub mod gather_elements;
 pub mod gelu_approximate;
+pub mod matmul_f16;
 pub mod matmul_q40;
 pub mod matmul_rounding;
 pub mod max_pool;
@@ -47,6 +48,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
     suite.add("matmul_q40", matmul_q40::suite()?);
+    suite.add("matmul_f16", matmul_f16::suite()?);
     suite.add("matmul_rounding", matmul_rounding::suite()?);
     suite.add("max_pool", max_pool::suite()?);
     suite.add("moe_ffn", moe_ffn::suite()?);
