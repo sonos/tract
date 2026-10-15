@@ -1,0 +1,134 @@
+{
+"start_day": "2026-10-15",
+"commits": [
+"2d1519387579dd4a45f9b4ac5de48c3b0b543080"
+],
+"metrics": {
+"bundle.bench_runtime": [
+1120
+],
+"net.arm_ml_kws_cnn_m.evaltime.pass": [
+0.0006367
+],
+"net.dfn3_df_dec.evaltime.s100": [
+0.009692
+],
+"net.dfn3_enc.evaltime.s100": [
+0.01271
+],
+"net.dfn3_erb_dec.evaltime.s100": [
+0.01109
+],
+"net.dtln_1.evaltime.frame": [
+0.00005568
+],
+"net.dtln_2.evaltime.frame": [
+0.00009898
+],
+"net.dummy_conmer_12M.evaltime.pulse_120ms": [
+0.01004
+],
+"net.en_tdnn_15M.evaltime.2600ms": [
+0.1349
+],
+"net.en_tdnn_15M.evaltime.pulse_120ms": [
+0.01161
+],
+"net.en_tdnn_15M.evaltime.pulse_240ms": [
+0.01409
+],
+"net.en_tdnn_15M_nnef.evaltime.pulse_240ms": [
+0.01405
+],
+"net.en_tdnn_8M.evaltime.2600ms": [
+0.06362
+],
+"net.en_tdnn_8M.evaltime.pulse_120ms": [
+0.005377
+],
+"net.en_tdnn_8M.evaltime.pulse_180ms": [
+0.006159
+],
+"net.en_tdnn_8M.evaltime.pulse_240ms": [
+0.006529
+],
+"net.en_tdnn_8M_nnef.evaltime.pulse_240ms": [
+0.006458
+],
+"net.en_tdnn_lstm_bn_q7.evaltime.2600ms": [
+0.07631
+],
+"net.en_tdnn_lstm_bn_q7.evaltime.pulse_240ms": [
+0.007323
+],
+"net.en_tdnn_pyt_15M.evaltime.pulse_120ms": [
+0.007699
+],
+"net.fastenhancer_b.evaltime.frame": [
+0.0006558
+],
+"net.fastenhancer_l.evaltime.frame": [
+0.006532
+],
+"net.fastenhancer_m.evaltime.frame": [
+0.002874
+],
+"net.fastenhancer_s.evaltime.frame": [
+0.001338
+],
+"net.fastenhancer_t.evaltime.frame": [
+0.0002739
+],
+"net.gtcrn.evaltime.frame": [
+0.000724
+],
+"net.hey_snips_v1.evaltime.400ms": [
+0.0006593
+],
+"net.hey_snips_v31.evaltime.400ms": [
+0.0003761
+],
+"net.hey_snips_v4_model17.evaltime.2sec": [
+0.002478
+],
+"net.hey_snips_v4_model17.evaltime.pulse8": [
+0.0003272
+],
+"net.hey_snips_v4_model17_nnef.evaltime.pulse8": [
+0.0003268
+],
+"net.inceptionv1q.evaltime.pass": [
+0.2897
+],
+"net.inceptionv3.evaltime.pass": [
+0.4111
+],
+"net.mdl_en_2019_Q3_librispeech_onnx.evaltime.2600ms": [
+0.02056
+],
+"net.mdl_en_2019_Q3_librispeech_onnx.evaltime.pulse_240ms": [
+0.001968
+],
+"net.mobilenet_v1_1.evaltime.pass": [
+0.04453
+],
+"net.mobilenet_v2_1.evaltime.pass": [
+0.05174
+],
+"net.speaker_id.evaltime.pulse8": [
+0.0001495
+],
+"net.trunet.evaltime.pulse1_f16": [
+0.008653
+],
+"net.trunet.evaltime.pulse1_f32": [
+0.0004135
+],
+"net.voicecom_fake_quant.evaltime.2sec": [
+0.0133
+],
+"net.voicecom_float.evaltime.2sec": [
+0.01296
+]
+}
+}
