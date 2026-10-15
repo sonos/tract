@@ -29,8 +29,9 @@ impl MetalRouteTopK {
         // rule declines larger routers, this guards direct wiring.
         let num_experts = &inputs[1].shape[inputs[1].rank() - 2];
         ensure!(
-            num_experts.as_i64().is_some_and(|e| e <= 256),
-            "MetalRouteTopK supports at most 256 experts, got {num_experts}"
+            num_experts.as_i64().is_some_and(|e| (0..=256).contains(&e) && self.k <= e as usize),
+            "MetalRouteTopK requires k <= expert count <= 256, got k={} and {num_experts} experts",
+            self.k
         );
         if inputs.len() == 3 {
             ensure!(inputs[2].rank() == 1);
@@ -124,7 +125,7 @@ crate::register_metal_op!(RouteTopK, |source, node, op| {
     // non-concrete) routers stay on the CPU op.
     rule_if!(facts[1].rank() >= 2);
     let num_experts = &facts[1].shape[facts[1].rank() - 2];
-    rule_if!(num_experts.as_i64().is_some_and(|e| e <= 256));
+    rule_if!(num_experts.as_i64().is_some_and(|e| (0..=256).contains(&e) && op.k <= e as usize));
     Ok(Some(Box::new(MetalRouteTopK { k: op.k, gate: op.gate.clone() })))
 });
 

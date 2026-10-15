@@ -5,6 +5,7 @@ mod mlx_gemm;
 pub mod mlx_sdpa;
 
 pub use basic::BasicMatMul;
+pub(crate) use ggml_gemm::dispatch_router_scores;
 pub use ggml_gemm::{
     GgmlGemm, RoutedQ40InputMode, RoutedSwigluAct, dispatch_routed_q40_f32,
     dispatch_routed_q40_swiglu_f32, eval_routed_q40_f32,
