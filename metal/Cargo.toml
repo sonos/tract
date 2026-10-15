@@ -19,6 +19,7 @@ maintenance = { status = "actively-developed" }
 
 [dependencies]
 anyhow.workspace = true
+block = "0.1.6"
 derive-new.workspace = true
 downcast-rs.workspace = true
 inventory.workspace = true

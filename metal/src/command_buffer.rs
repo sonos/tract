@@ -93,6 +93,60 @@ mod tests {
     use metal::foreign_types::ForeignTypeRef;
     use objc::rc::{WeakPtr, autoreleasepool};
 
+    fn check_tensor_storage_retained(profile: bool) -> tract_core::internal::TractResult<()> {
+        use crate::encoder::EncoderExt;
+        use crate::kernels::LibraryName;
+        use tract_core::internal::*;
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+
+        let stream = MetalStream::new();
+        if profile {
+            let device = metal::Device::system_default().expect("Metal device");
+            if !device.supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary) {
+                return Ok(());
+            }
+            stream.enable_profiling()?;
+        }
+        let host = Arc::new(tensor1(&[1u32, 2, 3, 4]));
+        let weak = Arc::downgrade(&host);
+        let input = host.clone().into_device()?;
+        let output = DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?;
+        let pipeline =
+            stream.load_pipeline(LibraryName::ArrayOps, "array_ops::copy_unicast_u32")?;
+        let command = stream.command_buffer();
+        command.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+            encoder
+                .dispatch_thread_groups(metal::MTLSize::new(4, 1, 1), metal::MTLSize::new(1, 1, 1));
+        });
+        drop(input);
+        drop(host);
+        ensure!(weak.upgrade().is_some(), "encoded buffer lost its backing allocation");
+        stream.wait_until_completed()?;
+        output.to_host()?.close_enough(&tensor1(&[1u32, 2, 3, 4]), Approximation::Exact)?;
+        drop(command);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while weak.upgrade().is_some() && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        ensure!(weak.upgrade().is_none(), "completed buffer retained its backing allocation");
+        Ok(())
+    }
+
+    #[test]
+    fn tensor_storage_retained_until_command_release() -> tract_core::internal::TractResult<()> {
+        check_tensor_storage_retained(false)
+    }
+
+    #[test]
+    fn profiled_tensor_storage_retained_until_command_release()
+    -> tract_core::internal::TractResult<()> {
+        check_tensor_storage_retained(true)
+    }
+
     fn check_command_objects_released(profile: bool) -> tract_core::internal::TractResult<()> {
         // An outer pool makes a missing inner drain observable without leaking
         // test objects into the worker thread's lifetime.
