@@ -300,8 +300,8 @@ mod mlx_conv_tests {
                 let input = ramp(dt, &[n, ih, iw, c], 1)?;
                 let weights = ramp(dt, &[o, k, k, c], 2)?;
                 let weights_oihw = ohwi_to_oihw(&weights)?;
-                let oh = (ih + stride - 1) / stride;
-                let ow = (iw + stride - 1) / stride;
+                let oh = ih.div_ceil(stride);
+                let ow = iw.div_ceil(stride);
                 let (direct, mlx) = with_borrowed_metal_stream(|stream| {
                     let i = input.clone().into_device()?;
                     let w = weights.clone().into_device()?;
@@ -429,7 +429,7 @@ mod mlx_conv_tests {
         let w_oihw = ohwi_to_oihw(&ramp(dt, &[o, k, k, c], 2)?)?;
         let bias = Tensor::zero_dt(dt, &[o])?;
         let mut model = TypedModel::default();
-        let i = model.add_source("i", dt.fact(&[n, ih, iw, c]))?;
+        let i = model.add_source("i", dt.fact([n, ih, iw, c]))?;
         let w = model.add_const("w", w_oihw.clone())?;
         let b = model.add_const("b", bias.clone())?;
         let out = model.wire_node("conv", op.clone(), &[i, w, b])?;
@@ -521,8 +521,8 @@ mod mlx_conv_tests {
             let input = ramp(dt, &[1, ih, iw, c], 1)?;
             let w = ramp(dt, &[o, kh, kw, c], 2)?;
             let w_dir = ohwi_to_oihw(&w)?;
-            let oh = if valid { (ih - kh) / st + 1 } else { (ih + st - 1) / st };
-            let ow = if valid { (iw - kw) / st + 1 } else { (iw + st - 1) / st };
+            let oh = if valid { (ih - kh) / st + 1 } else { ih.div_ceil(st) };
+            let ow = if valid { (iw - kw) / st + 1 } else { iw.div_ceil(st) };
             let (d, m) = with_borrowed_metal_stream(|stream| {
                 let i = input.clone().into_device()?;
                 let wm = w.clone().into_device()?;
@@ -586,7 +586,7 @@ mod mlx_conv_tests {
             let input = ramp(dt, &[n, ih, iw, c], 1)?;
             let bias = Tensor::zero_dt(dt, &[o])?;
             let mut model = TypedModel::default();
-            let i = model.add_source("i", dt.fact(&[n, ih, iw, c]))?;
+            let i = model.add_source("i", dt.fact([n, ih, iw, c]))?;
             let w = model.add_const("w", weights)?;
             let b = model.add_const("b", bias)?;
             let out = model.wire_node("conv", op, &[i, w, b])?;
@@ -697,7 +697,7 @@ mod mlx_conv_tests {
         let weights = ramp(dt, &[c, 1, k, k], 2)?;
         let bias = Tensor::zero_dt(dt, &[c])?;
         let mut model = TypedModel::default();
-        let i = model.add_source("i", dt.fact(&[n, ih, iw, c]))?;
+        let i = model.add_source("i", dt.fact([n, ih, iw, c]))?;
         let w = model.add_const("w", weights)?;
         let b = model.add_const("b", bias)?;
         let out = model.wire_node("conv", op, &[i, w, b])?;
@@ -741,7 +741,7 @@ mod mlx_conv_tests {
                     Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: c, q_params: None };
                 let input = ramp(dt, &[1, ih, iw, c], 1)?;
                 let weights = ramp(dt, &[c, 1, k, k], 2)?;
-                let (oh, ow) = ((ih + st - 1) / st, (iw + st - 1) / st);
+                let (oh, ow) = (ih.div_ceil(st), iw.div_ceil(st));
                 let (d, m) = with_borrowed_metal_stream(|stream| {
                     let i = input.clone().into_device()?;
                     let w = weights.clone().into_device()?;

@@ -4,6 +4,7 @@ use criterion::*;
 use tract_core::internal::*;
 use tract_gpu::tensor::IntoDevice;
 use tract_linalg::mmm::AsInputValue;
+use tract_linalg::mmm::Query;
 use tract_metal::MetalStream;
 use tract_metal::kernels::matmul::GgmlGemm;
 use tract_metal::kernels::{LibraryName, matmul};
@@ -23,13 +24,15 @@ pub fn tract_with_packing(
 
     // mk,kn -> mn
     unsafe {
-        let mmm = tract_linalg::MmmDispatch::native().mmm(dt, Some(m), Some(k), Some(n)).unwrap();
+        let (mmm, packing, _) = tract_linalg::MmmDispatch::native()
+            .pick(&Query::plain(dt, Some(m), Some(k), Some(n)))
+            .unwrap();
 
         let c_storage = mmm.c_view(Some(0), Some(1));
 
         let mut scratch = mmm.allocate_scratch_space();
 
-        let (packer_a, packer_b) = &mmm.packings()[0];
+        let (packer_a, packer_b) = &mmm.packings()[packing];
 
         crit.bench_function(format!("tract_with_packing_{:?}", dt), |be| {
             let packed_a = packer_a.prepare_one(&a, 1, 0).unwrap();
@@ -42,7 +45,7 @@ pub fn tract_with_packing(
                     &mut *scratch,
                     &[
                         FusedSpec::AddMatMul {
-                            packing: 0,
+                            packing,
                             a: AsInputValue::Borrowed(&(*packed_a)),
                             b: AsInputValue::Borrowed(&(*packed_b)),
                         },

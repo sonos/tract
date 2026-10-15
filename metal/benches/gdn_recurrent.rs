@@ -64,7 +64,7 @@ fn make_inputs(b: usize, s_len: usize, k_heads: usize, groups: usize, width: usi
 }
 
 fn cpu_gdn(crit: &mut BenchmarkGroup<WallTime>, label: &str, inputs: &Inputs) {
-    crit.bench_function(&format!("cpu_{label}"), |be| {
+    crit.bench_function(format!("cpu_{label}"), |be| {
         be.iter(|| {
             GatedDeltaNetRecurrent::default()
                 .eval(
@@ -120,7 +120,7 @@ fn metal_gdn(
 
     run().unwrap(); // warmup: pays one-time pipeline/library load cost
 
-    crit.bench_function(&format!("metal_{label}"), |be| {
+    crit.bench_function(format!("metal_{label}"), |be| {
         be.iter(|| run().unwrap());
     });
 }
