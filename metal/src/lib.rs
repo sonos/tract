@@ -9,6 +9,7 @@ mod rewrite_rules;
 mod tensor;
 mod tests;
 mod transform;
+mod tuning;
 mod utils;
 
 use tract_core::internal::*;
