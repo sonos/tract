@@ -118,6 +118,23 @@ crate::register_metal_op!(RoutedQ40MatMul, |source, node, op| {
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == i64::datum_type());
     rule_if!(as_quant_fact(facts[1], &Q4_0).is_some());
+    let (Some(token_ids), Some(expert_ids), Some(rows), Some(expert_count)) = (
+        facts[2].konst.as_ref(),
+        facts[3].konst.as_ref(),
+        facts[0].shape[0].as_i64(),
+        facts[1].shape[0].as_i64(),
+    ) else {
+        return Ok(None);
+    };
+    let token_ids = token_ids.to_plain_array_view::<i64>()?;
+    let expert_ids = expert_ids.to_plain_array_view::<i64>()?;
+    rule_if!(token_ids.len() == expert_ids.len());
+    rule_if!(expert_ids.iter().all(|&id| id >= 0 && id < expert_count));
+    if op.input_mode == RoutedInputMode::TokenRows {
+        rule_if!(token_ids.iter().all(|&id| id >= 0 && id < rows));
+    } else {
+        rule_if!(rows as usize == token_ids.len());
+    }
     Ok(Some(Box::new(MetalRoutedQ40MatMul {
         input_mode: op.input_mode,
         sync_after_dispatch: crate::transform::moe_sync_after_dispatch(),

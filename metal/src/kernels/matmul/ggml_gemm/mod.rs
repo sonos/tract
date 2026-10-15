@@ -444,6 +444,52 @@ fn dispatch_metal_ggml_gemm(
     Ok(())
 }
 
+/// Computes router scores with f32 products and accumulation for every token count.
+/// Inputs are dense rank-2 f16/f32 activations and f32 weights; output is f32.
+pub(crate) fn dispatch_router_scores(
+    stream: &MetalStream,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    ensure!(input.rank() == 2 && weights.rank() == 2 && output.rank() == 2);
+    ensure!(matches!(input.datum_type(), F16 | F32));
+    ensure!(weights.datum_type() == F32 && output.datum_type() == F32);
+    ensure!(input.shape()[1] == weights.shape()[1]);
+    ensure!(output.shape() == [input.shape()[0], weights.shape()[0]]);
+    if output.len() == 0 {
+        return Ok(());
+    }
+    for tensor in [input, weights, output] {
+        stream.retain_tensor(tensor);
+    }
+    let dispatches = GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
+        [input.datum_type(), weights.datum_type(), output.datum_type()],
+        input.buffer_offset(),
+        input.shape(),
+        false,
+        weights.buffer_offset(),
+        weights.shape(),
+        true,
+        false,
+        output.buffer_offset(),
+        output.shape(),
+    )?;
+    for params in dispatches {
+        dispatch_metal_ggml_gemv(
+            stream,
+            params.clone(),
+            params.a_offset,
+            get_metal_buffer(input),
+            params.b_offset,
+            get_metal_buffer(weights),
+            get_metal_buffer(output),
+            params.c_offset,
+        )?;
+    }
+    Ok(())
+}
+
 pub fn eval_routed_q40_f32(
     stream: &MetalStream,
     input: &DeviceTensor,

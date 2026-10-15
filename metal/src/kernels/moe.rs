@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::matmul::{GemmImpl, GgmlGemm};
+use crate::kernels::matmul::dispatch_router_scores;
 use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use metal::{MTLSize, NSUInteger};
@@ -68,6 +68,7 @@ pub fn dispatch_route_topk_f32(
             wg_bias.shape()
         );
     }
+    ensure!(k <= num_experts, "top-k {k} exceeds expert count {num_experts}");
     ensure!(num_experts <= 256, "Metal RouteTopK supports at most 256 experts");
 
     let route_count = token_count * k;
@@ -83,33 +84,13 @@ pub fn dispatch_route_topk_f32(
     let has_wg_bias = u32::from(wg_bias.is_some());
     let wg_bias = wg_bias.unwrap_or(wg);
 
-    // Phase 1: router scores [token_count, num_experts] through the GGML
-    // matmul kernels (mat-vec at decode, tiled GEMM at prefill). The previous
-    // single-kernel design computed the score dots inside one threadgroup per
-    // token: at decode that is one threadgroup reading the whole 1MB router
-    // weight alone (GPU >95% idle, ~12ms/token over 40 MoE layers on
-    // qwen3.5-35B).
-    let mut x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
-    // f16 x runs the score gemv directly through the mixed f32-weights /
-    // f16-activations / f32-output kernel (bit-identical to upcasting, see
-    // kernel_mul_mv_f32_f16_of32). The tiled GEMM the prefill shapes take
-    // has no such mixed variant: upcast x first there, one dispatch per
-    // prefill chunk, exactly what the graph-level cast used to do. The
-    // predicate mirrors GgmlGemm::dispatch_eval's gemv-vs-gemm choice.
-    let d = d_model as usize;
-    let takes_gemm_path = d.is_multiple_of(32) && d >= 64 && token_count as usize > 4;
-    if x2.datum_type() == DatumType::F16 && takes_gemm_path {
-        let x32 = DeviceTensor::uninitialized_dt(f32::datum_type(), &[token_count as usize, d])?;
-        crate::kernels::array::Cast.dispatch_eval(stream, &x2, &x32)?;
-        stream.retain_tensor(&x32);
-        x2 = x32;
-    }
+    let x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
     let wg2 = wg.reshaped(tvec![num_experts as usize, d_model as usize])?;
     let scores = DeviceTensor::uninitialized_dt(
         f32::datum_type(),
         &[token_count as usize, num_experts as usize],
     )?;
-    GemmImpl::<GgmlGemm>::new(false, true).dispatch_eval(stream, &x2, &wg2, &scores)?;
+    dispatch_router_scores(stream, &x2, &wg2, &scores)?;
 
     // Phase 2: tiny per-token top-k over the score rows, one simdgroup per
     // token.
