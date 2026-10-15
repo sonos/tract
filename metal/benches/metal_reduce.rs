@@ -17,7 +17,7 @@ fn bench_shape(
         let a = Tensor::from_shape(shape, &vec![1.0f32; len])?.into_device()?;
         let mut o_shape = shape.to_vec();
         o_shape[axis] = 1;
-        let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+        let output = DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)?;
         metal_reduce_launch(&Reducer::Sum, &a, axis, &output)?;
         stream.wait_until_completed()?;
 

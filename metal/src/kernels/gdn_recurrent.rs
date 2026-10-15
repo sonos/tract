@@ -206,7 +206,7 @@ fn dispatch_chunked(
     }
 
     let prep = stream.load_pipeline(LibraryName::GdnRecurrent, "gdn_chunk_prepare_f16")?;
-    let tg_width = (prep.max_total_threads_per_threadgroup() as u64).min(256);
+    let tg_width = prep.max_total_threads_per_threadgroup().min(256);
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&prep);
@@ -244,7 +244,7 @@ fn dispatch_chunked(
     let scan_name = if f16_state { "gdn_chunk_scan_f16_state" } else { "gdn_chunk_scan_f32_state" };
     let scan = stream.load_pipeline(LibraryName::GdnRecurrent, scan_name)?;
     let col_blocks = width.div_ceil(GDN_COL_BLOCK);
-    let tg_width = (scan.max_total_threads_per_threadgroup() as u64).min(256);
+    let tg_width = scan.max_total_threads_per_threadgroup().min(256);
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&scan);
@@ -456,10 +456,10 @@ mod tests {
             let next = next.to_host()?.into_tensor();
             output
                 .cast_to::<f32>()?
-                .close_enough(&cpu[0].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
+                .close_enough(&*cpu[0].cast_to::<f32>()?, Approximation::Approximate)?;
             next.cast_to::<f32>()?
                 .into_owned()
-                .close_enough(&cpu[1].cast_to::<f32>()?.into_owned(), Approximation::Approximate)?;
+                .close_enough(&*cpu[1].cast_to::<f32>()?, Approximation::Approximate)?;
             Ok(())
         })
     }

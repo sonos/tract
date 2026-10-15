@@ -695,11 +695,11 @@ mod gemv_wide_tests {
                 dt,
                 (m, n, k),
                 &config,
-                &get_metal_buffer(&ad),
+                get_metal_buffer(&ad),
                 ad.buffer_offset(),
-                &get_metal_buffer(&bd),
+                get_metal_buffer(&bd),
                 bd.buffer_offset(),
-                &get_metal_buffer(&cd),
+                get_metal_buffer(&cd),
                 cd.buffer_offset(),
             )?;
             stream.wait_until_completed()?;
