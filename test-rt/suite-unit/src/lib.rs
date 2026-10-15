@@ -33,6 +33,7 @@ pub mod q_elmwise;
 pub mod q_flavours;
 pub mod q_helpers;
 pub mod rms_norm;
+pub mod routed_combine;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod silu;
@@ -58,6 +59,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("pad", pad::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
+    suite.add("routed_combine", routed_combine::suite()?);
     suite.add("apply_rope", apply_rope::suite()?);
     suite.add("gelu_approximate", gelu_approximate::suite()?);
     suite.add("gelu_exact", gelu_exact::suite()?);
