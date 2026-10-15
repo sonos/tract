@@ -378,7 +378,7 @@ jobs:
             --thresholds ci/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
             ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
-            ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5' || '' }} \
+            ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5 --second-pass-max 10' || '' }} \
             ${{ matrix.bench_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
