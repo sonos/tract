@@ -9,5 +9,5 @@ fi
 
 set -e
 
-(cd api/rs ; $CARGO_DENY check -c deny.toml)
-(cd cli ; $CARGO_DENY check -c deny.toml)
+(cd api/rs ; $CARGO_DENY check)
+(cd cli ; $CARGO_DENY check)
