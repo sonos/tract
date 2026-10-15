@@ -186,6 +186,7 @@ impl DeviceContext for MetalContext {
     }
 
     fn tensor_to_device(&self, tensor: TValue) -> TractResult<Box<dyn OwnedDeviceTensor>> {
+        let tensor = tensor.into_arc_tensor();
         let view = tensor.view();
         ensure!(
             DeviceTensor::is_supported_dt(view.datum_type()),
@@ -211,17 +212,23 @@ impl DeviceContext for MetalContext {
         let data = if data_bytes.is_empty() { &ZERO } else { data_bytes };
 
         let size = core::mem::size_of_val(data) as NSUInteger;
+        // Metal owns the captured storage until its last reference to the no-copy buffer drops.
+        let storage = tensor.clone();
+        let deallocator = block::ConcreteBlock::new(move |_: *const c_void, _: NSUInteger| {
+            drop(storage.clone());
+        })
+        .copy();
         let device_buffer = MetalBuffer {
             inner: self.device.new_buffer_with_bytes_no_copy(
                 data.as_ptr() as *const core::ffi::c_void,
                 size,
                 MTLResourceOptions::StorageModeShared,
-                None,
+                Some(&deallocator),
             ),
         };
 
         Ok(Box::new(MetalTensor {
-            inner: MValue::Natural(tensor.into_arc_tensor()),
+            inner: MValue::Natural(tensor),
             device_buffer,
             exotic_fact: bqf,
         }))
