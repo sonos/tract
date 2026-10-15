@@ -6,6 +6,7 @@ name: Cross-build image
 
 on:
   push:
+    branches: [main]
     paths:
       - 'ci/docker-debian-stretch/**'
       - '.github/workflows/cross-image.yml'
