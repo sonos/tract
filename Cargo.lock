@@ -5426,6 +5426,7 @@ name = "tract-metal"
 version = "0.23.10-pre"
 dependencies = [
  "anyhow",
+ "block",
  "criterion",
  "derive-new",
  "downcast-rs",
