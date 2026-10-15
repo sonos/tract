@@ -1,6 +1,6 @@
 mod moe;
 use moe::convert_q40_moe_ffn_to_metal;
-pub(crate) use moe::moe_sync_after_dispatch;
+pub(crate) use moe::moe_commit_after_dispatch;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt::Debug;

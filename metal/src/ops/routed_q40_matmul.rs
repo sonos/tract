@@ -11,7 +11,7 @@ pub struct MetalRoutedQ40MatMul {
     pub input_mode: RoutedInputMode,
     /// Split large prefill dispatches into command buffers without waiting,
     /// preserving ordering while allowing the CPU to encode ahead of the GPU.
-    pub sync_after_dispatch: bool,
+    pub commit_after_dispatch: bool,
 }
 
 impl MetalRoutedQ40MatMul {
@@ -82,18 +82,8 @@ impl EvalOp for MetalRoutedQ40MatMul {
                 self.kernel_input_mode(),
                 &output,
             )?;
-            // A command-buffer boundary is enough to restore correctness;
-            // committing without blocking keeps the CPU ahead of the GPU.
-            //
-            // Only prefill-sized batches need it: the corruption appears
-            // during long prefill forwards, and decode steps (route_count =
-            // top_k) end with the runtime's own blocking logits sync anyway.
-            // Splitting at decode costs ~75% of the decode wall time in
-            // waitUntilCompleted for no correctness benefit. Threshold:
-            // MetalTuning::moe_commit_min_routes
-            // (TRACT_METAL_MOE_COMMIT_MIN_ROUTES).
             let min_routes = crate::tuning::tuning().moe_commit_min_routes;
-            if self.sync_after_dispatch && route_token_ids.shape()[0] > min_routes {
+            if self.commit_after_dispatch && route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }
             Ok(())
@@ -137,7 +127,7 @@ crate::register_metal_op!(RoutedQ40MatMul, |source, node, op| {
     }
     Ok(Some(Box::new(MetalRoutedQ40MatMul {
         input_mode: op.input_mode,
-        sync_after_dispatch: crate::transform::moe_sync_after_dispatch(),
+        commit_after_dispatch: crate::transform::moe_commit_after_dispatch(),
     })))
 });
 

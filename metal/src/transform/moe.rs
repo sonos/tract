@@ -7,7 +7,7 @@ use tract_gpu::utils::as_quant_fact;
 use tract_transformers::ops::moe_ffn::{ExpertLayout, MoeFfn, RouteTopK, RoutedInputMode};
 
 /// Enable command-buffer boundaries for large routed MoE dispatches.
-pub(crate) fn moe_sync_after_dispatch() -> bool {
+pub(crate) fn moe_commit_after_dispatch() -> bool {
     !env_flag("TRACT_METAL_MOE_UNSAFE_NOSYNC")
 }
 
@@ -312,10 +312,15 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
             format!("{}.w1w3_swiglu", node.name),
             ops::MetalRoutedQ40SwiGlu {
                 input_mode: RoutedInputMode::TokenRows,
-                act_alpha_bits: op.act_alpha_bits,
-                act_limit_bits: op.act_limit_bits,
+                activation: match op.act_limit_bits {
+                    Some(limit_bits) => crate::ops::routed_q40_swiglu::RoutedActivation::Clamped {
+                        alpha_bits: op.act_alpha_bits.unwrap_or(1.0f32.to_bits()),
+                        limit_bits,
+                    },
+                    None => crate::ops::routed_q40_swiglu::RoutedActivation::Plain,
+                },
                 has_bias,
-                sync_after_dispatch: moe_sync_after_dispatch(),
+                commit_after_dispatch: moe_commit_after_dispatch(),
             },
             &inputs,
         )?[0]
@@ -324,7 +329,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
             format!("{}.w1", node.name),
             ops::MetalRoutedQ40MatMul {
                 input_mode: RoutedInputMode::TokenRows,
-                sync_after_dispatch: moe_sync_after_dispatch(),
+                commit_after_dispatch: moe_commit_after_dispatch(),
             },
             &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
         )?[0];
@@ -349,7 +354,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
                 format!("{}.w3", node.name),
                 ops::MetalRoutedQ40MatMul {
                     input_mode: RoutedInputMode::TokenRows,
-                    sync_after_dispatch: moe_sync_after_dispatch(),
+                    commit_after_dispatch: moe_commit_after_dispatch(),
                 },
                 &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
             )?[0];
@@ -398,7 +403,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
         format!("{}.w2", node.name),
         ops::MetalRoutedQ40MatMul {
             input_mode: RoutedInputMode::RouteRows,
-            sync_after_dispatch: moe_sync_after_dispatch(),
+            commit_after_dispatch: moe_commit_after_dispatch(),
         },
         &[hidden, w2_device, route_token_ids, route_expert_ids],
     )?[0];
@@ -471,10 +476,7 @@ fn fact_is_f16_or_f32(fact: &TypedFact) -> bool {
     matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
 }
 
-/// Shared fact gate for the Metal Q40 MoE fast path. `layout` tells how to
-/// read the expert dims out of w1: [E,H,D] for linear, [E,D,H] for canonical
-/// (the repack pre-pass checks canonical facts before committing to the
-/// transpose; the lowering itself only ever sees linear).
+/// Checks the layout, dtypes and routing limits supported by Metal Q40 MoE lowering.
 fn q40_moe_facts_supported(op: &MoeFfn, facts: &[&TypedFact], layout: ExpertLayout) -> bool {
     let indexes = moe_input_indexes(op);
     let x_rank_ok =
