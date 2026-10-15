@@ -90,7 +90,7 @@ impl TypedOp for MetalRoutedCombine {
 
 crate::register_metal_op!(RoutedCombine, |source, node, _op| {
     let facts = source.node_input_facts(node.id)?;
-    rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
+    rule_if!(facts[0].datum_type == DatumType::F32);
     rule_if!(facts[1].datum_type == f32::datum_type());
     rule_if!(facts[2].datum_type == i64::datum_type());
     rule_if!(facts[3].datum_type == f32::datum_type());
