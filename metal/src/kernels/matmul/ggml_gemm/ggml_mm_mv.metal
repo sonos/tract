@@ -12,6 +12,12 @@ typedef struct {
     uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
 
+#define QK8_0 32
+typedef struct {
+    half d;             // delta
+    int8_t qs[QK8_0];   // quants
+} block_q8_0;
+
 typedef struct {
     int32_t  ne00;
     int32_t  ne02;
@@ -51,9 +57,40 @@ typedef struct {
     int16_t  out_f16; // q4_0 path: when set, src1 and dst are f16 rather than f32
 } ggml_metal_kargs_mul_mv;
 
+typedef struct {
+    int32_t  k;
+    int32_t  n;
+    int32_t  route_count;
+    int32_t  input_mode; // 0: route_token_ids indexes input rows, 1: route row == input row
+    uint64_t weight_expert_stride;
+    uint64_t weight_row_stride;
+    uint64_t input_row_stride;
+    uint64_t output_route_stride;
+} routed_q40_f32_args;
+
+// Activation epilogue of the fused routed w1/w3 pair (see
+// kernel_routed_q4_0_swiglu_f32): mode 0 is plain swiglu silu(g)*u, mode 1
+// is the clamped variant (same math as clamped_swiglu_f32 in moe.metal).
+typedef struct {
+    int32_t act_mode;
+    int32_t has_bias;
+    float   alpha;
+    float   limit;
+} routed_swiglu_args;
+
+inline float routed_swiglu_apply(routed_swiglu_args sargs, float g, float u) {
+    if (sargs.act_mode == 1) {
+        const float gate = min(g, sargs.limit);
+        const float up = clamp(u, -sargs.limit, sargs.limit);
+        const float glu = gate / (1.0f + exp(-sargs.alpha * gate));
+        return (up + 1.0f) * glu;
+    }
+    return (g / (1.0f + exp(-g))) * u;
+}
+
 #define N_MV_T_T 4
 
-template<typename T0, typename T04, typename T1, typename T14, typename args_t>
+template<typename T0, typename T04, typename T1, typename T14, typename args_t, typename TO = T1>
 void kernel_mul_mv_impl(
         args_t args,
         device const char * src0,
@@ -72,10 +109,12 @@ void kernel_mul_mv_impl(
 
     device const T0 * x = (device const T0 *) (src0 + offset0);
 
-    // Output dtype follows the activation dtype (T1): f32 activations keep f32
-    // outputs, f16 activations produce f16 outputs directly, removing the
-    // f32->activation cast tract would otherwise insert after the matmul.
-    device T1 * dst_o = (device T1 *) dst + (uint64_t)im*args.ne0*args.ne1;
+    // Output dtype defaults to the activation dtype (T1): f32 activations
+    // keep f32 outputs, f16 activations produce f16 outputs directly,
+    // removing the f32->activation cast tract would otherwise insert after
+    // the matmul. TO overrides it for mixed cases (f16 activations with
+    // full-precision f32 outputs, e.g. MoE router scores).
+    device TO * dst_o = (device TO *) dst + (uint64_t)im*args.ne0*args.ne1;
 
     if (args.ne00 < 128) {
         for (int row = 0; row < N_MV_T_T; ++row) {
@@ -90,12 +129,12 @@ void kernel_mul_mv_impl(
 
             float sumf = 0;
             for (int i = tiisg; i < args.ne00; i += 32) {
-                sumf += (T0) x[i] * (T1) y[i];
+                sumf += (float) x[i] * (float) y[i];
             }
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     } else {
@@ -118,14 +157,14 @@ void kernel_mul_mv_impl(
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) x[i] * (float) y[i];
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     }
 }
 
-template<typename T0, typename T04, typename T1, typename T14>
+template<typename T0, typename T04, typename T1, typename T14, typename TO = T1>
 kernel void kernel_mul_mv(
         constant ggml_metal_kargs_mul_mv & args,
         device const char * src0,
@@ -133,7 +172,7 @@ kernel void kernel_mul_mv(
         device       char * dst,
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]]) {
-    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &>(
+    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &, TO>(
         args,
         src0,
         src1,
@@ -147,6 +186,12 @@ typedef decltype(kernel_mul_mv<half, half4, half, half4>) mul_mv_t;
 template [[host_name("kernel_mul_mv_f32_f32")]]   kernel mul_mv_t kernel_mul_mv<float,  float4,  float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f32")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f16")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   half,   half4>;
+// Mixed variant: f32 weights, f16 activations, full-precision f32 output
+// (bit-identical to upcasting the activations then running f32_f32: the
+// half->float element conversion is exact and the accumulation order is the
+// same). Used by the MoE router so the expert scores stay exact f32 while
+// the block input skips its f16->f32 cast dispatch.
+template [[host_name("kernel_mul_mv_f32_f16_of32")]] kernel mul_mv_t kernel_mul_mv<float, float4, half, half4, float>;
 
 template<typename T, typename T4>
 kernel void kernel_mul_mv_1row(
@@ -192,7 +237,7 @@ kernel void kernel_mul_mv_1row(
         float all_sum = simd_sum(sumf);
 
         if (tiisg == 0) {
-            for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) (x[i] * y[i]);
+            for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) x[i] * (float) y[i];
             dst_f32[r0] = all_sum;
         }
     }
@@ -386,6 +431,94 @@ kernel void kernel_mul_mv_q4_0(
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
     mul_vec_q_n_f32_impl<block_q4_0, N_DST, N_SIMDGROUP, N_SIMDWIDTH, constant ggml_metal_kargs_mul_mv &>(args, src0, src1, dst, nullptr, tgpig, tiisg, sgitg);
+}
+
+// q8_0 GEMV, same shape contract as kernel_mul_mv_q4_0: each simdgroup owns
+// N_DST rows of src0 (q8_0 blocks along k), each thread covers 8 consecutive
+// elements of a block (4 threads per block, blocks strided by 8).
+template<int nr, typename T_y>
+inline void mul_vec_q8_accumulate(
+        thread device const block_q8_0 * const * ax,
+        device const T_y * yb,
+        int nb,
+        short ix,
+        short il,
+        thread float * sumf) {
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/4) {
+        float yl[8];
+#pragma unroll
+        for (int i = 0; i < 8; i++) {
+            yl[i] = (float) yb[i];
+        }
+#pragma unroll
+        for (int row = 0; row < nr; row++) {
+            device const block_q8_0 * qb = ax[row] + ib;
+            device const int8_t * qs = qb->qs + il;
+            float acc = 0.0f;
+#pragma unroll
+            for (int i = 0; i < 8; i++) {
+                acc += yl[i] * (float) qs[i];
+            }
+            sumf[row] += (float) qb->d * acc;
+        }
+        yb += QK8_0 * (N_SIMDWIDTH/4);
+    }
+}
+
+kernel void kernel_mul_mv_q8_0(
+        constant ggml_metal_kargs_mul_mv & args,
+        device const char * src0,
+        device const char * src1,
+        device       char * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.ne00/QK8_0;
+
+    const int r0 = tgpig.x;
+    const int r1 = tgpig.y;
+    const int im = tgpig.z;
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+
+    const uint i12 = im%args.ne12;
+    const uint i13 = im/args.ne12;
+
+    const uint64_t offset1 = r1*args.nb11 + (i12)*args.nb12 + (i13)*args.nb13;
+
+    const bool out_f16 = args.out_f16 != 0;
+
+    device const block_q8_0 * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        const uint64_t offset0 =
+            (first_row + row)*args.nb01 + (i12/args.r2)*args.nb02 + (i13/args.r3)*args.nb03;
+        ax[row] = (device const block_q8_0 *) ((device char *) src0 + offset0);
+    }
+
+    float sumf[N_DST] = {0.f};
+
+    const short ix = tiisg/4;
+    const short il = (tiisg%4)*8;
+
+    if (out_f16) {
+        device const half  * yb = (device const half  *) (src1 + offset1) + ix*QK8_0 + il;
+        mul_vec_q8_accumulate<N_DST>(ax, yb, nb, ix, il, sumf);
+    } else {
+        device const float * yb = (device const float *) (src1 + offset1) + ix*QK8_0 + il;
+        mul_vec_q8_accumulate<N_DST>(ax, yb, nb, ix, il, sumf);
+    }
+
+    device char * dst_o = dst
+        + (im*args.ne0*args.ne1 + r1*args.ne0) * (out_f16 ? sizeof(half) : sizeof(float));
+
+    for (int row = 0; row < N_DST; ++row) {
+        const float tot = simd_sum(sumf[row]);
+
+        if (tiisg == 0 && first_row + row < args.ne01) {
+            if (out_f16) ((device half  *) dst_o)[first_row + row] = (half) tot;
+            else         ((device float *) dst_o)[first_row + row] = tot;
+        }
+    }
 }
 
 #define BLOCK_SIZE_M 64 // 8 simdgroup matrices from matrix A
@@ -602,3 +735,502 @@ template [[host_name("kernel_mul_mm_f16_f32")]]     kernel mat_mm_t kernel_mul_m
 template [[host_name("kernel_mul_mm_q4_0_f32")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, float>;
 template [[host_name("kernel_mul_mm_f16_f16")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16,  half>;
 template [[host_name("kernel_mul_mm_q4_0_f16")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, half>;
+
+// ---- Expert-grouped routed Q4_0 matmul (prefill path) ----
+//
+// The per-route kernel above re-reads an expert's full weight slice for
+// every route hitting it (a 512-token prefill chunk with top-4 routing reads
+// each expert ~64x: ~9.5 GB of weight traffic per matmul). The grouped pair
+// below first bins routes by expert (single-threadgroup counting sort), then
+// processes GROUPED_ROUTES routes per threadgroup so each weight block is
+// read once per 32 routes, with the x tile staged in threadgroup memory.
+
+#define GROUPED_ROUTES 32
+#define GROUPED_COLS 256
+#define GROUPED_MAX_EXPERTS 256
+
+// Also emits a compact work-chunk list (chunks of GROUPED_ROUTES routes,
+// one expert each) so the grouped matmul launches exactly the threadgroups
+// that have work: `chunks` rows of [expert, base, len], sentinel-terminated.
+kernel void route_sort_by_expert(
+        device const long * route_expert_ids,
+        device uint * expert_offsets,   // [num_experts + 1]
+        device uint * sorted_routes,    // [route_count], expert-grouped
+        device uint * chunks,           // [3 * max_chunks]
+        constant uint & route_count,
+        constant uint & num_experts,
+        constant uint & max_chunks,
+        uint lane [[thread_position_in_threadgroup]],
+        uint tptg [[threads_per_threadgroup]])
+{
+    threadgroup atomic_uint hist[GROUPED_MAX_EXPERTS];
+    for (uint e = lane; e < num_experts; e += tptg) {
+        atomic_store_explicit(&hist[e], 0u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (lane == 0) {
+        uint run = 0;
+        uint chunk = 0;
+        for (uint e = 0; e < num_experts; e++) {
+            const uint c = atomic_load_explicit(&hist[e], memory_order_relaxed);
+            expert_offsets[e] = run;
+            atomic_store_explicit(&hist[e], run, memory_order_relaxed);
+            for (uint b = 0; b < c && chunk < max_chunks; b += GROUPED_ROUTES, chunk++) {
+                chunks[3 * chunk + 0] = e;
+                chunks[3 * chunk + 1] = run + b;
+                chunks[3 * chunk + 2] = min((uint)GROUPED_ROUTES, c - b);
+            }
+            run += c;
+        }
+        expert_offsets[num_experts] = run;
+        for (; chunk < max_chunks; chunk++) {
+            chunks[3 * chunk + 0] = 0xffffffffu;
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        const uint slot =
+            atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+        sorted_routes[slot] = r;
+    }
+}
+
+kernel void kernel_routed_q4_0_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.k/QK4_0;
+
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+
+    device const block_q4_0 * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        // Clamp so the last (partial) row group never builds pointers past
+        // the expert's weight slice when n is not a multiple of N_DST: the
+        // dot loop dereferences every ax[row], only the store is guarded.
+        const int weight_row = min(first_row + row, args.n - 1);
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax[row] = (device const block_q4_0 *) (weights + offset);
+    }
+
+    float yl[16];
+    float sumf[N_DST] = {0.f};
+
+    const short ix = tiisg/2;
+    const short il = (tiisg%2)*8;
+
+    device const float * yb = y + ix*QK4_0 + il;
+
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            sumy[0]  += yb[i +  0] + yb[i +  1];
+            yl[i + 0] = yb[i +  0];
+            yl[i + 1] = yb[i +  1]/256.f;
+
+            sumy[1]  += yb[i + 16] + yb[i + 17];
+            yl[i + 8] = yb[i + 16]/16.f;
+            yl[i + 9] = yb[i + 17]/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const float tot = simd_sum(sumf[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            dst_route[weight_row] = tot;
+        }
+    }
+}
+
+// Fused routed w1/w3 gemv pair + swiglu epilogue: one dispatch computes
+// g = w1 x (+bias1), u = w3 x (+bias3) and writes act(g, u). Same shape
+// contract and route indexing as kernel_routed_q4_0_f32; both weight
+// tensors share expert/row strides (same [experts, n, k] q4_0 layout).
+// Reading both weight rows in the same k-block loop reuses the activation
+// registers, so the extra cost over the single-weight kernel is only the
+// second weight stream.
+// TX is the activation dtype: every element converts to float before any
+// arithmetic (exact for f16), so the f16-input instantiation is bit-identical
+// to upcasting the activations and running the f32 one.
+template<typename TX>
+kernel void kernel_routed_q4_0_swiglu(
+        constant routed_q40_f32_args & args,
+        constant routed_swiglu_args & sargs,
+        device const char * w1,
+        device const char * w3,
+        device const char * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device const float * bias1,
+        device const float * bias3,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.k/QK4_0;
+
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const TX * y = (device const TX *) (input + (uint64_t) input_row * args.input_row_stride);
+
+    device const block_q4_0 * ax1[N_DST];
+    device const block_q4_0 * ax3[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        // Same OOB clamp as kernel_routed_q4_0_f32: dot loop dereferences
+        // every pointer, only the store checks weight_row < n.
+        const int weight_row = min(first_row + row, args.n - 1);
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax1[row] = (device const block_q4_0 *) (w1 + offset);
+        ax3[row] = (device const block_q4_0 *) (w3 + offset);
+    }
+
+    float yl[16];
+    float sumf1[N_DST] = {0.f};
+    float sumf3[N_DST] = {0.f};
+
+    const short ix = tiisg/2;
+    const short il = (tiisg%2)*8;
+
+    device const TX * yb = y + ix*QK4_0 + il;
+
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            const float y00 = (float) yb[i +  0];
+            const float y01 = (float) yb[i +  1];
+            sumy[0]  += y00 + y01;
+            yl[i + 0] = y00;
+            yl[i + 1] = y01/256.f;
+
+            const float y16 = (float) yb[i + 16];
+            const float y17 = (float) yb[i + 17];
+            sumy[1]  += y16 + y17;
+            yl[i + 8] = y16/16.f;
+            yl[i + 9] = y17/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf1[row] += block_q_n_dot_y(ax1[row] + ib, sumy[0] + sumy[1], yl, il);
+            sumf3[row] += block_q_n_dot_y(ax3[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        float g = simd_sum(sumf1[row]);
+        float u = simd_sum(sumf3[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            if (sargs.has_bias != 0) {
+                g += bias1[(uint64_t) expert * (uint)args.n + weight_row];
+                u += bias3[(uint64_t) expert * (uint)args.n + weight_row];
+            }
+            dst_route[weight_row] = routed_swiglu_apply(sargs, g, u);
+        }
+    }
+}
+
+typedef decltype(kernel_routed_q4_0_swiglu<float>) routed_q4_0_swiglu_t;
+
+template [[host_name("kernel_routed_q4_0_swiglu_f32")]]      kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<float>;
+template [[host_name("kernel_routed_q4_0_swiglu_f16x_f32")]] kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<half>;
+
+// Grouped-path epilogue of the fused routed swiglu: reads the two
+// expert-sorted mm results, applies bias + activation, scatters back to
+// original route order (one dispatch replacing bias adds, activation and
+// two scatters).
+kernel void routed_swiglu_scatter_f32(
+        constant routed_q40_f32_args & args,
+        constant routed_swiglu_args & sargs,
+        device const float * c1_sorted,
+        device const float * c3_sorted,
+        device const uint * sorted_routes,
+        device const long * route_expert_ids,
+        device const float * bias1,
+        device const float * bias3,
+        device float * dst,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint n4 = ((uint)args.n + 3) / 4;
+    const uint total = (uint)args.route_count * n4;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / n4;
+    const uint col = (gid - i * n4) * 4;
+    const uint orig = sorted_routes[i];
+    const uint end = min(col + 4, (uint)args.n);
+    device const float * c1 = c1_sorted + (uint64_t)i * (uint)args.n;
+    device const float * c3 = c3_sorted + (uint64_t)i * (uint)args.n;
+    const long e = sargs.has_bias != 0 ? route_expert_ids[orig] : 0;
+    device float * out = (device float *)(
+        (device char *)dst + (uint64_t)orig * args.output_route_stride);
+    for (uint c = col; c < end; c++) {
+        float g = c1[c];
+        float u = c3[c];
+        if (sargs.has_bias != 0) {
+            g += bias1[(uint64_t) e * (uint)args.n + c];
+            u += bias3[(uint64_t) e * (uint)args.n + c];
+        }
+        out[c] = routed_swiglu_apply(sargs, g, u);
+    }
+}
+
+// Gather activation rows into expert-sorted order, always staging as f32.
+// One thread moves 4 consecutive elements (vectorized load/store, 4x fewer
+// index divisions than the old per-element scheme, which ran ~6x off memory
+// roofline). TX is the source dtype: the f16 instantiation converts each
+// element exactly, so downstream mm consumers see the same f32 rows as if
+// the activations had been upcast beforehand.
+template<typename TX, typename TX4>
+kernel void routed_gather_rows(
+        constant routed_q40_f32_args & args,
+        device const char * src,
+        device float * dst,
+        device const uint * sorted_routes,
+        device const long * route_token_ids,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint k4 = ((uint)args.k + 3) / 4;
+    const uint total = (uint)args.route_count * k4;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / k4;
+    const uint kk = (gid - i * k4) * 4;
+    const uint orig = sorted_routes[i];
+    const long xrow = args.input_mode == 0 ? route_token_ids[orig] : (long)orig;
+    device const TX * y = (device const TX *)(
+        src + (uint64_t)xrow * args.input_row_stride);
+    device float * d = dst + (uint64_t)i * (uint)args.k;
+    if (kk + 4 <= (uint)args.k) {
+        *(device packed_float4 *)(d + kk) = (packed_float4)(*(device const TX4 *)(y + kk));
+    } else {
+        for (uint c = kk; c < (uint)args.k; c++) {
+            d[c] = (float) y[c];
+        }
+    }
+}
+
+typedef decltype(routed_gather_rows<float, packed_float4>) routed_gather_rows_t;
+
+template [[host_name("routed_gather_rows_f32")]]  kernel routed_gather_rows_t routed_gather_rows<float, packed_float4>;
+template [[host_name("routed_gather_rows_f16x")]] kernel routed_gather_rows_t routed_gather_rows<half, packed_half4>;
+
+// Scatter expert-sorted result rows back to original route order (f32).
+// Vectorized like the gather.
+kernel void routed_scatter_rows_f32(
+        constant routed_q40_f32_args & args,
+        device const float * src,
+        device float * dst,
+        device const uint * sorted_routes,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint n4 = ((uint)args.n + 3) / 4;
+    const uint total = (uint)args.route_count * n4;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / n4;
+    const uint col = (gid - i * n4) * 4;
+    const uint orig = sorted_routes[i];
+    device const float * s = src + (uint64_t)i * (uint)args.n;
+    device float * out = (device float *)(
+        (device char *)dst + (uint64_t)orig * args.output_route_stride);
+    if (col + 4 <= (uint)args.n) {
+        *(device packed_float4 *)(out + col) = *(device const packed_float4 *)(s + col);
+    } else {
+        for (uint c = col; c < (uint)args.n; c++) {
+            out[c] = s[c];
+        }
+    }
+}
+
+// Expert-sorted tiled matmul over the routed experts: the simdgroup-matrix
+// mm (kernel_mul_mm) with the activation-row tile driven by the sort
+// kernel's chunk list ([expert, base, len] per 32-route chunk). A is the
+// gathered f32 activations [route_count, k]; C is written expert-sorted
+// [route_count, n] and scattered afterwards. This is what fixes prefill:
+// the scalar per-route gemv runs at ~1.7 TFLOPS while this path uses the
+// same simdgroup-matrix pipeline as the dense q40 matmuls.
+kernel void kernel_mul_mm_q4_0_routed_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * a_sorted,
+        device const uint * chunks,
+        device float * c_sorted,
+        threadgroup char * shmem [[threadgroup(0)]],
+        uint3  tgpig[[threadgroup_position_in_grid]],   // (chunk, n_tile, 1)
+        ushort tiitg[[thread_index_in_threadgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]])
+{
+    const uint expert = chunks[3 * tgpig.x + 0];
+    if (expert == 0xffffffffu) {
+        return;
+    }
+    const uint base = chunks[3 * tgpig.x + 1];
+    const uint len = chunks[3 * tgpig.x + 2];
+
+    threadgroup half  * sa = (threadgroup half  *)(shmem);
+    threadgroup float * sb = (threadgroup float *)(shmem + 4096);
+
+    const int r0 = tgpig.y;
+
+    const short n_rows = ((uint)args.n - r0*BLOCK_SIZE_M < BLOCK_SIZE_M)
+        ? (args.n - r0*BLOCK_SIZE_M) : BLOCK_SIZE_M;
+    const short n_cols = (short)min((uint)BLOCK_SIZE_N, len);
+
+    const short thread_row = ((short)tiitg/THREAD_PER_ROW) < n_rows ? ((short)tiitg/THREAD_PER_ROW) : n_rows - 1;
+    const short thread_col = ((short)tiitg/THREAD_PER_COL) < n_cols ? ((short)tiitg/THREAD_PER_COL) : n_cols - 1;
+
+    // Each simdgroup owns a 16-wide slice of the N (route) axis. Ragged
+    // expert chunks (len <= 16, the common case: ~tokens*top_k/n_experts
+    // routes per expert per prompt chunk) leave the upper slice entirely
+    // garbage: its columns are never stored. Skip its matmul work.
+    const bool n_slice_active = (short)(16*(sgitg >> 1)) < n_cols;
+
+    simdgroup_half8x8  ma[4];
+    simdgroup_float8x8 mb[2];
+    simdgroup_float8x8 mc[8];
+
+    for (short i = 0; i < 8; i++){
+        mc[i] = make_filled_simdgroup_matrix<float, 8>(0.f);
+    }
+
+    const short nl = 2;
+    short il = (tiitg % THREAD_PER_ROW);
+
+    device const block_q4_0 * x = (device const block_q4_0 *)(weights
+        + (uint64_t)expert * args.weight_expert_stride
+        + args.weight_row_stride*(r0*BLOCK_SIZE_M + thread_row)) + (il/nl);
+
+    device const float * y = a_sorted
+        + (uint64_t)(base + thread_col) * (uint)args.k
+        + (BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL));
+
+    for (int loop_k = 0; loop_k < args.k; loop_k += BLOCK_SIZE_K) {
+        half4x4 temp_a;
+        dequantize_q4_0(x, il, temp_a);
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        #pragma unroll(16)
+        for (short i = 0; i < 16; i++) {
+            *(sa + SG_MAT_SIZE * ((tiitg/THREAD_PER_ROW/8) \
+            +                     (tiitg%THREAD_PER_ROW)*16 + (i/8)*8) \
+            +                     (tiitg/THREAD_PER_ROW)%8  + (i&7)*8) = temp_a[i/4][i%4];
+        }
+
+        *(threadgroup float2x4 *)(sb + 32*8*(tiitg%THREAD_PER_COL) + 8*(tiitg/THREAD_PER_COL)) = *((device const float2x4 *) y);
+
+        il = (il + 2 < nl) ? il + 2 : il % 2;
+        x  = (il < 2) ? x + (2 + nl - 1)/nl : x;
+        y += BLOCK_SIZE_K;
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (n_slice_active) {
+            threadgroup const half  * lsma = (sa + THREAD_MAT_M*SG_MAT_SIZE*(sgitg%2));
+            threadgroup const float * lsmb = (sb + THREAD_MAT_N*SG_MAT_SIZE*(sgitg/2));
+
+            #pragma unroll(4)
+            for (short ik = 0; ik < BLOCK_SIZE_K/8; ik++) {
+                #pragma unroll(4)
+                for (short i = 0; i < 4; i++) {
+                    simdgroup_load(ma[i], lsma + SG_MAT_SIZE * i);
+                }
+
+                simdgroup_barrier(mem_flags::mem_none);
+
+                #pragma unroll(2)
+                for (short i = 0; i < 2; i++) {
+                    simdgroup_load(mb[i], lsmb + SG_MAT_SIZE * i);
+                }
+
+                #pragma unroll(8)
+                for (short i = 0; i < 8; i++){
+                    simdgroup_multiply_accumulate(mc[i], mb[i/4], ma[i%4], mc[i]);
+                }
+
+                lsma += (BLOCK_SIZE_M/SG_MAT_ROW)*SG_MAT_SIZE;
+                lsmb += (BLOCK_SIZE_N/SG_MAT_ROW)*SG_MAT_SIZE;
+            }
+        }
+    }
+
+    // C rows are the expert-sorted routes: row (activation) index = base+j,
+    // col = weight row. Always go through threadgroup memory (the ragged
+    // len < 32 case is common: every expert's tail chunk).
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    threadgroup float * temp_all = (threadgroup float *) shmem;
+    threadgroup float * temp_str = temp_all \
+                                 + 32*(sgitg&1) + (16*(sgitg >> 1))*BLOCK_SIZE_M;
+    if (n_slice_active) {
+        for (short i = 0; i < 8; i++) {
+            simdgroup_store(mc[i], temp_str + 8*(i%4) + 8*BLOCK_SIZE_M*(i/4), BLOCK_SIZE_M);
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    // All threads cooperatively write the n_rows x n_cols tile (the old
+    // single-simdgroup scalar loop serialized the store and idled 3/4 of
+    // the threadgroup on every tile).
+    for (int idx = tiitg; idx < n_rows * n_cols; idx += THREAD_PER_BLOCK) {
+        const int j = idx / n_rows;
+        const int i = idx % n_rows;
+        c_sorted[(uint64_t)(base + j) * (uint)args.n + r0*BLOCK_SIZE_M + i]
+            = temp_all[j*BLOCK_SIZE_M + i];
+    }
+}

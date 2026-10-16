@@ -1,8 +1,11 @@
+mod moe;
+use moe::convert_q40_moe_ffn_to_metal;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::str::FromStr;
 use std::sync::OnceLock;
+use tract_transformers::ops::moe_ffn::MoeFfn;
 
 use crate::context::metal_context;
 use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
@@ -367,6 +370,11 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
             }
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<MoeFfn>()
+            && let Some(outlets) = convert_q40_moe_ffn_to_metal(source, node, target, mapping, op)?
+        {
+            return sync_model_outputs_if_required(source, node, target, outlets);
         }
         // Const: inline conversion, not a GPU op
         if let Some(op) = node.op_as::<Const>()
