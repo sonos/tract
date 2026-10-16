@@ -114,12 +114,7 @@ pub fn dispatch_route_topk_f32(
         let group_size = MTLSize { width: 32, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
-    // The scratch dies when this function returns, unlike op outputs that
-    // live in the plan's value store. Retain it again AFTER both encodes:
-    // under TRACT_METAL_PROFILE_KERNELS every load_pipeline commits the open
-    // command buffer and moves the whole retained list onto it, which would
-    // otherwise leave the buffers actually reading/writing `scores`
-    // unprotected (visible as a SIGABRT with the buffer pool disabled).
+    // Cadence submission can move the initial retention onto an earlier buffer.
     stream.retain_tensor(&scores);
     Ok(())
 }

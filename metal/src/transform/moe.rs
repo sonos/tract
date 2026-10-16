@@ -4,12 +4,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::sync::{DeviceSyncKind, sync_outlet_if_required};
 use tract_gpu::utils::as_quant_fact;
-use tract_transformers::ops::moe_ffn::{ExpertLayout, MoeFfn, RouteTopK, RoutedInputMode};
-
-/// Enable command-buffer boundaries for large routed MoE dispatches.
-pub(crate) fn moe_commit_after_dispatch() -> bool {
-    !env_flag("TRACT_METAL_MOE_UNSAFE_NOSYNC")
-}
+use tract_transformers::ops::moe_ffn::{ExpertLayout, MoeFfn, RoutedInputMode};
 
 fn sync_f32_input(
     target: &mut TypedModel,
@@ -59,74 +54,24 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
     mapping: &HashMap<OutletId, OutletId>,
     op: &MoeFfn,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let log_lowering = env_flag("TRACT_METAL_LOG_Q40_MOE");
-    if env_flag("TRACT_METAL_DISABLE_Q40_MOE") {
-        return Ok(None);
-    }
     if op.expert_layout != ExpertLayout::Linear
         || !q40_moe_activation_supported(op)
         || (op.act_limit_bits.is_some() && !op.has_w3)
     {
-        if log_lowering {
-            eprintln!(
-                "Metal Q40 MoE skip {}: metadata layout={:?} activation={} has_w3={} biases=[wg:{} w1:{} w3:{} w2:{}] act_limit={}",
-                node.name,
-                op.expert_layout,
-                op.activation,
-                op.has_w3,
-                op.has_wg_bias,
-                op.has_w1_bias,
-                op.has_w3_bias,
-                op.has_w2_bias,
-                op.act_limit_bits.is_some()
-            );
-        }
         return Ok(None);
     }
-
     let facts = source.node_input_facts(node.id)?;
     let indexes = moe_input_indexes(op);
-    let facts_supported = q40_moe_facts_supported(op, &facts, ExpertLayout::Linear);
-    if log_lowering {
-        let w1_q40 = as_quant_fact(facts[2], &Q4_0).is_some();
-        let w2_q40 = as_quant_fact(facts[3], &Q4_0).is_some();
-        let w3_q40 =
-            !op.has_w3 || indexes.w3.is_some_and(|ix| as_quant_fact(facts[ix], &Q4_0).is_some());
-        eprintln!(
-            "Metal Q40 MoE candidate {}: x_rank={} x_dt={:?} wg_dt={:?} w1_q40={} w2_q40={} w3_q40={} shapes x={:?} wg={:?} w1={:?} w2={:?}{}",
-            node.name,
-            facts[0].rank(),
-            facts[0].datum_type,
-            facts[1].datum_type,
-            w1_q40,
-            w2_q40,
-            w3_q40,
-            facts[0].shape,
-            facts[1].shape,
-            facts[2].shape,
-            facts[3].shape,
-            indexes.w3.map(|ix| format!(" w3={:?}", facts[ix].shape)).unwrap_or_default()
-        );
-    }
-    if !facts_supported {
-        if log_lowering {
-            eprintln!("Metal Q40 MoE skip {}: unsupported facts", node.name);
-        }
+    if !q40_moe_facts_supported(op, &facts, ExpertLayout::Linear) {
         return Ok(None);
     }
-
-    if log_lowering {
-        eprintln!("Metal Q40 MoE lowering: {}", node.name);
-    }
+    log::trace!("Metal Q40 MoE lowering: {}", node.name);
 
     // has_w3 blocks fuse w1/w3/(biases)/activation into one op: a single
     // gemv-pair dispatch at decode, one shared expert sort + gather at
     // prefill. Both bias inputs must be present or absent together for the
     // fused kernel; mixed-bias models fall back to the unfused chain.
-    let fused_swiglu = op.has_w3
-        && indexes.w1_bias.is_some() == indexes.w3_bias.is_some()
-        && !env_flag("TRACT_METAL_DISABLE_ROUTED_SWIGLU");
-    let cpu_route_topk = env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK");
+    let fused_swiglu = op.has_w3 && indexes.w1_bias.is_some() == indexes.w3_bias.is_some();
 
     let x_device = sync_outlet_if_required(
         target,
@@ -134,15 +79,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
         mapping[&node.inputs[0]],
         DeviceSyncKind::ToDevice,
     )?;
-    // f16 x feeds the router and the fused swiglu directly: both read f16
-    // through exact per-element conversion (scores and expert math stay f32,
-    // bit-identical to upcasting first), dropping a per-layer per-step cast
-    // dispatch. The unfused expert chain and the CPU route-topk fallback
-    // still want f32; so does the escape hatch.
-    let f16_x_direct = facts[0].datum_type == DatumType::F16
-        && fused_swiglu
-        && !cpu_route_topk
-        && !env_flag("TRACT_METAL_DISABLE_MOE_F16_X");
+    let f16_x_direct = facts[0].datum_type == DatumType::F16 && fused_swiglu;
     let x_device = if facts[0].datum_type != f32::datum_type() && !f16_x_direct {
         target.wire_node(
             format!("{}.x.cast-f32", node.name),
@@ -179,34 +116,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
         })
         .transpose()?;
 
-    let routes = if env_flag("TRACT_METAL_DISABLE_ROUTE_TOPK") {
-        if indexes.wg_bias.is_some() {
-            if log_lowering {
-                eprintln!(
-                    "Metal Q40 MoE skip {}: CPU RouteTopK does not support wg_bias",
-                    node.name
-                );
-            }
-            return Ok(None);
-        }
-        let x_host = sync_outlet_if_required(
-            target,
-            format!("{}.route-x-to-cpu", node.name),
-            mapping[&node.inputs[0]],
-            DeviceSyncKind::ToHost,
-        )?;
-        let wg_host = sync_outlet_if_required(
-            target,
-            format!("{}.route-wg-to-cpu", node.name),
-            mapping[&node.inputs[1]],
-            DeviceSyncKind::ToHost,
-        )?;
-        target.wire_node(
-            format!("{}.route_topk", node.name),
-            RouteTopK { k: op.k, gate: op.gate.clone() },
-            &[x_host, wg_host],
-        )?
-    } else {
+    let routes = {
         let mut route_inputs = tvec![x_device, wg_device];
         if let Some(wg_bias_device) = wg_bias_device {
             route_inputs.push(wg_bias_device);
@@ -320,17 +230,13 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
                     None => crate::ops::routed_q40_swiglu::RoutedActivation::Plain,
                 },
                 has_bias,
-                commit_after_dispatch: moe_commit_after_dispatch(),
             },
             &inputs,
         )?[0]
     } else {
         let mut h1 = target.wire_node(
             format!("{}.w1", node.name),
-            ops::MetalRoutedQ40MatMul {
-                input_mode: RoutedInputMode::TokenRows,
-                commit_after_dispatch: moe_commit_after_dispatch(),
-            },
+            ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
             &[x_expert_input, w1_device, route_token_ids, route_expert_ids],
         )?[0];
         if let Some(w1_bias_device) = w1_bias_device {
@@ -352,10 +258,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
             )?;
             let mut up = target.wire_node(
                 format!("{}.w3", node.name),
-                ops::MetalRoutedQ40MatMul {
-                    input_mode: RoutedInputMode::TokenRows,
-                    commit_after_dispatch: moe_commit_after_dispatch(),
-                },
+                ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::TokenRows },
                 &[x_expert_input, w3_device, route_token_ids, route_expert_ids],
             )?[0];
             if let Some(w3_bias_device) = w3_bias_device {
@@ -401,10 +304,7 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
 
     let mut route_values = target.wire_node(
         format!("{}.w2", node.name),
-        ops::MetalRoutedQ40MatMul {
-            input_mode: RoutedInputMode::RouteRows,
-            commit_after_dispatch: moe_commit_after_dispatch(),
-        },
+        ops::MetalRoutedQ40MatMul { input_mode: RoutedInputMode::RouteRows },
         &[hidden, w2_device, route_token_ids, route_expert_ids],
     )?[0];
     if let Some(w2_bias_device) = w2_bias_device {
@@ -437,10 +337,6 @@ pub(super) fn convert_q40_moe_ffn_to_metal(
 fn q40_moe_activation_supported(op: &MoeFfn) -> bool {
     matches!(op.activation.as_str(), "silu")
         || (op.has_w3 && matches!(op.activation.as_str(), "swiglu"))
-}
-
-pub(super) fn env_flag(name: &str) -> bool {
-    std::env::var(name).is_ok_and(|v| v != "0" && !v.eq_ignore_ascii_case("false"))
 }
 
 #[derive(Default)]

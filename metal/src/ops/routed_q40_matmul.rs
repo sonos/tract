@@ -9,9 +9,6 @@ use tract_transformers::ops::moe_ffn::{RoutedInputMode, RoutedQ40MatMul};
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct MetalRoutedQ40MatMul {
     pub input_mode: RoutedInputMode,
-    /// Split large prefill dispatches into command buffers without waiting,
-    /// preserving ordering while allowing the CPU to encode ahead of the GPU.
-    pub commit_after_dispatch: bool,
 }
 
 impl MetalRoutedQ40MatMul {
@@ -82,8 +79,8 @@ impl EvalOp for MetalRoutedQ40MatMul {
                 self.kernel_input_mode(),
                 &output,
             )?;
-            let min_routes = crate::tuning::tuning().moe_commit_min_routes;
-            if self.commit_after_dispatch && route_token_ids.shape()[0] > min_routes {
+            let min_routes = crate::tuning::MOE_COMMIT_MIN_ROUTES;
+            if route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }
             Ok(())
@@ -125,10 +122,7 @@ crate::register_metal_op!(RoutedQ40MatMul, |source, node, op| {
     } else {
         rule_if!(rows as usize == token_ids.len());
     }
-    Ok(Some(Box::new(MetalRoutedQ40MatMul {
-        input_mode: op.input_mode,
-        commit_after_dispatch: crate::transform::moe_commit_after_dispatch(),
-    })))
+    Ok(Some(Box::new(MetalRoutedQ40MatMul { input_mode: op.input_mode })))
 });
 
 #[cfg(test)]
