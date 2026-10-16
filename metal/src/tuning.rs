@@ -1,24 +1,18 @@
-//! Process-local scheduling limits for routed Metal execution.
-use std::sync::OnceLock;
+//! Scheduling limits for routed Metal execution.
 
-pub(crate) struct MetalTuning {
-    pub commit_every_n_dispatches: usize,
-    pub max_command_buffers_in_flight: usize,
-    pub moe_commit_min_routes: usize,
-    pub moe_grouped_min_routes: usize,
-}
+tract_core::tract_data::declare_knob!(
+    TRACT_METAL_COMMIT_EVERY_N_DISPATCHES,
+    usize,
+    0,
+    "Metal: submit after this many command-buffer acquisitions; zero disables cadence submission. Resolved when a stream is created."
+);
 
-pub(crate) fn tuning() -> &'static MetalTuning {
-    static TUNING: OnceLock<MetalTuning> = OnceLock::new();
-    TUNING.get_or_init(|| {
-        let value = |key: &str, default| {
-            std::env::var(key).ok().and_then(|v| v.parse::<usize>().ok()).unwrap_or(default)
-        };
-        MetalTuning {
-            commit_every_n_dispatches: value("TRACT_METAL_COMMIT_EVERY_N_DISPATCHES", 0),
-            max_command_buffers_in_flight: value("TRACT_METAL_MAX_IN_FLIGHT", 8).max(1),
-            moe_commit_min_routes: value("TRACT_METAL_MOE_COMMIT_MIN_ROUTES", 64).min(64),
-            moe_grouped_min_routes: 64,
-        }
-    })
-}
+tract_core::tract_data::declare_knob!(
+    TRACT_METAL_MAX_IN_FLIGHT,
+    usize,
+    8,
+    "Metal: maximum outstanding command buffers before waiting for the oldest; clamped to at least one. Resolved when a stream is created."
+);
+
+pub(crate) const MOE_COMMIT_MIN_ROUTES: usize = 64;
+pub(crate) const MOE_GROUPED_MIN_ROUTES: usize = 64;

@@ -11,12 +11,6 @@ use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
-/// Cached: read per routed-MoE dispatch on the hot path.
-fn grouped_moe_disabled() -> bool {
-    static V: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_DISABLE_GROUPED_MOE").is_some())
-}
-
 #[derive(Debug)]
 #[repr(C)]
 struct GgmlGemmParams {
@@ -587,23 +581,10 @@ pub fn dispatch_routed_q40_f32(
         output_route_stride: output_route_stride as u64,
     };
 
-    // Prefill-sized route lists go through the expert-grouped path: bin the
-    // routes by expert (single-threadgroup counting sort), then let each
-    // threadgroup amortize every weight read across 32 routes of one expert.
-    // The per-route kernel re-reads an expert's weights once per route, which
-    // multiplies weight traffic by routes-per-expert (~64x on a 512-token
-    // top-4 prefill chunk). Threshold: MetalTuning::moe_grouped_min_routes.
-    let grouped_min_routes = crate::tuning::tuning().moe_grouped_min_routes;
+    let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
     let n_experts = weights.shape()[0];
-    // Default on: halves 2800-token prefill vs the per-route gemv (11.5 ->
-    // 5.9 s on gpt-oss-20b) by running the ALU-bound expert matmuls through
-    // the simdgroup-matrix pipeline. Weights pass through f16 in that
-    // pipeline, same precision as every dense q40 matmul in the model.
-    if route_count >= grouped_min_routes
-        && n_experts <= 256
-        && k.is_multiple_of(32)
-        && !grouped_moe_disabled()
-    {
+    // The grouped matrix kernel converts Q40 weights to f16 before accumulation.
+    if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
         // Worst case every expert has a ragged tail chunk.
         let max_chunks = route_count.div_ceil(32) + n_experts;
         let offsets = DeviceTensor::uninitialized_dt(u32::datum_type(), &[n_experts + 1])?;
@@ -826,14 +807,8 @@ pub fn dispatch_routed_q40_swiglu_f32(
         ),
     };
 
-    // Threshold: MetalTuning::moe_grouped_min_routes (see
-    // dispatch_routed_q40_f32).
-    let grouped_min_routes = crate::tuning::tuning().moe_grouped_min_routes;
-    if route_count >= grouped_min_routes
-        && n_experts <= 256
-        && k.is_multiple_of(32)
-        && !grouped_moe_disabled()
-    {
+    let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
+    if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
         // Same grouped machinery as dispatch_routed_q40_f32, with the sort
         // and gather shared between the two matmuls.
         let max_chunks = route_count.div_ceil(32) + n_experts;

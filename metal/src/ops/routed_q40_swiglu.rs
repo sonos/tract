@@ -20,8 +20,6 @@ pub struct MetalRoutedQ40SwiGlu {
     pub input_mode: RoutedInputMode,
     pub activation: RoutedActivation,
     pub has_bias: bool,
-    /// Submit large routed batches without blocking for GPU completion.
-    pub commit_after_dispatch: bool,
 }
 
 impl MetalRoutedQ40SwiGlu {
@@ -108,8 +106,8 @@ impl EvalOp for MetalRoutedQ40SwiGlu {
                 self.act(),
                 &output,
             )?;
-            let min_routes = crate::tuning::tuning().moe_commit_min_routes;
-            if self.commit_after_dispatch && route_token_ids.shape()[0] > min_routes {
+            let min_routes = crate::tuning::MOE_COMMIT_MIN_ROUTES;
+            if route_token_ids.shape()[0] > min_routes {
                 stream.commit_current()?;
             }
             Ok(())

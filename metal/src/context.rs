@@ -56,18 +56,6 @@ pub fn metal_context() -> MetalContext {
         .clone()
 }
 
-/// Whether pipeline loads request separate command buffers, resolved once per process.
-pub(crate) fn profile_kernels() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_PROFILE_KERNELS").is_some())
-}
-
-/// Whether to record pipeline names without requesting additional command-buffer boundaries.
-pub(crate) fn log_buffer_kernels() -> bool {
-    static V: OnceLock<bool> = OnceLock::new();
-    *V.get_or_init(|| std::env::var_os("TRACT_METAL_LOG_BUFFER_KERNELS").is_some())
-}
-
 #[derive(Debug, Clone)]
 pub struct MetalContext {
     device: Device,
@@ -180,8 +168,8 @@ impl MetalContext {
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
-        if std::env::var("TRACT_METAL_LOG_PIPELINES").is_ok_and(|v| v == "1") {
-            log::info!(
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!(
                 "pipeline created: {:?}::{func_name} in {:.2} ms",
                 library_name,
                 start.elapsed().as_secs_f64() * 1e3
@@ -334,6 +322,8 @@ pub struct MetalStream {
     open: RefCell<OpenCommandBuffer>,
     committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
     command_error: RefCell<Option<String>>,
+    commit_cadence: usize,
+    max_in_flight: usize,
     profile: RefCell<Option<Rc<MetalProfileHandle>>>,
 }
 
@@ -353,6 +343,8 @@ impl MetalStream {
             open: RefCell::new(OpenCommandBuffer::default()),
             committed_command_buffers: RefCell::new(VecDeque::new()),
             command_error: RefCell::new(None),
+            commit_cadence: crate::tuning::TRACT_METAL_COMMIT_EVERY_N_DISPATCHES.get(),
+            max_in_flight: crate::tuning::TRACT_METAL_MAX_IN_FLIGHT.get().max(1),
             profile: RefCell::new(None),
         }
     }
@@ -395,10 +387,7 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
-        if profile_kernels() {
-            self.commit_current()?;
-            self.open.borrow_mut().kernel_names.push(func_name.to_string());
-        } else if log_buffer_kernels() {
+        if log::log_enabled!(log::Level::Trace) {
             self.open.borrow_mut().kernel_names.push(func_name.to_string());
         }
         self.context.load_pipeline(library_name, func_name)
@@ -410,10 +399,7 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
-        if profile_kernels() {
-            self.commit_current()?;
-            self.open.borrow_mut().kernel_names.push(func_name.to_string());
-        } else if log_buffer_kernels() {
+        if log::log_enabled!(log::Level::Trace) {
             self.open.borrow_mut().kernel_names.push(func_name.to_string());
         }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
@@ -423,18 +409,8 @@ impl MetalStream {
         self.open.borrow_mut().retained.push(tensor.clone());
     }
 
-    /// Commit cadence, 0 = disabled. See
-    /// [`crate::tuning::MetalTuning::commit_every_n_dispatches`]
-    /// (`TRACT_METAL_COMMIT_EVERY_N_DISPATCHES`). Callers with fn-local
-    /// scratch tensors must re-retain them after encoding (see
-    /// `dispatch_route_topk_f32`): a cadence commit moves the retained list
-    /// onto the buffer being closed.
-    fn commit_every_n_dispatches() -> usize {
-        crate::tuning::tuning().commit_every_n_dispatches
-    }
-
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let cadence = Self::commit_every_n_dispatches();
+        let cadence = self.commit_cadence;
         let should_commit = {
             let open = self.open.borrow();
             cadence > 0 && open.dispatches >= cadence && open.buffer.is_some()
@@ -459,17 +435,9 @@ impl MetalStream {
     }
 
     fn log_completed_kernels(tag: &str, names: &[String]) {
-        if profile_kernels() || log_buffer_kernels() {
-            log::debug!("completed Metal command buffer {tag}: {names:?}");
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("completed Metal command buffer {tag}: {names:?}");
         }
-    }
-
-    /// How many committed-but-unawaited buffers `commit_current` keeps in
-    /// flight. See
-    /// [`crate::tuning::MetalTuning::max_command_buffers_in_flight`]
-    /// (`TRACT_METAL_MAX_IN_FLIGHT`).
-    fn max_committed_in_flight() -> usize {
-        crate::tuning::tuning().max_command_buffers_in_flight
     }
 
     fn record_command_error(&self, buffer: &TCommandBuffer) {
@@ -520,7 +488,7 @@ impl MetalStream {
                     metal::MTLCommandBufferStatus::Completed | metal::MTLCommandBufferStatus::Error
                 )
             });
-            if !done && committed.len() <= Self::max_committed_in_flight() {
+            if !done && committed.len() <= self.max_in_flight {
                 break;
             }
             let oldest = committed.pop_front().unwrap();
@@ -647,10 +615,10 @@ mod submission_tests {
             stream.command_buffer();
             {
                 let open = stream.open.borrow();
-                if MetalStream::commit_every_n_dispatches() > 0 {
+                if stream.commit_cadence > 0 {
                     assert_eq!(open.dispatches, 1);
                 }
-                if profile_kernels() || log_buffer_kernels() {
+                if log::log_enabled!(log::Level::Trace) {
                     assert_eq!(open.kernel_names, ["route_select_topk_f32"]);
                 }
             }
