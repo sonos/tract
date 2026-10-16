@@ -1,3 +1,4 @@
+use crate::memory::ArenaStorageCache;
 use crate::memory::DeviceMemSchema;
 use crate::memory::DeviceMemoryPool;
 use crate::tensor::DeviceTensor;
@@ -44,7 +45,11 @@ impl DeviceTurnHandler {
 impl TurnStateHandler for DeviceTurnHandler {
     fn before_plan_eval(&self, turn: &mut TurnState) -> TractResult<()> {
         let resolved_mem_schema = self.mem_schema.resolve(&turn.resolved_symbols)?;
-        let memory_pool = DeviceMemoryPool::from_schema(resolved_mem_schema)?;
+        if turn.shared.get::<ArenaStorageCache>().is_none() {
+            turn.shared.insert(ArenaStorageCache::default());
+        }
+        let cache = turn.shared.get::<ArenaStorageCache>().unwrap();
+        let memory_pool = DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, cache)?;
 
         turn.shared.insert(memory_pool);
         ensure!(turn.shared.get::<DeviceMemoryPool>().is_some());

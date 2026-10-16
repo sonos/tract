@@ -16,6 +16,88 @@ mod tests {
     use tract_gpu::ops::dyn_kv_cache::{GpuDynKVCache, GpuDynKVCacheState};
     use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, LazyHostStorage};
 
+    fn arena_handler() -> TractResult<(tract_gpu::turn_handler::DeviceTurnHandler, Symbol)> {
+        let mut model = TypedModel::default();
+        let size = model.symbols.sym("N");
+        let x = model.add_source("x", f32::fact([size.to_dim()]))?;
+        let x = model.wire_node("square", mul(), &[x, x])?[0];
+        let x =
+            model.wire_node("softmax", Softmax::new(tvec![0], None, SoftmaxKind::Softmax), &[x])?
+                [0];
+        model.select_output_outlets(&[x])?;
+        MetalTransform::default().transform(&mut model)?;
+        let plan = TypedSimplePlan::new(model.into_optimized()?)?;
+        let mut hints = SymbolValues::default();
+        hints.set(&size, 1024);
+        Ok((tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&plan, &hints)?, size))
+    }
+
+    fn arena_view(
+        handler: &tract_gpu::turn_handler::DeviceTurnHandler,
+        turn: &TurnState,
+    ) -> TractResult<tract_gpu::tensor::DeviceView> {
+        let schema = handler.mem_schema.resolve(&turn.resolved_symbols)?;
+        let node =
+            schema.offsets_by_node.iter().position(Option::is_some).context("no arena region")?;
+        let pool = turn.shared.get::<DeviceMemoryPool>().context("no arena")?;
+        let DeviceTensor::View(view) = pool.tensor_for_node(node, DatumType::U8, &[1])? else {
+            bail!("expected arena view");
+        };
+        Ok(view)
+    }
+
+    #[test]
+    fn arena_storage_reuses_only_unshared_allocations() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (handler, size) = arena_handler()?;
+            let mut turn = TurnState::default();
+            turn.resolved_symbols.set(&size, 1024);
+            handler.before_plan_eval(&mut turn)?;
+            let view = arena_view(&handler, &turn)?;
+            let original = view.device_buffer_ptr();
+            drop(view);
+            handler.after_plan_eval(&mut turn)?;
+            handler.before_plan_eval(&mut turn)?;
+            let retained = arena_view(&handler, &turn)?;
+            assert_eq!(retained.device_buffer_ptr(), original);
+            handler.after_plan_eval(&mut turn)?;
+            handler.before_plan_eval(&mut turn)?;
+            assert_ne!(arena_view(&handler, &turn)?.device_buffer_ptr(), original);
+            handler.after_plan_eval(&mut turn)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn arena_storage_grows_and_releases_excess_capacity() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (handler, size) = arena_handler()?;
+            let mut turn = TurnState::default();
+            for n in [1024, 2048, 2304, 256] {
+                turn.resolved_symbols.set(&size, n);
+                handler.before_plan_eval(&mut turn)?;
+                let view = arena_view(&handler, &turn)?;
+                let demand = handler.mem_schema.resolve(&turn.resolved_symbols)?.memory_size;
+                let capacity = view
+                    .device_buffer()
+                    .downcast_ref::<crate::context::MetalBuffer>()
+                    .unwrap()
+                    .inner
+                    .length() as usize;
+                assert!(capacity >= demand);
+                if n == 2048 {
+                    assert_eq!(capacity, demand + demand / 4);
+                }
+                if n == 256 {
+                    assert_eq!(capacity, demand);
+                }
+                drop(view);
+                handler.after_plan_eval(&mut turn)?;
+            }
+            Ok(())
+        })
+    }
+
     #[test]
     fn test_alloc_zero() -> TractResult<()> {
         with_borrowed_metal_stream(|_| Tensor::from_shape::<f32>(&[0], &[])?.into_device())?;
