@@ -109,6 +109,56 @@ apex_host_tiles!(Q6_K, q6k);
 apex_host_tiles!(IQ4_XS, iq4xs);
 apex_host_tiles!(IQ2_S, iq2s);
 
+/// Wider panels for the x86_64 f32 tiles. `r` is that tile's M, and the
+/// alignment is the one the kernel packed its A panel with (256 for AVX and
+/// FMA, 512 for AVX-512, 64 for AMX). There is no x86_64 f16 matmul tile.
+/// Names carry the arch so they do not collide with the aarch64 extractors.
+macro_rules! apex_x86_wide {
+    ($fmt:expr, $tag:ident, $r:literal, $align:literal) => {
+        pastey::paste! {
+            unsafe fn [<$tag _x86_f32_r $r _a $align>](
+                input: *const u8,
+                output: *mut u8,
+                k: usize,
+            ) {
+                unsafe {
+                    super::opaque::dequant_panel_f32(&$fmt, $r, input, k, output as *mut f32);
+                }
+            }
+            panel_extractor!(x86_64; [<$tag _x86_f32_r $r _a $align>] as [<$tag _x86_r $r _f32_a $align>](
+                Box::new(PackedBlockQuantFormat::new(&$fmt, $r, 0, false)),
+                f32::packing($r).align($align)
+            ));
+        }
+    };
+}
+
+macro_rules! apex_x86_tiles {
+    ($fmt:expr, $tag:ident) => {
+        apex_x86_wide!($fmt, $tag, 8, 256);
+        apex_x86_wide!($fmt, $tag, 16, 256);
+        apex_x86_wide!($fmt, $tag, 24, 256);
+        apex_x86_wide!($fmt, $tag, 32, 256);
+        apex_x86_wide!($fmt, $tag, 40, 256);
+        apex_x86_wide!($fmt, $tag, 64, 256);
+        apex_x86_wide!($fmt, $tag, 16, 512);
+        apex_x86_wide!($fmt, $tag, 32, 512);
+        apex_x86_wide!($fmt, $tag, 48, 512);
+        apex_x86_wide!($fmt, $tag, 64, 512);
+        apex_x86_wide!($fmt, $tag, 80, 512);
+        apex_x86_wide!($fmt, $tag, 128, 512);
+        apex_x86_wide!($fmt, $tag, 16, 64);
+    };
+}
+
+apex_x86_tiles!(Q8_0, q80);
+apex_x86_tiles!(Q3_K, q3k);
+apex_x86_tiles!(Q4_K, q4k);
+apex_x86_tiles!(Q5_K, q5k);
+apex_x86_tiles!(Q6_K, q6k);
+apex_x86_tiles!(IQ4_XS, iq4xs);
+apex_x86_tiles!(IQ2_S, iq2s);
+
 #[cfg(test)]
 mod host_tiles {
     use crate::frame::block_quant::{BlockQuant, Q8_0};
@@ -141,6 +191,57 @@ mod host_tiles {
                 names.iter().all(|name| !name.starts_with("generic_")),
                 "portable kernel still selected: {names:?}"
             );
+        }
+    }
+
+    #[test]
+    fn x86_64_f32_q8_0_leaves_the_portable_kernel() {
+        let names = kept(&Q8_0, f32::datum_type(), 1);
+        assert!(!names.is_empty(), "no kernel for Q8_0");
+        if cfg!(target_arch = "x86_64") {
+            assert!(
+                names.iter().all(|name| !name.starts_with("generic_")),
+                "portable kernel still selected: {names:?}"
+            );
+        }
+    }
+
+    /// Each AVX, AVX-512, and AMX panel width is registered for every APEX block.
+    /// The match is the packing the kernel stores, so it can be checked on any host.
+    #[test]
+    fn x86_64_f32_tiles_are_registered() {
+        use crate::isa::Arch;
+        use crate::mmm_routines::declared_extractors;
+        use crate::pack::Packing;
+
+        let tiles = [
+            (8usize, 256usize),
+            (16, 256),
+            (24, 256),
+            (32, 256),
+            (40, 256),
+            (64, 256),
+            (16, 512),
+            (32, 512),
+            (48, 512),
+            (64, 512),
+            (80, 512),
+            (128, 512),
+            (16, 64),
+        ];
+        let formats = ["Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_XS", "IQ2_S"];
+        let extractors: Vec<_> = declared_extractors()
+            .filter(|extractor| extractor.target == Arch::X86_64)
+            .map(|extractor| (extractor.make)())
+            .collect();
+        for &(r, align) in &tiles {
+            let want = f32::packing(r).align(align);
+            for format in formats {
+                let from = format!("Packed{format}[{r}]");
+                let found =
+                    extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
+                assert!(found, "no {from} extractor for align {align}");
+            }
         }
     }
 }
