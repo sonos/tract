@@ -3,10 +3,24 @@ use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q
 use crate::internal::*;
 use crate::ops::einsum::einsum_matmul::EinSumMatMul;
 use crate::ops::konst::Const;
+use crate::ops::matmul::apex_policy::{self, ApexProfile};
 use crate::transform::ModelTransform;
 
 #[derive(Debug)]
 pub struct BlockQuantTransform;
+
+/// Which weights `apply_weight_quant` rewrites, and to which block-quant format.
+///
+/// `Rewriter` requires its context type to implement `Default`. `Uniform` is that
+/// default; `apex_moe` passes `Apex` explicitly.
+#[derive(Clone, Debug, Default)]
+pub enum QuantMode {
+    /// Every rank-2 matmul constant becomes Q4_0.
+    #[default]
+    Uniform,
+    /// APEX profile: format depends on the weight name and layer index.
+    Apex { profile: ApexProfile, layers: usize },
+}
 
 impl ModelTransform for BlockQuantTransform {
     fn name(&self) -> StaticName {
@@ -14,17 +28,40 @@ impl ModelTransform for BlockQuantTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        crate::ops::einsum::einsum_matmul::detect_all(model)?;
-        Rewriter::<()>::default()
-            .with_rule_for("block_quant_einsum_weights", block_quant_einsum_weights)
-            .rewrite(&(), model)?;
-        crate::ops::einsum::einsum_matmul::flatten_all(model)?;
-        Ok(())
+        apply_weight_quant(model, &QuantMode::Uniform)
+    }
+}
+
+pub fn apply_weight_quant(model: &mut TypedModel, mode: &QuantMode) -> TractResult<()> {
+    crate::ops::einsum::einsum_matmul::detect_all(model)?;
+    Rewriter::<QuantMode>::default()
+        .with_rule_for("block_quant_einsum_weights", block_quant_einsum_weights)
+        .rewrite(mode, model)?;
+    crate::ops::einsum::einsum_matmul::flatten_all(model)?;
+    Ok(())
+}
+
+/// Name the quantizer keys off. A K-axis move is inserted before quantization, so the
+/// einsum input on the second pass is that move, not the constant. Walk back to the constant.
+fn weight_node_name(model: &TypedModel, mut node_id: usize) -> String {
+    loop {
+        let node = model.node(node_id);
+        if node.op_is::<Const>() || node.inputs.len() != 1 {
+            return node.name.clone();
+        }
+        node_id = node.inputs[0].node;
+    }
+}
+
+fn format_for(mode: &QuantMode, name: &str) -> Box<dyn BlockQuant> {
+    match *mode {
+        QuantMode::Uniform => Box::new(Q4_0),
+        QuantMode::Apex { profile, layers } => apex_policy::assign(profile, layers, name),
     }
 }
 
 fn block_quant_einsum_weights(
-    _ctx: &(),
+    mode: &QuantMode,
     model: &TypedModel,
     node: &TypedNode,
     prefix: &str,
@@ -36,14 +73,19 @@ fn block_quant_einsum_weights(
         if a.rank() != 2 {
             continue;
         };
-        if op.k_axis().inputs[slot][0] == 0 {
+        let weight_name = weight_node_name(model, node.inputs[slot].node);
+        let kpos = op.k_axis().inputs[slot][0];
+        let format = format_for(mode, &weight_name);
+        if a.shape()[kpos] % format.block_len() != 0 {
+            continue;
+        }
+        if kpos == 0 {
             let mut patch = TypedModelPatch::default();
             let mut taps = patch.taps(model, &node.inputs)?;
-            taps[slot] = patch.wire_node(
-                format!("{}.t_{}", node.name, slot),
-                AxisOp::Move(1, 0),
-                &[taps[slot]],
-            )?[0];
+            // Keep the constant's name on the move. Const-prop folds the move into a fresh
+            // constant and drops the original, and the next pass reads that folded name.
+            taps[slot] =
+                patch.wire_node(format!("{weight_name}.k"), AxisOp::Move(1, 0), &[taps[slot]])?[0];
             let mut new_op = op.clone();
             new_op.op.axes = op
                 .op
@@ -55,7 +97,6 @@ fn block_quant_einsum_weights(
             patch.shunt_outside(model, node.id.into(), output[0])?;
             return Ok(Some(patch));
         }
-        let format = Q4_0;
         let mut patch = TypedModelPatch::default();
         let weights = if a.datum_type() == f16::datum_type() {
             format.quant_f16(a.try_as_plain_ram()?.as_slice::<f16>()?)?
@@ -63,10 +104,10 @@ fn block_quant_einsum_weights(
             format.quant_f32(a.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?)?
         };
         let act_slot = 1 - slot;
-        let name = &model.node(node.inputs[slot].node).name;
+        let name = &weight_name;
         let m = a.shape()[0];
         let k = a.shape()[1];
-        let bqs = BlockQuantStorage::new(Box::new(format), m, k, Arc::new(weights))?;
+        let bqs = BlockQuantStorage::new(dyn_clone::clone_box(&*format), m, k, Arc::new(weights))?;
         let fact =
             Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
         let weights = patch.wire_node(
