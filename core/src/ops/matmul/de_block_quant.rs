@@ -12,14 +12,14 @@ pub struct BlockQuantTransform;
 /// Which weights `apply_weight_quant` rewrites, and to which block-quant format.
 ///
 /// `Rewriter` requires its context type to implement `Default`. `Uniform` is that
-/// default; `apex_moe` passes `ApexBalanced` explicitly.
+/// default; `apex_moe` passes `Apex` explicitly.
 #[derive(Clone, Debug, Default)]
 pub enum QuantMode {
     /// Every rank-2 matmul constant becomes Q4_0.
     #[default]
     Uniform,
-    /// APEX MoE balanced: format depends on the weight name and layer index.
-    ApexBalanced { layers: usize },
+    /// APEX profile: format depends on the weight name and layer index.
+    Apex { profile: ApexProfile, layers: usize },
 }
 
 impl ModelTransform for BlockQuantTransform {
@@ -56,9 +56,7 @@ fn weight_node_name(model: &TypedModel, mut node_id: usize) -> String {
 fn format_for(mode: &QuantMode, name: &str) -> Box<dyn BlockQuant> {
     match *mode {
         QuantMode::Uniform => Box::new(Q4_0),
-        QuantMode::ApexBalanced { layers } => {
-            apex_policy::assign(ApexProfile::Balanced, layers, name)
-        }
+        QuantMode::Apex { profile, layers } => apex_policy::assign(profile, layers, name),
     }
 }
 

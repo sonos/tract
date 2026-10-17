@@ -6,14 +6,22 @@
 //! Attention uses a tighter edge: the first 3 and last 3 layers.
 //!
 //! Balanced (and I-balanced, which differs only in the imatrix this pass does
-//! not consume) is the tier whose types tract can run: routed experts are
+//! not consume) is the MoE tier whose types tract can run: routed experts are
 //! Q6_K on the edge and Q5_K elsewhere, shared experts are Q8_0, attention and
 //! every other matmul weight are Q6_K.
-use tract_linalg::block_quant::{BlockQuant, Q5_K, Q6_K, Q8_0};
+//!
+//! `dense-hybrid-quality` is the dense/hybrid recipe from the same script.
+//! Full-attention projections are Q8_0 and linear-attention / SSM projections
+//! are Q4_K at every layer. The FFN is split: gate is Q6_K on the edge and
+//! Q5_K elsewhere, up is Q6_K until the middle where it becomes Q5_K, and down
+//! is Q8_0 on the edge and Q6_K elsewhere. `token_embd` is Q5_K. The output
+//! head and any tensor the recipe does not name stay Q6_K.
+use tract_linalg::block_quant::{BlockQuant, Q4_K, Q5_K, Q6_K, Q8_0};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApexProfile {
     Balanced,
+    DenseHybridQuality,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,19 +44,107 @@ enum Band {
 /// not name. Callers still skip a weight whose K is not a multiple of the
 /// format's block length.
 pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQuant> {
-    let role = role(name);
-    let band = layer_index(name).map(|layer| band(profile, role, layer, layers));
-    let format = match (profile, role, band) {
-        (ApexProfile::Balanced, Role::Shared, _) => &Q8_0 as &dyn BlockQuant,
-        (ApexProfile::Balanced, Role::Routed, Some(Band::Edge) | None) => &Q6_K,
-        (ApexProfile::Balanced, Role::Routed, Some(Band::Near | Band::Mid)) => &Q5_K,
-        (ApexProfile::Balanced, _, _) => &Q6_K,
+    let format: &dyn BlockQuant = match profile {
+        ApexProfile::Balanced => balanced(layers, name),
+        ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
     };
     dyn_clone::clone_box(format)
 }
 
-fn band(profile: ApexProfile, role: Role, layer: usize, layers: usize) -> Band {
-    let _ = profile;
+fn balanced(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let role = role(name);
+    let band = layer_index(name).map(|layer| band(role, layer, layers));
+    match (role, band) {
+        (Role::Shared, _) => &Q8_0,
+        (Role::Routed, Some(Band::Edge) | None) => &Q6_K,
+        (Role::Routed, Some(Band::Near | Band::Mid)) => &Q5_K,
+        (_, _) => &Q6_K,
+    }
+}
+
+fn dense_hybrid_quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let placed = layer_index(name).map(|layer| band(Role::Other, layer, layers));
+    match dense_part(name) {
+        Some(DensePart::Embed) => &Q5_K,
+        Some(DensePart::FullAttn) => &Q8_0,
+        Some(DensePart::LinearAttn) => &Q4_K,
+        Some(DensePart::Gate) => match placed {
+            Some(Band::Near | Band::Mid) => &Q5_K,
+            Some(Band::Edge) | None => &Q6_K,
+        },
+        Some(DensePart::Up) => match placed {
+            Some(Band::Mid) => &Q5_K,
+            Some(Band::Edge | Band::Near) | None => &Q6_K,
+        },
+        Some(DensePart::Down) => match placed {
+            Some(Band::Edge) | None => &Q8_0,
+            Some(Band::Near | Band::Mid) => &Q6_K,
+        },
+        Some(DensePart::Output) | None => &Q6_K,
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum DensePart {
+    Embed,
+    Output,
+    FullAttn,
+    LinearAttn,
+    Gate,
+    Up,
+    Down,
+}
+
+fn name_parts(name: &str) -> impl Iterator<Item = &str> {
+    name.split(['.', '/']).filter(|part| !part.is_empty())
+}
+
+fn has_part(name: &str, key: &str) -> bool {
+    name_parts(name).any(|part| part == key)
+}
+
+fn has_any_part(name: &str, keys: &[&str]) -> bool {
+    keys.iter().any(|key| has_part(name, key))
+}
+
+/// GGUF component names from `generate_config.sh --profile dense-hybrid-quality`,
+/// plus the HF names for the same projections. `ffn_gate` does not match
+/// `ffn_gate_inp` or `ffn_gate_exps`: those are different components.
+fn dense_part(name: &str) -> Option<DensePart> {
+    if has_any_part(name, &["experts", "shared_expert", "shared_experts"])
+        || has_any_part(name, &["ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"])
+        || has_any_part(name, &["ffn_gate_shexp", "ffn_up_shexp", "ffn_down_shexp"])
+    {
+        return None;
+    }
+    if has_any_part(name, &["token_embd", "embed_tokens"]) {
+        return Some(DensePart::Embed);
+    }
+    if has_any_part(name, &["attn_qkv", "attn_gate", "ssm_alpha", "ssm_beta", "ssm_out"]) {
+        return Some(DensePart::LinearAttn);
+    }
+    if has_any_part(
+        name,
+        &["attn_q", "attn_k", "attn_v", "attn_output", "q_proj", "k_proj", "v_proj", "o_proj"],
+    ) {
+        return Some(DensePart::FullAttn);
+    }
+    if has_any_part(name, &["ffn_gate", "gate_proj"]) {
+        return Some(DensePart::Gate);
+    }
+    if has_any_part(name, &["ffn_up", "up_proj"]) {
+        return Some(DensePart::Up);
+    }
+    if has_any_part(name, &["ffn_down", "down_proj"]) {
+        return Some(DensePart::Down);
+    }
+    if has_any_part(name, &["output", "lm_head"]) {
+        return Some(DensePart::Output);
+    }
+    None
+}
+
+fn band(role: Role, layer: usize, layers: usize) -> Band {
     let (edge_hi, edge_lo) = match role {
         Role::Attention => (2usize, layers.saturating_sub(3)),
         _ => (4, layers.saturating_sub(5)),
@@ -120,5 +216,38 @@ mod tests {
         assert_eq!(kind("blk.12.ssm_out.weight"), "Q6_K");
         assert_eq!(kind("blk.20.ffn_gate_inp.weight"), "Q6_K");
         assert_eq!(kind("lm_head.weight"), "Q6_K");
+    }
+
+    fn dense(name: &str) -> String {
+        assign(ApexProfile::DenseHybridQuality, 40, name).to_string()
+    }
+
+    #[test]
+    fn dense_hybrid_quality_bands() {
+        assert_eq!(dense("blk.0.ffn_gate.weight"), "Q6_K");
+        assert_eq!(dense("blk.0.ffn_up.weight"), "Q6_K");
+        assert_eq!(dense("blk.0.ffn_down.weight"), "Q8_0");
+        assert_eq!(dense("blk.5.ffn_gate.weight"), "Q5_K");
+        assert_eq!(dense("blk.5.ffn_up.weight"), "Q6_K");
+        assert_eq!(dense("blk.5.ffn_down.weight"), "Q6_K");
+        assert_eq!(dense("blk.20.ffn_gate.weight"), "Q5_K");
+        assert_eq!(dense("blk.20.ffn_up.weight"), "Q5_K");
+        assert_eq!(dense("blk.20.ffn_down.weight"), "Q6_K");
+        assert_eq!(dense("blk.35.ffn_down.weight"), "Q8_0");
+        assert_eq!(dense("blk.0.attn_q.weight"), "Q8_0");
+        assert_eq!(dense("blk.20.attn_v.weight"), "Q8_0");
+        assert_eq!(dense("blk.20.attn_output.weight"), "Q8_0");
+        assert_eq!(dense("blk.20.attn_qkv.weight"), "Q4_K");
+        assert_eq!(dense("blk.20.attn_gate.weight"), "Q4_K");
+        assert_eq!(dense("blk.12.ssm_alpha.weight"), "Q4_K");
+        assert_eq!(dense("blk.12.ssm_out.weight"), "Q4_K");
+        assert_eq!(dense("token_embd.weight"), "Q5_K");
+        assert_eq!(dense("output.weight"), "Q6_K");
+        assert_eq!(dense("lm_head.weight"), "Q6_K");
+        assert_eq!(dense("blk.20.ffn_gate_inp.weight"), "Q6_K");
+        assert_eq!(dense("model.layers.0.mlp.gate_proj.weight"), "Q6_K");
+        assert_eq!(dense("model.layers.20.mlp.up_proj.weight"), "Q5_K");
+        assert_eq!(dense("model.layers.20.self_attn.q_proj.weight"), "Q8_0");
+        assert_eq!(dense("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
     }
 }

@@ -1,12 +1,16 @@
-//! `apex_moe` model transform. Quantizes constant matmul weights with the APEX
-//! balanced recipe: routed experts Q6_K on edge layers and Q5_K elsewhere,
-//! shared experts Q8_0, attention and every other matmul weight Q6_K.
+//! `apex_moe` model transform. Quantizes constant matmul weights with an APEX
+//! recipe. `balanced` (and `i-balanced`, same types) assigns routed experts
+//! Q6_K on edge layers and Q5_K elsewhere, shared experts Q8_0, and attention
+//! plus every other matmul weight Q6_K. `dense-hybrid-quality` assigns a dense
+//! model's gate, up, and down separately, pins full attention at Q8_0, and
+//! puts linear attention and SSM projections at Q4_K.
 //!
 //! A weight is left in its original dtype when its contraction axis is not a
 //! multiple of the chosen format's block (32 for Q8_0, 256 for the K-quants).
 //! `layers` is the block count the edge bands are computed from; the default
 //! is 40, which is the depth the published APEX configs were written for.
 use crate::internal::*;
+use crate::ops::matmul::apex_policy::ApexProfile;
 use crate::ops::matmul::de_block_quant::{self, QuantMode};
 use crate::transform::ModelTransform;
 
@@ -34,17 +38,22 @@ impl Default for ApexMoeConfig {
 
 #[derive(Debug)]
 pub struct ApexMoeTransform {
+    profile: ApexProfile,
     layers: usize,
 }
 
 impl ApexMoeTransform {
     pub fn from_config(config: ApexMoeConfig) -> TractResult<Box<dyn ModelTransform>> {
-        match config.profile.as_str() {
-            "balanced" | "i-balanced" => Ok(Box::new(ApexMoeTransform { layers: config.layers })),
-            other => bail!(
-                "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced)"
-            ),
-        }
+        let profile = match config.profile.as_str() {
+            "balanced" | "i-balanced" => ApexProfile::Balanced,
+            "dense-hybrid-quality" => ApexProfile::DenseHybridQuality,
+            other => {
+                bail!(
+                    "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced, dense-hybrid-quality)"
+                )
+            }
+        };
+        Ok(Box::new(ApexMoeTransform { profile, layers: config.layers }))
     }
 }
 
@@ -54,7 +63,10 @@ impl ModelTransform for ApexMoeTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        de_block_quant::apply_weight_quant(model, &QuantMode::ApexBalanced { layers: self.layers })
+        de_block_quant::apply_weight_quant(
+            model,
+            &QuantMode::Apex { profile: self.profile, layers: self.layers },
+        )
     }
 }
 
@@ -72,7 +84,11 @@ mod test {
         Tensor::from_shape(shape, &data).unwrap()
     }
 
-    fn quant_name(weight_node: &str, w_shape: &[usize]) -> TractResult<Option<String>> {
+    fn quant_name(
+        profile: ApexProfile,
+        weight_node: &str,
+        w_shape: &[usize],
+    ) -> TractResult<Option<String>> {
         let mut model = TypedModel::default();
         let x = model.add_source("x", f32::fact([4, w_shape[0]]))?;
         let w =
@@ -84,7 +100,7 @@ mod test {
         )?;
         model.select_output_outlets(&out)?;
         let mut model = model.into_decluttered()?;
-        ApexMoeTransform { layers: 40 }.transform(&mut model)?;
+        ApexMoeTransform { profile, layers: 40 }.transform(&mut model)?;
         let Some(node) = model.nodes().iter().find(|n| n.name.ends_with(".bq")) else {
             return Ok(None);
         };
@@ -98,15 +114,56 @@ mod test {
 
     #[test]
     fn assigns_by_role_and_skips_short_k() -> TractResult<()> {
-        assert_eq!(quant_name("blk.0.ffn_gate_exps.weight", &[256, 32])?.as_deref(), Some("Q6_K"));
-        assert_eq!(quant_name("blk.20.ffn_up_exps.weight", &[256, 32])?.as_deref(), Some("Q5_K"));
         assert_eq!(
-            quant_name("model.layers.12.mlp.shared_expert.down_proj.weight", &[256, 32])?
+            quant_name(ApexProfile::Balanced, "blk.0.ffn_gate_exps.weight", &[256, 32])?.as_deref(),
+            Some("Q6_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Balanced, "blk.20.ffn_up_exps.weight", &[256, 32])?.as_deref(),
+            Some("Q5_K")
+        );
+        assert_eq!(
+            quant_name(
+                ApexProfile::Balanced,
+                "model.layers.12.mlp.shared_expert.down_proj.weight",
+                &[256, 32]
+            )?
+            .as_deref(),
+            Some("Q8_0")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Balanced, "lm_head.weight", &[256, 32])?.as_deref(),
+            Some("Q6_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Balanced, "blk.20.ffn_gate_exps.weight", &[64, 32])?,
+            None
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseHybridQuality, "blk.0.ffn_down.weight", &[256, 32])?
                 .as_deref(),
             Some("Q8_0")
         );
-        assert_eq!(quant_name("lm_head.weight", &[256, 32])?.as_deref(), Some("Q6_K"));
-        assert_eq!(quant_name("blk.20.ffn_gate_exps.weight", &[64, 32])?, None);
+        assert_eq!(
+            quant_name(ApexProfile::DenseHybridQuality, "blk.20.ffn_up.weight", &[256, 32])?
+                .as_deref(),
+            Some("Q5_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseHybridQuality, "blk.20.attn_qkv.weight", &[256, 32])?
+                .as_deref(),
+            Some("Q4_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseHybridQuality, "blk.20.attn_output.weight", &[256, 32])?
+                .as_deref(),
+            Some("Q8_0")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseHybridQuality, "token_embd.weight", &[256, 32])?
+                .as_deref(),
+            Some("Q5_K")
+        );
         Ok(())
     }
 
@@ -163,7 +220,64 @@ mod test {
             model.select_output_outlets(&out)?;
             model.into_decluttered()?
         };
-        ApexMoeTransform { layers: 40 }.transform(&mut quant)?;
+        ApexMoeTransform { profile: ApexProfile::Balanced, layers: 40 }.transform(&mut quant)?;
+        let got = quant.into_runnable()?.run(tvec!(x.into_tvalue()))?[0].clone().into_tensor();
+        got.close_enough(&reference, Approximation::Approximate)
+    }
+
+    #[test]
+    fn q4k_linear_attn_matches_dequant() -> TractResult<()> {
+        use tract_linalg::block_quant::{BlockQuant, Q4_K};
+        let x_shape = &[4usize, 256];
+        let w_shape = &[256usize, 32];
+        let x = fill(x_shape, 1);
+        let w = fill(w_shape, 2);
+        let w_deq = Q4_K.simulate_precision_loss(w.clone().move_axis(0, 1)?, 1)?.move_axis(1, 0)?;
+
+        let eval = |weight: &Tensor| -> TractResult<Tensor> {
+            let mut model = TypedModel::default();
+            let x_in = model.add_source("x", f32::fact(x_shape))?;
+            let w_in = model.wire_node(
+                "blk.20.attn_qkv.weight",
+                Const::new(weight.clone().into_arc_tensor())?,
+                &[],
+            )?[0];
+            let out = model.wire_node(
+                "mm",
+                EinSum {
+                    axes: "mk,kn->mn".parse()?,
+                    operating_dt: f32::datum_type(),
+                    q_params: None,
+                },
+                &[x_in, w_in],
+            )?;
+            model.select_output_outlets(&out)?;
+            let model = model.into_decluttered()?;
+            let out = model.into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+            Ok(out[0].clone().into_tensor())
+        };
+
+        let reference = eval(&w_deq)?;
+        let mut quant = {
+            let mut model = TypedModel::default();
+            let x_in = model.add_source("x", f32::fact(x_shape))?;
+            let w_in =
+                model.wire_node("blk.20.attn_qkv.weight", Const::new(w.into_arc_tensor())?, &[])?
+                    [0];
+            let out = model.wire_node(
+                "mm",
+                EinSum {
+                    axes: "mk,kn->mn".parse()?,
+                    operating_dt: f32::datum_type(),
+                    q_params: None,
+                },
+                &[x_in, w_in],
+            )?;
+            model.select_output_outlets(&out)?;
+            model.into_decluttered()?
+        };
+        ApexMoeTransform { profile: ApexProfile::DenseHybridQuality, layers: 40 }
+            .transform(&mut quant)?;
         let got = quant.into_runnable()?.run(tvec!(x.into_tvalue()))?[0].clone().into_tensor();
         got.close_enough(&reference, Approximation::Approximate)
     }
