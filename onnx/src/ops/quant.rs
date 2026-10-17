@@ -3,7 +3,6 @@ use crate::pb::NodeProto;
 use tract_core::ops::cast::cast;
 use tract_hir::internal::*;
 use tract_hir::ops::quant::*;
-use tract_ndarray::ArrayViewD;
 
 pub fn register_all_ops(reg: &mut OnnxOpRegister) {
     reg.insert("QuantizeLinear", quantize_linear);
@@ -290,18 +289,34 @@ fn dynamic_quantize_linear_u8(scale: f32, zero_point: u8, xs: &[f32], ys: &mut [
         .for_each(|(x, y)| *y = dynamic_quantize_linear_f32_u8(*x, scale, zero_point));
 }
 
-fn scale_and_zero_point(v: ArrayViewD<f32>) -> (f32, u8) {
-    // get the min and max of v and extend it to have zero included
-    // in the interval [min, max]
-    let (min, max) = v.fold((0., 0.), |(a_min, a_max), &v| {
-        if v < a_min {
-            (v, a_max)
-        } else if v > a_max {
-            (a_min, v)
-        } else {
-            (a_min, a_max)
+/// The min and max of `xs` together with 0, which the quantized range must include.
+///
+/// Folded in sixteen independent lanes so the loop carries no element-to-element dependency.
+/// Each lane keeps the compare-and-select `if v < acc { v } else { acc }`: a NaN never replaces
+/// a lane and -0.0 never replaces the +0.0 seed, so the result matches a single scalar fold.
+fn min_max_with_zero(xs: &[f32]) -> (f32, f32) {
+    const LANES: usize = 16;
+    let mut lo = [0f32; LANES];
+    let mut hi = [0f32; LANES];
+    let mut chunks = xs.chunks_exact(LANES);
+    for c in &mut chunks {
+        for ((l, h), &v) in lo.iter_mut().zip(hi.iter_mut()).zip(c) {
+            *l = if v < *l { v } else { *l };
+            *h = if v > *h { v } else { *h };
         }
-    });
+    }
+    let (mut min, mut max) = (0f32, 0f32);
+    for &v in lo.iter().chain(chunks.remainder()) {
+        min = if v < min { v } else { min };
+    }
+    for &v in hi.iter().chain(chunks.remainder()) {
+        max = if v > max { v } else { max };
+    }
+    (min, max)
+}
+
+fn scale_and_zero_point(xs: &[f32]) -> (f32, u8) {
+    let (min, max) = min_max_with_zero(xs);
 
     // quantize range
     let min_t = u8::MIN as f32;
@@ -344,8 +359,8 @@ impl EvalOp for DynamicQuantizeLinearU8 {
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = &inputs[0];
         let input = input.cast_to::<f32>()?;
-        let a_input = input.to_plain_array_view::<f32>()?;
-        let (scale, zero_point) = scale_and_zero_point(a_input);
+        let (scale, zero_point) =
+            scale_and_zero_point(input.try_as_plain_ram()?.as_slice::<f32>()?);
 
         let mut dst = unsafe { Tensor::uninitialized_dt(u8::datum_type(), input.shape())? };
         // We cannot use quantize_linear_u8 here because it does `x * scale.recip()`
@@ -394,8 +409,6 @@ mod tests {
 
         let epsilon = 0.00000001;
         for (v, scale_ok, zero_point_ok) in &data {
-            let v = arr1(v).into_dyn();
-            let v = v.view();
             let (scale, zero_point) = scale_and_zero_point(v);
             assert!((scale - scale_ok).abs() < epsilon);
             assert_eq!(zero_point, *zero_point_ok);
@@ -415,7 +428,7 @@ mod tests {
 
         for (v, quantized_ok) in &data {
             let v = arr1(v).into_dyn();
-            let (scale, zero_point) = scale_and_zero_point(v.view());
+            let (scale, zero_point) = scale_and_zero_point(v.as_slice().unwrap());
 
             // same shape of v but with u8 type, values will be overwritten
             let mut quantized = v.mapv(|_| 0_u8);
@@ -429,6 +442,51 @@ mod tests {
         }
     }
 
+    /// The lane fold against the scalar fold it replaced, across lengths that leave every
+    /// remainder size, with NaN, signed zeros and infinities mixed in.
+    #[test]
+    fn min_max_with_zero_matches_scalar_fold() {
+        fn scalar(xs: &[f32]) -> (f32, f32) {
+            xs.iter().fold((0., 0.), |(a_min, a_max), &v| {
+                if v < a_min {
+                    (v, a_max)
+                } else if v > a_max {
+                    (a_min, v)
+                } else {
+                    (a_min, a_max)
+                }
+            })
+        }
+        let specials = [f32::NAN, -0.0, 0.0, f32::INFINITY, f32::NEG_INFINITY, -1e-30, 1e30];
+        let mut seed = 0x2545_f491_u32;
+        let mut next = || {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            seed
+        };
+        for len in 0..80 {
+            for _ in 0..50 {
+                let xs: Vec<f32> = (0..len)
+                    .map(|_| {
+                        let r = next();
+                        if r % 7 == 0 {
+                            specials[(r >> 8) as usize % specials.len()]
+                        } else {
+                            (r as i32 as f32) / 1e7
+                        }
+                    })
+                    .collect();
+                let (a, b) = (min_max_with_zero(&xs), scalar(&xs));
+                assert_eq!(
+                    (a.0.to_bits(), a.1.to_bits()),
+                    (b.0.to_bits(), b.1.to_bits()),
+                    "{xs:?}"
+                );
+            }
+        }
+    }
+
     // https://onnx.ai/onnx/operators/onnx__DynamicQuantizeLinear.html specifies
     // `y = saturate(round(x / y_scale) + y_zero_point)` with rounding to nearest, ties to even.
     // `f32::round` rounds ties away from zero, which differs on every tie whose integer part is
@@ -438,7 +496,7 @@ mod tests {
         // The value on a tie. scale is exactly 1, so 0.5 survives the division as a tie.
         // round_ties_even(0.5) = 0, so y = 0 + 127; rounding away from zero would give 128.
         let v = arr1(&[-127f32, 128., 0.5]).into_dyn();
-        let (scale, zero_point) = scale_and_zero_point(v.view());
+        let (scale, zero_point) = scale_and_zero_point(v.as_slice().unwrap());
         assert_eq!(scale, 1.0);
         assert_eq!(zero_point, 127);
         let mut quantized = v.mapv(|_| 0_u8);
@@ -454,7 +512,7 @@ mod tests {
         // round_ties_even gives 126; rounding away from zero would give 127 and shift every
         // output by one.
         let v = arr1(&[-253f32, 257.]).into_dyn();
-        let (scale, zero_point) = scale_and_zero_point(v.view());
+        let (scale, zero_point) = scale_and_zero_point(v.as_slice().unwrap());
         assert_eq!(scale, 2.0);
         assert_eq!(zero_point, 126);
         let mut quantized = v.mapv(|_| 0_u8);
