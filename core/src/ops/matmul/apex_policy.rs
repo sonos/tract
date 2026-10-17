@@ -16,6 +16,12 @@
 //! is Q8_0 on the edge and Q6_K elsewhere. `token_embd` is Q5_K. The output
 //! head and any tensor the recipe does not name stay Q6_K.
 //!
+//! `dense-flat` is the dense control. It has no layer gradient. Gate is
+//! IQ4_XS, and up and down are Q5_K. Full attention is Q5_K except `attn_v`,
+//! which is Q6_K. `attn_qkv`, `attn_gate`, and `ssm_out` are Q5_K. `ssm_alpha`
+//! and `ssm_beta` are Q4_K. `token_embd` is Q4_K. The output head and any
+//! tensor the recipe does not name stay Q6_K.
+//!
 //! `compact` (and `i-compact`, same types) is the smaller MoE tier. Routed
 //! experts are Q4_K on the edge and Q3_K on the near and middle bands, shared
 //! experts are Q6_K, and attention is Q4_K at every layer. Tensors the recipe
@@ -36,6 +42,7 @@ use tract_linalg::block_quant::{BlockQuant, IQ2_S, IQ4_XS, Q3_K, Q4_K, Q5_K, Q6_
 pub enum ApexProfile {
     Balanced,
     DenseHybridQuality,
+    DenseFlat,
     Compact,
     Quality,
     Mini,
@@ -64,6 +71,7 @@ pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQ
     let format: &dyn BlockQuant = match profile {
         ApexProfile::Balanced => balanced(layers, name),
         ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
+        ApexProfile::DenseFlat => dense_flat(name),
         ApexProfile::Compact => compact(layers, name),
         ApexProfile::Quality => quality(layers, name),
         ApexProfile::Mini => mini(layers, name),
@@ -86,8 +94,8 @@ fn dense_hybrid_quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
     let placed = layer_index(name).map(|layer| band(Role::Other, layer, layers));
     match dense_part(name) {
         Some(DensePart::Embed) => &Q5_K,
-        Some(DensePart::FullAttn) => &Q8_0,
-        Some(DensePart::LinearAttn) => &Q4_K,
+        Some(DensePart::FullAttn | DensePart::FullAttnV) => &Q8_0,
+        Some(DensePart::LinearAttn | DensePart::LinearAttnSmall) => &Q4_K,
         Some(DensePart::Gate) => match placed {
             Some(Band::Near | Band::Mid) => &Q5_K,
             Some(Band::Edge) | None => &Q6_K,
@@ -100,6 +108,19 @@ fn dense_hybrid_quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
             Some(Band::Edge) | None => &Q8_0,
             Some(Band::Near | Band::Mid) => &Q6_K,
         },
+        Some(DensePart::Output) | None => &Q6_K,
+    }
+}
+
+fn dense_flat(name: &str) -> &'static dyn BlockQuant {
+    match dense_part(name) {
+        Some(DensePart::Embed) => &Q4_K,
+        Some(DensePart::FullAttn) => &Q5_K,
+        Some(DensePart::FullAttnV) => &Q6_K,
+        Some(DensePart::LinearAttn) => &Q5_K,
+        Some(DensePart::LinearAttnSmall) => &Q4_K,
+        Some(DensePart::Gate) => &IQ4_XS,
+        Some(DensePart::Up | DensePart::Down) => &Q5_K,
         Some(DensePart::Output) | None => &Q6_K,
     }
 }
@@ -157,7 +178,9 @@ enum DensePart {
     Embed,
     Output,
     FullAttn,
+    FullAttnV,
     LinearAttn,
+    LinearAttnSmall,
     Gate,
     Up,
     Down,
@@ -175,9 +198,10 @@ fn has_any_part(name: &str, keys: &[&str]) -> bool {
     keys.iter().any(|key| has_part(name, key))
 }
 
-/// GGUF component names from `generate_config.sh --profile dense-hybrid-quality`,
-/// plus the HF names for the same projections. `ffn_gate` does not match
-/// `ffn_gate_inp` or `ffn_gate_exps`: those are different components.
+/// GGUF component names from the dense profiles in `generate_config.sh`, plus
+/// the HF names for the same projections. `ffn_gate` does not match
+/// `ffn_gate_inp` or `ffn_gate_exps`. `attn_v` is not the other full-attention
+/// projections, and `ssm_alpha` / `ssm_beta` are not the other linear ones.
 fn dense_part(name: &str) -> Option<DensePart> {
     if has_any_part(name, &["experts", "shared_expert", "shared_experts"])
         || has_any_part(name, &["ffn_gate_exps", "ffn_up_exps", "ffn_down_exps"])
@@ -188,13 +212,16 @@ fn dense_part(name: &str) -> Option<DensePart> {
     if has_any_part(name, &["token_embd", "embed_tokens"]) {
         return Some(DensePart::Embed);
     }
-    if has_any_part(name, &["attn_qkv", "attn_gate", "ssm_alpha", "ssm_beta", "ssm_out"]) {
+    if has_any_part(name, &["ssm_alpha", "ssm_beta"]) {
+        return Some(DensePart::LinearAttnSmall);
+    }
+    if has_any_part(name, &["attn_qkv", "attn_gate", "ssm_out"]) {
         return Some(DensePart::LinearAttn);
     }
-    if has_any_part(
-        name,
-        &["attn_q", "attn_k", "attn_v", "attn_output", "q_proj", "k_proj", "v_proj", "o_proj"],
-    ) {
+    if has_any_part(name, &["attn_v", "v_proj"]) {
+        return Some(DensePart::FullAttnV);
+    }
+    if has_any_part(name, &["attn_q", "attn_k", "attn_output", "q_proj", "k_proj", "o_proj"]) {
         return Some(DensePart::FullAttn);
     }
     if has_any_part(name, &["ffn_gate", "gate_proj"]) {
@@ -317,6 +344,42 @@ mod tests {
         assert_eq!(dense("model.layers.20.mlp.up_proj.weight"), "Q5_K");
         assert_eq!(dense("model.layers.20.self_attn.q_proj.weight"), "Q8_0");
         assert_eq!(dense("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
+    }
+
+    fn flat_kind(name: &str) -> String {
+        assign(ApexProfile::DenseFlat, 40, name).to_string()
+    }
+
+    #[test]
+    fn dense_flat_bands() {
+        for layer in [0, 5, 10, 20, 30, 35] {
+            assert_eq!(flat_kind(&format!("blk.{layer}.ffn_gate.weight")), "IQ4_XS");
+            assert_eq!(flat_kind(&format!("blk.{layer}.ffn_up.weight")), "Q5_K");
+            assert_eq!(flat_kind(&format!("blk.{layer}.ffn_down.weight")), "Q5_K");
+            assert_eq!(flat_kind(&format!("blk.{layer}.attn_q.weight")), "Q5_K");
+            assert_eq!(flat_kind(&format!("blk.{layer}.attn_v.weight")), "Q6_K");
+            assert_eq!(flat_kind(&format!("blk.{layer}.attn_qkv.weight")), "Q5_K");
+            assert_eq!(flat_kind(&format!("blk.{layer}.ssm_alpha.weight")), "Q4_K");
+        }
+        assert_eq!(flat_kind("ffn_gate.weight"), "IQ4_XS");
+        assert_eq!(flat_kind("blk.20.attn_k.weight"), "Q5_K");
+        assert_eq!(flat_kind("blk.20.attn_output.weight"), "Q5_K");
+        assert_eq!(flat_kind("blk.20.attn_gate.weight"), "Q5_K");
+        assert_eq!(flat_kind("blk.12.ssm_out.weight"), "Q5_K");
+        assert_eq!(flat_kind("blk.12.ssm_beta.weight"), "Q4_K");
+        assert_eq!(flat_kind("token_embd.weight"), "Q4_K");
+        assert_eq!(flat_kind("embed_tokens.weight"), "Q4_K");
+        assert_eq!(flat_kind("output.weight"), "Q6_K");
+        assert_eq!(flat_kind("lm_head.weight"), "Q6_K");
+        assert_eq!(flat_kind("blk.20.ffn_gate_inp.weight"), "Q6_K");
+        assert_eq!(flat_kind("blk.2.shortconv.in_proj.weight"), "Q6_K");
+        assert_eq!(flat_kind("model.layers.0.mlp.gate_proj.weight"), "IQ4_XS");
+        assert_eq!(flat_kind("model.layers.20.mlp.up_proj.weight"), "Q5_K");
+        assert_eq!(flat_kind("model.layers.20.mlp.down_proj.weight"), "Q5_K");
+        assert_eq!(flat_kind("model.layers.20.self_attn.q_proj.weight"), "Q5_K");
+        assert_eq!(flat_kind("model.layers.20.self_attn.v_proj.weight"), "Q6_K");
+        assert_eq!(flat_kind("model.layers.20.self_attn.o_proj.weight"), "Q5_K");
+        assert_eq!(flat_kind("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
     }
 
     fn compact_kind(name: &str) -> String {
