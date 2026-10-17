@@ -4,6 +4,7 @@
 //! quantized along that axis. The tract tensor reverses those dimensions so
 //! the block axis is last. F32, F16, and the seven block payloads are copied.
 //! Every other ggml type is refused by name. No importance matrix is read.
+//! [`install_gguf_block_quant`] places those blobs on same-named matmul constants.
 
 use std::io::Cursor;
 use std::io::Read;
@@ -58,6 +59,20 @@ pub fn gguf_v3_to_nnef_dats(file: &[u8]) -> TractResult<Vec<GgufNnefTensor>> {
     ensure!(data_start <= file.len(), "GGUF tensor data starts past the end of the file");
     let data = &file[data_start..];
     infos.into_iter().map(|info| tensor_dat(info, data, alignment)).collect()
+}
+
+/// Replace same-named rank-2 matmul constants with the block-quant tensors in `file`.
+///
+/// F32 and F16 tensors are skipped. The ggml bytes are stored as they are.
+pub fn install_gguf_block_quant(model: &mut TypedModel, file: &[u8]) -> TractResult<()> {
+    let mut weights = HashMap::new();
+    for item in gguf_v3_to_nnef_dats(file)? {
+        let tensor = crate::tensors::read_tensor(item.dat.as_slice())?;
+        if tensor.storage_as::<BlockQuantStorage>().is_some() {
+            weights.insert(item.name, tensor);
+        }
+    }
+    tract_core::ops::matmul::de_block_quant::apply_supplied_block_quant(model, weights)
 }
 
 struct TensorInfo {
@@ -475,5 +490,130 @@ mod test {
         push_u32(&mut file, 2);
         let err = gguf_v3_to_nnef_dats(&file).unwrap_err().to_string();
         assert!(err.contains("version 2"), "{err}");
+    }
+
+    fn fill(shape: &[usize], seed: usize) -> Tensor {
+        let n: usize = shape.iter().product();
+        let data: Vec<f32> =
+            (0..n).map(|i| (((i * 13 + seed * 7) % 29) as f32 - 14.0) / 14.0).collect();
+        Tensor::from_shape(shape, &data).unwrap()
+    }
+
+    fn matmul_model(weight_name: &str, axes: &str, w: &Tensor) -> TractResult<TypedModel> {
+        use tract_core::ops::einsum::EinSum;
+        use tract_core::ops::konst::Const;
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([4, 256]))?;
+        let w_out = model.wire_node(weight_name, Const::new(w.clone().into_arc_tensor())?, &[])?[0];
+        let other = model.wire_node(
+            "other.weight",
+            Const::new(fill(w.shape(), 4).into_arc_tensor())?,
+            &[],
+        )?[0];
+        let mm = model.wire_node(
+            "mm",
+            EinSum { axes: axes.parse()?, operating_dt: f32::datum_type(), q_params: None },
+            &[x, w_out],
+        )?;
+        let other_mm = model.wire_node(
+            "other_mm",
+            EinSum { axes: axes.parse()?, operating_dt: f32::datum_type(), q_params: None },
+            &[x, other],
+        )?;
+        let mut outlets = mm;
+        outlets.push(other_mm[0]);
+        model.select_output_outlets(&outlets)?;
+        model.into_decluttered()
+    }
+
+    /// The payload is quantized from a different matrix than the graph constant.
+    fn install_foreign_q6k(
+        axes: &str,
+        graph_shape: &[usize],
+        gguf_dims: &[u64],
+        stored_shape: &[usize],
+    ) -> TractResult<()> {
+        use tract_core::ops::konst::Const;
+        let quant = Q6_K.quant_f32(fill(stored_shape, 9).try_as_plain_ram()?.as_slice::<f32>()?)?;
+        let plain = 1.0f32.to_le_bytes();
+        let file = gguf_file(
+            Some(32),
+            &[
+                Raw {
+                    name: "blk.0.ffn_down.weight",
+                    ggml_type: 14,
+                    dims: gguf_dims,
+                    data: quant.as_bytes(),
+                },
+                Raw {
+                    name: "missing.weight",
+                    ggml_type: 14,
+                    dims: gguf_dims,
+                    data: quant.as_bytes(),
+                },
+                Raw { name: "other.weight", ggml_type: 0, dims: &[1], data: &plain },
+            ],
+        );
+        let graph_w = fill(graph_shape, 2);
+        let mut model = matmul_model("blk.0.ffn_down.weight", axes, &graph_w)?;
+        install_gguf_block_quant(&mut model, &file)?;
+        let bqs: Vec<_> = model.nodes().iter().filter(|n| n.name.ends_with(".bq")).collect();
+        assert_eq!(bqs.len(), 1);
+        assert!(bqs[0].name.contains("blk.0.ffn_down.weight"));
+        let stored = bqs[0].op_as::<Const>().context("bq node is not a constant")?.val();
+        let storage = stored.try_storage_as::<BlockQuantStorage>()?;
+        assert_eq!(storage.value().as_bytes(), quant.as_bytes());
+        assert!(model.nodes().iter().all(|n| !n.name.contains("missing.weight")));
+        let other = model
+            .nodes()
+            .iter()
+            .find(|n| n.name == "other.weight")
+            .context("other.weight was dropped")?;
+        let other_val = other.op_as::<Const>().context("other.weight is not a constant")?.val();
+        assert!(other_val.storage_as::<BlockQuantStorage>().is_none());
+        assert_eq!(other_val.as_bytes(), fill(graph_shape, 4).as_bytes());
+
+        let deq = Q6_K.dequant_f32(quant.as_bytes())?;
+        let nk = Tensor::from_shape(stored_shape, deq.try_as_plain_ram()?.as_slice::<f32>()?)?;
+        let reference_w = if axes.starts_with("mk,kn") { nk.move_axis(1, 0)? } else { nk };
+        let reference = matmul_model("blk.0.ffn_down.weight", axes, &reference_w)?;
+        let x = fill(&[4, 256], 1);
+        let got = model.into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+        let expect = reference.into_runnable()?.run(tvec!(x.into_tvalue()))?;
+        got[0]
+            .clone()
+            .into_tensor()
+            .close_enough(&expect[0].clone().into_tensor(), Approximation::Approximate)?;
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_bytes_replace_k_first_weight() -> TractResult<()> {
+        // Graph weight is [K, N]. GGUF ne[0] is K, so the reader stores [N, K].
+        install_foreign_q6k("mk,kn->mn", &[256, 32], &[256, 32], &[32, 256])
+    }
+
+    #[test]
+    fn gguf_bytes_replace_k_last_weight() -> TractResult<()> {
+        install_foreign_q6k("mk,nk->mn", &[32, 256], &[256, 32], &[32, 256])
+    }
+
+    #[test]
+    fn gguf_shape_mismatch_is_refused() -> TractResult<()> {
+        let quant = Q6_K.quant_f32(fill(&[16, 256], 9).try_as_plain_ram()?.as_slice::<f32>()?)?;
+        let file = gguf_file(
+            Some(32),
+            &[Raw {
+                name: "blk.0.ffn_down.weight",
+                ggml_type: 14,
+                dims: &[256, 16],
+                data: quant.as_bytes(),
+            }],
+        );
+        let mut model = matmul_model("blk.0.ffn_down.weight", "mk,kn->mn", &fill(&[256, 32], 2))?;
+        let err = format!("{:#}", install_gguf_block_quant(&mut model, &file).unwrap_err());
+        assert!(err.contains("blk.0.ffn_down.weight"), "{err}");
+        assert!(err.contains("shape"), "{err}");
+        Ok(())
     }
 }
