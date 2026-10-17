@@ -56,10 +56,10 @@ apex_panels_for!(Q6_K, q6k);
 apex_panels_for!(IQ4_XS, iq4xs);
 apex_panels_for!(IQ2_S, iq2s);
 
-/// Wider panels for the aarch64 f32, f16, and Apple AMX tiles. `r` is that
-/// tile's M, and the alignment is the one the kernel packed its A panel with
-/// (16 for NEON, 128 for AMX). The r=4 extractors above stay for the portable
-/// kernel.
+/// Wider panels for the aarch64 f32 and f16 tiles. `r` is that tile's M, and
+/// the alignment is the one the kernel packed its A panel with (16 for NEON
+/// and SVE, 128 for AMX and SME). The r=4 extractors above stay for the
+/// portable kernel.
 macro_rules! apex_wide {
     ($fmt:expr, $tag:ident, $dt:ty, $dtname:ident, $r:literal, $align:literal) => {
         pastey::paste! {
@@ -93,6 +93,8 @@ macro_rules! apex_host_tiles {
         apex_wide!($fmt, $tag, f32, f32, 32, 16);
         apex_wide!($fmt, $tag, f32, f32, 64, 16);
         apex_wide!($fmt, $tag, f32, f32, 32, 128);
+        apex_wide!($fmt, $tag, f32, f32, 64, 128);
+        apex_wide!($fmt, $tag, f16, f16, 8, 16);
         apex_wide!($fmt, $tag, f16, f16, 16, 16);
         apex_wide!($fmt, $tag, f16, f16, 32, 16);
         apex_wide!($fmt, $tag, f16, f16, 64, 16);
@@ -241,6 +243,35 @@ mod host_tiles {
                 let found =
                     extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
                 assert!(found, "no {from} extractor for align {align}");
+            }
+        }
+    }
+
+    /// SME's f32 matvec is 64 rows at alignment 128. SVE's f16 gemm is 8 rows
+    /// at the default 16-byte packing. Neither pair is in the NEON or AMX list.
+    #[test]
+    fn aarch64_sme_and_sve_tiles_are_registered() {
+        use crate::isa::Arch;
+        use crate::mmm_routines::declared_extractors;
+        use crate::pack::Packing;
+
+        let tiles = [(f32::datum_type(), 64usize, 128usize), (f16::datum_type(), 8, 16)];
+        let formats = ["Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_XS", "IQ2_S"];
+        let extractors: Vec<_> = declared_extractors()
+            .filter(|extractor| extractor.target == Arch::Aarch64)
+            .map(|extractor| (extractor.make)())
+            .collect();
+        for (dt, r, align) in tiles {
+            let want = if dt == f32::datum_type() {
+                f32::packing(r).align(align)
+            } else {
+                f16::packing(r).align(align)
+            };
+            for format in formats {
+                let from = format!("Packed{format}[{r}]");
+                let found =
+                    extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
+                assert!(found, "no {from} extractor for {dt:?} align {align}");
             }
         }
     }
