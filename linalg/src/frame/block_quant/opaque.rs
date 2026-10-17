@@ -27,6 +27,9 @@ pub fn pack_opaque(
     let row_bytes = blocks_for_k * bq.block_bytes();
     let panel_bytes = row_bytes * r;
     let mut blob = unsafe { Blob::for_layout(Layout::from_size_align(panel_bytes * panels, 128)?) };
+    // A wider kernel panel than the matrix leaves unused rows. Those rows are
+    // read, so they have to be quantized zeros rather than an uninitialized tail.
+    blob.as_bytes_mut().fill(0);
     for p in 0..panels {
         for row in 0..r {
             let src_row = p * r + row;
