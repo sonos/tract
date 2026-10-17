@@ -73,7 +73,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::konst::Const;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q8_0,
+        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q6_K, Q8_0,
     };
     use tract_core::transform::ModelTransform;
     use tract_gpu::fact::DeviceTypedFactExt;
@@ -123,11 +123,10 @@ mod tests {
         model.nodes().iter().map(|n| n.op().name().to_string()).collect()
     }
 
-    #[test]
-    fn q8_0_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+    fn assert_apex_matmul(format: &dyn BlockQuant, n: usize, k: usize) -> TractResult<()> {
         for dt in [DatumType::F32, DatumType::F16] {
-            let model = matmul(dt, quant_weight(&Q8_0, &[32, 256], dt)?, 4, 256)?;
-            let input = activation(4, 256, dt)?;
+            let model = matmul(dt, quant_weight(format, &[n, k], dt)?, 4, k)?;
+            let input = activation(4, k, dt)?;
             let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
 
             let metal_model = MetalTransform::default().transform_into(model)?;
@@ -137,7 +136,7 @@ mod tests {
                 .nodes()
                 .iter()
                 .find(|n| n.op().name().to_string().contains("Gemm"))
-                .context("Q8_0 matmul did not reach a Metal gemm")?;
+                .context(format!("{format} matmul did not reach a Metal gemm"))?;
             for fact in metal_model.node_input_facts(gemm.id)? {
                 assert!(fact.to_device_fact()?.is_plain(), "gemm input stayed quantized: {fact:?}");
             }
@@ -151,6 +150,16 @@ mod tests {
             cpu[0].clone().into_tensor().close_enough(&metal[0].clone().into_tensor(), approx)?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn q8_0_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(&Q8_0, 32, 256)
+    }
+
+    #[test]
+    fn q6_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(&Q6_K, 32, 256)
     }
 
     #[test]
