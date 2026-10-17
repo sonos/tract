@@ -73,7 +73,8 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::konst::Const;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+        BlockQuant, BlockQuantFact, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K,
+        Q8_0,
     };
     use tract_core::transform::ModelTransform;
     use tract_gpu::fact::DeviceTypedFactExt;
@@ -170,6 +171,50 @@ mod tests {
     #[test]
     fn q4_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
         assert_apex_matmul(&Q4_K, 32, 256)
+    }
+
+    fn assert_host_expanded_matmul(format: &dyn BlockQuant, n: usize, k: usize) -> TractResult<()> {
+        for dt in [DatumType::F32, DatumType::F16] {
+            let model = matmul(dt, quant_weight(format, &[n, k], dt)?, 4, k)?;
+            let input = activation(4, k, dt)?;
+            let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+
+            let metal_model = MetalTransform::default().transform_into(model)?;
+            let names = op_names(&metal_model);
+            assert!(names.iter().all(|n| n != "MetalBlockDequant"), "{names:?}");
+            let gemm = metal_model
+                .nodes()
+                .iter()
+                .find(|n| n.op().name().to_string().contains("Gemm"))
+                .context(format!("{format} constant did not reach a Metal gemm"))?;
+            for fact in metal_model.node_input_facts(gemm.id)? {
+                assert!(fact.to_device_fact()?.is_plain(), "gemm input stayed quantized: {fact:?}");
+            }
+            let metal = metal_model.into_runnable()?.run(tvec![input.into_tvalue()])?;
+            // The f16 Metal gemm accumulates in f16. Match that test's tolerance.
+            let approx = if dt == DatumType::F16 {
+                Approximation::VeryApproximate
+            } else {
+                Approximation::Approximate
+            };
+            cpu[0].clone().into_tensor().close_enough(&metal[0].clone().into_tensor(), approx)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn q3_k_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&Q3_K, 32, 256)
+    }
+
+    #[test]
+    fn iq4_xs_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&IQ4_XS, 32, 256)
+    }
+
+    #[test]
+    fn iq2_s_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&IQ2_S, 32, 256)
     }
 
     #[test]
