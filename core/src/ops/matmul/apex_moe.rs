@@ -355,6 +355,100 @@ mod test {
         got.close_enough(&reference, Approximation::Approximate)
     }
 
+    /// f16 constant block-quant matmul, including a decode-shaped `m = 1`.
+    /// An arch tile keeps the panel extractor on the packed weight.
+    #[test]
+    fn f16_const_block_quant_matches_dequant() -> TractResult<()> {
+        use crate::ops::matmul::optimized::{OptMatMul, ProtoFusedSpec};
+
+        fn as_f16(tensor: Tensor) -> Tensor {
+            tensor.cast_to::<f16>().unwrap().into_owned()
+        }
+
+        fn run(weight_name: &str, expect: &str, m: usize) -> TractResult<()> {
+            let k = 256usize;
+            let n = 64usize;
+            let x = as_f16(fill(&[m, k], 1));
+            let w = as_f16(fill(&[k, n], 2));
+
+            let eval = |weight: &Tensor| -> TractResult<Tensor> {
+                let mut model = TypedModel::default();
+                let x_in = model.add_source("x", f16::fact([m, k]))?;
+                let w_in = model.wire_node(
+                    weight_name,
+                    Const::new(weight.clone().into_arc_tensor())?,
+                    &[],
+                )?[0];
+                let out = model.wire_node(
+                    "mm",
+                    EinSum {
+                        axes: "mk,kn->mn".parse()?,
+                        operating_dt: f16::datum_type(),
+                        q_params: None,
+                    },
+                    &[x_in, w_in],
+                )?;
+                model.select_output_outlets(&out)?;
+                let model = model.into_decluttered()?;
+                let out = model.into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+                Ok(out[0].clone().into_tensor())
+            };
+
+            let mut quant = {
+                let mut model = TypedModel::default();
+                let x_in = model.add_source("x", f16::fact([m, k]))?;
+                let w_in =
+                    model.wire_node(weight_name, Const::new(w.clone().into_arc_tensor())?, &[])?[0];
+                let out = model.wire_node(
+                    "mm",
+                    EinSum {
+                        axes: "mk,kn->mn".parse()?,
+                        operating_dt: f16::datum_type(),
+                        q_params: None,
+                    },
+                    &[x_in, w_in],
+                )?;
+                model.select_output_outlets(&out)?;
+                model.into_decluttered()?
+            };
+            ApexMoeTransform { profile: ApexProfile::DenseHybrid, layers: 22 }
+                .transform(&mut quant)?;
+            let bq = quant.nodes().iter().find(|node| node.name.ends_with(".bq")).context("bq")?;
+            let format = quant
+                .outlet_fact(bq.id.into())?
+                .exotic_fact()
+                .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                .context("bq fact")?
+                .format
+                .clone();
+            ensure!(format.to_string() == expect, "{} quantized as {format}", bq.name);
+            let w_deq = format.simulate_precision_loss(w.move_axis(0, 1)?, 1)?.move_axis(1, 0)?;
+            let reference = eval(&w_deq)?;
+
+            quant.optimize()?;
+            let mm = quant
+                .nodes()
+                .iter()
+                .find_map(|node| node.op_as::<OptMatMul>())
+                .context("OptMatMul")?;
+            let kernel = mm.mmm[0].name().to_string();
+            if !kernel.starts_with("generic") {
+                let extracted = mm.micro_ops.iter().any(|op| {
+                    matches!(op, ProtoFusedSpec::AddMatMul { packings, .. } if packings.iter().any(|p| p.1.is_some()))
+                });
+                ensure!(extracted, "{weight_name} selected {kernel} without a panel extractor");
+            }
+            let got = quant.into_runnable()?.run(tvec!(x.into_tvalue()))?[0].clone().into_tensor();
+            got.close_enough(&reference, Approximation::Approximate)
+                .with_context(|| format!("{weight_name} m={m} kernel={kernel}"))
+        }
+
+        run("model.layers.0.self_attn.q_proj.weight", "Q8_0", 1)?;
+        run("model.layers.0.self_attn.q_proj.weight", "Q8_0", 8)?;
+        run("model.layers.0.mlp.gate_proj.weight", "Q5_K", 1)?;
+        Ok(())
+    }
+
     #[test]
     fn q4k_linear_attn_matches_dequant() -> TractResult<()> {
         use tract_linalg::block_quant::{BlockQuant, Q4_K};
