@@ -209,6 +209,46 @@ apex_riscv_tiles!(Q6_K, q6k);
 apex_riscv_tiles!(IQ4_XS, iq4xs);
 apex_riscv_tiles!(IQ2_S, iq2s);
 
+/// Wider panels for the arm f32 tiles. `r` is that tile's M, and the
+/// alignment is the one the kernel packed its A panel with (4 for VFP, 16
+/// for NEON). There is no arm f16 matmul tile. The r=4 extractor above uses
+/// the host vector alignment, which is not the VFP kernel's 4.
+macro_rules! apex_arm_wide {
+    ($fmt:expr, $tag:ident, $r:literal, $align:literal) => {
+        pastey::paste! {
+            unsafe fn [<$tag _arm_f32_r $r _a $align>](
+                input: *const u8,
+                output: *mut u8,
+                k: usize,
+            ) {
+                unsafe {
+                    panel_f32(&$fmt, $r, input, output, k);
+                }
+            }
+            panel_extractor!(arm; [<$tag _arm_f32_r $r _a $align>] as [<$tag _arm_r $r _f32_a $align>](
+                Box::new(PackedBlockQuantFormat::new(&$fmt, $r, 0, false)),
+                f32::packing($r).align($align)
+            ));
+        }
+    };
+}
+
+macro_rules! apex_arm_tiles {
+    ($fmt:expr, $tag:ident) => {
+        apex_arm_wide!($fmt, $tag, 4, 4);
+        apex_arm_wide!($fmt, $tag, 8, 16);
+        apex_arm_wide!($fmt, $tag, 32, 16);
+    };
+}
+
+apex_arm_tiles!(Q8_0, q80);
+apex_arm_tiles!(Q3_K, q3k);
+apex_arm_tiles!(Q4_K, q4k);
+apex_arm_tiles!(Q5_K, q5k);
+apex_arm_tiles!(Q6_K, q6k);
+apex_arm_tiles!(IQ4_XS, iq4xs);
+apex_arm_tiles!(IQ2_S, iq2s);
+
 #[cfg(test)]
 mod host_tiles {
     use crate::frame::block_quant::{BlockQuant, Q8_0};
@@ -268,6 +308,18 @@ mod host_tiles {
         }
     }
 
+    #[test]
+    fn arm_f32_q8_0_leaves_the_portable_kernel() {
+        let names = kept(&Q8_0, f32::datum_type(), 1);
+        assert!(!names.is_empty(), "no kernel for Q8_0");
+        if cfg!(target_arch = "arm") {
+            assert!(
+                names.iter().all(|name| !name.starts_with("generic_")),
+                "portable kernel still selected: {names:?}"
+            );
+        }
+    }
+
     /// Each AVX, AVX-512, and AMX panel width is registered for every APEX block.
     /// The match is the packing the kernel stores, so it can be checked on any host.
     #[test]
@@ -294,6 +346,32 @@ mod host_tiles {
         let formats = ["Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_XS", "IQ2_S"];
         let extractors: Vec<_> = declared_extractors()
             .filter(|extractor| extractor.target == Arch::X86_64)
+            .map(|extractor| (extractor.make)())
+            .collect();
+        for &(r, align) in &tiles {
+            let want = f32::packing(r).align(align);
+            for format in formats {
+                let from = format!("Packed{format}[{r}]");
+                let found =
+                    extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
+                assert!(found, "no {from} extractor for align {align}");
+            }
+        }
+    }
+
+    /// VFP packs a 4-row panel at alignment 4. NEON packs 8- and 32-row panels
+    /// at alignment 16. The r=4 extractor uses the host vector alignment, so
+    /// it does not reach the VFP kernel.
+    #[test]
+    fn arm_f32_tiles_are_registered() {
+        use crate::isa::Arch;
+        use crate::mmm_routines::declared_extractors;
+        use crate::pack::Packing;
+
+        let tiles = [(4usize, 4usize), (8, 16), (32, 16)];
+        let formats = ["Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_XS", "IQ2_S"];
+        let extractors: Vec<_> = declared_extractors()
+            .filter(|extractor| extractor.target == Arch::Arm)
             .map(|extractor| (extractor.make)())
             .collect();
         for &(r, align) in &tiles {
