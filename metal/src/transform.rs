@@ -431,11 +431,47 @@ pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuC
     )
 }
 
+fn plain_float(fact: &TypedFact) -> bool {
+    fact.is_plain() && matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
+}
+
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
-    MlxGemm.is_supported_dts(in_facts)
+    let gemm_ok = MlxGemm.is_supported_dts(in_facts)
         || MfaGemm.is_supported_dts(in_facts)
         || GgmlGemm.is_supported_dts(in_facts)
-        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
+        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]);
+    if gemm_ok {
+        return true;
+    }
+    // Q8_0 (and later APEX formats) are dequantized in convert_matmul_to_metal.
+    // Leave them out of GgmlGemm::is_supported_dts so the fused kernel never sees them.
+    (kernels::block_dequant::apex_block(&in_facts[0]).is_some() && plain_float(&in_facts[1]))
+        || (kernels::block_dequant::apex_block(&in_facts[1]).is_some() && plain_float(&in_facts[0]))
+}
+
+fn install_apex_dequant(
+    node_name: &str,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for i in 0..2 {
+        let Some(format) = kernels::block_dequant::apex_block(&owned_facts[i]) else {
+            continue;
+        };
+        let dt = owned_facts[i].datum_type;
+        ensure!(
+            matches!(dt, DatumType::F16 | DatumType::F32),
+            "APEX dequant writes f16 or f32, got {dt:?}"
+        );
+        inputs[i] = target.wire_node(
+            format!("{node_name}.dequant_{i}"),
+            ops::dequant::MetalBlockDequant { format },
+            &[inputs[i]],
+        )?[0];
+        owned_facts[i] = dt.fact(owned_facts[i].shape.clone());
+    }
+    Ok(())
 }
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
@@ -486,6 +522,10 @@ fn convert_matmul_to_metal(
 ) -> TractResult<TVec<OutletId>> {
     let mut owned_facts: TVec<TypedFact> =
         model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+
+    // Expand APEX blocks before the cast and the gemm choice. The gemm then sees plain
+    // floats. Q4_0 is not expanded: the fused kernel still owns that format.
+    install_apex_dequant(&node.name, target, inputs, &mut owned_facts)?;
 
     // The metal GEMMs accumulate in their input dtype, so a matmul asking for a wider
     // `operating_dt` than its inputs must have them cast up: an SDPA scores matmul is
