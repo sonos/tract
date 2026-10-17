@@ -151,3 +151,51 @@ dequant_q5_k<half>(device const uchar *quant [[buffer(0)]],
                    device half *out [[buffer(1)]],
                    constant uint &n_blocks [[buffer(2)]],
                    uint tid [[thread_position_in_grid]]);
+
+// ggml dequant_q4_k. Nibbles only, no high bit. 144 bytes, 256 values.
+template <typename T>
+[[kernel]] void dequant_q4_k(device const uchar *quant [[buffer(0)]],
+                             device T *out [[buffer(1)]],
+                             constant uint &n_blocks [[buffer(2)]],
+                             uint tid [[thread_position_in_grid]]) {
+    if (tid >= n_blocks) {
+        return;
+    }
+    device const uchar *q = quant + tid * 144u;
+    float d = load_f16_le(q);
+    float mn = load_f16_le(q + 2);
+    device const uchar *scales = q + 4;
+    uint qs = 16u;
+    uint y = 0u;
+    device T *dst = out + tid * 256u;
+    for (uint is = 0u; is < 8u; is += 2u) {
+        uint sc, m;
+        scale_min_k4(scales, is, sc, m);
+        float d1 = d * float(sc);
+        float m1 = mn * float(m);
+        scale_min_k4(scales, is + 1u, sc, m);
+        float d2 = d * float(sc);
+        float m2 = mn * float(m);
+        for (uint l = 0u; l < 32u; ++l) {
+            dst[y] = static_cast<T>(d1 * float(q[qs + l] & 0xFu) - m1);
+            y += 1u;
+        }
+        for (uint l = 0u; l < 32u; ++l) {
+            dst[y] = static_cast<T>(d2 * float(q[qs + l] >> 4) - m2);
+            y += 1u;
+        }
+        qs += 32u;
+    }
+}
+
+template [[host_name("block_dequant::q4_k_f32")]] [[kernel]] void
+dequant_q4_k<float>(device const uchar *quant [[buffer(0)]],
+                    device float *out [[buffer(1)]],
+                    constant uint &n_blocks [[buffer(2)]],
+                    uint tid [[thread_position_in_grid]]);
+
+template [[host_name("block_dequant::q4_k_f16")]] [[kernel]] void
+dequant_q4_k<half>(device const uchar *quant [[buffer(0)]],
+                   device half *out [[buffer(1)]],
+                   constant uint &n_blocks [[buffer(2)]],
+                   uint tid [[thread_position_in_grid]]);
