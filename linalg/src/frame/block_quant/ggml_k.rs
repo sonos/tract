@@ -1,6 +1,10 @@
-//! Scalar ggml K-quant, Q8_0, and IQ4_XS blocks, laid out like llama.cpp.
+//! Scalar ggml K-quant, Q8_0, IQ4_XS, and IQ2_S blocks, laid out like llama.cpp.
 //! The quantizers follow `quantize_row_*_ref` (no importance matrix).
 use super::*;
+
+#[path = "iq2_s.rs"]
+mod iq2_s;
+pub use iq2_s::IQ2_S;
 
 const QK_K: usize = 256;
 const GROUP_MAX_EPS: f32 = 1e-15;
@@ -925,6 +929,7 @@ impl_kquant!(Q4KF, "Q4_K", 256, 144, quant_q4_k, dequant_q4_k);
 impl_kquant!(Q5KF, "Q5_K", 256, 176, quant_q5_k, dequant_q5_k);
 impl_kquant!(Q6KF, "Q6_K", 256, 210, quant_q6_k, dequant_q6_k);
 impl_kquant!(IQ4XSF, "IQ4_XS", 256, 136, quant_iq4_xs, dequant_iq4_xs);
+impl_kquant!(iq2_s::IQ2SF, "IQ2_S", 256, 82, iq2_s::quant_iq2_s, iq2_s::dequant_iq2_s);
 
 #[cfg(test)]
 mod tests {

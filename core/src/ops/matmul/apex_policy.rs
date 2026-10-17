@@ -24,7 +24,13 @@
 //! `quality` (and `i-quality`, same types) keeps the balanced assignment except
 //! for middle routed experts, which are IQ4_XS. Shared experts stay Q8_0 and
 //! attention stays Q6_K. Tensors the recipe does not name stay Q6_K.
-use tract_linalg::block_quant::{BlockQuant, IQ4_XS, Q3_K, Q4_K, Q5_K, Q6_K, Q8_0};
+//!
+//! `mini` is the next smaller MoE tier. Routed experts are Q3_K on the edge
+//! and near bands and IQ2_S in the middle. Shared experts are Q5_K on the
+//! edge and Q4_K on the near and middle bands. Attention is Q4_K on its
+//! tighter edge and Q3_K elsewhere. There is no `i-mini` profile. Tensors the
+//! recipe does not name stay Q6_K.
+use tract_linalg::block_quant::{BlockQuant, IQ2_S, IQ4_XS, Q3_K, Q4_K, Q5_K, Q6_K, Q8_0};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApexProfile {
@@ -32,6 +38,7 @@ pub enum ApexProfile {
     DenseHybridQuality,
     Compact,
     Quality,
+    Mini,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -59,6 +66,7 @@ pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQ
         ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
         ApexProfile::Compact => compact(layers, name),
         ApexProfile::Quality => quality(layers, name),
+        ApexProfile::Mini => mini(layers, name),
     };
     dyn_clone::clone_box(format)
 }
@@ -121,6 +129,26 @@ fn quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
             Some(Band::Mid) => &IQ4_XS,
         },
         Role::Attention | Role::Other => &Q6_K,
+    }
+}
+
+fn mini(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let role = role(name);
+    let placed = layer_index(name).map(|layer| band(role, layer, layers));
+    match role {
+        Role::Shared => match placed {
+            Some(Band::Edge) | None => &Q5_K,
+            Some(Band::Near) | Some(Band::Mid) => &Q4_K,
+        },
+        Role::Routed => match placed {
+            Some(Band::Edge) | Some(Band::Near) | None => &Q3_K,
+            Some(Band::Mid) => &IQ2_S,
+        },
+        Role::Attention => match placed {
+            Some(Band::Edge) | None => &Q4_K,
+            Some(Band::Near) | Some(Band::Mid) => &Q3_K,
+        },
+        Role::Other => &Q6_K,
     }
 }
 
@@ -355,5 +383,50 @@ mod tests {
         assert_eq!(quality_kind("token_embd.weight"), "Q6_K");
         assert_eq!(quality_kind("output.weight"), "Q6_K");
         assert_eq!(quality_kind("lm_head.weight"), "Q6_K");
+    }
+
+    fn mini_kind(name: &str) -> String {
+        assign(ApexProfile::Mini, 40, name).to_string()
+    }
+
+    #[test]
+    fn mini_bands() {
+        assert_eq!(mini_kind("blk.0.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.4.ffn_down_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.5.ffn_up_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.9.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.10.ffn_down_exps.weight"), "IQ2_S");
+        assert_eq!(mini_kind("blk.20.ffn_gate_exps.weight"), "IQ2_S");
+        assert_eq!(mini_kind("blk.29.ffn_up_exps.weight"), "IQ2_S");
+        assert_eq!(mini_kind("blk.30.ffn_down_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.34.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.35.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(mini_kind("model.layers.0.mlp.experts.3.gate_proj.weight"), "Q3_K");
+        assert_eq!(mini_kind("model.layers.20.mlp.experts.1.down_proj.weight"), "IQ2_S");
+        assert_eq!(mini_kind("blk.0.ffn_gate_shexp.weight"), "Q5_K");
+        assert_eq!(mini_kind("blk.4.ffn_down_shexp.weight"), "Q5_K");
+        assert_eq!(mini_kind("blk.5.ffn_up_shexp.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.20.ffn_down_shexp.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.34.ffn_gate_shexp.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.35.ffn_gate_shexp.weight"), "Q5_K");
+        assert_eq!(mini_kind("ffn_gate_shexp.weight"), "Q5_K");
+        assert_eq!(mini_kind("model.layers.20.mlp.shared_expert.up_proj.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.0.attn_q.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.2.attn_output.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.3.attn_q.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.20.attn_output.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.20.attn_qkv.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.36.attn_q.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.37.attn_q.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.39.attn_output.weight"), "Q4_K");
+        assert_eq!(mini_kind("model.layers.10.self_attn.o_proj.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.12.ssm_out.weight"), "Q3_K");
+        assert_eq!(mini_kind("blk.2.shortconv.in_proj.weight"), "Q4_K");
+        assert_eq!(mini_kind("attn_q.weight"), "Q4_K");
+        assert_eq!(mini_kind("blk.20.ffn_gate_inp.weight"), "Q6_K");
+        assert_eq!(mini_kind("token_embd.weight"), "Q6_K");
+        assert_eq!(mini_kind("output.weight"), "Q6_K");
+        assert_eq!(mini_kind("lm_head.weight"), "Q6_K");
     }
 }
