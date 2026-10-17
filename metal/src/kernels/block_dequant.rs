@@ -2,7 +2,7 @@ use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q6_K, Q8_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q5_K, Q6_K, Q8_0};
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::get_quant_fact;
 
@@ -13,6 +13,7 @@ use tract_gpu::utils::get_quant_fact;
 pub enum ApexBlock {
     Q8_0,
     Q6_K,
+    Q5_K,
 }
 
 impl ApexBlock {
@@ -20,6 +21,7 @@ impl ApexBlock {
         match self {
             ApexBlock::Q8_0 => &Q8_0,
             ApexBlock::Q6_K => &Q6_K,
+            ApexBlock::Q5_K => &Q5_K,
         }
     }
 
@@ -29,6 +31,8 @@ impl ApexBlock {
             (ApexBlock::Q8_0, DatumType::F16) => Ok("block_dequant::q8_0_f16"),
             (ApexBlock::Q6_K, DatumType::F32) => Ok("block_dequant::q6_k_f32"),
             (ApexBlock::Q6_K, DatumType::F16) => Ok("block_dequant::q6_k_f16"),
+            (ApexBlock::Q5_K, DatumType::F32) => Ok("block_dequant::q5_k_f32"),
+            (ApexBlock::Q5_K, DatumType::F16) => Ok("block_dequant::q5_k_f16"),
             _ => bail!("APEX dequant {self:?} does not write {dt:?}"),
         }
     }
@@ -41,6 +45,8 @@ pub fn apex_block(fact: &TypedFact) -> Option<ApexBlock> {
         Some(ApexBlock::Q8_0)
     } else if bqf.format.dyn_eq(&Q6_K) {
         Some(ApexBlock::Q6_K)
+    } else if bqf.format.dyn_eq(&Q5_K) {
+        Some(ApexBlock::Q5_K)
     } else {
         None
     }
@@ -148,6 +154,15 @@ mod tests {
         for shape in [[1usize, 256], [3, 256], [4, 512]] {
             assert_dequant(ApexBlock::Q6_K, &shape, DatumType::F32)?;
             assert_dequant(ApexBlock::Q6_K, &shape, DatumType::F16)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn q5_k_matches_cpu_dequant() -> TractResult<()> {
+        for shape in [[1usize, 256], [3, 256], [4, 512]] {
+            assert_dequant(ApexBlock::Q5_K, &shape, DatumType::F32)?;
+            assert_dequant(ApexBlock::Q5_K, &shape, DatumType::F16)?;
         }
         Ok(())
     }

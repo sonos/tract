@@ -73,7 +73,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::konst::Const;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q6_K, Q8_0,
+        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q5_K, Q6_K, Q8_0,
     };
     use tract_core::transform::ModelTransform;
     use tract_gpu::fact::DeviceTypedFactExt;
@@ -160,6 +160,11 @@ mod tests {
     #[test]
     fn q6_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
         assert_apex_matmul(&Q6_K, 32, 256)
+    }
+
+    #[test]
+    fn q5_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(&Q5_K, 32, 256)
     }
 
     #[test]
