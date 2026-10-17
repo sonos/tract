@@ -3,7 +3,9 @@ use std::io::{Read, Write};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0};
+use tract_linalg::block_quant::{
+    BlockQuant, BlockQuantStorage, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 
@@ -284,6 +286,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
         0x2040 | 0x3040 => Box::new(Q4_0),
         0x3080 => Box::new(Q8_1),
         0x3808 => Box::new(Q8_0),
+        0x3C03 => Box::new(Q3_K),
         0x3C04 => Box::new(Q4_K),
         0x3C05 => Box::new(Q5_K),
         0x3C06 => Box::new(Q6_K),
@@ -321,6 +324,7 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
         format.dyn_eq(&Q4_0)
             || format.dyn_eq(&Q8_1)
             || format.dyn_eq(&Q8_0)
+            || format.dyn_eq(&Q3_K)
             || format.dyn_eq(&Q4_K)
             || format.dyn_eq(&Q5_K)
             || format.dyn_eq(&Q6_K),
@@ -344,6 +348,8 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
         0x3081
     } else if format.dyn_eq(&Q8_0) {
         0x3808
+    } else if format.dyn_eq(&Q3_K) {
+        0x3C03
     } else if format.dyn_eq(&Q4_K) {
         0x3C04
     } else if format.dyn_eq(&Q5_K) {

@@ -6,12 +6,15 @@ const QK_K: usize = 256;
 const GROUP_MAX_EPS: f32 = 1e-15;
 
 pub const Q8_0: Q8_0F = Q8_0F;
+pub const Q3_K: Q3KF = Q3KF;
 pub const Q4_K: Q4KF = Q4KF;
 pub const Q5_K: Q5KF = Q5KF;
 pub const Q6_K: Q6KF = Q6KF;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Q8_0F;
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Q3KF;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Q4KF;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -537,6 +540,155 @@ fn dequant_q6_k(quant: &[u8], block: &mut [f32]) {
     }
 }
 
+/// `make_q3_quants` with `do_rmse`: levels land in `0..=7` (`nmax` is 4).
+fn make_q3_quants(x: &[f32], l_out: &mut [i8]) -> f32 {
+    let n = x.len();
+    let nmax = 4i32;
+    let mut max = 0.0f32;
+    let mut amax = 0.0f32;
+    for &xi in x.iter().take(n) {
+        let ax = xi.abs();
+        if ax > amax {
+            amax = ax;
+            max = xi;
+        }
+    }
+    if amax < GROUP_MAX_EPS {
+        l_out[..n].fill(0);
+        return 0.0;
+    }
+    let iscale = -(nmax as f32) / max;
+    let mut sumlx = 0.0f32;
+    let mut suml2 = 0.0f32;
+    for i in 0..n {
+        let l = nearest_int(iscale * x[i]).clamp(-nmax, nmax - 1);
+        l_out[i] = l as i8;
+        let w = x[i] * x[i];
+        sumlx += w * x[i] * l as f32;
+        suml2 += w * l as f32 * l as f32;
+    }
+    for _ in 0..5 {
+        let mut n_changed = 0i32;
+        for i in 0..n {
+            let w = x[i] * x[i];
+            let mut slx = sumlx - w * x[i] * l_out[i] as f32;
+            if slx > 0.0 {
+                let mut sl2 = suml2 - w * l_out[i] as f32 * l_out[i] as f32;
+                let new_l = nearest_int(x[i] * sl2 / slx).clamp(-nmax, nmax - 1);
+                if new_l != l_out[i] as i32 {
+                    slx += w * x[i] * new_l as f32;
+                    sl2 += w * new_l as f32 * new_l as f32;
+                    if sl2 > 0.0 && slx * slx * suml2 > sumlx * sumlx * sl2 {
+                        l_out[i] = new_l as i8;
+                        sumlx = slx;
+                        suml2 = sl2;
+                        n_changed += 1;
+                    }
+                }
+            }
+        }
+        if n_changed == 0 {
+            break;
+        }
+    }
+    for level in l_out.iter_mut().take(n) {
+        *level += nmax as i8;
+    }
+    if suml2 > 0.0 { sumlx / suml2 } else { 0.0 }
+}
+
+/// 6-bit group scale packed the way `quantize_row_q3_K_ref` writes `scales[12]`.
+fn q3_group_scale(scales: &[u8], group: usize) -> i32 {
+    let lo = if group < 8 { scales[group] & 0xF } else { scales[group - 8] >> 4 };
+    let hi = (scales[8 + group % 4] >> (2 * (group / 4))) & 3;
+    i32::from(lo | (hi << 4)) - 32
+}
+
+fn quant_q3_k(x: &[f32], quant: &mut [u8]) {
+    let mut levels = [0i8; QK_K];
+    let mut scales_f = [0.0f32; 16];
+    let mut max_scale = 0.0f32;
+    let mut amax = 0.0f32;
+    for j in 0..16 {
+        scales_f[j] = make_q3_quants(&x[16 * j..16 * j + 16], &mut levels[16 * j..16 * j + 16]);
+        let scale = scales_f[j].abs();
+        if scale > amax {
+            amax = scale;
+            max_scale = scales_f[j];
+        }
+    }
+    quant.fill(0);
+    if max_scale != 0.0 {
+        let iscale = -32.0 / max_scale;
+        for j in 0..16 {
+            let mut level = nearest_int(iscale * scales_f[j]).clamp(-32, 31) + 32;
+            if j < 8 {
+                quant[96 + j] = (level as u8) & 0xF;
+            } else {
+                quant[96 + j - 8] |= ((level as u8) & 0xF) << 4;
+            }
+            level >>= 4;
+            let shift = (2 * (j / 4)) as u32;
+            quant[96 + 8 + (j % 4)] |= (level as u8) << shift;
+        }
+        store_f16(&mut quant[108..110], 1.0 / iscale);
+    }
+    let d_all = load_f16(&quant[108..110]);
+    for j in 0..16 {
+        let d = d_all * q3_group_scale(&quant[96..108], j) as f32;
+        if d == 0.0 {
+            continue;
+        }
+        for ii in 0..16 {
+            let level = nearest_int(x[16 * j + ii] / d).clamp(-4, 3);
+            levels[16 * j + ii] = (level + 4) as i8;
+        }
+    }
+    // High bit of element i is hmask[i % 32] bit (i / 32). qs keeps the low two bits.
+    let mut m = 0usize;
+    let mut hm = 1u8;
+    for level in &mut levels {
+        if *level > 3 {
+            quant[m] |= hm;
+            *level -= 4;
+        }
+        m += 1;
+        if m == 32 {
+            m = 0;
+            hm <<= 1;
+        }
+    }
+    for half in [0usize, 128] {
+        for lane in 0..32 {
+            quant[32 + half / 4 + lane] = levels[half + lane] as u8
+                | ((levels[half + lane + 32] as u8) << 2)
+                | ((levels[half + lane + 64] as u8) << 4)
+                | ((levels[half + lane + 96] as u8) << 6);
+        }
+    }
+}
+
+fn dequant_q3_k(quant: &[u8], block: &mut [f32]) {
+    let d_all = load_f16(&quant[108..110]);
+    let hmask = &quant[..32];
+    let qs = &quant[32..96];
+    let scales = &quant[96..108];
+    for (idx, out) in block.iter_mut().enumerate() {
+        let half = idx / 128;
+        let within = idx % 128;
+        let group_in_half = within / 16;
+        let pair = group_in_half / 2;
+        let lane = (within % 16) + (group_in_half % 2) * 16;
+        let shift = (pair * 2) as u32;
+        let hbit = (pair + half * 4) as u32;
+        let low = (qs[half * 32 + lane] >> shift) & 3;
+        let high = (hmask[lane] >> hbit) & 1;
+        let qv = i32::from(low) - if high == 1 { 0 } else { 4 };
+        let scale = q3_group_scale(scales, idx / 16);
+        *out = d_all * scale as f32 * qv as f32;
+    }
+}
+
 fn quant_f16_via_f32(block: &[f16], quant: &mut [u8], quant_f32: impl FnOnce(&[f32], &mut [u8])) {
     let tmp: Vec<f32> = block.iter().copied().map(|v| v.to_f32()).collect();
     quant_f32(&tmp, quant);
@@ -634,6 +786,7 @@ macro_rules! impl_kquant {
 }
 
 impl_kquant!(Q8_0F, "Q8_0", 32, 34, quant_q8_0, dequant_q8_0);
+impl_kquant!(Q3KF, "Q3_K", 256, 110, quant_q3_k, dequant_q3_k);
 impl_kquant!(Q4KF, "Q4_K", 256, 144, quant_q4_k, dequant_q4_k);
 impl_kquant!(Q5KF, "Q5_K", 256, 176, quant_q5_k, dequant_q5_k);
 impl_kquant!(Q6KF, "Q6_K", 256, 210, quant_q6_k, dequant_q6_k);
@@ -661,6 +814,64 @@ mod tests {
     #[test]
     fn q8_0_roundtrip() {
         roundtrip(&Q8_0, 64);
+    }
+
+    #[test]
+    fn q3_k_roundtrip() {
+        let fmt: &dyn BlockQuant = &Q3_K;
+        let data: Vec<f32> = (0..256).map(|i| (((i * 17 + 3) % 41) as f32 - 20.0) / 10.0).collect();
+        let q = fmt.quant_f32(&data).unwrap();
+        let back = fmt.dequant_f32(&q).unwrap();
+        let got = back.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap();
+        let err = data.iter().zip(got).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+        // ggml's own error on this ramp is about 0.42. A dropped scale or hmask is far larger.
+        assert!(err < 0.5, "{fmt} max abs err {err}");
+        let zeros = vec![0.0f32; fmt.block_len()];
+        let qz = fmt.quant_f32(&zeros).unwrap();
+        let bz = fmt.dequant_f32(&qz).unwrap();
+        assert!(
+            bz.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap().iter().all(|v| *v == 0.0),
+            "{fmt} zero block"
+        );
+    }
+
+    /// Bytes from llama.cpp `quantize_row_q3_K_ref` / `dequantize_row_q3_K` (no imatrix).
+    #[test]
+    fn q3_k_matches_ggml_ref() {
+        let pat: Vec<f32> = (0..256).map(|i| (((i * 17 + 3) % 41) as f32 - 20.0) / 10.0).collect();
+        let hole: Vec<f32> =
+            pat.iter().enumerate().map(|(i, v)| if i < 16 { 0.0 } else { *v }).collect();
+        let zero = vec![0.0f32; 256];
+        assert_q3_bytes(
+            &pat,
+            "758b64df28f58a749f20df8a759b60dffc2b55ae11fe23d4ab51fe03fcab55ee5f8885f5222f5f88b5f6e21f5f88b5f622f7f4889d5e22f7fb885d6222f7f888175788bdfde2275788bdfe22175488fd5e22f5f8885f5222f5f88b5f6ee1f588df2de2ee03efde0033cffc335fa4",
+        );
+        assert_q3_bytes(
+            &hole,
+            "748a64de28f48a749e20de8a749a60defc2b55ae11fe23d4ab51fe03fcab55ee5c8884f4202c5c88b4f4e01c5c88b4f422f7f4889d5e22f7fb885d6222f7f888175788bdfde2275788bdfe22175488fd5e22f5f8885f5222f5f88b5f6ee1f588d02de2ee03efde0032cffc335fa4",
+        );
+        assert_q3_bytes(
+            &zero,
+            "0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        );
+        let mut back = [0.0f32; 256];
+        let mut q = [0u8; 110];
+        Q3_K.quant_block_f32(&pat, &mut q);
+        Q3_K.dequant_block_f32(&q, &mut back);
+        assert_eq!(back[0].to_bits(), 0xbfcb_4180);
+        assert_eq!(back[16].to_bits(), 0x3f7d_8600);
+        assert_eq!(back[255].to_bits(), 0x3f8b_e000);
+        Q3_K.quant_block_f32(&hole, &mut q);
+        Q3_K.dequant_block_f32(&q, &mut back);
+        assert_eq!(back[0].to_bits(), 0);
+        assert_eq!(back[16].to_bits(), 0x3f7d_8600);
+    }
+
+    fn assert_q3_bytes(data: &[f32], expect: &str) {
+        let mut q = [0u8; 110];
+        Q3_K.quant_block_f32(data, &mut q);
+        let got: String = q.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(got, expect);
     }
 
     #[test]

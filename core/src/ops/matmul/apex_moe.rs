@@ -3,7 +3,9 @@
 //! Q6_K on edge layers and Q5_K elsewhere, shared experts Q8_0, and attention
 //! plus every other matmul weight Q6_K. `dense-hybrid-quality` assigns a dense
 //! model's gate, up, and down separately, pins full attention at Q8_0, and
-//! puts linear attention and SSM projections at Q4_K.
+//! puts linear attention and SSM projections at Q4_K. `compact` (and
+//! `i-compact`, same types) assigns routed experts Q4_K on the edge and Q3_K
+//! elsewhere, shared experts Q6_K, and attention Q4_K.
 //!
 //! A weight is left in its original dtype when its contraction axis is not a
 //! multiple of the chosen format's block (32 for Q8_0, 256 for the K-quants).
@@ -47,9 +49,10 @@ impl ApexMoeTransform {
         let profile = match config.profile.as_str() {
             "balanced" | "i-balanced" => ApexProfile::Balanced,
             "dense-hybrid-quality" => ApexProfile::DenseHybridQuality,
+            "compact" | "i-compact" => ApexProfile::Compact,
             other => {
                 bail!(
-                    "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced, dense-hybrid-quality)"
+                    "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced, dense-hybrid-quality, compact, i-compact)"
                 )
             }
         };
@@ -163,6 +166,23 @@ mod test {
             quant_name(ApexProfile::DenseHybridQuality, "token_embd.weight", &[256, 32])?
                 .as_deref(),
             Some("Q5_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Compact, "blk.0.ffn_gate_exps.weight", &[256, 32])?.as_deref(),
+            Some("Q4_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Compact, "blk.20.ffn_up_exps.weight", &[256, 32])?.as_deref(),
+            Some("Q3_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Compact, "blk.20.ffn_gate_shexp.weight", &[256, 32])?
+                .as_deref(),
+            Some("Q6_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::Compact, "blk.20.attn_q.weight", &[256, 32])?.as_deref(),
+            Some("Q4_K")
         );
         Ok(())
     }
@@ -278,6 +298,64 @@ mod test {
         };
         ApexMoeTransform { profile: ApexProfile::DenseHybridQuality, layers: 40 }
             .transform(&mut quant)?;
+        let got = quant.into_runnable()?.run(tvec!(x.into_tvalue()))?[0].clone().into_tensor();
+        got.close_enough(&reference, Approximation::Approximate)
+    }
+
+    #[test]
+    fn q3k_matmul_matches_dequant() -> TractResult<()> {
+        use tract_linalg::block_quant::{BlockQuant, Q3_K};
+        let x_shape = &[4usize, 256];
+        let w_shape = &[256usize, 32];
+        let x = fill(x_shape, 1);
+        let w = fill(w_shape, 2);
+        let w_deq = Q3_K.simulate_precision_loss(w.clone().move_axis(0, 1)?, 1)?.move_axis(1, 0)?;
+
+        let eval = |weight: &Tensor| -> TractResult<Tensor> {
+            let mut model = TypedModel::default();
+            let x_in = model.add_source("x", f32::fact(x_shape))?;
+            let w_in = model.wire_node(
+                "blk.20.ffn_gate_exps.weight",
+                Const::new(weight.clone().into_arc_tensor())?,
+                &[],
+            )?[0];
+            let out = model.wire_node(
+                "mm",
+                EinSum {
+                    axes: "mk,kn->mn".parse()?,
+                    operating_dt: f32::datum_type(),
+                    q_params: None,
+                },
+                &[x_in, w_in],
+            )?;
+            model.select_output_outlets(&out)?;
+            let model = model.into_decluttered()?;
+            let out = model.into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+            Ok(out[0].clone().into_tensor())
+        };
+
+        let reference = eval(&w_deq)?;
+        let mut quant = {
+            let mut model = TypedModel::default();
+            let x_in = model.add_source("x", f32::fact(x_shape))?;
+            let w_in = model.wire_node(
+                "blk.20.ffn_gate_exps.weight",
+                Const::new(w.into_arc_tensor())?,
+                &[],
+            )?[0];
+            let out = model.wire_node(
+                "mm",
+                EinSum {
+                    axes: "mk,kn->mn".parse()?,
+                    operating_dt: f32::datum_type(),
+                    q_params: None,
+                },
+                &[x_in, w_in],
+            )?;
+            model.select_output_outlets(&out)?;
+            model.into_decluttered()?
+        };
+        ApexMoeTransform { profile: ApexProfile::Compact, layers: 40 }.transform(&mut quant)?;
         let got = quant.into_runnable()?.run(tvec!(x.into_tvalue()))?[0].clone().into_tensor();
         got.close_enough(&reference, Approximation::Approximate)
     }

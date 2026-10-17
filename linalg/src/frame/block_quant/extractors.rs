@@ -49,6 +49,7 @@ macro_rules! apex_panels_for {
 }
 
 apex_panels_for!(Q8_0, q80);
+apex_panels_for!(Q3_K, q3k);
 apex_panels_for!(Q4_K, q4k);
 apex_panels_for!(Q5_K, q5k);
 apex_panels_for!(Q6_K, q6k);

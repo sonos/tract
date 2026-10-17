@@ -6,9 +6,8 @@
 //! Attention uses a tighter edge: the first 3 and last 3 layers.
 //!
 //! Balanced (and I-balanced, which differs only in the imatrix this pass does
-//! not consume) is the MoE tier whose types tract can run: routed experts are
-//! Q6_K on the edge and Q5_K elsewhere, shared experts are Q8_0, attention and
-//! every other matmul weight are Q6_K.
+//! not consume) assigns routed experts Q6_K on the edge and Q5_K elsewhere,
+//! shared experts Q8_0, and attention and every other matmul weight Q6_K.
 //!
 //! `dense-hybrid-quality` is the dense/hybrid recipe from the same script.
 //! Full-attention projections are Q8_0 and linear-attention / SSM projections
@@ -16,12 +15,18 @@
 //! Q5_K elsewhere, up is Q6_K until the middle where it becomes Q5_K, and down
 //! is Q8_0 on the edge and Q6_K elsewhere. `token_embd` is Q5_K. The output
 //! head and any tensor the recipe does not name stay Q6_K.
-use tract_linalg::block_quant::{BlockQuant, Q4_K, Q5_K, Q6_K, Q8_0};
+//!
+//! `compact` (and `i-compact`, same types) is the smaller MoE tier. Routed
+//! experts are Q4_K on the edge and Q3_K on the near and middle bands, shared
+//! experts are Q6_K, and attention is Q4_K at every layer. Tensors the recipe
+//! does not name stay Q6_K.
+use tract_linalg::block_quant::{BlockQuant, Q3_K, Q4_K, Q5_K, Q6_K, Q8_0};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApexProfile {
     Balanced,
     DenseHybridQuality,
+    Compact,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -47,6 +52,7 @@ pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQ
     let format: &dyn BlockQuant = match profile {
         ApexProfile::Balanced => balanced(layers, name),
         ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
+        ApexProfile::Compact => compact(layers, name),
     };
     dyn_clone::clone_box(format)
 }
@@ -81,6 +87,20 @@ fn dense_hybrid_quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
             Some(Band::Near | Band::Mid) => &Q6_K,
         },
         Some(DensePart::Output) | None => &Q6_K,
+    }
+}
+
+fn compact(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let role = role(name);
+    let placed = layer_index(name).map(|layer| band(role, layer, layers));
+    match role {
+        Role::Shared => &Q6_K,
+        Role::Routed => match placed {
+            Some(Band::Edge) | None => &Q4_K,
+            Some(Band::Near | Band::Mid) => &Q3_K,
+        },
+        Role::Attention => &Q4_K,
+        Role::Other => &Q6_K,
     }
 }
 
@@ -249,5 +269,38 @@ mod tests {
         assert_eq!(dense("model.layers.20.mlp.up_proj.weight"), "Q5_K");
         assert_eq!(dense("model.layers.20.self_attn.q_proj.weight"), "Q8_0");
         assert_eq!(dense("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
+    }
+
+    fn compact_kind(name: &str) -> String {
+        assign(ApexProfile::Compact, 40, name).to_string()
+    }
+
+    #[test]
+    fn compact_bands() {
+        assert_eq!(compact_kind("blk.0.ffn_gate_exps.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.4.ffn_down_exps.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.5.ffn_up_exps.weight"), "Q3_K");
+        assert_eq!(compact_kind("blk.9.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(compact_kind("blk.10.ffn_down_exps.weight"), "Q3_K");
+        assert_eq!(compact_kind("blk.20.ffn_gate_exps.weight"), "Q3_K");
+        assert_eq!(compact_kind("blk.30.ffn_up_exps.weight"), "Q3_K");
+        assert_eq!(compact_kind("blk.35.ffn_down_exps.weight"), "Q4_K");
+        assert_eq!(compact_kind("ffn_gate_exps.weight"), "Q4_K");
+        assert_eq!(compact_kind("model.layers.0.mlp.experts.3.gate_proj.weight"), "Q4_K");
+        assert_eq!(compact_kind("model.layers.20.mlp.experts.1.down_proj.weight"), "Q3_K");
+        assert_eq!(compact_kind("model.layers.20.mlp.shared_expert.up_proj.weight"), "Q6_K");
+        assert_eq!(compact_kind("blk.0.ffn_gate_shexp.weight"), "Q6_K");
+        assert_eq!(compact_kind("blk.20.ffn_down_shexp.weight"), "Q6_K");
+        assert_eq!(compact_kind("blk.0.attn_q.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.3.attn_k.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.20.attn_output.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.20.attn_qkv.weight"), "Q4_K");
+        assert_eq!(compact_kind("model.layers.10.self_attn.o_proj.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.12.ssm_out.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.2.shortconv.in_proj.weight"), "Q4_K");
+        assert_eq!(compact_kind("blk.20.ffn_gate_inp.weight"), "Q6_K");
+        assert_eq!(compact_kind("token_embd.weight"), "Q6_K");
+        assert_eq!(compact_kind("output.weight"), "Q6_K");
+        assert_eq!(compact_kind("lm_head.weight"), "Q6_K");
     }
 }
