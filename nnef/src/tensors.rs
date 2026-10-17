@@ -4,7 +4,7 @@ use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
 use tract_linalg::block_quant::{
-    BlockQuant, BlockQuantStorage, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+    BlockQuant, BlockQuantStorage, IQ4_XS, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
 };
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
@@ -290,6 +290,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
         0x3C04 => Box::new(Q4_K),
         0x3C05 => Box::new(Q5_K),
         0x3C06 => Box::new(Q6_K),
+        0x3C17 => Box::new(IQ4_XS),
         other => bail!("Unexpected block quant format {other:#x}"),
     };
     ensure!(header.rank >= 2);
@@ -327,7 +328,8 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
             || format.dyn_eq(&Q3_K)
             || format.dyn_eq(&Q4_K)
             || format.dyn_eq(&Q5_K)
-            || format.dyn_eq(&Q6_K),
+            || format.dyn_eq(&Q6_K)
+            || format.dyn_eq(&IQ4_XS),
         "unsupported block quant format {format}"
     );
     let s = tensor.shape();
@@ -354,8 +356,10 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
         0x3C04
     } else if format.dyn_eq(&Q5_K) {
         0x3C05
-    } else {
+    } else if format.dyn_eq(&Q6_K) {
         0x3C06
+    } else {
+        0x3C17
     };
     header.write(w)?;
     w.write_all(bqs.value())?;

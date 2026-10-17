@@ -1,5 +1,5 @@
-//! Scalar ggml K-quant and Q8_0 blocks, laid out like llama.cpp's `block_q*_K` /
-//! `block_q8_0`. The quantizers follow `quantize_row_*_ref` (no importance matrix).
+//! Scalar ggml K-quant, Q8_0, and IQ4_XS blocks, laid out like llama.cpp.
+//! The quantizers follow `quantize_row_*_ref` (no importance matrix).
 use super::*;
 
 const QK_K: usize = 256;
@@ -10,6 +10,7 @@ pub const Q3_K: Q3KF = Q3KF;
 pub const Q4_K: Q4KF = Q4KF;
 pub const Q5_K: Q5KF = Q5KF;
 pub const Q6_K: Q6KF = Q6KF;
+pub const IQ4_XS: IQ4XSF = IQ4XSF;
 
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Q8_0F;
@@ -21,6 +22,11 @@ pub struct Q4KF;
 pub struct Q5KF;
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Q6KF;
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct IQ4XSF;
+
+/// ggml `kvalues_iq4nl`, the non-linear 4-bit codebook shared by IQ4_XS.
+const IQ4NL: [i8; 16] = [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113];
 
 fn store_f16(dst: &mut [u8], v: f32) {
     dst[..2].copy_from_slice(&f16::from_f32(v).to_bits().to_le_bytes());
@@ -689,6 +695,134 @@ fn dequant_q3_k(quant: &[u8], block: &mut [f32]) {
     }
 }
 
+fn best_index_iq4nl(x: f32) -> u8 {
+    if x <= IQ4NL[0] as f32 {
+        return 0;
+    }
+    if x >= IQ4NL[IQ4NL.len() - 1] as f32 {
+        return (IQ4NL.len() - 1) as u8;
+    }
+    let mut ml = 0usize;
+    let mut mu = IQ4NL.len() - 1;
+    while mu - ml > 1 {
+        let mav = (ml + mu) / 2;
+        if x < IQ4NL[mav] as f32 {
+            mu = mav;
+        } else {
+            ml = mav;
+        }
+    }
+    if x - (IQ4NL[mu - 1] as f32) < (IQ4NL[mu] as f32) - x { (mu - 1) as u8 } else { mu as u8 }
+}
+
+/// One 32-wide group scale from `quantize_row_iq4_xs_ref` (weights are `x^2`, no imatrix).
+fn iq4_group_scale(xb: &[f32]) -> f32 {
+    const NTRY: i32 = 7;
+    let mut amax = 0.0f32;
+    let mut max = 0.0f32;
+    for &xi in xb {
+        let ax = xi.abs();
+        if ax > amax {
+            amax = ax;
+            max = xi;
+        }
+    }
+    if amax < GROUP_MAX_EPS {
+        return 0.0;
+    }
+    let mut d = -max / (IQ4NL[0] as f32);
+    let mut id = 1.0 / d;
+    let mut sumqx = 0.0f32;
+    let mut sumq2 = 0.0f32;
+    for &xi in xb {
+        let q = IQ4NL[best_index_iq4nl(id * xi) as usize] as f32;
+        let w = xi * xi;
+        sumqx += w * q * xi;
+        sumq2 += w * q * q;
+    }
+    d = if sumq2 > 0.0 { sumqx / sumq2 } else { 0.0 };
+    let mut best = d * sumqx;
+    for itry in -NTRY..=NTRY {
+        id = (itry + i32::from(IQ4NL[0])) as f32 / max;
+        sumqx = 0.0;
+        sumq2 = 0.0;
+        for &xi in xb {
+            let q = IQ4NL[best_index_iq4nl(id * xi) as usize] as f32;
+            let w = xi * xi;
+            sumqx += w * q * xi;
+            sumq2 += w * q * q;
+        }
+        if sumq2 > 0.0 && sumqx * sumqx > best * sumq2 {
+            d = sumqx / sumq2;
+            best = d * sumqx;
+        }
+    }
+    d
+}
+
+fn quant_iq4_xs(x: &[f32], quant: &mut [u8]) {
+    let mut scales = [0.0f32; 8];
+    let mut max_scale = 0.0f32;
+    let mut amax_scale = 0.0f32;
+    for ib in 0..8 {
+        scales[ib] = iq4_group_scale(&x[ib * 32..ib * 32 + 32]);
+        let abs_d = scales[ib].abs();
+        if abs_d > amax_scale {
+            amax_scale = abs_d;
+            max_scale = scales[ib];
+        }
+    }
+    quant.fill(0);
+    // Super-block scale is the sign-flipped max group scale, stored so each group fits in 6 bits.
+    let d_super = -max_scale / 32.0;
+    store_f16(&mut quant[0..2], d_super);
+    let id_super = if d_super != 0.0 { 1.0 / d_super } else { 0.0 };
+    let mut levels = [0u8; QK_K];
+    let mut scales_h = 0u16;
+    let mut scales_l = [0u8; 4];
+    for ib in 0..8 {
+        let mut level = nearest_int(id_super * scales[ib]).clamp(-32, 31);
+        let dl = d_super * level as f32;
+        let idl = if dl != 0.0 { 1.0 / dl } else { 0.0 };
+        for (j, &xi) in x[ib * 32..ib * 32 + 32].iter().enumerate() {
+            levels[ib * 32 + j] = best_index_iq4nl(idl * xi);
+        }
+        level += 32;
+        let level_lo = (level as u8) & 0xf;
+        let level_hi = ((level >> 4) & 3) as u16;
+        if ib % 2 == 0 {
+            scales_l[ib / 2] = level_lo;
+        } else {
+            scales_l[ib / 2] |= level_lo << 4;
+        }
+        scales_h |= level_hi << (2 * ib) as u32;
+    }
+    quant[2..4].copy_from_slice(&scales_h.to_le_bytes());
+    quant[4..8].copy_from_slice(&scales_l);
+    for ib in 0..8 {
+        for j in 0..16 {
+            quant[8 + 16 * ib + j] = levels[32 * ib + j] | (levels[32 * ib + 16 + j] << 4);
+        }
+    }
+}
+
+fn dequant_iq4_xs(quant: &[u8], block: &mut [f32]) {
+    let d = load_f16(&quant[0..2]);
+    let scales_h = u16::from_le_bytes([quant[2], quant[3]]);
+    let scales_l = &quant[4..8];
+    let qs = &quant[8..136];
+    for (idx, out) in block.iter_mut().enumerate() {
+        let ib = idx / 32;
+        let within = idx % 32;
+        let lo = (scales_l[ib / 2] >> (4 * (ib % 2)) as u32) & 0xf;
+        let hi = ((scales_h >> (2 * ib) as u32) & 3) as u8;
+        let scale = i32::from(lo | (hi << 4)) - 32;
+        let byte = qs[ib * 16 + (within % 16)];
+        let code = if within < 16 { byte & 0xf } else { byte >> 4 };
+        *out = d * scale as f32 * IQ4NL[code as usize] as f32;
+    }
+}
+
 fn quant_f16_via_f32(block: &[f16], quant: &mut [u8], quant_f32: impl FnOnce(&[f32], &mut [u8])) {
     let tmp: Vec<f32> = block.iter().copied().map(|v| v.to_f32()).collect();
     quant_f32(&tmp, quant);
@@ -790,6 +924,7 @@ impl_kquant!(Q3KF, "Q3_K", 256, 110, quant_q3_k, dequant_q3_k);
 impl_kquant!(Q4KF, "Q4_K", 256, 144, quant_q4_k, dequant_q4_k);
 impl_kquant!(Q5KF, "Q5_K", 256, 176, quant_q5_k, dequant_q5_k);
 impl_kquant!(Q6KF, "Q6_K", 256, 210, quant_q6_k, dequant_q6_k);
+impl_kquant!(IQ4XSF, "IQ4_XS", 256, 136, quant_iq4_xs, dequant_iq4_xs);
 
 #[cfg(test)]
 mod tests {
@@ -887,5 +1022,49 @@ mod tests {
     #[test]
     fn q6_k_roundtrip() {
         roundtrip(&Q6_K, 256);
+    }
+
+    #[test]
+    fn iq4_xs_roundtrip() {
+        roundtrip(&IQ4_XS, 256);
+    }
+
+    /// Bytes from llama.cpp `quantize_row_iq4_xs_ref` / `dequantize_row_iq4_xs`.
+    #[test]
+    fn iq4_xs_matches_ggml_ref() {
+        let pat: Vec<f32> = (0..256).map(|i| (((i * 17 + 3) % 41) as f32 - 20.0) / 10.0).collect();
+        let hole: Vec<f32> =
+            pat.iter().enumerate().map(|(i, v)| if i < 32 { 0.0 } else { *v }).collect();
+        let zero = vec![0.0f32; 256];
+        assert_iq4_bytes(
+            &pat,
+            "5010f0f023ee20ef3fe8710cb32ed650fa921dc54ff8710c0ba32ed65ff9821dc44fe8710bb32ed63bb0178ef44cd1289ff56de23ab0167e8ff45cd129af056de23bb0178ef44cd13ed650fa922dc54fe8711cb43ed761faf9821dc44fe8710bb32ed650fa921dc54cd1289ff56de23ab0167ee34bc1289faf056de23bb0178ef44cd1289ff56de2",
+        );
+        assert_iq4_bytes(
+            &hole,
+            "5010f2f020ee20ef888888888888888888888888888888880ba32ed65ff9821dc44fe8710bb32ed63bb0178ef44cd1289ff56de23ab0167e8ff45cd129af056de23bb0178ef44cd13ed650fa922dc54fe8711cb43ed761faf9821dc44fe8710bb32ed650fa921dc54cd1289ff56de23ab0167ee34bc1289faf056de23bb0178ef44cd1289ff56de2",
+        );
+        assert_iq4_bytes(
+            &zero,
+            "0080aaaa000000008888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888888",
+        );
+        let mut back = [0.0f32; 256];
+        let mut q = [0u8; 136];
+        IQ4_XS.quant_block_f32(&pat, &mut q);
+        IQ4_XS.dequant_block_f32(&q, &mut back);
+        assert_eq!(back[0].to_bits(), 0xbfdc_d040);
+        assert_eq!(back[32].to_bits(), 0xbf19_a200);
+        assert_eq!(back[255].to_bits(), 0x3fb3_e980);
+        IQ4_XS.quant_block_f32(&hole, &mut q);
+        IQ4_XS.dequant_block_f32(&q, &mut back);
+        assert_eq!(back[0].to_bits(), 0);
+        assert_eq!(back[32].to_bits(), 0xbf19_a200);
+    }
+
+    fn assert_iq4_bytes(data: &[f32], expect: &str) {
+        let mut q = [0u8; 136];
+        IQ4_XS.quant_block_f32(data, &mut q);
+        let got: String = q.iter().map(|b| format!("{b:02x}")).collect();
+        assert_eq!(got, expect);
     }
 }

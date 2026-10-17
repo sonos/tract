@@ -53,3 +53,4 @@ apex_panels_for!(Q3_K, q3k);
 apex_panels_for!(Q4_K, q4k);
 apex_panels_for!(Q5_K, q5k);
 apex_panels_for!(Q6_K, q6k);
+apex_panels_for!(IQ4_XS, iq4xs);

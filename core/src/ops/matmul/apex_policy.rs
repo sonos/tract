@@ -20,13 +20,18 @@
 //! experts are Q4_K on the edge and Q3_K on the near and middle bands, shared
 //! experts are Q6_K, and attention is Q4_K at every layer. Tensors the recipe
 //! does not name stay Q6_K.
-use tract_linalg::block_quant::{BlockQuant, Q3_K, Q4_K, Q5_K, Q6_K, Q8_0};
+//!
+//! `quality` (and `i-quality`, same types) keeps the balanced assignment except
+//! for middle routed experts, which are IQ4_XS. Shared experts stay Q8_0 and
+//! attention stays Q6_K. Tensors the recipe does not name stay Q6_K.
+use tract_linalg::block_quant::{BlockQuant, IQ4_XS, Q3_K, Q4_K, Q5_K, Q6_K, Q8_0};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ApexProfile {
     Balanced,
     DenseHybridQuality,
     Compact,
+    Quality,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -53,6 +58,7 @@ pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQ
         ApexProfile::Balanced => balanced(layers, name),
         ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
         ApexProfile::Compact => compact(layers, name),
+        ApexProfile::Quality => quality(layers, name),
     };
     dyn_clone::clone_box(format)
 }
@@ -101,6 +107,20 @@ fn compact(layers: usize, name: &str) -> &'static dyn BlockQuant {
         },
         Role::Attention => &Q4_K,
         Role::Other => &Q6_K,
+    }
+}
+
+fn quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let role = role(name);
+    let placed = layer_index(name).map(|layer| band(role, layer, layers));
+    match role {
+        Role::Shared => &Q8_0,
+        Role::Routed => match placed {
+            Some(Band::Edge) | None => &Q6_K,
+            Some(Band::Near) => &Q5_K,
+            Some(Band::Mid) => &IQ4_XS,
+        },
+        Role::Attention | Role::Other => &Q6_K,
     }
 }
 
@@ -302,5 +322,38 @@ mod tests {
         assert_eq!(compact_kind("token_embd.weight"), "Q6_K");
         assert_eq!(compact_kind("output.weight"), "Q6_K");
         assert_eq!(compact_kind("lm_head.weight"), "Q6_K");
+    }
+
+    fn quality_kind(name: &str) -> String {
+        assign(ApexProfile::Quality, 40, name).to_string()
+    }
+
+    #[test]
+    fn quality_bands() {
+        assert_eq!(quality_kind("blk.0.ffn_gate_exps.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.4.ffn_down_exps.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.5.ffn_up_exps.weight"), "Q5_K");
+        assert_eq!(quality_kind("blk.9.ffn_gate_exps.weight"), "Q5_K");
+        assert_eq!(quality_kind("blk.10.ffn_down_exps.weight"), "IQ4_XS");
+        assert_eq!(quality_kind("blk.20.ffn_gate_exps.weight"), "IQ4_XS");
+        assert_eq!(quality_kind("blk.29.ffn_up_exps.weight"), "IQ4_XS");
+        assert_eq!(quality_kind("blk.30.ffn_down_exps.weight"), "Q5_K");
+        assert_eq!(quality_kind("blk.35.ffn_gate_exps.weight"), "Q6_K");
+        assert_eq!(quality_kind("ffn_gate_exps.weight"), "Q6_K");
+        assert_eq!(quality_kind("model.layers.0.mlp.experts.3.gate_proj.weight"), "Q6_K");
+        assert_eq!(quality_kind("model.layers.20.mlp.experts.1.down_proj.weight"), "IQ4_XS");
+        assert_eq!(quality_kind("model.layers.20.mlp.shared_expert.up_proj.weight"), "Q8_0");
+        assert_eq!(quality_kind("blk.0.ffn_gate_shexp.weight"), "Q8_0");
+        assert_eq!(quality_kind("blk.20.ffn_down_shexp.weight"), "Q8_0");
+        assert_eq!(quality_kind("blk.0.attn_q.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.20.attn_output.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.20.attn_qkv.weight"), "Q6_K");
+        assert_eq!(quality_kind("model.layers.10.self_attn.o_proj.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.12.ssm_out.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.2.shortconv.in_proj.weight"), "Q6_K");
+        assert_eq!(quality_kind("blk.20.ffn_gate_inp.weight"), "Q6_K");
+        assert_eq!(quality_kind("token_embd.weight"), "Q6_K");
+        assert_eq!(quality_kind("output.weight"), "Q6_K");
+        assert_eq!(quality_kind("lm_head.weight"), "Q6_K");
     }
 }
