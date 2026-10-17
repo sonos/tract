@@ -5,6 +5,7 @@ extern crate log;
 pub mod ast;
 pub mod deser;
 pub mod framework;
+pub mod gguf;
 #[cfg(feature = "unstable-jinja")]
 mod jinja;
 pub mod ops;
