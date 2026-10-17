@@ -22,6 +22,11 @@
 //! and `ssm_beta` are Q4_K. `token_embd` is Q4_K. The output head and any
 //! tensor the recipe does not name stay Q6_K.
 //!
+//! `dense-grad` keeps that attention and embedding map and adds the FFN layer
+//! gradient. Gate is Q5_K on the edge, Q4_K near the edge, and IQ4_XS in the
+//! middle. Up is Q6_K, Q5_K, then Q4_K. Down is Q6_K on the edge and Q5_K
+//! elsewhere. A tensor with no layer index is treated as edge.
+//!
 //! `compact` (and `i-compact`, same types) is the smaller MoE tier. Routed
 //! experts are Q4_K on the edge and Q3_K on the near and middle bands, shared
 //! experts are Q6_K, and attention is Q4_K at every layer. Tensors the recipe
@@ -43,6 +48,7 @@ pub enum ApexProfile {
     Balanced,
     DenseHybridQuality,
     DenseFlat,
+    DenseGrad,
     Compact,
     Quality,
     Mini,
@@ -72,6 +78,7 @@ pub fn assign(profile: ApexProfile, layers: usize, name: &str) -> Box<dyn BlockQ
         ApexProfile::Balanced => balanced(layers, name),
         ApexProfile::DenseHybridQuality => dense_hybrid_quality(layers, name),
         ApexProfile::DenseFlat => dense_flat(name),
+        ApexProfile::DenseGrad => dense_grad(layers, name),
         ApexProfile::Compact => compact(layers, name),
         ApexProfile::Quality => quality(layers, name),
         ApexProfile::Mini => mini(layers, name),
@@ -114,14 +121,56 @@ fn dense_hybrid_quality(layers: usize, name: &str) -> &'static dyn BlockQuant {
 
 fn dense_flat(name: &str) -> &'static dyn BlockQuant {
     match dense_part(name) {
-        Some(DensePart::Embed) => &Q4_K,
-        Some(DensePart::FullAttn) => &Q5_K,
-        Some(DensePart::FullAttnV) => &Q6_K,
-        Some(DensePart::LinearAttn) => &Q5_K,
-        Some(DensePart::LinearAttnSmall) => &Q4_K,
-        Some(DensePart::Gate) => &IQ4_XS,
-        Some(DensePart::Up | DensePart::Down) => &Q5_K,
-        Some(DensePart::Output) | None => &Q6_K,
+        Some(part) => dense_flat_rest(part),
+        None => &Q6_K,
+    }
+}
+
+fn dense_grad(layers: usize, name: &str) -> &'static dyn BlockQuant {
+    let placed = layer_index(name).map(|layer| band(Role::Other, layer, layers));
+    match dense_part(name) {
+        Some(part) => dense_grad_ffn(part, placed).unwrap_or_else(|| dense_flat_rest(part)),
+        None => &Q6_K,
+    }
+}
+
+/// FFN gradient for `dense-grad`. `None` means the part is not an FFN projection.
+fn dense_grad_ffn(part: DensePart, placed: Option<Band>) -> Option<&'static dyn BlockQuant> {
+    match part {
+        DensePart::Gate => Some(match placed {
+            Some(Band::Edge) | None => &Q5_K,
+            Some(Band::Near) => &Q4_K,
+            Some(Band::Mid) => &IQ4_XS,
+        }),
+        DensePart::Up => Some(match placed {
+            Some(Band::Edge) | None => &Q6_K,
+            Some(Band::Near) => &Q5_K,
+            Some(Band::Mid) => &Q4_K,
+        }),
+        DensePart::Down => Some(match placed {
+            Some(Band::Edge) | None => &Q6_K,
+            Some(Band::Near | Band::Mid) => &Q5_K,
+        }),
+        DensePart::Embed
+        | DensePart::Output
+        | DensePart::FullAttn
+        | DensePart::FullAttnV
+        | DensePart::LinearAttn
+        | DensePart::LinearAttnSmall => None,
+    }
+}
+
+/// `dense-flat` types. `dense-grad` uses this for every part that is not an FFN projection.
+fn dense_flat_rest(part: DensePart) -> &'static dyn BlockQuant {
+    match part {
+        DensePart::Embed => &Q4_K,
+        DensePart::FullAttn => &Q5_K,
+        DensePart::FullAttnV => &Q6_K,
+        DensePart::LinearAttn => &Q5_K,
+        DensePart::LinearAttnSmall => &Q4_K,
+        DensePart::Gate => &IQ4_XS,
+        DensePart::Up | DensePart::Down => &Q5_K,
+        DensePart::Output => &Q6_K,
     }
 }
 
@@ -380,6 +429,54 @@ mod tests {
         assert_eq!(flat_kind("model.layers.20.self_attn.v_proj.weight"), "Q6_K");
         assert_eq!(flat_kind("model.layers.20.self_attn.o_proj.weight"), "Q5_K");
         assert_eq!(flat_kind("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
+    }
+
+    fn grad_kind(name: &str) -> String {
+        assign(ApexProfile::DenseGrad, 40, name).to_string()
+    }
+
+    #[test]
+    fn dense_grad_bands() {
+        assert_eq!(grad_kind("blk.0.ffn_gate.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.4.ffn_gate.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.5.ffn_gate.weight"), "Q4_K");
+        assert_eq!(grad_kind("blk.9.ffn_gate.weight"), "Q4_K");
+        assert_eq!(grad_kind("blk.10.ffn_gate.weight"), "IQ4_XS");
+        assert_eq!(grad_kind("blk.20.ffn_gate.weight"), "IQ4_XS");
+        assert_eq!(grad_kind("blk.29.ffn_gate.weight"), "IQ4_XS");
+        assert_eq!(grad_kind("blk.30.ffn_gate.weight"), "Q4_K");
+        assert_eq!(grad_kind("blk.34.ffn_gate.weight"), "Q4_K");
+        assert_eq!(grad_kind("blk.35.ffn_gate.weight"), "Q5_K");
+        assert_eq!(grad_kind("ffn_gate.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.0.ffn_up.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.5.ffn_up.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.20.ffn_up.weight"), "Q4_K");
+        assert_eq!(grad_kind("blk.30.ffn_up.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.35.ffn_up.weight"), "Q6_K");
+        assert_eq!(grad_kind("ffn_up.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.0.ffn_down.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.5.ffn_down.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.20.ffn_down.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.35.ffn_down.weight"), "Q6_K");
+        assert_eq!(grad_kind("ffn_down.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.0.attn_q.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.0.attn_v.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.20.attn_q.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.20.attn_v.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.20.attn_qkv.weight"), "Q5_K");
+        assert_eq!(grad_kind("blk.12.ssm_alpha.weight"), "Q4_K");
+        assert_eq!(grad_kind("token_embd.weight"), "Q4_K");
+        assert_eq!(grad_kind("output.weight"), "Q6_K");
+        assert_eq!(grad_kind("lm_head.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.20.ffn_gate_exps.weight"), "Q6_K");
+        assert_eq!(grad_kind("blk.2.shortconv.in_proj.weight"), "Q6_K");
+        assert_eq!(grad_kind("model.layers.0.mlp.gate_proj.weight"), "Q5_K");
+        assert_eq!(grad_kind("model.layers.5.mlp.gate_proj.weight"), "Q4_K");
+        assert_eq!(grad_kind("model.layers.20.mlp.gate_proj.weight"), "IQ4_XS");
+        assert_eq!(grad_kind("model.layers.20.mlp.up_proj.weight"), "Q4_K");
+        assert_eq!(grad_kind("model.layers.20.mlp.down_proj.weight"), "Q5_K");
+        assert_eq!(grad_kind("model.layers.0.mlp.down_proj.weight"), "Q6_K");
+        assert_eq!(grad_kind("model.layers.20.mlp.experts.1.gate_proj.weight"), "Q6_K");
     }
 
     fn compact_kind(name: &str) -> String {

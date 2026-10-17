@@ -6,7 +6,9 @@
 //! puts linear attention and SSM projections at Q4_K. `dense-flat` is the
 //! dense control: gate is IQ4_XS and up and down are Q5_K at every layer,
 //! full attention is Q5_K except `attn_v` at Q6_K, and `token_embd` is Q4_K.
-//! `compact` (and
+//! `dense-grad` keeps that attention map and grades the FFN: gate is Q5_K,
+//! Q4_K, then IQ4_XS, up is Q6_K, Q5_K, then Q4_K, and down is Q6_K on the
+//! edge and Q5_K elsewhere. `compact` (and
 //! `i-compact`, same types) assigns routed experts Q4_K on the edge and Q3_K
 //! elsewhere, shared experts Q6_K, and attention Q4_K. `quality` (and
 //! `i-quality`, same types) matches balanced except middle routed experts,
@@ -58,12 +60,13 @@ impl ApexMoeTransform {
             "balanced" | "i-balanced" => ApexProfile::Balanced,
             "dense-hybrid-quality" => ApexProfile::DenseHybridQuality,
             "dense-flat" => ApexProfile::DenseFlat,
+            "dense-grad" => ApexProfile::DenseGrad,
             "compact" | "i-compact" => ApexProfile::Compact,
             "quality" | "i-quality" => ApexProfile::Quality,
             "mini" => ApexProfile::Mini,
             other => {
                 bail!(
-                    "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced, dense-hybrid-quality, dense-flat, compact, i-compact, quality, i-quality, mini)"
+                    "apex_moe profile '{other}' is not implemented (available: balanced, i-balanced, dense-hybrid-quality, dense-flat, dense-grad, compact, i-compact, quality, i-quality, mini)"
                 )
             }
         };
@@ -193,6 +196,18 @@ mod test {
         assert_eq!(
             quant_name(ApexProfile::DenseFlat, "token_embd.weight", &[256, 32])?.as_deref(),
             Some("Q4_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseGrad, "blk.0.ffn_gate.weight", &[256, 32])?.as_deref(),
+            Some("Q5_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseGrad, "blk.20.ffn_up.weight", &[256, 32])?.as_deref(),
+            Some("Q4_K")
+        );
+        assert_eq!(
+            quant_name(ApexProfile::DenseGrad, "blk.20.attn_v.weight", &[256, 32])?.as_deref(),
+            Some("Q6_K")
         );
         assert_eq!(
             quant_name(ApexProfile::Compact, "blk.0.ffn_gate_exps.weight", &[256, 32])?.as_deref(),
