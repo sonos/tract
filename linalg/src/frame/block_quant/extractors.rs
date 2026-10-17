@@ -161,6 +161,54 @@ apex_x86_tiles!(Q6_K, q6k);
 apex_x86_tiles!(IQ4_XS, iq4xs);
 apex_x86_tiles!(IQ2_S, iq2s);
 
+/// Wider panels for the RISC-V vector tiles. `r` is that tile's M. Every RVV
+/// f32 and f16 kernel packs its A panel at alignment 16. The names carry the
+/// arch: those widths are already used by the aarch64 extractors.
+macro_rules! apex_riscv_wide {
+    ($fmt:expr, $tag:ident, $dt:ty, $dtname:ident, $r:literal) => {
+        pastey::paste! {
+            unsafe fn [<$tag _riscv_ $dtname _r $r _a16>](
+                input: *const u8,
+                output: *mut u8,
+                k: usize,
+            ) {
+                unsafe {
+                    if <$dt>::datum_type() == f32::datum_type() {
+                        panel_f32(&$fmt, $r, input, output, k);
+                    } else {
+                        panel_f16(&$fmt, $r, input, output, k);
+                    }
+                }
+            }
+            panel_extractor!(riscv64; [<$tag _riscv_ $dtname _r $r _a16>] as [<$tag _riscv_r $r _ $dtname _a16>](
+                Box::new(PackedBlockQuantFormat::new(&$fmt, $r, 0, false)),
+                <$dt>::packing($r).align(16)
+            ));
+        }
+    };
+}
+
+macro_rules! apex_riscv_tiles {
+    ($fmt:expr, $tag:ident) => {
+        apex_riscv_wide!($fmt, $tag, f32, f32, 8);
+        apex_riscv_wide!($fmt, $tag, f32, f32, 16);
+        apex_riscv_wide!($fmt, $tag, f32, f32, 32);
+        apex_riscv_wide!($fmt, $tag, f32, f32, 64);
+        apex_riscv_wide!($fmt, $tag, f16, f16, 16);
+        apex_riscv_wide!($fmt, $tag, f16, f16, 32);
+        apex_riscv_wide!($fmt, $tag, f16, f16, 64);
+        apex_riscv_wide!($fmt, $tag, f16, f16, 128);
+    };
+}
+
+apex_riscv_tiles!(Q8_0, q80);
+apex_riscv_tiles!(Q3_K, q3k);
+apex_riscv_tiles!(Q4_K, q4k);
+apex_riscv_tiles!(Q5_K, q5k);
+apex_riscv_tiles!(Q6_K, q6k);
+apex_riscv_tiles!(IQ4_XS, iq4xs);
+apex_riscv_tiles!(IQ2_S, iq2s);
+
 #[cfg(test)]
 mod host_tiles {
     use crate::frame::block_quant::{BlockQuant, Q8_0};
@@ -208,6 +256,18 @@ mod host_tiles {
         }
     }
 
+    #[test]
+    fn riscv64_f32_q8_0_leaves_the_portable_kernel() {
+        let names = kept(&Q8_0, f32::datum_type(), 1);
+        assert!(!names.is_empty(), "no kernel for Q8_0");
+        if cfg!(target_arch = "riscv64") {
+            assert!(
+                names.iter().all(|name| !name.starts_with("generic_")),
+                "portable kernel still selected: {names:?}"
+            );
+        }
+    }
+
     /// Each AVX, AVX-512, and AMX panel width is registered for every APEX block.
     /// The match is the packing the kernel stores, so it can be checked on any host.
     #[test]
@@ -243,6 +303,44 @@ mod host_tiles {
                 let found =
                     extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
                 assert!(found, "no {from} extractor for align {align}");
+            }
+        }
+    }
+
+    /// Every RVV f32 and f16 tile packs A at alignment 16. The widths overlap
+    /// the aarch64 extractors, so these registrations are the RISC-V ones.
+    #[test]
+    fn riscv64_tiles_are_registered() {
+        use crate::isa::Arch;
+        use crate::mmm_routines::declared_extractors;
+        use crate::pack::Packing;
+
+        let tiles = [
+            (f32::datum_type(), 8usize),
+            (f32::datum_type(), 16),
+            (f32::datum_type(), 32),
+            (f32::datum_type(), 64),
+            (f16::datum_type(), 16),
+            (f16::datum_type(), 32),
+            (f16::datum_type(), 64),
+            (f16::datum_type(), 128),
+        ];
+        let formats = ["Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_XS", "IQ2_S"];
+        let extractors: Vec<_> = declared_extractors()
+            .filter(|extractor| extractor.target == Arch::RiscV64)
+            .map(|extractor| (extractor.make)())
+            .collect();
+        for (dt, r) in tiles {
+            let want = if dt == f32::datum_type() {
+                f32::packing(r).align(16)
+            } else {
+                f16::packing(r).align(16)
+            };
+            for format in formats {
+                let from = format!("Packed{format}[{r}]");
+                let found =
+                    extractors.iter().any(|pe| pe.from.to_string() == from && pe.to == want);
+                assert!(found, "no {from} extractor for {dt:?}");
             }
         }
     }
