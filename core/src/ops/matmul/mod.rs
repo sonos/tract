@@ -1,3 +1,5 @@
+pub mod apex_moe;
+pub mod apex_policy;
 pub mod de_block_quant;
 pub mod optimized;
 pub mod pack;
