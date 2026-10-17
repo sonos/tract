@@ -87,27 +87,46 @@ impl LstmEpilogue {
         {
             let hs = unsafe { ht.as_slice_mut_unchecked::<T>() };
             let cs = unsafe { ct.as_slice_mut_unchecked::<T>() };
-            for r in 0..rows {
-                let pb = r * 4 * h;
-                let cb = r * h;
-                let row = &mut pre[pb..pb + 4 * h];
-                // gate order i,o,f,c: sigmoid the i,o,f block, tanh the c block
-                sigmoid.run(&mut row[0..3 * h])?;
-                tanh.run(&mut row[3 * h..4 * h])?;
-                // Ct = ft*c_prev + it*cc  (it=row[j], ot=row[h+j], ft=row[2h+j], cc=row[3h+j])
-                for j in 0..h {
-                    cs[cb + j] = row[2 * h + j] * cp[cb + j] + row[j] * row[3 * h + j];
-                }
-                // Ht = ot * tanh(Ct): stage tanh(Ct) in hs, then scale by ot
-                hs[cb..cb + h].copy_from_slice(&cs[cb..cb + h]);
-                tanh.run(&mut hs[cb..cb + h])?;
-                for j in 0..h {
-                    hs[cb + j] = hs[cb + j] * row[h + j];
-                }
-            }
+            lstm_cell_rows(h, rows, pre, cp, hs, cs, &*sigmoid, &*tanh)?;
         }
         Ok(tvec!(ht.into_tvalue(), ct.into_tvalue()))
     }
+}
+
+/// The LSTM cell over `rows` rows: `pre` holds each row's `4*h` gate pre-activations in ONNX
+/// order i, o, f, c and is overwritten by the activated gates; `h_out` and `c_out` receive
+/// `Ht` and `Ct` from `c_prev`. Shared by [`LstmEpilogue`] and `LstmSeq`, so both run the same
+/// arithmetic in the same order.
+#[allow(clippy::too_many_arguments)]
+pub fn lstm_cell_rows<T>(
+    h: usize,
+    rows: usize,
+    pre: &mut [T],
+    c_prev: &[T],
+    h_out: &mut [T],
+    c_out: &mut [T],
+    sigmoid: &dyn ElementWise<T>,
+    tanh: &dyn ElementWise<T>,
+) -> TractResult<()>
+where
+    T: Datum + Copy + std::ops::Mul<Output = T> + std::ops::Add<Output = T>,
+{
+    for r in 0..rows {
+        let pb = r * 4 * h;
+        let cb = r * h;
+        let row = &mut pre[pb..pb + 4 * h];
+        sigmoid.run(&mut row[0..3 * h])?;
+        tanh.run(&mut row[3 * h..4 * h])?;
+        for j in 0..h {
+            c_out[cb + j] = row[2 * h + j] * c_prev[cb + j] + row[j] * row[3 * h + j];
+        }
+        h_out[cb..cb + h].copy_from_slice(&c_out[cb..cb + h]);
+        tanh.run(&mut h_out[cb..cb + h])?;
+        for j in 0..h {
+            h_out[cb + j] = h_out[cb + j] * row[h + j];
+        }
+    }
+    Ok(())
 }
 
 impl TypedOp for LstmEpilogue {
