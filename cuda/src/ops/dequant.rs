@@ -73,7 +73,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::konst::Const;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0,
+        BlockQuant, BlockQuantFact, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0,
     };
     use tract_core::transform::ModelTransform;
     use tract_gpu::fact::DeviceTypedFactExt;
@@ -170,6 +170,76 @@ mod tests {
     #[test]
     fn q4_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
         assert_apex_matmul(ApexBlock::Q4_K, 32, 256)
+    }
+
+    fn assert_host_expanded_matmul(format: &dyn BlockQuant, n: usize, k: usize) -> TractResult<()> {
+        for dt in [DatumType::F32, DatumType::F16] {
+            let model = matmul(dt, quant_weight(format, &[n, k], dt)?, 4, k)?;
+            let input = activation(4, k, dt)?;
+            let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+
+            let cuda_model = CudaTransform.transform_into(model)?;
+            let names = op_names(&cuda_model);
+            assert!(names.iter().all(|n| n != "CudaBlockDequant"), "{names:?}");
+            let gemm = cuda_model
+                .nodes()
+                .iter()
+                .find(|n| n.op().name().to_string().contains("Gemm"))
+                .context(format!("{format} constant did not reach a CUDA gemm"))?;
+            for fact in cuda_model.node_input_facts(gemm.id)? {
+                assert!(fact.to_device_fact()?.is_plain(), "gemm input stayed quantized: {fact:?}");
+            }
+            let cuda = cuda_model.into_runnable()?.run(tvec![input.into_tvalue()])?;
+            // Small M uses the existing matvec. f16 may accumulate in f16.
+            let approx = if dt == DatumType::F16 {
+                Approximation::VeryApproximate
+            } else {
+                Approximation::Approximate
+            };
+            cpu[0].clone().into_tensor().close_enough(&cuda[0].clone().into_tensor(), approx)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn q3_k_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&Q3_K, 32, 256)
+    }
+
+    #[test]
+    fn iq4_xs_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&IQ4_XS, 32, 256)
+    }
+
+    #[test]
+    fn iq2_s_constant_reaches_plain_gemm() -> TractResult<()> {
+        assert_host_expanded_matmul(&IQ2_S, 32, 256)
+    }
+
+    #[test]
+    fn q3_k_source_stays_on_the_cpu() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", DatumType::F32.fact([4, 256]))?;
+        let mut weight = DatumType::F32.fact([32, 256]);
+        weight.exotic_fact = Some(Box::new(BlockQuantFact::new(
+            tract_core::dyn_clone::clone_box(&Q3_K as &dyn BlockQuant),
+            tvec![32, 256],
+        )));
+        let w = model.add_source("w", weight)?;
+        let mm = PrefixMatMul {
+            transpose_a: false,
+            transpose_b: true,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let out = model.wire_node("mm", mm, &[a, w])?;
+        model.select_output_outlets(&out)?;
+        let cuda_model = CudaTransform.transform_into(model)?;
+        let names = op_names(&cuda_model);
+        assert!(names.iter().all(|n| n != "CudaBlockDequant"), "{names:?}");
+        assert!(names.iter().all(|n| !n.contains("Gemm")), "{names:?}");
+        Ok(())
     }
 
     #[test]
