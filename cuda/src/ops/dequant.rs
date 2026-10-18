@@ -1,15 +1,20 @@
-use crate::kernels::block_dequant::{dispatch, is_q8_0};
+use crate::kernels::block_dequant::{ApexBlock, apex_block, dispatch};
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_0};
 use tract_gpu::tensor::DeviceTensorExt;
 
-/// Expands a Q8_0 input into the plain floats the gemm already runs.
+/// Expands one APEX block-quant input into the plain floats the gemm already runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CudaBlockDequant;
+pub struct CudaBlockDequant {
+    pub format: ApexBlock,
+}
 
 impl Op for CudaBlockDequant {
     fn name(&self) -> StaticName {
         "CudaBlockDequant".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("{:?}", self.format)])
     }
 
     op_as_typed_op!();
@@ -23,7 +28,7 @@ impl EvalOp for CudaBlockDequant {
         let output =
             tract_gpu::turn_handler::make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
         if output.len() > 0 {
-            crate::with_cuda_stream(|stream| dispatch(stream, input, &output))?;
+            crate::with_cuda_stream(|stream| dispatch(stream, self.format, input, &output))?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
@@ -35,14 +40,21 @@ impl TypedOp for CudaBlockDequant {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         tract_gpu::utils::facts_to_device_facts(inputs, |facts| {
             let input = facts[0];
-            ensure!(is_q8_0(input), "CudaBlockDequant expected Q8_0, got {input:?}");
+            let format = apex_block(input).with_context(|| {
+                format!("CudaBlockDequant expected {:?}, got {input:?}", self.format)
+            })?;
+            ensure!(
+                format == self.format,
+                "CudaBlockDequant got {format:?}, op is {:?}",
+                self.format
+            );
             ensure!(
                 matches!(input.datum_type, DatumType::F16 | DatumType::F32),
-                "Q8_0 dequant writes f16 or f32, got {:?}",
+                "APEX dequant writes f16 or f32, got {:?}",
                 input.datum_type
             );
-            let k = input.shape.last().context("Q8_0 dequant input has no K")?.to_usize()?;
-            let block_len = Q8_0.block_len();
+            let k = input.shape.last().context("APEX dequant input has no K")?.to_usize()?;
+            let block_len = self.format.format().block_len();
             ensure!(
                 k.is_multiple_of(block_len),
                 "K {k} is not a multiple of the {block_len}-wide block"
@@ -61,7 +73,7 @@ mod tests {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
     use tract_core::ops::konst::Const;
     use tract_core::tract_linalg::block_quant::{
-        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q8_0,
+        BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0,
     };
     use tract_core::transform::ModelTransform;
     use tract_gpu::fact::DeviceTypedFactExt;
@@ -111,21 +123,20 @@ mod tests {
         model.nodes().iter().map(|n| n.op().name().to_string()).collect()
     }
 
-    #[test]
-    fn q8_0_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+    fn assert_apex_matmul(format: ApexBlock, n: usize, k: usize) -> TractResult<()> {
         for dt in [DatumType::F32, DatumType::F16] {
-            let model = matmul(dt, quant_weight(&Q8_0, &[32, 256], dt)?, 4, 256)?;
-            let input = activation(4, 256, dt)?;
+            let model = matmul(dt, quant_weight(format.format(), &[n, k], dt)?, 4, k)?;
+            let input = activation(4, k, dt)?;
             let cpu = model.clone().into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
 
             let cuda_model = CudaTransform.transform_into(model)?;
-            let names = op_names(&cuda_model);
-            assert!(names.iter().any(|n| n == "CudaBlockDequant"), "{names:?}");
+            let found = cuda_model.nodes().iter().find_map(|n| n.op_as::<CudaBlockDequant>());
+            assert_eq!(found.map(|op| op.format), Some(format), "{:?}", op_names(&cuda_model));
             let gemm = cuda_model
                 .nodes()
                 .iter()
                 .find(|n| n.op().name().to_string().contains("Gemm"))
-                .context("Q8_0 matmul did not reach a CUDA gemm")?;
+                .context(format!("{format:?} matmul did not reach a CUDA gemm"))?;
             for fact in cuda_model.node_input_facts(gemm.id)? {
                 assert!(fact.to_device_fact()?.is_plain(), "gemm input stayed quantized: {fact:?}");
             }
@@ -139,6 +150,16 @@ mod tests {
             cpu[0].clone().into_tensor().close_enough(&cuda[0].clone().into_tensor(), approx)?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn q8_0_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(ApexBlock::Q8_0, 32, 256)
+    }
+
+    #[test]
+    fn q6_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(ApexBlock::Q6_K, 32, 256)
     }
 
     #[test]
