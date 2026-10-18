@@ -143,3 +143,48 @@ extern "C" __global__ void dequant_q5_k_f16(const uint8_t *__restrict__ quant,
                                             __half *__restrict__ out, uint32_t n_blocks) {
     dequant_q5_k_block<__half>(quant, out, n_blocks);
 }
+
+// ggml dequant_q4_k. Nibbles only, no high bit. 144 bytes, 256 values.
+template <typename T>
+__device__ void dequant_q4_k_block(const uint8_t *__restrict__ quant, T *__restrict__ out,
+                                   uint32_t n_blocks) {
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n_blocks) {
+        return;
+    }
+    const uint8_t *q = quant + tid * 144u;
+    float d = load_f16_le(q);
+    float mn = load_f16_le(q + 2);
+    const uint8_t *scales = q + 4;
+    uint32_t qs = 16u;
+    uint32_t y = 0u;
+    T *dst = out + tid * 256u;
+    for (uint32_t is = 0u; is < 8u; is += 2u) {
+        uint32_t sc, m;
+        scale_min_k4(scales, is, sc, m);
+        float d1 = d * (float)sc;
+        float m1 = mn * (float)m;
+        scale_min_k4(scales, is + 1u, sc, m);
+        float d2 = d * (float)sc;
+        float m2 = mn * (float)m;
+        for (uint32_t l = 0u; l < 32u; ++l) {
+            dst[y] = (T)(d1 * (float)(q[qs + l] & 0xFu) - m1);
+            y += 1u;
+        }
+        for (uint32_t l = 0u; l < 32u; ++l) {
+            dst[y] = (T)(d2 * (float)(q[qs + l] >> 4) - m2);
+            y += 1u;
+        }
+        qs += 32u;
+    }
+}
+
+extern "C" __global__ void dequant_q4_k_f32(const uint8_t *__restrict__ quant,
+                                            float *__restrict__ out, uint32_t n_blocks) {
+    dequant_q4_k_block<float>(quant, out, n_blocks);
+}
+
+extern "C" __global__ void dequant_q4_k_f16(const uint8_t *__restrict__ quant,
+                                            __half *__restrict__ out, uint32_t n_blocks) {
+    dequant_q4_k_block<__half>(quant, out, n_blocks);
+}

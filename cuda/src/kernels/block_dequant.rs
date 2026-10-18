@@ -1,6 +1,6 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q5_K, Q6_K, Q8_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_K, Q5_K, Q6_K, Q8_0};
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::get_quant_fact;
 
@@ -15,6 +15,7 @@ pub enum ApexBlock {
     Q8_0,
     Q6_K,
     Q5_K,
+    Q4_K,
 }
 
 impl ApexBlock {
@@ -23,6 +24,7 @@ impl ApexBlock {
             ApexBlock::Q8_0 => &Q8_0,
             ApexBlock::Q6_K => &Q6_K,
             ApexBlock::Q5_K => &Q5_K,
+            ApexBlock::Q4_K => &Q4_K,
         }
     }
 
@@ -34,6 +36,8 @@ impl ApexBlock {
             (ApexBlock::Q6_K, DatumType::F16) => Ok("dequant_q6_k_f16"),
             (ApexBlock::Q5_K, DatumType::F32) => Ok("dequant_q5_k_f32"),
             (ApexBlock::Q5_K, DatumType::F16) => Ok("dequant_q5_k_f16"),
+            (ApexBlock::Q4_K, DatumType::F32) => Ok("dequant_q4_k_f32"),
+            (ApexBlock::Q4_K, DatumType::F16) => Ok("dequant_q4_k_f16"),
             _ => bail!("APEX dequant {self:?} does not write {dt:?}"),
         }
     }
@@ -53,6 +57,8 @@ pub fn apex_block(fact: &TypedFact) -> Option<ApexBlock> {
         Some(ApexBlock::Q6_K)
     } else if same_format(format, &Q5_K) {
         Some(ApexBlock::Q5_K)
+    } else if same_format(format, &Q4_K) {
+        Some(ApexBlock::Q4_K)
     } else {
         None
     }
@@ -162,6 +168,15 @@ mod tests {
         for shape in [[1usize, 256], [3, 256], [4, 512]] {
             assert_dequant(ApexBlock::Q5_K, &shape, DatumType::F32)?;
             assert_dequant(ApexBlock::Q5_K, &shape, DatumType::F16)?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn q4_k_matches_cpu_dequant() -> TractResult<()> {
+        for shape in [[1usize, 256], [3, 256], [4, 512]] {
+            assert_dequant(ApexBlock::Q4_K, &shape, DatumType::F32)?;
+            assert_dequant(ApexBlock::Q4_K, &shape, DatumType::F16)?;
         }
         Ok(())
     }
