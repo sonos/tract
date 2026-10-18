@@ -163,6 +163,11 @@ mod tests {
     }
 
     #[test]
+    fn q5_k_matmul_matches_cpu_and_reaches_plain_gemm() -> TractResult<()> {
+        assert_apex_matmul(ApexBlock::Q5_K, 32, 256)
+    }
+
+    #[test]
     fn q4_0_stays_on_the_fused_gemm() -> TractResult<()> {
         let model = matmul(DatumType::F32, quant_weight(&Q4_0, &[8, 32], DatumType::F32)?, 4, 32)?;
         let input = activation(4, 32, DatumType::F32)?;

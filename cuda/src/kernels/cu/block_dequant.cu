@@ -79,3 +79,67 @@ extern "C" __global__ void dequant_q6_k_f16(const uint8_t *__restrict__ quant,
                                             __half *__restrict__ out, uint32_t n_blocks) {
     dequant_q6_k_block<__half>(quant, out, n_blocks);
 }
+
+// ggml scale_min_k4. j is the group index inside one super-block. Scales are 6-bit.
+__device__ __forceinline__ void scale_min_k4(const uint8_t *q, uint32_t j, uint32_t &sc,
+                                             uint32_t &m) {
+    if (j < 4u) {
+        sc = q[j] & 63u;
+        m = q[j + 4u] & 63u;
+    } else {
+        sc = (q[j + 4u] & 0xFu) | ((q[j - 4u] >> 6) << 4);
+        m = (q[j + 4u] >> 4) | ((q[j] >> 6) << 4);
+    }
+}
+
+// ggml dequant_q5_k. High bit in qh adds 16 to the nibble. 176 bytes, 256 values.
+template <typename T>
+__device__ void dequant_q5_k_block(const uint8_t *__restrict__ quant, T *__restrict__ out,
+                                   uint32_t n_blocks) {
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid >= n_blocks) {
+        return;
+    }
+    const uint8_t *q = quant + tid * 176u;
+    float d = load_f16_le(q);
+    float mn = load_f16_le(q + 2);
+    const uint8_t *scales = q + 4;
+    const uint8_t *qh = q + 16;
+    uint32_t ql = 48u;
+    uint32_t y = 0u;
+    uint32_t u1 = 1u;
+    uint32_t u2 = 2u;
+    T *dst = out + tid * 256u;
+    for (uint32_t is = 0u; is < 8u; is += 2u) {
+        uint32_t sc, m;
+        scale_min_k4(scales, is, sc, m);
+        float d1 = d * (float)sc;
+        float m1 = mn * (float)m;
+        scale_min_k4(scales, is + 1u, sc, m);
+        float d2 = d * (float)sc;
+        float m2 = mn * (float)m;
+        for (uint32_t l = 0u; l < 32u; ++l) {
+            float hi = (qh[l] & u1) != 0u ? 16.0f : 0.0f;
+            dst[y] = (T)(d1 * ((float)(q[ql + l] & 0xFu) + hi) - m1);
+            y += 1u;
+        }
+        for (uint32_t l = 0u; l < 32u; ++l) {
+            float hi = (qh[l] & u2) != 0u ? 16.0f : 0.0f;
+            dst[y] = (T)(d2 * ((float)(q[ql + l] >> 4) + hi) - m2);
+            y += 1u;
+        }
+        ql += 32u;
+        u1 <<= 2;
+        u2 <<= 2;
+    }
+}
+
+extern "C" __global__ void dequant_q5_k_f32(const uint8_t *__restrict__ quant,
+                                            float *__restrict__ out, uint32_t n_blocks) {
+    dequant_q5_k_block<float>(quant, out, n_blocks);
+}
+
+extern "C" __global__ void dequant_q5_k_f16(const uint8_t *__restrict__ quant,
+                                            __half *__restrict__ out, uint32_t n_blocks) {
+    dequant_q5_k_block<__half>(quant, out, n_blocks);
+}

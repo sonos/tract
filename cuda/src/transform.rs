@@ -229,8 +229,8 @@ fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
             (F32, F32) | (F16, F16) | (F16, F32)
         );
 
-    // Q8_0 and Q6_K are dequantized in convert_matmul_to_cuda. Leave them out of
-    // the fused Q4_0 kernel. A block whose partner is not plain float stays on the CPU.
+    // Q8_0, Q6_K, and Q5_K are dequantized in convert_matmul_to_cuda. Leave them
+    // out of the fused Q4_0 kernel. A block whose partner is not plain float stays on the CPU.
     let apex = |fact: &TypedFact| kernels::block_dequant::apex_block(fact).is_some();
     let dequant =
         (apex(&facts[0]) && plain_float(&facts[1])) || (apex(&facts[1]) && plain_float(&facts[0]));
@@ -271,8 +271,8 @@ fn convert_matmul_to_cuda(
 ) -> TractResult<TVec<OutletId>> {
     let mut owned_facts: TVec<TypedFact> =
         model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
-    // Expand Q8_0 and Q6_K before the cast and the gemm. The float path then sees
-    // plain values. Q4_0 is not expanded: the fused kernel still owns that format.
+    // Expand Q8_0, Q6_K, and Q5_K before the cast and the gemm. The float path then
+    // sees plain values. Q4_0 is not expanded: the fused kernel still owns that format.
     install_apex_dequant(&node.name, target, inputs, &mut owned_facts)?;
     let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
     // GGML kernel expects weights in second position and activations in first position
