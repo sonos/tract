@@ -229,7 +229,7 @@ impl TypedOp for Gather {
     fn axes_mapping(
         &self,
         inputs: &[&TypedFact],
-        _outputs: &[&TypedFact],
+        outputs: &[&TypedFact],
     ) -> TractResult<AxesMapping> {
         // Output = data[..axis] ++ indices ++ data[axis+1..].  Track:
         // - data axes [0..axis)        → output [0..axis)
@@ -239,10 +239,7 @@ impl TypedOp for Gather {
         // Fall back to disconnected for exotic data (block-quant): the
         // storage rank can differ from the logical rank.
         if !inputs[0].is_plain() {
-            return AxesMapping::disconnected(
-                inputs,
-                &[&inputs[0].datum_type.fact(&[0i64.to_dim()])],
-            );
+            return AxesMapping::disconnected(inputs, outputs);
         }
         let data_rank = inputs[0].rank();
         let indices_rank = inputs[1].rank();
