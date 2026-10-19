@@ -411,6 +411,42 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add(
+        "const_b_square_0",
+        BinEinsumProblem {
+            expr: "mk,kn->mn".parse()?,
+            a: tensor2(&[[1f32, 2., 3.], [4., 5., 6.]]),
+            b: tensor2(&[[1f32, -1.], [2., 0.], [-3., 1.]]),
+            a_constant: false,
+            b_constant: true,
+            unicast_add_constant: None,
+        },
+    );
+
+    suite.add(
+        "const_b_injected_n_0",
+        BinEinsumProblem {
+            expr: "mk,k->m".parse()?,
+            a: tensor2(&[[1f32, 2., 3.]]),
+            b: tensor1(&[1f32, -2., 3.]),
+            a_constant: false,
+            b_constant: true,
+            unicast_add_constant: None,
+        },
+    );
+
+    suite.add(
+        "const_b_injected_n_1",
+        BinEinsumProblem {
+            expr: "mk,k->m".parse()?,
+            a: tensor2(&[[1f32, 2., 3.], [-1., 0., 2.]]),
+            b: tensor1(&[1f32, -2., 3.]),
+            a_constant: false,
+            b_constant: true,
+            unicast_add_constant: None,
+        },
+    );
+
     // TODO: fix ensure_mkn() to handle multiple n axes
     //suite.add(
     //    "multiple_n_axes",
