@@ -3,7 +3,9 @@ use std::io::{Read, Write};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::{
+    BlockQuant, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 
@@ -283,7 +285,14 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     let format: Box<dyn BlockQuant> = match header.item_type {
         0x2040 | 0x3040 => Box::new(Q4_0),
         0x3080 => Box::new(Q8_1),
-        _ => bail!("Unexpected block quant format"),
+        0x3808 => Box::new(Q8_0),
+        0x3C03 => Box::new(Q3_K),
+        0x3C04 => Box::new(Q4_K),
+        0x3C05 => Box::new(Q5_K),
+        0x3C06 => Box::new(Q6_K),
+        0x3C16 => Box::new(IQ2_S),
+        0x3C17 => Box::new(IQ4_XS),
+        other => bail!("Unexpected block quant format {other:#x}"),
     };
     ensure!(header.rank >= 2);
     let shape: TVec<_> =
@@ -313,7 +322,18 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     let bqs = tensor.try_storage_as::<BlockQuantStorage>()?;
     let format = bqs.format();
-    ensure!(format.dyn_eq(&Q4_0) || format.dyn_eq(&Q8_1));
+    ensure!(
+        format.dyn_eq(&Q4_0)
+            || format.dyn_eq(&Q8_1)
+            || format.dyn_eq(&Q8_0)
+            || format.dyn_eq(&Q3_K)
+            || format.dyn_eq(&Q4_K)
+            || format.dyn_eq(&Q5_K)
+            || format.dyn_eq(&Q6_K)
+            || format.dyn_eq(&IQ4_XS)
+            || format.dyn_eq(&IQ2_S),
+        "unsupported block quant format {format}"
+    );
     let s = tensor.shape();
     let flat_shape: [usize; 2] = [s[..s.len() - 1].iter().product(), *s.last().unwrap()];
 
@@ -326,7 +346,25 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
     header.data_size_bytes = bqs.value().len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
     // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = if format.dyn_eq(&Q4_0) { 0x3040 } else { 0x3081 };
+    header.item_type = if format.dyn_eq(&Q4_0) {
+        0x3040
+    } else if format.dyn_eq(&Q8_1) {
+        0x3081
+    } else if format.dyn_eq(&Q8_0) {
+        0x3808
+    } else if format.dyn_eq(&Q3_K) {
+        0x3C03
+    } else if format.dyn_eq(&Q4_K) {
+        0x3C04
+    } else if format.dyn_eq(&Q5_K) {
+        0x3C05
+    } else if format.dyn_eq(&Q6_K) {
+        0x3C06
+    } else if format.dyn_eq(&IQ4_XS) {
+        0x3C17
+    } else {
+        0x3C16
+    };
     header.write(w)?;
     w.write_all(bqs.value())?;
     Ok(())
