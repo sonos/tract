@@ -346,7 +346,10 @@ impl TypedFact {
             {
                 let inner_bqf =
                     BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), k.shape().into());
-                ensure!(&inner_bqf == bqf, "BlockQuantStorage fact mismatch");
+                ensure!(
+                    &inner_bqf == bqf,
+                    "BlockQuantStorage fact mismatch: fact {bqf:?}, storage {inner_bqf:?}"
+                );
             }
         }
         if let Some(u) = &self.uniform
