@@ -401,6 +401,10 @@ impl Tensor {
         self.storage_as::<T>().context("Unexpected tensor storage type")
     }
 
+    pub fn storage_as_mut<T: TensorStorage>(&mut self) -> Option<&mut T> {
+        self.storage.as_storage_mut().downcast_mut::<T>()
+    }
+
     pub fn from_storage(
         dt: DatumType,
         shape: &[usize],

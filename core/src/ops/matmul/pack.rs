@@ -4,7 +4,8 @@ use ndarray::*;
 use tract_linalg::block_quant::{
     BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat, block_quant_slice,
 };
-use tract_linalg::mmm::{MMMInputFormat, MMMInputValue, PackedMatrixStorage};
+use tract_linalg::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedMatrixStorage};
+use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
 
@@ -32,8 +33,82 @@ impl EvalOp for OptMatMulPack {
     op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        self.do_eval(ctx, inputs.remove(0))
+        let input = inputs.remove(0);
+        if ctx.session == SessionId::NONE {
+            return self.do_eval(ctx, input);
+        }
+        KEPT_PACKS.with_borrow_mut(|kept| {
+            let slot = kept.slot(ctx.session, ctx.node_id);
+            if let Kept::Packed(previous) = slot
+                && let Some(repacked) = self.repack(previous, &input)?
+            {
+                return Ok(tvec!(repacked));
+            }
+            let keep = !matches!(slot, Kept::Cold) && self.packed_format(input.shape()).is_some();
+            let output = self.do_eval(ctx, input)?;
+            *slot = match output[0].as_arc_tensor() {
+                Some(packed) if keep => Kept::Packed(packed.clone()),
+                _ => Kept::Warm,
+            };
+            Ok(output)
+        })
     }
+
+    fn drop_session(&self, session: SessionId, _node_id: usize) {
+        KEPT_PACKS.with_borrow_mut(|kept| kept.drop_session(session));
+    }
+}
+
+/// What a pack node keeps between the turns of a session: nothing before its
+/// first turn, so a session run once frees its packs as soon as they are
+/// consumed, then its last packed output, refilled in place by the next turn
+/// when no one else holds it.
+#[derive(Clone, Debug, Default)]
+enum Kept {
+    #[default]
+    Cold,
+    Warm,
+    Packed(Arc<Tensor>),
+}
+
+/// The pack nodes' [`Kept`] slots of each session evaluated on this thread,
+/// indexed by node id. A cache: it carries nothing a stream depends on, and a
+/// session moved to another thread just starts cold there. A session's slots
+/// go when the plan calls [`EvalOp::drop_session`]; their allocation is kept
+/// for the thread's next session.
+struct KeptPacks {
+    sessions: Vec<(SessionId, Vec<Kept>)>,
+    spare: Vec<Kept>,
+}
+
+impl KeptPacks {
+    fn slot(&mut self, session: SessionId, node_id: usize) -> &mut Kept {
+        let ix = match self.sessions.iter().position(|(s, _)| *s == session) {
+            Some(ix) => ix,
+            None => {
+                self.sessions.push((session, std::mem::take(&mut self.spare)));
+                self.sessions.len() - 1
+            }
+        };
+        let slots = &mut self.sessions[ix].1;
+        if slots.len() <= node_id {
+            slots.resize(node_id + 1, Kept::Cold);
+        }
+        &mut slots[node_id]
+    }
+
+    fn drop_session(&mut self, session: SessionId) {
+        if let Some(ix) = self.sessions.iter().position(|(s, _)| *s == session) {
+            let (_, mut slots) = self.sessions.swap_remove(ix);
+            slots.clear();
+            self.spare = slots;
+        }
+    }
+}
+
+thread_local! {
+    static KEPT_PACKS: std::cell::RefCell<KeptPacks> =
+        const { std::cell::RefCell::new(KeptPacks { sessions: Vec::new(), spare: Vec::new() }) };
 }
 
 impl TypedOp for OptMatMulPack {
@@ -141,6 +216,49 @@ impl OptMatMulPack {
         }
     }
 
+    /// The plain packed format `input` of this shape is packed with, if any:
+    /// the only one whose output [`Self::repack`] can refill.
+    fn packed_format(&self, input_shape: &[usize]) -> Option<&PackedFormat> {
+        let mode = self.mode_picker.pick(input_shape[self.mn_axis]).ok()?;
+        self.packers[mode].downcast_ref::<PackedFormat>()
+    }
+
+    /// Refill `previous`, this node's last output, with `input` in place. None
+    /// when another holder still reads it or its layout no longer fits.
+    fn repack(&self, previous: &mut Arc<Tensor>, input: &Tensor) -> TractResult<Option<TValue>> {
+        let Some(format) = self.packed_format(input.shape()) else { return Ok(None) };
+        let output_shape: TVec<usize> = self.output_shape(input.shape());
+        let k = input.shape()[self.k_axis];
+        let mn = input.shape()[self.mn_axis];
+        let Some(tensor) = Arc::get_mut(previous) else { return Ok(None) };
+        if tensor.shape() != &*output_shape {
+            return Ok(None);
+        }
+        let Some(storage) = tensor.storage_as_mut::<PackedMatrixStorage>() else {
+            return Ok(None);
+        };
+        let fits = |value: &mut Box<dyn MMMInputValue>| {
+            value.downcast_mut::<EagerPackedInput>().is_some_and(|packed| {
+                packed.fact.k == k
+                    && packed.mn == mn
+                    && packed.fact.format.dyn_eq(format)
+                    && Arc::get_mut(&mut packed.packed).is_some()
+            })
+        };
+        if !storage.values_mut().iter_mut().all(fits) {
+            return Ok(None);
+        }
+        let mut bc_shape: TVec<usize> = input.shape().into();
+        bc_shape[self.k_axis] = 1;
+        bc_shape[self.mn_axis] = 1;
+        for (value, coord) in storage.values_mut().iter_mut().zip(indices(&*bc_shape)) {
+            let view = TensorView::offsetting(input, coord.slice())?;
+            let packed = value.downcast_mut::<EagerPackedInput>().unwrap();
+            format.repack_tensor_view(packed, &view, self.k_axis, self.mn_axis)?;
+        }
+        Ok(Some(previous.clone().into_tvalue()))
+    }
+
     pub fn output_shape<D: DimLike>(&self, input: &[D]) -> TVec<D> {
         let mut packed_shape: TVec<D> = input.into();
         packed_shape.remove(self.mn_axis.max(self.k_axis));
@@ -222,4 +340,129 @@ impl TypedOp for OptSimpleMatMulPack {
     }
 
     as_op!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::einsum::EinSum;
+
+    const G: usize = 4;
+    const K: usize = 8;
+    const N: usize = 6;
+
+    /// A grouped vector-matrix product against constant weights, cut at the
+    /// pack of its activation: one packed value per group, every turn.
+    fn activation_pack() -> TractResult<(Arc<TypedSimplePlan>, OptMatMulPack)> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([G, 1, K]))?;
+        let w: Vec<f32> = (0..G * K * N).map(|i| (i % 7) as f32 - 3.0).collect();
+        let w = model.add_const("w", Tensor::from_shape(&[G, K, N], &w)?)?;
+        let y = model.wire_node(
+            "gemm",
+            EinSum::new("gmk,gkn->gmn".parse()?, f32::datum_type()),
+            &[x, w],
+        )?;
+        model.select_output_outlets(&y)?;
+        let mut model = model.into_optimized()?;
+        let pack = model
+            .nodes()
+            .iter()
+            .find(|n| {
+                n.op_is::<OptMatMulPack>()
+                    && model.outlet_fact(n.inputs[0]).unwrap().konst.is_none()
+            })
+            .context("no pack of a dynamic operand")?;
+        let op = pack.op_as::<OptMatMulPack>().unwrap().clone();
+        model.select_output_outlets(&[pack.id.into()])?;
+        Ok((model.into_runnable()?, op))
+    }
+
+    fn input(turn: usize) -> TractResult<TValue> {
+        let x: Vec<f32> = (0..G * K).map(|i| ((i * (turn + 3)) % 5) as f32 - 2.0).collect();
+        Ok(Tensor::from_shape(&[G, 1, K], &x)?.into_tvalue())
+    }
+
+    fn packed_bytes(t: &Tensor) -> Vec<Vec<u8>> {
+        let storage = t.try_storage_as::<PackedMatrixStorage>().unwrap();
+        storage
+            .values()
+            .iter()
+            .map(|v| {
+                let packed = v.downcast_ref::<EagerPackedInput>().unwrap();
+                packed.packed.as_bytes()[..packed.k() * 4].to_vec()
+            })
+            .collect()
+    }
+
+    fn kept_packs() -> usize {
+        KEPT_PACKS.with_borrow(|kept| {
+            kept.sessions
+                .iter()
+                .flat_map(|(_, slots)| slots)
+                .filter(|slot| matches!(slot, Kept::Packed(_)))
+                .count()
+        })
+    }
+
+    #[test]
+    fn pack_is_kept_from_second_turn_until_session_drop() -> TractResult<()> {
+        let (plan, _) = activation_pack()?;
+        let mut state = plan.spawn()?;
+        state.run(tvec!(input(0)?))?;
+        assert_eq!(kept_packs(), 0);
+        state.run(tvec!(input(1)?))?;
+        assert_eq!(kept_packs(), 1);
+        drop(state);
+        assert_eq!(kept_packs(), 0);
+        assert!(KEPT_PACKS.with_borrow(|kept| kept.sessions.is_empty()));
+        Ok(())
+    }
+
+    #[test]
+    fn dynamic_pack_is_refilled_in_place_when_released() -> TractResult<()> {
+        let (plan, op) = activation_pack()?;
+        let mut state = plan.spawn()?;
+        state.run(tvec!(input(0)?))?;
+        let kept_out = state.run(tvec!(input(1)?))?.remove(0);
+        let kept_ptr = Arc::as_ptr(kept_out.as_arc_tensor().unwrap());
+        drop(kept_out);
+        for turn in 2..5 {
+            let out = state.run(tvec!(input(turn)?))?.remove(0);
+            assert_eq!(Arc::as_ptr(out.as_arc_tensor().unwrap()), kept_ptr);
+            let fresh = op.eval(&EvalContext::out_of_plan(), tvec!(input(turn)?))?.remove(0);
+            assert_eq!(packed_bytes(&out), packed_bytes(&fresh));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn held_pack_is_not_overwritten() -> TractResult<()> {
+        let (plan, _) = activation_pack()?;
+        let mut state = plan.spawn()?;
+        state.run(tvec!(input(0)?))?;
+        let held = state.run(tvec!(input(1)?))?.remove(0);
+        let before = packed_bytes(&held);
+        let next = state.run(tvec!(input(2)?))?.remove(0);
+        assert_ne!(
+            Arc::as_ptr(next.as_arc_tensor().unwrap()),
+            Arc::as_ptr(held.as_arc_tensor().unwrap())
+        );
+        assert_eq!(packed_bytes(&held), before);
+        assert_ne!(packed_bytes(&next), before);
+        Ok(())
+    }
+
+    #[test]
+    fn sessions_keep_their_own_packs() -> TractResult<()> {
+        let (plan, _) = activation_pack()?;
+        let (mut a, mut b) = (plan.spawn()?, plan.spawn()?);
+        for turn in 0..3 {
+            let out_a = a.run(tvec!(input(turn)?))?.remove(0);
+            let out_b = b.run(tvec!(input(turn + 1)?))?.remove(0);
+            assert_ne!(packed_bytes(&out_a), packed_bytes(&out_b));
+        }
+        assert_eq!(kept_packs(), 2);
+        Ok(())
+    }
 }
