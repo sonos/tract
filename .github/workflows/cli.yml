@@ -182,7 +182,7 @@ jobs:
       - run: ${{ matrix.build }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
@@ -203,7 +203,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
@@ -274,7 +274,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.os == 'macOS' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
           path: tract-cli
@@ -374,7 +374,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
@@ -451,7 +451,7 @@ jobs:
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
         if: needs.prepare.outputs.is_pr == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-result-${{ matrix.target }}
           path: result
@@ -501,7 +501,7 @@ jobs:
           PLATFORM=${{ matrix.triple }} ./ci/cross.sh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # ghcr login for the cross-build image
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
           path: .cross-cache/target/${{ matrix.rustc_triple }}/release/tract
@@ -548,7 +548,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
           path: tract-cli
@@ -584,7 +584,7 @@ jobs:
           fi
           test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-result-${{ matrix.device }}
           path: result
@@ -618,11 +618,11 @@ jobs:
           - device: orangepi-rv2
             triple: riscv64gc-unknown-linux-musl
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         # A leg whose bench never produced a result (timed out / failed) has no artifact;
         # tolerate that here and skip the append below rather than failing the whole job.
         continue-on-error: true
@@ -693,11 +693,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: bench-result-*
           path: results
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
@@ -752,7 +752,7 @@ jobs:
           mkdir -p bench-comment
           mv pr-comment.md bench-comment/
           printf '%s\n' "$PR_NUMBER" > bench-comment/pr-number
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ hashFiles('bench-comment/pr-comment.md') != '' }}
         with:
           name: bench-comment
@@ -783,7 +783,7 @@ jobs:
             runner: orin-nx-16g
             triple: aarch64-unknown-linux-gnu-stretch
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
@@ -829,7 +829,7 @@ jobs:
           rustup target add wasm32-wasip1
           cargo build -p tract-cli --release --target wasm32-wasip1 --no-default-features \
             --features onnx,tf,tflite,pulse,pulse-opl,transformers,extra
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tract-wasm-${{ matrix.config }}
           path: target/wasm32-wasip1/release/tract.wasm
@@ -846,7 +846,7 @@ jobs:
       matrix:
         config: [ no-simd, simd128, relaxed-simd ]
     steps:
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-wasm-${{ matrix.config }}
           path: tract-wasm
@@ -895,11 +895,11 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-wasm-${{ matrix.config }}
           path: tract-wasm
@@ -976,7 +976,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
@@ -1015,7 +1015,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.ref }}
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
           path: tract-cli
