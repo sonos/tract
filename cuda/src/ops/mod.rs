@@ -1,4 +1,5 @@
 mod conv;
+mod dequant;
 pub mod flash_attn;
 mod fused_axis_op;
 mod gemm;
@@ -6,6 +7,7 @@ mod iff;
 mod quant_q81;
 mod ring_gemm;
 pub use conv::{CudaConv, wire_cuda_conv};
+pub use dequant::CudaBlockDequant;
 pub use flash_attn::CudaFlashAttention;
 pub use fused_axis_op::CudaFusedAxisOp;
 pub use gemm::CudaGgmlGemm;
