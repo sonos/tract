@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 
 use crate::internal::*;
+use crate::ops::matmul::apex_moe::{ApexMoeConfig, ApexMoeTransform};
 use crate::ops::matmul::de_block_quant::BlockQuantTransform;
 use std::fmt::Debug;
 
@@ -386,6 +387,8 @@ impl ModelTransform for ExportScanState {
 register_simple_model_transform!("export_scan_state", ExportScanState);
 
 register_simple_model_transform!("block_quant", BlockQuantTransform);
+
+register_model_transform!("apex_moe", ApexMoeConfig, ApexMoeTransform::from_config);
 
 #[derive(Debug, serde::Deserialize, Default)]
 pub struct SelectOutputsConfig {

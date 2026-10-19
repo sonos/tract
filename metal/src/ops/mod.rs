@@ -1,4 +1,5 @@
 pub mod conv;
+pub mod dequant;
 pub mod fused_axis_op;
 pub mod gemm;
 pub mod pool;
