@@ -63,6 +63,10 @@ impl PackedMatrixStorage {
         &self.values
     }
 
+    pub fn values_mut(&mut self) -> &mut [Box<dyn MMMInputValue>] {
+        &mut self.values
+    }
+
     pub fn batch_shape(&self) -> &[usize] {
         &self.batch_shape
     }
