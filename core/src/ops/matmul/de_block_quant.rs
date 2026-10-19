@@ -3,10 +3,24 @@ use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q
 use crate::internal::*;
 use crate::ops::einsum::einsum_matmul::EinSumMatMul;
 use crate::ops::konst::Const;
+use crate::ops::matmul::apex_policy::{self, ApexProfile};
 use crate::transform::ModelTransform;
 
 #[derive(Debug)]
 pub struct BlockQuantTransform;
+
+/// Which weights `apply_weight_quant` rewrites, and to which block-quant format.
+///
+/// `Rewriter` requires its context type to implement `Default`. `Uniform` is that
+/// default; `apex_moe` passes `Apex` explicitly.
+#[derive(Clone, Debug, Default)]
+pub enum QuantMode {
+    /// Every rank-2 matmul constant becomes Q4_0.
+    #[default]
+    Uniform,
+    /// APEX profile: format depends on the weight name and layer index.
+    Apex { profile: ApexProfile, layers: usize },
+}
 
 impl ModelTransform for BlockQuantTransform {
     fn name(&self) -> StaticName {
@@ -14,17 +28,56 @@ impl ModelTransform for BlockQuantTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        crate::ops::einsum::einsum_matmul::detect_all(model)?;
-        Rewriter::<()>::default()
-            .with_rule_for("block_quant_einsum_weights", block_quant_einsum_weights)
-            .rewrite(&(), model)?;
-        crate::ops::einsum::einsum_matmul::flatten_all(model)?;
-        Ok(())
+        apply_weight_quant(model, &QuantMode::Uniform)
+    }
+}
+
+pub fn apply_weight_quant(model: &mut TypedModel, mode: &QuantMode) -> TractResult<()> {
+    crate::ops::einsum::einsum_matmul::detect_all(model)?;
+    Rewriter::<QuantMode>::default()
+        .with_rule_for("block_quant_einsum_weights", block_quant_einsum_weights)
+        .rewrite(mode, model)?;
+    crate::ops::einsum::einsum_matmul::flatten_all(model)?;
+    Ok(())
+}
+
+/// Install these block-quant tensors on same-named rank-2 matmul constants.
+///
+/// The contraction axis is moved with the same patch as [`apply_weight_quant`].
+/// The supplied bytes are stored as they are.
+pub fn apply_supplied_block_quant(
+    model: &mut TypedModel,
+    weights: HashMap<String, Tensor>,
+) -> TractResult<()> {
+    crate::ops::einsum::einsum_matmul::detect_all(model)?;
+    Rewriter::<HashMap<String, Tensor>>::default()
+        .with_rule_for("supplied_block_quant_einsum_weights", supplied_block_quant_einsum_weights)
+        .rewrite(&weights, model)?;
+    crate::ops::einsum::einsum_matmul::flatten_all(model)?;
+    Ok(())
+}
+
+/// Name the quantizer keys off. A K-axis move is inserted before quantization, so the
+/// einsum input on the second pass is that move, not the constant. Walk back to the constant.
+fn weight_node_name(model: &TypedModel, mut node_id: usize) -> String {
+    loop {
+        let node = model.node(node_id);
+        if node.op_is::<Const>() || node.inputs.len() != 1 {
+            return node.name.clone();
+        }
+        node_id = node.inputs[0].node;
+    }
+}
+
+fn format_for(mode: &QuantMode, name: &str) -> Box<dyn BlockQuant> {
+    match *mode {
+        QuantMode::Uniform => Box::new(Q4_0),
+        QuantMode::Apex { profile, layers } => apex_policy::assign(profile, layers, name),
     }
 }
 
 fn block_quant_einsum_weights(
-    _ctx: &(),
+    mode: &QuantMode,
     model: &TypedModel,
     node: &TypedNode,
     prefix: &str,
@@ -36,57 +89,162 @@ fn block_quant_einsum_weights(
         if a.rank() != 2 {
             continue;
         };
-        if op.k_axis().inputs[slot][0] == 0 {
-            let mut patch = TypedModelPatch::default();
-            let mut taps = patch.taps(model, &node.inputs)?;
-            taps[slot] = patch.wire_node(
-                format!("{}.t_{}", node.name, slot),
-                AxisOp::Move(1, 0),
-                &[taps[slot]],
-            )?[0];
-            let mut new_op = op.clone();
-            new_op.op.axes = op
-                .op
-                .axes
-                .clone()
-                .remove_axis_occurency(InOut::In(slot), 0)?
-                .with_extra_axis_occurency(op.k_axis, InOut::In(slot), 1)?;
-            let output = patch.wire_node(prefix, new_op, &taps)?;
-            patch.shunt_outside(model, node.id.into(), output[0])?;
-            return Ok(Some(patch));
+        let weight_name = weight_node_name(model, node.inputs[slot].node);
+        let kpos = op.k_axis().inputs[slot][0];
+        let format = format_for(mode, &weight_name);
+        if a.shape()[kpos] % format.block_len() != 0 {
+            continue;
         }
-        let format = Q4_0;
-        let mut patch = TypedModelPatch::default();
+        if kpos == 0 {
+            return Ok(Some(patch_move_k(model, node, prefix, op, slot, &weight_name)?));
+        }
         let weights = if a.datum_type() == f16::datum_type() {
             format.quant_f16(a.try_as_plain_ram()?.as_slice::<f16>()?)?
         } else {
             format.quant_f32(a.cast_to::<f32>()?.try_as_plain_ram()?.as_slice::<f32>()?)?
         };
-        let act_slot = 1 - slot;
-        let name = &model.node(node.inputs[slot].node).name;
-        let m = a.shape()[0];
-        let k = a.shape()[1];
-        let bqs = BlockQuantStorage::new(Box::new(format), m, k, Arc::new(weights))?;
-        let fact =
-            Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
-        let weights = patch.wire_node(
-            format!("{name}.bq"),
-            Const::new_with_exotic_fact(
-                Arc::new(bqs.into_tensor_with_shape(a.datum_type(), &[1, m, k])),
-                fact,
-            )?,
-            &[],
-        )?;
-        let tap = patch.tap_model(model, node.inputs[act_slot])?;
-        // Block-quant tensor is rank 3 [G=1, M, K]; add a group dim to the weight's axes
-        let mut new_op = op.op.clone();
-        new_op.axes = new_op.axes.with_extra_axis('G', InOut::In(slot), 0)?;
-        let inputs = if slot == 0 { [weights[0], tap] } else { [tap, weights[0]] };
-        let wire = patch.wire_node(prefix, new_op, &inputs)?;
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        return Ok(Some(patch));
+        return Ok(Some(patch_install(
+            model,
+            node,
+            prefix,
+            op,
+            slot,
+            InstalledWeight { tensor: a, name: &weight_name, format, blob: Arc::new(weights) },
+        )?));
     }
     Ok(None)
+}
+
+/// Const-prop folds the K-axis move into a constant named `{original}.k`.
+fn supplied_name<'a>(weights: &'a HashMap<String, Tensor>, name: &str) -> Option<&'a Tensor> {
+    if let Some(tensor) = weights.get(name) {
+        return Some(tensor);
+    }
+    let stem = name.strip_suffix(".k")?;
+    weights.get(stem)
+}
+
+fn supplied_block_quant_einsum_weights(
+    weights: &HashMap<String, Tensor>,
+    model: &TypedModel,
+    node: &TypedNode,
+    prefix: &str,
+    op: &EinSumMatMul,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(node.inputs.len() == 2);
+    for (slot, fact) in model.node_input_facts(node.id)?.iter().enumerate() {
+        let Some(a) = fact.konst.as_ref() else { continue };
+        if a.rank() != 2 {
+            continue;
+        }
+        let weight_name = weight_node_name(model, node.inputs[slot].node);
+        let Some(supplied) = supplied_name(weights, &weight_name) else { continue };
+        let storage = supplied
+            .try_storage_as::<BlockQuantStorage>()
+            .with_context(|| format!("weight {weight_name} is not a block-quant tensor"))?;
+        let format = storage.format();
+        let kpos = op.k_axis().inputs[slot][0];
+        ensure!(kpos <= 1, "weight {weight_name} contraction axis {kpos} is not a rank-2 axis");
+        ensure!(
+            a.shape()[kpos] % format.block_len() == 0,
+            "weight {weight_name} K {} is not a multiple of the {} block",
+            a.shape()[kpos],
+            format
+        );
+        if kpos == 0 {
+            ensure!(
+                supplied.shape() == [a.shape()[1], a.shape()[0]],
+                "weight {weight_name} shape {:?} does not match supplied {:?}",
+                a.shape(),
+                supplied.shape()
+            );
+            return Ok(Some(patch_move_k(model, node, prefix, op, slot, &weight_name)?));
+        }
+        ensure!(
+            supplied.shape() == a.shape(),
+            "weight {weight_name} shape {:?} does not match supplied {:?}",
+            a.shape(),
+            supplied.shape()
+        );
+        return Ok(Some(patch_install(
+            model,
+            node,
+            prefix,
+            op,
+            slot,
+            InstalledWeight {
+                tensor: a,
+                name: &weight_name,
+                format: dyn_clone::clone_box(format),
+                blob: storage.value().clone(),
+            },
+        )?));
+    }
+    Ok(None)
+}
+
+fn patch_move_k(
+    model: &TypedModel,
+    node: &TypedNode,
+    prefix: &str,
+    op: &EinSumMatMul,
+    slot: usize,
+    weight_name: &str,
+) -> TractResult<TypedModelPatch> {
+    let mut patch = TypedModelPatch::default();
+    let mut taps = patch.taps(model, &node.inputs)?;
+    // Keep the constant's name on the move. Const-prop folds the move into a fresh
+    // constant and drops the original, and the next pass reads that folded name.
+    taps[slot] = patch.wire_node(format!("{weight_name}.k"), AxisOp::Move(1, 0), &[taps[slot]])?[0];
+    let mut new_op = op.clone();
+    new_op.op.axes = op
+        .op
+        .axes
+        .clone()
+        .remove_axis_occurency(InOut::In(slot), 0)?
+        .with_extra_axis_occurency(op.k_axis, InOut::In(slot), 1)?;
+    let output = patch.wire_node(prefix, new_op, &taps)?;
+    patch.shunt_outside(model, node.id.into(), output[0])?;
+    Ok(patch)
+}
+
+struct InstalledWeight<'a> {
+    tensor: &'a Tensor,
+    name: &'a str,
+    format: Box<dyn BlockQuant>,
+    blob: Arc<Blob>,
+}
+
+fn patch_install(
+    model: &TypedModel,
+    node: &TypedNode,
+    prefix: &str,
+    op: &EinSumMatMul,
+    slot: usize,
+    weight: InstalledWeight<'_>,
+) -> TractResult<TypedModelPatch> {
+    let mut patch = TypedModelPatch::default();
+    let m = weight.tensor.shape()[0];
+    let k = weight.tensor.shape()[1];
+    let bqs = BlockQuantStorage::new(weight.format, m, k, weight.blob)?;
+    let fact = Box::new(BlockQuantFact::new(dyn_clone::clone_box(bqs.format()), tvec!(1, m, k)));
+    let weights = patch.wire_node(
+        format!("{}.bq", weight.name),
+        Const::new_with_exotic_fact(
+            Arc::new(bqs.into_tensor_with_shape(weight.tensor.datum_type(), &[1, m, k])),
+            fact,
+        )?,
+        &[],
+    )?;
+    let act_slot = 1 - slot;
+    let tap = patch.tap_model(model, node.inputs[act_slot])?;
+    // Block-quant tensor is rank 3 [G=1, M, K]; add a group dim to the weight's axes
+    let mut new_op = op.op.clone();
+    new_op.axes = new_op.axes.with_extra_axis('G', InOut::In(slot), 0)?;
+    let inputs = if slot == 0 { [weights[0], tap] } else { [tap, weights[0]] };
+    let wire = patch.wire_node(prefix, new_op, &inputs)?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(patch)
 }
 
 #[cfg(test)]
