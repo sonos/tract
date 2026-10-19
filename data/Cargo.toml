@@ -17,6 +17,7 @@ maintenance = { status = "actively-developed" }
 [dependencies]
 anyhow.workspace = true
 downcast-rs.workspace = true
+flate2 = { workspace = true, optional = true }
 dyn-clone.workspace = true
 dyn-hash.workspace = true
 half.workspace = true
@@ -34,6 +35,7 @@ smallvec.workspace = true
 lazy_static.workspace = true
 string-interner.workspace = true
 parking_lot.workspace = true
+zip = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dev-dependencies]
 criterion.workspace = true
@@ -47,6 +49,8 @@ proptest = { version = "1.0.0", default-features = false, features = ["std", "bi
 
 [features]
 complex = [ "num-complex" ]
+# Reading and writing numpy `.npz` archives. Links zip and flate2 in.
+npz = ["dep:zip", "dep:flate2"]
 
 [[bench]]
 name = "tensor_from_datum"

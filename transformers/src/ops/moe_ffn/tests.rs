@@ -468,16 +468,16 @@ fn test_e2e_nnef_qwen3_moe() -> TractResult<()> {
     // Load input and expected output from io.npz
     let npz_path = model_path.join("io.npz");
     let npz_bytes = std::fs::read(&npz_path)?;
-    let mut npz = ndarray_npy::NpzReader::new(Cursor::new(npz_bytes))?;
+    let mut npz = tract_data::npz::NpzReader::new(Cursor::new(npz_bytes))?;
 
-    let input: tract_ndarray::ArrayD<f32> = npz.by_name("input_0.npy")?;
-    let expected_output: tract_ndarray::ArrayD<f32> = npz.by_name("output_0.npy")?;
+    let input = npz.get("input_0.npy")?;
+    let expected_output = npz.get("output_0.npy")?;
 
     // Run inference
-    let result = plan.spawn()?.run(tvec![input.into_tensor().into_tvalue()])?;
+    let result = plan.spawn()?.run(tvec![input.into_tvalue()])?;
 
     // Compare against PyTorch reference output
-    result[0].close_enough(&expected_output.into_tensor(), Approximation::Approximate)?;
+    result[0].close_enough(&expected_output, Approximation::Approximate)?;
 
     Ok(())
 }

@@ -186,7 +186,6 @@ metrics = "0.24.6"
 metrics-util = { version = "0.20.4", default-features = false, features = ["debugging"] }
 minijinja = "2.19.0"
 ndarray = "0.17"
-ndarray-npy = { version = "0.10", features = [ "compressed_npz" ] }
 nom = "8.0.0"
 nom-language = "0.1"
 nu-ansi-term = "0.50"
@@ -201,7 +200,6 @@ pollster = "1.0"
 proptest = "1.0.0"
 prost = "0.14"
 prost-types = "0.14"
-py_literal = "0.4.0"
 rand = "0.10"
 rand_distr = "0.6"
 rayon = "1.10"
@@ -231,6 +229,7 @@ walkdir = "2.3.2"
 webpki-roots = "1"
 wgpu = { version = "30.0.1", features = ["fragile-send-sync-non-atomic-wasm"] }
 zerofrom = "0.1.5"
+zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 # default-features off so the GPU backends stay opt-in per crate: an example
 # building on an ubuntu runner must not pull tract-cuda in. The rest of the
 # facade's default set has to be named back, or every in-tree consumer loses

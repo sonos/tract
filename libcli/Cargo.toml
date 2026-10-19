@@ -18,13 +18,12 @@ clap.workspace = true
 colorous.workspace = true
 lazy_static.workspace = true
 log.workspace = true
-ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
-py_literal.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 tract-core.workspace = true
+tract-data = { workspace = true, features = ["npz"] }
 tract-hir.workspace = true
 tract-onnx = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }

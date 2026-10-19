@@ -68,6 +68,9 @@ mod datum;
 mod dim;
 pub mod dyn_eq;
 mod exotic;
+pub mod npy;
+#[cfg(feature = "npz")]
+pub mod npz;
 mod scatter;
 mod tensor;
 pub mod ulp;

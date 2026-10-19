@@ -9,7 +9,6 @@ clap = { workspace = true, features = ["derive"] }
 kdam = "0.6"
 image = "0.25"
 ndarray.workspace = true
-ndarray-npy.workspace = true
 rand = "0.10"
 rand_distr = "0.6"
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }

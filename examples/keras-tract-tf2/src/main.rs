@@ -1,5 +1,5 @@
 use anyhow::Result;
-use ndarray::{ArrayD, IxDyn, OwnedRepr};
+use ndarray::ArrayD;
 use tract::prelude::*;
 
 tract::impl_ndarray_interop!();
@@ -9,11 +9,9 @@ fn main() -> Result<()> {
 
     // load input and expected output from npz file into ndarray arrays
     let io = std::fs::File::open("io.npz")?;
-    let mut npz = ndarray_npy::NpzReader::new(io)?;
-    let input: ArrayD<f32> =
-        npz.by_name::<OwnedRepr<f32>, IxDyn>("input.npy").unwrap().into_owned();
-    let expected: ArrayD<f32> =
-        npz.by_name::<OwnedRepr<f32>, IxDyn>("output.npy").unwrap().into_owned();
+    let mut npz = tract_data::npz::NpzReader::new(io)?;
+    let input: ArrayD<f32> = npz.get("input.npy")?.into_plain_array()?;
+    let expected: ArrayD<f32> = npz.get("output.npy")?.into_plain_array()?;
 
     let found = model.run([input.tract()?])?;
     let found = found[0].as_slice::<f32>()?;
