@@ -16,7 +16,9 @@ use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
-use tract_core::tract_linalg::block_quant::Q4_0;
+use tract_core::tract_linalg::block_quant::{
+    BlockQuant, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0,
+};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
@@ -431,11 +433,67 @@ pub(crate) fn metal_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuC
     )
 }
 
+fn plain_float(fact: &TypedFact) -> bool {
+    fact.is_plain() && matches!(fact.datum_type, DatumType::F16 | DatumType::F32)
+}
+
+// Q3_K, IQ4_XS, and IQ2_S. These constants are expanded in `convert_const`.
+// The shader formats stay on the device dequant. Q4_0 stays on the fused gemm.
+fn host_expand_format(format: &dyn BlockQuant) -> bool {
+    format == (&Q3_K as &dyn BlockQuant)
+        || format == (&IQ4_XS as &dyn BlockQuant)
+        || format == (&IQ2_S as &dyn BlockQuant)
+}
+
+fn host_expand_fact(fact: &TypedFact) -> bool {
+    fact.konst
+        .as_ref()
+        .and_then(|tensor| tensor.storage_as::<BlockQuantStorage>())
+        .is_some_and(|storage| host_expand_format(storage.format()))
+}
+
 fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
-    MlxGemm.is_supported_dts(in_facts)
+    let gemm_ok = MlxGemm.is_supported_dts(in_facts)
         || MfaGemm.is_supported_dts(in_facts)
         || GgmlGemm.is_supported_dts(in_facts)
-        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()])
+        || GgmlGemm.is_supported_dts(&[in_facts[1].clone(), in_facts[0].clone()]);
+    if gemm_ok {
+        return true;
+    }
+    // Shader formats are dequantized on the device. Q3_K, IQ4_XS, and IQ2_S are
+    // accepted only as constants, because `convert_const` already expanded them.
+    // A computed tensor of those three has no kernel and stays on the CPU.
+    // Leave every APEX format out of GgmlGemm::is_supported_dts.
+    let accepted = |fact: &TypedFact| {
+        kernels::block_dequant::apex_block(fact).is_some() || host_expand_fact(fact)
+    };
+    (accepted(&in_facts[0]) && plain_float(&in_facts[1]))
+        || (accepted(&in_facts[1]) && plain_float(&in_facts[0]))
+}
+
+fn install_apex_dequant(
+    node_name: &str,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for i in 0..2 {
+        let Some(format) = kernels::block_dequant::apex_block(&owned_facts[i]) else {
+            continue;
+        };
+        let dt = owned_facts[i].datum_type;
+        ensure!(
+            matches!(dt, DatumType::F16 | DatumType::F32),
+            "APEX dequant writes f16 or f32, got {dt:?}"
+        );
+        inputs[i] = target.wire_node(
+            format!("{node_name}.dequant_{i}"),
+            ops::dequant::MetalBlockDequant { format },
+            &[inputs[i]],
+        )?[0];
+        owned_facts[i] = dt.fact(owned_facts[i].shape.clone());
+    }
+    Ok(())
 }
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
@@ -486,6 +544,12 @@ fn convert_matmul_to_metal(
 ) -> TractResult<TVec<OutletId>> {
     let mut owned_facts: TVec<TypedFact> =
         model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+
+    // Q3_K, IQ4_XS, and IQ2_S constants are already plain floats. Q4_0 is not
+    // expanded: the fused kernel still owns that format.
+    note_host_expanded(target, inputs, &mut owned_facts)?;
+    // Shader formats expand here, before the cast and the gemm choice.
+    install_apex_dequant(&node.name, target, inputs, &mut owned_facts)?;
 
     // The metal GEMMs accumulate in their input dtype, so a matmul asking for a wider
     // `operating_dt` than its inputs must have them cast up: an SDPA scores matmul is
@@ -616,7 +680,53 @@ fn convert_matmul_to_metal(
     Ok(matmul_output)
 }
 
+fn note_host_expanded(
+    target: &TypedModel,
+    inputs: &[OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for (fact, input) in owned_facts.iter_mut().zip(inputs.iter()) {
+        if !host_expand_fact(fact) {
+            continue;
+        }
+        // The mapped outlet is the expanded const. Replacing the source fact
+        // lets the gemm choice see those floats. Do not dequant them again.
+        ensure!(
+            target.outlet_fact(*input)?.to_device_fact()?.is_plain(),
+            "constant Q3_K, IQ4_XS, or IQ2_S weight is still quantized on the device"
+        );
+        let dt = fact.datum_type;
+        let shape = fact.shape.clone();
+        *fact = dt.fact(shape);
+    }
+    Ok(())
+}
+
+fn expanded_host_weight(op: &Const) -> TractResult<Option<Arc<Tensor>>> {
+    let tensor = op.val();
+    let Some(storage) = tensor.storage_as::<BlockQuantStorage>() else {
+        return Ok(None);
+    };
+    if !host_expand_format(storage.format()) {
+        return Ok(None);
+    }
+    let bytes = storage.value().as_bytes();
+    let flat = match tensor.datum_type() {
+        DatumType::F32 => storage.format().dequant_f32(bytes)?,
+        DatumType::F16 => storage.format().dequant_f16(bytes)?,
+        dt => bail!("{} constant expands to f16 or f32, got {dt:?}", storage.format()),
+    };
+    Ok(Some(flat.into_shape(tensor.shape())?.into_arc_tensor()))
+}
+
 fn convert_const(op: &Const) -> TractResult<Const> {
+    if let Some(plain) = expanded_host_weight(op)? {
+        let typed_fact: TypedFact = Arc::clone(&plain).try_into()?;
+        let metal_fact = DeviceFact::from_host(typed_fact)?;
+        let metal_const = plain.into_device()?.into_tensor().into_arc_tensor();
+        return Const::new_with_exotic_fact(metal_const, Box::new(metal_fact));
+    }
+
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let metal_fact = if let Some(of) = op.exotic_fact() {
         DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
