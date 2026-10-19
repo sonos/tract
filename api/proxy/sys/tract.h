@@ -575,6 +575,140 @@ enum TRACT_RESULT tract_tensor_as_bytes(struct TractTensor *tensor,
                                         const uintptr_t **shape,
                                         const void **data);
 
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Free a byte buffer allocated by libtract, with the length it was returned with.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_free_buffer(uint8_t *data, uintptr_t len);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Read a tensor from a numpy `.npy` file.
+ *
+ * The returned tensor must be destroyed by `tract_tensor_destroy`.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_tensor_load_npy(const char *path, struct TractTensor **tensor);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Read a tensor from the content of a numpy `.npy` file.
+ *
+ * The returned tensor must be destroyed by `tract_tensor_destroy`.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_tensor_load_npy_buffer(const uint8_t *data,
+                                               uintptr_t len,
+                                               struct TractTensor **tensor);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Write a tensor as a numpy `.npy` file.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_tensor_save_npy(const struct TractTensor *tensor, const char *path);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Serialize a tensor in numpy `.npy` format.
+ *
+ * The returned buffer must be freed by `tract_free_buffer`, with the returned length.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_tensor_to_npy_buffer(const struct TractTensor *tensor,
+                                             uint8_t **data,
+                                             uintptr_t *len);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Query the names of the arrays in a `.npz` file, in archive order, without their `.npy`
+ * suffix.
+ *
+ * With a null `names`, only stores the number of arrays in `count`. Otherwise `count` must
+ * hold the capacity of `names`, and receives the number of arrays: if it exceeds the
+ * capacity (the file changed since the count was taken), nothing is written and an error is
+ * returned. Each name must be freed by `tract_free_cstring`.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_names(const char *path, uintptr_t *count, char **names);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Same as `tract_npz_names`, from the content of a `.npz` file.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_names_buffer(const uint8_t *data,
+                                         uintptr_t len,
+                                         uintptr_t *count,
+                                         char **names);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Read one array of a `.npz` file. Only this entry is decompressed.
+ *
+ * The returned tensor must be destroyed by `tract_tensor_destroy`.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_get(const char *path, const char *name, struct TractTensor **tensor);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Same as `tract_npz_get`, from the content of a `.npz` file.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_get_buffer(const uint8_t *data,
+                                       uintptr_t len,
+                                       const char *name,
+                                       struct TractTensor **tensor);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Write `count` named tensors as a `.npz` file, deflated if `compress` is set.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_save(const char *path,
+                                 uintptr_t count,
+                                 const char *const *names,
+                                 const struct TractTensor *const *tensors,
+                                 bool compress);
+#endif
+
+#if defined(TRACT_UNSTABLE_NPYZ)
+/**
+ * Serialize `count` named tensors in `.npz` format, deflated if `compress` is set.
+ *
+ * The returned buffer must be freed by `tract_free_buffer`, with the returned length.
+ *
+ * Unstable: only available with the `unstable-npyz` feature.
+ */
+enum TRACT_RESULT tract_npz_to_buffer(uintptr_t count,
+                                      const char *const *names,
+                                      const struct TractTensor *const *tensors,
+                                      bool compress,
+                                      uint8_t **data,
+                                      uintptr_t *len);
+#endif
+
 /**
  * Run a turn on a model state
  *

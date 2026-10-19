@@ -52,6 +52,7 @@ from .runtime import Runtime, runtime_for_name
 from .transform import TransformSpec, SetSymbols, FloatPrecision, Pulse
 from .nnef import Nnef
 from .onnx import Onnx
+from . import npz
 
 def version() -> str:
     """Return the version string of `tract` native library"""

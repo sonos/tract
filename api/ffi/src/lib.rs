@@ -1153,6 +1153,286 @@ pub unsafe extern "C" fn tract_tensor_as_bytes(
     })
 }
 
+// NPY / NPZ
+#[cfg(feature = "unstable-npyz")]
+unsafe fn npyz_str<'a>(ptr: *const c_char, what: &str) -> Result<&'a str> {
+    unsafe { CStr::from_ptr(ptr).to_str().with_context(|| format!("{what} is not utf8")) }
+}
+
+#[cfg(feature = "unstable-npyz")]
+unsafe fn npyz_give_buffer(buffer: Vec<u8>, data: *mut *mut u8, len: *mut usize) {
+    let buffer = buffer.into_boxed_slice();
+    unsafe {
+        *len = buffer.len();
+        *data = Box::into_raw(buffer) as *mut u8;
+    }
+}
+
+#[cfg(feature = "unstable-npyz")]
+unsafe fn npyz_give_names(
+    names: Vec<String>,
+    count: *mut usize,
+    dest: *mut *mut c_char,
+) -> Result<()> {
+    unsafe {
+        if dest.is_null() {
+            *count = names.len();
+            return Ok(());
+        }
+        let capacity = *count;
+        *count = names.len();
+        anyhow::ensure!(
+            names.len() <= capacity,
+            "npz holds {} arrays, names array only has room for {capacity}",
+            names.len(),
+        );
+        let names = names.into_iter().map(CString::new).collect::<Result<Vec<_>, _>>()?;
+        for (ix, name) in names.into_iter().enumerate() {
+            *dest.add(ix) = name.into_raw();
+        }
+        Ok(())
+    }
+}
+
+#[cfg(feature = "unstable-npyz")]
+unsafe fn npyz_named_tensors<'a>(
+    count: usize,
+    names: *const *const c_char,
+    tensors: *const *const TractTensor,
+) -> Result<Vec<(&'a str, &'a Tensor)>> {
+    unsafe {
+        if count == 0 {
+            return Ok(vec![]);
+        }
+        check_not_null!(names, tensors);
+        let names = std::slice::from_raw_parts(names, count);
+        let tensors = std::slice::from_raw_parts(tensors, count);
+        names
+            .iter()
+            .zip(tensors)
+            .map(|(&name, &tensor)| {
+                check_not_null!(name, tensor);
+                Ok((npyz_str(name, "npz array name")?, &(*tensor).0))
+            })
+            .collect()
+    }
+}
+
+/// Free a byte buffer allocated by libtract, with the length it was returned with.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_free_buffer(data: *mut u8, len: usize) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(data);
+        let _ = Box::from_raw(std::ptr::slice_from_raw_parts_mut(data, len));
+        Ok(())
+    })
+}
+
+/// Read a tensor from a numpy `.npy` file.
+///
+/// The returned tensor must be destroyed by `tract_tensor_destroy`.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_tensor_load_npy(
+    path: *const c_char,
+    tensor: *mut *mut TractTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(path, tensor);
+        *tensor = std::ptr::null_mut();
+        let it = Tensor::load_npy(npyz_str(path, "path")?)?;
+        *tensor = Box::into_raw(Box::new(TractTensor(it)));
+        Ok(())
+    })
+}
+
+/// Read a tensor from the content of a numpy `.npy` file.
+///
+/// The returned tensor must be destroyed by `tract_tensor_destroy`.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_tensor_load_npy_buffer(
+    data: *const u8,
+    len: usize,
+    tensor: *mut *mut TractTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(data, tensor);
+        *tensor = std::ptr::null_mut();
+        let it = Tensor::load_npy_buffer(std::slice::from_raw_parts(data, len))?;
+        *tensor = Box::into_raw(Box::new(TractTensor(it)));
+        Ok(())
+    })
+}
+
+/// Write a tensor as a numpy `.npy` file.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_tensor_save_npy(
+    tensor: *const TractTensor,
+    path: *const c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(tensor, path);
+        (*tensor).0.save_npy(npyz_str(path, "path")?)
+    })
+}
+
+/// Serialize a tensor in numpy `.npy` format.
+///
+/// The returned buffer must be freed by `tract_free_buffer`, with the returned length.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_tensor_to_npy_buffer(
+    tensor: *const TractTensor,
+    data: *mut *mut u8,
+    len: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(tensor, data, len);
+        npyz_give_buffer((*tensor).0.to_npy_buffer()?, data, len);
+        Ok(())
+    })
+}
+
+/// Query the names of the arrays in a `.npz` file, in archive order, without their `.npy`
+/// suffix.
+///
+/// With a null `names`, only stores the number of arrays in `count`. Otherwise `count` must
+/// hold the capacity of `names`, and receives the number of arrays: if it exceeds the
+/// capacity (the file changed since the count was taken), nothing is written and an error is
+/// returned. Each name must be freed by `tract_free_cstring`.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_names(
+    path: *const c_char,
+    count: *mut usize,
+    names: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(path, count);
+        npyz_give_names(tract::npz::names(npyz_str(path, "path")?)?, count, names)
+    })
+}
+
+/// Same as `tract_npz_names`, from the content of a `.npz` file.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_names_buffer(
+    data: *const u8,
+    len: usize,
+    count: *mut usize,
+    names: *mut *mut c_char,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(data, count);
+        npyz_give_names(
+            tract::npz::names_buffer(std::slice::from_raw_parts(data, len))?,
+            count,
+            names,
+        )
+    })
+}
+
+/// Read one array of a `.npz` file. Only this entry is decompressed.
+///
+/// The returned tensor must be destroyed by `tract_tensor_destroy`.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_get(
+    path: *const c_char,
+    name: *const c_char,
+    tensor: *mut *mut TractTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(path, name, tensor);
+        *tensor = std::ptr::null_mut();
+        let it = tract::npz::get(npyz_str(path, "path")?, npyz_str(name, "name")?)?;
+        *tensor = Box::into_raw(Box::new(TractTensor(it)));
+        Ok(())
+    })
+}
+
+/// Same as `tract_npz_get`, from the content of a `.npz` file.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_get_buffer(
+    data: *const u8,
+    len: usize,
+    name: *const c_char,
+    tensor: *mut *mut TractTensor,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(data, name, tensor);
+        *tensor = std::ptr::null_mut();
+        let data = std::slice::from_raw_parts(data, len);
+        let it = tract::npz::get_buffer(data, npyz_str(name, "name")?)?;
+        *tensor = Box::into_raw(Box::new(TractTensor(it)));
+        Ok(())
+    })
+}
+
+/// Write `count` named tensors as a `.npz` file, deflated if `compress` is set.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_save(
+    path: *const c_char,
+    count: usize,
+    names: *const *const c_char,
+    tensors: *const *const TractTensor,
+    compress: bool,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(path);
+        let tensors = npyz_named_tensors(count, names, tensors)?;
+        tract::npz::save(npyz_str(path, "path")?, tensors, compress)
+    })
+}
+
+/// Serialize `count` named tensors in `.npz` format, deflated if `compress` is set.
+///
+/// The returned buffer must be freed by `tract_free_buffer`, with the returned length.
+///
+/// Unstable: only available with the `unstable-npyz` feature.
+#[cfg(feature = "unstable-npyz")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_npz_to_buffer(
+    count: usize,
+    names: *const *const c_char,
+    tensors: *const *const TractTensor,
+    compress: bool,
+    data: *mut *mut u8,
+    len: *mut usize,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(data, len);
+        let tensors = npyz_named_tensors(count, names, tensors)?;
+        npyz_give_buffer(tract::npz::to_buffer(tensors, compress)?, data, len);
+        Ok(())
+    })
+}
+
 // STATE
 pub struct TractState(tract::State);
 

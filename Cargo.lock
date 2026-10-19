@@ -5077,6 +5077,7 @@ dependencies = [
  "tract-api",
  "tract-core",
  "tract-cuda",
+ "tract-data",
  "tract-extra",
  "tract-libcli",
  "tract-metal",
@@ -5462,6 +5463,7 @@ version = "0.23.10-pre"
 dependencies = [
  "anyhow",
  "boow",
+ "half",
  "home",
  "ndarray",
  "reqwest",

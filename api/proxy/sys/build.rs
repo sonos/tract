@@ -9,8 +9,11 @@ fn main() {
     }
     println!("cargo:rustc-link-lib=tract");
 
-    let bindings = bindgen::Builder::default()
-        .header("tract.h")
+    let mut builder = bindgen::Builder::default().header("tract.h");
+    if std::env::var_os("CARGO_FEATURE_UNSTABLE_NPYZ").is_some() {
+        builder = builder.clang_arg("-DTRACT_UNSTABLE_NPYZ");
+    }
+    let bindings = builder
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .generate()
         .expect("Unable to generate bindings");

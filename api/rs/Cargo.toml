@@ -20,6 +20,7 @@ flate2 = { workspace = true, optional = true }
 half.workspace = true
 tract-api.workspace = true
 tract-core.workspace = true
+tract-data = { workspace = true, optional = true }
 tract-nnef.workspace = true
 tract-onnx-opl.workspace = true
 tract-onnx = { workspace = true, optional = true }
@@ -117,3 +118,8 @@ cuda-13020 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13020"]
 # Unstable: the shape of the surface is still being settled against the server
 # it is meant for, so it is not covered by the no-breaking-change commitment.
 unstable-autobatch = ["tract-core/deploy"]
+
+# Reading and writing numpy `.npy` files (`Tensor::load_npy`...) and `.npz` archives
+# (`npz::*`). Unstable: the surface is still being settled, so it is not covered by the
+# no-breaking-change commitment.
+unstable-npyz = ["dep:tract-data", "tract-data/npz"]

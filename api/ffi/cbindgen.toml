@@ -22,3 +22,6 @@ after_includes = """
       TRACT_DATUM_TYPE_COMPLEX_F64 = 88,
     } DatumType;
 """
+
+[defines]
+"feature = unstable-npyz" = "TRACT_UNSTABLE_NPYZ"
