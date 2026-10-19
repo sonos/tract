@@ -22,6 +22,9 @@ git-fetch-with-cli = true
 yanked = "deny"
 ignore = [
     "RUSTSEC-2024-0436", # paste unmaintained — transitive dep from metal, tokenizers, rav1e
+    "RUSTSEC-2026-0367", # zip extract, via ndarray-npy which only reads npz members
+    "RUSTSEC-2026-0368", # zip extract, same
+    "RUSTSEC-2026-0369", # zip extract, same
 ]
 
 [bans]
