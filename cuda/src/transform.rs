@@ -27,7 +27,9 @@ tract_core::declare_knob!(
     "Log nodes that fail output-fact validation during CUDA translation."
 );
 use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
-use tract_core::tract_linalg::block_quant::Q4_0;
+use tract_core::tract_linalg::block_quant::{
+    BlockQuant, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0,
+};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
@@ -195,6 +197,13 @@ fn try_make_cuda_op(
 }
 
 fn convert_const(op: &Const) -> TractResult<Const> {
+    if let Some(plain) = expanded_host_weight(op)? {
+        let typed_fact: TypedFact = Arc::clone(&plain).try_into()?;
+        let cuda_fact = DeviceFact::from_host(typed_fact)?;
+        let cuda_const = plain.into_device()?.into_tensor().into_arc_tensor();
+        return Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact));
+    }
+
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let cuda_fact = if let Some(of) = op.exotic_fact() {
         DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
@@ -206,6 +215,60 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(cuda_const, Box::new(cuda_fact))
 }
 
+// Q3_K, IQ4_XS, and IQ2_S. These constants are expanded in `convert_const`.
+// The shader formats stay on the device dequant. Q4_0 stays on the fused gemm.
+fn host_expand_format(format: &dyn BlockQuant) -> bool {
+    format == (&Q3_K as &dyn BlockQuant)
+        || format == (&IQ4_XS as &dyn BlockQuant)
+        || format == (&IQ2_S as &dyn BlockQuant)
+}
+
+fn host_expand_fact(fact: &TypedFact) -> bool {
+    fact.konst
+        .as_ref()
+        .and_then(|tensor| tensor.storage_as::<BlockQuantStorage>())
+        .is_some_and(|storage| host_expand_format(storage.format()))
+}
+
+fn expanded_host_weight(op: &Const) -> TractResult<Option<Arc<Tensor>>> {
+    let tensor = op.val();
+    let Some(storage) = tensor.storage_as::<BlockQuantStorage>() else {
+        return Ok(None);
+    };
+    if !host_expand_format(storage.format()) {
+        return Ok(None);
+    }
+    let bytes = storage.value().as_bytes();
+    let flat = match tensor.datum_type() {
+        DatumType::F32 => storage.format().dequant_f32(bytes)?,
+        DatumType::F16 => storage.format().dequant_f16(bytes)?,
+        dt => bail!("{} constant expands to f16 or f32, got {dt:?}", storage.format()),
+    };
+    Ok(Some(flat.into_shape(tensor.shape())?.into_arc_tensor()))
+}
+
+fn note_host_expanded(
+    target: &TypedModel,
+    inputs: &[OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for (fact, input) in owned_facts.iter_mut().zip(inputs.iter()) {
+        if !host_expand_fact(fact) {
+            continue;
+        }
+        // The mapped outlet is the expanded const. Replacing the source fact
+        // lets the gemm choice see those floats. Do not dequant them again.
+        ensure!(
+            target.outlet_fact(*input)?.to_device_fact()?.is_plain(),
+            "constant Q3_K, IQ4_XS, or IQ2_S weight is still quantized on the device"
+        );
+        let dt = fact.datum_type;
+        let shape = fact.shape.clone();
+        *fact = dt.fact(shape);
+    }
+    Ok(())
+}
+
 pub(crate) fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCast> {
     tract_gpu::ops::cast::GpuCast::new(
         to,
@@ -213,6 +276,10 @@ pub(crate) fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCa
         kernels::array::cuda_cast_dispatch,
         kernels::array::Cast::is_supported_dt,
     )
+}
+
+fn plain_float(fact: &TypedFact) -> bool {
+    fact.is_plain() && matches!(fact.datum_type, F16 | F32)
 }
 
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
@@ -225,8 +292,40 @@ fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
             (F32, F32) | (F16, F16) | (F16, F32)
         );
 
+    // Shader formats are dequantized on the device. Q3_K, IQ4_XS, and IQ2_S are
+    // accepted only as constants, because `convert_const` already expanded them.
+    // A computed tensor of those three has no kernel and stays on the CPU.
+    let accepted = |fact: &TypedFact| {
+        kernels::block_dequant::apex_block(fact).is_some() || host_expand_fact(fact)
+    };
+    let dequant = (accepted(&facts[0]) && plain_float(&facts[1]))
+        || (accepted(&facts[1]) && plain_float(&facts[0]));
+
     regular_types_support
+        || dequant
         || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
+}
+
+fn install_apex_dequant(
+    node_name: &str,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for i in 0..2 {
+        let Some(format) = kernels::block_dequant::apex_block(&owned_facts[i]) else {
+            continue;
+        };
+        let dt = owned_facts[i].datum_type;
+        ensure!(matches!(dt, F16 | F32), "APEX dequant writes f16 or f32, got {dt:?}");
+        inputs[i] = target.wire_node(
+            format!("{node_name}.dequant_{i}"),
+            ops::CudaBlockDequant { format },
+            &[inputs[i]],
+        )?[0];
+        owned_facts[i] = dt.fact(owned_facts[i].shape.clone());
+    }
+    Ok(())
 }
 
 fn convert_matmul_to_cuda(
@@ -236,7 +335,14 @@ fn convert_matmul_to_cuda(
     inputs: &mut [OutletId],
     op: &PrefixMatMul,
 ) -> TractResult<TVec<OutletId>> {
-    let mut input_facts = model.node_input_facts(node.id)?;
+    let mut owned_facts: TVec<TypedFact> =
+        model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+    // Q3_K, IQ4_XS, and IQ2_S constants are already plain floats. Q4_0 is not
+    // expanded: the fused kernel still owns that format.
+    note_host_expanded(target, inputs, &mut owned_facts)?;
+    // Q8_0, Q6_K, Q5_K, and Q4_K expand here, before the cast and the gemm.
+    install_apex_dequant(&node.name, target, inputs, &mut owned_facts)?;
+    let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
     // GGML kernel expects weights in second position and activations in first position
     // This avoid output transposition due to GGML column-major data expectations
 
