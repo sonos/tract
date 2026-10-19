@@ -6,7 +6,6 @@ use super::einsum_matmul::EinSumMatMul;
 use super::eval::dequant_inputs;
 use crate::internal::*;
 use crate::ops::einsum::block_quant_aware_input_shape;
-use crate::ops::konst::Const;
 
 #[derive(Debug, Default)]
 pub struct EinSumToPrefixMatmulCtx {
@@ -56,19 +55,6 @@ fn rule(
     for op in a_transform {
         wire[0] = patch.wire_node(&name, op, &[wire[0]])?[0];
     }
-    // terrible hack to maintain exotic fact through eager propagation of constant through the
-    // axes transformation
-    if let Some(op) = patch.node_mut(wire[0].node).op_as_mut::<Const>() {
-        *op = Const::new_with_opt_exotic_fact(
-            op.val().clone(),
-            model.outlet_fact(node.inputs[0])?.exotic_fact.clone(),
-        )?;
-    }
-    patch
-        .outlet_fact_mut(wire[0])?
-        .exotic_fact
-        .clone_from(&model.outlet_fact(node.inputs[0])?.exotic_fact);
-    // end of hack
 
     let b_order_es: String = op.axes.axes(InOut::In(1)).map(|a| a.repr).collect();
     let b_order_mm = format!("{prefix}{k}{n}");
