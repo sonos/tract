@@ -85,7 +85,7 @@ fn pulsify_along_concat_axis(
     let mut shape = pulse_fact.shape.clone();
     shape.set(axis, 0.to_dim());
     let empty = target.wire_node(
-        format!("{name}.pre"),
+        format!("{name}.empty"),
         NonPulsingWrappingOp(Box::new(MultiBroadcastTo { shape })),
         &[zero],
     )?[0];
