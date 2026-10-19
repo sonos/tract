@@ -215,6 +215,32 @@ jobs:
           export TRACT_RUN="$GITHUB_WORKSPACE/tract-cli/tract"
           "./$SCRIPT"
 
+  # The harness cases again on a CLI built with debug and paranoid assertions, which
+  # check graph invariants the release build skips. cli-models is left out: the
+  # paranoid checks are too slow on its models.
+  harness-checked:
+    needs: prepare
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: false # restore-only: nightly job, never save (would evict the per-PR caches under the 10 GB cap)
+      - name: Build and run cases
+        run: |
+          ROOT=. ./ci/ci-system-setup.sh
+          cargo build -p tract-cli --profile opt-test --features tract-core/paranoid_assertions
+          export TRACT_RUN="$GITHUB_WORKSPACE/target/opt-test/tract"
+          for script in $(find harness -name ci.sh ! -path harness/cli-models/ci.sh | sort)
+          do
+            "./$script"
+          done
+
   llm-combos:
     needs: prepare
     if: github.event_name != 'pull_request'
@@ -266,7 +292,7 @@ jobs:
   # back through a commit status and a sticky comment instead.
   report-tests:
     name: Report tests to PR
-    needs: [ prepare, build, test, llm-combos, llm ]
+    needs: [ prepare, build, test, harness-checked, llm-combos, llm ]
     if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     permissions:
