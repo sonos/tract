@@ -12,5 +12,9 @@ edition = "2024"
 rust-version.workspace = true
 include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h" ]
 
+[features]
+# Declare the unstable numpy `.npy` / `.npz` functions (TRACT_UNSTABLE_NPYZ).
+unstable-npyz = []
+
 [build-dependencies]
 bindgen = "0.73.1"

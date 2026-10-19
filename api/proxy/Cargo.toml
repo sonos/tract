@@ -19,7 +19,13 @@ home.workspace = true
 tract-api.workspace = true
 tract-proxy-sys.workspace = true
 
+[features]
+# Reading and writing numpy `.npy` files and `.npz` archives. Unstable, see the `tract`
+# crate feature of the same name. libtract must be built with it too.
+unstable-npyz = ["tract-proxy-sys/unstable-npyz"]
+
 [dev-dependencies]
+half.workspace = true
 ndarray.workspace = true
 reqwest.workspace = true
 rustls.workspace = true

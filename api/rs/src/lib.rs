@@ -626,6 +626,138 @@ impl Tensor {
     }
 }
 
+#[cfg(feature = "unstable-npyz")]
+impl Tensor {
+    /// Read a tensor from a numpy `.npy` file.
+    ///
+    /// Bool, integer and float (f16 to f64) arrays are supported, in either byte or memory
+    /// order. The allocation is bounded by the file size, whatever the header claims.
+    pub fn load_npy(path: impl AsRef<Path>) -> Result<Tensor> {
+        let path = path.as_ref();
+        let file = std::fs::File::open(path).with_context(|| format!("Opening {path:?}"))?;
+        let len = file.metadata()?.len();
+        Ok(Tensor(tract_data::npy::read_npy(file, len)?.into_arc_tensor()))
+    }
+
+    /// Read a tensor from the content of a numpy `.npy` file.
+    pub fn load_npy_buffer(data: &[u8]) -> Result<Tensor> {
+        Ok(Tensor(tract_data::npy::read_npy(data, data.len() as u64)?.into_arc_tensor()))
+    }
+
+    /// Write the tensor as a numpy `.npy` file, as `numpy.save` would.
+    pub fn save_npy(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path.as_ref();
+        let file = std::fs::File::create(path).with_context(|| format!("Creating {path:?}"))?;
+        let mut writer = std::io::BufWriter::new(file);
+        tract_data::npy::write_npy(&mut writer, &self.0)?;
+        std::io::Write::flush(&mut writer)?;
+        Ok(())
+    }
+
+    /// Serialize the tensor in numpy `.npy` format.
+    pub fn to_npy_buffer(&self) -> Result<Vec<u8>> {
+        let mut buffer = vec![];
+        tract_data::npy::write_npy(&mut buffer, &self.0)?;
+        Ok(buffer)
+    }
+}
+
+/// Reading and writing numpy `.npz` archives.
+///
+/// Every function takes the archive as a path or a buffer and reopens it, there is no
+/// archive object. Entry names are given without their `.npy` suffix.
+#[cfg(feature = "unstable-npyz")]
+pub mod npz {
+    use super::Tensor;
+    use anyhow::{Context, Result};
+    use std::io::{Cursor, Read, Seek, Write};
+    use std::path::Path;
+    use tract_data::npz::{NpzReader, NpzWriter};
+    use tract_nnef::prelude::IntoArcTensor;
+
+    fn open(path: &Path) -> Result<NpzReader<std::fs::File>> {
+        NpzReader::new(std::fs::File::open(path).with_context(|| format!("Opening {path:?}"))?)
+    }
+
+    fn get_from<R: Read + Seek>(mut npz: NpzReader<R>, name: &str) -> Result<Tensor> {
+        Ok(Tensor(npz.get(name)?.into_arc_tensor()))
+    }
+
+    fn load_from<R: Read + Seek>(mut npz: NpzReader<R>) -> Result<Vec<(String, Tensor)>> {
+        npz.names()?
+            .into_iter()
+            .map(|name| {
+                let tensor = Tensor(npz.get(&name)?.into_arc_tensor());
+                Ok((name, tensor))
+            })
+            .collect()
+    }
+
+    fn save_to<'a, W: Write + Seek>(
+        writer: W,
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+        compress: bool,
+    ) -> Result<W> {
+        let mut npz =
+            if compress { NpzWriter::new_compressed(writer) } else { NpzWriter::new(writer) };
+        for (name, tensor) in tensors {
+            npz.add(name.as_ref(), &tensor.0)?;
+        }
+        npz.finish()
+    }
+
+    /// Names of the arrays in a `.npz` file, in archive order.
+    pub fn names(path: impl AsRef<Path>) -> Result<Vec<String>> {
+        open(path.as_ref())?.names()
+    }
+
+    /// Names of the arrays in the content of a `.npz` file, in archive order.
+    pub fn names_buffer(data: &[u8]) -> Result<Vec<String>> {
+        NpzReader::new(Cursor::new(data))?.names()
+    }
+
+    /// Read one array of a `.npz` file. Only this entry is decompressed.
+    pub fn get(path: impl AsRef<Path>, name: &str) -> Result<Tensor> {
+        get_from(open(path.as_ref())?, name)
+    }
+
+    /// Read one array out of the content of a `.npz` file.
+    pub fn get_buffer(data: &[u8], name: &str) -> Result<Tensor> {
+        get_from(NpzReader::new(Cursor::new(data))?, name)
+    }
+
+    /// Read all the arrays of a `.npz` file, in archive order.
+    pub fn load(path: impl AsRef<Path>) -> Result<Vec<(String, Tensor)>> {
+        load_from(open(path.as_ref())?)
+    }
+
+    /// Read all the arrays out of the content of a `.npz` file, in archive order.
+    pub fn load_buffer(data: &[u8]) -> Result<Vec<(String, Tensor)>> {
+        load_from(NpzReader::new(Cursor::new(data))?)
+    }
+
+    /// Write named tensors as a `.npz` file, as `numpy.savez` (or `numpy.savez_compressed`
+    /// with `compress`) would.
+    pub fn save<'a>(
+        path: impl AsRef<Path>,
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+        compress: bool,
+    ) -> Result<()> {
+        let path = path.as_ref();
+        let file = std::fs::File::create(path).with_context(|| format!("Creating {path:?}"))?;
+        save_to(std::io::BufWriter::new(file), tensors, compress)?.flush()?;
+        Ok(())
+    }
+
+    /// Serialize named tensors in `.npz` format.
+    pub fn to_buffer<'a>(
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+        compress: bool,
+    ) -> Result<Vec<u8>> {
+        Ok(save_to(Cursor::new(vec![]), tensors, compress)?.into_inner())
+    }
+}
+
 impl PartialEq for Tensor {
     fn eq(&self, other: &Self) -> bool {
         let Ok((me_dt, me_shape, me_data)) = self.as_bytes() else { return false };

@@ -48,3 +48,7 @@ cuda-13020 = ["tract/cuda-13020"]
 # Gates the Metal backend in the facade (Apple targets only). Enabled by
 # default; CPU-only cdylibs drop it with `--no-default-features`.
 metal = ["tract/metal"]
+
+# numpy `.npy` / `.npz` reading and writing (`tract_tensor_load_npy`, `tract_npz_*`...).
+# Unstable, see the `tract` crate feature of the same name.
+unstable-npyz = ["tract/unstable-npyz"]

@@ -617,6 +617,187 @@ impl PartialEq for Tensor {
     }
 }
 
+#[cfg(feature = "unstable-npyz")]
+fn path_to_cstring(path: &Path) -> Result<CString> {
+    Ok(CString::new(
+        path.to_str().with_context(|| format!("Failed to re-encode {path:?} to utf-8"))?,
+    )?)
+}
+
+#[cfg(feature = "unstable-npyz")]
+fn take_buffer(data: *mut u8, len: usize) -> Result<Vec<u8>> {
+    let buffer = unsafe { std::slice::from_raw_parts(data, len) }.to_vec();
+    check!(sys::tract_free_buffer(data, len))?;
+    Ok(buffer)
+}
+
+#[cfg(feature = "unstable-npyz")]
+impl Tensor {
+    /// Read a tensor from a numpy `.npy` file.
+    pub fn load_npy(path: impl AsRef<Path>) -> Result<Tensor> {
+        let path = path_to_cstring(path.as_ref())?;
+        let mut tensor = null_mut();
+        check!(sys::tract_tensor_load_npy(path.as_ptr(), &mut tensor))?;
+        Ok(Tensor(tensor))
+    }
+
+    /// Read a tensor from the content of a numpy `.npy` file.
+    pub fn load_npy_buffer(data: &[u8]) -> Result<Tensor> {
+        let mut tensor = null_mut();
+        check!(sys::tract_tensor_load_npy_buffer(data.as_ptr(), data.len(), &mut tensor))?;
+        Ok(Tensor(tensor))
+    }
+
+    /// Write the tensor as a numpy `.npy` file, as `numpy.save` would.
+    pub fn save_npy(&self, path: impl AsRef<Path>) -> Result<()> {
+        let path = path_to_cstring(path.as_ref())?;
+        check!(sys::tract_tensor_save_npy(self.0, path.as_ptr()))
+    }
+
+    /// Serialize the tensor in numpy `.npy` format.
+    pub fn to_npy_buffer(&self) -> Result<Vec<u8>> {
+        let (mut data, mut len) = (null_mut(), 0);
+        check!(sys::tract_tensor_to_npy_buffer(self.0, &mut data, &mut len))?;
+        take_buffer(data, len)
+    }
+}
+
+/// Reading and writing numpy `.npz` archives.
+///
+/// Every function takes the archive as a path or a buffer and reopens it, there is no
+/// archive object. Entry names are given without their `.npy` suffix.
+#[cfg(feature = "unstable-npyz")]
+pub mod npz {
+    use super::{Tensor, path_to_cstring, sys, take_buffer};
+    use anyhow::Result;
+    use std::ffi::{CStr, CString, c_char};
+    use std::path::Path;
+    use std::ptr::null_mut;
+
+    fn collect_names(
+        query: impl Fn(*mut usize, *mut *mut c_char) -> sys::TRACT_RESULT,
+    ) -> Result<Vec<String>> {
+        let mut count = 0;
+        check!(query(&mut count, null_mut()))?;
+        let mut names = vec![null_mut(); count];
+        check!(query(&mut count, names.as_mut_ptr()))?;
+        let mut result = Vec::with_capacity(count);
+        for name in names.into_iter().take(count) {
+            let decoded = unsafe { CStr::from_ptr(name) }.to_str().map(|s| s.to_string());
+            unsafe { sys::tract_free_cstring(name) };
+            result.push(decoded?);
+        }
+        Ok(result)
+    }
+
+    fn named_pointers<'a>(
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+    ) -> Result<(Vec<CString>, Vec<*const sys::TractTensor>)> {
+        let mut names = vec![];
+        let mut pointers = vec![];
+        for (name, tensor) in tensors {
+            names.push(CString::new(name.as_ref())?);
+            pointers.push(tensor.0 as *const _);
+        }
+        Ok((names, pointers))
+    }
+
+    /// Names of the arrays in a `.npz` file, in archive order.
+    pub fn names(path: impl AsRef<Path>) -> Result<Vec<String>> {
+        let path = path_to_cstring(path.as_ref())?;
+        collect_names(|count, names| unsafe { sys::tract_npz_names(path.as_ptr(), count, names) })
+    }
+
+    /// Names of the arrays in the content of a `.npz` file, in archive order.
+    pub fn names_buffer(data: &[u8]) -> Result<Vec<String>> {
+        collect_names(|count, names| unsafe {
+            sys::tract_npz_names_buffer(data.as_ptr(), data.len(), count, names)
+        })
+    }
+
+    /// Read one array of a `.npz` file. Only this entry is decompressed.
+    pub fn get(path: impl AsRef<Path>, name: &str) -> Result<Tensor> {
+        let path = path_to_cstring(path.as_ref())?;
+        let name = CString::new(name)?;
+        let mut tensor = null_mut();
+        check!(sys::tract_npz_get(path.as_ptr(), name.as_ptr(), &mut tensor))?;
+        Ok(Tensor(tensor))
+    }
+
+    /// Read one array out of the content of a `.npz` file.
+    pub fn get_buffer(data: &[u8], name: &str) -> Result<Tensor> {
+        let name = CString::new(name)?;
+        let mut tensor = null_mut();
+        check!(sys::tract_npz_get_buffer(data.as_ptr(), data.len(), name.as_ptr(), &mut tensor))?;
+        Ok(Tensor(tensor))
+    }
+
+    /// Read all the arrays of a `.npz` file, in archive order.
+    ///
+    /// The archive is reopened for each array.
+    pub fn load(path: impl AsRef<Path>) -> Result<Vec<(String, Tensor)>> {
+        let path = path.as_ref();
+        names(path)?
+            .into_iter()
+            .map(|name| {
+                let tensor = get(path, &name)?;
+                Ok((name, tensor))
+            })
+            .collect()
+    }
+
+    /// Read all the arrays out of the content of a `.npz` file, in archive order.
+    ///
+    /// The archive is reopened for each array.
+    pub fn load_buffer(data: &[u8]) -> Result<Vec<(String, Tensor)>> {
+        names_buffer(data)?
+            .into_iter()
+            .map(|name| {
+                let tensor = get_buffer(data, &name)?;
+                Ok((name, tensor))
+            })
+            .collect()
+    }
+
+    /// Write named tensors as a `.npz` file, as `numpy.savez` (or `numpy.savez_compressed`
+    /// with `compress`) would.
+    pub fn save<'a>(
+        path: impl AsRef<Path>,
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+        compress: bool,
+    ) -> Result<()> {
+        let path = path_to_cstring(path.as_ref())?;
+        let (names, pointers) = named_pointers(tensors)?;
+        let name_pointers: Vec<*const c_char> = names.iter().map(|n| n.as_ptr()).collect();
+        check!(sys::tract_npz_save(
+            path.as_ptr(),
+            names.len(),
+            name_pointers.as_ptr(),
+            pointers.as_ptr(),
+            compress
+        ))
+    }
+
+    /// Serialize named tensors in `.npz` format.
+    pub fn to_buffer<'a>(
+        tensors: impl IntoIterator<Item = (impl AsRef<str>, &'a Tensor)>,
+        compress: bool,
+    ) -> Result<Vec<u8>> {
+        let (names, pointers) = named_pointers(tensors)?;
+        let name_pointers: Vec<*const c_char> = names.iter().map(|n| n.as_ptr()).collect();
+        let (mut data, mut len) = (null_mut(), 0);
+        check!(sys::tract_npz_to_buffer(
+            names.len(),
+            name_pointers.as_ptr(),
+            pointers.as_ptr(),
+            compress,
+            &mut data,
+            &mut len
+        ))?;
+        take_buffer(data, len)
+    }
+}
+
 // FACT
 wrapper!(Fact, TractFact, tract_fact_destroy);
 wrapper_clone!(Fact, tract_fact_clone);

@@ -1,8 +1,9 @@
 import numpy
 import math
 from ctypes import *
+from pathlib import Path
 from typing import Dict, List, Union
-from tract.bindings import TractError, check, lib
+from tract.bindings import TractError, check, lib, take_buffer, unstable_npyz
 
 from enum import IntEnum
 
@@ -163,6 +164,43 @@ class Tensor:
         result = self.to_numpy()
         check(lib.tract_tensor_destroy(byref(self.ptr)))
         return result
+
+    def load_npy(path: Union[str, Path]) -> "Tensor":
+        """Read a tensor from a numpy ``.npy`` file.
+
+        Unstable: needs libtract built with the ``unstable-npyz`` feature.
+        """
+        ptr = c_void_p()
+        check(unstable_npyz("tract_tensor_load_npy")(str(path).encode("utf-8"), byref(ptr)))
+        return Tensor(ptr)
+
+    def load_npy_buffer(data: bytes) -> "Tensor":
+        """Read a tensor from the content of a numpy ``.npy`` file.
+
+        Unstable: needs libtract built with the ``unstable-npyz`` feature.
+        """
+        ptr = c_void_p()
+        check(unstable_npyz("tract_tensor_load_npy_buffer")(data, c_size_t(len(data)), byref(ptr)))
+        return Tensor(ptr)
+
+    def save_npy(self, path: Union[str, Path]):
+        """Write the tensor as a numpy ``.npy`` file, as ``numpy.save`` would.
+
+        Unstable: needs libtract built with the ``unstable-npyz`` feature.
+        """
+        self._valid()
+        check(unstable_npyz("tract_tensor_save_npy")(self.ptr, str(path).encode("utf-8")))
+
+    def to_npy_buffer(self) -> bytes:
+        """Serialize the tensor in numpy ``.npy`` format.
+
+        Unstable: needs libtract built with the ``unstable-npyz`` feature.
+        """
+        self._valid()
+        data = POINTER(c_uint8)()
+        length = c_size_t()
+        check(unstable_npyz("tract_tensor_to_npy_buffer")(self.ptr, byref(data), byref(length)))
+        return take_buffer(data, length)
 
     def datum_type(self) -> DatumType:
         self._valid()
