@@ -85,6 +85,48 @@ impl Pad {
         unsafe { output.set_datum_type(input_tensor.datum_type()) }
         Ok(output.into_tvalue())
     }
+
+    /// Constant padding of a plain, unquantized copy tensor: fill the output
+    /// with the value, then copy the input in as runs spanning the axes from
+    /// the innermost padded one on, which are contiguous on both sides.
+    fn eval_constant_runs(&self, input: &Tensor, value: &Tensor) -> TractResult<Tensor> {
+        let dt = input.datum_type();
+        let shape = input.shape();
+        let output_shape: TVec<usize> =
+            shape.iter().zip(&self.pads).map(|(&d, &(a, b))| d + a + b).collect();
+        let value = value.cast_to_dt(dt)?;
+        let mut output = if value.as_bytes().iter().all(|b| *b == 0) {
+            Tensor::zero_dt(dt, &output_shape)?
+        } else {
+            value.broadcast_scalar_to_shape(&output_shape)?
+        };
+        let Some(last) = self.pads.iter().rposition(|&p| p != (0, 0)) else {
+            return Ok(input.clone());
+        };
+        let size = dt.size_of();
+        let run = shape[last..].iter().product::<usize>() * size;
+        if run == 0 {
+            return Ok(output);
+        }
+        let out_strides: TVec<usize> =
+            output.strides().iter().map(|&s| s as usize * size).collect();
+        let base = self.pads.iter().zip(&out_strides).map(|(p, s)| p.0 * s).sum::<usize>();
+        let src = input.as_bytes();
+        let dst = output.as_bytes_mut();
+        let mut coords: TVec<usize> = tvec!(0; last);
+        for chunk in src.chunks_exact(run) {
+            let at = base + coords.iter().zip(&out_strides).map(|(c, s)| c * s).sum::<usize>();
+            dst[at..][..run].copy_from_slice(chunk);
+            for ax in (0..last).rev() {
+                coords[ax] += 1;
+                if coords[ax] < shape[ax] {
+                    break;
+                }
+                coords[ax] = 0;
+            }
+        }
+        Ok(output)
+    }
 }
 
 impl Op for Pad {
@@ -104,7 +146,16 @@ impl EvalOp for Pad {
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = args_1!(inputs);
-        Ok(tvec!(dispatch_numbers!(Self::eval_t(input.datum_type())(self, input))?))
+        let dt = input.datum_type();
+        if let PadMode::Constant(value) = &self.mode
+            && value.rank() == 0
+            && dt.is_copy()
+            && !dt.is_quantized()
+            && input.is_plain_ram()
+        {
+            return Ok(tvec!(self.eval_constant_runs(&input, value)?.into_tvalue()));
+        }
+        Ok(tvec!(dispatch_numbers!(Self::eval_t(dt)(self, input))?))
     }
 }
 
