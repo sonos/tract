@@ -556,7 +556,9 @@ impl TypedOp for EinSumMatMul {
             ensure!(of.is::<BlockQuantFact>());
             true
         } else if self.m == self.n {
-            false
+            // Either side fits the kernel equally, so keep the constant on A: it
+            // is packed once at load, while a dynamic A is packed every call.
+            a.konst.is_none() && b.konst.is_some()
         } else {
             match (self.m.as_i64(), self.n.as_i64()) {
                 (Some(m), Some(n)) => m < n,
@@ -797,8 +799,14 @@ pub(super) fn inject_m_or_n_axis(
         .clone()
         .with_extra_axis(repr, InOut::In(input_to_fix), 0)?
         .with_extra_axis_occurency(repr, InOut::Out(0), 0)?;
-    wire[input_to_fix] =
-        patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?[0];
+    // A constant operand stays a constant, so codegen can still tell it apart.
+    wire[input_to_fix] = if let Some(konst) = &model.outlet_fact(node.inputs[input_to_fix])?.konst {
+        let mut konst = konst.clone().into_tensor();
+        konst.insert_axis(0)?;
+        patch.add_const(format!("{name}.add_{label}"), konst)?
+    } else {
+        patch.wire_node(format!("{name}.add_{label}"), AxisOp::Add(0), &[wire[input_to_fix]])?[0]
+    };
     wire = patch.wire_node(name, EinSum { axes: new_axes, ..op.clone() }, &wire)?;
     wire = patch.wire_node(&node.name, AxisOp::Rm(0), &wire)?;
     patch.shunt_outside(model, node.id.into(), wire[0])?;
