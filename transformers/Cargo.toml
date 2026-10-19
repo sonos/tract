@@ -25,4 +25,4 @@ tract-nnef.workspace = true
 rayon.workspace = true
 
 [dev-dependencies]
-ndarray-npy.workspace = true
+tract-data = { workspace = true, features = ["npz"] }

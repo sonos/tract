@@ -1,10 +1,11 @@
 use std::collections::HashSet;
-use std::io::{Read, Seek};
+use std::io::Read;
 use std::ops::Range;
 use std::str::FromStr;
 use std::sync::Mutex;
 
 use crate::model::Model;
+use tract_data::npz::NpzReader;
 use tract_hir::internal::*;
 use tract_num_traits::Zero;
 
@@ -135,51 +136,11 @@ pub fn for_data(
     } else if filename.contains(".npz:") {
         let mut tokens = filename.split(':');
         let (_filename, inner) = (tokens.next().unwrap(), tokens.next().unwrap());
-        let mut npz = ndarray_npy::NpzReader::new(reader)?;
-        Ok((None, for_npz(&mut npz, inner)?.into()))
+        let mut npz = NpzReader::new(reader)?;
+        Ok((None, npz.get(inner)?.into()))
     } else {
         Ok((None, tensor_for_text_data(symbol_table, filename, reader)?.into()))
     }
-}
-
-pub fn for_npz(
-    npz: &mut ndarray_npy::NpzReader<impl Read + Seek>,
-    name: &str,
-) -> TractResult<Tensor> {
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f32>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<f64>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i8>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i16>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i32>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<i64>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u8>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u16>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u32>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<u64>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    if let Ok(t) = npz.by_name::<tract_ndarray::OwnedRepr<bool>, tract_ndarray::IxDyn>(name) {
-        return Ok(t.into_tensor());
-    }
-    bail!("Can not extract tensor from {}", name);
 }
 
 pub fn for_string(

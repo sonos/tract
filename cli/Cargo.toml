@@ -39,10 +39,8 @@ inventory.workspace = true
 lazy_static.workspace = true
 litemap.workspace = true
 log.workspace = true
-ndarray-npy.workspace = true
 nu-ansi-term.workspace = true
 num_cpus.workspace = true
-py_literal.workspace = true
 readings-probe.workspace = true
 ron.workspace = true
 scan_fmt.workspace = true
@@ -54,6 +52,7 @@ time = { workspace = true, optional = true }
 toml = { workspace = true, optional = true, features = ["preserve_order"] }
 tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core = { workspace = true, features = ["deploy"] }
+tract-data = { workspace = true, features = ["npz"] }
 tract-hir.workspace = true
 tract-nnef = { workspace = true, features = ["flate2"] }
 tract-nnef-resources.workspace = true

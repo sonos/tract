@@ -6,12 +6,13 @@ use std::str::FromStr;
 use crate::TractResult;
 use crate::{Model, Parameters};
 use fs_err as fs;
-use ndarray_npy::NpzWriter;
 use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
 use tract_core::tract_data::itertools::izip;
 use tract_core::unbatched::UnbatchedRunnable;
+use tract_data::npy::npy_descr;
+use tract_data::npz::NpzWriter;
 use tract_hir::internal::*;
 use tract_libcli::tensor::{RunTensors, get_or_make_inputs};
 use tract_nnef::tensors::write_tensor;
@@ -20,27 +21,11 @@ use tract_pulse::internal::*;
 
 /// Add a tensor entry into a npz file.
 fn npz_add_tensor(npz: &mut NpzWriter<File>, name: String, tensor: &Tensor) -> TractResult<()> {
-    match tensor.datum_type() {
-        DatumType::F16 => {
-            npz.add_array(name, &tensor.cast_to::<f32>()?.to_plain_array_view::<f32>()?)?
-        }
-        DatumType::Bool => npz.add_array(name, &tensor.to_plain_array_view::<bool>()?)?,
-        DatumType::U8 => npz.add_array(name, &tensor.to_plain_array_view::<u8>()?)?,
-        DatumType::U16 => npz.add_array(name, &tensor.to_plain_array_view::<u16>()?)?,
-        DatumType::U32 => npz.add_array(name, &tensor.to_plain_array_view::<u32>()?)?,
-        DatumType::U64 => npz.add_array(name, &tensor.to_plain_array_view::<u64>()?)?,
-        DatumType::I8 => npz.add_array(name, &tensor.to_plain_array_view::<i8>()?)?,
-        DatumType::I16 => npz.add_array(name, &tensor.to_plain_array_view::<i16>()?)?,
-        DatumType::I32 => npz.add_array(name, &tensor.to_plain_array_view::<i32>()?)?,
-        DatumType::I64 => npz.add_array(name, &tensor.to_plain_array_view::<i64>()?)?,
-        DatumType::F32 => npz.add_array(name, &tensor.to_plain_array_view::<f32>()?)?,
-        DatumType::F64 => npz.add_array(name, &tensor.to_plain_array_view::<f64>()?)?,
-        DatumType::QI8(_) => npz.add_array(name, &tensor.to_plain_array_view::<i8>()?)?,
-        DatumType::QU8(_) => npz.add_array(name, &tensor.to_plain_array_view::<u8>()?)?,
-        DatumType::QI32(_) => npz.add_array(name, &tensor.to_plain_array_view::<i32>()?)?,
-        _ => warn!("Not writing {name}, {tensor:?}, unsupported type"),
+    if npy_descr(tensor.datum_type()).is_some() {
+        npz.add(&name, tensor)?;
+    } else {
+        warn!("Not writing {name}, {tensor:?}, unsupported type");
     }
-
     Ok(())
 }
 
@@ -91,7 +76,7 @@ pub fn handle(
 
     if let Some(file_path) = sub_matches.get_one::<String>("save-outputs-npz") {
         let file = fs::File::create(file_path).with_context(|| format!("Creating {file_path}"))?;
-        let mut npz = ndarray_npy::NpzWriter::new_compressed(file);
+        let mut npz = NpzWriter::new_compressed(file);
 
         for (ix, outputs) in outputs.iter().enumerate() {
             let name = params
@@ -346,7 +331,7 @@ fn run_regular(
     let assert_sane_floats = sub_matches.get_flag("assert-sane-floats");
     let npz = if let Some(npz) = sub_matches.get_one::<String>("save-steps") {
         let npz = fs::File::create(npz).with_context(|| format!("Creating {npz}"))?;
-        Some(ndarray_npy::NpzWriter::new_compressed(npz))
+        Some(NpzWriter::new_compressed(npz))
     } else {
         None
     };

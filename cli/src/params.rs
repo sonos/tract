@@ -493,16 +493,16 @@ impl Parameters {
         get_facts: bool,
     ) -> TractResult<Vec<TensorValues>> {
         let loc = Location::find(input)?;
-        let mut npz = ndarray_npy::NpzReader::new(Cursor::new(loc.bytes()?))?;
+        let mut npz = tract_data::npz::NpzReader::new(Cursor::new(loc.bytes()?))?;
         let triples = npz
             .names()?
             .iter()
             .map(|n| {
                 if let Ok((turn, name)) = scan_fmt::scan_fmt!(n, "turn_{d}/{}.npy", usize, String) {
-                    Ok((name, turn, tensor::for_npz(&mut npz, n)?))
+                    Ok((name, turn, npz.get(n)?))
                 } else {
                     let name = n.trim_end_matches(".npy").to_string();
-                    Ok((name, 0, tensor::for_npz(&mut npz, n)?))
+                    Ok((name, 0, npz.get(n)?))
                 }
             })
             .collect::<TractResult<Vec<_>>>()?;
