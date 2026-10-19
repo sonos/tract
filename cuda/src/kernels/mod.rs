@@ -2,6 +2,7 @@
 
 pub mod array;
 pub mod binary;
+pub mod block_dequant;
 pub mod causal_conv1d_update;
 pub mod conv;
 pub mod conv_cudnn;
@@ -69,6 +70,7 @@ pub fn cubin_dir() -> &'static Path {
         .as_path()
 }
 
+const BLOCK_DEQUANT: &str = include_str!("cu/block_dequant.cu");
 const ELEMENT_WISE_OPS: &str = include_str!("cu/element_wise.cu");
 const BINARY_OPS: &str = include_str!("cu/binary.cu");
 const ARRAY_OPS: &str = include_str!("cu/array.cu");
@@ -90,6 +92,7 @@ fn cnn_ops() -> &'static str {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
+    BlockDequant,
     ElementWise,
     Binary,
     Array,
@@ -133,6 +136,7 @@ impl LibraryName {
 
     pub fn content(&self) -> &str {
         match self {
+            Self::BlockDequant => BLOCK_DEQUANT,
             Self::ElementWise => ELEMENT_WISE_OPS,
             Self::Binary => BINARY_OPS,
             Self::Array => ARRAY_OPS,
@@ -151,6 +155,7 @@ impl LibraryName {
     /// besides the sources that shapes the cubin: GPU architecture, compiler and options.
     pub fn cubin_path(&self, dir: &Path, target: &str) -> PathBuf {
         let basename = match self {
+            Self::BlockDequant => "block_dequant",
             Self::ElementWise => "element_wise",
             Self::Binary => "binary",
             Self::Array => "array",
