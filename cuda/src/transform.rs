@@ -27,7 +27,7 @@ tract_core::declare_knob!(
     "Log nodes that fail output-fact validation during CUDA translation."
 );
 use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
-use tract_core::tract_linalg::block_quant::Q4_0;
+use tract_core::tract_linalg::block_quant::{Q4_0, Q8_0};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
@@ -215,6 +215,10 @@ pub(crate) fn cuda_cast_new(to: DatumType) -> Option<tract_gpu::ops::cast::GpuCa
     )
 }
 
+fn plain_float(fact: &TypedFact) -> bool {
+    fact.is_plain() && matches!(fact.datum_type, F16 | F32)
+}
+
 fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
     assert!(facts.len() == 2, "Ggml: Expected 2 inputs for Matmul");
 
@@ -225,8 +229,36 @@ fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
             (F32, F32) | (F16, F16) | (F16, F32)
         );
 
+    // Q8_0 is dequantized in convert_matmul_to_cuda. Leave it out of the fused
+    // Q4_0 kernel. A Q8_0 tensor whose partner is not plain float stays on the CPU.
+    let q8_0 = (as_quant_fact(&facts[0], &Q8_0).is_some() && plain_float(&facts[1]))
+        || (as_quant_fact(&facts[1], &Q8_0).is_some() && plain_float(&facts[0]));
+
     regular_types_support
+        || q8_0
         || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
+}
+
+fn install_q8_0_dequant(
+    node_name: &str,
+    target: &mut TypedModel,
+    inputs: &mut [OutletId],
+    owned_facts: &mut [TypedFact],
+) -> TractResult<()> {
+    for i in 0..2 {
+        if as_quant_fact(&owned_facts[i], &Q8_0).is_none() {
+            continue;
+        }
+        let dt = owned_facts[i].datum_type;
+        ensure!(matches!(dt, F16 | F32), "Q8_0 dequant writes f16 or f32, got {dt:?}");
+        inputs[i] = target.wire_node(
+            format!("{node_name}.dequant_{i}"),
+            ops::CudaBlockDequant,
+            &[inputs[i]],
+        )?[0];
+        owned_facts[i] = dt.fact(owned_facts[i].shape.clone());
+    }
+    Ok(())
 }
 
 fn convert_matmul_to_cuda(
@@ -236,7 +268,12 @@ fn convert_matmul_to_cuda(
     inputs: &mut [OutletId],
     op: &PrefixMatMul,
 ) -> TractResult<TVec<OutletId>> {
-    let mut input_facts = model.node_input_facts(node.id)?;
+    let mut owned_facts: TVec<TypedFact> =
+        model.node_input_facts(node.id)?.iter().map(|f| (*f).clone()).collect();
+    // Expand Q8_0 before the cast and the gemm. The float path then sees plain
+    // values. Q4_0 is not expanded: the fused kernel still owns that format.
+    install_q8_0_dequant(&node.name, target, inputs, &mut owned_facts)?;
+    let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
     // GGML kernel expects weights in second position and activations in first position
     // This avoid output transposition due to GGML column-major data expectations
 

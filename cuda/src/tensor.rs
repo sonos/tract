@@ -7,7 +7,7 @@ use tract_core::prelude::{DatumType, TVec};
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q8_1};
 use tract_gpu::device::DeviceBuffer;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::{as_q40_tensor, check_strides_validity};
+use tract_gpu::utils::check_strides_validity;
 
 use crate::ops::GgmlQuantQ81Fact;
 
@@ -53,7 +53,8 @@ pub struct CudaTensor {
 
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
-        if let Some(bqs) = as_q40_tensor(tensor) {
+        // The device buffer is the ggml blob for every block quant. Q4_0 is not special here.
+        if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
             let bqf = BlockQuantFact::new(
                 tract_core::dyn_clone::clone_box(bqs.format()),
                 tensor.shape().into(),
