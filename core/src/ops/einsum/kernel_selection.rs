@@ -15,7 +15,10 @@ pub type Impl = Suitable;
 pub type Strat = (ModePicker, Box<dyn MMMInputFormat>, Vec<Impl>);
 
 fn single_strat(it: Impl) -> Strat {
-    (ModePicker::Single, it.0.packings()[it.1].0.clone(), vec![it])
+    // The kernel panel is `pe.to`. A constant weight has to be packed as `pe.from`.
+    let left =
+        it.2.as_ref().map(|pe| pe.from.clone()).unwrap_or_else(|| it.0.packings()[it.1].0.clone());
+    (ModePicker::Single, left, vec![it])
 }
 
 /// True when C's n axis is the innermost non-unit axis, so a row-major SME
