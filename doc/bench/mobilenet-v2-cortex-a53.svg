@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 48" width="240" height="48" role="img">
+<title>MobileNet v2, multi-thread on Cortex-A53: 3.2x faster</title>
+<style>.base{stroke:#9aa3ad} .line{stroke:#2a78d6} .dot{fill:#2a78d6}
+@media (prefers-color-scheme: dark){.base{stroke:#5d656f} .line{stroke:#3987e5} .dot{fill:#3987e5}}</style>
+<line class="base" x1="4" x2="236" y1="42.7" y2="42.7" stroke-width="1" stroke-dasharray="3 3"/>
+<path class="line" d="M4.0 42.9 L7.0 42.8 L9.9 42.7 L12.9 42.7 L15.9 42.7 L18.9 42.7 L21.8 42.7 L24.8 42.7 L27.8 42.7 L30.8 42.8 L36.7 42.8 L39.7 42.8 L42.7 42.8 L45.6 42.7 L48.6 42.7 L51.6 42.8 L54.6 42.7 L57.5 42.7 L60.5 42.7 L63.5 42.8 L66.5 42.8 L69.4 42.8 L72.4 42.8 L75.4 42.8 L78.4 42.8 L81.3 42.8 L84.3 42.8 L87.3 42.7 L90.3 42.7 L93.2 42.7 L96.2 42.7 L99.2 42.7 L102.2 42.7 L105.1 42.7 L108.1 42.7 L111.1 42.8 L114.1 42.8 L117.0 42.8 L120.0 42.8 L123.0 42.8 L125.9 42.8 L128.9 42.8 L131.9 42.8 L134.9 42.8 L137.8 42.8 L140.8 42.8 L143.8 42.9 L146.8 42.8 L149.7 42.9 L152.7 42.8 L155.7 42.9 L158.7 42.9 L161.6 42.9 L164.6 42.9 L167.6 42.9 L170.6 43.2 L173.5 43.2 L176.5 43.2 L185.4 43.2 L188.4 43.2 L191.4 43.2 L194.4 42.4 L197.3 42.3 L200.3 42.3 L203.3 42.2 L206.3 15.0 L209.2 14.7 L212.2 14.7 L215.2 14.7 L218.2 14.7 L221.1 14.7 L224.1 12.0 L227.1 9.1 L230.1 6.7 L236.0 6.6" fill="none" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<circle class="dot" cx="236.0" cy="6.6" r="3"/>
+</svg>
