@@ -12,15 +12,25 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
 
+mod ggml_k;
 mod helpers;
+mod iq2_s;
+mod iq2_s_kgrid;
+mod iq4_xs;
+mod opaque;
 mod q20t;
 mod q4_0;
+mod q8_0;
 mod q8_1;
 mod storage;
 mod value;
 
+pub use ggml_k::{Q3_K, Q3KF, Q4_K, Q4KF, Q5_K, Q5KF, Q6_K, Q6KF};
 pub use helpers::{CrumbReader, CrumbWriter, NibbleReader, NibbleWriter};
+pub use iq2_s::{IQ2_S, IQ2SF};
+pub use iq4_xs::{IQ4_XS, IQ4XSF};
 pub use q4_0::Q4_0;
+pub use q8_0::{Q8_0, Q8_0F};
 pub use q8_1::Q8_1;
 pub use q20t::{BaseQ2_0_T, Q2_0_T};
 pub use storage::{BlockQuantStorage, block_quant_slice};
