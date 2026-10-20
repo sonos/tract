@@ -282,7 +282,7 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
     let format: Box<dyn BlockQuant> = match header.item_type {
         0x2040 | 0x3040 => Box::new(Q4_0),
-        0x3080 => Box::new(Q8_1),
+        0x3081 => Box::new(Q8_1),
         _ => bail!("Unexpected block quant format"),
     };
     ensure!(header.rank >= 2);
@@ -339,6 +339,33 @@ mod test {
     #[test]
     fn header_is_128_bytes() {
         assert_eq!(std::mem::size_of::<Header>(), 128);
+    }
+
+    fn block_quant_round_trip(format: Box<dyn BlockQuant>) -> TractResult<()> {
+        let (m, k) = (4, 64);
+        let input: Vec<f32> = (0..m * k).map(|i| (i as f32 * 0.37).sin()).collect();
+        let blob = format.quant_f32(&input)?;
+        let t = BlockQuantStorage::new(format, m, k, Arc::new(blob))?
+            .into_tensor_with_shape(f32::datum_type(), &[m, k]);
+        let mut buffer = Vec::<u8>::new();
+        write_tensor(&mut buffer, &t)?;
+        let back = read_tensor(buffer.as_slice())?;
+        let (written, read) =
+            (t.try_storage_as::<BlockQuantStorage>()?, back.try_storage_as::<BlockQuantStorage>()?);
+        assert!(read.format().dyn_eq(written.format()));
+        assert_eq!(back.shape(), t.shape());
+        assert_eq!(read.value().as_bytes(), written.value().as_bytes());
+        Ok(())
+    }
+
+    #[test]
+    fn serde_block_quant_q4_0() -> TractResult<()> {
+        block_quant_round_trip(Box::new(Q4_0))
+    }
+
+    #[test]
+    fn serde_block_quant_q8_1() -> TractResult<()> {
+        block_quant_round_trip(Box::new(Q8_1))
     }
 
     #[test]
