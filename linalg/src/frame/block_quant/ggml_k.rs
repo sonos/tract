@@ -17,6 +17,14 @@ pub struct Q4KF;
 /// The ggml Q4_K block format.
 pub const Q4_K: Q4KF = Q4KF;
 
+/// ggml Q5_K block: the Q4_K header, the fifth bit of each level in 32 bytes, then
+/// the low four bits of 256 levels, 176 bytes.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Q5KF;
+
+/// The ggml Q5_K block format.
+pub const Q5_K: Q5KF = Q5KF;
+
 /// ggml `nearest_int`: round half to even through the 2^23 mantissa trick.
 pub(super) fn nearest_int(fval: f32) -> i32 {
     let val = fval + 12582912.0;
@@ -196,7 +204,41 @@ fn dequant_q4_k(quant: &[u8], block: &mut [f32]) {
     }
 }
 
+fn quant_q5_k(x: &[f32], quant: &mut [u8]) {
+    quant.fill(0);
+    let mut levels = [0u8; QK_K];
+    quant_scales_mins(x, &mut quant[..16], &mut levels, 31, -0.5, 15);
+    let (qh, ql) = quant[16..].split_at_mut(32);
+    for (pair, (chunk, ql)) in levels.chunks_exact(64).zip(ql.chunks_exact_mut(32)).enumerate() {
+        for i in 0..32 {
+            let (l1, l2) = (chunk[i], chunk[i + 32]);
+            qh[i] |= ((l1 >> 4) << (2 * pair)) | ((l2 >> 4) << (2 * pair + 1));
+            ql[i] = (l1 & 0xF) | ((l2 & 0xF) << 4);
+        }
+    }
+}
+
+fn dequant_q5_k(quant: &[u8], block: &mut [f32]) {
+    let d = load_f16(&quant[0..2]);
+    let min = load_f16(&quant[2..4]);
+    let scales = &quant[4..16];
+    let qh = &quant[16..48];
+    for (pair, (out, ql)) in
+        block.chunks_exact_mut(64).zip(quant[48..].chunks_exact(32)).enumerate()
+    {
+        let (sc1, m1) = scale_min_k4(scales, 2 * pair);
+        let (sc2, m2) = scale_min_k4(scales, 2 * pair + 1);
+        for (l, &q) in ql.iter().enumerate() {
+            let h1 = (qh[l] >> (2 * pair)) & 1;
+            let h2 = (qh[l] >> (2 * pair + 1)) & 1;
+            out[l] = d * sc1 as f32 * ((q & 0xF) | (h1 << 4)) as f32 - min * m1 as f32;
+            out[l + 32] = d * sc2 as f32 * ((q >> 4) | (h2 << 4)) as f32 - min * m2 as f32;
+        }
+    }
+}
+
 impl_opaque_block_quant!(Q4KF, "Q4_K", 256, 144, quant_q4_k, dequant_q4_k);
+impl_opaque_block_quant!(Q5KF, "Q5_K", 256, 176, quant_q5_k, dequant_q5_k);
 
 #[cfg(test)]
 pub(super) mod tests {
@@ -264,5 +306,28 @@ pub(super) mod tests {
             &[(0, 0), (32, 0xbf31_e300), (255, 0x3fb6_1280)],
         );
         assert_ggml_ref(&Q4_K, &[0f32; 256], &"00".repeat(144), &[(0, 0)]);
+    }
+
+    #[test]
+    fn q5_k_roundtrip() {
+        assert_roundtrip(&Q5_K, 0.2);
+    }
+
+    /// Bytes and values from llama.cpp `quantize_row_q5_K_ref` / `dequantize_row_q5_K`.
+    #[test]
+    fn q5_k_matches_ggml_ref() {
+        assert_ggml_ref(
+            &Q5_K,
+            &ramp(256, 0),
+            "41181d28fcfefffdfbfefefefecdfeedcc32d966994c33cd269964b3cc32d9669b4c33c9669964b3cc3699669bcc33c9b28f5d3a07d4a28f5c2af6d4a17e5c29f6c3a17e4b19f6c3906e4b18e6c2906ec3917e4b18f5c3906d4b18e5c2906d3a18e5b28f5c3a07d5b28f5c2907d4a18ed5a27f5d2af7d4a27f4c2af7c4917e4c19e6c4916e3b19e6b3906e3b08e6b380f6c3906e4b18e6c3906d3b18e5b3805d3a07d5b28f5d2a07d4a28f5c2af7d4a1",
+            &[(0, 0xbfd2_c780), (32, 0xbf13_66c0), (255, 0x3fa6_a520)],
+        );
+        assert_ggml_ref(
+            &Q5_K,
+            &ramp(256, 32),
+            "41181d28c0fefffdc0fefefefecdfeedcc32d866984c32cc269864b2cc32d8669a4c32c8669864b2cc3698669acc32c8b080503000d0a0805020f0d0a0705020f0c0a0704010f0c090604010e0c09060c3917e4b18f5c3906d4b18e5c2906d3a18e5b28f5c3a07d5b28f5c2907d4a18ed5a27f5d2af7d4a27f4c2af7c4917e4c19e6c4916e3b19e6b3906e3b08e6b380f6c3906e4b18e6c3906d3b18e5b3805d3a07d5b28f5d2a07d4a28f5c2af7d4a1",
+            &[(0, 0), (32, 0xbf13_66c0), (255, 0x3fa6_a520)],
+        );
+        assert_ggml_ref(&Q5_K, &[0f32; 256], &"00".repeat(176), &[(0, 0)]);
     }
 }

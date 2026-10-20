@@ -282,4 +282,9 @@ mod tests {
     fn q4_k_pack_then_extract() -> TractResult<()> {
         pack_then_extract(&Q4_K)
     }
+
+    #[test]
+    fn q5_k_pack_then_extract() -> TractResult<()> {
+        pack_then_extract(&Q5_K)
+    }
 }
