@@ -742,7 +742,7 @@ fn preprocess_file(
     ctx.insert("G".into(), g.into());
     ctx.insert("suffix".into(), suffix.into());
     ctx.insert("long".into(), long.into());
-    ctx.insert("jump_table".into(), minijinja::Value::from_serialize(jump_table()));
+    ctx.insert("jump_table".into(), minijinja::Value::from_iter(jump_table()));
     ctx.insert("align".into(), align.into());
     ctx.insert("offset".into(), offset.into());
 
