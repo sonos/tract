@@ -233,6 +233,7 @@ impl ConvKernel for ConvCudnn {
         let weights_view = get_cuda_view(weights);
         let mut output_view = get_cuda_view_mut(output);
 
+        let events = stream.record_profile_events()?;
         match state.as_ref().unwrap() {
             CudnnConvDescriptors::F32 { desc, algo, workspace_size, .. } => {
                 let conv_forward =
@@ -292,6 +293,9 @@ impl ConvKernel for ConvCudnn {
                         .context("in launch()")?;
                 }
             }
+        }
+        if let Some((start, end)) = events {
+            stream.finish_profile_entry(start, end)?;
         }
 
         Ok(())
