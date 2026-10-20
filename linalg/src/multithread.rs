@@ -410,9 +410,12 @@ fn chain_workers(len: usize) -> usize {
 
 /// Apply every step of `steps` to `a` in place, chunk by chunk, so each chunk
 /// of `a` is still cache-hot when the next step's kernel runs over it instead
-/// of streaming the whole tensor once per step. A chunk may not cross any
-/// step's block boundary, so its length must divide every step period; any
-/// `vector_size()` multiple dividing the gcd of the periods works. The walk
+/// of streaming the whole tensor once per step. A chunk may not cross a
+/// PerBlock step's block boundary, so its length must divide that step's
+/// period; a Lockstep step whose period is a `vector_size()` multiple may span
+/// several periods per chunk, its kernel then being called once per period
+/// piece without copying `b`. Any `vector_size()` multiple dividing the gcd
+/// of those spans works. The walk
 /// picks the largest such chunk under `CHAIN_CHUNK` elements that still
 /// splits `a` into `4 * threads` pieces — giving the same operand mapping
 /// `par_bin` would produce and a bit-identical result.
@@ -454,33 +457,23 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     let max_chunk = if workers > 1 { CHAIN_CHUNK.min(a_len / (4 * workers)) } else { CHAIN_CHUNK }
         .max(4 * vector_size());
     // A short Lockstep period (a per-channel operand over channel-last data)
-    // would cap the chunk at one period; tile its `b` so the chunk can span
-    // many periods.
-    let tiled = steps
-        .iter()
-        .map(|s| {
-            if s.share != BShare::Lockstep || s.period * 2 > max_chunk {
-                return Ok(None);
-            }
-            let blocks = a_len / s.period;
-            let k = (1..=blocks.min(max_chunk / s.period))
-                .rev()
-                .find(|k| blocks.is_multiple_of(*k))
-                .unwrap_or(1);
-            if k == 1 {
-                return Ok(None);
-            }
-            Ok(Some(
-                s.b.clone()
-                    .into_shape(&[s.period])?
-                    .broadcast_to_shape(&[k, s.period])?
-                    .into_shape(&[k * s.period])?,
-            ))
-        })
-        .collect::<TractResult<Vec<Option<Tensor>>>>()?;
-    let chain_b = |ix: usize| tiled[ix].as_ref().unwrap_or(steps[ix].b);
-    let chain_period = |ix: usize| tiled[ix].as_ref().map_or(steps[ix].period, |t| t.len());
-    let unit = (0..steps.len()).fold(a_len, |u, ix| u.gcd(&chain_period(ix)));
+    // would cap the chunk at one period; let the chunk span `k` whole periods
+    // instead, the step kernel then running once per period inside it.
+    let span = |s: &BinChainStep| -> usize {
+        if s.share != BShare::Lockstep
+            || s.period * 2 > max_chunk
+            || !s.period.is_multiple_of(vector_size())
+        {
+            return s.period;
+        }
+        let blocks = a_len / s.period;
+        let k = (1..=blocks.min(max_chunk / s.period))
+            .rev()
+            .find(|k| blocks.is_multiple_of(*k))
+            .unwrap_or(1);
+        k * s.period
+    };
+    let unit = steps.iter().fold(a_len, |u, s| u.gcd(&span(s)));
     if unit % vector_size() != 0 {
         for s in steps {
             par_bin(s.eval_fn, a, s.b, s.period, s.share)?;
@@ -513,23 +506,42 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     let a = &*a;
     static STRIDES: [isize; 1] = [1];
     let a_shape = [chunk];
-    // `chunk` divides every step's period, so within a chunk each step's
-    // `g % period` offset and its `chunk` neighbours stay inside one block,
-    // and the disjoint chunks partition `a`: concurrent writes through the
-    // views do not alias.
+    // `chunk` divides every step's span, so a PerBlock step sees one block per
+    // chunk, and a Lockstep step crosses its period boundaries only at
+    // `vector_size()` multiples, where it restarts `b`. The disjoint chunks
+    // partition `a`: concurrent writes through the views do not alias.
     let call = |ix: usize| -> TractResult<()> {
         let g = ix * chunk;
         unsafe {
             let mut a_chunk = TensorView::from_bytes(a, g as isize * a_item, &a_shape, &STRIDES);
-            for (sx, s) in steps.iter().enumerate() {
-                let (b, period) = (chain_b(sx), chain_period(sx));
-                let b_item = b.datum_type().size_of() as isize;
-                let (b_offset, b_shape) = match s.share {
-                    BShare::Lockstep => ((g % period) as isize * b_item, [chunk]),
-                    BShare::PerBlock => ((g / period) as isize * b_item, [1]),
-                };
-                let b_chunk = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES);
-                (s.eval_fn)(&mut a_chunk, &b_chunk)?;
+            for s in steps {
+                let b_item = s.b.datum_type().size_of() as isize;
+                if s.share == BShare::PerBlock {
+                    let b_offset = (g / s.period) as isize * b_item;
+                    let b_chunk = TensorView::from_bytes(s.b, b_offset, &[1], &STRIDES);
+                    (s.eval_fn)(&mut a_chunk, &b_chunk)?;
+                    continue;
+                }
+                let mut pos = 0;
+                while pos < chunk {
+                    let offset = (g + pos) % s.period;
+                    let len = (s.period - offset).min(chunk - pos);
+                    let part_shape = [len];
+                    let mut a_part = TensorView::from_bytes(
+                        a,
+                        (g + pos) as isize * a_item,
+                        &part_shape,
+                        &STRIDES,
+                    );
+                    let b_part = TensorView::from_bytes(
+                        s.b,
+                        offset as isize * b_item,
+                        &part_shape,
+                        &STRIDES,
+                    );
+                    (s.eval_fn)(&mut a_part, &b_part)?;
+                    pos += len;
+                }
             }
             Ok(())
         }
@@ -606,9 +618,23 @@ mod chain_tests {
         let add = add();
         let mul = mul();
         let len = 12288usize;
-        for periods in [[768usize, 256, 256], [768, 24, 768], [96, 96, 12288]] {
-            let b0 = Tensor::from_shape(&[1, 1, periods[0]], &vec![2f32; periods[0]]).unwrap();
-            let b1 = Tensor::from_shape(&[periods[1]], &vec![3f32; periods[1]]).unwrap();
+        for periods in [
+            [768usize, 256, 256],
+            [768, 24, 768],
+            [96, 96, 12288],
+            [192, 192, 12288],
+            [192, 384, 128],
+        ] {
+            let b0 = Tensor::from_shape(
+                &[1, 1, periods[0]],
+                &(0..periods[0]).map(|i| i as f32).collect::<Vec<_>>(),
+            )
+            .unwrap();
+            let b1 = Tensor::from_shape(
+                &[periods[1]],
+                &(0..periods[1]).map(|i| 1.0 + i as f32 / 64.0).collect::<Vec<_>>(),
+            )
+            .unwrap();
             let b2 =
                 Tensor::from_shape(&[len / periods[2]], &vec![0.5f32; len / periods[2]]).unwrap();
             let steps = vec![
