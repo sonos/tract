@@ -13,9 +13,11 @@ use tract_core::tract_data::half::f16;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
+/// cuDNN descriptors for one conv. The conv descriptor accumulates in f32 whatever
+/// the data type `T`; with f16 data it also allows tensor cores.
 #[derive(Debug)]
 struct TypedDescriptors<T: CudnnDataType> {
-    conv: ConvDescriptor<T>,
+    conv: ConvDescriptor<f32>,
     x: TensorDescriptor<T>,
     w: FilterDescriptor<T>,
     y: TensorDescriptor<T>,
@@ -49,7 +51,7 @@ fn build_descriptors<T: CudnnDataType>(
         pads.push(0);
     }
     let mut conv_descriptor = cudnn
-        .create_convnd::<T>(
+        .create_convnd::<f32>(
             &pads,
             &strides,
             &dilations,
@@ -57,6 +59,11 @@ fn build_descriptors<T: CudnnDataType>(
         )
         .context("in create_convnd")?;
     conv_descriptor.set_group_count(op.group as i32);
+    if T::DATA_TYPE == cudarc::cudnn::sys::cudnnDataType_t::CUDNN_DATA_HALF {
+        conv_descriptor
+            .set_math_type(cudarc::cudnn::sys::cudnnMathType_t::CUDNN_TENSOR_OP_MATH)
+            .context("in set_math_type")?;
+    }
 
     let mut input_dims = input_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
     if input_dims.len() == 1 {
@@ -238,12 +245,8 @@ impl ConvKernel for ConvCudnn {
             CudnnConvDescriptors::F32 { desc, algo, workspace_size, .. } => {
                 let conv_forward =
                     ConvForward { conv: &desc.conv, x: &desc.x, w: &desc.w, y: &desc.y };
+                let mut workspace = stream.cudnn_workspace(*workspace_size)?;
                 unsafe {
-                    let mut workspace = if *workspace_size > 0 {
-                        Some(stream.alloc::<u8>(*workspace_size)?)
-                    } else {
-                        None
-                    };
                     let src =
                         input_view.transmute::<f32>(input_view.len() / size_of::<f32>()).unwrap();
                     let w = weights_view
@@ -267,12 +270,8 @@ impl ConvKernel for ConvCudnn {
             CudnnConvDescriptors::F16 { desc, algo, workspace_size, .. } => {
                 let conv_forward =
                     ConvForward { conv: &desc.conv, x: &desc.x, w: &desc.w, y: &desc.y };
+                let mut workspace = stream.cudnn_workspace(*workspace_size)?;
                 unsafe {
-                    let mut workspace = if *workspace_size > 0 {
-                        Some(stream.alloc::<u8>(*workspace_size)?)
-                    } else {
-                        None
-                    };
                     let src =
                         input_view.transmute::<f16>(input_view.len() / size_of::<f16>()).unwrap();
                     let w = weights_view
