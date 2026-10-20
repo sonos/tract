@@ -189,17 +189,6 @@ enum TRACT_RESULT tract_onnx_load(const struct TractOnnx *onnx,
                                   struct TractInferenceModel **model);
 
 /**
- * Parse and load an ONNX buffer as a tract InferenceModel.
- *
- * `data` is a buffer pointer
- * `len` ise the buffer len
- */
-enum TRACT_RESULT tract_onnx_load_buffer(const struct TractOnnx *onnx,
-                                         const void *data,
-                                         uintptr_t len,
-                                         struct TractInferenceModel **model);
-
-/**
  * Parse and load an ONNX model as a tract InferenceModel, with loader options.
  *
  * `options` is a null-terminated utf-8 JSON object, or null for the defaults.
@@ -220,6 +209,17 @@ enum TRACT_RESULT tract_onnx_load_buffer_with_options(const struct TractOnnx *on
                                                       uintptr_t len,
                                                       const char *options,
                                                       struct TractInferenceModel **model);
+
+/**
+ * Parse and load an ONNX buffer as a tract InferenceModel.
+ *
+ * `data` is a buffer pointer
+ * `len` ise the buffer len
+ */
+enum TRACT_RESULT tract_onnx_load_buffer(const struct TractOnnx *onnx,
+                                         const void *data,
+                                         uintptr_t len,
+                                         struct TractInferenceModel **model);
 
 /**
  * Query an InferenceModel input counts.
@@ -440,12 +440,12 @@ enum TRACT_RESULT tract_runtime_prepare(const struct TractRuntime *runtime,
 enum TRACT_RESULT tract_runtime_release(struct TractRuntime **runtime);
 
 /**
- * Spawn a session state from a runnable model.
+ * Spawn a state from a runnable model.
  *
  * This function does not take ownership of the `runnable` object, it can be used again to spawn
  * other state instances. The runnable object is internally reference counted, it will be
  * kept alive as long as any associated `State` exists (or as long as the `runnable` is not
- * explicitely release with `tract_runnable_release`).
+ * explicitly release with `tract_runnable_release`).
  *
  * `state` is a newly-created object. It should ultimately be detroyed with `tract_state_destroy`.
  */

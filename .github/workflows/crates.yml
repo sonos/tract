@@ -172,6 +172,24 @@ jobs:
         RUSTFLAGS: -D warnings
       run: cargo check --all-targets
 
+  tract-h:
+    name: api/proxy/sys/tract.h matches tract-ffi
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Install cbindgen
+      run: cargo install cbindgen --version 0.29.4 --locked
+    - name: Compare with a regenerated header
+      run: |
+        cd api
+        cbindgen ffi | diff -u proxy/sys/tract.h - || {
+          echo "::error file=api/proxy/sys/tract.h::stale header, regenerate it with api/generate-tract-h.sh"
+          exit 1
+        }
+
   cargo-deny:
     strategy:
       fail-fast: false
