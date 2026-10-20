@@ -10,6 +10,14 @@ use super::*;
 pub(super) const QK_K: usize = 256;
 pub(super) const GROUP_MAX_EPS: f32 = 1e-15;
 
+/// ggml Q3_K block: the high bit of 256 levels in 32 bytes, their low two bits in
+/// 64 bytes, sixteen 6-bit group scales in 12 bytes, then the f16 `d`, 110 bytes.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
+pub struct Q3KF;
+
+/// The ggml Q3_K block format.
+pub const Q3_K: Q3KF = Q3KF;
+
 /// ggml Q4_K block: f16 `d` and `dmin`, eight 6-bit scale and min pairs in 12 bytes,
 /// then 256 4-bit levels, 144 bytes.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq)]
@@ -234,6 +242,140 @@ fn quant_scales_mins(
     }
 }
 
+/// ggml `make_q3_quants` with `do_rmse`: writes levels in `0..=7` and returns the scale.
+fn make_q3_quants(x: &[f32], l_out: &mut [i8]) -> f32 {
+    let nmax = 4i32;
+    let mut max = 0.0f32;
+    let mut amax = 0.0f32;
+    for &xi in x {
+        if xi.abs() > amax {
+            amax = xi.abs();
+            max = xi;
+        }
+    }
+    if amax < GROUP_MAX_EPS {
+        l_out.fill(0);
+        return 0.0;
+    }
+    let iscale = -(nmax as f32) / max;
+    let mut sumlx = 0.0f32;
+    let mut suml2 = 0.0f32;
+    for (l_out, &xi) in l_out.iter_mut().zip(x) {
+        let l = nearest_int(iscale * xi).clamp(-nmax, nmax - 1);
+        *l_out = l as i8;
+        let w = xi * xi;
+        sumlx += w * xi * l as f32;
+        suml2 += w * l as f32 * l as f32;
+    }
+    for _ in 0..5 {
+        let mut n_changed = 0;
+        for (l_out, &xi) in l_out.iter_mut().zip(x) {
+            let w = xi * xi;
+            let old = *l_out as f32;
+            let mut slx = sumlx - w * xi * old;
+            if slx > 0.0 {
+                let mut sl2 = suml2 - w * old * old;
+                let new_l = nearest_int(xi * sl2 / slx).clamp(-nmax, nmax - 1);
+                if new_l != *l_out as i32 {
+                    slx += w * xi * new_l as f32;
+                    sl2 += w * new_l as f32 * new_l as f32;
+                    if sl2 > 0.0 && slx * slx * suml2 > sumlx * sumlx * sl2 {
+                        *l_out = new_l as i8;
+                        sumlx = slx;
+                        suml2 = sl2;
+                        n_changed += 1;
+                    }
+                }
+            }
+        }
+        if n_changed == 0 {
+            break;
+        }
+    }
+    for l in l_out.iter_mut() {
+        *l += nmax as i8;
+    }
+    if suml2 > 0.0 { sumlx / suml2 } else { 0.0 }
+}
+
+/// Signed 6-bit scale of `group` from the 12-byte `scales` of a Q3_K block.
+fn q3_group_scale(scales: &[u8], group: usize) -> i32 {
+    let lo = if group < 8 { scales[group] & 0xF } else { scales[group - 8] >> 4 };
+    let hi = (scales[8 + group % 4] >> (2 * (group / 4))) & 3;
+    i32::from(lo | (hi << 4)) - 32
+}
+
+fn quant_q3_k(x: &[f32], quant: &mut [u8]) {
+    let mut levels = [0i8; QK_K];
+    let mut scales = [0.0f32; 16];
+    let mut max_scale = 0.0f32;
+    let mut amax = 0.0f32;
+    for j in 0..16 {
+        scales[j] = make_q3_quants(&x[16 * j..][..16], &mut levels[16 * j..][..16]);
+        if scales[j].abs() > amax {
+            amax = scales[j].abs();
+            max_scale = scales[j];
+        }
+    }
+    quant.fill(0);
+    if max_scale != 0.0 {
+        let iscale = -32.0 / max_scale;
+        for j in 0..16 {
+            let level = (nearest_int(iscale * scales[j]).clamp(-32, 31) + 32) as u8;
+            if j < 8 {
+                quant[96 + j] = level & 0xF;
+            } else {
+                quant[96 + j - 8] |= (level & 0xF) << 4;
+            }
+            quant[104 + j % 4] |= (level >> 4) << (2 * (j / 4));
+        }
+        store_f16(&mut quant[108..110], 1.0 / iscale);
+    }
+    let d_all = load_f16(&quant[108..110]);
+    for j in 0..16 {
+        let d = d_all * q3_group_scale(&quant[96..108], j) as f32;
+        if d == 0.0 {
+            continue;
+        }
+        for i in 16 * j..16 * j + 16 {
+            levels[i] = (nearest_int(x[i] / d).clamp(-4, 3) + 4) as i8;
+        }
+    }
+    // The high bit of value i is bit i / 32 of hmask[i % 32]; qs keeps the low two bits.
+    let (hmask, qs) = quant.split_at_mut(32);
+    for (i, level) in levels.iter_mut().enumerate() {
+        if *level > 3 {
+            hmask[i % 32] |= 1 << (i / 32);
+            *level -= 4;
+        }
+    }
+    for (half, levels) in levels.chunks_exact(128).enumerate() {
+        for lane in 0..32 {
+            qs[32 * half + lane] = levels[lane] as u8
+                | ((levels[lane + 32] as u8) << 2)
+                | ((levels[lane + 64] as u8) << 4)
+                | ((levels[lane + 96] as u8) << 6);
+        }
+    }
+}
+
+fn dequant_q3_k(quant: &[u8], block: &mut [f32]) {
+    let d_all = load_f16(&quant[108..110]);
+    let hmask = &quant[..32];
+    let qs = &quant[32..96];
+    let scales = &quant[96..108];
+    for (idx, out) in block.iter_mut().enumerate() {
+        let half = idx / 128;
+        let within = idx % 128;
+        let pair = within / 32;
+        let lane = within % 32;
+        let low = (qs[half * 32 + lane] >> (2 * pair)) & 3;
+        let high = (hmask[lane] >> (pair + half * 4)) & 1;
+        let qv = i32::from(low) - if high == 1 { 0 } else { 4 };
+        *out = d_all * q3_group_scale(scales, idx / 16) as f32 * qv as f32;
+    }
+}
+
 fn quant_q4_k(x: &[f32], quant: &mut [u8]) {
     quant.fill(0);
     let mut levels = [0u8; QK_K];
@@ -360,6 +502,7 @@ fn dequant_q6_k(quant: &[u8], block: &mut [f32]) {
     }
 }
 
+impl_opaque_block_quant!(Q3KF, "Q3_K", 256, 110, quant_q3_k, dequant_q3_k);
 impl_opaque_block_quant!(Q4KF, "Q4_K", 256, 144, quant_q4_k, dequant_q4_k);
 impl_opaque_block_quant!(Q5KF, "Q5_K", 256, 176, quant_q5_k, dequant_q5_k);
 impl_opaque_block_quant!(Q6KF, "Q6_K", 256, 210, quant_q6_k, dequant_q6_k);
@@ -476,5 +619,28 @@ pub(super) mod tests {
             &[(0, 0), (16, 0x3f68_7880), (255, 0x3fa5_5000)],
         );
         assert_ggml_ref(&Q6_K, &[0f32; 256], &"00".repeat(210), &[]);
+    }
+
+    #[test]
+    fn q3_k_roundtrip() {
+        assert_roundtrip(&Q3_K, 0.5);
+    }
+
+    /// Bytes and values from llama.cpp `quantize_row_q3_K_ref` / `dequantize_row_q3_K`.
+    #[test]
+    fn q3_k_matches_ggml_ref() {
+        assert_ggml_ref(
+            &Q3_K,
+            &ramp(256, 0),
+            "758b64df28f58a749f20df8a759b60dffc2b55ae11fe23d4ab51fe03fcab55ee5f8885f5222f5f88b5f6e21f5f88b5f622f7f4889d5e22f7fb885d6222f7f888175788bdfde2275788bdfe22175488fd5e22f5f8885f5222f5f88b5f6ee1f588df2de2ee03efde0033cffc335fa4",
+            &[(0, 0xbfcb_4180), (16, 0x3f7d_8600), (255, 0x3f8b_e000)],
+        );
+        assert_ggml_ref(
+            &Q3_K,
+            &ramp(256, 16),
+            "748a64de28f48a749e20de8a749a60defc2b55ae11fe23d4ab51fe03fcab55ee5c8884f4202c5c88b4f4e01c5c88b4f422f7f4889d5e22f7fb885d6222f7f888175788bdfde2275788bdfe22175488fd5e22f5f8885f5222f5f88b5f6ee1f588d02de2ee03efde0032cffc335fa4",
+            &[(0, 0), (16, 0x3f7d_8600), (255, 0x3f8b_e000)],
+        );
+        assert_ggml_ref(&Q3_K, &[0f32; 256], &"00".repeat(110), &[]);
     }
 }

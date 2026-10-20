@@ -22,7 +22,7 @@ mod q8_1;
 mod storage;
 mod value;
 
-pub use ggml_k::{Q4_K, Q4KF, Q5_K, Q5KF, Q6_K, Q6KF};
+pub use ggml_k::{Q3_K, Q3KF, Q4_K, Q4KF, Q5_K, Q5KF, Q6_K, Q6KF};
 pub use helpers::{CrumbReader, CrumbWriter, NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use q8_0::{Q8_0, Q8_0F};
