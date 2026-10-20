@@ -89,6 +89,24 @@ Documentation: [sonos.github.io/tract](https://sonos.github.io/tract). Source li
 All runtimes share the `TypedModel` IR and the same loaders, so a model
 optimised on one platform can be moved to another.
 
+## Benchmarks
+
+Every night, `main` is benchmarked on a fleet of devices — Cortex-A7 to
+Cortex-A55 boards, RISC-V boards, x86 and Apple desktops, NVIDIA and Apple
+GPUs, and WebAssembly — over wake-word, speech recognition, speech
+enhancement, vision and LLM models. The [bench page](https://sonos.github.io/tract/bench/)
+tracks every model on every device. A few of the trends:
+
+| Model | Target | Speed | Trend |
+|---|---|---|---|
+| GTCRN speech enhancement | Cortex-A55 | **12.1×** since Aug 2026 | ![GTCRN speech enhancement on Cortex-A55](doc/bench/gtcrn-cortex-a55.svg) |
+| MobileNet v2, multi-thread | Cortex-A53 | **3.2×** since Aug 2026 | ![MobileNet v2, multi-thread on Cortex-A53](doc/bench/mobilenet-v2-cortex-a53.svg) |
+| Parakeet TDT 0.6B preprocessor | Intel i9-11900KB | **14.7×** since Jun 2026 | ![Parakeet TDT 0.6B preprocessor on Intel i9-11900KB](doc/bench/parakeet-i9-11900kb.svg) |
+| Llama 3.2 3B text generation | Apple M1 Max, Metal | **1.8×** since Apr 2025 | ![Llama 3.2 3B text generation on Apple M1 Max, Metal](doc/bench/llama-3b-m1-metal.svg) |
+
+Speed is relative to the first week of each series, dashed line at 1×.
+[`doc/bench/sparklines.py`](doc/bench/sparklines.py) regenerates the charts.
+
 ## Streaming and pulsification
 
 tract has first-class support for *pulsified* inference: a network that
