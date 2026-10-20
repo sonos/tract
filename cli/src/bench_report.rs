@@ -12,6 +12,8 @@
 use crate::bench_common::{
     Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, series_noise,
 };
+use minijinja::syntax::SyntaxConfig;
+use minijinja::value::Serde;
 use minijinja::{Environment, context};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -513,12 +515,12 @@ fn render_report(
     devices: &[DeviceReport],
 ) -> TractResult<String> {
     let mut env = Environment::new();
-    env.set_trim_blocks(true);
-    env.set_lstrip_blocks(true);
+    env.set_syntax(SyntaxConfig::builder().trim_blocks(true).lstrip_blocks(true).build()?);
     let tpl = std::fs::read_to_string(format!("{templates}/bench-report.md.j2"))?;
     env.add_template("report", &tpl)?;
-    let rendered =
-        env.get_template("report")?.render(context! { ref_day, pr_sha9, star_matrix, devices })?;
+    let rendered = env
+        .get_template("report")?
+        .render(context! { ref_day, pr_sha9, star_matrix, devices => Serde(devices) })?;
     Ok(tidy(&rendered))
 }
 
@@ -635,14 +637,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     uniq.dedup();
 
     let mut env = Environment::new();
-    env.set_trim_blocks(true);
-    env.set_lstrip_blocks(true);
+    env.set_syntax(SyntaxConfig::builder().trim_blocks(true).lstrip_blocks(true).build()?);
     let comment = std::fs::read_to_string(format!("{templates}/bench-comment.md.j2"))?;
     env.add_template("comment", &comment)?;
     let rendered = env.get_template("comment")?.render(context! {
-        head, ref_day, age,
-        speed_regr_shown, speed_regr_more, speed_impr_shown, speed_impr_more,
-        other_regr => other_regr_cells, run_url,
+        head, ref_day => &ref_day, age,
+        speed_regr_shown => Serde(speed_regr_shown),
+        speed_regr_more => Serde(speed_regr_more),
+        speed_impr_shown => Serde(speed_impr_shown),
+        speed_impr_more => Serde(speed_impr_more),
+        other_regr => Serde(other_regr_cells), run_url,
     })?;
     std::fs::write(out, tidy(&rendered))?;
 
