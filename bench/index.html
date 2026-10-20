@@ -9,14 +9,16 @@
 <style>
 :root {
   --bg: #f7f8fa; --panel: #ffffff; --fg: #15181d; --fg2: #4d5560; --muted: #6f7883;
-  --line: #e3e6eb; --grid: #edf0f3; --series: #2a78d6; --good: #0b8a0b; --bad: #c43333; --warn: #9a6500; --mark: #9aa3ad;
+  --line: #e3e6eb; --grid: #edf0f3; --series: #2a78d6;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --good: #0b8a0b; --bad: #c43333; --warn: #9a6500; --mark: #9aa3ad;
   --sans: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) { :root {
   --bg: #121417; --panel: #1a1d21; --fg: #eef1f4; --fg2: #b7bec7; --muted: #8a929c;
-  --line: #2c3036; --grid: #23272c; --series: #3987e5; --good: #3fbf3f; --bad: #e66767; --warn: #e0a42a; --mark: #5d656f;
+  --line: #2c3036; --grid: #23272c; --series: #3987e5;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #008300; --good: #3fbf3f; --bad: #e66767; --warn: #e0a42a; --mark: #5d656f;
   color-scheme: dark } }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--sans); }
@@ -59,6 +61,10 @@ th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--gri
 th { font: 600 11px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
 td.num { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
 tbody tr { cursor: pointer; } tr:last-child td { border-bottom: 0; }
+.cathead { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 24px 0 8px; }
+.cathead h2 { margin: 0; }
+.sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+.cathead .sub { font-size: 12px; color: var(--muted); }
 #status { font-size: 13px; color: var(--muted); min-height: 1.4em; }
 footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
 </style>
@@ -70,6 +76,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   <p class="muted">Nightly results for <code>main</code> on every bench device, read live from the <a href="https://github.com/sonos/tract/tree/bench-data">bench-data</a> branch. Hover a point to see the commit it measured; click it to open the commits since the previous point.</p>
   <nav class="views" aria-label="View">
     <a href="#overview" data-view="overview">Overview</a>
+    <a href="#model" data-view="model">Model</a>
     <a href="#explorer" data-view="explorer">Explorer</a>
   </nav>
   <div class="controls">
@@ -80,6 +87,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   <section id="view-explorer" hidden>
     <div class="controls">
       <label for="dev">Device<select id="dev"></select></label>
+      <label for="part" id="partLbl" hidden>Backend<select id="part"><option value="">All</option><option value="cpu">CPU</option><option value="gpu">GPU</option></select></label>
       <label for="rd">Reading<select id="rd"></select></label>
       <label for="metric">Series, worst change first<select id="metric"></select></label>
     </div>
@@ -88,14 +96,25 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     <div class="card" id="chart"></div>
   </section>
 
+  <section id="view-model" hidden>
+    <div class="controls">
+      <label for="mModel">Model<select id="mModel"></select></label>
+      <label for="mReading">Reading<select id="mReading"></select></label>
+      <label for="mVariant" id="mVariantLbl">CPU variant<select id="mVariant"></select></label>
+    </div>
+    <p class="muted" id="mNote"></p>
+    <div id="mSections"></div>
+  </section>
+
   <section id="view-overview">
     <div class="controls">
       <div class="lbl">Reading<div class="seg" id="ovReadings" role="group" aria-label="Reading"></div></div>
     </div>
     <p class="muted" id="ovNote"></p>
-    <div class="grid" id="tiles"></div>
+    <div id="tiles"></div>
     <h2>Biggest movers</h2>
     <p class="muted">Series whose median over the last 7 points moved at least 5% from the first 7 points of the window, and at least 3× their own day-to-day noise (90th percentile). Load times under 30 ms are left out, as in the PR gate.</p>
+    <div class="controls"><div class="lbl">Category<div class="seg" id="ovCats" role="group" aria-label="Category"></div></div></div>
     <div class="pair">
       <div class="tablewrap"><table><thead><tr><th>Worse</th><th>Device</th><th>Δ</th></tr></thead><tbody id="worse"></tbody></table></div>
       <div class="tablewrap"><table><thead><tr><th>Better</th><th>Device</th><th>Δ</th></tr></thead><tbody id="better"></tbody></table></div>
@@ -121,6 +140,15 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   const CAVEATS = [
     { file: /apple-m1-max$/, metric: /\.(rsz|active|time_to)_[a-z_]+\.metal$/, note: 'Metal load metrics on the M1 Max drift upward for weeks at a time with no code change, and drop back when the machine is reset.' },
   ];
+  // Overview sections, in display order. A device with GPU series is split into a CPU tile and a GPU tile.
+  const CATEGORIES = [
+    { id: 'arm', label: 'Embedded ARM', match: (f, gpu) => !gpu && /^(aarch64-unknown-linux|armv7|arm-|raspbian)/.test(f) },
+    { id: 'riscv', label: 'RISC-V', match: (f, gpu) => !gpu && /^riscv/.test(f) },
+    { id: 'desktop', label: 'Desktop CPU', match: (f, gpu) => !gpu && /^(x86|aarch64-apple)/.test(f) },
+    { id: 'gpu', label: 'GPU', match: (f, gpu) => gpu },
+    { id: 'wasm', label: 'WebAssembly', match: (f, gpu) => !gpu && /^wasm/.test(f) },
+  ];
+  const OTHER = { id: 'other', label: 'Other' };
   // Points before this day come from the previous bench infrastructure.
   const REWORK = '2026-06-16';
   // Same guard as min_load_seconds in ci/bench-thresholds.toml: shorter loads are below the timer resolution.
@@ -142,31 +170,43 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   const higherIsBetter = r => /^(pp|tg)\d/.test(r) || r === 'tok';
   const inReading = (name, r) => r === 'tok' ? /^(pp|tg)\d/.test(readingOf(name)) : readingOf(name) === r;
   const readingLabel = r => ({ tok: 'LLM tok/s', evaltime: 'Eval time', time_to_model_ready: 'Load time', time_to_before_optimize: 'Time to before-optimize', rsz_at_model_ready: 'Load RSS', rsz_at_before_optimize: 'RSS before optimize', active_at_model_ready: 'Active memory at ready', active_at_before_optimize: 'Active memory before optimize', binary_size: 'Binary size', bundle: 'Bundle' })[r] || (/^(pp|tg)\d/.test(r) ? r + ' tok/s' : r);
+  const p4 = v => Math.abs(v) >= 1e4 ? String(Math.round(v)) : v.toPrecision(4);
   function unit(r) {
-    if (r === 'evaltime') return v => (v * 1000).toPrecision(4) + ' ms';
-    if (r.startsWith('time_to')) return v => v.toPrecision(4) + ' s';
-    if (/^(rsz|active)_/.test(r) || r === 'binary_size') return v => (v / 1e6).toPrecision(4) + ' MB';
-    if (/^(pp|tg)\d/.test(r) || r === 'tok') return v => v.toPrecision(4) + ' tok/s';
-    return v => v.toPrecision(4);
+    if (r === 'evaltime') return v => p4(v * 1000) + ' ms';
+    if (r.startsWith('time_to')) return v => p4(v) + ' s';
+    if (/^(rsz|active)_/.test(r) || r === 'binary_size') return v => p4(v / 1e6) + ' MB';
+    if (/^(pp|tg)\d/.test(r) || r === 'tok') return v => p4(v) + ' tok/s';
+    return v => p4(v);
   }
   const short = n => { const p = n.split('.'); return (p[0] === 'net' || p[0] === 'llm') ? p[1] + ' · ' + p.slice(3).join('.') : p.slice(1).join('.'); };
   const deviceOf = f => f.split('/').pop();
+  const isGpu = n => /\.(cuda|metal|wgpu)$/.test(n);
+  const byDevice = (a, b) => deviceOf(a).localeCompare(deviceOf(b), 'en', { numeric: true });
+  const inPart = (n, part) => !part || (part === 'gpu') === isGpu(n);
+  const partsOf = f => Object.keys(files[f].series).some(isGpu) ? ['cpu', 'gpu'] : [null];
+  const catOf = (f, gpu) => CATEGORIES.find(c => c.match(f, gpu)) || OTHER;
 
-  const state = { view: 'overview', win: '90d', file: null, reading: 'evaltime', metric: null, ovReading: 'evaltime' };
+  const state = { view: 'overview', win: '90d', file: null, part: null, reading: 'evaltime', metric: null, ovReading: 'evaltime', ovCat: 'all', model: null, mReading: null, mVariant: null };
   const files = {}, loading = {};
   let index = [];
 
   function readHash() {
-    const h = new URLSearchParams(location.hash.slice(1).replace(/^(explorer|overview)&?/, (m, v) => { state.view = v; return ''; }));
+    const h = new URLSearchParams(location.hash.slice(1).replace(/^(explorer|overview|model)&?/, (m, v) => { state.view = v; return ''; }));
     if (h.get('w') && WINDOWS.some(w => w[0] === h.get('w'))) state.win = h.get('w');
     if (h.get('d')) state.file = h.get('d');
     if (h.get('m')) state.metric = h.get('m');
     if (h.get('r')) state.ovReading = h.get('r');
+    if (['cpu', 'gpu'].includes(h.get('b'))) state.part = h.get('b');
+    if (h.get('c')) state.ovCat = h.get('c');
+    if (h.get('mo')) state.model = h.get('mo');
+    if (h.get('mr')) state.mReading = h.get('mr');
+    if (h.get('v')) state.mVariant = h.get('v');
   }
   function writeHash() {
     const h = new URLSearchParams({ w: state.win });
-    if (state.view === 'explorer') { if (state.file) h.set('d', state.file); if (state.metric) h.set('m', state.metric); }
-    else h.set('r', state.ovReading);
+    if (state.view === 'explorer') { if (state.file) h.set('d', state.file); if (state.part) h.set('b', state.part); if (state.metric) h.set('m', state.metric); }
+    else if (state.view === 'model') { if (state.model) h.set('mo', state.model); if (state.mReading) h.set('mr', state.mReading); if (state.mVariant) h.set('v', state.mVariant); }
+    else { h.set('r', state.ovReading); if (state.ovCat !== 'all') h.set('c', state.ovCat); }
     history.replaceState(null, '', '#' + state.view + '&' + h.toString());
   }
 
@@ -291,7 +331,11 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     let data;
     try { data = await load(state.file); } catch (e) { status(`Could not load ${state.file}: ${e.message}`); return; }
     status('');
-    const names = Object.keys(data.series);
+    const split = partsOf(state.file).length > 1;
+    if (!split) state.part = null;
+    if (state.metric && data.series[state.metric] && !inPart(state.metric, state.part)) state.part = null;
+    $('partLbl').hidden = !split; $('part').value = state.part || '';
+    const names = Object.keys(data.series).filter(n => inPart(n, state.part));
     const readings = [...new Set(names.map(readingOf))].sort((a, b) => (a === 'evaltime' ? -1 : b === 'evaltime' ? 1 : a.localeCompare(b)));
     if (state.metric && data.series[state.metric]) state.reading = readingOf(state.metric);
     if (!readings.includes(state.reading)) state.reading = readings.includes('evaltime') ? 'evaltime' : readings[0];
@@ -350,75 +394,241 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
       b.addEventListener('click', () => { state.ovReading = k; renderOverview(); });
       host.appendChild(b);
     }
+    const ok = await loadAll();
+    if (state.view !== 'overview') return;
+    drawOverview(ok);
+  }
+
+  async function loadAll() {
     let done = 0;
     status(`Loading ${index.length} device files…`);
     const res = await Promise.allSettled(index.map(f => load(f).then(x => { status(`Loading device files… ${++done}/${index.length}`); return x; })));
     const failed = index.filter((f, i) => res[i].status === 'rejected');
     status(failed.length ? `Could not load: ${failed.join(', ')}` : '');
-    if (state.view !== 'overview') return;
-    drawOverview(index.filter((f, i) => res[i].status === 'fulfilled'));
+    return index.filter((f, i) => res[i].status === 'fulfilled');
+  }
+
+  const variantOf = n => n.split('.').slice(3).join('.');
+  const readingRank = r => r === 'evaltime' ? 0 : /^tg\d/.test(r) ? 1 : /^pp\d/.test(r) ? 2 : 3;
+  const readingOrder = (a, b) => readingRank(a) - readingRank(b) || a.localeCompare(b, 'en', { numeric: true });
+
+  function logTicks(lo, hi) {
+    for (const ks of [[1], [1, 2, 5], [1, 2, 3, 5, 7]]) {
+      const out = [];
+      for (let e = Math.floor(Math.log10(lo)); e <= Math.ceil(Math.log10(hi)); e++) for (const k of ks) { const t = +(k * 10 ** e).toPrecision(6); if (t >= lo && t <= hi) out.push(t); }
+      if (out.length >= 3) return out;
+    }
+    return niceTicks(lo, hi, 4).filter(t => t > 0 && t >= lo && t <= hi);
+  }
+
+  // lines: [{ label, color, pts: [[day, y, commit]] }]; log y-scale.
+  function multiChart(host, lines, opt) {
+    const W = 900, H = 260, L = 74, R = 10, T = 12, B = 18;
+    const vals = lines.flatMap(l => l.pts.map(p => p[1]));
+    const lo = Math.min(...vals) / 1.08, hi = Math.max(...vals) * 1.08, llo = Math.log10(lo), lhi = Math.log10(hi);
+    const x = d => L + (d - opt.x0) / Math.max(1, opt.x1 - opt.x0) * (W - L - R);
+    const y = v => T + (lhi - Math.log10(v)) / (lhi - llo) * (H - T - B);
+    const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, width: '100%', role: 'img', 'aria-label': opt.label }, null);
+    for (const t of logTicks(lo, hi)) {
+      el('line', { x1: L, x2: W - R, y1: y(t), y2: y(t), stroke: css('--grid'), 'stroke-width': 1 }, svg);
+      el('text', { x: L - 4, y: y(t) + 3, 'text-anchor': 'end' }, svg).textContent = opt.fmtY(t);
+    }
+    for (const [d, l] of monthTicks(opt.x0, opt.x1)) el('text', { x: x(d), y: H - 4, 'text-anchor': 'middle' }, svg).textContent = l;
+    for (const ln of lines) {
+      let path = '', prev = null;
+      for (const p of ln.pts) { path += (prev !== null && p[0] - prev <= 3 ? 'L' : 'M') + x(p[0]).toFixed(1) + ' ' + y(p[1]).toFixed(1); prev = p[0]; }
+      el('path', { d: path, fill: 'none', stroke: ln.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }, svg);
+      const lp = ln.pts[ln.pts.length - 1];
+      el('circle', { cx: x(lp[0]), cy: y(lp[1]), r: 3, fill: ln.color, stroke: css('--panel'), 'stroke-width': 2 }, svg);
+    }
+    const cross = el('line', { y1: T, y2: H - B, stroke: css('--fg2'), visibility: 'hidden' }, svg);
+    const dots = lines.map(ln => el('circle', { r: 4, fill: ln.color, stroke: css('--panel'), 'stroke-width': 2, visibility: 'hidden' }, svg));
+    const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true;
+    host.appendChild(svg); host.appendChild(tip);
+    svg.addEventListener('pointermove', ev => {
+      const r = svg.getBoundingClientRect(), hr = host.getBoundingClientRect();
+      const d = Math.round(opt.x0 + ((ev.clientX - r.left) / r.width * W - L) / (W - L - R) * (opt.x1 - opt.x0));
+      const rows = [];
+      lines.forEach((ln, i) => {
+        let best = null; for (const p of ln.pts) if (Math.abs(p[0] - d) <= 3 && (!best || Math.abs(p[0] - d) < Math.abs(best[0] - d))) best = p;
+        dots[i].setAttribute('visibility', best ? 'visible' : 'hidden');
+        if (best) { dots[i].setAttribute('cx', x(best[0])); dots[i].setAttribute('cy', y(best[1])); rows.push([ln, best]); }
+      });
+      if (!rows.length) { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); return; }
+      for (const a of ['x1', 'x2']) cross.setAttribute(a, x(d));
+      cross.setAttribute('visibility', 'visible');
+      rows.sort((a, b) => b[1][1] - a[1][1]);
+      tip.innerHTML = `${dateOf(d)}` + rows.map(([ln, p]) => `<br><span style="color:${ln.color}">■</span> ${esc(ln.label)} · ${opt.fmtY(p[1])}`).join('');
+      tip.hidden = false;
+      const px = x(d) / W * r.width + (r.left - hr.left), tw = tip.offsetWidth;
+      tip.style.left = Math.max(4, Math.min(hr.width - tw - 4, px + 12 + tw > hr.width ? px - tw - 12 : px + 12)) + 'px';
+      tip.style.top = (r.top - hr.top + 4) + 'px';
+    });
+    svg.addEventListener('pointerleave', () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); for (const dt of dots) dt.setAttribute('visibility', 'hidden'); });
+  }
+
+  async function renderModel() {
+    const ok = await loadAll();
+    if (state.view !== 'model') return;
+    const models = new Map();
+    for (const f of ok) for (const n of Object.keys(files[f].series)) {
+      const p = n.split('.'); if (p[0] !== 'net' && p[0] !== 'llm') continue;
+      const m = models.get(p[1]) || { files: new Set(), gpu: false }; m.files.add(f); m.gpu ||= isGpu(n); models.set(p[1], m);
+    }
+    const names = [...models.keys()].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    const score = n => models.get(n).files.size + (models.get(n).gpu ? 100 : 0);
+    if (!models.has(state.model)) state.model = names.reduce((b, n) => score(n) > score(b) ? n : b, names[0]);
+    const sm = $('mModel'); sm.textContent = '';
+    for (const n of names) sm.add(new Option(`${n}  (${models.get(n).files.size} devices${models.get(n).gpu ? ', gpu' : ''})`, n));
+    sm.value = state.model;
+
+    const series = [];
+    for (const f of ok) for (const n of Object.keys(files[f].series)) if (n.split('.')[1] === state.model && /^(net|llm)\./.test(n)) series.push([f, n]);
+    const readings = [...new Set(series.map(([, n]) => readingOf(n)))].sort(readingOrder);
+    if (!readings.includes(state.mReading)) state.mReading = readings[0];
+    const sr = $('mReading'); sr.textContent = '';
+    for (const r of readings) sr.add(new Option(readingLabel(r), r));
+    sr.value = state.mReading;
+    const r = state.mReading, u = unit(r);
+
+    const inR = series.filter(([, n]) => readingOf(n) === r);
+    const cpuVariants = new Map();
+    for (const [f, n] of inR) if (!isGpu(n)) cpuVariants.set(variantOf(n), (cpuVariants.get(variantOf(n)) || 0) + 1);
+    const vs = [...cpuVariants.keys()].sort((a, b) => cpuVariants.get(b) - cpuVariants.get(a) || a.localeCompare(b, 'en', { numeric: true }));
+    if (!cpuVariants.has(state.mVariant)) state.mVariant = cpuVariants.has('cpu') ? 'cpu' : vs[0] || null;
+    const sv = $('mVariant'); sv.textContent = '';
+    for (const v of vs) sv.add(new Option(`${v}  (${cpuVariants.get(v)} devices)`, v));
+    sv.value = state.mVariant || '';
+    $('mVariantLbl').hidden = vs.length < 2;
+    writeHash();
+
+    const wd = winDays(), last = globalLast(), from = last - wd + 1;
+    $('mNote').textContent = `${readingLabel(r)} of ${state.model}, one line per device, log scale. ${higherIsBetter(r) ? 'Higher' : 'Lower'} is better. Δ compares the median of the last 7 points in the window with the median of its first 7.`;
+    const roster = new Map();
+    for (const f of ok.slice().sort(byDevice)) {
+      const backs = [...new Set(Object.keys(files[f].series).filter(isGpu).map(n => n.split('.').pop()))].sort();
+      for (const key of [`${f}|`, ...backs.map(b => `${f}|${b}`)]) {
+        const c = catOf(f, !key.endsWith('|')).id; if (!roster.has(c)) roster.set(c, []); roster.get(c).push(key);
+      }
+    }
+    const lines = [];
+    for (const [f, n] of inR) {
+      const gpu = isGpu(n); if (!gpu && variantOf(n) !== state.mVariant) continue;
+      const pts = clip(f, n, files[f].series[n], wd, last); if (pts.length < 2) continue;
+      const cat = catOf(f, gpu), key = `${f}|${gpu ? n.split('.').pop() : ''}`;
+      const slot = Math.min(5, (roster.get(cat.id) || [key]).indexOf(key)) + 1;
+      lines.push({ f, n, cat, pts, color: css('--s' + slot), label: deviceOf(f) + (gpu ? ' · ' + n.split('.').pop() : ''), s: summarize(pts) });
+    }
+    const host = $('mSections'); host.textContent = '';
+    if (!lines.length) host.textContent = 'No device has points for this series in this window.';
+    for (const c of [...CATEGORIES, OTHER]) {
+      const ls = lines.filter(l => l.cat === c).sort((a, b) => byDevice(a.f, b.f) || a.label.localeCompare(b.label));
+      if (!ls.length) continue;
+      const head = document.createElement('div'); head.className = 'cathead';
+      head.innerHTML = `<h2>${esc(c.label)}</h2><span class="sub">${ls.length} ${ls.length > 1 ? 'devices' : 'device'}${c.id === 'gpu' ? '' : ' · ' + esc(state.mVariant || '')}</span>`;
+      const card = document.createElement('div'); card.className = 'card';
+      host.appendChild(head); host.appendChild(card);
+      multiChart(card, ls, { x0: Math.max(from, Math.min(...ls.map(l => l.pts[0][0]))), x1: last, fmtY: v => u(v).replace(/(\.\d*?)0+(?= )/, '$1').replace(/\.(?= )/, ''), label: `${c.label}: ${state.model} ${r}` });
+      const tw = document.createElement('div'); tw.className = 'tablewrap'; tw.style.marginTop = '8px';
+      tw.innerHTML = `<table><thead><tr><th>Device</th><th>Last 7 points</th><th>Δ</th><th>Noise p90</th></tr></thead><tbody></tbody></table>`;
+      const tb = tw.querySelector('tbody');
+      for (const l of ls) {
+        const tr = document.createElement('tr'); tr.tabIndex = 0;
+        const cur = median(l.pts.slice(-7).map(p => p[1]));
+        tr.innerHTML = `<td><span class="sw" style="background:${l.color}"></span>${esc(l.label)}</td><td class="num">${u(cur)}</td><td class="num ${l.s ? tone(r, l.s.delta) : 'flat'}">${l.s ? fmtPct(l.s.delta) : '–'}</td><td class="num">${l.s ? l.s.noise.toFixed(1) + '%' : '–'}</td>`;
+        const open = () => { state.view = 'explorer'; state.file = l.f; state.part = null; state.metric = l.n; render(); };
+        tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+        tb.appendChild(tr);
+      }
+      host.appendChild(tw);
+    }
   }
 
   function drawOverview(ok) {
     const r = state.ovReading, wd = winDays(), last = globalLast(), from = last - wd + 1;
-    $('ovNote').textContent = `${readingLabel(r)}: geometric mean of every series of the device, each indexed to its own first 7 points in the window. ${higherIsBetter(r) ? 'Higher' : 'Lower'} is better. Shared y-scale; devices without a recent run are left out.`;
+    $('ovNote').textContent = `${readingLabel(r)}: geometric mean of every series of the device, each indexed to its own first 7 points in the window. ${higherIsBetter(r) ? 'Higher' : 'Lower'} is better. Devices with a GPU backend get a CPU tile and a GPU tile. Each section has its own y-scale and shows the geometric mean of its tiles; devices without a recent run are left out.`;
     const tiles = [], movers = [];
     for (const f of ok) {
       const d = files[f]; if (d.last < last - 14) continue;
-      const acc = new Map(); let nSeries = 0;
-      for (const [n, all] of Object.entries(d.series)) {
-        if (!inReading(n, r)) continue;
-        const pts = clip(f, n, all, wd, last), s = summarize(pts); if (!s) continue;
-        nSeries++;
-        for (const [day, v, c] of pts) { const a = acc.get(day) || [0, 0, c]; a[0] += Math.log(v / s.base); a[1]++; acc.set(day, a); }
-        const caveat = CAVEATS.some(c => c.file.test(f) && c.metric.test(n));
-        if (!caveat && !(/^time_to/.test(readingOf(n)) && s.base < MIN_LOAD_SECONDS) && Math.abs(s.delta) >= 5 && Math.abs(s.delta) >= 3 * s.noise) movers.push({ f, n, d: s.delta, w: worse(r, s.delta) });
+      for (const part of partsOf(f)) {
+        const acc = new Map(), backends = new Set(); let nSeries = 0;
+        for (const [n, all] of Object.entries(d.series)) {
+          if (!inReading(n, r) || !inPart(n, part)) continue;
+          const pts = clip(f, n, all, wd, last), s = summarize(pts); if (!s) continue;
+          nSeries++; if (part === 'gpu') backends.add(n.split('.').pop());
+          for (const [day, v, c] of pts) { const a = acc.get(day) || [0, 0, c]; a[0] += Math.log(v / s.base); a[1]++; acc.set(day, a); }
+          const caveat = CAVEATS.some(c => c.file.test(f) && c.metric.test(n));
+          if (!caveat && !(/^time_to/.test(readingOf(n)) && s.base < MIN_LOAD_SECONDS) && Math.abs(s.delta) >= 5 && Math.abs(s.delta) >= 3 * s.noise) movers.push({ f, n, d: s.delta, w: worse(r, s.delta), cat: catOf(f, isGpu(n)).id });
+        }
+        const max = Math.max(0, ...[...acc.values()].map(a => a[1]));
+        const pts = [...acc.entries()].filter(([, a]) => a[1] >= 0.6 * max).sort((a, b) => a[0] - b[0]).map(([day, a]) => [day, (Math.exp(a[0] / a[1]) - 1) * 100, a[2], a[1]]);
+        const label = deviceOf(f) + (part === 'gpu' ? ' · ' + [...backends].join('+') : part === 'cpu' ? ' · cpu' : '');
+        if (pts.length >= 7) tiles.push({ f, part, pts, nSeries, label, cat: catOf(f, part === 'gpu') });
       }
-      const max = Math.max(0, ...[...acc.values()].map(a => a[1]));
-      const pts = [...acc.entries()].filter(([, a]) => a[1] >= 0.6 * max).sort((a, b) => a[0] - b[0]).map(([day, a]) => [day, (Math.exp(a[0] / a[1]) - 1) * 100, a[2], a[1]]);
-      if (pts.length >= 7) tiles.push({ f, pts, nSeries });
     }
     const th = $('tiles'); th.textContent = '';
     if (!tiles.length) th.textContent = 'No device has enough points for this reading in this window.';
-    let lo = 0, hi = 0; for (const t of tiles) for (const p of t.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
-    const ticks = niceTicks(lo, hi, 4), ymin = Math.min(lo, ticks[0]), ymax = Math.max(hi, ticks[ticks.length - 1]);
-    for (const t of tiles) {
-      const end = median(t.pts.slice(-7).map(p => p[1]));
-      const card = document.createElement('div'); card.className = 'card'; card.tabIndex = 0; card.style.cursor = 'pointer';
-      const caveat = CAVEATS.some(c => c.file.test(t.f) && Object.keys(files[t.f].series).some(n => inReading(n, r) && c.metric.test(n)));
-      card.innerHTML = `<div class="meta"><h3>${esc(deviceOf(t.f))}</h3><span class="delta ${tone(r, end)}">${fmtPct(end)}</span></div>
-        <div class="sub">${t.nSeries} series · ${esc(t.f.split('/')[0])}${caveat ? ' · includes drifting Metal series' : ''}</div>`;
-      lineChart(card, t.pts, {
-        w: 260, h: 112, x0: from, x1: last, ymin, ymax, ticks, zero: true, fmtY: v => (v > 0 ? '+' : '') + v + '%', label: deviceOf(t.f),
-        tip: p => `${dateOf(p[0])} · ${fmtPct(p[1])}<br>${p[3]} series${p[2] ? ' · ' + p[2].slice(0, 9) : ''}`,
-      });
-      const open = () => { state.view = 'explorer'; state.file = t.f; state.metric = null; state.reading = r === 'tok' ? 'tg128' : r; render(); };
-      card.addEventListener('click', open); card.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
-      th.appendChild(card);
+    const shown = [...CATEGORIES, OTHER].filter(c => tiles.some(t => t.cat === c));
+    for (const c of shown) {
+      const ts = tiles.filter(t => t.cat === c).sort((a, b) => byDevice(a.f, b.f));
+      for (const t of ts) t.end = median(t.pts.slice(-7).map(p => p[1]));
+      const agg = (Math.exp(ts.reduce((s, t) => s + Math.log(1 + t.end / 100), 0) / ts.length) - 1) * 100;
+      const head = document.createElement('div'); head.className = 'cathead';
+      head.innerHTML = `<h2>${esc(c.label)}</h2><span class="delta ${tone(r, agg)}" title="Geometric mean of the tiles below">${fmtPct(agg)}</span><span class="sub">${ts.length} ${ts.length > 1 ? 'tiles' : 'tile'}</span>`;
+      const grid = document.createElement('div'); grid.className = 'grid';
+      th.appendChild(head); th.appendChild(grid);
+      let lo = 0, hi = 0; for (const t of ts) for (const p of t.pts) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); }
+      const ticks = niceTicks(lo, hi, 4), ymin = Math.min(lo, ticks[0]), ymax = Math.max(hi, ticks[ticks.length - 1]);
+      for (const t of ts) {
+        const card = document.createElement('div'); card.className = 'card'; card.tabIndex = 0; card.style.cursor = 'pointer';
+        const caveat = CAVEATS.some(cv => cv.file.test(t.f) && Object.keys(files[t.f].series).some(n => inReading(n, r) && inPart(n, t.part) && cv.metric.test(n)));
+        card.innerHTML = `<div class="meta"><h3>${esc(t.label)}</h3><span class="delta ${tone(r, t.end)}">${fmtPct(t.end)}</span></div>
+          <div class="sub">${t.nSeries} series · ${esc(t.f.split('/')[0])}${caveat ? ' · includes drifting Metal series' : ''}</div>`;
+        lineChart(card, t.pts, {
+          w: 260, h: 112, x0: from, x1: last, ymin, ymax, ticks, zero: true, fmtY: v => (v > 0 ? '+' : '') + v + '%', label: t.label,
+          tip: p => `${dateOf(p[0])} · ${fmtPct(p[1])}<br>${p[3]} series${p[2] ? ' · ' + p[2].slice(0, 9) : ''}`,
+        });
+        const open = () => { state.view = 'explorer'; state.file = t.f; state.part = t.part; state.metric = null; state.reading = r === 'tok' ? 'tg128' : r; render(); };
+        card.addEventListener('click', open); card.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
+        grid.appendChild(card);
+      }
     }
+    if (state.ovCat !== 'all' && !shown.some(c => c.id === state.ovCat)) state.ovCat = 'all';
+    const ch = $('ovCats'); ch.textContent = '';
+    for (const [k, l] of [['all', 'All'], ...shown.map(c => [c.id, c.label])]) {
+      const b = document.createElement('button'); b.type = 'button'; b.textContent = l; b.setAttribute('aria-pressed', String(k === state.ovCat));
+      b.addEventListener('click', () => { state.ovCat = k; writeHash(); drawOverview(ok); });
+      ch.appendChild(b);
+    }
+    const picked = movers.filter(m => state.ovCat === 'all' || m.cat === state.ovCat);
     const fill = (id, list) => {
       const tb = $(id); tb.textContent = '';
       if (!list.length) { tb.innerHTML = '<tr><td colspan="3" class="muted">None.</td></tr>'; return; }
       for (const m of list) {
         const tr = document.createElement('tr'); tr.tabIndex = 0;
         tr.innerHTML = `<td class="num">${esc(short(m.n))}${r === 'tok' ? ' · ' + esc(readingOf(m.n)) : ''}</td><td>${esc(deviceOf(m.f))}</td><td class="num ${m.w > 0 ? 'bad' : 'good'}">${m.w > 0 ? '▲' : '▼'} ${fmtPct(m.d)}</td>`;
-        const open = () => { state.view = 'explorer'; state.file = m.f; state.metric = m.n; render(); };
+        const open = () => { state.view = 'explorer'; state.file = m.f; state.part = null; state.metric = m.n; render(); };
         tr.addEventListener('click', open); tr.addEventListener('keydown', e => { if (e.key === 'Enter') open(); });
         tb.appendChild(tr);
       }
     };
-    fill('worse', movers.filter(m => m.w > 0).sort((a, b) => b.w - a.w).slice(0, 12));
-    fill('better', movers.filter(m => m.w < 0).sort((a, b) => a.w - b.w).slice(0, 12));
+    fill('worse', picked.filter(m => m.w > 0).sort((a, b) => b.w - a.w).slice(0, 12));
+    fill('better', picked.filter(m => m.w < 0).sort((a, b) => a.w - b.w).slice(0, 12));
   }
 
   function render() {
     for (const a of document.querySelectorAll('nav.views a')) a.setAttribute('aria-current', a.dataset.view === state.view ? 'page' : 'false');
     $('view-explorer').hidden = state.view !== 'explorer';
     $('view-overview').hidden = state.view !== 'overview';
-    if (state.view === 'explorer') renderExplorer(); else renderOverview();
+    $('view-model').hidden = state.view !== 'model';
+    if (state.view === 'explorer') renderExplorer(); else if (state.view === 'model') renderModel(); else renderOverview();
   }
 
-  $('dev').addEventListener('change', e => { state.file = e.target.value; const keep = state.metric; state.metric = keep; renderExplorer(); });
+  $('dev').addEventListener('change', e => { state.file = e.target.value; state.part = null; const keep = state.metric; state.metric = keep; renderExplorer(); });
+  $('mModel').addEventListener('change', e => { state.model = e.target.value; state.mReading = state.mReading; renderModel(); });
+  $('mReading').addEventListener('change', e => { state.mReading = e.target.value; renderModel(); });
+  $('mVariant').addEventListener('change', e => { state.mVariant = e.target.value; renderModel(); });
+  $('part').addEventListener('change', e => { state.part = e.target.value || null; state.metric = null; renderExplorer(); });
   $('rd').addEventListener('change', e => { state.reading = e.target.value; state.metric = null; renderExplorer(); });
   $('metric').addEventListener('change', e => { state.metric = e.target.value; writeHash(); drawSeries(files[state.file], files[state.file].last, winDays()); });
   for (const a of document.querySelectorAll('nav.views a')) a.addEventListener('click', ev => { ev.preventDefault(); state.view = a.dataset.view; render(); });
@@ -427,7 +637,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   readHash();
   renderWindows();
   fetch(`${DATA_URL}/index.json`).then(r => r.ok ? r.json() : FALLBACK_INDEX).catch(() => FALLBACK_INDEX).then(list => {
-    index = list.slice().sort((a, b) => deviceOf(a).localeCompare(deviceOf(b)));
+    index = list.slice().sort(byDevice);
     render();
   });
 })();
