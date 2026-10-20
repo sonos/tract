@@ -12,6 +12,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::sync::Arc;
 
+mod ggml_k;
 mod helpers;
 mod opaque;
 mod q20t;
@@ -21,6 +22,7 @@ mod q8_1;
 mod storage;
 mod value;
 
+pub use ggml_k::{Q4_K, Q4KF};
 pub use helpers::{CrumbReader, CrumbWriter, NibbleReader, NibbleWriter};
 pub use q4_0::Q4_0;
 pub use q8_0::{Q8_0, Q8_0F};
