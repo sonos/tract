@@ -3,7 +3,7 @@ use std::io::{Read, Write};
 use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
-use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::{BlockQuant, BlockQuantStorage, Q4_0, Q8_0};
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
 
@@ -282,8 +282,9 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
     let format: Box<dyn BlockQuant> = match header.item_type {
         0x2040 | 0x3040 => Box::new(Q4_0),
+        0x3080 => Box::new(Q8_0),
         0x3081 => Box::new(Q8_1),
-        _ => bail!("Unexpected block quant format"),
+        other => bail!("Unexpected block quant format {other:#x}"),
     };
     ensure!(header.rank >= 2);
     let shape: TVec<_> =
@@ -309,11 +310,25 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
     Ok(tensor)
 }
 
+/// Item type of a block-quant `.dat` tensor: 0x30 for ggml Q formats, 0x31 for K-quants,
+/// 0x32 for IQ formats, then the bit width and the variant.
+fn block_quant_item_type(format: &dyn BlockQuant) -> TractResult<u16> {
+    if format.dyn_eq(&Q4_0) {
+        Ok(0x3040)
+    } else if format.dyn_eq(&Q8_0) {
+        Ok(0x3080)
+    } else if format.dyn_eq(&Q8_1) {
+        Ok(0x3081)
+    } else {
+        bail!("Unsupported block quant format {format}")
+    }
+}
+
 #[allow(clippy::field_reassign_with_default)]
 fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<()> {
     let bqs = tensor.try_storage_as::<BlockQuantStorage>()?;
     let format = bqs.format();
-    ensure!(format.dyn_eq(&Q4_0) || format.dyn_eq(&Q8_1));
+    let item_type = block_quant_item_type(format)?;
     let s = tensor.shape();
     let flat_shape: [usize; 2] = [s[..s.len() - 1].iter().product(), *s.last().unwrap()];
 
@@ -325,8 +340,7 @@ fn write_block_quant_value(w: &mut impl Write, tensor: &Tensor) -> TractResult<(
     header.bits_per_item = u32::MAX;
     header.data_size_bytes = bqs.value().len() as _;
     header.item_type_vendor = TRACT_ITEM_TYPE_VENDOR;
-    // 0x3040 3 is for GGML formats, 0 for Q formats then 4 and 0
-    header.item_type = if format.dyn_eq(&Q4_0) { 0x3040 } else { 0x3081 };
+    header.item_type = item_type;
     header.write(w)?;
     w.write_all(bqs.value())?;
     Ok(())
@@ -342,7 +356,7 @@ mod test {
     }
 
     fn block_quant_round_trip(format: Box<dyn BlockQuant>) -> TractResult<()> {
-        let (m, k) = (4, 64);
+        let (m, k) = (4, 2 * format.block_len());
         let input: Vec<f32> = (0..m * k).map(|i| (i as f32 * 0.37).sin()).collect();
         let blob = format.quant_f32(&input)?;
         let t = BlockQuantStorage::new(format, m, k, Arc::new(blob))?
@@ -361,6 +375,11 @@ mod test {
     #[test]
     fn serde_block_quant_q4_0() -> TractResult<()> {
         block_quant_round_trip(Box::new(Q4_0))
+    }
+
+    #[test]
+    fn serde_block_quant_q8_0() -> TractResult<()> {
+        block_quant_round_trip(Box::new(Q8_0))
     }
 
     #[test]
