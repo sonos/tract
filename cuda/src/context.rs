@@ -6,14 +6,14 @@ use cudarc::runtime::sys::cudaDeviceProp;
 use tract_gpu::device::DeviceContext;
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
 
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, RefMut};
 use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::sync::{OnceLock, RwLock};
 
 use tract_core::internal::*;
 
-use cudarc::driver::{CudaContext, CudaEvent, CudaFunction, CudaModule, CudaStream};
+use cudarc::driver::{CudaContext, CudaEvent, CudaFunction, CudaModule, CudaSlice, CudaStream};
 
 use crate::kernels::{COMMON_H, LibraryName, cubin_dir};
 use crate::tensor::CudaTensor;
@@ -385,6 +385,7 @@ pub struct TractCudaStream {
     profile_log: RefCell<Option<Vec<GpuProfileEntry>>>,
     /// The node_id currently being evaluated (set by the profiling harness).
     current_node_id: Cell<usize>,
+    cudnn_workspace: RefCell<Option<CudaSlice<u8>>>,
 }
 
 impl TractCudaStream {
@@ -409,6 +410,7 @@ impl TractCudaStream {
             cudnn,
             profile_log: RefCell::new(None),
             current_node_id: Cell::new(0),
+            cudnn_workspace: RefCell::new(None),
         })
     }
 
@@ -418,6 +420,22 @@ impl TractCudaStream {
 
     pub fn cudnn(&self) -> &Arc<Cudnn> {
         &self.cudnn
+    }
+
+    /// Scratch for cuDNN calls, shared by every op on this stream: stream ordering
+    /// serializes its users. Grows to the largest `size` requested and is kept.
+    /// `None` when `size` is 0.
+    pub fn cudnn_workspace(&self, size: usize) -> TractResult<Option<RefMut<'_, CudaSlice<u8>>>> {
+        if size == 0 {
+            return Ok(None);
+        }
+        let mut ws = self.cudnn_workspace.borrow_mut();
+        if ws.as_ref().is_none_or(|ws| ws.len() < size) {
+            // Free the old buffer first so the peak is not old + new.
+            *ws = None;
+            *ws = Some(self.inner.alloc_zeros::<u8>(size)?);
+        }
+        Ok(Some(RefMut::map(ws, |ws| ws.as_mut().unwrap())))
     }
 
     /// Enable GPU profiling. Kernel launches will record timing events.
