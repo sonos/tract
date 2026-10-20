@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-#[cfg(feature = "multithread-mm")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
@@ -155,11 +154,9 @@ pub fn set_threading_mac_threshold(macs: usize) {
 /// `THREADING_PANEL_THRESHOLD`: this counts elements of work, not MMM panels.
 ///
 /// Default `32768`. `0` disables the gate entirely (always thread).
-#[cfg(feature = "multithread-mm")]
 static THREADING_ELEMENT_THRESHOLD: AtomicUsize = AtomicUsize::new(32768);
 
 /// Read the current element-count threshold for the row-parallel path.
-#[cfg(feature = "multithread-mm")]
 pub fn current_threading_element_threshold() -> usize {
     THREADING_ELEMENT_THRESHOLD.load(Ordering::Relaxed)
 }
