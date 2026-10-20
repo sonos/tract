@@ -274,6 +274,11 @@ mod tests {
     }
 
     #[test]
+    fn iq2_s_pack_then_extract() -> TractResult<()> {
+        pack_then_extract(&IQ2_S)
+    }
+
+    #[test]
     fn iq4_xs_pack_then_extract() -> TractResult<()> {
         pack_then_extract(&IQ4_XS)
     }

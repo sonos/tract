@@ -4,7 +4,7 @@ use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
 use tract_linalg::block_quant::{
-    BlockQuant, BlockQuantStorage, IQ4_XS, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+    BlockQuant, BlockQuantStorage, IQ2_S, IQ4_XS, Q3_K, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
 };
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
@@ -290,6 +290,7 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
         0x3140 => Box::new(Q4_K),
         0x3150 => Box::new(Q5_K),
         0x3160 => Box::new(Q6_K),
+        0x3222 => Box::new(IQ2_S),
         0x3241 => Box::new(IQ4_XS),
         other => bail!("Unexpected block quant format {other:#x}"),
     };
@@ -334,6 +335,8 @@ fn block_quant_item_type(format: &dyn BlockQuant) -> TractResult<u16> {
         Ok(0x3150)
     } else if format.dyn_eq(&Q6_K) {
         Ok(0x3160)
+    } else if format.dyn_eq(&IQ2_S) {
+        Ok(0x3222)
     } else if format.dyn_eq(&IQ4_XS) {
         Ok(0x3241)
     } else {
@@ -422,6 +425,11 @@ mod test {
     #[test]
     fn serde_block_quant_q6_k() -> TractResult<()> {
         block_quant_round_trip(Box::new(Q6_K))
+    }
+
+    #[test]
+    fn serde_block_quant_iq2_s() -> TractResult<()> {
+        block_quant_round_trip(Box::new(IQ2_S))
     }
 
     #[test]
