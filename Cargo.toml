@@ -184,7 +184,7 @@ memmap2 = "0.9"
 metal = { version = "0.33.0" }
 metrics = "0.24.6"
 metrics-util = { version = "0.20.4", default-features = false, features = ["debugging"] }
-minijinja = "3.0.0"
+minijinja = { version = "3.0.0", features = ["serde"] }
 ndarray = "0.17"
 nom = "8.0.0"
 nom-language = "0.1"

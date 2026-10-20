@@ -12,5 +12,5 @@ pub(crate) fn process_file(
             globals.insert(k.clone(), value);
         }
     }
-    Ok(tmpl.render(serde_json::Value::Object(globals))?)
+    Ok(tmpl.render(minijinja::value::Serde(serde_json::Value::Object(globals)))?)
 }
