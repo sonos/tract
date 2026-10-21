@@ -12,13 +12,15 @@ use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::cnn::KernelFormat;
 use tract_core::ops::cnn::conv::rewrite_kernel_conv_in_oihw;
-use tract_core::ops::cnn::{Conv, rewrite_conv_with_n_axis};
+use tract_core::ops::cnn::conv::rewrite_kernel_deconv_in_oihw;
+use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
+use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
@@ -239,6 +241,7 @@ impl MetalTransform {
         Rewriter::default()
             .with_rule_for("rewrite_conv_kernel_metal", rewrite_conv_kernel_metal)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
+            .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
             .with_rule_for(
                 "drop_unit_axes_of_scaled_masked_softmax",
                 drop_unit_axes_of_scaled_masked_softmax,
@@ -352,6 +355,23 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<Deconv>()
+            && GpuDeconv::is_supported(op, &input_facts)
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let deconv = GpuDeconv {
+                op: op.clone(),
+                backend_name: "Metal",
+                dispatch: crate::kernels::conv::metal_deconv_launch,
+            };
+            let bias_add = Box::new(crate::kernels::bin_ops::metal_bin_op(Box::new(
+                tract_core::ops::math::Add,
+            )));
+            let outlet_ids =
+                wire_gpu_deconv(source, node, target, &device_inputs, deconv, bias_add)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Resize bakes its plan, so it keeps only the data input: the scales /

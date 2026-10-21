@@ -5,6 +5,7 @@ use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
+use tract_gpu::ops::deconv::DeconvGeometry;
 use tract_gpu::tensor::DeviceTensor;
 
 pub fn kernel_name(hw_rank: usize, dt: DatumType) -> TractResult<String> {
@@ -145,6 +146,39 @@ fn metal_conv_dispatch_inner(
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
+}
+
+/// Launches `deconv2d_{f32,f16}` over `output`, one thread per output element.
+pub fn metal_deconv_launch(
+    geometry: &DeconvGeometry,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    crate::with_metal_stream(|stream| {
+        stream.retain_tensor(input);
+        stream.retain_tensor(weights);
+        stream.retain_tensor(output);
+        let len = geometry.output_len();
+        ensure!(len <= i32::MAX as usize, "Metal deconv indexes its output with i32");
+        let dt = if input.datum_type() == DatumType::F16 { "f16" } else { "f32" };
+        let pipeline = stream.load_pipeline(LibraryName::ConvOps, &format!("deconv2d_{dt}"))?;
+        let args = geometry.args();
+        let threads_per_group = 256usize;
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, weights, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(3, &args);
+            let grid_size =
+                MTLSize { width: len.div_ceil(threads_per_group) as _, height: 1, depth: 1 };
+            let group_size = MTLSize { width: threads_per_group as _, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid_size, group_size);
+        });
+        Ok(())
+    })
 }
 
 #[cfg(test)]
