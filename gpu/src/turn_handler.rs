@@ -4,16 +4,25 @@ use crate::memory::DeviceMemoryPool;
 use crate::tensor::DeviceTensor;
 use tract_core::internal::*;
 
+tract_core::declare_knob!(
+    scopable TRACT_GPU_RETAIN_ARENA,
+    bool,
+    false,
+    "Keep a state's arena storage allocated between turns instead of allocating it on every turn."
+);
+
 #[derive(Debug, Clone)]
 pub struct DeviceTurnHandler {
     pub mem_schema: DeviceMemSchema,
+    /// Read from [`TRACT_GPU_RETAIN_ARENA`] when the handler is built.
+    pub retain_arena: bool,
 }
 
 impl DeviceTurnHandler {
     pub fn from_plan(plan: &TypedSimplePlan, memory_hint: &SymbolValues) -> TractResult<Self> {
         let mem_schema =
             DeviceMemSchema::build(plan.model(), plan.order_without_consts(), memory_hint)?;
-        Ok(Self { mem_schema })
+        Ok(Self { mem_schema, retain_arena: TRACT_GPU_RETAIN_ARENA.get() })
     }
 
     /// The arena a runtime installs on `plan`: sized by `hints` when given, and
@@ -45,11 +54,15 @@ impl DeviceTurnHandler {
 impl TurnStateHandler for DeviceTurnHandler {
     fn before_plan_eval(&self, turn: &mut TurnState) -> TractResult<()> {
         let resolved_mem_schema = self.mem_schema.resolve(&turn.resolved_symbols)?;
-        if turn.shared.get::<ArenaStorageCache>().is_none() {
-            turn.shared.insert(ArenaStorageCache::default());
-        }
-        let cache = turn.shared.get::<ArenaStorageCache>().unwrap();
-        let memory_pool = DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, cache)?;
+        let memory_pool = if self.retain_arena {
+            if turn.shared.get::<ArenaStorageCache>().is_none() {
+                turn.shared.insert(ArenaStorageCache::default());
+            }
+            let cache = turn.shared.get::<ArenaStorageCache>().unwrap();
+            DeviceMemoryPool::from_schema_with_cache(resolved_mem_schema, cache)?
+        } else {
+            DeviceMemoryPool::from_schema(resolved_mem_schema)?
+        };
 
         turn.shared.insert(memory_pool);
         ensure!(turn.shared.get::<DeviceMemoryPool>().is_some());

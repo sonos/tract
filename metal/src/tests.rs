@@ -16,7 +16,9 @@ mod tests {
     use tract_gpu::ops::dyn_kv_cache::{GpuDynKVCache, GpuDynKVCacheState};
     use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, LazyHostStorage};
 
-    fn arena_handler() -> TractResult<(tract_gpu::turn_handler::DeviceTurnHandler, Symbol)> {
+    fn arena_handler(
+        retain: bool,
+    ) -> TractResult<(tract_gpu::turn_handler::DeviceTurnHandler, Symbol)> {
         let mut model = TypedModel::default();
         let size = model.symbols.sym("N");
         let x = model.add_source("x", f32::fact([size.to_dim()]))?;
@@ -29,7 +31,13 @@ mod tests {
         let plan = TypedSimplePlan::new(model.into_optimized()?)?;
         let mut hints = SymbolValues::default();
         hints.set(&size, 1024);
-        Ok((tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&plan, &hints)?, size))
+        let scope = tract_core::knobs::KnobScope::new([(
+            "TRACT_GPU_RETAIN_ARENA",
+            if retain { "true" } else { "false" },
+        )])?;
+        let handler =
+            scope.enter(|| tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&plan, &hints))?;
+        Ok((handler, size))
     }
 
     fn arena_view(
@@ -47,9 +55,23 @@ mod tests {
     }
 
     #[test]
+    fn arena_storage_is_not_retained_by_default() -> TractResult<()> {
+        with_borrowed_metal_stream(|_| {
+            let (handler, size) = arena_handler(false)?;
+            let mut turn = TurnState::default();
+            turn.resolved_symbols.set(&size, 1024);
+            handler.before_plan_eval(&mut turn)?;
+            arena_view(&handler, &turn)?;
+            handler.after_plan_eval(&mut turn)?;
+            assert!(turn.shared.get::<tract_gpu::memory::ArenaStorageCache>().is_none());
+            Ok(())
+        })
+    }
+
+    #[test]
     fn arena_storage_reuses_only_unshared_allocations() -> TractResult<()> {
         with_borrowed_metal_stream(|_| {
-            let (handler, size) = arena_handler()?;
+            let (handler, size) = arena_handler(true)?;
             let mut turn = TurnState::default();
             turn.resolved_symbols.set(&size, 1024);
             handler.before_plan_eval(&mut turn)?;
@@ -71,7 +93,7 @@ mod tests {
     #[test]
     fn arena_storage_grows_and_releases_excess_capacity() -> TractResult<()> {
         with_borrowed_metal_stream(|_| {
-            let (handler, size) = arena_handler()?;
+            let (handler, size) = arena_handler(true)?;
             let mut turn = TurnState::default();
             for n in [1024, 2048, 2304, 256] {
                 turn.resolved_symbols.set(&size, n);

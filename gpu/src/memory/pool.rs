@@ -17,7 +17,7 @@ pub struct DeviceMemoryPool {
 /// Storage is reused only when the cache is its sole owner. Live arena views
 /// retain their backing allocation and force a new allocation on the next turn.
 #[derive(Debug, Default)]
-pub(crate) struct ArenaStorageCache {
+pub struct ArenaStorageCache {
     storage: std::sync::Mutex<Option<ArenaStorage>>,
 }
 
