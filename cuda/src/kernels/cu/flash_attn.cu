@@ -617,6 +617,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 128, 128)                                      \
     /* not a typo, pad 80 to 128 ! */                                                              \
     INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 80, 128)                                       \
+    INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(block_q, block_kv, 40, 64, nomask)                    \
+    INSTANTIATE_FLASH_ATTN_FOR_MASK_STRATEGY(block_q, block_kv, 160, 256, nomask)                  \
     // Other supported D value.
 // Never encountered in practice so commented to keep compilation fast
 //                                           INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96)

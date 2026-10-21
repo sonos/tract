@@ -329,9 +329,9 @@ fn convert_matmul_to_cuda(
 }
 
 /// Shapes `CudaFlashAttention` takes: three or four inputs, rank 3 or 4 Q/K/V, K and V alike,
-/// and a head dim of 64 or 128, the two the kernel is specialised for. Everything else is
-/// exploded into primitives by `flatten_unfused_sdpa` instead.
-fn cuda_flash_attn_supported(facts: &[&TypedFact]) -> bool {
+/// and a head dim the kernel is instantiated for (see `CudaFlashAttn::padded_head_dim`).
+/// Everything else is exploded into primitives by `flatten_unfused_sdpa` instead.
+fn cuda_flash_attn_supported(facts: &[&TypedFact], op: &Sdpa) -> bool {
     if !matches!(facts.len(), 3 | 4) {
         return false;
     }
@@ -342,7 +342,10 @@ fn cuda_flash_attn_supported(facts: &[&TypedFact]) -> bool {
     if [qf, kf, vf].iter().any(|f| !matches!(f.rank(), 3 | 4)) {
         return false;
     }
-    kf.shape[kf.rank() - 1].to_i64().is_ok_and(|head_dim| matches!(head_dim, 64 | 128))
+    let masked_or_causal = facts.len() == 4 || op.is_causal;
+    kf.shape[kf.rank() - 1].to_usize().is_ok_and(|head_dim| {
+        kernels::flash_attn::CudaFlashAttn::padded_head_dim(head_dim, masked_or_causal).is_some()
+    })
 }
 
 /// Explode the `Sdpa` nodes the fused kernel cannot take into primitives, so an unsupported
@@ -355,7 +358,7 @@ fn flatten_unfused_sdpa(
     _name: &str,
     op: &Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
-    if cuda_flash_attn_supported(&model.node_input_facts(node.id)?) {
+    if cuda_flash_attn_supported(&model.node_input_facts(node.id)?, op) {
         Ok(None)
     } else {
         op.patch_sdpa(model, node)
@@ -376,7 +379,10 @@ fn convert_sdpa_to_cuda_flash_attn(
     op: &Sdpa,
 ) -> TractResult<TVec<OutletId>> {
     let facts = model.node_input_facts(node.id)?;
-    ensure!(cuda_flash_attn_supported(&facts), "Sdpa shape the flash-attention kernel cannot take");
+    ensure!(
+        cuda_flash_attn_supported(&facts, op),
+        "Sdpa shape the flash-attention kernel cannot take"
+    );
 
     let [qf, kf, vf] = [facts[0], facts[1], facts[2]];
 
@@ -501,7 +507,7 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             }
         }
         if let Some(op) = node.op_as::<Sdpa>()
-            && cuda_flash_attn_supported(&input_facts)
+            && cuda_flash_attn_supported(&input_facts, op)
         {
             let mut device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
