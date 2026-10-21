@@ -96,5 +96,30 @@ pub fn suite() -> TractResult<TestSuite> {
     };
     suite.add("blocked_matmul", blocked(None)?);
     suite.add("blocked_matmul_bias", blocked(Some(arr1(&[1.0, -2.0, 3.0, -4.0]).into_dyn()))?);
+
+    // A filter many times larger than the input: the shape GPU backends may run in NHWC.
+    let filter_heavy = |strides: usize, bias: Option<ArrayD<f32>>| -> TractResult<ConvProblemF16> {
+        Ok(ConvProblemF16(ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(2, 24, [5, 6])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: ArrayD::from_shape_fn(vec![2, 24, 5, 6], |ix| {
+                ((ix[0] * 7 + ix[1] * 3 + ix[2] * 5 + ix[3]) % 9) as f32 * 0.25 - 1.0
+            }),
+            kernel: ArrayD::from_shape_fn(vec![64, 24, 3, 3], |ix| {
+                ((ix[0] * 5 + ix[1] * 3 + ix[2] * 2 + ix[3]) % 7) as f32 * 0.125 - 0.375
+            }),
+            bias,
+            pad: PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1)),
+            strides: tvec!(strides, strides),
+            dilations: tvec!(1, 1),
+        }))
+    };
+    suite.add("filter_heavy", filter_heavy(1, None)?);
+    suite.add("filter_heavy_stride_2", filter_heavy(2, None)?);
+    suite.add(
+        "filter_heavy_bias",
+        filter_heavy(1, Some(ArrayD::from_shape_fn(vec![64], |ix| ix[0] as f32 * 0.25 - 8.0)))?,
+    );
     Ok(suite)
 }

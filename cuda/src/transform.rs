@@ -121,6 +121,9 @@ impl CudaTransform {
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for("rewrite_conv_to_nhwc", rewrite_rules::rewrite_conv_to_nhwc)
+            .rewrite(&(), model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
