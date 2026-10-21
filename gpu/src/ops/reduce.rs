@@ -8,6 +8,7 @@ pub type DispatchReduceFn = fn(&Reducer, &DeviceTensor, usize, &DeviceTensor) ->
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Reducer {
+    Mean,
     MeanOfSquares,
     Sum,
     Prod,
@@ -20,6 +21,7 @@ pub enum Reducer {
 impl fmt::Display for Reducer {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            Self::Mean => write!(f, "mean"),
             Self::MeanOfSquares => write!(f, "mean_of_squares"),
             Self::Sum => write!(f, "sum"),
             Self::Prod => write!(f, "prod"),
@@ -32,8 +34,16 @@ impl fmt::Display for Reducer {
 }
 
 impl Reducer {
-    pub const ALL: [Reducer; 7] =
-        [Self::MeanOfSquares, Self::Sum, Self::Prod, Self::Min, Self::Max, Self::All, Self::Any];
+    pub const ALL: [Reducer; 8] = [
+        Self::Mean,
+        Self::MeanOfSquares,
+        Self::Sum,
+        Self::Prod,
+        Self::Min,
+        Self::Max,
+        Self::All,
+        Self::Any,
+    ];
 
     pub fn is_logic(&self) -> bool {
         *self == Reducer::All || *self == Reducer::Any
@@ -46,6 +56,7 @@ impl Reducer {
     pub fn from_tract_core(reducer: &core_ops_nn::Reducer) -> TractResult<Self> {
         match reducer {
             core_ops_nn::Reducer::Sum => Ok(Reducer::Sum),
+            core_ops_nn::Reducer::Mean => Ok(Reducer::Mean),
             core_ops_nn::Reducer::MeanOfSquares => Ok(Reducer::MeanOfSquares),
             core_ops_nn::Reducer::Prod => Ok(Reducer::Prod),
             core_ops_nn::Reducer::Min => Ok(Reducer::Min),

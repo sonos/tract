@@ -53,6 +53,20 @@ template <typename Acc> struct MulOp {
     }
 };
 
+// Accumulates in float whatever the data type, so an f16 mean does not
+// overflow where the f16 sum would.
+template <typename Acc> struct MeanOp {
+    using acc_t = float;
+    __device__ __forceinline__ static acc_t identity() { return acc_t(0); }
+    __device__ __forceinline__ static acc_t pre(acc_t a) { return a; }
+    __device__ __forceinline__ static acc_t combine(acc_t a, acc_t b) {
+        return a + b;
+    }
+    __device__ __forceinline__ static acc_t norm(acc_t a, int32_t size) {
+        return a / (acc_t)size;
+    }
+};
+
 template <typename Acc> struct MeanOfSquaresOp {
     using acc_t = Acc;
     __device__ __forceinline__ static acc_t identity() { return acc_t(0); }
@@ -176,6 +190,7 @@ __device__ void reduce(const T *input, T *output, const int32_t shape_0,
     INSTANTIATE_REDUCE_1(min, name, T, MinOp, bname, block_size)               \
     INSTANTIATE_REDUCE_1(sum, name, T, AddOp, bname, block_size)               \
     INSTANTIATE_REDUCE_1(prod, name, T, MulOp, bname, block_size)              \
+    INSTANTIATE_REDUCE_1(mean, name, T, MeanOp, bname, block_size)             \
     INSTANTIATE_REDUCE_1(mean_of_squares, name, T, MeanOfSquaresOp, bname,     \
                          block_size)
 

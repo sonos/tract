@@ -995,6 +995,20 @@ fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 
 @compute @workgroup_size({WORKGROUP})
+fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = 0.0;
+    for (var k = 0u; k < params.k; k++) {{
+        acc += f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = {t}(acc / f32(params.k));
+}}
+
+@compute @workgroup_size({WORKGROUP})
 fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i = gid.x;
     let n = params.outer * params.inner;

@@ -290,7 +290,7 @@ fn split_multi_axis_reduce(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_if!(op.axes.len() > 1);
     use tract_core::ops::nn::Reducer::*;
-    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    rule_if!(matches!(op.reducer, Sum | Mean | Prod | Min | Max | Any | All));
     let fact = model.outlet_fact(node.inputs[0])?;
     rule_if!(
         !(crate::kernels::reduce::is_trailing_sum_run(op, fact.shape.dims())
