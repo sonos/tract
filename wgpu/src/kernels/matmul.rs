@@ -132,7 +132,7 @@ fn repacked_b(
 }
 
 /// Whether the blocked kernel can serve this product: it reads both operands as
-/// `vec4`, so the tile must divide the shape and the fastest axis of each
+/// `vec4<f32>`, so the data must be f32 and the tile must divide the shape and the fastest axis of each
 /// operand must be the one it widens. `b` is repacked once and read back by
 /// buffer id, which only a buffer outside the frame pool keeps.
 #[allow(clippy::too_many_arguments)]
@@ -147,7 +147,8 @@ fn blocked_applies(
     t: Transposes,
 ) -> bool {
     let rank = a.rank();
-    !get_wgpu_buffer(b).pooled
+    a.datum_type() == f32::datum_type()
+        && !get_wgpu_buffer(b).pooled
         && prefix == 1
         && m.is_multiple_of(4)
         && n.is_multiple_of(4)
