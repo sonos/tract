@@ -349,8 +349,16 @@ fn main() -> TractResult<()> {
                 .arg(arg!(--thresholds <PATH> "Threshold config TOML"))
                 .arg(arg!(--"pr-sha" <SHA> "PR commit sha"))
                 .arg(arg!(--out <PATH> "PR comment markdown output path"))
+                .arg(arg!(--reds [PATH] "Also write each device's regressed runs (JSON, bench-suite --only ids)"))
                 .arg(arg!(--templates [DIR] "Template dir (default: ci)"))
                 .arg(arg!(--today [DATE] "Override today's date YYYY-MM-DD (for reproducible output)")),
+        );
+        app = app.subcommand(
+            clap::Command::new("bench-merge")
+                .long_about("Fold a rebench's per-device results into the previous run's, keeping each metric's best.")
+                .arg(arg!(--previous <DIR> "Previous run's result dirs (meta.json + metrics)"))
+                .arg(arg!(--results <DIR> "Rebench result dirs"))
+                .arg(arg!(--out <DIR> "Merged result dirs")),
         );
         app = app.subcommand(
             clap::Command::new("bench-mt-report")
@@ -926,6 +934,8 @@ fn handle(matches: clap::ArgMatches, probe: Option<&Probe>) -> TractResult<()> {
         Some(("bench-diff", m)) => return bench_suite::diff(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-report", m)) => return bench_report::handle(m),
+        #[cfg(feature = "bench-suite")]
+        Some(("bench-merge", m)) => return bench_report::handle_merge(m),
         #[cfg(feature = "bench-suite")]
         Some(("bench-mt-report", m)) => return bench_report::handle_mt(m),
         Some(("routines", m)) => {

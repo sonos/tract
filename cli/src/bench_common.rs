@@ -50,6 +50,13 @@ pub fn is_speed(metric: &str) -> bool {
     metric.split('.').any(|seg| seg == "evaltime") || higher_better(metric)
 }
 
+/// The run a metric key belongs to: `kind.name.metric.variant` -> `kind.name.variant`, the
+/// id `bench-suite --only` selects by. `None` for a run-wide key (`bundle.bench_runtime`).
+pub fn run_id_of(metric: &str) -> Option<String> {
+    let parts: Vec<&str> = metric.split('.').collect();
+    (parts.len() >= 4).then(|| format!("{}.{}.{}", parts[0], parts[1], parts[parts.len() - 1]))
+}
+
 /// Read a `metric value` file in file order, canonicalizing '-' -> '_' (the old minion
 /// pushed underscored names to graphite, and bench-data follows that). File order is
 /// kept so equal-Δ ties in the report sort the same way the values were emitted.

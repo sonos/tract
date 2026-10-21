@@ -10,7 +10,8 @@
 //! to time-per-token so every metric is lower-is-better; worse is always Δ>0.
 
 use crate::bench_common::{
-    Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, series_noise,
+    Thresholds, higher_better, is_speed, latest_value, read_metrics, red_threshold, run_id_of,
+    series_noise,
 };
 use minijinja::syntax::SyntaxConfig;
 use minijinja::value::Serde;
@@ -589,6 +590,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     }
 
     let movers: Vec<&Row> = rows.iter().filter(|r| r.mover).collect();
+    if let Some(path) = get("reds") {
+        std::fs::write(path, serde_json::to_string_pretty(&reds(&rows))?)?;
+    }
     let by_delta = |a: &&Row, b: &&Row| b.delta.abs().total_cmp(&a.delta.abs());
 
     // Only the speed signal gets the 🔴/🟢 lamp treatment in the PR comment; a non-speed
@@ -670,6 +674,75 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let regr_total = speed_regr.len() + other_regr.len();
     let impr_total = movers.iter().filter(|r| !r.worse).count();
     println!("regressions={regr_total} improvements={impr_total} metrics={}", rows.len());
+    Ok(())
+}
+
+/// Each device's regressed runs (speed or secondary), as `bench-suite --only` ids.
+fn reds(rows: &[Row]) -> BTreeMap<String, Vec<String>> {
+    let mut out: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for r in rows.iter().filter(|r| r.mover && r.worse) {
+        if let Some(id) = run_id_of(&r.metric) {
+            out.entry(r.device.clone()).or_default().push(id);
+        }
+    }
+    for ids in out.values_mut() {
+        ids.sort();
+        ids.dedup();
+    }
+    out
+}
+
+/// Per-device result dirs under `dir` (each holding `meta.json` + `metrics`), by device.
+fn result_dirs(dir: &str) -> TractResult<BTreeMap<String, std::path::PathBuf>> {
+    let mut out = BTreeMap::new();
+    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(out) };
+    for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
+        if path.join("meta.json").exists() {
+            let meta: Meta =
+                serde_json::from_str(&std::fs::read_to_string(path.join("meta.json"))?)?;
+            out.insert(meta.device, path);
+        }
+    }
+    Ok(out)
+}
+
+/// Overlay a rebench's metrics onto the previous run's: each metric keeps the better of
+/// the two values (the per-metric best, as a PR bench keeps across its own retries).
+/// Run-wide keys (`bundle.*`) keep the previous value, as a partial re-run's totals mean
+/// nothing for the whole suite.
+fn merge_metrics(previous: &[(String, f64)], rebench: &[(String, f64)]) -> Vec<(String, f64)> {
+    let mut merged = previous.to_vec();
+    for (metric, v) in rebench.iter().filter(|(m, _)| run_id_of(m).is_some()) {
+        let better = |old: f64| if higher_better(metric) { v.max(old) } else { v.min(old) };
+        match merged.iter_mut().find(|(m, _)| m == metric) {
+            Some((_, old)) => *old = better(*old),
+            None => merged.push((metric.clone(), *v)),
+        }
+    }
+    merged
+}
+
+/// `tract bench-merge`: fold a rebench's per-device results into the previous run's, so
+/// `bench-report` renders the whole PR again. A device only one side has is copied as is.
+pub fn handle_merge(matches: &clap::ArgMatches) -> TractResult<()> {
+    let get = |k| matches.get_one::<String>(k).map(String::as_str);
+    let previous = result_dirs(get("previous").context("--previous is required")?)?;
+    let rebench = result_dirs(get("results").context("--results is required")?)?;
+    let out = std::path::PathBuf::from(get("out").context("--out is required")?);
+    for device in previous.keys().chain(rebench.keys()).collect::<std::collections::BTreeSet<_>>() {
+        let metrics = |dirs: &BTreeMap<String, std::path::PathBuf>| {
+            dirs.get(device)
+                .map(|d| read_metrics(d.join("metrics").to_str().unwrap_or_default()))
+                .unwrap_or_default()
+        };
+        let merged = merge_metrics(&metrics(&previous), &metrics(&rebench));
+        let src = rebench.get(device).or_else(|| previous.get(device)).unwrap();
+        let dst = out.join(src.file_name().context("result dir without a name")?);
+        std::fs::create_dir_all(&dst)?;
+        std::fs::copy(src.join("meta.json"), dst.join("meta.json"))?;
+        let lines: String = merged.iter().map(|(m, v)| format!("{m} {v}\n")).collect();
+        std::fs::write(dst.join("metrics"), lines)?;
+    }
     Ok(())
 }
 
@@ -762,6 +835,49 @@ pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn merge_keeps_each_metrics_best() {
+        let m = |k: &str, v: f64| (k.to_string(), v);
+        let previous = vec![
+            m("net.a.evaltime.pass", 2.0),
+            m("llm.b.pp512.cuda", 100.0),
+            m("net.c.evaltime.pass", 1.0),
+            m("bundle.bench_runtime", 600.0),
+        ];
+        let rebench = vec![
+            m("net.a.evaltime.pass", 1.5),
+            m("llm.b.pp512.cuda", 90.0),
+            m("net.d.evaltime.pass", 3.0),
+            m("bundle.bench_runtime", 20.0),
+        ];
+        assert_eq!(
+            merge_metrics(&previous, &rebench),
+            vec![
+                m("net.a.evaltime.pass", 1.5),
+                m("llm.b.pp512.cuda", 100.0),
+                m("net.c.evaltime.pass", 1.0),
+                m("bundle.bench_runtime", 600.0),
+                m("net.d.evaltime.pass", 3.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn reds_list_regressed_runs_per_device() {
+        let rows = vec![
+            row("m1", "net.a.evaltime.pass", 1.0, 2.0, true, true),
+            row("m1", "net.a.rsz_at_model_ready.pass", 1.0, 2.0, true, true),
+            row("m1", "net.b.evaltime.pass_mt", 1.0, 2.0, true, true),
+            row("m1", "net.c.evaltime.pass", 2.0, 1.0, false, true),
+            row("m1", "net.d.evaltime.pass", 1.0, 1.01, true, false),
+            row("a53", "llm.e.tg128.cpu", 1.0, 2.0, true, true),
+        ];
+        let reds = reds(&rows);
+        assert_eq!(reds["m1"], vec!["net.a.pass", "net.b.pass_mt"]);
+        assert_eq!(reds["a53"], vec!["llm.e.cpu"]);
+        assert_eq!(reds.len(), 2);
+    }
 
     #[test]
     fn rung_split_and_column_order() {
