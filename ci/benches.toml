@@ -375,28 +375,28 @@ runtimes = ["metal", "cuda"]
 kind = "net"
 name = "sd15-dummy-f32-unet_step_b2"
 model = "sd/sd15-dummy/unet.nnef.tgz"
-args = "--nnef-tract-core --nnef-tract-transformers"
+args = "--nnef-tract-core --nnef-tract-transformers -t transformers_detect_all"
 runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "sd15-dummy-f16-unet_step_b2"
 model = "sd/sd15-dummy/unet.nnef.tgz"
-args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16"
+args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16 -t transformers_detect_all"
 runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "sd15-dummy-f32-vae_decoder_512px"
 model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
-args = "--nnef-tract-core --nnef-tract-transformers"
+args = "--nnef-tract-core --nnef-tract-transformers -t transformers_detect_all"
 runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "net"
 name = "sd15-dummy-f16-vae_decoder_512px"
 model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
-args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16"
+args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16 -t transformers_detect_all"
 runtimes = ["metal", "cuda"]
 
 [[bench]]
