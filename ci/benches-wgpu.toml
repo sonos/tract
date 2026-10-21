@@ -1,0 +1,390 @@
+# Bench manifest for the nightly wgpu bench (bench-wgpu.yml, on the cuda-lovelace box over
+# Vulkan). Same models and args as benches.toml, each run on the wgpu runtime only; a bench
+# that benches.toml runs on the CPU under a variant keeps that variant in its name, since
+# every run here is labelled `wgpu`. Ops wgpu does not cover run on the CPU (hybrid fallback).
+# Left out until they run on wgpu: the LLM benches (a dispatch binds one storage buffer both
+# read-only and read-write) and trunet pulse1_f16 (f16 matmuls on the f32 blocked kernels).
+
+base_url = "https://tract-test-assets.tract.rs"
+
+[[bench]]
+kind = "net"
+name = "arm_ml_kws_cnn_m_pass"
+model = "ARM-ML-KWS-CNN-M.pb"
+args = "-i 49,10,f32 --partial --input-node Mfcc"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "hey_snips_v1_400ms"
+model = "hey_snips_v1.pb"
+args = "-i 80,40,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "hey_snips_v31_400ms"
+model = "hey_snips_v3.1.pb"
+args = "-i 40,40,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "hey_snips_v4_model17_2sec"
+model = "hey_snips_v4_model17.pb"
+args = "-i 200,20,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "hey_snips_v4_model17_pulse8"
+model = "hey_snips_v4_model17.pb"
+args = "-i S,20,f32 --pulse 8"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "hey_snips_v4_model17_nnef_pulse8"
+model = "hey_snips_v4_model17.alpha1.tar"
+args = "--nnef-tract-pulse"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "mobilenet_v1_1_pass"
+model = "mobilenet_v1_1.0_224_frozen.pb"
+args = "-i 1,224,224,3,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "mobilenet_v2_1_pass"
+model = "mobilenet_v2_1.4_224_frozen.pb"
+args = "-i 1,224,224,3,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "inceptionv1q_pass"
+model = "inceptionv1_quant.nnef.tar.gz"
+args = "--nnef-tract-core"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "inceptionv3_pass"
+model = "inception_v3_2016_08_28_frozen.pb"
+args = "-i 1,299,299,3,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "mdl-en-2019-Q3-librispeech_onnx_2600ms"
+model = "en_libri_real/model.onnx"
+archive = "en_libri_real.tar.gz"
+args = "--output-node output -i 264,40"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "mdl-en-2019-Q3-librispeech_onnx_pulse_240ms"
+model = "en_libri_real/model.onnx"
+archive = "en_libri_real.tar.gz"
+args = "--output-node output -i S,40 --pulse 24"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_lstm_bn_q7_2600ms"
+model = "en_tdnn_lstm_bn_q7/model.onnx"
+archive = "en_tdnn_lstm_bn_q7.tar.gz"
+args = "--output-node output -i 264,40"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_lstm_bn_q7_pulse_240ms"
+model = "en_tdnn_lstm_bn_q7/model.onnx"
+archive = "en_tdnn_lstm_bn_q7.tar.gz"
+args = "--output-node output -i S,40 --pulse 24"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_8M_2600ms"
+model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
+args = "--output-node output -i 264,40"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_8M_pulse_240ms"
+model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
+args = "--output-node output -i S,40 --pulse 24"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_8M_pulse_180ms"
+model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
+args = "--output-node output -i S,40 --pulse 18"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_8M_pulse_120ms"
+model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
+args = "--output-node output -i S,40 --pulse 12"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_8M_nnef_pulse_240ms"
+model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.alpha1.a.tar"
+args = "--nnef-tract-pulse"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_15M_2600ms"
+model = "en_tdnn_15M.onnx"
+args = "--output-node output -i 264,40"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_15M_pulse_240ms"
+model = "en_tdnn_15M.onnx"
+args = "--output-node output -i S,40 --pulse 24"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_15M_pulse_120ms"
+model = "en_tdnn_15M.onnx"
+args = "--output-node output -i S,40 --pulse 12"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_15M_nnef_pulse_240ms"
+model = "en_tdnn_15M.alpha1.tar"
+args = "--nnef-tract-pulse"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dummy-conmer-12M_pulse_120ms"
+model = "dummy-conmer-12M.nnef.tar"
+args = "--nnef-tract-core --pulse 12"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "en_tdnn_pyt_15M_pulse_120ms"
+model = "mdl-en-2023-03-27-allen-17h11m50s.nnef.tar"
+args = "--nnef-tract-core --pulse 12"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "speaker_id_pulse8"
+model = "speaker-id-2019-03.onnx"
+args = "-i 1,S,40,f32 --output-node 257 --partial --pulse 8"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "voicecom_fake_quant_2sec"
+model = "snips-voice-commands-cnn-fake-quant.pb"
+args = "-i 200,10,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "voicecom_float_2sec"
+model = "snips-voice-commands-cnn-float.pb"
+args = "-i 200,10,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "trunet_pulse1_f32"
+model = "trunet_dummy.nnef.tgz"
+args = "--nnef-tract-core --pulse 1"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "parakeet-tdt-600m-v3-f32f32-preprocessor_1s"
+model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.preprocessor.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set A=16000"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "parakeet-tdt-600m-v3-f32f32-encoder_1s"
+model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.encoder.p1.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set S=100"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "parakeet-tdt-600m-v3-f32f32-decoder_pass"
+model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.decoder.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set T=1"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "parakeet-tdt-600m-v3-f32f32-joint_pass"
+model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.joint.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set R=1 --set U=1"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_1s"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set INPUT_SIGNAL__TIME=16000"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_1s"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set AUDIO_SIGNAL__TIME=100"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_pulse100ms"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
+args = [
+    "--nnef-tract-transformers",
+    "-t",
+    "transformers_detect_all",
+    "-t",
+    "set_symbols(values: {\"BATCH\": 1})",
+    "-t",
+    "patch(body: \"length = tract_core_shape_of(input_signal)[1];\")",
+    "-t",
+    "select_inputs(inputs: [\"input_signal\"])",
+    "-t",
+    "select_outputs(outputs: [\"processed_signal\"])",
+    "-t",
+    "pulse(symbol: Some(\"INPUT_SIGNAL__TIME\"), pulse: \"1600\")",
+]
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_pulse320ms"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
+args = [
+    "--nnef-tract-transformers",
+    "-t",
+    "transformers_detect_all",
+    "-t",
+    "set_symbols(values: {\"BATCH\": 1})",
+    "-t",
+    "patch(body: \"length = tract_core_shape_of(audio_signal)[2];\")",
+    "-t",
+    "select_inputs(inputs: [\"audio_signal\", \"lang_id\"])",
+    "-t",
+    "select_outputs(outputs: [\"outputs\"])",
+    "-t",
+    "pulse(symbol: Some(\"AUDIO_SIGNAL__TIME\"), pulse: \"32\")",
+]
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-decoder_pass"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.decoder.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set TARGETS__TIME=1"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "nemotron-3_5-asr-streaming-0_6b-f32f32-joint_pass"
+model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.joint.nnef.tgz"
+args = "-t transformers_detect_all --nnef-tract-transformers --set ENCODER_OUTPUTS__BATCH=1 --set DECODER_OUTPUTS__BATCH=1 --set ENCODER_OUTPUTS__TIME=1 --set DECODER_OUTPUTS__TIME=1"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "fastenhancer_t_frame"
+model = "ns-panel/fastenhancer_t.spec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,16,20,f32 -i 1,16,20,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "fastenhancer_b_frame"
+model = "ns-panel/fastenhancer_b.spec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,24,36,f32 -i 1,24,36,f32 -i 1,24,36,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "fastenhancer_s_frame"
+model = "ns-panel/fastenhancer_s.spec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,36,48,f32 -i 1,36,48,f32 -i 1,36,48,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "fastenhancer_m_frame"
+model = "ns-panel/fastenhancer_m.spec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "fastenhancer_l_frame"
+model = "ns-panel/fastenhancer_l.spec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32 -i 1,64,96,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "gtcrn_frame"
+model = "ns-panel/gtcrn.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 2,1,16,16,33,f32 -i 2,3,1,1,16,f32 -i 2,1,33,16,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dtln_1_frame"
+model = "ns-panel/dtln_model_1.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,257,f32 -i 1,2,128,2,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dtln_2_frame"
+model = "ns-panel/dtln_model_2.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,512,f32 -i 1,2,128,2,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dfn3_enc_s100"
+model = "ns-panel/dfn3_enc.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,100,32,f32 -i 1,2,100,96,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dfn3_erb_dec_s100"
+model = "ns-panel/dfn3_erb_dec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,8,f32 -i 1,64,100,8,f32 -i 1,64,100,16,f32 -i 1,64,100,32,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "dfn3_df_dec_s100"
+model = "ns-panel/dfn3_df_dec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,96,f32"
+runtimes = ["wgpu"]
