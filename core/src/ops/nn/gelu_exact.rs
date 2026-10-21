@@ -83,12 +83,17 @@ pub fn detect_gelu_exact(
         .find(|n| model.matches_single_input_const(n, 0.5) && n.inputs.contains(&x));
 
     // ((1 + erf(x / sqrt(2))) * x) * 0.5 keeps the same value with the half
-    // factored out of the chain, which is what PP-OCR's GELU expands to.
+    // factored out of the chain, which is what PP-OCR's GELU expands to;
+    // x * ((1 + erf(x / sqrt(2))) * 0.5) is how SD's UNet spells it.
     let last = match half_x {
         Some(_) => out,
-        None => {
-            rule_if!(out.inputs.contains(&x));
+        None if out.inputs.contains(&x) => {
             rule_if_some!(scaled = model.find_succ_bin_with_const::<Mul>(out, 0.5));
+            scaled
+        }
+        None => {
+            rule_if!(model.matches_single_input_const(out, 0.5));
+            rule_if_some!(scaled = model.find_succ_bin_with_outlet::<Mul>(out, &x));
             scaled
         }
     };
@@ -137,6 +142,21 @@ mod tests {
         Ok(m)
     }
 
+    fn chain_half_before_x(dt: DatumType, len: usize) -> TractResult<TypedModel> {
+        let mut m = TypedModel::default();
+        let x = m.add_source("x", dt.fact([len]))?;
+        let c = m.add_const("c", tensor1(&[inv_sqrt2()]).cast_to_dt(dt)?.into_owned())?;
+        let scaled = m.wire_node("scale", mul(), &[x, c])?[0];
+        let e = m.wire_node("erf", erf(), &[scaled])?[0];
+        let one = m.add_const("one", tensor1(&[1f32]).cast_to_dt(dt)?.into_owned())?;
+        let ope = m.wire_node("add_one", add(), &[e, one])?[0];
+        let half = m.add_const("half", tensor1(&[0.5f32]).cast_to_dt(dt)?.into_owned())?;
+        let half_ope = m.wire_node("half_ope", mul(), &[ope, half])?[0];
+        let out = m.wire_node("out", mul(), &[x, half_ope])?;
+        m.select_output_outlets(&out)?;
+        Ok(m)
+    }
+
     fn is_mini<T: crate::ops::element_wise::ElementWiseMiniOp>(n: &TypedNode) -> bool {
         n.op_as::<ElementWiseOp>().map(|e| e.0.is::<T>()).unwrap_or(false)
     }
@@ -149,7 +169,7 @@ mod tests {
     #[test]
     fn fuses_the_chain_and_keeps_the_values() -> TractResult<()> {
         type Build = fn(DatumType, usize) -> TractResult<TypedModel>;
-        for build in [chain as Build, chain_trailing_half as Build] {
+        for build in [chain as Build, chain_trailing_half as Build, chain_half_before_x as Build] {
             for dt in [DatumType::F32, DatumType::F16] {
                 let len = 2050;
                 let raw = build(dt, len)?;

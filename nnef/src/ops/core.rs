@@ -13,6 +13,7 @@ mod einsum;
 mod fft;
 mod gather;
 mod gelu_approximate;
+mod gelu_exact;
 mod grid_sample;
 mod gru_cell;
 mod gru_seq;
@@ -64,6 +65,7 @@ pub fn register(registry: &mut Registry) {
     fft::register(registry);
     gather::register(registry);
     gelu_approximate::register(registry);
+    gelu_exact::register(registry);
     pow_const::register(registry);
     grid_sample::register(registry);
     gru_cell::register(registry);
