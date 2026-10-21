@@ -2,6 +2,7 @@ use infra::Test;
 use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
+use suite_unit::sum_pool::{SumPoolProblem, SumPoolProblemParams};
 use tract_core::ops::cnn::PaddingSpec;
 
 pub fn suite() -> &'static infra::TestSuite {
@@ -30,6 +31,11 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         MaxPoolProblemParams::default(),
         compatible_max_pool,
+    );
+    unit.get_sub_mut("sum_pool").add_arbitrary_with_filter::<SumPoolProblem>(
+        "proptest",
+        SumPoolProblemParams::default(),
+        |sp| compatible_max_pool(&sp.pool),
     );
 
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)

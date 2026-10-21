@@ -245,6 +245,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "scaled_masked_softmax",
         "sdpa",
         "silu",
+        "sum_pool",
     ]
     .contains(&&*t[0])
 }
