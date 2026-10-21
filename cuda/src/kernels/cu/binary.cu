@@ -134,7 +134,12 @@ bin_op_large(const T_in *__restrict__ a, const T_in *__restrict__ b, T_out *__re
     const int32_t n3 = out_shape_3;
     const int32_t n4 = out_shape_4;
 
-    const int32_t i3 = blockIdx.x;
+    // gridDim.x splits each i3 row into equal chunks of the innermost axis.
+    const int32_t chunks = gridDim.x / n3;
+    const int32_t chunk_len = (n4 + chunks - 1) / chunks;
+    const int32_t i3 = blockIdx.x / chunks;
+    const int32_t i4_start = (blockIdx.x % chunks) * chunk_len;
+    const int32_t i4_end = min(n4, i4_start + chunk_len);
     const int32_t i2 = blockIdx.y;
     const int32_t bz = blockIdx.z;
 
@@ -152,8 +157,7 @@ bin_op_large(const T_in *__restrict__ a, const T_in *__restrict__ b, T_out *__re
     const int32_t io_base =
         i0 * o_strides_0 + i1 * o_strides_1 + i2 * o_strides_2 + i3 * o_strides_3;
 
-    // Each thread handles a strided subset of i4
-    for (int32_t i4 = threadIdx.x; i4 < n4; i4 += blockDim.x) {
+    for (int32_t i4 = i4_start + threadIdx.x; i4 < i4_end; i4 += blockDim.x) {
         const int32_t ia = ia_base + i4 * a_strides_4;
         const int32_t ib = ib_base + i4 * b_strides_4;
         const int32_t io = io_base + i4 * o_strides_4;
