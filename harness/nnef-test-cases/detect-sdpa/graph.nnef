@@ -1,0 +1,17 @@
+version 1.0;
+
+graph network( q, k, v ) -> ( output )
+{
+    q = external<scalar>(shape = [2, 6, 3, 8]);
+    k = external<scalar>(shape = [2, 5, 3, 8]);
+    v = external<scalar>(shape = [2, 5, 3, 4]);
+    q_scaled = mul(q, 0.59460356);
+    q_heads = transpose(q_scaled, axes = [0, 2, 1, 3]);
+    k_heads_t = transpose(k, axes = [0, 2, 3, 1]);
+    k_scaled = mul(k_heads_t, 0.59460356);
+    scores = matmul(q_heads, k_scaled);
+    weights = softmax(scores, axes = [3]);
+    v_heads = transpose(v, axes = [0, 2, 1, 3]);
+    attention = matmul(weights, v_heads);
+    output = transpose(attention, axes = [0, 2, 1, 3]);
+}
