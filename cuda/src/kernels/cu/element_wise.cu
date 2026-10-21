@@ -98,6 +98,12 @@ static __device__ __forceinline__ float op_silu(float x) { return (x / (1.0f + e
 static __device__ __forceinline__ __half op_silu(__half x) {
     return (x / ((__half)1.0f + hexp(-x)));
 }
+static __device__ __forceinline__ float op_gelu_exact(float x) {
+    return 0.5f * x * (1.0f + erff(x * 0.70710678118654752f));
+}
+static __device__ __forceinline__ __half op_gelu_exact(__half x) {
+    return (__half)op_gelu_exact((float)x);
+}
 static __device__ __forceinline__ float op_sign(float x) {
     return (x > 0.0f) ? 1.0f : ((x < 0.0f) ? -1.0f : 0.0f);
 }
@@ -158,6 +164,7 @@ DEFINE_OP_FOR_ALL_TYPES(element_wise_sigmoid, op_sigmoid)
 DEFINE_OP_FOR_ALL_TYPES(element_wise_ln, op_ln)
 DEFINE_OP_FOR_ALL_TYPES(element_wise_erf, op_erf)
 DEFINE_OP_FOR_ALL_TYPES(element_wise_silu, op_silu)
+DEFINE_OP_FOR_ALL_TYPES(element_wise_geluexact, op_gelu_exact)
 DEFINE_OP_FOR_ALL_TYPES(element_wise_sign, op_sign)
 DEFINE_OP_FOR_ALL_TYPES(element_wise_hardswish, op_hard_swish)
 

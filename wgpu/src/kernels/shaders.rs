@@ -616,6 +616,10 @@ fn op_hardswish(x: {t}) -> {t} {{
     return x * h;
 }}
 fn op_silu(x: {t}) -> {t} {{ return x / ({t}(1.0) + exp(-x)); }}
+fn op_geluexact(x: {t}) -> {t} {{
+    let xf = f32(x);
+    return {t}(0.5 * xf * (1.0 + approx_erf(xf * 0.70710678)));
+}}
 "#
     )
 }
@@ -700,6 +704,7 @@ pub const ELEMENT_WISE_OPS: &[&str] = &[
     "sign",
     "hardswish",
     "silu",
+    "geluexact",
 ];
 
 fn binary_wgsl(dt: ShaderDtype) -> String {
