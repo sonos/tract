@@ -181,6 +181,11 @@ pub(crate) struct BenchSuiteParams {
     /// Only run benches whose name contains SUBSTR
     #[arg(long)]
     filter: Option<String>,
+    /// Only run these runs (comma list), each a run id: `kind.name.variant` with '-' as
+    /// '_', i.e. a metric key without its metric segment (`net.mobilenet_v2_1.pass`), as
+    /// `bench-report --reds` lists them.
+    #[arg(long, value_delimiter = ',')]
+    only: Option<Vec<String>>,
     /// Do not fetch models; use the cache as-is
     #[arg(long)]
     no_fetch: bool,
@@ -333,6 +338,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let skip_runtimes = params.skip_runtimes;
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
+    let only = params.only.as_deref();
     let threads_ladder = params.threads_ladder.as_deref();
 
     let expectations = expectations(&params)?;
@@ -395,7 +401,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
         // Augment cpu-eligible runs with the requested thread sweep. The base run
         // (no `--threads`, `None`) is always kept; threaded runs are extra series.
-        let runs: Vec<(Option<RuntimeKind>, String, Option<usize>)> = base_runs
+        let mut runs: Vec<(Option<RuntimeKind>, String, Option<usize>)> = base_runs
             .into_iter()
             .flat_map(|(rt, variant)| {
                 let mut out = vec![(rt, variant.clone(), None)];
@@ -422,6 +428,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 out
             })
             .collect();
+        if let Some(only) = only {
+            runs.retain(|(_, variant, _)| only.contains(&run_id(bench, variant)));
+        }
         if runs.is_empty() {
             continue;
         }
@@ -681,6 +690,12 @@ fn run_one(
     ensure!(output.status.success(), "child exited with {}", output.status);
     ensure!(!metrics.is_empty(), "child produced no metrics");
     Ok(metrics)
+}
+
+/// The id of one (bench, variant) run, as its metric keys carry it: see
+/// [`crate::bench_common::run_id_of`].
+fn run_id(bench: &Bench, variant: &str) -> String {
+    format!("{}.{}.{}", bench.kind.label(), bench.name, variant).replace('-', "_")
 }
 
 /// Run a single bench, then with expectations re-run it (a fresh child each time)
