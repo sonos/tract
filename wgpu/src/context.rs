@@ -99,7 +99,16 @@ pub fn try_wgpu_context() -> TractResult<WgpuContext> {
          (requestAdapter/requestDevice are async; PollType::Wait is a no-op on web)"
     );
     #[cfg(not(target_arch = "wasm32"))]
-    install_context(WgpuContext::new()?)
+    {
+        // Concurrent first callers would each build a device, and install_context fills
+        // the tract-gpu and wgpu slots independently, so they could keep different ones.
+        static INIT: Mutex<()> = Mutex::new(());
+        let _guard = INIT.lock().unwrap();
+        if let Some(ctxt) = context_slot().get() {
+            return Ok(ctxt.clone());
+        }
+        install_context(WgpuContext::new()?)
+    }
 }
 
 /// One-shot async device init. Safe to call from wasm `wasm_bindgen` async
