@@ -174,3 +174,83 @@ CONV_ENTRY(1, f16, half)
 CONV_ENTRY(2, f16, half)
 CONV_ENTRY(3, f16, half)
 CONV_ENTRY(4, f16, half)
+
+// Gather-based 2D transposed convolution: one thread per output element sums the
+// kernel taps that land on it, accumulating in float. A 1D deconv runs as 2D with a
+// unit height. Weights are OIHW: [group * co_per_group, ci_per_group, kh, kw].
+//
+// Buffer layout:
+//   0: input    [T]
+//   1: weights  [T]
+//   2: output   [T]
+//   3: g        28 ints, in tract_gpu::ops::deconv::DeconvGeometry::args order:
+//               n, co, ih, iw, oh, ow, kh, kw, ci_per_group, co_per_group,
+//               pad_h, pad_w, stride_h, stride_w, dil_h, dil_w,
+//               input strides (n, c, h, w), weight strides (o, i, h, w),
+//               output strides (n, c, h, w)
+template <typename T>
+void deconv2d_impl(device const T *input, device const T *weights,
+                   device T *output, constant int32_t *g, uint gid) {
+    const int32_t n = g[0], co = g[1], ih = g[2], iw = g[3], oh = g[4], ow = g[5];
+    const int32_t kh = g[6], kw = g[7], ci_pg = g[8], co_pg = g[9];
+    const int32_t pad_h = g[10], pad_w = g[11], stride_h = g[12], stride_w = g[13];
+    const int32_t dil_h = g[14], dil_w = g[15];
+    const int32_t in_sn = g[16], in_sc = g[17], in_sh = g[18], in_sw = g[19];
+    const int32_t w_so = g[20], w_si = g[21], w_sh = g[22], w_sw = g[23];
+    const int32_t out_sn = g[24], out_sc = g[25], out_sh = g[26], out_sw = g[27];
+    if (gid >= uint(n * co * oh * ow)) {
+        return;
+    }
+    int32_t i = int32_t(gid);
+    const int32_t x = i % ow;
+    i /= ow;
+    const int32_t y = i % oh;
+    i /= oh;
+    const int32_t c = i % co;
+    const int32_t b = i / co;
+    const int32_t ci0 = (c / co_pg) * ci_pg;
+
+    float acc = 0.0f;
+    // Which taps land on an input pixel does not depend on the channel, and finding
+    // out costs two integer divisions, so the channels run innermost.
+    for (int32_t ky = 0; ky < kh; ky++) {
+        const int32_t y_num = y + pad_h - ky * dil_h;
+        if (y_num % stride_h != 0) {
+            continue;
+        }
+        const int32_t iy = y_num / stride_h;
+        if (iy < 0 || iy >= ih) {
+            continue;
+        }
+        for (int32_t kx = 0; kx < kw; kx++) {
+            const int32_t x_num = x + pad_w - kx * dil_w;
+            if (x_num % stride_w != 0) {
+                continue;
+            }
+            const int32_t ix = x_num / stride_w;
+            if (ix < 0 || ix >= iw) {
+                continue;
+            }
+            device const T *in = input + b * in_sn + ci0 * in_sc + iy * in_sh + ix * in_sw;
+            device const T *w = weights + c * w_so + ky * w_sh + kx * w_sw;
+            for (int32_t ci = 0; ci < ci_pg; ci++) {
+                acc += float(in[ci * in_sc]) * float(w[ci * w_si]);
+            }
+        }
+    }
+    output[b * out_sn + c * out_sc + y * out_sh + x * out_sw] = T(acc);
+}
+
+#define DECONV_ENTRY(tname, T)                                                     \
+kernel void deconv2d_##tname(                                                      \
+    device const T *input   [[buffer(0)]],                                         \
+    device const T *weights [[buffer(1)]],                                         \
+    device T *output        [[buffer(2)]],                                         \
+    constant int32_t *g     [[buffer(3)]],                                         \
+    uint gid                [[thread_position_in_grid]])                           \
+{                                                                                  \
+    deconv2d_impl<T>(input, weights, output, g, gid);                              \
+}
+
+DECONV_ENTRY(f32, float)
+DECONV_ENTRY(f16, half)
