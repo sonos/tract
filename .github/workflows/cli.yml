@@ -1054,9 +1054,11 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
       - name: Load-and-run every bench model
+        env:
+          DEVICE: ${{ matrix.target }}
         run: |
           chmod +x tract-cli/tract
-          tract-cli/tract bench-suite --smoke --manifest ci/benches.toml ${{ matrix.suite_args }}
+          tract-cli/tract bench-suite --smoke --manifest ci/benches.toml --device "$DEVICE" ${{ matrix.suite_args }}
 
   hwbench-dinghy:
     needs: [ prepare, build-dinghy ]

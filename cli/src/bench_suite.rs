@@ -60,6 +60,9 @@ struct Bench {
     /// of the second pass, whose keep-best would undo the median.
     #[serde(default)]
     samples: Option<usize>,
+    /// Device keys (`--device`) this bench never runs on, e.g. a model too large for the box.
+    #[serde(default)]
+    skip_devices: Vec<String>,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -228,7 +231,7 @@ pub(crate) struct BenchSuiteParams {
     /// Target triple (with --bench-data)
     #[arg(long)]
     triple: Option<String>,
-    /// Device key (with --bench-data)
+    /// Device key: picks the expectations (with --bench-data) and drops benches whose `skip_devices` lists it
     #[arg(long)]
     device: Option<String>,
     /// Override every thread-tagged bench's `threads` list with this ladder (comma
@@ -339,6 +342,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
     let only = params.only.as_deref();
+    let device = params.device.as_deref();
     let threads_ladder = params.threads_ladder.as_deref();
 
     let expectations = expectations(&params)?;
@@ -358,6 +362,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             continue;
         }
         if (skip_runtimes || child.is_wasm()) && !bench.runtimes.is_empty() {
+            continue;
+        }
+        if device.is_some_and(|d| bench.skip_devices.iter().any(|s| s == d)) {
             continue;
         }
 
