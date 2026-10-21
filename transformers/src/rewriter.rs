@@ -53,6 +53,19 @@ impl ModelTransform for KeyValueCacheTransform {
 }
 
 #[derive(Debug, Default)]
+pub struct DetectSdpaTransform;
+
+impl ModelTransform for DetectSdpaTransform {
+    fn name(&self) -> StaticName {
+        "detect_sdpa".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default().with_rule_for("detect-sdpa", ops::detect_sdpa_rule).rewrite(&(), model)
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct SdpaFuseKvCacheBroadcastTransform;
 
 impl ModelTransform for SdpaFuseKvCacheBroadcastTransform {
@@ -120,6 +133,7 @@ impl ModelTransform for TransformersTransform {
             .with_rule_for("detect-rotate-half", ops::rotate_half_rule)
             .with_rule_for("detect-apply-rope", ops::apply_rope_rule)
             .with_rule_for("detect-scaled-masked-softmax", ops::scaled_masked_softmax_rule)
+            .with_rule_for("detect-sdpa", ops::detect_sdpa_rule)
             .with_rule_for("detect-sdpa-kv-cache-broadcast", ops::fuse_kv_cache_broadcast_rule)
             .with_rule_for("detect-diag-gather", ops::diag_gather_rule)
             .rewrite(&(), model)
