@@ -31,7 +31,11 @@ fn build_descriptors<T: CudnnDataType>(
     output_shape_array: &[usize],
 ) -> TractResult<TypedDescriptors<T>> {
     ensure!(op.pool_spec.data_format.has_n());
-    ensure!(op.kernel_fmt == KernelFormat::OIHW);
+    let filter_format = match op.kernel_fmt {
+        KernelFormat::OIHW => cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
+        KernelFormat::OHWI => cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NHWC,
+        KernelFormat::HWIO => bail!("cuDNN conv takes OIHW or OHWI filters"),
+    };
     let input_shape = op.pool_spec.data_format.shape(input_shape_array)?;
     let output_shape = op.pool_spec.data_format.shape(output_shape_array)?;
     ensure!(input_shape.hw_rank() <= 6);
@@ -83,16 +87,16 @@ fn build_descriptors<T: CudnnDataType>(
         .create_nd_tensor::<T>(&input_dims, &input_strides)
         .context("in create_nd_tensor for input")?;
 
-    let mut filter_dims = weight_shape_array.iter().map(|d| *d as i32).collect_vec();
+    let mut filter_dims = std::iter::once(op.kernel_fmt.o(weight_shape_array))
+        .chain(std::iter::once(op.kernel_fmt.i(weight_shape_array)))
+        .chain(op.kernel_fmt.hw(weight_shape_array))
+        .map(|d| *d as i32)
+        .collect_vec();
     if filter_dims.len() == 3 {
         filter_dims.push(1);
     }
-    let filter_descriptor = cudnn
-        .create_nd_filter::<T>(
-            cudarc::cudnn::sys::cudnnTensorFormat_t::CUDNN_TENSOR_NCHW,
-            &filter_dims,
-        )
-        .context("in create_nd_filter")?;
+    let filter_descriptor =
+        cudnn.create_nd_filter::<T>(filter_format, &filter_dims).context("in create_nd_filter")?;
 
     let mut output_dims = output_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
     if output_dims.len() == 1 {
