@@ -14,7 +14,8 @@ name: CI slash command
 #   /ci blackwell [tests|bench|both] -> RTX 5090 / SM120 (cuda-blackwell.yml);
 #                         mode defaults to tests. Operator-only, see below.
 #   /ci 5090           -> alias of blackwell
-#   /ci bench          -> alias of cli
+#   /ci bench          -> cli.yml as a PR push runs it: harness ci.sh cases + bench
+#   /ci bench all      -> alias of cli (adds the LLM matrix, ci-full.sh, harness-checked)
 #   /ci benches        -> alias of bench
 #   /ci bench-mt-ladder [ladder] -> cli.yml with a thread-scaling bench; ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
@@ -81,7 +82,7 @@ jobs:
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`, `bench`, `benches`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all]` (alias: `benches`; `all` is `/ci cli`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -127,6 +128,22 @@ jobs:
                 return;
               }
               inputs.mode = mode;
+            }
+            // `/ci bench` is the PR-push bench; `/ci bench all` keeps the full cli.yml run.
+            if (target === 'bench' || target === 'benches') {
+              const arg = (cp.slash_command.args.unnamed.arg2 || '').toLowerCase();
+              if (arg !== '' && arg !== 'all') {
+                const msg = `Unknown \`/ci ${target}\` argument: \`${arg}\`. Use \`/ci ${target}\` or \`/ci ${target} all\`.`;
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: pr,
+                  body: msg,
+                });
+                core.setFailed(msg);
+                return;
+              }
+              inputs.scope = arg === 'all' ? 'full' : 'bench';
             }
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
             // cli.yml runs the thread scaling sweep + scaling report instead of vs-main.

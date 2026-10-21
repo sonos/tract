@@ -25,6 +25,12 @@ on:
         required: false
         type: string
         default: ''
+      scope:
+        description: "full: the nightly-sized run (LLM matrix, ci-full.sh cases, harness-checked). bench: what a PR push runs."
+        required: false
+        type: choice
+        options: [ full, bench ]
+        default: full
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -51,6 +57,7 @@ jobs:
       day: ${{ steps.gate.outputs.day }}
       pr_number: ${{ steps.gate.outputs.pr_number }}
       is_pr: ${{ steps.gate.outputs.is_pr }}
+      full: ${{ steps.gate.outputs.full }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
       cases: ${{ steps.cases.outputs.cases }}
@@ -99,6 +106,10 @@ jobs:
             // Set on any event; a pull_request trigger has no inputs, so it stays empty
             // (normal vs-main bench). Only a workflow_dispatch can request a scaling run.
             core.setOutput('mt_ladder', context.payload.inputs?.mt_ladder || '');
+            // The LLM matrix, ci-full.sh cases and harness-checked: off on a PR push and
+            // on a dispatch with scope `bench` (`/ci bench`), on otherwise.
+            core.setOutput('full', String(
+              context.eventName !== 'pull_request' && (context.payload.inputs?.scope || 'full') !== 'bench'));
 
             const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
             if (context.eventName === 'pull_request') {
@@ -139,11 +150,11 @@ jobs:
         with:
           ref: ${{ steps.gate.outputs.ref }}
           persist-credentials: false
-      # One test leg per (case, runner): a case is a harness/*/ci.sh, plus off PRs a
+      # One test leg per (case, runner): a case is a harness/*/ci.sh, plus on a full run a
       # harness/*/ci-full.sh, run on every runner its `# ci-runners:` line names.
       - id: cases
         env:
-          FULL: ${{ github.event_name != 'pull_request' }}
+          FULL: ${{ steps.gate.outputs.full }}
         run: |
           names="-name ci.sh"
           if [ "$FULL" = true ]; then names="$names -o -name ci-full.sh"; fi
@@ -242,7 +253,7 @@ jobs:
   # paranoid checks are too slow on its models.
   harness-checked:
     needs: prepare
-    if: github.event_name != 'pull_request'
+    if: needs.prepare.outputs.full == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -265,7 +276,7 @@ jobs:
 
   llm-combos:
     needs: prepare
-    if: github.event_name != 'pull_request'
+    if: needs.prepare.outputs.full == 'true'
     runs-on: ubuntu-latest
     outputs:
       combos: ${{ steps.set-matrix.outputs.combos }}
