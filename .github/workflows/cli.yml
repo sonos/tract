@@ -54,7 +54,29 @@ jobs:
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
       cases: ${{ steps.cases.outputs.cases }}
+      boxes: ${{ steps.boxes.outputs.boxes }}
     steps:
+      # The self-hosted bench boxes, minus the targets listed (space-separated) in the
+      # BENCH_DISABLED_BOXES repo variable: a box that is down would otherwise leave its
+      # legs queued, holding the PR report back until GitHub times them out.
+      # suite_args: the Orin is GPU-only, its arm64 CPU is redundant with apple-m1-max.
+      - id: boxes
+        env:
+          DISABLED: ${{ vars.BENCH_DISABLED_BOXES }}
+        run: |
+          boxes=$(jq -c --arg disabled "$DISABLED" \
+            '($disabled | split(" ") | map(select(. != ""))) as $off | map(select(.target | IN($off[]) | not))' <<'EOF'
+          [
+            { "target": "apple-m1-max", "runner": "macOS", "triple": "aarch64-apple-darwin" },
+            { "target": "i9-11900kb_rtx-4060", "runner": "cuda-lovelace", "triple": "x86_64-unknown-linux-gnu" },
+            { "target": "i9-9900k", "runner": "i99900k", "triple": "x86_64-unknown-linux-gnu" },
+            { "target": "jetson-orin-nx", "runner": "orin-nx-16g", "triple": "aarch64-unknown-linux-gnu-stretch",
+              "suite_args": "--skip-cpu" }
+          ]
+          EOF
+          )
+          for off in $DISABLED; do echo "::notice::bench box $off disabled via BENCH_DISABLED_BOXES"; done
+          echo "boxes=$boxes" >> "$GITHUB_OUTPUT"
       # Resolves this run's target ref and whether it should behave like a PR run
       # (compare + comment) or a reference run (append to bench-data): a manual
       # `/ci bench` dispatch on a PR must be treated as a PR run even though its
@@ -344,7 +366,7 @@ jobs:
 
   bench:
     needs: [ prepare, build ]
-    if: needs.prepare.outputs.enabled == 'true'
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
@@ -354,21 +376,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: apple-m1-max
-            runner: macOS
-            triple: aarch64-apple-darwin
-          - target: i9-11900kb_rtx-4060
-            runner: cuda-lovelace
-            triple: x86_64-unknown-linux-gnu
-          - target: i9-9900k
-            runner: i99900k
-            triple: x86_64-unknown-linux-gnu
-          - target: jetson-orin-nx
-            runner: orin-nx-16g
-            triple: aarch64-unknown-linux-gnu-stretch
-            # GPU-only box; skip the CPU net suite (redundant with apple-m1-max).
-            bench_args: --skip-cpu
+        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -405,7 +413,7 @@ jobs:
             --triple "$TRIPLE" --device "$DEVICE" \
             ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
             ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5 --second-pass-max 10' || '' }} \
-            ${{ matrix.bench_args }}        # produces ./metrics
+            ${{ matrix.suite_args }}        # produces ./metrics
 
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
@@ -764,24 +772,12 @@ jobs:
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: apple-m1-max
-            runner: macOS
-            triple: aarch64-apple-darwin
-          - target: i9-11900kb_rtx-4060
-            runner: cuda-lovelace
-            triple: x86_64-unknown-linux-gnu
-          - target: i9-9900k
-            runner: i99900k
-            triple: x86_64-unknown-linux-gnu
-          - target: jetson-orin-nx
-            runner: orin-nx-16g
-            triple: aarch64-unknown-linux-gnu-stretch
+        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -949,28 +945,13 @@ jobs:
   # sharing the per-box concurrency group so it never fights a running bench.
   smoke:
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: apple-m1-max
-            runner: macOS
-            triple: aarch64-apple-darwin
-          - target: i9-11900kb_rtx-4060
-            runner: cuda-lovelace
-            triple: x86_64-unknown-linux-gnu
-          - target: i9-9900k
-            runner: i99900k
-            triple: x86_64-unknown-linux-gnu
-          - target: jetson-orin-nx
-            runner: orin-nx-16g
-            triple: aarch64-unknown-linux-gnu-stretch
-            # GPU-only box: its arm64 CPU is redundant with apple-m1-max, and an 8B
-            # LLM on it would be pointlessly slow, so smoke only the Orin GPU.
-            smoke_args: --skip-cpu
+        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -983,7 +964,7 @@ jobs:
       - name: Load-and-run every bench model
         run: |
           chmod +x tract-cli/tract
-          tract-cli/tract bench-suite --smoke --manifest ci/benches.toml ${{ matrix.smoke_args }}
+          tract-cli/tract bench-suite --smoke --manifest ci/benches.toml ${{ matrix.suite_args }}
 
   hwbench-dinghy:
     needs: [ prepare, build-dinghy ]
