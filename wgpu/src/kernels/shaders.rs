@@ -629,7 +629,7 @@ fn op_mul(a: {t}, b: {t}) -> {t} {{ return a * b; }}
 fn op_div(a: {t}, b: {t}) -> {t} {{ return a / b; }}
 fn op_min(a: {t}, b: {t}) -> {t} {{ return min(a, b); }}
 fn op_max(a: {t}, b: {t}) -> {t} {{ return max(a, b); }}
-fn op_pow(a: {t}, b: {t}) -> {t} {{ return pow(a, b); }}
+fn op_pow(a: {t}, b: {t}) -> {t} {{ return {t}(pow(f32(a), f32(b))); }}
 "#
     )
 }
