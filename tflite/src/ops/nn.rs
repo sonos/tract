@@ -151,6 +151,9 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .map(|d| *d as usize)
         .sorted()
         .collect();
+    if input.datum_type.is_float() {
+        return de_reduce(op, Reducer::Mean);
+    }
     let norm: TDim = axes.iter().map(|d| &input.shape[*d]).product();
     let wire = de_reduce(op, Reducer::Sum)?;
     let p = &op.prefix;
