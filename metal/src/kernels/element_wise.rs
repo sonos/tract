@@ -36,6 +36,7 @@ const ALL_OP_NAMES: &[&str] = &[
     "sign",
     "hardswish",
     "silu",
+    "geluexact",
     "bitnot",
     "not",
 ];

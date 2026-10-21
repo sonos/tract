@@ -120,6 +120,14 @@ struct Erf {
     };
 };
 
+struct GeluExact {
+    template <typename T>
+    T operator()(T x) {
+        float xf = static_cast<float>(x);
+        return static_cast<T>(0.5f * xf * (1.0f + erf_f32(xf * 0.70710678118654752f)));
+    };
+};
+
 struct Exp {
     template <typename T>
     T operator()(T x) {
@@ -395,6 +403,7 @@ INSTANTIATE_FLOAT(sign, Sign)
 INSTANTIATE_INTEGER_SIGNED(sign, Sign)
 INSTANTIATE_FLOAT(hardswish, HardSwish)
 INSTANTIATE_FLOAT(silu, Silu)
+INSTANTIATE_FLOAT(geluexact, GeluExact)
 INSTANTIATE_INTEGER(bitnot, BitNot)
 INSTANTIATE_ELEMENT_WISE_OP(bitnot, BitNot, bool, bool)
 INSTANTIATE_ELEMENT_WISE_OP(not, Not, bool, bool)
