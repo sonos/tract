@@ -442,6 +442,13 @@ pub fn reduce(
         ops::nn::Reducer::Sum => "sum_reduce",
         ops::nn::Reducer::Max => "max_reduce",
         ops::nn::Reducer::Min => "min_reduce",
+        ops::nn::Reducer::Mean => {
+            return Ok(Some(invocation(
+                "sum_reduce",
+                &[wire],
+                &[("axes", ints(&op.axes)), ("normalize", logical(true))],
+            )));
+        }
         _ => return Ok(None),
     };
     Ok(Some(invocation(oper, &[wire], &[("axes", ints(&op.axes))])))

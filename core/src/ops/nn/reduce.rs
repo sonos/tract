@@ -57,6 +57,10 @@ pub enum Reducer {
     Min,
     Prod,
     Sum,
+    /// Arithmetic mean over the axes, floats only. Accumulates in f32 (f64 for
+    /// f64) and divides before narrowing, so an f16 mean does not overflow where
+    /// the f16 sum would. Decluttered from `Sum` followed by a `Mul` by 1/N.
+    Mean,
     MeanOfSquares,
     All,
     Any,
@@ -100,6 +104,7 @@ impl Reducer {
                         ))
                     }
                 }
+                Mean => self.mean(axes, input)?,
                 MeanOfSquares => self.mean_of_squares(axes, input)?,
                 All => Self::reduce_t(self, axes, &output_shape, input, all_bool, ()),
                 Any => Self::reduce_t(self, axes, &output_shape, input, any_bool, ()),
@@ -309,6 +314,26 @@ impl Reducer {
         }
     }
 
+    fn mean(&self, axes: &[usize], input: &Tensor) -> TractResult<Tensor> {
+        let dt = input.datum_type();
+        ensure!(dt.is_float(), "Mean reducer on non-float {dt:?}");
+        if dt == f64::datum_type() {
+            let mut output = unsafe { self.sum::<f64>(axes, input) };
+            let norm = output.len() as f64 / input.len() as f64;
+            output
+                .try_as_plain_ram_mut()?
+                .as_slice_mut::<f64>()?
+                .iter_mut()
+                .for_each(|x| *x *= norm);
+            return Ok(output);
+        }
+        let input = input.cast_to::<f32>()?;
+        let mut output = unsafe { self.sum::<f32>(axes, &input) };
+        let norm = output.len() as f32 / input.len() as f32;
+        output.try_as_plain_ram_mut()?.as_slice_mut::<f32>()?.iter_mut().for_each(|x| *x *= norm);
+        Ok(output.cast_to_dt(dt)?.into_owned())
+    }
+
     fn mean_of_squares(&self, axis: &[usize], input: &Tensor) -> TractResult<Tensor> {
         let dt = input.datum_type();
         let mut input = input.cast_to::<f32>()?.into_owned();
@@ -477,6 +502,9 @@ impl TypedOp for Reduce {
         if let Some(patch) = self.declutter_mean_of_square(model, node)? {
             return Ok(Some(patch));
         }
+        if let Some(patch) = self.declutter_mean(model, node)? {
+            return Ok(Some(patch));
+        }
         if let Some(patch) = self.declutter_scalar_mul_then_sum(model, node)? {
             return Ok(Some(patch));
         }
@@ -494,6 +522,7 @@ impl TypedOp for Reduce {
         let count: TDim = inputs[0].shape.iter().product();
         match self.reducer {
             Reducer::Sum
+            | Reducer::Mean
             | Reducer::Prod
             | Reducer::Min
             | Reducer::Max
@@ -577,7 +606,7 @@ impl Reduce {
         rule_if_some!(prec = model.linear_prec(node.id)?);
         rule_if_some!(prec_reduce = prec.op_as::<Self>());
         rule_if!(prec_reduce.reducer == self.reducer);
-        rule_if!([Sum, Prod, Min, Max].contains(&self.reducer));
+        rule_if!([Sum, Mean, Prod, Min, Max].contains(&self.reducer));
         let mut patch = TypedModelPatch::default();
         let wire = patch.tap_model(model, prec.inputs[0])?;
         let wire = patch.wire_node(
@@ -625,11 +654,54 @@ impl Reduce {
         Ok(None)
     }
 
+    fn declutter_mean(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        rule_if!(self.reducer == Reducer::Sum);
+        let input_fact = model.outlet_fact(node.inputs[0])?;
+        rule_if!(input_fact.datum_type.is_float());
+        rule_if!(node.outputs[0].successors.len() == 1);
+        let our_inlet = node.outputs[0].successors[0];
+        let succ = model.node(our_inlet.node);
+        rule_if_some!(succ_bin = succ.op_as::<TypedBinOp>());
+        rule_if!(succ_bin.0.is::<Mul>());
+        rule_if!(model.outlet_fact(succ.id.into())?.shape == node.outputs[0].fact.shape);
+        let other = succ.inputs[1 - our_inlet.slot];
+        rule_if_some!(other_konst = model.outlet_fact(other)?.uniform.as_ref());
+        let norm: TDim = self.axes.iter().map(|&ax| &input_fact.shape[ax]).product();
+        rule_if_some!(norm = norm.as_i64());
+        rule_if!(norm > 0);
+        let norm = tensor0((norm as f32).recip());
+        rule_if!(other_konst.close_enough(&norm, Approximation::Close).is_ok());
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, node.inputs[0])?;
+        let wire =
+            patch.wire_node(&node.name, Reduce::new(self.axes.clone(), Reducer::Mean), &[wire])?[0];
+        patch.shunt_outside(model, succ.id.into(), wire)?;
+        Ok(Some(patch))
+    }
+
     fn declutter_mean_of_square(
         &self,
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.reducer == Reducer::Mean {
+            rule_if_some!(prec = model.linear_prec(node.id)?);
+            rule_if_some!(prec_ew = prec.op_as::<ElementWiseOp>());
+            rule_if!(prec_ew.0.is::<Square>());
+            let mut patch = TypedModelPatch::default();
+            let wire = patch.tap_model(model, prec.inputs[0])?;
+            let wire = patch.wire_node(
+                &node.name,
+                Reduce::new(self.axes.clone(), Reducer::MeanOfSquares),
+                &[wire],
+            )?[0];
+            patch.shunt_outside(model, node.id.into(), wire)?;
+            return Ok(Some(patch));
+        }
         if self.reducer == Reducer::Sum {
             rule_if_some!(prec = model.linear_prec(node.id)?);
             rule_if_some!(prec_ew = prec.op_as::<ElementWiseOp>());
