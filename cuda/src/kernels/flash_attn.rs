@@ -20,6 +20,18 @@ impl fmt::Display for CudaFlashAttn {
 }
 
 impl CudaFlashAttn {
+    /// Shared-memory row width the kernel uses for head dim `d` (zero-padded), or `None` when
+    /// there is no kernel for `d`. Head dims 40 and 160 only have an unmasked, non-causal kernel.
+    pub fn padded_head_dim(d: usize, masked_or_causal: bool) -> Option<usize> {
+        match (d, masked_or_causal) {
+            (64, _) => Some(64),
+            (80 | 128, _) => Some(128),
+            (40, false) => Some(64),
+            (160, false) => Some(256),
+            _ => None,
+        }
+    }
+
     pub fn name(&self) -> Cow<'_, str> {
         format!("{self}").into()
     }
@@ -116,7 +128,9 @@ impl CudaFlashAttn {
 
         let num_full_q_blocks = len_q / block_q;
         let tb_size = n_warps * WARP_SIZE;
-        let smem_size = block_q.max(block_kv * 3) * d * size_of::<f16>();
+        let padded_d = Self::padded_head_dim(d, is_causal || mask.is_some())
+            .with_context(|| format!("No CUDA flash attention kernel for head dim {d}"))?;
+        let smem_size = block_q.max(block_kv * 3) * padded_d * size_of::<f16>();
 
         let mask_mode = if is_causal {
             "causal"
@@ -348,6 +362,17 @@ mod tests {
         run_test_case(2, 32, 4, 64, 64, 128, 1.0f32, false, false)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, false, true)?;
         run_test_case(1, 1, 1, 64, 64, 128, 1.0f32, true, false)?;
+        Ok(())
+    }
+
+    #[test]
+    fn padded_head_dims() -> TractResult<()> {
+        for d in [40, 80, 160] {
+            run_test_case(2, 4, 4, 0, 100, d, 0.125, false, false)?;
+            run_test_case(1, 2, 1, 37, 64, d, 0.125, false, false)?;
+        }
+        run_test_case(1, 2, 2, 0, 100, 80, 0.125, true, false)?;
+        run_test_case(1, 2, 2, 5, 70, 80, 0.125, false, true)?;
         Ok(())
     }
 }
