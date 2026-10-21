@@ -28,7 +28,7 @@ mkdir -p $SCCACHE_DIR
 mkdir -p $HOME/.local/bin
 for i in 1 2 3 4 5
 do
-    curl -L "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz && break
+    curl -sSfL "$LINK/$SCCACHE_VERSION/$SCCACHE_FILE.tar.gz" | tar xz && break
     sleep 15
 done
 mv -f $SCCACHE_FILE/sccache $HOME/.local/bin/sccache

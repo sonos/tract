@@ -198,7 +198,7 @@ case "$PLATFORM" in
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "cortexa53-unknown-linux-musl")
                 export ARCH=aarch64
@@ -209,7 +209,7 @@ case "$PLATFORM" in
                 export TRACT_CPU_AARCH64_KIND=a53
                 export QEMU_OPTS="-cpu cortex-a53"
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -220,7 +220,7 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
                 export TARGET_CFLAGS="-mfpu=neon"
                 ;;
             "riscv64gc-unknown-linux-musl")
@@ -231,7 +231,7 @@ case "$PLATFORM" in
                 # knows the ratified RVV 1.0 encodings, which arrived in binutils 2.38, and
                 # musl-cross-make has cut no release since 2021 and is stuck on 2.37.
                 export CUSTOM_TC=`pwd`/riscv64-lp64d--musl--stable-2025.08-1
-                [ -d "$CUSTOM_TC" ] || curl -s https://tract-test-assets.tract.rs/toolchains/riscv64-lp64d--musl--stable-2025.08-1.tar.xz | tar Jx
+                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/riscv64-lp64d--musl--stable-2025.08-1.tar.xz | tar Jx
                 export TARGET_CC=$CUSTOM_TC/bin/riscv64-buildroot-linux-musl-gcc
                 # riscv64 musl defaults to dynamic linking (unlike the aarch64/armv7 musl
                 # targets here); force a static binary so it runs on the glibc boards, which

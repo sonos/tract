@@ -51,7 +51,7 @@ then
         fi
     fi
 
-    which rustup || curl https://sh.rustup.rs -sSf | sh -s -- -y
+    which rustup || curl --retry 5 --retry-delay 5 -sSf https://sh.rustup.rs | sh -s -- -y
     rustup update
     rustup toolchain add $RUSTUP_TOOLCHAIN
     [ -n "$GITHUB_PATH" ] && echo $HOME/.cargo/bin >> $GITHUB_PATH

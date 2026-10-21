@@ -944,7 +944,7 @@ jobs:
         env:
           WASMTIME_VERSION: v48.0.0
         run: |
-          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
+          curl --retry 5 --retry-delay 5 -sSfL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
           echo "$PWD/wasmtime-$WASMTIME_VERSION-x86_64-linux" >> "$GITHUB_PATH"
       # The bandwidth probes are threaded and wasip1 has no threads, hence --no-cache
       # --no-memory: the matmul battery is the whole point here anyway. --include-generic
@@ -996,7 +996,7 @@ jobs:
         env:
           WASMTIME_VERSION: v48.0.0
         run: |
-          curl -sSL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
+          curl --retry 5 --retry-delay 5 -sSfL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
           echo "$PWD/wasmtime-$WASMTIME_VERSION-x86_64-linux" >> "$GITHUB_PATH"
       - name: Run bench suite
         run: |

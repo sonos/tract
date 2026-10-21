@@ -16,7 +16,7 @@ then
       # ANDROID_SDK_VERSION=4333796
       # "https://dl.google.com/android/repository/sdk-tools-linux-${ANDROID_SDK_VERSION}.zip"
 
-    curl -s -o android-sdk.zip \
+    curl --retry 5 --retry-delay 5 -sSf -o android-sdk.zip \
        https://dl.google.com/android/repository/commandlinetools-linux-8092744_latest.zip
     unzip -q android-sdk.zip
     rm android-sdk.zip

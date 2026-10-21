@@ -87,7 +87,7 @@ if [ -e $MODELS/$nnef ]
 then
     size=$($STAT -c %s $MODELS/$nnef)
 else
-    size=$(curl -s -I $MODELS/$nnef | grep Content-Length | cut -d " " -f 2 | tr -cd 0123456789)
+    size=$(curl --retry 5 --retry-delay 5 -sSfI $MODELS/$nnef | grep -i "^content-length:" | cut -d " " -f 2 | tr -cd 0123456789)
 fi
 
 if which nvidia-smi > /dev/null
