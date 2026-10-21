@@ -901,3 +901,97 @@ INSTANTIATE_REDUCE_1(sum, i64, int64_t, AddOp, small_, 32)
 INSTANTIATE_REDUCE_1(sum, i64, int64_t, AddOp, , 1024)
 INSTANTIATE_REDUCE_1(prod, i64, int64_t, MulOp, small_, 32)
 INSTANTIATE_REDUCE_1(prod, i64, int64_t, MulOp, , 1024)
+
+// Max or sum pooling of a 2D window, one thread per output element. Positions
+// are walked in output memory order, channels fastest when `channels_last`.
+// A 1D pool comes in with a unit height. `count_include_pad` counts the taps
+// inside the padded input, i.e. before `ih + pad_after_h` and
+// `iw + pad_after_w`, which ONNX ceil mode can make smaller than the kernel.
+template <typename T, bool IS_MAX>
+static __device__ __forceinline__ void
+pool_2d(const T *input, T *output, int32_t n, int32_t c, int32_t ih, int32_t iw,
+        int32_t oh, int32_t ow, int32_t kh, int32_t kw, int32_t stride_h,
+        int32_t stride_w, int32_t pad_h, int32_t pad_w, int32_t pad_after_h,
+        int32_t pad_after_w, int32_t dil_h, int32_t dil_w, int32_t in_sn,
+        int32_t in_sc, int32_t in_sh, int32_t in_sw, int32_t out_sn,
+        int32_t out_sc, int32_t out_sh, int32_t out_sw, int32_t channels_last,
+        int32_t count_include_pad, int32_t normalize) {
+    int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= (int64_t)n * c * oh * ow)
+        return;
+    int32_t ci, x, y, b;
+    if (channels_last) {
+        ci = idx % c;
+        idx /= c;
+        x = idx % ow;
+        idx /= ow;
+        y = idx % oh;
+        b = idx / oh;
+    } else {
+        x = idx % ow;
+        idx /= ow;
+        y = idx % oh;
+        idx /= oh;
+        ci = idx % c;
+        b = idx / c;
+    }
+    const T *plane = input + (int64_t)b * in_sn + (int64_t)ci * in_sc;
+    const int32_t y0 = y * stride_h - pad_h;
+    const int32_t x0 = x * stride_w - pad_w;
+    float acc = IS_MAX ? -CUDART_INF_F : 0.0f;
+    int32_t valid = 0;
+    for (int32_t ky = 0; ky < kh; ky++) {
+        const int32_t iy = y0 + ky * dil_h;
+        if (iy < 0 || iy >= ih)
+            continue;
+        for (int32_t kx = 0; kx < kw; kx++) {
+            const int32_t ix = x0 + kx * dil_w;
+            if (ix < 0 || ix >= iw)
+                continue;
+            const float v =
+                (float)plane[(int64_t)iy * in_sh + (int64_t)ix * in_sw];
+            if (IS_MAX) {
+                acc = v > acc ? v : acc;
+            } else {
+                acc += v;
+            }
+            valid++;
+        }
+    }
+    if (!IS_MAX && normalize) {
+        int32_t divisor = valid;
+        if (count_include_pad) {
+            int32_t rows = 0, cols = 0;
+            for (int32_t ky = 0; ky < kh; ky++)
+                rows += y0 + ky * dil_h < ih + pad_after_h;
+            for (int32_t kx = 0; kx < kw; kx++)
+                cols += x0 + kx * dil_w < iw + pad_after_w;
+            divisor = rows * cols;
+        }
+        acc /= (float)(divisor > 0 ? divisor : 1);
+    }
+    output[(int64_t)b * out_sn + (int64_t)ci * out_sc + (int64_t)y * out_sh +
+           (int64_t)x * out_sw] = (T)acc;
+}
+
+#define INSTANTIATE_POOL(kind, is_max, name, T)                                \
+    extern "C" __global__ void kind##_pool_2d_##name(                          \
+        const T *input, T *output, int32_t n, int32_t c, int32_t ih,           \
+        int32_t iw, int32_t oh, int32_t ow, int32_t kh, int32_t kw,            \
+        int32_t stride_h, int32_t stride_w, int32_t pad_h, int32_t pad_w,      \
+        int32_t pad_after_h, int32_t pad_after_w, int32_t dil_h,               \
+        int32_t dil_w, int32_t in_sn, int32_t in_sc, int32_t in_sh,            \
+        int32_t in_sw, int32_t out_sn, int32_t out_sc, int32_t out_sh,         \
+        int32_t out_sw, int32_t channels_last, int32_t count_include_pad,      \
+        int32_t normalize) {                                                   \
+        pool_2d<T, is_max>(input, output, n, c, ih, iw, oh, ow, kh, kw,        \
+                           stride_h, stride_w, pad_h, pad_w, pad_after_h,      \
+                           pad_after_w, dil_h, dil_w, in_sn, in_sc, in_sh,     \
+                           in_sw, out_sn, out_sc, out_sh, out_sw,              \
+                           channels_last, count_include_pad, normalize);       \
+    }
+
+INSTANTIATE_POOL(max, true, f32, float)
+INSTANTIATE_POOL(max, true, f16, __half)
+INSTANTIATE_POOL(sum, false, f32, float)
+INSTANTIATE_POOL(sum, false, f16, __half)
