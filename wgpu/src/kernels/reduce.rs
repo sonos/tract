@@ -11,8 +11,14 @@ use crate::{register_wgpu_op, with_wgpu_queue};
 
 /// The reducers the module has an entry point for, spelled as the WGSL names
 /// them.
-const REDUCE_OPS: &[&str] =
-    &["reduce_sum", "reduce_prod", "reduce_max", "reduce_min", "reduce_mean_of_squares"];
+const REDUCE_OPS: &[&str] = &[
+    "reduce_sum",
+    "reduce_prod",
+    "reduce_max",
+    "reduce_min",
+    "reduce_mean",
+    "reduce_mean_of_squares",
+];
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Reduce, REDUCE_OPS, shader_f16)

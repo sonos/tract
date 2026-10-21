@@ -28,6 +28,24 @@ METAL_FUNC uint indices_to_idx_4(uint3 indices, constant const size_t shape[4],
 // simd_reduce applies any normalization and must run exactly once, on the final accumulator.
 // A multi-simdgroup reduction folds its per-simdgroup accumulators with simd_accumulate and
 // combine, which merge already-accumulated values and never normalize.
+// Accumulates in float whatever U is, so an f16 mean does not overflow where
+// the f16 sum would.
+template <typename U> struct Mean {
+    typedef float acc_t;
+
+    float simd_reduce(float val, size_t reduce_dim) {
+        return simd_sum(val) / static_cast<float>(reduce_dim);
+    }
+
+    float simd_accumulate(float val) { return simd_sum(val); }
+
+    float combine(float a, float b) { return a + b; }
+
+    static constexpr constant float init = 0.0;
+
+    float operator()(float acc, U a) { return acc + static_cast<float>(a); }
+};
+
 template <typename U> struct MeanOfSquares {
     typedef float acc_t;
 
@@ -231,6 +249,8 @@ typedef decltype(reduce_nd3<float, Prod<float>, uint>) reduce_nd3_t;
                          "_large")]] [[kernel]] reduce_nd3_t                   \
     reduce_nd3<type, op<type>, size_t>;
 
+INSTANTIATE_REDUCE(mean, Mean, f32, float)
+INSTANTIATE_REDUCE(mean, Mean, f16, half)
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f32, float)
 INSTANTIATE_REDUCE(mean_of_squares, MeanOfSquares, f16, half)
 INSTANTIATE_REDUCE(sum, Sum, f32, float)

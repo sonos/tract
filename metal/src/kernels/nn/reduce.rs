@@ -146,6 +146,17 @@ mod tests {
     }
 
     #[test]
+    fn test_reduce_mean() -> TractResult<()> {
+        test_case::<f32>(Reducer::Mean, TractReducer::Mean, &[4, 4], 1, 1.0)?;
+        test_case::<f16>(Reducer::Mean, TractReducer::Mean, &[4, 4], 1, 1.0 / 100.0)?;
+        test_case::<f32>(Reducer::Mean, TractReducer::Mean, &[2, 2, 82, 38], 2, 1.0 / 100.0)?;
+        test_case::<f16>(Reducer::Mean, TractReducer::Mean, &[2, 2, 82, 38], 1, 1.0 / 100.0)?;
+        // The f16 sum (~524k) is far past f16 range, the mean (~128) is not.
+        test_case::<f16>(Reducer::Mean, TractReducer::Mean, &[1, 4096], 1, 1.0 / 16.0)?;
+        Ok(())
+    }
+
+    #[test]
     fn test_reduce_mean_of_squares() -> TractResult<()> {
         test_case::<f32>(Reducer::MeanOfSquares, TractReducer::MeanOfSquares, &[4, 4], 1, 1.0)?;
         test_case::<f16>(
@@ -390,6 +401,7 @@ mod tests {
             let cpu_output = match self.op {
                 Reducer::Sum => TractReducer::Sum.reduce(&[self.axis], &a)?,
                 Reducer::Prod => TractReducer::Prod.reduce(&[self.axis], &a)?,
+                Reducer::Mean => TractReducer::Mean.reduce(&[self.axis], &a)?,
                 Reducer::MeanOfSquares => TractReducer::MeanOfSquares.reduce(&[self.axis], &a)?,
                 Reducer::Min => TractReducer::Min.reduce(&[self.axis], &a)?,
                 Reducer::Max => TractReducer::Max.reduce(&[self.axis], &a)?,

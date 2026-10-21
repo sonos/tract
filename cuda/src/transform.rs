@@ -603,7 +603,7 @@ fn split_multi_axis_reduce(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_if!(op.axes.len() > 1);
     use tract_core::ops::nn::Reducer::*;
-    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    rule_if!(matches!(op.reducer, Sum | Mean | Prod | Min | Max | Any | All));
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
     // Reduce axes from highest to lowest so indices stay valid

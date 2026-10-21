@@ -629,8 +629,9 @@ fn convert_const(op: &Const) -> TractResult<Const> {
 }
 
 /// Rewrites a `Reduce` over several axes into a chain of single-axis reduces, which is
-/// what `GpuReduce` accepts. Only reducers that compose associatively per axis qualify:
-/// `MeanOfSquares` over a chain is not the multi-axis result.
+/// what `GpuReduce` accepts. Only reducers that compose per axis qualify (`Mean` does, as
+/// every slice of an axis has the same size): `MeanOfSquares` over a chain is not the
+/// multi-axis result.
 fn split_multi_axis_reduce(
     _ctx: &(),
     model: &TypedModel,
@@ -640,7 +641,7 @@ fn split_multi_axis_reduce(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_if!(op.axes.len() > 1);
     use tract_core::ops::nn::Reducer::*;
-    rule_if!(matches!(op.reducer, Sum | Prod | Min | Max | Any | All));
+    rule_if!(matches!(op.reducer, Sum | Mean | Prod | Min | Max | Any | All));
     let mut patch = TypedModelPatch::default();
     let mut wire = patch.tap_model(model, node.inputs[0])?;
     let mut axes = op.axes.clone();
