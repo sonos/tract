@@ -1,6 +1,7 @@
 mod apply_rope;
 mod gelu_approximate;
 mod leaky_relu;
+mod pool;
 mod reduce;
 mod rms_norm;
 mod scaled_masked_softmax;
@@ -11,6 +12,7 @@ pub use gelu_approximate::GeluApproximate;
 pub use gelu_approximate::cuda_gelu_approximate_dispatch;
 pub use leaky_relu::LeakyRelu;
 pub use leaky_relu::cuda_leaky_relu_dispatch;
+pub use pool::cuda_pool_dispatch;
 pub use reduce::{Reducer, cuda_reduce_launch};
 pub use rms_norm::RmsNorm;
 pub use rms_norm::cuda_rms_norm_dispatch;
@@ -19,6 +21,8 @@ pub use softmax::Softmax;
 pub use softmax::cuda_softmax_dispatch;
 
 use crate::kernels::{BroadcastKind, MAX_THREADS};
+use tract_core::prelude::DatumType;
+use tract_gpu::ops::pool::PoolKind;
 
 fn sms_block_sizes() -> Vec<i32> {
     let mut range = vec![0i32];
@@ -111,6 +115,17 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| LeakyRelu.kernel_name(dt).into_iter()),
+    );
+
+    functions.extend(
+        [DatumType::F32, DatumType::F16]
+            .into_iter()
+            .flat_map(|dt| {
+                [PoolKind::Max, PoolKind::Sum { count_include_pad: false, normalize: false }]
+                    .into_iter()
+                    .map(move |kind| (kind, dt))
+            })
+            .flat_map(|(kind, dt)| pool::kernel_name(kind, dt).into_iter()),
     );
 
     functions.into_iter().collect()
