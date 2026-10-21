@@ -6,6 +6,8 @@ extern crate log;
 
 #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))]
 extern crate tract_metal;
+#[cfg(all(not(target_family = "wasm"), feature = "wgpu"))]
+extern crate tract_wgpu;
 
 #[macro_use]
 mod macros;

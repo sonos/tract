@@ -84,12 +84,22 @@ impl Kind {
     }
 }
 
+/// A wgpu-linked build with a GPU adapter to run on. A software adapter (lavapipe) counts:
+/// CI asserts the adapter separately, before the bench.
+fn wgpu_adapter_available() -> bool {
+    #[cfg(all(not(target_family = "wasm"), feature = "wgpu"))]
+    return tract_wgpu::try_wgpu_context().is_ok();
+    #[allow(unreachable_code)]
+    false
+}
+
 #[derive(Deserialize, Clone, Copy, PartialEq)]
 #[serde(rename_all = "lowercase")]
 enum RuntimeKind {
     Cpu,
     Metal,
     Cuda,
+    Wgpu,
 }
 
 impl RuntimeKind {
@@ -98,6 +108,7 @@ impl RuntimeKind {
             RuntimeKind::Cpu => "cpu",
             RuntimeKind::Metal => "metal",
             RuntimeKind::Cuda => "cuda",
+            RuntimeKind::Wgpu => "wgpu",
         }
     }
 
@@ -112,6 +123,7 @@ impl RuntimeKind {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false),
+            RuntimeKind::Wgpu => wgpu_adapter_available(),
         }
     }
 
@@ -126,6 +138,9 @@ impl RuntimeKind {
             RuntimeKind::Cpu => (&["--timeout", "180"], &[]),
             RuntimeKind::Metal => (&["--metal", "--timeout", "180"], &["--warmup-loops", "1"]),
             RuntimeKind::Cuda => (&["--cuda", "--timeout", "180"], &["--warmup-loops", "1"]),
+            RuntimeKind::Wgpu => {
+                (&["--runtime", "wgpu", "--timeout", "180"], &["--warmup-loops", "1"])
+            }
         }
     }
 }
@@ -638,6 +653,7 @@ fn run_one(
         match runtime {
             Some(RuntimeKind::Cuda) => _ = cmd.arg("--cuda"),
             Some(RuntimeKind::Metal) => _ = cmd.arg("--metal"),
+            Some(RuntimeKind::Wgpu) => _ = cmd.args(["--runtime", "wgpu"]),
             _ => {}
         }
         if bench.kind == Kind::Llm {
