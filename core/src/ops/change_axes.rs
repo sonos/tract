@@ -295,8 +295,32 @@ impl AxisOp {
                     None
                 }
             }
-            (Reshape(_, _, _), Move(_, _)) => None, // todo, some are manageable
-            (Move(_, _), Reshape(_, _, _)) => None, // todo, some are manageable
+            (Reshape(at, from, to), Move(f, t)) => {
+                if *f.max(t) < *at {
+                    Some((Some(self.clone()), Some(change.clone())))
+                } else if *f.min(t) >= at + from.len() {
+                    let shift = to.len() as isize - from.len() as isize;
+                    Some((
+                        Some(self.clone()),
+                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
+                    ))
+                } else {
+                    None
+                }
+            }
+            (Move(f, t), Reshape(at, from, to)) => {
+                if *f.max(t) < *at {
+                    Some((Some(self.clone()), Some(change.clone())))
+                } else if *f.min(t) >= at + from.len() {
+                    let shift = to.len() as isize - from.len() as isize;
+                    Some((
+                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
+                        Some(change.clone()),
+                    ))
+                } else {
+                    None
+                }
+            }
             (Reshape(_, _, _), Reshape(_, _, _)) => None, // todo, some are manageable
             _ => None,
         }
@@ -1408,6 +1432,28 @@ mod test {
         let op = Rm(2);
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Rm(1)), Some(Move(0, 1)))));
     }
+
+    //                          Op
+    //       a,b,c,d   ------|Reshape(0, [a,b], [ab])|----->      ab,c,d
+    //   Move(2, 3)                                                       Move(1, 2)
+    //       a,b,d,c   ------|Reshape(0, [a,b], [ab])|----->      ab,d,c
+    #[test]
+    pub fn transform_op_mv_23_reshape_0() {
+        let change = Move(2, 3);
+        let op = Reshape(0, tvec!(2.to_dim(), 3.to_dim()), tvec!(6.to_dim()));
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(op.clone()), Some(Move(1, 2)))));
+    }
+
+    //                          Op
+    //          ab,c,d   ------|Move(1, 2)|----->      ab,d,c
+    //   Reshape(0, [ab], [a,b])                                  Reshape(0, [ab], [a,b])
+    //         a,b,c,d   ------|Move(2, 3)|----->     a,b,d,c
+    #[test]
+    pub fn transform_op_reshape_0_mv_12() {
+        let change = Reshape(0, tvec!(6.to_dim()), tvec!(2.to_dim(), 3.to_dim()));
+        let op = Move(1, 2);
+        assert_eq!(op.merge_incoming_change(&change), Some((Some(Move(2, 3)), Some(change))));
+    }
 }
 
 #[cfg(test)]
@@ -1566,6 +1612,22 @@ mod proptests {
     fn recip_move_02() {
         let op = Move(0, 2);
         assert_eq!(op.recip().recip(), op);
+    }
+
+    #[test]
+    fn merge_move_split_move_cancels() {
+        let pb = ComposeProblem {
+            input: tvec![2, 3, 4, 5],
+            ops: tvec![
+                Reshape(0, tvec!(2.to_dim(), 3.to_dim()), tvec!(6.to_dim())),
+                Move(1, 2),
+                Reshape(0, tvec!(6.to_dim()), tvec!(2.to_dim(), 3.to_dim())),
+                Move(2, 3),
+            ],
+        };
+        pb.check().unwrap();
+        let decluttered = pb.model().unwrap().into_decluttered().unwrap();
+        assert_eq!(decluttered.nodes().len(), 1);
     }
 
     #[test]
