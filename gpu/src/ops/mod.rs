@@ -16,6 +16,7 @@ pub mod gelu_approximate;
 pub mod iff;
 pub mod leaky_relu;
 pub mod pad;
+pub mod pool;
 pub mod pulse;
 pub mod reduce;
 pub mod resize;

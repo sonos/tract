@@ -4,12 +4,13 @@
 //! every pool: on Inception v3 that was 14 device syncs and a fifth of the
 //! runtime.
 
+use crate::LibraryName;
 use crate::encoder::EncoderExt;
-use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use metal::MTLSize;
 use tract_core::internal::*;
-use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::cnn::{MaxPool, OptMaxPool, OptSumPool, PoolSpec, SumPool};
+use tract_gpu::ops::pool::{GpuPool, PoolKind};
 use tract_gpu::tensor::DeviceTensor;
 
 /// Mirror of `PoolParams` in pool.metal — keep field order in sync.
@@ -34,16 +35,6 @@ struct PoolParams {
     normalize: i32,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PoolKind {
-    Max,
-    /// `normalize` turns the sum into an average.
-    Sum {
-        count_include_pad: bool,
-        normalize: bool,
-    },
-}
-
 /// Whether the kernel covers this pooling: rank-4 f16/f32 with static geometry
 /// and no index output. Max pooling has a channels-first variant too; sum
 /// pooling stays channels-last.
@@ -58,7 +49,6 @@ pub fn metal_pool_supported(pool_spec: &PoolSpec, kind: PoolKind, fact: &TypedFa
 }
 
 pub fn dispatch_metal_pool(
-    stream: &MetalStream,
     pool_spec: &PoolSpec,
     kind: PoolKind,
     input: &DeviceTensor,
@@ -107,30 +97,53 @@ pub fn dispatch_metal_pool(
         PoolKind::Sum { .. } => "sum_pool_2d",
     };
     ensure!(channels_last || kind == PoolKind::Max, "Metal sum pool is channels-last only");
-    let pipeline = stream.load_pipeline(LibraryName::NNOps, &format!("{base}_{tname}"))?;
+    crate::with_metal_stream(|stream| {
+        let pipeline = stream.load_pipeline(LibraryName::NNOps, &format!("{base}_{tname}"))?;
 
-    stream.retain_tensor(input);
-    stream.retain_tensor(output);
+        stream.retain_tensor(input);
+        stream.retain_tensor(output);
 
-    let command_buffer = stream.command_buffer();
-    command_buffer.encode(|encoder| {
-        encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(2, std::slice::from_ref(&params));
-        let (fastest, height, depth) = if channels_last {
-            (params.c, params.ow, params.oh * params.n)
-        } else {
-            (params.ow, params.oh, params.c * params.n)
-        };
-        let group_w = 32u64.min(fastest as u64).max(1);
-        encoder.dispatch_threads(
-            MTLSize { width: fastest as _, height: height as _, depth: depth as _ },
-            MTLSize { width: group_w, height: 1, depth: 1 },
-        );
-    });
-    Ok(())
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&pipeline);
+            encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
+            encoder.set_slice(2, std::slice::from_ref(&params));
+            let (fastest, height, depth) = if channels_last {
+                (params.c, params.ow, params.oh * params.n)
+            } else {
+                (params.ow, params.oh, params.c * params.n)
+            };
+            let group_w = 32u64.min(fastest as u64).max(1);
+            encoder.dispatch_threads(
+                MTLSize { width: fastest as _, height: height as _, depth: depth as _ },
+                MTLSize { width: group_w, height: 1, depth: 1 },
+            );
+        });
+        Ok(())
+    })
 }
+
+fn try_make_metal_pool(
+    source: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<Box<dyn TypedOp>>> {
+    let facts = source.node_input_facts(node.id)?;
+    rule_if_some!(op = GpuPool::from_core(node.op.as_ref(), "Metal", dispatch_metal_pool));
+    rule_if!(metal_pool_supported(&op.pool_spec, op.kind, facts[0]));
+    Ok(Some(Box::new(op)))
+}
+
+// The metal transform runs before optimization, so a model still carries the
+// unoptimized pools; the Opt* forms are registered too for callers that
+// optimize first.
+crate::register_metal_op!(MaxPool, |source, node, _op| try_make_metal_pool(source, node));
+crate::register_metal_op!(SumPool, |source, node, _op| try_make_metal_pool(source, node));
+crate::register_metal_op!(OptMaxPool, |source, node, _op| try_make_metal_pool(source, node));
+crate::register_metal_op!(OptSumPool, |source, node, _op| try_make_metal_pool(source, node));
+
+/// Referenced from the transform so the registrations above survive linking.
+pub fn link_translators() {}
 
 #[cfg(test)]
 mod tests {
@@ -186,7 +199,7 @@ mod tests {
             let i = input.clone().into_device()?;
             let o_shape = pool_spec.output_shape(input.shape())?;
             let o = unsafe { DeviceTensor::uninitialized_dt(dt, &o_shape.shape)? };
-            dispatch_metal_pool(stream, &pool_spec, kind, &i, &o)?;
+            dispatch_metal_pool(&pool_spec, kind, &i, &o)?;
             stream.wait_until_completed()?;
             Ok(o.to_host()?.into_tensor())
         })?;
@@ -316,8 +329,7 @@ mod tests {
             .into_runnable()?
             .run(tvec![input.clone().into_tvalue()])?;
         let metal = MetalTransform::default().transform_into(model.into_optimized()?)?;
-        let n_pools =
-            metal.nodes().iter().filter(|n| n.op_is::<crate::ops::pool::MetalPool>()).count();
+        let n_pools = metal.nodes().iter().filter(|n| n.op_is::<GpuPool>()).count();
         assert_eq!(n_pools, 2, "both pools should be on the GPU");
         let got = metal.into_runnable()?.run(tvec![input.into_tvalue()])?;
         cpu[0]
