@@ -117,11 +117,9 @@ fn problems(
 }
 
 impl MaxPoolProblem {
-    fn tract(&self) -> TractResult<TypedModel> {
-        let mut model = TypedModel::default();
-        let src = model.add_source("src", f32::fact(self.input.shape()))?;
+    pub fn pool_spec(&self) -> TractResult<PoolSpec> {
         let c = *self.data_format.shape(self.input.shape())?.c();
-        let pool_spec = PoolSpec::new(
+        Ok(PoolSpec::new(
             self.data_format,
             self.kernel_shape.clone(),
             self.padding.clone(),
@@ -129,14 +127,19 @@ impl MaxPoolProblem {
             Some(self.strides.clone()),
             c,
             c,
-        );
-        let output = model.wire_node("max_pool", MaxPool::new(pool_spec, None), &[src])?;
+        ))
+    }
+
+    fn tract(&self) -> TractResult<TypedModel> {
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f32::fact(self.input.shape()))?;
+        let output = model.wire_node("max_pool", MaxPool::new(self.pool_spec()?, None), &[src])?;
         model.select_output_outlets(&output)?;
         Ok(model)
     }
 
     /// Output length and padding before, per spatial axis, as ONNX defines them.
-    fn geometry(&self) -> TractResult<TVec<(usize, usize)>> {
+    pub fn geometry(&self) -> TractResult<TVec<(usize, usize)>> {
         let input_shape = self.data_format.shape(self.input.shape())?;
         tract_itertools::izip!(
             input_shape.hw_dims(),
