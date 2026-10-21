@@ -79,5 +79,22 @@ impl Test for ConvProblemF16 {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<ConvProblemF16>("proptest", ConvProblemParams::default());
+
+    // m, k and n all multiples of 4: the shape GPU backends route to their blocked matmul.
+    let blocked = |bias: Option<ArrayD<f32>>| -> TractResult<ConvProblemF16> {
+        Ok(ConvProblemF16(ConvProblem {
+            shape_in: DataFormat::NCHW.from_n_c_hw(1, 4, [4, 4])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 1,
+            data: ArrayD::from_shape_fn(vec![1, 4, 4, 4], |ix| (ix[1] + ix[3]) as f32 - 3.0),
+            kernel: ArrayD::from_shape_fn(vec![4, 4, 1, 1], |ix| (ix[0] * 4 + ix[1]) as f32 - 7.0),
+            bias,
+            pad: PaddingSpec::Valid,
+            strides: tvec!(1, 1),
+            dilations: tvec!(1, 1),
+        }))
+    };
+    suite.add("blocked_matmul", blocked(None)?);
+    suite.add("blocked_matmul_bias", blocked(Some(arr1(&[1.0, -2.0, 3.0, -4.0]).into_dyn()))?);
     Ok(suite)
 }
