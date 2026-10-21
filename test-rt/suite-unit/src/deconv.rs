@@ -386,9 +386,52 @@ impl Test for DeconvProblem {
     }
 }
 
+/// A [`DeconvProblem`] run in f16: data, kernel and bias rounded to f16, the output
+/// judged against the f32 reference rounded to f16.
+#[derive(Debug, Clone)]
+struct DeconvProblemF16(DeconvProblem);
+
+impl Arbitrary for DeconvProblemF16 {
+    type Parameters = DeconvProblemParams;
+    type Strategy = BoxedStrategy<DeconvProblemF16>;
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        DeconvProblem::arbitrary_with(params).prop_map(DeconvProblemF16).boxed()
+    }
+}
+
+impl Test for DeconvProblemF16 {
+    fn run_with_approx(
+        &self,
+        id: &str,
+        runtime: &dyn Runtime,
+        approx: Approximation,
+    ) -> TestResult {
+        let p = &self.0;
+        let reference = p.reference().context("Running reference")?.into_tensor();
+        let reference = reference.cast_to::<f16>()?.into_owned();
+        let mut model = TypedModel::default();
+        let src = model.add_source("src", f16::fact(p.input.shape()))?;
+        let kernel = model.add_const("kernel", p.kernel.mapv(f16::from_f32).into_tensor())?;
+        let bias = p
+            .bias
+            .as_ref()
+            .map(|b| b.mapv(f16::from_f32).into_tensor())
+            .unwrap_or_else(|| tensor0(f16::from_f32(0.0)));
+        let bias = model.add_const("bias", bias)?;
+        let output =
+            model.wire_node("deconv", p.as_op().context("Generating op")?, &[src, kernel, bias])?;
+        model.select_output_outlets(&output)?;
+        model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
+        let input = p.input.mapv(f16::from_f32).into_tvalue();
+        let mut output = runtime.prepare(model)?.run(tvec![input])?;
+        output.remove(0).into_tensor().close_enough(&reference, approx)
+    }
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<DeconvProblem>("proptest", DeconvProblemParams::default());
+    suite.add_arbitrary::<DeconvProblemF16>("proptest_f16", DeconvProblemParams::default());
 
     suite.add("nchw_2x2_s2_5x6", nchw_2x2_s2(1, 3, 4, 5, 6));
     suite.add("nchw_2x2_s2_wide", nchw_2x2_s2(2, 2, 3, 3, 9));

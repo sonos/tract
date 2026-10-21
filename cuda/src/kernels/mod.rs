@@ -6,6 +6,7 @@ pub mod causal_conv1d_update;
 pub mod conv;
 pub mod conv_cudnn;
 mod conv_source;
+pub mod deconv;
 pub mod element_wise;
 pub mod fft;
 pub mod flash_attn;

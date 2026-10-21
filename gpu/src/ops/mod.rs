@@ -6,6 +6,7 @@ pub mod causal_conv1d_update;
 pub mod change_axes;
 pub mod concat;
 pub mod copy_based;
+pub mod deconv;
 pub mod diag_gather;
 pub mod dyn_kv_cache;
 pub mod element_wise;

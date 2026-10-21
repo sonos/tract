@@ -40,7 +40,8 @@ impl ConvSource {
     }
 }
 
-/// Every instantiation the Cnn library carries: the ranks and types `Conv` dispatches to.
+/// Every instantiation the Cnn library carries: the ranks and types `Conv` dispatches to,
+/// and the `Deconv` kernels.
 pub fn conv_library_source() -> String {
     let mut source = String::from(PREAMBLE);
     for f16 in [false, true] {
@@ -50,5 +51,6 @@ pub fn conv_library_source() -> String {
             source.push('\n');
         }
     }
+    source.push_str(include_str!("cu/deconv.cu"));
     source
 }
