@@ -8,7 +8,7 @@ set -ex
 # on win/linux
 cargo run --bin example-onnx-mobilenet-v2
 # on wasm
-wasmtime -V || curl https://wasmtime.dev/install.sh -sSf | bash # install wasmtime
+wasmtime -V || curl --retry 5 --retry-delay 5 -sSf https://wasmtime.dev/install.sh | bash # install wasmtime
 PATH=$PATH:$HOME/.wasmtime/bin
 rustup target install wasm32-wasip1
 cargo build --target wasm32-wasip1

@@ -207,7 +207,7 @@ jobs:
         persist-credentials: false
     - name: Install cargo-deny
       run: |
-        curl -L https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
+        curl --retry 5 --retry-delay 5 -sSfL https://github.com/EmbarkStudios/cargo-deny/releases/download/$VERSION/cargo-deny-$VERSION-x86_64-unknown-linux-musl.tar.gz \
             | tar -zx --strip-components=1 "cargo-deny-$VERSION-x86_64-unknown-linux-musl/cargo-deny"
       env:
           VERSION: 0.20.2
