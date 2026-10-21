@@ -101,8 +101,13 @@ jobs:
       with:
         persist-credentials: false
 
+    - name: Check the Vulkan adapter is the NVIDIA GPU
+      # Without the NVIDIA ICD, wgpu would settle for a CPU implementation (lavapipe)
+      # and test-wgpu would pass without touching the GPU.
+      run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
+
     - name: Cargo test
-      run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda
+      run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda -p tract-wgpu -p test-wgpu
 
   cuda-minimum-deploy:
     # Validates the BOM documented in cuda/src/context.rs. Builds tract-cli
