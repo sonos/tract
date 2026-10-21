@@ -111,18 +111,11 @@ impl Sdpa {
                 )
                 .map(|o| o[0])
         } else {
-            let scale_const = graph.add_const("scale", scale)?;
-            let scaled_scores = wire_with_rank_broadcast(
-                "scale_scores",
-                graph,
-                math::mul(),
-                &[scores, scale_const],
-            )?[0];
             graph
                 .wire_node(
                     "att_softmax",
                     Softmax::new(tvec![rank - 1], None, SoftmaxKind::Softmax),
-                    &[scaled_scores],
+                    &[scores],
                 )
                 .map(|o| o[0])
         }
@@ -194,6 +187,13 @@ impl Sdpa {
                 .context("Wiring causal mask")?,
             );
         };
+
+        // Unmasked, the scale goes on Q rather than on the much larger score tensor.
+        if mask.is_none() {
+            let scale = tensor0(scale).cast_to_dt(input_facts[0].datum_type)?.into_owned();
+            let scale = graph.add_const("scale", scale)?;
+            q = wire_with_rank_broadcast("scale_q", &mut graph, math::mul(), &[q, scale])?[0];
+        }
 
         let scores_einsum = EinSum::new("bhgmk,bhgnk->bhgmn".parse().unwrap(), self.acc_datum_type);
         let scores = graph.wire_node("scores", scores_einsum, &[q, k])?[0];
