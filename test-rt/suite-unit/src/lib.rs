@@ -54,7 +54,6 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
     suite.add("matmul_q40", matmul_q40::suite()?);
-    suite.add("matmul_f16", matmul_f16::suite()?);
     suite.add("matmul_rounding", matmul_rounding::suite()?);
     suite.add("max_pool", max_pool::suite()?);
     suite.add("moe_ffn", moe_ffn::suite()?);

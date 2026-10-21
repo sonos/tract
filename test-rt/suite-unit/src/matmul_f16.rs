@@ -1,3 +1,7 @@
+//! F16 matmuls whose products overflow f16 while their sums are exactly zero.
+//! Only kernels that multiply in f32 pass, so the suite is not part of
+//! [`crate::suite`]: runtimes that make that guarantee add it themselves.
+
 use infra::Test;
 use infra::TestResult;
 use infra::TestSuite;
