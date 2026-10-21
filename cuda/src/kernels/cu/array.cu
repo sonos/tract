@@ -324,3 +324,33 @@ INSTANTIATE_DIAG_GATHER(f16, __half)
 INSTANTIATE_GATHER(f32, float)
 INSTANTIATE_GATHER(f16, __half)
 INSTANTIATE_GATHER(i64, int64_t)
+
+// Resamples one axis of a [outer, len_in, inner] view into [outer, len_out, inner]:
+// each output element is the weighted sum, accumulated in float, of the `window`
+// input taps the host-built plan lists for its position along the axis.
+#define INSTANTIATE_RESIZE_AXIS(name, T)                                        \
+    extern "C" __global__ void resize_axis_##name(                              \
+        const T *input, T *output, const int32_t *indices,                      \
+        const float *weights, const int32_t outer, const int32_t len_in,        \
+        const int32_t len_out, const int32_t inner, const int32_t window) {     \
+        int64_t idx = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;           \
+        if (idx >= (int64_t)outer * len_out * inner)                            \
+            return;                                                             \
+        const int32_t i = (int32_t)(idx % inner);                               \
+        idx /= inner;                                                           \
+        const int32_t x = (int32_t)(idx % len_out);                             \
+        const int64_t o = idx / len_out;                                        \
+        const int64_t in_base = o * len_in * inner + i;                         \
+        float acc = 0.0f;                                                       \
+        for (int32_t k = 0; k < window; ++k) {                                  \
+            const float w = weights[x * window + k];                            \
+            if (w != 0.0f)                                                      \
+                acc += w * (float)input[in_base +                               \
+                                        (int64_t)indices[x * window + k] *      \
+                                            inner];                             \
+        }                                                                       \
+        output[(o * len_out + x) * inner + i] = (T)acc;                         \
+    }
+
+INSTANTIATE_RESIZE_AXIS(f32, float)
+INSTANTIATE_RESIZE_AXIS(f16, __half)

@@ -36,7 +36,9 @@ use tract_gpu::rewrite_rules::rms_norm::{
     fuse_scaled_rms_norm_in_cast, fuse_scaled_rms_norm_out_cast, remove_rms_norm_cast,
 };
 use tract_gpu::rewrite_rules::scaled_masked_softmax::drop_unit_axes_of_scaled_masked_softmax;
-use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required};
+use tract_gpu::sync::{
+    DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
+};
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
 use tract_gpu::utils::as_quant_fact;
 use tract_transformers::ops::sdpa::Sdpa;
@@ -517,6 +519,20 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Const: inline conversion, not a GPU op
+        // Resize bakes its plan, so it keeps only the data input: the scales /
+        // sizes input it drops is a TDim const with no device equivalent.
+        if let Some(gpu_op) = crate::kernels::array::cuda_resize(source, node)? {
+            let mut input = mapping[&node.inputs[0]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
         if let Some(op) = node.op_as::<Const>()
             && DeviceTensor::is_supported_dt(op.val().datum_type())
         {
