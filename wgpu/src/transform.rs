@@ -59,7 +59,7 @@ impl ModelTransform for WgpuTransform {
     }
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
-        crate::ops::pool::link_translators();
+        crate::kernels::pool::link_translators();
         wgpu_context();
         // Pointwise convolutions reach the backend as EinSum, so a segmenter is
         // mostly matmuls until this runs.

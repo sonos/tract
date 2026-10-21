@@ -1,5 +1,6 @@
 use tract_core::internal::*;
-use tract_core::ops::cnn::PoolSpec;
+use tract_core::ops::cnn::{MaxPool, OptMaxPool, OptSumPool, PoolSpec, SumPool};
+use tract_gpu::ops::pool::{GpuPool, PoolKind};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
@@ -7,12 +8,6 @@ use crate::kernels::shaders::{
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PoolKind {
-    Max,
-    Sum { count_include_pad: bool, normalize: bool },
-}
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Pool, &["max_pool_2d", "sum_pool_2d"], shader_f16)
@@ -90,3 +85,21 @@ pub fn wgpu_pool_dispatch(
         q.dispatch("pool", &pipeline, &bg, dyn_off, nelem)
     })
 }
+
+fn try_make_wgpu_pool(
+    source: &TypedModel,
+    node: &TypedNode,
+) -> TractResult<Option<Box<dyn TypedOp>>> {
+    let facts = source.node_input_facts(node.id)?;
+    rule_if_some!(op = GpuPool::from_core(node.op.as_ref(), "Wgpu", wgpu_pool_dispatch));
+    rule_if!(wgpu_pool_supported(&op.pool_spec, facts[0]));
+    Ok(Some(Box::new(op)))
+}
+
+crate::register_wgpu_op!(MaxPool, |source, node, _op| try_make_wgpu_pool(source, node));
+crate::register_wgpu_op!(SumPool, |source, node, _op| try_make_wgpu_pool(source, node));
+crate::register_wgpu_op!(OptMaxPool, |source, node, _op| try_make_wgpu_pool(source, node));
+crate::register_wgpu_op!(OptSumPool, |source, node, _op| try_make_wgpu_pool(source, node));
+
+/// Referenced from the transform so the registrations above survive linking.
+pub fn link_translators() {}
