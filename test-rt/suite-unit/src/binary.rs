@@ -251,6 +251,15 @@ where
     }
 }
 
+fn long_rows<T: SupportedElement>(op: BinOps, lhs: &[usize], rhs: &[usize]) -> BinaryOpProblem<T> {
+    let values = |shape: &[usize]| {
+        ArrayD::from_shape_fn(shape, |ix| {
+            T::from_usize(ix.as_array_view().iter().sum::<usize>() % 7 + 1).unwrap()
+        })
+    };
+    BinaryOpProblem { op, lhs: values(lhs), rhs: values(rhs) }
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
@@ -261,6 +270,15 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_arbitrary::<BinaryOpProblem<u32>>("proptest_u32", ());
     suite.add_arbitrary::<BinaryOpProblem<i16>>("proptest_i16", ());
     suite.add_arbitrary::<BinaryOpProblem<i64>>("proptest_i64", ());
+
+    suite.add(
+        "long_rows_sub_inner_broadcast",
+        long_rows::<f32>(BinOps::Sub, &[2, 3, 10007], &[2, 3, 1]),
+    );
+    suite.add(
+        "long_rows_add_outer_broadcast",
+        long_rows::<f16>(BinOps::Add, &[3, 9001], &[1, 9001]),
+    );
 
     Ok(suite)
 }

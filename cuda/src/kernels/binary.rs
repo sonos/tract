@@ -8,6 +8,11 @@ use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
 
 static BINARY_MAX_RANK: usize = 5;
+/// The "large" variant splits its innermost axis into chunks until the grid
+/// holds this many blocks, so few long rows still fill the device...
+const BINARY_LARGE_TARGET_BLOCKS: usize = 2048;
+/// ...but no chunk gets shorter than this many elements.
+const BINARY_LARGE_MIN_CHUNK: usize = 2048;
 
 const ALL_OP_NAMES: &[&str] = &[
     "mul", "add", "div", "sub", "pow", "min", "max", "gt", "gte", "eq", "ne", "lt", "lte", "and",
@@ -148,9 +153,13 @@ pub fn dispatch_eval(
     let total_elems: usize = out_shape.iter().product();
     let block_dim = (128_u32, 1, 1);
     let (grid_dim, variant) = if out_shape[BINARY_MAX_RANK - 1] >= 256 && total_elems >= 4096 {
+        let rows = total_elems / out_shape[BINARY_MAX_RANK - 1];
+        let chunks = BINARY_LARGE_TARGET_BLOCKS
+            .div_ceil(rows)
+            .min(out_shape[BINARY_MAX_RANK - 1].div_ceil(BINARY_LARGE_MIN_CHUNK));
         (
             (
-                out_shape[BINARY_MAX_RANK - 2] as u32,
+                (out_shape[BINARY_MAX_RANK - 2] * chunks) as u32,
                 out_shape[BINARY_MAX_RANK - 3] as u32,
                 out_shape[..BINARY_MAX_RANK - 3].iter().product::<usize>() as u32,
             ),
