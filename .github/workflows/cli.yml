@@ -31,6 +31,11 @@ on:
         type: choice
         options: [ full, bench ]
         default: full
+      rebench:
+        description: "Re-run only the runs the PR's last bench report flagged red, on the boxes that flagged them (needs pr_number)."
+        required: false
+        type: boolean
+        default: false
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -51,6 +56,7 @@ jobs:
     permissions:
       contents: read
       statuses: write     # pending "CI / cli" status on a dispatched PR run
+      actions: read       # a rebench reads the previous report's state artifact
     outputs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
@@ -61,7 +67,11 @@ jobs:
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
       cases: ${{ steps.cases.outputs.cases }}
-      boxes: ${{ steps.boxes.outputs.boxes }}
+      boxes: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
+      rebench: ${{ steps.gate.outputs.rebench }}
+      only: ${{ steps.rebench.outputs.only || '{}' }}
+      previous: ${{ steps.rebench.outputs.previous }}
+      dinghy: ${{ steps.rebench.outputs.dinghy || 'true' }}
     steps:
       # The self-hosted bench boxes, minus the targets listed (space-separated) in the
       # BENCH_DISABLED_BOXES repo variable: a box that is down would otherwise leave its
@@ -106,6 +116,12 @@ jobs:
             // Set on any event; a pull_request trigger has no inputs, so it stays empty
             // (normal vs-main bench). Only a workflow_dispatch can request a scaling run.
             core.setOutput('mt_ladder', context.payload.inputs?.mt_ladder || '');
+            const rebench = String(context.payload.inputs?.rebench) === 'true';
+            if (rebench && !context.payload.inputs?.pr_number) {
+              core.setFailed('rebench needs a pr_number');
+              return;
+            }
+            core.setOutput('rebench', String(rebench));
             // The LLM matrix, ci-full.sh cases and harness-checked: off on a PR push and
             // on a dispatch with scope `bench` (`/ci bench`), on otherwise.
             core.setOutput('full', String(
@@ -172,6 +188,34 @@ jobs:
             done
           done | jq -sc .)
           echo "cases=$cases" >> "$GITHUB_OUTPUT"
+      # A rebench re-runs, on the boxes that flagged them, only the runs the last report on
+      # this head flagged red. That report left its per-device results and reds behind in a
+      # bench-state-<sha> artifact; a head with none (never benched, or moved since) refuses.
+      - id: rebench
+        if: steps.gate.outputs.rebench == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.gate.outputs.ref }}
+          BOXES: ${{ steps.boxes.outputs.boxes }}
+        run: |
+          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bench-state-$SHA" \
+            --jq '[.artifacts[] | select(.expired | not)][0].id // empty')
+          if [ -z "$id" ]; then
+            echo "::error::no bench report on ${SHA:0:9} to rebench; run /ci bench first"
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > state.zip
+          unzip -q state.zip -d state
+          only=$(jq -c 'map_values(join(","))' state/reds.json)
+          [ "$only" = '{}' ] && echo "::notice::the last report on ${SHA:0:9} has no reds; nothing to rebench"
+          boxes=$(jq -c --argjson only "$only" 'map(select(.target | in($only)) + {only: $only[.target]})' <<<"$BOXES")
+          dinghy=$(jq -r --argjson boxes "$BOXES" '(keys - ($boxes | map(.target))) | length > 0' <<<"$only")
+          {
+            echo "previous=$id"
+            echo "only=$only"
+            echo "boxes=$boxes"
+            echo "dinghy=$dinghy"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -223,6 +267,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build ]
+    if: needs.prepare.outputs.rebench != 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -415,10 +460,12 @@ jobs:
           TRIPLE: ${{ matrix.triple }}
           DEVICE: ${{ matrix.target }}
           MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
+          ONLY: ${{ matrix.only }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
             --manifest ci/benches.toml \
+            ${ONLY:+--only "$ONLY"} \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
@@ -482,7 +529,7 @@ jobs:
 
   build-dinghy:
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -527,7 +574,7 @@ jobs:
 
   bench-dinghy:
     needs: [ prepare, build-dinghy ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
@@ -571,8 +618,11 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
           path: tract-cli
+      # A rebench only re-runs the boards its previous report flagged.
       - name: Bench on the dinghy target
+        if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
         env:
+          ONLY: ${{ fromJSON(needs.prepare.outputs.only)[matrix.device] }}
           DINGHY_TARGET: ${{ matrix.dinghy_target }}
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
@@ -592,6 +642,7 @@ jobs:
           if CARGO_PKG_NAME=tract cargo-dinghy --cleanup -d "$DINGHY_TARGET" runner \
                ./tract-cli/tract -- bench-suite \
                --manifest ci/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
+               ${ONLY:+--only "$ONLY"} \
                ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
@@ -604,6 +655,7 @@ jobs:
           test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
         with:
           name: bench-result-${{ matrix.device }}
           path: result
@@ -683,11 +735,12 @@ jobs:
     needs: [ prepare, build, bench, bench-dinghy ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
-    if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' }}
+    if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
+      actions: read          # a rebench reads the previous report's state artifact
     steps:
       # always() also lets a run cancelled by a newer push get here; its numbers are for a
       # head the PR has moved past, so it renders nothing and leaves the report to the new run.
@@ -726,6 +779,20 @@ jobs:
           path: bench-data
           fetch-depth: 1
           persist-credentials: false
+      # A rebench re-ran only the reds: fold its numbers into the previous report's results
+      # (each metric keeps its best) so the comment covers the whole PR again.
+      - name: Merge with the previous report
+        if: steps.head.outputs.superseded != 'true' && needs.prepare.outputs.rebench == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PREVIOUS: ${{ needs.prepare.outputs.previous }}
+        run: |
+          chmod +x tract-cli/tract
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$PREVIOUS/zip" > previous.zip
+          unzip -q previous.zip -d previous
+          tract-cli/tract bench-merge --previous previous/results --results results --out merged
+          rm -rf results
+          mv merged results
       # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
       # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
@@ -740,8 +807,22 @@ jobs:
             tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
           else
             tract-cli/tract bench-report --results results --bench-data bench-data \
-              --thresholds ci/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md
+              --thresholds ci/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md \
+              --reds reds.json
           fi
+      # What a later `/ci rebench` on this head starts from: the per-device results and
+      # the runs this report flagged red.
+      - name: Stage the rebench state
+        if: ${{ hashFiles('reds.json') != '' }}
+        run: |
+          mkdir -p bench-state
+          cp -r results reds.json bench-state/
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ hashFiles('bench-state/reds.json') != '' }}
+        with:
+          name: bench-state-${{ needs.prepare.outputs.ref }}
+          path: bench-state
+          retention-days: 14
       # Only an automatic `pull_request` event on a fork gets a read-only token; every other
       # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
       # which always runs with a write token regardless of the target PR's fork status) can

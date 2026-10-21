@@ -17,6 +17,8 @@ name: CI slash command
 #   /ci bench          -> cli.yml as a PR push runs it: harness ci.sh cases + bench
 #   /ci bench all      -> alias of cli (adds the LLM matrix, ci-full.sh, harness-checked)
 #   /ci benches        -> alias of bench
+#   /ci rebench        -> re-run only the reds of the last bench report on the PR head,
+#                         on the boxes that flagged them, and re-post the merged report
 #   /ci bench-mt-ladder [ladder] -> cli.yml with a thread-scaling bench; ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 # `blackwell` is narrower still: it runs on a single workstation GPU, so only the
@@ -76,13 +78,14 @@ jobs:
               'bench': 'cli.yml',
               'benches': 'cli.yml',
               'bench-mt-ladder': 'cli.yml',
+              'rebench': 'cli.yml',
             };
             const workflow = map[target];
             if (!workflow) {
               const usage = [
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all]` (alias: `benches`; `all` is `/ci cli`), `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all]` (alias: `benches`; `all` is `/ci cli`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n');
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
@@ -144,6 +147,10 @@ jobs:
                 return;
               }
               inputs.scope = arg === 'all' ? 'full' : 'bench';
+            }
+            if (target === 'rebench') {
+              inputs.scope = 'bench';
+              inputs.rebench = 'true';
             }
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
             // cli.yml runs the thread scaling sweep + scaling report instead of vs-main.
