@@ -241,6 +241,64 @@ pub fn merge_copy_axes(
     geo
 }
 
+/// Threads per group for a copy. Bandwidth-bound, a copy wants every thread
+/// slot of a compute unit filled, which a group of the maximum size can leave
+/// a third of on CUDA.
+pub const COPY_THREADS: usize = 256;
+
+/// What a launch may ask of the grid's `y` and `z`, each, on every backend.
+pub const MAX_COPY_GRID_YZ: usize = 65535;
+
+/// The groups a `copy_ndN` kernel runs on, and the threads of each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CopyLaunch {
+    pub groups: [usize; 3],
+    pub threads: usize,
+}
+
+/// The grid a `copy_ndN` kernel runs on, for a `shape` already through
+/// [`merge_copy_axes`] and with no zero extent. A group covers whole rows of the innermost axis, `x`
+/// the rows a single group does not hold, and `y` and `z` together every axis
+/// beyond the innermost two. The rows take `x` because a tensor has far more of
+/// them, and `y` and `z` hold [`MAX_COPY_GRID_YZ`] each where `x` holds 2^31;
+/// the kernel reads the pair back as `y + z * groups.y`, so `z` carries only
+/// what does not fit in `y` and the last of its groups can run past the axes
+/// and has to return. Two dimensions bound those axes at 65535 squared between
+/// them, which no tensor a device holds reaches -- it would take 4 GB of a
+/// one-byte type with both innermost axes at one -- and a shape past it is
+/// refused rather than launched.
+///
+/// `threads` stays a whole multiple of the innermost extent -- the kernel maps
+/// a thread to a row by dividing by it -- and only a row wider than
+/// `max_threads` breaks that, in which case one group takes one row and strides
+/// through it. A rank-1 copy is a plain grid-stride loop over `x`.
+pub fn copy_launch(shape: &[usize], max_threads: usize) -> CopyLaunch {
+    let rank = shape.len();
+    assert!((1..=MAX_COPY_RANK).contains(&rank), "Unsupported rank {rank} for a copy launch");
+    if rank == 1 {
+        let threads = shape[0].clamp(1, max_threads);
+        return CopyLaunch { groups: [shape[0].div_ceil(threads), 1, 1], threads };
+    }
+    let inner = shape[rank - 1];
+    let prev = shape[rank - 2];
+    let outer: usize = shape[..rank - 2].iter().product();
+    assert!(
+        outer <= MAX_COPY_GRID_YZ * MAX_COPY_GRID_YZ,
+        "A copy of {shape:?} spans {outer} of the axes beyond its innermost two, over the {} two grid dimensions hold",
+        MAX_COPY_GRID_YZ * MAX_COPY_GRID_YZ
+    );
+    let (threads, x) = if inner > max_threads {
+        (max_threads, prev)
+    } else {
+        let rows = (max_threads / inner).min(prev);
+        (inner * rows, prev.div_ceil(rows))
+    };
+    CopyLaunch {
+        groups: [x, outer.min(MAX_COPY_GRID_YZ), outer.div_ceil(MAX_COPY_GRID_YZ)],
+        threads,
+    }
+}
+
 pub fn compute_broadcast_strides<T: num_traits::Zero + Copy + 'static>(
     shape: &[usize],
     strides: &[isize],
@@ -283,4 +341,46 @@ pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> Tract
         prev_stride *= dim as isize;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Every element of a copy has to be reached, through groups of no more
+    /// threads than asked and a grid inside [`MAX_COPY_GRID_YZ`].
+    #[test]
+    fn copy_launch_covers_every_element() {
+        const EXTENTS: [usize; 9] = [1, 2, 3, 17, 255, 256, 257, 1024, 70000];
+        for max_threads in [32, 256, 1024] {
+            for rank in 1..=4 {
+                for ix in 0..EXTENTS.len().pow(rank as u32) {
+                    let shape: TVec<usize> = (0..rank)
+                        .map(|axis| EXTENTS[ix / EXTENTS.len().pow(axis as u32) % EXTENTS.len()])
+                        .collect();
+                    let outer: usize = shape[..rank.max(2) - 2].iter().product();
+                    if shape
+                        .iter()
+                        .try_fold(1usize, |a, d| a.checked_mul(*d))
+                        .is_none_or(|n| n > 1 << 36)
+                        || outer > MAX_COPY_GRID_YZ * MAX_COPY_GRID_YZ
+                    {
+                        continue;
+                    }
+                    let CopyLaunch { groups, threads } = copy_launch(&shape, max_threads);
+                    assert!(threads >= 1 && threads <= max_threads, "{shape:?}: {threads}");
+                    assert!(groups[1] <= MAX_COPY_GRID_YZ && groups[2] <= MAX_COPY_GRID_YZ);
+                    if rank == 1 {
+                        assert!(groups[0] * threads >= shape[0], "{shape:?}");
+                        continue;
+                    }
+                    let inner = shape[rank - 1];
+                    let rows = (threads / inner).max(1);
+                    assert!(inner > threads || threads % inner == 0, "{shape:?}: {threads}");
+                    assert!(groups[0] * rows >= shape[rank - 2], "{shape:?}: {groups:?}");
+                    assert!(groups[1] * groups[2] >= outer, "{shape:?}: {groups:?}");
+                }
+            }
+        }
+    }
 }
