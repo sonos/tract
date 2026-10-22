@@ -122,6 +122,14 @@ impl TypedOp for RmsNorm {
         AxesMapping::new(1, 1, axes)
     }
 
+    fn declutter(
+        &self,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        super::group_norm::detect_group_norm(self, model, node)
+    }
+
     fn change_axes(
         &self,
         model: &TypedModel,
