@@ -121,5 +121,13 @@ pub fn suite() -> TractResult<TestSuite> {
         "filter_heavy_bias",
         filter_heavy(1, Some(ArrayD::from_shape_fn(vec![64], |ix| ix[0] as f32 * 0.25 - 8.0)))?,
     );
+    let same = || PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1));
+    let winograd = |n, hw, c, o, pad, bias| -> TractResult<ConvProblemF16> {
+        Ok(ConvProblemF16(crate::conv_f32::winograd_sized(n, hw, c, o, pad, bias)?))
+    };
+    suite.add("winograd_same", winograd(1, [67, 70], 128, 144, same(), false)?);
+    suite.add("winograd_valid", winograd(2, [50, 47], 96, 160, PaddingSpec::Valid, false)?);
+    suite.add("winograd_bias", winograd(1, [64, 64], 160, 128, same(), true)?);
+
     Ok(suite)
 }
