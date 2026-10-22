@@ -123,6 +123,39 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
       input[in_offset + p * in_stride_prev + i * in_stride_inner];
 }
 
+/// A batch of 2D transposes, see tract_gpu::utils::TransposeLaunch. A block
+/// stages a TILE square through shared memory so that both the read, along the
+/// input's unit-stride rows, and the write, along the output's unit-stride
+/// columns, are coalesced. The extra column keeps the transposed shared-memory
+/// read off a single bank.
+#define TRANSPOSE_TILE 32
+template <typename T>
+static __device__ void copy_transpose(const T *input, T *output,
+                                      int in_batch_stride, int in_col_stride,
+                                      int out_batch_stride, int out_row_stride,
+                                      int rows, int cols) {
+  __shared__ T tile[TRANSPOSE_TILE][TRANSPOSE_TILE + 1];
+  input += (int)blockIdx.z * in_batch_stride;
+  output += (int)blockIdx.z * out_batch_stride;
+  const int r0 = blockIdx.y * TRANSPOSE_TILE;
+  const int c0 = blockIdx.x * TRANSPOSE_TILE;
+  for (int j = threadIdx.y; j < TRANSPOSE_TILE; j += blockDim.y) {
+    const int r = r0 + threadIdx.x;
+    const int c = c0 + j;
+    if (r < rows && c < cols) {
+      tile[j][threadIdx.x] = input[r + c * in_col_stride];
+    }
+  }
+  __syncthreads();
+  for (int j = threadIdx.y; j < TRANSPOSE_TILE; j += blockDim.y) {
+    const int r = r0 + j;
+    const int c = c0 + threadIdx.x;
+    if (r < rows && c < cols) {
+      output[r * out_row_stride + c] = tile[threadIdx.x][j];
+    }
+  }
+}
+
 /* The axes beyond the innermost two are packed into blockIdx.y and blockIdx.z,
    neither of which holds more than 65535 blocks. The last of z's blocks can run
    past them, so every rank checks the outermost index it decodes. */
@@ -134,6 +167,14 @@ copy_last2(const T *input, int in_offset, int in_stride_prev, int in_stride_inne
          i += blockDim.x * gridDim.x) {                                        \
       output[i * out_strides_0] = input[i * in_strides_0];                     \
     }                                                                          \
+  }                                                                            \
+                                                                               \
+  extern "C" __global__ void copy_transpose_##name(                            \
+      const T *input, T *output, int32_t in_batch_stride,                      \
+      int32_t in_col_stride, int32_t out_batch_stride, int32_t out_row_stride, \
+      int32_t rows, int32_t cols) {                                            \
+    copy_transpose<T>(input, output, in_batch_stride, in_col_stride,           \
+                      out_batch_stride, out_row_stride, rows, cols);           \
   }                                                                            \
                                                                                \
   extern "C" __global__ void copy_nd2_##name(                                  \
