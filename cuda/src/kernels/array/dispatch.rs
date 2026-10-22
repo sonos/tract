@@ -2,10 +2,14 @@ use crate::context::cuda_context;
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::utils::cuda_launch_cfg_for_cpy;
 use crate::kernels::{BroadcastKind, LibraryName, get_sliced_cuda_view};
+use cudarc::driver::LaunchConfig;
 use cudarc::driver::PushKernelArg;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::utils::TRANSPOSE_ROWS;
+use tract_gpu::utils::TRANSPOSE_TILE;
 use tract_gpu::utils::merge_copy_axes;
+use tract_gpu::utils::transpose_launch;
 
 /// Single dispatch function for all copy_nd kernel launches.
 /// Used by GpuMultiBroadcastTo, GpuSlice, GpuConcat, and GpuAxisOp.
@@ -26,10 +30,6 @@ pub fn cuda_copy_nd_dispatch(
         (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
 
     crate::with_cuda_stream(|stream| {
-        let kernel_name = BroadcastKind::from_rank(output_shape.len())?
-            .copy_kernel_name(input.datum_type(), "")?;
-        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
-
         let i_view = get_sliced_cuda_view(
             input,
             input_offset,
@@ -40,6 +40,33 @@ pub fn cuda_copy_nd_dispatch(
             output_offset,
             output.len() * output.datum_type().size_of() - output_offset,
         )?;
+
+        if let Some(t) = transpose_launch(input_strides, output_shape, output_strides) {
+            let func = cuda_context().load_pipeline(
+                LibraryName::Array,
+                BroadcastKind::transpose_kernel_name(input.datum_type(), ""),
+            )?;
+            let mut launch_args = TractLaunchArgs::new(stream, &func);
+            launch_args.push_view(&i_view);
+            launch_args.push_view(&o_view);
+            launch_args.push_slice_i32(&[
+                t.in_batch_stride,
+                t.in_col_stride,
+                t.out_batch_stride,
+                t.out_row_stride,
+                t.rows as isize,
+                t.cols as isize,
+            ]);
+            return launch_args.launch(LaunchConfig {
+                grid_dim: (t.groups[0] as _, t.groups[1] as _, t.groups[2] as _),
+                block_dim: (TRANSPOSE_TILE as _, TRANSPOSE_ROWS as _, 1),
+                shared_mem_bytes: 0,
+            });
+        }
+
+        let kernel_name = BroadcastKind::from_rank(output_shape.len())?
+            .copy_kernel_name(input.datum_type(), "")?;
+        let func = cuda_context().load_pipeline(LibraryName::Array, kernel_name)?;
 
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);

@@ -149,14 +149,18 @@ impl BroadcastKind {
         Ok(format!("{prefix}copy_{}_{}", self.name(), Self::copy_tname(dt)))
     }
 
+    pub fn transpose_kernel_name(dt: DatumType, prefix: &str) -> String {
+        format!("{prefix}copy_transpose_{}", Self::copy_tname(dt))
+    }
+
     pub fn all_copy_kernel_names(prefix: &str) -> Vec<String> {
         let copy_types = ["u8", "u16", "u32", "u64"];
         Self::ALL
             .into_iter()
-            .flat_map(|bk| {
-                copy_types
-                    .into_iter()
-                    .map(move |tname| format!("{prefix}copy_{}_{tname}", bk.name()))
+            .map(|bk| bk.name())
+            .chain(["transpose"])
+            .flat_map(|name| {
+                copy_types.into_iter().map(move |tname| format!("{prefix}copy_{name}_{tname}"))
             })
             .collect()
     }
@@ -299,6 +303,91 @@ pub fn copy_launch(shape: &[usize], max_threads: usize) -> CopyLaunch {
     }
 }
 
+/// Edge of the square tile a transposing copy stages through group memory.
+pub const TRANSPOSE_TILE: usize = 32;
+
+/// Rows of threads in a transposing copy's group, `TRANSPOSE_TILE` wide: each
+/// thread moves `TRANSPOSE_TILE / TRANSPOSE_ROWS` elements of the tile.
+pub const TRANSPOSE_ROWS: usize = 8;
+
+/// A copy whose input runs contiguously along the output's second-innermost
+/// axis while the output runs contiguously along its innermost one: a batch of
+/// 2D transposes. Walked element by element, one of the two sides strides
+/// through memory; tiled, each group reads a `TRANSPOSE_TILE` square along the
+/// input's run and writes it back along the output's.
+///
+/// The batch is `groups[2]`, the output's rows `groups[1]` tiles, its columns
+/// `groups[0]`. Strides are in elements; a row of the input and a column of
+/// the output are implied unit strides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TransposeLaunch {
+    pub rows: usize,
+    pub cols: usize,
+    pub in_batch_stride: isize,
+    pub in_col_stride: isize,
+    pub out_batch_stride: isize,
+    pub out_row_stride: isize,
+    pub groups: [usize; 3],
+}
+
+/// The tiled launch for a copy, when it is a batch of transposes as
+/// [`TransposeLaunch`] describes once its unit axes are dropped and every
+/// mergeable pair merged: at most one batch axis, both transposed extents at
+/// least a tile wide, and the grid within [`MAX_COPY_GRID_YZ`]. Anything else
+/// goes through [`copy_launch`].
+pub fn transpose_launch(
+    input_strides: &[isize],
+    output_shape: &[usize],
+    output_strides: &[isize],
+) -> Option<TransposeLaunch> {
+    let kept = |strides: &[isize]| -> TVec<isize> {
+        strides.iter().zip(output_shape).filter(|(_, d)| **d != 1).map(|(s, _)| *s).collect()
+    };
+    let mut in_shape: TVec<usize> = output_shape.iter().copied().filter(|d| *d != 1).collect();
+    let mut geo = CopyGeometry {
+        shape: in_shape.clone(),
+        input_strides: kept(input_strides),
+        output_strides: kept(output_strides),
+    };
+    let rank = merge_axes_to_fit(
+        &mut [
+            Layout { shape: &mut in_shape, strides: &mut geo.input_strides },
+            Layout { shape: &mut geo.shape, strides: &mut geo.output_strides },
+        ],
+        1,
+    );
+    if !(2..=3).contains(&rank)
+        || geo.input_strides[rank - 2] != 1
+        || geo.output_strides[rank - 1] != 1
+        || geo.input_strides[rank - 1] == 1
+    {
+        return None;
+    }
+    let (rows, cols) = (geo.shape[rank - 2], geo.shape[rank - 1]);
+    let (batch, in_batch_stride, out_batch_stride) = if rank == 3 {
+        (geo.shape[0], geo.input_strides[0], geo.output_strides[0])
+    } else {
+        (1, 0, 0)
+    };
+    let groups = [cols.div_ceil(TRANSPOSE_TILE), rows.div_ceil(TRANSPOSE_TILE), batch];
+    if rows < TRANSPOSE_TILE
+        || cols < TRANSPOSE_TILE
+        || groups[1] > MAX_COPY_GRID_YZ
+        || groups[2] > MAX_COPY_GRID_YZ
+    {
+        return None;
+    }
+    Some(TransposeLaunch {
+        rows,
+        cols,
+        in_batch_stride,
+        in_col_stride: geo.input_strides[rank - 1],
+        out_batch_stride,
+        out_row_stride: geo.output_strides[rank - 2],
+        groups,
+    })
+}
+
 pub fn compute_broadcast_strides<T: num_traits::Zero + Copy + 'static>(
     shape: &[usize],
     strides: &[isize],
@@ -346,6 +435,36 @@ pub fn check_strides_validity(shape: TVec<usize>, strides: TVec<isize>) -> Tract
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The moves around an NHWC conv are what the tiled copy is for, and a
+    /// fallback to the element walk would still be correct, so only the
+    /// launch shows it.
+    #[test]
+    fn transpose_launch_takes_layout_moves() {
+        let (c, h, w) = (128isize, 64isize, 48isize);
+        let to_nhwc = transpose_launch(
+            &[c * h * w, w, 1, h * w],
+            &[1, h as usize, w as usize, c as usize],
+            &[h * w * c, w * c, c, 1],
+        );
+        assert_eq!(
+            to_nhwc.map(|t| (t.rows, t.cols, t.in_col_stride, t.out_row_stride, t.groups)),
+            Some((3072, 128, 3072, 128, [4, 96, 1]))
+        );
+        let to_nchw = transpose_launch(
+            &[h * w * c, 1, w * c, c],
+            &[1, c as usize, h as usize, w as usize],
+            &[c * h * w, h * w, w, 1],
+        );
+        assert_eq!(
+            to_nchw.map(|t| (t.rows, t.cols, t.in_col_stride, t.out_row_stride, t.groups)),
+            Some((128, 3072, 128, 3072, [96, 4, 1]))
+        );
+        let batched = transpose_launch(&[40 * 70, 1, 70], &[3, 70, 40], &[70 * 40, 40, 1]);
+        assert_eq!(batched.map(|t| (t.in_batch_stride, t.groups)), Some((2800, [2, 3, 3])));
+        assert_eq!(transpose_launch(&[1, 100], &[100, 4], &[4, 1]), None);
+        assert_eq!(transpose_launch(&[64, 1], &[64, 64], &[64, 1]), None);
+    }
 
     /// Every element of a copy has to be reached, through groups of no more
     /// threads than asked and a grid inside [`MAX_COPY_GRID_YZ`].

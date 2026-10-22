@@ -26,6 +26,9 @@ METAL_FUNC uint indices_to_idx_2(uint2 indices,
     template [[host_name("array_ops::copy_nd6_" #tname)]] [[kernel]]           \
     copy_nd_t<type> copy_nd<type, 6>;                                          \
     template [[host_name(                                                      \
+        "array_ops::copy_transpose_" #tname)]] [[kernel]] copy_transpose_t     \
+        copy_transpose<type>;                                                  \
+    template [[host_name(                                                      \
         "array_ops::copy_unicast_" #tname)]] [[kernel]] copy_unicast_t         \
         copy_unicast<type>;
 
@@ -128,6 +131,50 @@ template <typename T, int R>
 }
 
 template <typename T> using copy_nd_t = decltype(copy_nd<T, 1>);
+
+// A batch of 2D transposes, see tract_gpu::utils::TransposeLaunch. A group
+// stages a TILE square through threadgroup memory so that both the read, along
+// the input's unit-stride rows, and the write, along the output's unit-stride
+// columns, are contiguous. The extra column keeps the transposed read off a
+// single bank.
+#define TRANSPOSE_TILE 32
+template <typename T>
+[[kernel]] void copy_transpose(device const void *input_b [[buffer(0)]],
+                               device void *output_b [[buffer(1)]],
+                               constant const int *geo [[buffer(2)]],
+                               uint3 tgpig [[threadgroup_position_in_grid]],
+                               ushort3 tpitg [[thread_position_in_threadgroup]],
+                               ushort3 ntg [[threads_per_threadgroup]]) {
+    threadgroup T tile[TRANSPOSE_TILE][TRANSPOSE_TILE + 1];
+    const int in_batch_stride = geo[0];
+    const int in_col_stride = geo[1];
+    const int out_batch_stride = geo[2];
+    const int out_row_stride = geo[3];
+    const int rows = geo[4];
+    const int cols = geo[5];
+    device const T *input =
+        (device const T *)input_b + (int)tgpig.z * in_batch_stride;
+    device T *output = (device T *)output_b + (int)tgpig.z * out_batch_stride;
+    const int r0 = tgpig.y * TRANSPOSE_TILE;
+    const int c0 = tgpig.x * TRANSPOSE_TILE;
+    for (int j = tpitg.y; j < TRANSPOSE_TILE; j += ntg.y) {
+        const int r = r0 + tpitg.x;
+        const int c = c0 + j;
+        if (r < rows && c < cols) {
+            tile[j][tpitg.x] = input[r + c * in_col_stride];
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (int j = tpitg.y; j < TRANSPOSE_TILE; j += ntg.y) {
+        const int r = r0 + j;
+        const int c = c0 + tpitg.x;
+        if (r < rows && c < cols) {
+            output[r * out_row_stride + c] = tile[tpitg.x][j];
+        }
+    }
+}
+
+typedef decltype(copy_transpose<float>) copy_transpose_t;
 
 // Rotate half of the input buffer
 //
