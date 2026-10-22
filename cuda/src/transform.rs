@@ -27,11 +27,14 @@ tract_core::declare_knob!(
     false,
     "Log nodes that fail output-fact validation during CUDA translation."
 );
-use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
+use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
+};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
@@ -528,6 +531,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<GroupNorm>()
+            && crate::kernels::nn::is_group_norm_supported_dt(input_facts[0].datum_type)
+            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let stats = GpuGroupNormStats {
+                params,
+                backend_name: "Cuda",
+                dispatch: crate::kernels::nn::cuda_group_norm_stats_dispatch,
+            };
+            let apply = GpuGroupNormApply {
+                params,
+                eps: op.eps.clone(),
+                backend_name: "Cuda",
+                dispatch: crate::kernels::nn::cuda_group_norm_apply_dispatch,
+            };
+            let outlet_ids =
+                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Resize bakes its plan, so it keeps only the data input: the scales /
