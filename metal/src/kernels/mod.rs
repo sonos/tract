@@ -25,6 +25,7 @@ const METAL_FLASH_ATTENTION_LIB: &[u8] =
 const METAL_FLASH_ATTENTION_LIB: &[u8] = &[];
 
 const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
+const MPP_GEMM: &str = include_str!("matmul/mpp/mpp_gemm.metal");
 const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
 const MLX_SDPA: &str = include_str!("matmul/mlx_sdpa/mlx_sdpa.metal");
 const GGML: &str = include_str!("matmul/ggml_gemm/ggml_mm_mv.metal");
@@ -50,6 +51,7 @@ pub enum LibraryContent<'a> {
 pub enum LibraryName {
     MlxGemm,
     MlxGemv,
+    MppGemm,
     MlxSdpa,
     MfaLib,
     BasicMatMul,
@@ -76,6 +78,7 @@ impl LibraryName {
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::MlxConv => LibraryContent::Source(MLX_CONV),
             Self::MlxConvImplicit => LibraryContent::Source(MLX_CONV_IMPLICIT),
+            Self::MppGemm => LibraryContent::Source(MPP_GEMM),
             Self::MlxConvDw => LibraryContent::Source(MLX_CONV_DW),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),

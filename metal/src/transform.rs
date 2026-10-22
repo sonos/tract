@@ -5,7 +5,7 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use crate::context::metal_context;
-use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm};
+use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm};
 use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
@@ -168,7 +168,7 @@ fn rewire_sdpa_metal(model: &mut TypedModel) -> TractResult<()> {
 
 impl MetalGemmImplKind {
     pub fn variants() -> Vec<MetalGemmImplKind> {
-        vec![Self::Mlx, Self::Mfa, Self::Ggml]
+        vec![Self::Mlx, Self::Mfa, Self::Ggml, Self::Mpp]
     }
 
     pub fn variants_str() -> Vec<&'static str> {
@@ -180,6 +180,7 @@ impl MetalGemmImplKind {
             Self::Mlx => "mlx",
             Self::Mfa => "mfa",
             Self::Ggml => "ggml",
+            Self::Mpp => "mpp",
         }
     }
 }
@@ -211,6 +212,7 @@ impl FromStr for MetalTransform {
             "mlx" => Some(MetalGemmImplKind::Mlx),
             "ggml" => Some(MetalGemmImplKind::Ggml),
             "mfa" => Some(MetalGemmImplKind::Mfa),
+            "mpp" => Some(MetalGemmImplKind::Mpp),
             "" => None,
             _ => bail!("Unknown backend"),
         };
@@ -492,6 +494,8 @@ pub fn resolve_gemm_impl(
         || is_input_broadcast(input_facts)
     {
         Ok(MetalGemmImplKind::Ggml)
+    } else if MppGemm::is_available() {
+        Ok(MetalGemmImplKind::Mpp)
     } else {
         Ok(MetalGemmImplKind::Mlx)
     }
@@ -528,8 +532,10 @@ fn convert_matmul_to_metal(
     let mut input_facts: TVec<&TypedFact> = owned_facts.iter().collect();
 
     let resolved_gemm_impl = resolve_gemm_impl(gemm_impl, input_facts.clone())?;
-    if matches!(resolved_gemm_impl, MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa)
-        && (input_facts[0].datum_type != input_facts[1].datum_type)
+    if matches!(
+        resolved_gemm_impl,
+        MetalGemmImplKind::Mlx | MetalGemmImplKind::Mfa | MetalGemmImplKind::Mpp
+    ) && (input_facts[0].datum_type != input_facts[1].datum_type)
     {
         ensure!(
             input_facts[0].datum_type == DatumType::F16
@@ -550,6 +556,10 @@ fn convert_matmul_to_metal(
     let mut matmul_output = match resolved_gemm_impl {
         MetalGemmImplKind::Mlx => {
             let op = ops::MetalGemm::<MlxGemm>::new(op.transpose_a, op.transpose_b);
+            target.wire_node(node.name.clone(), op, inputs)?
+        }
+        MetalGemmImplKind::Mpp => {
+            let op = ops::MetalGemm::<MppGemm>::new(op.transpose_a, op.transpose_b);
             target.wire_node(node.name.clone(), op, inputs)?
         }
         MetalGemmImplKind::Mfa => {

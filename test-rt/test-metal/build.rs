@@ -8,6 +8,8 @@ fn main() {
 
     suite::suite().test_runtime("mfa", "suite::suite()", "runtime()", "Approximation::Approximate");
 
+    suite::suite().test_runtime("mpp", "suite::suite()", "runtime()", "Approximation::Approximate");
+
     ggml_suite::suite().test_runtime(
         "ggml",
         "ggml_suite::suite()",
