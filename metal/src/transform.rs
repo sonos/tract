@@ -261,6 +261,7 @@ impl MetalTransform {
             .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
             .rewrite(&(), model)?;
+        tract_gpu::rewrite_rules::conv_nhwc::propagate_nhwc(model)?;
 
         if stop_at_phase == 1 {
             return Ok(());

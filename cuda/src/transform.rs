@@ -130,6 +130,7 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("rewrite_conv_to_nhwc", rewrite_rules::rewrite_conv_to_nhwc)
             .rewrite(&(), model)?;
+        tract_gpu::rewrite_rules::conv_nhwc::propagate_nhwc(model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
