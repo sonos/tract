@@ -10,42 +10,21 @@ METAL_FUNC uint indices_to_idx_2(uint2 indices,
                                  constant const size_t strides[2]) {
     return indices.x * strides[1] + indices.y * strides[0];
 }
-
-// Returns offset for iterating over most inner axis
-METAL_FUNC uint indices_to_outer_idx(uint3 indices,
-                                     constant const size_t *shape,
-                                     constant const size_t *strides,
-                                     size_t rank) {
-    if (rank == 1) {
-        return 0;
-    } else if (rank == 2) {
-        return indices.x * strides[0];
-    } else {
-        auto idx =
-            indices.x * strides[rank - 2] + indices.y * strides[rank - 3];
-
-        for (int32_t i = rank - 4; i >= 0; i--) {
-            idx += (indices.z % shape[i]) * strides[i];
-            indices.z /= shape[i];
-        }
-        return idx;
-    }
-}
 } // namespace utils
 
 #define INSTANTIATE_COPY(tname, type)                                          \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd1_" #tname)]] [[kernel]] copy_nd1_t copy_nd1<type>; \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd2_" #tname)]] [[kernel]] copy_nd2_t copy_nd2<type>; \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd3_" #tname)]] [[kernel]] copy_nd3_t copy_nd3<type>; \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd4_" #tname)]] [[kernel]] copy_nd4_t copy_nd4<type>; \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd5_" #tname)]] [[kernel]] copy_nd5_t copy_nd5<type>; \
-    template [[host_name(                                                      \
-        "array_ops::copy_nd6_" #tname)]] [[kernel]] copy_nd6_t copy_nd6<type>; \
+    template [[host_name("array_ops::copy_nd1_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 1>;                                          \
+    template [[host_name("array_ops::copy_nd2_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 2>;                                          \
+    template [[host_name("array_ops::copy_nd3_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 3>;                                          \
+    template [[host_name("array_ops::copy_nd4_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 4>;                                          \
+    template [[host_name("array_ops::copy_nd5_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 5>;                                          \
+    template [[host_name("array_ops::copy_nd6_" #tname)]] [[kernel]]           \
+    copy_nd_t<type> copy_nd<type, 6>;                                          \
     template [[host_name(                                                      \
         "array_ops::copy_unicast_" #tname)]] [[kernel]] copy_unicast_t         \
         copy_unicast<type>;
@@ -76,133 +55,79 @@ template <typename T>
 
 typedef decltype(copy_unicast<float>) copy_unicast_t;
 
+// A group covers whole rows of the innermost axis: `threads / inner` of them,
+// or one it strides through when a row is wider than the group. The groups'
+// `x` takes the rows, `y + z * groups.y` the axes beyond the innermost two;
+// the last of `z`'s groups can run past them. See tract_gpu::utils::copy_launch.
 template <typename T>
-[[kernel]] void copy_nd1(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-    for (size_t i = tpitg.x; i < out_shape[0]; i += ntg.x) {
-        output[i] = input[i * input_strides[0]];
+METAL_FUNC void copy_last2(device const T *input, int in_offset,
+                           int in_stride_prev, int in_stride_inner,
+                           device T *output, int out_offset,
+                           int out_stride_prev, int out_stride_inner, int prev,
+                           int inner, int group, int lane, int threads) {
+    const int rows = threads / inner;
+    if (rows == 0) {
+        in_offset += group * in_stride_prev;
+        out_offset += group * out_stride_prev;
+        for (int i = lane; i < inner; i += threads) {
+            output[out_offset + i * out_stride_inner] =
+                input[in_offset + i * in_stride_inner];
+        }
+        return;
     }
+    const int p = group * rows + lane / inner;
+    if (p >= prev) {
+        return;
+    }
+    const int i = lane % inner;
+    output[out_offset + p * out_stride_prev + i * out_stride_inner] =
+        input[in_offset + p * in_stride_prev + i * in_stride_inner];
 }
 
-typedef decltype(copy_nd1<float>) copy_nd1_t;
-
-template <typename T>
-[[kernel]] void copy_nd2(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
+template <typename T, int R>
+[[kernel]] void copy_nd(device const void *input_b [[buffer(0)]],
+                        constant const size_t *in_strides [[buffer(1)]],
+                        device void *output_b [[buffer(2)]],
+                        constant const size_t *out_shape [[buffer(3)]],
+                        constant const size_t *out_strides [[buffer(4)]],
+                        uint3 tgpig [[threadgroup_position_in_grid]],
+                        uint3 tgpg [[threadgroups_per_grid]],
+                        ushort3 tpitg [[thread_position_in_threadgroup]],
+                        ushort3 ntg [[threads_per_threadgroup]]) {
     device const T *input = (device const T *)input_b;
     device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 2);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 2);
-    for (size_t i = tpitg.x; i < out_shape[1]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[1]];
+    if (R == 1) {
+        const int n = (int)out_shape[0];
+        for (int i = tgpig.x * ntg.x + tpitg.x; i < n; i += ntg.x * tgpg.x) {
+            output[i * (int)out_strides[0]] = input[i * (int)in_strides[0]];
+        }
+        return;
     }
+    int in_offset = 0;
+    int out_offset = 0;
+    if (R > 2) {
+        int b = tgpig.y + tgpig.z * tgpg.y;
+        for (int k = R - 3; k > 0; k--) {
+            const int d = (int)out_shape[k];
+            const int c = b % d;
+            b /= d;
+            in_offset += c * (int)in_strides[k];
+            out_offset += c * (int)out_strides[k];
+        }
+        if (b >= (int)out_shape[0]) {
+            return;
+        }
+        in_offset += b * (int)in_strides[0];
+        out_offset += b * (int)out_strides[0];
+    }
+    copy_last2<T>(input, in_offset, (int)in_strides[R - 2],
+                  (int)in_strides[R - 1], output, out_offset,
+                  (int)out_strides[R - 2], (int)out_strides[R - 1],
+                  (int)out_shape[R - 2], (int)out_shape[R - 1], tgpig.x,
+                  tpitg.x, ntg.x);
 }
 
-typedef decltype(copy_nd2<float>) copy_nd2_t;
-
-template <typename T>
-[[kernel]] void copy_nd3(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 3);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 3);
-    for (size_t i = tpitg.x; i < out_shape[2]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[2]];
-    }
-}
-
-typedef decltype(copy_nd3<float>) copy_nd3_t;
-
-template <typename T>
-[[kernel]] void copy_nd4(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 4);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 4);
-    for (size_t i = tpitg.x; i < out_shape[3]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[3]];
-    }
-}
-
-typedef decltype(copy_nd4<float>) copy_nd4_t;
-
-template <typename T>
-[[kernel]] void copy_nd5(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 5);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 5);
-    for (size_t i = tpitg.x; i < out_shape[4]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[4]];
-    }
-}
-
-typedef decltype(copy_nd5<float>) copy_nd5_t;
-
-template <typename T>
-[[kernel]] void copy_nd6(device const void *input_b [[buffer(0)]],
-                         constant const size_t *input_strides [[buffer(1)]],
-                         device void *output_b [[buffer(2)]],
-                         constant const size_t *out_shape [[buffer(3)]],
-                         constant const size_t *out_strides [[buffer(4)]],
-                         uint3 tgpig [[threadgroup_position_in_grid]],
-                         ushort3 tpitg [[thread_position_in_threadgroup]],
-                         ushort3 ntg [[threads_per_threadgroup]]) {
-    device const T *input = (device const T *)input_b;
-    device T *output = (device T *)output_b;
-
-    auto idx = utils::indices_to_outer_idx(tgpig, out_shape, input_strides, 6);
-    auto out_idx =
-        utils::indices_to_outer_idx(tgpig, out_shape, out_strides, 6);
-    for (size_t i = tpitg.x; i < out_shape[5]; i += ntg.x) {
-        output[out_idx + i] = input[idx + i * input_strides[5]];
-    }
-}
-
-typedef decltype(copy_nd6<float>) copy_nd6_t;
+template <typename T> using copy_nd_t = decltype(copy_nd<T, 1>);
 
 // Rotate half of the input buffer
 //

@@ -1,9 +1,11 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::utils::build_metal_grid_and_groups_for_el_wise_op;
 use crate::{LibraryName, MetalStream};
+use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::BroadcastKind;
+use tract_gpu::utils::COPY_THREADS;
+use tract_gpu::utils::copy_launch;
 use tract_gpu::utils::merge_copy_axes;
 
 /// Single dispatch function for all copy_nd kernel launches.
@@ -17,6 +19,9 @@ pub fn metal_copy_nd_dispatch(
     output_shape: &[usize],
     output_strides: &[isize],
 ) -> TractResult<()> {
+    if output_shape.contains(&0) {
+        return Ok(());
+    }
     let geo = merge_copy_axes(input_strides, output_shape, output_strides);
     let (output_shape, input_strides, output_strides) =
         (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
@@ -53,11 +58,15 @@ pub fn metal_copy_nd_dispatch(
             encoder.set_slice(3, output_shape);
             encoder.set_slice(4, &output_strides_usize);
 
-            let (grid_size, group_size) = build_metal_grid_and_groups_for_el_wise_op(
+            let launch = copy_launch(
                 output_shape,
-                pipeline.max_total_threads_per_threadgroup() as _,
+                COPY_THREADS.min(pipeline.max_total_threads_per_threadgroup() as usize),
             );
-            encoder.dispatch_thread_groups(grid_size, group_size);
+            let [width, height, depth] = launch.groups.map(|g| g as u64);
+            encoder.dispatch_thread_groups(
+                MTLSize { width, height, depth },
+                MTLSize { width: launch.threads as _, height: 1, depth: 1 },
+            );
         });
         Ok(())
     })
