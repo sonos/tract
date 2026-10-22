@@ -2,20 +2,29 @@ use crate::tensor::{DeviceTensor, DeviceTensorExt};
 use tract_core::internal::*;
 use tract_core::ops::nn::GroupNorm;
 
-/// Elements each partial-statistics chunk covers.
+/// Elements each channel-first partial-statistics chunk covers.
 const CHUNK: usize = 4096;
 const MAX_SPLITS: usize = 64;
+/// Positions each channel-last partial-statistics chunk covers, per channel.
+const CHANNEL_LAST_CHUNK: usize = 64;
+const MAX_CHANNEL_LAST_SPLITS: usize = 1024;
 
 /// Static geometry of a GPU group norm. The input is viewed as `(outer, pre, channels, post)`:
 /// axes before `block_start` are `outer`, the channel `axis` splits the rest into `pre` and
-/// `post`, all of which are reduced. Each of the `outer * groups` groups is reduced in `splits`
-/// chunks of its flattened `(pre, channel, post)` range.
+/// `post`, all of which are reduced.
+///
+/// Channel-first (`post > 1`), each of the `outer * groups` groups is reduced in `splits`
+/// chunks of its flattened `(pre, channel, post)` range. Channel-last (`axis` is the last axis),
+/// each channel is reduced in `splits` chunks of `pre`, so reads stay contiguous across
+/// channels. Either way a group ends up with `entries` partial statistics.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub struct GroupNormParams {
     pub block_start: usize,
     pub axis: usize,
     pub groups: usize,
+    pub channel_last: bool,
     pub splits: usize,
+    pub entries: usize,
 }
 
 /// Runtime view of a group norm input, see `GroupNormParams`.
@@ -26,7 +35,9 @@ pub struct GroupNormView {
     pub channels: usize,
     pub post: usize,
     pub groups: usize,
+    pub channel_last: bool,
     pub splits: usize,
+    pub entries: usize,
 }
 
 impl GroupNormParams {
@@ -41,12 +52,27 @@ impl GroupNormParams {
         if covered != block {
             return None;
         }
-        let per_group: usize = (block_start..rank)
-            .map(|ax| fact.shape[ax].to_usize().ok())
-            .product::<Option<usize>>()?
-            / op.groups;
-        let splits = per_group.div_ceil(CHUNK).clamp(1, MAX_SPLITS);
-        Some(GroupNormParams { block_start, axis: op.axis, groups: op.groups, splits })
+        let dims: TVec<usize> =
+            (block_start..rank).map(|ax| fact.shape[ax].to_usize().ok()).collect::<Option<_>>()?;
+        let channels = dims[op.axis - block_start];
+        let per_group_channels = channels / op.groups;
+        let positions = dims.iter().product::<usize>() / channels;
+        let channel_last = op.axis == rank - 1 && positions > 1;
+        let (splits, entries) = if channel_last {
+            let splits = positions.div_ceil(CHANNEL_LAST_CHUNK).clamp(1, MAX_CHANNEL_LAST_SPLITS);
+            (splits, splits * per_group_channels)
+        } else {
+            let splits = (positions * per_group_channels).div_ceil(CHUNK).clamp(1, MAX_SPLITS);
+            (splits, splits)
+        };
+        Some(GroupNormParams {
+            block_start,
+            axis: op.axis,
+            groups: op.groups,
+            channel_last,
+            splits,
+            entries,
+        })
     }
 
     pub fn view(&self, shape: &[usize]) -> GroupNormView {
@@ -56,20 +82,23 @@ impl GroupNormParams {
             channels: shape[self.axis],
             post: shape[self.axis + 1..].iter().product(),
             groups: self.groups,
+            channel_last: self.channel_last,
             splits: self.splits,
+            entries: self.entries,
         }
     }
 }
 
-/// (input, view, partials): writes one `(count, mean, m2)` triple per group and chunk.
+/// (input, view, partials): writes `entries` `(count, mean, m2)` triples per group.
 pub type DispatchGroupNormStatsFn =
     fn(&DeviceTensor, &GroupNormView, &DeviceTensor) -> TractResult<()>;
-/// (input, partials, view, eps, output).
+/// (input, partials, view, eps, output): merges each group's partials, then normalizes.
+/// The merged statistics may overwrite the partials.
 pub type DispatchGroupNormApplyFn =
     fn(&DeviceTensor, &DeviceTensor, &GroupNormView, f32, &DeviceTensor) -> TractResult<()>;
 
-/// First half of a GPU group norm: per-chunk partial statistics, as an F32
-/// `[outer * groups, splits, 3]` tensor consumed by `GpuGroupNormApply`.
+/// First half of a GPU group norm: partial statistics, as an F32 `[outer * groups, entries, 3]`
+/// tensor consumed by `GpuGroupNormApply`.
 #[derive(Clone, Debug)]
 pub struct GpuGroupNormStats {
     pub params: GroupNormParams,
@@ -111,7 +140,7 @@ impl EvalOp for GpuGroupNormStats {
         let input_value = args_1!(inputs);
         let input = input_value.to_device_tensor()?;
         let view = self.params.view(input.shape());
-        let shape = [view.outer * view.groups, view.splits, 3];
+        let shape = [view.outer * view.groups, view.entries, 3];
         let partials = crate::turn_handler::make_tensor_for_node(ctx, DatumType::F32, &shape)?;
         (self.dispatch)(input, &view, &partials)?;
         Ok(tvec!(partials.into_tensor().into_tvalue()))
@@ -122,7 +151,7 @@ impl TypedOp for GpuGroupNormStats {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         crate::utils::facts_to_device_facts(inputs, |facts| {
             let outer: TDim = facts[0].shape[..self.params.block_start].iter().product();
-            let shape = [outer * self.params.groups, self.params.splits.into(), 3.into()];
+            let shape = [outer * self.params.groups, self.params.entries.into(), 3.into()];
             Ok(tvec!(DatumType::F32.fact(shape)))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))

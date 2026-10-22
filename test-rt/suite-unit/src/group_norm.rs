@@ -163,7 +163,9 @@ pub fn suite() -> TractResult<TestSuite> {
         ("many_chunks_channel_last_f32", [2, 48, 40, 8], 3, tvec!(1, 2)),
     ] {
         let len = shape.iter().product::<usize>();
-        let data = (0..len).map(|i| ((i * 37) % 101) as f32 / 10.0 - 3.0).collect::<Vec<_>>();
+        let data = (0..len)
+            .map(|i| ((i * 37) % 101) as f32 / 10.0 - 3.0 + 8.0 * i as f32 / len as f32)
+            .collect::<Vec<_>>();
         suite.add(
             name,
             GroupNormProblem::<f32> {
