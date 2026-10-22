@@ -125,9 +125,9 @@ pub fn suite() -> TractResult<TestSuite> {
     let winograd = |n, hw, c, o, pad, bias| -> TractResult<ConvProblemF16> {
         Ok(ConvProblemF16(crate::conv_f32::winograd_sized(n, hw, c, o, pad, bias)?))
     };
-    suite.add("winograd_same", winograd(1, [67, 70], 128, 144, same(), false)?);
-    suite.add("winograd_valid", winograd(2, [50, 47], 96, 160, PaddingSpec::Valid, false)?);
-    suite.add("winograd_bias", winograd(1, [64, 64], 160, 128, same(), true)?);
+    suite.add("winograd_same", winograd(1, [67, 70], 9, 250, same(), false)?);
+    suite.add("winograd_valid", winograd(2, [50, 47], 250, 7, PaddingSpec::Valid, false)?);
+    suite.add("winograd_bias", winograd(1, [64, 64], 17, 240, same(), true)?);
 
     Ok(suite)
 }

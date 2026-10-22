@@ -408,6 +408,8 @@ impl Test for ConvProblem {
 
 /// A 3x3 stride-1 conv large enough, in pixels and channels, for a GPU
 /// backend to run it as Winograd, with extents that leave partial edge tiles.
+/// Callers skew c and o: the gate only looks at c + o, and the CPU runtimes
+/// pay for c * o (the wasm CI job runs these serially, twice).
 pub fn winograd_sized(
     n: usize,
     hw: [usize; 2],
@@ -1807,9 +1809,9 @@ pub fn suite() -> TractResult<TestSuite> {
     );
 
     let same = || PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1));
-    suite.add("winograd_same", winograd_sized(1, [67, 70], 128, 144, same(), false)?);
-    suite.add("winograd_valid", winograd_sized(2, [50, 47], 96, 160, PaddingSpec::Valid, false)?);
-    suite.add("winograd_bias", winograd_sized(1, [64, 64], 160, 128, same(), true)?);
+    suite.add("winograd_same", winograd_sized(1, [67, 70], 9, 250, same(), false)?);
+    suite.add("winograd_valid", winograd_sized(2, [50, 47], 250, 7, PaddingSpec::Valid, false)?);
+    suite.add("winograd_bias", winograd_sized(1, [64, 64], 17, 240, same(), true)?);
 
     Ok(suite)
 }
