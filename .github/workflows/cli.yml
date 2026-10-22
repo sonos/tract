@@ -68,6 +68,9 @@ jobs:
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
       cases: ${{ steps.cases.outputs.cases }}
       boxes: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
+      boxes_apple: ${{ steps.split.outputs.apple }}
+      boxes_linux: ${{ steps.split.outputs.linux }}
+      macos_host: ${{ steps.split.outputs.macos_host }}
       rebench: ${{ steps.gate.outputs.rebench }}
       only: ${{ steps.rebench.outputs.only || '{}' }}
       previous: ${{ steps.rebench.outputs.previous }}
@@ -216,6 +219,16 @@ jobs:
             echo "boxes=$boxes"
             echo "dinghy=$dinghy"
           } >> "$GITHUB_OUTPUT"
+      # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
+      # build-macos runs on the apple box unless it is disabled, on a hosted runner then.
+      - id: split
+        env:
+          BOXES: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
+          ENABLED: ${{ steps.boxes.outputs.boxes }}
+        run: |
+          echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
+          echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
+          echo "macos_host=$(jq -r 'if any(.[]; .runner == "macOS") then "macOS" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -228,10 +241,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - triple: aarch64-apple-darwin
-            host: macos-latest
-            build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
-            bin: target/release/tract
           - triple: x86_64-unknown-linux-gnu
             host: ubuntu-latest
             build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
@@ -264,9 +273,25 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
+  # On the apple bench box, a cold build is faster than a cached one on a hosted runner.
+  build-macos:
+    needs: prepare
+    runs-on: ${{ needs.prepare.outputs.macos_host }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - run: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tract-cli-aarch64-apple-darwin
+          path: target/release/tract
+
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
-    needs: [ prepare, build ]
+    needs: [ prepare, build, build-macos ]
     if: needs.prepare.outputs.rebench != 'true'
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
@@ -337,7 +362,7 @@ jobs:
 
   llm:
     name: ${{ matrix.os }} / ${{ matrix.rt }} / ${{ matrix.combo.model }} / ${{ matrix.combo.q }}
-    needs: [ prepare, build, llm-combos ]
+    needs: [ prepare, build, build-macos, llm-combos ]
     runs-on: ${{ matrix.os }}
     env:
       LARGE_MODELS: true
@@ -370,7 +395,7 @@ jobs:
   # back through a commit status and a sticky comment instead.
   report-tests:
     name: Report tests to PR
-    needs: [ prepare, build, test, harness-checked, llm-combos, llm ]
+    needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm ]
     if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     permissions:
@@ -422,7 +447,7 @@ jobs:
 
   bench:
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
@@ -432,8 +457,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
-    steps:
+        include: ${{ fromJSON(needs.prepare.outputs.boxes_linux) }}
+    steps: &bench-steps
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.prepare.outputs.ref }}
@@ -521,6 +546,18 @@ jobs:
         with:
           name: bench-result-${{ matrix.target }}
           path: result
+
+  bench-macos:
+    needs: [ prepare, build-macos ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write     # push to bench-data (nightly only)
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.boxes_apple) }}
+    steps: *bench-steps
 
   # --- dinghy target fleet (kill switch: BENCH_DINGHY_ENABLED=false). ---
   # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
@@ -732,7 +769,7 @@ jobs:
           echo "push failed after retries" >&2; exit 1
 
   report:
-    needs: [ prepare, build, bench, bench-dinghy ]
+    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
@@ -863,7 +900,7 @@ jobs:
   # self-referential (picked vs best-in-pool), so no golden numbers to maintain. Nightly
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
-    needs: [ prepare, build ]
+    needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -1036,7 +1073,7 @@ jobs:
   # Reuses the bench binaries; no golden numbers, just exit status. Nightly only,
   # sharing the per-box concurrency group so it never fights a running bench.
   smoke:
-    needs: [ prepare, build ]
+    needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
