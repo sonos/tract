@@ -1401,3 +1401,135 @@ template [[host_name("nn_ops::apply_rope_nd3_f16")]] [[kernel]] apply_rope_nd3_t
     apply_rope_nd3<half>;
 template [[host_name("nn_ops::apply_rope_nd4_f16")]] [[kernel]] apply_rope_nd4_t
     apply_rope_nd4<half>;
+
+// Group norm over an (outer, pre, channels, post) view. Group `g` of outer
+// index `o` covers pre * cg * post elements; their flattened (p, c, q) range is
+// cut into `splits` chunks, one threadgroup each. Stats are (count, mean, m2)
+// Welford triples, merged with Chan's formula.
+struct Moments {
+    float n;
+    float mean;
+    float m2;
+};
+
+METAL_FUNC Moments merge_moments(Moments a, Moments b) {
+    float n = a.n + b.n;
+    if (n == 0.0f) {
+        return a;
+    }
+    float d = b.mean - a.mean;
+    float f = b.n / n;
+    return Moments{n, a.mean + d * f, a.m2 + b.m2 + d * d * a.n * f};
+}
+
+METAL_FUNC Moments simd_merge_moments(Moments m) {
+    for (ushort offset = 16; offset > 0; offset >>= 1) {
+        Moments o = Moments{simd_shuffle_xor(m.n, offset), simd_shuffle_xor(m.mean, offset),
+                            simd_shuffle_xor(m.m2, offset)};
+        m = merge_moments(m, o);
+    }
+    return m;
+}
+
+METAL_FUNC int group_norm_offset(int o, int g, int j, int pre, int channels, int post,
+                                 int cg) {
+    int q = j % post;
+    int t = j / post;
+    int c = t % cg;
+    int p = t / cg;
+    return ((o * pre + p) * channels + g * cg + c) * post + q;
+}
+
+// dims: pre, channels, post, groups, splits
+template <typename T>
+[[kernel]] void group_norm_stats(device const void *x_b, device float *partials,
+                                 constant const int dims[5],
+                                 threadgroup Moments *shmem [[threadgroup(0)]],
+                                 uint2 tgpig [[threadgroup_position_in_grid]],
+                                 uint2 tpitg2 [[thread_position_in_threadgroup]],
+                                 ushort sgitg [[simdgroup_index_in_threadgroup]],
+                                 ushort tiisg [[thread_index_in_simdgroup]],
+                                 uint2 ntg2 [[threads_per_threadgroup]]) {
+    device const T *x = (device const T *)x_b;
+    int tpitg = tpitg2.x;
+    int ntg = ntg2.x;
+    int pre = dims[0], channels = dims[1], post = dims[2], groups = dims[3], splits = dims[4];
+    int o = tgpig.x / groups;
+    int g = tgpig.x % groups;
+    int cg = channels / groups;
+    int len = pre * cg * post;
+    int chunk = (len + splits - 1) / splits;
+    int start = tgpig.y * chunk;
+    int end = min(len, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    if (start + tpitg < end) {
+        shift = float(x[group_norm_offset(o, g, start + tpitg, pre, channels, post, cg)]);
+    }
+    for (int j = start + tpitg; j < end; j += ntg) {
+        float v = float(x[group_norm_offset(o, g, j, pre, channels, post, cg)]) - shift;
+        s1 += v;
+        s2 += v * v;
+        n += 1.0f;
+    }
+    Moments m = Moments{n, n > 0.0f ? shift + s1 / n : 0.0f, n > 0.0f ? s2 - s1 * s1 / n : 0.0f};
+    m = simd_merge_moments(m);
+    if (tiisg == 0) {
+        shmem[sgitg] = m;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sgitg == 0) {
+        m = tiisg < (ntg + 31) / 32 ? shmem[tiisg] : Moments{0.0f, 0.0f, 0.0f};
+        m = simd_merge_moments(m);
+        if (tiisg == 0) {
+            device float *out = partials + (tgpig.x * splits + tgpig.y) * 3;
+            out[0] = m.n;
+            out[1] = m.mean;
+            out[2] = m.m2;
+        }
+    }
+}
+
+template <typename T>
+[[kernel]] void group_norm_apply(device const void *x_b, device const float *partials,
+                                 device void *y_b, constant const int dims[5],
+                                 constant const float &eps,
+                                 uint2 tgpig [[threadgroup_position_in_grid]],
+                                 uint2 tpitg2 [[thread_position_in_threadgroup]],
+                                 uint2 ntg2 [[threads_per_threadgroup]]) {
+    device const T *x = (device const T *)x_b;
+    device T *y = (device T *)y_b;
+    int tpitg = tpitg2.x;
+    int ntg = ntg2.x;
+    int pre = dims[0], channels = dims[1], post = dims[2], groups = dims[3], splits = dims[4];
+    int o = tgpig.x / groups;
+    int g = tgpig.x % groups;
+    int cg = channels / groups;
+    int len = pre * cg * post;
+    int chunk = (len + splits - 1) / splits;
+    int start = tgpig.y * chunk;
+    int end = min(len, start + chunk);
+
+    Moments m = Moments{0.0f, 0.0f, 0.0f};
+    device const float *in = partials + tgpig.x * splits * 3;
+    for (int s = 0; s < splits; s++) {
+        m = merge_moments(m, Moments{in[3 * s], in[3 * s + 1], in[3 * s + 2]});
+    }
+    float inv = rsqrt(m.m2 / m.n + eps);
+    for (int j = start + tpitg; j < end; j += ntg) {
+        int idx = group_norm_offset(o, g, j, pre, channels, post, cg);
+        y[idx] = T((float(x[idx]) - m.mean) * inv);
+    }
+}
+
+typedef decltype(group_norm_stats<float>) group_norm_stats_t;
+typedef decltype(group_norm_apply<float>) group_norm_apply_t;
+
+template [[host_name("nn_ops::group_norm_stats_f32")]] [[kernel]]
+    group_norm_stats_t group_norm_stats<float>;
+template [[host_name("nn_ops::group_norm_stats_f16")]] [[kernel]]
+    group_norm_stats_t group_norm_stats<half>;
+template [[host_name("nn_ops::group_norm_apply_f32")]] [[kernel]]
+    group_norm_apply_t group_norm_apply<float>;
+template [[host_name("nn_ops::group_norm_apply_f16")]] [[kernel]]
+    group_norm_apply_t group_norm_apply<half>;
