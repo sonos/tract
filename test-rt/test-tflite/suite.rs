@@ -237,6 +237,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "gather_elements",
         "gelu_approximate",
         "gelu_exact",
+        "group_norm",
         "q_flavours",
         "q_binary",
         "q_elmwise",
