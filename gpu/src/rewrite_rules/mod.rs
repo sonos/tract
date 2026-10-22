@@ -1,3 +1,4 @@
+pub mod conv_nhwc;
 pub mod rewire_sdpa;
 pub mod rewire_syncs;
 pub mod rms_norm;

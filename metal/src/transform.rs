@@ -240,6 +240,7 @@ impl MetalTransform {
 
         Rewriter::default()
             .with_rule_for("rewrite_conv_kernel_metal", rewrite_conv_kernel_metal)
+            .with_rule_for("rewrite_conv_to_nhwc", rewrite_rules::rewrite_conv_to_nhwc)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
             .with_rule_for(
