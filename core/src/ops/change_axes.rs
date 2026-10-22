@@ -296,27 +296,35 @@ impl AxisOp {
                 }
             }
             (Reshape(at, from, to), Move(f, t)) => {
+                let shift = to.len() as isize - from.len() as isize;
+                let shifted = |axis: usize| (axis as isize + shift) as usize;
                 if *f.max(t) < *at {
                     Some((Some(self.clone()), Some(change.clone())))
                 } else if *f.min(t) >= at + from.len() {
-                    let shift = to.len() as isize - from.len() as isize;
-                    Some((
-                        Some(self.clone()),
-                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
-                    ))
+                    Some((Some(self.clone()), Some(Move(shifted(*f), shifted(*t)))))
+                } else if f < t && at > f && at + from.len() <= t + 1 {
+                    let reshape = Reshape(at - 1, from.clone(), to.clone());
+                    Some((Some(reshape), Some(Move(*f, shifted(*t)))))
+                } else if t < f && at >= t && at + from.len() <= *f {
+                    let reshape = Reshape(at + 1, from.clone(), to.clone());
+                    Some((Some(reshape), Some(Move(shifted(*f), *t))))
                 } else {
                     None
                 }
             }
             (Move(f, t), Reshape(at, from, to)) => {
+                let shift = to.len() as isize - from.len() as isize;
+                let shifted = |axis: usize| (axis as isize + shift) as usize;
                 if *f.max(t) < *at {
                     Some((Some(self.clone()), Some(change.clone())))
                 } else if *f.min(t) >= at + from.len() {
-                    let shift = to.len() as isize - from.len() as isize;
-                    Some((
-                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
-                        Some(change.clone()),
-                    ))
+                    Some((Some(Move(shifted(*f), shifted(*t))), Some(change.clone())))
+                } else if f < t && at > f && at + from.len() <= t + 1 {
+                    let reshape = Reshape(at - 1, from.clone(), to.clone());
+                    Some((Some(Move(*f, shifted(*t))), Some(reshape)))
+                } else if t < f && at >= t && at + from.len() <= *f {
+                    let reshape = Reshape(at + 1, from.clone(), to.clone());
+                    Some((Some(Move(shifted(*f), *t)), Some(reshape)))
                 } else {
                     None
                 }
@@ -1940,5 +1948,43 @@ mod proptests {
             &*to_axis_ops_with_tf_rules(s![1, 2, 3, 5, 7], s!(2, 1, 3, 35, 1)).unwrap(),
             &[Rm(0), Add(1), r!(3 ; 5,7 => 35 ), Add(4)]
         )
+    }
+
+    fn assert_change_commutes(op: AxisOp, change: AxisOp, shape: &[usize]) {
+        let (new_op, out_change) = op.merge_incoming_change(&change).unwrap();
+        let x = Tensor::from_shape(
+            shape,
+            &(0..shape.iter().product::<usize>() as i32).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let mut expected = x.clone();
+        op.change_tensor(&mut expected, false).unwrap();
+        if let Some(out_change) = out_change {
+            out_change.change_tensor(&mut expected, false).unwrap();
+        }
+        let mut got = x;
+        change.change_tensor(&mut got, false).unwrap();
+        if let Some(new_op) = new_op {
+            new_op.change_tensor(&mut got, false).unwrap();
+        }
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn move_forward_over_reshaped_axes() {
+        assert_change_commutes(r!(2 ; 3,5 => 15), Move(1, 3), &[2, 4, 3, 5]);
+        assert_change_commutes(r!(2 ; 15 => 3,5), Move(1, 2), &[2, 4, 15]);
+    }
+
+    #[test]
+    fn move_backward_over_reshaped_axes() {
+        assert_change_commutes(r!(1 ; 3,5 => 15), Move(3, 1), &[2, 3, 5, 4]);
+        assert_change_commutes(r!(2 ; 3,5 => 15), Move(4, 1), &[2, 6, 3, 5, 4]);
+    }
+
+    #[test]
+    fn reshape_over_moved_axes() {
+        assert_change_commutes(Move(1, 3), r!(2 ; 3,5 => 15), &[2, 4, 3, 5]);
+        assert_change_commutes(Move(3, 1), r!(1 ; 3,5 => 15), &[2, 3, 5, 4]);
     }
 }
