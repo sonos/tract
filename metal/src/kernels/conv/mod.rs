@@ -1,4 +1,5 @@
 pub mod mlx_conv;
+pub mod winograd;
 
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
