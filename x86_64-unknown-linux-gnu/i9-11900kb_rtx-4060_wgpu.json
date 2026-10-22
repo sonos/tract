@@ -1,0 +1,1061 @@
+{
+"start_day": "2026-10-22",
+"commits": [
+"baf81dca616c0260e8ed967a616fcaf846079f3f"
+],
+"metrics": {
+"bundle.bench_runtime": [
+1495
+],
+"net.arm_ml_kws_cnn_m_pass.active_at_before_optimize.wgpu": [
+827000
+],
+"net.arm_ml_kws_cnn_m_pass.active_at_model_ready.wgpu": [
+2528000
+],
+"net.arm_ml_kws_cnn_m_pass.evaltime.wgpu": [
+0.0007431
+],
+"net.arm_ml_kws_cnn_m_pass.rsz_at_before_optimize.wgpu": [
+29160000
+],
+"net.arm_ml_kws_cnn_m_pass.rsz_at_model_ready.wgpu": [
+183200000
+],
+"net.arm_ml_kws_cnn_m_pass.time_to_before_optimize.wgpu": [
+0.004
+],
+"net.arm_ml_kws_cnn_m_pass.time_to_model_ready.wgpu": [
+0.163
+],
+"net.dfn3_df_dec_s100.active_at_before_optimize.wgpu": [
+3501000
+],
+"net.dfn3_df_dec_s100.active_at_model_ready.wgpu": [
+5822000
+],
+"net.dfn3_df_dec_s100.evaltime.wgpu": [
+0.003587
+],
+"net.dfn3_df_dec_s100.rsz_at_before_optimize.wgpu": [
+32890000
+],
+"net.dfn3_df_dec_s100.rsz_at_model_ready.wgpu": [
+256300000
+],
+"net.dfn3_df_dec_s100.time_to_before_optimize.wgpu": [
+0.009
+],
+"net.dfn3_df_dec_s100.time_to_model_ready.wgpu": [
+0.175
+],
+"net.dfn3_enc_s100.active_at_before_optimize.wgpu": [
+2181000
+],
+"net.dfn3_enc_s100.active_at_model_ready.wgpu": [
+4378000
+],
+"net.dfn3_enc_s100.evaltime.wgpu": [
+0.00218
+],
+"net.dfn3_enc_s100.rsz_at_before_optimize.wgpu": [
+31910000
+],
+"net.dfn3_enc_s100.rsz_at_model_ready.wgpu": [
+255400000
+],
+"net.dfn3_enc_s100.time_to_before_optimize.wgpu": [
+0.011
+],
+"net.dfn3_enc_s100.time_to_model_ready.wgpu": [
+0.175
+],
+"net.dfn3_erb_dec_s100.active_at_before_optimize.wgpu": [
+3518000
+],
+"net.dfn3_erb_dec_s100.active_at_model_ready.wgpu": [
+5931000
+],
+"net.dfn3_erb_dec_s100.evaltime.wgpu": [
+0.003291
+],
+"net.dfn3_erb_dec_s100.rsz_at_before_optimize.wgpu": [
+32320000
+],
+"net.dfn3_erb_dec_s100.rsz_at_model_ready.wgpu": [
+256000000
+],
+"net.dfn3_erb_dec_s100.time_to_before_optimize.wgpu": [
+0.01
+],
+"net.dfn3_erb_dec_s100.time_to_model_ready.wgpu": [
+0.176
+],
+"net.dtln_1_frame.active_at_before_optimize.wgpu": [
+1594000
+],
+"net.dtln_1_frame.active_at_model_ready.wgpu": [
+2555000
+],
+"net.dtln_1_frame.evaltime.wgpu": [
+0.0006606
+],
+"net.dtln_1_frame.rsz_at_before_optimize.wgpu": [
+29430000
+],
+"net.dtln_1_frame.rsz_at_model_ready.wgpu": [
+183000000
+],
+"net.dtln_1_frame.time_to_before_optimize.wgpu": [
+0.007
+],
+"net.dtln_1_frame.time_to_model_ready.wgpu": [
+0.159
+],
+"net.dtln_2_frame.active_at_before_optimize.wgpu": [
+2804000
+],
+"net.dtln_2_frame.active_at_model_ready.wgpu": [
+2818000
+],
+"net.dtln_2_frame.evaltime.wgpu": [
+0.0007298
+],
+"net.dtln_2_frame.rsz_at_before_optimize.wgpu": [
+31060000
+],
+"net.dtln_2_frame.rsz_at_model_ready.wgpu": [
+183800000
+],
+"net.dtln_2_frame.time_to_before_optimize.wgpu": [
+0.013
+],
+"net.dtln_2_frame.time_to_model_ready.wgpu": [
+0.173
+],
+"net.dummy_conmer_12M_pulse_120ms.active_at_before_optimize.wgpu": [
+51440000
+],
+"net.dummy_conmer_12M_pulse_120ms.active_at_model_ready.wgpu": [
+5057000
+],
+"net.dummy_conmer_12M_pulse_120ms.evaltime.wgpu": [
+0.02531
+],
+"net.dummy_conmer_12M_pulse_120ms.rsz_at_before_optimize.wgpu": [
+83440000
+],
+"net.dummy_conmer_12M_pulse_120ms.rsz_at_model_ready.wgpu": [
+255000000
+],
+"net.dummy_conmer_12M_pulse_120ms.time_to_before_optimize.wgpu": [
+0.265
+],
+"net.dummy_conmer_12M_pulse_120ms.time_to_model_ready.wgpu": [
+0.475
+],
+"net.en_tdnn_15M_2600ms.active_at_before_optimize.wgpu": [
+71110000
+],
+"net.en_tdnn_15M_2600ms.active_at_model_ready.wgpu": [
+43860000
+],
+"net.en_tdnn_15M_2600ms.evaltime.wgpu": [
+0.0523
+],
+"net.en_tdnn_15M_2600ms.rsz_at_before_optimize.wgpu": [
+103800000
+],
+"net.en_tdnn_15M_2600ms.rsz_at_model_ready.wgpu": [
+299100000
+],
+"net.en_tdnn_15M_2600ms.time_to_before_optimize.wgpu": [
+0.125
+],
+"net.en_tdnn_15M_2600ms.time_to_model_ready.wgpu": [
+0.352
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.active_at_before_optimize.wgpu": [
+71090000
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.active_at_model_ready.wgpu": [
+43770000
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.evaltime.wgpu": [
+0.008291
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.rsz_at_before_optimize.wgpu": [
+98240000
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.rsz_at_model_ready.wgpu": [
+295100000
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.time_to_before_optimize.wgpu": [
+0.041
+],
+"net.en_tdnn_15M_nnef_pulse_240ms.time_to_model_ready.wgpu": [
+0.252
+],
+"net.en_tdnn_15M_pulse_120ms.active_at_before_optimize.wgpu": [
+71120000
+],
+"net.en_tdnn_15M_pulse_120ms.active_at_model_ready.wgpu": [
+43680000
+],
+"net.en_tdnn_15M_pulse_120ms.evaltime.wgpu": [
+0.00656
+],
+"net.en_tdnn_15M_pulse_120ms.rsz_at_before_optimize.wgpu": [
+104900000
+],
+"net.en_tdnn_15M_pulse_120ms.rsz_at_model_ready.wgpu": [
+299700000
+],
+"net.en_tdnn_15M_pulse_120ms.time_to_before_optimize.wgpu": [
+0.14
+],
+"net.en_tdnn_15M_pulse_120ms.time_to_model_ready.wgpu": [
+0.354
+],
+"net.en_tdnn_15M_pulse_240ms.active_at_before_optimize.wgpu": [
+71120000
+],
+"net.en_tdnn_15M_pulse_240ms.active_at_model_ready.wgpu": [
+43870000
+],
+"net.en_tdnn_15M_pulse_240ms.evaltime.wgpu": [
+0.008494
+],
+"net.en_tdnn_15M_pulse_240ms.rsz_at_before_optimize.wgpu": [
+104900000
+],
+"net.en_tdnn_15M_pulse_240ms.rsz_at_model_ready.wgpu": [
+299500000
+],
+"net.en_tdnn_15M_pulse_240ms.time_to_before_optimize.wgpu": [
+0.141
+],
+"net.en_tdnn_15M_pulse_240ms.time_to_model_ready.wgpu": [
+0.36
+],
+"net.en_tdnn_8M_2600ms.active_at_before_optimize.wgpu": [
+32850000
+],
+"net.en_tdnn_8M_2600ms.active_at_model_ready.wgpu": [
+21380000
+],
+"net.en_tdnn_8M_2600ms.evaltime.wgpu": [
+0.02554
+],
+"net.en_tdnn_8M_2600ms.rsz_at_before_optimize.wgpu": [
+63670000
+],
+"net.en_tdnn_8M_2600ms.rsz_at_model_ready.wgpu": [
+277600000
+],
+"net.en_tdnn_8M_2600ms.time_to_before_optimize.wgpu": [
+0.079
+],
+"net.en_tdnn_8M_2600ms.time_to_model_ready.wgpu": [
+0.272
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.active_at_before_optimize.wgpu": [
+32830000
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.active_at_model_ready.wgpu": [
+21290000
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.evaltime.wgpu": [
+0.004339
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.rsz_at_before_optimize.wgpu": [
+59480000
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.rsz_at_model_ready.wgpu": [
+274600000
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.time_to_before_optimize.wgpu": [
+0.035
+],
+"net.en_tdnn_8M_nnef_pulse_240ms.time_to_model_ready.wgpu": [
+0.219
+],
+"net.en_tdnn_8M_pulse_120ms.active_at_before_optimize.wgpu": [
+32860000
+],
+"net.en_tdnn_8M_pulse_120ms.active_at_model_ready.wgpu": [
+21570000
+],
+"net.en_tdnn_8M_pulse_120ms.evaltime.wgpu": [
+0.003563
+],
+"net.en_tdnn_8M_pulse_120ms.rsz_at_before_optimize.wgpu": [
+64510000
+],
+"net.en_tdnn_8M_pulse_120ms.rsz_at_model_ready.wgpu": [
+276400000
+],
+"net.en_tdnn_8M_pulse_120ms.time_to_before_optimize.wgpu": [
+0.094
+],
+"net.en_tdnn_8M_pulse_120ms.time_to_model_ready.wgpu": [
+0.284
+],
+"net.en_tdnn_8M_pulse_180ms.active_at_before_optimize.wgpu": [
+32860000
+],
+"net.en_tdnn_8M_pulse_180ms.active_at_model_ready.wgpu": [
+21260000
+],
+"net.en_tdnn_8M_pulse_180ms.evaltime.wgpu": [
+0.004001
+],
+"net.en_tdnn_8M_pulse_180ms.rsz_at_before_optimize.wgpu": [
+64910000
+],
+"net.en_tdnn_8M_pulse_180ms.rsz_at_model_ready.wgpu": [
+276600000
+],
+"net.en_tdnn_8M_pulse_180ms.time_to_before_optimize.wgpu": [
+0.096
+],
+"net.en_tdnn_8M_pulse_180ms.time_to_model_ready.wgpu": [
+0.285
+],
+"net.en_tdnn_8M_pulse_240ms.active_at_before_optimize.wgpu": [
+32860000
+],
+"net.en_tdnn_8M_pulse_240ms.active_at_model_ready.wgpu": [
+21400000
+],
+"net.en_tdnn_8M_pulse_240ms.evaltime.wgpu": [
+0.004463
+],
+"net.en_tdnn_8M_pulse_240ms.rsz_at_before_optimize.wgpu": [
+65230000
+],
+"net.en_tdnn_8M_pulse_240ms.rsz_at_model_ready.wgpu": [
+278200000
+],
+"net.en_tdnn_8M_pulse_240ms.time_to_before_optimize.wgpu": [
+0.093
+],
+"net.en_tdnn_8M_pulse_240ms.time_to_model_ready.wgpu": [
+0.288
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.active_at_before_optimize.wgpu": [
+2988000
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.active_at_model_ready.wgpu": [
+5495000
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.evaltime.wgpu": [
+0.01342
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.rsz_at_before_optimize.wgpu": [
+32100000
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.rsz_at_model_ready.wgpu": [
+258600000
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.time_to_before_optimize.wgpu": [
+0.049
+],
+"net.en_tdnn_lstm_bn_q7_2600ms.time_to_model_ready.wgpu": [
+0.246
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.active_at_before_optimize.wgpu": [
+2997000
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.active_at_model_ready.wgpu": [
+5507000
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.evaltime.wgpu": [
+0.00199
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.rsz_at_before_optimize.wgpu": [
+33480000
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.rsz_at_model_ready.wgpu": [
+257600000
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.time_to_before_optimize.wgpu": [
+0.062
+],
+"net.en_tdnn_lstm_bn_q7_pulse_240ms.time_to_model_ready.wgpu": [
+0.264
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.active_at_before_optimize.wgpu": [
+45090000
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.active_at_model_ready.wgpu": [
+25550000
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.evaltime.wgpu": [
+0.003801
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.rsz_at_before_optimize.wgpu": [
+75220000
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.rsz_at_model_ready.wgpu": [
+277000000
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.time_to_before_optimize.wgpu": [
+0.104
+],
+"net.en_tdnn_pyt_15M_pulse_120ms.time_to_model_ready.wgpu": [
+0.301
+],
+"net.fastenhancer_b_frame.active_at_before_optimize.wgpu": [
+838600
+],
+"net.fastenhancer_b_frame.active_at_model_ready.wgpu": [
+3311000
+],
+"net.fastenhancer_b_frame.evaltime.wgpu": [
+0.002529
+],
+"net.fastenhancer_b_frame.rsz_at_before_optimize.wgpu": [
+29940000
+],
+"net.fastenhancer_b_frame.rsz_at_model_ready.wgpu": [
+256200000
+],
+"net.fastenhancer_b_frame.time_to_before_optimize.wgpu": [
+0.019
+],
+"net.fastenhancer_b_frame.time_to_model_ready.wgpu": [
+0.19
+],
+"net.fastenhancer_l_frame.active_at_before_optimize.wgpu": [
+5099000
+],
+"net.fastenhancer_l_frame.active_at_model_ready.wgpu": [
+5300000
+],
+"net.fastenhancer_l_frame.evaltime.wgpu": [
+0.005269
+],
+"net.fastenhancer_l_frame.rsz_at_before_optimize.wgpu": [
+37090000
+],
+"net.fastenhancer_l_frame.rsz_at_model_ready.wgpu": [
+260100000
+],
+"net.fastenhancer_l_frame.time_to_before_optimize.wgpu": [
+0.034
+],
+"net.fastenhancer_l_frame.time_to_model_ready.wgpu": [
+0.211
+],
+"net.fastenhancer_m_frame.active_at_before_optimize.wgpu": [
+2555000
+],
+"net.fastenhancer_m_frame.active_at_model_ready.wgpu": [
+4137000
+],
+"net.fastenhancer_m_frame.evaltime.wgpu": [
+0.003695
+],
+"net.fastenhancer_m_frame.rsz_at_before_optimize.wgpu": [
+32260000
+],
+"net.fastenhancer_m_frame.rsz_at_model_ready.wgpu": [
+255300000
+],
+"net.fastenhancer_m_frame.time_to_before_optimize.wgpu": [
+0.026
+],
+"net.fastenhancer_m_frame.time_to_model_ready.wgpu": [
+0.201
+],
+"net.fastenhancer_s_frame.active_at_before_optimize.wgpu": [
+1288000
+],
+"net.fastenhancer_s_frame.active_at_model_ready.wgpu": [
+3605000
+],
+"net.fastenhancer_s_frame.evaltime.wgpu": [
+0.002934
+],
+"net.fastenhancer_s_frame.rsz_at_before_optimize.wgpu": [
+30760000
+],
+"net.fastenhancer_s_frame.rsz_at_model_ready.wgpu": [
+256200000
+],
+"net.fastenhancer_s_frame.time_to_before_optimize.wgpu": [
+0.021
+],
+"net.fastenhancer_s_frame.time_to_model_ready.wgpu": [
+0.193
+],
+"net.fastenhancer_t_frame.active_at_before_optimize.wgpu": [
+484700
+],
+"net.fastenhancer_t_frame.active_at_model_ready.wgpu": [
+3088000
+],
+"net.fastenhancer_t_frame.evaltime.wgpu": [
+0.002074
+],
+"net.fastenhancer_t_frame.rsz_at_before_optimize.wgpu": [
+29860000
+],
+"net.fastenhancer_t_frame.rsz_at_model_ready.wgpu": [
+253800000
+],
+"net.fastenhancer_t_frame.time_to_before_optimize.wgpu": [
+0.015
+],
+"net.fastenhancer_t_frame.time_to_model_ready.wgpu": [
+0.181
+],
+"net.gtcrn_frame.active_at_before_optimize.wgpu": [
+1683000
+],
+"net.gtcrn_frame.active_at_model_ready.wgpu": [
+4908000
+],
+"net.gtcrn_frame.evaltime.wgpu": [
+0.01028
+],
+"net.gtcrn_frame.rsz_at_before_optimize.wgpu": [
+33520000
+],
+"net.gtcrn_frame.rsz_at_model_ready.wgpu": [
+259600000
+],
+"net.gtcrn_frame.time_to_before_optimize.wgpu": [
+0.128
+],
+"net.gtcrn_frame.time_to_model_ready.wgpu": [
+0.328
+],
+"net.hey_snips_v1_400ms.active_at_before_optimize.wgpu": [
+1072000
+],
+"net.hey_snips_v1_400ms.active_at_model_ready.wgpu": [
+3405000
+],
+"net.hey_snips_v1_400ms.evaltime.wgpu": [
+0.0004014
+],
+"net.hey_snips_v1_400ms.rsz_at_before_optimize.wgpu": [
+28020000
+],
+"net.hey_snips_v1_400ms.rsz_at_model_ready.wgpu": [
+253800000
+],
+"net.hey_snips_v1_400ms.time_to_before_optimize.wgpu": [
+0.004
+],
+"net.hey_snips_v1_400ms.time_to_model_ready.wgpu": [
+0.175
+],
+"net.hey_snips_v31_400ms.active_at_before_optimize.wgpu": [
+890600
+],
+"net.hey_snips_v31_400ms.active_at_model_ready.wgpu": [
+3316000
+],
+"net.hey_snips_v31_400ms.evaltime.wgpu": [
+0.0007749
+],
+"net.hey_snips_v31_400ms.rsz_at_before_optimize.wgpu": [
+29410000
+],
+"net.hey_snips_v31_400ms.rsz_at_model_ready.wgpu": [
+253300000
+],
+"net.hey_snips_v31_400ms.time_to_before_optimize.wgpu": [
+0.012
+],
+"net.hey_snips_v31_400ms.time_to_model_ready.wgpu": [
+0.189
+],
+"net.hey_snips_v4_model17_2sec.active_at_before_optimize.wgpu": [
+1672000
+],
+"net.hey_snips_v4_model17_2sec.active_at_model_ready.wgpu": [
+4617000
+],
+"net.hey_snips_v4_model17_2sec.evaltime.wgpu": [
+0.004711
+],
+"net.hey_snips_v4_model17_2sec.rsz_at_before_optimize.wgpu": [
+31410000
+],
+"net.hey_snips_v4_model17_2sec.rsz_at_model_ready.wgpu": [
+258600000
+],
+"net.hey_snips_v4_model17_2sec.time_to_before_optimize.wgpu": [
+0.139
+],
+"net.hey_snips_v4_model17_2sec.time_to_model_ready.wgpu": [
+0.339
+],
+"net.hey_snips_v4_model17_nnef_pulse8.active_at_before_optimize.wgpu": [
+1631000
+],
+"net.hey_snips_v4_model17_nnef_pulse8.active_at_model_ready.wgpu": [
+4605000
+],
+"net.hey_snips_v4_model17_nnef_pulse8.evaltime.wgpu": [
+0.003834
+],
+"net.hey_snips_v4_model17_nnef_pulse8.rsz_at_before_optimize.wgpu": [
+27220000
+],
+"net.hey_snips_v4_model17_nnef_pulse8.rsz_at_model_ready.wgpu": [
+255000000
+],
+"net.hey_snips_v4_model17_nnef_pulse8.time_to_before_optimize.wgpu": [
+0.029
+],
+"net.hey_snips_v4_model17_nnef_pulse8.time_to_model_ready.wgpu": [
+0.216
+],
+"net.hey_snips_v4_model17_pulse8.active_at_before_optimize.wgpu": [
+1640000
+],
+"net.hey_snips_v4_model17_pulse8.active_at_model_ready.wgpu": [
+4610000
+],
+"net.hey_snips_v4_model17_pulse8.evaltime.wgpu": [
+0.003685
+],
+"net.hey_snips_v4_model17_pulse8.rsz_at_before_optimize.wgpu": [
+32180000
+],
+"net.hey_snips_v4_model17_pulse8.rsz_at_model_ready.wgpu": [
+258500000
+],
+"net.hey_snips_v4_model17_pulse8.time_to_before_optimize.wgpu": [
+0.227
+],
+"net.hey_snips_v4_model17_pulse8.time_to_model_ready.wgpu": [
+0.423
+],
+"net.inceptionv1q_pass.active_at_before_optimize.wgpu": [
+7686000
+],
+"net.inceptionv1q_pass.active_at_model_ready.wgpu": [
+11310000
+],
+"net.inceptionv1q_pass.evaltime.wgpu": [
+0.04474
+],
+"net.inceptionv1q_pass.rsz_at_before_optimize.wgpu": [
+33370000
+],
+"net.inceptionv1q_pass.rsz_at_model_ready.wgpu": [
+266300000
+],
+"net.inceptionv1q_pass.time_to_before_optimize.wgpu": [
+0.067
+],
+"net.inceptionv1q_pass.time_to_model_ready.wgpu": [
+0.407
+],
+"net.inceptionv3_pass.active_at_before_optimize.wgpu": [
+97310000
+],
+"net.inceptionv3_pass.active_at_model_ready.wgpu": [
+5450000
+],
+"net.inceptionv3_pass.evaltime.wgpu": [
+0.127
+],
+"net.inceptionv3_pass.rsz_at_before_optimize.wgpu": [
+134500000
+],
+"net.inceptionv3_pass.rsz_at_model_ready.wgpu": [
+192200000
+],
+"net.inceptionv3_pass.time_to_before_optimize.wgpu": [
+0.323
+],
+"net.inceptionv3_pass.time_to_model_ready.wgpu": [
+0.598
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.active_at_before_optimize.wgpu": [
+9610000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.active_at_model_ready.wgpu": [
+7823000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.evaltime.wgpu": [
+0.007941
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.rsz_at_before_optimize.wgpu": [
+40640000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.rsz_at_model_ready.wgpu": [
+260500000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.time_to_before_optimize.wgpu": [
+0.058
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_2600ms.time_to_model_ready.wgpu": [
+0.238
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.active_at_before_optimize.wgpu": [
+9620000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.active_at_model_ready.wgpu": [
+7842000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.evaltime.wgpu": [
+0.002525
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.rsz_at_before_optimize.wgpu": [
+41580000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.rsz_at_model_ready.wgpu": [
+263300000
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.time_to_before_optimize.wgpu": [
+0.074
+],
+"net.mdl_en_2019_Q3_librispeech_onnx_pulse_240ms.time_to_model_ready.wgpu": [
+0.252
+],
+"net.mobilenet_v1_1_pass.active_at_before_optimize.wgpu": [
+17460000
+],
+"net.mobilenet_v1_1_pass.active_at_model_ready.wgpu": [
+3302000
+],
+"net.mobilenet_v1_1_pass.evaltime.wgpu": [
+0.01438
+],
+"net.mobilenet_v1_1_pass.rsz_at_before_optimize.wgpu": [
+47850000
+],
+"net.mobilenet_v1_1_pass.rsz_at_model_ready.wgpu": [
+188800000
+],
+"net.mobilenet_v1_1_pass.time_to_before_optimize.wgpu": [
+0.052
+],
+"net.mobilenet_v1_1_pass.time_to_model_ready.wgpu": [
+0.239
+],
+"net.mobilenet_v2_1_pass.active_at_before_optimize.wgpu": [
+25140000
+],
+"net.mobilenet_v2_1_pass.active_at_model_ready.wgpu": [
+3829000
+],
+"net.mobilenet_v2_1_pass.evaltime.wgpu": [
+0.01198
+],
+"net.mobilenet_v2_1_pass.rsz_at_before_optimize.wgpu": [
+56950000
+],
+"net.mobilenet_v2_1_pass.rsz_at_model_ready.wgpu": [
+189100000
+],
+"net.mobilenet_v2_1_pass.time_to_before_optimize.wgpu": [
+0.079
+],
+"net.mobilenet_v2_1_pass.time_to_model_ready.wgpu": [
+0.261
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.active_at_before_optimize.wgpu": [
+59980000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.active_at_model_ready.wgpu": [
+36140000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.evaltime.wgpu": [
+0.0009578
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_before_optimize.wgpu": [
+89180000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_model_ready.wgpu": [
+287600000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_before_optimize.wgpu": [
+0.041
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_model_ready.wgpu": [
+0.253
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.active_at_before_optimize.wgpu": [
+2365000000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.active_at_model_ready.wgpu": [
+12360000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.evaltime.wgpu": [
+0.2351
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.rsz_at_before_optimize.wgpu": [
+2411000000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.rsz_at_model_ready.wgpu": [
+277800000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_before_optimize.wgpu": [
+5.198
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_model_ready.wgpu": [
+6.446
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.active_at_before_optimize.wgpu": [
+2365000000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.active_at_model_ready.wgpu": [
+12000000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.evaltime.wgpu": [
+0.09439
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_before_optimize.wgpu": [
+2412000000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_model_ready.wgpu": [
+279800000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_before_optimize.wgpu": [
+11.44
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_model_ready.wgpu": [
+12.66
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.active_at_before_optimize.wgpu": [
+37920000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.active_at_model_ready.wgpu": [
+2489000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.evaltime.wgpu": [
+0.0006988
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_before_optimize.wgpu": [
+65360000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_model_ready.wgpu": [
+184400000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.time_to_before_optimize.wgpu": [
+0.04
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.time_to_model_ready.wgpu": [
+0.223
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.active_at_before_optimize.wgpu": [
+519800
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.active_at_model_ready.wgpu": [
+2776000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.evaltime.wgpu": [
+0.0007256
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_before_optimize.wgpu": [
+28940000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_model_ready.wgpu": [
+251600000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_before_optimize.wgpu": [
+0.013
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_model_ready.wgpu": [
+0.183
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.active_at_before_optimize.wgpu": [
+248500
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.active_at_model_ready.wgpu": [
+2509000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.evaltime.wgpu": [
+0.0004122
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_before_optimize.wgpu": [
+30310000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_model_ready.wgpu": [
+251600000
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.time_to_before_optimize.wgpu": [
+0.029
+],
+"net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.time_to_model_ready.wgpu": [
+0.186
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.active_at_before_optimize.wgpu": [
+47440000
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.active_at_model_ready.wgpu": [
+23600000
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.evaltime.wgpu": [
+0.000956
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.rsz_at_before_optimize.wgpu": [
+78550000
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.rsz_at_model_ready.wgpu": [
+276900000
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.time_to_before_optimize.wgpu": [
+0.039
+],
+"net.parakeet_tdt_600m_v3_f32f32_decoder_pass.time_to_model_ready.wgpu": [
+0.236
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.active_at_before_optimize.wgpu": [
+2342000000
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.active_at_model_ready.wgpu": [
+13260000
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.evaltime.wgpu": [
+0.2173
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.rsz_at_before_optimize.wgpu": [
+2388000000
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.rsz_at_model_ready.wgpu": [
+278200000
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_before_optimize.wgpu": [
+9.114
+],
+"net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_model_ready.wgpu": [
+10.61
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.active_at_before_optimize.wgpu": [
+25380000
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.active_at_model_ready.wgpu": [
+2488000
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.evaltime.wgpu": [
+0.0004053
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_before_optimize.wgpu": [
+54970000
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_model_ready.wgpu": [
+184300000
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_before_optimize.wgpu": [
+0.03
+],
+"net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_model_ready.wgpu": [
+0.204
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.active_at_before_optimize.wgpu": [
+579100
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.active_at_model_ready.wgpu": [
+2861000
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.evaltime.wgpu": [
+0.001148
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_before_optimize.wgpu": [
+29080000
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_model_ready.wgpu": [
+253600000
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.time_to_before_optimize.wgpu": [
+0.015
+],
+"net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.time_to_model_ready.wgpu": [
+0.179
+],
+"net.speaker_id_pulse8.active_at_before_optimize.wgpu": [
+968900
+],
+"net.speaker_id_pulse8.active_at_model_ready.wgpu": [
+3466000
+],
+"net.speaker_id_pulse8.evaltime.wgpu": [
+0.001073
+],
+"net.speaker_id_pulse8.rsz_at_before_optimize.wgpu": [
+30190000
+],
+"net.speaker_id_pulse8.rsz_at_model_ready.wgpu": [
+253800000
+],
+"net.speaker_id_pulse8.time_to_before_optimize.wgpu": [
+0.011
+],
+"net.speaker_id_pulse8.time_to_model_ready.wgpu": [
+0.184
+],
+"net.trunet_pulse1_f32.active_at_before_optimize.wgpu": [
+3860000
+],
+"net.trunet_pulse1_f32.active_at_model_ready.wgpu": [
+4235000
+],
+"net.trunet_pulse1_f32.evaltime.wgpu": [
+0.004858
+],
+"net.trunet_pulse1_f32.rsz_at_before_optimize.wgpu": [
+32770000
+],
+"net.trunet_pulse1_f32.rsz_at_model_ready.wgpu": [
+255900000
+],
+"net.trunet_pulse1_f32.time_to_before_optimize.wgpu": [
+0.096
+],
+"net.trunet_pulse1_f32.time_to_model_ready.wgpu": [
+0.269
+],
+"net.voicecom_fake_quant_2sec.active_at_before_optimize.wgpu": [
+2816000
+],
+"net.voicecom_fake_quant_2sec.active_at_model_ready.wgpu": [
+2620000
+],
+"net.voicecom_fake_quant_2sec.evaltime.wgpu": [
+0.004381
+],
+"net.voicecom_fake_quant_2sec.rsz_at_before_optimize.wgpu": [
+32910000
+],
+"net.voicecom_fake_quant_2sec.rsz_at_model_ready.wgpu": [
+186300000
+],
+"net.voicecom_fake_quant_2sec.time_to_before_optimize.wgpu": [
+0.012
+],
+"net.voicecom_fake_quant_2sec.time_to_model_ready.wgpu": [
+0.189
+],
+"net.voicecom_float_2sec.active_at_before_optimize.wgpu": [
+2641000
+],
+"net.voicecom_float_2sec.active_at_model_ready.wgpu": [
+2509000
+],
+"net.voicecom_float_2sec.evaltime.wgpu": [
+0.004276
+],
+"net.voicecom_float_2sec.rsz_at_before_optimize.wgpu": [
+31420000
+],
+"net.voicecom_float_2sec.rsz_at_model_ready.wgpu": [
+185300000
+],
+"net.voicecom_float_2sec.time_to_before_optimize.wgpu": [
+0.008
+],
+"net.voicecom_float_2sec.time_to_model_ready.wgpu": [
+0.165
+]
+}
+}
