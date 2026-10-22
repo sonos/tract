@@ -14,6 +14,7 @@ pub mod fused_output;
 pub mod gather;
 pub mod gdn_recurrent;
 pub mod gelu_approximate;
+pub mod group_norm;
 pub mod iff;
 pub mod leaky_relu;
 pub mod pad;

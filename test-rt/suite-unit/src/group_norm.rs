@@ -158,5 +158,23 @@ pub fn suite() -> TractResult<TestSuite> {
             _phantom: PhantomData,
         },
     );
+    for (name, shape, axis, reduced_axes) in [
+        ("many_chunks_f32", [2, 8, 48, 40], 1, tvec!(2, 3)),
+        ("many_chunks_channel_last_f32", [2, 48, 40, 8], 3, tvec!(1, 2)),
+    ] {
+        let len = shape.iter().product::<usize>();
+        let data = (0..len).map(|i| ((i * 37) % 101) as f32 / 10.0 - 3.0).collect::<Vec<_>>();
+        suite.add(
+            name,
+            GroupNormProblem::<f32> {
+                input: Tensor::from_shape(&shape, &data).unwrap(),
+                axis,
+                groups: 2,
+                reduced_axes,
+                eps: 1e-5,
+                _phantom: PhantomData,
+            },
+        );
+    }
     Ok(suite)
 }

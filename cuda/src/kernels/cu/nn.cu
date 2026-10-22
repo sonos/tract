@@ -995,3 +995,134 @@ INSTANTIATE_POOL(max, true, f32, float)
 INSTANTIATE_POOL(max, true, f16, __half)
 INSTANTIATE_POOL(sum, false, f32, float)
 INSTANTIATE_POOL(sum, false, f16, __half)
+
+// Group norm over an (outer, pre, channels, post) view. Group `g` of outer
+// index `o` covers pre * cg * post elements; their flattened (p, c, q) range is
+// cut into `splits` chunks, one block each. Stats are (count, mean, m2) Welford
+// triples, merged with Chan's formula.
+#define GROUP_NORM_BLOCK 256
+
+struct Moments {
+    float n, mean, m2;
+};
+
+static __device__ __forceinline__ Moments merge_moments(Moments a, Moments b) {
+    const float n = a.n + b.n;
+    if (n == 0.0f) {
+        return a;
+    }
+    const float d = b.mean - a.mean;
+    const float f = b.n / n;
+    return {n, a.mean + d * f, a.m2 + b.m2 + d * d * a.n * f};
+}
+
+static __device__ __forceinline__ Moments warp_merge_moments(Moments m) {
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        Moments o = {__shfl_xor_sync(0xffffffff, m.n, offset, 32),
+                     __shfl_xor_sync(0xffffffff, m.mean, offset, 32),
+                     __shfl_xor_sync(0xffffffff, m.m2, offset, 32)};
+        m = merge_moments(m, o);
+    }
+    return m;
+}
+
+static __device__ __forceinline__ int group_norm_offset(int o, int g, int j, int pre,
+                                                        int channels, int post, int cg) {
+    const int q = j % post;
+    const int t = j / post;
+    const int c = t % cg;
+    const int p = t / cg;
+    return ((o * pre + p) * channels + g * cg + c) * post + q;
+}
+
+template <typename T>
+__device__ void group_norm_stats(const T *x, float *partials, int32_t pre, int32_t channels,
+                                 int32_t post, int32_t groups, int32_t splits) {
+    const int o = blockIdx.x / groups;
+    const int g = blockIdx.x % groups;
+    const int cg = channels / groups;
+    const int len = pre * cg * post;
+    const int chunk = (len + splits - 1) / splits;
+    const int start = blockIdx.y * chunk;
+    const int end = min(len, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    if (start + threadIdx.x < end) {
+        shift = (float)x[group_norm_offset(o, g, start + threadIdx.x, pre, channels, post, cg)];
+    }
+    for (int j = start + threadIdx.x; j < end; j += blockDim.x) {
+        const float v =
+            (float)x[group_norm_offset(o, g, j, pre, channels, post, cg)] - shift;
+        s1 += v;
+        s2 += v * v;
+        n += 1.0f;
+    }
+    Moments m = {n, n > 0.0f ? shift + s1 / n : 0.0f, n > 0.0f ? s2 - s1 * s1 / n : 0.0f};
+    m = warp_merge_moments(m);
+
+    __shared__ Moments s_moments[GROUP_NORM_BLOCK / WARP_SIZE];
+    const int warp_id = threadIdx.x / WARP_SIZE;
+    const int lane_id = threadIdx.x % WARP_SIZE;
+    if (lane_id == 0) {
+        s_moments[warp_id] = m;
+    }
+    __syncthreads();
+    if (warp_id == 0) {
+        m = lane_id < blockDim.x / WARP_SIZE ? s_moments[lane_id] : Moments{0.0f, 0.0f, 0.0f};
+        m = warp_merge_moments(m);
+        if (lane_id == 0) {
+            float *out = partials + (blockIdx.x * splits + blockIdx.y) * 3;
+            out[0] = m.n;
+            out[1] = m.mean;
+            out[2] = m.m2;
+        }
+    }
+}
+
+template <typename T>
+__device__ void group_norm_apply(const T *x, const float *partials, T *y, int32_t pre,
+                                 int32_t channels, int32_t post, int32_t groups,
+                                 int32_t splits, float eps) {
+    const int o = blockIdx.x / groups;
+    const int g = blockIdx.x % groups;
+    const int cg = channels / groups;
+    const int len = pre * cg * post;
+    const int chunk = (len + splits - 1) / splits;
+    const int start = blockIdx.y * chunk;
+    const int end = min(len, start + chunk);
+
+    __shared__ float s_mean, s_inv;
+    if (threadIdx.x == 0) {
+        Moments m = {0.0f, 0.0f, 0.0f};
+        const float *in = partials + blockIdx.x * splits * 3;
+        for (int s = 0; s < splits; s++) {
+            m = merge_moments(m, Moments{in[3 * s], in[3 * s + 1], in[3 * s + 2]});
+        }
+        s_mean = m.mean;
+        s_inv = rsqrtf(m.m2 / m.n + eps);
+    }
+    __syncthreads();
+    const float mean = s_mean;
+    const float inv = s_inv;
+    for (int j = start + threadIdx.x; j < end; j += blockDim.x) {
+        const int idx = group_norm_offset(o, g, j, pre, channels, post, cg);
+        y[idx] = (T)(((float)x[idx] - mean) * inv);
+    }
+}
+
+#define INSTANTIATE_GROUP_NORM(name, T)                                              \
+    extern "C" __global__ void group_norm_stats_##name(                              \
+        const T *x, float *partials, int32_t pre, int32_t channels, int32_t post,    \
+        int32_t groups, int32_t splits) {                                            \
+        group_norm_stats<T>(x, partials, pre, channels, post, groups, splits);       \
+    }                                                                                \
+    extern "C" __global__ void group_norm_apply_##name(                              \
+        const T *x, const float *partials, T *y, int32_t pre, int32_t channels,      \
+        int32_t post, int32_t groups, int32_t splits, float eps) {                   \
+        group_norm_apply<T>(x, partials, y, pre, channels, post, groups, splits,     \
+                            eps);                                                    \
+    }
+
+INSTANTIATE_GROUP_NORM(f32, float)
+INSTANTIATE_GROUP_NORM(f16, __half)

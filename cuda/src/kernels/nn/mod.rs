@@ -1,5 +1,6 @@
 mod apply_rope;
 mod gelu_approximate;
+mod group_norm;
 mod leaky_relu;
 mod pool;
 mod reduce;
@@ -10,6 +11,10 @@ mod softmax;
 pub use apply_rope::{ApplyRope, cuda_apply_rope_dispatch};
 pub use gelu_approximate::GeluApproximate;
 pub use gelu_approximate::cuda_gelu_approximate_dispatch;
+pub use group_norm::{
+    cuda_group_norm_apply_dispatch, cuda_group_norm_stats_dispatch,
+    is_supported_dt as is_group_norm_supported_dt,
+};
 pub use leaky_relu::LeakyRelu;
 pub use leaky_relu::cuda_leaky_relu_dispatch;
 pub use pool::cuda_pool_dispatch;
@@ -116,6 +121,8 @@ pub fn all_functions() -> Vec<String> {
             .into_iter()
             .flat_map(|dt| LeakyRelu.kernel_name(dt).into_iter()),
     );
+
+    functions.extend(group_norm::kernel_names());
 
     functions.extend(
         [DatumType::F32, DatumType::F16]
