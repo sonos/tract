@@ -386,11 +386,14 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         // Smoke runs every bench on all available runtimes (the per-bench sweep
         // is a benchmarking economy, not a coverage statement): a CPU-only net
         // bench must still be exercised on an accelerator to catch backend bugs.
+        // An accelerator-only bench is not pulled back to the CPU: those are the
+        // models too large to run there in reasonable time.
+        let gpu_only = !bench.runtimes.is_empty() && !bench.runtimes.contains(&RuntimeKind::Cpu);
         let base_runs: Vec<(Option<RuntimeKind>, String)> = if smoke {
             [RuntimeKind::Cpu, RuntimeKind::Metal, RuntimeKind::Cuda]
                 .into_iter()
                 .filter(|b| b.available())
-                .filter(|b| !(skip_cpu && matches!(b, RuntimeKind::Cpu)))
+                .filter(|b| !((skip_cpu || gpu_only) && matches!(b, RuntimeKind::Cpu)))
                 .filter(|b| !child.is_wasm() || matches!(b, RuntimeKind::Cpu))
                 .map(|b| {
                     let label = match &bench.variant {
