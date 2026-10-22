@@ -1440,6 +1440,7 @@ struct Params {{
 @group(0) @binding(0) var<storage, read> inp: array<{t}>;
 @group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding(2) var<uniform> params: Params;
+var<workgroup> pool_scratch: array<f32, {WORKGROUP}>;
 
 fn in_idx_nhwc(n: i32, h: i32, w: i32, c: i32) -> u32 {{
     return u32(((n * params.ih + h) * params.iw + w) * params.c + c);
@@ -1452,6 +1453,47 @@ fn out_idx_nhwc(n: i32, h: i32, w: i32, c: i32) -> u32 {{
 }}
 fn out_idx_nchw(n: i32, c: i32, h: i32, w: i32) -> u32 {{
     return u32(((n * params.c + c) * params.oh + h) * params.ow + w);
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn global_avg_pool_2d_{suf}(
+    @builtin(workgroup_id) group: vec3<u32>,
+    @builtin(local_invocation_id) local: vec3<u32>
+) {{
+    let nc = i32(group.x);
+    if (nc >= params.n * params.c) {{ return; }}
+    let c = nc % params.c;
+    let n = nc / params.c;
+    let spatial = params.ih * params.iw;
+    var acc = 0.0;
+    for (var i = i32(local.x); i < spatial; i += {WORKGROUP}) {{
+        let h = i / params.iw;
+        let w = i - h * params.iw;
+        var idx: u32;
+        if (params.channels_last != 0) {{
+            idx = in_idx_nhwc(n, h, w, c);
+        }} else {{
+            idx = in_idx_nchw(n, c, h, w);
+        }}
+        acc += f32(inp[params.off_in + idx]);
+    }}
+    pool_scratch[local.x] = acc;
+    workgroupBarrier();
+    for (var stride = 32u; stride > 0u; stride >>= 1u) {{
+        if (local.x < stride) {{
+            pool_scratch[local.x] += pool_scratch[local.x + stride];
+        }}
+        workgroupBarrier();
+    }}
+    if (local.x == 0u) {{
+        var oidx: u32;
+        if (params.channels_last != 0) {{
+            oidx = out_idx_nhwc(n, 0, 0, c);
+        }} else {{
+            oidx = out_idx_nchw(n, c, 0, 0);
+        }}
+        outp[params.off_out + oidx] = {t}(pool_scratch[0] / f32(spatial));
+    }}
 }}
 
 @compute @workgroup_size({WORKGROUP})
