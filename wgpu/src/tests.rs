@@ -172,6 +172,37 @@ fn coverage_accepts_a_host_prologue() -> TractResult<()> {
     crate::ensure_wgpu_coverage(&model)
 }
 
+/// Squeeze/excitation blocks use full-spatial average pools. The WGPU path
+/// reduces each channel across a workgroup instead of making one invocation
+/// walk the complete image serially.
+#[test]
+fn global_average_pool_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{PaddingSpec, PoolSpec, SumPool};
+    use tract_core::ops::nn::DataFormat;
+    for (n, c, h, w) in [(1usize, 16usize, 64usize, 64usize), (2, 3, 7, 11)] {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([n, c, h, w]))?;
+        let pool = SumPool {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![h, w],
+                padding: PaddingSpec::Valid,
+                dilations: None,
+                strides: Some(tvec![h, w]),
+                input_channels: c,
+                output_channels: c,
+            },
+            count_include_pad: true,
+            normalize: true,
+        };
+        let y = model.wire_node("global-average", pool, &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[n, c, h, w], &fill(17, n * c * h * w))?)
+            .with_context(|| format!("n{n} c{c} {h}x{w}"))?;
+    }
+    Ok(())
+}
+
 /// The suites check what a fused graph computes; these check that it fused.
 fn transformed(mut model: TypedModel) -> TractResult<TypedModel> {
     crate::context::wgpu_context();
