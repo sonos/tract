@@ -16,11 +16,14 @@ use tract_core::ops::cnn::conv::rewrite_kernel_deconv_in_oihw;
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
+use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
+};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
@@ -358,6 +361,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Met
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::conv::wire_metal_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<GroupNorm>()
+            && kernels::nn::group_norm::is_supported_dt(input_facts[0].datum_type)
+            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let stats = GpuGroupNormStats {
+                params,
+                backend_name: "Metal",
+                dispatch: kernels::nn::metal_group_norm_stats_dispatch,
+            };
+            let apply = GpuGroupNormApply {
+                params,
+                eps: op.eps.clone(),
+                backend_name: "Metal",
+                dispatch: kernels::nn::metal_group_norm_apply_dispatch,
+            };
+            let outlet_ids =
+                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         if let Some(op) = node.op_as::<Deconv>()
