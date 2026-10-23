@@ -1,5 +1,6 @@
 mod cast;
 mod copy;
+mod cumsum;
 mod diag_gather;
 mod dispatch;
 mod gather;
@@ -9,6 +10,7 @@ mod rotate_half;
 pub use cast::Cast;
 pub use cast::cuda_cast_dispatch;
 pub use copy::Memcpy;
+pub use cumsum::cuda_cumsum_dispatch;
 pub use diag_gather::DiagGather;
 pub use diag_gather::cuda_diag_gather_dispatch;
 pub use dispatch::cuda_copy_nd_dispatch;
@@ -50,6 +52,12 @@ pub fn all_functions() -> Vec<String> {
         [tract_core::prelude::DatumType::F32, tract_core::prelude::DatumType::F16]
             .into_iter()
             .flat_map(|dt| resize::kernel_name(dt).ok()),
+    );
+
+    functions.extend(
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| cumsum::kernel_name(dt).ok()),
     );
 
     functions.into_iter().collect()
