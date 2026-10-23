@@ -205,6 +205,45 @@ mod tests {
         })
     }
 
+    #[test]
+    fn test_scaled_masked_softmax_block_sizes() -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            let scale: Arc<_> = tensor0(0.125f32).into();
+            for n in [33, 64, 127, 128, 256, 512, 1024, 2048] {
+                let a = Tensor::from_shape(
+                    &[2, 1, 3, n],
+                    &(0..6 * n).map(|f| (f % 17) as f32).collect::<Vec<_>>(),
+                )?;
+                let f32_mask = Tensor::from_shape(&[1, 1, 3, n], &vec![0f32; 3 * n])?;
+                let bool_mask = Tensor::from_shape(&[1, 1, 3, n], &vec![true; 3 * n])?;
+                for mask in [f32_mask, bool_mask] {
+                    let cpu = scaled_masked_softmax::ScaledMaskedSoftmax {
+                        scale: scale.clone(),
+                        post_softmax_mask: false,
+                    };
+                    let cpu_output = cpu.eval(
+                        &EvalContext::out_of_plan(),
+                        tvec![a.clone().into_tvalue(), mask.clone().into_tvalue()],
+                    )?[0]
+                        .clone()
+                        .into_tensor();
+                    let cuda_output = ScaledMaskedSoftmax.eval(
+                        stream,
+                        &a.clone().into_device()?,
+                        &scale,
+                        &mask.into_device()?,
+                        false,
+                    )?;
+                    cpu_output.close_enough(
+                        &cuda_output.to_host()?.into_tensor(),
+                        Approximation::Approximate,
+                    )?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     /// Bool-mask path with a fully-masked row.  Without post_softmax_mask
     /// the output is NaN (matches CPU); with it on, the NaN is scrubbed to 0.
     #[test]
