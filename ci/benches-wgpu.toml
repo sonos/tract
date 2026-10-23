@@ -1,4 +1,4 @@
-# Bench manifest for the nightly wgpu bench (bench-wgpu.yml, on the cuda-lovelace box over
+# Bench manifest for the nightly wgpu bench (bench-wgpu.yml, on entangled, the 4060 box, over
 # Vulkan). Same models and args as benches.toml, each run on the wgpu runtime only; a bench
 # that benches.toml runs on the CPU under a variant keeps that variant in its name, since
 # every run here is labelled `wgpu`. Ops wgpu does not cover run on the CPU (hybrid fallback).

@@ -122,9 +122,9 @@ jobs:
     # on the runner (full toolkit available) then runs it against a tiny
     # model inside a container that only has the minimum runtime packages
     # pinned in harness/cuda-minimum-deploy/Dockerfile.
-    # Daily only: keeps this off the cuda-lovelace runner on every PR.
+    # Daily only: keeps this off entangled on every PR. Needs its docker and container toolkit.
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     needs: prepare-matrix
     env:
       RUSTUP_TOOLCHAIN: ${{ needs.prepare-matrix.outputs.msrv }}
@@ -136,7 +136,7 @@ jobs:
       run: harness/cuda-minimum-deploy/gpu-ci.sh
 
   metal:
-    runs-on: macOS
+    runs-on: metal-tests
     needs: prepare-matrix
     strategy:
       matrix:
