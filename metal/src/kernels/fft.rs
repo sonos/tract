@@ -1,15 +1,25 @@
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
-use metal::{MTLSize, NSUInteger};
+use metal::{ComputePipelineState, MTLSize, NSUInteger};
 use tract_core::internal::*;
 use tract_core::ops::fft::{Fft, Stft};
-use tract_gpu::ops::stft::{GpuFft, GpuStft, is_supported_frame};
+use tract_gpu::ops::stft::{GpuFft, GpuStft, is_stockham_len, is_supported_len};
 use tract_gpu::tensor::DeviceTensor;
 
+/// Threadgroup size and memory for the direct DFT kernels: about one thread per output
+/// bin, and the frame plus its twiddle table.
+fn dft_group(pipeline: &ComputePipelineState, n: usize) -> (MTLSize, NSUInteger) {
+    let width =
+        (n.next_multiple_of(32) as NSUInteger).min(pipeline.max_total_threads_per_threadgroup());
+    (MTLSize { width, height: 1, depth: 1 }, (2 * n * 2 * size_of::<f32>()) as NSUInteger)
+}
+
 /// Fused STFT on Metal: gather a strided frame, apply the pre-padded window, then a
-/// forward FFT (one FFT per threadgroup, frame a supported power of two). `input` is
-/// interleaved-complex f32 `[lead.., T, 2]`, `window` the real `[frame]` window, `output`
-/// `[lead.., frames, frame, 2]`. The frame length is read from the output shape.
+/// forward FFT (one transform per threadgroup, the frame length satisfying
+/// [`is_supported_len`]: the Stockham kernel of that size when there is one, the direct
+/// DFT otherwise). `input` is interleaved-complex f32 `[lead.., T, 2]`, `window` the real
+/// `[frame]` window, `output` `[lead.., frames, frame, 2]`. The frame length is read from
+/// the output shape.
 fn dispatch_eval(
     stream: &MetalStream,
     stride: usize,
@@ -28,26 +38,38 @@ fn dispatch_eval(
     let axis = rank - 2;
     ensure!(output.rank() == rank + 1, "STFT output must be [.., frames, frame, 2]");
     let n = output.shape()[axis + 1];
-    ensure!(is_supported_frame(n), "MetalStft: unsupported frame {n}");
+    ensure!(is_supported_len(n), "MetalStft: unsupported frame {n}");
     ensure!(window.len() == n, "STFT window len {} != frame {n}", window.len());
     let batch: usize = input.shape()[..axis].iter().product();
     let t = input.shape()[axis];
     let frames = output.shape()[axis];
 
-    let pipeline = stream.load_pipeline(LibraryName::Fft, &format!("stft{n}_forward"))?;
+    let stockham = is_stockham_len(n);
+    let name = if stockham { format!("stft{n}_forward") } else { "stft_dft_forward".into() };
+    let pipeline = stream.load_pipeline(LibraryName::Fft, &name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, window, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
-        encoder.set_bytes(3, 4, &(t as i32) as *const i32 as *const _);
-        encoder.set_bytes(4, 4, &(frames as i32) as *const i32 as *const _);
-        encoder.set_bytes(5, 4, &(stride as i32) as *const i32 as *const _);
+        let mut scalars = vec![t as i32, frames as i32, stride as i32];
+        if !stockham {
+            scalars.insert(0, n as i32);
+        }
+        for (ix, v) in scalars.iter().enumerate() {
+            encoder.set_bytes(3 + ix as NSUInteger, 4, v as *const i32 as *const _);
+        }
 
         let grid_size =
             MTLSize { width: frames as NSUInteger, height: batch as NSUInteger, depth: 1 };
-        let group_size = MTLSize { width: (n / 2) as NSUInteger, height: 1, depth: 1 };
+        let group_size = if stockham {
+            MTLSize { width: (n / 2) as NSUInteger, height: 1, depth: 1 }
+        } else {
+            let (group_size, memory) = dft_group(&pipeline, n);
+            encoder.set_threadgroup_memory_length(0, memory);
+            group_size
+        };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
@@ -69,14 +91,15 @@ fn metal_stft_op(axis: usize, frame: usize, stride: usize, window: Arc<Tensor>) 
 
 crate::register_metal_op!(Stft, |source, node, op| {
     let in_fact = &source.node_input_facts(node.id)?[0];
-    rule_if!(is_supported_frame(op.frame));
+    rule_if!(is_supported_len(op.frame));
     rule_if!(in_fact.rank() >= 2 && op.axis == in_fact.rank() - 2);
     rule_if!(in_fact.datum_type == DatumType::F32);
     let window = tract_gpu::ops::stft::padded_window(op.window.as_ref(), op.frame)?;
     Ok(Some(Box::new(metal_stft_op(op.axis, op.frame, op.stride, window))))
 });
 
-/// Forward/inverse complex FFT on Metal; the frame is read from the input shape.
+/// Forward/inverse complex FFT on Metal, the length satisfying [`is_supported_len`]; it is
+/// read from the input shape.
 fn dispatch_fft(
     stream: &MetalStream,
     inverse: bool,
@@ -91,18 +114,27 @@ fn dispatch_fft(
     let rank = input.rank();
     ensure!(rank >= 2 && input.shape()[rank - 1] == 2, "MetalFft expects [batch.., N, 2]");
     let n = input.shape()[rank - 2];
-    ensure!(is_supported_frame(n), "MetalFft: unsupported FFT length {n}");
+    ensure!(is_supported_len(n), "MetalFft: unsupported FFT length {n}");
     let batch = input.len() / (n * 2);
 
     let dir = if inverse { "inverse" } else { "forward" };
-    let pipeline = stream.load_pipeline(LibraryName::Fft, &format!("fft{n}_{dir}"))?;
+    let stockham = is_stockham_len(n);
+    let name = if stockham { format!("fft{n}_{dir}") } else { format!("dft_{dir}") };
+    let pipeline = stream.load_pipeline(LibraryName::Fft, &name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, input, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, output, metal::MTLResourceUsage::Write);
         let grid_size = MTLSize { width: batch as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: (n / 2) as NSUInteger, height: 1, depth: 1 };
+        let group_size = if stockham {
+            MTLSize { width: (n / 2) as NSUInteger, height: 1, depth: 1 }
+        } else {
+            encoder.set_bytes(2, 4, &(n as i32) as *const i32 as *const _);
+            let (group_size, memory) = dft_group(&pipeline, n);
+            encoder.set_threadgroup_memory_length(0, memory);
+            group_size
+        };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
@@ -125,7 +157,7 @@ crate::register_metal_op!(Fft, |source, node, op| {
     let in_fact = &source.node_input_facts(node.id)?[0];
     let rank = in_fact.rank();
     rule_if!(rank >= 2 && op.axis == rank - 2 && in_fact.shape[rank - 1] == 2.to_dim());
-    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_frame));
+    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_len));
     rule_if!(in_fact.datum_type == DatumType::F32);
     Ok(Some(Box::new(metal_fft_op(op.axis, op.inverse))))
 });
@@ -135,11 +167,15 @@ mod tests {
     use super::*;
     use crate::transform::MetalTransform;
     use tract_core::transform::ModelTransform;
-    use tract_gpu::ops::stft::SUPPORTED_FRAMES;
+    use tract_gpu::ops::stft::{MAX_DFT_LEN, STOCKHAM_LENS};
+
+    fn tested_lens() -> Vec<usize> {
+        STOCKHAM_LENS.iter().copied().chain([3, 100, 400, 480, 1200, MAX_DFT_LEN - 1]).collect()
+    }
 
     #[test]
     fn stft_lowers_and_matches_cpu() -> TractResult<()> {
-        for &frame in &SUPPORTED_FRAMES {
+        for frame in tested_lens() {
             let (stride, win_len) = (160usize, 400usize.min(frame));
             let t = frame + stride * 6;
             let win: Vec<f32> = (0..win_len)
@@ -183,7 +219,7 @@ mod tests {
 
     #[test]
     fn fft_lowers_and_matches_cpu() -> TractResult<()> {
-        for &n in &[256usize, 512] {
+        for n in tested_lens() {
             for inverse in [false, true] {
                 let build = || -> TractResult<TypedModel> {
                     let mut m = TypedModel::default();

@@ -2,6 +2,7 @@
 // Interleaved-complex f32 (float2). Out-of-place, ping-pong in shared memory. Twiddles
 // W_N^k = exp(-2*pi*i*k/N) are computed in-kernel. Entry points are generated per size
 // (256/512/1024/2048) via DEFINE_FFT so the shared buffer and thread count are constant.
+// Other lengths go through the direct DFT kernels at the end of this file.
 
 static __device__ __forceinline__ float2 fft_cmul(float2 a, float2 b) {
     return make_float2(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
@@ -97,3 +98,63 @@ DEFINE_FFT(256)
 DEFINE_FFT(512)
 DEFINE_FFT(1024)
 DEFINE_FFT(2048)
+
+// Direct DFT for the lengths the Stockham kernels do not cover, one transform per block.
+// The n-point input and its twiddle table W_n^j = exp(sign*2*pi*i*j/n) sit in dynamic
+// shared memory (2 * n float2); thread t accumulates output bins t, t + blockDim.x, ...
+// O(n^2) per transform, which stays negligible at featurizer frame sizes.
+static __device__ void dft_block(const float2 *x, float2 *tw, float2 *out, int n, float sign) {
+    for (int j = threadIdx.x; j < n; j += blockDim.x) {
+        float s, c;
+        sincospif(sign * 2.0f * (float)j / (float)n, &s, &c);
+        tw[j] = make_float2(c, s);
+    }
+    __syncthreads();
+    for (int k = threadIdx.x; k < n; k += blockDim.x) {
+        float2 acc = make_float2(0.0f, 0.0f);
+        int idx = 0; // (j * k) mod n
+        for (int j = 0; j < n; ++j) {
+            const float2 t = fft_cmul(x[j], tw[idx]);
+            acc.x += t.x;
+            acc.y += t.y;
+            idx += k;
+            if (idx >= n) {
+                idx -= n;
+            }
+        }
+        out[k] = acc;
+    }
+}
+
+static __device__ void dft_impl(const float2 *in, float2 *out, int n, float sign) {
+    extern __shared__ float2 dft_smem[];
+    float2 *x = dft_smem;
+    const int base = blockIdx.x * n;
+    for (int j = threadIdx.x; j < n; j += blockDim.x) {
+        x[j] = in[base + j];
+    }
+    dft_block(x, dft_smem + n, out + base, n, sign);
+}
+
+extern "C" __global__ void dft_forward(const float2 *in, float2 *out, int n) {
+    dft_impl(in, out, n, -1.0f);
+}
+
+extern "C" __global__ void dft_inverse(const float2 *in, float2 *out, int n) {
+    dft_impl(in, out, n, 1.0f);
+}
+
+// Fused STFT over the direct DFT: same layout and arguments as stft<N>_forward, plus n.
+extern "C" __global__ void stft_dft_forward(const float2 *in, const float *win, float2 *out,
+                                            int n, int T, int frames, int stride) {
+    extern __shared__ float2 dft_smem[];
+    float2 *x = dft_smem;
+    const int f = blockIdx.x;
+    const int b = blockIdx.y;
+    const int in_base = b * T + f * stride;
+    for (int j = threadIdx.x; j < n; j += blockDim.x) {
+        const float2 v = in[in_base + j];
+        x[j] = make_float2(v.x * win[j], v.y * win[j]);
+    }
+    dft_block(x, dft_smem + n, out + (b * frames + f) * n, n, -1.0f);
+}
