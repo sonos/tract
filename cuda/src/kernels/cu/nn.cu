@@ -839,6 +839,147 @@ __device__ void rms_norm_body(const InT *x, const InT *residual, const float *sc
     INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16_add, true, true, true, iname, InT, \
                                   oname, OutT, bname, block_size)
 
+// Layer norm, one warp per contiguous row: the row is held in registers (`NV` 16-byte
+// vectors per lane), so it is read once, its variance taken from the centered values, and
+// written once. Requires rows of at most NV * 32 vectors and 16-byte aligned rows.
+template <typename T, int NV, bool AFFINE>
+__device__ void layer_norm_rows(const T *x, const float *scale, const float *bias, T *dst,
+                                const int32_t rows, const int32_t cols, const float eps) {
+    constexpr int VEC = 16 / sizeof(T);
+    const int row = blockIdx.x * (blockDim.x / WARP_SIZE) + threadIdx.x / WARP_SIZE;
+    const int lane = threadIdx.x % WARP_SIZE;
+    if (row >= rows) {
+        return;
+    }
+    const T *xr = x + (size_t)row * cols;
+    T *dr = dst + (size_t)row * cols;
+
+    float v[NV][VEC];
+    float sum = 0.0f;
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        const int c = (k * WARP_SIZE + lane) * VEC;
+        if (c < cols) {
+            alignas(16) T e[VEC];
+            *reinterpret_cast<uint4 *>(e) = *reinterpret_cast<const uint4 *>(xr + c);
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                v[k][j] = (float)e[j];
+                sum += v[k][j];
+            }
+        }
+    }
+    const float mean = warp_reduce_sum(sum) / cols;
+    float sq = 0.0f;
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        if ((k * WARP_SIZE + lane) * VEC < cols) {
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                const float d = v[k][j] - mean;
+                sq += d * d;
+            }
+        }
+    }
+    const float inv = rsqrtf(warp_reduce_sum(sq) / cols + eps);
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        const int c = (k * WARP_SIZE + lane) * VEC;
+        if (c < cols) {
+            alignas(16) T e[VEC];
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                float y = (v[k][j] - mean) * inv;
+                if constexpr (AFFINE) {
+                    y = y * scale[c + j] + bias[c + j];
+                }
+                e[j] = (T)y;
+            }
+            *reinterpret_cast<uint4 *>(dr + c) = *reinterpret_cast<const uint4 *>(e);
+        }
+    }
+}
+
+template <int BLOCK_SIZE>
+__device__ __forceinline__ float layer_norm_block_sum(float v, float *shared) {
+    v = warp_reduce_sum(v);
+    if constexpr (BLOCK_SIZE > WARP_SIZE) {
+        const int warp_id = threadIdx.x / WARP_SIZE;
+        const int lane_id = threadIdx.x % WARP_SIZE;
+        if (lane_id == 0) {
+            shared[warp_id] = v;
+        }
+        __syncthreads();
+        v = warp_reduce_sum(shared[lane_id]);
+    }
+    return v;
+}
+
+// Layer norm over the middle axis of a (shape_0, shape_1, shape_2) view, one block per
+// normalized row, any strides.
+template <typename T, int BLOCK_SIZE, bool AFFINE>
+__device__ void layer_norm_strided(const T *x, const float *scale, const float *bias, T *dst,
+                                   const int32_t shape_0, const int32_t shape_1,
+                                   const int32_t shape_2, const int32_t strides_0,
+                                   const int32_t strides_1, const int32_t strides_2,
+                                   const float eps) {
+    __shared__ float s_sum[32];
+    __shared__ float s_sq[32];
+    const int base_idx =
+        (blockIdx.x % shape_2) * strides_2 + (blockIdx.x / shape_2) * strides_0;
+    float sum = 0.0f;
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        sum += (float)x[base_idx + i * strides_1];
+    }
+    const float mean = layer_norm_block_sum<BLOCK_SIZE>(sum, s_sum) / shape_1;
+    float sq = 0.0f;
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const float d = (float)x[base_idx + i * strides_1] - mean;
+        sq += d * d;
+    }
+    const float inv = rsqrtf(layer_norm_block_sum<BLOCK_SIZE>(sq, s_sq) / shape_1 + eps);
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const int idx = base_idx + i * strides_1;
+        float y = ((float)x[idx] - mean) * inv;
+        if constexpr (AFFINE) {
+            y = y * scale[i] + bias[i];
+        }
+        dst[idx] = (T)y;
+    }
+}
+
+#define INSTANTIATE_LAYER_NORM_ROWS(tname, T, nv, affine, aname)                \
+    extern "C" __global__ void layer_norm_rows##nv##aname##_##tname(            \
+        const T *x, const float *scale, const float *bias, T *dst,              \
+        const int32_t rows, const int32_t cols, const float eps) {              \
+        layer_norm_rows<T, nv, affine>(x, scale, bias, dst, rows, cols, eps);   \
+    }
+
+#define INSTANTIATE_LAYER_NORM_STRIDED(tname, T, bname, block_size, affine,     \
+                                       aname)                                   \
+    extern "C" __global__ void layer_norm##aname##_##bname##tname(              \
+        const T *x, const float *scale, const float *bias, T *dst,              \
+        const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,    \
+        const int32_t strides_0, const int32_t strides_1,                       \
+        const int32_t strides_2, const float eps) {                             \
+        layer_norm_strided<T, block_size, affine>(                              \
+            x, scale, bias, dst, shape_0, shape_1, shape_2, strides_0,          \
+            strides_1, strides_2, eps);                                         \
+    }
+
+#define INSTANTIATE_LAYER_NORM_AFFINE(tname, T, affine, aname)                  \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 1, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 2, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 3, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 4, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 5, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 6, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 7, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 8, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_STRIDED(tname, T, small_, 32, affine, aname)         \
+    INSTANTIATE_LAYER_NORM_STRIDED(tname, T, , 1024, affine, aname)
+
+#define INSTANTIATE_LAYER_NORM(tname, T)                                        \
+    INSTANTIATE_LAYER_NORM_AFFINE(tname, T, false, )                            \
+    INSTANTIATE_LAYER_NORM_AFFINE(tname, T, true, _affine)
+
+INSTANTIATE_LAYER_NORM(f32, float)
+INSTANTIATE_LAYER_NORM(f16, __half)
+
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)
 

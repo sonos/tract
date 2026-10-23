@@ -35,6 +35,7 @@ use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
 use tract_gpu::ops::group_norm::{
     GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
 };
+use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
@@ -121,6 +122,7 @@ impl CudaTransform {
 
         Rewriter::default()
             .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_layer_norm_affine", fuse_layer_norm_affine)
             .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
