@@ -1,0 +1,32 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+
+# A cumsum the way torch-to-nnef spells it: a Scan whose body adds each element to
+# a state seeded from the input. The state is not reset between turns, so tract
+# carries it across calls and the Scan must stay unless the caller takes it over.
+
+fragment scan_body_add(
+    scan_input: tensor<scalar>,
+    acc_input: tensor<scalar>
+) -> ( added: tensor<scalar> )
+{
+    added = scan_input + acc_input;
+}
+
+graph scan_cumsum(input) -> (output)
+{
+    input = external<integer>(shape = [2, S]);
+    first = slice(input, axes = [1], begin = [0], end = [1], stride = [1]);
+    init = sub(first, first);
+    output = tract_core_scan(
+        body = "scan_body_add",
+        scan = [("scan_input", input, 1, 1)],
+        full = [],
+        state = [("acc_input", init, "added")],
+        output = [("added", "full", 1, 1)],
+        skip = 0,
+        reset_every_turn = false
+    );
+}
