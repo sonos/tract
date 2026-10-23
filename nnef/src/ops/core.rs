@@ -19,6 +19,7 @@ mod group_norm;
 mod gru_cell;
 mod gru_seq;
 mod is_inf;
+mod layer_norm;
 mod lstm_cell;
 mod matmul;
 mod one_hot;
@@ -68,6 +69,7 @@ pub fn register(registry: &mut Registry) {
     gelu_approximate::register(registry);
     gelu_exact::register(registry);
     group_norm::register(registry);
+    layer_norm::register(registry);
     pow_const::register(registry);
     grid_sample::register(registry);
     gru_cell::register(registry);

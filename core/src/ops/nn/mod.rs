@@ -4,6 +4,7 @@ pub mod gelu_approximate;
 pub mod gelu_exact;
 pub mod grid_sample;
 pub mod group_norm;
+pub mod layer_norm;
 mod reduce;
 pub mod resize;
 pub mod rms_norm;
@@ -16,6 +17,7 @@ pub use self::gelu_approximate::GeluApproximate;
 pub use self::gelu_exact::GeluExact;
 pub use self::grid_sample::{GridSample, InterpolationMode, PaddingMode};
 pub use self::group_norm::GroupNorm;
+pub use self::layer_norm::LayerNorm;
 pub use self::reduce::{Reduce, Reducer, expand_mean_of_squares};
 pub use self::resize::{
     CoordTransformer, Interpolator, Nearest, NearestUpsample, Resize,
