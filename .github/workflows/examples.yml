@@ -126,7 +126,7 @@ jobs:
           path: ./target/opt-no-lto/tract
 
   build-tract-cli-macos:
-    runs-on: macOS
+    runs-on: bench-apple-m1-max
     needs: prepare
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -156,7 +156,7 @@ jobs:
 
   gpu-example:
     name: ${{ matrix.ex }} (CUDA)
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     needs: [prepare, gpu-examples, build-tract-cli]
     strategy:
       fail-fast: false
@@ -186,7 +186,7 @@ jobs:
 
   gpu-example-metal:
     name: ${{ matrix.ex }} (Metal)
-    runs-on: macOS
+    runs-on: bench-apple-m1-max
     needs: [prepare, gpu-examples, build-tract-cli-macos]
     strategy:
       fail-fast: false

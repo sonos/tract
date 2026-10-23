@@ -1,5 +1,5 @@
 #!/bin/sh
-# ci-runners: ubuntu-latest cuda-lovelace
+# ci-runners: ubuntu-latest cuda-tests
 
 set -e
 

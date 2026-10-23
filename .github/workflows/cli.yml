@@ -87,8 +87,8 @@ jobs:
           boxes=$(jq -c --arg disabled "$DISABLED" \
             '($disabled | split(" ") | map(select(. != ""))) as $off | map(select(.target | IN($off[]) | not))' <<'EOF'
           [
-            { "target": "apple-m1-max", "runner": "macOS", "triple": "aarch64-apple-darwin" },
-            { "target": "i9-11900kb_rtx-4060", "runner": "cuda-lovelace", "triple": "x86_64-unknown-linux-gnu" },
+            { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin" },
+            { "target": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060", "triple": "x86_64-unknown-linux-gnu" },
             { "target": "i9-9900k", "runner": "i99900k", "triple": "x86_64-unknown-linux-gnu" },
             { "target": "jetson-orin-nx", "runner": "orin-nx-16g", "triple": "aarch64-unknown-linux-gnu-stretch",
               "suite_args": "--skip-cpu" }
@@ -183,8 +183,8 @@ jobs:
             for runner in ${runners:-ubuntu-latest}
             do
               case "$runner" in
-                ubuntu-latest|cuda-lovelace) triple=x86_64-unknown-linux-gnu ;;
-                macos-latest|macOS) triple=aarch64-apple-darwin ;;
+                ubuntu-latest|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                macos-latest|metal-tests|bench-apple-m1-max) triple=aarch64-apple-darwin ;;
                 *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
               esac
               jq -nc --arg script "$script" --arg runner "$runner" --arg triple "$triple" '$ARGS.named'
@@ -220,7 +220,8 @@ jobs:
             echo "dinghy=$dinghy"
           } >> "$GITHUB_OUTPUT"
       # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
-      # build-macos runs on the apple box unless it is disabled, on a hosted runner then.
+      # build-macos runs on a self-hosted Mac unless the apple box is disabled, on a hosted
+      # runner then.
       - id: split
         env:
           BOXES: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
@@ -228,7 +229,7 @@ jobs:
         run: |
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
-          echo "macos_host=$(jq -r 'if any(.[]; .runner == "macOS") then "macOS" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
+          echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
 
   build:
     needs: prepare
@@ -273,7 +274,7 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
-  # On the apple bench box, a cold build is faster than a cached one on a hosted runner.
+  # On a self-hosted Mac, a cold build is faster than a cached one on a hosted runner.
   build-macos:
     needs: prepare
     runs-on: ${{ needs.prepare.outputs.macos_host }}
@@ -369,7 +370,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ macOS, cuda-lovelace ]
+        os: [ bench-apple-m1-max, bench-i9-11900kb-rtx-4060 ]
         rt: [ cpu, gpu ]
         combo: ${{ fromJson(needs.llm-combos.outputs.combos) }}
     steps:
@@ -379,7 +380,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: tract-cli-${{ matrix.os == 'macOS' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
+          name: tract-cli-${{ matrix.os == 'bench-apple-m1-max' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
           path: tract-cli
       - name: Download and run
         env:
@@ -964,7 +965,7 @@ jobs:
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     # The x86 bench box, not a hosted runner: the pick ratios are stable to ~2 points
     # there and swing by 2x when something else is compiling on the machine.
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     timeout-minutes: 30
     strategy:
       fail-fast: false
