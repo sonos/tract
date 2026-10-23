@@ -1,4 +1,5 @@
 pub mod mlx_conv;
+pub mod winograd;
 
 use crate::encoder::EncoderExt;
 use crate::{LibraryName, MetalStream};
@@ -196,6 +197,7 @@ mod mlx_conv_tests {
     fn mlx_conv_library_compiles() -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             stream.load_library(LibraryName::MlxConv)?;
+            stream.load_library(LibraryName::MlxConvImplicit)?;
             Ok(())
         })
     }

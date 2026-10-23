@@ -12,6 +12,7 @@ keywords = [ "TensorFlow", "NeuralNetworks", "Metal" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2024"
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs", "/README.md", "/src/**/*.metal", "/src/**/*.metallib", "/src/**/*.md", "/benches/**/*.rs" ]
 rust-version.workspace = true
 
 [badges]

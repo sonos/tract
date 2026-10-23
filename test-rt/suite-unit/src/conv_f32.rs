@@ -406,6 +406,35 @@ impl Test for ConvProblem {
     }
 }
 
+/// A 3x3 stride-1 conv large enough, in pixels and channels, for a GPU
+/// backend to run it as Winograd, with extents that leave partial edge tiles.
+/// Callers skew c and o: the gate only looks at c + o, and the CPU runtimes
+/// pay for c * o (the wasm CI job runs these serially, twice).
+pub fn winograd_sized(
+    n: usize,
+    hw: [usize; 2],
+    c: usize,
+    o: usize,
+    pad: PaddingSpec,
+    bias: bool,
+) -> TractResult<ConvProblem> {
+    Ok(ConvProblem {
+        shape_in: DataFormat::NCHW.from_n_c_hw(n, c, hw)?,
+        kernel_format: KernelFormat::OIHW,
+        group: 1,
+        data: ArrayD::from_shape_fn(vec![n, c, hw[0], hw[1]], |ix| {
+            ((ix[0] * 5 + ix[1] * 3 + ix[2] * 7 + ix[3] * 11) % 9) as f32 * 0.25 - 1.0
+        }),
+        kernel: ArrayD::from_shape_fn(vec![o, c, 3, 3], |ix| {
+            ((ix[0] * 5 + ix[1] * 3 + ix[2] * 2 + ix[3]) % 7) as f32 * 0.0078125 - 0.0234375
+        }),
+        bias: bias.then(|| ArrayD::from_shape_fn(vec![o], |ix| ix[0] as f32 * 0.125 - 4.0)),
+        pad,
+        strides: tvec!(1, 1),
+        dilations: tvec!(1, 1),
+    })
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
@@ -1778,6 +1807,11 @@ pub fn suite() -> TractResult<TestSuite> {
             dilations: tvec!(3, 1),
         },
     );
+
+    let same = || PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1));
+    suite.add("winograd_same", winograd_sized(1, [67, 70], 9, 250, same(), false)?);
+    suite.add("winograd_valid", winograd_sized(2, [50, 47], 250, 7, PaddingSpec::Valid, false)?);
+    suite.add("winograd_bias", winograd_sized(1, [64, 64], 17, 240, same(), true)?);
 
     Ok(suite)
 }

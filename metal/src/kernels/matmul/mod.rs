@@ -3,6 +3,7 @@ mod ggml_gemm;
 pub mod mfa;
 mod mlx_gemm;
 pub mod mlx_sdpa;
+mod mpp;
 
 pub use basic::BasicMatMul;
 pub(crate) use ggml_gemm::dispatch_router_scores;
@@ -12,6 +13,7 @@ pub use ggml_gemm::{
 };
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
+pub use mpp::MppGemm;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 
 use crate::MetalStream;
@@ -29,6 +31,7 @@ pub enum MetalGemmImplKind {
     Mfa,
     #[default]
     Ggml,
+    Mpp,
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -850,6 +853,18 @@ mod tests {
 
         #[test]
         fn mmm_mlx_prop_f16(pb in any::<MmmProblem<MlxGemm, f16>>()) {
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
+        }
+
+        #[test]
+        fn mmm_mpp_prop_f32(pb in any::<MmmProblem<MppGemm, f32>>()) {
+            let output = pb.run().unwrap();
+            prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::Approximate).is_ok())
+        }
+
+        #[test]
+        fn mmm_mpp_prop_f16(pb in any::<MmmProblem<MppGemm, f16>>()) {
             let output = pb.run().unwrap();
             prop_assert!(output.close_enough(&pb.reference().unwrap(), Approximation::VeryApproximate).is_ok())
         }

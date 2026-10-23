@@ -23,6 +23,9 @@ then
         do
             timeout 150 $SUDO "$@" && return 0
             tries=$((tries + 1))
+            # If the timeout killed apt mid-install, dpkg stays locked in an
+            # "interrupted" state and every retry fails immediately.
+            $SUDO dpkg --configure -a 2>/dev/null || true
             # azure.archive.ubuntu.com is a known flaky mirror; after the
             # first failure, drop it so the rest of the retries go
             # straight to the canonical mirror instead of stalling again.

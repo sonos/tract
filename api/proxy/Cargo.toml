@@ -10,7 +10,7 @@ categories = [ "science" ]
 autobenches = false
 edition = "2024"
 rust-version.workspace = true
-include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*" ]
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs" ]
 
 [dependencies]
 anyhow.workspace = true

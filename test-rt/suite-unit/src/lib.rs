@@ -27,6 +27,7 @@ pub mod matmul_q40;
 pub mod matmul_rounding;
 pub mod max_pool;
 pub mod moe_ffn;
+pub mod move_axis;
 pub mod pad;
 pub mod q_binary;
 pub mod q_elmwise;
@@ -57,6 +58,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("matmul_rounding", matmul_rounding::suite()?);
     suite.add("max_pool", max_pool::suite()?);
     suite.add("moe_ffn", moe_ffn::suite()?);
+    suite.add("move_axis", move_axis::suite()?);
     suite.add("pad", pad::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);

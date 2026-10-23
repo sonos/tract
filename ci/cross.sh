@@ -20,7 +20,7 @@ ensure_cargo_dinghy() {
          fi
          VERSION=0.8.0
          URL=https://github.com/snipsco/dinghy/releases/download/$VERSION/cargo-dinghy-$NAME-$VERSION.tgz
-         mkdir -p /tmp/cargo-dinghy
+         mkdir -p /tmp/cargo-dinghy $HOME/.cargo/bin
          # Subshell: the callers below all use paths relative to the checkout.
          ( cd /tmp/cargo-dinghy
            # wget treats TLS errors and HTTP 500 as fatal, so retry from the shell.

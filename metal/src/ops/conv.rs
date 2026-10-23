@@ -1,4 +1,6 @@
 use crate::kernels::conv::metal_conv_dispatch;
+use crate::kernels::conv::winograd::WinogradGeometry;
+use crate::ops::winograd::wire_winograd_conv;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
@@ -17,11 +19,21 @@ pub fn wire_metal_conv(
     let bias = &facts[2];
     let need_bias = !(bias.konst.is_some() && bias.konst.as_ref().unwrap().is_all_zero()?);
     let conv_name = format!("{prefix}.conv");
-    let mut conv_wire = target.wire_node(
-        if need_bias { &conv_name } else { &node.name },
-        MetalConv { op: op.clone() },
-        &inputs[0..2],
-    )?[0];
+    let conv_name = if need_bias { &conv_name } else { &node.name };
+    let mut conv_wire = if let Some(geo) = WinogradGeometry::for_conv(op, &facts)
+        && let Some(output_shape) = node.outputs[0].fact.shape.as_concrete()
+    {
+        wire_winograd_conv(
+            target,
+            conv_name,
+            geo,
+            inputs,
+            node.outputs[0].fact.datum_type,
+            output_shape,
+        )?
+    } else {
+        target.wire_node(conv_name, MetalConv { op: op.clone() }, &inputs[0..2])?[0]
+    };
     if need_bias {
         let mut needed_shape = tvec![1.to_dim(); node.outputs[0].fact.rank()];
         needed_shape[data_shape.c_axis()] = op.pool_spec.output_channels.to_dim();

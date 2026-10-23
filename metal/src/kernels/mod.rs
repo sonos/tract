@@ -26,6 +26,7 @@ const METAL_FLASH_ATTENTION_LIB: &[u8] =
 const METAL_FLASH_ATTENTION_LIB: &[u8] = &[];
 
 const MLX_GEMM: &str = include_str!("matmul/mlx_gemm/mlx_gemm.metal");
+const MPP_GEMM: &str = include_str!("matmul/mpp/mpp_gemm.metal");
 const MLX_GEMV: &str = include_str!("matmul/mlx_gemm/mlx_gemv.metal");
 const MLX_SDPA: &str = include_str!("matmul/mlx_sdpa/mlx_sdpa.metal");
 const GGML: &str = include_str!("matmul/ggml_gemm/ggml_mm_mv.metal");
@@ -35,11 +36,13 @@ const BIN_OPS: &str = include_str!("bin_ops.metal");
 const NN_OPS: &str = concat!(include_str!("nn/nn_ops.metal"), include_str!("nn/pool.metal"));
 const CONV_OPS: &str = include_str!("conv/direct_conv.metal");
 const MLX_CONV: &str = include_str!("conv/mlx_conv.metal");
+const MLX_CONV_IMPLICIT: &str = include_str!("conv/mlx_conv_implicit.metal");
 const MLX_CONV_DW: &str = include_str!("conv/mlx_conv_dw.metal");
 const ELEMENT_WISE_OPS: &str = include_str!("element_wise.metal");
 const FFT_OPS: &str = include_str!("fft.metal");
 const GDN_RECURRENT: &str = include_str!("gdn_recurrent.metal");
 const MOE_OPS: &str = include_str!("moe.metal");
+const WINOGRAD: &str = include_str!("conv/winograd.metal");
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum LibraryContent<'a> {
@@ -51,6 +54,7 @@ pub enum LibraryContent<'a> {
 pub enum LibraryName {
     MlxGemm,
     MlxGemv,
+    MppGemm,
     MlxSdpa,
     MfaLib,
     BasicMatMul,
@@ -58,6 +62,7 @@ pub enum LibraryName {
     ArrayOps,
     ConvOps,
     MlxConv,
+    MlxConvImplicit,
     MlxConvDw,
     NNOps,
     ElementWiseOps,
@@ -65,6 +70,7 @@ pub enum LibraryName {
     Fft,
     GdnRecurrent,
     MoeOps,
+    Winograd,
 }
 
 impl LibraryName {
@@ -76,6 +82,8 @@ impl LibraryName {
             Self::BinOps => LibraryContent::Source(BIN_OPS),
             Self::ConvOps => LibraryContent::Source(CONV_OPS),
             Self::MlxConv => LibraryContent::Source(MLX_CONV),
+            Self::MlxConvImplicit => LibraryContent::Source(MLX_CONV_IMPLICIT),
+            Self::MppGemm => LibraryContent::Source(MPP_GEMM),
             Self::MlxConvDw => LibraryContent::Source(MLX_CONV_DW),
             Self::NNOps => LibraryContent::Source(NN_OPS),
             Self::ElementWiseOps => LibraryContent::Source(ELEMENT_WISE_OPS),
@@ -86,6 +94,7 @@ impl LibraryName {
             Self::Fft => LibraryContent::Source(FFT_OPS),
             Self::GdnRecurrent => LibraryContent::Source(GDN_RECURRENT),
             Self::MoeOps => LibraryContent::Source(MOE_OPS),
+            Self::Winograd => LibraryContent::Source(WINOGRAD),
         }
     }
 }

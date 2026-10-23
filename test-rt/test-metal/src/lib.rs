@@ -70,6 +70,7 @@ macro_rules! metal_runtime {
 static MLX: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mlx);
 static MFA: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mfa);
 static GGML: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Ggml);
+static MPP: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mpp);
 
 // Common transform
 metal_test_suite!(metal_phase_0_einsum, 0, false, MLX, false, false);
@@ -79,3 +80,4 @@ metal_runtime!(None);
 metal_runtime!(MLX);
 metal_runtime!(MFA);
 metal_runtime!(GGML);
+metal_runtime!(MPP);
