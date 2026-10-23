@@ -85,6 +85,13 @@ impl Reducer {
                     &[wire],
                 )?[0]
             }
+            Mean if target.outlet_fact(wire)?.datum_type.is_float() => {
+                wire = target.wire_node(
+                    name.to_string() + ".mean",
+                    TReduce::new(axes, TReducer::Mean),
+                    &[wire],
+                )?[0];
+            }
             Mean => {
                 let fact = target.outlet_fact(wire)?.clone();
                 wire = target.wire_node(
