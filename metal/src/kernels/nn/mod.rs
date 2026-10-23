@@ -1,6 +1,7 @@
 pub mod apply_rope;
 pub mod gelu_approximate;
 pub mod group_norm;
+pub mod layer_norm;
 pub mod leaky_relu;
 pub mod pool;
 pub mod reduce;
@@ -113,5 +114,6 @@ pub fn all_functions() -> Vec<String> {
             .flat_map(|dt| LeakyRelu.kernel_name(dt).into_iter()),
     );
     functions.extend(group_norm::kernel_names());
+    functions.extend(layer_norm::kernel_names());
     functions.into_iter().collect()
 }

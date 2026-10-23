@@ -1588,3 +1588,59 @@ template [[host_name("nn_ops::group_norm_apply_f32")]] [[kernel]]
     group_norm_apply_t group_norm_apply<float>;
 template [[host_name("nn_ops::group_norm_apply_f16")]] [[kernel]]
     group_norm_apply_t group_norm_apply<half>;
+
+static inline float layer_norm_threadgroup_sum(float v, threadgroup float *shared, uint nsg,
+                                               uint sgitg, uint tiisg) {
+    v = simd_sum(v);
+    if (tiisg == 0) {
+        shared[sgitg] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    v = simd_sum(tiisg < nsg ? shared[tiisg] : 0.0f);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    return v;
+}
+
+// Layer norm over the middle axis of a contiguous (outer, dim, inner) view, one threadgroup
+// per normalized row. dims: outer, dim, inner, affine (scale and bias read when non-zero).
+template <typename T>
+[[kernel]] void layer_norm(device const void *x_b, device const float *scale,
+                           device const float *bias, device void *y_b,
+                           constant const int dims[4], constant const float &eps,
+                           threadgroup float *shared [[threadgroup(0)]],
+                           uint tgpig [[threadgroup_position_in_grid]],
+                           uint tpitg [[thread_position_in_threadgroup]],
+                           uint ntg [[threads_per_threadgroup]],
+                           uint sgitg [[simdgroup_index_in_threadgroup]],
+                           uint tiisg [[thread_index_in_simdgroup]]) {
+    device const T *x = (device const T *)x_b;
+    device T *y = (device T *)y_b;
+    int dim = dims[1], inner = dims[2];
+    bool affine = dims[3] != 0;
+    uint nsg = (ntg + 31) / 32;
+    int base = (int(tgpig) / inner) * dim * inner + int(tgpig) % inner;
+    float sum = 0.0f;
+    for (int i = tpitg; i < dim; i += ntg) {
+        sum += float(x[base + i * inner]);
+    }
+    float mean = layer_norm_threadgroup_sum(sum, shared, nsg, sgitg, tiisg) / dim;
+    float sq = 0.0f;
+    for (int i = tpitg; i < dim; i += ntg) {
+        float d = float(x[base + i * inner]) - mean;
+        sq += d * d;
+    }
+    float inv = rsqrt(layer_norm_threadgroup_sum(sq, shared, nsg, sgitg, tiisg) / dim + eps);
+    for (int i = tpitg; i < dim; i += ntg) {
+        int idx = base + i * inner;
+        float v = (float(x[idx]) - mean) * inv;
+        if (affine) {
+            v = v * scale[i] + bias[i];
+        }
+        y[idx] = T(v);
+    }
+}
+
+typedef decltype(layer_norm<float>) layer_norm_t;
+
+template [[host_name("nn_ops::layer_norm_f32")]] [[kernel]] layer_norm_t layer_norm<float>;
+template [[host_name("nn_ops::layer_norm_f16")]] [[kernel]] layer_norm_t layer_norm<half>;
