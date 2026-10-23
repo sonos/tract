@@ -1,0 +1,13 @@
+[package]
+name = "qwen3-asr"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+float-ord.workspace = true
+hound = "3.5.1"
+itertools.workspace = true
+ndarray.workspace = true
+tokenizers.workspace = true
+tract.workspace = true
