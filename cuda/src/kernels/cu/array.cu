@@ -395,3 +395,33 @@ INSTANTIATE_GATHER(i64, int64_t)
 
 INSTANTIATE_RESIZE_AXIS(f32, float)
 INSTANTIATE_RESIZE_AXIS(f16, __half)
+
+// Cumulative sum along one axis of a contiguous tensor viewed as (outer, len, inner):
+// one thread per (outer, inner) lane walks the axis, accumulating in Acc. `exclusive`
+// writes the sum of the previous elements, `reverse` walks from the end.
+#define INSTANTIATE_CUMSUM(name, T, Acc)                                       \
+    extern "C" __global__ void cumsum_##name(                                  \
+        const T *input, T *output, const int32_t outer, const int32_t len,     \
+        const int32_t inner, const int32_t exclusive, const int32_t reverse) { \
+        const int32_t lane = blockIdx.x * blockDim.x + threadIdx.x;            \
+        if (lane >= outer * inner)                                             \
+            return;                                                            \
+        const int64_t base = (int64_t)(lane / inner) * len * inner + lane % inner; \
+        Acc acc = (Acc)0;                                                      \
+        for (int32_t s = 0; s < len; ++s) {                                    \
+            const int64_t ix = base + (int64_t)(reverse ? len - 1 - s : s) * inner; \
+            const Acc v = (Acc)input[ix];                                      \
+            if (exclusive) {                                                   \
+                output[ix] = (T)acc;                                           \
+                acc += v;                                                      \
+            } else {                                                           \
+                acc += v;                                                      \
+                output[ix] = (T)acc;                                           \
+            }                                                                  \
+        }                                                                      \
+    }
+
+INSTANTIATE_CUMSUM(f32, float, float)
+INSTANTIATE_CUMSUM(f16, __half, float)
+INSTANTIATE_CUMSUM(i32, int32_t, int32_t)
+INSTANTIATE_CUMSUM(i64, int64_t, int64_t)
