@@ -1,6 +1,7 @@
 pub(crate) mod quant_act_q81;
 
 use cudarc::cublas::{self, CudaBlas, Gemm};
+use cudarc::cublaslt::{Matmul, MatmulConfig};
 use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaView, CudaViewMut, LaunchConfig, PushKernelArg};
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
@@ -313,6 +314,67 @@ where
     Ok(())
 }
 
+/// f16 GEMM with the per-output-feature `bias` (length `n`) added by cuBLASLt's bias
+/// epilogue, in the F32 accumulator before the output is rounded.
+fn dispatch_cublaslt_gemm_bias(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    c: &DeviceTensor,
+    bias: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.dts == [DatumType::F16; 3] && bias.datum_type() == DatumType::F16);
+    ensure!(bias.len() == params.n);
+    let events = stream.record_profile_events()?;
+    let lt = stream.cublas_lt()?;
+    let bias_view = get_cuda_view(bias);
+    for d in CublasDispatchParams::compute_dispatch_params(&params)? {
+        let act_len = params.act_strides[0] as usize * d.act_batch * params.dts[0].size_of();
+        let w_len = params.w_strides[0] as usize * d.w_batch * params.dts[1].size_of();
+        let act_view = get_sliced_cuda_view(activs, d.act_offset, act_len)?;
+        let w_view = get_sliced_cuda_view(weights, d.w_offset, w_len)?;
+        let mut c_view = get_sliced_cuda_view_mut(
+            c,
+            d.c_offset,
+            params.out_strides[0] as usize * d.act_batch.max(d.w_batch) * params.dts[2].size_of(),
+        )?;
+        let batched = d.act_batch > 1;
+        let cfg = MatmulConfig {
+            transa: true,
+            transb: false,
+            transc: false,
+            m: params.n as u64,
+            n: d.m as u64,
+            k: params.k as u64,
+            alpha: 1.0,
+            lda: params.k as i64,
+            ldb: params.k as i64,
+            beta: 0.0,
+            ldc: params.n as i64,
+            stride_a: batched.then_some(params.w_strides[0] as i64),
+            stride_b: batched.then_some(params.act_strides[0] as i64),
+            stride_c: batched.then_some(params.out_strides[0] as i64),
+            stride_bias: batched.then_some(0),
+            batch_size: batched.then_some(d.act_batch as i32),
+        };
+        unsafe {
+            lt.matmul(
+                cfg,
+                &w_view.transmute::<f16>(w_view.len() / size_of::<f16>()).unwrap(),
+                &act_view.transmute::<f16>(act_view.len() / size_of::<f16>()).unwrap(),
+                &mut c_view.transmute_mut::<f16>(c_view.len() / size_of::<f16>()).unwrap(),
+                Some(&bias_view.transmute::<f16>(params.n).unwrap()),
+                None,
+            )
+        }?;
+    }
+    if let Some((start, end)) = events {
+        stream.finish_profile_entry(start, end)?;
+    }
+    Ok(())
+}
+
 fn kernel_name_q40(
     params: &GemmParams,
     mmq_w: usize,
@@ -581,7 +643,7 @@ impl GgmlGemm {
         let c_shape = self.output_shape(&act_shape, &w_shape);
         let c = unsafe { DeviceTensor::uninitialized_dt(c_dt, &c_shape)? };
 
-        self.dispatch_eval(stream, activs, weights, &c)?;
+        self.dispatch_eval(stream, activs, weights, None, &c)?;
         stream.synchronize()?;
         Ok(c)
     }
@@ -619,11 +681,14 @@ impl GgmlGemm {
         dispatch_ggml_matvec(stream, ring, activs, out, params, Some((ring_table, ring_axis)))
     }
 
+    /// `bias`, when given, is a per-output-feature f16 vector added to every output row; it
+    /// takes the cuBLASLt path whatever the shape.
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
         activs: &DeviceTensor,
         weights: &DeviceTensor,
+        bias: Option<&DeviceTensor>,
         out: &DeviceTensor,
     ) -> TractResult<()> {
         // Note: All the following MM/MV kernels transpose the output.
@@ -645,7 +710,10 @@ impl GgmlGemm {
             out.shape(),
         )?;
 
-        if get_quant_fact(weights, &Q4_0).is_some() {
+        if let Some(bias) = bias {
+            ensure!(get_quant_fact(weights, &Q4_0).is_none());
+            dispatch_cublaslt_gemm_bias(stream, weights, activs, out, bias, params)?;
+        } else if get_quant_fact(weights, &Q4_0).is_some() {
             let act_view = get_cuda_view(activs);
             let w_view = get_cuda_view(weights);
             let out_view = get_cuda_view(out);
