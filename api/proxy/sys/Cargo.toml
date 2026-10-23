@@ -10,7 +10,7 @@ categories = [ "science" ]
 autobenches = false
 edition = "2024"
 rust-version.workspace = true
-include = [ "Cargo.toml", "src/**/*.rs", "LICENSE*", "build.rs", "tract.h" ]
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs", "/build.rs", "/tract.h" ]
 
 [features]
 # Declare the unstable numpy `.npy` / `.npz` functions (TRACT_UNSTABLE_NPYZ).

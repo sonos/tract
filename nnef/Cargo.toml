@@ -9,6 +9,7 @@ keywords = [ "NeuralNetworks", "NNEF" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2024"
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs", "/stdlib.nnef", "/tests/**/*.rs", "/tests/*.nnef" ]
 rust-version.workspace = true
 
 [badges]
