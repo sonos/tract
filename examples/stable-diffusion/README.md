@@ -1,6 +1,6 @@
 # Stable Diffusion 1.5 with tract
 
-A minimal text-to-image pipeline running entirely in Rust using [tract](https://github.com/sonos/tract). All three SD 1.5 components (text encoder, UNet, VAE decoder) run on GPU via tract's CUDA backend.
+A minimal text-to-image pipeline running entirely in Rust using [tract](https://github.com/sonos/tract). All three SD 1.5 components (text encoder, UNet, VAE decoder) run on GPU via tract's CUDA or Metal backend, falling back to CPU.
 
 ## Quick start
 
@@ -26,6 +26,7 @@ Options:
   -g, --guidance-scale <SCALE>     CFG scale [default: 7.5]
   -o, --output <OUTPUT>            Output file [default: output.png]
       --assets <ASSETS>            Model directory [default: assets]
+      --f32                        Run the UNet in f32 (f16 on GPU otherwise)
   -h, --help                       Print help
 ```
 
@@ -35,15 +36,15 @@ Images display inline on iTerm2/WezTerm (including through tmux).
 
 ## Performance
 
-On an NVIDIA GPU (32GB VRAM):
+On an RTX 5090, wall clock including model loading (~4 s):
 
-| Images | Steps | Time | Notes |
-|--------|-------|------|-------|
-| 1 | 20 | ~8s | Single image |
-| 4 | 20 | ~20s | Batched UNet, ~5s/image |
-| 1 | 10 | ~5s | Fewer steps, lower quality |
+| Images | Steps | Time | Denoising |
+|--------|-------|------|-----------|
+| 1 | 20 | ~4.4s | ~28 ms/step |
+| 4 | 20 | ~5.4s | ~69 ms/step |
+| 1 | 10 | ~4.2s | ~35 ms/step |
 
-All three models run on CUDA. The UNet uses batched inference for classifier-free guidance (batch=2N for N images).
+All models go through `transformers_detect_all` (fused attention). The UNet runs in f16 on GPU runtimes, the text encoder and VAE in f32. The UNet uses batched inference for classifier-free guidance (batch=2N for N images).
 
 ## Architecture
 

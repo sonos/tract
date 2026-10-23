@@ -118,6 +118,10 @@ struct Args {
     /// Path to model assets directory
     #[arg(long, default_value = "assets")]
     assets: std::path::PathBuf,
+
+    /// Run the UNet in f32 (it runs in f16 on GPU runtimes otherwise)
+    #[arg(long)]
+    f32: bool,
 }
 
 fn main() -> Result<()> {
@@ -156,12 +160,21 @@ fn main() -> Result<()> {
     eprintln!("  Scheduler: {num_steps} steps, init_sigma={init_noise_sigma:.4}");
 
     let gpu = tract::runtime_for_name("gpu-or-cpu")?;
-    eprintln!("runtime: {}", gpu.name()?);
+    let unet_f16 = !args.f32 && gpu.name()? != "cpu";
+    eprintln!("runtime: {}, UNet in {}", gpu.name()?, if unet_f16 { "f16" } else { "f32" });
 
     // --- Text encoding (load encoder, run, drop to save VRAM) ---
     eprintln!("Running text encoder...");
     let onnx = tract::onnx()?;
-    let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
+    let load = |name: &str, f16: bool| -> Result<_> {
+        let mut model = onnx.load(assets.join(name))?.into_model()?;
+        model.transform("transformers_detect_all")?;
+        if f16 {
+            model.transform(FloatPrecision::new(DatumType::F32, DatumType::F16))?;
+        }
+        gpu.prepare(model)
+    };
+    let text_encoder = load("text_encoder.onnx", false)?;
     let cond_emb = text_encoder.run([input_ids.tract()?])?;
     let uncond_emb = text_encoder.run([uncond_input_ids.tract()?])?;
     drop(text_encoder);
@@ -196,7 +209,9 @@ fn main() -> Result<()> {
 
     // --- Batched denoising loop (load UNet, run, drop to free VRAM for VAE) ---
     eprintln!("Loading UNet...");
-    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
+    let unet = load("unet.onnx", unet_f16)?;
+    let unet_dt = if unet_f16 { DatumType::F16 } else { DatumType::F32 };
+    let text_emb = text_emb.tract()?.convert_to(unet_dt)?;
     use kdam::BarExt as _;
     let mut pb = kdam::Bar::builder()
         .total(num_steps)
@@ -217,9 +232,13 @@ fn main() -> Result<()> {
         let sample = ndarray::ArrayD::from_shape_vec(vec![b2, 4, 64, 64], sample_data)?;
         let timestep = ndarray::Array1::from_vec(vec![t; b2]).into_dyn();
 
-        let noise_pred =
-            unet.run(vec![sample.tract()?, timestep.tract()?, text_emb.clone().tract()?])?;
-        let pred = noise_pred[0].as_slice::<f32>()?;
+        let noise_pred = unet.run(vec![
+            sample.tract()?.convert_to(unet_dt)?,
+            timestep.tract()?,
+            text_emb.clone(),
+        ])?;
+        let noise_pred = noise_pred[0].convert_to(DatumType::F32)?;
+        let pred = noise_pred.as_slice::<f32>()?;
 
         // CFG: split uncond (first N) / cond (last N), combine
         let batch_latent_size = num_images * latent_size;
@@ -240,7 +259,7 @@ fn main() -> Result<()> {
 
     // --- VAE decode + save each image ---
     eprintln!("Loading VAE decoder...");
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
+    let vae_decoder = load("vae_decoder.onnx", false)?;
     let (h, w) = (512usize, 512usize);
     for n in 0..num_images {
         let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]
