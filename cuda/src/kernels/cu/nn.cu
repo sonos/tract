@@ -859,7 +859,7 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T)                       \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32)                        \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64_, 64)                        \
-    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 126)                      \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 128)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 256_, 256)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 512_, 512)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 1024_, 1024)                    \
@@ -873,7 +873,7 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 #define INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX_FOR_T(name, T)                  \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 32_, 32)                   \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 64_, 64)                   \
-    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 128_, 126)                 \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 128_, 128)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 256_, 256)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 512_, 512)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 1024_, 1024)               \
