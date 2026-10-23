@@ -41,6 +41,8 @@ fn mk_suite() -> infra::TestSuite {
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
+/// The routing ops have no NNEF serializers, and their scores lose the
+/// ordering the tests check once the model is converted to f16.
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
@@ -56,7 +58,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     }
 
     let [section, _unit] = t else { return false };
-    ["q_flavours"].contains(&&**section)
+    ["q_flavours", "route_topk", "routed_combine", "routed_q40"].contains(&&**section)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {

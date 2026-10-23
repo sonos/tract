@@ -15,6 +15,7 @@ fn mk_suite() -> infra::TestSuite {
     onnx.ignore(&ignore_onnx);
 
     let mut unit = suite_unit::suite().unwrap().clone();
+    unit.add("matmul_f16", suite_unit::matmul_f16::suite().unwrap());
     unit.ignore_case(&ignore_unit);
 
     unit.get_sub_mut("bin_einsum").add_arbitrary::<BinEinsumProblem>(
