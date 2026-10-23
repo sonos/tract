@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use tract_core::internal::*;
+use tract_core::ops::konst::Const;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceSyncKind {
@@ -124,7 +125,7 @@ pub fn sync_inputs_if_required(
 ) -> TractResult<TVec<OutletId>> {
     let mut mapped_inputs = tvec![];
     for (i_idx, i) in node.inputs.iter().enumerate() {
-        let in_fact = model.outlet_fact_mut(mapping[i])?;
+        let in_fact = model.outlet_fact(mapping[i])?;
         match sync_kind {
             DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
                 mapped_inputs.push(
@@ -136,16 +137,18 @@ pub fn sync_inputs_if_required(
                 );
             }
             DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
+                // A konst fact does not make its producer a Const: a source or CPU op
+                // with a zero-volume output carries one and still yields a host tensor.
                 if let Some(ref konst) = in_fact.konst
                     && konst.as_device_tensor().is_none()
                 {
                     let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
                     let device_fact = DeviceFact::from_host(in_fact.clone())?;
-
-                    *in_fact = device_fact.into_exotic_fact();
-
-                    in_fact.konst = Some(Arc::new(device_konst));
-                    mapped_inputs.push(mapping[i]);
+                    let op =
+                        Const::new_with_exotic_fact(Arc::new(device_konst), Box::new(device_fact))?;
+                    mapped_inputs.push(
+                        model.wire_node(format!("{}.device-const-{i_idx}", node.name), op, &[])?[0],
+                    );
                     continue;
                 }
                 ensure!(
