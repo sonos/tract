@@ -1,6 +1,6 @@
 [package]
 name = "tract-wgpu"
-version = "0.23.8-pre"
+version = "0.23.10-pre"
 license = "MIT OR Apache-2.0"
 authors = [
 	"Ckristian Zoli <czoli1976@users.noreply.github.com>",

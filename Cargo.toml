@@ -264,7 +264,7 @@ tract-pulse-opl = { version = "0.23.10-pre", path = 'pulse-opl' }
 tract-tensorflow = { version = "0.23.10-pre", path = 'tensorflow' }
 tract-tflite = { version = "0.23.10-pre", path = 'tflite' }
 tract-transformers = { version = "0.23.10-pre", path = 'transformers' }
-tract-wgpu = { version = "0.23.8-pre", path = 'wgpu' }
+tract-wgpu = { version = "0.23.10-pre", path = 'wgpu' }
 
 
 [profile.opt-no-lto]
