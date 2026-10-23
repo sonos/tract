@@ -42,7 +42,12 @@ then
     if [ `uname` = "Darwin" ]
     then
         python3 --version
-        brew install coreutils numpy python-setuptools jq
+        # Self-hosted Macs carry these already; brew's index fetch is a network
+        # round trip per job that fails the job when it fails.
+        if [ "$RUNNER_ENVIRONMENT" != "self-hosted" ]
+        then
+            brew install coreutils numpy python-setuptools jq
+        fi
         PATH="/opt/homebrew/opt/coreutils/libexec/gnubin:$PATH"
         export PYTHON_BIN_PATH=python3
     else
