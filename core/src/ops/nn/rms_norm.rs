@@ -127,7 +127,10 @@ impl TypedOp for RmsNorm {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        super::group_norm::detect_group_norm(self, model, node)
+        if let Some(patch) = super::group_norm::detect_group_norm(self, model, node)? {
+            return Ok(Some(patch));
+        }
+        super::layer_norm::detect_layer_norm(self, model, node)
     }
 
     fn change_axes(
