@@ -23,9 +23,8 @@ pub fn conv_to_nhwc(
     rule_ensure!(conv.group == 1 && conv.q_params.is_none());
     let input_fact = model.outlet_fact(node.inputs[0])?;
     rule_ensure!(input_fact.rank() == 4);
-    rule_if_some!(input_shape = input_fact.shape.as_concrete());
     rule_if_some!(kernel = &model.outlet_fact(node.inputs[1])?.konst);
-    let data_shape = conv.pool_spec.data_format.shape(input_shape)?;
+    let data_shape = conv.pool_spec.data_format.shape(input_fact.shape.to_tvec())?;
     rule_ensure!(
         conv.pool_spec
             .computed_padding(data_shape.hw_dims())
