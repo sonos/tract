@@ -1,0 +1,10 @@
+version 1.0;
+
+graph mm_tanh_squeeze(input, w) -> (output)
+{
+    input = external<scalar>(shape = [1, 4, 32]);
+    w = external<scalar>(shape = [1, 32, 16]);
+    mm = matmul(input, w);
+    t = tanh(mm);
+    output = reshape(t, shape = [4, 16]);
+}

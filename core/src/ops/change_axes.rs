@@ -1252,6 +1252,21 @@ pub struct IntoShape {
     pub strides: TVec<isize>,
 }
 
+impl IntoShape {
+    /// The `AxisOp` this reshape performs on an input of shape `input`: the simplest single one,
+    /// or a reshape of the whole shape.
+    pub fn axis_op(&self, input: &[usize]) -> Option<AxisOp> {
+        if self.strides != Tensor::natural_strides(&self.dims) {
+            return None;
+        }
+        let from = input.iter().map(|d| d.to_dim()).collect();
+        let to = self.dims.iter().map(|d| d.to_dim()).collect();
+        let reshape = AxisOp::Reshape(0, from, to);
+        let simplified = reshape.simplify();
+        Some(if let [op] = &*simplified { op.clone() } else { reshape })
+    }
+}
+
 impl Op for IntoShape {
     fn name(&self) -> StaticName {
         "IntoShape".into()
