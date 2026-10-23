@@ -16,6 +16,7 @@ pub mod gdn_recurrent;
 pub mod gelu_approximate;
 pub mod group_norm;
 pub mod iff;
+pub mod layer_norm;
 pub mod leaky_relu;
 pub mod pad;
 pub mod pool;

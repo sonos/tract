@@ -1,6 +1,7 @@
 mod apply_rope;
 mod gelu_approximate;
 mod group_norm;
+mod layer_norm;
 mod leaky_relu;
 mod pool;
 mod reduce;
@@ -123,6 +124,7 @@ pub fn all_functions() -> Vec<String> {
     );
 
     functions.extend(group_norm::kernel_names());
+    functions.extend(layer_norm::kernel_names());
 
     functions.extend(
         [DatumType::F32, DatumType::F16]
