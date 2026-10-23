@@ -1,4 +1,5 @@
 use cudarc::cublas::CudaBlas;
+use cudarc::cublaslt::CudaBlasLT;
 use cudarc::cudnn::Cudnn;
 use cudarc::nvrtc::Ptx;
 use cudarc::runtime::result::device::get_device_prop;
@@ -380,6 +381,7 @@ pub struct GpuProfileEntry {
 pub struct TractCudaStream {
     inner: Arc<CudaStream>,
     cublas: CudaBlas,
+    cublas_lt: std::cell::OnceCell<CudaBlasLT>,
     cudnn: Arc<Cudnn>,
     /// When Some, kernel launches record start/end events here.
     profile_log: RefCell<Option<Vec<GpuProfileEntry>>>,
@@ -407,6 +409,7 @@ impl TractCudaStream {
         Ok(TractCudaStream {
             inner: stream,
             cublas,
+            cublas_lt: std::cell::OnceCell::new(),
             cudnn,
             profile_log: RefCell::new(None),
             current_node_id: Cell::new(0),
@@ -416,6 +419,15 @@ impl TractCudaStream {
 
     pub fn cublas(&self) -> &CudaBlas {
         &self.cublas
+    }
+
+    /// The stream's cuBLASLt handle, with its workspace, created on first use.
+    pub fn cublas_lt(&self) -> TractResult<&CudaBlasLT> {
+        if let Some(lt) = self.cublas_lt.get() {
+            return Ok(lt);
+        }
+        let lt = CudaBlasLT::new(self.inner.clone()).context("CudaBlasLT::new failed")?;
+        Ok(self.cublas_lt.get_or_init(|| lt))
     }
 
     pub fn cudnn(&self) -> &Arc<Cudnn> {

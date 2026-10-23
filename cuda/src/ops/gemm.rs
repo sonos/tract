@@ -25,8 +25,14 @@ impl CudaGgmlGemm {
         &self,
         inputs: &[&TypedFact],
     ) -> TractResult<TVec<TypedFact>> {
-        let [a, b] = inputs else {
-            bail!("Expects 2 inputs");
+        let (a, b) = match inputs {
+            [a, b] => (a, b),
+            [a, b, bias] => {
+                ensure!(bias.datum_type == DatumType::F16 && a.datum_type == DatumType::F16);
+                ensure!(bias.shape.iter().product::<TDim>() == b.shape[b.rank() - 2]);
+                (a, b)
+            }
+            _ => bail!("Expects 2 inputs, or 3 with a bias"),
         };
 
         if a.datum_type.is_number() && b.datum_type.is_number() && a.is_plain() && b.is_plain() {
@@ -57,7 +63,9 @@ impl EvalOp for CudaGgmlGemm {
     op_out_of_plan!();
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (act_raw, weights_raw) = args_2!(inputs);
+        ensure!(inputs.len() == 2 || inputs.len() == 3);
+        let bias = inputs.get(2).map(|b| b.to_device_tensor()).transpose()?;
+        let (act_raw, weights_raw) = (&inputs[0], &inputs[1]);
         let activs = act_raw
             .to_device_tensor()
             .with_context(|| format!("A tensor is not a cuda tensor: {act_raw:?}"))?;
@@ -73,7 +81,9 @@ impl EvalOp for CudaGgmlGemm {
             if get_ggml_q81_fact(activs).is_some() { DatumType::F32 } else { activs.datum_type() };
         let out = tract_gpu::turn_handler::make_tensor_for_node(ctx, out_dt, &out_shape)?;
 
-        crate::with_cuda_stream(|stream| GgmlGemm.dispatch_eval(stream, activs, weights, &out))?;
+        crate::with_cuda_stream(|stream| {
+            GgmlGemm.dispatch_eval(stream, activs, weights, bias, &out)
+        })?;
 
         Ok(tvec![out.into_tensor().into_tvalue()])
     }

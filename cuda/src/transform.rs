@@ -142,6 +142,9 @@ impl CudaTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("fuse_gemm_bias", rewrite_rules::fuse_gemm_bias)
+            .rewrite(&(), model)?;
         // After elementwise fusion: only residual adds that stayed standalone
         // dispatches are worth absorbing into their norm consumer.
         Rewriter::default()
