@@ -5,6 +5,7 @@ use crate::ops::cast::cast;
 use crate::ops::change_axes::wire_with_rank_broadcast;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::math::{Mul, Square, div, square};
+use crate::optim::change_axes::sink_axis_op;
 use std::convert::TryFrom;
 use std::iter::Sum;
 use std::mem::transmute;
@@ -690,6 +691,9 @@ impl Reduce {
     ) -> TractResult<Option<TypedModelPatch>> {
         if self.reducer == Reducer::Mean {
             rule_if_some!(prec = model.linear_prec(node.id)?);
+            if prec.op_is::<AxisOp>() && is_square_through_axis_ops(model, prec)? {
+                return sink_axis_op(model, prec);
+            }
             rule_if_some!(prec_ew = prec.op_as::<ElementWiseOp>());
             rule_if!(prec_ew.0.is::<Square>());
             let mut patch = TypedModelPatch::default();
@@ -772,6 +776,17 @@ pub fn expand_mean_of_squares(
     }
     patch.shunt_outside(model, node.id.into(), wire[0])?;
     Ok(Some(patch))
+}
+
+fn is_square_through_axis_ops<'a>(
+    model: &'a TypedModel,
+    mut node: &'a TypedNode,
+) -> TractResult<bool> {
+    while node.op_is::<AxisOp>() {
+        let Some(prec) = model.linear_prec(node.id)? else { return Ok(false) };
+        node = prec;
+    }
+    Ok(node.op_as::<ElementWiseOp>().is_some_and(|ew| ew.0.is::<Square>()))
 }
 
 #[cfg(test)]

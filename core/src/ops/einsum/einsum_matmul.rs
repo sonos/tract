@@ -384,51 +384,14 @@ fn push_reshape_below_binop_rule(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
-    node_name: &str,
+    _node_name: &str,
     op: &AxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let AxisOp::Reshape(at, from_dims, to_dims) = op else { return Ok(None) };
-    rule_if!(node.outputs.len() == 1);
-    rule_if!(node.outputs[0].successors.len() == 1);
-    rule_if!(!model.output_outlets()?.contains(&node.id.into()));
-
-    let inlet = node.outputs[0].successors[0];
-    let succ = model.node(inlet.node);
-    rule_if!(succ.inputs.len() == 2);
+    rule_if!(matches!(op, AxisOp::Reshape(..)));
+    rule_if_some!(succ = model.single_succ(node.id)?);
     rule_if_some!(binop = succ.op_as::<crate::ops::binary::TypedBinOp>());
     rule_if!(binop.0.as_linalg_binop().is_some());
-    let other = succ.inputs[1 - inlet.slot];
-
-    let mut patch = TypedModelPatch::new(format!("push {node} below {succ}"));
-    let act = patch.tap_model(model, node.inputs[0])?;
-
-    let sibling = if let Some(k) = model.outlet_fact(other)?.konst.clone() {
-        let at = *at;
-        let (from_len, to_len) = (from_dims.len(), to_dims.len());
-        let kshape = k.shape();
-        rule_if!(at + to_len <= kshape.len());
-        rule_if!(kshape[at..at + to_len].iter().all(|&d| d == 1));
-        let mut new_shape: TVec<usize> = kshape[..at].iter().copied().collect();
-        new_shape.extend(std::iter::repeat_n(1, from_len));
-        new_shape.extend(kshape[at + to_len..].iter().copied());
-        let k = k.as_ref().clone().into_shape(&new_shape)?;
-        patch.add_const(format!("{}.through_reshape", model.node(other.node).name), k)?
-    } else {
-        let other_node = model.node(other.node);
-        rule_if!(other_node.op_as::<AxisOp>() == Some(op));
-        patch.tap_model(model, other_node.inputs[0])?
-    };
-
-    let operands = if inlet.slot == 0 { [act, sibling] } else { [sibling, act] };
-    let applied = crate::ops::change_axes::wire_with_rank_broadcast(
-        format!("{}.prefused", succ.name),
-        &mut patch,
-        binop.clone(),
-        &operands,
-    )?;
-    let reshaped = patch.wire_node(format!("{node_name}.pushed"), op.clone(), &applied)?;
-    patch.shunt_outside(model, inlet.node.into(), reshaped[0])?;
-    Ok(Some(patch))
+    crate::optim::change_axes::sink_axis_op(model, node)
 }
 
 pub fn detect_all(model: &mut TypedModel) -> TractResult<()> {
