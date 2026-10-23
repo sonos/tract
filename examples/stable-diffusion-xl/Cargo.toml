@@ -12,4 +12,4 @@ ndarray.workspace = true
 rand = "0.10"
 rand_distr = "0.6"
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
-tract.workspace = true
+tract = { workspace = true, features = ["cuda-13000", "metal"] }
