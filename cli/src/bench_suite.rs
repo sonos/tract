@@ -570,7 +570,9 @@ struct Staged {
 /// Land the model bytes in RAM and return what the child loads. On Linux the fetch —
 /// file read or http GET — happens here, into a memfd the child inherits, so it is
 /// untimed and the child's load reads from RAM whatever the origin: the fix that keeps
-/// `time_to_*` a fetch-free, file-vs-http-independent signal. Non-Linux: pass through.
+/// `time_to_*` a fetch-free, file-vs-http-independent signal. Elsewhere a cached model is
+/// read through once here, untimed, so the child's load hits the page cache rather than
+/// the disk; a URL passes through.
 fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
     let format = format_hint(&bench.model);
     if let ModelSource::WasmPreopen = source {
@@ -595,7 +597,11 @@ fn stage(source: &ModelSource, bench: &Bench) -> TractResult<Staged> {
     #[cfg(not(target_os = "linux"))]
     {
         let arg = match source {
-            ModelSource::Cache(dir) => dir.join(&bench.model).to_string_lossy().into_owned(),
+            ModelSource::Cache(dir) => {
+                let path = dir.join(&bench.model);
+                std::io::copy(&mut std::fs::File::open(&path)?, &mut std::io::sink())?;
+                path.to_string_lossy().into_owned()
+            }
             ModelSource::Url(base) => format!("{}/{}", base.trim_end_matches('/'), bench.model),
             ModelSource::WasmPreopen => unreachable!(),
         };
