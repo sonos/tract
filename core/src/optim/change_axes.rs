@@ -325,11 +325,11 @@ pub fn sink_axis_op(
 
 /// Moves the axis op at `axis_node` (see [`node_axis_op`]) above its predecessor:
 /// `axis(prec(x, y))` becomes `prec'(axis'(x), y')`, with `prec'` and `axis'` taken from
-/// `prec.change_axes`.
+/// `prec.change_axes`. When `prec` feeds other nodes too, they keep it and `prec'` is a copy.
 ///
-/// `prec` must feed `axis_node` only. One input of `prec` receives the moved op, wired in the
-/// patch by `wire_moved(patch, input, op)`, which lets the caller absorb it in the same patch:
-/// left standing as an `AxisOp`, it would be moved back below elementwise ops by their
+/// One input of `prec` receives the moved op, wired in the patch by
+/// `wire_moved(patch, input, op)`. A caller hoisting the op to absorb it must do it there, in the
+/// same patch: left standing as an `AxisOp`, it would be moved back below elementwise ops by their
 /// declutter. The other inputs must take the change for free: a constant is rewritten, the
 /// output of an axis op the change undoes is bypassed, and a uniform operand of a binary op
 /// becomes a constant. Returns `None` when `prec` refuses the change, when more than one input
@@ -341,9 +341,8 @@ pub fn hoist_axis_op(
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_if_some!(axis_op = node_axis_op(model, axis_node)?);
     let prec = model.node(axis_node.inputs[0].node);
-    rule_if!(prec.outputs.len() == 1 && prec.outputs[0].successors.len() == 1);
+    rule_if!(prec.outputs.len() == 1);
     rule_if!(!prec.inputs.is_empty());
-    rule_if!(!model.output_outlets()?.contains(&prec.id.into()));
     rule_if_some!(consequence = prec.op.change_axes(model, prec, InOut::Out(0), &axis_op)?);
     rule_if_some!(
         (input_changes, output_change) = split_wire_changes(prec, consequence.wire_changes)
