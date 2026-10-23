@@ -58,13 +58,28 @@ fn tile_util(d: usize, tile: usize) -> f32 {
 /// overhead), then in favour of larger `nr` (more K-loop amortisation
 /// per inner iteration). An unknown M or N is treated as
 /// "large enough" — its utilisation contribution is 1.0.
-fn pick_mmm(choices: &[KernelChoice], m: Option<usize>, n: Option<usize>) -> &'static str {
-    let key = |c: &KernelChoice| -> (f32, i32, i32) {
+///
+/// When K is provided and is small (skinny-K), prefer kernels with larger `mr`
+/// to amortize packing overhead over more rows per tile.
+fn pick_mmm(
+    choices: &[KernelChoice],
+    m: Option<usize>,
+    n: Option<usize>,
+    k: Option<usize>,
+) -> &'static str {
+    let key = |c: &KernelChoice| -> (f32, i32, i32, f32) {
         let m_u = m.map(|m| tile_util(m, c.mr)).unwrap_or(1.0);
         let n_u = n.map(|n| tile_util(n, c.nr)).unwrap_or(1.0);
         let m_b = m.map(|m| m.div_ceil(c.mr)).unwrap_or(1) as i32;
         let n_b = n.map(|n| n.div_ceil(c.nr)).unwrap_or(1) as i32;
-        (c.scale * m_u * n_u, -(m_b * n_b), c.nr as i32)
+        // Skinny-K bonus: prefer larger mr when K is small to amortize packing overhead
+        let skinny_k_bonus = k
+            .map(|k| {
+                let tile_area = (c.mr * c.nr) as f32;
+                if (k as f32) < tile_area { (c.mr as f32) * (tile_area / k as f32) } else { 0.0 }
+            })
+            .unwrap_or(0.0);
+        (c.scale * m_u * n_u, -(m_b * n_b), c.nr as i32, skinny_k_bonus)
     };
     let best = choices
         .iter()
@@ -470,7 +485,7 @@ fn avx_preferred(
             Some(5) => Some(avx_mmm_f32_16x5.name.as_str()),
             Some(6) => Some(avx_mmm_f32_16x6.name.as_str()),
             Some(8) => Some(avx_mmm_f32_8x8.name.as_str()),
-            Some(_) => Some(pick_mmm(AVX_CHOICES, query.m, query.n)),
+            Some(_) => Some(pick_mmm(AVX_CHOICES, query.m, query.n, query.k)),
         },
         _ => None,
     }
@@ -514,7 +529,7 @@ fn fma_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> {
             Some(5) => Some(fma_mmm_f32_16x5.name.as_str()),
             Some(6) => Some(fma_mmm_f32_16x6.name.as_str()),
             Some(8) => Some(fma_mmm_f32_8x8.name.as_str()),
-            Some(_) => Some(pick_mmm(FMA_CHOICES, query.m, query.n)),
+            Some(_) => Some(pick_mmm(FMA_CHOICES, query.m, query.n, query.k)),
         },
     }
 }
@@ -599,7 +614,7 @@ fn avx512_mmm_f32(suitable: &[Suitable], query: &Query) -> Option<&'static str> 
             if let Some(1) = query.n {
                 unreachable!("n == 1 answered above");
             }
-            Some(pick_mmm(X86_F32_CHOICES, query.m, query.n))
+            Some(pick_mmm(X86_F32_CHOICES, query.m, query.n, query.k))
         }
     }
 }
