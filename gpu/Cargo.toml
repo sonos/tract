@@ -13,6 +13,7 @@ keywords = [ "TensorFlow", "NeuralNetworks", "GPU" ]
 categories = [ "science" ]
 autobenches = false
 edition = "2024"
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs" ]
 rust-version.workspace = true
 
 [badges]

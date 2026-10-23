@@ -8,6 +8,7 @@ repository = "https://github.com/sonos/tract"
 keywords = ["TensorFlow", "NeuralNetworks"]
 categories = ["science"]
 edition = "2024"
+include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs" ]
 
 [badges]
 maintenance = { status = "actively-developed" }
