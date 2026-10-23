@@ -41,6 +41,7 @@ members = [
     "examples/nemo-nemotron-asr",
     "examples/nemo-nemotron-streaming-asr",
     "examples/nemo-nemotron35-streaming-asr",
+    "examples/qwen3-asr",
     "examples/nnef-dump-mobilenet-v2",
     "examples/nnef-mobilenet-v2",
     "examples/onnx-mobilenet-v2",
