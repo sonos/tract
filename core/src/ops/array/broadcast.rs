@@ -1,8 +1,7 @@
-use tract_data::itertools::izip;
-
 use crate::broadcast::multi_broadcast;
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
+use crate::optim::change_axes::hoist_axis_op;
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct MultiBroadcastTo {
@@ -65,28 +64,19 @@ impl TypedOp for MultiBroadcastTo {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         // The output takes the change: the broadcast absorbs it in the target
-        // shape. The input takes it only when every touched axis has the same
-        // dim in input and target, which is a real correspondence only at
-        // equal ranks (right-aligned broadcasting pairs by index then).
+        // shape. The input takes it too when input and target have the same
+        // rank, so that they pair axis by axis, and the input shape can take
+        // it: applying the change to both then commutes with the broadcast.
         let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+        let mut changed_input = input_shape.clone();
+        let passthrough = input_shape.rank() == self.shape.rank()
+            && change.change_shape(&mut changed_input, false).is_ok();
         let canonical = change.canonical();
         let touched: TVec<usize> = match canonical.as_ref() {
             AxisOp::Add(ix) | AxisOp::Rm(ix) => tvec![*ix],
-            AxisOp::Move(from, to) => {
-                rule_if!(input_shape.rank() == self.shape.rank());
-                tvec![*from, *to]
-            }
+            _ if passthrough => tvec![],
             _ => return Ok(None),
         };
-        let passthrough = touched.iter().all(|&ix| {
-            ix < input_shape.rank() && ix < self.shape.rank() && input_shape[ix] == self.shape[ix]
-        });
-        // A Move must propagate, never absorb: transpose-of-broadcast is not
-        // broadcast-into-transposed-target ([1,7] into a transposed [7,7]
-        // target yields the transposed tensor).
-        if matches!(canonical.as_ref(), AxisOp::Move(..)) && !passthrough {
-            return Ok(None);
-        }
 
         let mut shape = self.shape.clone();
         if change.change_shape(&mut shape, false).is_ok() {
@@ -169,30 +159,16 @@ impl TypedOp for MultiBroadcastTo {
         if input_fact.shape == self.shape {
             return TypedModelPatch::shunt_one_op(model, node);
         }
-        // Swap with an AxisOp successor: `Broadcast(x, S) → AxisOp` becomes
-        // `AxisOp(x) → Broadcast(σ(S))` whenever the AxisOp transforms every
-        // axis the broadcast actually expanded.  Fires per-successor, so this
-        // works under fan-out (the original broadcast stays in place for
-        // siblings; only the matched AxisOp branch is rerouted).
+        // Hoist an AxisOp successor above the broadcast, per successor so the broadcast stays in
+        // place for siblings under fan-out.
         for succ in &*node.outputs[0].successors {
             let succ = model.node(succ.node);
-            let Some(op) = succ.op_as::<AxisOp>() else { continue };
-            // The AxisOp's indices refer to the broadcast output; they are only
-            // meaningful on the input if the broadcast did not add leading axes.
-            if input_fact.rank() != self.shape.rank() {
-                continue;
-            }
-            let mut shape = self.shape.clone();
-            if izip!(0.., &*input_fact.shape, &*self.shape)
-                .filter(|(_, l, r)| l != r)
-                .all(|(axis, _, _)| op.transform_axis(axis).is_some())
-                && op.change_shape(&mut shape, false).is_ok()
+            if succ.op_is::<AxisOp>()
+                && let Some(patch) = hoist_axis_op(model, succ, |patch, input, op| {
+                    let wire = patch.tap_model(model, input)?;
+                    Ok(Some(patch.wire_node(&succ.name, op, &[wire])?[0]))
+                })?
             {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.inputs[0])?;
-                wire = patch.wire_node(&succ.name, op.clone(), &[wire])?[0];
-                wire = patch.wire_node(&node.name, MultiBroadcastTo { shape }, &[wire])?[0];
-                patch.shunt_outside(model, succ.id.into(), wire)?;
                 return Ok(Some(patch));
             }
         }
@@ -448,10 +424,11 @@ mod tests {
         Ok(())
     }
 
-    /// A Move touching an axis on which the input is broadcast must block:
-    /// transpose-of-broadcast is not broadcast-into-transposed-target.
+    /// A Move touching an axis on which the input is broadcast cannot be
+    /// absorbed by the target alone, but moving the input too commutes with
+    /// the broadcast.
     #[test]
-    fn move_over_broadcast_axis_blocked() -> TractResult<()> {
+    fn move_over_broadcast_axis_propagates_to_input() -> TractResult<()> {
         let mut model = TypedModel::default();
         let src = model.add_source("src", f32::fact([5usize, 1usize]))?;
         let y = model.wire_node(
@@ -460,12 +437,14 @@ mod tests {
             &[src],
         )?[0];
         let node = model.node(y.node);
-        let blocked = node
+        let consequence = node
             .op
-            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))
-            .map(|r| r.is_none())
-            .unwrap_or(false);
-        assert!(blocked, "expected the broadcast to block the move");
+            .change_axes(&model, node, InOut::Out(0), &AxisOp::Move(0, 1))?
+            .context("expected propagation")?;
+        assert_eq!(
+            consequence.wire_changes,
+            tvec![(InOut::Out(0), AxisOp::Move(0, 1)), (InOut::In(0), AxisOp::Move(0, 1))]
+        );
         Ok(())
     }
 
@@ -564,7 +543,12 @@ mod tests {
                 let dim = if *dim == 1 { bumps.next().unwrap_or(0).max(1) } else { *dim };
                 target.push(dim);
             }
-            let op = match selector % 3 {
+            let op = match selector % 4 {
+                3 if target.len() >= 2 => {
+                    let at = ix.min(target.len() - 2);
+                    let (a, b) = (target[at].to_dim(), target[at + 1].to_dim());
+                    AxisOp::Reshape(at, tvec![a.clone(), b.clone()], tvec![a * b])
+                }
                 0 => AxisOp::Add(ix.min(target.len())),
                 1 => {
                     if ix < target.len() && target[ix] == 1 {
