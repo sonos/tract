@@ -158,5 +158,6 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("rows_too_long_f16", rows::<f16>(&[3, 2056], 1, true));
     suite.add("rows_not_vector_multiple_f32", rows::<f32>(&[4, 50], 1, true));
     suite.add("strided_axis_affine_f32", rows::<f32>(&[2, 96, 33], 1, true));
+    suite.add("many_rows_f32", rows::<f32>(&[70000, 8], 1, true));
     Ok(suite)
 }
