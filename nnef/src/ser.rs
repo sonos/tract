@@ -383,7 +383,7 @@ impl<'a> IntoAst<'a> {
         // A weight known by its name stays a reference to that name: its bytes are not the
         // model's to write, the bundle it is loaded with provides them.
         if let Some(named) = tensor.storage_as::<NamedStorage>() {
-            let id = self.scoped_id(&Identifier::from(name.as_ref()));
+            let id = self.scoped_id(Identifier::from(name.as_ref()));
             self.assignment(
                 id.clone(),
                 RValue::Invocation(Invocation {
