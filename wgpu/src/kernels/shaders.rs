@@ -424,7 +424,7 @@ fn gather{i}(linear: u32) -> u32 {{
         r#"
 @compute @workgroup_size({WORKGROUP})
 fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let base = i * 4u;
     if (base >= params.len) {{ return; }}
     var v = in0[params.off_in[0u] / 4u + i];
@@ -512,7 +512,7 @@ fn gather{i}(linear: u32) -> u32 {{
         r#"
 @compute @workgroup_size({WORKGROUP})
 fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     var v = in0[params.off_in[0] + gather0(i)];
 "#
@@ -945,7 +945,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -959,7 +959,7 @@ fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -973,7 +973,7 @@ fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -987,7 +987,7 @@ fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -1001,7 +1001,7 @@ fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -1015,7 +1015,7 @@ fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -1084,7 +1084,7 @@ fn out_idx_nchw(n: i32, c: i32, h: i32, w: i32) -> u32 {{
 
 @compute @workgroup_size({WORKGROUP})
 fn max_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = i32(gid.x);
+    let i = i32(gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x);
     let nout = params.n * params.oh * params.ow * params.c;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1121,7 +1121,7 @@ fn max_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = i32(gid.x);
+    let i = i32(gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x);
     let nout = params.n * params.oh * params.ow * params.c;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1524,7 +1524,7 @@ struct Params {{
 {lib}
 @compute @workgroup_size({WORKGROUP})
 fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let nout = params.n * params.co * params.oh * params.ow;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1825,7 +1825,7 @@ struct Params {{
 {lib}
 @compute @workgroup_size({WORKGROUP})
 fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let nout = params.n * params.co * params.oh * params.ow;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1906,7 +1906,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn resize_axis_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.len_out * params.inner;
     if (i >= n) {{ return; }}
     let inner_i = i % params.inner;
@@ -1964,7 +1964,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn resize_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.h_out * params.w_out;
     if (i >= n) {{ return; }}
     let xo = i % params.w_out;
@@ -2087,7 +2087,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -2199,7 +2199,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let mn = params.m * params.n;
     let nout = params.prefix * mn;
     if (i >= nout) {{ return; }}
@@ -2410,7 +2410,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn export_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.width * params.height;
     if (i >= n) {{ return; }}
     let x = i % params.width;
@@ -2440,7 +2440,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn rgba_to_nchw_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.width * params.height;
     if (i >= n) {{ return; }}
     let x = i % params.width;
