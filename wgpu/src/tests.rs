@@ -730,3 +730,59 @@ fn matmul_tiled_matches_cpu() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
+/// batch, channels-last, an uneven kernel and padding, f16 and a bias.
+#[test]
+fn conv_tiled_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    #[rustfmt::skip]
+    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 8] = [
+        // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
+        (DataFormat::NCHW, 1, 8, 40, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [66, 66], [3, 3], [2, 2], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [37, 37], [3, 3], [1, 1], [2, 2], 0, false),
+        (DataFormat::NCHW, 1, 16, 80, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 2, 8, 40, [24, 24], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NHWC, 1, 8, 40, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [33, 35], [1, 5], [1, 1], [1, 1], 2, false),
+        (DataFormat::NCHW, 1, 8, 40, [33, 33], [3, 3], [1, 1], [1, 1], 1, true),
+    ];
+    for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
+        cases.into_iter().enumerate()
+    {
+        let group = if ci == 16 { 2 } else { 1 };
+        let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+        let shape = fmt.from_n_c_hw(n, ci, hw)?.shape.to_vec();
+        let k_shape = [co, ci / group, kernel[0], kernel[1]];
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact(&shape))?;
+        let k = Tensor::from_shape(&k_shape, &fill(1, k_shape.iter().product()))?;
+        let k = model.add_const("k", k.cast_to_dt(dt)?.into_owned())?;
+        let b = model.add_const(
+            "b",
+            Tensor::from_shape(&[co], &fill(2, co))?.cast_to_dt(dt)?.into_owned(),
+        )?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: fmt,
+                kernel_shape: kernel.iter().copied().collect(),
+                padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, 0]),
+                dilations: Some(dilation.iter().copied().collect()),
+                strides: Some(stride.iter().copied().collect()),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        let input = Tensor::from_shape(&shape, &fill(3, shape.iter().product()))?;
+        gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned())
+            .with_context(|| format!("case {i}"))?;
+    }
+    Ok(())
+}

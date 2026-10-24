@@ -3,15 +3,29 @@ use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    CONV_PIXEL_WG, ChainStep, DepthwiseShape, EntryPoint, LayoutKind, ModuleKey, ModuleKind,
-    PipelineKey, ShaderDtype, conv_depthwise_module, conv_module, conv_pixel_module, keys_for,
-    pack_u32s,
+    CONV_PIXEL_WG, ChainStep, DepthwiseShape, EntryPoint, LayoutKind, MATMUL_TILE, ModuleKey,
+    ModuleKind, PipelineKey, ShaderDtype, conv_depthwise_module, conv_module, conv_pixel_module,
+    conv_tiled_module, keys_for, pack_u32s,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Conv, &["conv2d"], shader_f16)
+}
+
+/// Whether the implicit-GEMM kernel should serve this convolution: per group,
+/// enough output channels, pixels and reduction to fill a good part of its
+/// tiles, and enough tiles to occupy the device, with every tile index inside
+/// one grid dimension.
+fn tiled_applies(groups: usize, co_pg: usize, pixels: usize, k: usize) -> bool {
+    co_pg >= 32
+        && pixels >= 32
+        && k >= 16
+        && groups * co_pg.div_ceil(MATMUL_TILE) * pixels.div_ceil(MATMUL_TILE) >= 16
+        && groups <= 65535
+        && co_pg.div_ceil(MATMUL_TILE) <= 65535
+        && pixels.div_ceil(MATMUL_TILE) <= 65535
 }
 
 fn as_u32_i32(v: i32) -> u32 {
@@ -161,7 +175,9 @@ pub fn wgpu_conv_dispatch(
         // it only keeps the device busy when that thread's work is a stem's,
         // or when the pixels alone are enough threads.
         let pixels = n * oh * ow;
-        let per_pixel = channels_last == 0
+        let tiled = tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
+        let per_pixel = !tiled
+            && channels_last == 0
             && groups == 1
             && kh == 3
             && kw == 3
@@ -169,7 +185,14 @@ pub fn wgpu_conv_dispatch(
             && dilations[1] == 1
             && (ci * co <= 64 || pixels >= 32768)
             && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535;
-        let pipeline = if per_pixel {
+        let pipeline = if tiled {
+            q.context().chain_pipeline(
+                ("conv_tiled", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("conv2d_tiled", dt),
+                || conv_tiled_module(dt, epilogue, extras.len()),
+            )?
+        } else if per_pixel {
             q.context().chain_pipeline(
                 ("conv_pixel", dt, epilogue, extras.len()),
                 layout,
@@ -258,6 +281,14 @@ pub fn wgpu_conv_dispatch(
         let mut params = params;
         params.extend_from_slice(&pack_u32s(&tail));
         let dyn_off = q.alloc_uniform(&params)?;
+        if tiled {
+            let grid = [
+                pixels.div_ceil(MATMUL_TILE) as u32,
+                co_pg.div_ceil(MATMUL_TILE) as u32,
+                groups as u32,
+            ];
+            return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, grid);
+        }
         if per_pixel {
             let groups = pixels.div_ceil(CONV_PIXEL_WG as usize) as u32;
             return q.dispatch_grid("conv_pixel", &pipeline, &bg, dyn_off, [groups, 1, 1]);
