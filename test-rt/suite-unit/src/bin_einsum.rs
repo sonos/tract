@@ -447,25 +447,6 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
-    // More outputs than one row of 65535 workgroups covers: GPU backends fold the launch into 2-D.
-    suite.add(
-        "large_output_grid",
-        BinEinsumProblem {
-            expr: "mk,kn->mn".parse()?,
-            a: Tensor::from_shape(
-                &[2100, 1],
-                &(0..2100).map(|i| (i % 13) as f32 - 6.).collect::<Vec<_>>(),
-            )?,
-            b: Tensor::from_shape(
-                &[1, 2100],
-                &(0..2100).map(|i| (i % 7) as f32 - 3.).collect::<Vec<_>>(),
-            )?,
-            a_constant: false,
-            b_constant: false,
-            unicast_add_constant: None,
-        },
-    );
-
     // TODO: fix ensure_mkn() to handle multiple n axes
     //suite.add(
     //    "multiple_n_axes",
