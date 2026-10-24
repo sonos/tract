@@ -11,7 +11,7 @@ use tract_core::internal::*;
 use tract_core::ops::konst::Const;
 use tract_core::ops::source::TypedSource;
 use tract_gpu::fact::DeviceTypedFactExt;
-use tract_gpu::sync::DeviceSync;
+use tract_gpu::sync::{DeviceSync, DeviceSyncKind};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UncoveredOp {
@@ -41,9 +41,30 @@ pub fn uncovered_ops(model: &TypedModel) -> TractResult<Vec<UncoveredOp>> {
     Ok(out)
 }
 
-/// Reject a model that would need a mid-graph CPU fallback.
+/// Nodes that read a tensor brought back from the device, in eval order: each needs a
+/// readback before the model is done. Nodes on the CPU fed from the host alone, such as a
+/// prologue over the model's inputs, are not among them.
+pub fn mid_graph_readbacks(model: &TypedModel) -> TractResult<Vec<UncoveredOp>> {
+    let mut out = Vec::new();
+    for id in model.eval_order()? {
+        let node = &model.nodes()[id];
+        if !node.op_as::<DeviceSync>().is_some_and(|s| s.kind == DeviceSyncKind::ToHost) {
+            continue;
+        }
+        for succ in &node.outputs[0].successors {
+            let reader = model.node(succ.node);
+            out.push(UncoveredOp {
+                node: reader.name.to_string(),
+                op: reader.op.name().to_string(),
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// Reject a model that would read back from the device before it is done.
 pub fn ensure_wgpu_coverage(model: &TypedModel) -> TractResult<()> {
-    let bad = uncovered_ops(model)?;
+    let bad = mid_graph_readbacks(model)?;
     if bad.is_empty() {
         return Ok(());
     }

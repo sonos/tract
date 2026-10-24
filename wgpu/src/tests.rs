@@ -134,6 +134,8 @@ fn coverage_rejects_logsoftmax_by_name() -> TractResult<()> {
     crate::context::wgpu_context();
     let mut model = TypedModel::default();
     let x = model.add_source("x", f32::fact([2, 4]))?;
+    let two = model.add_const("two", tensor2(&[[2.0f32]]))?;
+    let x2 = model.wire_node("mul", mul(), &[x, two])?[0];
     let y = model.wire_node(
         "attn_sm",
         tract_core::ops::nn::Softmax::new(
@@ -141,7 +143,7 @@ fn coverage_rejects_logsoftmax_by_name() -> TractResult<()> {
             None,
             tract_core::ops::nn::SoftmaxKind::LogSoftmax,
         ),
-        &[x],
+        &[x2],
     )?[0];
     model.select_output_outlets(&[y])?;
     WgpuTransform.transform(&mut model)?;
@@ -151,6 +153,23 @@ fn coverage_rejects_logsoftmax_by_name() -> TractResult<()> {
     ensure!(msg.contains("LogSoftmax"), "error should name LogSoftmax, got {msg}");
     ensure!(msg.contains("attn_sm"), "error should name the node, got {msg}");
     Ok(())
+}
+
+/// An op on the CPU over the model's inputs needs no readback: its result goes up to the
+/// device, so the model runs without JSPI.
+#[test]
+fn coverage_accepts_a_host_prologue() -> TractResult<()> {
+    crate::context::wgpu_context();
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", i64::fact([2, 4]))?;
+    let xf = model.wire_node("cast", tract_core::ops::cast::cast(f32::datum_type()), &[x])?[0];
+    let two = model.add_const("two", tensor2(&[[2.0f32]]))?;
+    let y = model.wire_node("mul", mul(), &[xf, two])?[0];
+    model.select_output_outlets(&[y])?;
+    WgpuTransform.transform(&mut model)?;
+    model = model.into_optimized()?;
+    ensure!(!crate::uncovered_ops(&model)?.is_empty(), "the cast should stay on the CPU");
+    crate::ensure_wgpu_coverage(&model)
 }
 
 /// The suites check what a fused graph computes; these check that it fused.
