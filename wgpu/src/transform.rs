@@ -9,9 +9,12 @@ use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_dec
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
+use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
+};
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 #[cfg(not(target_arch = "wasm32"))]
 use tract_gpu::sync::sync_model_outputs_if_required;
@@ -186,6 +189,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids =
                 ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<GroupNorm>()
+            && crate::utils::is_supported_fact(input_facts[0])
+            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let stats = GpuGroupNormStats {
+                params,
+                backend_name: "Wgpu",
+                dispatch: crate::kernels::group_norm::wgpu_group_norm_stats_dispatch,
+            };
+            let apply = GpuGroupNormApply {
+                params,
+                eps: op.eps.clone(),
+                backend_name: "Wgpu",
+                dispatch: crate::kernels::group_norm::wgpu_group_norm_apply_dispatch,
+            };
+            let outlet_ids =
+                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
         if let Some(plan) = crate::kernels::resize::wgpu_resize_2d(source, node)? {
