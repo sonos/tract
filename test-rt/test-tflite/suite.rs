@@ -4,6 +4,7 @@ use suite_unit::bin_einsum::{BinEinsumProblem, BinEinsumProblemParams};
 use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
+use suite_unit::move_axis::MoveAxisProblem;
 use tract_core::internal::*;
 use tract_core::ops::cnn::PaddingSpec;
 
@@ -38,6 +39,11 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         MaxPoolProblemParams::default(),
         compatible_max_pool,
+    );
+    unit.get_sub_mut("move_axis").add_arbitrary_with_filter::<MoveAxisProblem>(
+        "proptest",
+        (),
+        compatible_move_axis,
     );
 
     let einsum_params = BinEinsumProblemParams { max_dims: 4, ..BinEinsumProblemParams::default() };
@@ -221,6 +227,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
             return true;
         }
     }
+    #[allow(clippy::collapsible_if)]
+    if let Some(ma) = case.downcast_ref::<MoveAxisProblem>() {
+        if !compatible_move_axis(ma) {
+            return true;
+        }
+    }
 
     if t[0] == "bin_einsum" && t[1] == "proptest" {
         return true;
@@ -267,6 +279,11 @@ fn compatible_max_pool(mp: &MaxPoolProblem) -> bool {
         && mp.kernel_shape.len() == 2
         && mp.dilations.iter().all(|d| *d == 1)
         && (mp.padding == PaddingSpec::Valid || mp.padding == PaddingSpec::SameUpper)
+}
+
+/// tflite's TRANSPOSE has no FLOAT16 kernel and stops at rank 5.
+fn compatible_move_axis(ma: &MoveAxisProblem) -> bool {
+    ma.dt != DatumType::F16 && ma.input_shape.len() <= 5
 }
 
 fn compatible_conv_q(qcp: &QConvProblem) -> bool {
