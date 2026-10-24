@@ -563,6 +563,13 @@ mod tests {
     }
 
     #[test]
+    fn test_cast_i64_to_dim_keeps_the_value() {
+        let t_i64: Tensor = tensor1(&[i64::MAX, i64::MIN, 1 << 40]);
+        let t_dim = t_i64.cast_to::<TDim>().unwrap();
+        assert_eq!(*t_dim, tensor1(&[i64::MAX.to_dim(), i64::MIN.to_dim(), (1i64 << 40).to_dim()]));
+    }
+
+    #[test]
     fn test_cast_i64_to_bool() {
         let t_i64: Tensor = tensor1(&[0i64]);
         t_i64.cast_to::<bool>().unwrap();
