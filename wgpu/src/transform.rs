@@ -15,6 +15,7 @@ use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::group_norm::{
     GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
 };
+use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 #[cfg(not(target_arch = "wasm32"))]
 use tract_gpu::sync::sync_model_outputs_if_required;
@@ -73,6 +74,7 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
+            .with_rule_for("fuse_layer_norm_affine", fuse_layer_norm_affine)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
         Rewriter::default()
