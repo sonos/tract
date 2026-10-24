@@ -302,8 +302,25 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             maybe_sync_outputs(source, node, target, outlet_ids)
         } else {
-            let cpu_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+            // A constant is read where it already is, on the host: bringing back the copy
+            // uploaded for device consumers would be a readback, which a browser cannot block on.
+            let mut cpu_inputs = tvec![];
+            for (ix, input) in node.inputs.iter().enumerate() {
+                let mapped = mapping[input];
+                if let Some(konst) =
+                    source.node(input.node).op_as::<Const>().filter(|k| k.exotic_fact().is_none())
+                {
+                    let name = format!("{}.host-const-{ix}", node.name);
+                    cpu_inputs.push(target.add_const(name, konst.val().clone())?);
+                } else if target.outlet_fact(mapped)?.as_device_fact().is_some() {
+                    let sync = tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToHost);
+                    cpu_inputs.push(
+                        target.wire_node(format!("{}.to-cpu-{ix}", node.name), sync, &[mapped])?[0],
+                    );
+                } else {
+                    cpu_inputs.push(mapped);
+                }
+            }
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
