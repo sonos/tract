@@ -21,6 +21,7 @@ pub mod prelude {
     pub use crate::datum::{Datum, DatumType, QParams, round_ties_to_even};
     pub use crate::dim::{Assertion, Symbol, SymbolScope, SymbolValues, TDim, ToDim};
     pub use crate::tensor::litteral::*;
+    pub use crate::tensor::named::{NamedStorage, WeightSource};
     pub use crate::tensor::plain_view::{PlainView, PlainViewMut};
     pub use crate::tensor::storage::{PlainStorage, TensorStorage};
     pub use crate::tensor::{IntoArcTensor, IntoTensor, Tensor, natural_strides};

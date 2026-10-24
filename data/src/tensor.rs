@@ -18,6 +18,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 pub mod litteral;
+pub mod named;
 pub mod plain_view;
 pub mod storage;
 pub mod view;
