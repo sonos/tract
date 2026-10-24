@@ -157,14 +157,18 @@ pub fn wgpu_conv_dispatch(
         let channels_last = op.pool_spec.data_format.c_is_last() as u32;
 
         // The per-pixel kernel unrolls 3x3 taps at dilation 1 and wants every
-        // output channel of a pixel from one thread: the stem's shape.
+        // output channel of a pixel from one thread. With one thread per pixel
+        // it only keeps the device busy when that thread's work is a stem's,
+        // or when the pixels alone are enough threads.
+        let pixels = n * oh * ow;
         let per_pixel = channels_last == 0
             && groups == 1
             && kh == 3
             && kw == 3
             && dilations[0] == 1
             && dilations[1] == 1
-            && (n * oh * ow).div_ceil(CONV_PIXEL_WG as usize) <= 65535;
+            && (ci * co <= 64 || pixels >= 32768)
+            && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535;
         let pipeline = if per_pixel {
             q.context().chain_pipeline(
                 ("conv_pixel", dt, epilogue, extras.len()),
@@ -255,7 +259,7 @@ pub fn wgpu_conv_dispatch(
         params.extend_from_slice(&pack_u32s(&tail));
         let dyn_off = q.alloc_uniform(&params)?;
         if per_pixel {
-            let groups = (n * oh * ow).div_ceil(CONV_PIXEL_WG as usize) as u32;
+            let groups = pixels.div_ceil(CONV_PIXEL_WG as usize) as u32;
             return q.dispatch_grid("conv_pixel", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
         q.dispatch("conv", &pipeline, &bg, dyn_off, (n * co * oh * ow) as u64)
