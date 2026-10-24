@@ -10,6 +10,7 @@ pub mod group_norm;
 pub mod ingest;
 pub mod layer_norm;
 pub mod matmul;
+pub mod nan_replace;
 pub mod pool;
 pub mod reduce;
 pub mod resize;

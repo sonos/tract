@@ -8,13 +8,17 @@ use tract_core::internal::*;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
+use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
+use tract_core::ops::logic::Iff;
+use tract_core::ops::math::IsNan;
 use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::group_norm::{
     GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
 };
+use tract_gpu::ops::nan_replace::GpuNanReplace;
 use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 #[cfg(not(target_arch = "wasm32"))]
@@ -245,6 +249,23 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
+        if let Some(fill) = nan_replace_fill(source, node)? {
+            let mut input = mapping[&node.inputs[2]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let op = GpuNanReplace::new(
+                fill,
+                "Wgpu",
+                crate::kernels::nan_replace::wgpu_nan_replace_dispatch,
+            );
+            let outlet_ids = target.wire_node(node.name.clone(), op, &[input])?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(op) = node.op_as::<Const>()
             && crate::utils::is_supported_dt(op.val().datum_type())
             && op.exotic_fact().is_none()
@@ -305,6 +326,22 @@ fn maybe_sync_outputs(
     {
         sync_model_outputs_if_required(src, node, target, outlet_ids)
     }
+}
+
+/// The value `Iff(IsNan(x), value, x)` puts in place of each NaN of `x`, when `node` is that
+/// and `x` is a tensor the kernels take: wgpu has no boolean tensor to carry the condition.
+fn nan_replace_fill(source: &TypedModel, node: &TypedNode) -> TractResult<Option<f32>> {
+    rule_if!(node.op_is::<Iff>());
+    let cond = source.node(node.inputs[0].node);
+    rule_if!(
+        cond.op_as::<ElementWiseOp>().is_some_and(|ew| ew.0.is::<IsNan>())
+            && cond.inputs[0] == node.inputs[2]
+    );
+    let x = source.outlet_fact(node.inputs[2])?;
+    rule_if!(crate::utils::is_supported_fact(x));
+    rule_if_some!(fill = source.outlet_fact(node.inputs[1])?.konst.as_ref());
+    rule_if!(fill.len() == 1 && fill.datum_type().is_float());
+    Ok(Some(fill.cast_to_scalar::<f32>()?))
 }
 
 fn split_multi_axis_reduce(
