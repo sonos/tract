@@ -309,7 +309,8 @@ impl Parameters {
                 let onnx = tract_onnx::onnx()
                     .with_ignore_output_shapes(matches.get_flag("onnx-ignore-output-shapes"))
                     .with_ignore_output_types(matches.get_flag("onnx-ignore-output-types"))
-                    .with_ignore_value_info(matches.get_flag("onnx-ignore-value-info"));
+                    .with_ignore_value_info(matches.get_flag("onnx-ignore-value-info"))
+                    .with_lazy_external_data(matches.get_flag("onnx-lazy-external-data"));
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);

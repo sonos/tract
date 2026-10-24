@@ -9,7 +9,7 @@ use tract_hir::prelude::tract_itertools::Itertools;
 use crate::data_resolver::{self, ModelDataResolver};
 use crate::pb::type_proto::Value;
 use crate::pb::{self, TensorProto, TypeProto};
-use crate::tensor::{load_tensor, translate_inference_fact};
+use crate::tensor::{load_tensor, named_external_tensor, translate_inference_fact};
 use prost::Message;
 
 pub fn optional_inputs(pb: &pb::NodeProto) -> impl Iterator<Item = Option<usize>> + '_ {
@@ -55,6 +55,11 @@ pub struct ParseResult {
 
 impl ParsingContext<'_> {
     pub fn load_tensor(&self, proto: &TensorProto) -> TractResult<Tensor> {
+        if self.framework.lazy_external_data
+            && let Some(named) = named_external_tensor(proto)?
+        {
+            return Ok(named);
+        }
         load_tensor(&*self.framework.provider, proto, self.model_dir)
     }
 
@@ -228,6 +233,9 @@ pub struct Onnx {
     pub ignore_output_types: bool,
     pub provider: Arc<dyn ModelDataResolver + Send + Sync>,
     pub ignore_value_info: bool,
+    /// Load external tensors as weights known by their initializer names, without reading their
+    /// bytes. See [`with_lazy_external_data`](Self::with_lazy_external_data).
+    pub lazy_external_data: bool,
 }
 
 impl Default for Onnx {
@@ -238,6 +246,7 @@ impl Default for Onnx {
             ignore_output_types: Default::default(),
             provider: Arc::new(data_resolver::MmapDataResolver),
             ignore_value_info: false,
+            lazy_external_data: false,
         }
     }
 }
@@ -326,6 +335,13 @@ impl Onnx {
 
     pub fn with_ignore_value_info(self, ignore: bool) -> Onnx {
         Self { ignore_value_info: ignore, ..self }
+    }
+
+    /// Load every external tensor as a [`NamedStorage`] weight named after its initializer,
+    /// with no source: its bytes are never read, nothing can fold it, and its name survives the
+    /// model's transformations. For producing a graph that refers to weights it does not carry.
+    pub fn with_lazy_external_data(self, lazy: bool) -> Onnx {
+        Self { lazy_external_data: lazy, ..self }
     }
 
     pub fn determinize(model: &mut InferenceModel) -> TractResult<()> {
