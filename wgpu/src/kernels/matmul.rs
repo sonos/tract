@@ -1,9 +1,9 @@
-//! Naive prefix-broadcasting GEMM: one thread per output element.
+//! Prefix-broadcasting GEMM, `PrefixMatMul`'s kernels.
 //!
-//! `PrefixMatMul` is what tract lowers `EinSum` to, and a MobileNet-style
-//! segmenter reaches it through every pointwise convolution, so the backend
-//! needs it even though the tiled kernels (tfjs `matmul_packed`, ORT
-//! `subgroup_matrix_gemm`) are the ones worth having later.
+//! The blocked and split-k kernels serve the channels-first f32 products they
+//! were tuned on (every transposition set, a unit prefix, a weight `b`); the
+//! tiled kernel takes any other product big enough to fill its tiles; what is
+//! left runs one thread per output element.
 
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -11,8 +11,8 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::context::RepackKey;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, MATMUL_SPLITK_MAX_M, MATMUL_SPLITK_WG,
-    ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, matmul_blocked_module,
-    matmul_module, matmul_splitk_module, pack_u32s, rpad8_dims, rpad8_strides,
+    MATMUL_TILE, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, matmul_blocked_module,
+    matmul_module, matmul_splitk_module, matmul_tiled_module, pack_u32s, rpad8_dims, rpad8_strides,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -164,6 +164,24 @@ fn blocked_applies(
         && element_offset(out, 0).is_multiple_of(4)
 }
 
+/// Fewest workgroups worth a tiled launch. One thread per output keeps more
+/// of the device busy on a thinner product, such as a late pointwise layer of
+/// a CNN, where a few tiles would each walk a long `k` alone.
+const MATMUL_TILED_MIN_TILES: usize = 16;
+
+/// Whether the tiled kernel should serve this product: big enough to fill a
+/// good part of its tiles and enough of them, with every tile index inside one
+/// grid dimension.
+fn tiled_applies(prefix: usize, m: usize, k: usize, n: usize) -> bool {
+    m >= 32
+        && n >= 32
+        && k >= 16
+        && prefix * m.div_ceil(MATMUL_TILE) * n.div_ceil(MATMUL_TILE) >= MATMUL_TILED_MIN_TILES
+        && prefix <= 65535
+        && m.div_ceil(MATMUL_TILE) <= 65535
+        && n.div_ceil(MATMUL_TILE) <= 65535
+}
+
 pub fn wgpu_matmul_dispatch(
     t: Transposes,
     epilogue: &[ChainStep],
@@ -185,20 +203,6 @@ pub fn wgpu_matmul_dispatch(
         let dt = ShaderDtype::from_datum(a.datum_type())?;
         let (m, k, n) = mkn(a.shape(), b.shape(), transpose_a, transpose_b)?;
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
-        let entry = EntryPoint::typed("matmul", dt);
-        let pipeline = if epilogue.is_empty() {
-            q.context().pipeline(PipelineKey {
-                module: ModuleKey { kind: ModuleKind::MatMul, dtype: dt },
-                entry,
-            })?
-        } else {
-            q.context().chain_pipeline(
-                ("matmul", dt, epilogue, extras.len()),
-                layout,
-                entry,
-                || matmul_module(dt, epilogue, extras.len()),
-            )?
-        };
         let out_shape = output.shape();
         ensure!(
             out_shape
@@ -259,6 +263,27 @@ pub fn wgpu_matmul_dispatch(
             return q.dispatch_grid("matmul_blocked", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
 
+        let tiled = tiled_applies(prefix, m, k, n);
+        let pipeline = if tiled {
+            q.context().chain_pipeline(
+                ("matmul_tiled", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("matmul_tiled", dt),
+                || matmul_tiled_module(dt, epilogue, extras.len()),
+            )?
+        } else if epilogue.is_empty() {
+            q.context().pipeline(PipelineKey {
+                module: ModuleKey { kind: ModuleKind::MatMul, dtype: dt },
+                entry: EntryPoint::typed("matmul", dt),
+            })?
+        } else {
+            q.context().chain_pipeline(
+                ("matmul", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("matmul", dt),
+                || matmul_module(dt, epilogue, extras.len()),
+            )?
+        };
         let mut buffers: Vec<&crate::context::WgpuBuffer> =
             vec![get_wgpu_buffer(a), get_wgpu_buffer(b)];
         buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
@@ -292,6 +317,11 @@ pub fn wgpu_matmul_dispatch(
         vals.extend_from_slice(&off_extra);
         vals.extend_from_slice(&mode_extra);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+        if tiled {
+            let grid =
+                [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(MATMUL_TILE) as u32, prefix as u32];
+            return q.dispatch_grid("matmul_tiled", &pipeline, &bg, dyn_off, grid);
+        }
         q.dispatch("matmul", &pipeline, &bg, dyn_off, (prefix * m * n) as u64)
     })
 }

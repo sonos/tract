@@ -716,3 +716,47 @@ fn layer_norm_runs_on_device() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Products the tiled matmul takes: every dimension off the tile size, each
+/// transposition, a prefix, f16 and a bias epilogue.
+#[test]
+fn matmul_tiled_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    for (prefix, m, k, n, ta, tb, tc, f16_, bias) in [
+        (1usize, 130usize, 17usize, 513usize, false, false, false, false, false),
+        (1, 130, 17, 513, true, false, false, false, false),
+        (1, 130, 17, 513, false, true, false, false, false),
+        (1, 130, 17, 513, false, false, true, false, false),
+        (1, 130, 17, 513, true, true, true, false, false),
+        (8, 65, 33, 63, false, false, false, false, false),
+        (1, 130, 17, 513, false, false, false, true, false),
+        (1, 130, 17, 513, false, false, false, false, true),
+    ] {
+        let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+        let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
+        let b_shape = [prefix, if tb { n } else { k }, if tb { k } else { n }];
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", dt.fact(a_shape))?;
+        let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+        let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+        let op = PrefixMatMul {
+            transpose_a: ta,
+            transpose_b: tb,
+            transpose_c: tc,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let mut y = model.wire_node("mm", op, &[a, b])?[0];
+        if bias {
+            let bias = Tensor::from_shape(&[1, 1, n], &fill(2, n))?;
+            let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+            y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+        }
+        model.select_output_outlets(&[y])?;
+        let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+        gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+            format!("prefix={prefix} m={m} k={k} n={n} ta={ta} tb={tb} tc={tc} f16={f16_}")
+        })?;
+    }
+    Ok(())
+}

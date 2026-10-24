@@ -2548,6 +2548,190 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// Output rows and columns of each tiled matmul workgroup.
+pub const MATMUL_TILE: usize = 64;
+/// `k` values staged in workgroup memory per step of the tiled matmul.
+pub const MATMUL_TILE_K: usize = 16;
+
+/// The general matmul, staged through workgroup memory: each workgroup owns a
+/// [`MATMUL_TILE`]-square block of one prefix slice of the output, loads
+/// [`MATMUL_TILE_K`]-deep slices of `a` and `b` into workgroup memory, and each
+/// of its 256 threads accumulates a four-by-four block from them in f32. A
+/// thread's rows and columns are strided by 16 so that workgroup-memory reads
+/// and output stores are contiguous across neighbouring threads. Each operand is
+/// loaded along whichever of its two axes is unit-strided, so loads coalesce for
+/// any transposition. Same `Params`, strides and epilogue as [`matmul_module`],
+/// and no constraint on `m`, `k` or `n`: partial tiles are guarded. Workgroup
+/// `x` tiles `n`, `y` tiles `m`, `z` is the prefix index.
+pub fn matmul_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{t}>;
+@group(0) @binding(1) var<storage, read> b: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+var<workgroup> a_tile: array<f32, {a_len}>;
+var<workgroup> b_tile: array<f32, {b_len}>;
+
+fn store_out(o_i: u32, o_row_s: u32, o_col_s: u32, row: u32, col: u32, acc: f32) {{
+    if (row >= params.m || col >= params.n) {{ return; }}
+    let oe = o_i - params.off_out + row * o_row_s + col * o_col_s;
+    var v = {t}(acc);
+{epilogue}
+    outp[o_i + row * o_row_s + col * o_col_s] = v;
+}}
+
+@compute @workgroup_size(256)
+fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = wid.z;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_row_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let a_col_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_row_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
+    let b_col_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+
+    let row0 = wid.y * {tile}u;
+    let col0 = wid.x * {tile}u;
+    let tx = lid % 16u;
+    let ty = lid / 16u;
+    let a_k_fast = a_col_s == 1u;
+    let b_n_fast = b_col_s == 1u;
+
+    var acc0 = vec4<f32>(0.0);
+    var acc1 = vec4<f32>(0.0);
+    var acc2 = vec4<f32>(0.0);
+    var acc3 = vec4<f32>(0.0);
+
+    for (var k0 = 0u; k0 < params.k; k0 += {tk}u) {{
+        for (var i = 0u; i < {loads}u; i++) {{
+            let idx = lid + i * 256u;
+            var r: u32;
+            var kk: u32;
+            if (a_k_fast) {{
+                kk = idx % {tk}u;
+                r = idx / {tk}u;
+            }} else {{
+                r = idx % {tile}u;
+                kk = idx / {tile}u;
+            }}
+            var av = 0.0;
+            if (row0 + r < params.m && k0 + kk < params.k) {{
+                av = f32(a[a_i + (row0 + r) * a_row_s + (k0 + kk) * a_col_s]);
+            }}
+            a_tile[kk * {tile}u + r] = av;
+            var c: u32;
+            if (b_n_fast) {{
+                c = idx % {tile}u;
+                kk = idx / {tile}u;
+            }} else {{
+                kk = idx % {tk}u;
+                c = idx / {tk}u;
+            }}
+            var bv = 0.0;
+            if (col0 + c < params.n && k0 + kk < params.k) {{
+                bv = f32(b[b_i + (k0 + kk) * b_row_s + (col0 + c) * b_col_s]);
+            }}
+            b_tile[kk * {tile}u + c] = bv;
+        }}
+        workgroupBarrier();
+        for (var kk = 0u; kk < {tk}u; kk++) {{
+            let base = kk * {tile}u;
+            let av = vec4<f32>(a_tile[base + ty], a_tile[base + ty + 16u], a_tile[base + ty + 32u], a_tile[base + ty + 48u]);
+            let bv = vec4<f32>(b_tile[base + tx], b_tile[base + tx + 16u], b_tile[base + tx + 32u], b_tile[base + tx + 48u]);
+            acc0 += av.x * bv;
+            acc1 += av.y * bv;
+            acc2 += av.z * bv;
+            acc3 += av.w * bv;
+        }}
+        workgroupBarrier();
+    }}
+
+    let r = row0 + ty;
+    let c = col0 + tx;
+    store_out(o_i, o_row_s, o_col_s, r, c, acc0.x);
+    store_out(o_i, o_row_s, o_col_s, r, c + 16u, acc0.y);
+    store_out(o_i, o_row_s, o_col_s, r, c + 32u, acc0.z);
+    store_out(o_i, o_row_s, o_col_s, r, c + 48u, acc0.w);
+    store_out(o_i, o_row_s, o_col_s, r + 16u, c, acc1.x);
+    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 16u, acc1.y);
+    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 32u, acc1.z);
+    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 48u, acc1.w);
+    store_out(o_i, o_row_s, o_col_s, r + 32u, c, acc2.x);
+    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 16u, acc2.y);
+    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 32u, acc2.z);
+    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 48u, acc2.w);
+    store_out(o_i, o_row_s, o_col_s, r + 48u, c, acc3.x);
+    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 16u, acc3.y);
+    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 32u, acc3.z);
+    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 48u, acc3.w);
+}}
+"#,
+        a_len = tile * tk,
+        b_len = tile * tk,
+        loads = tile * tk / 256,
+    ));
+    s
+}
+
 /// A single-channel tensor into a texture the caller can sample: the mask
 /// leaves the graph as a GPU resource rather than as bytes on the host.
 /// A matmul whose thread computes a four-by-four tile of the output.
