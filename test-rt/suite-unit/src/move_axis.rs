@@ -4,11 +4,11 @@ use proptest::prelude::*;
 use tract_core::internal::*;
 
 #[derive(Debug, Clone)]
-struct MoveAxisProblem {
-    input_shape: Vec<usize>,
-    dt: DatumType,
-    from: usize,
-    to: usize,
+pub struct MoveAxisProblem {
+    pub input_shape: Vec<usize>,
+    pub dt: DatumType,
+    pub from: usize,
+    pub to: usize,
 }
 
 impl Arbitrary for MoveAxisProblem {
