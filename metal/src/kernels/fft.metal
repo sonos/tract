@@ -124,12 +124,12 @@ static void dft_block(threadgroup const float2 *x, threadgroup float2 *tw, devic
         threadgroup float2 *smem [[threadgroup(0)]],                               \
         uint3 tgpig [[threadgroup_position_in_grid]],                              \
         uint tid [[thread_index_in_threadgroup]],                                  \
-        uint nth [[threads_per_threadgroup]]) {                                    \
+        uint3 ntg [[threads_per_threadgroup]]) {                                   \
         const uint base = tgpig.x * (uint)n;                                       \
-        for (int j = tid; j < n; j += nth) {                                       \
+        for (int j = tid; j < n; j += ntg.x) {                                     \
             smem[j] = in[base + j];                                                \
         }                                                                          \
-        dft_block(smem, smem + n, out + base, n, SIGN, tid, nth);                  \
+        dft_block(smem, smem + n, out + base, n, SIGN, tid, ntg.x);                \
     }
 
 DEFINE_PLAIN_DFT(dft_forward, -1.0f)
@@ -147,7 +147,8 @@ kernel void stft_dft_forward(
     threadgroup float2 *smem [[threadgroup(0)]],
     uint3 tgpig [[threadgroup_position_in_grid]],
     uint tid [[thread_index_in_threadgroup]],
-    uint nth [[threads_per_threadgroup]]) {
+    uint3 ntg [[threads_per_threadgroup]]) {
+    const uint nth = ntg.x;
     const uint f = tgpig.x;
     const uint bb = tgpig.y;
     const uint in_base = bb * (uint)T + f * (uint)stride;
