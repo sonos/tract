@@ -193,11 +193,7 @@ fn create_tensor(shape: Vec<usize>, dt: DatumType, data: &[u8]) -> TractResult<T
     }
 }
 
-pub fn load_tensor(
-    provider: &dyn ModelDataResolver,
-    t: &TensorProto,
-    path: Option<&str>,
-) -> TractResult<Tensor> {
+fn datum_type_and_shape(t: &TensorProto) -> TractResult<(DatumType, Vec<usize>)> {
     let dt = DataType::try_from(t.data_type)
         .map_err(|e| format_err!("unknown ONNX TensorProto.DataType ({}): {e}", t.data_type))?
         .try_into()?;
@@ -212,9 +208,31 @@ pub fn load_tensor(
             }
         })
         .collect::<TractResult<Vec<usize>>>()?;
+    Ok((dt, shape))
+}
+
+fn is_external(t: &TensorProto) -> bool {
+    t.data_location == Some(tensor_proto::DataLocation::External as i32)
+}
+
+/// An external tensor as a weight known by its initializer name, its bytes left unread: see
+/// [`NamedStorage`]. `None` for a tensor whose data is in the proto.
+pub fn named_external_tensor(t: &TensorProto) -> TractResult<Option<Tensor>> {
+    if !t.raw_data.is_empty() || !is_external(t) {
+        return Ok(None);
+    }
+    let (dt, shape) = datum_type_and_shape(t)?;
+    Ok(Some(NamedStorage::new(&t.name, dt, &shape, None).into_tensor()))
+}
+
+pub fn load_tensor(
+    provider: &dyn ModelDataResolver,
+    t: &TensorProto,
+    path: Option<&str>,
+) -> TractResult<Tensor> {
+    let (dt, shape) = datum_type_and_shape(t)?;
     // detect if the tensor is rather in an external file than inside the onnx file directly
-    let is_external = t.data_location.is_some()
-        && t.data_location == Some(tensor_proto::DataLocation::External as i32);
+    let is_external = is_external(t);
     if t.raw_data.len() > 0 {
         create_tensor(shape, dt, &t.raw_data)
     } else if is_external {
