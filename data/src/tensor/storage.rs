@@ -56,6 +56,14 @@ pub trait TensorStorage: Send + Sync + fmt::Debug + fmt::Display + DynEq + Downc
         true
     }
 
+    /// True for storage that is to stay unread inside a model's constants, such
+    /// as a weight known by its name and loaded when the model is ready to run.
+    /// Storage out of ram is otherwise brought into host memory when a constant
+    /// is built from it, so the constant does not hold on to a device buffer.
+    fn stays_lazy(&self) -> bool {
+        false
+    }
+
     /// Plain storage for the tensor's bytes, producing it if this storage can.
     ///
     /// This is the accessor path: `Tensor::as_bytes` and friends go through it,

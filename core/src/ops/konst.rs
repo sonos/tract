@@ -23,7 +23,7 @@ impl Const {
         // A plain constant holds plain host bytes: storage that left them on a
         // device brings them back rather than pinning the buffer for the life
         // of the model.
-        let tensor = if fact.is_none() && !tensor.has_plain_ram_storage() {
+        let tensor = if fact.is_none() && !tensor.has_plain_ram_storage() && !tensor.stays_lazy() {
             Arc::new(Arc::unwrap_or_clone(tensor).into_plain_ram()?)
         } else {
             tensor
@@ -110,6 +110,10 @@ impl TypedOp for Const {
         change: &AxisOp,
     ) -> TractResult<Option<AxisChangeConsequence>> {
         anyhow::ensure!(io == InOut::Out(0));
+        // A lazy weight keeps the shape it is loaded under: the change stays an op after it.
+        if self.0.stays_lazy() {
+            return Ok(None);
+        }
         let mut new_tensor = self.0.clone().into_tensor();
         if change.change_tensor(&mut new_tensor, false).is_ok() {
             let mut sub = Const(new_tensor.into_arc_tensor(), None);
