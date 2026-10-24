@@ -903,3 +903,47 @@ fn cpu_op_reads_constants_from_the_host() -> TractResult<()> {
     ensure!(readbacks.is_empty(), "unexpected readbacks: {readbacks:?}");
     gpu_vs_cpu(model, tensor2(&[[0i64, 3, 9], [1, 1, 7]]))
 }
+
+/// Launches of more workgroups than one grid dimension holds, which `dispatch`
+/// folds into a second dimension: a matmul and a convolution over 4M outputs.
+#[test]
+fn launches_past_one_grid_dimension_match_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    use tract_core::ops::nn::DataFormat;
+    let mut model = TypedModel::default();
+    let a = model.add_source("a", f32::fact([2100, 1]))?;
+    let b = model.add_const("b", Tensor::from_shape(&[1, 2100], &fill(1, 2100))?)?;
+    let op = PrefixMatMul {
+        transpose_a: false,
+        transpose_b: false,
+        transpose_c: false,
+        quantize_output: None,
+        operating_dt: None,
+    };
+    let y = model.wire_node("mm", op, &[a, b])?[0];
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[2100, 1], &fill(2, 2100))?).context("matmul")?;
+
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 1, 1000, 1000]))?;
+    let k = model.add_const("k", Tensor::from_shape(&[5, 1, 1, 3], &fill(3, 15))?)?;
+    let bias = model.add_const("bias", rctensor0(0f32))?;
+    let conv = Conv {
+        pool_spec: PoolSpec {
+            data_format: DataFormat::NCHW,
+            kernel_shape: tvec![1, 3],
+            padding: PaddingSpec::Valid,
+            dilations: None,
+            strides: None,
+            input_channels: 1,
+            output_channels: 5,
+        },
+        kernel_fmt: KernelFormat::OIHW,
+        group: 1,
+        q_params: None,
+    };
+    let y = model.wire_node("conv", conv, &[x, k, bias])?[0];
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 1, 1000, 1000], &fill(4, 1_000_000))?).context("conv")
+}
