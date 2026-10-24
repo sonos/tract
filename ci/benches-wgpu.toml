@@ -4,6 +4,8 @@
 # every run here is labelled `wgpu`. Ops wgpu does not cover run on the CPU (hybrid fallback).
 # Left out until they run on wgpu: the LLM benches (a dispatch binds one storage buffer both
 # read-only and read-write) and trunet pulse1_f16 (f16 matmuls on the f32 blocked kernels).
+# The SD 1.5 benches drop benches.toml's `-t transformers_detect_all`: the FlashSDPA it fuses has
+# no wgpu kernel, so it would pull every attention back to the CPU.
 
 base_url = "https://tract-test-assets.tract.rs"
 
@@ -387,4 +389,32 @@ kind = "net"
 name = "dfn3_df_dec_s100"
 model = "ns-panel/dfn3_df_dec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,96,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "sd15-dummy-f32-unet_step_b2"
+model = "sd/sd15-dummy/unet.nnef.tgz"
+args = "--nnef-tract-core --nnef-tract-transformers"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "sd15-dummy-f32-vae_decoder_512px"
+model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
+args = "--nnef-tract-core --nnef-tract-transformers"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "sd15-dummy-f16-unet_step_b2"
+model = "sd/sd15-dummy/unet.nnef.tgz"
+args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "sd15-dummy-f16-vae_decoder_512px"
+model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
+args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16"
 runtimes = ["wgpu"]
