@@ -947,3 +947,55 @@ fn launches_past_one_grid_dimension_match_cpu() -> TractResult<()> {
     model.select_output_outlets(&[y])?;
     gpu_vs_cpu(model, Tensor::from_shape(&[1, 1, 1000, 1000], &fill(4, 1_000_000))?).context("conv")
 }
+
+/// Runs the model `build` makes in f16 on the GPU and in f32 on the CPU.
+fn f16_vs_f32(
+    build: impl Fn(DatumType) -> TractResult<TypedModel>,
+    input: Tensor,
+    approx: Approximation,
+) -> TractResult<()> {
+    let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+    let gpu = rt.prepare(build(f16::datum_type())?)?;
+    let g = gpu.run(tvec!(input.cast_to::<f16>()?.into_owned().into()))?.remove(0);
+    let cpu = Arc::new(SimplePlan::new(build(f32::datum_type())?)?);
+    let c = cpu.run(tvec!(input.cast_to::<f16>()?.cast_to::<f32>()?.into_owned().into()))?;
+    let c = c[0].cast_to::<f16>()?.into_owned();
+    g.into_tensor().close_enough(&c, approx)
+}
+
+/// f16 kernels keep f32 intermediates: a sigmoid deep in its tail, and a
+/// softmax and a sum over thousands of terms.
+#[test]
+fn f16_keeps_f32_intermediates() -> TractResult<()> {
+    use tract_core::ops::nn::{Reduce, Reducer, Softmax, SoftmaxKind, sigmoid};
+    crate::context::wgpu_context();
+    let tail: Vec<f32> = fill(3, 1024).iter().map(|x| x * 3.0 - 3.0).collect();
+    let sigmoid_model = |dt: DatumType| {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact([1024]))?;
+        let y = model.wire_node("sigmoid", sigmoid(), &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        Ok(model)
+    };
+    f16_vs_f32(sigmoid_model, tensor1(&tail), Approximation::Custom(1e-6, 2e-3, 0.0))
+        .context("sigmoid")?;
+    let long = Tensor::from_shape(&[2, 4096], &fill(4, 2 * 4096))?;
+    let softmax_model = |dt: DatumType| {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact([2, 4096]))?;
+        let op = Softmax { axes: tvec![1], quant_output_dt: None, kind: SoftmaxKind::Softmax };
+        let y = model.wire_node("softmax", op, &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        Ok(model)
+    };
+    f16_vs_f32(softmax_model, long.clone(), Approximation::Custom(1e-7, 2e-3, 0.0))
+        .context("softmax")?;
+    let sum_model = |dt: DatumType| {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact([2, 4096]))?;
+        let y = model.wire_node("sum", Reduce { axes: tvec![1], reducer: Reducer::Sum }, &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        Ok(model)
+    };
+    f16_vs_f32(sum_model, long, Approximation::Custom(0.5, 2e-3, 0.0)).context("sum")
+}

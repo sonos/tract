@@ -581,14 +581,13 @@ fn unary_ops_wgsl(t: &str) -> String {
 }}
 
 fn op_abs(x: {t}) -> {t} {{ return abs(x); }}
-fn op_exp(x: {t}) -> {t} {{ return exp(x); }}
-fn op_ln(x: {t}) -> {t} {{ return log(x); }}
-fn op_sqrt(x: {t}) -> {t} {{ return sqrt(x); }}
-fn op_rsqrt(x: {t}) -> {t} {{ return inverseSqrt(x); }}
+fn op_exp(x: {t}) -> {t} {{ return {t}(exp(f32(x))); }}
+fn op_ln(x: {t}) -> {t} {{ return {t}(log(f32(x))); }}
+fn op_sqrt(x: {t}) -> {t} {{ return {t}(sqrt(f32(x))); }}
+fn op_rsqrt(x: {t}) -> {t} {{ return {t}(inverseSqrt(f32(x))); }}
 fn op_sigmoid(x: {t}) -> {t} {{
-    let y = {t}(1.0) / ({t}(1.0) + exp(-abs(x)));
-    if (x < {t}(0.0)) {{ return {t}(1.0) - y; }}
-    return y;
+    let e = exp(-abs(f32(x)));
+    return {t}(select(1.0, e, x < {t}(0.0)) / (1.0 + e));
 }}
 fn op_square(x: {t}) -> {t} {{ return x * x; }}
 fn op_recip(x: {t}) -> {t} {{ return {t}(1.0) / x; }}
@@ -596,18 +595,18 @@ fn op_ceil(x: {t}) -> {t} {{ return ceil(x); }}
 fn op_floor(x: {t}) -> {t} {{ return floor(x); }}
 fn op_round(x: {t}) -> {t} {{ return sign(x) * floor(abs(x) + {t}(0.5)); }}
 fn op_roundhalftoeven(x: {t}) -> {t} {{ return round(x); }}
-fn op_cos(x: {t}) -> {t} {{ return cos(x); }}
-fn op_sin(x: {t}) -> {t} {{ return sin(x); }}
-fn op_tan(x: {t}) -> {t} {{ return tan(x); }}
-fn op_acos(x: {t}) -> {t} {{ return acos(x); }}
-fn op_asin(x: {t}) -> {t} {{ return asin(x); }}
-fn op_atan(x: {t}) -> {t} {{ return atan(x); }}
-fn op_cosh(x: {t}) -> {t} {{ return cosh(x); }}
-fn op_sinh(x: {t}) -> {t} {{ return sinh(x); }}
-fn op_tanh(x: {t}) -> {t} {{ return tanh(clamp(x, {t}(-15.0), {t}(15.0))); }}
-fn op_acosh(x: {t}) -> {t} {{ return acosh(x); }}
-fn op_asinh(x: {t}) -> {t} {{ return asinh(x); }}
-fn op_atanh(x: {t}) -> {t} {{ return atanh(x); }}
+fn op_cos(x: {t}) -> {t} {{ return {t}(cos(f32(x))); }}
+fn op_sin(x: {t}) -> {t} {{ return {t}(sin(f32(x))); }}
+fn op_tan(x: {t}) -> {t} {{ return {t}(tan(f32(x))); }}
+fn op_acos(x: {t}) -> {t} {{ return {t}(acos(f32(x))); }}
+fn op_asin(x: {t}) -> {t} {{ return {t}(asin(f32(x))); }}
+fn op_atan(x: {t}) -> {t} {{ return {t}(atan(f32(x))); }}
+fn op_cosh(x: {t}) -> {t} {{ return {t}(cosh(f32(x))); }}
+fn op_sinh(x: {t}) -> {t} {{ return {t}(sinh(f32(x))); }}
+fn op_tanh(x: {t}) -> {t} {{ return {t}(tanh(clamp(f32(x), -15.0, 15.0))); }}
+fn op_acosh(x: {t}) -> {t} {{ return {t}(acosh(f32(x))); }}
+fn op_asinh(x: {t}) -> {t} {{ return {t}(asinh(f32(x))); }}
+fn op_atanh(x: {t}) -> {t} {{ return {t}(atanh(f32(x))); }}
 fn op_erf(x: {t}) -> {t} {{ return {t}(approx_erf(f32(x))); }}
 fn op_neg(x: {t}) -> {t} {{ return -x; }}
 fn op_sign(x: {t}) -> {t} {{ return sign(x); }}
@@ -615,7 +614,10 @@ fn op_hardswish(x: {t}) -> {t} {{
     let h = max({t}(0.0), min({t}(1.0), x / {t}(6.0) + {t}(0.5)));
     return x * h;
 }}
-fn op_silu(x: {t}) -> {t} {{ return x / ({t}(1.0) + exp(-x)); }}
+fn op_silu(x: {t}) -> {t} {{
+    let xf = f32(x);
+    return {t}(xf / (1.0 + exp(-xf)));
+}}
 fn op_geluexact(x: {t}) -> {t} {{
     let xf = f32(x);
     return {t}(0.5 * xf * (1.0 + approx_erf(xf * 0.70710678)));
@@ -1278,11 +1280,11 @@ fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        acc += inp[params.off_in + (o * params.k + k) * params.inner + r];
+        acc += f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
     }}
-    outp[params.off_out + i] = acc;
+    outp[params.off_out + i] = {t}(acc);
 }}
 
 @compute @workgroup_size({WORKGROUP})
@@ -1292,11 +1294,11 @@ fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(1.0);
+    var acc = 1.0;
     for (var k = 0u; k < params.k; k++) {{
-        acc *= inp[params.off_in + (o * params.k + k) * params.inner + r];
+        acc *= f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
     }}
-    outp[params.off_out + i] = acc;
+    outp[params.off_out + i] = {t}(acc);
 }}
 
 @compute @workgroup_size({WORKGROUP})
@@ -1348,12 +1350,12 @@ fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        let v = inp[params.off_in + (o * params.k + k) * params.inner + r];
+        let v = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
         acc += v * v;
     }}
-    outp[params.off_out + i] = acc / {t}(f32(params.k));
+    outp[params.off_out + i] = {t}(acc / f32(params.k));
 }}
 "#
     ));
@@ -1459,7 +1461,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let n = rest / params.oh;
     let h0 = oh * params.stride_h - params.pad_h;
     let w0 = ow * params.stride_w - params.pad_w;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     var count = 0;
     for (var kh = 0; kh < params.kh; kh++) {{
         let ih = h0 + kh * params.dil_h;
@@ -1473,7 +1475,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
             }} else {{
                 idx = in_idx_nchw(n, c, ih, iw);
             }}
-            acc += inp[params.off_in + idx];
+            acc += f32(inp[params.off_in + idx]);
             count += 1;
         }}
     }}
@@ -1483,7 +1485,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
             denom = params.kh * params.kw;
         }}
         if (denom > 0) {{
-            acc = acc / {t}(f32(denom));
+            acc = acc / f32(denom);
         }}
     }}
     var oidx: u32;
@@ -1492,7 +1494,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }} else {{
         oidx = out_idx_nchw(n, c, oh, ow);
     }}
-    outp[params.off_out + oidx] = acc;
+    outp[params.off_out + oidx] = {t}(acc);
 }}
 "#
     ));
@@ -2610,20 +2612,18 @@ fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var m = inp[params.off_in + (o * params.k) * params.inner + r];
+    var m = f32(inp[params.off_in + (o * params.k) * params.inner + r]);
     for (var k = 1u; k < params.k; k++) {{
-        m = max(m, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        m = max(m, f32(inp[params.off_in + (o * params.k + k) * params.inner + r]));
     }}
-    var sum = {t}(0.0);
+    var sum = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        let e = exp(inp[params.off_in + (o * params.k + k) * params.inner + r] - m);
-        outp[params.off_out + (o * params.k + k) * params.inner + r] = e;
-        sum += e;
+        sum += exp(f32(inp[params.off_in + (o * params.k + k) * params.inner + r]) - m);
     }}
-    let inv = {t}(1.0) / sum;
+    let inv = 1.0 / sum;
     for (var k = 0u; k < params.k; k++) {{
-        let idx = params.off_out + (o * params.k + k) * params.inner + r;
-        outp[idx] = outp[idx] * inv;
+        let x = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        outp[params.off_out + (o * params.k + k) * params.inner + r] = {t}(exp(x - m) * inv);
     }}
 }}
 "#
