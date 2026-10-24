@@ -23,6 +23,24 @@ pub trait ModelDataResolver {
         offset: usize,
         length: Option<usize>,
     ) -> TractResult<()>;
+
+    /// Appends the bytes of an external tensor to `buf`: `length` bytes (to the end when
+    /// `None`) from `offset` in `location`, as a TensorProto names it relative to the
+    /// model's `model_dir`. The default resolves `location` to a file inside `model_dir`,
+    /// refusing any path that escapes it, and reads it with
+    /// [`read_bytes_from_path`](Self::read_bytes_from_path); a resolver with no file system
+    /// behind it serves `location` itself.
+    fn read_external(
+        &self,
+        buf: &mut Vec<u8>,
+        model_dir: &str,
+        location: &str,
+        offset: usize,
+        length: Option<usize>,
+    ) -> TractResult<()> {
+        let p = crate::tensor::resolve_external_data_path(Path::new(model_dir), location)?;
+        self.read_bytes_from_path(buf, &p, offset, length)
+    }
 }
 
 pub struct FopenDataResolver;
