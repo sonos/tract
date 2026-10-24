@@ -1868,6 +1868,196 @@ fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// A 2-D convolution as an implicit GEMM, staged through workgroup memory the
+/// way [`matmul_tiled_module`] stages a product. Per group, rows are output
+/// channels, columns are output pixels (batch, row, column) and the reduction
+/// runs over (input channel, kernel row, kernel column) in the weights' OIHW
+/// order; the input slice is gathered on load, taps outside the window reading
+/// zero. Same `Params`, strides and per-channel epilogue as [`conv_module`].
+/// Workgroup `x` tiles the pixels, `y` the output channels of a group, `z` is
+/// the group.
+pub fn conv_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    channels_last: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+
+var<workgroup> a_tile: array<f32, {a_len}>;
+var<workgroup> b_tile: array<f32, {b_len}>;
+
+fn store_out(g: u32, row: u32, pix: u32, acc: f32) {{
+    if (row >= params.co_pg || pix >= params.n * params.oh * params.ow) {{ return; }}
+    let co = g * params.co_pg + row;
+    let ow = pix % params.ow;
+    let rest = pix / params.ow;
+    let oh = rest % params.oh;
+    let n = rest / params.oh;
+    let out_i = params.off_out + u32(
+        i32(n) * params.out_sn
+        + i32(co) * params.out_sc
+        + i32(oh) * params.out_sh
+        + i32(ow) * params.out_sw
+    );
+    var v = {t}(acc);
+{epilogue}
+    outp[out_i] = v;
+}}
+
+@compute @workgroup_size(256)
+fn conv2d_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let g = wid.z;
+    let khw = params.kh * params.kw;
+    let ktot = params.ci_pg * khw;
+    let npix = params.n * params.oh * params.ow;
+    let row0 = wid.y * {tile}u;
+    let col0 = wid.x * {tile}u;
+    let tx = lid % 16u;
+    let ty = lid / 16u;
+
+    var acc0 = vec4<f32>(0.0);
+    var acc1 = vec4<f32>(0.0);
+    var acc2 = vec4<f32>(0.0);
+    var acc3 = vec4<f32>(0.0);
+
+    for (var k0 = 0u; k0 < ktot; k0 += {tk}u) {{
+        for (var i = 0u; i < {loads}u; i++) {{
+            let idx = lid + i * 256u;
+            let ak = idx % {tk}u;
+            let ar = idx / {tk}u;
+            var av = 0.0;
+            if (row0 + ar < params.co_pg && k0 + ak < ktot) {{
+                let k = k0 + ak;
+                let ci = k / khw;
+                let tap = k % khw;
+                let co = g * params.co_pg + row0 + ar;
+                let w_i = i32(co) * params.w_so + i32(ci) * params.w_si
+                    + i32(tap / params.kw) * params.w_sh + i32(tap % params.kw) * params.w_sw;
+                av = f32(wgt[params.off_w + u32(w_i)]);
+            }}
+            a_tile[ak * {tile}u + ar] = av;
+
+            let bc = idx % {tile}u;
+            let bk = idx / {tile}u;
+            var bv = 0.0;
+            let pix = col0 + bc;
+            if (pix < npix && k0 + bk < ktot) {{
+                let k = k0 + bk;
+                let ci = g * params.ci_pg + k / khw;
+                let tap = k % khw;
+                let ow = pix % params.ow;
+                let rest = pix / params.ow;
+                let oh = rest % params.oh;
+                let n = rest / params.oh;
+                let ih = i32(oh) * params.stride_h + i32(tap / params.kw) * params.dil_h - params.pad_h;
+                let iw = i32(ow) * params.stride_w + i32(tap % params.kw) * params.dil_w - params.pad_w;
+                if (ih >= 0 && ih < i32(params.ih) && iw >= 0 && iw < i32(params.iw)) {{
+                    let in_i = i32(n) * params.in_sn + i32(ci) * params.in_sc + ih * params.in_sh + iw * params.in_sw;
+                    bv = f32(inp[params.off_in + u32(in_i)]);
+                }}
+            }}
+            b_tile[bk * {tile}u + bc] = bv;
+        }}
+        workgroupBarrier();
+        for (var kk = 0u; kk < {tk}u; kk++) {{
+            let base = kk * {tile}u;
+            let av = vec4<f32>(a_tile[base + ty], a_tile[base + ty + 16u], a_tile[base + ty + 32u], a_tile[base + ty + 48u]);
+            let bv = vec4<f32>(b_tile[base + tx], b_tile[base + tx + 16u], b_tile[base + tx + 32u], b_tile[base + tx + 48u]);
+            acc0 += av.x * bv;
+            acc1 += av.y * bv;
+            acc2 += av.z * bv;
+            acc3 += av.w * bv;
+        }}
+        workgroupBarrier();
+    }}
+
+    let r = row0 + ty;
+    let c = col0 + tx;
+    store_out(g, r, c, acc0.x);
+    store_out(g, r, c + 16u, acc0.y);
+    store_out(g, r, c + 32u, acc0.z);
+    store_out(g, r, c + 48u, acc0.w);
+    store_out(g, r + 16u, c, acc1.x);
+    store_out(g, r + 16u, c + 16u, acc1.y);
+    store_out(g, r + 16u, c + 32u, acc1.z);
+    store_out(g, r + 16u, c + 48u, acc1.w);
+    store_out(g, r + 32u, c, acc2.x);
+    store_out(g, r + 32u, c + 16u, acc2.y);
+    store_out(g, r + 32u, c + 32u, acc2.z);
+    store_out(g, r + 32u, c + 48u, acc2.w);
+    store_out(g, r + 48u, c, acc3.x);
+    store_out(g, r + 48u, c + 16u, acc3.y);
+    store_out(g, r + 48u, c + 32u, acc3.z);
+    store_out(g, r + 48u, c + 48u, acc3.w);
+}}
+"#,
+        a_len = tile * tk,
+        b_len = tile * tk,
+        loads = tile * tk / 256,
+    ));
+    s
+}
+
 /// Threads per workgroup of the per-pixel convolution.
 pub const CONV_PIXEL_WG: u32 = 256;
 
