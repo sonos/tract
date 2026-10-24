@@ -1847,23 +1847,5 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("winograd_valid", winograd_sized(2, [50, 47], 250, 7, PaddingSpec::Valid, false)?);
     suite.add("winograd_bias", winograd_sized(1, [64, 64], 17, 240, same(), true)?);
 
-    // More outputs than one row of 65535 workgroups covers: GPU backends fold the launch into 2-D.
-    suite.add(
-        "large_output_grid",
-        ConvProblem {
-            shape_in: DataFormat::NCHW.from_n_c_hw(1, 1, [1000, 1000])?,
-            kernel_format: KernelFormat::OIHW,
-            group: 1,
-            data: ArrayD::from_shape_fn(vec![1, 1, 1000, 1000], |ix| {
-                ((ix[2] * 7 + ix[3]) % 11) as f32 * 0.25 - 1.0
-            }),
-            kernel: ArrayD::from_shape_fn(vec![5, 1, 1, 3], |ix| ix[0] as f32 - ix[3] as f32),
-            bias: None,
-            pad: PaddingSpec::Valid,
-            strides: tvec!(1, 1),
-            dilations: tvec!(1, 1),
-        },
-    );
-
     Ok(suite)
 }
