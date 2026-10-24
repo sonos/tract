@@ -2,11 +2,7 @@ use std::path::Path;
 
 use crate::ast::QuantFormat;
 use crate::internal::*;
-#[cfg(feature = "unstable-safetensors")]
-use safetensors::SafeTensors;
 use tract_core::downcast_rs::{DowncastSync, impl_downcast};
-#[cfg(feature = "unstable-safetensors")]
-use tract_core::tract_data::itertools::Itertools;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
 pub const GRAPH_QUANT_FILENAME: &str = "graph.quant";
@@ -191,6 +187,26 @@ impl Resource for TypedModelResource {}
 pub struct SafeTensorsLoader;
 
 #[cfg(feature = "unstable-safetensors")]
+fn safetensors_datum_type(dtype: &str) -> TractResult<DatumType> {
+    Ok(match dtype {
+        "F64" => DatumType::F64,
+        "F32" => DatumType::F32,
+        "F16" => DatumType::F16,
+        "I64" => DatumType::I64,
+        "I32" => DatumType::I32,
+        "I16" => DatumType::I16,
+        "I8" => DatumType::I8,
+        "U64" => DatumType::U64,
+        "U32" => DatumType::U32,
+        "U16" => DatumType::U16,
+        "U8" => DatumType::U8,
+        _ => bail!("Unsupported safetensors dtype {dtype}"),
+    })
+}
+
+/// Reads every tensor of a `.safetensors` file, each straight from the reader into a tensor
+/// of its own, so the file is never held in memory whole.
+#[cfg(feature = "unstable-safetensors")]
 impl ResourceLoader for SafeTensorsLoader {
     fn name(&self) -> StaticName {
         "SafeTensorsLoader".into()
@@ -202,25 +218,49 @@ impl ResourceLoader for SafeTensorsLoader {
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.extension().is_some_and(|e| e == "safetensors") {
-            let mut buffer = vec![];
-            reader.read_to_end(&mut buffer)?;
-            let tensors: Vec<(String, Arc<Tensor>)> = SafeTensors::deserialize(&buffer)?
-                .tensors()
-                .into_iter()
-                .map(|(name, t)| {
-                    let dt = match t.dtype() {
-                        safetensors::Dtype::F32 => DatumType::F32,
-                        safetensors::Dtype::F16 => DatumType::F16,
-                        _ => panic!(),
-                    };
-                    let tensor = unsafe { Tensor::from_raw_dt(dt, t.shape(), t.data()).unwrap() };
-                    (name, tensor.into_arc_tensor())
-                })
-                .collect_vec();
-            return Ok(Some((path.to_string_lossy().to_string(), Arc::new(tensors))));
+        if !path.extension().is_some_and(|e| e == "safetensors") {
+            return Ok(None);
         }
-        Ok(None)
+        let mut len = [0u8; 8];
+        reader.read_exact(&mut len)?;
+        let len = u64::from_le_bytes(len) as usize;
+        ensure!(len <= 100 << 20, "safetensors header of {len} bytes");
+        let mut header = vec![0u8; len];
+        reader.read_exact(&mut header)?;
+        let header: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(&header)?;
+        let mut entries = vec![];
+        for (name, info) in header {
+            if name == "__metadata__" {
+                continue;
+            }
+            let dt = safetensors_datum_type(info["dtype"].as_str().context("dtype")?)?;
+            let shape: Vec<usize> = serde_json::from_value(info["shape"].clone())?;
+            let [begin, end]: [usize; 2] = serde_json::from_value(info["data_offsets"].clone())?;
+            ensure!(
+                end - begin == shape.iter().product::<usize>() * dt.size_of(),
+                "safetensors tensor {name}: {} bytes for {dt:?} {shape:?}",
+                end - begin
+            );
+            entries.push((begin, name, dt, shape));
+        }
+        entries.sort_by_key(|e| e.0);
+        let mut position = 0;
+        let mut tensors = Vec::with_capacity(entries.len());
+        for (begin, name, dt, shape) in entries {
+            ensure!(begin >= position, "safetensors tensor {name} overlaps the previous one");
+            let mut gap = begin - position;
+            let mut scratch = [0u8; 1 << 16];
+            while gap > 0 {
+                let chunk = gap.min(scratch.len());
+                reader.read_exact(&mut scratch[..chunk])?;
+                gap -= chunk;
+            }
+            let mut tensor = Tensor::zero_dt(dt, &shape)?;
+            reader.read_exact(tensor.as_bytes_mut())?;
+            position = begin + tensor.as_bytes().len();
+            tensors.push((name, tensor.into_arc_tensor()));
+        }
+        Ok(Some((path.to_string_lossy().to_string(), Arc::new(tensors))))
     }
 }
 
