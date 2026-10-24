@@ -877,3 +877,29 @@ fn nan_replace_runs_on_device() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// An op left on the CPU reads its constant inputs from the host: there is no readback of the
+/// copy uploaded for device consumers, so a token lookup over an embedding table runs without
+/// JSPI.
+#[test]
+fn cpu_op_reads_constants_from_the_host() -> TractResult<()> {
+    use tract_core::ops::array::Gather;
+    let mut model = TypedModel::default();
+    let ids = model.add_source("ids", i64::fact([2, 3]))?;
+    let table = model.add_const(
+        "table",
+        Tensor::from_shape(&[10, 4], &fill(1, 40))?.cast_to::<f16>()?.into_owned(),
+    )?;
+    let embedded = model.wire_node("embedding", Gather::new(0), &[table, ids])?[0];
+    let two = model.add_const("two", tensor3(&[[[f16::from_f32(2.0)]]]))?;
+    let y = model.wire_node("mul", mul(), &[embedded, two])?[0];
+    model.select_output_outlets(&[y])?;
+    // Later passes rewire such a readback away, but only after it was evaluated, which a browser
+    // cannot do: check the translation itself.
+    use tract_core::internal::translator::Translate;
+    crate::context::wgpu_context();
+    let translated = WgpuTransform.translate_model(&model)?;
+    let readbacks = crate::mid_graph_readbacks(&translated)?;
+    ensure!(readbacks.is_empty(), "unexpected readbacks: {readbacks:?}");
+    gpu_vs_cpu(model, tensor2(&[[0i64, 3, 9], [1, 1, 7]]))
+}
