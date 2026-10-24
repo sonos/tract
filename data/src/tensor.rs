@@ -2420,6 +2420,11 @@ impl Tensor {
         matches!(self.storage, StorageKind::Plain(_))
     }
 
+    /// See [`TensorStorage::stays_lazy`].
+    pub fn stays_lazy(&self) -> bool {
+        matches!(&self.storage, StorageKind::Exotic(o) if o.stays_lazy())
+    }
+
     /// This tensor backed by plain ram storage of its own: bytes left on a
     /// device come back here, and exotic storage, which has no plain form,
     /// errors.

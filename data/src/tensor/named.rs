@@ -163,6 +163,10 @@ impl TensorStorage for NamedStorage {
         self.is_materialized()
     }
 
+    fn stays_lazy(&self) -> bool {
+        true
+    }
+
     fn materialize_plain_ram(&self) -> TractResult<&PlainStorage> {
         self.materialize()?
             .as_plain_ram_storage()

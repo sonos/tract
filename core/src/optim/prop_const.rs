@@ -15,7 +15,8 @@ use crate::optim::{CONST_FOLD_MEM_BUDGET, OptimizerSession};
 /// successors, so a large weight is not duplicated once per consumer; a
 /// sole-consumer input, or any input of a `Slice`, is exempt whatever its size.
 /// Every fold, including each step of the walk, must additionally keep its output
-/// within the allowance.
+/// within the allowance. A constant whose storage [stays lazy](TensorStorage::stays_lazy)
+/// is never an input to a fold: it is left for when its bytes are loaded.
 #[derive(Clone, Debug, Default)]
 pub struct PropConst(usize);
 
@@ -43,7 +44,7 @@ impl super::TypedPass for PropConst {
                 && !node.op_is::<Dummy>()
                 && !node.op_is::<TypedSource>()
                 && inputs.iter().zip(&node.inputs).all(|(fact, outlet)| {
-                    fact.konst.is_some()
+                    fact.konst.as_ref().is_some_and(|k| !k.stays_lazy())
                         && (model.node(outlet.node).outputs[outlet.slot].successors.len() == 1
                             || node.op_is::<Slice>()
                             || (fact.datum_type.is_number()
