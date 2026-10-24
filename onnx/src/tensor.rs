@@ -79,7 +79,7 @@ pub fn translate_inference_fact(
 }
 
 /// Resolves an existing relative external-data path within its canonical model directory.
-fn resolve_external_data_path(model_dir: &Path, location: &str) -> TractResult<PathBuf> {
+pub(crate) fn resolve_external_data_path(model_dir: &Path, location: &str) -> TractResult<PathBuf> {
     let location_path = Path::new(location);
     if location_path.components().any(|c| !matches!(c, Component::Normal(_) | Component::CurDir)) {
         bail!(
@@ -133,10 +133,8 @@ fn get_external_resources(
         .transpose()
         .context("Error while parsing length value on external data description")?;
 
-    let p = resolve_external_data_path(Path::new(path), location)?;
-
-    trace!("external file detected: {p:?}, offset {offset:?}, length: {length:?}");
-    provider.read_bytes_from_path(&mut tensor_data, &p, offset, length)?;
+    trace!("external data detected: {location:?}, offset {offset:?}, length: {length:?}");
+    provider.read_external(&mut tensor_data, path, location, offset, length)?;
     trace!("external file loaded");
     Ok(tensor_data)
 }
