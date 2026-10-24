@@ -42,7 +42,7 @@ pub use crate::context::{
     CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, try_wgpu_context, wgpu_context,
     wgpu_context_async, with_wgpu_queue,
 };
-pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, uncovered_ops};
+pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, mid_graph_readbacks, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
 #[cfg(target_arch = "wasm32")]
 pub use crate::kernels::ingest::{tensor_from_external_image, tensor_from_video_frame};
