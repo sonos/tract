@@ -760,3 +760,73 @@ fn matmul_tiled_matches_cpu() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
+/// batch, channels-last, an uneven kernel and padding, f16 and a bias.
+#[test]
+fn conv_tiled_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    #[rustfmt::skip]
+    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 8] = [
+        // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
+        (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [90, 90], [3, 3], [2, 2], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [49, 49], [3, 3], [1, 1], [2, 2], 0, false),
+        (DataFormat::NCHW, 1, 16, 80, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 2, 8, 40, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NHWC, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 8, 40, [45, 47], [1, 5], [1, 1], [1, 1], 2, false),
+        (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
+    ];
+    for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
+        cases.into_iter().enumerate()
+    {
+        let group = if ci == 16 { 2 } else { 1 };
+        let shape = fmt.from_n_c_hw(n, ci, hw)?.shape.to_vec();
+        let k_shape = [co, ci / group, kernel[0], kernel[1]];
+        // An f16 case runs on the GPU in f16 and is checked against the CPU in f32 on the
+        // same f16-rounded values: the CPU's own f16 convolution is the less exact of the two.
+        let values = |seed, shape: &[usize]| -> TractResult<Tensor> {
+            let t = Tensor::from_shape(shape, &fill(seed, shape.iter().product()))?;
+            Ok(if f16_ { t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned() } else { t })
+        };
+        let input = values(3, &shape)?;
+        let build = |dt: DatumType| -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact(&shape))?;
+            let k = model.add_const("k", values(1, &k_shape)?.cast_to_dt(dt)?.into_owned())?;
+            let b = model.add_const("b", values(2, &[co])?.cast_to_dt(dt)?.into_owned())?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: fmt,
+                    kernel_shape: kernel.iter().copied().collect(),
+                    padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, 0]),
+                    dilations: Some(dilation.iter().copied().collect()),
+                    strides: Some(stride.iter().copied().collect()),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            Ok(model)
+        };
+        if f16_ {
+            let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+            let gpu = rt.prepare(build(f16::datum_type())?)?;
+            let g = gpu.run(tvec!(input.cast_to::<f16>()?.into_owned().into()))?.remove(0);
+            let cpu = Arc::new(SimplePlan::new(build(f32::datum_type())?)?);
+            let c = cpu.run(tvec!(input.clone().into()))?.remove(0);
+            let c = c.cast_to::<f16>()?.into_owned();
+            g.into_tensor().close_enough(&c, Approximation::Approximate)
+        } else {
+            gpu_vs_cpu(build(f32::datum_type())?, input)
+        }
+        .with_context(|| format!("case {i}"))?;
+    }
+    Ok(())
+}
