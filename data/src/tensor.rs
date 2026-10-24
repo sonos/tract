@@ -1974,8 +1974,8 @@ impl Tensor {
                             DatumType::F32 => self.natural_cast::<$source, f32>(&mut result),
                             DatumType::F64 => self.natural_cast::<$source, f64>(&mut result),
                             DatumType::TDim => {
-                                let ints = self.cast_to::<i32>()?;
-                                let slice = ints.as_slice_unchecked::<i32>();
+                                let ints = self.cast_to::<i64>()?;
+                                let slice = ints.as_slice_unchecked::<i64>();
                                 let result = result.as_slice_mut_unchecked::<TDim>();
                                 for i in 0..self.len() {
                                     result[i] = slice[i].into();
