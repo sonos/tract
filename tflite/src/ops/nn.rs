@@ -1,5 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops as core;
+use tract_core::ops::binary::TypedBinOp;
 use tract_core::ops::cast::wire_cast;
 use tract_core::ops::cast::Cast;
 use tract_core::ops::change_axes::wire_with_rank_broadcast;
@@ -46,6 +47,9 @@ pub fn register_all(reg: &mut Registry) {
 
     reg.reg_to_tract(BuiltinOperator::RELU, de_relu);
     reg.reg_to_tract(BuiltinOperator::RELU6, de_relu6);
+    reg.reg_to_tract(BuiltinOperator::PRELU, de_prelu);
+
+    reg.reg_to_tract(BuiltinOperator::DEQUANTIZE, de_dequantize);
 
     reg.reg_to_tflite(ser_reduce);
     reg.reg_to_tract(BuiltinOperator::REDUCE_MAX, |op| de_reduce(op, Reducer::Max));
@@ -367,6 +371,35 @@ pub fn de_relu6(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         core::math::min(),
         &wires,
     )
+}
+
+/// `x` where `x >= 0`, `x * alpha` elsewhere. `alpha` is broadcast against `x` the way TFLite does.
+fn de_prelu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (x, alpha) = (op.inputs[0], op.inputs[1]);
+    let dt = op.ctx.target.outlet_fact(x)?.datum_type;
+    ensure!(dt.is_float(), "PRELU is only supported on float inputs, got {dt:?}");
+    let zero = op.ctx.target.add_const(format!("{}.zero", op.prefix), tensor0(0f32))?;
+    let zero = wire_cast(format!("{}.zero", op.prefix), op.ctx.target, &[zero], dt)?[0];
+    let positive = wire_with_rank_broadcast(
+        format!("{}.positive", op.prefix),
+        op.ctx.target,
+        TypedBinOp(core::logic::comp_gte(), None),
+        &[x, zero],
+    )?[0];
+    let scaled = wire_with_rank_broadcast(
+        format!("{}.scaled", op.prefix),
+        op.ctx.target,
+        core::math::mul(),
+        &[x, alpha],
+    )?[0];
+    wire_with_rank_broadcast(op.prefix, op.ctx.target, core::logic::Iff, &[positive, x, scaled])
+}
+
+/// Only the FLOAT16 to FLOAT32 form, which is an exact widening. Quantized inputs are refused.
+fn de_dequantize(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let dt = op.facts()?[0].datum_type;
+    ensure!(dt == f16::datum_type(), "DEQUANTIZE is only supported from F16, got {dt:?}");
+    wire_cast(op.prefix, op.ctx.target, op.inputs, f32::datum_type())
 }
 
 fn ser_matmul(
