@@ -1192,19 +1192,19 @@ impl WgpuQueue {
             return;
         }
         #[cfg(target_arch = "wasm32")]
+        self.drain_pending_wasm(&pending);
+        #[cfg(not(target_arch = "wasm32"))]
         {
-            self.drain_pending_wasm(&pending);
-            return;
-        }
-        let mut encoder = self.encoder();
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("tract-wgpu"),
-            timestamp_writes: None,
-        });
-        for d in &pending {
-            pass.set_pipeline(&d.pipeline);
-            pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
-            pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
+            let mut encoder = self.encoder();
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("tract-wgpu"),
+                timestamp_writes: None,
+            });
+            for d in &pending {
+                pass.set_pipeline(&d.pipeline);
+                pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
+                pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
+            }
         }
     }
 
