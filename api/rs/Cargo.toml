@@ -29,6 +29,7 @@ tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl.workspace = true
 tract-libcli = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
+tract-wgpu = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
@@ -89,6 +90,11 @@ transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-lib
 # Apple targets that have it. Enabled by default; CPU-only consumers drop the
 # backend, and the shader sources it embeds, with `default-features = false`.
 metal = ["dep:tract-metal", "tract-libcli?/metal"]
+
+# Gates the `extern crate tract_wgpu` that registers the WebGPU runtime
+# (`runtime_for_name("wgpu")`): Vulkan, Metal or DX12 natively, the browser's
+# WebGPU on wasm32. Off by default.
+wgpu = ["dep:tract-wgpu"]
 
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Gates the `extern crate tract_cuda` that registers the CUDA runtime.

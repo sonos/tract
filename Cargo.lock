@@ -5057,6 +5057,7 @@ dependencies = [
  "tract-pulse",
  "tract-pulse-opl",
  "tract-transformers",
+ "tract-wgpu",
 ]
 
 [[package]]
@@ -5511,7 +5512,7 @@ dependencies = [
 
 [[package]]
 name = "tract-wgpu"
-version = "0.23.8-pre"
+version = "0.23.10-pre"
 dependencies = [
  "anyhow",
  "derive-new",
