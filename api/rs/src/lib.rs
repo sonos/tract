@@ -671,6 +671,77 @@ pub mod wgpu {
     }
 }
 
+/// Produces the bytes of a weight known by its name, the first time the model needs them.
+#[cfg(feature = "unstable-named-weights")]
+pub trait WeightSource: Send + Sync + 'static {
+    /// The weight of that name, of that datum type and shape.
+    fn load(&self, name: &str, datum_type: DatumType, shape: &[usize]) -> Result<Tensor>;
+
+    /// Whether this source has a weight of that name, so that several sources can each take
+    /// theirs. All of them, unless told otherwise.
+    fn contains(&self, _name: &str) -> bool {
+        true
+    }
+}
+
+/// Reading a safetensors file at an offset, for [`Model::link_safetensors`]: implemented for
+/// files, and by whatever else holds the file's bytes, such as a browser's storage.
+#[cfg(feature = "unstable-named-weights")]
+pub use tract_nnef::safetensors::ReadAt;
+
+#[cfg(feature = "unstable-named-weights")]
+struct LinkedSource<S>(S);
+
+#[cfg(feature = "unstable-named-weights")]
+impl<S> Debug for LinkedSource<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WeightSource")
+    }
+}
+
+#[cfg(feature = "unstable-named-weights")]
+impl<S: WeightSource> tract_nnef::internal::WeightSource for LinkedSource<S> {
+    fn load(
+        &self,
+        name: &str,
+        dt: tract_nnef::prelude::DatumType,
+        shape: &[usize],
+    ) -> tract_nnef::prelude::TractResult<InternalTensor> {
+        Ok((*self.0.load(name, from_internal_dt(dt)?, shape)?.0).clone())
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.0.contains(name)
+    }
+}
+
+/// Linking the weights a model knows by their name, as a graph whose bytes live elsewhere loads
+/// them: unread until the model needs them, and an error if then nothing provides them.
+#[cfg(feature = "unstable-named-weights")]
+impl Model {
+    /// Reads the weights `source` [contains](WeightSource::contains) from it.
+    pub fn link_weights(&mut self, source: impl WeightSource) -> Result<()> {
+        self.link(Arc::new(LinkedSource(source)))
+    }
+
+    /// Reads the weights of a safetensors file from it, each at its offset when first needed;
+    /// only the header is read now.
+    pub fn link_safetensors(&mut self, reader: impl ReadAt + 'static) -> Result<()> {
+        self.link(Arc::new(tract_nnef::safetensors::SafetensorsSource::new(reader)?))
+    }
+
+    /// As [`Model::link_safetensors`], from the file at `path`.
+    #[cfg(any(unix, windows))]
+    pub fn link_safetensors_file(&mut self, path: impl AsRef<Path>) -> Result<()> {
+        self.link(Arc::new(tract_nnef::safetensors::SafetensorsSource::open(path)?))
+    }
+
+    fn link(&mut self, source: Arc<dyn tract_nnef::internal::WeightSource>) -> Result<()> {
+        use tract_nnef::tract_core::transform::ModelTransform;
+        tract_nnef::tract_core::transform::LinkWeights(source).transform(&mut self.0)
+    }
+}
+
 #[cfg(feature = "unstable-npyz")]
 impl Tensor {
     /// Read a tensor from a numpy `.npy` file.

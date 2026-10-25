@@ -138,3 +138,8 @@ unstable-autobatch = ["tract-core/deploy"]
 # (`npz::*`). Unstable: the surface is still being settled, so it is not covered by the
 # no-breaking-change commitment.
 unstable-npyz = ["dep:tract-data", "tract-data/npz"]
+
+# Weights known by their name, linked to where their bytes live after the graph is loaded:
+# `Model::link_weights` with any `WeightSource`, or a safetensors file read tensor by tensor
+# on demand. Unstable: the shape of this API may change.
+unstable-named-weights = ["tract-nnef/unstable-safetensors"]
