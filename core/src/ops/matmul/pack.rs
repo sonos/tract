@@ -150,6 +150,9 @@ impl TypedOp for OptMatMulPack {
 
 impl OptMatMulPack {
     fn do_eval(&self, _ctx: &EvalContext, input: TValue) -> TractResult<TVec<TValue>> {
+        // The packers read the bytes unchecked: a weight whose bytes live elsewhere is fetched
+        // here, where failing to is an error.
+        input.try_as_plain_ram()?;
         let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
         let packer = &self.packers[mode];
         let output_shape: TVec<usize> = self.output_shape(input.shape());

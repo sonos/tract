@@ -17,10 +17,14 @@ do
         --approx approximate -q
 done
 
-# Unlinked, the weights have nowhere to be read from.
-if $TRACT_RUN model run --input-from-npz io.npz -q 2> unlinked.log
-then
-    exit 1
-fi
-grep -q 'has no source' unlinked.log
+# Unlinked, the weights have nowhere to be read from: an error, plain or optimized, not a panic.
+for opt in "" -O
+do
+    if $TRACT_RUN model $opt run --input-from-npz io.npz -q 2> unlinked.log
+    then
+        exit 1
+    fi
+    grep -q 'has no source' unlinked.log
+    if grep -q panicked unlinked.log; then exit 1; fi
+done
 rm -f unlinked.log
