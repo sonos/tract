@@ -22,6 +22,7 @@ mod is_inf;
 mod layer_norm;
 mod lstm_cell;
 mod matmul;
+mod named_weight;
 mod one_hot;
 mod pow_const;
 mod qconv;
@@ -87,6 +88,7 @@ pub fn register(registry: &mut Registry) {
     shape_of::register(registry);
     silu::register(registry);
     softmax::register(registry);
+    named_weight::register(registry);
     source::register(registry);
     submodel::register(registry);
     range::register(registry);

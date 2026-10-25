@@ -10,9 +10,9 @@ fragment tract_core_properties(
 
 graph network(x) -> (y) {
   x = external(shape = [1, 4]);
-  dense_weight_0 = variable<scalar>(label = "dense.weight", shape = [4, 3]);
+  dense_weight_0 = tract_core_named_weight(label = "dense.weight", shape = [4, 3], datum_type = "F32");
   y0 = matmul(x, dense_weight_0, transposeA = false, transposeB = false);
-  dense_bias_0 = variable<scalar>(label = "dense.bias", shape = [3]);
+  dense_bias_0 = tract_core_named_weight(label = "dense.bias", shape = [3], datum_type = "F32");
   y_fix_rank = unsqueeze(dense_bias_0, axes = [0]);
   y = add(y0, y_fix_rank);
 }
