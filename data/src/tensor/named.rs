@@ -14,6 +14,12 @@ use crate::tensor::storage::{PlainStorage, TensorStorage};
 /// and shape.
 pub trait WeightSource: Send + Sync + fmt::Debug {
     fn load(&self, name: &str, dt: DatumType, shape: &[usize]) -> TractResult<Tensor>;
+
+    /// Whether this source has a weight of that name, so that several sources can each take
+    /// theirs. All of them, unless told otherwise.
+    fn contains(&self, _name: &str) -> bool {
+        true
+    }
 }
 
 /// Storage for a weight that is known by its name and fetched from a

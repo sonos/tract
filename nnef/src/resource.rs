@@ -186,24 +186,6 @@ impl Resource for TypedModelResource {}
 #[cfg(feature = "unstable-safetensors")]
 pub struct SafeTensorsLoader;
 
-#[cfg(feature = "unstable-safetensors")]
-fn safetensors_datum_type(dtype: &str) -> TractResult<DatumType> {
-    Ok(match dtype {
-        "F64" => DatumType::F64,
-        "F32" => DatumType::F32,
-        "F16" => DatumType::F16,
-        "I64" => DatumType::I64,
-        "I32" => DatumType::I32,
-        "I16" => DatumType::I16,
-        "I8" => DatumType::I8,
-        "U64" => DatumType::U64,
-        "U32" => DatumType::U32,
-        "U16" => DatumType::U16,
-        "U8" => DatumType::U8,
-        _ => bail!("Unsupported safetensors dtype {dtype}"),
-    })
-}
-
 /// Reads every tensor of a `.safetensors` file, each straight from the reader into a tensor
 /// of its own, so the file is never held in memory whole.
 #[cfg(feature = "unstable-safetensors")]
@@ -221,32 +203,14 @@ impl ResourceLoader for SafeTensorsLoader {
         if !path.extension().is_some_and(|e| e == "safetensors") {
             return Ok(None);
         }
-        let mut len = [0u8; 8];
-        reader.read_exact(&mut len)?;
-        let len = u64::from_le_bytes(len) as usize;
-        ensure!(len <= 100 << 20, "safetensors header of {len} bytes");
-        let mut header = vec![0u8; len];
+        let mut prefix = [0u8; 8];
+        reader.read_exact(&mut prefix)?;
+        let mut header = vec![0u8; crate::safetensors::header_len(prefix)?];
         reader.read_exact(&mut header)?;
-        let header: serde_json::Map<String, serde_json::Value> = serde_json::from_slice(&header)?;
-        let mut entries = vec![];
-        for (name, info) in header {
-            if name == "__metadata__" {
-                continue;
-            }
-            let dt = safetensors_datum_type(info["dtype"].as_str().context("dtype")?)?;
-            let shape: Vec<usize> = serde_json::from_value(info["shape"].clone())?;
-            let [begin, end]: [usize; 2] = serde_json::from_value(info["data_offsets"].clone())?;
-            ensure!(
-                end - begin == shape.iter().product::<usize>() * dt.size_of(),
-                "safetensors tensor {name}: {} bytes for {dt:?} {shape:?}",
-                end - begin
-            );
-            entries.push((begin, name, dt, shape));
-        }
-        entries.sort_by_key(|e| e.0);
+        let entries = crate::safetensors::entries(&header)?;
         let mut position = 0;
         let mut tensors = Vec::with_capacity(entries.len());
-        for (begin, name, dt, shape) in entries {
+        for crate::safetensors::Entry { name, datum_type: dt, shape, begin } in entries {
             ensure!(begin >= position, "safetensors tensor {name} overlaps the previous one");
             let mut gap = begin - position;
             let mut scratch = [0u8; 1 << 16];
