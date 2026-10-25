@@ -69,6 +69,9 @@ impl ModelTransform for WgpuTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         crate::kernels::pool::link_translators();
         wgpu_context();
+        Rewriter::default()
+            .with_rule_for("flatten_unfused_sdpa", flatten_unfused_sdpa)
+            .rewrite(&(), model)?;
         // Pointwise convolutions reach the backend as EinSum, so a segmenter is
         // mostly matmuls until this runs.
         rewrite_einsum_to_prefix_matmul(model, false)?;
@@ -104,6 +107,19 @@ impl ModelTransform for WgpuTransform {
         rewire_syncs(model)?;
         Ok(())
     }
+}
+
+/// Explodes the `Sdpa` nodes the flash kernel cannot take into primitives,
+/// which translate one by one.
+fn flatten_unfused_sdpa(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &tract_transformers::ops::sdpa::Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(!crate::kernels::sdpa::flash_sdpa_supported(&model.node_input_facts(node.id)?, op));
+    op.patch_sdpa(model, node)
 }
 
 fn try_make_wgpu_op(

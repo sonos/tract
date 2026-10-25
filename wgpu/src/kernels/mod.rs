@@ -14,6 +14,7 @@ pub mod nan_replace;
 pub mod pool;
 pub mod reduce;
 pub mod resize;
+pub mod sdpa;
 pub mod shaders;
 pub mod softmax;
 
