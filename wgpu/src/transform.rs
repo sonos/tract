@@ -6,7 +6,7 @@ use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
-use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
+use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
@@ -78,6 +78,7 @@ impl ModelTransform for WgpuTransform {
         Rewriter::default()
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
+            .with_rule_for("rewrite_conv_1d_to_2d", rewrite_conv_1d_to_2d)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
