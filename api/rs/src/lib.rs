@@ -597,6 +597,15 @@ impl TensorInterface for Tensor {
     }
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
+        #[cfg(all(target_arch = "wasm32", feature = "wgpu"))]
+        {
+            use tract_gpu::tensor::DeviceTensorExt;
+            anyhow::ensure!(
+                self.0.as_device_tensor().is_none(),
+                "This tensor lives on the GPU and a browser cannot block to read it back: \
+                 download it with `to_host_async().await` (feature `unstable-wgpu-async`)."
+            );
+        }
         let dt = from_internal_dt(self.0.datum_type())?;
         Ok((dt, self.0.shape(), self.0.try_as_plain_ram()?.as_bytes()))
     }
@@ -625,6 +634,40 @@ impl Tensor {
     /// through the host. The result owns its data either way.
     pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
         Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
+    }
+}
+
+#[cfg(feature = "unstable-wgpu-async")]
+impl Tensor {
+    /// This tensor with its values in host memory, downloaded if they live on a
+    /// device: on wasm32, outputs of the wgpu runtime stay on the GPU, since a
+    /// browser cannot block to read them back. Natively, outputs already come
+    /// back in host memory, and a device tensor is read back synchronously.
+    pub async fn to_host_async(&self) -> Result<Tensor> {
+        use tract_gpu::tensor::DeviceTensorExt;
+        let Some(device) = self.0.as_device_tensor() else {
+            return Ok(self.clone());
+        };
+        #[cfg(target_arch = "wasm32")]
+        let host = tract_wgpu::to_host_async(device).await?.into_arc_tensor();
+        #[cfg(not(target_arch = "wasm32"))]
+        let host = device.to_host()?;
+        Ok(Tensor(host))
+    }
+}
+
+/// The WebGPU runtime's asynchronous entry points.
+#[cfg(feature = "unstable-wgpu-async")]
+pub mod wgpu {
+    use anyhow::Result;
+
+    /// Brings up the WebGPU device the `wgpu` runtime runs on. In a browser,
+    /// where requesting a device is asynchronous, await it once before
+    /// preparing a model on that runtime. Natively the device otherwise comes up
+    /// on first use, and this only reports early a host with no usable adapter.
+    pub async fn init() -> Result<()> {
+        tract_wgpu::wgpu_context_async().await?;
+        Ok(())
     }
 }
 

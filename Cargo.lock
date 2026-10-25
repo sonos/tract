@@ -5049,6 +5049,7 @@ dependencies = [
  "tract-cuda",
  "tract-data",
  "tract-extra",
+ "tract-gpu",
  "tract-libcli",
  "tract-metal",
  "tract-nnef",
