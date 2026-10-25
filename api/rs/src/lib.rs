@@ -5,6 +5,8 @@ extern crate tract_metal;
 extern crate tract_cuda;
 #[cfg(feature = "transformers")]
 extern crate tract_transformers;
+#[cfg(feature = "wgpu")]
+extern crate tract_wgpu;
 
 #[cfg(feature = "onnx")]
 use std::borrow::Cow;
