@@ -760,6 +760,13 @@ impl Parameters {
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
         }
+        for path in matches.get_many::<String>("link-safetensors").into_iter().flatten() {
+            let source =
+                std::sync::Arc::new(tract_nnef::safetensors::SafetensorsSource::open(path)?);
+            stage!("link-weights", typed_model -> typed_model, move |m: TypedModel| {
+                tract_core::transform::LinkWeights(source.clone()).transform_into(m)
+            });
+        }
         let mut transforms: Vec<&str> = matches
             .get_many::<String>("transform")
             .map(|values| values.map(String::as_str).collect())
