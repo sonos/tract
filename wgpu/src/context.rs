@@ -146,6 +146,14 @@ struct WgpuContextInner {
     next_gpu_id: std::sync::atomic::AtomicU32,
 }
 
+tract_core::declare_knob!(
+    scopable TRACT_WGPU_FRAME_BUDGET_MB,
+    usize,
+    256,
+    "Megabytes of buffers a frame may allocate before what it recorded so far is submitted, so \
+     later allocations can reuse buffers the frame no longer holds. 0 never submits early."
+);
+
 /// The buffers one pool position has been handed, oldest first.
 type Slot = Vec<Arc<WgpuBuffer>>;
 
@@ -852,6 +860,11 @@ pub struct WgpuQueue {
     /// later tensor can take.
     repacked: RefCell<HashMap<RepackKey, DeviceTensor>>,
     slot_cursor: RefCell<HashMap<u64, u32>>,
+    /// Bytes of pool buffers handed out since the last submission, and the budget past
+    /// which [`WgpuQueue::submit_frame`] runs.
+    frame_bytes: Cell<u64>,
+    frame_budget: Cell<Option<u64>>,
+    frames_submitted: Cell<u64>,
     profile: Cell<bool>,
     profiled: RefCell<Vec<(&'static str, u32)>>,
     queries: RefCell<Option<Queries>>,
@@ -984,6 +997,9 @@ impl WgpuQueue {
             buffer_slots: RefCell::new(HashMap::new()),
             repacked: RefCell::new(HashMap::new()),
             slot_cursor: RefCell::new(HashMap::new()),
+            frame_bytes: Cell::new(0),
+            frame_budget: Cell::new(None),
+            frames_submitted: Cell::new(0),
             profile: Cell::new(false),
             profiled: RefCell::new(vec![]),
             queries: RefCell::new(None),
@@ -1034,6 +1050,7 @@ impl WgpuQueue {
             *n += 1;
             seq
         };
+        self.frame_bytes.set(self.frame_bytes.get() + size);
         let mut slots = self.buffer_slots.borrow_mut();
         let held = slots.entry((size, seq)).or_default();
         if let Some(free) = held.iter().find(|b| Arc::strong_count(b) == 1) {
@@ -1147,6 +1164,17 @@ impl WgpuQueue {
             dynamic_offset,
             groups,
         });
+        let budget = match self.frame_budget.get() {
+            Some(b) => b,
+            None => {
+                let b = TRACT_WGPU_FRAME_BUDGET_MB.get() as u64 * (1 << 20);
+                self.frame_budget.set(Some(b));
+                b
+            }
+        };
+        if budget > 0 && self.frame_bytes.get() > budget {
+            self.submit_frame();
+        }
         Ok(())
     }
 
@@ -1242,18 +1270,35 @@ impl WgpuQueue {
         }
     }
 
-    pub fn flush(&self) -> TractResult<()> {
+    /// Submits what was recorded so far without waiting for it, and starts a new frame: the
+    /// buffers the frame no longer holds go back to the pool for what comes next. The queue
+    /// runs submissions in order, so a buffer reused by a later one is only written once the
+    /// earlier ones are done with it, and the uniform writes that follow land after them too.
+    fn submit_frame(&self) {
         self.upload_uniforms();
         self.drain_pending();
         if let Some(encoder) = self.encoder.replace(None) {
             self.context.queue().submit(Some(encoder.finish()));
+            self.frames_submitted.set(self.frames_submitted.get() + 1);
         }
-        self.context.poll_wait()?;
         self.retained.borrow_mut().clear();
         self.retained_textures.borrow_mut().clear();
         self.uniform_cursor.set(0);
-        self.context.trim_bind_groups();
         self.slot_cursor.borrow_mut().clear();
+        self.frame_bytes.set(0);
+        self.frame_budget.set(None);
+    }
+
+    /// Submissions so far, early ones included.
+    #[cfg(test)]
+    pub(crate) fn frames_submitted(&self) -> u64 {
+        self.frames_submitted.get()
+    }
+
+    pub fn flush(&self) -> TractResult<()> {
+        self.submit_frame();
+        self.context.poll_wait()?;
+        self.context.trim_bind_groups();
         Ok(())
     }
 

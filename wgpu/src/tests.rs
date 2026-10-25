@@ -1057,3 +1057,39 @@ fn flash_sdpa_matches_cpu() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Past its buffer budget, a run submits what it recorded and goes on reusing the buffers it no
+/// longer holds, with the same result as a run submitted once at the end.
+#[test]
+fn frame_budget_submits_early() -> TractResult<()> {
+    use tract_core::knobs::KnobScope;
+    use tract_core::ops::math::{add, mul};
+    crate::context::wgpu_context();
+    let shape = [1usize, 16, 128, 128];
+    let mut model = TypedModel::default();
+    let mut x = model.add_source("x", f32::fact(shape))?;
+    let source = x;
+    for i in 0..8 {
+        let y = model.wire_node(format!("mul{i}"), mul(), &[x, source])?[0];
+        x = model.wire_node(format!("add{i}"), add(), &[y, source])?[0];
+    }
+    model.select_output_outlets(&[x])?;
+    let n: usize = shape.iter().product();
+    let input =
+        Tensor::from_shape(&shape, &fill(9, n).iter().map(|v| v * 0.1).collect::<Vec<_>>())?;
+    let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+    let cpu = Arc::new(SimplePlan::new(model.clone())?).run(tvec!(input.clone().into()))?.remove(0);
+    for (budget, early) in [("1", true), ("0", false)] {
+        KnobScope::new([("TRACT_WGPU_FRAME_BUDGET_MB", budget)])?.enter(
+            || -> TractResult<()> {
+                let gpu = rt.prepare(model.clone())?;
+                let before = with_wgpu_queue(|q| Ok(q.frames_submitted()))?;
+                let out = gpu.run(tvec!(input.clone().into()))?.remove(0).into_tensor();
+                let frames = with_wgpu_queue(|q| Ok(q.frames_submitted()))? - before;
+                ensure!((frames > 1) == early, "budget {budget}: {frames} submissions");
+                out.close_enough(&cpu, Approximation::Close)
+            },
+        )?;
+    }
+    Ok(())
+}
