@@ -1,0 +1,27 @@
+{
+  "hf": "https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5/resolve/451f4fe16113bff5a5d2269ed5ad43b0592e9a14/",
+  "tokenizer": [
+    "tokenizer/vocab.json",
+    "tokenizer/merges.txt"
+  ],
+  "components": [
+    {
+      "name": "text_encoder",
+      "graph": "models/text_encoder.nnef.tar",
+      "weights": "text_encoder/model.fp16.safetensors",
+      "size": 246144864
+    },
+    {
+      "name": "unet",
+      "graph": "models/unet.nnef.tar",
+      "weights": "unet/diffusion_pytorch_model.fp16.safetensors",
+      "size": 1719125304
+    },
+    {
+      "name": "vae_decoder",
+      "graph": "models/vae_decoder.nnef.tar",
+      "weights": "vae/diffusion_pytorch_model.fp16.safetensors",
+      "size": 167335342
+    }
+  ]
+}

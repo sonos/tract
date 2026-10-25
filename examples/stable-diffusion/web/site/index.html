@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SD 1.5 in your browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 512px;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "form head" "form out" "form note";
+    column-gap: 24px;
+    row-gap: 16px;
+    align-items: start;
+  }
+  header { grid-area: head; }
+  .panel { grid-area: form; }
+  #out { grid-area: out; }
+  .note { grid-area: note; }
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "form" "out" "note"; }
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  textarea, input, select { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  textarea { resize: vertical; line-height: 1.45; }
+  select { background: var(--panel); }
+  .count { font-size: 12px; color: var(--muted); text-align: right; margin-top: 2px; min-height: 1.4em; }
+  .count.over { color: #d0432f; font-weight: 600; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; }
+  .examples button { width: auto; margin: 0; padding: 4px 10px; font-size: 12px; font-weight: 500; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 999px; }
+  .examples button:hover { border-color: var(--accent); }
+  .row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  button { margin-top: 16px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .key { font-weight: 400; opacity: .75; margin-left: 6px; font-size: 13px; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 14px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
+  canvas { width: 100%; max-width: 512px; aspect-ratio: 1; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: block; }
+  .note { font-size: 12px; color: var(--muted); margin: 0; }
+  .build { display: block; margin-top: 10px; opacity: .75; }
+  #build { font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px; }
+  button.link { width: auto; margin: 8px 0 0; padding: 4px 10px; font-size: 12px; font-weight: 500; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; }
+  button.link:hover:not(:disabled) { border-color: #d0432f; color: #d0432f; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main class="grid">
+  <header>
+    <h1>Stable Diffusion 1.5, in your browser</h1>
+    <p class="sub">Runs on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>. Nothing leaves your machine.</p>
+  </header>
+  <div class="panel">
+    <label>Examples</label>
+    <div class="examples" id="examples"></div>
+    <label for="prompt">Prompt</label>
+    <textarea id="prompt" rows="9" autofocus>a cozy cottage in an autumn forest, warm light in the windows, oil painting, highly detailed</textarea>
+    <div class="count" id="prompt-count"></div>
+    <label for="negative">Negative prompt</label>
+    <textarea id="negative" rows="4">blurry, low quality, distorted, deformed, ugly, bad anatomy, disfigured, extra limbs, watermark, text, signature</textarea>
+    <div class="count" id="negative-count"></div>
+    <label for="sampler">Sampler</label>
+    <select id="sampler">
+      <option value="dpm++2m-karras" selected>DPM++ 2M Karras (good at 12–20 steps)</option>
+      <option value="euler">Euler (needs 25+ steps)</option>
+    </select>
+    <div class="row">
+      <div><label for="steps">Steps</label><input id="steps" type="number" min="2" max="50" value="15"></div>
+      <div><label for="guidance">Guidance</label><input id="guidance" type="number" min="1" max="20" step="0.5" value="7.5"></div>
+      <div><label for="seed">Seed</label><input id="seed" type="number" min="0" value="7"></div>
+    </div>
+    <button id="go" disabled>Loading…</button>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="status">Starting…</div>
+  </div>
+  <canvas id="out" width="512" height="512"></canvas>
+  <p class="note">
+      The first visit downloads the model weights (about 2.1 GB) straight from
+      <a href="https://huggingface.co/stable-diffusion-v1-5/stable-diffusion-v1-5">Hugging Face</a>
+      and keeps them in your browser's storage for next time. The model is under the
+      <a href="https://huggingface.co/spaces/CompVis/stable-diffusion-license">CreativeML OpenRAIL-M license</a>,
+      whose use restrictions apply to what you generate.
+    <br><button type="button" id="drop" class="link" disabled>Delete the downloaded model</button>
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/stable-diffusion/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
