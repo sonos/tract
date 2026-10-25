@@ -1902,6 +1902,34 @@ fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// The `k_info` of a tiled convolution's current `k` slice: for each `k`, the
+/// weight offset of its (input channel, kernel row, kernel column), the input
+/// offset of its channel, and its row and column displacement in the input.
+/// The divisions happen here, sixteen per slice, rather than in every load.
+fn conv_k_prologue() -> String {
+    let tk = MATMUL_TILE_K;
+    format!(
+        "        if (lid < {tk}u) {{
+            let k = k0 + lid;
+            var info = vec4<i32>(0);
+            if (k < k_len) {{
+                let ci = k / khw;
+                let tap = k % khw;
+                let kh = tap / params.kw;
+                let kw = tap % params.kw;
+                info = vec4<i32>(
+                    i32(ci) * params.w_si + i32(kh) * params.w_sh + i32(kw) * params.w_sw,
+                    i32(g * params.ci_pg + ci) * params.in_sc,
+                    i32(kh) * params.dil_h,
+                    i32(kw) * params.dil_w,
+                );
+            }}
+            k_info[lid] = info;
+        }}
+"
+    )
+}
+
 /// A 2-D convolution as an implicit GEMM, staged through workgroup memory the
 /// way [`matmul_tiled_module`] stages a product. Per group, rows are output
 /// channels, columns are output pixels (batch, row, column) and the reduction
@@ -1927,7 +1955,6 @@ pub fn conv_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize)
     };
     let epilogue = epilogue_body(epilogue, "co");
     let tile = MATMUL_TILE;
-    let tk = MATMUL_TILE_K;
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -1977,8 +2004,25 @@ struct Params {{
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
 
-var<workgroup> a_tile: array<f32, {a_len}>;
-var<workgroup> b_tile: array<f32, {b_len}>;
+{tiles}
+var<workgroup> k_info: array<vec4<i32>, {tk}>;
+var<workgroup> pix_info: array<vec4<i32>, {tile}>;
+
+fn ld_a(ctx: vec4<u32>, r: u32, k: u32, guard: bool) -> {t} {{
+    if (guard && (r >= params.co_pg || k >= ctx.y)) {{ return {t}(0.0); }}
+    let co = ctx.x * params.co_pg + r;
+    return wgt[params.off_w + u32(i32(co) * params.w_so + k_info[k % {tk}u].x)];
+}}
+
+fn ld_b(ctx: vec4<u32>, k: u32, pix: u32, guard: bool) -> {t} {{
+    if (guard && k >= ctx.y) {{ return {t}(0.0); }}
+    let ki = k_info[k % {tk}u];
+    let p = pix_info[pix % {tile}u];
+    let ih = p.y + ki.z;
+    let iw = p.z + ki.w;
+    if (ih < 0 || ih >= i32(params.ih) || iw < 0 || iw >= i32(params.iw)) {{ return {t}(0.0); }}
+    return inp[params.off_in + u32(p.x + ki.y + ih * params.in_sh + iw * params.in_sw)];
+}}
 
 fn store_out(g: u32, row: u32, pix: u32, acc: f32) {{
     if (row >= params.co_pg || pix >= params.n * params.oh * params.ow) {{ return; }}
@@ -1998,96 +2042,40 @@ fn store_out(g: u32, row: u32, pix: u32, acc: f32) {{
     outp[out_i] = v;
 }}
 
-@compute @workgroup_size(256)
+@compute @workgroup_size({threads})
 fn conv2d_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
     let g = wid.z;
     let khw = params.kh * params.kw;
-    let ktot = params.ci_pg * khw;
+    let k_len = params.ci_pg * khw;
+    let actx = vec4<u32>(g, k_len, 0u, 0u);
+    let bctx = actx;
     let npix = params.n * params.oh * params.ow;
     let row0 = wid.y * {tile}u;
     let col0 = wid.x * {tile}u;
-    let tx = lid % 16u;
-    let ty = lid / 16u;
-
-    var acc0 = vec4<f32>(0.0);
-    var acc1 = vec4<f32>(0.0);
-    var acc2 = vec4<f32>(0.0);
-    var acc3 = vec4<f32>(0.0);
-
-    for (var k0 = 0u; k0 < ktot; k0 += {tk}u) {{
-        for (var i = 0u; i < {loads}u; i++) {{
-            let idx = lid + i * 256u;
-            let ak = idx % {tk}u;
-            let ar = idx / {tk}u;
-            var av = 0.0;
-            if (row0 + ar < params.co_pg && k0 + ak < ktot) {{
-                let k = k0 + ak;
-                let ci = k / khw;
-                let tap = k % khw;
-                let co = g * params.co_pg + row0 + ar;
-                let w_i = i32(co) * params.w_so + i32(ci) * params.w_si
-                    + i32(tap / params.kw) * params.w_sh + i32(tap % params.kw) * params.w_sw;
-                av = f32(wgt[params.off_w + u32(w_i)]);
-            }}
-            a_tile[ak * {tile}u + ar] = av;
-
-            let bc = idx % {tile}u;
-            let bk = idx / {tile}u;
-            var bv = 0.0;
-            let pix = col0 + bc;
-            if (pix < npix && k0 + bk < ktot) {{
-                let k = k0 + bk;
-                let ci = g * params.ci_pg + k / khw;
-                let tap = k % khw;
-                let ow = pix % params.ow;
-                let rest = pix / params.ow;
-                let oh = rest % params.oh;
-                let n = rest / params.oh;
-                let ih = i32(oh) * params.stride_h + i32(tap / params.kw) * params.dil_h - params.pad_h;
-                let iw = i32(ow) * params.stride_w + i32(tap % params.kw) * params.dil_w - params.pad_w;
-                if (ih >= 0 && ih < i32(params.ih) && iw >= 0 && iw < i32(params.iw)) {{
-                    let in_i = i32(n) * params.in_sn + i32(ci) * params.in_sc + ih * params.in_sh + iw * params.in_sw;
-                    bv = f32(inp[params.off_in + u32(in_i)]);
-                }}
-            }}
-            b_tile[bk * {tile}u + bc] = bv;
+    let interior = row0 + {tile}u <= params.co_pg && col0 + {tile}u <= npix;
+    if (lid < {tile}u) {{
+        let pix = col0 + lid;
+        let ow = pix % params.ow;
+        let rest = pix / params.ow;
+        let oh = rest % params.oh;
+        let n = rest / params.oh;
+        var info = vec4<i32>(0, -0x40000000, 0, 0);
+        if (pix < npix) {{
+            info = vec4<i32>(
+                i32(n) * params.in_sn,
+                i32(oh) * params.stride_h - params.pad_h,
+                i32(ow) * params.stride_w - params.pad_w,
+                0,
+            );
         }}
-        workgroupBarrier();
-        for (var kk = 0u; kk < {tk}u; kk++) {{
-            let base = kk * {tile}u;
-            let av = vec4<f32>(a_tile[base + ty], a_tile[base + ty + 16u], a_tile[base + ty + 32u], a_tile[base + ty + 48u]);
-            let bv = vec4<f32>(b_tile[base + tx], b_tile[base + tx + 16u], b_tile[base + tx + 32u], b_tile[base + tx + 48u]);
-            acc0 += av.x * bv;
-            acc1 += av.y * bv;
-            acc2 += av.z * bv;
-            acc3 += av.w * bv;
-        }}
-        workgroupBarrier();
+        pix_info[lid] = info;
     }}
-
-    let r = row0 + ty;
-    let c = col0 + tx;
-    store_out(g, r, c, acc0.x);
-    store_out(g, r, c + 16u, acc0.y);
-    store_out(g, r, c + 32u, acc0.z);
-    store_out(g, r, c + 48u, acc0.w);
-    store_out(g, r + 16u, c, acc1.x);
-    store_out(g, r + 16u, c + 16u, acc1.y);
-    store_out(g, r + 16u, c + 32u, acc1.z);
-    store_out(g, r + 16u, c + 48u, acc1.w);
-    store_out(g, r + 32u, c, acc2.x);
-    store_out(g, r + 32u, c + 16u, acc2.y);
-    store_out(g, r + 32u, c + 32u, acc2.z);
-    store_out(g, r + 32u, c + 48u, acc2.w);
-    store_out(g, r + 48u, c, acc3.x);
-    store_out(g, r + 48u, c + 16u, acc3.y);
-    store_out(g, r + 48u, c + 32u, acc3.z);
-    store_out(g, r + 48u, c + 48u, acc3.w);
-}}
+{core}}}
 "#,
-        a_len = tile * tk,
-        b_len = tile * tk,
-        loads = tile * tk / 256,
+        tiles = tiled_gemm_tiles(t),
+        threads = TILED_THREADS,
+        tk = MATMUL_TILE_K,
+        core = tiled_gemm_core(t, "true", "true", "g, ", &conv_k_prologue()),
     ));
     s
 }
@@ -2770,21 +2758,145 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// Threads of a tiled matmul or convolution workgroup: each computes
+/// [`TILED_ROWS`] rows by [`TILED_COLS`] columns of the 64-square output tile.
+pub const TILED_THREADS: usize = 128;
+const TILED_ROWS: usize = 8;
+const TILED_COLS: usize = 4;
+
+/// The body shared by [`matmul_tiled_module`] and [`conv_tiled_module`], from
+/// the tile origin to the stores. Expects `lid`, `row0`, `col0`, `k_len` (the
+/// reduction length) and `interior` (the output tile lies inside the result) in
+/// scope, `ld_a(actx, row, k, guard)` and `ld_b(bctx, k, col, guard)` reading
+/// one operand value (zero outside it when `guard`) given the `vec4<u32>`
+/// contexts `actx` and `bctx` the kernel sets up, and `store_out(<store_args>row,
+/// col, acc)`. `k_prologue`, when not empty, runs at the top of each `k` slice
+/// (`k0` its first index) ahead of a barrier and the loads. `a_k_fast` and
+/// `b_n_fast` are WGSL booleans telling whether `a` is
+/// contiguous along `k` and `b` along columns; either way a thread fills one
+/// whole `vec4` of the tile, and neighbouring threads walk the contiguous axis
+/// so their loads coalesce. Tiles are only ever stored a whole `vec4` at a
+/// time: a store to one lane at a runtime index goes wrong on Metal.
+///
+/// `a` is staged as rows of `vec4` along `k` and `b` as `k` rows of `vec4`
+/// along columns, in the tensor type: one workgroup load hands a thread four
+/// `k` steps of a row, and f16 tiles halve the workgroup-memory traffic that
+/// bounds this kernel. Accumulation is in f32, one register per output.
+fn tiled_gemm_core(
+    t: &str,
+    a_k_fast: &str,
+    b_n_fast: &str,
+    store_args: &str,
+    k_prologue: &str,
+) -> String {
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    let tk4 = tk / 4;
+    let tile4 = tile / 4;
+    let threads = TILED_THREADS;
+    let (tm, tn) = (TILED_ROWS, TILED_COLS);
+    let cols_threads = tile / tn;
+    let mut s = format!(
+        "    let tx = lid % {cols_threads}u;
+    let ty = lid / {cols_threads}u;
+    let a_k_fast = {a_k_fast};
+    let b_n_fast = {b_n_fast};
+"
+    );
+    for i in 0..tm {
+        for j in 0..tn {
+            s += &format!("    var c{i}_{j} = 0.0;\n");
+        }
+    }
+    let k_prologue = if k_prologue.is_empty() {
+        String::new()
+    } else {
+        format!("{k_prologue}        workgroupBarrier();\n")
+    };
+    s += &format!(
+        "    for (var k0 = 0u; k0 < k_len; k0 += {tk}u) {{
+        let guard = !interior || k0 + {tk}u > k_len;
+{k_prologue}        for (var i = lid; i < {aq}u; i += {threads}u) {{
+            if (a_k_fast) {{
+                let r = i / {tk4}u;
+                let kq = i % {tk4}u;
+                let k = k0 + kq * 4u;
+                a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
+            }} else {{
+                let r = i % {tile}u;
+                let kq = i / {tile}u;
+                let k = k0 + kq * 4u;
+                a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
+            }}
+        }}
+        for (var i = lid; i < {bq}u; i += {threads}u) {{
+            if (b_n_fast) {{
+                let kk = i / {tile4}u;
+                let cq = i % {tile4}u;
+                let c = col0 + cq * 4u;
+                b_tile[kk * {tile4}u + cq] = vec4<{t}>(ld_b(bctx, k0 + kk, c, guard), ld_b(bctx, k0 + kk, c + 1u, guard), ld_b(bctx, k0 + kk, c + 2u, guard), ld_b(bctx, k0 + kk, c + 3u, guard));
+            }} else {{
+                let kk = i % {tk}u;
+                let cq = i / {tk}u;
+                let c = col0 + cq * 4u;
+                b_tile[kk * {tile4}u + cq] = vec4<{t}>(ld_b(bctx, k0 + kk, c, guard), ld_b(bctx, k0 + kk, c + 1u, guard), ld_b(bctx, k0 + kk, c + 2u, guard), ld_b(bctx, k0 + kk, c + 3u, guard));
+            }}
+        }}
+        workgroupBarrier();
+        for (var kq = 0u; kq < {tk4}u; kq++) {{
+",
+        aq = tile * tk4,
+        bq = tk * tile4,
+    );
+    for i in 0..tm {
+        s += &format!(
+            "            let a{i} = vec4<f32>(a_tile[(ty * {tm}u + {i}u) * {tk4}u + kq]);\n"
+        );
+    }
+    for (sub, comp) in ["x", "y", "z", "w"].iter().enumerate() {
+        s += &format!(
+            "            let b{sub} = vec4<f32>(b_tile[(kq * 4u + {sub}u) * {tile4}u + tx]);\n"
+        );
+        for i in 0..tm {
+            for (j, cj) in ["x", "y", "z", "w"].iter().enumerate() {
+                s += &format!("            c{i}_{j} = fma(a{i}.{comp}, b{sub}.{cj}, c{i}_{j});\n");
+            }
+        }
+    }
+    s += "        }\n        workgroupBarrier();\n    }\n";
+    s += &format!("    let r = row0 + ty * {tm}u;\n    let c = col0 + tx * {tn}u;\n");
+    for i in 0..tm {
+        for j in 0..tn {
+            s += &format!("    store_out({store_args}r + {i}u, c + {j}u, c{i}_{j});\n");
+        }
+    }
+    s
+}
+
+/// The workgroup tiles [`tiled_gemm_core`] stages its operands in.
+fn tiled_gemm_tiles(t: &str) -> String {
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    format!(
+        "var<workgroup> a_tile: array<vec4<{t}>, {}>;\nvar<workgroup> b_tile: array<vec4<{t}>, {}>;\n",
+        tile * tk / 4,
+        tile * tk / 4
+    )
+}
+
 /// Output rows and columns of each tiled matmul workgroup.
 pub const MATMUL_TILE: usize = 64;
 /// `k` values staged in workgroup memory per step of the tiled matmul.
 pub const MATMUL_TILE_K: usize = 16;
 
 /// The general matmul, staged through workgroup memory: each workgroup owns a
-/// [`MATMUL_TILE`]-square block of one prefix slice of the output, loads
-/// [`MATMUL_TILE_K`]-deep slices of `a` and `b` into workgroup memory, and each
-/// of its 256 threads accumulates a four-by-four block from them in f32. A
-/// thread's rows and columns are strided by 16 so that workgroup-memory reads
-/// and output stores are contiguous across neighbouring threads. Each operand is
-/// loaded along whichever of its two axes is unit-strided, so loads coalesce for
-/// any transposition. Same `Params`, strides and epilogue as [`matmul_module`],
-/// and no constraint on `m`, `k` or `n`: partial tiles are guarded. Workgroup
-/// `x` tiles `n`, `y` tiles `m`, `z` is the prefix index.
+/// [`MATMUL_TILE`]-square block of one prefix slice of the output and walks `k`
+/// in [`MATMUL_TILE_K`]-deep slices, with the loads, layout and accumulation of
+/// [`tiled_gemm_core`]. Each operand is loaded along whichever of its two axes
+/// is unit-strided, so loads coalesce for any transposition. Same `Params`,
+/// strides and epilogue as [`matmul_module`], and no constraint on `m`, `k` or
+/// `n`: partial tiles are guarded. Workgroup `x` tiles `n`, `y` tiles `m`, `z`
+/// is the prefix index.
 pub fn matmul_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -2802,7 +2914,6 @@ pub fn matmul_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usiz
     };
     let epilogue = epilogue_body_at(epilogue, "col", "oe");
     let tile = MATMUL_TILE;
-    let tk = MATMUL_TILE_K;
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -2838,8 +2949,16 @@ struct Params {{
 {lib}
 {AT8}
 
-var<workgroup> a_tile: array<f32, {a_len}>;
-var<workgroup> b_tile: array<f32, {b_len}>;
+{tiles}
+fn ld_a(ctx: vec4<u32>, r: u32, k: u32, guard: bool) -> {t} {{
+    if (guard && (r >= params.m || k >= params.k)) {{ return {t}(0.0); }}
+    return a[ctx.x + r * ctx.y + k * ctx.z];
+}}
+
+fn ld_b(ctx: vec4<u32>, k: u32, c: u32, guard: bool) -> {t} {{
+    if (guard && (k >= params.k || c >= params.n)) {{ return {t}(0.0); }}
+    return b[ctx.x + k * ctx.y + c * ctx.z];
+}}
 
 fn store_out(o_i: u32, o_row_s: u32, o_col_s: u32, row: u32, col: u32, acc: f32) {{
     if (row >= params.m || col >= params.n) {{ return; }}
@@ -2849,7 +2968,7 @@ fn store_out(o_i: u32, o_row_s: u32, o_col_s: u32, row: u32, col: u32, acc: f32)
     outp[o_i + row * o_row_s + col * o_col_s] = v;
 }}
 
-@compute @workgroup_size(256)
+@compute @workgroup_size({threads})
 fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
     var a_i = params.off_a;
     var b_i = params.off_b;
@@ -2868,88 +2987,20 @@ fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgr
     let a_col_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
     let b_row_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
     let b_col_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    let actx = vec4<u32>(a_i, a_row_s, a_col_s, 0u);
+    let bctx = vec4<u32>(b_i, b_row_s, b_col_s, 0u);
     let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
     let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
 
     let row0 = wid.y * {tile}u;
     let col0 = wid.x * {tile}u;
-    let tx = lid % 16u;
-    let ty = lid / 16u;
-    let a_k_fast = a_col_s == 1u;
-    let b_n_fast = b_col_s == 1u;
-
-    var acc0 = vec4<f32>(0.0);
-    var acc1 = vec4<f32>(0.0);
-    var acc2 = vec4<f32>(0.0);
-    var acc3 = vec4<f32>(0.0);
-
-    for (var k0 = 0u; k0 < params.k; k0 += {tk}u) {{
-        for (var i = 0u; i < {loads}u; i++) {{
-            let idx = lid + i * 256u;
-            var r: u32;
-            var kk: u32;
-            if (a_k_fast) {{
-                kk = idx % {tk}u;
-                r = idx / {tk}u;
-            }} else {{
-                r = idx % {tile}u;
-                kk = idx / {tile}u;
-            }}
-            var av = 0.0;
-            if (row0 + r < params.m && k0 + kk < params.k) {{
-                av = f32(a[a_i + (row0 + r) * a_row_s + (k0 + kk) * a_col_s]);
-            }}
-            a_tile[kk * {tile}u + r] = av;
-            var c: u32;
-            if (b_n_fast) {{
-                c = idx % {tile}u;
-                kk = idx / {tile}u;
-            }} else {{
-                kk = idx % {tk}u;
-                c = idx / {tk}u;
-            }}
-            var bv = 0.0;
-            if (col0 + c < params.n && k0 + kk < params.k) {{
-                bv = f32(b[b_i + (k0 + kk) * b_row_s + (col0 + c) * b_col_s]);
-            }}
-            b_tile[kk * {tile}u + c] = bv;
-        }}
-        workgroupBarrier();
-        for (var kk = 0u; kk < {tk}u; kk++) {{
-            let base = kk * {tile}u;
-            let av = vec4<f32>(a_tile[base + ty], a_tile[base + ty + 16u], a_tile[base + ty + 32u], a_tile[base + ty + 48u]);
-            let bv = vec4<f32>(b_tile[base + tx], b_tile[base + tx + 16u], b_tile[base + tx + 32u], b_tile[base + tx + 48u]);
-            acc0 += av.x * bv;
-            acc1 += av.y * bv;
-            acc2 += av.z * bv;
-            acc3 += av.w * bv;
-        }}
-        workgroupBarrier();
-    }}
-
-    let r = row0 + ty;
-    let c = col0 + tx;
-    store_out(o_i, o_row_s, o_col_s, r, c, acc0.x);
-    store_out(o_i, o_row_s, o_col_s, r, c + 16u, acc0.y);
-    store_out(o_i, o_row_s, o_col_s, r, c + 32u, acc0.z);
-    store_out(o_i, o_row_s, o_col_s, r, c + 48u, acc0.w);
-    store_out(o_i, o_row_s, o_col_s, r + 16u, c, acc1.x);
-    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 16u, acc1.y);
-    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 32u, acc1.z);
-    store_out(o_i, o_row_s, o_col_s, r + 16u, c + 48u, acc1.w);
-    store_out(o_i, o_row_s, o_col_s, r + 32u, c, acc2.x);
-    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 16u, acc2.y);
-    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 32u, acc2.z);
-    store_out(o_i, o_row_s, o_col_s, r + 32u, c + 48u, acc2.w);
-    store_out(o_i, o_row_s, o_col_s, r + 48u, c, acc3.x);
-    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 16u, acc3.y);
-    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 32u, acc3.z);
-    store_out(o_i, o_row_s, o_col_s, r + 48u, c + 48u, acc3.w);
-}}
+    let k_len = params.k;
+    let interior = row0 + {tile}u <= params.m && col0 + {tile}u <= params.n;
+{core}}}
 "#,
-        a_len = tile * tk,
-        b_len = tile * tk,
-        loads = tile * tk / 256,
+        tiles = tiled_gemm_tiles(t),
+        threads = TILED_THREADS,
+        core = tiled_gemm_core(t, "a_col_s == 1u", "b_col_s == 1u", "o_i, o_row_s, o_col_s, ", ""),
     ));
     s
 }

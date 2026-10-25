@@ -781,13 +781,14 @@ fn matmul_tiled_matches_cpu() -> TractResult<()> {
 }
 
 /// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
-/// batch, channels-last, an uneven kernel and padding, f16 and a bias.
+/// batch, channels-last, an uneven kernel and padding, f16, a bias and whole
+/// tiles.
 #[test]
 fn conv_tiled_matches_cpu() -> TractResult<()> {
     use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
     use tract_core::ops::nn::DataFormat;
     #[rustfmt::skip]
-    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 8] = [
+    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 10] = [
         // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
         (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
         (DataFormat::NCHW, 1, 8, 40, [90, 90], [3, 3], [2, 2], [1, 1], 1, false),
@@ -797,6 +798,8 @@ fn conv_tiled_matches_cpu() -> TractResult<()> {
         (DataFormat::NHWC, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
         (DataFormat::NCHW, 1, 8, 40, [45, 47], [1, 5], [1, 1], [1, 1], 2, false),
         (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
+        (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
     ];
     for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
         cases.into_iter().enumerate()
