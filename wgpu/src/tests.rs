@@ -1093,3 +1093,51 @@ fn frame_budget_submits_early() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Convolutions over one spatial axis run as two-dimensional ones on the device: dilated,
+/// padded, strided, channels-last.
+#[test]
+fn conv_1d_runs_on_device() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    #[rustfmt::skip]
+    let cases = [
+        // fmt, ci, co, len, kernel, stride, dilation, pad
+        (DataFormat::NCHW, 8, 16, 50, 3, 1, 2, 2),
+        (DataFormat::NCHW, 16, 40, 200, 2, 1, 4, 0),
+        (DataFormat::NHWC, 8, 16, 50, 3, 2, 1, 1),
+    ];
+    for (i, (fmt, ci, co, len, kernel, stride, dilation, pad)) in cases.into_iter().enumerate() {
+        let shape = fmt.from_n_c_hw(1, ci, [len])?.shape.to_vec();
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(&shape))?;
+        let k = model
+            .add_const("k", Tensor::from_shape(&[co, ci, kernel], &fill(1, co * ci * kernel))?)?;
+        let b = model.add_const("b", Tensor::from_shape(&[co], &fill(2, co))?)?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: fmt,
+                kernel_shape: tvec![kernel],
+                padding: PaddingSpec::Explicit(tvec![pad], tvec![pad]),
+                dilations: Some(tvec![dilation]),
+                strides: Some(tvec![stride]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        let translated = transformed(model.clone())?;
+        ensure!(
+            translated.nodes().iter().any(|n| n.op.name() == "WgpuConv"),
+            "case {i}: the convolution did not reach the device"
+        );
+        let n: usize = shape.iter().product();
+        gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(3, n))?)
+            .with_context(|| format!("case {i}"))?;
+    }
+    Ok(())
+}

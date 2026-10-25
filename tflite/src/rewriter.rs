@@ -1,6 +1,8 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{Pad, PadMode};
-use tract_core::ops::cnn::{rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool};
+use tract_core::ops::cnn::{
+    rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis, KernelFormat, MaxPool, PoolSpec, SumPool,
+};
 use tract_core::ops::cnn::{Conv, PaddingSpec};
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::element_wise::ElementWiseOp;
@@ -17,7 +19,7 @@ pub fn rewrite_for_tflite(model: &mut TypedModel) -> TractResult<()> {
         .with_rule_for("kernel_in_ohwi", kernel_in_ohwi)
         .with_rule_for("bias_as_vector", bias_as_vector)
         //        .with_rule_for("per_layer_in_u8", per_layer_in_u8)
-        .with_rule_for("make_1d_2d", make_1d_2d)
+        .with_rule_for("make_1d_2d", rewrite_conv_1d_to_2d)
         .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
         .with_rule_for("conv-nchw-to-nhwc", conv_nchw_to_nhwc)
         .with_rule_for("maxpool-nchw-to-nhwc", maxpool_nchw_to_nhwc)
@@ -156,31 +158,6 @@ patch.shunt_outside(model, node.id.into(), output[0])?;
 Ok(Some(patch))
 }
 */
-
-fn make_1d_2d(
-    _ctx: &(),
-    model: &TypedModel,
-    node: &TypedNode,
-    name: &str,
-    conv: &Conv,
-) -> TractResult<Option<TypedModelPatch>> {
-    if conv.pool_spec.rank() == 1 {
-        let mut new = conv.clone();
-        new.pool_spec = conv.pool_spec.change_geo_axes(&AxisOp::Add(1))?;
-        let mut patch = TypedModelPatch::default();
-        let mut wire = patch.taps(model, &node.inputs)?;
-        let pos_data = conv.pool_spec.data_format.h_axis() + 1;
-        wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos_data), &[wire[0]])?[0];
-        let pos_kernel = conv.kernel_fmt.h_axis() + 1;
-        wire[1] =
-            patch.wire_node(format!("{name}.add_dim_k"), AxisOp::Add(pos_kernel), &[wire[1]])?[0];
-        wire = patch.wire_node(name, new, &wire)?;
-        wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos_data), &wire)?;
-        patch.shunt_outside(model, node.id.into(), wire[0])?;
-        return Ok(Some(patch));
-    }
-    Ok(None)
-}
 
 fn conv_nchw_to_nhwc(
     _ctx: &(),
