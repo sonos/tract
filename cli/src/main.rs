@@ -172,6 +172,7 @@ fn main() -> TractResult<()> {
         .arg(arg!(--"onnx-test-data-set" [data_set] "Use onnx-test data-set as input (expect test_data_set_N dir with input_X.pb, etc. inside)"))
         .arg(arg!(--"onnx-ignore-output-shapes" "Ignore output shapes from model (workaround for pytorch export bug with mask axes)"))
         .arg(arg!(--"onnx-lazy-external-data" "Load external tensors as weights named after their initializers, never reading their bytes"))
+        .arg(Arg::new("link-safetensors").long("link-safetensors").num_args(1).action(clap::ArgAction::Append).help("Read the weights known by their name from this safetensors file (repeatable)"))
         .arg(arg!(--"onnx-ignore-output-types" "Ignore output shapes from types (workaround for tdim conflicting with integer types)"))
         .arg(arg!(--"onnx-ignore-value-info" "Ignore value info from ONNX file while loading network"))
 

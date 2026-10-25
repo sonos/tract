@@ -54,7 +54,7 @@ tract-linalg = { workspace = true, features = ["hwbench"] }
 tract-core = { workspace = true, features = ["deploy"] }
 tract-data = { workspace = true, features = ["npz"] }
 tract-hir.workspace = true
-tract-nnef = { workspace = true, features = ["flate2"] }
+tract-nnef = { workspace = true, features = ["flate2", "unstable-safetensors"] }
 tract-nnef-resources.workspace = true
 tract-libcli.workspace = true
 tract-gpu.workspace = true
