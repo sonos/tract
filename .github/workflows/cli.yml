@@ -1034,6 +1034,7 @@ jobs:
         env:
           COMMENT_ID: ${{ github.event.inputs.comment_id }}
           SUPERSEDED: ${{ steps.head.outputs.superseded }}
+          CANCELLED: ${{ cancelled() }}
         with:
           script: |
             const fs = require('fs');
@@ -1043,6 +1044,11 @@ jobs:
               text = 'The PR head moved on since this run started, so its numbers are not reported.';
             } else if (fs.existsSync('pr-comment.md')) {
               text = fs.readFileSync('pr-comment.md', 'utf8').slice(0, 60000);
+              if (process.env.CANCELLED === 'true') {
+                text = `**Partial:** the run was cancelled, so only the bench legs that finished before it are compared.\n\n${text}`;
+              }
+            } else if (process.env.CANCELLED === 'true') {
+              text = 'The run was cancelled before any bench leg had something to compare.';
             } else {
               text = 'Nothing to compare: no nightly reference for these runs yet, or every bench leg failed.';
             }
