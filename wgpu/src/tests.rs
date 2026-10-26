@@ -1073,6 +1073,25 @@ fn flash_sdpa_matches_cpu() -> TractResult<()> {
     Ok(())
 }
 
+/// A bind group keeps the buffers it binds alive, so once a tensor is dropped the groups that
+/// bound it must leave the cache rather than hold its memory until the cache fills.
+#[test]
+fn dropped_buffers_leave_the_bind_group_cache() -> TractResult<()> {
+    use tract_core::ops::nn::sigmoid;
+    with_wgpu_queue(|q| {
+        let input = Tensor::from_shape(&[256], &fill(3, 256))?.into_device()?;
+        let output = DeviceTensor::uninitialized_dt(DatumType::F32, input.shape())?;
+        let id = crate::utils::get_wgpu_buffer(&input).id;
+        wgpu_element_wise_dispatch(&*sigmoid().0, &input, &output)?;
+        q.flush()?;
+        ensure!(q.context().binds_buffer(id), "the group was not cached");
+        drop(input);
+        q.flush()?;
+        ensure!(!q.context().binds_buffer(id), "the group outlived its buffer");
+        Ok(())
+    })
+}
+
 /// Past its buffer budget, a run submits what it recorded and goes on reusing the buffers it no
 /// longer holds, with the same result as a run submitted once at the end.
 #[test]

@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::num::NonZeroU64;
@@ -37,6 +38,11 @@ const WORKGROUP: u32 = 64;
 
 /// Bind groups kept between frames before the cache is dropped wholesale.
 const BIND_GROUP_CACHE_CAP: usize = 8192;
+
+/// Ids of the buffers dropped since the bind-group cache was last trimmed: a
+/// cached group keeps every buffer it binds alive, and an id is never reused,
+/// so a group naming one of these will not be looked up again.
+static RETIRED_BUFFERS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 
 thread_local! {
     static WGPU_QUEUE: RefCell<Option<WgpuQueue>> = const { RefCell::new(None) };
@@ -569,13 +575,30 @@ impl WgpuContext {
     /// Bind groups a frame no longer needs. The cache is only trimmed between
     /// frames: sized to hold a graph's working set several times over, it
     /// bounds a pathological model without ever evicting mid-frame what the
-    /// frame in flight is still binding.
+    /// frame in flight is still binding. Groups binding a dropped buffer go
+    /// first, so the buffer is freed rather than held until the cache fills.
     pub(crate) fn trim_bind_groups(&self) {
-        if let Ok(mut cache) = self.inner.bind_groups.lock()
-            && cache.len() > BIND_GROUP_CACHE_CAP
-        {
-            cache.clear();
+        let retired =
+            RETIRED_BUFFERS.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
+        if let Ok(mut cache) = self.inner.bind_groups.lock() {
+            if !retired.is_empty() {
+                let retired: HashSet<u64> = retired.into_iter().collect();
+                cache.retain(|k, _| !k.buffers[..k.n as usize].iter().any(|b| retired.contains(b)));
+            }
+            if cache.len() > BIND_GROUP_CACHE_CAP {
+                cache.clear();
+            }
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn binds_buffer(&self, id: u64) -> bool {
+        self.inner
+            .bind_groups
+            .lock()
+            .unwrap()
+            .keys()
+            .any(|k| k.buffers[..k.n as usize].contains(&id))
     }
 
     fn next_buffer_id(&self) -> u64 {
@@ -589,11 +612,16 @@ impl WgpuContext {
     }
 
     pub fn wrap_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
-        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: false }
+        self.wrap(inner, false)
     }
 
     fn wrap_pooled_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
-        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: true }
+        self.wrap(inner, true)
+    }
+
+    fn wrap(&self, inner: wgpu::Buffer, pooled: bool) -> WgpuBuffer {
+        let id = self.next_buffer_id();
+        WgpuBuffer { inner, id, pooled, _retire: Arc::new(Retire(id)) }
     }
 
     pub fn create_empty_storage(&self, size: u64) -> wgpu::Buffer {
@@ -1450,6 +1478,19 @@ pub struct WgpuBuffer {
     /// tensor that fits once nothing holds it. Its `id` is stable only while it
     /// lives, so a cache must not key on a pooled buffer.
     pub pooled: bool,
+    _retire: Arc<Retire>,
+}
+
+/// Retires a buffer id when the last clone of its [`WgpuBuffer`] goes.
+#[derive(Debug)]
+struct Retire(u64);
+
+impl Drop for Retire {
+    fn drop(&mut self) {
+        if let Ok(mut retired) = RETIRED_BUFFERS.lock() {
+            retired.push(self.0);
+        }
+    }
 }
 
 impl std::fmt::Debug for WgpuBuffer {
