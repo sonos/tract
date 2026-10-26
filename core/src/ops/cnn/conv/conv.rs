@@ -697,9 +697,9 @@ impl Conv {
     }
 
     /// Whether this convolution becomes a [`super::DirectSpatialConv`] on this host: group-1 f32
-    /// NCHW over two spatial axes, at least two kernel taps, at most 64 inputs per output point
-    /// where AMX runs im2col's matrix products and 576 elsewhere, the kernels it needs, and an
-    /// output row of at least `MIN_DIRECT_SPATIAL_W` points.
+    /// NCHW over two spatial axes, at least two kernel taps, at most `MAX_DIRECT_SPATIAL_K` inputs
+    /// per output point, a stride along W of at most `MAX_DIRECT_SPATIAL_W_STRIDE`, the kernels it
+    /// needs, and an output row of at least `MIN_DIRECT_SPATIAL_W` points.
     fn can_direct_spatial(&self, input_fact: &TypedFact) -> bool {
         if self.q_params.is_some()
             || input_fact.datum_type != f32::datum_type()
@@ -711,8 +711,10 @@ impl Conv {
             return false;
         }
         let kvol = self.pool_spec.kernel_shape.iter().product::<usize>();
-        let k_limit = if amx_owns_fat_spatial() { 64 } else { 576 };
-        if kvol < 2 || self.input_channels() * kvol > k_limit {
+        if kvol < 2
+            || self.input_channels() * kvol > MAX_DIRECT_SPATIAL_K
+            || self.pool_spec.stride(1) > MAX_DIRECT_SPATIAL_W_STRIDE
+        {
             return false;
         }
         if tract_linalg::routines::conv_w4_f32().is_none()
@@ -1483,18 +1485,13 @@ const DEFAULT_LAZY_IM2COL_MIN_KERNEL: usize = 6;
 /// per four output channels, which a shorter row does not pay back against im2col.
 const MIN_DIRECT_SPATIAL_W: usize = 128;
 
-/// Whether AMX runs im2col's matrix products here: it wins the wide convolutions, so the direct
-/// spatial one only takes thin ones.
-fn amx_owns_fat_spatial() -> bool {
-    #[cfg(all(target_arch = "aarch64", target_os = "macos"))]
-    {
-        tract_linalg::arm64::has_amx()
-    }
-    #[cfg(not(all(target_arch = "aarch64", target_os = "macos")))]
-    {
-        false
-    }
-}
+/// The most inputs per output point a direct spatial convolution takes: past it, im2col's matrix
+/// product reuses each input load across more output channels than the four `conv_w4` computes.
+const MAX_DIRECT_SPATIAL_K: usize = 64;
+
+/// The widest stride along W a direct spatial convolution takes: past it, `conv_w4` gathers or
+/// reads its inputs one point at a time, where im2col packs each input once.
+const MAX_DIRECT_SPATIAL_W_STRIDE: usize = 2;
 
 crate::declare_knob!(
     scopable TRACT_DISABLE_DIRECT_SPATIAL,

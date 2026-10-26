@@ -1,0 +1,13 @@
+version 1.0;
+
+# Two convolutions with output rows long enough for DirectSpatialConv that it must not take:
+# a stride of 3 along W, and 72 inputs per output point.
+graph network( x_strided, x_fat ) -> ( y_strided, y_fat )
+{
+    x_strided = external<scalar>(shape = [1, 3, 6, 390]);
+    x_fat = external<scalar>(shape = [1, 8, 4, 130]);
+    k_strided = tile([[[[0.5]]]], repeats = [8, 3, 3, 3]);
+    k_fat = tile([[[[0.5]]]], repeats = [8, 8, 3, 3]);
+    y_strided = conv(x_strided, k_strided, 0.0, border = 'constant', stride = [3, 3]);
+    y_fat = conv(x_fat, k_fat, 0.0, border = 'constant', padding = [(1, 1), (1, 1)]);
+}

@@ -479,7 +479,7 @@ pub fn suite() -> TractResult<TestSuite> {
     };
     for (name, n, ci, co, h, w, ker, pad, strides) in [
         ("direct_spatial_stem", 1, 3, 16, 9, 260, [3, 3], PaddingSpec::SameUpper, [2, 2]),
-        ("direct_spatial_fat_3x3", 2, 32, 8, 5, 130, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+        ("direct_spatial_fat_3x3", 2, 7, 8, 5, 130, [3, 3], PaddingSpec::SameUpper, [1, 1]),
         ("direct_spatial_oc_tail", 1, 2, 6, 4, 140, [2, 3], PaddingSpec::Valid, [1, 1]),
         (
             "direct_spatial_padding_only_windows",
