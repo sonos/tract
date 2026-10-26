@@ -38,6 +38,7 @@ impl EvalOp for OptMatMulPack {
             return self.do_eval(ctx, input);
         }
         KEPT_PACKS.with_borrow_mut(|kept| {
+            kept.reap_ended();
             let slot = kept.slot(ctx.session, ctx.node_id);
             if let Kept::Packed(previous) = slot
                 && let Some(repacked) = self.repack(previous, &input)?
@@ -74,11 +75,13 @@ enum Kept {
 /// The pack nodes' [`Kept`] slots of each session evaluated on this thread,
 /// indexed by node id. A cache: it carries nothing a stream depends on, and a
 /// session moved to another thread just starts cold there. A session's slots
-/// go when the plan calls [`EvalOp::drop_session`]; their allocation is kept
-/// for the thread's next session.
+/// go when the plan calls [`EvalOp::drop_session`] on this thread, their
+/// allocation kept for the thread's next session, or else at this thread's
+/// next pack eval after the session ends elsewhere.
 struct KeptPacks {
     sessions: Vec<(SessionId, Vec<Kept>)>,
     spare: Vec<Kept>,
+    reaper: SessionReaper,
 }
 
 impl KeptPacks {
@@ -97,6 +100,11 @@ impl KeptPacks {
         &mut slots[node_id]
     }
 
+    fn reap_ended(&mut self) {
+        let sessions = &mut self.sessions;
+        self.reaper.reap(|live| sessions.retain(|(s, _)| live(*s)));
+    }
+
     fn drop_session(&mut self, session: SessionId) {
         if let Some(ix) = self.sessions.iter().position(|(s, _)| *s == session) {
             let (_, mut slots) = self.sessions.swap_remove(ix);
@@ -108,7 +116,11 @@ impl KeptPacks {
 
 thread_local! {
     static KEPT_PACKS: std::cell::RefCell<KeptPacks> =
-        const { std::cell::RefCell::new(KeptPacks { sessions: Vec::new(), spare: Vec::new() }) };
+        const { std::cell::RefCell::new(KeptPacks {
+            sessions: Vec::new(),
+            spare: Vec::new(),
+            reaper: SessionReaper::new(),
+        }) };
 }
 
 impl TypedOp for OptMatMulPack {
@@ -417,6 +429,21 @@ mod tests {
         state.run(tvec!(input(1)?))?;
         assert_eq!(kept_packs(), 1);
         drop(state);
+        assert_eq!(kept_packs(), 0);
+        assert!(KEPT_PACKS.with_borrow(|kept| kept.sessions.is_empty()));
+        Ok(())
+    }
+
+    #[test]
+    fn pack_of_session_dropped_on_another_thread_is_reaped() -> TractResult<()> {
+        let (plan, _) = activation_pack()?;
+        let mut moved = plan.spawn()?;
+        moved.run(tvec!(input(0)?))?;
+        moved.run(tvec!(input(1)?))?;
+        assert_eq!(kept_packs(), 1);
+        std::thread::spawn(move || drop(moved)).join().unwrap();
+        assert_eq!(kept_packs(), 1);
+        plan.spawn()?.run(tvec!(input(0)?))?;
         assert_eq!(kept_packs(), 0);
         assert!(KEPT_PACKS.with_borrow(|kept| kept.sessions.is_empty()));
         Ok(())
