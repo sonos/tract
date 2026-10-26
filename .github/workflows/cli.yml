@@ -56,11 +56,11 @@ permissions:
   contents: read
 
 concurrency:
-  # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
-  # A wgpu or wasm bench keys on its scope too, so it neither cancels nor is cancelled by the
-  # PR's own run.
-  group: cli-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}${{ contains(fromJSON('["wgpu","wasm"]'), github.event.inputs.scope) && format('-{0}', github.event.inputs.scope) || '' }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
+  # A push to a PR cancels the run of its previous push. Every other run, a /ci command
+  # included, keys on its own run id: commands on a PR neither cancel each other nor are
+  # cancelled by a push (a run whose head moved on reports that instead of its numbers).
+  group: cli-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   prepare:
