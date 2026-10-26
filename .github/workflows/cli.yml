@@ -309,6 +309,7 @@ jobs:
           echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
 
   build:
+    name: build ${{ matrix.triple }}
     needs: prepare
     if: needs.prepare.outputs.bins_run == ''
     runs-on: ${{ matrix.host }}
@@ -518,6 +519,7 @@ jobs:
             });
 
   bench:
+    name: bench ${{ matrix.target }}
     needs: [ prepare, build ]
     # Skipped builds mean prepare found the binaries of an earlier run (bins_run).
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
@@ -626,6 +628,7 @@ jobs:
           path: result
 
   bench-macos:
+    name: bench ${{ matrix.target }}
     needs: [ prepare, build-macos ]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
     runs-on: ${{ matrix.runner }}
@@ -707,6 +710,7 @@ jobs:
   # don't inherit the repo variable) still run the ARM boards.
 
   build-dinghy:
+    name: build ${{ matrix.triple }} (dinghy)
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' }}
     runs-on: ubuntu-latest
@@ -752,6 +756,7 @@ jobs:
           path: .cross-cache/target/${{ matrix.rustc_triple }}/release/tract
 
   bench-dinghy:
+    name: bench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
@@ -846,6 +851,7 @@ jobs:
   # Nightly only: append the dinghy target's row to bench-data. The board can't run the append tool,
   # so a hosted job does it with the x86 CLI (bench-append is arch-agnostic JSON) reading the JSONL result.
   append-dinghy:
+    name: record ${{ matrix.device }}
     needs: [ prepare, build, bench-dinghy ]
     # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
@@ -915,6 +921,7 @@ jobs:
           echo "push failed after retries" >&2; exit 1
 
   report:
+    name: Report bench to PR
     # After report-tests, so the two never edit the /ci command comment at once.
     needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wgpu, bench-wasm, report-tests ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
@@ -1075,13 +1082,17 @@ jobs:
           name: bench-comment
           path: bench-comment
 
-  # The final state of a `/ci` command comment, once everything that reports on it is done.
+  # The final state of a `/ci` command comment, once everything that reports on it is done:
+  # report-tests and report wait for every test and bench job, and the run's job results
+  # come from the API, so this needs no arrow from each of them.
   finish:
-    needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm, bench, bench-macos, build-wgpu, bench-wgpu, build-dinghy, bench-dinghy, build-wasm, bench-wasm, report-tests, report ]
+    name: Finish the /ci comment
+    needs: [ prepare, report-tests, report ]
     if: ${{ always() && github.event.inputs.comment_id != '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1092,7 +1103,6 @@ jobs:
           persist-credentials: false
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
-          NEEDS: ${{ toJSON(needs) }}
           COMMENT_ID: ${{ github.event.inputs.comment_id }}
           REBENCH: ${{ github.event.inputs.rebench }}
           PREPARE: ${{ needs.prepare.result }}
@@ -1100,7 +1110,7 @@ jobs:
         with:
           script: |
             const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
-            const result = ci.jobs(process.env.NEEDS);
+            const result = await ci.runJobs(github, context);
             const sections = {};
             if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
               sections.bench = 'No bench report on this head to rebench; run `/ci bench` first.';
@@ -1117,6 +1127,7 @@ jobs:
   # self-referential (picked vs best-in-pool), so no golden numbers to maintain. Nightly
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
+    name: hwbench ${{ matrix.target }}
     needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
@@ -1141,6 +1152,7 @@ jobs:
   # wasmtime on the bench box. Self-referential (picked vs best in pool), so there is
   # nothing to keep in bench-data.
   build-wasm:
+    name: build wasm ${{ matrix.config }}
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: ubuntu-latest
@@ -1177,6 +1189,7 @@ jobs:
           path: target/wasm32-wasip1/release/tract.wasm
 
   hwbench-wasm:
+    name: hwbench wasm ${{ matrix.config }}
     needs: [ prepare, build-wasm ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     # The x86 bench box, not a hosted runner: the pick ratios are stable to ~2 points
@@ -1222,6 +1235,7 @@ jobs:
   # so it costs the bench boxes no daytime minutes; on the 9900k, which carries no GPU
   # jobs. `/ci bench wasm` runs it alone on a PR, against that nightly series.
   bench-wasm:
+    name: bench wasm ${{ matrix.config }}
     needs: [ prepare, build, build-wasm ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: i99900k
@@ -1317,6 +1331,7 @@ jobs:
   # Reuses the bench binaries; no golden numbers, just exit status. Nightly only,
   # sharing the per-box concurrency group so it never fights a running bench.
   smoke:
+    name: smoke ${{ matrix.target }}
     needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
@@ -1342,6 +1357,7 @@ jobs:
           tract-cli/tract bench-suite --smoke --manifest ci/benches.toml --device "$DEVICE" ${{ matrix.suite_args }}
 
   hwbench-dinghy:
+    name: hwbench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
