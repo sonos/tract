@@ -1122,7 +1122,7 @@ jobs:
             const result = await ci.runJobs(github, context);
             const sections = {};
             if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
-              sections.bench = 'No bench report on this head to rebench; run `/ci bench` first.';
+              sections.bench = 'No bench report on this head to rebench yet. If a bench is still running on it (a push starts one), wait for its report; otherwise run `/ci bench` first.';
             } else if (process.env.REBENCH === 'true' && process.env.ONLY === '{}') {
               sections.bench = 'The last bench report on this head has no reds; nothing to re-run.';
             }
