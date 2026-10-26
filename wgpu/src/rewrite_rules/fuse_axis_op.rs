@@ -61,6 +61,7 @@ fn split_succs(
     axis_op: &GpuAxisOp,
 ) -> TractResult<Option<TypedModelPatch>> {
     let succs = model.all_succ(axis_node.id)?.context("Expected node with successors")?;
+    rule_if!(succs.len() > 1);
 
     let mut patch = TypedModelPatch::default();
     let input = patch.tap_model(model, axis_node.inputs[0])?;
