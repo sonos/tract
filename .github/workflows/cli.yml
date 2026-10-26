@@ -1003,9 +1003,10 @@ jobs:
               --reds reds.json
           fi
       # What a later `/ci rebench` on this head starts from: the per-device results, the
-      # runs this report flagged red, and the run whose binaries they measured.
+      # runs this report flagged red, and the run whose binaries they measured. A cancelled
+      # run's partial report leaves none, so it never hides the last complete one.
       - name: Stage the rebench state
-        if: ${{ hashFiles('reds.json') != '' && needs.prepare.outputs.kind == 'native' }}
+        if: ${{ !cancelled() && hashFiles('reds.json') != '' && needs.prepare.outputs.kind == 'native' }}
         env:
           BINS_RUN: ${{ needs.prepare.outputs.bins_run || github.run_id }}
         run: |
