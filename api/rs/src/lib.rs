@@ -731,7 +731,6 @@ impl Model {
     }
 
     /// As [`Model::link_safetensors`], from the file at `path`.
-    #[cfg(any(unix, windows))]
     pub fn link_safetensors_file(&mut self, path: impl AsRef<Path>) -> Result<()> {
         self.link(Arc::new(tract_nnef::safetensors::SafetensorsSource::open(path)?))
     }

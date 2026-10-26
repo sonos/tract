@@ -88,6 +88,16 @@ impl ReadAt for std::fs::File {
     }
 }
 
+#[cfg(not(any(unix, windows)))]
+impl ReadAt for std::sync::Mutex<std::fs::File> {
+    fn read_exact_at(&self, buf: &mut [u8], offset: u64) -> std::io::Result<()> {
+        use std::io::{Read, Seek};
+        let mut file = self.lock().unwrap_or_else(|e| e.into_inner());
+        file.seek(std::io::SeekFrom::Start(offset))?;
+        file.read_exact(buf)
+    }
+}
+
 /// The weights of a safetensors file, each read at its offset when first asked for: link it to
 /// a model's named weights with [`LinkWeights`](tract_core::transform::LinkWeights). Only the
 /// header is read up front.
@@ -108,10 +118,11 @@ impl SafetensorsSource {
         Ok(SafetensorsSource { reader: Box::new(reader), data_start: 8 + len as u64, tensors })
     }
 
-    #[cfg(any(unix, windows))]
     pub fn open(path: impl AsRef<std::path::Path>) -> TractResult<SafetensorsSource> {
         let path = path.as_ref();
         let file = std::fs::File::open(path).with_context(|| format!("Opening {path:?}"))?;
+        #[cfg(not(any(unix, windows)))]
+        let file = std::sync::Mutex::new(file);
         Self::new(file).with_context(|| format!("Reading the header of {path:?}"))
     }
 }
