@@ -116,4 +116,21 @@ function jobs(needsJson) {
   };
 }
 
-module.exports = { create, update, status, jobs, runUrl };
+// Overall result of this run's completed jobs, read from the API rather than from
+// `needs`, so a job can summarize the run without depending on every other job: like
+// `jobs`, with the failed jobs named as the run shows them (matrix legs included).
+async function runJobs(github, context) {
+  const all = await github.paginate(github.rest.actions.listJobsForWorkflowRun, {
+    owner: context.repo.owner, repo: context.repo.repo, run_id: context.runId,
+    filter: 'latest', per_page: 100,
+  });
+  const done = all.filter(j => j.status === 'completed');
+  const failed = done.filter(j => !['success', 'skipped', 'neutral', 'cancelled'].includes(j.conclusion));
+  const cancelled = done.some(j => j.conclusion === 'cancelled');
+  return {
+    state: failed.length ? 'failure' : cancelled ? 'cancelled' : 'success',
+    failed: failed.map(j => j.name),
+  };
+}
+
+module.exports = { create, update, status, jobs, runJobs, runUrl };
