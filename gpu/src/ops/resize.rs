@@ -73,9 +73,6 @@ impl GpuResize {
             axes.push(axis);
             windows.push(plan.window);
         }
-        if axes.is_empty() {
-            return Ok(None);
-        }
         Ok(Some(GpuResize::new(axes, windows, plans, output_shape, backend_name, dispatch)))
     }
 }
