@@ -97,7 +97,7 @@ metal = ["dep:tract-metal", "tract-libcli?/metal"]
 # WebGPU on wasm32. Off by default. In a browser it also takes
 # `unstable-wgpu-async`: the device can only be requested asynchronously, and
 # outputs stay on the GPU until downloaded.
-wgpu = ["dep:tract-wgpu", "dep:tract-gpu"]
+wgpu = ["dep:tract-wgpu", "dep:tract-gpu", "dep:wgpu", "dep:wasm-bindgen", "dep:web-sys"]
 
 # The asynchronous half of the WebGPU runtime, which a browser needs:
 # `tract::wgpu::init().await` brings the device up, and
@@ -143,3 +143,8 @@ unstable-npyz = ["dep:tract-data", "tract-data/npz"]
 # `Model::link_weights` with any `WeightSource`, or a safetensors file read tensor by tensor
 # on demand. Unstable: the shape of this API may change.
 unstable-named-weights = ["tract-nnef/unstable-safetensors"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", features = ["OffscreenCanvas"], optional = true }

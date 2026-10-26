@@ -287,6 +287,7 @@ impl WgpuContext {
         };
         #[cfg(target_arch = "wasm32")]
         crate::wasm_record::tract_install_record_hooks();
+        #[cfg(not(target_arch = "wasm32"))]
         ctxt.preload_pipelines()?;
         Ok(ctxt)
     }
@@ -327,6 +328,7 @@ impl WgpuContext {
         self.inner.device.features().contains(wgpu::Features::TIMESTAMP_QUERY)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn preload_pipelines(&self) -> TractResult<()> {
         for key in crate::kernels::all_pipeline_keys(self.shader_f16()) {
             let _ = self.pipeline(key);
@@ -546,6 +548,29 @@ impl WgpuContext {
         let (bgl, _) = self.layout(LayoutKind::Ingest)?;
         let entries = [
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(view) },
+            wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
+            uniform_entry(2, uniform),
+        ];
+        let id = self.next_gpu_id();
+        let label = format!("tb{id}");
+        LAST_BG_ID.with(|c| c.set(id));
+        Ok(Arc::new(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&label),
+            layout: &bgl,
+            entries: &entries,
+        })))
+    }
+
+    /// Bind a one-shot ingest upload without retaining it in the frame cache.
+    pub(crate) fn bind_group_ingest_buffer(
+        &self,
+        input: &wgpu::Buffer,
+        output: &wgpu::Buffer,
+        uniform: &wgpu::Buffer,
+    ) -> TractResult<Arc<wgpu::BindGroup>> {
+        let (bgl, _) = self.layout(LayoutKind::Unary)?;
+        let entries = [
+            wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
             uniform_entry(2, uniform),
         ];

@@ -1,3 +1,8 @@
+#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+mod wgpu_web;
+#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+pub use wgpu_web::{WgpuMask, wgpu_device};
+
 #[cfg(all(target_vendor = "apple", feature = "metal"))]
 extern crate tract_metal;
 
@@ -582,6 +587,38 @@ impl StateInterface for State {
 // TENSOR
 #[derive(Clone, Debug)]
 pub struct Tensor(Arc<InternalTensor>);
+
+#[cfg(feature = "wgpu")]
+impl Tensor {
+    #[cfg(target_arch = "wasm32")]
+    fn wgpu_storage(&self) -> Result<&tract_gpu::tensor::DeviceTensor> {
+        self.0
+            .storage_as::<tract_gpu::tensor::DeviceTensor>()
+            .or_else(|| {
+                self.0
+                    .storage_as::<tract_gpu::tensor::LazyHostStorage>()
+                    .and_then(|lazy| lazy.device())
+            })
+            .context("Tensor has no WGPU storage")
+    }
+
+    /// Upload tightly packed little-endian RGB565 as GPU RGB NCHW f32 in [0, 1].
+    /// Requires positive dimensions and exactly `width * height * 2` bytes.
+    /// Pass directly to the WGPU runtime; reading its bytes requires host storage.
+    pub fn from_rgb565(width: u32, height: u32, bytes: &[u8]) -> Result<Self> {
+        let tensor = tract_wgpu::tensor_from_rgb565(width, height, bytes)?;
+        Ok(Self(Arc::new(tensor.into_tensor())))
+    }
+
+    /// Upload tightly packed full-range BT.601 NV12 as GPU RGB NCHW f32 in [0, 1].
+    /// Requires positive even dimensions, a Y plane then interleaved Cb/Cr,
+    /// and exactly `width * height * 3 / 2` bytes. Chroma is replicated per 2x2 block.
+    /// Pass directly to the WGPU runtime; reading its bytes requires host storage.
+    pub fn from_nv12(width: u32, height: u32, bytes: &[u8]) -> Result<Self> {
+        let tensor = tract_wgpu::tensor_from_nv12(width, height, bytes)?;
+        Ok(Self(Arc::new(tensor.into_tensor())))
+    }
+}
 
 impl TensorInterface for Tensor {
     fn datum_type(&self) -> Result<DatumType> {

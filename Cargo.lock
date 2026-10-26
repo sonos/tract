@@ -5087,6 +5087,9 @@ dependencies = [
  "tract-pulse-opl",
  "tract-transformers",
  "tract-wgpu",
+ "wasm-bindgen",
+ "web-sys",
+ "wgpu",
 ]
 
 [[package]]
