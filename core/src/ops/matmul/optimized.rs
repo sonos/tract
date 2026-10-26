@@ -428,8 +428,10 @@ impl Op for OptMatMul {
 /// picked kernel cannot use the one already there -- and `stores` memoizes the
 /// trivial path's output-store descriptors per node, since those depend on that
 /// node's micro-ops. Thread-local, so nothing here has to be `Send`; a session's
-/// entry goes when the plan calls [`EvalOp::drop_session`], and its kernel buffer is
-/// kept to start the thread's next session, whose first op would otherwise allocate one.
+/// entry goes when the plan calls [`EvalOp::drop_session`] on this thread, and its
+/// kernel buffer is kept to start the thread's next session, whose first op would
+/// otherwise allocate one. An entry of a session ended on another thread goes at
+/// this thread's next eval.
 #[derive(Default)]
 struct MmmScratch {
     space: Option<Box<dyn tract_linalg::mmm::ScratchSpace>>,
@@ -450,6 +452,8 @@ thread_local! {
         std::cell::RefCell::new(HashMap::new());
     static SPARE_SPACE: std::cell::RefCell<Option<Box<dyn tract_linalg::mmm::ScratchSpace>>> =
         const { std::cell::RefCell::new(None) };
+    static SCRATCH_REAPER: std::cell::RefCell<SessionReaper> =
+        const { std::cell::RefCell::new(SessionReaper::new()) };
 }
 
 impl EvalOp for OptMatMul {
@@ -457,6 +461,8 @@ impl EvalOp for OptMatMul {
 
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         MMM_SCRATCH.with_borrow_mut(|per_session| {
+            SCRATCH_REAPER
+                .with_borrow_mut(|reaper| reaper.reap(|live| per_session.retain(|s, _| live(*s))));
             let scratch = per_session.entry(ctx.session).or_insert_with(|| MmmScratch {
                 space: SPARE_SPACE.take(),
                 stores: HashMap::new(),
