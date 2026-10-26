@@ -63,6 +63,9 @@ impl EvalOp for DeviceSync {
                 }
             }
             DeviceSyncKind::ToDevice => {
+                if input.as_device_tensor().is_some() {
+                    return Ok(tvec![input]);
+                }
                 // A tensor that came back from a previous run still on device
                 // goes straight back in, with no round trip either way.
                 if let Some(device) =

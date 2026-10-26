@@ -207,6 +207,7 @@ pub enum ModuleKind {
     Resize,
     Softmax,
     Ingest,
+    IngestBuffer,
     Export,
     MatMul,
 }
@@ -237,6 +238,7 @@ impl ModuleKey {
             }
             ModuleKind::Resize => LayoutKind::Resize,
             ModuleKind::Ingest => LayoutKind::Ingest,
+            ModuleKind::IngestBuffer => LayoutKind::Unary,
             ModuleKind::Export => LayoutKind::Export,
         }
     }
@@ -254,6 +256,7 @@ impl ModuleKey {
             ModuleKind::Resize => resize_wgsl(self.dtype),
             ModuleKind::Softmax => softmax_wgsl(self.dtype),
             ModuleKind::Ingest => ingest_wgsl(self.dtype),
+            ModuleKind::IngestBuffer => include_str!("ingest_buffer.wgsl").to_string(),
             ModuleKind::Export => export_wgsl(self.dtype),
             ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }

@@ -15,10 +15,77 @@ use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{wgpu_context, with_wgpu_queue};
 
 pub fn all_pipeline_keys(_shader_f16: bool) -> Vec<PipelineKey> {
-    vec![PipelineKey {
+    let mut keys = vec![PipelineKey {
         module: ModuleKey { kind: ModuleKind::Ingest, dtype: ShaderDtype::F32 },
         entry: EntryPoint::plain("rgba_to_nchw_f32"),
-    }]
+    }];
+    for entry in ["rgb565_to_nchw_f32", "nv12_to_nchw_f32"] {
+        keys.push(PipelineKey {
+            module: ModuleKey { kind: ModuleKind::IngestBuffer, dtype: ShaderDtype::F32 },
+            entry: EntryPoint::plain(entry),
+        });
+    }
+    keys
+}
+
+fn packed_image_pixels(width: u32, height: u32) -> TractResult<u32> {
+    ensure!(width > 0 && height > 0, "ingest size must be > 0");
+    let pixels = width.checked_mul(height).context("ingest dimensions overflow")?;
+    pixels.checked_mul(12).context("ingest output byte size exceeds u32")?;
+    Ok(pixels)
+}
+
+fn ingest_buffer(
+    width: u32,
+    height: u32,
+    bytes: &[u8],
+    entry: &'static str,
+) -> TractResult<DeviceTensor> {
+    with_wgpu_queue(|q| {
+        let limits = q.context().device().limits();
+        let max_bytes = limits.max_storage_buffer_binding_size.min(limits.max_buffer_size);
+        ensure!(bytes.len() as u64 <= max_bytes, "ingest input exceeds device buffer limit");
+        ensure!(
+            u64::from(width) * u64::from(height) * 12 <= max_bytes,
+            "ingest output exceeds device buffer limit"
+        );
+        let input = q.context().create_storage_buffer(bytes);
+        let output = output_tensor(width, height)?;
+        let pipeline = q.context().pipeline(PipelineKey {
+            module: ModuleKey { kind: ModuleKind::IngestBuffer, dtype: ShaderDtype::F32 },
+            entry: EntryPoint::plain(entry),
+        })?;
+        let params = pack_u32s(&[element_offset(&output, 0).try_into()?, width, height, 0]);
+        let dyn_off = q.alloc_uniform(&params)?;
+        let bg = q.context().bind_group_ingest_buffer(
+            &input,
+            &get_wgpu_buffer(&output).inner,
+            q.uniform(),
+        )?;
+        q.retain_tensor(&output);
+        q.dispatch("ingest-buffer", &pipeline, &bg, dyn_off, u64::from(width) * u64::from(height))?;
+        Ok(output)
+    })
+}
+
+/// Upload tightly packed little-endian RGB565 and produce RGB NCHW f32 in [0, 1].
+/// Requires exactly `width * height * 2` bytes and nonzero dimensions.
+pub fn tensor_from_rgb565(width: u32, height: u32, bytes: &[u8]) -> TractResult<DeviceTensor> {
+    let pixels = packed_image_pixels(width, height)?;
+    ensure!(bytes.len() as u64 == u64::from(pixels) * 2, "invalid RGB565 byte length");
+    ingest_buffer(width, height, bytes, "rgb565_to_nchw_f32")
+}
+
+/// Upload tightly packed NV12 using full-range BT.601 and produce RGB NCHW f32 in [0, 1].
+/// Requires positive even dimensions and exactly `width * height * 3 / 2` bytes:
+/// a Y plane followed by interleaved Cb/Cr, one pair per 2x2 luma block.
+/// Chroma uses nearest-neighbor replication. Limited-range and HDR inputs must
+/// be converted by the caller; no transfer-function or primaries conversion is applied.
+pub fn tensor_from_nv12(width: u32, height: u32, bytes: &[u8]) -> TractResult<DeviceTensor> {
+    let pixels = packed_image_pixels(width, height)?;
+    ensure!(width.is_multiple_of(2) && height.is_multiple_of(2), "NV12 dimensions must be even");
+    ensure!(bytes.len() as u64 == u64::from(pixels) * 3 / 2, "invalid NV12 byte length");
+    ingest_buffer(width, height, bytes, "nv12_to_nchw_f32")
 }
 
 fn ingest_usages() -> wgpu::TextureUsages {
