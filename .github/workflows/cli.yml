@@ -88,7 +88,7 @@ jobs:
       rebench: ${{ steps.gate.outputs.rebench }}
       only: ${{ steps.rebench.outputs.only || '{}' }}
       previous: ${{ steps.rebench.outputs.previous }}
-      bins_run: ${{ steps.rebench.outputs.bins_run }}
+      bins_run: ${{ steps.bins.outputs.bins_run }}
       dinghy: ${{ steps.rebench.outputs.dinghy || 'true' }}
     steps:
       # The self-hosted bench boxes, minus the targets listed (space-separated) in the
@@ -225,9 +225,8 @@ jobs:
       # A rebench re-runs, on the boxes that flagged them, only the runs the last report on
       # this head flagged red. That report left its per-device results and reds behind in a
       # bench-state-<sha> artifact; a head with none (never benched, or moved since) refuses.
-      # It benches the binaries that report measured, from the run that built them (named in
-      # the state by an earlier rebench, else the run that left the state), instead of
-      # rebuilding the same head.
+      # Its candidate binaries are those that report measured, from the run that built them
+      # (named in the state by an earlier rebench, else the run that left the state).
       - id: rebench
         if: steps.gate.outputs.rebench == 'true'
         env:
@@ -256,6 +255,47 @@ jobs:
             echo "boxes=$boxes"
             echo "dinghy=$dinghy"
           } >> "$GITHUB_OUTPUT"
+      # A dispatched PR run benches and tests the binaries of an earlier run on the same head
+      # (for a rebench, those its bench state measured) instead of building them again, if
+      # that run built them with this repo's own workflow (a dispatch, or a pull_request from
+      # a branch of this repo, never one from a fork) and still has every tract-cli artifact
+      # a native run downloads. Otherwise bins_run stays empty and the builds run.
+      - id: bins
+        if: steps.gate.outputs.is_pr == 'true' && github.event_name == 'workflow_dispatch' && steps.gate.outputs.kind == 'native'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.gate.outputs.ref }}
+          CANDIDATE: ${{ steps.rebench.outputs.bins_run }}
+          NEEDED: >-
+            tract-cli-x86_64-unknown-linux-gnu
+            tract-cli-aarch64-unknown-linux-gnu-stretch
+            tract-cli-aarch64-apple-darwin
+            tract-cli-aarch64-unknown-linux-gnu-stretch-dinghy
+            tract-cli-armv7-unknown-linux-gnueabihf-stretch-dinghy
+            tract-cli-riscv64gc-unknown-linux-musl-dinghy
+        run: |
+          candidates=$CANDIDATE
+          if [ -z "$candidates" ]; then
+            candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/cli.yml/runs?head_sha=$SHA&per_page=20" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id")
+          fi
+          for run in $candidates; do
+            trusted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+              --jq '.event != "pull_request" or .head_repository.full_name == .repository.full_name')
+            [ "$trusted" = true ] || continue
+            have=" $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
+            complete=true
+            for name in $NEEDED; do
+              case "$have" in *" $name "*) ;; *) complete=false ;; esac
+            done
+            if [ "$complete" = true ]; then
+              echo "::notice::benching the binaries of run $run"
+              echo "bins_run=$run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
       # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
       # build-macos runs on a self-hosted Mac unless the apple box is disabled, on a hosted
       # runner then.
@@ -270,7 +310,7 @@ jobs:
 
   build:
     needs: prepare
-    if: needs.prepare.outputs.rebench != 'true'
+    if: needs.prepare.outputs.bins_run == ''
     runs-on: ${{ matrix.host }}
     timeout-minutes: 30
     permissions:
@@ -315,7 +355,7 @@ jobs:
   # On a self-hosted Mac, a cold build is faster than a cached one on a hosted runner.
   build-macos:
     needs: prepare
-    if: needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.rebench != 'true'
+    if: needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == ''
     runs-on: ${{ needs.prepare.outputs.macos_host }}
     timeout-minutes: 45
     steps:
@@ -332,7 +372,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: needs.prepare.outputs.rebench != 'true' && needs.prepare.outputs.kind == 'native'
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.rebench != 'true' && needs.prepare.outputs.kind == 'native' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -350,6 +390,8 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       - name: Run case
         env:
           SCRIPT: ${{ matrix.script }}
@@ -403,6 +445,7 @@ jobs:
   llm:
     name: ${{ matrix.os }} / ${{ matrix.rt }} / ${{ matrix.combo.model }} / ${{ matrix.combo.q }}
     needs: [ prepare, build, build-macos, llm-combos ]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.llm-combos.result == 'success' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
     runs-on: ${{ matrix.os }}
     env:
       LARGE_MODELS: true
@@ -421,6 +464,8 @@ jobs:
         with:
           name: tract-cli-${{ matrix.os == 'bench-apple-m1-max' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       - name: Download and run
         env:
           RT_MATRIX: ${{ matrix.rt }}
@@ -474,12 +519,12 @@ jobs:
 
   bench:
     needs: [ prepare, build ]
-    # A rebench skips the build and benches the binaries of the run it re-measures.
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || (needs.prepare.outputs.rebench == 'true' && needs.build.result == 'skipped')) && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
+    # Skipped builds mean prepare found the binaries of an earlier run (bins_run).
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
-      actions: read       # a rebench downloads the binaries of an earlier run
+      actions: read       # may download the binaries of an earlier run
     # No concurrency group: each box is a single self-hosted agent, so the agent
     # serialises bench/hwbench/smoke itself (queues, never cancels). A shared
     # group would instead cancel one PR's queued bench when another PR's lands.
@@ -582,11 +627,11 @@ jobs:
 
   bench-macos:
     needs: [ prepare, build-macos ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || (needs.prepare.outputs.rebench == 'true' && needs.build-macos.result == 'skipped')) && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
-      actions: read       # a rebench downloads the binaries of an earlier run
+      actions: read       # may download the binaries of an earlier run
     strategy:
       fail-fast: false
       matrix:
@@ -663,7 +708,7 @@ jobs:
 
   build-dinghy:
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.rebench != 'true' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -708,7 +753,7 @@ jobs:
 
   bench-dinghy:
     needs: [ prepare, build-dinghy ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || (needs.prepare.outputs.rebench == 'true' && needs.build-dinghy.result == 'skipped')) && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
