@@ -17,15 +17,18 @@ impl DeviceTestBackend for WgpuBackend {
         tract_wgpu::WgpuTransform.transform(model)
     }
 
-    /// The memory pool's arena binds one buffer both read-only and read-write
-    /// in a dispatch, which WebGPU refuses, so this backend never installs it
-    /// and every runtime below runs with `use_arena` false.
+    /// WebGPU refuses a dispatch that binds one buffer both read-only and
+    /// read-write, so the plan gives each partition a buffer of its own rather
+    /// than a region of one arena.
     fn with_arena(
         &self,
         plan: TypedSimplePlan,
-        _memory_hint: &SymbolValues,
+        memory_hint: &SymbolValues,
     ) -> TractResult<TypedSimplePlan> {
-        Ok(plan)
+        Ok(match tract_wgpu::WgpuTurnHandler::for_plan(&plan, Some(memory_hint))? {
+            Some(handler) => plan.with_turn_handler(handler),
+            None => plan,
+        })
     }
 
     fn check(&self) -> TractResult<()> {
@@ -35,7 +38,7 @@ impl DeviceTestBackend for WgpuBackend {
 }
 
 macro_rules! wgpu_test_suite {
-    ($id: ident, $optimize: expr, $transpose_inputs: ident) => {
+    ($id: ident, $optimize: expr, $transpose_inputs: ident, $use_arena: ident) => {
         paste! {
             mod [<$id>] {
                 use super::*;
@@ -47,7 +50,7 @@ macro_rules! wgpu_test_suite {
                             backend: WgpuBackend,
                             optimize: $optimize,
                             transpose_inputs: $transpose_inputs,
-                            use_arena: false,
+                            use_arena: $use_arena,
                         };
                     };
                     &RT
@@ -59,6 +62,7 @@ macro_rules! wgpu_test_suite {
     };
 }
 
-wgpu_test_suite!(wgpu_translate, false, false);
-wgpu_test_suite!(optimized_wgpu, true, false);
-wgpu_test_suite!(optimized_wgpu_transpose, true, true);
+wgpu_test_suite!(wgpu_translate, false, false, false);
+wgpu_test_suite!(optimized_wgpu, true, false, false);
+wgpu_test_suite!(optimized_wgpu_transpose, true, true, false);
+wgpu_test_suite!(optimized_wgpu_planned, true, false, true);
