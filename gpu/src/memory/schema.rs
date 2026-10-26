@@ -53,9 +53,21 @@ fn next_nodes<'a>(model: &'a TypedModel, node: &TypedNode) -> Option<TVec<&'a Ty
     )
 }
 
+/// Which node outputs a [`DeviceMemSchema`] plans.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct SchemaOptions {
+    /// Also plan an output read back to the host by a [`DeviceSync`]: the sync copies a planned
+    /// output out before its region is reused, where an unplanned one crosses lazily.
+    pub plan_host_synced: bool,
+    /// Leave out what the model returns, directly or through a sync, so a caller may keep it
+    /// past the turn.
+    pub exclude_outputs: bool,
+}
+
 pub fn eval_device_mem_req_for_nodes(
     model: &TypedModel,
     order: &[usize],
+    options: SchemaOptions,
 ) -> TractResult<TVec<NodeMemReq>> {
     let outputs = model.output_outlets()?.to_vec();
     let flush_lists = order::build_flush_list(model, order, &outputs, |node| {
@@ -63,12 +75,23 @@ pub fn eval_device_mem_req_for_nodes(
 
         let cpu_sync_in_next_nodes = next_nodes(model, node).is_some_and(|nodes| {
             nodes.iter().any(|it| {
-                it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost)
-                    || it.outputs.iter().any(|o| o.fact.as_device_fact().is_none())
+                if it.op_as::<DeviceSync>().is_some_and(|op| op.kind == DeviceSyncKind::ToHost) {
+                    !options.plan_host_synced
+                } else {
+                    it.outputs.iter().any(|o| o.fact.as_device_fact().is_none())
+                }
             })
         });
 
+        let returned = outputs.iter().any(|o| o.node == node.id)
+            || next_nodes(model, node).is_some_and(|nodes| {
+                nodes
+                    .iter()
+                    .any(|it| it.op_is::<DeviceSync>() && outputs.iter().any(|o| o.node == it.id))
+            });
+
         !cpu_sync_in_next_nodes
+            && !(options.exclude_outputs && returned)
             && facts.iter().any(|it| {
                 it.as_device_fact()
                     .map(|it| it.is_from_device() && !it.is_state_owned())
@@ -191,6 +214,16 @@ pub struct DeviceResolvedMemSchema {
     pub memory_size: usize,
 }
 
+/// A resolved schema for a device that gives each partition a buffer of its own rather than a
+/// region of one arena, because it cannot bind two regions of one buffer as a read and a write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceResolvedPartitions {
+    /// For each node, for each output slot, the partition of each of its buffers.
+    pub partitions_by_node: Vec<Option<TVec<TVec<usize>>>>,
+    /// Bytes of each partition.
+    pub sizes: Vec<usize>,
+}
+
 /// This struct represent a memory schema for node output memory that are handled
 /// by a GPU.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -222,6 +255,31 @@ impl DeviceMemSchema {
     /// Evaluate memory size required for the schema for given symbol values.
     pub fn eval_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
         self.by_partition.iter().map(|it| it.eval_size_to_i64(symbols)).sum()
+    }
+
+    /// The partition of each node output and the size of each partition, for given symbols.
+    pub fn resolve_partitions(
+        &self,
+        symbols: &SymbolValues,
+    ) -> TractResult<DeviceResolvedPartitions> {
+        let mut partitions_by_node: Vec<Option<TVec<TVec<usize>>>> =
+            vec![None; self.model_num_nodes];
+        for (ix, partition) in self.by_partition.iter().enumerate() {
+            for node_mem in &partition.nodes {
+                let OutletId { node, slot } = node_mem.outlet_id;
+                let slots = partitions_by_node[node].get_or_insert_with(|| tvec![tvec!()]);
+                if slots.len() <= slot {
+                    slots.resize_with(slot + 1, TVec::<usize>::new);
+                }
+                slots[slot].push(ix);
+            }
+        }
+        let sizes = self
+            .eval_size_by_partition(symbols)?
+            .into_iter()
+            .map(|size| Ok(size.try_into()?))
+            .collect::<TractResult<Vec<usize>>>()?;
+        Ok(DeviceResolvedPartitions { partitions_by_node, sizes })
     }
 
     /// Compute offsets for each node for given symbols. Node ids
@@ -331,7 +389,17 @@ impl DeviceMemSchema {
         order: &[usize],
         hint: &SymbolValues,
     ) -> TractResult<DeviceMemSchema> {
-        let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order)?;
+        Self::build_with(model, order, hint, SchemaOptions::default())
+    }
+
+    /// [`Self::build`], planning the node outputs `options` selects.
+    pub fn build_with(
+        model: &TypedModel,
+        order: &[usize],
+        hint: &SymbolValues,
+        options: SchemaOptions,
+    ) -> TractResult<DeviceMemSchema> {
+        let mut nodes_mem_req = eval_device_mem_req_for_nodes(model, order, options)?;
 
         let exotic_facts = collect_exotic_facts(model)?;
         let hinted_mem_size = nodes_mem_req

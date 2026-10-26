@@ -26,6 +26,7 @@ mod context;
 pub mod coverage;
 pub mod jspi;
 pub mod kernels;
+mod memory;
 pub mod ops;
 mod rewrite_rules;
 mod tensor;
@@ -37,6 +38,8 @@ mod wasm_record;
 
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
+
+pub use memory::WgpuTurnHandler;
 
 pub use crate::context::{
     CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, try_wgpu_context, wgpu_context,
@@ -132,11 +135,10 @@ impl Runtime for WgpuRuntime {
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
-            let turn_handler =
-                tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
-                    .context("While sizing memory arena. Missing hint ?")?;
-            runnable = runnable.with_turn_handler(turn_handler);
+        if let Some(handler) =
+            memory::WgpuTurnHandler::for_plan(&runnable, options.memory_sizing_hints.as_ref())?
+        {
+            runnable = runnable.with_turn_handler(handler);
         }
 
         Ok(Box::new(Arc::new(runnable)))

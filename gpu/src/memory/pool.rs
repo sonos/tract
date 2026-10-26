@@ -1,5 +1,6 @@
 use crate::device::get_context;
 use crate::memory::DeviceResolvedMemSchema;
+use crate::memory::DeviceResolvedPartitions;
 use crate::tensor::DeviceTensor;
 use crate::tensor::DeviceView;
 use crate::tensor::OwnedDeviceTensor;
@@ -8,8 +9,15 @@ use tract_core::internal::*;
 
 #[derive(Debug)]
 pub struct DeviceMemoryPool {
-    storage: Arc<Box<dyn OwnedDeviceTensor>>,
-    resolved_schema: DeviceResolvedMemSchema,
+    layout: Layout,
+}
+
+#[derive(Debug)]
+enum Layout {
+    /// One buffer, each node output at its offset.
+    Arena { storage: Arc<Box<dyn OwnedDeviceTensor>>, resolved_schema: DeviceResolvedMemSchema },
+    /// A buffer per partition, each node output at the start of its partition's.
+    Partitions { buffers: Vec<Arc<Box<dyn OwnedDeviceTensor>>>, resolved: DeviceResolvedPartitions },
 }
 
 /// Reusable arena storage held in a turn's shared resources.
@@ -58,17 +66,55 @@ impl DeviceMemoryPool {
                 tensor
             }
         };
-        Ok(Self { storage, resolved_schema })
+        Ok(Self { layout: Layout::Arena { storage, resolved_schema } })
     }
 
     pub fn from_schema(resolved_schema: DeviceResolvedMemSchema) -> TractResult<Self> {
-        Ok(Self {
-            storage: Arc::new(
-                get_context()?
-                    .uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?,
-            ),
-            resolved_schema,
-        })
+        let storage = Arc::new(
+            get_context()?
+                .uninitialized_device_tensor(&[resolved_schema.memory_size], DatumType::U8)?,
+        );
+        Ok(Self { layout: Layout::Arena { storage, resolved_schema } })
+    }
+
+    /// A pool over `buffers`, one per partition of `resolved` and at least as large.
+    pub fn from_partitions(
+        resolved: DeviceResolvedPartitions,
+        buffers: Vec<Arc<Box<dyn OwnedDeviceTensor>>>,
+    ) -> TractResult<Self> {
+        ensure!(buffers.len() == resolved.sizes.len());
+        for (buffer, size) in buffers.iter().zip(&resolved.sizes) {
+            ensure!(buffer.len() * buffer.datum_type().size_of() >= *size);
+        }
+        Ok(Self { layout: Layout::Partitions { buffers, resolved } })
+    }
+
+    /// For each output slot of `node_id`, how many buffers the schema planned for it.
+    fn planned(&self, node_id: usize) -> Option<TVec<usize>> {
+        let by_node = match &self.layout {
+            Layout::Arena { resolved_schema, .. } => &resolved_schema.offsets_by_node,
+            Layout::Partitions { resolved, .. } => &resolved.partitions_by_node,
+        };
+        by_node[node_id].as_ref().map(|slots| slots.iter().map(|it| it.len()).collect())
+    }
+
+    /// The storage and byte offset of buffer `ix` of output `slot` of `node_id`.
+    fn region(
+        &self,
+        node_id: usize,
+        slot: usize,
+        ix: usize,
+    ) -> Option<(&Arc<Box<dyn OwnedDeviceTensor>>, usize)> {
+        match &self.layout {
+            Layout::Arena { storage, resolved_schema } => {
+                let offsets = resolved_schema.offsets_by_node[node_id].as_ref()?.get(slot)?;
+                Some((storage, *offsets.get(ix)?))
+            }
+            Layout::Partitions { buffers, resolved } => {
+                let partitions = resolved.partitions_by_node[node_id].as_ref()?.get(slot)?;
+                Some((&buffers[*partitions.get(ix)?], 0))
+            }
+        }
     }
 
     pub fn tensor_for_node(
@@ -77,8 +123,8 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        if let Some(offsets) = self.resolved_schema.offsets_by_node[node_id].as_ref() {
-            ensure!(offsets.len() == 1, "'tensor_for_node' is for mono-output nodes only");
+        if let Some(slots) = self.planned(node_id) {
+            ensure!(slots.len() == 1, "'tensor_for_node' is for mono-output nodes only");
         }
         self.tensor_for_node_output(node_id, 0, dt, shape)
     }
@@ -92,17 +138,20 @@ impl DeviceMemoryPool {
         dt: DatumType,
         shape: &[usize],
     ) -> TractResult<DeviceTensor> {
-        match self.resolved_schema.offsets_by_node[node_id].as_ref() {
-            Some(offsets) if slot < offsets.len() && offsets[slot].len() == 1 => Ok(DeviceView {
-                buffer: Arc::clone(&self.storage),
-                dt,
-                len: shape.iter().product(),
-                shape: shape.into(),
-                strides: Tensor::natural_strides(shape),
-                offset_bytes: offsets[slot][0],
-                exotic_fact: None,
+        match self.planned(node_id).and_then(|slots| slots.get(slot).copied()) {
+            Some(1) => {
+                let (storage, offset_bytes) = self.region(node_id, slot, 0).unwrap();
+                Ok(DeviceView {
+                    buffer: Arc::clone(storage),
+                    dt,
+                    len: shape.iter().product(),
+                    shape: shape.into(),
+                    strides: Tensor::natural_strides(shape),
+                    offset_bytes,
+                    exotic_fact: None,
+                }
+                .into())
             }
-            .into()),
             _ => DeviceTensor::uninitialized_dt(dt, shape),
         }
     }
@@ -113,19 +162,20 @@ impl DeviceMemoryPool {
         dt: DatumType,
         exotic_fact: Box<dyn ExoticFact>,
     ) -> TractResult<DeviceTensor> {
-        match self.resolved_schema.offsets_by_node[node_id].as_ref() {
-            Some(offsets) => {
+        match self.planned(node_id) {
+            Some(slots) => {
                 ensure!(
-                    offsets.len() == 1 && offsets[0].len() == 2,
+                    slots.len() == 1 && slots[0] == 2,
                     "'scalar_exotic_tensor_for_node' is for mono-output nodes only"
                 );
+                let (storage, offset_bytes) = self.region(node_id, 0, 1).unwrap();
                 Ok(DeviceView {
-                    buffer: Arc::clone(&self.storage),
+                    buffer: Arc::clone(storage),
                     dt,
                     len: 1,
                     shape: tvec!(),
                     strides: tvec!(),
-                    offset_bytes: offsets[0][1],
+                    offset_bytes,
                     exotic_fact: Some(exotic_fact.clone()),
                 }
                 .into())

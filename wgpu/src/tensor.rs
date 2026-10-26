@@ -116,10 +116,10 @@ impl OwnedDeviceTensor for WgpuTensor {
         self.exotic_fact.as_deref()
     }
 
-    /// Only reached through tract-gpu's DeviceView, which needs a
-    /// `DeviceSessionHandler` this backend never installs. The signature cannot
-    /// report a failure, so were it reached, a device-side fetch that failed
-    /// would abort instead: on web it cannot succeed at all without `jspi`.
+    /// Reached through tract-gpu's DeviceView, which the memory plan hands out
+    /// (see `WgpuTurnHandler`). The signature cannot report a failure, so a
+    /// device-side fetch that failed aborts instead: on web it cannot succeed at
+    /// all without `jspi`.
     fn get_bytes_slice(&self, offset: usize, len: usize) -> Vec<u8> {
         download_owned_bytes(&self.buffer.inner, offset as u64, len as u64).unwrap()
     }
