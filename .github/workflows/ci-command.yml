@@ -42,6 +42,10 @@ jobs:
     name: Dispatch /ci comment
     if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
     runs-on: ubuntu-latest
+    # The 👀/🚀 reactions on the /ci comment are set with this job's GITHUB_TOKEN.
+    permissions:
+      issues: write
+      pull-requests: write
     steps:
       - name: Slash command dispatch
         uses: peter-evans/slash-command-dispatch@9bdcd7914ec1b75590b790b844aa3b8eee7c683a # v5.0.2
