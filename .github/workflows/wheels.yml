@@ -18,6 +18,10 @@ on:
         description: "Optional PR number to build (from fork ok). Leave empty to build the selected branch."
         required: false
         type: number
+      comment_id:
+        description: "The /ci command comment to report on (set by ci-command.yml)."
+        required: false
+        type: string
 
 
 env:
@@ -35,16 +39,23 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: read
+      pull-requests: write
       statuses: write
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
       pr_sha: ${{ steps.set.outputs.pr_sha }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             const prInput = context.payload.inputs?.pr_number;
             if (!prInput) {
               // Build the ref the workflow was triggered on (branch/tag/SHA in base repo).
@@ -60,16 +71,8 @@ jobs:
             const sha = pr.data.head.sha;
             core.setOutput('test_ref', sha);
             core.setOutput('pr_sha', sha);
-            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha,
-              state: 'pending',
-              context: 'wheels (dispatched)',
-              target_url,
-              description: 'Wheel build running…',
-            });
+            await ci.status(github, context, { sha, target: 'wheels', state: 'pending', description: 'Running' });
+            await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
 
   build_wheels:
     name: Build wheels on ${{ matrix.os }}
@@ -158,25 +161,35 @@ jobs:
     permissions:
       contents: read
       statuses: write
+      pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
+          NEEDS: ${{ toJSON(needs) }}
           PR_SHA: ${{ needs.prepare.outputs.pr_sha }}
-          WHEELS_RESULT: ${{ needs.build_wheels.result }}
-          SDIST_RESULT: ${{ needs.make_sdist.result }}
+          PR_NUMBER: ${{ github.event.inputs.pr_number }}
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
         with:
           script: |
-            const ok = process.env.WHEELS_RESULT === 'success'
-              && process.env.SDIST_RESULT === 'success';
-            const target_url = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: process.env.PR_SHA,
-              state: ok ? 'success' : 'failure',
-              context: 'wheels (dispatched)',
-              target_url,
-              description: ok ? 'Wheels built' : 'Wheel build failed',
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            const sha = process.env.PR_SHA;
+            const result = ci.jobs(process.env.NEEDS);
+            await ci.status(github, context, {
+              sha, target: 'wheels', state: result.state,
+              description: { success: 'Wheels built', cancelled: 'Cancelled' }[result.state] || 'Wheel build failed',
+            });
+            await ci.update(github, context, {
+              commentId: process.env.COMMENT_ID,
+              issueNumber: process.env.PR_NUMBER,
+              fallbackHeader: `**Python wheels** · head \`${sha.slice(0, 9)}\``,
+              state: result.state,
+              sections: { tests: result.text },
             });
 
   upload_all:

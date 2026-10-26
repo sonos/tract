@@ -22,11 +22,16 @@ name: CI slash command
 #                         comma-separated globs (`*ppocr*`), nightly-only ones included
 #   /ci benches        -> alias of bench
 #   /ci rebench        -> re-run only the reds of the last bench report on the PR head,
-#                         on the boxes that flagged them, and re-post the merged report
+#                         on the boxes that flagged them, and report the merged result
 #   /ci bench-mt-ladder [ladder] -> cli.yml with a thread-scaling bench; ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 # `blackwell` is narrower still: it runs on a single workstation GPU, so only the
 # logins in the BLACKWELL_OPERATORS repo variable (default `kali`) can queue it.
+#
+# Feedback: the command gets 👀/🚀 reactions, then one comment saying what was
+# scheduled. The dispatched workflow edits that comment (running, then done or failed,
+# with a tests and/or bench section) through .github/scripts/ci-feedback.js, and a run
+# that tests something also sets a `/ci <target>` commit status on the PR head.
 
 on:
   issue_comment:
@@ -55,21 +60,41 @@ jobs:
           permission: write
           issue-type: pull-request
 
+  # Two steps so each token does one thing: the Actions bot (GITHUB_TOKEN) posts the
+  # command comment the dispatched workflow then edits, and CI_DISPATCH_TOKEN dispatches
+  # (a GITHUB_TOKEN dispatch would not start the workflow).
   route:
     name: Route /ci target
     if: ${{ github.event_name == 'repository_dispatch' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
-      - name: Route /ci target to its workflow
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Parse the command and post its comment
+        id: parse
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BLACKWELL_OPERATORS: ${{ vars.BLACKWELL_OPERATORS }}
         with:
-          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
           script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-feedback.js`);
             const cp = context.payload.client_payload;
-            const target = (cp.slash_command.args.unnamed.arg1 || '').toLowerCase();
+            const args = cp.slash_command.args.unnamed;
+            const target = (args.arg1 || '').toLowerCase();
             const pr = cp.pull_request.number;
+            const who = cp.github?.payload?.comment?.user?.login || '';
+            const reject = async msg => {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo, issue_number: pr, body: msg,
+              });
+              core.setFailed(msg);
+            };
             const map = {
               'full': 'full.yml',
               'cli': 'cli.yml',
@@ -90,21 +115,27 @@ jobs:
             };
             const workflow = map[target];
             if (!workflow) {
-              const usage = [
+              return reject([
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
                 'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all|wgpu|wasm|PATTERNS]` (alias: `benches`; `all` is `/ci cli`; PATTERNS: comma-separated bench-name globs like `*ppocr*`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
-              ].join('\n');
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: pr,
-                body: usage,
-              });
-              core.setFailed(usage);
-              return;
+              ].join('\n'));
             }
             const inputs = { pr_number: String(pr) };
+            let plan;
+
+            if (workflow === 'full.yml') {
+              plan = 'Full test harness (`full.yml`). Check: `/ci full`.';
+            }
+            if (workflow === 'examples.yml') {
+              plan = 'Examples (`examples.yml`). Check: `/ci examples`.';
+            }
+            if (workflow === 'wheels.yml') {
+              plan = 'Python wheels and sdist (`wheels.yml`). Check: `/ci wheels`.';
+            }
+            if (['cli', 'large-models', 'large', 'llm'].includes(target)) {
+              plan = 'CLI workflow, full scope (`cli.yml`): harness `ci.sh` and `ci-full.sh` cases, the LLM matrix, harness-checked, and the PR bench. Check: `/ci cli` (tests).';
+            }
 
             // `/ci blackwell [tests|bench|both]`. Write access to the repo is not
             // consent to take someone's workstation GPU: the Blackwell box has one
@@ -112,39 +143,27 @@ jobs:
             if (workflow === 'cuda-blackwell.yml') {
               const operators = (process.env.BLACKWELL_OPERATORS || 'kali')
                 .split(',').map(s => s.trim().toLowerCase()).filter(Boolean);
-              const who = (cp.github?.payload?.comment?.user?.login || '').toLowerCase();
-              if (!operators.includes(who)) {
-                const denied = `\`/ci ${target}\` runs on a single workstation GPU and is reserved to its operator (${operators.map(o => '@' + o).join(', ')}). Ask for a run rather than queueing one.`;
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr,
-                  body: denied,
-                });
-                core.setFailed(denied);
-                return;
+              if (!operators.includes(who.toLowerCase())) {
+                return reject(`\`/ci ${target}\` runs on a single workstation GPU and is reserved to its operator (${operators.map(o => '@' + o).join(', ')}). Ask for a run rather than queueing one.`);
               }
               // bench A/Bs the head against its merge-base on the box instead of
               // running the CUDA suites.
-              const mode = (cp.slash_command.args.unnamed.arg2 || 'tests').toLowerCase();
+              const mode = (args.arg2 || 'tests').toLowerCase();
               if (!['tests', 'bench', 'both'].includes(mode)) {
-                const msg = `Unknown \`/ci ${target}\` mode: \`${mode}\`. Use \`tests\`, \`bench\` or \`both\`.`;
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr,
-                  body: msg,
-                });
-                core.setFailed(msg);
-                return;
+                return reject(`Unknown \`/ci ${target}\` mode: \`${mode}\`. Use \`tests\`, \`bench\` or \`both\`.`);
               }
               inputs.mode = mode;
+              plan = {
+                tests: 'CUDA suites on the RTX 5090 (`cuda-blackwell.yml`). Check: `/ci blackwell`.',
+                bench: 'Bench of the head against its merge-base on the RTX 5090 (`cuda-blackwell.yml`).',
+                both: 'CUDA suites, then a bench of the head against its merge-base, on the RTX 5090 (`cuda-blackwell.yml`). Check: `/ci blackwell` (tests).',
+              }[mode] + ' Waits in the queue until the box\'s runner is up.';
             }
             // `/ci bench` is the PR-push bench; `/ci bench all` keeps the full cli.yml run;
             // `/ci bench wgpu` and `/ci bench wasm` run that one bench leg and nothing else;
             // any other argument is a list of bench-name globs passed on as `select`.
             if (target === 'bench' || target === 'benches') {
-              const arg = (cp.slash_command.args.unnamed.arg2 || '').toLowerCase();
+              const arg = (args.arg2 || '').toLowerCase();
               const scopes = { '': 'bench', all: 'full', wgpu: 'wgpu', wasm: 'wasm' };
               if (Object.hasOwn(scopes, arg)) {
                 inputs.scope = scopes[arg];
@@ -152,31 +171,62 @@ jobs:
                 inputs.scope = 'bench';
                 inputs.select = arg;
               } else {
-                const msg = `Unknown \`/ci ${target}\` argument: \`${arg}\`. Use \`/ci ${target}\`, \`/ci ${target} all\`, \`/ci ${target} wgpu\`, \`/ci ${target} wasm\` or \`/ci ${target} PATTERNS\` (comma-separated bench-name globs like \`*ppocr*\`).`;
-                await github.rest.issues.createComment({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  issue_number: pr,
-                  body: msg,
-                });
-                core.setFailed(msg);
-                return;
+                return reject(`Unknown \`/ci ${target}\` argument: \`${arg}\`. Use \`/ci ${target}\`, \`/ci ${target} all\`, \`/ci ${target} wgpu\`, \`/ci ${target} wasm\` or \`/ci ${target} PATTERNS\` (comma-separated bench-name globs like \`*ppocr*\`).`);
+              }
+              plan = {
+                bench: 'PR bench on the bench boxes and dev boards, and the harness `ci.sh` cases (`cli.yml`). Check: `/ci cli` (tests).',
+                full: 'CLI workflow, full scope (`cli.yml`): harness `ci.sh` and `ci-full.sh` cases, the LLM matrix, harness-checked, and the PR bench. Check: `/ci cli` (tests).',
+                wgpu: 'The wgpu bench leg alone (4060 box, Vulkan) against its nightly reference (`cli.yml`).',
+                wasm: 'The wasm bench leg alone (9900k, wasmtime) against its nightly reference (`cli.yml`).',
+              }[inputs.scope];
+              if (inputs.select) {
+                plan = `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards, and the harness \`ci.sh\` cases (\`cli.yml\`). Check: \`/ci cli\` (tests).`;
               }
             }
             if (target === 'rebench') {
               inputs.scope = 'bench';
               inputs.rebench = 'true';
+              plan = 'Re-run the reds of the last bench report on this head, on the boxes that flagged them, and merge them into that report (`cli.yml`).';
             }
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
             // cli.yml runs the thread scaling sweep + scaling report instead of vs-main.
             if (target === 'bench-mt-ladder') {
-              inputs.mt_ladder = cp.slash_command.args.unnamed.arg2 || '2,4,0';
+              inputs.mt_ladder = args.arg2 || '2,4,0';
+              plan = `CLI workflow, full scope (\`cli.yml\`), with a thread-scaling bench on ladder \`${inputs.mt_ladder}\` instead of the PR bench. Check: \`/ci cli\` (tests).`;
             }
+
+            const command = ['/ci', args.arg1, args.arg2].filter(Boolean).join(' ');
+            const header = `**\`${command}\`** · requested by @${who} · head \`${(cp.pull_request.head?.sha || '').slice(0, 9)}\``;
+            const id = await ci.create(github, context, pr, { header, sections: [['plan', plan]] });
+            inputs.comment_id = String(id);
+            core.setOutput('workflow', workflow);
+            core.setOutput('inputs', JSON.stringify(inputs));
+      - name: Dispatch
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          WORKFLOW: ${{ steps.parse.outputs.workflow }}
+          INPUTS: ${{ steps.parse.outputs.inputs }}
+        with:
+          github-token: ${{ secrets.CI_DISPATCH_TOKEN }}
+          script: |
             await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: workflow,
+              workflow_id: process.env.WORKFLOW,
               ref: context.payload.repository.default_branch,
-              inputs,
+              inputs: JSON.parse(process.env.INPUTS),
             });
-            core.info(`Dispatched ${workflow} for PR #${pr}`);
+            core.info(`Dispatched ${process.env.WORKFLOW}`);
+      - name: Report a failed dispatch on the command comment
+        if: ${{ failure() && steps.parse.outputs.inputs != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          INPUTS: ${{ steps.parse.outputs.inputs }}
+        with:
+          script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.github/scripts/ci-feedback.js`);
+            await ci.update(github, context, {
+              commentId: JSON.parse(process.env.INPUTS).comment_id,
+              state: 'failure',
+              sections: { dispatch: 'The workflow could not be dispatched; see the run log.' },
+            });

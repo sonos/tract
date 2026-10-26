@@ -41,6 +41,11 @@ on:
         required: false
         type: string
         default: ''
+      comment_id:
+        description: "The /ci command comment to report on (set by ci-command.yml)."
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -62,8 +67,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      statuses: write     # pending "CI / cli" status on a dispatched PR run
-      actions: read       # a rebench reads the previous report's state artifact
+      statuses: write       # pending "/ci cli" status on a dispatched PR run
+      pull-requests: write  # marks the /ci command comment running
+      actions: read         # a rebench reads the previous report's state artifact
     outputs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
@@ -110,6 +116,14 @@ jobs:
           )
           for off in $DISABLED; do echo "::notice::bench box $off disabled via BENCH_DISABLED_BOXES"; done
           echo "boxes=$boxes" >> "$GITHUB_OUTPUT"
+      # A pull_request run's sha is the PR's own code, and it has no /ci command to report on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       # Resolves this run's target ref and whether it should behave like a PR run
       # (compare + comment) or a reference run (append to bench-data): a manual
       # `/ci bench` dispatch on a PR must be treated as a PR run even though its
@@ -119,7 +133,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             if (process.env.BENCH_ENABLED === 'false') {
@@ -176,19 +189,12 @@ jobs:
             core.setOutput('pr_number', String(prInput));
             core.setOutput('same_repo', String(pr.data.head.repo.full_name === baseRepo));
             core.setOutput('ref', pr.data.head.sha);
-            // A wgpu or wasm bench runs no tests, so it does not speak for "CI / cli".
-            if (kind !== 'native') {
-              return;
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
+            // A wgpu or wasm bench runs no tests, so it does not speak for "/ci cli".
+            if (kind === 'native') {
+              await ci.status(github, context, { sha: pr.data.head.sha, target: 'cli', state: 'pending', description: 'Running' });
             }
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: pr.data.head.sha,
-              state: 'pending',
-              context: 'CI / cli',
-              target_url: process.env.RUN_URL,
-              description: 'Running',
-            });
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.gate.outputs.ref }}
@@ -418,7 +424,7 @@ jobs:
           ci/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
 
   # A pull_request run shows each leg as a check; a `/ci` dispatch on a PR reports
-  # back through a commit status and a sticky comment instead.
+  # back through the "/ci cli" commit status and the tests section of its command comment.
   report-tests:
     name: Report tests to PR
     needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm ]
@@ -429,47 +435,34 @@ jobs:
       statuses: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           NEEDS: ${{ toJSON(needs) }}
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           HEAD_SHA: ${{ needs.prepare.outputs.ref }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS_CONTEXT: "CI / cli"
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
         with:
           script: |
-            const needs = JSON.parse(process.env.NEEDS);
-            const prNumber = Number(process.env.PR_NUMBER);
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             const sha = process.env.HEAD_SHA;
-            const runUrl = process.env.RUN_URL;
-            const statusContext = process.env.STATUS_CONTEXT;
-            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
-            const jobs = Object.entries(needs).filter(([k]) => k !== 'prepare');
-            const failed = jobs.filter(([, v]) => v.result !== 'success' && v.result !== 'skipped');
-            const state = failed.length ? 'failure' : 'success';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner, repo: context.repo.repo, sha, state,
-              context: statusContext, target_url: runUrl,
-              description: failed.length ? `${failed.length} job(s) failed` : 'All jobs passed',
+            const result = ci.jobs(process.env.NEEDS);
+            await ci.status(github, context, {
+              sha, target: 'cli', state: result.state,
+              description: { success: 'All jobs passed', cancelled: 'Cancelled' }[result.state] || `${result.failed.length} job(s) failed`,
             });
-            const marker = `<!-- ${statusContext} -->`;
-            const body = [
-              marker,
-              `### ${icon(state)} ${statusContext}: ${state}`,
-              '',
-              ...jobs.map(([k, v]) => `- ${icon(v.result)} \`${k}\`: ${v.result}`),
-              '',
-              `[View workflow run](${runUrl})`,
-            ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+            await ci.update(github, context, {
+              commentId: process.env.COMMENT_ID,
+              issueNumber: process.env.PR_NUMBER,
+              fallbackHeader: `**CLI tests** · head \`${sha.slice(0, 9)}\``,
+              state: process.env.COMMENT_ID ? undefined : result.state,
+              sections: { tests: result.text },
             });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body });
-            }
 
   bench:
     needs: [ prepare, build ]
@@ -862,7 +855,8 @@ jobs:
           echo "push failed after retries" >&2; exit 1
 
   report:
-    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wgpu, bench-wasm ]
+    # After report-tests, so the two never edit the /ci command comment at once.
+    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wgpu, bench-wasm, report-tests ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
@@ -953,13 +947,41 @@ jobs:
           name: bench-state-${{ needs.prepare.outputs.ref }}
           path: bench-state
           retention-days: 14
+      # A `/ci` command gets the comparison, or why there is none, in the bench section of
+      # its command comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event.inputs.comment_id != '' }}
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
+      - name: Report on the command comment
+        if: ${{ github.event.inputs.comment_id != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
+          SUPERSEDED: ${{ steps.head.outputs.superseded }}
+        with:
+          script: |
+            const fs = require('fs');
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            let text;
+            if (process.env.SUPERSEDED === 'true') {
+              text = 'The PR head moved on since this run started, so its numbers are not reported.';
+            } else if (fs.existsSync('pr-comment.md')) {
+              text = fs.readFileSync('pr-comment.md', 'utf8').slice(0, 60000);
+            } else {
+              text = 'Nothing to compare: no nightly reference for these runs yet, or every bench leg failed.';
+            }
+            await ci.update(github, context, { commentId: process.env.COMMENT_ID, sections: { bench: text } });
       # Only an automatic `pull_request` event on a fork gets a read-only token; every other
       # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
       # which always runs with a write token regardless of the target PR's fork status) can
       # post directly. A fresh comment per run (like the fork trampoline) so the PR thread
       # keeps the full history in chronological order instead of overwriting the previous result.
       - name: Comment on PR (direct)
-        if: ${{ hashFiles('pr-comment.md') != '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event.inputs.comment_id == '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
@@ -987,6 +1009,43 @@ jobs:
         with:
           name: bench-comment
           path: bench-comment
+
+  # The final state of a `/ci` command comment, once everything that reports on it is done.
+  finish:
+    needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm, bench, bench-macos, build-wgpu, bench-wgpu, build-dinghy, bench-dinghy, build-wasm, bench-wasm, report-tests, report ]
+    if: ${{ always() && github.event.inputs.comment_id != '' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
+          REBENCH: ${{ github.event.inputs.rebench }}
+          PREPARE: ${{ needs.prepare.result }}
+          ONLY: ${{ needs.prepare.outputs.only }}
+        with:
+          script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            const result = ci.jobs(process.env.NEEDS);
+            const sections = {};
+            if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
+              sections.bench = 'No bench report on this head to rebench; run `/ci bench` first.';
+            } else if (process.env.REBENCH === 'true' && process.env.ONLY === '{}') {
+              sections.bench = 'The last bench report on this head has no reds; nothing to re-run.';
+            }
+            if (result.failed.length) {
+              sections.failed = `Failed: ${result.failed.map(j => `\`${j}\``).join(', ')}.`;
+            }
+            await ci.update(github, context, { commentId: process.env.COMMENT_ID, state: result.state, sections });
 
   # --- daily kernel-pick gate: fail if the dispatcher's matmul pick lags the fastest
   # available kernel for a shape by more than the tolerance. Reuses the bench binaries;
