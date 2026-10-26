@@ -685,6 +685,105 @@ fn conv_3x3_per_pixel() -> TractResult<()> {
     Ok(())
 }
 
+/// A qualifying dense stride-1 3x3 conv rewrites to Winograd F(4,3): a
+/// tile-extracting grouped conv plus two batched GEMMs. The shapes, all at the
+/// smallest tile count the rewrite takes, cover aligned tiles, odd sizes (tail
+/// tiles cropped) with a batch and no bias, and no padding.
+#[test]
+fn conv_winograd_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    for (n, ci, co, h, w, pad, bias) in [
+        (1usize, 128usize, 128usize, 16usize, 16usize, 1usize, true),
+        (2, 128, 136, 13, 15, 1, false),
+        (1, 128, 128, 18, 18, 0, true),
+    ] {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+        let k =
+            model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+        let b = if bias {
+            model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?
+        } else {
+            model.add_const("b", Tensor::zero::<f32>(&[co])?)?
+        };
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                dilations: None,
+                strides: Some(tvec![1, 1]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        let mut transformed = model.clone();
+        WgpuTransform.transform(&mut transformed)?;
+        ensure!(
+            transformed.nodes().iter().any(|node| node.name.contains(".wino.")),
+            "winograd rewrite did not fire for {ci}->{co} {h}x{w}"
+        );
+        gpu_vs_cpu(model, Tensor::from_shape(&[n, ci, h, w], &fill(5, n * ci * h * w))?)
+            .with_context(|| format!("n{n} ci{ci} co{co} {h}x{w} p{pad}"))?;
+    }
+    Ok(())
+}
+
+/// The rewrite declines below its channel-product and tile gates, and on a
+/// stride-2 conv: those keep the plain wgpu conv.
+#[test]
+fn conv_winograd_skips_unfit() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    for (n, ci, co, h, w, stride) in [
+        (1usize, 64usize, 64usize, 16usize, 16usize, 2usize),
+        (1, 8, 8, 64, 64, 1),
+        (1, 16, 16, 12, 12, 1),
+        (1, 64, 64, 16, 16, 1),
+        (1, 64, 64, 64, 64, 1),
+        (1, 128, 64, 32, 32, 1),
+        (1, 128, 128, 8, 8, 1),
+    ] {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+        let k =
+            model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+        let b = model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                dilations: None,
+                strides: Some(tvec![stride, stride]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        WgpuTransform.transform(&mut model)?;
+        ensure!(
+            !model.nodes().iter().any(|node| node.name.contains(".wino.")),
+            "winograd rewrite fired for {ci}->{co} {h}x{w} s{stride}"
+        );
+        ensure!(
+            model.nodes().iter().any(|node| node.op_as::<crate::ops::conv::WgpuConv>().is_some()),
+            "expected a plain WgpuConv for {ci}->{co} {h}x{w} s{stride}"
+        );
+    }
+    Ok(())
+}
+
 /// The bias and activation after a transposed convolution fold into its
 /// kernel, and the result matches the CPU: the segmenter's last layer.
 #[test]
