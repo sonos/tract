@@ -100,6 +100,7 @@ impl ModelTransform for WgpuTransform {
                 drop_unit_axes_of_scaled_masked_softmax,
             )
             .with_rule_for("float_gather_nd_indices", float_gather_nd_indices)
+            .with_rule_for("conv_to_winograd_f43", crate::rewrite_rules::conv_to_winograd_f43)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
         Rewriter::default()
