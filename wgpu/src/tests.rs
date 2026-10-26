@@ -255,6 +255,21 @@ fn a_move_rides_the_op_that_reads_it() -> TractResult<()> {
 }
 
 #[test]
+fn axis_op_at_a_model_output_is_left_alone() -> TractResult<()> {
+    use tract_gpu::ops::change_axes::GpuAxisOp;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 1, 15360]))?;
+    let reshape =
+        GpuAxisOp::new(AxisOp::Reshape(2, tvec!(15360.into()), tvec!(96.into(), 160.into())));
+    let y = model.wire_node("unmerge", reshape.clone(), &[x])?[0];
+    model.select_output_outlets(&[y])?;
+    let node = model.node(y.node);
+    let patch = crate::rewrite_rules::fuse_axis_op(&(), &model, node, &node.name, &reshape)?;
+    ensure!(patch.is_none(), "an axis op with no successor has nothing to fuse into");
+    Ok(())
+}
+
+#[test]
 fn rgba8_ingest_to_nchw_f32() -> TractResult<()> {
     with_wgpu_queue(|q| {
         // 2x2 packed RGBA8. textureLoad of rgba8unorm yields 0..1 floats.
