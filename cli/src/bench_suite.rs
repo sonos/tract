@@ -63,6 +63,10 @@ struct Bench {
     /// Device keys (`--device`) this bench never runs on, e.g. a model too large for the box.
     #[serde(default)]
     skip_devices: Vec<String>,
+    /// Run only in reference mode (`--samples`), smoke, or when picked by `--select` or
+    /// `--only`: a bench too slow for every PR push.
+    #[serde(default)]
+    nightly_only: bool,
 }
 
 #[derive(Deserialize, Clone, Copy, PartialEq)]
@@ -199,6 +203,11 @@ pub(crate) struct BenchSuiteParams {
     /// Only run benches whose name contains SUBSTR
     #[arg(long)]
     filter: Option<String>,
+    /// Only run benches whose name matches one of these glob patterns (comma list, `*`
+    /// matches any run of characters, case-insensitive). Also runs the `nightly_only`
+    /// benches it matches outside reference mode. Fails if nothing matches.
+    #[arg(long, value_delimiter = ',')]
+    select: Option<Vec<String>>,
     /// Only run these runs (comma list), each a run id: `kind.name.variant` with '-' as
     /// '_', i.e. a metric key without its metric segment (`net.mobilenet_v2_1.pass`), as
     /// `bench-report --reds` lists them.
@@ -356,6 +365,14 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let skip_runtimes = params.skip_runtimes;
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
+    let select = params.select.as_deref();
+    if let Some(pats) = select {
+        ensure!(
+            manifest.benches.iter().any(|b| pats.iter().any(|p| glob_match(p, &b.name))),
+            "--select {} matches no bench in {manifest_path}",
+            pats.join(",")
+        );
+    }
     let only = params.only.as_deref();
     let device = params.device.as_deref();
     let threads_ladder = params.threads_ladder.as_deref();
@@ -374,6 +391,12 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
+            continue;
+        }
+        if select.is_some_and(|pats| !pats.iter().any(|p| glob_match(p, &bench.name))) {
+            continue;
+        }
+        if bench.nightly_only && samples == 0 && !smoke && select.is_none() && only.is_none() {
             continue;
         }
         if (skip_runtimes || child.is_wasm()) && !bench.runtimes.is_empty() {
@@ -722,6 +745,23 @@ fn run_one(
     ensure!(output.status.success(), "child exited with {}", output.status);
     ensure!(!metrics.is_empty(), "child produced no metrics");
     Ok(metrics)
+}
+
+/// Case-insensitive glob match where `*` matches any run of characters.
+fn glob_match(pattern: &str, name: &str) -> bool {
+    let (pattern, name) = (pattern.to_lowercase(), name.to_lowercase());
+    let mut parts = pattern.split('*');
+    let first = parts.next().unwrap_or_default();
+    let Some(mut rest) = name.strip_prefix(first) else { return false };
+    let mut parts: Vec<&str> = parts.collect();
+    let Some(last) = parts.pop() else { return rest.is_empty() };
+    for part in parts {
+        match rest.find(part) {
+            Some(i) => rest = &rest[i + part.len()..],
+            None => return false,
+        }
+    }
+    rest.ends_with(last)
 }
 
 /// The id of one (bench, variant) run, as its metric keys carry it: see
@@ -1238,5 +1278,22 @@ fn set_governor() {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn glob_matching() {
+        assert!(glob_match("*ppocr*", "ppocrv6_tiny_det"));
+        assert!(glob_match("ppocr*det", "PPOCRv6_tiny_det"));
+        assert!(glob_match("ppocrv6_tiny_det", "ppocrv6_tiny_det"));
+        assert!(!glob_match("ppocr", "ppocrv6_tiny_det"));
+        assert!(!glob_match("*rec", "ppocrv6_tiny_det"));
+        assert!(!glob_match("a*b*b", "ab"));
+        assert!(glob_match("a*b*b", "abb"));
+        assert!(glob_match("*", "anything"));
     }
 }

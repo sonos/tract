@@ -36,6 +36,11 @@ on:
         required: false
         type: boolean
         default: false
+      select:
+        description: "Comma-separated bench-name globs (bench-suite --select): bench only those, nightly-only ones included; empty = the whole manifest."
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -507,11 +512,13 @@ jobs:
           DEVICE: ${{ matrix.target }}
           MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
           ONLY: ${{ matrix.only }}
+          SELECT: ${{ github.event.inputs.select }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
             --manifest ci/benches.toml \
             ${ONLY:+--only "$ONLY"} \
+            ${SELECT:+--select "$SELECT"} \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
@@ -744,6 +751,7 @@ jobs:
         if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
         env:
           ONLY: ${{ fromJSON(needs.prepare.outputs.only)[matrix.device] }}
+          SELECT: ${{ github.event.inputs.select }}
           DINGHY_TARGET: ${{ matrix.dinghy_target }}
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
@@ -764,6 +772,7 @@ jobs:
                ./tract-cli/tract -- bench-suite \
                --manifest ci/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
                ${ONLY:+--only "$ONLY"} \
+               ${SELECT:+--select "$SELECT"} \
                ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
