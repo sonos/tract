@@ -851,7 +851,6 @@ jobs:
   # Nightly only: append the dinghy target's row to bench-data. The board can't run the append tool,
   # so a hosted job does it with the x86 CLI (bench-append is arch-agnostic JSON) reading the JSONL result.
   append-dinghy:
-    name: record ${{ matrix.device }}
     needs: [ prepare, build, bench-dinghy ]
     # always() (like the report job) so a cancelled/failed device leg (e.g. one board that
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
@@ -1127,7 +1126,6 @@ jobs:
   # self-referential (picked vs best-in-pool), so no golden numbers to maintain. Nightly
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
-    name: hwbench ${{ matrix.target }}
     needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
@@ -1152,7 +1150,6 @@ jobs:
   # wasmtime on the bench box. Self-referential (picked vs best in pool), so there is
   # nothing to keep in bench-data.
   build-wasm:
-    name: build wasm ${{ matrix.config }}
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: ubuntu-latest
@@ -1189,7 +1186,6 @@ jobs:
           path: target/wasm32-wasip1/release/tract.wasm
 
   hwbench-wasm:
-    name: hwbench wasm ${{ matrix.config }}
     needs: [ prepare, build-wasm ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     # The x86 bench box, not a hosted runner: the pick ratios are stable to ~2 points
@@ -1235,7 +1231,6 @@ jobs:
   # so it costs the bench boxes no daytime minutes; on the 9900k, which carries no GPU
   # jobs. `/ci bench wasm` runs it alone on a PR, against that nightly series.
   bench-wasm:
-    name: bench wasm ${{ matrix.config }}
     needs: [ prepare, build, build-wasm ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: i99900k
@@ -1331,7 +1326,6 @@ jobs:
   # Reuses the bench binaries; no golden numbers, just exit status. Nightly only,
   # sharing the per-box concurrency group so it never fights a running bench.
   smoke:
-    name: smoke ${{ matrix.target }}
     needs: [ prepare, build, build-macos ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
@@ -1357,7 +1351,6 @@ jobs:
           tract-cli/tract bench-suite --smoke --manifest ci/benches.toml --device "$DEVICE" ${{ matrix.suite_args }}
 
   hwbench-dinghy:
-    name: hwbench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
     if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
