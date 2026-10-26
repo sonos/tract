@@ -1028,13 +1028,16 @@ jobs:
           sparse-checkout: .github/scripts
           path: .ci-scripts
           persist-credentials: false
+      - id: cancelled
+        if: ${{ cancelled() && github.event.inputs.comment_id != '' }}
+        run: echo "cancelled=true" >> "$GITHUB_OUTPUT"
       - name: Report on the command comment
         if: ${{ github.event.inputs.comment_id != '' }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           COMMENT_ID: ${{ github.event.inputs.comment_id }}
           SUPERSEDED: ${{ steps.head.outputs.superseded }}
-          CANCELLED: ${{ cancelled() }}
+          CANCELLED: ${{ steps.cancelled.outputs.cancelled }}
         with:
           script: |
             const fs = require('fs');
