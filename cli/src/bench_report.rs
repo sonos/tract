@@ -539,11 +539,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     };
     let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
 
-    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("meta.json").exists())
-        .collect();
-    result_dirs.sort();
+    let result_dirs = device_dirs(results)?;
 
     let mut rows = vec![];
     let mut devices = vec![];
@@ -693,15 +689,30 @@ fn reds(rows: &[Row]) -> BTreeMap<String, Vec<String>> {
 }
 
 /// Per-device result dirs under `dir` (each holding `meta.json` + `metrics`), by device.
+/// The per-device result dirs (those holding a `meta.json`) under `dir`, sorted. A `dir`
+/// that holds a `meta.json` itself is the one device: download-artifact unpacks a single
+/// matching artifact straight into its path instead of a subdirectory.
+fn device_dirs(dir: &str) -> TractResult<Vec<std::path::PathBuf>> {
+    let dir = std::path::Path::new(dir);
+    if dir.join("meta.json").exists() {
+        return Ok(vec![dir.to_path_buf()]);
+    }
+    let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join("meta.json").exists())
+        .collect();
+    dirs.sort();
+    Ok(dirs)
+}
+
 fn result_dirs(dir: &str) -> TractResult<BTreeMap<String, std::path::PathBuf>> {
     let mut out = BTreeMap::new();
-    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(out) };
-    for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
-        if path.join("meta.json").exists() {
-            let meta: Meta =
-                serde_json::from_str(&std::fs::read_to_string(path.join("meta.json"))?)?;
-            out.insert(meta.device, path);
-        }
+    if !std::path::Path::new(dir).exists() {
+        return Ok(out);
+    }
+    for path in device_dirs(dir)? {
+        let meta: Meta = serde_json::from_str(&std::fs::read_to_string(path.join("meta.json"))?)?;
+        out.insert(meta.device, path);
     }
     Ok(out)
 }
@@ -757,11 +768,7 @@ pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
     let pr_sha = get("pr-sha").context("--pr-sha is required")?;
     let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
 
-    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("meta.json").exists())
-        .collect();
-    result_dirs.sort();
+    let result_dirs = device_dirs(results)?;
 
     let mut sections = String::new();
     for dir in &result_dirs {
@@ -835,6 +842,32 @@ pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_dirs_take_one_or_many_devices() {
+        let root = std::env::temp_dir().join(format!("tract-device-dirs-{}", std::process::id()));
+        let meta = |dir: &std::path::Path, device: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(
+                dir.join("meta.json"),
+                format!(r#"{{"device":"{device}","triple":"t"}}"#),
+            )
+            .unwrap();
+        };
+        let many = root.join("many");
+        meta(&many.join("bench-result-b"), "b");
+        meta(&many.join("bench-result-a"), "a");
+        std::fs::create_dir_all(many.join("unrelated")).unwrap();
+        let flat = root.join("flat");
+        meta(&flat, "a");
+        let devices = |d: &std::path::Path| {
+            result_dirs(d.to_str().unwrap()).unwrap().into_keys().collect::<Vec<_>>()
+        };
+        assert_eq!(devices(&many), ["a", "b"]);
+        assert_eq!(devices(&flat), ["a"]);
+        assert!(devices(&root.join("missing")).is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn merge_keeps_each_metrics_best() {
