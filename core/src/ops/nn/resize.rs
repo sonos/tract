@@ -356,6 +356,22 @@ impl Resize {
         );
     }
 
+    /// Whether the output is the input: the same concrete shape, every axis
+    /// planned as each output cell reading its own input cell.
+    fn is_identity(&self, model: &TypedModel, node: &TypedNode) -> TractResult<bool> {
+        let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+        let output_shape = &node.outputs[0].fact.shape;
+        let (Some(input_shape), Some(output_shape)) =
+            (input_shape.as_concrete(), output_shape.as_concrete())
+        else {
+            return Ok(false);
+        };
+        Ok(input_shape == output_shape
+            && input_shape
+                .iter()
+                .all(|&len| is_pixel_replication(&self.plan_axis(1.0, len, len), 1)))
+    }
+
     /// The resampling plan for one axis under this op's interpolator.
     pub fn plan_axis(&self, scale: f32, len_in: usize, len_out: usize) -> AxisPlan {
         let window = window_size(&self.interpolator, false, scale);
@@ -443,6 +459,15 @@ impl TypedOp for Resize {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.is_identity(model, node)? {
+            return TypedModelPatch::rewire(
+                model,
+                &node.inputs[..1],
+                &[node.id.into()],
+                &|_, xs| Ok(xs.into()),
+            )
+            .map(Some);
+        }
         rule_if!(matches!(self.interpolator, Interpolator::Nearest));
         rule_if_some!(scales_input = self.optional_scales_input);
         let scales_fact = model.outlet_fact(node.inputs[scales_input])?;
