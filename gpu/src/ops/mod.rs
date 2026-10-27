@@ -14,6 +14,7 @@ pub mod dyn_kv_cache;
 pub mod element_wise;
 pub mod fused_output;
 pub mod gather;
+pub mod gather_nd;
 pub mod gdn_recurrent;
 pub mod gelu_approximate;
 pub mod group_norm;
