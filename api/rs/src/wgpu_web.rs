@@ -23,6 +23,23 @@ impl Tensor {
         )?;
         Ok(Self(std::sync::Arc::new(tensor.into_tensor())))
     }
+
+    /// [`Tensor::from_canvas`], with each RGB channel mapped from [0, 1] to
+    /// `(value - mean) / std` in the same GPU pass. `std` must be finite and nonzero.
+    pub fn from_canvas_normalized(
+        canvas: web_sys::OffscreenCanvas,
+        mean: [f32; 3],
+        std: [f32; 3],
+    ) -> Result<Self> {
+        let (width, height) = (canvas.width(), canvas.height());
+        let tensor = tract_wgpu::tensor_from_external_image_normalized(
+            wgpu::ExternalImageSource::OffscreenCanvas(canvas),
+            width,
+            height,
+            tract_wgpu::Normalization { mean, std },
+        )?;
+        Ok(Self(std::sync::Arc::new(tensor.into_tensor())))
+    }
 }
 
 /// An RGBA8 mask texture shared with JavaScript on the inference device.

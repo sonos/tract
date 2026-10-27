@@ -325,6 +325,22 @@ fn rgba8_ingest_to_nchw_f32() -> TractResult<()> {
     })
 }
 
+#[test]
+fn rgba8_ingest_applies_normalization() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        let rgba: [u8; 8] = [255, 0, 51, 255, 0, 255, 204, 255];
+        let normalization = crate::Normalization { mean: [0.5, 0.25, 0.0], std: [0.5, 0.25, 2.0] };
+        let gpu = crate::kernels::ingest::tensor_from_rgba8_normalized(2, 1, &rgba, normalization)?;
+        q.flush()?;
+        let host = gpu.to_host()?.into_tensor();
+        let expected = Tensor::from_shape(&[1, 3, 1, 2], &[1.0f32, -1.0, -1.0, 3.0, 0.1, 0.4])?;
+        close(&host, &expected)?;
+        let bad = crate::Normalization { mean: [0.0; 3], std: [1.0, 0.0, 1.0] };
+        ensure!(crate::kernels::ingest::tensor_from_rgba8_normalized(2, 1, &rgba, bad).is_err());
+        Ok(())
+    })
+}
+
 // --- fusion arithmetic: the fused graph must compute what the ops did apart ---
 
 fn fill(seed: u64, n: usize) -> Vec<f32> {

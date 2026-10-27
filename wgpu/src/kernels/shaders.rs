@@ -3272,6 +3272,8 @@ struct Params {{
     width: u32,
     height: u32,
     _p: u32,
+    scale: vec4<f32>,
+    offset: vec4<f32>,
 }}
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -3285,7 +3287,7 @@ fn rgba_to_nchw_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
     if (i >= n) {{ return; }}
     let x = i % params.width;
     let y = i / params.width;
-    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0);
+    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0) * params.scale + params.offset;
     let hw = params.width * params.height;
     let o = params.off_out + i;
     outp[o] = px.r;
