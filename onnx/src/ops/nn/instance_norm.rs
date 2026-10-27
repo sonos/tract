@@ -1,5 +1,6 @@
 use crate::model::ParsingContext;
 use crate::pb::NodeProto;
+use tract_core::ops::nn::GroupNorm;
 use tract_hir::internal::*;
 
 pub fn instance_normalization(
@@ -45,6 +46,47 @@ impl Expansion for InstanceNorm {
     ) -> TractResult<TVec<OutletId>> {
         let input_fact = model.outlet_fact(inputs[0])?.clone();
         let rank = input_fact.rank();
+        let divised = if let Ok(channels) = input_fact.shape[1].to_usize() {
+            // One group per channel: backends run GroupNorm as one fused normalization.
+            let op = GroupNorm {
+                axis: 1,
+                groups: channels,
+                reduced_axes: (2..rank).collect(),
+                eps: rctensor0(self.epsilon),
+            };
+            model.wire_node(format!("{name}.group_norm"), op, &inputs[0..1])?
+        } else {
+            self.wire_decomposed(name, model, inputs[0], &input_fact)?
+        };
+        let mut scale =
+            model.wire_node(format!("{name}.add-scale-axis-n"), AxisOp::Add(0), &inputs[1..2])?;
+        for i in 2..rank {
+            scale =
+                model.wire_node(format!("{name}.add-scale-axis-{i}"), AxisOp::Add(2), &scale)?;
+        }
+        let scaled = model.wire_node(
+            format!("{name}.scaled"),
+            tract_hir::ops::math::mul(),
+            &[divised[0], scale[0]],
+        )?;
+        let mut bias =
+            model.wire_node(format!("{name}.add-bias-axis-n"), AxisOp::Add(0), &inputs[2..3])?;
+        for i in 2..rank {
+            bias = model.wire_node(format!("{name}.add-bias-axis-{i}"), AxisOp::Add(2), &bias)?;
+        }
+        model.wire_node(name, tract_hir::ops::math::add(), &[scaled[0], bias[0]])
+    }
+}
+
+impl InstanceNorm {
+    fn wire_decomposed(
+        &self,
+        name: &str,
+        model: &mut TypedModel,
+        input: OutletId,
+        input_fact: &TypedFact,
+    ) -> TractResult<TVec<OutletId>> {
+        let rank = input_fact.rank();
         // Each (batch, channel) plane is normalized on its own, over the spatial axes.
         let axes: Vec<_> = (2..rank as i64).collect();
         let mean = tract_hir::ops::nn::Reduce::new(
@@ -52,12 +94,9 @@ impl Expansion for InstanceNorm {
             true,
             tract_hir::ops::nn::Reducer::Mean,
         )
-        .wire(&format!("{name}.mean"), model, &inputs[0..1])?[0];
-        let diff = model.wire_node(
-            format!("{name}.diff"),
-            tract_hir::ops::math::sub(),
-            &[inputs[0], mean],
-        )?;
+        .wire(&format!("{name}.mean"), model, &[input])?[0];
+        let diff =
+            model.wire_node(format!("{name}.diff"), tract_hir::ops::math::sub(), &[input, mean])?;
         let sqr_diff =
             model.wire_node(format!("{name}.sqr"), tract_hir::ops::math::square(), &diff)?;
         let vari =
@@ -78,27 +117,6 @@ impl Expansion for InstanceNorm {
         )?;
         let div =
             model.wire_node(format!("{name}.rsqrt"), tract_hir::ops::math::rsqrt(), &vari_sane)?;
-        let divised = model.wire_node(
-            format!("{name}.div"),
-            tract_hir::ops::math::mul(),
-            &[diff[0], div[0]],
-        )?;
-        let mut scale =
-            model.wire_node(format!("{name}.add-scale-axis-n"), AxisOp::Add(0), &inputs[1..2])?;
-        for i in 2..rank {
-            scale =
-                model.wire_node(format!("{name}.add-scale-axis-{i}"), AxisOp::Add(2), &scale)?;
-        }
-        let scaled = model.wire_node(
-            format!("{name}.scaled"),
-            tract_hir::ops::math::mul(),
-            &[divised[0], scale[0]],
-        )?;
-        let mut bias =
-            model.wire_node(format!("{name}.add-bias-axis-n"), AxisOp::Add(0), &inputs[2..3])?;
-        for i in 2..rank {
-            bias = model.wire_node(format!("{name}.add-bias-axis-{i}"), AxisOp::Add(2), &bias)?;
-        }
-        model.wire_node(name, tract_hir::ops::math::add(), &[scaled[0], bias[0]])
+        model.wire_node(format!("{name}.div"), tract_hir::ops::math::mul(), &[diff[0], div[0]])
     }
 }
