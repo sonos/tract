@@ -1,0 +1,13 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A linear resize to the input's own size: `mismatch` is 0 only if it leaves
+# the input as it is.
+graph network(input_0) -> (mismatch)
+{
+    input_0 = tract_core_external(shape = [1, 2, 5, 7], datum_type = 'f32');
+    sizes = [1.0, 2.0, 5.0, 7.0];
+    resized = tract_core_resize(input_0, sizes = sizes, interpolator = 'linear', coord_transformer = 'half_pixel');
+    mismatch = sum_reduce(abs(sub(resized, input_0)), axes = [0, 1, 2, 3]);
+}
