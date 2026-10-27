@@ -304,7 +304,7 @@ impl TypedOp for Gather {
     ) -> TractResult<Option<TypedModelPatch>> {
         let (input_fact, indices_fact) = args_2!(model.node_input_facts(node.id)?);
         if let Some(indices) = indices_fact.konst.as_ref()
-            && indices.rank() == 1
+            && indices.rank() <= 1
             && indices.len() == 1
             && input_fact.is_plain()
             && input_fact.datum_type.is_number()
@@ -323,6 +323,13 @@ impl TypedOp for Gather {
                 crate::ops::array::Slice { axis: self.axis, start: index.clone(), end: index + 1 },
                 &[wire],
             )?[0];
+            if indices.rank() == 0 {
+                wire = patch.wire_node(
+                    format!("{}.rm_axis", node.name),
+                    AxisOp::Rm(self.axis),
+                    &[wire],
+                )?[0];
+            }
             patch.shunt_outside(model, node.id.into(), wire)?;
             return Ok(Some(patch));
         }

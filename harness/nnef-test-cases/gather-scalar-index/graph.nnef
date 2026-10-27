@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A gather by a constant scalar index, positive and negative, against the
+# slice-and-squeeze it is: `mismatch` is 0 only if they agree.
+graph gather_scalar_index(data) -> (mismatch)
+{
+    data = external<scalar>(shape = [2, 3, 4]);
+
+    reference = squeeze(slice(data, axes = [1], begin = [1], end = [2]), axes = [1]);
+    positive = tract_core_gather(data, indices = 1, axis = 1);
+    negative = tract_core_gather(data, indices = -2, axis = 1);
+
+    mismatch = sum_reduce(add(abs(sub(positive, reference)), abs(sub(negative, reference))), axes = [0, 1]);
+}
