@@ -15,7 +15,7 @@ name: CI slash command
 #                         mode defaults to tests. Operator-only, see below.
 #   /ci 5090           -> alias of blackwell
 #   /ci bench          -> cli.yml's PR bench alone (the push already ran the harness ci.sh cases)
-#   /ci bench all      -> alias of cli (adds the LLM matrix, ci-full.sh, harness-checked)
+#   /ci bench all      -> the PR bench of every bench, nightly-only ones included
 #   /ci bench wgpu     -> the wgpu bench alone (4060 box, Vulkan) vs its nightly reference
 #   /ci bench wasm     -> the wasm bench alone (9900k, wasmtime) vs its nightly reference
 #   /ci bench PATTERNS -> /ci bench restricted to the benches whose name matches one of the
@@ -24,7 +24,7 @@ name: CI slash command
 #   /ci benches        -> alias of bench
 #   /ci rebench        -> re-run only the reds of the last bench report on the PR head,
 #                         on the boxes that flagged them, and report the merged result
-#   /ci bench-mt-ladder [ladder] -> cli.yml with a thread-scaling bench; ladder defaults to 2,4,0
+#   /ci bench-mt-ladder [ladder] -> a thread-scaling bench alone; ladder defaults to 2,4,0
 # Only commenters with write access can trigger (enforced by slash-command-dispatch).
 # `blackwell` is narrower still: it runs on a single workstation GPU, so only the
 # logins in the BLACKWELL_OPERATORS repo variable (default `kali`) can queue it.
@@ -119,7 +119,7 @@ jobs:
               return reject([
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all|PATTERNS|wgpu [PATTERNS]|wasm [PATTERNS]]` (alias: `benches`; `all` is `/ci cli`; PATTERNS: comma-separated bench-name globs like `*ppocr*`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all|PATTERNS|wgpu [PATTERNS]|wasm [PATTERNS]]` (alias: `benches`; `all` adds the nightly-only benches; PATTERNS: comma-separated bench-name globs like `*ppocr*`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n'));
             }
             const inputs = { pr_number: String(pr) };
@@ -160,19 +160,19 @@ jobs:
                 both: 'CUDA suites, then a bench of the head against its merge-base, on the RTX 5090 (`cuda-blackwell.yml`). Check: `/ci blackwell` (tests).',
               }[mode] + ' Waits in the queue until the box\'s runner is up.';
             }
-            // `/ci bench` is the PR-push bench; `/ci bench all` keeps the full cli.yml run;
+            // `/ci bench` is the PR-push bench; `/ci bench all` adds the nightly-only benches;
             // `/ci bench wgpu` and `/ci bench wasm` run that one bench leg and nothing else;
             // any other argument is a list of bench-name globs passed on as `select`.
             if (target === 'bench' || target === 'benches') {
               const arg = (args.arg2 || '').toLowerCase();
               const extra = (args.arg3 || '').toLowerCase();
-              const scopes = { '': 'bench', all: 'full', wgpu: 'wgpu', wasm: 'wasm' };
+              const scopes = { '': 'bench', all: 'bench', wgpu: 'wgpu', wasm: 'wasm' };
               const isPatterns = a => /^[a-z0-9_.*-]+(,[a-z0-9_.*-]+)*$/.test(a);
               const usage = `Use \`/ci ${target}\`, \`/ci ${target} all\`, \`/ci ${target} PATTERNS\`, \`/ci ${target} wgpu [PATTERNS]\` or \`/ci ${target} wasm [PATTERNS]\` (PATTERNS: comma-separated bench-name globs like \`*ppocr*\`).`;
               let patterns = '';
               if (Object.hasOwn(scopes, arg) && (!extra || (['wgpu', 'wasm'].includes(arg) && isPatterns(extra)))) {
                 inputs.scope = scopes[arg];
-                patterns = extra;
+                patterns = arg === 'all' ? '*' : extra;
               } else if (isPatterns(arg) && !extra) {
                 inputs.scope = 'bench';
                 patterns = arg;
@@ -207,11 +207,12 @@ jobs:
               }
               plan = {
                 bench: 'PR bench on the bench boxes and dev boards (`cli.yml`); no tests, the push already ran them (`/ci cli` does).',
-                full: 'CLI workflow, full scope (`cli.yml`): harness `ci.sh` and `ci-full.sh` cases, the LLM matrix, harness-checked, and the PR bench. Check: `/ci cli` (tests).',
                 wgpu: 'The wgpu bench leg alone (4060 box, Vulkan) against its nightly reference (`cli.yml`).',
                 wasm: 'The wasm bench leg alone (9900k, wasmtime) against its nightly reference (`cli.yml`).',
               }[inputs.scope];
-              if (inputs.select) {
+              if (inputs.select === '*') {
+                plan = 'PR bench of every bench, nightly-only ones included, on the bench boxes and dev boards (`cli.yml`).';
+              } else if (inputs.select) {
                 plan = {
                   bench: `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards (\`cli.yml\`).`,
                   wgpu: `The wgpu bench leg alone (4060 box, Vulkan), for the benches matching \`${inputs.select}\`, against its nightly reference (\`cli.yml\`).`,
@@ -227,8 +228,9 @@ jobs:
             // `/ci bench-mt-ladder [ladder]`: pass the optional ladder (default 2,4,0) so
             // cli.yml runs the thread scaling sweep + scaling report instead of vs-main.
             if (target === 'bench-mt-ladder') {
+              inputs.scope = 'bench';
               inputs.mt_ladder = args.arg2 || '2,4,0';
-              plan = `CLI workflow, full scope (\`cli.yml\`), with a thread-scaling bench on ladder \`${inputs.mt_ladder}\` instead of the PR bench. Check: \`/ci cli\` (tests).`;
+              plan = `Thread-scaling bench on ladder \`${inputs.mt_ladder}\` instead of the PR bench (\`cli.yml\`).`;
             }
 
             const command = ['/ci', args.arg1, args.arg2, args.arg3].filter(Boolean).join(' ');
