@@ -4,6 +4,7 @@
 
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Pad, Slice, TypedConcat};
+use tract_core::ops::downsample::Downsample;
 use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulsePad};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
@@ -44,6 +45,11 @@ pub fn try_make_copy_based_op(
     }
     if let Some(op) = node.op_as::<Pad>()
         && let Some(gpu) = super::pad::GpuPad::from_core(op)
+    {
+        return Ok(Some(Box::new(gpu)));
+    }
+    if let Some(op) = node.op_as::<Downsample>()
+        && let Some(gpu) = super::downsample::GpuDownsample::from_core(op)
     {
         return Ok(Some(Box::new(gpu)));
     }
