@@ -41,8 +41,12 @@ fn make_qkx2_quants(
     let mut sum_w = weights[0];
     let mut sum_x = sum_w * x[0];
     for i in 1..n {
-        min = min.min(x[i]);
-        max = max.max(x[i]);
+        if x[i] < min {
+            min = x[i];
+        }
+        if x[i] > max {
+            max = x[i];
+        }
         sum_w += weights[i];
         sum_x += weights[i] * x[i];
     }
@@ -135,8 +139,10 @@ fn quant_scales_mins(
         let levels = &mut levels[32 * j..][..32];
         scales[j] = make_qkx2_quants(x, &weights, levels, &mut mins[j], nmax, rmin, 0.1, nstep);
     }
-    let max_scale = scales.iter().fold(0f32, |a, &b| a.max(b));
-    let max_min = mins.iter().fold(0f32, |a, &b| a.max(b));
+    // Comparisons as in ggml, not f32::max: a zero block has mins of -0.0, and
+    // f32::max(0.0, -0.0) may return either zero, so `dmin` could come out as -0.0.
+    let max_scale = scales.iter().fold(0f32, |a, &b| if b > a { b } else { a });
+    let max_min = mins.iter().fold(0f32, |a, &b| if b > a { b } else { a });
     let inv_scale = if max_scale > 0.0 { 63.0 / max_scale } else { 0.0 };
     let inv_min = if max_min > 0.0 { 63.0 / max_min } else { 0.0 };
     let sc = &mut header[4..16];
