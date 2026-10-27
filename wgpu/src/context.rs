@@ -1069,6 +1069,7 @@ impl WgpuQueue {
         std::mem::forget(std::mem::take(&mut *self.retained.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.retained_textures.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.buffer_slots.borrow_mut()));
+        std::mem::forget(std::mem::take(&mut *self.partition_sets.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.repacked.borrow_mut()));
         unsafe {
             std::mem::forget(ManuallyDrop::take(&mut self.uniform));
