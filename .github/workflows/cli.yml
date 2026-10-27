@@ -621,6 +621,7 @@ jobs:
         run: |
           mkdir -p result
           cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
         if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
@@ -704,6 +705,7 @@ jobs:
         run: |
           mkdir -p result
           cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
           printf '{"device":"i9-11900kb_rtx-4060_wgpu","triple":"x86_64-unknown-linux-gnu"}\n' > result/meta.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && hashFiles('metrics') != '' }}
@@ -847,14 +849,18 @@ jobs:
             ok=false
           fi
           grep '"metric"' captured.out > result/metrics || true
-          test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
+          grep '"failure"' captured.out > result/metrics.failures || rm -f result/metrics.failures
+          if [ ! -s result/metrics ] && [ ! -f result/metrics.failures ]; then
+            echo "::error::bench-dinghy: no metrics captured"
+            exit 1
+          fi
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
           if [ "$ok" != true ]; then
             echo "::error::bench-dinghy: some bench runs failed; the metrics of the others are kept"
             exit 1
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() && hashFiles('result/metrics') != '' && (needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]) }}
+        if: ${{ !cancelled() && hashFiles('result/meta.json') != '' && (needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]) }}
         with:
           name: bench-result-${{ matrix.device }}
           path: result
@@ -1337,6 +1343,7 @@ jobs:
         run: |
           mkdir -p result
           cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
           printf '{"device":"%s","triple":"wasm32-wasip1"}\n' "$DEVICE" > result/meta.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}

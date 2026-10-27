@@ -387,7 +387,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     let start = Instant::now();
     let mut results: Vec<RunResult> = vec![];
-    let mut failures: Vec<String> = vec![];
+    let mut failures: Vec<(String, String)> = vec![];
 
     for (bench_idx, bench) in manifest.benches.iter().enumerate() {
         if filter.is_some_and(|f| !bench.name.contains(f)) {
@@ -526,7 +526,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                 }
                 Err(e) => {
                     eprintln!("  !! {} {} failed: {e:#}", bench.name, variant);
-                    failures.push(format!("{} [{variant}]", bench.name));
+                    failures.push((format!("{} [{variant}]", bench.name), format!("{e:#}")));
                 }
             }
         }
@@ -538,7 +538,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             failures.is_empty(),
             "smoke: {} run(s) failed to load/run:\n  {}",
             failures.len(),
-            failures.join("\n  ")
+            failures
+                .iter()
+                .map(|(run, reason)| format!("{run}: {reason}"))
+                .collect::<Vec<_>>()
+                .join("\n  ")
         );
         return Ok(());
     }
@@ -558,6 +562,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     metrics.push(("bundle.bench_runtime".to_string(), start.elapsed().as_secs() as f64));
     write_metrics(output, &metrics)?;
     eprintln!("wrote {} metrics to {output}", metrics.len());
+    write_failures(output, &failures)?;
     // A run that died -- notably a `--timeout` watchdog kill (exit 124) on a wedged
     // transform -- used to be collected here and never looked at, so a hung bench
     // reported success and cost only wall clock. The metrics are written first, so the
@@ -566,7 +571,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         failures.is_empty(),
         "{} bench run(s) failed:\n  {}",
         failures.len(),
-        failures.join("\n  ")
+        failures
+            .iter()
+            .map(|(run, reason)| format!("{run}: {reason}"))
+            .collect::<Vec<_>>()
+            .join("\n  ")
     );
     Ok(())
 }
@@ -729,9 +738,19 @@ fn run_one(
         cmd.arg("--allow-random-input");
     }
     cmd.args(sub_flags);
-    cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
-    let output = cmd.output().context("spawning child tract")?;
+    let mut process = cmd.spawn().context("spawning child tract")?;
+    let stderr = process.stderr.take().context("child stderr")?;
+    let tee = std::thread::spawn(move || tee_stderr(stderr));
+    let output = process.wait_with_output().context("waiting for child tract")?;
+    let tail = tee.join().unwrap_or_default();
+    if !output.status.success() {
+        match failure_reason(&tail) {
+            Some(reason) => bail!("child exited with {}: {reason}", output.status),
+            None => bail!("child exited with {}", output.status),
+        }
+    }
     let stdout = String::from_utf8_lossy(&output.stdout);
 
     let mut metrics = vec![];
@@ -742,9 +761,65 @@ fn run_one(
             .replace('-', "_");
         metrics.push((key, parsed.value));
     }
-    ensure!(output.status.success(), "child exited with {}", output.status);
     ensure!(!metrics.is_empty(), "child produced no metrics");
     Ok(metrics)
+}
+
+/// Copy a child's stderr to ours line by line, as it comes, and return its last lines.
+fn tee_stderr(stderr: impl std::io::Read) -> Vec<String> {
+    use std::io::BufRead;
+    const KEPT: usize = 40;
+    let mut tail = std::collections::VecDeque::with_capacity(KEPT);
+    let mut reader = std::io::BufReader::new(stderr);
+    let mut line = vec![];
+    while reader.read_until(b'\n', &mut line).unwrap_or(0) > 0 {
+        let _ = std::io::stderr().write_all(&line);
+        if tail.len() == KEPT {
+            tail.pop_front();
+        }
+        tail.push_back(String::from_utf8_lossy(&line).trim_end().to_string());
+        line.clear();
+    }
+    tail.into()
+}
+
+/// Why a failed child failed, from its stderr tail: a panic's message, else its last logged
+/// error with the innermost cause of its `Caused by:` chain, else its last line. ANSI colours
+/// stripped, cut to 300 characters.
+fn failure_reason(tail: &[String]) -> Option<String> {
+    let plain: Vec<String> = tail
+        .iter()
+        .map(|l| {
+            let mut out = String::new();
+            let mut chars = l.chars();
+            while let Some(c) = chars.next() {
+                if c == '\u{1b}' {
+                    chars.by_ref().find(|c| c.is_ascii_alphabetic());
+                } else {
+                    out.push(c);
+                }
+            }
+            out.trim().to_string()
+        })
+        .filter(|l| !l.is_empty())
+        .collect();
+    let panic =
+        plain.iter().rposition(|l| l.contains("panicked at")).and_then(|i| plain.get(i + 1));
+    let error = plain.iter().rposition(|l| l.contains(" ERROR ")).map(|i| {
+        let line = &plain[i];
+        let message = line.find("] ").map_or(line.as_str(), |j| &line[j + 2..]);
+        let cause = plain[i + 1..]
+            .iter()
+            .filter_map(|l| l.split_once(": ").filter(|(n, _)| n.parse::<usize>().is_ok()))
+            .map(|(_, c)| c)
+            .next_back();
+        match cause {
+            Some(cause) => format!("{message}: {cause}"),
+            None => message.to_string(),
+        }
+    });
+    let reason = panic.cloned().or(error).or(plain.last().cloned())?;
+    Some(reason.chars().take(300).collect())
 }
 
 /// Case-insensitive glob match where `*` matches any run of characters.
@@ -892,6 +967,7 @@ fn bench_median(
 ) -> TractResult<Vec<(String, f64)>> {
     let mut acc: BTreeMap<String, Vec<f64>> = BTreeMap::new();
     let mut ok = 0;
+    let mut last_error = None;
     for i in 0..samples {
         match run() {
             Ok(m) => {
@@ -900,10 +976,15 @@ fn bench_median(
                     acc.entry(k).or_default().push(v);
                 }
             }
-            Err(e) => eprintln!("    sample {} failed: {e:#}", i + 1),
+            Err(e) => {
+                eprintln!("    sample {} failed: {e:#}", i + 1);
+                last_error = Some(e);
+            }
         }
     }
-    ensure!(ok > 0, "all {samples} samples failed");
+    if let (0, Some(e)) = (ok, last_error) {
+        return Err(e.context(format!("all {samples} samples failed")));
+    }
     Ok(acc.into_iter().map(|(k, v)| (k, median(&v))).collect())
 }
 
@@ -1037,6 +1118,29 @@ fn write_metrics(path: &str, metrics: &[(String, f64)]) -> TractResult<()> {
         writeln!(file, "{k} {v}")?;
     }
     Ok(())
+}
+
+/// Write the failed runs, each with why it failed, as JSON lines (`{"failure": run, "reason":
+/// ...}`) to `<path>.failures`, or to stdout after the metrics when `path` is `-`. bench-report
+/// lists them in the PR comment. A run with no failure removes a stale `<path>.failures`.
+fn write_failures(path: &str, failures: &[(String, String)]) -> TractResult<()> {
+    let lines: Vec<String> = failures
+        .iter()
+        .map(|(run, reason)| serde_json::json!({ "failure": run, "reason": reason }).to_string())
+        .collect();
+    if path == "-" {
+        let mut out = std::io::stdout().lock();
+        for line in &lines {
+            writeln!(out, "{line}")?;
+        }
+        return Ok(out.flush()?);
+    }
+    let failures_path = format!("{path}.failures");
+    if lines.is_empty() {
+        let _ = std::fs::remove_file(&failures_path);
+        return Ok(());
+    }
+    Ok(std::fs::write(failures_path, lines.join("\n") + "\n")?)
 }
 
 fn read_metrics(path: &str) -> TractResult<HashMap<String, f64>> {
@@ -1284,6 +1388,27 @@ fn set_governor() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn failure_reasons() {
+        let lines = |t: &str| t.lines().map(String::from).collect::<Vec<_>>();
+        let panic = lines(
+            "\u{1b}[32m  start\u{1b}[0m\nthread 'main' (2267101) panicked at /x/wgpu_core.rs:1619:18:\nwgpu error: Out of Memory\nnote: run with `RUST_BACKTRACE=1`",
+        );
+        assert_eq!(failure_reason(&panic).unwrap(), "wgpu error: Out of Memory");
+        let chain = lines(
+            "[2026-10-27T09:36:21Z ERROR tract] Error at stage \"analyse\"\n\nCaused by:\n    0: ModelBuildingError\n    4: Impossible to unify Val(7) with Val(3).",
+        );
+        assert_eq!(
+            failure_reason(&chain).unwrap(),
+            "Error at stage \"analyse\": Impossible to unify Val(7) with Val(3)."
+        );
+        assert_eq!(
+            failure_reason(&lines("loading\nkilled by watchdog\n")).unwrap(),
+            "killed by watchdog"
+        );
+        assert_eq!(failure_reason(&[]), None);
+    }
 
     #[test]
     fn glob_matching() {
