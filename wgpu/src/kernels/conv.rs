@@ -19,16 +19,23 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
 /// each tile walks it, where one thread per output would not.
 const CONV_TILED_MIN_TILES: usize = 32;
 
+/// A reduction at least this long takes the implicit GEMM from
+/// [`CONV_TILED_LONG_K_MIN_TILES`] tiles: one thread per output would walk it
+/// uncoalesced, which costs more than the idle part of the device.
+const CONV_TILED_LONG_K: usize = 8192;
+const CONV_TILED_LONG_K_MIN_TILES: usize = 8;
+
 /// Whether the implicit-GEMM kernel should serve this convolution: per group,
 /// enough output channels, pixels and reduction to fill a good part of its
-/// tiles, and enough tiles to occupy the device, with every tile index inside
-/// one grid dimension.
+/// tiles, and enough tiles to occupy the device, or fewer under a long
+/// reduction, with every tile index inside one grid dimension.
 fn tiled_applies(groups: usize, co_pg: usize, pixels: usize, k: usize) -> bool {
-    co_pg >= 32
+    let tiles = groups * co_pg.div_ceil(MATMUL_TILE) * pixels.div_ceil(MATMUL_TILE);
+    co_pg >= 16
         && pixels >= 32
         && k >= 16
-        && groups * co_pg.div_ceil(MATMUL_TILE) * pixels.div_ceil(MATMUL_TILE)
-            >= CONV_TILED_MIN_TILES
+        && (tiles >= CONV_TILED_MIN_TILES
+            || (k >= CONV_TILED_LONG_K && tiles >= CONV_TILED_LONG_K_MIN_TILES))
         && groups <= 65535
         && co_pg.div_ceil(MATMUL_TILE) <= 65535
         && pixels.div_ceil(MATMUL_TILE) <= 65535
