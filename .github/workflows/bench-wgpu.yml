@@ -67,6 +67,8 @@ jobs:
             --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu \
             --samples 5 --second-pass-max 10        # produces ./metrics
       - name: Checkout bench-data
+        # A failed bench run fails the suite after it wrote the others' metrics; record those.
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,6 +77,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         env:
           DEVICE: i9-11900kb_rtx-4060_wgpu
           REF: ${{ github.sha }}
