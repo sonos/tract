@@ -45,7 +45,9 @@ null,
 "baf81dca616c0260e8ed967a616fcaf846079f3f",
 "b3494da63f8663e86392d0c178f6181c258b657e",
 "42e3bee8d7128ed4a89c2d793be5c1930e609315",
-"a6832b2837af77dbfbff4d8dc0e04468dae06ba5"
+"a6832b2837af77dbfbff4d8dc0e04468dae06ba5",
+null,
+"d4680065bc7b46abfb45453c0b28f8dad2ae62b0"
 ],
 "metrics": {
 "bundle.bench_runtime": [
@@ -93,7 +95,9 @@ null,
 1119,
 1122,
 1147,
-1119
+1119,
+null,
+1176
 ],
 "net.arm_ml_kws_cnn_m.evaltime.pass": [
 0.0007823,
@@ -140,7 +144,9 @@ null,
 0.0006376,
 0.0006471,
 0.0006445,
-0.0006602
+0.0006602,
+null,
+0.0006447
 ],
 "net.dfn3_df_dec.evaltime.s100": [
 0.01098,
@@ -187,7 +193,9 @@ null,
 0.01074,
 0.01001,
 0.009829,
-0.009533
+0.009533,
+null,
+0.009875
 ],
 "net.dfn3_enc.evaltime.s100": [
 0.01506,
@@ -234,7 +242,9 @@ null,
 0.01305,
 0.01284,
 0.01318,
-0.01293
+0.01293,
+null,
+0.013
 ],
 "net.dfn3_erb_dec.evaltime.s100": [
 0.01333,
@@ -281,7 +291,9 @@ null,
 0.01127,
 0.01136,
 0.01114,
-0.01122
+0.01122,
+null,
+0.01105
 ],
 "net.dtln_1.evaltime.frame": [
 0.00005869,
@@ -328,7 +340,9 @@ null,
 0.00005903,
 0.00005724,
 0.00005783,
-0.00005733
+0.00005733,
+null,
+0.00005998
 ],
 "net.dtln_2.evaltime.frame": [
 0.0001035,
@@ -375,7 +389,9 @@ null,
 0.0001006,
 0.0001024,
 0.00009955,
-0.0001023
+0.0001023,
+null,
+0.0000965
 ],
 "net.dummy_conmer_12M.evaltime.pulse_120ms": [
 0.01214,
@@ -422,7 +438,9 @@ null,
 0.01002,
 0.01005,
 0.01008,
-0.01004
+0.01004,
+null,
+0.01013
 ],
 "net.en_tdnn_15M.evaltime.2600ms": [
 0.1631,
@@ -469,7 +487,9 @@ null,
 0.1339,
 0.135,
 0.1358,
-0.1358
+0.1358,
+null,
+0.1355
 ],
 "net.en_tdnn_15M.evaltime.pulse_120ms": [
 0.01355,
@@ -516,7 +536,9 @@ null,
 0.01167,
 0.01164,
 0.01174,
-0.01168
+0.01168,
+null,
+0.0118
 ],
 "net.en_tdnn_15M.evaltime.pulse_240ms": [
 0.01828,
@@ -563,7 +585,9 @@ null,
 0.01403,
 0.0141,
 0.01422,
-0.01394
+0.01394,
+null,
+0.01407
 ],
 "net.en_tdnn_15M_nnef.evaltime.pulse_240ms": [
 0.01638,
@@ -610,7 +634,9 @@ null,
 0.01399,
 0.01396,
 0.01409,
-0.01396
+0.01396,
+null,
+0.01426
 ],
 "net.en_tdnn_8M.evaltime.2600ms": [
 0.07944,
@@ -657,7 +683,9 @@ null,
 0.06532,
 0.06449,
 0.06496,
-0.06417
+0.06417,
+null,
+0.06432
 ],
 "net.en_tdnn_8M.evaltime.pulse_120ms": [
 0.007923,
@@ -704,7 +732,9 @@ null,
 0.005309,
 0.005378,
 0.005413,
-0.005382
+0.005382,
+null,
+0.005424
 ],
 "net.en_tdnn_8M.evaltime.pulse_180ms": [
 0.007553,
@@ -751,7 +781,9 @@ null,
 0.006153,
 0.006178,
 0.006244,
-0.006292
+0.006292,
+null,
+0.006319
 ],
 "net.en_tdnn_8M.evaltime.pulse_240ms": [
 0.008397,
@@ -798,7 +830,9 @@ null,
 0.00648,
 0.006453,
 0.006541,
-0.00653
+0.00653,
+null,
+0.006562
 ],
 "net.en_tdnn_8M_nnef.evaltime.pulse_240ms": [
 0.007765,
@@ -845,7 +879,9 @@ null,
 0.006573,
 0.006545,
 0.006497,
-0.006576
+0.006576,
+null,
+0.006613
 ],
 "net.en_tdnn_lstm_bn_q7.evaltime.2600ms": [
 0.08378,
@@ -892,7 +928,9 @@ null,
 0.07639,
 0.07676,
 0.07723,
-0.07668
+0.07668,
+null,
+0.07705
 ],
 "net.en_tdnn_lstm_bn_q7.evaltime.pulse_240ms": [
 0.008007,
@@ -939,7 +977,9 @@ null,
 0.007279,
 0.007275,
 0.007337,
-0.007329
+0.007329,
+null,
+0.00739
 ],
 "net.en_tdnn_pyt_15M.evaltime.pulse_120ms": [
 0.009051,
@@ -986,7 +1026,9 @@ null,
 0.007783,
 0.008175,
 0.007815,
-0.007776
+0.007776,
+null,
+0.007798
 ],
 "net.fastenhancer_b.evaltime.frame": [
 0.000735,
@@ -1033,7 +1075,9 @@ null,
 0.0006767,
 0.0006632,
 0.000672,
-0.0006688
+0.0006688,
+null,
+0.0006938
 ],
 "net.fastenhancer_l.evaltime.frame": [
 0.006991,
@@ -1080,7 +1124,9 @@ null,
 0.006595,
 0.006643,
 0.006567,
-0.006555
+0.006555,
+null,
+0.006794
 ],
 "net.fastenhancer_m.evaltime.frame": [
 0.0031,
@@ -1127,7 +1173,9 @@ null,
 0.002963,
 0.002897,
 0.002905,
-0.002889
+0.002889,
+null,
+0.002985
 ],
 "net.fastenhancer_s.evaltime.frame": [
 0.00148,
@@ -1174,7 +1222,9 @@ null,
 0.001384,
 0.001349,
 0.001361,
-0.001351
+0.001351,
+null,
+0.001393
 ],
 "net.fastenhancer_t.evaltime.frame": [
 0.000306,
@@ -1221,7 +1271,9 @@ null,
 0.000284,
 0.0002816,
 0.000283,
-0.0002789
+0.0002789,
+null,
+0.0002897
 ],
 "net.gtcrn.evaltime.frame": [
 0.0008662,
@@ -1268,7 +1320,9 @@ null,
 0.0007035,
 0.0007183,
 0.0007155,
-0.0007191
+0.0007191,
+null,
+0.0007185
 ],
 "net.hey_snips_v1.evaltime.400ms": [
 0.0007855,
@@ -1315,7 +1369,9 @@ null,
 0.0006716,
 0.0006649,
 0.0006649,
-0.0006768
+0.0006768,
+null,
+0.0006673
 ],
 "net.hey_snips_v31.evaltime.400ms": [
 0.0004297,
@@ -1362,7 +1418,9 @@ null,
 0.00037,
 0.0003712,
 0.0003775,
-0.0003836
+0.0003836,
+null,
+0.000373
 ],
 "net.hey_snips_v4_model17.evaltime.2sec": [
 0.002713,
@@ -1409,7 +1467,9 @@ null,
 0.002466,
 0.002484,
 0.002508,
-0.002537
+0.002537,
+null,
+0.002488
 ],
 "net.hey_snips_v4_model17.evaltime.pulse8": [
 0.000353,
@@ -1456,7 +1516,9 @@ null,
 0.0003292,
 0.0003324,
 0.0003393,
-0.000342
+0.000342,
+null,
+0.0003369
 ],
 "net.hey_snips_v4_model17_nnef.evaltime.pulse8": [
 0.0003505,
@@ -1503,7 +1565,9 @@ null,
 0.000329,
 0.0003276,
 0.000334,
-0.0003438
+0.0003438,
+null,
+0.0003355
 ],
 "net.inceptionv1q.evaltime.pass": [
 0.3045,
@@ -1550,7 +1614,9 @@ null,
 0.2964,
 0.2965,
 0.2958,
-0.2975
+0.2975,
+null,
+0.2967
 ],
 "net.inceptionv3.evaltime.pass": [
 0.5142,
@@ -1597,7 +1663,9 @@ null,
 0.4116,
 0.412,
 0.4156,
-0.4181
+0.4181,
+null,
+0.4138
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.evaltime.2600ms": [
 0.02932,
@@ -1644,7 +1712,9 @@ null,
 0.02035,
 0.02059,
 0.02097,
-0.0207
+0.0207,
+null,
+0.02068
 ],
 "net.mdl_en_2019_Q3_librispeech_onnx.evaltime.pulse_240ms": [
 0.002419,
@@ -1691,7 +1761,9 @@ null,
 0.002002,
 0.001974,
 0.002002,
-0.001994
+0.001994,
+null,
+0.001974
 ],
 "net.mobilenet_v1_1.evaltime.pass": [
 0.09505,
@@ -1738,7 +1810,9 @@ null,
 0.04418,
 0.04437,
 0.04468,
-0.04621
+0.04621,
+null,
+0.04584
 ],
 "net.mobilenet_v2_1.evaltime.pass": [
 0.1343,
@@ -1785,7 +1859,107 @@ null,
 0.05154,
 0.0519,
 0.05237,
-0.05453
+0.05453,
+null,
+0.05346
+],
+"net.ppocrv6_tiny_det.evaltime.640px": [
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+0.1776
+],
+"net.ppocrv6_tiny_rec.evaltime.320px": [
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+null,
+0.01605
 ],
 "net.speaker_id.evaltime.pulse8": [
 0.0001748,
@@ -1832,7 +2006,9 @@ null,
 0.0001514,
 0.0001523,
 0.0001552,
-0.0001548
+0.0001548,
+null,
+0.0001592
 ],
 "net.trunet.evaltime.pulse1_f16": [
 0.008681,
@@ -1879,7 +2055,9 @@ null,
 0.008937,
 0.008694,
 0.008692,
-0.008735
+0.008735,
+null,
+0.008824
 ],
 "net.trunet.evaltime.pulse1_f32": [
 0.0004681,
@@ -1926,7 +2104,9 @@ null,
 0.0004322,
 0.0004237,
 0.0004295,
-0.0004239
+0.0004239,
+null,
+0.0004287
 ],
 "net.voicecom_fake_quant.evaltime.2sec": [
 0.01645,
@@ -1973,7 +2153,9 @@ null,
 0.01348,
 0.01343,
 0.01343,
-0.01343
+0.01343,
+null,
+0.01358
 ],
 "net.voicecom_float.evaltime.2sec": [
 0.01541,
@@ -2020,7 +2202,9 @@ null,
 0.01334,
 0.01316,
 0.01312,
-0.01313
+0.01313,
+null,
+0.01312
 ]
 }
 }
