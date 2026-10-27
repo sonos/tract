@@ -9,6 +9,7 @@ pub mod copy_based;
 pub mod cumsum;
 pub mod deconv;
 pub mod diag_gather;
+pub mod downsample;
 pub mod dyn_kv_cache;
 pub mod element_wise;
 pub mod fused_output;
