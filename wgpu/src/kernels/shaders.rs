@@ -199,6 +199,7 @@ pub enum ModuleKind {
     ElementWise,
     Binary,
     Copy,
+    Transpose,
     Reduce,
     Pool,
     Cast,
@@ -229,6 +230,7 @@ impl ModuleKey {
         match self.kind {
             ModuleKind::ElementWise
             | ModuleKind::Copy
+            | ModuleKind::Transpose
             | ModuleKind::Reduce
             | ModuleKind::Pool
             | ModuleKind::Cast
@@ -248,6 +250,7 @@ impl ModuleKey {
             ModuleKind::ElementWise => element_wise_wgsl(self.dtype),
             ModuleKind::Binary => binary_wgsl(self.dtype),
             ModuleKind::Copy => copy_wgsl(self.dtype),
+            ModuleKind::Transpose => transpose_wgsl(self.dtype),
             ModuleKind::Reduce => reduce_wgsl(self.dtype),
             ModuleKind::Pool => pool_wgsl(self.dtype),
             ModuleKind::Cast => cast_wgsl(self.dtype),
@@ -879,6 +882,69 @@ fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     outp[out_i] = inp[in_i];
 }}
 "#
+    ));
+    s
+}
+
+/// A batch of 2-D transposes as `tract_gpu::utils::TransposeLaunch` describes
+/// them: each workgroup stages one `TRANSPOSE_TILE` square through workgroup
+/// memory, reading it along the input's unit-stride rows and writing it along
+/// the output's unit-stride columns. Tiles are numbered columns first, then
+/// rows, then batch, and the numbering folds onto the grid's x and y.
+fn transpose_wgsl(dt: ShaderDtype) -> String {
+    use tract_gpu::utils::{TRANSPOSE_ROWS, TRANSPOSE_TILE};
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    rows: u32,
+    cols: u32,
+    in_batch_stride: u32,
+    in_col_stride: u32,
+    out_batch_stride: u32,
+    out_row_stride: u32,
+    col_tiles: u32,
+    row_tiles: u32,
+    tiles: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+var<workgroup> tile: array<array<{t}, {TRANSPOSE_TILE_PADDED}>, {TRANSPOSE_TILE}>;
+
+@compute @workgroup_size({TRANSPOSE_TILE}, {TRANSPOSE_ROWS})
+fn copy_transpose_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let t = wid.y * {GRID_LIMIT}u + wid.x;
+    if (t >= params.tiles) {{ return; }}
+    let c0 = (t % params.col_tiles) * {TRANSPOSE_TILE}u;
+    let r0 = (t / params.col_tiles % params.row_tiles) * {TRANSPOSE_TILE}u;
+    let b = t / params.col_tiles / params.row_tiles;
+    let base_in = params.off_in + b * params.in_batch_stride;
+    let base_out = params.off_out + b * params.out_batch_stride;
+    for (var j = lid.y; j < {TRANSPOSE_TILE}u; j += {TRANSPOSE_ROWS}u) {{
+        let r = r0 + lid.x;
+        let c = c0 + j;
+        if (r < params.rows && c < params.cols) {{
+            tile[j][lid.x] = inp[base_in + r + c * params.in_col_stride];
+        }}
+    }}
+    workgroupBarrier();
+    for (var j = lid.y; j < {TRANSPOSE_TILE}u; j += {TRANSPOSE_ROWS}u) {{
+        let r = r0 + j;
+        let c = c0 + lid.x;
+        if (r < params.rows && c < params.cols) {{
+            outp[base_out + r * params.out_row_stride + c] = tile[lid.x][j];
+        }}
+    }}
+}}
+"#,
+        TRANSPOSE_TILE_PADDED = TRANSPOSE_TILE + 1,
     ));
     s
 }
