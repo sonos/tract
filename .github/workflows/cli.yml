@@ -201,6 +201,11 @@ jobs:
             if (tests) {
               await ci.status(github, context, { sha: pr.data.head.sha, target: 'cli', state: 'pending', description: 'Running' });
             }
+            // A /ci command's benches: pending until finish, then green whatever they found.
+            if (context.payload.inputs?.comment_id && process.env.BENCH_ENABLED !== 'false') {
+              const target = kind === 'native' ? 'bench' : `bench ${kind}`;
+              await ci.status(github, context, { sha: pr.data.head.sha, target, state: 'pending', description: 'Running' });
+            }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.gate.outputs.ref }}
@@ -953,6 +958,8 @@ jobs:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
       actions: read          # a rebench reads the previous report's state artifact
+    outputs:
+      summary: ${{ steps.head.outputs.superseded == 'true' && 'The PR head moved on' || steps.render.outputs.summary }}
     steps:
       # always() also lets a run cancelled by a newer push get here; its numbers are for a
       # head the PR has moved past, so it renders nothing and leaves the report to the new run.
@@ -1010,6 +1017,7 @@ jobs:
       # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
       # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
+        id: render
         if: steps.head.outputs.superseded != 'true'
         env:
           PR_SHA: ${{ needs.prepare.outputs.ref }}
@@ -1019,10 +1027,22 @@ jobs:
           chmod +x tract-cli/tract
           if [ -n "$MT_LADDER" ]; then
             tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
+            echo "summary=Thread-scaling report" >> "$GITHUB_OUTPUT"
           else
             tract-cli/tract bench-report --results results --bench-data bench-data \
               --thresholds ci/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md \
-              --reds reds.json
+              --reds reds.json | tee render.log
+            regressions=$(sed -n 's/.*regressions=\([0-9]*\).*/\1/p' render.log)
+            failed=$(sed -n 's/.* failed=\([0-9]*\).*/\1/p' render.log)
+            if [ -z "$regressions" ]; then
+              summary="Nothing to compare"
+            elif [ "$regressions" = 0 ]; then
+              summary="No regressions"
+            else
+              summary="$regressions regression(s)"
+            fi
+            if [ -n "$failed" ] && [ "$failed" != 0 ]; then summary="$summary · $failed failed to run"; fi
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
           fi
       # What a later `/ci rebench` on this head starts from: the per-device results, the
       # runs this report flagged red, and the run whose binaries they measured. A cancelled
@@ -1124,6 +1144,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      statuses: write
       pull-requests: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1138,6 +1159,10 @@ jobs:
           REBENCH: ${{ github.event.inputs.rebench }}
           PREPARE: ${{ needs.prepare.result }}
           ONLY: ${{ needs.prepare.outputs.only }}
+          SHA: ${{ needs.prepare.outputs.ref }}
+          KIND: ${{ needs.prepare.outputs.kind }}
+          ENABLED: ${{ needs.prepare.outputs.enabled }}
+          SUMMARY: ${{ needs.report.outputs.summary }}
         with:
           script: |
             const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
@@ -1152,6 +1177,19 @@ jobs:
               sections.failed = `Failed: ${result.failed.map(j => `\`${j}\``).join(', ')}.`;
             }
             await ci.update(github, context, { commentId: process.env.COMMENT_ID, state: result.state, sections });
+            if (process.env.SHA && process.env.ENABLED === 'true') {
+              let state = 'success';
+              let description = process.env.SUMMARY || 'No bench report';
+              if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
+                [state, description] = ['error', 'No bench report on this head to rebench yet'];
+              } else if (process.env.REBENCH === 'true' && process.env.ONLY === '{}') {
+                description = 'Nothing to re-run';
+              } else if (result.state === 'cancelled') {
+                [state, description] = ['cancelled', 'Cancelled'];
+              }
+              const target = process.env.KIND === 'native' ? 'bench' : `bench ${process.env.KIND}`;
+              await ci.status(github, context, { sha: process.env.SHA, target, state, description });
+            }
 
   # --- daily kernel-pick gate: fail if the dispatcher's matmul pick lags the fastest
   # available kernel for a shape by more than the tolerance. Reuses the bench binaries;
