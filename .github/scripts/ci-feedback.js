@@ -9,12 +9,13 @@
 
 const MARKER = '<!-- /ci -->';
 
+// A heading, so a finished command stands out from a running one in the PR thread.
 const STATES = {
-  queued: '⏳ queued',
-  running: '🏃 running',
-  success: '✅ done',
-  failure: '❌ failed',
-  cancelled: '⚪ cancelled',
+  queued: '### ⏳ Queued',
+  running: '### 🟡 Running',
+  success: '### ✅ Done',
+  failure: '### ❌ Failed',
+  cancelled: '### ⚪ Cancelled',
 };
 
 function runUrl(context) {
