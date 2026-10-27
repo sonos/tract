@@ -164,19 +164,15 @@ fn blocked_applies(
         && element_offset(out, 0).is_multiple_of(4)
 }
 
-/// Fewest workgroups worth a tiled launch. One thread per output keeps more
-/// of the device busy on a thinner product, such as a late pointwise layer of
-/// a CNN, where a few tiles would each walk a long `k` alone.
-const MATMUL_TILED_MIN_TILES: usize = 16;
-
-/// Whether the tiled kernel should serve this product: big enough to fill a
-/// good part of its tiles and enough of them, with every tile index inside one
-/// grid dimension.
+/// Whether the tiled kernel should serve this product: `m`, `n` and `k` are at
+/// least 16, with every tile index inside one grid dimension. The number of
+/// tiles does not matter: on a thin product with a long `k`, such as a late
+/// pointwise layer of a CNN, a few tiles staging `k` through workgroup memory
+/// still beat one thread per output reading it from global memory.
 fn tiled_applies(prefix: usize, m: usize, k: usize, n: usize) -> bool {
-    m >= 32
-        && n >= 32
+    m >= 16
+        && n >= 16
         && k >= 16
-        && prefix * m.div_ceil(MATMUL_TILE) * n.div_ceil(MATMUL_TILE) >= MATMUL_TILED_MIN_TILES
         && prefix <= 65535
         && m.div_ceil(MATMUL_TILE) <= 65535
         && n.div_ceil(MATMUL_TILE) <= 65535

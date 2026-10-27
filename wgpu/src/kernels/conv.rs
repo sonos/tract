@@ -14,21 +14,15 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
     keys_for(ModuleKind::Conv, &["conv2d"], shader_f16)
 }
 
-/// Fewest workgroups worth an implicit-GEMM launch. A convolution's reduction is
-/// often long, so a launch of a few tiles leaves most of the device idle while
-/// each tile walks it, where one thread per output would not.
-const CONV_TILED_MIN_TILES: usize = 32;
-
 /// Whether the implicit-GEMM kernel should serve this convolution: per group,
 /// enough output channels, pixels and reduction to fill a good part of its
-/// tiles, and enough tiles to occupy the device, with every tile index inside
-/// one grid dimension.
+/// tiles, with every tile index inside one grid dimension. The number of tiles
+/// does not matter: a few tiles staging a long reduction through workgroup
+/// memory still beat one thread per output reading it from global memory.
 fn tiled_applies(groups: usize, co_pg: usize, pixels: usize, k: usize) -> bool {
     co_pg >= 32
         && pixels >= 32
         && k >= 16
-        && groups * co_pg.div_ceil(MATMUL_TILE) * pixels.div_ceil(MATMUL_TILE)
-            >= CONV_TILED_MIN_TILES
         && groups <= 65535
         && co_pg.div_ceil(MATMUL_TILE) <= 65535
         && pixels.div_ceil(MATMUL_TILE) <= 65535
