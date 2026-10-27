@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Background replacement in your browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "form head" "form out" "form note";
+    column-gap: 24px;
+    row-gap: 16px;
+    align-items: start;
+  }
+  header { grid-area: head; }
+  .panel { grid-area: form; }
+  .out { grid-area: out; }
+  .note { grid-area: note; }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "form" "out" "note"; }
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input, select { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  select { background: var(--panel); }
+  input[type=color] { padding: 2px; height: 38px; }
+  input[type=checkbox] { width: auto; margin: 0 8px 0 0; }
+  .check { display: flex; align-items: center; color: var(--fg); font-size: 14px; margin-top: 14px; }
+  button { margin-top: 16px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 14px; }
+  .bar > div { height: 100%; width: 0; background: var(--accent); transition: width .2s; }
+  #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
+  .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  @media (max-width: 1000px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+  figure { margin: 0; }
+  figcaption { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
+  canvas, video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: block; }
+  #stats { font-size: 13px; color: var(--muted); margin: 8px 0 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
+  .note { font-size: 12px; color: var(--muted); margin: 0; }
+  .build { display: block; margin-top: 10px; opacity: .75; }
+  #build { font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main class="grid">
+  <header>
+    <h1>Background replacement, in your browser</h1>
+    <p class="sub">Person segmentation on your camera, on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>. Nothing leaves your machine.</p>
+  </header>
+  <div class="panel">
+    <label for="model">Model</label>
+    <select id="model"></select>
+    <label for="camera">Camera</label>
+    <select id="camera"><option value="">Default camera</option></select>
+    <label for="capture">Capture size</label>
+    <select id="capture"></select>
+    <label for="background">Background</label>
+    <select id="background"><option value="blur">Blur</option><option value="colour">Solid colour</option></select>
+    <label for="colour">Colour</label>
+    <input id="colour" type="color" value="#457b75" disabled>
+    <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges</label>
+    <button id="go" disabled>Loading…</button>
+    <div class="bar"><div id="bar"></div></div>
+    <div id="status">Starting…</div>
+  </div>
+  <div class="out">
+    <div class="tiles">
+      <figure><figcaption>Camera</figcaption><video id="camera-feed" autoplay muted playsinline></video></figure>
+      <figure><figcaption>Composited on the GPU</figcaption><canvas id="out" width="640" height="360"></canvas></figure>
+    </div>
+    <p id="stats"></p>
+  </div>
+  <p class="note">
+    The camera frame, the mask and the composited picture stay on the GPU; only the models come over
+    the network, straight from Hugging Face at a pinned revision, and stay in your browser's cache:
+    <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">MediaPipe Selfie Segmentation</a> (0.5 MB) and
+    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB), both under the Apache 2.0 license.
+    Stage timings are wall-clock times sampled every 15th frame, not GPU timestamps.
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/pixel-lab/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
