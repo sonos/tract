@@ -687,10 +687,13 @@ jobs:
       - name: Check the Vulkan adapter is the NVIDIA GPU
         run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
       - name: Run bench suite
+        env:
+          SELECT: ${{ github.event.inputs.select }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
             --manifest ci/benches-wgpu.toml \
+            ${SELECT:+--select "$SELECT"} \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \
             --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu
@@ -1283,10 +1286,12 @@ jobs:
       - name: Run bench suite
         env:
           DEVICE: i9-9900k_${{ matrix.config }}
+          SELECT: ${{ github.event.inputs.select }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite --manifest ci/benches.toml \
             --wasm tract-wasm/tract.wasm \
+            ${SELECT:+--select "$SELECT"} \
             ${{ needs.prepare.outputs.is_pr == 'true' && '--bench-data bench-ref --thresholds ci/bench-thresholds.toml --triple wasm32-wasip1 --device "$DEVICE"' || '--samples 5' }}
       - name: Checkout bench-data
         if: needs.prepare.outputs.is_pr != 'true'

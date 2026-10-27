@@ -20,6 +20,7 @@ name: CI slash command
 #   /ci bench wasm     -> the wasm bench alone (9900k, wasmtime) vs its nightly reference
 #   /ci bench PATTERNS -> /ci bench restricted to the benches whose name matches one of the
 #                         comma-separated globs (`*ppocr*`), nightly-only ones included
+#   /ci bench wgpu PATTERNS, /ci bench wasm PATTERNS -> that leg alone, restricted the same way
 #   /ci benches        -> alias of bench
 #   /ci rebench        -> re-run only the reds of the last bench report on the PR head,
 #                         on the boxes that flagged them, and report the merged result
@@ -118,7 +119,7 @@ jobs:
               return reject([
                 `Unknown \`/ci\` target: \`${target || '(none)'}\`.`,
                 '',
-                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all|wgpu|wasm|PATTERNS]` (alias: `benches`; `all` is `/ci cli`; PATTERNS: comma-separated bench-name globs like `*ppocr*`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
+                'Usage: `/ci full`, `/ci cli` (aliases: `large-models`, `large`, `llm`), `/ci bench [all|PATTERNS|wgpu [PATTERNS]|wasm [PATTERNS]]` (alias: `benches`; `all` is `/ci cli`; PATTERNS: comma-separated bench-name globs like `*ppocr*`), `/ci rebench`, `/ci wheels` (aliases: `python`, `py`), `/ci examples` (alias: `ex`), `/ci blackwell [tests|bench|both]` (alias: `5090`), or `/ci bench-mt-ladder [ladder]` (default ladder `2,4,0`).',
               ].join('\n'));
             }
             const inputs = { pr_number: String(pr) };
@@ -164,36 +165,45 @@ jobs:
             // any other argument is a list of bench-name globs passed on as `select`.
             if (target === 'bench' || target === 'benches') {
               const arg = (args.arg2 || '').toLowerCase();
+              const extra = (args.arg3 || '').toLowerCase();
               const scopes = { '': 'bench', all: 'full', wgpu: 'wgpu', wasm: 'wasm' };
-              if (Object.hasOwn(scopes, arg)) {
+              const isPatterns = a => /^[a-z0-9_.*-]+(,[a-z0-9_.*-]+)*$/.test(a);
+              const usage = `Use \`/ci ${target}\`, \`/ci ${target} all\`, \`/ci ${target} PATTERNS\`, \`/ci ${target} wgpu [PATTERNS]\` or \`/ci ${target} wasm [PATTERNS]\` (PATTERNS: comma-separated bench-name globs like \`*ppocr*\`).`;
+              let patterns = '';
+              if (Object.hasOwn(scopes, arg) && (!extra || (['wgpu', 'wasm'].includes(arg) && isPatterns(extra)))) {
                 inputs.scope = scopes[arg];
-              } else if (/^[a-z0-9_.*-]+(,[a-z0-9_.*-]+)*$/.test(arg)) {
-                // Each pattern must name a bench of the PR head's manifest, so a typo is
-                // answered here rather than by a run whose every bench leg fails.
+                patterns = extra;
+              } else if (isPatterns(arg) && !extra) {
+                inputs.scope = 'bench';
+                patterns = arg;
+              } else {
+                return reject(`Unknown \`/ci ${target}\` arguments: \`${[arg, extra].filter(Boolean).join(' ')}\`. ${usage}`);
+              }
+              if (patterns) {
+                // Each pattern must name a bench of the PR head's manifest for that leg, so a
+                // typo is answered here rather than by a run whose every bench leg fails.
+                const manifestPath = inputs.scope === 'wgpu' ? 'ci/benches-wgpu.toml' : 'ci/benches.toml';
                 let names = [];
                 try {
                   const { data } = await github.rest.repos.getContent({
                     owner: context.repo.owner, repo: context.repo.repo,
-                    path: 'ci/benches.toml', ref: cp.pull_request.head.sha,
+                    path: manifestPath, ref: cp.pull_request.head.sha,
                   });
                   const manifest = Buffer.from(data.content, 'base64').toString('utf8');
                   names = [...new Set([...manifest.matchAll(/^name\s*=\s*"([^"]+)"/gm)].map(m => m[1]))];
                 } catch (e) {
-                  core.warning(`could not read ci/benches.toml at the PR head, patterns not checked: ${e.message}`);
+                  core.warning(`could not read ${manifestPath} at the PR head, patterns not checked: ${e.message}`);
                 }
                 const glob = p => new RegExp(`^${p.split('*').map(s => s.replace(/[.\-]/g, '\\$&')).join('.*')}$`, 'i');
-                const unmatched = names.length ? arg.split(',').filter(p => !names.some(n => glob(p).test(n))) : [];
+                const unmatched = names.length ? patterns.split(',').filter(p => !names.some(n => glob(p).test(n))) : [];
                 if (unmatched.length) {
                   return reject([
-                    `\`/ci ${target}\`: ${unmatched.map(p => `\`${p}\``).join(', ')} ${unmatched.length > 1 ? 'match' : 'matches'} no bench. A pattern is a bench-name glob, \`*\` matching any run of characters (\`*ppocr*\`); without \`*\` it must be a whole name.`,
+                    `\`/ci ${target}\`: ${unmatched.map(p => `\`${p}\``).join(', ')} ${unmatched.length > 1 ? 'match' : 'matches'} no bench in ${manifestPath}. A pattern is a bench-name glob, \`*\` matching any run of characters (\`*ppocr*\`); without \`*\` it must be a whole name.`,
                     '',
-                    `<details><summary>Benches in ci/benches.toml</summary>\n\n${names.map(n => `\`${n}\``).join(', ')}\n\n</details>`,
+                    `<details><summary>Benches in ${manifestPath}</summary>\n\n${names.map(n => `\`${n}\``).join(', ')}\n\n</details>`,
                   ].join('\n'));
                 }
-                inputs.scope = 'bench';
-                inputs.select = arg;
-              } else {
-                return reject(`Unknown \`/ci ${target}\` argument: \`${arg}\`. Use \`/ci ${target}\`, \`/ci ${target} all\`, \`/ci ${target} wgpu\`, \`/ci ${target} wasm\` or \`/ci ${target} PATTERNS\` (comma-separated bench-name globs like \`*ppocr*\`).`);
+                inputs.select = patterns;
               }
               plan = {
                 bench: 'PR bench on the bench boxes and dev boards, and the harness `ci.sh` cases (`cli.yml`). Check: `/ci cli` (tests).',
@@ -202,7 +212,11 @@ jobs:
                 wasm: 'The wasm bench leg alone (9900k, wasmtime) against its nightly reference (`cli.yml`).',
               }[inputs.scope];
               if (inputs.select) {
-                plan = `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards, and the harness \`ci.sh\` cases (\`cli.yml\`). Check: \`/ci cli\` (tests).`;
+                plan = {
+                  bench: `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards, and the harness \`ci.sh\` cases (\`cli.yml\`). Check: \`/ci cli\` (tests).`,
+                  wgpu: `The wgpu bench leg alone (4060 box, Vulkan), for the benches matching \`${inputs.select}\`, against its nightly reference (\`cli.yml\`).`,
+                  wasm: `The wasm bench leg alone (9900k, wasmtime), for the benches matching \`${inputs.select}\`, against its nightly reference (\`cli.yml\`).`,
+                }[inputs.scope];
               }
             }
             if (target === 'rebench') {
@@ -217,7 +231,7 @@ jobs:
               plan = `CLI workflow, full scope (\`cli.yml\`), with a thread-scaling bench on ladder \`${inputs.mt_ladder}\` instead of the PR bench. Check: \`/ci cli\` (tests).`;
             }
 
-            const command = ['/ci', args.arg1, args.arg2].filter(Boolean).join(' ');
+            const command = ['/ci', args.arg1, args.arg2, args.arg3].filter(Boolean).join(' ');
             const header = `**\`${command}\`** · requested by @${who} · head \`${(cp.pull_request.head?.sha || '').slice(0, 9)}\``;
             const id = await ci.create(github, context, pr, { header, sections: [['plan', plan]] });
             inputs.comment_id = String(id);
