@@ -44,6 +44,29 @@ async function cache(dir, name, url, size, onBytes) {
   return handle;
 }
 
+class StorageUnavailable extends Error {}
+
+// The origin private file system, where the weights are cached. Private windows and blocked
+// site data refuse it.
+async function storage() {
+  try {
+    return await navigator.storage.getDirectory();
+  } catch (e) {
+    throw new StorageUnavailable(
+      "This browser does not let the page store the model (2.1 GB) on this device, which happens " +
+        "in private windows and when site data is blocked. Try a regular window.",
+      { cause: e },
+    );
+  }
+}
+
+// What went wrong, whatever threw it: Firefox leaves the name and message out of a stack.
+function describe(e) {
+  if (!(e instanceof Error) && !(e instanceof DOMException)) return String(e);
+  const head = `${e.name}: ${e.message}`;
+  return e.stack && !e.stack.startsWith(head) ? `${head}\n${e.stack}` : e.stack || head;
+}
+
 async function start() {
   await initWasm();
   await sd.init();
@@ -55,7 +78,7 @@ async function start() {
   sd.set_tokenizer(vocab, merges);
   post({ type: "tokenizer" });
 
-  const root = await navigator.storage.getDirectory();
+  const root = await storage();
   const dir = await root.getDirectoryHandle("sd15", { create: true });
   const total = manifest.components.reduce((n, c) => n + c.size, 0);
   const loaded = manifest.components.map(() => 0);
@@ -105,9 +128,14 @@ self.onmessage = async ({ data }) => {
     }
   } catch (e) {
     const busy = e && e.name === "NoModificationAllowedError";
+    const plain = e instanceof StorageUnavailable;
     post({
       type: "error",
-      message: busy ? "The model is already open in another tab of this site: close it and reload." : String(e && e.stack ? e.stack : e),
+      message: busy
+        ? "The model is already open in another tab of this site: close it and reload."
+        : plain
+          ? e.message
+          : describe(e),
     });
   }
 };
