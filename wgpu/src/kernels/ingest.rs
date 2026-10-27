@@ -14,6 +14,31 @@ use crate::kernels::shaders::{
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{wgpu_context, with_wgpu_queue};
 
+/// A per-channel affine map applied to RGB in [0, 1] as it is ingested:
+/// `(value - mean) / std`, as vision models document their input.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Normalization {
+    pub mean: [f32; 3],
+    pub std: [f32; 3],
+}
+
+impl Normalization {
+    pub const IDENTITY: Normalization = Normalization { mean: [0.0; 3], std: [1.0; 3] };
+
+    fn scale_offset(&self) -> TractResult<[f32; 8]> {
+        let mut out = [0.0; 8];
+        for c in 0..3 {
+            ensure!(
+                self.std[c].is_finite() && self.std[c] != 0.0 && self.mean[c].is_finite(),
+                "normalization needs a finite mean and a finite, nonzero std"
+            );
+            out[c] = self.std[c].recip();
+            out[4 + c] = -self.mean[c] / self.std[c];
+        }
+        Ok(out)
+    }
+}
+
 pub fn all_pipeline_keys(_shader_f16: bool) -> Vec<PipelineKey> {
     let mut keys = vec![PipelineKey {
         module: ModuleKey { kind: ModuleKind::Ingest, dtype: ShaderDtype::F32 },
@@ -133,7 +158,9 @@ fn dispatch_rgba_to_nchw(
     width: u32,
     height: u32,
     output: &DeviceTensor,
+    normalization: Normalization,
 ) -> TractResult<()> {
+    let scale_offset = normalization.scale_offset()?;
     q.retain_tensor(output);
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let pipeline = q.context().pipeline(PipelineKey {
@@ -142,7 +169,9 @@ fn dispatch_rgba_to_nchw(
     })?;
     let out_buf = get_wgpu_buffer(output);
     let bg = q.context().bind_group_ingest(&view, &out_buf.inner, q.uniform())?;
-    let params = pack_u32s(&[element_offset(output, 0) as u32, width, height, 0]);
+    let mut words = vec![element_offset(output, 0) as u32, width, height, 0];
+    words.extend(scale_offset.iter().map(|v| v.to_bits()));
+    let params = pack_u32s(&words);
     let dyn_off = q.alloc_uniform(&params)?;
     q.dispatch("ingest", &pipeline, &bg, dyn_off, width as u64 * height as u64)?;
     q.retain_texture(texture);
@@ -156,6 +185,15 @@ fn output_tensor(width: u32, height: u32) -> TractResult<DeviceTensor> {
 /// Upload tightly packed RGBA8 (`width * height * 4` bytes) and convert to
 /// NCHW f32 `[1, 3, H, W]` (alpha dropped). Works native and on wasm.
 pub fn tensor_from_rgba8(width: u32, height: u32, rgba: &[u8]) -> TractResult<DeviceTensor> {
+    tensor_from_rgba8_normalized(width, height, rgba, Normalization::IDENTITY)
+}
+
+pub(crate) fn tensor_from_rgba8_normalized(
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+    normalization: Normalization,
+) -> TractResult<DeviceTensor> {
     ensure!(width > 0 && height > 0, "ingest size must be > 0");
     wgpu_context();
     with_wgpu_queue(|q| {
@@ -177,7 +215,7 @@ pub fn tensor_from_rgba8(width: u32, height: u32, rgba: &[u8]) -> TractResult<De
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         let output = output_tensor(width, height)?;
-        dispatch_rgba_to_nchw(q, texture, width, height, &output)?;
+        dispatch_rgba_to_nchw(q, texture, width, height, &output, normalization)?;
         Ok(output)
     })
 }
@@ -189,6 +227,17 @@ pub fn tensor_from_external_image(
     source: wgpu::ExternalImageSource,
     width: u32,
     height: u32,
+) -> TractResult<DeviceTensor> {
+    tensor_from_external_image_normalized(source, width, height, Normalization::IDENTITY)
+}
+
+/// [`tensor_from_external_image`], with each channel mapped by `normalization`.
+#[cfg(target_arch = "wasm32")]
+pub fn tensor_from_external_image_normalized(
+    source: wgpu::ExternalImageSource,
+    width: u32,
+    height: u32,
+    normalization: Normalization,
 ) -> TractResult<DeviceTensor> {
     ensure!(width > 0 && height > 0, "ingest size must be > 0");
     wgpu_context();
@@ -211,7 +260,7 @@ pub fn tensor_from_external_image(
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
         let output = output_tensor(width, height)?;
-        dispatch_rgba_to_nchw(q, texture, width, height, &output)?;
+        dispatch_rgba_to_nchw(q, texture, width, height, &output, normalization)?;
         Ok(output)
     })
 }

@@ -47,10 +47,12 @@ pub use crate::context::{
 };
 pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, mid_graph_readbacks, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
-#[cfg(target_arch = "wasm32")]
-pub use crate::kernels::ingest::{tensor_from_external_image, tensor_from_video_frame};
 pub use crate::kernels::ingest::{
-    tensor_from_nv12, tensor_from_rgb565, tensor_from_rgba8, tensor_to_texture,
+    Normalization, tensor_from_nv12, tensor_from_rgb565, tensor_from_rgba8, tensor_to_texture,
+};
+#[cfg(target_arch = "wasm32")]
+pub use crate::kernels::ingest::{
+    tensor_from_external_image, tensor_from_external_image_normalized, tensor_from_video_frame,
 };
 
 /// The `GPUDevice` this backend runs on, so a compositor in the page can be
