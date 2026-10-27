@@ -1,6 +1,7 @@
 """Export Qwen3-ASR-0.6B to NNEF as three graphs and a tokenizer.
 
-- preprocessor: 16 kHz signal [1, N] -> Whisper log-mel [128, T]
+- preprocessor: reflect-padded 16 kHz signal [1, N] -> log10 mel [128, (N - 400) / 160 + 1];
+  the host pads, drops the last frame and applies Whisper's max - 8 floor and scaling
 - encoder: one 8 s attention window, chunks [S, 128, 100] + key_bias [S, 13] -> [S * 13, 1024]
 - decoder: Qwen3 LM with KV cache, audio embeddings spliced at the audio pad tokens
 
@@ -35,7 +36,7 @@ N_AUDIO = 25
 
 
 class Preprocessor(torch.nn.Module):
-    """WhisperFeatureExtractor's torch path, for a single unpadded signal."""
+    """WhisperFeatureExtractor's torch path without its centering and normalization."""
 
     def __init__(self, feature_extractor):
         super().__init__()
@@ -47,11 +48,19 @@ class Preprocessor(torch.nn.Module):
         )
 
     def forward(self, signal):
-        stft = torch.stft(signal[0], self.n_fft, self.hop, window=self.window, return_complex=True)
-        power = stft[..., :-1].abs() ** 2
-        log_spec = torch.clamp(self.mel_filters @ power, min=1e-10).log10()
-        log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
-        return (log_spec + 4.0) / 4.0
+        stft = torch.stft(
+            signal[0], self.n_fft, self.hop, window=self.window, center=False, return_complex=True
+        )
+        return torch.clamp(self.mel_filters @ stft.abs() ** 2, min=1e-10).log10()
+
+
+def whisper_features(pre, signal):
+    """The full Whisper features from Preprocessor, as the Rust host computes them."""
+    pad = pre.n_fft // 2
+    padded = F.pad(signal[None], (pad, pad), mode="reflect")[0]
+    log_spec = pre(padded)[:, : signal.shape[1] // pre.hop]
+    log_spec = torch.maximum(log_spec, log_spec.max() - 8.0)
+    return (log_spec + 4.0) / 4.0
 
 
 class AudioEncoder(torch.nn.Module):
@@ -151,17 +160,19 @@ def main(export_dir: Path, wav: Path):
     assert sr == 16000 and signal.ndim == 1
     signal = torch.from_numpy(signal)[None]
     pre = Preprocessor(proc.feature_extractor)
+    it = target()
+    it.dynamic_axes = {"signal": {1: "N"}}
     export_model_to_nnef(
         model=pre,
-        args=(signal,),
+        args=(F.pad(signal[None], (200, 200), mode="reflect")[0],),
         file_path_export=export_dir / "preprocessor.nnef.tgz",
         input_names=["signal"],
         output_names=["features"],
-        inference_target=target(),
+        inference_target=it,
     )
 
     with torch.no_grad():
-        mel = pre(signal)[:, : CHUNK * 3]
+        mel = whisper_features(pre, signal)[:, : CHUNK * 3]
     chunks = mel.reshape(128, 3, CHUNK).permute(1, 0, 2).contiguous()
     key_bias = torch.zeros(3, TOK_PER_CHUNK)
     key_bias[2, 6:] = torch.finfo(torch.float32).min
