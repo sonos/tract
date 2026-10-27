@@ -1,0 +1,31 @@
+[package]
+name = "pixel-lab-web"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "pixel-lab-native"
+path = "src/bin/native.rs"
+
+[dependencies]
+anyhow.workspace = true
+serde_json.workspace = true
+# Not the workspace's `tract`, which brings pulse and gzip a browser build has no use for.
+tract = { path = "../../../api/rs", default-features = false, features = [
+  "onnx",
+  "profile",
+  "wgpu",
+  "unstable-wgpu-async",
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { workspace = true, features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+web-sys = { version = "0.3", features = ["OffscreenCanvas"] }
