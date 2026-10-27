@@ -37,6 +37,55 @@ fn copy_nd_transposed_matches_cpu() -> TractResult<()> {
     })
 }
 
+/// A transpose with ragged tiles on both of its transposed axes.
+#[test]
+fn copy_nd_tiled_transpose_matches_cpu() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        let (b, r, c) = (3, 45, 70);
+        let t =
+            Tensor::from_shape(&[b, r, c], &(0..b * r * c).map(|i| i as f32).collect::<Vec<_>>())?;
+        let src = t.clone().into_device()?;
+        let dst = DeviceTensor::uninitialized_dt(DatumType::F32, &[b, c, r])?;
+        let (r, c) = (r as isize, c as isize);
+        wgpu_copy_nd_dispatch(
+            &src,
+            0,
+            &[r * c, 1, c],
+            &dst,
+            0,
+            &[b, c as usize, r as usize],
+            &[r * c, r, 1],
+        )?;
+        q.flush()?;
+        close(&dst.to_host()?.into_tensor(), &t.permute_axes(&[0, 2, 1])?)
+    })
+}
+
+/// More transpose tiles than one grid dimension holds, folded into a second.
+#[test]
+fn copy_nd_tiled_transpose_past_one_grid_dimension() -> TractResult<()> {
+    with_wgpu_queue(|q| {
+        let (rows, cols) = (32, 2_097_184);
+        let t = Tensor::from_shape(
+            &[cols, rows],
+            &(0..rows * cols).map(|i| (i % 251) as f32).collect::<Vec<_>>(),
+        )?;
+        let src = t.clone().into_device()?;
+        let dst = DeviceTensor::uninitialized_dt(DatumType::F32, &[rows, cols])?;
+        wgpu_copy_nd_dispatch(
+            &src,
+            0,
+            &[1, rows as isize],
+            &dst,
+            0,
+            &[rows, cols],
+            &[cols as isize, 1],
+        )?;
+        q.flush()?;
+        close(&dst.to_host()?.into_tensor(), &t.permute_axes(&[1, 0])?)
+    })
+}
+
 /// Nine axes, more than the shader takes, of which the extent-one ones merge
 /// away.
 #[test]
