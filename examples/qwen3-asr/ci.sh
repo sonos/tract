@@ -13,5 +13,6 @@ wget -qN https://dldata-public.s3.us-east-2.amazonaws.com/2086-149220-0033.wav -
 rm -rf assets/model
 python export.py assets/model assets/2086-149220-0033.wav
 
-cargo run --release
+cargo run --release --bin batch
+cargo run --release --bin stream
 rm -rf assets
