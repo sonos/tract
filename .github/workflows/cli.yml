@@ -578,9 +578,11 @@ jobs:
             ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5 --second-pass-max 10' || '' }} \
             ${{ matrix.suite_args }}        # produces ./metrics
 
+      # A failed bench run fails the suite after it wrote the others' metrics; the steps below
+      # still record or report those, and the job stays failed.
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -589,7 +591,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -612,7 +614,7 @@ jobs:
 
       # --- PR: emit this device's result for the fan-in report job ---
       - name: Stage PR result
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -621,7 +623,7 @@ jobs:
           cp metrics result/metrics
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-result-${{ matrix.target }}
@@ -698,11 +700,13 @@ jobs:
             --thresholds ci/bench-thresholds.toml \
             --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu
       - name: Stage PR result
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         run: |
           mkdir -p result
           cp metrics result/metrics
           printf '{"device":"i9-11900kb_rtx-4060_wgpu","triple":"x86_64-unknown-linux-gnu"}\n' > result/meta.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         with:
           name: bench-result-i9-11900kb_rtx-4060_wgpu
           path: result
@@ -838,15 +842,19 @@ jobs:
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
           then
-            grep '"metric"' captured.out > result/metrics || true
+            ok=true
           else
-            echo "::error::bench-dinghy: run failed"
-            exit 1
+            ok=false
           fi
+          grep '"metric"' captured.out > result/metrics || true
           test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+          if [ "$ok" != true ]; then
+            echo "::error::bench-dinghy: some bench runs failed; the metrics of the others are kept"
+            exit 1
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
+        if: ${{ !cancelled() && hashFiles('result/metrics') != '' && (needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]) }}
         with:
           name: bench-result-${{ matrix.device }}
           path: result
@@ -1294,7 +1302,7 @@ jobs:
             ${SELECT:+--select "$SELECT"} \
             ${{ needs.prepare.outputs.is_pr == 'true' && '--bench-data bench-ref --thresholds ci/bench-thresholds.toml --triple wasm32-wasip1 --device "$DEVICE"' || '--samples 5' }}
       - name: Checkout bench-data
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1303,7 +1311,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         env:
           DEVICE: i9-9900k_${{ matrix.config }}
           REF: ${{ needs.prepare.outputs.ref }}
@@ -1323,7 +1331,7 @@ jobs:
           done
           echo "push failed after retries" >&2; exit 1
       - name: Stage PR result
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         env:
           DEVICE: i9-9900k_${{ matrix.config }}
         run: |
@@ -1331,7 +1339,7 @@ jobs:
           cp metrics result/metrics
           printf '{"device":"%s","triple":"wasm32-wasip1"}\n' "$DEVICE" > result/meta.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         with:
           name: bench-result-i9-9900k_${{ matrix.config }}
           path: result
