@@ -77,6 +77,7 @@ jobs:
       pr_number: ${{ steps.gate.outputs.pr_number }}
       is_pr: ${{ steps.gate.outputs.is_pr }}
       full: ${{ steps.gate.outputs.full }}
+      tests: ${{ steps.gate.outputs.tests }}
       kind: ${{ steps.gate.outputs.kind }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
@@ -163,6 +164,10 @@ jobs:
             // The LLM matrix, ci-full.sh cases and harness-checked: off on a PR push and
             // on a dispatch with scope `bench` (`/ci bench`), on otherwise.
             core.setOutput('full', String(context.eventName !== 'pull_request' && scope === 'full'));
+            // The harness cases: on a push, the nightly and a full-scope dispatch (`/ci cli`).
+            // A `/ci bench` of any kind only benches; its head's push run already tested it.
+            const tests = kind === 'native' && !rebench && (context.eventName !== 'workflow_dispatch' || scope === 'full');
+            core.setOutput('tests', String(tests));
 
             const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
             if (context.eventName === 'pull_request') {
@@ -192,8 +197,8 @@ jobs:
             core.setOutput('ref', pr.data.head.sha);
             const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
-            // A wgpu or wasm bench, or a rebench, runs no tests, so it does not speak for "/ci cli".
-            if (kind === 'native' && !rebench) {
+            // A run without tests does not speak for "/ci cli".
+            if (tests) {
               await ci.status(github, context, { sha: pr.data.head.sha, target: 'cli', state: 'pending', description: 'Running' });
             }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -373,7 +378,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.rebench != 'true' && needs.prepare.outputs.kind == 'native' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -482,7 +487,7 @@ jobs:
   report-tests:
     name: Report tests to PR
     needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm ]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.rebench != 'true' }}
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' && needs.prepare.outputs.tests == 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read

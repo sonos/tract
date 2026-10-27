@@ -14,7 +14,7 @@ name: CI slash command
 #   /ci blackwell [tests|bench|both] -> RTX 5090 / SM120 (cuda-blackwell.yml);
 #                         mode defaults to tests. Operator-only, see below.
 #   /ci 5090           -> alias of blackwell
-#   /ci bench          -> cli.yml as a PR push runs it: harness ci.sh cases + bench
+#   /ci bench          -> cli.yml's PR bench alone (the push already ran the harness ci.sh cases)
 #   /ci bench all      -> alias of cli (adds the LLM matrix, ci-full.sh, harness-checked)
 #   /ci bench wgpu     -> the wgpu bench alone (4060 box, Vulkan) vs its nightly reference
 #   /ci bench wasm     -> the wasm bench alone (9900k, wasmtime) vs its nightly reference
@@ -206,14 +206,14 @@ jobs:
                 inputs.select = patterns;
               }
               plan = {
-                bench: 'PR bench on the bench boxes and dev boards, and the harness `ci.sh` cases (`cli.yml`). Check: `/ci cli` (tests).',
+                bench: 'PR bench on the bench boxes and dev boards (`cli.yml`); no tests, the push already ran them (`/ci cli` does).',
                 full: 'CLI workflow, full scope (`cli.yml`): harness `ci.sh` and `ci-full.sh` cases, the LLM matrix, harness-checked, and the PR bench. Check: `/ci cli` (tests).',
                 wgpu: 'The wgpu bench leg alone (4060 box, Vulkan) against its nightly reference (`cli.yml`).',
                 wasm: 'The wasm bench leg alone (9900k, wasmtime) against its nightly reference (`cli.yml`).',
               }[inputs.scope];
               if (inputs.select) {
                 plan = {
-                  bench: `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards, and the harness \`ci.sh\` cases (\`cli.yml\`). Check: \`/ci cli\` (tests).`,
+                  bench: `PR bench of the benches matching \`${inputs.select}\` (nightly-only ones included) on the bench boxes and dev boards (\`cli.yml\`).`,
                   wgpu: `The wgpu bench leg alone (4060 box, Vulkan), for the benches matching \`${inputs.select}\`, against its nightly reference (\`cli.yml\`).`,
                   wasm: `The wasm bench leg alone (9900k, wasmtime), for the benches matching \`${inputs.select}\`, against its nightly reference (\`cli.yml\`).`,
                 }[inputs.scope];
