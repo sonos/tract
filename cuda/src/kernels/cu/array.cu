@@ -366,6 +366,37 @@ INSTANTIATE_GATHER(f32, float)
 INSTANTIATE_GATHER(f16, __half)
 INSTANTIATE_GATHER(i64, int64_t)
 
+// GatherNd with f32 coordinate rows: output element i copies the element of
+// slice `row = i / inner` at `i % inner`, the slice being picked in batch
+// `row / rows` by the n coordinates of that row. Negative coordinates wrap.
+#define INSTANTIATE_GATHER_ND(name, T)                                         \
+    extern "C" __global__ void gather_nd_##name(                               \
+        const T *data, const float *indices, T *output, const int64_t len,     \
+        const int64_t inner, const int64_t rows, const int32_t n,              \
+        const int64_t batch_stride, const int32_t dim0, const int32_t dim1,    \
+        const int32_t dim2, const int32_t dim3, const int64_t stride0,         \
+        const int64_t stride1, const int64_t stride2,                          \
+        const int64_t stride3) {                                               \
+        const int64_t i = (int64_t)blockIdx.x * blockDim.x + threadIdx.x;      \
+        if (i >= len)                                                          \
+            return;                                                            \
+        const int32_t dims[4] = {dim0, dim1, dim2, dim3};                      \
+        const int64_t strides[4] = {stride0, stride1, stride2, stride3};       \
+        const int64_t row = i / inner;                                         \
+        int64_t src = (row / rows) * batch_stride + i % inner;                 \
+        for (int32_t k = 0; k < n; k++) {                                      \
+            int64_t c = (int64_t)indices[row * n + k];                         \
+            if (c < 0)                                                         \
+                c += dims[k];                                                  \
+            src += c * strides[k];                                             \
+        }                                                                      \
+        output[i] = data[src];                                                 \
+    }
+
+INSTANTIATE_GATHER_ND(f32, float)
+INSTANTIATE_GATHER_ND(f16, __half)
+INSTANTIATE_GATHER_ND(i64, int64_t)
+
 // Resamples one axis of a [outer, len_in, inner] view into [outer, len_out, inner]:
 // each output element is the weighted sum, accumulated in float, of the `window`
 // input taps the host-built plan lists for its position along the axis.
