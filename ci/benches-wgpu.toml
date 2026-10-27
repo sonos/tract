@@ -418,3 +418,23 @@ name = "sd15-dummy-f16-vae_decoder_512px"
 model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
 args = "--nnef-tract-core --nnef-tract-transformers -t f32_to_f16"
 runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "ppocrv6_tiny_det_640px"
+model = "ocr/ppocrv6/tiny_det.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,3,640,640,f32"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "ppocrv6_tiny_rec_320px"
+model = "ocr/ppocrv6/tiny_rec.onnx"
+args = "--onnx-ignore-value-info --onnx-ignore-output-shapes --set DynamicDimension.0=1 --set DynamicDimension.1=320"
+runtimes = ["wgpu"]
+
+[[bench]]
+kind = "net"
+name = "birefnet_general_lite_1024px"
+model = "segmentation/birefnet/BiRefNet-general-bb_swin_v1_tiny-epoch_232.onnx"
+runtimes = ["wgpu"]
