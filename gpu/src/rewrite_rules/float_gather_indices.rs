@@ -9,7 +9,8 @@ use tract_core::ops::element_wise::ElementWiseOp;
 const F32_EXACT: i64 = 1 << 24;
 
 /// Computes the indices of a `GatherNd` in f32 when they are rounded floats moved by integer
-/// sums and clips, so they and the gather run on the device, which holds no 64-bit integers.
+/// sums and clips, so they and the gather run on a device, which holds no TDim (nor, on wgpu,
+/// 64-bit integers).
 /// Below 2^24 every such value is exact in f32. Past it a coordinate is out of range of any
 /// axis the rule accepts, and a clip back into range still lands on its bound.
 pub fn float_gather_nd_indices(

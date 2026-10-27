@@ -1,14 +1,11 @@
 use tract_core::internal::*;
 use tract_core::ops::array::GatherNd;
+use tract_gpu::ops::gather_nd::{GpuGatherNd, MAX_COORDS};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{EntryPoint, LayoutKind, ShaderDtype, gather_nd_module, pack_u32s};
-use crate::ops::gather_nd::WgpuGatherNd;
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
-
-/// Coordinates an index row may hold: the gathered axes the shader walks.
-pub const MAX_COORDS: usize = 4;
 
 /// Gathers the slices of `data` that rows of f32 `indices` point at, after `batch_dims` axes
 /// both share.
@@ -68,9 +65,6 @@ pub fn wgpu_gather_nd_dispatch(
 }
 
 register_wgpu_op!(GatherNd, |source, node, op| {
-    let facts = source.node_input_facts(node.id)?;
-    rule_if!(facts[1].datum_type == f32::datum_type());
-    let n = facts[1].shape.last().and_then(|d| d.to_usize().ok());
-    rule_if!(n.is_some_and(|n| 0 < n && n <= MAX_COORDS));
-    Ok(Some(Box::new(WgpuGatherNd { batch_dims: op.batch_dims })))
+    rule_if!(GpuGatherNd::is_supported(&source.node_input_facts(node.id)?));
+    Ok(Some(Box::new(GpuGatherNd::new(op.batch_dims, "Wgpu", wgpu_gather_nd_dispatch))))
 });
