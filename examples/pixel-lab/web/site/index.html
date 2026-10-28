@@ -91,8 +91,9 @@
   <p class="note">
     The camera frames stay on the GPU; only the models come over the network, straight from
     Hugging Face at a pinned revision, and stay in your browser's cache:
-    <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">MediaPipe Selfie Segmentation</a> (0.5 MB) and
-    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB), both under the Apache 2.0 license.
+    MediaPipe Selfie Segmentation, <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">square</a>
+    or <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape">landscape</a> (0.5 MB), and
+    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB), all under the Apache 2.0 license.
     The camera is composited at its own frame rate with the latest mask, so a slower model makes the
     mask lag, not the video; the mask latency runs from handing a frame to the model to its mask
     being ready to composite.

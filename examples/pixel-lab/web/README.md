@@ -6,16 +6,19 @@ machine.
 
 ## How it works
 
-The page offers two segmenters, MODNet at two sizes, fetched as ONNX files straight from Hugging
-Face at a pinned revision and kept in the browser's cache:
+The page offers two segmenters, each in more than one form, fetched as ONNX files straight from
+Hugging Face at a pinned revision and kept in the browser's cache:
 
-- [MediaPipe Selfie Segmentation](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation)
-  (0.5 MB, 256 × 256 mask), fast;
-- [MODNet](https://huggingface.co/Xenova/modnet) (26 MB, alpha matte), finer edges, at 512 × 288 or
-  448 × 256: MODNet takes any size divisible by 32, and keeping the camera's 16:9 shape holds the
-  matte together on close-ups, where a square input that stretches the face breaks it up.
+- MediaPipe Selfie Segmentation (0.5 MB), fast, as its
+  [square](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation) (256 × 256 mask)
+  and [landscape](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape)
+  (256 × 144 mask) models;
+- [MODNet](https://huggingface.co/Xenova/modnet) (26 MB, alpha matte), finer edges, at 512 × 288,
+  448 × 256 or 384 × 224: MODNet takes any size divisible by 32, and keeping the camera's 16:9
+  shape holds the matte together on close-ups, where a square input that stretches the face breaks
+  it up.
 
-Both are under the Apache 2.0 license. `site/models.mjs` lists them with their revisions, sizes
+All are under the Apache 2.0 license. `site/models.mjs` lists them with their revisions, sizes
 and input normalization.
 
 A worker hands camera frames to tract with `Tensor::from_canvas_normalized`, which copies a frame
