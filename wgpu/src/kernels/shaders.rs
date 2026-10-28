@@ -1570,6 +1570,49 @@ fn rotate_half_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
+/// `out[o, i, r] = data[o, indices[i], r]` over `(outer, axis, inner)` views,
+/// one thread per output element. The i64 indices are read as pairs of u32
+/// words, low word first: an index must fit in 32 bits, and a negative one
+/// counts from the end of the axis.
+pub fn gather_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_data: u32,
+    off_idx: u32,
+    off_out: u32,
+    len: u32,
+    axis_len: u32,
+    n_idx: u32,
+    inner: u32,
+    _pad: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> data: array<{t}>;
+@group(0) @binding(1) var<storage, read> indices: array<u32>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn gather_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let r = i % params.inner;
+    let n = (i / params.inner) % params.n_idx;
+    let o = i / (params.inner * params.n_idx);
+    var ix = bitcast<i32>(indices[2u * (params.off_idx + n)]);
+    if (ix < 0) {{ ix += i32(params.axis_len); }}
+    let at = u32(clamp(ix, 0, i32(params.axis_len) - 1));
+    outp[params.off_out + i] = data[params.off_data + (o * params.axis_len + at) * params.inner + r];
+}}
+"#
+    ));
+    s
+}
+
 /// Replaces each NaN of the input with `value`. NaN is told by its bits, on the value widened
 /// to f32 (which keeps a NaN a NaN): WGSL lets a compiler assume no NaN and fold `x != x`.
 pub fn nan_replace_module(dt: ShaderDtype) -> String {

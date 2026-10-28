@@ -270,6 +270,12 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             let outlet_ids = target.wire_node(node.name.clone(), plan.op, &inputs)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
+        if let Some(op) = crate::kernels::gather::wgpu_gather(source, node)? {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let outlet_ids = target.wire_node(node.name.clone(), op, &device_inputs)?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(gpu_op) = crate::kernels::resize::wgpu_resize(source, node)? {
             let mut input = mapping[&node.inputs[0]];
             if target.outlet_fact(input)?.as_device_fact().is_none() {
