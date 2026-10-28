@@ -81,6 +81,9 @@ fn input_transform_weights(ci: usize) -> TractResult<Tensor> {
 /// `G g G^T` of every `(co, ci)` kernel pair, packed as `[36, n, co, ci]` for
 /// the batched accumulation GEMM: `u[i*6+j][n][co][ci]`.
 fn transformed_weights(kernel: &Tensor, n: usize, co: usize, ci: usize) -> TractResult<Tensor> {
+    // `cast_to` panics on a named weight it cannot load; this read fails instead.
+    kernel.try_as_plain_ram()?;
+    let kernel = kernel.cast_to::<f32>()?;
     let k = kernel.to_plain_array_view::<f32>()?;
     let mut u = vec![0f32; 36 * n * co * ci];
     for o in 0..co {
@@ -125,7 +128,7 @@ fn output_transform() -> TractResult<Tensor> {
     Tensor::from_shape(&[16, 36], &t)
 }
 
-/// Rewrites a `Conv(stride 1, dilation 1, 3x3, group 1, f32, NCHW)` as
+/// Rewrites a `Conv(stride 1, dilation 1, 3x3, group 1, f32 or f16, NCHW)` as
 /// Winograd F(4,3). Emits only core ops the wgpu backend already runs: the
 /// padding folds into the extraction convolution's own padding, the
 /// `[36, ci, tiles]` operand is restrided into the accumulation GEMM by the
@@ -150,11 +153,12 @@ pub fn conv_to_winograd_f43(
             && spec.dilation(1) == 1
     );
     let facts = model.node_input_facts(node.id)?;
-    rule_if!(facts.len() == 3 && facts[0].datum_type == DatumType::F32);
+    rule_if!(facts.len() == 3);
+    let dt = facts[0].datum_type;
+    rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
     rule_if_some!(
         kernel = facts[1].konst.as_ref().filter(|k| {
-            k.datum_type() == DatumType::F32
-                && k.shape() == [op.output_channels(), op.input_channels(), 3, 3]
+            k.datum_type() == dt && k.shape() == [op.output_channels(), op.input_channels(), 3, 3]
         })
     );
     let in_shape = spec.data_format.shape(&facts[0].shape)?;
@@ -179,11 +183,17 @@ pub fn conv_to_winograd_f43(
 
     let mut patch = TypedModelPatch::default();
     let data = patch.tap_model(model, node.inputs[0])?;
-    let w_in = patch.add_const(format!("{name}.wino.bt"), input_transform_weights(ci)?)?;
-    let zero = patch
-        .add_const(format!("{name}.wino.zero"), Tensor::zero_dt(f32::datum_type(), &[ci * 36])?)?;
-    let w_u = patch.add_const(format!("{name}.wino.g"), transformed_weights(kernel, n, co, ci)?)?;
-    let w_at = patch.add_const(format!("{name}.wino.at"), output_transform()?)?;
+    let w_in = patch.add_const(
+        format!("{name}.wino.bt"),
+        input_transform_weights(ci)?.cast_to_dt(dt)?.into_owned(),
+    )?;
+    let zero = patch.add_const(format!("{name}.wino.zero"), Tensor::zero_dt(dt, &[ci * 36])?)?;
+    let w_u = patch.add_const(
+        format!("{name}.wino.g"),
+        transformed_weights(kernel, n, co, ci)?.cast_to_dt(dt)?.into_owned(),
+    )?;
+    let w_at = patch
+        .add_const(format!("{name}.wino.at"), output_transform()?.cast_to_dt(dt)?.into_owned())?;
 
     let extract = Conv {
         pool_spec: PoolSpec {
