@@ -2216,9 +2216,14 @@ fn conv_k_prologue() -> String {
 /// runs over (input channel, kernel row, kernel column) in the weights' OIHW
 /// order; the input slice is gathered on load, taps outside the window reading
 /// zero. Same `Params`, strides and per-channel epilogue as [`conv_module`].
-/// Workgroup `x` tiles the pixels, `y` the output channels of a group, `z` is
-/// the group.
-pub fn conv_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+/// Workgroup `x` tiles the pixels, `y` the output channels of a group in
+/// [`tile_rows`]`(co_pg)` steps, `z` is the group.
+pub fn conv_tiled_module(
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    tile_m: usize,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 2 + extras;
@@ -2330,9 +2335,9 @@ fn conv2d_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgr
     let actx = vec4<u32>(g, k_len, 0u, 0u);
     let bctx = actx;
     let npix = params.n * params.oh * params.ow;
-    let row0 = wid.y * {tile}u;
+    let row0 = wid.y * {tile_m}u;
     let col0 = wid.x * {tile}u;
-    let interior = row0 + {tile}u <= params.co_pg && col0 + {tile}u <= npix;
+    let interior = row0 + {tile_m}u <= params.co_pg && col0 + {tile}u <= npix;
     if (lid < {tile}u) {{
         let pix = col0 + lid;
         let ow = pix % params.ow;
@@ -2352,10 +2357,10 @@ fn conv2d_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgr
     }}
 {core}}}
 "#,
-        tiles = tiled_gemm_tiles(t),
+        tiles = tiled_gemm_tiles(t, tile_m),
         threads = TILED_THREADS,
         tk = MATMUL_TILE_K,
-        core = tiled_gemm_core(t, "true", "true", "g, ", &conv_k_prologue()),
+        core = tiled_gemm_core(t, "true", "true", "g, ", &conv_k_prologue(), tile_m),
     ));
     s
 }
@@ -3038,11 +3043,20 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     s
 }
 
-/// Threads of a tiled matmul or convolution workgroup: each computes
-/// [`TILED_ROWS`] rows by [`TILED_COLS`] columns of the 64-square output tile.
+/// Threads of a tiled matmul or convolution workgroup, eight rows of threads
+/// by sixteen over a `tile_m` by [`MATMUL_TILE`] output tile: each computes
+/// `tile_m / 8` rows by [`TILED_COLS`] columns.
 pub const TILED_THREADS: usize = 128;
-const TILED_ROWS: usize = 8;
 const TILED_COLS: usize = 4;
+
+/// Row extent of a tiled matmul or convolution workgroup over `rows` output
+/// rows: the multiple of eight closest above an even split of `rows` into as
+/// many tiles as [`MATMUL_TILE`]-row tiles would take, so the last tile carries
+/// as few rows past `rows` as the tile count allows.
+pub fn tile_rows(rows: usize) -> usize {
+    let tiles = rows.div_ceil(MATMUL_TILE).max(1);
+    rows.div_ceil(tiles).div_ceil(8).max(1) * 8
+}
 
 /// The body shared by [`matmul_tiled_module`] and [`conv_tiled_module`], from
 /// the tile origin to the stores. Expects `lid`, `row0`, `col0`, `k_len` (the
@@ -3061,21 +3075,25 @@ const TILED_COLS: usize = 4;
 /// `a` is staged as rows of `vec4` along `k` and `b` as `k` rows of `vec4`
 /// along columns, in the tensor type: one workgroup load hands a thread four
 /// `k` steps of a row, and f16 tiles halve the workgroup-memory traffic that
-/// bounds this kernel. Accumulation is in f32, one register per output.
+/// bounds this kernel. The workgroup covers `tile_m` rows (a multiple of eight,
+/// at most [`MATMUL_TILE`]) from `row0`. Accumulation is in f32, one `vec4`
+/// per row a thread owns.
 fn tiled_gemm_core(
     t: &str,
     a_k_fast: &str,
     b_n_fast: &str,
     store_args: &str,
     k_prologue: &str,
+    tile_m: usize,
 ) -> String {
     let tile = MATMUL_TILE;
     let tk = MATMUL_TILE_K;
     let tk4 = tk / 4;
     let tile4 = tile / 4;
     let threads = TILED_THREADS;
-    let (tm, tn) = (TILED_ROWS, TILED_COLS);
+    let tn = TILED_COLS;
     let cols_threads = tile / tn;
+    let tm = tile_m / (threads / cols_threads);
     let mut s = format!(
         "    let tx = lid % {cols_threads}u;
     let ty = lid / {cols_threads}u;
@@ -3103,8 +3121,8 @@ fn tiled_gemm_core(
                 let k = k0 + kq * 4u;
                 a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
             }} else {{
-                let r = i % {tile}u;
-                let kq = i / {tile}u;
+                let r = i % {tile_m}u;
+                let kq = i / {tile_m}u;
                 let k = k0 + kq * 4u;
                 a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
             }}
@@ -3125,7 +3143,7 @@ fn tiled_gemm_core(
         workgroupBarrier();
         for (var kq = 0u; kq < {tk4}u; kq++) {{
 ",
-        aq = tile * tk4,
+        aq = tile_m * tk4,
         bq = tk * tile4,
     );
     for i in 0..tm {
@@ -3154,30 +3172,37 @@ fn tiled_gemm_core(
 }
 
 /// The workgroup tiles [`tiled_gemm_core`] stages its operands in.
-fn tiled_gemm_tiles(t: &str) -> String {
+fn tiled_gemm_tiles(t: &str, tile_m: usize) -> String {
     let tile = MATMUL_TILE;
     let tk = MATMUL_TILE_K;
     format!(
         "var<workgroup> a_tile: array<vec4<{t}>, {}>;\nvar<workgroup> b_tile: array<vec4<{t}>, {}>;\n",
-        tile * tk / 4,
+        tile_m * tk / 4,
         tile * tk / 4
     )
 }
 
-/// Output rows and columns of each tiled matmul workgroup.
+/// Output columns of each tiled matmul or convolution workgroup, and the most
+/// rows one covers (see [`tile_rows`]).
 pub const MATMUL_TILE: usize = 64;
 /// `k` values staged in workgroup memory per step of the tiled matmul.
 pub const MATMUL_TILE_K: usize = 16;
 
 /// The general matmul, staged through workgroup memory: each workgroup owns a
-/// [`MATMUL_TILE`]-square block of one prefix slice of the output and walks `k`
+/// `tile_m` by [`MATMUL_TILE`] block of one prefix slice of the output, `tile_m`
+/// being [`tile_rows`]`(m)`, and walks `k`
 /// in [`MATMUL_TILE_K`]-deep slices, with the loads, layout and accumulation of
 /// [`tiled_gemm_core`]. Each operand is loaded along whichever of its two axes
 /// is unit-strided, so loads coalesce for any transposition. Same `Params`,
 /// strides and epilogue as [`matmul_module`], and no constraint on `m`, `k` or
 /// `n`: partial tiles are guarded. Workgroup `x` tiles `n`, `y` tiles `m`, `z`
 /// is the prefix index.
-pub fn matmul_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+pub fn matmul_tiled_module(
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    tile_m: usize,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 2 + extras;
@@ -3272,15 +3297,22 @@ fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgr
     let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
     let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
 
-    let row0 = wid.y * {tile}u;
+    let row0 = wid.y * {tile_m}u;
     let col0 = wid.x * {tile}u;
     let k_len = params.k;
-    let interior = row0 + {tile}u <= params.m && col0 + {tile}u <= params.n;
+    let interior = row0 + {tile_m}u <= params.m && col0 + {tile}u <= params.n;
 {core}}}
 "#,
-        tiles = tiled_gemm_tiles(t),
+        tiles = tiled_gemm_tiles(t, tile_m),
         threads = TILED_THREADS,
-        core = tiled_gemm_core(t, "a_col_s == 1u", "b_col_s == 1u", "o_i, o_row_s, o_col_s, ", ""),
+        core = tiled_gemm_core(
+            t,
+            "a_col_s == 1u",
+            "b_col_s == 1u",
+            "o_i, o_row_s, o_col_s, ",
+            "",
+            tile_m
+        ),
     ));
     s
 }

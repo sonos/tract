@@ -5,7 +5,7 @@ use tract_gpu::tensor::DeviceTensor;
 use crate::kernels::shaders::{
     CONV_PIXEL_WG, ChainStep, DepthwiseShape, EntryPoint, LayoutKind, MATMUL_TILE, ModuleKey,
     ModuleKind, PipelineKey, ShaderDtype, conv_depthwise_module, conv_module, conv_pixel_module,
-    conv_tiled_module, keys_for, pack_u32s,
+    conv_tiled_module, keys_for, pack_u32s, tile_rows,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -185,12 +185,13 @@ pub fn wgpu_conv_dispatch(
             && dilations[1] == 1
             && (ci * co <= 64 || pixels >= 32768)
             && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535;
+        let tile_m = tile_rows(co_pg);
         let pipeline = if tiled {
             q.context().chain_pipeline(
-                ("conv_tiled", dt, epilogue, extras.len()),
+                ("conv_tiled", tile_m, dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("conv2d_tiled", dt),
-                || conv_tiled_module(dt, epilogue, extras.len()),
+                || conv_tiled_module(dt, epilogue, extras.len(), tile_m),
             )?
         } else if per_pixel {
             q.context().chain_pipeline(
@@ -282,11 +283,8 @@ pub fn wgpu_conv_dispatch(
         params.extend_from_slice(&pack_u32s(&tail));
         let dyn_off = q.alloc_uniform(&params)?;
         if tiled {
-            let grid = [
-                pixels.div_ceil(MATMUL_TILE) as u32,
-                co_pg.div_ceil(MATMUL_TILE) as u32,
-                groups as u32,
-            ];
+            let grid =
+                [pixels.div_ceil(MATMUL_TILE) as u32, co_pg.div_ceil(tile_m) as u32, groups as u32];
             return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, grid);
         }
         if per_pixel {
