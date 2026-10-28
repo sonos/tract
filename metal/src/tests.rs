@@ -475,8 +475,8 @@ mod tests {
         assert!(schema.by_partition.len() > 1, "Schema should contain at least 2 partitions");
 
         // Verify steps
-        assert_eq!(schema.by_steps.len(), order.len());
-        for step in 0..schema.by_steps.len() {
+        assert_eq!(schema.num_steps, order.len());
+        for step in 0..schema.num_steps {
             for partition in schema.by_partition.iter() {
                 let partition_size = partition.eval_size_to_i64(&symbol_values)?;
 
