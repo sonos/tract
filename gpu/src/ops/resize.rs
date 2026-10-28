@@ -115,6 +115,10 @@ impl Op for GpuResize {
 impl EvalOp for GpuResize {
     op_out_of_plan!();
 
+    fn forwards_input(&self) -> Option<usize> {
+        self.axes.is_empty().then_some(0)
+    }
+
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let data = inputs[0].to_device_tensor()?;
         let dt = data.datum_type();
