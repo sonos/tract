@@ -22,6 +22,8 @@ pub mod elmwise;
 pub mod gather_elements;
 pub mod gelu_approximate;
 pub mod gelu_exact;
+pub mod group_norm;
+pub mod layer_norm;
 pub mod matmul_f16;
 pub mod matmul_q40;
 pub mod matmul_rounding;
@@ -68,6 +70,8 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("apply_rope", apply_rope::suite()?);
     suite.add("gelu_approximate", gelu_approximate::suite()?);
     suite.add("gelu_exact", gelu_exact::suite()?);
+    suite.add("group_norm", group_norm::suite()?);
+    suite.add("layer_norm", layer_norm::suite()?);
     suite.add("scaled_masked_softmax", scaled_masked_softmax::suite()?);
     suite.add("sdpa", sdpa::suite()?);
     suite.add("silu", silu::suite()?);

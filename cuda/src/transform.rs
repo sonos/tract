@@ -27,11 +27,15 @@ tract_core::declare_knob!(
     false,
     "Log nodes that fail output-fact validation during CUDA translation."
 );
-use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
+use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
+};
+use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
     fuse_rms_norm_residual, fuse_rms_norm_scale, fuse_rms_norm_split_scale,
@@ -118,6 +122,7 @@ impl CudaTransform {
 
         Rewriter::default()
             .with_rule_for("fuse_rms_norm_scale", fuse_rms_norm_scale)
+            .with_rule_for("fuse_layer_norm_affine", fuse_layer_norm_affine)
             .with_rule_for("fuse_rms_norm_split_scale", fuse_rms_norm_split_scale)
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
@@ -127,6 +132,7 @@ impl CudaTransform {
         Rewriter::default()
             .with_rule_for("rewrite_conv_to_nhwc", rewrite_rules::rewrite_conv_to_nhwc)
             .rewrite(&(), model)?;
+        tract_gpu::rewrite_rules::conv_nhwc::propagate_nhwc(model)?;
 
         if stop_at_phase == 1 {
             return Ok(());
@@ -138,6 +144,9 @@ impl CudaTransform {
             return Ok(());
         }
 
+        Rewriter::default()
+            .with_rule_for("fuse_gemm_bias", rewrite_rules::fuse_gemm_bias)
+            .rewrite(&(), model)?;
         // After elementwise fusion: only residual adds that stayed standalone
         // dispatches are worth absorbing into their norm consumer.
         Rewriter::default()
@@ -528,6 +537,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Cud
             let device_inputs =
                 sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
             let outlet_ids = wire_cuda_conv(source, node, target, &device_inputs, conv)?;
+            return sync_model_outputs_if_required(source, node, target, outlet_ids);
+        }
+        if let Some(op) = node.op_as::<GroupNorm>()
+            && crate::kernels::nn::is_group_norm_supported_dt(input_facts[0].datum_type)
+            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let stats = GpuGroupNormStats {
+                params,
+                backend_name: "Cuda",
+                dispatch: crate::kernels::nn::cuda_group_norm_stats_dispatch,
+            };
+            let apply = GpuGroupNormApply {
+                params,
+                eps: op.eps.clone(),
+                backend_name: "Cuda",
+                dispatch: crate::kernels::nn::cuda_group_norm_apply_dispatch,
+            };
+            let outlet_ids =
+                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
             return sync_model_outputs_if_required(source, node, target, outlet_ids);
         }
         // Resize bakes its plan, so it keeps only the data input: the scales /

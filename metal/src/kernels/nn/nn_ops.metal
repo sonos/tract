@@ -1401,3 +1401,246 @@ template [[host_name("nn_ops::apply_rope_nd3_f16")]] [[kernel]] apply_rope_nd3_t
     apply_rope_nd3<half>;
 template [[host_name("nn_ops::apply_rope_nd4_f16")]] [[kernel]] apply_rope_nd4_t
     apply_rope_nd4<half>;
+
+// Group norm over an (outer, pre, channels, post) view, in three passes.
+// Stats writes `entries` (count, mean, m2) Welford triples per group: channel
+// first, a threadgroup per group chunk of the flattened (p, c, q) range;
+// channel last, a thread per channel over a chunk of `pre`, so a simdgroup
+// reads contiguous channels. Finalize merges a group's triples with Chan's
+// formula and stores (mean, inv_std) over its first triple. Apply is
+// element-wise.
+struct Moments {
+    float n;
+    float mean;
+    float m2;
+};
+
+METAL_FUNC Moments merge_moments(Moments a, Moments b) {
+    float n = a.n + b.n;
+    if (n == 0.0f) {
+        return a;
+    }
+    float d = b.mean - a.mean;
+    float f = b.n / n;
+    return Moments{n, a.mean + d * f, a.m2 + b.m2 + d * d * a.n * f};
+}
+
+METAL_FUNC Moments simd_merge_moments(Moments m) {
+    for (ushort offset = 16; offset > 0; offset >>= 1) {
+        Moments o = Moments{simd_shuffle_xor(m.n, offset), simd_shuffle_xor(m.mean, offset),
+                            simd_shuffle_xor(m.m2, offset)};
+        m = merge_moments(m, o);
+    }
+    return m;
+}
+
+// Valid in thread 0 only.
+METAL_FUNC Moments threadgroup_merge_moments(Moments m, threadgroup Moments *shmem,
+                                             ushort sgitg, ushort tiisg, uint ntg) {
+    m = simd_merge_moments(m);
+    if (tiisg == 0) {
+        shmem[sgitg] = m;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (sgitg == 0) {
+        m = tiisg < (ntg + 31) / 32 ? shmem[tiisg] : Moments{0.0f, 0.0f, 0.0f};
+        m = simd_merge_moments(m);
+    }
+    return m;
+}
+
+METAL_FUNC Moments shifted_moments(float n, float shift, float s1, float s2) {
+    return Moments{n, n > 0.0f ? shift + s1 / n : 0.0f, n > 0.0f ? s2 - s1 * s1 / n : 0.0f};
+}
+
+METAL_FUNC void store_moments(device float *out, Moments m) {
+    out[0] = m.n;
+    out[1] = m.mean;
+    out[2] = m.m2;
+}
+
+// dims: pre, channels, post, groups, splits
+template <typename T>
+[[kernel]] void group_norm_stats(device const void *x_b, device float *partials,
+                                 constant const int dims[5],
+                                 threadgroup Moments *shmem [[threadgroup(0)]],
+                                 uint2 tgpig [[threadgroup_position_in_grid]],
+                                 uint2 tpitg2 [[thread_position_in_threadgroup]],
+                                 ushort sgitg [[simdgroup_index_in_threadgroup]],
+                                 ushort tiisg [[thread_index_in_simdgroup]],
+                                 uint2 ntg2 [[threads_per_threadgroup]]) {
+    device const T *x = (device const T *)x_b;
+    int tpitg = tpitg2.x;
+    int ntg = ntg2.x;
+    int pre = dims[0], channels = dims[1], post = dims[2], groups = dims[3], splits = dims[4];
+    int o = tgpig.x / groups;
+    int g = tgpig.x % groups;
+    int cg = channels / groups;
+    int len = pre * cg * post;
+    int chunk = (len + splits - 1) / splits;
+    int start = tgpig.y * chunk;
+    int end = min(len, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    for (int j = start + tpitg; j < end; j += ntg) {
+        int q = j % post;
+        int t = j / post;
+        float v = float(x[((o * pre + t / cg) * channels + g * cg + t % cg) * post + q]);
+        if (n == 0.0f) {
+            shift = v;
+        }
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0f;
+    }
+    Moments m = threadgroup_merge_moments(shifted_moments(n, shift, s1, s2), shmem, sgitg,
+                                          tiisg, ntg);
+    if (tpitg == 0) {
+        store_moments(partials + (tgpig.x * splits + tgpig.y) * 3, m);
+    }
+}
+
+// dims: pre, channels, splits
+template <typename T>
+[[kernel]] void group_norm_stats_channel_last(device const void *x_b, device float *partials,
+                                              constant const int dims[3],
+                                              uint2 tgpig [[threadgroup_position_in_grid]],
+                                              uint2 tpitg [[thread_position_in_threadgroup]],
+                                              uint2 ntg [[threads_per_threadgroup]]) {
+    device const T *x = (device const T *)x_b;
+    int pre = dims[0], channels = dims[1], splits = dims[2];
+    int channel_blocks = (channels + ntg.x - 1) / ntg.x;
+    int o = tgpig.x / channel_blocks;
+    int c = (tgpig.x % channel_blocks) * ntg.x + tpitg.x;
+    if (c >= channels) {
+        return;
+    }
+    int chunk = (pre + splits - 1) / splits;
+    int start = tgpig.y * chunk;
+    int end = min(pre, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    for (int p = start; p < end; p++) {
+        float v = float(x[(o * pre + p) * channels + c]);
+        if (n == 0.0f) {
+            shift = v;
+        }
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0f;
+    }
+    store_moments(partials + ((o * channels + c) * splits + tgpig.y) * 3,
+                  shifted_moments(n, shift, s1, s2));
+}
+
+[[kernel]] void group_norm_finalize(device float *partials, constant const int &entries,
+                                    constant const float &eps,
+                                    threadgroup Moments *shmem [[threadgroup(0)]],
+                                    uint tgpig [[threadgroup_position_in_grid]],
+                                    uint tpitg [[thread_position_in_threadgroup]],
+                                    ushort sgitg [[simdgroup_index_in_threadgroup]],
+                                    ushort tiisg [[thread_index_in_simdgroup]],
+                                    uint ntg [[threads_per_threadgroup]]) {
+    device float *group = partials + tgpig * entries * 3;
+    Moments m = Moments{0.0f, 0.0f, 0.0f};
+    for (int e = tpitg; e < entries; e += ntg) {
+        m = merge_moments(m, Moments{group[3 * e], group[3 * e + 1], group[3 * e + 2]});
+    }
+    m = threadgroup_merge_moments(m, shmem, sgitg, tiisg, ntg);
+    if (tpitg == 0) {
+        group[0] = m.mean;
+        group[1] = rsqrt(m.m2 / m.n + eps);
+    }
+}
+
+// dims: len, pre, channels, post, groups, entries
+template <typename T>
+[[kernel]] void group_norm_apply(device const void *x_b, device const float *partials,
+                                 device void *y_b, constant const int dims[6],
+                                 uint tpig [[thread_position_in_grid]]) {
+    device const T *x = (device const T *)x_b;
+    device T *y = (device T *)y_b;
+    int len = dims[0], pre = dims[1], channels = dims[2], post = dims[3], groups = dims[4],
+        entries = dims[5];
+    int idx = tpig;
+    if (idx >= len) {
+        return;
+    }
+    int c = (idx / post) % channels;
+    int o = idx / (pre * channels * post);
+    device const float *stats = partials + (o * groups + c / (channels / groups)) * entries * 3;
+    y[idx] = T((float(x[idx]) - stats[0]) * stats[1]);
+}
+
+typedef decltype(group_norm_stats<float>) group_norm_stats_t;
+typedef decltype(group_norm_stats_channel_last<float>) group_norm_stats_channel_last_t;
+typedef decltype(group_norm_apply<float>) group_norm_apply_t;
+
+template [[host_name("nn_ops::group_norm_stats_f32")]] [[kernel]]
+    group_norm_stats_t group_norm_stats<float>;
+template [[host_name("nn_ops::group_norm_stats_f16")]] [[kernel]]
+    group_norm_stats_t group_norm_stats<half>;
+template [[host_name("nn_ops::group_norm_stats_channel_last_f32")]] [[kernel]]
+    group_norm_stats_channel_last_t group_norm_stats_channel_last<float>;
+template [[host_name("nn_ops::group_norm_stats_channel_last_f16")]] [[kernel]]
+    group_norm_stats_channel_last_t group_norm_stats_channel_last<half>;
+template [[host_name("nn_ops::group_norm_apply_f32")]] [[kernel]]
+    group_norm_apply_t group_norm_apply<float>;
+template [[host_name("nn_ops::group_norm_apply_f16")]] [[kernel]]
+    group_norm_apply_t group_norm_apply<half>;
+
+static inline float layer_norm_threadgroup_sum(float v, threadgroup float *shared, uint nsg,
+                                               uint sgitg, uint tiisg) {
+    v = simd_sum(v);
+    if (tiisg == 0) {
+        shared[sgitg] = v;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    v = simd_sum(tiisg < nsg ? shared[tiisg] : 0.0f);
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    return v;
+}
+
+// Layer norm over the middle axis of a contiguous (outer, dim, inner) view, one threadgroup
+// per normalized row. dims: outer, dim, inner, affine (scale and bias read when non-zero).
+template <typename T>
+[[kernel]] void layer_norm(device const void *x_b, device const float *scale,
+                           device const float *bias, device void *y_b,
+                           constant const int dims[4], constant const float &eps,
+                           threadgroup float *shared [[threadgroup(0)]],
+                           uint tgpig [[threadgroup_position_in_grid]],
+                           uint tpitg [[thread_position_in_threadgroup]],
+                           uint ntg [[threads_per_threadgroup]],
+                           uint sgitg [[simdgroup_index_in_threadgroup]],
+                           uint tiisg [[thread_index_in_simdgroup]]) {
+    device const T *x = (device const T *)x_b;
+    device T *y = (device T *)y_b;
+    int dim = dims[1], inner = dims[2];
+    bool affine = dims[3] != 0;
+    uint nsg = (ntg + 31) / 32;
+    int base = (int(tgpig) / inner) * dim * inner + int(tgpig) % inner;
+    float sum = 0.0f;
+    for (int i = tpitg; i < dim; i += ntg) {
+        sum += float(x[base + i * inner]);
+    }
+    float mean = layer_norm_threadgroup_sum(sum, shared, nsg, sgitg, tiisg) / dim;
+    float sq = 0.0f;
+    for (int i = tpitg; i < dim; i += ntg) {
+        float d = float(x[base + i * inner]) - mean;
+        sq += d * d;
+    }
+    float inv = rsqrt(layer_norm_threadgroup_sum(sq, shared, nsg, sgitg, tiisg) / dim + eps);
+    for (int i = tpitg; i < dim; i += ntg) {
+        int idx = base + i * inner;
+        float v = (float(x[idx]) - mean) * inv;
+        if (affine) {
+            v = v * scale[i] + bias[i];
+        }
+        y[idx] = T(v);
+    }
+}
+
+typedef decltype(layer_norm<float>) layer_norm_t;
+
+template [[host_name("nn_ops::layer_norm_f32")]] [[kernel]] layer_norm_t layer_norm<float>;
+template [[host_name("nn_ops::layer_norm_f16")]] [[kernel]] layer_norm_t layer_norm<half>;

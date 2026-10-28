@@ -6,12 +6,20 @@ use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
-use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
+use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
+use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
-use tract_core::ops::nn::{Reduce, rewrite_nearest_upsample_to_broadcast};
+use tract_core::ops::logic::Iff;
+use tract_core::ops::math::IsNan;
+use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
+};
+use tract_gpu::ops::nan_replace::GpuNanReplace;
+use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 #[cfg(not(target_arch = "wasm32"))]
 use tract_gpu::sync::sync_model_outputs_if_required;
@@ -61,15 +69,21 @@ impl ModelTransform for WgpuTransform {
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         crate::kernels::pool::link_translators();
         wgpu_context();
+        Rewriter::default()
+            .with_rule_for("flatten_unfused_sdpa", flatten_unfused_sdpa)
+            .rewrite(&(), model)?;
         // Pointwise convolutions reach the backend as EinSum, so a segmenter is
         // mostly matmuls until this runs.
         rewrite_einsum_to_prefix_matmul(model, false)?;
         Rewriter::default()
             .with_rule_for("rewrite_kernel_conv_in_oihw", rewrite_kernel_conv_in_oihw)
             .with_rule_for("rewrite_kernel_deconv_in_oihw", rewrite_kernel_deconv_in_oihw)
+            .with_rule_for("rewrite_conv_1d_to_2d", rewrite_conv_1d_to_2d)
             .with_rule_for("rewrite_conv_with_n_axis", rewrite_conv_with_n_axis)
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
+            .with_rule_for("fuse_layer_norm_affine", fuse_layer_norm_affine)
+            .with_rule_for("float_gather_nd_indices", crate::rewrite_rules::float_gather_nd_indices)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
         Rewriter::default()
@@ -95,6 +109,19 @@ impl ModelTransform for WgpuTransform {
         rewire_syncs(model)?;
         Ok(())
     }
+}
+
+/// Explodes the `Sdpa` nodes the flash kernel cannot take into primitives,
+/// which translate one by one.
+fn flatten_unfused_sdpa(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &tract_transformers::ops::sdpa::Sdpa,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(!crate::kernels::sdpa::flash_sdpa_supported(&model.node_input_facts(node.id)?, op));
+    op.patch_sdpa(model, node)
 }
 
 fn try_make_wgpu_op(
@@ -188,6 +215,27 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
                 ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
+        if let Some(op) = node.op_as::<GroupNorm>()
+            && crate::utils::is_supported_fact(input_facts[0])
+            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
+        {
+            let device_inputs =
+                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+            let stats = GpuGroupNormStats {
+                params,
+                backend_name: "Wgpu",
+                dispatch: crate::kernels::group_norm::wgpu_group_norm_stats_dispatch,
+            };
+            let apply = GpuGroupNormApply {
+                params,
+                eps: op.eps.clone(),
+                backend_name: "Wgpu",
+                dispatch: crate::kernels::group_norm::wgpu_group_norm_apply_dispatch,
+            };
+            let outlet_ids =
+                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
         if let Some(plan) = crate::kernels::resize::wgpu_resize_2d(source, node)? {
             let mut input = mapping[&node.inputs[0]];
             if target.outlet_fact(input)?.as_device_fact().is_none() {
@@ -217,6 +265,23 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
                 )?[0];
             }
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
+            return maybe_sync_outputs(source, node, target, outlet_ids);
+        }
+        if let Some(fill) = nan_replace_fill(source, node)? {
+            let mut input = mapping[&node.inputs[2]];
+            if target.outlet_fact(input)?.as_device_fact().is_none() {
+                input = target.wire_node(
+                    format!("{}.to-device-0", node.name),
+                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
+                    &[input],
+                )?[0];
+            }
+            let op = GpuNanReplace::new(
+                fill,
+                "Wgpu",
+                crate::kernels::nan_replace::wgpu_nan_replace_dispatch,
+            );
+            let outlet_ids = target.wire_node(node.name.clone(), op, &[input])?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
         if let Some(op) = node.op_as::<Const>()
@@ -255,8 +320,25 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
             let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &device_inputs)?;
             maybe_sync_outputs(source, node, target, outlet_ids)
         } else {
-            let cpu_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToHost)?;
+            // A constant is read where it already is, on the host: bringing back the copy
+            // uploaded for device consumers would be a readback, which a browser cannot block on.
+            let mut cpu_inputs = tvec![];
+            for (ix, input) in node.inputs.iter().enumerate() {
+                let mapped = mapping[input];
+                if let Some(konst) =
+                    source.node(input.node).op_as::<Const>().filter(|k| k.exotic_fact().is_none())
+                {
+                    let name = format!("{}.host-const-{ix}", node.name);
+                    cpu_inputs.push(target.add_const(name, konst.val().clone())?);
+                } else if target.outlet_fact(mapped)?.as_device_fact().is_some() {
+                    let sync = tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToHost);
+                    cpu_inputs.push(
+                        target.wire_node(format!("{}.to-cpu-{ix}", node.name), sync, &[mapped])?[0],
+                    );
+                } else {
+                    cpu_inputs.push(mapped);
+                }
+            }
             target.wire_node(&node.name, node.op.clone(), &cpu_inputs)
         }
     }
@@ -279,6 +361,22 @@ fn maybe_sync_outputs(
     {
         sync_model_outputs_if_required(src, node, target, outlet_ids)
     }
+}
+
+/// The value `Iff(IsNan(x), value, x)` puts in place of each NaN of `x`, when `node` is that
+/// and `x` is a tensor the kernels take: wgpu has no boolean tensor to carry the condition.
+fn nan_replace_fill(source: &TypedModel, node: &TypedNode) -> TractResult<Option<f32>> {
+    rule_if!(node.op_is::<Iff>());
+    let cond = source.node(node.inputs[0].node);
+    rule_if!(
+        cond.op_as::<ElementWiseOp>().is_some_and(|ew| ew.0.is::<IsNan>())
+            && cond.inputs[0] == node.inputs[2]
+    );
+    let x = source.outlet_fact(node.inputs[2])?;
+    rule_if!(crate::utils::is_supported_fact(x));
+    rule_if_some!(fill = source.outlet_fact(node.inputs[1])?.konst.as_ref());
+    rule_if!(fill.len() == 1 && fill.datum_type().is_float());
+    Ok(Some(fill.cast_to_scalar::<f32>()?))
 }
 
 fn split_multi_axis_reduce(

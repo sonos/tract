@@ -9,6 +9,10 @@ on:
         description: "Optional PR number to test (from fork ok). Leave empty to run on selected branch."
         required: false
         type: number
+      comment_id:
+        description: "The /ci command comment to report on (set by ci-command.yml)."
+        required: false
+        type: string
 
 env:
   CARGO_INCREMENTAL: false
@@ -22,21 +26,26 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
+      pull-requests: write
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
       pr_number: ${{ steps.set.outputs.pr_number }}
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - id: set
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        env:
-          STATUS_CONTEXT: "CI / full"
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             const prInput = context.payload.inputs?.pr_number;
             core.setOutput('pr_number', prInput ? String(prInput) : '');
             if (!prInput) {
@@ -51,18 +60,11 @@ jobs:
             });
             const sha = pr.data.head.sha;
             core.setOutput('test_ref', sha);
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha,
-              state: 'pending',
-              context: process.env.STATUS_CONTEXT,
-              target_url: process.env.RUN_URL,
-              description: 'Running',
-            });
+            await ci.status(github, context, { sha, target: 'full', state: 'pending', description: 'Running' });
+            await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
 
   old-harness:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
     permissions:
@@ -84,7 +86,7 @@ jobs:
       run: ci/test-harness.sh
 
   onnx-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     strategy:
       matrix:
@@ -104,7 +106,7 @@ jobs:
       run: ci/onnx-tests.sh ${{ matrix.opset }}
 
   tflite:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -121,7 +123,7 @@ jobs:
       run: ci/tflite.sh
 
   some-tests-with-paranoid-asserts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -141,7 +143,7 @@ jobs:
         cargo test -q --profile opt-test --features tract-core/paranoid_assertions -p test-onnx-core -p test-unit-core
 
   feature-configs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -160,7 +162,7 @@ jobs:
         ci/feature-configs.sh
 
   check-all-targets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -198,7 +200,7 @@ jobs:
         ci/feature-configs-apple.sh
 
   C:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -218,7 +220,7 @@ jobs:
         make
 
   python:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -252,50 +254,37 @@ jobs:
     name: Report result to PR
     needs: [ prepare, old-harness, onnx-tests, tflite, some-tests-with-paranoid-asserts, feature-configs, check-all-targets, feature-configs-apple, C, python ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           NEEDS: ${{ toJSON(needs) }}
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           HEAD_SHA: ${{ needs.prepare.outputs.test_ref }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS_CONTEXT: "CI / full"
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
         with:
           script: |
-            const needs = JSON.parse(process.env.NEEDS);
-            const prNumber = Number(process.env.PR_NUMBER);
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             const sha = process.env.HEAD_SHA;
-            const runUrl = process.env.RUN_URL;
-            const statusContext = process.env.STATUS_CONTEXT;
-            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
-            const jobs = Object.entries(needs).filter(([k]) => k !== 'prepare');
-            const failed = jobs.filter(([, v]) => v.result !== 'success' && v.result !== 'skipped');
-            const state = failed.length ? 'failure' : 'success';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner, repo: context.repo.repo, sha, state,
-              context: statusContext, target_url: runUrl,
-              description: failed.length ? `${failed.length} job(s) failed` : 'All jobs passed',
+            const result = ci.jobs(process.env.NEEDS);
+            await ci.status(github, context, {
+              sha, target: 'full', state: result.state,
+              description: { success: 'All jobs passed', cancelled: 'Cancelled' }[result.state] || `${result.failed.length} job(s) failed`,
             });
-            const marker = `<!-- ${statusContext} -->`;
-            const body = [
-              marker,
-              `### ${icon(state)} ${statusContext}: ${state}`,
-              '',
-              ...jobs.map(([k, v]) => `- ${icon(v.result)} \`${k}\`: ${v.result}`),
-              '',
-              `[View workflow run](${runUrl})`,
-            ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+            await ci.update(github, context, {
+              commentId: process.env.COMMENT_ID,
+              issueNumber: process.env.PR_NUMBER,
+              fallbackHeader: `**Full test harness** · head \`${sha.slice(0, 9)}\``,
+              state: result.state,
+              sections: { tests: result.text },
             });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body });
-            }

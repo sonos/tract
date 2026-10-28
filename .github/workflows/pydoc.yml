@@ -14,7 +14,7 @@ permissions:
 jobs:
   build_doc:
     name: Build doc
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.repository == 'sonos/tract'
     permissions:
       contents: write
@@ -22,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The PR head, not GitHub's refs/pull/N/merge: that merge exists nowhere else
+          # and goes stale when main moves.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
       - name: Install Rust toolchain

@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::fmt;
 use std::sync::Arc;
 use tract_core::internal::*;
+use tract_core::ops::konst::Const;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DeviceSyncKind {
@@ -62,6 +63,9 @@ impl EvalOp for DeviceSync {
                 }
             }
             DeviceSyncKind::ToDevice => {
+                if input.as_device_tensor().is_some() {
+                    return Ok(tvec![input]);
+                }
                 // A tensor that came back from a previous run still on device
                 // goes straight back in, with no round trip either way.
                 if let Some(device) =
@@ -148,20 +152,22 @@ pub fn sync_outlet_if_required(
     outlet: OutletId,
     sync_kind: DeviceSyncKind,
 ) -> TractResult<OutletId> {
-    let in_fact = model.outlet_fact_mut(outlet)?;
+    let in_fact = model.outlet_fact(outlet)?;
     match sync_kind {
         DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
             Ok(model.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
         }
         DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
+            // A konst fact does not make its producer a Const: a source or CPU op
+            // with a zero-volume output carries one and still yields a host tensor.
             if let Some(ref konst) = in_fact.konst
                 && konst.as_device_tensor().is_none()
             {
                 let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
                 let device_fact = DeviceFact::from_host(in_fact.clone())?;
-                *in_fact = device_fact.into_exotic_fact();
-                in_fact.konst = Some(Arc::new(device_konst));
-                return Ok(outlet);
+                let op =
+                    Const::new_with_exotic_fact(Arc::new(device_konst), Box::new(device_fact))?;
+                return Ok(model.wire_node(name, op, &[])?[0]);
             }
             ensure!(
                 in_fact.datum_type.is_copy(),

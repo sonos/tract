@@ -5,12 +5,17 @@ pub mod conv;
 pub mod copy;
 pub mod deconv;
 pub mod element_wise;
+pub mod gather_nd;
 pub mod gemv_pair;
+pub mod group_norm;
 pub mod ingest;
+pub mod layer_norm;
 pub mod matmul;
+pub mod nan_replace;
 pub mod pool;
 pub mod reduce;
 pub mod resize;
+pub mod sdpa;
 pub mod shaders;
 pub mod softmax;
 

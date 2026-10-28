@@ -302,6 +302,38 @@ impl ModelTransform for ForceScanExternalState {
 
 register_simple_model_transform!("force_scan_external_state", ForceScanExternalState);
 
+/// Links the weights known by their name to `source`: each [`NamedStorage`] constant whose
+/// name the source [contains](WeightSource::contains) is read from it from then on, the first
+/// time its bytes are needed. Weights of other names are left as they are, for another source;
+/// one still without a source when read is an error.
+#[derive(Debug, Clone)]
+pub struct LinkWeights(pub Arc<dyn WeightSource>);
+
+impl ModelTransform for LinkWeights {
+    fn name(&self) -> StaticName {
+        "link_weights".into()
+    }
+
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        use crate::ops::konst::Const;
+        for node in &mut model.nodes {
+            let Some(named) =
+                node.op_as::<Const>().and_then(|k| k.val().storage_as::<NamedStorage>())
+            else {
+                continue;
+            };
+            if !self.0.contains(named.name()) {
+                continue;
+            }
+            let linked =
+                Const::new(named.with_source(self.0.clone()).into_tensor().into_arc_tensor())?;
+            node.outputs[0].fact = linked.output_facts(&[])?.remove(0);
+            node.op = Box::new(linked);
+        }
+        Ok(())
+    }
+}
+
 /// Hands a single-iteration Scan's recurrent state to the caller, so
 /// `declutter_single_loop` can inline the body.
 ///

@@ -41,6 +41,12 @@ skip = [
     { name = "rand_distr", version="<0.6" },
     { name = "itertools", version="<0.15" },
     { name = "syn", version="<3" },
+    # Older versions wgpu's tree still uses, behind the opt-in `wgpu` feature.
+    { name = "bit-set", version="<0.11" },
+    { name = "bit-vec", version="<0.10" },
+    { name = "jni-sys", version="<0.4" },
+    { name = "libloading", version="<0.9" },
+    { name = "rustc-hash", version="<2" },
 ]
 
 [licenses]

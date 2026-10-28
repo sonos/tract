@@ -380,6 +380,35 @@ impl<'a> IntoAst<'a> {
         tensor: &Arc<Tensor>,
         force_variable: bool,
     ) -> TractResult<Arc<RValue>> {
+        // A weight known by its name stays a reference to that name: its bytes are not the
+        // model's to write, the bundle it is loaded with provides them.
+        if let Some(named) = tensor.storage_as::<NamedStorage>() {
+            let id = self.scoped_id(Identifier::from(name.as_ref()));
+            // With tract_core, the datum type goes along, so the weight loads typed without its
+            // bytes; plain NNEF has no way to say it.
+            let invocation = if self.ensure_registry(&"tract_core".into()).is_ok() {
+                Invocation {
+                    id: "tract_core_named_weight".into(),
+                    generic_type_name: None,
+                    arguments: vec![
+                        named_arg("label", string(named.name())),
+                        named_arg("shape", ints(tensor.shape())),
+                        named_arg("datum_type", string(format!("{:?}", tensor.datum_type()))),
+                    ],
+                }
+            } else {
+                Invocation {
+                    id: "variable".into(),
+                    generic_type_name: Some(TypeName::Scalar),
+                    arguments: vec![
+                        named_arg("label", string(named.name())),
+                        named_arg("shape", ints(tensor.shape())),
+                    ],
+                }
+            };
+            self.assignment(id.clone(), RValue::Invocation(invocation).into());
+            return Ok(ident(id).into());
+        }
         let mut name: Identifier = name.as_ref().into();
         let have_tract_core = self.ensure_registry(&"tract_core".into()).is_ok();
         if tensor.datum_type() == TDim::datum_type() {

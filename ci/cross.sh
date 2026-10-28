@@ -37,6 +37,19 @@ ensure_cargo_dinghy() {
     fi
 }
 
+# curl's --retry does not cover a connection dropped mid-body, and a pipe into tar
+# cannot be restarted, so the archive lands in a file and the shell retries it whole.
+fetch_toolchain() {
+    for attempt in 1 2 3 4 5
+    do
+        curl -sSf -o "$1" "https://tract-test-assets.tract.rs/toolchains/$1" && break
+        [ "$attempt" -lt 5 ] || exit 1
+        sleep 5
+    done
+    tar xf "$1"
+    rm "$1"
+}
+
 # The release CLI is only wanted by callers that ship it to a device (cli.yml); other
 # callers just need it to compile for the target.
 if [ -n "$TRACT_CROSS_BUILD_CLI" ]
@@ -198,7 +211,7 @@ case "$PLATFORM" in
                 export DEBIAN_TRIPLE=$ARCH-linux-gnu
                 export TRACT_CPU_AARCH64_KIND=a55
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || fetch_toolchain aarch64-linux-musl-cross.tgz
                 ;;
             "cortexa53-unknown-linux-musl")
                 export ARCH=aarch64
@@ -209,7 +222,7 @@ case "$PLATFORM" in
                 export TRACT_CPU_AARCH64_KIND=a53
                 export QEMU_OPTS="-cpu cortex-a53"
                 export CUSTOM_TC=`pwd`/aarch64-linux-musl-cross
-                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/aarch64-linux-musl-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || fetch_toolchain aarch64-linux-musl-cross.tgz
                 ;;
             "armv7-unknown-linux-musl")
                 export ARCH=armv7
@@ -220,7 +233,7 @@ case "$PLATFORM" in
                 export CUSTOM_TC=`pwd`/armv7l-linux-musleabihf-cross
                 export TRACT_CPU_ARM32_NEON=true
                 export DINGHY_TEST_ARGS="--env TRACT_CPU_ARM32_NEON=true"
-                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/armv7l-linux-musleabihf-cross.tgz | tar zx
+                [ -d "$CUSTOM_TC" ] || fetch_toolchain armv7l-linux-musleabihf-cross.tgz
                 export TARGET_CFLAGS="-mfpu=neon"
                 ;;
             "riscv64gc-unknown-linux-musl")
@@ -231,7 +244,7 @@ case "$PLATFORM" in
                 # knows the ratified RVV 1.0 encodings, which arrived in binutils 2.38, and
                 # musl-cross-make has cut no release since 2021 and is stuck on 2.37.
                 export CUSTOM_TC=`pwd`/riscv64-lp64d--musl--stable-2025.08-1
-                [ -d "$CUSTOM_TC" ] || curl --retry 5 --retry-delay 5 -sSf https://tract-test-assets.tract.rs/toolchains/riscv64-lp64d--musl--stable-2025.08-1.tar.xz | tar Jx
+                [ -d "$CUSTOM_TC" ] || fetch_toolchain riscv64-lp64d--musl--stable-2025.08-1.tar.xz
                 export TARGET_CC=$CUSTOM_TC/bin/riscv64-buildroot-linux-musl-gcc
                 # riscv64 musl defaults to dynamic linking (unlike the aarch64/armv7 musl
                 # targets here); force a static binary so it runs on the glibc boards, which

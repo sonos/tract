@@ -1,0 +1,10 @@
+version 1.0;
+
+graph sq_move_reduce(input) -> (output)
+{
+    input = external<scalar>(shape = [4, 8]);
+    sq = sqr(input);
+    moved = transpose(sq, axes = [1, 0]);
+    summed = sum_reduce(moved, axes = [1]);
+    output = mul(summed, 0.25);
+}

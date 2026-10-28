@@ -90,6 +90,31 @@ pub fn rewrite_conv_with_n_axis(
     Ok(None)
 }
 
+/// A convolution over one spatial axis as one over two, the second of size one: the input and
+/// the kernel each take a unit axis after their spatial one, which the output drops again. For
+/// backends whose convolution kernels are two-dimensional only.
+pub fn rewrite_conv_1d_to_2d(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &Conv,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(conv.pool_spec.rank() == 1);
+    let mut new = conv.clone();
+    new.pool_spec = conv.pool_spec.change_geo_axes(&AxisOp::Add(1))?;
+    let mut patch = TypedModelPatch::default();
+    let mut wire = patch.taps(model, &node.inputs)?;
+    let pos_data = conv.pool_spec.data_format.h_axis() + 1;
+    wire[0] = patch.wire_node(format!("{name}.add_dim"), AxisOp::Add(pos_data), &[wire[0]])?[0];
+    let pos_kernel = conv.kernel_fmt.h_axis() + 1;
+    wire[1] = patch.wire_node(format!("{name}.add_dim_k"), AxisOp::Add(pos_kernel), &[wire[1]])?[0];
+    wire = patch.wire_node(name, new, &wire)?;
+    wire = patch.wire_node(format!("{name}.rm_dim"), AxisOp::Rm(pos_data), &wire)?;
+    patch.shunt_outside(model, node.id.into(), wire[0])?;
+    Ok(Some(patch))
+}
+
 pub fn rewrite_deconv_with_n_axis(
     _ctx: &(),
     model: &TypedModel,

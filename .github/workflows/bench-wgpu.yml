@@ -1,6 +1,6 @@
 name: wgpu bench
 
-# Nightly wgpu bench on the cuda-lovelace box, over Vulkan: ci/benches-wgpu.toml on the wgpu
+# Nightly wgpu bench on entangled (the 4060 box), over Vulkan: ci/benches-wgpu.toml on the wgpu
 # runtime, appended to bench-data as device i9-11900kb_rtx-4060_wgpu. Scheduled at 01:00 UTC,
 # in the box's idle window before the 03:00 examples and the 04:00 CLI nightly.
 
@@ -17,7 +17,7 @@ jobs:
     # The kill switches of the CLI bench: BENCH_ENABLED, and the box listed in
     # BENCH_DISABLED_BOXES.
     if: ${{ vars.BENCH_ENABLED != 'false' && !contains(format(' {0} ', vars.BENCH_DISABLED_BOXES), ' i9-11900kb_rtx-4060 ') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -35,7 +35,7 @@ jobs:
 
   bench:
     needs: build
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     timeout-minutes: 120
     permissions:
       contents: write     # push to bench-data
@@ -67,6 +67,8 @@ jobs:
             --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu \
             --samples 5 --second-pass-max 10        # produces ./metrics
       - name: Checkout bench-data
+        # A failed bench run fails the suite after it wrote the others' metrics; record those.
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -75,6 +77,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
         env:
           DEVICE: i9-11900kb_rtx-4060_wgpu
           REF: ${{ github.sha }}

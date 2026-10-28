@@ -141,30 +141,46 @@ impl ConvProblem {
                             input_coords.insert(0, n);
                         }
                         input_coords.insert(self.shape_in.c_axis(), 0);
-                        for ci in 0..ci_per_g {
-                            input_coords[self.shape_in.c_axis()] = ci + g * ci_per_g;
-                            let i = self.data[&*input_coords];
-                            for co in 0..co_per_g {
-                                output_coords[shape_out.c_axis()] = co + g * co_per_g;
-                                let mut kernel_coords: TVec<usize> = geo_ker.slice().into();
-                                match self.kernel_format {
-                                    KernelFormat::OIHW => {
-                                        kernel_coords.insert(0, ci);
-                                        kernel_coords.insert(0, co + g * co_per_g);
-                                    }
-                                    KernelFormat::HWIO => {
-                                        kernel_coords.push(ci + g * ci_per_g);
-                                        kernel_coords.push(co);
-                                    }
-                                    KernelFormat::OHWI => {
-                                        kernel_coords.insert(0, co);
-                                        kernel_coords.push(ci + g * ci_per_g);
-                                    }
-                                }
-                                let k = self.kernel[&*kernel_coords];
-                                out[&*output_coords] += k * i;
+                        let mut kernel_coords: TVec<usize> = geo_ker.slice().into();
+                        let (o_range, i_range) = match self.kernel_format {
+                            KernelFormat::OIHW => {
+                                kernel_coords.insert(0, 0);
+                                kernel_coords.insert(0, 0);
+                                (g * co_per_g..(g + 1) * co_per_g, 0..ci_per_g)
                             }
-                        }
+                            KernelFormat::HWIO => {
+                                kernel_coords.push(0);
+                                kernel_coords.push(0);
+                                (0..co_per_g, g * ci_per_g..(g + 1) * ci_per_g)
+                            }
+                            KernelFormat::OHWI => {
+                                kernel_coords.insert(0, 0);
+                                kernel_coords.push(0);
+                                (0..co_per_g, g * ci_per_g..(g + 1) * ci_per_g)
+                            }
+                        };
+                        let rank = kernel_coords.len();
+                        let ker_io_axes = match self.kernel_format {
+                            KernelFormat::OIHW => [0, 1],
+                            KernelFormat::HWIO => [rank - 1, rank - 2],
+                            KernelFormat::OHWI => [0, rank - 1],
+                        };
+                        let kernel =
+                            keep_axes::<_, Ix2>(self.kernel.view(), &kernel_coords, &ker_io_axes)
+                                .slice_move(s![o_range, i_range]);
+                        let input = keep_axes::<_, Ix1>(
+                            self.data.view(),
+                            &input_coords,
+                            &[self.shape_in.c_axis()],
+                        )
+                        .slice_move(s![g * ci_per_g..(g + 1) * ci_per_g]);
+                        let mut output = keep_axes::<_, Ix1>(
+                            out.view_mut(),
+                            &output_coords,
+                            &[shape_out.c_axis()],
+                        )
+                        .slice_move(s![g * co_per_g..(g + 1) * co_per_g]);
+                        output += &kernel.dot(&input.insert_axis(Axis(1))).remove_axis(Axis(1));
                     }
                 }
             }
@@ -435,6 +451,24 @@ pub fn winograd_sized(
     })
 }
 
+/// `view` reduced to the `keep` axes, in that order, every other axis fixed at its `coords` entry.
+fn keep_axes<S: RawData, D: Dimension>(
+    mut view: ArrayBase<S, IxDyn>,
+    coords: &[usize],
+    keep: &[usize],
+) -> ArrayBase<S, D> {
+    for axis in (0..coords.len()).rev() {
+        if !keep.contains(&axis) {
+            view = view.index_axis_move(Axis(axis), coords[axis]);
+        }
+    }
+    let mut kept: TVec<usize> = keep.into();
+    kept.sort();
+    let order: TVec<usize> =
+        keep.iter().map(|k| kept.iter().position(|x| x == k).unwrap()).collect();
+    view.permuted_axes(&*order).into_dimensionality().unwrap()
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
 
@@ -445,7 +479,7 @@ pub fn suite() -> TractResult<TestSuite> {
     };
     for (name, n, ci, co, h, w, ker, pad, strides) in [
         ("direct_spatial_stem", 1, 3, 16, 9, 260, [3, 3], PaddingSpec::SameUpper, [2, 2]),
-        ("direct_spatial_fat_3x3", 2, 32, 8, 5, 130, [3, 3], PaddingSpec::SameUpper, [1, 1]),
+        ("direct_spatial_fat_3x3", 2, 7, 8, 5, 130, [3, 3], PaddingSpec::SameUpper, [1, 1]),
         ("direct_spatial_oc_tail", 1, 2, 6, 4, 140, [2, 3], PaddingSpec::Valid, [1, 1]),
         (
             "direct_spatial_padding_only_windows",

@@ -26,6 +26,7 @@ mod context;
 pub mod coverage;
 pub mod jspi;
 pub mod kernels;
+mod memory;
 pub mod ops;
 mod rewrite_rules;
 mod tensor;
@@ -38,15 +39,21 @@ mod wasm_record;
 use tract_core::internal::*;
 use tract_core::transform::ModelTransform;
 
+pub use memory::WgpuTurnHandler;
+
 pub use crate::context::{
     CACHE_STATS, KernelTime, WgpuContext, WgpuQueue, try_wgpu_context, wgpu_context,
     wgpu_context_async, with_wgpu_queue,
 };
-pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, uncovered_ops};
+pub use crate::coverage::{UncoveredOp, ensure_wgpu_coverage, mid_graph_readbacks, uncovered_ops};
 pub use crate::jspi::{hybrid_fallback_available, jspi_in_browser};
+pub use crate::kernels::ingest::{
+    Normalization, tensor_from_nv12, tensor_from_rgb565, tensor_from_rgba8, tensor_to_texture,
+};
 #[cfg(target_arch = "wasm32")]
-pub use crate::kernels::ingest::{tensor_from_external_image, tensor_from_video_frame};
-pub use crate::kernels::ingest::{tensor_from_rgba8, tensor_to_texture};
+pub use crate::kernels::ingest::{
+    tensor_from_external_image, tensor_from_external_image_normalized, tensor_from_video_frame,
+};
 
 /// The `GPUDevice` this backend runs on, so a compositor in the page can be
 /// built against the same device and read the mask where it already is.
@@ -132,11 +139,10 @@ impl Runtime for WgpuRuntime {
 
         let options = RunOptions { skip_order_opt_ram: true, ..options.clone() };
         let mut runnable = TypedSimplePlan::build(model, &options)?;
-        if let Some(hints) = options.memory_sizing_hints {
-            let turn_handler =
-                tract_gpu::turn_handler::DeviceTurnHandler::from_plan(&runnable, &hints)
-                    .context("While sizing memory arena. Missing hint ?")?;
-            runnable = runnable.with_turn_handler(turn_handler);
+        if let Some(handler) =
+            memory::WgpuTurnHandler::for_plan(&runnable, options.memory_sizing_hints.as_ref())?
+        {
+            runnable = runnable.with_turn_handler(handler);
         }
 
         Ok(Box::new(Arc::new(runnable)))

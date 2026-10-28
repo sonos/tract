@@ -401,3 +401,50 @@ INSTANTIATE_GATHER(i64, int64_t)
 // Axis resample: f32 and f16 only (plan indices are int32, weights f32).
 INSTANTIATE_RESIZE_AXIS(f32, float)
 INSTANTIATE_RESIZE_AXIS(f16, half)
+
+// Cumulative sum along one axis of a contiguous tensor viewed as (outer, len, inner):
+// one thread per (outer, inner) lane walks the axis, accumulating in Acc. `exclusive`
+// writes the sum of the previous elements, `reverse` walks from the end.
+//
+// params layout: [outer, len, inner, exclusive, reverse]
+template <typename T, typename Acc>
+[[kernel]] void cumsum(device const void *input_b [[buffer(0)]],
+                       device void *output_b [[buffer(1)]],
+                       constant const int32_t *params [[buffer(2)]],
+                       uint tpig [[thread_position_in_grid]]) {
+    const int32_t outer = params[0];
+    const int32_t len = params[1];
+    const int32_t inner = params[2];
+    const bool exclusive = params[3] != 0;
+    const bool reverse = params[4] != 0;
+    const int32_t lane = (int32_t)tpig;
+    if (lane >= outer * inner)
+        return;
+
+    device const T *input = (device const T *)input_b;
+    device T *output = (device T *)output_b;
+    const int64_t base = (int64_t)(lane / inner) * len * inner + lane % inner;
+    Acc acc = (Acc)0;
+    for (int32_t s = 0; s < len; ++s) {
+        const int64_t ix = base + (int64_t)(reverse ? len - 1 - s : s) * inner;
+        const Acc v = (Acc)input[ix];
+        if (exclusive) {
+            output[ix] = (T)acc;
+            acc += v;
+        } else {
+            acc += v;
+            output[ix] = (T)acc;
+        }
+    }
+}
+
+typedef decltype(cumsum<float, float>) cumsum_t;
+
+#define INSTANTIATE_CUMSUM(tname, type, acc)                                   \
+    template [[host_name("array_ops::cumsum_" #tname)]] [[kernel]] cumsum_t   \
+        cumsum<type, acc>;
+
+INSTANTIATE_CUMSUM(f32, float, float)
+INSTANTIATE_CUMSUM(f16, half, float)
+INSTANTIATE_CUMSUM(i32, int32_t, int32_t)
+INSTANTIATE_CUMSUM(i64, int64_t, int64_t)

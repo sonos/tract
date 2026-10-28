@@ -2,11 +2,7 @@ use std::path::Path;
 
 use crate::ast::QuantFormat;
 use crate::internal::*;
-#[cfg(feature = "unstable-safetensors")]
-use safetensors::SafeTensors;
 use tract_core::downcast_rs::{DowncastSync, impl_downcast};
-#[cfg(feature = "unstable-safetensors")]
-use tract_core::tract_data::itertools::Itertools;
 
 pub const GRAPH_NNEF_FILENAME: &str = "graph.nnef";
 pub const GRAPH_QUANT_FILENAME: &str = "graph.quant";
@@ -190,6 +186,8 @@ impl Resource for TypedModelResource {}
 #[cfg(feature = "unstable-safetensors")]
 pub struct SafeTensorsLoader;
 
+/// Reads every tensor of a `.safetensors` file, each straight from the reader into a tensor
+/// of its own, so the file is never held in memory whole.
 #[cfg(feature = "unstable-safetensors")]
 impl ResourceLoader for SafeTensorsLoader {
     fn name(&self) -> StaticName {
@@ -202,25 +200,31 @@ impl ResourceLoader for SafeTensorsLoader {
         reader: &mut dyn std::io::Read,
         _framework: &Nnef,
     ) -> TractResult<Option<(String, Arc<dyn Resource>)>> {
-        if path.extension().is_some_and(|e| e == "safetensors") {
-            let mut buffer = vec![];
-            reader.read_to_end(&mut buffer)?;
-            let tensors: Vec<(String, Arc<Tensor>)> = SafeTensors::deserialize(&buffer)?
-                .tensors()
-                .into_iter()
-                .map(|(name, t)| {
-                    let dt = match t.dtype() {
-                        safetensors::Dtype::F32 => DatumType::F32,
-                        safetensors::Dtype::F16 => DatumType::F16,
-                        _ => panic!(),
-                    };
-                    let tensor = unsafe { Tensor::from_raw_dt(dt, t.shape(), t.data()).unwrap() };
-                    (name, tensor.into_arc_tensor())
-                })
-                .collect_vec();
-            return Ok(Some((path.to_string_lossy().to_string(), Arc::new(tensors))));
+        if !path.extension().is_some_and(|e| e == "safetensors") {
+            return Ok(None);
         }
-        Ok(None)
+        let mut prefix = [0u8; 8];
+        reader.read_exact(&mut prefix)?;
+        let mut header = vec![0u8; crate::safetensors::header_len(prefix)?];
+        reader.read_exact(&mut header)?;
+        let entries = crate::safetensors::entries(&header)?;
+        let mut position = 0;
+        let mut tensors = Vec::with_capacity(entries.len());
+        for crate::safetensors::Entry { name, datum_type: dt, shape, begin } in entries {
+            ensure!(begin >= position, "safetensors tensor {name} overlaps the previous one");
+            let mut gap = begin - position;
+            let mut scratch = [0u8; 1 << 16];
+            while gap > 0 {
+                let chunk = gap.min(scratch.len());
+                reader.read_exact(&mut scratch[..chunk])?;
+                gap -= chunk;
+            }
+            let mut tensor = Tensor::zero_dt(dt, &shape)?;
+            reader.read_exact(tensor.as_bytes_mut())?;
+            position = begin + tensor.as_bytes().len();
+            tensors.push((name, tensor.into_arc_tensor()));
+        }
+        Ok(Some((path.to_string_lossy().to_string(), Arc::new(tensors))))
     }
 }
 

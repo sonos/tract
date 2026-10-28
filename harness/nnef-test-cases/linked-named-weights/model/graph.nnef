@@ -1,0 +1,10 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(x) -> (y) {
+  x = tract_core_external(shape = [1, 4], datum_type = "F32");
+  weight = tract_core_named_weight(label = "dense.weight", shape = [4, 3], datum_type = "F32");
+  bias = tract_core_named_weight(label = "dense.bias", shape = [3], datum_type = "F32");
+  y = add(matmul(x, weight), unsqueeze(bias, axes = [0]));
+}

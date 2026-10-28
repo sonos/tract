@@ -62,13 +62,14 @@ impl Expansion for Gemm {
     ) -> TractResult<TVec<OutletId>> {
         let (a, b, c) = (inputs[0], inputs[1], inputs.get(2));
         let axes = AxesMapping::for_numpy_matmul(2, self.trans_a, self.trans_b, false)?;
-        let mut wire = model.wire_node(
-            format!("{name}.ab"),
-            EinSum::new(axes, model.outlet_fact(a)?.datum_type),
-            [a, b].as_ref(),
-        )?[0];
+        let dt = model.outlet_fact(a)?.datum_type;
+        let mut wire =
+            model.wire_node(format!("{name}.ab"), EinSum::new(axes, dt), [a, b].as_ref())?[0];
         if self.alpha != 1.0 {
-            let alpha = tensor0(self.alpha).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let alpha = tensor0(self.alpha)
+                .cast_to_dt(dt)?
+                .into_owned()
+                .broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let alpha = model.add_const(name.to_string() + ".alpha_ab.cst", alpha)?;
             wire = model.wire_node(
                 name.to_string() + ".alpha_ab",
@@ -85,7 +86,10 @@ impl Expansion for Gemm {
                     &[c],
                 )?[0];
             }
-            let beta = tensor0(self.beta).broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
+            let beta = tensor0(self.beta)
+                .cast_to_dt(dt)?
+                .into_owned()
+                .broadcast_into_rank(model.outlet_fact(wire)?.rank())?;
             let beta = model.add_const(name.to_string() + ".beta_c.cst", beta)?;
             let beta_c =
                 model.wire_node(name.to_string() + ".beta_c", ops::math::mul(), &[beta, c])?[0];

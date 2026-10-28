@@ -46,6 +46,33 @@ struct Row {
 }
 
 /// A table row as the templates consume it (all formatting done here).
+/// A bench run that failed on a device, from that device's `metrics.failures`.
+#[derive(Serialize)]
+struct Failed {
+    device: String,
+    run: String,
+    reason: String,
+}
+
+#[derive(Deserialize)]
+struct FailureLine {
+    failure: String,
+    reason: String,
+}
+
+/// The failed runs `bench-suite` recorded next to a device's metrics, if any.
+fn read_failures(dir: &std::path::Path, device: &str) -> Vec<Failed> {
+    let Ok(text) = std::fs::read_to_string(dir.join("metrics.failures")) else { return vec![] };
+    text.lines()
+        .filter_map(|l| serde_json::from_str::<FailureLine>(l).ok())
+        .map(|f| Failed {
+            device: device.to_string(),
+            run: f.failure,
+            reason: f.reason.replace('|', "\\|").replace('\n', " "),
+        })
+        .collect()
+}
+
 #[derive(Serialize)]
 struct Cell {
     icon: String,
@@ -539,18 +566,16 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     };
     let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
 
-    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("meta.json").exists())
-        .collect();
-    result_dirs.sort();
+    let result_dirs = device_dirs(results)?;
 
     let mut rows = vec![];
     let mut devices = vec![];
     let mut ref_days = vec![];
+    let mut failed = vec![];
     for dir in &result_dirs {
         let meta: Meta = serde_json::from_str(&std::fs::read_to_string(dir.join("meta.json"))?)?;
         devices.push(meta.device.clone());
+        failed.extend(read_failures(dir, &meta.device));
         let pr = read_metrics(dir.join("metrics").to_str().unwrap_or_default());
         let (refv, noise, ref_day) = reference(bench_data, &meta.triple, &meta.device)?;
         if let Some(d) = ref_day {
@@ -582,9 +607,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         }
     }
 
-    // No comparable metrics (no device results, or no reference) -> write nothing, so a
-    // cancelled/empty run can't overwrite a real comment with a vacuous "no regressions".
-    if rows.is_empty() {
+    // No comparable metrics (no device results, or no reference) and no failed run -> write
+    // nothing, so a cancelled/empty run can't post a vacuous "no regressions".
+    if rows.is_empty() && failed.is_empty() {
         println!("no comparable metrics; not writing a comment");
         return Ok(());
     }
@@ -618,7 +643,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     let (speed_impr_shown, speed_impr_more) = split(&speed_impr);
     let other_regr_cells: Vec<Cell> = other_regr.iter().map(|r| to_cell(r)).collect();
 
-    let head = if !speed_regr.is_empty() {
+    let mut head = if rows.is_empty() {
+        "❌ **Bench vs main — nothing to compare**".to_string()
+    } else if !speed_regr.is_empty() {
         let mut h = format!("🔴 **Bench vs main — {} speed regression(s)**", speed_regr.len());
         if !other_regr.is_empty() {
             h += &format!(" · ⚠️ {} secondary", other_regr.len());
@@ -632,6 +659,9 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
     } else {
         "✅ **Bench vs main — no regressions**".to_string()
     };
+    if !failed.is_empty() {
+        head += &format!(" · ❌ {} run(s) failed", failed.len());
+    }
 
     let latest = ref_days.iter().max().copied();
     let ref_day = latest.map_or_else(|| "n/a".to_string(), |d| d.to_string());
@@ -651,6 +681,7 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         speed_impr_shown => Serde(speed_impr_shown),
         speed_impr_more => Serde(speed_impr_more),
         other_regr => Serde(other_regr_cells), run_url,
+        failed => Serde(&failed),
     })?;
     std::fs::write(out, tidy(&rendered))?;
 
@@ -673,7 +704,11 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
 
     let regr_total = speed_regr.len() + other_regr.len();
     let impr_total = movers.iter().filter(|r| !r.worse).count();
-    println!("regressions={regr_total} improvements={impr_total} metrics={}", rows.len());
+    println!(
+        "regressions={regr_total} improvements={impr_total} metrics={} failed={}",
+        rows.len(),
+        failed.len()
+    );
     Ok(())
 }
 
@@ -693,15 +728,30 @@ fn reds(rows: &[Row]) -> BTreeMap<String, Vec<String>> {
 }
 
 /// Per-device result dirs under `dir` (each holding `meta.json` + `metrics`), by device.
+/// The per-device result dirs (those holding a `meta.json`) under `dir`, sorted. A `dir`
+/// that holds a `meta.json` itself is the one device: download-artifact unpacks a single
+/// matching artifact straight into its path instead of a subdirectory.
+fn device_dirs(dir: &str) -> TractResult<Vec<std::path::PathBuf>> {
+    let dir = std::path::Path::new(dir);
+    if dir.join("meta.json").exists() {
+        return Ok(vec![dir.to_path_buf()]);
+    }
+    let mut dirs: Vec<std::path::PathBuf> = std::fs::read_dir(dir)?
+        .filter_map(|e| e.ok().map(|e| e.path()))
+        .filter(|p| p.join("meta.json").exists())
+        .collect();
+    dirs.sort();
+    Ok(dirs)
+}
+
 fn result_dirs(dir: &str) -> TractResult<BTreeMap<String, std::path::PathBuf>> {
     let mut out = BTreeMap::new();
-    let Ok(entries) = std::fs::read_dir(dir) else { return Ok(out) };
-    for path in entries.filter_map(|e| e.ok().map(|e| e.path())) {
-        if path.join("meta.json").exists() {
-            let meta: Meta =
-                serde_json::from_str(&std::fs::read_to_string(path.join("meta.json"))?)?;
-            out.insert(meta.device, path);
-        }
+    if !std::path::Path::new(dir).exists() {
+        return Ok(out);
+    }
+    for path in device_dirs(dir)? {
+        let meta: Meta = serde_json::from_str(&std::fs::read_to_string(path.join("meta.json"))?)?;
+        out.insert(meta.device, path);
     }
     Ok(out)
 }
@@ -740,6 +790,15 @@ pub fn handle_merge(matches: &clap::ArgMatches) -> TractResult<()> {
         let dst = out.join(src.file_name().context("result dir without a name")?);
         std::fs::create_dir_all(&dst)?;
         std::fs::copy(src.join("meta.json"), dst.join("meta.json"))?;
+        let failures = rebench
+            .get(device)
+            .map(|d| d.join("metrics.failures"))
+            .filter(|f| f.exists())
+            .or_else(|| previous.get(device).map(|d| d.join("metrics.failures")))
+            .filter(|f| f.exists());
+        if let Some(f) = failures {
+            std::fs::copy(f, dst.join("metrics.failures"))?;
+        }
         let lines: String = merged.iter().map(|(m, v)| format!("{m} {v}\n")).collect();
         std::fs::write(dst.join("metrics"), lines)?;
     }
@@ -757,11 +816,7 @@ pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
     let pr_sha = get("pr-sha").context("--pr-sha is required")?;
     let run_url = std::env::var("RUN_URL").unwrap_or_else(|_| "#".to_string());
 
-    let mut result_dirs: Vec<std::path::PathBuf> = std::fs::read_dir(results)?
-        .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.join("meta.json").exists())
-        .collect();
-    result_dirs.sort();
+    let result_dirs = device_dirs(results)?;
 
     let mut sections = String::new();
     for dir in &result_dirs {
@@ -835,6 +890,32 @@ pub fn handle_mt(matches: &clap::ArgMatches) -> TractResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn device_dirs_take_one_or_many_devices() {
+        let root = std::env::temp_dir().join(format!("tract-device-dirs-{}", std::process::id()));
+        let meta = |dir: &std::path::Path, device: &str| {
+            std::fs::create_dir_all(dir).unwrap();
+            std::fs::write(
+                dir.join("meta.json"),
+                format!(r#"{{"device":"{device}","triple":"t"}}"#),
+            )
+            .unwrap();
+        };
+        let many = root.join("many");
+        meta(&many.join("bench-result-b"), "b");
+        meta(&many.join("bench-result-a"), "a");
+        std::fs::create_dir_all(many.join("unrelated")).unwrap();
+        let flat = root.join("flat");
+        meta(&flat, "a");
+        let devices = |d: &std::path::Path| {
+            result_dirs(d.to_str().unwrap()).unwrap().into_keys().collect::<Vec<_>>()
+        };
+        assert_eq!(devices(&many), ["a", "b"]);
+        assert_eq!(devices(&flat), ["a"]);
+        assert!(devices(&root.join("missing")).is_empty());
+        std::fs::remove_dir_all(&root).unwrap();
+    }
 
     #[test]
     fn merge_keeps_each_metrics_best() {

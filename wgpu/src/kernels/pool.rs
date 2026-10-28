@@ -10,7 +10,7 @@ use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
 pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
-    keys_for(ModuleKind::Pool, &["max_pool_2d", "sum_pool_2d"], shader_f16)
+    keys_for(ModuleKind::Pool, &["max_pool_2d", "sum_pool_2d", "global_avg_pool_2d"], shader_f16)
 }
 
 pub fn wgpu_pool_supported(pool_spec: &PoolSpec, fact: &TypedFact) -> bool {
@@ -30,14 +30,6 @@ pub fn wgpu_pool_dispatch(
         q.retain_tensor(input);
         q.retain_tensor(output);
         let dt = ShaderDtype::from_datum(input.datum_type())?;
-        let stem = match kind {
-            PoolKind::Max => "max_pool_2d",
-            PoolKind::Sum { .. } => "sum_pool_2d",
-        };
-        let pipeline = q.context().pipeline(PipelineKey {
-            module: ModuleKey { kind: ModuleKind::Pool, dtype: dt },
-            entry: EntryPoint::typed(stem, dt),
-        })?;
         let in_shape = pool_spec.data_format.shape(input.shape())?;
         let out_shape = pool_spec.data_format.shape(output.shape())?;
         ensure!(in_shape.hw_rank() == 2);
@@ -55,6 +47,24 @@ pub fn wgpu_pool_dispatch(
         let c = *in_shape.c();
         let oh = out_shape.hw_dims()[0];
         let ow = out_shape.hw_dims()[1];
+        let global_average = matches!(kind, PoolKind::Sum { normalize: true, .. })
+            && oh == 1
+            && ow == 1
+            && padding.iter().all(|p| p.pad_before == 0 && p.pad_after == 0)
+            && dilations.as_ref() == [1, 1]
+            && pool_spec.kernel_shape.as_slice() == in_shape.hw_dims();
+        let stem = if global_average {
+            "global_avg_pool_2d"
+        } else {
+            match kind {
+                PoolKind::Max => "max_pool_2d",
+                PoolKind::Sum { .. } => "sum_pool_2d",
+            }
+        };
+        let pipeline = q.context().pipeline(PipelineKey {
+            module: ModuleKey { kind: ModuleKind::Pool, dtype: dt },
+            entry: EntryPoint::typed(stem, dt),
+        })?;
         let nelem = (n * oh * ow * c) as u64;
         let in_buf = get_wgpu_buffer(input);
         let out_buf = get_wgpu_buffer(output);
@@ -82,7 +92,11 @@ pub fn wgpu_pool_dispatch(
             0,
         ]);
         let dyn_off = q.alloc_uniform(&params)?;
-        q.dispatch("pool", &pipeline, &bg, dyn_off, nelem)
+        if global_average {
+            q.dispatch_grid("pool_global", &pipeline, &bg, dyn_off, [(n * c) as u32, 1, 1])
+        } else {
+            q.dispatch("pool", &pipeline, &bg, dyn_off, nelem)
+        }
     })
 }
 

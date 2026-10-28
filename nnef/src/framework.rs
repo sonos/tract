@@ -526,4 +526,30 @@ mod tests {
         assert!(!dir.path().parent().unwrap().join("evil.dat").exists());
         Ok(())
     }
+    /// Tensors are read in file order whatever order the header lists them in, past any gap
+    /// between them, for each dtype.
+    #[cfg(feature = "unstable-safetensors")]
+    #[test]
+    fn safetensors_tensors_are_read_by_name() -> TractResult<()> {
+        let dir = temp_dir::TempDir::new()?;
+        std::fs::write(
+            dir.path().join("graph.nnef"),
+            "version 1.0;\n\ngraph network() -> (a, b) {\n  \
+             a = variable<scalar>(label = \"a\", shape = [2]);\n  \
+             b = variable<scalar>(label = \"b\", shape = [3]);\n}\n",
+        )?;
+        let a = tensor1(&[f16::from_f32(1.5), f16::from_f32(-2.0)]);
+        let b = tensor1(&[7i64, -8, 1 << 40]);
+        let header = r#"{"b":{"dtype":"I64","shape":[3],"data_offsets":[8,32]},"__metadata__":{"format":"pt"},"a":{"dtype":"F16","shape":[2],"data_offsets":[0,4]}}"#;
+        let mut file = (header.len() as u64).to_le_bytes().to_vec();
+        file.extend_from_slice(header.as_bytes());
+        file.extend_from_slice(a.as_bytes());
+        file.extend_from_slice(&[0u8; 4]);
+        file.extend_from_slice(b.as_bytes());
+        std::fs::write(dir.path().join("weights.safetensors"), file)?;
+        let proto = nnef().proto_model_for_path(dir.path())?;
+        assert_eq!(*proto.tensors[&Identifier::from("a")], a);
+        assert_eq!(*proto.tensors[&Identifier::from("b")], b);
+        Ok(())
+    }
 }

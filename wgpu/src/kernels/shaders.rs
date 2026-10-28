@@ -207,6 +207,7 @@ pub enum ModuleKind {
     Resize,
     Softmax,
     Ingest,
+    IngestBuffer,
     Export,
     MatMul,
 }
@@ -237,6 +238,7 @@ impl ModuleKey {
             }
             ModuleKind::Resize => LayoutKind::Resize,
             ModuleKind::Ingest => LayoutKind::Ingest,
+            ModuleKind::IngestBuffer => LayoutKind::Unary,
             ModuleKind::Export => LayoutKind::Export,
         }
     }
@@ -254,6 +256,7 @@ impl ModuleKey {
             ModuleKind::Resize => resize_wgsl(self.dtype),
             ModuleKind::Softmax => softmax_wgsl(self.dtype),
             ModuleKind::Ingest => ingest_wgsl(self.dtype),
+            ModuleKind::IngestBuffer => include_str!("ingest_buffer.wgsl").to_string(),
             ModuleKind::Export => export_wgsl(self.dtype),
             ModuleKind::MatMul => matmul_wgsl(self.dtype),
         }
@@ -424,7 +427,7 @@ fn gather{i}(linear: u32) -> u32 {{
         r#"
 @compute @workgroup_size({WORKGROUP})
 fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let base = i * 4u;
     if (base >= params.len) {{ return; }}
     var v = in0[params.off_in[0u] / 4u + i];
@@ -512,7 +515,7 @@ fn gather{i}(linear: u32) -> u32 {{
         r#"
 @compute @workgroup_size({WORKGROUP})
 fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
     var v = in0[params.off_in[0] + gather0(i)];
 "#
@@ -581,14 +584,13 @@ fn unary_ops_wgsl(t: &str) -> String {
 }}
 
 fn op_abs(x: {t}) -> {t} {{ return abs(x); }}
-fn op_exp(x: {t}) -> {t} {{ return exp(x); }}
-fn op_ln(x: {t}) -> {t} {{ return log(x); }}
-fn op_sqrt(x: {t}) -> {t} {{ return sqrt(x); }}
-fn op_rsqrt(x: {t}) -> {t} {{ return inverseSqrt(x); }}
+fn op_exp(x: {t}) -> {t} {{ return {t}(exp(f32(x))); }}
+fn op_ln(x: {t}) -> {t} {{ return {t}(log(f32(x))); }}
+fn op_sqrt(x: {t}) -> {t} {{ return {t}(sqrt(f32(x))); }}
+fn op_rsqrt(x: {t}) -> {t} {{ return {t}(inverseSqrt(f32(x))); }}
 fn op_sigmoid(x: {t}) -> {t} {{
-    let y = {t}(1.0) / ({t}(1.0) + exp(-abs(x)));
-    if (x < {t}(0.0)) {{ return {t}(1.0) - y; }}
-    return y;
+    let e = exp(-abs(f32(x)));
+    return {t}(select(1.0, e, x < {t}(0.0)) / (1.0 + e));
 }}
 fn op_square(x: {t}) -> {t} {{ return x * x; }}
 fn op_recip(x: {t}) -> {t} {{ return {t}(1.0) / x; }}
@@ -596,18 +598,18 @@ fn op_ceil(x: {t}) -> {t} {{ return ceil(x); }}
 fn op_floor(x: {t}) -> {t} {{ return floor(x); }}
 fn op_round(x: {t}) -> {t} {{ return sign(x) * floor(abs(x) + {t}(0.5)); }}
 fn op_roundhalftoeven(x: {t}) -> {t} {{ return round(x); }}
-fn op_cos(x: {t}) -> {t} {{ return cos(x); }}
-fn op_sin(x: {t}) -> {t} {{ return sin(x); }}
-fn op_tan(x: {t}) -> {t} {{ return tan(x); }}
-fn op_acos(x: {t}) -> {t} {{ return acos(x); }}
-fn op_asin(x: {t}) -> {t} {{ return asin(x); }}
-fn op_atan(x: {t}) -> {t} {{ return atan(x); }}
-fn op_cosh(x: {t}) -> {t} {{ return cosh(x); }}
-fn op_sinh(x: {t}) -> {t} {{ return sinh(x); }}
-fn op_tanh(x: {t}) -> {t} {{ return tanh(clamp(x, {t}(-15.0), {t}(15.0))); }}
-fn op_acosh(x: {t}) -> {t} {{ return acosh(x); }}
-fn op_asinh(x: {t}) -> {t} {{ return asinh(x); }}
-fn op_atanh(x: {t}) -> {t} {{ return atanh(x); }}
+fn op_cos(x: {t}) -> {t} {{ return {t}(cos(f32(x))); }}
+fn op_sin(x: {t}) -> {t} {{ return {t}(sin(f32(x))); }}
+fn op_tan(x: {t}) -> {t} {{ return {t}(tan(f32(x))); }}
+fn op_acos(x: {t}) -> {t} {{ return {t}(acos(f32(x))); }}
+fn op_asin(x: {t}) -> {t} {{ return {t}(asin(f32(x))); }}
+fn op_atan(x: {t}) -> {t} {{ return {t}(atan(f32(x))); }}
+fn op_cosh(x: {t}) -> {t} {{ return {t}(cosh(f32(x))); }}
+fn op_sinh(x: {t}) -> {t} {{ return {t}(sinh(f32(x))); }}
+fn op_tanh(x: {t}) -> {t} {{ return {t}(tanh(clamp(f32(x), -15.0, 15.0))); }}
+fn op_acosh(x: {t}) -> {t} {{ return {t}(acosh(f32(x))); }}
+fn op_asinh(x: {t}) -> {t} {{ return {t}(asinh(f32(x))); }}
+fn op_atanh(x: {t}) -> {t} {{ return {t}(atanh(f32(x))); }}
 fn op_erf(x: {t}) -> {t} {{ return {t}(approx_erf(f32(x))); }}
 fn op_neg(x: {t}) -> {t} {{ return -x; }}
 fn op_sign(x: {t}) -> {t} {{ return sign(x); }}
@@ -615,7 +617,10 @@ fn op_hardswish(x: {t}) -> {t} {{
     let h = max({t}(0.0), min({t}(1.0), x / {t}(6.0) + {t}(0.5)));
     return x * h;
 }}
-fn op_silu(x: {t}) -> {t} {{ return x / ({t}(1.0) + exp(-x)); }}
+fn op_silu(x: {t}) -> {t} {{
+    let xf = f32(x);
+    return {t}(xf / (1.0 + exp(-xf)));
+}}
 fn op_geluexact(x: {t}) -> {t} {{
     let xf = f32(x);
     return {t}(0.5 * xf * (1.0 + approx_erf(xf * 0.70710678)));
@@ -922,6 +927,376 @@ fn sum_run_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgrou
     s
 }
 
+/// Threads of each group norm statistics and finalize workgroup.
+pub const GROUP_NORM_WG: u32 = 256;
+
+/// Chan's merge of `(count, mean, m2)` triples, and a tree of it over
+/// workgroup memory whose result every thread reads.
+fn moments_lib() -> String {
+    format!(
+        r#"
+struct Moments {{
+    n: f32,
+    mean: f32,
+    m2: f32,
+}}
+
+fn merge_moments(a: Moments, b: Moments) -> Moments {{
+    let n = a.n + b.n;
+    if (n == 0.0) {{ return a; }}
+    let d = b.mean - a.mean;
+    let f = b.n / n;
+    return Moments(n, a.mean + d * f, a.m2 + b.m2 + d * d * a.n * f);
+}}
+
+fn shifted_moments(n: f32, shift: f32, s1: f32, s2: f32) -> Moments {{
+    if (n == 0.0) {{ return Moments(0.0, 0.0, 0.0); }}
+    return Moments(n, shift + s1 / n, s2 - s1 * s1 / n);
+}}
+
+var<workgroup> wg_moments: array<Moments, {GROUP_NORM_WG}>;
+
+fn workgroup_merge_moments(lid: u32, m: Moments) -> Moments {{
+    wg_moments[lid] = m;
+    for (var stride = {GROUP_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid < stride) {{
+            wg_moments[lid] = merge_moments(wg_moments[lid], wg_moments[lid + stride]);
+        }}
+    }}
+    workgroupBarrier();
+    return wg_moments[0];
+}}
+"#
+    )
+}
+
+/// Partial `(count, mean, m2)` statistics of a group norm input, see
+/// `tract_gpu::ops::group_norm::GroupNormParams`. Channel-first, workgroup `x`
+/// is a group and `y` a chunk of it; channel-last, each thread walks one
+/// channel over a chunk of the positions.
+pub fn group_norm_stats_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&moments_lib());
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_partials: u32,
+    pre: u32,
+    channels: u32,
+    post: u32,
+    groups: u32,
+    splits: u32,
+    _p0: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> partials: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+fn store_moments(at: u32, m: Moments) {{
+    partials[params.off_partials + at * 3u] = m.n;
+    partials[params.off_partials + at * 3u + 1u] = m.mean;
+    partials[params.off_partials + at * 3u + 2u] = m.m2;
+}}
+
+@compute @workgroup_size({GROUP_NORM_WG})
+fn group_norm_stats_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let o = wid.x / params.groups;
+    let g = wid.x % params.groups;
+    let cg = params.channels / params.groups;
+    let len = params.pre * cg * params.post;
+    let chunk = (len + params.splits - 1u) / params.splits;
+    let start = wid.y * chunk;
+    let end = min(len, start + chunk);
+    var shift = 0.0;
+    var s1 = 0.0;
+    var s2 = 0.0;
+    var n = 0.0;
+    for (var j = start + lid.x; j < end; j += {GROUP_NORM_WG}u) {{
+        let q = j % params.post;
+        let t = j / params.post;
+        let v = f32(inp[params.off_in + ((o * params.pre + t / cg) * params.channels + g * cg + t % cg) * params.post + q]);
+        if (n == 0.0) {{ shift = v; }}
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0;
+    }}
+    let m = workgroup_merge_moments(lid.x, shifted_moments(n, shift, s1, s2));
+    if (lid.x == 0u) {{
+        store_moments(wid.x * params.splits + wid.y, m);
+    }}
+}}
+
+@compute @workgroup_size({GROUP_NORM_WG})
+fn group_norm_stats_channel_last_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let channel_blocks = (params.channels + {GROUP_NORM_WG}u - 1u) / {GROUP_NORM_WG}u;
+    let o = wid.x / channel_blocks;
+    let c = (wid.x % channel_blocks) * {GROUP_NORM_WG}u + lid.x;
+    if (c >= params.channels) {{ return; }}
+    let chunk = (params.pre + params.splits - 1u) / params.splits;
+    let start = wid.y * chunk;
+    let end = min(params.pre, start + chunk);
+    var shift = 0.0;
+    var s1 = 0.0;
+    var s2 = 0.0;
+    var n = 0.0;
+    for (var p = start; p < end; p++) {{
+        let v = f32(inp[params.off_in + (o * params.pre + p) * params.channels + c]);
+        if (n == 0.0) {{ shift = v; }}
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0;
+    }}
+    store_moments((o * params.channels + c) * params.splits + wid.y, shifted_moments(n, shift, s1, s2));
+}}
+"#
+    ));
+    s
+}
+
+/// Merges each group's partial statistics into its mean and inverse standard
+/// deviation, one workgroup per group.
+pub fn group_norm_finalize_module() -> String {
+    let mut s = moments_lib();
+    s.push_str(
+        r#"
+struct Params {
+    off_partials: u32,
+    off_stats: u32,
+    entries: u32,
+    eps: f32,
+}
+
+@group(0) @binding(0) var<storage, read> partials: array<f32>;
+@group(0) @binding(1) var<storage, read_write> stats: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+"#,
+    );
+    s.push_str(&format!(
+        r#"
+@compute @workgroup_size({GROUP_NORM_WG})
+fn group_norm_finalize(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let base = params.off_partials + wid.x * params.entries * 3u;
+    var m = Moments(0.0, 0.0, 0.0);
+    for (var e = lid.x; e < params.entries; e += {GROUP_NORM_WG}u) {{
+        m = merge_moments(m, Moments(partials[base + 3u * e], partials[base + 3u * e + 1u], partials[base + 3u * e + 2u]));
+    }}
+    m = workgroup_merge_moments(lid.x, m);
+    if (lid.x == 0u) {{
+        stats[params.off_stats + wid.x * 2u] = m.mean;
+        stats[params.off_stats + wid.x * 2u + 1u] = inverseSqrt(m.m2 / m.n + params.eps);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+/// Normalizes each element with its group's `(mean, inverse std)`.
+pub fn group_norm_apply_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_stats: u32,
+    off_out: u32,
+    len: u32,
+    pre: u32,
+    channels: u32,
+    post: u32,
+    groups: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> stats: array<f32>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn group_norm_apply_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let c = (i / params.post) % params.channels;
+    let o = i / (params.pre * params.channels * params.post);
+    let at = params.off_stats + (o * params.groups + c / (params.channels / params.groups)) * 2u;
+    outp[params.off_out + i] = {t}((f32(inp[params.off_in + i]) - stats[at]) * stats[at + 1u]);
+}}
+"#
+    ));
+    s
+}
+
+/// Threads of each layer norm workgroup.
+pub const LAYER_NORM_WG: u32 = 256;
+
+/// Layer norm over the middle axis of an `(outer, k, inner)` view, one
+/// workgroup per normalized row. `affine` multiplies by an F32 scale and adds
+/// an F32 bias along that axis.
+pub fn layer_norm_module(dt: ShaderDtype, affine: bool) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let (bindings, apply) = if affine {
+        (
+            format!(
+                "@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> scale: array<f32>;
+@group(0) @binding(2) var<storage, read> bias: array<f32>;
+@group(0) @binding(3) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(4) var<uniform> params: Params;"
+            ),
+            "y = y * scale[params.off_scale + i] + bias[params.off_bias + i];",
+        )
+    } else {
+        (
+            format!(
+                "@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;"
+            ),
+            "",
+        )
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    off_scale: u32,
+    off_bias: u32,
+    k: u32,
+    inner: u32,
+    rows: u32,
+    eps: f32,
+}}
+
+{bindings}
+
+var<workgroup> partial: array<f32, {LAYER_NORM_WG}>;
+
+fn workgroup_sum(lid: u32, v: f32) -> f32 {{
+    partial[lid] = v;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid < stride) {{
+            partial[lid] += partial[lid + stride];
+        }}
+    }}
+    workgroupBarrier();
+    let total = partial[0];
+    workgroupBarrier();
+    return total;
+}}
+
+@compute @workgroup_size({LAYER_NORM_WG})
+fn layer_norm_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row = wid.y * {GRID_LIMIT}u + wid.x;
+    if (row >= params.rows) {{ return; }}
+    let base = (row / params.inner) * params.k * params.inner + row % params.inner;
+    var sum = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        sum += f32(inp[params.off_in + base + i * params.inner]);
+    }}
+    let mean = workgroup_sum(lid.x, sum) / f32(params.k);
+    var sq = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        let d = f32(inp[params.off_in + base + i * params.inner]) - mean;
+        sq += d * d;
+    }}
+    let inv = inverseSqrt(workgroup_sum(lid.x, sq) / f32(params.k) + params.eps);
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        var y = (f32(inp[params.off_in + base + i * params.inner]) - mean) * inv;
+        {apply}
+        outp[params.off_out + base + i * params.inner] = {t}(y);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+/// Replaces each NaN of the input with `value`. NaN is told by its bits, on the value widened
+/// to f32 (which keeps a NaN a NaN): WGSL lets a compiler assume no NaN and fold `x != x`.
+pub fn nan_replace_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    len: u32,
+    value: f32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn nan_replace_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let x = inp[params.off_in + i];
+    let bits = bitcast<u32>(f32(x));
+    outp[params.off_out + i] = select(x, {t}(params.value), (bits & 0x7fffffffu) > 0x7f800000u);
+}}
+"#
+    ));
+    s
+}
+
+pub fn gather_nd_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_data: u32,
+    off_idx: u32,
+    off_out: u32,
+    len: u32,
+    inner: u32,
+    rows: u32,
+    n: u32,
+    batch_stride: u32,
+    dims: vec4<u32>,
+    strides: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> data: array<{t}>;
+@group(0) @binding(1) var<storage, read> idx: array<f32>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn gather_nd_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let row = i / params.inner;
+    var src = params.off_data + (row / params.rows) * params.batch_stride + i % params.inner;
+    for (var k = 0u; k < params.n; k++) {{
+        var c = i32(idx[params.off_idx + row * params.n + k]);
+        if (c < 0) {{ c += i32(params.dims[k]); }}
+        src += u32(c) * params.strides[k];
+    }}
+    outp[params.off_out + i] = data[src];
+}}
+"#
+    ));
+    s
+}
+
 fn reduce_wgsl(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -945,35 +1320,35 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        acc += inp[params.off_in + (o * params.k + k) * params.inner + r];
+        acc += f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
     }}
-    outp[params.off_out + i] = acc;
+    outp[params.off_out + i] = {t}(acc);
 }}
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(1.0);
+    var acc = 1.0;
     for (var k = 0u; k < params.k; k++) {{
-        acc *= inp[params.off_in + (o * params.k + k) * params.inner + r];
+        acc *= f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
     }}
-    outp[params.off_out + i] = acc;
+    outp[params.off_out + i] = {t}(acc);
 }}
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -987,7 +1362,7 @@ fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -1001,7 +1376,7 @@ fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
@@ -1015,17 +1390,17 @@ fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        let v = inp[params.off_in + (o * params.k + k) * params.inner + r];
+        let v = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
         acc += v * v;
     }}
-    outp[params.off_out + i] = acc / {t}(f32(params.k));
+    outp[params.off_out + i] = {t}(acc / f32(params.k));
 }}
 "#
     ));
@@ -1068,6 +1443,7 @@ struct Params {{
 @group(0) @binding(0) var<storage, read> inp: array<{t}>;
 @group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding(2) var<uniform> params: Params;
+var<workgroup> pool_scratch: array<f32, {WORKGROUP}>;
 
 fn in_idx_nhwc(n: i32, h: i32, w: i32, c: i32) -> u32 {{
     return u32(((n * params.ih + h) * params.iw + w) * params.c + c);
@@ -1083,8 +1459,49 @@ fn out_idx_nchw(n: i32, c: i32, h: i32, w: i32) -> u32 {{
 }}
 
 @compute @workgroup_size({WORKGROUP})
+fn global_avg_pool_2d_{suf}(
+    @builtin(workgroup_id) group: vec3<u32>,
+    @builtin(local_invocation_id) local: vec3<u32>
+) {{
+    let nc = i32(group.x);
+    if (nc >= params.n * params.c) {{ return; }}
+    let c = nc % params.c;
+    let n = nc / params.c;
+    let spatial = params.ih * params.iw;
+    var acc = 0.0;
+    for (var i = i32(local.x); i < spatial; i += {WORKGROUP}) {{
+        let h = i / params.iw;
+        let w = i - h * params.iw;
+        var idx: u32;
+        if (params.channels_last != 0) {{
+            idx = in_idx_nhwc(n, h, w, c);
+        }} else {{
+            idx = in_idx_nchw(n, c, h, w);
+        }}
+        acc += f32(inp[params.off_in + idx]);
+    }}
+    pool_scratch[local.x] = acc;
+    workgroupBarrier();
+    for (var stride = 32u; stride > 0u; stride >>= 1u) {{
+        if (local.x < stride) {{
+            pool_scratch[local.x] += pool_scratch[local.x + stride];
+        }}
+        workgroupBarrier();
+    }}
+    if (local.x == 0u) {{
+        var oidx: u32;
+        if (params.channels_last != 0) {{
+            oidx = out_idx_nhwc(n, 0, 0, c);
+        }} else {{
+            oidx = out_idx_nchw(n, c, 0, 0);
+        }}
+        outp[params.off_out + oidx] = {t}(pool_scratch[0] / f32(spatial));
+    }}
+}}
+
+@compute @workgroup_size({WORKGROUP})
 fn max_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = i32(gid.x);
+    let i = i32(gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x);
     let nout = params.n * params.oh * params.ow * params.c;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1121,7 +1538,7 @@ fn max_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 
 @compute @workgroup_size({WORKGROUP})
 fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = i32(gid.x);
+    let i = i32(gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x);
     let nout = params.n * params.oh * params.ow * params.c;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1131,7 +1548,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let n = rest / params.oh;
     let h0 = oh * params.stride_h - params.pad_h;
     let w0 = ow * params.stride_w - params.pad_w;
-    var acc = {t}(0.0);
+    var acc = 0.0;
     var count = 0;
     for (var kh = 0; kh < params.kh; kh++) {{
         let ih = h0 + kh * params.dil_h;
@@ -1145,7 +1562,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
             }} else {{
                 idx = in_idx_nchw(n, c, ih, iw);
             }}
-            acc += inp[params.off_in + idx];
+            acc += f32(inp[params.off_in + idx]);
             count += 1;
         }}
     }}
@@ -1155,7 +1572,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
             denom = params.kh * params.kw;
         }}
         if (denom > 0) {{
-            acc = acc / {t}(f32(denom));
+            acc = acc / f32(denom);
         }}
     }}
     var oidx: u32;
@@ -1164,7 +1581,7 @@ fn sum_pool_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     }} else {{
         oidx = out_idx_nchw(n, c, oh, ow);
     }}
-    outp[params.off_out + oidx] = acc;
+    outp[params.off_out + oidx] = {t}(acc);
 }}
 "#
     ));
@@ -1524,7 +1941,7 @@ struct Params {{
 {lib}
 @compute @workgroup_size({WORKGROUP})
 fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let nout = params.n * params.co * params.oh * params.ow;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1568,6 +1985,184 @@ fn conv2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     outp[out_i] = v;
 }}
 "#
+    ));
+    s
+}
+
+/// The `k_info` of a tiled convolution's current `k` slice: for each `k`, the
+/// weight offset of its (input channel, kernel row, kernel column), the input
+/// offset of its channel, and its row and column displacement in the input.
+/// The divisions happen here, sixteen per slice, rather than in every load.
+fn conv_k_prologue() -> String {
+    let tk = MATMUL_TILE_K;
+    format!(
+        "        if (lid < {tk}u) {{
+            let k = k0 + lid;
+            var info = vec4<i32>(0);
+            if (k < k_len) {{
+                let ci = k / khw;
+                let tap = k % khw;
+                let kh = tap / params.kw;
+                let kw = tap % params.kw;
+                info = vec4<i32>(
+                    i32(ci) * params.w_si + i32(kh) * params.w_sh + i32(kw) * params.w_sw,
+                    i32(g * params.ci_pg + ci) * params.in_sc,
+                    i32(kh) * params.dil_h,
+                    i32(kw) * params.dil_w,
+                );
+            }}
+            k_info[lid] = info;
+        }}
+"
+    )
+}
+
+/// A 2-D convolution as an implicit GEMM, staged through workgroup memory the
+/// way [`matmul_tiled_module`] stages a product. Per group, rows are output
+/// channels, columns are output pixels (batch, row, column) and the reduction
+/// runs over (input channel, kernel row, kernel column) in the weights' OIHW
+/// order; the input slice is gathered on load, taps outside the window reading
+/// zero. Same `Params`, strides and per-channel epilogue as [`conv_module`].
+/// Workgroup `x` tiles the pixels, `y` the output channels of a group, `z` is
+/// the group.
+pub fn conv_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body(epilogue, "co");
+    let tile = MATMUL_TILE;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    ci: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    kh: u32,
+    kw: u32,
+    groups: u32,
+    ci_pg: u32,
+    co_pg: u32,
+    channels_last: u32,
+    pad_h: i32,
+    pad_w: i32,
+    stride_h: i32,
+    stride_w: i32,
+    dil_h: i32,
+    dil_w: i32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_si: i32,
+    w_sh: i32,
+    w_sw: i32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    _pad: vec2<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+
+{tiles}
+var<workgroup> k_info: array<vec4<i32>, {tk}>;
+var<workgroup> pix_info: array<vec4<i32>, {tile}>;
+
+fn ld_a(ctx: vec4<u32>, r: u32, k: u32, guard: bool) -> {t} {{
+    if (guard && (r >= params.co_pg || k >= ctx.y)) {{ return {t}(0.0); }}
+    let co = ctx.x * params.co_pg + r;
+    return wgt[params.off_w + u32(i32(co) * params.w_so + k_info[k % {tk}u].x)];
+}}
+
+fn ld_b(ctx: vec4<u32>, k: u32, pix: u32, guard: bool) -> {t} {{
+    if (guard && k >= ctx.y) {{ return {t}(0.0); }}
+    let ki = k_info[k % {tk}u];
+    let p = pix_info[pix % {tile}u];
+    let ih = p.y + ki.z;
+    let iw = p.z + ki.w;
+    if (ih < 0 || ih >= i32(params.ih) || iw < 0 || iw >= i32(params.iw)) {{ return {t}(0.0); }}
+    return inp[params.off_in + u32(p.x + ki.y + ih * params.in_sh + iw * params.in_sw)];
+}}
+
+fn store_out(g: u32, row: u32, pix: u32, acc: f32) {{
+    if (row >= params.co_pg || pix >= params.n * params.oh * params.ow) {{ return; }}
+    let co = g * params.co_pg + row;
+    let ow = pix % params.ow;
+    let rest = pix / params.ow;
+    let oh = rest % params.oh;
+    let n = rest / params.oh;
+    let out_i = params.off_out + u32(
+        i32(n) * params.out_sn
+        + i32(co) * params.out_sc
+        + i32(oh) * params.out_sh
+        + i32(ow) * params.out_sw
+    );
+    var v = {t}(acc);
+{epilogue}
+    outp[out_i] = v;
+}}
+
+@compute @workgroup_size({threads})
+fn conv2d_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let g = wid.z;
+    let khw = params.kh * params.kw;
+    let k_len = params.ci_pg * khw;
+    let actx = vec4<u32>(g, k_len, 0u, 0u);
+    let bctx = actx;
+    let npix = params.n * params.oh * params.ow;
+    let row0 = wid.y * {tile}u;
+    let col0 = wid.x * {tile}u;
+    let interior = row0 + {tile}u <= params.co_pg && col0 + {tile}u <= npix;
+    if (lid < {tile}u) {{
+        let pix = col0 + lid;
+        let ow = pix % params.ow;
+        let rest = pix / params.ow;
+        let oh = rest % params.oh;
+        let n = rest / params.oh;
+        var info = vec4<i32>(0, -0x40000000, 0, 0);
+        if (pix < npix) {{
+            info = vec4<i32>(
+                i32(n) * params.in_sn,
+                i32(oh) * params.stride_h - params.pad_h,
+                i32(ow) * params.stride_w - params.pad_w,
+                0,
+            );
+        }}
+        pix_info[lid] = info;
+    }}
+{core}}}
+"#,
+        tiles = tiled_gemm_tiles(t),
+        threads = TILED_THREADS,
+        tk = MATMUL_TILE_K,
+        core = tiled_gemm_core(t, "true", "true", "g, ", &conv_k_prologue()),
     ));
     s
 }
@@ -1825,7 +2420,7 @@ struct Params {{
 {lib}
 @compute @workgroup_size({WORKGROUP})
 fn conv_transpose2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let nout = params.n * params.co * params.oh * params.ow;
     if (i >= nout) {{ return; }}
     var rest = i;
@@ -1906,7 +2501,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn resize_axis_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.len_out * params.inner;
     if (i >= n) {{ return; }}
     let inner_i = i % params.inner;
@@ -1964,7 +2559,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn resize_2d_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.h_out * params.w_out;
     if (i >= n) {{ return; }}
     let xo = i % params.w_out;
@@ -2087,25 +2682,23 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.outer * params.inner;
     if (i >= n) {{ return; }}
     let o = i / params.inner;
     let r = i % params.inner;
-    var m = inp[params.off_in + (o * params.k) * params.inner + r];
+    var m = f32(inp[params.off_in + (o * params.k) * params.inner + r]);
     for (var k = 1u; k < params.k; k++) {{
-        m = max(m, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        m = max(m, f32(inp[params.off_in + (o * params.k + k) * params.inner + r]));
     }}
-    var sum = {t}(0.0);
+    var sum = 0.0;
     for (var k = 0u; k < params.k; k++) {{
-        let e = exp(inp[params.off_in + (o * params.k + k) * params.inner + r] - m);
-        outp[params.off_out + (o * params.k + k) * params.inner + r] = e;
-        sum += e;
+        sum += exp(f32(inp[params.off_in + (o * params.k + k) * params.inner + r]) - m);
     }}
-    let inv = {t}(1.0) / sum;
+    let inv = 1.0 / sum;
     for (var k = 0u; k < params.k; k++) {{
-        let idx = params.off_out + (o * params.k + k) * params.inner + r;
-        outp[idx] = outp[idx] * inv;
+        let x = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        outp[params.off_out + (o * params.k + k) * params.inner + r] = {t}(exp(x - m) * inv);
     }}
 }}
 "#
@@ -2199,7 +2792,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let mn = params.m * params.n;
     let nout = params.prefix * mn;
     if (i >= nout) {{ return; }}
@@ -2248,6 +2841,253 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     outp[o_i + row * o_row_s + col * o_col_s] = v;
 }}
 "#
+    ));
+    s
+}
+
+/// Threads of a tiled matmul or convolution workgroup: each computes
+/// [`TILED_ROWS`] rows by [`TILED_COLS`] columns of the 64-square output tile.
+pub const TILED_THREADS: usize = 128;
+const TILED_ROWS: usize = 8;
+const TILED_COLS: usize = 4;
+
+/// The body shared by [`matmul_tiled_module`] and [`conv_tiled_module`], from
+/// the tile origin to the stores. Expects `lid`, `row0`, `col0`, `k_len` (the
+/// reduction length) and `interior` (the output tile lies inside the result) in
+/// scope, `ld_a(actx, row, k, guard)` and `ld_b(bctx, k, col, guard)` reading
+/// one operand value (zero outside it when `guard`) given the `vec4<u32>`
+/// contexts `actx` and `bctx` the kernel sets up, and `store_out(<store_args>row,
+/// col, acc)`. `k_prologue`, when not empty, runs at the top of each `k` slice
+/// (`k0` its first index) ahead of a barrier and the loads. `a_k_fast` and
+/// `b_n_fast` are WGSL booleans telling whether `a` is
+/// contiguous along `k` and `b` along columns; either way a thread fills one
+/// whole `vec4` of the tile, and neighbouring threads walk the contiguous axis
+/// so their loads coalesce. Tiles are only ever stored a whole `vec4` at a
+/// time: a store to one lane at a runtime index goes wrong on Metal.
+///
+/// `a` is staged as rows of `vec4` along `k` and `b` as `k` rows of `vec4`
+/// along columns, in the tensor type: one workgroup load hands a thread four
+/// `k` steps of a row, and f16 tiles halve the workgroup-memory traffic that
+/// bounds this kernel. Accumulation is in f32, one register per output.
+fn tiled_gemm_core(
+    t: &str,
+    a_k_fast: &str,
+    b_n_fast: &str,
+    store_args: &str,
+    k_prologue: &str,
+) -> String {
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    let tk4 = tk / 4;
+    let tile4 = tile / 4;
+    let threads = TILED_THREADS;
+    let (tm, tn) = (TILED_ROWS, TILED_COLS);
+    let cols_threads = tile / tn;
+    let mut s = format!(
+        "    let tx = lid % {cols_threads}u;
+    let ty = lid / {cols_threads}u;
+    let a_k_fast = {a_k_fast};
+    let b_n_fast = {b_n_fast};
+"
+    );
+    for i in 0..tm {
+        for j in 0..tn {
+            s += &format!("    var c{i}_{j} = 0.0;\n");
+        }
+    }
+    let k_prologue = if k_prologue.is_empty() {
+        String::new()
+    } else {
+        format!("{k_prologue}        workgroupBarrier();\n")
+    };
+    s += &format!(
+        "    for (var k0 = 0u; k0 < k_len; k0 += {tk}u) {{
+        let guard = !interior || k0 + {tk}u > k_len;
+{k_prologue}        for (var i = lid; i < {aq}u; i += {threads}u) {{
+            if (a_k_fast) {{
+                let r = i / {tk4}u;
+                let kq = i % {tk4}u;
+                let k = k0 + kq * 4u;
+                a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
+            }} else {{
+                let r = i % {tile}u;
+                let kq = i / {tile}u;
+                let k = k0 + kq * 4u;
+                a_tile[r * {tk4}u + kq] = vec4<{t}>(ld_a(actx, row0 + r, k, guard), ld_a(actx, row0 + r, k + 1u, guard), ld_a(actx, row0 + r, k + 2u, guard), ld_a(actx, row0 + r, k + 3u, guard));
+            }}
+        }}
+        for (var i = lid; i < {bq}u; i += {threads}u) {{
+            if (b_n_fast) {{
+                let kk = i / {tile4}u;
+                let cq = i % {tile4}u;
+                let c = col0 + cq * 4u;
+                b_tile[kk * {tile4}u + cq] = vec4<{t}>(ld_b(bctx, k0 + kk, c, guard), ld_b(bctx, k0 + kk, c + 1u, guard), ld_b(bctx, k0 + kk, c + 2u, guard), ld_b(bctx, k0 + kk, c + 3u, guard));
+            }} else {{
+                let kk = i % {tk}u;
+                let cq = i / {tk}u;
+                let c = col0 + cq * 4u;
+                b_tile[kk * {tile4}u + cq] = vec4<{t}>(ld_b(bctx, k0 + kk, c, guard), ld_b(bctx, k0 + kk, c + 1u, guard), ld_b(bctx, k0 + kk, c + 2u, guard), ld_b(bctx, k0 + kk, c + 3u, guard));
+            }}
+        }}
+        workgroupBarrier();
+        for (var kq = 0u; kq < {tk4}u; kq++) {{
+",
+        aq = tile * tk4,
+        bq = tk * tile4,
+    );
+    for i in 0..tm {
+        s += &format!(
+            "            let a{i} = vec4<f32>(a_tile[(ty * {tm}u + {i}u) * {tk4}u + kq]);\n"
+        );
+    }
+    for (sub, comp) in ["x", "y", "z", "w"].iter().enumerate() {
+        s += &format!(
+            "            let b{sub} = vec4<f32>(b_tile[(kq * 4u + {sub}u) * {tile4}u + tx]);\n"
+        );
+        for i in 0..tm {
+            for (j, cj) in ["x", "y", "z", "w"].iter().enumerate() {
+                s += &format!("            c{i}_{j} = fma(a{i}.{comp}, b{sub}.{cj}, c{i}_{j});\n");
+            }
+        }
+    }
+    s += "        }\n        workgroupBarrier();\n    }\n";
+    s += &format!("    let r = row0 + ty * {tm}u;\n    let c = col0 + tx * {tn}u;\n");
+    for i in 0..tm {
+        for j in 0..tn {
+            s += &format!("    store_out({store_args}r + {i}u, c + {j}u, c{i}_{j});\n");
+        }
+    }
+    s
+}
+
+/// The workgroup tiles [`tiled_gemm_core`] stages its operands in.
+fn tiled_gemm_tiles(t: &str) -> String {
+    let tile = MATMUL_TILE;
+    let tk = MATMUL_TILE_K;
+    format!(
+        "var<workgroup> a_tile: array<vec4<{t}>, {}>;\nvar<workgroup> b_tile: array<vec4<{t}>, {}>;\n",
+        tile * tk / 4,
+        tile * tk / 4
+    )
+}
+
+/// Output rows and columns of each tiled matmul workgroup.
+pub const MATMUL_TILE: usize = 64;
+/// `k` values staged in workgroup memory per step of the tiled matmul.
+pub const MATMUL_TILE_K: usize = 16;
+
+/// The general matmul, staged through workgroup memory: each workgroup owns a
+/// [`MATMUL_TILE`]-square block of one prefix slice of the output and walks `k`
+/// in [`MATMUL_TILE_K`]-deep slices, with the loads, layout and accumulation of
+/// [`tiled_gemm_core`]. Each operand is loaded along whichever of its two axes
+/// is unit-strided, so loads coalesce for any transposition. Same `Params`,
+/// strides and epilogue as [`matmul_module`], and no constraint on `m`, `k` or
+/// `n`: partial tiles are guarded. Workgroup `x` tiles `n`, `y` tiles `m`, `z`
+/// is the prefix index.
+pub fn matmul_tiled_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let tile = MATMUL_TILE;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{t}>;
+@group(0) @binding(1) var<storage, read> b: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+{tiles}
+fn ld_a(ctx: vec4<u32>, r: u32, k: u32, guard: bool) -> {t} {{
+    if (guard && (r >= params.m || k >= params.k)) {{ return {t}(0.0); }}
+    return a[ctx.x + r * ctx.y + k * ctx.z];
+}}
+
+fn ld_b(ctx: vec4<u32>, k: u32, c: u32, guard: bool) -> {t} {{
+    if (guard && (k >= params.k || c >= params.n)) {{ return {t}(0.0); }}
+    return b[ctx.x + k * ctx.y + c * ctx.z];
+}}
+
+fn store_out(o_i: u32, o_row_s: u32, o_col_s: u32, row: u32, col: u32, acc: f32) {{
+    if (row >= params.m || col >= params.n) {{ return; }}
+    let oe = o_i - params.off_out + row * o_row_s + col * o_col_s;
+    var v = {t}(acc);
+{epilogue}
+    outp[o_i + row * o_row_s + col * o_col_s] = v;
+}}
+
+@compute @workgroup_size({threads})
+fn matmul_tiled_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = wid.z;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_row_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let a_col_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_row_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
+    let b_col_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    let actx = vec4<u32>(a_i, a_row_s, a_col_s, 0u);
+    let bctx = vec4<u32>(b_i, b_row_s, b_col_s, 0u);
+    let o_row_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    let o_col_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+
+    let row0 = wid.y * {tile}u;
+    let col0 = wid.x * {tile}u;
+    let k_len = params.k;
+    let interior = row0 + {tile}u <= params.m && col0 + {tile}u <= params.n;
+{core}}}
+"#,
+        tiles = tiled_gemm_tiles(t),
+        threads = TILED_THREADS,
+        core = tiled_gemm_core(t, "a_col_s == 1u", "b_col_s == 1u", "o_i, o_row_s, o_col_s, ", ""),
     ));
     s
 }
@@ -2410,7 +3250,7 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn export_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.width * params.height;
     if (i >= n) {{ return; }}
     let x = i % params.width;
@@ -2432,6 +3272,8 @@ struct Params {{
     width: u32,
     height: u32,
     _p: u32,
+    scale: vec4<f32>,
+    offset: vec4<f32>,
 }}
 
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -2440,12 +3282,12 @@ struct Params {{
 
 @compute @workgroup_size({WORKGROUP})
 fn rgba_to_nchw_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
-    let i = gid.x;
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     let n = params.width * params.height;
     if (i >= n) {{ return; }}
     let x = i % params.width;
     let y = i / params.width;
-    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0);
+    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0) * params.scale + params.offset;
     let hw = params.width * params.height;
     let o = params.off_out + i;
     outp[o] = px.r;
@@ -2781,5 +3623,227 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 }}
 "#
     ));
+    s
+}
+
+/// Query rows of a flash-attention workgroup.
+pub const FLASH_SDPA_ROWS: usize = 32;
+/// Keys a flash-attention workgroup stages per step.
+pub const FLASH_SDPA_KEYS: usize = 64;
+/// Largest head dim, for queries, keys and values alike, the flash-attention
+/// kernel takes: its tiles then fit WebGPU's default 16 KiB of workgroup memory.
+pub const FLASH_SDPA_MAX_HEAD_DIM: usize = 48;
+
+/// Reads four consecutive channels of one position of `src` from `base`, zero
+/// past `len`, with every lane named rather than indexed.
+fn flash_sdpa_loader(t: &str, src: &str, len: usize) -> String {
+    let lanes: Vec<String> = (0..4)
+        .map(|j| format!("select({t}(0.0), {src}[base + min(c4 * 4u + {j}u, {last}u) * stride], c4 * 4u + {j}u < {len}u)", last = len - 1))
+        .collect();
+    format!(
+        "fn quad_{src}(base: u32, c4: u32, stride: u32) -> vec4<{t}> {{\n    return vec4<{t}>({});\n}}\n",
+        lanes.join(", ")
+    )
+}
+
+/// Unmasked attention, softmax(scale Q Kᵀ) V, without the score matrix: one
+/// workgroup per [`FLASH_SDPA_ROWS`] queries of one (batch, head) walks the
+/// keys [`FLASH_SDPA_KEYS`] at a time, keeping a running maximum and sum per
+/// query and rescaling its output accumulators as the maximum grows. Each of the
+/// 128 threads holds a four-by-four block of the scores and four rows by four
+/// value columns of the output, all in f32; the query tile, the key or value
+/// block and the probabilities are staged in workgroup memory in the tensor
+/// type. `d` and `dv` are the query/key and value head dims, at most
+/// [`FLASH_SDPA_MAX_HEAD_DIM`]. Q, K, V and the output are read through
+/// (batch, head, position, channel) strides. Workgroup `x` tiles the queries,
+/// `y` is the head and `z` the batch.
+pub fn flash_sdpa_module(dt: ShaderDtype, d: usize, dv: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let rows = FLASH_SDPA_ROWS;
+    let keys = FLASH_SDPA_KEYS;
+    let d4 = d.div_ceil(4);
+    let dv4 = dv.div_ceil(4);
+    let kv_len = keys * d4.max(dv4);
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_q: u32,
+    off_k: u32,
+    off_v: u32,
+    off_o: u32,
+    sq: u32,
+    sk: u32,
+    scale: f32,
+    _p: u32,
+    q_s: vec4<u32>,
+    k_s: vec4<u32>,
+    v_s: vec4<u32>,
+    o_s: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> q: array<{t}>;
+@group(0) @binding(1) var<storage, read> k: array<{t}>;
+@group(0) @binding(2) var<storage, read> v: array<{t}>;
+@group(0) @binding(3) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(4) var<uniform> params: Params;
+
+var<workgroup> q_tile: array<vec4<{t}>, {q_len}>;
+var<workgroup> kv_tile: array<vec4<{t}>, {kv_len}>;
+var<workgroup> p_tile: array<vec4<{t}>, {p_len}>;
+var<workgroup> red: array<f32, {red_len}>;
+
+{loaders}
+
+@compute @workgroup_size(128)
+fn flash_sdpa_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row0 = wid.x * {rows}u;
+    let h = wid.y;
+    let b = wid.z;
+    let tx = lid % 16u;
+    let ty = lid / 16u;
+    let q_base = params.off_q + b * params.q_s.x + h * params.q_s.y;
+    let k_base = params.off_k + b * params.k_s.x + h * params.k_s.y;
+    let v_base = params.off_v + b * params.v_s.x + h * params.v_s.y;
+    let o_base = params.off_o + b * params.o_s.x + h * params.o_s.y;
+
+    for (var i = lid; i < {q_len}u; i += 128u) {{
+        let r = i / {d4}u;
+        var val = vec4<{t}>(0.0);
+        if (row0 + r < params.sq) {{
+            val = quad_q(q_base + (row0 + r) * params.q_s.z, i % {d4}u, params.q_s.w);
+        }}
+        q_tile[i] = val;
+    }}
+
+    var m = array<f32, 4>(-3.0e38, -3.0e38, -3.0e38, -3.0e38);
+    var l = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    var o = array<vec4<f32>, 4>(vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0), vec4<f32>(0.0));
+
+    for (var kb = 0u; kb < params.sk; kb += {keys}u) {{
+        for (var i = lid; i < {kd_len}u; i += 128u) {{
+            let c = i / {d4}u;
+            var val = vec4<{t}>(0.0);
+            if (kb + c < params.sk) {{
+                val = quad_k(k_base + (kb + c) * params.k_s.z, i % {d4}u, params.k_s.w);
+            }}
+            kv_tile[i] = val;
+        }}
+        workgroupBarrier();
+"#,
+        q_len = rows * d4,
+        p_len = rows * keys / 4,
+        loaders = [("q", d), ("k", d), ("v", dv)]
+            .iter()
+            .map(|(src, len)| flash_sdpa_loader(t, src, *len))
+            .collect::<String>(),
+        red_len = rows * 16,
+        kd_len = keys * d4,
+    ));
+    for r in 0..4 {
+        for c in 0..4 {
+            s += &format!("        var s{r}_{c} = 0.0;\n");
+        }
+    }
+    s += &format!("        for (var e = 0u; e < {d4}u; e++) {{\n");
+    for r in 0..4 {
+        s += &format!("            let a{r} = vec4<f32>(q_tile[(ty * 4u + {r}u) * {d4}u + e]);\n");
+    }
+    for c in 0..4 {
+        s += &format!("            let b{c} = vec4<f32>(kv_tile[(tx * 4u + {c}u) * {d4}u + e]);\n");
+    }
+    for r in 0..4 {
+        for c in 0..4 {
+            s += &format!("            s{r}_{c} += dot(a{r}, b{c});\n");
+        }
+    }
+    s += "        }\n";
+    for r in 0..4 {
+        s += &format!(
+            "        let sr{r} = select(vec4<f32>(-3.0e38), vec4<f32>(s{r}_0, s{r}_1, s{r}_2, s{r}_3) * params.scale, vec4<u32>(kb + tx * 4u) + vec4<u32>(0u, 1u, 2u, 3u) < vec4<u32>(params.sk));\n"
+        );
+        s += &format!(
+            "        red[(ty * 4u + {r}u) * 16u + tx] = max(max(sr{r}.x, sr{r}.y), max(sr{r}.z, sr{r}.w));\n"
+        );
+    }
+    s += &format!(
+        r#"        workgroupBarrier();
+        for (var i = lid; i < {vd_len}u; i += 128u) {{
+            let j = i / {dv4}u;
+            var val = vec4<{t}>(0.0);
+            if (kb + j < params.sk) {{
+                val = quad_v(v_base + (kb + j) * params.v_s.z, i % {dv4}u, params.v_s.w);
+            }}
+            kv_tile[i] = val;
+        }}
+"#,
+        vd_len = keys * dv4,
+    );
+    for r in 0..4 {
+        s += &format!(
+            r#"        {{
+            var mx = m[{r}];
+            for (var j = 0u; j < 16u; j++) {{ mx = max(mx, red[(ty * 4u + {r}u) * 16u + j]); }}
+            let alpha = exp(m[{r}] - mx);
+            m[{r}] = mx;
+            let p = exp(sr{r} - vec4<f32>(mx));
+            l[{r}] = l[{r}] * alpha + p.x + p.y + p.z + p.w;
+            o[{r}] *= alpha;
+            p_tile[(ty * 4u + {r}u) * 16u + tx] = vec4<{t}>(p);
+        }}
+"#
+        );
+    }
+    let pv: String = ["x", "y", "z", "w"]
+        .iter()
+        .enumerate()
+        .map(|(jj, c)| {
+            format!(
+                "                let v{jj} = vec4<f32>(kv_tile[(j4 * 4u + {jj}u) * {dv4}u + tx]);
+                o[0] += p0.{c} * v{jj};
+                o[1] += p1.{c} * v{jj};
+                o[2] += p2.{c} * v{jj};
+                o[3] += p3.{c} * v{jj};
+"
+            )
+        })
+        .collect();
+    s += &format!(
+        r#"        workgroupBarrier();
+        if (tx < {dv4}u) {{
+            for (var j4 = 0u; j4 < 16u; j4++) {{
+                let p0 = vec4<f32>(p_tile[(ty * 4u) * 16u + j4]);
+                let p1 = vec4<f32>(p_tile[(ty * 4u + 1u) * 16u + j4]);
+                let p2 = vec4<f32>(p_tile[(ty * 4u + 2u) * 16u + j4]);
+                let p3 = vec4<f32>(p_tile[(ty * 4u + 3u) * 16u + j4]);
+{pv}
+            }}
+        }}
+        workgroupBarrier();
+    }}
+
+    for (var r = 0u; r < 4u; r++) {{
+        red[(ty * 4u + r) * 16u + tx] = l[r];
+    }}
+    workgroupBarrier();
+    if (tx < {dv4}u) {{
+        for (var r = 0u; r < 4u; r++) {{
+            let row = row0 + ty * 4u + r;
+            if (row >= params.sq) {{ continue; }}
+            var sum = 0.0;
+            for (var j = 0u; j < 16u; j++) {{ sum += red[(ty * 4u + r) * 16u + j]; }}
+            let val = o[r] / sum;
+            for (var j = 0u; j < 4u; j++) {{
+                let c = tx * 4u + j;
+                if (c < {dv}u) {{
+                    outp[o_base + row * params.o_s.z + c * params.o_s.w] = {t}(val[j]);
+                }}
+            }}
+        }}
+    }}
+}}
+"#
+    );
     s
 }

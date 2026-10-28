@@ -1,9 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::num::NonZeroU64;
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 
 #[cfg(not(target_arch = "wasm32"))]
 use anyhow::Context;
@@ -37,6 +38,11 @@ const WORKGROUP: u32 = 64;
 
 /// Bind groups kept between frames before the cache is dropped wholesale.
 const BIND_GROUP_CACHE_CAP: usize = 8192;
+
+/// Ids of the buffers dropped since the bind-group cache was last trimmed: a
+/// cached group keeps every buffer it binds alive, and an id is never reused,
+/// so a group naming one of these will not be looked up again.
+static RETIRED_BUFFERS: Mutex<Vec<u64>> = Mutex::new(Vec::new());
 
 thread_local! {
     static WGPU_QUEUE: RefCell<Option<WgpuQueue>> = const { RefCell::new(None) };
@@ -146,8 +152,22 @@ struct WgpuContextInner {
     next_gpu_id: std::sync::atomic::AtomicU32,
 }
 
+tract_core::declare_knob!(
+    scopable TRACT_WGPU_FRAME_BUDGET_MB,
+    usize,
+    256,
+    "Megabytes of buffers a frame may allocate before what it recorded so far is submitted, so \
+     later allocations can reuse buffers the frame no longer holds. 0 never submits early."
+);
+
 /// The buffers one pool position has been handed, oldest first.
 type Slot = Vec<Arc<WgpuBuffer>>;
+
+/// A buffer for each partition of a planned model's memory.
+type PartitionSet = Vec<Arc<Box<dyn OwnedDeviceTensor>>>;
+
+/// The partition sets of one plan, kept until the plan is dropped.
+type PlanPartitions = (Weak<u64>, Vec<PartitionSet>);
 
 /// Frees a staging buffer when the download holding it ends, however it ends.
 struct Release(Arc<std::sync::atomic::AtomicBool>);
@@ -273,6 +293,7 @@ impl WgpuContext {
         };
         #[cfg(target_arch = "wasm32")]
         crate::wasm_record::tract_install_record_hooks();
+        #[cfg(not(target_arch = "wasm32"))]
         ctxt.preload_pipelines()?;
         Ok(ctxt)
     }
@@ -313,6 +334,7 @@ impl WgpuContext {
         self.inner.device.features().contains(wgpu::Features::TIMESTAMP_QUERY)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     fn preload_pipelines(&self) -> TractResult<()> {
         for key in crate::kernels::all_pipeline_keys(self.shader_f16()) {
             let _ = self.pipeline(key);
@@ -545,6 +567,29 @@ impl WgpuContext {
         })))
     }
 
+    /// Bind a one-shot ingest upload without retaining it in the frame cache.
+    pub(crate) fn bind_group_ingest_buffer(
+        &self,
+        input: &wgpu::Buffer,
+        output: &wgpu::Buffer,
+        uniform: &wgpu::Buffer,
+    ) -> TractResult<Arc<wgpu::BindGroup>> {
+        let (bgl, _) = self.layout(LayoutKind::Unary)?;
+        let entries = [
+            wgpu::BindGroupEntry { binding: 0, resource: input.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: output.as_entire_binding() },
+            uniform_entry(2, uniform),
+        ];
+        let id = self.next_gpu_id();
+        let label = format!("tb{id}");
+        LAST_BG_ID.with(|c| c.set(id));
+        Ok(Arc::new(self.inner.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&label),
+            layout: &bgl,
+            entries: &entries,
+        })))
+    }
+
     pub fn create_storage_buffer(&self, bytes: &[u8]) -> wgpu::Buffer {
         let padded = pad4(bytes);
         self.inner.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -561,13 +606,30 @@ impl WgpuContext {
     /// Bind groups a frame no longer needs. The cache is only trimmed between
     /// frames: sized to hold a graph's working set several times over, it
     /// bounds a pathological model without ever evicting mid-frame what the
-    /// frame in flight is still binding.
+    /// frame in flight is still binding. Groups binding a dropped buffer go
+    /// first, so the buffer is freed rather than held until the cache fills.
     pub(crate) fn trim_bind_groups(&self) {
-        if let Ok(mut cache) = self.inner.bind_groups.lock()
-            && cache.len() > BIND_GROUP_CACHE_CAP
-        {
-            cache.clear();
+        let retired =
+            RETIRED_BUFFERS.lock().map(|mut r| std::mem::take(&mut *r)).unwrap_or_default();
+        if let Ok(mut cache) = self.inner.bind_groups.lock() {
+            if !retired.is_empty() {
+                let retired: HashSet<u64> = retired.into_iter().collect();
+                cache.retain(|k, _| !k.buffers[..k.n as usize].iter().any(|b| retired.contains(b)));
+            }
+            if cache.len() > BIND_GROUP_CACHE_CAP {
+                cache.clear();
+            }
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn binds_buffer(&self, id: u64) -> bool {
+        self.inner
+            .bind_groups
+            .lock()
+            .unwrap()
+            .keys()
+            .any(|k| k.buffers[..k.n as usize].contains(&id))
     }
 
     fn next_buffer_id(&self) -> u64 {
@@ -581,11 +643,16 @@ impl WgpuContext {
     }
 
     pub fn wrap_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
-        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: false }
+        self.wrap(inner, false)
     }
 
     fn wrap_pooled_storage(&self, inner: wgpu::Buffer) -> WgpuBuffer {
-        WgpuBuffer { inner, id: self.next_buffer_id(), pooled: true }
+        self.wrap(inner, true)
+    }
+
+    fn wrap(&self, inner: wgpu::Buffer, pooled: bool) -> WgpuBuffer {
+        let id = self.next_buffer_id();
+        WgpuBuffer { inner, id, pooled, _retire: Arc::new(Retire(id)) }
     }
 
     pub fn create_empty_storage(&self, size: u64) -> wgpu::Buffer {
@@ -746,6 +813,7 @@ impl DeviceContext for WgpuContext {
             (view.tensor.as_bytes(), None)
         };
         let buffer = Arc::new(self.wrap_storage(self.create_storage_buffer(data_bytes)));
+        with_wgpu_queue(|q| q.count_upload(data_bytes.len() as u64))?;
         Ok(Box::new(WgpuTensor {
             buffer,
             datum_type: view.datum_type(),
@@ -852,6 +920,15 @@ pub struct WgpuQueue {
     /// later tensor can take.
     repacked: RefCell<HashMap<RepackKey, DeviceTensor>>,
     slot_cursor: RefCell<HashMap<u64, u32>>,
+    /// The partition buffers of each planned model run on this thread, by plan, grown to the
+    /// largest sizes its symbols resolved to. Like the pool, they belong to the thread: its queue
+    /// orders a turn's writes after what the turns before it recorded.
+    partition_sets: RefCell<HashMap<u64, PlanPartitions>>,
+    /// Bytes of pool buffers handed out since the last submission, and the budget past
+    /// which [`WgpuQueue::submit_frame`] runs.
+    frame_bytes: Cell<u64>,
+    frame_budget: Cell<Option<u64>>,
+    frames_submitted: Cell<u64>,
     profile: Cell<bool>,
     profiled: RefCell<Vec<(&'static str, u32)>>,
     queries: RefCell<Option<Queries>>,
@@ -982,8 +1059,12 @@ impl WgpuQueue {
             pending: RefCell::new(vec![]),
             uniform_staging: RefCell::new(vec![]),
             buffer_slots: RefCell::new(HashMap::new()),
+            partition_sets: RefCell::new(HashMap::new()),
             repacked: RefCell::new(HashMap::new()),
             slot_cursor: RefCell::new(HashMap::new()),
+            frame_bytes: Cell::new(0),
+            frame_budget: Cell::new(None),
+            frames_submitted: Cell::new(0),
             profile: Cell::new(false),
             profiled: RefCell::new(vec![]),
             queries: RefCell::new(None),
@@ -1013,6 +1094,7 @@ impl WgpuQueue {
         std::mem::forget(std::mem::take(&mut *self.retained.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.retained_textures.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.buffer_slots.borrow_mut()));
+        std::mem::forget(std::mem::take(&mut *self.partition_sets.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.repacked.borrow_mut()));
         unsafe {
             std::mem::forget(ManuallyDrop::take(&mut self.uniform));
@@ -1034,6 +1116,7 @@ impl WgpuQueue {
             *n += 1;
             seq
         };
+        self.frame_bytes.set(self.frame_bytes.get() + size);
         let mut slots = self.buffer_slots.borrow_mut();
         let held = slots.entry((size, seq)).or_default();
         if let Some(free) = held.iter().find(|b| Arc::strong_count(b) == 1) {
@@ -1045,6 +1128,71 @@ impl WgpuQueue {
         bump(3);
         held.push(fresh.clone());
         fresh
+    }
+
+    /// Buffers for a turn of the plan `plan` names, one per partition of `sizes`: a set its
+    /// earlier turns left that nothing holds any more, or a new one. What the frame retains is let
+    /// go first, so a turn that follows one not yet submitted takes its set back.
+    pub fn partition_buffers(&self, plan: &Arc<u64>, sizes: &[usize]) -> PartitionSet {
+        if let Some(set) = self.free_partition_set(plan, sizes) {
+            return set;
+        }
+        if !self.retained.borrow().is_empty() {
+            self.submit_frame();
+            if let Some(set) = self.free_partition_set(plan, sizes) {
+                return set;
+            }
+        }
+        let set: PartitionSet = sizes.iter().map(|&size| self.partition_buffer(size)).collect();
+        let mut sets = self.partition_sets.borrow_mut();
+        sets.entry(**plan).or_insert_with(|| (Arc::downgrade(plan), vec![])).1.push(set.clone());
+        set
+    }
+
+    /// A set of the plan's that no turn holds, its buffers grown to `sizes` where they fall short.
+    fn free_partition_set(&self, plan: &Arc<u64>, sizes: &[usize]) -> Option<PartitionSet> {
+        let mut sets = self.partition_sets.borrow_mut();
+        let (_, sets) = sets.get_mut(&**plan)?;
+        let set = sets.iter_mut().find(|set| set.iter().all(|b| Arc::strong_count(b) == 1))?;
+        for (buffer, &size) in set.iter_mut().zip(sizes) {
+            if buffer.len() < size {
+                *buffer = self.partition_buffer(size);
+            }
+        }
+        Some(set.clone())
+    }
+
+    fn partition_buffer(&self, size: usize) -> Arc<Box<dyn OwnedDeviceTensor>> {
+        let buffer = self.context.create_empty_storage(size as u64);
+        let len = buffer.size() as usize;
+        let tensor = WgpuTensor {
+            buffer: Arc::new(self.context.wrap_pooled_storage(buffer)),
+            datum_type: DatumType::U8,
+            shape: tvec![len],
+            strides: tvec![1],
+            exotic_fact: None,
+        };
+        Arc::new(Box::new(tensor))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn partition_buffers_held(&self) -> usize {
+        self.partition_sets
+            .borrow()
+            .values()
+            .map(|(_, sets)| sets.iter().map(Vec::len).sum::<usize>())
+            .sum()
+    }
+
+    /// Counts an upload of `bytes` against the frame budget. Past it, the frame is submitted and
+    /// waited for: wgpu holds the staging copy an upload goes through until the submission that
+    /// carries it completes.
+    pub fn count_upload(&self, bytes: u64) -> TractResult<()> {
+        self.frame_bytes.set(self.frame_bytes.get() + bytes);
+        if self.submit_past_budget() {
+            self.context.poll_wait()?;
+        }
+        Ok(())
     }
 
     pub fn repacked(&self, key: &RepackKey) -> Option<DeviceTensor> {
@@ -1074,8 +1222,8 @@ impl WgpuQueue {
     }
 
     /// Stages one dispatch's uniform block. The ring is uploaded once per
-    /// flush: a write per dispatch costs an allocation and a queue call each,
-    /// and a graph issues them by the hundred.
+    /// frame: a write per dispatch costs an allocation and a queue call each,
+    /// and a graph issues them by the hundred. A full ring submits the frame.
     pub fn alloc_uniform(&self, bytes: &[u8]) -> TractResult<u32> {
         ensure!(
             bytes.len() as u64 <= UNIFORM_ALIGN,
@@ -1084,7 +1232,7 @@ impl WgpuQueue {
         );
         let mut cursor = self.uniform_cursor.get();
         if cursor + UNIFORM_ALIGN > UNIFORM_BYTES {
-            self.flush()?;
+            self.submit_frame();
             cursor = 0;
         }
         let mut staging = self.uniform_staging.borrow_mut();
@@ -1147,7 +1295,26 @@ impl WgpuQueue {
             dynamic_offset,
             groups,
         });
+        self.submit_past_budget();
         Ok(())
+    }
+
+    /// Submits what the frame recorded once it has allocated or uploaded past its budget, and
+    /// says whether it did.
+    fn submit_past_budget(&self) -> bool {
+        let budget = match self.frame_budget.get() {
+            Some(b) => b,
+            None => {
+                let b = TRACT_WGPU_FRAME_BUDGET_MB.get() as u64 * (1 << 20);
+                self.frame_budget.set(Some(b));
+                b
+            }
+        };
+        let over = budget > 0 && self.frame_bytes.get() > budget;
+        if over {
+            self.submit_frame();
+        }
+        over
     }
 
     /// Records everything queued since the last drain as a single compute pass.
@@ -1164,19 +1331,19 @@ impl WgpuQueue {
             return;
         }
         #[cfg(target_arch = "wasm32")]
+        self.drain_pending_wasm(&pending);
+        #[cfg(not(target_arch = "wasm32"))]
         {
-            self.drain_pending_wasm(&pending);
-            return;
-        }
-        let mut encoder = self.encoder();
-        let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("tract-wgpu"),
-            timestamp_writes: None,
-        });
-        for d in &pending {
-            pass.set_pipeline(&d.pipeline);
-            pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
-            pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
+            let mut encoder = self.encoder();
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("tract-wgpu"),
+                timestamp_writes: None,
+            });
+            for d in &pending {
+                pass.set_pipeline(&d.pipeline);
+                pass.set_bind_group(0, &*d.bind_group, &[d.dynamic_offset]);
+                pass.dispatch_workgroups(d.groups[0], d.groups[1], d.groups[2]);
+            }
         }
     }
 
@@ -1242,18 +1409,39 @@ impl WgpuQueue {
         }
     }
 
-    pub fn flush(&self) -> TractResult<()> {
+    /// Submits what was recorded so far without waiting for it, and starts a new frame: the
+    /// buffers the frame no longer holds go back to the pool for what comes next. The queue
+    /// runs submissions in order, so a buffer reused by a later one is only written once the
+    /// earlier ones are done with it, and the uniform writes that follow land after them too.
+    /// A frame that recorded nothing still submits the uploads written since the last one.
+    fn submit_frame(&self) {
         self.upload_uniforms();
         self.drain_pending();
         if let Some(encoder) = self.encoder.replace(None) {
             self.context.queue().submit(Some(encoder.finish()));
+            self.frames_submitted.set(self.frames_submitted.get() + 1);
+        } else {
+            self.context.queue().submit([]);
         }
-        self.context.poll_wait()?;
         self.retained.borrow_mut().clear();
         self.retained_textures.borrow_mut().clear();
         self.uniform_cursor.set(0);
-        self.context.trim_bind_groups();
         self.slot_cursor.borrow_mut().clear();
+        self.frame_bytes.set(0);
+        self.frame_budget.set(None);
+    }
+
+    /// Submissions so far, early ones included.
+    #[cfg(test)]
+    pub(crate) fn frames_submitted(&self) -> u64 {
+        self.frames_submitted.get()
+    }
+
+    pub fn flush(&self) -> TractResult<()> {
+        self.submit_frame();
+        self.partition_sets.borrow_mut().retain(|_, (plan, _)| plan.strong_count() > 0);
+        self.context.poll_wait()?;
+        self.context.trim_bind_groups();
         Ok(())
     }
 
@@ -1405,6 +1593,19 @@ pub struct WgpuBuffer {
     /// tensor that fits once nothing holds it. Its `id` is stable only while it
     /// lives, so a cache must not key on a pooled buffer.
     pub pooled: bool,
+    _retire: Arc<Retire>,
+}
+
+/// Retires a buffer id when the last clone of its [`WgpuBuffer`] goes.
+#[derive(Debug)]
+struct Retire(u64);
+
+impl Drop for Retire {
+    fn drop(&mut self) {
+        if let Ok(mut retired) = RETIRED_BUFFERS.lock() {
+            retired.push(self.0);
+        }
+    }
 }
 
 impl std::fmt::Debug for WgpuBuffer {

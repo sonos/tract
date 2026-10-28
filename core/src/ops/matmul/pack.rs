@@ -38,18 +38,16 @@ impl EvalOp for OptMatMulPack {
             return self.do_eval(ctx, input);
         }
         KEPT_PACKS.with_borrow_mut(|kept| {
-            let slot = kept.slot(ctx.session, ctx.node_id);
-            if let Kept::Packed(previous) = slot
+            let session = kept.session(ctx.session);
+            if let Kept::Packed(previous) = session.slot(ctx.node_id)
                 && let Some(repacked) = self.repack(previous, &input)?
             {
                 return Ok(tvec!(repacked));
             }
-            let keep = !matches!(slot, Kept::Cold) && self.packed_format(input.shape()).is_some();
+            let keep = !matches!(session.slot(ctx.node_id), Kept::Cold)
+                && self.packed_format(input.shape()).is_some();
             let output = self.do_eval(ctx, input)?;
-            *slot = match output[0].as_arc_tensor() {
-                Some(packed) if keep => Kept::Packed(packed.clone()),
-                _ => Kept::Warm,
-            };
+            session.keep(ctx.node_id, output[0].as_arc_tensor().filter(|_| keep));
             Ok(output)
         })
     }
@@ -59,10 +57,17 @@ impl EvalOp for OptMatMulPack {
     }
 }
 
+crate::declare_knob!(
+    TRACT_KEPT_PACK_BYTES,
+    usize,
+    64 << 20,
+    "Bytes of packed matmul operands a session may keep between turns to repack in place."
+);
+
 /// What a pack node keeps between the turns of a session: nothing before its
 /// first turn, so a session run once frees its packs as soon as they are
 /// consumed, then its last packed output, refilled in place by the next turn
-/// when no one else holds it.
+/// when no one else holds it, as long as the session's packs fit its budget.
 #[derive(Clone, Debug, Default)]
 enum Kept {
     #[default]
@@ -77,33 +82,80 @@ enum Kept {
 /// go when the plan calls [`EvalOp::drop_session`]; their allocation is kept
 /// for the thread's next session.
 struct KeptPacks {
-    sessions: Vec<(SessionId, Vec<Kept>)>,
+    sessions: Vec<KeptSession>,
     spare: Vec<Kept>,
 }
 
+/// One session's slots, with the bytes its kept packs hold and the
+/// [`TRACT_KEPT_PACK_BYTES`] budget read when the session first ran here.
+struct KeptSession {
+    id: SessionId,
+    slots: Vec<Kept>,
+    bytes: usize,
+    budget: usize,
+}
+
 impl KeptPacks {
-    fn slot(&mut self, session: SessionId, node_id: usize) -> &mut Kept {
-        let ix = match self.sessions.iter().position(|(s, _)| *s == session) {
+    fn session(&mut self, id: SessionId) -> &mut KeptSession {
+        let ix = match self.sessions.iter().position(|s| s.id == id) {
             Some(ix) => ix,
             None => {
-                self.sessions.push((session, std::mem::take(&mut self.spare)));
+                self.sessions.push(KeptSession {
+                    id,
+                    slots: std::mem::take(&mut self.spare),
+                    bytes: 0,
+                    budget: TRACT_KEPT_PACK_BYTES.get(),
+                });
                 self.sessions.len() - 1
             }
         };
-        let slots = &mut self.sessions[ix].1;
-        if slots.len() <= node_id {
-            slots.resize(node_id + 1, Kept::Cold);
-        }
-        &mut slots[node_id]
+        &mut self.sessions[ix]
     }
 
-    fn drop_session(&mut self, session: SessionId) {
-        if let Some(ix) = self.sessions.iter().position(|(s, _)| *s == session) {
-            let (_, mut slots) = self.sessions.swap_remove(ix);
+    fn drop_session(&mut self, id: SessionId) {
+        if let Some(ix) = self.sessions.iter().position(|s| s.id == id) {
+            let mut slots = self.sessions.swap_remove(ix).slots;
             slots.clear();
             self.spare = slots;
         }
     }
+}
+
+impl KeptSession {
+    fn slot(&mut self, node_id: usize) -> &mut Kept {
+        if self.slots.len() <= node_id {
+            self.slots.resize(node_id + 1, Kept::Cold);
+        }
+        &mut self.slots[node_id]
+    }
+
+    /// Makes `packed` the node's kept pack, or leaves the node warm when there
+    /// is none or it does not fit what the session's budget has left.
+    fn keep(&mut self, node_id: usize, packed: Option<&Arc<Tensor>>) {
+        if let Kept::Packed(previous) = self.slot(node_id) {
+            self.bytes -= packed_len(previous);
+        }
+        let len = packed.map_or(0, |packed| packed_len(packed));
+        self.slots[node_id] = match packed {
+            Some(packed) if self.bytes + len <= self.budget => {
+                self.bytes += len;
+                Kept::Packed(packed.clone())
+            }
+            _ => Kept::Warm,
+        };
+    }
+}
+
+/// The bytes of the packed blobs a plain pack output holds.
+fn packed_len(packed: &Tensor) -> usize {
+    packed.storage_as::<PackedMatrixStorage>().map_or(0, |storage| {
+        storage
+            .values()
+            .iter()
+            .filter_map(|value| value.downcast_ref::<EagerPackedInput>())
+            .map(|value| value.packed.len())
+            .sum()
+    })
 }
 
 thread_local! {
@@ -150,6 +202,9 @@ impl TypedOp for OptMatMulPack {
 
 impl OptMatMulPack {
     fn do_eval(&self, _ctx: &EvalContext, input: TValue) -> TractResult<TVec<TValue>> {
+        // The packers read the bytes unchecked: a weight whose bytes live elsewhere is fetched
+        // here, where failing to is an error.
+        input.try_as_plain_ram()?;
         let mode = self.mode_picker.pick(input.shape()[self.mn_axis])?;
         let packer = &self.packers[mode];
         let output_shape: TVec<usize> = self.output_shape(input.shape());
@@ -399,7 +454,7 @@ mod tests {
         KEPT_PACKS.with_borrow(|kept| {
             kept.sessions
                 .iter()
-                .flat_map(|(_, slots)| slots)
+                .flat_map(|session| &session.slots)
                 .filter(|slot| matches!(slot, Kept::Packed(_)))
                 .count()
         })
@@ -416,6 +471,19 @@ mod tests {
         drop(state);
         assert_eq!(kept_packs(), 0);
         assert!(KEPT_PACKS.with_borrow(|kept| kept.sessions.is_empty()));
+        Ok(())
+    }
+
+    #[test]
+    fn pack_past_the_session_budget_is_not_kept() -> TractResult<()> {
+        let (plan, _) = activation_pack()?;
+        let mut state = plan.spawn()?;
+        state.run(tvec!(input(0)?))?;
+        KEPT_PACKS.with_borrow_mut(|kept| kept.sessions[0].budget = 0);
+        state.run(tvec!(input(1)?))?;
+        state.run(tvec!(input(2)?))?;
+        assert_eq!(kept_packs(), 0);
+        assert_eq!(KEPT_PACKS.with_borrow(|kept| kept.sessions[0].bytes), 0);
         Ok(())
     }
 

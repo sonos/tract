@@ -1,7 +1,10 @@
 use std::collections::HashSet;
 
+use crate::ops::array::CumSum;
+use crate::ops::binary::TypedBinOp;
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
+use crate::ops::math::Add;
 use crate::optim::OptimizerSession;
 
 use super::optimized::{OptScan, ScanOpParams};
@@ -105,32 +108,8 @@ impl Scan {
             super::iteration_count(&self.input_mapping, &inputs).context("No scan input")?;
         rule_if!(iters.is_one());
         // Inlining wires the body's State input directly from the outer
-        // initial-state input on every call. At runtime (optimized.rs
-        // OpState::eval), the State input is only seeded from inputs[slot]
-        // on the first call or when reset_every_turn is set; otherwise the
-        // body input is fed from the carried hidden_state.
-        //
-        // Inlining is safe iff the caller does not rely on tract's across-call
-        // carry. We accept it when:
-        //   - reset_every_turn (carry is cleared every turn anyway), or
-        //   - external_state (explicitly asserted, e.g. force_scan_external_state), or
-        //   - there is no State at all, or
-        //   - the caller manages the state: every recurrent state has a
-        //     last-value output that reaches a model output, so the caller can
-        //     read the updated state and feed it back across calls (e.g. DTLN /
-        //     parakeet decoders). A pulse model with tract-managed state (e.g.
-        //     DFN3 GRU) does NOT export its state, so it is not inlined.
-        // See issue #2157.
-        let has_state = self.input_mapping.iter().any(InputMapping::is_state);
-        let state_outputs: Vec<_> = self.output_mapping.iter().filter(|m| m.state).collect();
-        let state_exported = has_state
-            && !state_outputs.is_empty()
-            && state_outputs.iter().all(|m| {
-                m.last_value_slot.is_some_and(|slot| {
-                    Self::outlet_reaches_model_output(model, OutletId::new(node.id, slot))
-                })
-            });
-        rule_if!(self.reset_every_turn || self.external_state || !has_state || state_exported);
+        // initial-state input on every call.
+        rule_if!(self.state_is_seeded_every_turn(model, node));
         let mut patch = TypedModelPatch::new("Inline single loop scan");
         patch.model = self.body.clone();
         for (outer_wire, inner_wire) in izip!(&node.inputs, &self.body.inputs) {
@@ -144,6 +123,88 @@ impl Scan {
                 patch.shunt_outside(model, (node.id, slot).into(), *inner_wire)?;
             }
         }
+        Ok(Some(patch))
+    }
+
+    /// Whether rewiring the State inputs straight from the outer initial-state inputs, on
+    /// every call, preserves the Scan's meaning.
+    ///
+    /// At runtime (optimized.rs OpState::eval) the State inputs are only seeded from the
+    /// outer inputs on the first call, or every call with `reset_every_turn`; otherwise
+    /// tract carries the state across calls. Rewrites that read the seed every call
+    /// (inlining a single loop, folding into a stateless op) are valid when:
+    ///   - `reset_every_turn` (carry is cleared every turn anyway), or
+    ///   - `external_state` (explicitly asserted, e.g. force_scan_external_state), or
+    ///   - there is no State at all, or
+    ///   - the caller manages the state: every recurrent state has a last-value output that
+    ///     reaches a model output, so the caller can read the updated state and feed it
+    ///     back across calls (e.g. DTLN / parakeet decoders). A pulse model with
+    ///     tract-managed state (e.g. DFN3 GRU) does NOT export its state.
+    ///
+    /// See issue #2157.
+    fn state_is_seeded_every_turn(&self, model: &TypedModel, node: &TypedNode) -> bool {
+        let has_state = self.input_mapping.iter().any(InputMapping::is_state);
+        let state_outputs: Vec<_> = self.output_mapping.iter().filter(|m| m.state).collect();
+        let state_exported = has_state
+            && !state_outputs.is_empty()
+            && state_outputs.iter().all(|m| {
+                m.last_value_slot.is_some_and(|slot| {
+                    Self::outlet_reaches_model_output(model, OutletId::new(node.id, slot))
+                })
+            });
+        self.reset_every_turn || self.external_state || !has_state || state_exported
+    }
+
+    /// Folds a running sum into `init + CumSum(input)`.
+    ///
+    /// Matches a Scan with one scanned input (one element per iteration, either direction)
+    /// and one State seeded by `init`, whose body is a single Add of the two, emitted both
+    /// as the next state and as the full output along the scanned axis. That is how
+    /// exporters spell cumsum (torch-to-nnef's `tract_cumsum` fragment). Only fires when
+    /// [`Self::state_is_seeded_every_turn`]: a state tract carries across calls keeps
+    /// counting from the previous call's total, which CumSum does not. Exact for integers;
+    /// for floats with a non-zero `init` the additions are reassociated.
+    fn declutter_into_cumsum(
+        &self,
+        _session: &mut OptimizerSession,
+        model: &TypedModel,
+        node: &TypedNode,
+    ) -> TractResult<Option<TypedModelPatch>> {
+        rule_if!(self.skip == 0);
+        rule_if!(self.input_mapping.len() == 2 && self.output_mapping.len() == 1);
+        rule_if_some!(
+            (scan_slot, info) = self
+                .input_mapping
+                .iter()
+                .enumerate()
+                .find_map(|(ix, im)| Some((ix, *im.as_scan()?)))
+        );
+        let state_slot = 1 - scan_slot;
+        rule_if!(self.input_mapping[state_slot].is_state());
+        rule_if!(info.chunk.abs() == 1);
+        let output = &self.output_mapping[0];
+        rule_if!(output.state && output.last_value_slot.is_none());
+        rule_if_some!((out_slot, out_info) = output.scan);
+        rule_if!(out_info == info);
+
+        let body = &self.body;
+        rule_if!(body.nodes().len() == 3);
+        let add = body.node(body.outputs[0].node);
+        rule_if_some!(bin = add.op_as::<TypedBinOp>());
+        rule_if!(bin.0.is::<Add>());
+        let operands: HashSet<OutletId> = add.inputs.iter().copied().collect();
+        let sources: HashSet<OutletId> = body.inputs.iter().copied().collect();
+        rule_if!(add.inputs.len() == 2 && operands == sources);
+        rule_if!(!model.outlet_fact(node.inputs[scan_slot])?.datum_type.is_quantized());
+        rule_if!(self.state_is_seeded_every_turn(model, node));
+
+        let mut patch = TypedModelPatch::default();
+        let input = patch.tap_model(model, node.inputs[scan_slot])?;
+        let init = patch.tap_model(model, node.inputs[state_slot])?;
+        let cumsum = CumSum { axis: info.axis, exclusive: false, reverse: info.chunk < 0 };
+        let sum = patch.wire_node(format!("{}.cumsum", node.name), cumsum, &[input])?[0];
+        let out = patch.wire_node(format!("{}.init", node.name), bin.clone(), &[sum, init])?[0];
+        patch.shunt_outside(model, OutletId::new(node.id, out_slot), out)?;
         Ok(Some(patch))
     }
 
@@ -956,6 +1017,7 @@ impl TypedOp for Scan {
             };
         }
         pass!(declutter_single_loop);
+        pass!(declutter_into_cumsum);
         pass!(declutter_const_input);
         pass!(declutter_discard_unused_input);
         pass!(declutter_discard_useless_outer_output);

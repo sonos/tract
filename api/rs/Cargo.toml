@@ -29,6 +29,8 @@ tract-pulse = { workspace = true, optional = true }
 tract-pulse-opl.workspace = true
 tract-libcli = { workspace = true, optional = true }
 tract-transformers = { workspace = true, optional = true }
+tract-wgpu = { workspace = true, optional = true }
+tract-gpu = { workspace = true, optional = true }
 serde_json.workspace = true
 
 [target.'cfg(any(target_vendor = "apple"))'.dependencies]
@@ -90,6 +92,19 @@ transformers = ["dep:tract-transformers", "tract-onnx?/transformers", "tract-lib
 # backend, and the shader sources it embeds, with `default-features = false`.
 metal = ["dep:tract-metal", "tract-libcli?/metal"]
 
+# Gates the `extern crate tract_wgpu` that registers the WebGPU runtime
+# (`runtime_for_name("wgpu")`): Vulkan, Metal or DX12 natively, the browser's
+# WebGPU on wasm32. Off by default. In a browser it also takes
+# `unstable-wgpu-async`: the device can only be requested asynchronously, and
+# outputs stay on the GPU until downloaded.
+wgpu = ["dep:tract-wgpu", "dep:tract-gpu", "dep:wgpu", "dep:wasm-bindgen", "dep:web-sys"]
+
+# The asynchronous half of the WebGPU runtime, which a browser needs:
+# `tract::wgpu::init().await` brings the device up, and
+# `Tensor::to_host_async().await` downloads an output left on the GPU. Both work
+# natively too. Unstable: the shape of this API may change.
+unstable-wgpu-async = ["wgpu"]
+
 # Marker feature implicitly enabled by every cuda-XXXXX selector below.
 # Gates the `extern crate tract_cuda` that registers the CUDA runtime.
 # Not meant to be enabled directly — always pick a concrete cuda-XXXXX so
@@ -123,3 +138,13 @@ unstable-autobatch = ["tract-core/deploy"]
 # (`npz::*`). Unstable: the surface is still being settled, so it is not covered by the
 # no-breaking-change commitment.
 unstable-npyz = ["dep:tract-data", "tract-data/npz"]
+
+# Weights known by their name, linked to where their bytes live after the graph is loaded:
+# `Model::link_weights` with any `WeightSource`, or a safetensors file read tensor by tensor
+# on demand. Unstable: the shape of this API may change.
+unstable-named-weights = ["tract-nnef/unstable-safetensors"]
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wgpu = { workspace = true, optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+web-sys = { version = "0.3", features = ["OffscreenCanvas"], optional = true }

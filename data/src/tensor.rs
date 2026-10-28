@@ -5,6 +5,7 @@ use crate::datum::{ClampCast, Datum, DatumType, QParams, round_ties_to_even, sca
 use crate::dim::TDim;
 use crate::internal::*;
 use half::f16;
+use half::slice::HalfFloatSliceExt;
 use itertools::{Itertools, izip};
 use ndarray::prelude::*;
 #[cfg(feature = "complex")]
@@ -17,6 +18,7 @@ use std::ops::Range;
 use std::sync::Arc;
 
 pub mod litteral;
+pub mod named;
 pub mod plain_view;
 pub mod storage;
 pub mod view;
@@ -1946,6 +1948,17 @@ impl Tensor {
                 dispatch_datum!(Self::cast_to_string(self.dt)(self, &mut result));
                 return Ok(Cow::Owned(result));
             }
+            if self.dt == DatumType::F32 && dst_dt == DatumType::F16 {
+                result
+                    .as_slice_mut_unchecked::<f16>()
+                    .convert_from_f32_slice(self.as_slice_unchecked::<f32>());
+                return Ok(Cow::Owned(result));
+            }
+            if self.dt == DatumType::F16 && dst_dt == DatumType::F32 {
+                self.as_slice_unchecked::<f16>()
+                    .convert_to_f32_slice(result.as_slice_mut_unchecked::<f32>());
+                return Ok(Cow::Owned(result));
+            }
             macro_rules! n {
                 ($source:ty) => {
                     if <$source>::datum_type() == self.datum_type() {
@@ -1962,8 +1975,8 @@ impl Tensor {
                             DatumType::F32 => self.natural_cast::<$source, f32>(&mut result),
                             DatumType::F64 => self.natural_cast::<$source, f64>(&mut result),
                             DatumType::TDim => {
-                                let ints = self.cast_to::<i32>()?;
-                                let slice = ints.as_slice_unchecked::<i32>();
+                                let ints = self.cast_to::<i64>()?;
+                                let slice = ints.as_slice_unchecked::<i64>();
                                 let result = result.as_slice_mut_unchecked::<TDim>();
                                 for i in 0..self.len() {
                                     result[i] = slice[i].into();
@@ -2405,6 +2418,11 @@ impl Tensor {
     #[inline]
     pub fn has_plain_ram_storage(&self) -> bool {
         matches!(self.storage, StorageKind::Plain(_))
+    }
+
+    /// See [`TensorStorage::stays_lazy`].
+    pub fn stays_lazy(&self) -> bool {
+        matches!(&self.storage, StorageKind::Exotic(o) if o.stays_lazy())
     }
 
     /// This tensor backed by plain ram storage of its own: bytes left on a
@@ -3268,6 +3286,22 @@ mod tests {
         )
         .unwrap();
         assert_eq!(quantized.slice(1, 0, 2).unwrap().datum_type(), quantized.datum_type());
+    }
+
+    #[test]
+    fn f32_f16_casts_round_like_scalar_conversion() {
+        let f32s: Vec<f32> = (0..=u32::MAX).step_by(65521).map(f32::from_bits).collect();
+        let to_f16 = tensor1(&f32s).cast_to::<f16>().unwrap().into_owned();
+        for (s, d) in f32s.iter().zip(to_f16.try_as_plain_ram().unwrap().as_slice::<f16>().unwrap())
+        {
+            assert_eq!(f16::from_f32(*s).to_bits(), d.to_bits(), "{s:e}");
+        }
+        let f16s: Vec<f16> = (0..=u16::MAX).map(f16::from_bits).collect();
+        let to_f32 = tensor1(&f16s).cast_to::<f32>().unwrap().into_owned();
+        for (s, d) in f16s.iter().zip(to_f32.try_as_plain_ram().unwrap().as_slice::<f32>().unwrap())
+        {
+            assert_eq!(s.to_f32().to_bits(), d.to_bits(), "{s:e}");
+        }
     }
 
     #[test]

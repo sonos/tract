@@ -25,29 +25,34 @@ impl DeviceTurnHandler {
         Ok(Self { mem_schema, retain_arena: TRACT_GPU_RETAIN_ARENA.get() })
     }
 
-    /// The arena a runtime installs on `plan`: sized by `hints` when given, and
-    /// without any when every shape in the model is concrete. A symbolic model
-    /// with no hints gets none, and its device tensors are allocated one by one.
-    /// wgpu does not call it: its dispatches cannot bind two regions of one
-    /// arena buffer as a read and a write.
+    /// The arena a runtime installs on `plan`, sized by [`schema_hints`]. wgpu
+    /// does not call it: its dispatches cannot bind two regions of one arena
+    /// buffer as a read and a write, so it gives each partition a buffer of its
+    /// own instead.
     pub fn for_plan(
         plan: &TypedSimplePlan,
         hints: Option<&SymbolValues>,
     ) -> TractResult<Option<Self>> {
-        let no_hints = SymbolValues::default();
-        let hints = match hints {
-            Some(hints) => hints,
-            None if plan
-                .model()
-                .nodes
-                .iter()
-                .all(|n| n.outputs.iter().all(|o| o.fact.shape.is_concrete())) =>
-            {
-                &no_hints
-            }
-            None => return Ok(None),
-        };
-        Self::from_plan(plan, hints).context("While sizing memory arena. Missing hint ?").map(Some)
+        let Some(hints) = schema_hints(plan, hints) else { return Ok(None) };
+        Self::from_plan(plan, &hints).context("While sizing memory arena. Missing hint ?").map(Some)
+    }
+}
+
+/// What a memory schema for `plan` is sized by: `hints` when given, and none
+/// when every shape in the model is concrete. A symbolic model with no hints
+/// gets no schema, and its device tensors are allocated one by one.
+pub fn schema_hints(plan: &TypedSimplePlan, hints: Option<&SymbolValues>) -> Option<SymbolValues> {
+    match hints {
+        Some(hints) => Some(hints.clone()),
+        None if plan
+            .model()
+            .nodes
+            .iter()
+            .all(|n| n.outputs.iter().all(|o| o.fact.shape.is_concrete())) =>
+        {
+            Some(SymbolValues::default())
+        }
+        None => None,
     }
 }
 

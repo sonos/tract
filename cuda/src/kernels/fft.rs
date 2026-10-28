@@ -1,16 +1,25 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
 use tract_core::ops::fft::{Fft, Stft};
-use tract_gpu::ops::stft::{GpuFft, GpuStft, is_supported_frame};
+use tract_gpu::ops::stft::{GpuFft, GpuStft, is_stockham_len, is_supported_len};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
 
-/// Forward complex FFT, one transform per CUDA block, over the innermost-but-one axis.
-/// Input and output are interleaved-complex f32 `[batch.., N, 2]` (N a supported power of
-/// two) with the trailing `N x 2` block contiguous. The kernel is picked by N.
+fn dft_launch_config(n: usize, grid_dim: (u32, u32, u32)) -> LaunchConfig {
+    LaunchConfig {
+        grid_dim,
+        block_dim: (n.next_multiple_of(32).min(1024) as u32, 1, 1),
+        shared_mem_bytes: (2 * n * 2 * size_of::<f32>()) as u32,
+    }
+}
+
+/// Complex FFT, one transform per CUDA block, over the innermost-but-one axis. Input and
+/// output are interleaved-complex f32 `[batch.., N, 2]` with the trailing `N x 2` block
+/// contiguous, N satisfying [`is_supported_len`]: the Stockham kernel of that size when
+/// there is one, the direct DFT otherwise.
 #[derive(Debug, Clone)]
 pub struct CudaFft;
 
@@ -27,11 +36,13 @@ impl CudaFft {
         let rank = input.rank();
         ensure!(rank >= 2 && input.shape()[rank - 1] == 2, "CudaFft expects [batch.., N, 2]");
         let n = input.shape()[rank - 2];
-        ensure!(is_supported_frame(n), "CudaFft: unsupported FFT length {n}");
+        ensure!(is_supported_len(n), "CudaFft: unsupported FFT length {n}");
         let batch = input.len() / (n * 2);
 
         let dir = if inverse { "inverse" } else { "forward" };
-        let func = cuda_context().load_pipeline(LibraryName::Fft, format!("fft{n}_{dir}"))?;
+        let stockham = is_stockham_len(n);
+        let name = if stockham { format!("fft{n}_{dir}") } else { format!("dft_{dir}") };
+        let func = cuda_context().load_pipeline(LibraryName::Fft, name)?;
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
@@ -39,19 +50,25 @@ impl CudaFft {
         args.push_view(&i_view);
         args.push_view(&o_view);
 
-        let cfg = LaunchConfig {
-            grid_dim: (batch as _, 1, 1),
-            block_dim: (n as u32 / 2, 1, 1),
-            shared_mem_bytes: 0,
+        let cfg = if stockham {
+            LaunchConfig {
+                grid_dim: (batch as _, 1, 1),
+                block_dim: (n as u32 / 2, 1, 1),
+                shared_mem_bytes: 0,
+            }
+        } else {
+            args.push_i32(n);
+            dft_launch_config(n, (batch as _, 1, 1))
         };
         args.launch(cfg)
     }
 }
 
-/// Fused STFT: frame + window + forward FFT, frame a supported power of two. `input` is
-/// interleaved-complex f32 with the time axis at `rank-2` and the complex pair last
-/// (`[lead.., T, 2]`); `window` is the pre-padded real window `[frame]`; `output` is
-/// `[lead.., frames, frame, 2]`. The frame length is read from the output shape.
+/// Fused STFT: frame + window + forward FFT, the frame length satisfying
+/// [`is_supported_len`]. `input` is interleaved-complex f32 with the time axis at `rank-2`
+/// and the complex pair last (`[lead.., T, 2]`); `window` is the pre-padded real window
+/// `[frame]`; `output` is `[lead.., frames, frame, 2]`. The frame length is read from the
+/// output shape.
 #[derive(Debug, Clone)]
 pub struct CudaStft {
     pub stride: usize,
@@ -72,13 +89,15 @@ impl CudaStft {
         let axis = rank - 2;
         ensure!(output.rank() == rank + 1, "STFT output must be [.., frames, frame, 2]");
         let n = output.shape()[axis + 1];
-        ensure!(is_supported_frame(n), "CudaStft: unsupported frame {n}");
+        ensure!(is_supported_len(n), "CudaStft: unsupported frame {n}");
         ensure!(window.len() == n, "STFT window len {} != frame {n}", window.len());
         let batch: usize = input.shape()[..axis].iter().product();
         let t = input.shape()[axis];
         let frames = output.shape()[axis];
 
-        let func = cuda_context().load_pipeline(LibraryName::Fft, format!("stft{n}_forward"))?;
+        let stockham = is_stockham_len(n);
+        let name = if stockham { format!("stft{n}_forward") } else { "stft_dft_forward".into() };
+        let func = cuda_context().load_pipeline(LibraryName::Fft, name)?;
         let i_view = get_cuda_view(input);
         let w_view = get_cuda_view(window);
         let o_view = get_cuda_view(output);
@@ -87,14 +106,18 @@ impl CudaStft {
         args.push_view(&i_view);
         args.push_view(&w_view);
         args.push_view(&o_view);
+        if !stockham {
+            args.push_i32(n);
+        }
         args.push_i32(t);
         args.push_i32(frames);
         args.push_i32(self.stride);
 
-        let cfg = LaunchConfig {
-            grid_dim: (frames as _, batch as _, 1),
-            block_dim: (n as u32 / 2, 1, 1),
-            shared_mem_bytes: 0,
+        let grid_dim = (frames as _, batch as _, 1);
+        let cfg = if stockham {
+            LaunchConfig { grid_dim, block_dim: (n as u32 / 2, 1, 1), shared_mem_bytes: 0 }
+        } else {
+            dft_launch_config(n, grid_dim)
         };
         args.launch(cfg)
     }
@@ -118,7 +141,7 @@ fn cuda_stft_op(axis: usize, frame: usize, stride: usize, window: Arc<Tensor>) -
 
 crate::register_cuda_op!(Stft, |source, node, op| {
     let in_fact = &source.node_input_facts(node.id)?[0];
-    rule_if!(is_supported_frame(op.frame));
+    rule_if!(is_supported_len(op.frame));
     rule_if!(in_fact.rank() >= 2 && op.axis == in_fact.rank() - 2);
     rule_if!(in_fact.datum_type == DatumType::F32);
     let window = tract_gpu::ops::stft::padded_window(op.window.as_ref(), op.frame)?;
@@ -142,7 +165,7 @@ crate::register_cuda_op!(Fft, |source, node, op| {
     let in_fact = &source.node_input_facts(node.id)?[0];
     let rank = in_fact.rank();
     rule_if!(rank >= 2 && op.axis == rank - 2 && in_fact.shape[rank - 1] == 2.to_dim());
-    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_frame));
+    rule_if!(in_fact.shape[op.axis].to_usize().is_ok_and(is_supported_len));
     rule_if!(in_fact.datum_type == DatumType::F32);
     Ok(Some(Box::new(cuda_fft_op(op.axis, op.inverse))))
 });
@@ -153,12 +176,16 @@ mod tests {
     use crate::with_cuda_stream;
     use num_complex::Complex;
     use rustfft::FftPlanner;
-    use tract_gpu::ops::stft::SUPPORTED_FRAMES;
+    use tract_gpu::ops::stft::{MAX_DFT_LEN, STOCKHAM_LENS};
     use tract_gpu::tensor::IntoDevice;
+
+    fn tested_lens() -> Vec<usize> {
+        STOCKHAM_LENS.iter().copied().chain([3, 100, 400, 480, 1200, MAX_DFT_LEN - 1]).collect()
+    }
 
     #[test]
     fn fft_matches_rustfft() -> TractResult<()> {
-        for &n in &SUPPORTED_FRAMES {
+        for n in tested_lens() {
             let batch = 4;
             let mut data = vec![0f32; batch * n * 2];
             let mut frames: Vec<Vec<Complex<f32>>> = Vec::new();
@@ -206,7 +233,7 @@ mod tests {
 
     #[test]
     fn ifft_matches_rustfft() -> TractResult<()> {
-        for &n in &SUPPORTED_FRAMES {
+        for n in tested_lens() {
             let mut data = vec![0f32; n * 2];
             let mut fr: Vec<Complex<f32>> = Vec::with_capacity(n);
             for i in 0..n {
@@ -248,7 +275,7 @@ mod tests {
         use tract_core::ops::fft::Fft;
         use tract_core::transform::ModelTransform;
 
-        for &n in &[256usize, 512] {
+        for n in [256usize, 400, 512] {
             for inverse in [false, true] {
                 let build = || -> TractResult<TypedModel> {
                     let mut m = TypedModel::default();
@@ -285,7 +312,7 @@ mod tests {
 
     #[test]
     fn stft_matches_core_stft() -> TractResult<()> {
-        for &frame in &SUPPORTED_FRAMES {
+        for frame in tested_lens() {
             let (b, stride, win_len) = (2usize, 160usize, frame * 3 / 4);
             let t = frame + stride * 8;
             let frames = (t - frame) / stride + 1;
@@ -341,7 +368,7 @@ mod tests {
         use crate::transform::CudaTransform;
         use tract_core::transform::ModelTransform;
 
-        for &frame in &[256usize, 1024] {
+        for frame in [256usize, 400, 1024] {
             let (stride, win_len) = (160usize, 400usize.min(frame));
             let t = frame + stride * 6;
             let win: Vec<f32> = (0..win_len)

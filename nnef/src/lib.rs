@@ -10,6 +10,8 @@ mod jinja;
 pub mod ops;
 pub mod registry;
 pub mod resource;
+#[cfg(feature = "unstable-safetensors")]
+pub mod safetensors;
 pub mod ser;
 pub mod tensors;
 mod transform;

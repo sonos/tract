@@ -1,6 +1,6 @@
 use tract_core::internal::*;
 use tract_core::model::TypedModelHelpers;
-use tract_core::ops::binary::TypedBinOp;
+use tract_core::ops::binary::{BinMiniOp, TypedBinOp};
 use tract_core::ops::cast::Cast;
 use tract_core::ops::math::{Add, Mul};
 use tract_core::ops::nn::ScaledRmsNorm;
@@ -70,9 +70,9 @@ pub fn remove_rms_norm_cast(
     Ok(Some(patch))
 }
 
-/// Returns the (single) const input of a `Mul` bin op node when that const is
+/// Returns the (single) const input of a `B` bin op node when that const is
 /// a per-axis vector: non-trivial only along `axis` of a rank-`rank` operand.
-fn mul_axis_vector_const<'m>(
+pub(crate) fn axis_vector_const<'m, B: BinMiniOp>(
     model: &'m TypedModel,
     mul: &TypedNode,
     rank: usize,
@@ -80,7 +80,7 @@ fn mul_axis_vector_const<'m>(
     axis_dim: usize,
 ) -> Option<&'m tract_core::ops::konst::Const> {
     let mul_op = mul.op_as::<TypedBinOp>()?;
-    if !mul_op.0.is::<Mul>() {
+    if !mul_op.0.is::<B>() {
         return None;
     }
     let consts = model.collect_const_inputs(mul);
@@ -124,7 +124,7 @@ pub fn fuse_rms_norm_scale(
     let in_fact = model.node_input_facts(node.id)?[0];
     rule_if_some!(axis_dim = in_fact.shape[op.axis].to_usize().ok());
     rule_if_some!(mul = model.single_succ(node.id)?);
-    rule_if_some!(w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, axis_dim));
+    rule_if_some!(w = axis_vector_const::<Mul>(model, mul, in_fact.rank(), op.axis, axis_dim));
 
     let scale = w.val().cast_to::<f32>()?.into_owned().into_shape(&[axis_dim])?.into_arc_tensor();
     // The Mul this replaces may promote to a wider dtype than the norm's own
@@ -190,7 +190,9 @@ pub fn fuse_rms_norm_split_scale(
         rule_if_some!(end = slice.end.to_usize().ok());
         rule_if!(end > start);
         rule_if_some!(mul = model.single_succ(slice_node.id)?);
-        rule_if_some!(w = mul_axis_vector_const(model, mul, in_fact.rank(), op.axis, end - start));
+        rule_if_some!(
+            w = axis_vector_const::<Mul>(model, mul, in_fact.rank(), op.axis, end - start)
+        );
         // Optional single float cast closing the branch.
         let (shunt, dt) = match model.single_succ(mul.id)? {
             Some(c)

@@ -34,7 +34,7 @@ impl DeviceTestBackend for MetalBackend {
 }
 
 macro_rules! metal_test_suite {
-    ($id: ident, $phase: expr, $optimize: expr, $gemm_impl: expr, $transpose_inputs: ident, $use_arena: ident) => {
+    ($id: ident, $phase: expr, $optimize: expr, $gemm_impl: expr, $transpose_inputs: ident, $use_arena: ident, $tests: ident) => {
         paste! {
             mod [<$id _ $gemm_impl:lower>] {
                 use super::*;
@@ -52,18 +52,44 @@ macro_rules! metal_test_suite {
                     &RT
                 }
 
-                include!(concat!(env!("OUT_DIR"), "/tests/",  stringify!([<$gemm_impl:lower>]), ".rs"));
+                include!(concat!(env!("OUT_DIR"), "/tests/", stringify!($tests), ".rs"));
             }
         }
     };
 }
 
+/// The whole suite at every pipeline point, for the default GEMM selection.
 macro_rules! metal_runtime {
-    ($gemm_impl: expr) => {
-        metal_test_suite!(metal_phase_2_translate, 2, false, $gemm_impl, false, false);
-        metal_test_suite!(metal_phase_3_post_translate, 3, false, $gemm_impl, false, false);
-        metal_test_suite!(optimized_metal, usize::MAX, true, $gemm_impl, false, false);
-        metal_test_suite!(optimized_metal_transpose, usize::MAX, true, $gemm_impl, true, false);
+    ($gemm_impl: expr, $tests: ident) => {
+        metal_test_suite!(metal_phase_2_translate, 2, false, $gemm_impl, false, false, $tests);
+        metal_test_suite!(metal_phase_3_post_translate, 3, false, $gemm_impl, false, false, $tests);
+        metal_test_suite!(optimized_metal, usize::MAX, true, $gemm_impl, false, false, $tests);
+        metal_test_suite!(
+            optimized_metal_transpose,
+            usize::MAX,
+            true,
+            $gemm_impl,
+            true,
+            false,
+            $tests
+        );
+    };
+}
+
+/// A forced GEMM implementation only changes how `PrefixMatMul` lowers, so it runs the
+/// tests that reach one (`reaches_gemm` in build.rs), optimized.
+macro_rules! metal_gemm_runtime {
+    ($gemm_impl: expr, $tests: ident) => {
+        metal_test_suite!(optimized_metal, usize::MAX, true, $gemm_impl, false, false, $tests);
+        metal_test_suite!(
+            optimized_metal_transpose,
+            usize::MAX,
+            true,
+            $gemm_impl,
+            true,
+            false,
+            $tests
+        );
     };
 }
 
@@ -73,11 +99,11 @@ static GGML: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Ggml);
 static MPP: Option<MetalGemmImplKind> = Some(MetalGemmImplKind::Mpp);
 
 // Common transform
-metal_test_suite!(metal_phase_0_einsum, 0, false, MLX, false, false);
-metal_test_suite!(metal_phase_1_pre_translate, 1, false, MLX, false, false);
+metal_test_suite!(metal_phase_0_einsum, 0, false, MLX, false, false, mlx);
+metal_test_suite!(metal_phase_1_pre_translate, 1, false, MLX, false, false, mlx);
 
-metal_runtime!(None);
-metal_runtime!(MLX);
-metal_runtime!(MFA);
-metal_runtime!(GGML);
-metal_runtime!(MPP);
+metal_runtime!(None, none);
+metal_gemm_runtime!(MLX, mlx_gemm);
+metal_gemm_runtime!(MFA, mfa_gemm);
+metal_gemm_runtime!(GGML, ggml_gemm);
+metal_gemm_runtime!(MPP, mpp_gemm);

@@ -1,0 +1,12 @@
+version 1.0;
+
+graph network( x ) -> ( output )
+{
+    x = external<scalar>(shape = [2, 8, 3, 5]);
+    grouped = reshape(x, shape = [2, 4, 30]);
+    mean = mean_reduce(grouped, axes = [2]);
+    centered = sub(grouped, mean);
+    variance = mean_reduce(sqr(centered), axes = [2]);
+    normed = mul(centered, rsqrt(add(variance, 1e-5)));
+    output = reshape(normed, shape = [2, 8, 3, 5]);
+}

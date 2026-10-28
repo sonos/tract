@@ -296,27 +296,35 @@ impl AxisOp {
                 }
             }
             (Reshape(at, from, to), Move(f, t)) => {
+                let shift = to.len() as isize - from.len() as isize;
+                let shifted = |axis: usize| (axis as isize + shift) as usize;
                 if *f.max(t) < *at {
                     Some((Some(self.clone()), Some(change.clone())))
                 } else if *f.min(t) >= at + from.len() {
-                    let shift = to.len() as isize - from.len() as isize;
-                    Some((
-                        Some(self.clone()),
-                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
-                    ))
+                    Some((Some(self.clone()), Some(Move(shifted(*f), shifted(*t)))))
+                } else if f < t && at > f && at + from.len() <= t + 1 {
+                    let reshape = Reshape(at - 1, from.clone(), to.clone());
+                    Some((Some(reshape), Some(Move(*f, shifted(*t)))))
+                } else if t < f && at >= t && at + from.len() <= *f {
+                    let reshape = Reshape(at + 1, from.clone(), to.clone());
+                    Some((Some(reshape), Some(Move(shifted(*f), *t))))
                 } else {
                     None
                 }
             }
             (Move(f, t), Reshape(at, from, to)) => {
+                let shift = to.len() as isize - from.len() as isize;
+                let shifted = |axis: usize| (axis as isize + shift) as usize;
                 if *f.max(t) < *at {
                     Some((Some(self.clone()), Some(change.clone())))
                 } else if *f.min(t) >= at + from.len() {
-                    let shift = to.len() as isize - from.len() as isize;
-                    Some((
-                        Some(Move((*f as isize + shift) as usize, (*t as isize + shift) as usize)),
-                        Some(change.clone()),
-                    ))
+                    Some((Some(Move(shifted(*f), shifted(*t))), Some(change.clone())))
+                } else if f < t && at > f && at + from.len() <= t + 1 {
+                    let reshape = Reshape(at - 1, from.clone(), to.clone());
+                    Some((Some(Move(*f, shifted(*t))), Some(reshape)))
+                } else if t < f && at >= t && at + from.len() <= *f {
+                    let reshape = Reshape(at + 1, from.clone(), to.clone());
+                    Some((Some(Move(shifted(*f), *t)), Some(reshape)))
                 } else {
                     None
                 }
@@ -429,6 +437,13 @@ impl AxisOp {
             Add(ix) => tensor.insert_axis(*ix),
             Rm(ix) => tensor.remove_axis(*ix),
             Move(from, to) => {
+                if move_keeps_memory_order(tensor.shape(), *from, *to, |d| *d == 1)
+                    && tensor.strides() == &*Tensor::natural_strides(tensor.shape())
+                {
+                    let mut shape: TVec<usize> = tensor.shape().into();
+                    self.change_shape_array(&mut shape, false)?;
+                    return tensor.set_shape(&shape);
+                }
                 *tensor = tensor.moved_axis(*from, *to)?;
                 Ok(())
             }
@@ -988,7 +1003,13 @@ impl TypedOp for AxisOp {
     ) -> TractResult<Option<TypedModelPatch>> {
         rule_if!(node.outputs[0].fact.exotic_fact.is_none());
         if let Some(shape) = node.outputs[0].fact.shape.as_concrete()
-            && !matches!(self, AxisOp::Move(_, _))
+            && match self {
+                Move(from, to) => {
+                    let input_shape = &model.outlet_fact(node.inputs[0])?.shape;
+                    move_keeps_memory_order(input_shape, *from, *to, |d| d.is_one())
+                }
+                _ => true,
+            }
         {
             let (inputs, outputs) = model.node_facts(node.id)?;
             let mapping = self.axes_mapping(&inputs, &outputs)?;
@@ -1002,6 +1023,19 @@ impl TypedOp for AxisOp {
         }
         Ok(None)
     }
+}
+
+/// `true` when moving axis `from` to `to` leaves the elements in the same
+/// memory order: either the moved axis or every axis it crosses has extent 1.
+/// Such a move is a reshape, not a transpose.
+fn move_keeps_memory_order<D>(
+    shape: &[D],
+    from: usize,
+    to: usize,
+    is_one: impl Fn(&D) -> bool,
+) -> bool {
+    let (lo, hi) = (from.min(to), from.max(to));
+    is_one(&shape[from]) || (lo..=hi).filter(|a| *a != from).all(|a| is_one(&shape[a]))
 }
 
 // a, b, c is a <- b, b <- c, c <- a
@@ -1216,6 +1250,21 @@ pub struct IntoShape {
     pub len: usize,
     pub dims: TVec<usize>,
     pub strides: TVec<isize>,
+}
+
+impl IntoShape {
+    /// The `AxisOp` this reshape performs on an input of shape `input`: the simplest single one,
+    /// or a reshape of the whole shape.
+    pub fn axis_op(&self, input: &[usize]) -> Option<AxisOp> {
+        if self.strides != Tensor::natural_strides(&self.dims) {
+            return None;
+        }
+        let from = input.iter().map(|d| d.to_dim()).collect();
+        let to = self.dims.iter().map(|d| d.to_dim()).collect();
+        let reshape = AxisOp::Reshape(0, from, to);
+        let simplified = reshape.simplify();
+        Some(if let [op] = &*simplified { op.clone() } else { reshape })
+    }
 }
 
 impl Op for IntoShape {
@@ -1453,6 +1502,68 @@ mod test {
         let change = Reshape(0, tvec!(6.to_dim()), tvec!(2.to_dim(), 3.to_dim()));
         let op = Move(1, 2);
         assert_eq!(op.merge_incoming_change(&change), Some((Some(Move(2, 3)), Some(change))));
+    }
+
+    #[test]
+    fn move_across_unit_axes_codegens_to_into_shape() -> TractResult<()> {
+        for (shape, from, to) in [
+            (tvec![1usize, 1, 64, 32], 1, 2),
+            (tvec![2, 64, 1, 32], 2, 1),
+            (tvec![4, 1, 1, 32], 3, 1),
+        ] {
+            let mut model = TypedModel::default();
+            let source = model.add_source("x", f32::fact(&shape))?;
+            let moved = model.wire_node("mv", Move(from, to), &[source])?;
+            model.select_output_outlets(&moved)?;
+            let model = model.into_optimized()?;
+            assert!(model.nodes().iter().any(|n| n.op_is::<IntoShape>()));
+            assert!(
+                model
+                    .nodes()
+                    .iter()
+                    .all(|n| n.op_as::<AxisOp>().is_none_or(|op| !matches!(op, Move(..))))
+            );
+            let len = shape.iter().product::<usize>();
+            let input =
+                Tensor::from_shape(&shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())?;
+            let output = model.into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+            assert_eq!(*output[0], input.move_axis(from, to)?);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn move_keeping_memory_order_does_not_copy() -> TractResult<()> {
+        for (shape, from, to) in [(tvec![1usize, 1, 32, 128], 1, 2), (tvec![3, 1, 5], 2, 1)] {
+            let len = shape.iter().product::<usize>();
+            let input =
+                Tensor::from_shape(&shape, &(0..len).map(|i| i as f32).collect::<Vec<_>>())?;
+            let expected = input.clone().move_axis(from, to)?;
+            let mut tensor = input.clone();
+            let ptr = tensor.as_ptr::<f32>()?;
+            Move(from, to).change_tensor(&mut tensor, false)?;
+            assert_eq!(tensor, expected);
+            assert_eq!(tensor.as_ptr::<f32>()?, ptr);
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn move_with_symbolic_unit_axis_matches_permute() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S");
+        let source = model.add_source("x", f32::fact(dims![1, s, 32, 128]))?;
+        let moved = model.wire_node("mv", Move(1, 2), &[source])?;
+        model.select_output_outlets(&moved)?;
+        let plan = model.into_optimized()?.into_runnable()?;
+        for seq in [1usize, 3] {
+            let shape = [1, seq, 32, 128];
+            let input =
+                Tensor::from_shape(&shape, &(0..seq * 4096).map(|i| i as f32).collect::<Vec<_>>())?;
+            let output = plan.run(tvec!(input.clone().into_tvalue()))?;
+            assert_eq!(*output[0], input.move_axis(1, 2)?);
+        }
+        Ok(())
     }
 }
 
@@ -1940,5 +2051,43 @@ mod proptests {
             &*to_axis_ops_with_tf_rules(s![1, 2, 3, 5, 7], s!(2, 1, 3, 35, 1)).unwrap(),
             &[Rm(0), Add(1), r!(3 ; 5,7 => 35 ), Add(4)]
         )
+    }
+
+    fn assert_change_commutes(op: AxisOp, change: AxisOp, shape: &[usize]) {
+        let (new_op, out_change) = op.merge_incoming_change(&change).unwrap();
+        let x = Tensor::from_shape(
+            shape,
+            &(0..shape.iter().product::<usize>() as i32).collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let mut expected = x.clone();
+        op.change_tensor(&mut expected, false).unwrap();
+        if let Some(out_change) = out_change {
+            out_change.change_tensor(&mut expected, false).unwrap();
+        }
+        let mut got = x;
+        change.change_tensor(&mut got, false).unwrap();
+        if let Some(new_op) = new_op {
+            new_op.change_tensor(&mut got, false).unwrap();
+        }
+        assert_eq!(got, expected);
+    }
+
+    #[test]
+    fn move_forward_over_reshaped_axes() {
+        assert_change_commutes(r!(2 ; 3,5 => 15), Move(1, 3), &[2, 4, 3, 5]);
+        assert_change_commutes(r!(2 ; 15 => 3,5), Move(1, 2), &[2, 4, 15]);
+    }
+
+    #[test]
+    fn move_backward_over_reshaped_axes() {
+        assert_change_commutes(r!(1 ; 3,5 => 15), Move(3, 1), &[2, 3, 5, 4]);
+        assert_change_commutes(r!(2 ; 3,5 => 15), Move(4, 1), &[2, 6, 3, 5, 4]);
+    }
+
+    #[test]
+    fn reshape_over_moved_axes() {
+        assert_change_commutes(Move(1, 3), r!(2 ; 3,5 => 15), &[2, 4, 3, 5]);
+        assert_change_commutes(Move(3, 1), r!(1 ; 3,5 => 15), &[2, 3, 5, 4]);
     }
 }

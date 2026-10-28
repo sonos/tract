@@ -839,6 +839,147 @@ __device__ void rms_norm_body(const InT *x, const InT *residual, const float *sc
     INSTANTIATE_RMS_NORM_VARIANT(_scaled_r16_add, true, true, true, iname, InT, \
                                   oname, OutT, bname, block_size)
 
+// Layer norm, one warp per contiguous row: the row is held in registers (`NV` 16-byte
+// vectors per lane), so it is read once, its variance taken from the centered values, and
+// written once. Requires rows of at most NV * 32 vectors and 16-byte aligned rows.
+template <typename T, int NV, bool AFFINE>
+__device__ void layer_norm_rows(const T *x, const float *scale, const float *bias, T *dst,
+                                const int32_t rows, const int32_t cols, const float eps) {
+    constexpr int VEC = 16 / sizeof(T);
+    const int row = blockIdx.x * (blockDim.x / WARP_SIZE) + threadIdx.x / WARP_SIZE;
+    const int lane = threadIdx.x % WARP_SIZE;
+    if (row >= rows) {
+        return;
+    }
+    const T *xr = x + (size_t)row * cols;
+    T *dr = dst + (size_t)row * cols;
+
+    float v[NV][VEC];
+    float sum = 0.0f;
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        const int c = (k * WARP_SIZE + lane) * VEC;
+        if (c < cols) {
+            alignas(16) T e[VEC];
+            *reinterpret_cast<uint4 *>(e) = *reinterpret_cast<const uint4 *>(xr + c);
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                v[k][j] = (float)e[j];
+                sum += v[k][j];
+            }
+        }
+    }
+    const float mean = warp_reduce_sum(sum) / cols;
+    float sq = 0.0f;
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        if ((k * WARP_SIZE + lane) * VEC < cols) {
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                const float d = v[k][j] - mean;
+                sq += d * d;
+            }
+        }
+    }
+    const float inv = rsqrtf(warp_reduce_sum(sq) / cols + eps);
+    _Pragma("unroll") for (int k = 0; k < NV; k++) {
+        const int c = (k * WARP_SIZE + lane) * VEC;
+        if (c < cols) {
+            alignas(16) T e[VEC];
+            _Pragma("unroll") for (int j = 0; j < VEC; j++) {
+                float y = (v[k][j] - mean) * inv;
+                if constexpr (AFFINE) {
+                    y = y * scale[c + j] + bias[c + j];
+                }
+                e[j] = (T)y;
+            }
+            *reinterpret_cast<uint4 *>(dr + c) = *reinterpret_cast<const uint4 *>(e);
+        }
+    }
+}
+
+template <int BLOCK_SIZE>
+__device__ __forceinline__ float layer_norm_block_sum(float v, float *shared) {
+    v = warp_reduce_sum(v);
+    if constexpr (BLOCK_SIZE > WARP_SIZE) {
+        const int warp_id = threadIdx.x / WARP_SIZE;
+        const int lane_id = threadIdx.x % WARP_SIZE;
+        if (lane_id == 0) {
+            shared[warp_id] = v;
+        }
+        __syncthreads();
+        v = warp_reduce_sum(shared[lane_id]);
+    }
+    return v;
+}
+
+// Layer norm over the middle axis of a (shape_0, shape_1, shape_2) view, one block per
+// normalized row, any strides.
+template <typename T, int BLOCK_SIZE, bool AFFINE>
+__device__ void layer_norm_strided(const T *x, const float *scale, const float *bias, T *dst,
+                                   const int32_t shape_0, const int32_t shape_1,
+                                   const int32_t shape_2, const int32_t strides_0,
+                                   const int32_t strides_1, const int32_t strides_2,
+                                   const float eps) {
+    __shared__ float s_sum[32];
+    __shared__ float s_sq[32];
+    const int base_idx =
+        (blockIdx.x % shape_2) * strides_2 + (blockIdx.x / shape_2) * strides_0;
+    float sum = 0.0f;
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        sum += (float)x[base_idx + i * strides_1];
+    }
+    const float mean = layer_norm_block_sum<BLOCK_SIZE>(sum, s_sum) / shape_1;
+    float sq = 0.0f;
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const float d = (float)x[base_idx + i * strides_1] - mean;
+        sq += d * d;
+    }
+    const float inv = rsqrtf(layer_norm_block_sum<BLOCK_SIZE>(sq, s_sq) / shape_1 + eps);
+    for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {
+        const int idx = base_idx + i * strides_1;
+        float y = ((float)x[idx] - mean) * inv;
+        if constexpr (AFFINE) {
+            y = y * scale[i] + bias[i];
+        }
+        dst[idx] = (T)y;
+    }
+}
+
+#define INSTANTIATE_LAYER_NORM_ROWS(tname, T, nv, affine, aname)                \
+    extern "C" __global__ void layer_norm_rows##nv##aname##_##tname(            \
+        const T *x, const float *scale, const float *bias, T *dst,              \
+        const int32_t rows, const int32_t cols, const float eps) {              \
+        layer_norm_rows<T, nv, affine>(x, scale, bias, dst, rows, cols, eps);   \
+    }
+
+#define INSTANTIATE_LAYER_NORM_STRIDED(tname, T, bname, block_size, affine,     \
+                                       aname)                                   \
+    extern "C" __global__ void layer_norm##aname##_##bname##tname(              \
+        const T *x, const float *scale, const float *bias, T *dst,              \
+        const int32_t shape_0, const int32_t shape_1, const int32_t shape_2,    \
+        const int32_t strides_0, const int32_t strides_1,                       \
+        const int32_t strides_2, const float eps) {                             \
+        layer_norm_strided<T, block_size, affine>(                              \
+            x, scale, bias, dst, shape_0, shape_1, shape_2, strides_0,          \
+            strides_1, strides_2, eps);                                         \
+    }
+
+#define INSTANTIATE_LAYER_NORM_AFFINE(tname, T, affine, aname)                  \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 1, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 2, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 3, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 4, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 5, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 6, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 7, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_ROWS(tname, T, 8, affine, aname)                     \
+    INSTANTIATE_LAYER_NORM_STRIDED(tname, T, small_, 32, affine, aname)         \
+    INSTANTIATE_LAYER_NORM_STRIDED(tname, T, , 1024, affine, aname)
+
+#define INSTANTIATE_LAYER_NORM(tname, T)                                        \
+    INSTANTIATE_LAYER_NORM_AFFINE(tname, T, false, )                            \
+    INSTANTIATE_LAYER_NORM_AFFINE(tname, T, true, _affine)
+
+INSTANTIATE_LAYER_NORM(f32, float)
+INSTANTIATE_LAYER_NORM(f16, __half)
+
 INSTANTIATE_APPLY_ROPE(f32, float)
 INSTANTIATE_APPLY_ROPE(f16, __half)
 
@@ -859,7 +1000,7 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T)                       \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32)                        \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64_, 64)                        \
-    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 126)                      \
+    INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 128_, 128)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 256_, 256)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 512_, 512)                      \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 1024_, 1024)                    \
@@ -873,7 +1014,7 @@ INSTANTIATE_SOFTMAX(f16, __half, , 1024)
 #define INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX_FOR_T(name, T)                  \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 32_, 32)                   \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 64_, 64)                   \
-    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 128_, 126)                 \
+    INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 128_, 128)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 256_, 256)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 512_, 512)                 \
     INSTANTIATE_SCALED_BOOL_MASKED_SOFTMAX(name, T, 1024_, 1024)               \
@@ -995,3 +1136,167 @@ INSTANTIATE_POOL(max, true, f32, float)
 INSTANTIATE_POOL(max, true, f16, __half)
 INSTANTIATE_POOL(sum, false, f32, float)
 INSTANTIATE_POOL(sum, false, f16, __half)
+
+// Group norm over an (outer, pre, channels, post) view, in three passes.
+// Stats writes `entries` (count, mean, m2) Welford triples per group: channel
+// first, a block per group chunk of the flattened (p, c, q) range; channel last,
+// a thread per channel over a chunk of `pre`, so a warp reads contiguous
+// channels. Finalize merges a group's triples with Chan's formula and stores
+// (mean, inv_std) over its first triple. Apply is element-wise.
+#define GROUP_NORM_BLOCK 256
+
+struct Moments {
+    float n, mean, m2;
+};
+
+static __device__ __forceinline__ Moments merge_moments(Moments a, Moments b) {
+    const float n = a.n + b.n;
+    if (n == 0.0f) {
+        return a;
+    }
+    const float d = b.mean - a.mean;
+    const float f = b.n / n;
+    return {n, a.mean + d * f, a.m2 + b.m2 + d * d * a.n * f};
+}
+
+static __device__ __forceinline__ Moments warp_merge_moments(Moments m) {
+#pragma unroll
+    for (int offset = 16; offset > 0; offset >>= 1) {
+        Moments o = {__shfl_xor_sync(0xffffffff, m.n, offset, 32),
+                     __shfl_xor_sync(0xffffffff, m.mean, offset, 32),
+                     __shfl_xor_sync(0xffffffff, m.m2, offset, 32)};
+        m = merge_moments(m, o);
+    }
+    return m;
+}
+
+// Valid in thread 0 only.
+static __device__ __forceinline__ Moments block_merge_moments(Moments m) {
+    __shared__ Moments s_moments[GROUP_NORM_BLOCK / WARP_SIZE];
+    m = warp_merge_moments(m);
+    const int warp_id = threadIdx.x / WARP_SIZE;
+    const int lane_id = threadIdx.x % WARP_SIZE;
+    if (lane_id == 0) {
+        s_moments[warp_id] = m;
+    }
+    __syncthreads();
+    if (warp_id == 0) {
+        m = lane_id < blockDim.x / WARP_SIZE ? s_moments[lane_id] : Moments{0.0f, 0.0f, 0.0f};
+        m = warp_merge_moments(m);
+    }
+    return m;
+}
+
+static __device__ __forceinline__ Moments shifted_moments(float n, float shift, float s1,
+                                                          float s2) {
+    return {n, n > 0.0f ? shift + s1 / n : 0.0f, n > 0.0f ? s2 - s1 * s1 / n : 0.0f};
+}
+
+static __device__ __forceinline__ void store_moments(float *out, Moments m) {
+    out[0] = m.n;
+    out[1] = m.mean;
+    out[2] = m.m2;
+}
+
+template <typename T>
+__device__ void group_norm_stats(const T *x, float *partials, int32_t pre, int32_t channels,
+                                 int32_t post, int32_t groups, int32_t splits) {
+    const int o = blockIdx.x / groups;
+    const int g = blockIdx.x % groups;
+    const int cg = channels / groups;
+    const int len = pre * cg * post;
+    const int chunk = (len + splits - 1) / splits;
+    const int start = blockIdx.y * chunk;
+    const int end = min(len, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    for (int j = start + threadIdx.x; j < end; j += blockDim.x) {
+        const int q = j % post;
+        const int t = j / post;
+        const float v =
+            (float)x[((o * pre + t / cg) * channels + g * cg + t % cg) * post + q];
+        if (n == 0.0f) {
+            shift = v;
+        }
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0f;
+    }
+    const Moments m = block_merge_moments(shifted_moments(n, shift, s1, s2));
+    if (threadIdx.x == 0) {
+        store_moments(partials + (blockIdx.x * splits + blockIdx.y) * 3, m);
+    }
+}
+
+template <typename T>
+__device__ void group_norm_stats_channel_last(const T *x, float *partials, int32_t pre,
+                                              int32_t channels, int32_t splits) {
+    const int channel_blocks = (channels + blockDim.x - 1) / blockDim.x;
+    const int o = blockIdx.x / channel_blocks;
+    const int c = (blockIdx.x % channel_blocks) * blockDim.x + threadIdx.x;
+    if (c >= channels) {
+        return;
+    }
+    const int chunk = (pre + splits - 1) / splits;
+    const int start = blockIdx.y * chunk;
+    const int end = min(pre, start + chunk);
+
+    float shift = 0.0f, s1 = 0.0f, s2 = 0.0f, n = 0.0f;
+    for (int p = start; p < end; p++) {
+        const float v = (float)x[(o * pre + p) * channels + c];
+        if (n == 0.0f) {
+            shift = v;
+        }
+        s1 += v - shift;
+        s2 += (v - shift) * (v - shift);
+        n += 1.0f;
+    }
+    store_moments(partials + ((o * channels + c) * splits + blockIdx.y) * 3,
+                  shifted_moments(n, shift, s1, s2));
+}
+
+extern "C" __global__ void group_norm_finalize(float *partials, int32_t entries, float eps) {
+    float *group = partials + blockIdx.x * entries * 3;
+    Moments m = {0.0f, 0.0f, 0.0f};
+    for (int e = threadIdx.x; e < entries; e += blockDim.x) {
+        m = merge_moments(m, Moments{group[3 * e], group[3 * e + 1], group[3 * e + 2]});
+    }
+    m = block_merge_moments(m);
+    if (threadIdx.x == 0) {
+        group[0] = m.mean;
+        group[1] = rsqrtf(m.m2 / m.n + eps);
+    }
+}
+
+template <typename T>
+__device__ void group_norm_apply(const T *x, const float *partials, T *y, int32_t len,
+                                 int32_t pre, int32_t channels, int32_t post, int32_t groups,
+                                 int32_t entries) {
+    const int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx >= len) {
+        return;
+    }
+    const int c = (idx / post) % channels;
+    const int o = idx / (pre * channels * post);
+    const float *stats = partials + (o * groups + c / (channels / groups)) * entries * 3;
+    y[idx] = (T)(((float)x[idx] - stats[0]) * stats[1]);
+}
+
+#define INSTANTIATE_GROUP_NORM(name, T)                                                   \
+    extern "C" __global__ void group_norm_stats_##name(                                   \
+        const T *x, float *partials, int32_t pre, int32_t channels, int32_t post,         \
+        int32_t groups, int32_t splits) {                                                 \
+        group_norm_stats<T>(x, partials, pre, channels, post, groups, splits);            \
+    }                                                                                     \
+    extern "C" __global__ void group_norm_stats_channel_last_##name(                      \
+        const T *x, float *partials, int32_t pre, int32_t channels, int32_t splits) {     \
+        group_norm_stats_channel_last<T>(x, partials, pre, channels, splits);             \
+    }                                                                                     \
+    extern "C" __global__ void group_norm_apply_##name(                                   \
+        const T *x, const float *partials, T *y, int32_t len, int32_t pre,                \
+        int32_t channels, int32_t post, int32_t groups, int32_t entries) {                \
+        group_norm_apply<T>(x, partials, y, len, pre, channels, post, groups, entries);   \
+    }
+
+INSTANTIATE_GROUP_NORM(f32, float)
+INSTANTIATE_GROUP_NORM(f16, __half)

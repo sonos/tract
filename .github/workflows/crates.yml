@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   prepare-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       os: ${{steps.set-matrix.outputs.os}}
       rust: ${{steps.set-matrix.outputs.rust}}
@@ -32,6 +32,9 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          # The PR head, not GitHub's refs/pull/N/merge: that merge exists nowhere else
+          # and goes stale when main moves.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - id: set-matrix
         env:
@@ -41,11 +44,11 @@ jobs:
           echo "msrv=$msrv" >> $GITHUB_OUTPUT
           if [ "$FULL" == "true" ]
           then
-            echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+            echo 'os=["ubuntu-24.04", "macos-latest"]' >> $GITHUB_OUTPUT
             echo "rust=[\"$msrv\", \"stable\", \"beta\", \"nightly\"]" >> $GITHUB_OUTPUT
           else
             echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
-            echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
+            echo 'os=["ubuntu-24.04"]' >> $GITHUB_OUTPUT
             echo "rust=[\"$msrv\"]" >> $GITHUB_OUTPUT
           fi
 
@@ -69,6 +72,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -88,7 +92,9 @@ jobs:
       run: cargo test ${{ (matrix.crate == 'tract-linalg' || startsWith(matrix.crate, 'test-')) && '-q' || '' }} -p ${{matrix.crate}}
 
   cuda:
-    runs-on: cuda-lovelace
+    # Served by entangled (4060, SM89) and, when lent, the Blackwell box (5090,
+    # SM120). They take different kernel paths, so a red run must say which GPU.
+    runs-on: cuda-tests
     needs: prepare-matrix
     strategy:
       matrix:
@@ -99,7 +105,14 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
+
+    - name: Report the GPU
+      run: |
+        gpu=$(nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader | head -1)
+        echo "::notice::$RUNNER_NAME: $gpu"
+        echo "GPU: \`$RUNNER_NAME\`: $gpu" >> "$GITHUB_STEP_SUMMARY"
 
     - name: Check the Vulkan adapter is the NVIDIA GPU
       # Without the NVIDIA ICD, wgpu would settle for a CPU implementation (lavapipe)
@@ -114,21 +127,22 @@ jobs:
     # on the runner (full toolkit available) then runs it against a tiny
     # model inside a container that only has the minimum runtime packages
     # pinned in harness/cuda-minimum-deploy/Dockerfile.
-    # Daily only: keeps this off the cuda-lovelace runner on every PR.
+    # Daily only: keeps this off entangled on every PR. Needs its docker and container toolkit.
     if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     needs: prepare-matrix
     env:
       RUSTUP_TOOLCHAIN: ${{ needs.prepare-matrix.outputs.msrv }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
     - name: Minimum-BOM GPU smoke
       run: harness/cuda-minimum-deploy/gpu-ci.sh
 
   metal:
-    runs-on: macOS
+    runs-on: metal-tests
     needs: prepare-matrix
     strategy:
       matrix:
@@ -139,6 +153,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
     - name: Cargo test
@@ -158,6 +173,7 @@ jobs:
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
@@ -179,11 +195,12 @@ jobs:
 
   tract-h:
     name: api/proxy/sys/tract.h matches tract-ffi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
     - name: Install cbindgen
       run: cargo install cbindgen --version 0.29.4 --locked
@@ -199,11 +216,12 @@ jobs:
     strategy:
       fail-fast: false
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
     - name: Install cargo-deny
       run: |

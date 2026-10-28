@@ -1,8 +1,7 @@
 use crate::internal::*;
 use crate::ops::cast::{Cast, cast};
-use crate::ops::change_axes::wire_with_rank_broadcast;
-use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::nn::LeakyRelu;
+use crate::optim::change_axes::{hoist_axis_op, node_axis_op, sink_axis_op};
 use ndarray::*;
 use tract_itertools::Itertools;
 
@@ -690,60 +689,29 @@ impl TypedOp for OptMatMul {
             patch.dont_apply_twice = Some(format!("Fuse {succ} into {node}"));
             return Ok(Some(patch));
         }
-        // Reach over a shape-agnostic elementwise (Tanh/Sigmoid/Cast/…) to absorb
-        // a squeeze reshape into the store: matmul → ew → squeeze becomes
-        // matmul(squeezed) → ew, unchanged since the op is per-element. With the
-        // direct arm above, squeeze reshapes fuse whether before or after the ew.
-        if (succ.op_is::<ElementWiseOp>() || succ.op_is::<Cast>())
-            && succ.outputs.len() == 1
-            && let &[next] = &*succ.outputs[0].successors
-        {
-            let into_node = model.node(next.node);
-            if let Some(into) = into_node.op_as::<IntoShape>()
-                && let Some(new_op) = self.absorb_squeeze(into)
-            {
-                let mut patch = TypedModelPatch::default();
-                let inputs = node
-                    .inputs
-                    .iter()
-                    .map(|i| patch.tap_model(model, *i))
-                    .collect::<TractResult<TVec<_>>>()?;
-                let mm = patch.wire_node(&node.name, new_op, &inputs)?[0];
-                let ew = patch.wire_node(&succ.name, succ.op.clone(), &[mm])?[0];
-                patch.shunt_outside(model, into_node.id.into(), ew)?;
-                patch.dont_apply_twice = Some(format!("Reach {into_node} into {node}"));
-                return Ok(Some(patch));
-            }
-        }
-        if (succ.op_is::<AxisOp>() || succ.op_is::<IntoShape>())
+        if succ.outputs.len() == 1
             && let &[next] = &*succ.outputs[0].successors
         {
             let next_node = model.node(next.node);
-            if let Some(cast) = next_node.op_as::<Cast>() {
-                let mut patch = TypedModelPatch::default();
-                let mut wire = patch.tap_model(model, node.id.into())?;
-                wire = patch.wire_node(&next_node.name, cast.clone(), &[wire])?[0];
-                wire = patch.wire_node(&succ.name, succ.op.clone(), &[wire])?[0];
-                patch.shunt_outside(model, next_node.id.into(), wire)?;
+            if let Some(into) = next_node.op_as::<IntoShape>()
+                && let Some(new_op) = self.absorb_squeeze(into)
+                && let Some(squeeze) = node_axis_op(model, next_node)?
+                && let Some(mut patch) = hoist_axis_op(model, next_node, |patch, input, op| {
+                    rule_if!(input == node.id.into() && op == squeeze);
+                    let inputs = patch.taps(model, &node.inputs)?;
+                    Ok(Some(patch.wire_node(&node.name, new_op, &inputs)?[0]))
+                })?
+            {
+                patch.dont_apply_twice = Some(format!("Reach {next_node} into {node}"));
                 return Ok(Some(patch));
-            } else if let Some(op) = next_node.op_as::<ops::binary::TypedBinOp>() {
-                rule_if!(op.0.as_linalg_binop().is_some());
-                let flipped = succ.inputs[0].node == node.id;
-                let other_outlet = next_node.inputs[flipped as usize];
-                if let Some(uni) = &model.outlet_fact(other_outlet)?.uniform {
-                    let mut patch = TypedModelPatch::default();
-                    let cst = patch.add_const(&model.node(other_outlet.node).name, uni.clone())?;
-                    let output = patch.tap_model(model, node.id.into())?;
-                    let wire = wire_with_rank_broadcast(
-                        &next_node.name,
-                        &mut patch,
-                        op.clone(),
-                        &if flipped { [output, cst] } else { [cst, output] },
-                    )?;
-                    let wire = patch.wire_node(&succ.name, succ.op.clone(), &wire)?[0];
-                    patch.shunt_outside(model, next_node.id.into(), wire)?;
-                    return Ok(Some(patch));
-                }
+            }
+            if node_axis_op(model, succ)?.is_some()
+                && (next_node.op_is::<Cast>()
+                    || next_node
+                        .op_as::<ops::binary::TypedBinOp>()
+                        .is_some_and(|op| op.0.as_linalg_binop().is_some()))
+            {
+                return sink_axis_op(model, succ);
             }
         }
         if let Some(op) = succ.op_as::<ops::binary::OptBinUnicast>() {

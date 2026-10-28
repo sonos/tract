@@ -1,6 +1,7 @@
 mod add_matmul_broadcast;
 mod conv_nhwc;
 mod fuse_axis_op;
+mod fuse_gemm_bias;
 mod fuse_window_into_gemm;
 mod pad_q40_weights;
 mod untranspose_matmul_output;
@@ -8,6 +9,7 @@ mod untranspose_matmul_output;
 pub use add_matmul_broadcast::add_broadcast_pre_matmul;
 pub use conv_nhwc::rewrite_conv_to_nhwc;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
+pub use fuse_gemm_bias::fuse_gemm_bias;
 pub use fuse_window_into_gemm::fuse_window_into_gemm;
 pub use pad_q40_weights::pad_q40_weights;
 pub use untranspose_matmul_output::untranspose_matmul_output;

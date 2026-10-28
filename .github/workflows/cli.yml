@@ -3,7 +3,7 @@ name: CLI
 # Build the tract CLI once per platform on GitHub-hosted runners, then everything that
 # runs it:
 # - harness cases: every harness/*/ci.sh, plus every ci-full.sh off PRs, each on the
-#   runners its `# ci-runners:` line names (ubuntu-latest when it has none);
+#   runners its `# ci-runners:` line names (ubuntu-24.04 when it has none);
 # - the LLM matrix (off PRs);
 # - the bench suite on the self-hosted bench machines, which either (nightly) appends
 #   one row per run to the bench-data branch, or (PR) compares against that reference
@@ -26,16 +26,26 @@ on:
         type: string
         default: ''
       scope:
-        description: "full: the nightly-sized run (LLM matrix, ci-full.sh cases, harness-checked). bench: what a PR push runs."
+        description: "full: the nightly-sized run (LLM matrix, ci-full.sh cases, harness-checked). bench: what a PR push runs. wgpu, wasm: that bench leg alone, reported on the PR (needs pr_number)."
         required: false
         type: choice
-        options: [ full, bench ]
+        options: [ full, bench, wgpu, wasm ]
         default: full
       rebench:
         description: "Re-run only the runs the PR's last bench report flagged red, on the boxes that flagged them (needs pr_number)."
         required: false
         type: boolean
         default: false
+      select:
+        description: "Comma-separated bench-name globs (bench-suite --select): bench only those, nightly-only ones included; empty = the whole manifest."
+        required: false
+        type: string
+        default: ''
+      comment_id:
+        description: "The /ci command comment to report on (set by ci-command.yml)."
+        required: false
+        type: string
+        default: ''
   pull_request:
     paths-ignore:
       - '**/*.md'
@@ -46,17 +56,20 @@ permissions:
   contents: read
 
 concurrency:
-  # cancel superseded PR pushes (escape hatch); nightly keys on run_id so it never cancels
-  group: cli-${{ github.event.pull_request.number || github.event.inputs.pr_number || github.run_id }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event.inputs.pr_number != '' }}
+  # A push to a PR cancels the run of its previous push. Every other run, a /ci command
+  # included, keys on its own run id: commands on a PR neither cancel each other nor are
+  # cancelled by a push (a run whose head moved on reports that instead of its numbers).
+  group: cli-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
-      statuses: write     # pending "CI / cli" status on a dispatched PR run
-      actions: read       # a rebench reads the previous report's state artifact
+      statuses: write       # pending "/ci cli" status on a dispatched PR run
+      pull-requests: write  # marks the /ci command comment running
+      actions: read         # a rebench reads the previous report's state artifact
     outputs:
       enabled: ${{ steps.gate.outputs.enabled }}
       ref: ${{ steps.gate.outputs.ref }}
@@ -64,6 +77,8 @@ jobs:
       pr_number: ${{ steps.gate.outputs.pr_number }}
       is_pr: ${{ steps.gate.outputs.is_pr }}
       full: ${{ steps.gate.outputs.full }}
+      tests: ${{ steps.gate.outputs.tests }}
+      kind: ${{ steps.gate.outputs.kind }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
       cases: ${{ steps.cases.outputs.cases }}
@@ -74,6 +89,7 @@ jobs:
       rebench: ${{ steps.gate.outputs.rebench }}
       only: ${{ steps.rebench.outputs.only || '{}' }}
       previous: ${{ steps.rebench.outputs.previous }}
+      bins_run: ${{ steps.bins.outputs.bins_run }}
       dinghy: ${{ steps.rebench.outputs.dinghy || 'true' }}
     steps:
       # The self-hosted bench boxes, minus the targets listed (space-separated) in the
@@ -83,12 +99,17 @@ jobs:
       - id: boxes
         env:
           DISABLED: ${{ vars.BENCH_DISABLED_BOXES }}
+          SCOPE: ${{ github.event.inputs.scope }}
         run: |
+          if [ "$SCOPE" = wgpu ] || [ "$SCOPE" = wasm ]; then
+            echo "boxes=[]" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           boxes=$(jq -c --arg disabled "$DISABLED" \
             '($disabled | split(" ") | map(select(. != ""))) as $off | map(select(.target | IN($off[]) | not))' <<'EOF'
           [
-            { "target": "apple-m1-max", "runner": "macOS", "triple": "aarch64-apple-darwin" },
-            { "target": "i9-11900kb_rtx-4060", "runner": "cuda-lovelace", "triple": "x86_64-unknown-linux-gnu" },
+            { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin" },
+            { "target": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060", "triple": "x86_64-unknown-linux-gnu" },
             { "target": "i9-9900k", "runner": "i99900k", "triple": "x86_64-unknown-linux-gnu" },
             { "target": "jetson-orin-nx", "runner": "orin-nx-16g", "triple": "aarch64-unknown-linux-gnu-stretch",
               "suite_args": "--skip-cpu" }
@@ -97,6 +118,14 @@ jobs:
           )
           for off in $DISABLED; do echo "::notice::bench box $off disabled via BENCH_DISABLED_BOXES"; done
           echo "boxes=$boxes" >> "$GITHUB_OUTPUT"
+      # A pull_request run's sha is the PR's own code, and it has no /ci command to report on.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event_name != 'pull_request' }}
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       # Resolves this run's target ref and whether it should behave like a PR run
       # (compare + comment) or a reference run (append to bench-data): a manual
       # `/ci bench` dispatch on a PR must be treated as a PR run even though its
@@ -106,7 +135,6 @@ jobs:
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           BENCH_ENABLED: ${{ vars.BENCH_ENABLED }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         with:
           script: |
             if (process.env.BENCH_ENABLED === 'false') {
@@ -125,10 +153,21 @@ jobs:
               return;
             }
             core.setOutput('rebench', String(rebench));
+            // native: the bench boxes' own suite. wgpu, wasm: that one leg, on a PR only.
+            const scope = context.payload.inputs?.scope || 'full';
+            const kind = ['wgpu', 'wasm'].includes(scope) ? scope : 'native';
+            if (kind !== 'native' && !context.payload.inputs?.pr_number) {
+              core.setFailed(`scope ${scope} needs a pr_number`);
+              return;
+            }
+            core.setOutput('kind', kind);
             // The LLM matrix, ci-full.sh cases and harness-checked: off on a PR push and
             // on a dispatch with scope `bench` (`/ci bench`), on otherwise.
-            core.setOutput('full', String(
-              context.eventName !== 'pull_request' && (context.payload.inputs?.scope || 'full') !== 'bench'));
+            core.setOutput('full', String(context.eventName !== 'pull_request' && scope === 'full'));
+            // The harness cases: on a push, the nightly and a full-scope dispatch (`/ci cli`).
+            // A `/ci bench` of any kind only benches; its head's push run already tested it.
+            const tests = kind === 'native' && !rebench && (context.eventName !== 'workflow_dispatch' || scope === 'full');
+            core.setOutput('tests', String(tests));
 
             const baseRepo = `${context.repo.owner}/${context.repo.repo}`;
             if (context.eventName === 'pull_request') {
@@ -156,15 +195,17 @@ jobs:
             core.setOutput('pr_number', String(prInput));
             core.setOutput('same_repo', String(pr.data.head.repo.full_name === baseRepo));
             core.setOutput('ref', pr.data.head.sha);
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              sha: pr.data.head.sha,
-              state: 'pending',
-              context: 'CI / cli',
-              target_url: process.env.RUN_URL,
-              description: 'Running',
-            });
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
+            // A run without tests does not speak for "/ci cli".
+            if (tests) {
+              await ci.status(github, context, { sha: pr.data.head.sha, target: 'cli', state: 'pending', description: 'Running' });
+            }
+            // A /ci command's benches: pending until finish, then green whatever they found.
+            if (context.payload.inputs?.comment_id && process.env.BENCH_ENABLED !== 'false') {
+              const target = kind === 'native' ? 'bench' : `bench ${kind}`;
+              await ci.status(github, context, { sha: pr.data.head.sha, target, state: 'pending', description: 'Running' });
+            }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ steps.gate.outputs.ref }}
@@ -180,11 +221,11 @@ jobs:
           cases=$(find harness \( $names \) | sort | while read -r script
           do
             runners=$(sed -n 's/^# ci-runners: *//p' "$script" | head -1)
-            for runner in ${runners:-ubuntu-latest}
+            for runner in ${runners:-ubuntu-24.04}
             do
               case "$runner" in
-                ubuntu-latest|cuda-lovelace) triple=x86_64-unknown-linux-gnu ;;
-                macos-latest|macOS) triple=aarch64-apple-darwin ;;
+                ubuntu-24.04|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                macos-latest|metal-tests|bench-apple-m1-max) triple=aarch64-apple-darwin ;;
                 *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
               esac
               jq -nc --arg script "$script" --arg runner "$runner" --arg triple "$triple" '$ARGS.named'
@@ -194,6 +235,8 @@ jobs:
       # A rebench re-runs, on the boxes that flagged them, only the runs the last report on
       # this head flagged red. That report left its per-device results and reds behind in a
       # bench-state-<sha> artifact; a head with none (never benched, or moved since) refuses.
+      # Its candidate binaries are those that report measured, from the run that built them
+      # (named in the state by an earlier rebench, else the run that left the state).
       - id: rebench
         if: steps.gate.outputs.rebench == 'true'
         env:
@@ -201,26 +244,71 @@ jobs:
           SHA: ${{ steps.gate.outputs.ref }}
           BOXES: ${{ steps.boxes.outputs.boxes }}
         run: |
-          id=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bench-state-$SHA" \
-            --jq '[.artifacts[] | select(.expired | not)][0].id // empty')
+          artifact=$(gh api "repos/$GITHUB_REPOSITORY/actions/artifacts?name=bench-state-$SHA" \
+            --jq '[.artifacts[] | select(.expired | not)][0] // empty')
+          id=$(jq -r '.id // empty' <<<"$artifact")
           if [ -z "$id" ]; then
             echo "::error::no bench report on ${SHA:0:9} to rebench; run /ci bench first"
             exit 1
           fi
           gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id/zip" > state.zip
           unzip -q state.zip -d state
+          bins_run=$(cat state/bins-run 2>/dev/null || jq -r '.workflow_run.id' <<<"$artifact")
           only=$(jq -c 'map_values(join(","))' state/reds.json)
           [ "$only" = '{}' ] && echo "::notice::the last report on ${SHA:0:9} has no reds; nothing to rebench"
           boxes=$(jq -c --argjson only "$only" 'map(select(.target | in($only)) + {only: $only[.target]})' <<<"$BOXES")
           dinghy=$(jq -r --argjson boxes "$BOXES" '(keys - ($boxes | map(.target))) | length > 0' <<<"$only")
           {
             echo "previous=$id"
+            echo "bins_run=$bins_run"
             echo "only=$only"
             echo "boxes=$boxes"
             echo "dinghy=$dinghy"
           } >> "$GITHUB_OUTPUT"
+      # A dispatched PR run benches and tests the binaries of an earlier run on the same head
+      # (for a rebench, those its bench state measured) instead of building them again, if
+      # that run built them with this repo's own workflow (a dispatch, or a pull_request from
+      # a branch of this repo, never one from a fork) and still has every tract-cli artifact
+      # a native run downloads. Otherwise bins_run stays empty and the builds run.
+      - id: bins
+        if: steps.gate.outputs.is_pr == 'true' && github.event_name == 'workflow_dispatch' && steps.gate.outputs.kind == 'native'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.gate.outputs.ref }}
+          CANDIDATE: ${{ steps.rebench.outputs.bins_run }}
+          NEEDED: >-
+            tract-cli-x86_64-unknown-linux-gnu
+            tract-cli-aarch64-unknown-linux-gnu-stretch
+            tract-cli-aarch64-apple-darwin
+            tract-cli-aarch64-unknown-linux-gnu-stretch-dinghy
+            tract-cli-armv7-unknown-linux-gnueabihf-stretch-dinghy
+            tract-cli-riscv64gc-unknown-linux-musl-dinghy
+        run: |
+          candidates=$CANDIDATE
+          if [ -z "$candidates" ]; then
+            candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/cli.yml/runs?head_sha=$SHA&per_page=20" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id")
+          fi
+          for run in $candidates; do
+            trusted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+              --jq '.event != "pull_request" or .head_repository.full_name == .repository.full_name')
+            [ "$trusted" = true ] || continue
+            have=" $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
+            complete=true
+            for name in $NEEDED; do
+              case "$have" in *" $name "*) ;; *) complete=false ;; esac
+            done
+            if [ "$complete" = true ]; then
+              echo "::notice::benching the binaries of run $run"
+              echo "bins_run=$run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
       # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
-      # build-macos runs on the apple box unless it is disabled, on a hosted runner then.
+      # build-macos runs on a self-hosted Mac unless the apple box is disabled, on a hosted
+      # runner then.
       - id: split
         env:
           BOXES: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
@@ -228,10 +316,12 @@ jobs:
         run: |
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
-          echo "macos_host=$(jq -r 'if any(.[]; .runner == "macOS") then "macOS" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
+          echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
 
   build:
+    name: build ${{ matrix.triple }}
     needs: prepare
+    if: needs.prepare.outputs.bins_run == ''
     runs-on: ${{ matrix.host }}
     timeout-minutes: 30
     permissions:
@@ -242,11 +332,11 @@ jobs:
       matrix:
         include:
           - triple: x86_64-unknown-linux-gnu
-            host: ubuntu-latest
+            host: ubuntu-24.04
             build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
-            host: ubuntu-latest
+            host: ubuntu-24.04
             build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh
             bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
@@ -273,9 +363,10 @@ jobs:
           name: tract-cli-${{ matrix.triple }}
           path: ${{ matrix.bin }}
 
-  # On the apple bench box, a cold build is faster than a cached one on a hosted runner.
+  # On a self-hosted Mac, a cold build is faster than a cached one on a hosted runner.
   build-macos:
     needs: prepare
+    if: needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == ''
     runs-on: ${{ needs.prepare.outputs.macos_host }}
     timeout-minutes: 45
     steps:
@@ -292,7 +383,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: needs.prepare.outputs.rebench != 'true'
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -310,6 +401,8 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       - name: Run case
         env:
           SCRIPT: ${{ matrix.script }}
@@ -324,7 +417,7 @@ jobs:
   harness-checked:
     needs: prepare
     if: needs.prepare.outputs.full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -347,7 +440,7 @@ jobs:
   llm-combos:
     needs: prepare
     if: needs.prepare.outputs.full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       combos: ${{ steps.set-matrix.outputs.combos }}
     steps:
@@ -363,13 +456,14 @@ jobs:
   llm:
     name: ${{ matrix.os }} / ${{ matrix.rt }} / ${{ matrix.combo.model }} / ${{ matrix.combo.q }}
     needs: [ prepare, build, build-macos, llm-combos ]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.llm-combos.result == 'success' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
     runs-on: ${{ matrix.os }}
     env:
       LARGE_MODELS: true
     strategy:
       fail-fast: false
       matrix:
-        os: [ macOS, cuda-lovelace ]
+        os: [ bench-apple-m1-max, bench-i9-11900kb-rtx-4060 ]
         rt: [ cpu, gpu ]
         combo: ${{ fromJson(needs.llm-combos.outputs.combos) }}
     steps:
@@ -379,8 +473,10 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: tract-cli-${{ matrix.os == 'macOS' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
+          name: tract-cli-${{ matrix.os == 'bench-apple-m1-max' && 'aarch64-apple-darwin' || 'x86_64-unknown-linux-gnu' }}
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       - name: Download and run
         env:
           RT_MATRIX: ${{ matrix.rt }}
@@ -392,65 +488,55 @@ jobs:
           ci/test-llm.sh "$MODEL" "$Q" "$RT_MATRIX"
 
   # A pull_request run shows each leg as a check; a `/ci` dispatch on a PR reports
-  # back through a commit status and a sticky comment instead.
+  # back through the "/ci cli" commit status and the tests section of its command comment.
   report-tests:
     name: Report tests to PR
     needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm ]
-    if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' }}
-    runs-on: ubuntu-latest
+    if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' && needs.prepare.outputs.tests == 'true' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
       pull-requests: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
       - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           NEEDS: ${{ toJSON(needs) }}
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
           HEAD_SHA: ${{ needs.prepare.outputs.ref }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          STATUS_CONTEXT: "CI / cli"
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
         with:
           script: |
-            const needs = JSON.parse(process.env.NEEDS);
-            const prNumber = Number(process.env.PR_NUMBER);
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
             const sha = process.env.HEAD_SHA;
-            const runUrl = process.env.RUN_URL;
-            const statusContext = process.env.STATUS_CONTEXT;
-            const icon = r => r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌';
-            const jobs = Object.entries(needs).filter(([k]) => k !== 'prepare');
-            const failed = jobs.filter(([, v]) => v.result !== 'success' && v.result !== 'skipped');
-            const state = failed.length ? 'failure' : 'success';
-            await github.rest.repos.createCommitStatus({
-              owner: context.repo.owner, repo: context.repo.repo, sha, state,
-              context: statusContext, target_url: runUrl,
-              description: failed.length ? `${failed.length} job(s) failed` : 'All jobs passed',
+            const result = ci.jobs(process.env.NEEDS);
+            await ci.status(github, context, {
+              sha, target: 'cli', state: result.state,
+              description: { success: 'All jobs passed', cancelled: 'Cancelled' }[result.state] || `${result.failed.length} job(s) failed`,
             });
-            const marker = `<!-- ${statusContext} -->`;
-            const body = [
-              marker,
-              `### ${icon(state)} ${statusContext}: ${state}`,
-              '',
-              ...jobs.map(([k, v]) => `- ${icon(v.result)} \`${k}\`: ${v.result}`),
-              '',
-              `[View workflow run](${runUrl})`,
-            ].join('\n');
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, per_page: 100,
+            await ci.update(github, context, {
+              commentId: process.env.COMMENT_ID,
+              issueNumber: process.env.PR_NUMBER,
+              fallbackHeader: `**CLI tests** · head \`${sha.slice(0, 9)}\``,
+              state: process.env.COMMENT_ID ? undefined : result.state,
+              sections: { tests: result.text },
             });
-            const prev = comments.find(c => c.body?.includes(marker));
-            if (prev) {
-              await github.rest.issues.updateComment({ owner: context.repo.owner, repo: context.repo.repo, comment_id: prev.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner: context.repo.owner, repo: context.repo.repo, issue_number: prNumber, body });
-            }
 
   bench:
+    name: bench ${{ matrix.target }}
     needs: [ prepare, build ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
+    # Skipped builds mean prepare found the binaries of an earlier run (bins_run).
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
+      actions: read       # may download the binaries of an earlier run
     # No concurrency group: each box is a single self-hosted agent, so the agent
     # serialises bench/hwbench/smoke itself (queues, never cancels). A shared
     # group would instead cancel one PR's queued bench when another PR's lands.
@@ -467,6 +553,8 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       # Read-only bench-data checkout: the orchestrator builds this device's retry
       # expectations from it inline (no separate job, no Python on the runner).
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -486,11 +574,13 @@ jobs:
           DEVICE: ${{ matrix.target }}
           MT_LADDER: ${{ needs.prepare.outputs.mt_ladder }}
           ONLY: ${{ matrix.only }}
+          SELECT: ${{ github.event.inputs.select }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
             --manifest ci/benches.toml \
             ${ONLY:+--only "$ONLY"} \
+            ${SELECT:+--select "$SELECT"} \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \
             --triple "$TRIPLE" --device "$DEVICE" \
@@ -498,9 +588,11 @@ jobs:
             ${{ needs.prepare.outputs.is_pr != 'true' && '--samples 5 --second-pass-max 10' || '' }} \
             ${{ matrix.suite_args }}        # produces ./metrics
 
+      # A failed bench run fails the suite after it wrote the others' metrics; the steps below
+      # still record or report those, and the job stays failed.
       # --- nightly / dispatch: append the row to bench-data ---
       - name: Checkout bench-data
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -509,7 +601,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
-        if: needs.prepare.outputs.is_pr != 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
@@ -532,32 +624,104 @@ jobs:
 
       # --- PR: emit this device's result for the fan-in report job ---
       - name: Stage PR result
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         env:
           DEVICE: ${{ matrix.target }}
           TRIPLE: ${{ matrix.triple }}
         run: |
           mkdir -p result
           cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
       - name: Upload PR result
-        if: needs.prepare.outputs.is_pr == 'true'
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-result-${{ matrix.target }}
           path: result
 
   bench-macos:
+    name: bench ${{ matrix.target }}
     needs: [ prepare, build-macos ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: write     # push to bench-data (nightly only)
+      actions: read       # may download the binaries of an earlier run
     strategy:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.boxes_apple) }}
     steps: *bench-steps
+
+  # --- `/ci bench wgpu`: ci/benches-wgpu.toml on the 4060 box over Vulkan, against the
+  # nightly wgpu series (bench-wgpu.yml). Its own build: the wgpu runtime stays out of the
+  # binary the other boxes bench.
+  build-wgpu:
+    needs: prepare
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.kind == 'wgpu' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: x86_64-unknown-linux-gnu-wgpu
+          save-if: false
+      - run: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite,wgpu
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: tract-cli-wgpu
+          path: target/release/tract
+
+  bench-wgpu:
+    needs: [ prepare, build-wgpu ]
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.kind == 'wgpu' }}
+    runs-on: bench-i9-11900kb-rtx-4060
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.ref }}
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: tract-cli-wgpu
+          path: tract-cli
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: bench-data
+          path: bench-ref
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Check the Vulkan adapter is the NVIDIA GPU
+        run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
+      - name: Run bench suite
+        env:
+          SELECT: ${{ github.event.inputs.select }}
+        run: |
+          chmod +x tract-cli/tract
+          tract-cli/tract bench-suite \
+            --manifest ci/benches-wgpu.toml \
+            ${SELECT:+--select "$SELECT"} \
+            --bench-data bench-ref \
+            --thresholds ci/bench-thresholds.toml \
+            --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu
+      - name: Stage PR result
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
+        run: |
+          mkdir -p result
+          cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
+          printf '{"device":"i9-11900kb_rtx-4060_wgpu","triple":"x86_64-unknown-linux-gnu"}\n' > result/meta.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
+        with:
+          name: bench-result-i9-11900kb_rtx-4060_wgpu
+          path: result
 
   # --- dinghy target fleet (kill switch: BENCH_DINGHY_ENABLED=false). ---
   # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
@@ -565,9 +729,10 @@ jobs:
   # don't inherit the repo variable) still run the ARM boards.
 
   build-dinghy:
+    name: build ${{ matrix.triple }} (dinghy)
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' }}
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: read      # pull the prebuilt cross-build image (ghcr, private)
@@ -610,8 +775,9 @@ jobs:
           path: .cross-cache/target/${{ matrix.rustc_triple }}/release/tract
 
   bench-dinghy:
+    name: bench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
@@ -655,11 +821,14 @@ jobs:
         with:
           name: tract-cli-${{ matrix.triple }}-dinghy
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       # A rebench only re-runs the boards its previous report flagged.
       - name: Bench on the dinghy target
         if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
         env:
           ONLY: ${{ fromJSON(needs.prepare.outputs.only)[matrix.device] }}
+          SELECT: ${{ github.event.inputs.select }}
           DINGHY_TARGET: ${{ matrix.dinghy_target }}
           DEVICE: ${{ matrix.device }}
           TRIPLE: ${{ matrix.triple }}
@@ -680,19 +849,28 @@ jobs:
                ./tract-cli/tract -- bench-suite \
                --manifest ci/benches.toml --skip-runtimes --no-cache --output - $SAMPLES \
                ${ONLY:+--only "$ONLY"} \
+               ${SELECT:+--select "$SELECT"} \
                ${MT_LADDER:+--threads-ladder "$MT_LADDER"} \
                --base-url '${TRACT_BENCH_BASE_URL}' --cpu-governor '${TRACT_BENCH_CPU_GOVERNOR}' \
                >captured.out 2>captured.err
           then
-            grep '"metric"' captured.out > result/metrics || true
+            ok=true
           else
-            echo "::error::bench-dinghy: run failed"
+            ok=false
+          fi
+          grep '"metric"' captured.out > result/metrics || true
+          grep '"failure"' captured.out > result/metrics.failures || rm -f result/metrics.failures
+          if [ ! -s result/metrics ] && [ ! -f result/metrics.failures ]; then
+            echo "::error::bench-dinghy: no metrics captured"
             exit 1
           fi
-          test -s result/metrics || { echo "::error::bench-dinghy: no metrics captured"; exit 1; }
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+          if [ "$ok" != true ]; then
+            echo "::error::bench-dinghy: some bench runs failed; the metrics of the others are kept"
+            exit 1
+          fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
+        if: ${{ !cancelled() && hashFiles('result/meta.json') != '' && (needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]) }}
         with:
           name: bench-result-${{ matrix.device }}
           path: result
@@ -705,7 +883,7 @@ jobs:
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
     # result artifact is absent.
     if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     strategy:
@@ -769,15 +947,19 @@ jobs:
           echo "push failed after retries" >&2; exit 1
 
   report:
-    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy ]
+    name: Report bench to PR
+    # After report-tests, so the two never edit the /ci command comment at once.
+    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wgpu, bench-wasm, report-tests ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
       actions: read          # a rebench reads the previous report's state artifact
+    outputs:
+      summary: ${{ steps.head.outputs.superseded == 'true' && 'The PR head moved on' || steps.render.outputs.summary }}
     steps:
       # always() also lets a run cancelled by a newer push get here; its numbers are for a
       # head the PR has moved past, so it renders nothing and leaves the report to the new run.
@@ -810,6 +992,8 @@ jobs:
         with:
           name: tract-cli-x86_64-unknown-linux-gnu
           path: tract-cli
+          run-id: ${{ needs.prepare.outputs.bins_run }}
+          github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: bench-data
@@ -833,6 +1017,7 @@ jobs:
       # An mt-ladder run renders a self-contained thread-scaling table (speed + speedup
       # vs serial, no bench-data reference); a normal run renders the vs-main comparison.
       - name: Render comparison
+        id: render
         if: steps.head.outputs.superseded != 'true'
         env:
           PR_SHA: ${{ needs.prepare.outputs.ref }}
@@ -842,31 +1027,84 @@ jobs:
           chmod +x tract-cli/tract
           if [ -n "$MT_LADDER" ]; then
             tract-cli/tract bench-mt-report --results results --pr-sha "$PR_SHA" --out pr-comment.md
+            echo "summary=Thread-scaling report" >> "$GITHUB_OUTPUT"
           else
             tract-cli/tract bench-report --results results --bench-data bench-data \
               --thresholds ci/bench-thresholds.toml --pr-sha "$PR_SHA" --out pr-comment.md \
-              --reds reds.json
+              --reds reds.json | tee render.log
+            regressions=$(sed -n 's/.*regressions=\([0-9]*\).*/\1/p' render.log)
+            failed=$(sed -n 's/.* failed=\([0-9]*\).*/\1/p' render.log)
+            if [ -z "$regressions" ]; then
+              summary="Nothing to compare"
+            elif [ "$regressions" = 0 ]; then
+              summary="No regressions"
+            else
+              summary="$regressions regression(s)"
+            fi
+            if [ -n "$failed" ] && [ "$failed" != 0 ]; then summary="$summary · $failed failed to run"; fi
+            echo "summary=$summary" >> "$GITHUB_OUTPUT"
           fi
-      # What a later `/ci rebench` on this head starts from: the per-device results and
-      # the runs this report flagged red.
+      # What a later `/ci rebench` on this head starts from: the per-device results, the
+      # runs this report flagged red, and the run whose binaries they measured. A cancelled
+      # run's partial report leaves none, so it never hides the last complete one.
       - name: Stage the rebench state
-        if: ${{ hashFiles('reds.json') != '' }}
+        if: ${{ !cancelled() && hashFiles('reds.json') != '' && needs.prepare.outputs.kind == 'native' }}
+        env:
+          BINS_RUN: ${{ needs.prepare.outputs.bins_run || github.run_id }}
         run: |
           mkdir -p bench-state
           cp -r results reds.json bench-state/
+          echo "$BINS_RUN" > bench-state/bins-run
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ hashFiles('bench-state/reds.json') != '' }}
         with:
           name: bench-state-${{ needs.prepare.outputs.ref }}
           path: bench-state
           retention-days: 14
+      # A `/ci` command gets the comparison, or why there is none, in the bench section of
+      # its command comment.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: ${{ github.event.inputs.comment_id != '' }}
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
+      - id: cancelled
+        if: ${{ cancelled() && github.event.inputs.comment_id != '' }}
+        run: echo "cancelled=true" >> "$GITHUB_OUTPUT"
+      - name: Report on the command comment
+        if: ${{ github.event.inputs.comment_id != '' }}
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
+          SUPERSEDED: ${{ steps.head.outputs.superseded }}
+          CANCELLED: ${{ steps.cancelled.outputs.cancelled }}
+        with:
+          script: |
+            const fs = require('fs');
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            let text;
+            if (process.env.SUPERSEDED === 'true') {
+              text = 'The PR head moved on since this run started, so its numbers are not reported.';
+            } else if (fs.existsSync('pr-comment.md')) {
+              text = fs.readFileSync('pr-comment.md', 'utf8').slice(0, 60000);
+              if (process.env.CANCELLED === 'true') {
+                text = `**Partial:** the run was cancelled, so only the bench legs that finished before it are compared.\n\n${text}`;
+              }
+            } else if (process.env.CANCELLED === 'true') {
+              text = 'The run was cancelled before any bench leg had something to compare.';
+            } else {
+              text = 'Nothing to compare: no nightly reference for these runs yet, or every bench leg failed.';
+            }
+            await ci.update(github, context, { commentId: process.env.COMMENT_ID, sections: { bench: text } });
       # Only an automatic `pull_request` event on a fork gets a read-only token; every other
       # trigger (same-repo pull_request, or any workflow_dispatch — including /ci bench,
       # which always runs with a write token regardless of the target PR's fork status) can
       # post directly. A fresh comment per run (like the fork trampoline) so the PR thread
       # keeps the full history in chronological order instead of overwriting the previous result.
       - name: Comment on PR (direct)
-        if: ${{ hashFiles('pr-comment.md') != '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
+        if: ${{ hashFiles('pr-comment.md') != '' && github.event.inputs.comment_id == '' && (github.event_name != 'pull_request' || needs.prepare.outputs.same_repo == 'true') }}
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           PR_NUMBER: ${{ needs.prepare.outputs.pr_number }}
@@ -894,6 +1132,64 @@ jobs:
         with:
           name: bench-comment
           path: bench-comment
+
+  # The final state of a `/ci` command comment, once everything that reports on it is done:
+  # report-tests and report wait for every test and bench job, and the run's job results
+  # come from the API, so this needs no arrow from each of them.
+  finish:
+    name: Finish the /ci comment
+    needs: [ prepare, report-tests, report ]
+    if: ${{ always() && github.event.inputs.comment_id != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      statuses: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          sparse-checkout: .github/scripts
+          path: .ci-scripts
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          COMMENT_ID: ${{ github.event.inputs.comment_id }}
+          REBENCH: ${{ github.event.inputs.rebench }}
+          PREPARE: ${{ needs.prepare.result }}
+          ONLY: ${{ needs.prepare.outputs.only }}
+          SHA: ${{ needs.prepare.outputs.ref }}
+          KIND: ${{ needs.prepare.outputs.kind }}
+          ENABLED: ${{ needs.prepare.outputs.enabled }}
+          SUMMARY: ${{ needs.report.outputs.summary }}
+        with:
+          script: |
+            const ci = require(`${process.env.GITHUB_WORKSPACE}/.ci-scripts/.github/scripts/ci-feedback.js`);
+            const result = await ci.runJobs(github, context);
+            const sections = {};
+            if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
+              sections.bench = 'No bench report on this head to rebench yet. If a bench is still running on it (a push starts one), wait for its report; otherwise run `/ci bench` first.';
+            } else if (process.env.REBENCH === 'true' && process.env.ONLY === '{}') {
+              sections.bench = 'The last bench report on this head has no reds; nothing to re-run.';
+            }
+            if (result.failed.length) {
+              sections.failed = `Failed: ${result.failed.map(j => `\`${j}\``).join(', ')}.`;
+            }
+            await ci.update(github, context, { commentId: process.env.COMMENT_ID, state: result.state, sections });
+            if (process.env.SHA && process.env.ENABLED === 'true') {
+              let state = 'success';
+              let description = process.env.SUMMARY || 'No bench report';
+              if (process.env.REBENCH === 'true' && process.env.PREPARE === 'failure') {
+                [state, description] = ['error', 'No bench report on this head to rebench yet'];
+              } else if (process.env.REBENCH === 'true' && process.env.ONLY === '{}') {
+                description = 'Nothing to re-run';
+              } else if (result.state === 'cancelled') {
+                [state, description] = ['cancelled', 'Cancelled'];
+              }
+              const target = process.env.KIND === 'native' ? 'bench' : `bench ${process.env.KIND}`;
+              await ci.status(github, context, { sha: process.env.SHA, target, state, description });
+            }
 
   # --- daily kernel-pick gate: fail if the dispatcher's matmul pick lags the fastest
   # available kernel for a shape by more than the tolerance. Reuses the bench binaries;
@@ -925,8 +1221,8 @@ jobs:
   # nothing to keep in bench-data.
   build-wasm:
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.mt_ladder == '' }}
-    runs-on: ubuntu-latest
+    if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -964,7 +1260,7 @@ jobs:
     if: ${{ needs.prepare.outputs.enabled == 'true' && github.event_name == 'schedule' }}
     # The x86 bench box, not a hosted runner: the pick ratios are stable to ~2 points
     # there and swing by 2x when something else is compiling on the machine.
-    runs-on: cuda-lovelace
+    runs-on: bench-i9-11900kb-rtx-4060
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -1001,12 +1297,12 @@ jobs:
             --no-cache --no-memory --include-generic --assert --tolerance 20
 
   # --- nightly wasm model bench: the plain-CPU net suite, each bench a wasm32-wasip1
-  # tract under wasmtime, appended to bench-data as its own device. Off the PR path so
-  # it costs the bench boxes no daytime minutes; on the 9900k, which carries no GPU
-  # jobs.
+  # tract under wasmtime, appended to bench-data as its own device. Off the PR push path
+  # so it costs the bench boxes no daytime minutes; on the 9900k, which carries no GPU
+  # jobs. `/ci bench wasm` runs it alone on a PR, against that nightly series.
   bench-wasm:
     needs: [ prepare, build, build-wasm ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.mt_ladder == '' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
     runs-on: i99900k
     timeout-minutes: 90
     permissions:
@@ -1035,12 +1331,27 @@ jobs:
         run: |
           curl --retry 5 --retry-delay 5 -sSfL "https://github.com/bytecodealliance/wasmtime/releases/download/$WASMTIME_VERSION/wasmtime-$WASMTIME_VERSION-x86_64-linux.tar.xz" | tar xJ
           echo "$PWD/wasmtime-$WASMTIME_VERSION-x86_64-linux" >> "$GITHUB_PATH"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: needs.prepare.outputs.is_pr == 'true'
+        with:
+          ref: bench-data
+          path: bench-ref
+          fetch-depth: 1
+          persist-credentials: false
+      # Nightly: the median of 5 samples. PR: one run, retried against the nightly series
+      # when it would show red, as on the native boxes.
       - name: Run bench suite
+        env:
+          DEVICE: i9-9900k_${{ matrix.config }}
+          SELECT: ${{ github.event.inputs.select }}
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite --manifest ci/benches.toml \
-            --wasm tract-wasm/tract.wasm --samples 5
+            --wasm tract-wasm/tract.wasm \
+            ${SELECT:+--select "$SELECT"} \
+            ${{ needs.prepare.outputs.is_pr == 'true' && '--bench-data bench-ref --thresholds ci/bench-thresholds.toml --triple wasm32-wasip1 --device "$DEVICE"' || '--samples 5' }}
       - name: Checkout bench-data
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         # zizmor: ignore[artipacked] credentials are needed to push the row back to
         # bench-data; this checkout is never uploaded as an artifact.
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -1049,6 +1360,7 @@ jobs:
           path: bench-data
           fetch-depth: 1
       - name: Append and push
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr != 'true' }}
         env:
           DEVICE: i9-9900k_${{ matrix.config }}
           REF: ${{ needs.prepare.outputs.ref }}
@@ -1067,6 +1379,20 @@ jobs:
             git rebase origin/bench-data || git rebase --abort
           done
           echo "push failed after retries" >&2; exit 1
+      - name: Stage PR result
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
+        env:
+          DEVICE: i9-9900k_${{ matrix.config }}
+        run: |
+          mkdir -p result
+          cp metrics result/metrics
+          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
+          printf '{"device":"%s","triple":"wasm32-wasip1"}\n' "$DEVICE" > result/meta.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
+        with:
+          name: bench-result-i9-9900k_${{ matrix.config }}
+          path: result
 
   # --- daily load-and-run gate: every model in the bench manifest must load,
   # optimize and run once on each runtime the box offers (CPU + accelerator).

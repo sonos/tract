@@ -309,7 +309,8 @@ impl Parameters {
                 let onnx = tract_onnx::onnx()
                     .with_ignore_output_shapes(matches.get_flag("onnx-ignore-output-shapes"))
                     .with_ignore_output_types(matches.get_flag("onnx-ignore-output-types"))
-                    .with_ignore_value_info(matches.get_flag("onnx-ignore-value-info"));
+                    .with_ignore_value_info(matches.get_flag("onnx-ignore-value-info"))
+                    .with_lazy_external_data(matches.get_flag("onnx-lazy-external-data"));
                 info_usage("loaded framework (onnx)", probe);
                 let graph = onnx.proto_model_for_read(&mut *location.read()?)?;
                 info_usage("proto model loaded", probe);
@@ -758,6 +759,13 @@ impl Parameters {
                 stage!("pulse-to-type", pulsed_model -> typed_model, |m:PulsedModel| m.into_typed());
                 stage!("pulse-declutter", typed_model -> typed_model, |m:TypedModel| m.into_decluttered());
             }
+        }
+        for path in matches.get_many::<String>("link-safetensors").into_iter().flatten() {
+            let source =
+                std::sync::Arc::new(tract_nnef::safetensors::SafetensorsSource::open(path)?);
+            stage!("link-weights", typed_model -> typed_model, move |m: TypedModel| {
+                tract_core::transform::LinkWeights(source.clone()).transform_into(m)
+            });
         }
         let mut transforms: Vec<&str> = matches
             .get_many::<String>("transform")

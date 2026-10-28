@@ -2,6 +2,7 @@ use super::OptimizerSession;
 use super::TypedPass;
 use crate::internal::*;
 use crate::model::*;
+use crate::ops::binary::TypedBinOp;
 use crate::ops::dummy::Dummy;
 use crate::ops::einsum::EinSum;
 use crate::ops::konst::Const;
@@ -254,4 +255,169 @@ pub fn change_axes(
     }
     debug!("Patch ready for {change:?}");
     Ok(Some((patch, interface_change)))
+}
+/// The `AxisOp` `node` performs: an `AxisOp` itself, or the single one an `IntoShape` stands for.
+pub fn node_axis_op(model: &TypedModel, node: &TypedNode) -> TractResult<Option<AxisOp>> {
+    if let Some(op) = node.op_as::<AxisOp>() {
+        return Ok(Some(op.clone()));
+    }
+    if let Some(into) = node.op_as::<IntoShape>()
+        && let Some(input) = model.outlet_fact(node.inputs[0])?.shape.as_concrete()
+    {
+        return Ok(into.axis_op(input));
+    }
+    Ok(None)
+}
+
+/// Moves the axis op at `axis_node` (see [`node_axis_op`]) below its only successor:
+/// `succ(axis(x), y)` becomes `axis'(succ'(x, y'))`, with `succ'` and `axis'` taken from
+/// `succ.change_axes`.
+///
+/// This is the local form of the commutation [`change_axes`] floods through a whole region: it
+/// succeeds whenever `succ` alone accepts the change, so it applies where the flood is blocked
+/// further away by a model interface or a refusing op. The other inputs of `succ` must take the
+/// change for free (see [`hoist_axis_op`]). `axis'` is wired as an `AxisOp`, which codegen turns
+/// back into an `IntoShape`. Returns `None` when `succ` refuses the change, or when the change
+/// would leave a new axis op on another input.
+pub fn sink_axis_op(
+    model: &TypedModel,
+    axis_node: &TypedNode,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if_some!(axis_op = node_axis_op(model, axis_node)?);
+    rule_if_let!(&[inlet] = &*axis_node.outputs[0].successors);
+    rule_if!(!model.output_outlets()?.contains(&axis_node.id.into()));
+    let succ = model.node(inlet.node);
+    rule_if!(succ.outputs.len() == 1);
+    let change = axis_op.recip();
+    rule_if_some!(consequence = succ.op.change_axes(model, succ, InOut::In(inlet.slot), &change)?);
+    rule_if_some!(
+        (input_changes, output_change) = split_wire_changes(succ, consequence.wire_changes)
+    );
+    rule_if!(input_changes[inlet.slot].as_ref().is_none_or(|c| *c == change));
+    if let Some(output_change) = &output_change {
+        let mut shape = succ.outputs[0].fact.shape.clone();
+        rule_if!(output_change.change_shape(&mut shape, false).is_ok());
+    }
+    let mut patch = TypedModelPatch::new(format!("sink {axis_node} below {succ}"));
+    let mut inputs = tvec!();
+    for (slot, input) in succ.inputs.iter().enumerate() {
+        let wire = if slot == inlet.slot {
+            patch.tap_model(model, axis_node.inputs[0])?
+        } else if let Some(change) = &input_changes[slot] {
+            rule_if_some!(wire = wire_changed_for_free(model, &mut patch, succ, *input, change)?);
+            wire
+        } else {
+            patch.tap_model(model, *input)?
+        };
+        inputs.push(wire);
+    }
+    let op = consequence.substitute_op.unwrap_or_else(|| succ.op.clone());
+    let mut wire = patch.wire_node(&succ.name, op, &inputs)?[0];
+    if let Some(output_change) = output_change
+        && !output_change.is_noop()
+    {
+        wire = patch.wire_node(&axis_node.name, output_change.recip(), &[wire])?[0];
+    }
+    rule_if!(patch.outlet_fact(wire)?.shape == succ.outputs[0].fact.shape);
+    patch.shunt_outside(model, succ.id.into(), wire)?;
+    Ok(Some(patch))
+}
+
+/// Moves the axis op at `axis_node` (see [`node_axis_op`]) above its predecessor:
+/// `axis(prec(x, y))` becomes `prec'(axis'(x), y')`, with `prec'` and `axis'` taken from
+/// `prec.change_axes`. When `prec` feeds other nodes too, they keep it and `prec'` is a copy.
+///
+/// One input of `prec` receives the moved op, wired in the patch by
+/// `wire_moved(patch, input, op)`. A caller hoisting the op to absorb it must do it there, in the
+/// same patch: left standing as an `AxisOp`, it would be moved back below elementwise ops by their
+/// declutter. The other inputs must take the change for free: a constant is rewritten, the
+/// output of an axis op the change undoes is bypassed, and a uniform operand of a binary op
+/// becomes a constant. Returns `None` when `prec` refuses the change, when more than one input
+/// would need an axis op, or when `wire_moved` does.
+pub fn hoist_axis_op(
+    model: &TypedModel,
+    axis_node: &TypedNode,
+    wire_moved: impl FnOnce(&mut TypedModelPatch, OutletId, AxisOp) -> TractResult<Option<OutletId>>,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if_some!(axis_op = node_axis_op(model, axis_node)?);
+    let prec = model.node(axis_node.inputs[0].node);
+    rule_if!(prec.outputs.len() == 1);
+    rule_if!(!prec.inputs.is_empty());
+    rule_if_some!(consequence = prec.op.change_axes(model, prec, InOut::Out(0), &axis_op)?);
+    rule_if_some!(
+        (input_changes, output_change) = split_wire_changes(prec, consequence.wire_changes)
+    );
+    rule_if!(output_change.is_none_or(|c| c == axis_op));
+    let mut patch = TypedModelPatch::new(format!("hoist {axis_node} above {prec}"));
+    let mut inputs = tvec!();
+    let mut wire_moved = Some(wire_moved);
+    for (input, change) in prec.inputs.iter().zip(input_changes) {
+        let wire = match change {
+            Some(change) if !change.is_noop() => {
+                if let Some(wire) = wire_changed_for_free(model, &mut patch, prec, *input, &change)?
+                {
+                    wire
+                } else {
+                    rule_if_some!(wire_moved = wire_moved.take());
+                    rule_if_some!(wire = wire_moved(&mut patch, *input, change)?);
+                    wire
+                }
+            }
+            _ => patch.tap_model(model, *input)?,
+        };
+        inputs.push(wire);
+    }
+    let op = consequence.substitute_op.unwrap_or_else(|| prec.op.clone());
+    let wire = patch.wire_node(&prec.name, op, &inputs)?[0];
+    rule_if!(patch.outlet_fact(wire)?.shape == axis_node.outputs[0].fact.shape);
+    patch.shunt_outside(model, axis_node.id.into(), wire)?;
+    Ok(Some(patch))
+}
+
+#[allow(clippy::type_complexity)]
+fn split_wire_changes(
+    node: &TypedNode,
+    wire_changes: TVec<(InOut, AxisOp)>,
+) -> Option<(TVec<Option<AxisOp>>, Option<AxisOp>)> {
+    let mut input_changes: TVec<Option<AxisOp>> = tvec![None; node.inputs.len()];
+    let mut output_change = None;
+    for (io, op) in wire_changes {
+        match io {
+            InOut::In(slot) => input_changes[slot] = Some(op),
+            InOut::Out(0) => output_change = Some(op),
+            InOut::Out(_) => return None,
+        }
+    }
+    Some((input_changes, output_change))
+}
+
+fn wire_changed_for_free(
+    model: &TypedModel,
+    patch: &mut TypedModelPatch,
+    consumer: &TypedNode,
+    outlet: OutletId,
+    change: &AxisOp,
+) -> TractResult<Option<OutletId>> {
+    let prec = model.node(outlet.node);
+    let fact = model.outlet_fact(outlet)?;
+    let tensor = if let Some(konst) = prec.op_as::<Const>()
+        && konst.val().is_plain_ram()
+        && fact.exotic_fact.is_none()
+    {
+        Some(konst.val().clone().into_tensor())
+    } else if let Some(uniform) = &fact.uniform
+        && consumer.op_is::<TypedBinOp>()
+    {
+        Some(uniform.clone().into_tensor().broadcast_into_rank(fact.rank())?)
+    } else {
+        None
+    };
+    if let Some(mut tensor) = tensor {
+        rule_if!(change.change_tensor(&mut tensor, true).is_ok());
+        return Ok(Some(patch.add_const(model.unique_name(&prec.name), tensor)?));
+    }
+    if node_axis_op(model, prec)?.is_some_and(|op| op.recip() == *change) {
+        return Ok(Some(patch.tap_model(model, prec.inputs[0])?));
+    }
+    Ok(None)
 }

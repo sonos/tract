@@ -1,3 +1,8 @@
+#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+mod wgpu_web;
+#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+pub use wgpu_web::{WgpuMask, wgpu_device};
+
 #[cfg(all(target_vendor = "apple", feature = "metal"))]
 extern crate tract_metal;
 
@@ -5,6 +10,8 @@ extern crate tract_metal;
 extern crate tract_cuda;
 #[cfg(feature = "transformers")]
 extern crate tract_transformers;
+#[cfg(feature = "wgpu")]
+extern crate tract_wgpu;
 
 #[cfg(feature = "onnx")]
 use std::borrow::Cow;
@@ -581,6 +588,38 @@ impl StateInterface for State {
 #[derive(Clone, Debug)]
 pub struct Tensor(Arc<InternalTensor>);
 
+#[cfg(feature = "wgpu")]
+impl Tensor {
+    #[cfg(target_arch = "wasm32")]
+    fn wgpu_storage(&self) -> Result<&tract_gpu::tensor::DeviceTensor> {
+        self.0
+            .storage_as::<tract_gpu::tensor::DeviceTensor>()
+            .or_else(|| {
+                self.0
+                    .storage_as::<tract_gpu::tensor::LazyHostStorage>()
+                    .and_then(|lazy| lazy.device())
+            })
+            .context("Tensor has no WGPU storage")
+    }
+
+    /// Upload tightly packed little-endian RGB565 as GPU RGB NCHW f32 in [0, 1].
+    /// Requires positive dimensions and exactly `width * height * 2` bytes.
+    /// Pass directly to the WGPU runtime; reading its bytes requires host storage.
+    pub fn from_rgb565(width: u32, height: u32, bytes: &[u8]) -> Result<Self> {
+        let tensor = tract_wgpu::tensor_from_rgb565(width, height, bytes)?;
+        Ok(Self(Arc::new(tensor.into_tensor())))
+    }
+
+    /// Upload tightly packed full-range BT.601 NV12 as GPU RGB NCHW f32 in [0, 1].
+    /// Requires positive even dimensions, a Y plane then interleaved Cb/Cr,
+    /// and exactly `width * height * 3 / 2` bytes. Chroma is replicated per 2x2 block.
+    /// Pass directly to the WGPU runtime; reading its bytes requires host storage.
+    pub fn from_nv12(width: u32, height: u32, bytes: &[u8]) -> Result<Self> {
+        let tensor = tract_wgpu::tensor_from_nv12(width, height, bytes)?;
+        Ok(Self(Arc::new(tensor.into_tensor())))
+    }
+}
+
 impl TensorInterface for Tensor {
     fn datum_type(&self) -> Result<DatumType> {
         from_internal_dt(self.0.datum_type())
@@ -595,6 +634,15 @@ impl TensorInterface for Tensor {
     }
 
     fn as_bytes(&self) -> Result<(DatumType, &[usize], &[u8])> {
+        #[cfg(all(target_arch = "wasm32", feature = "wgpu"))]
+        {
+            use tract_gpu::tensor::DeviceTensorExt;
+            anyhow::ensure!(
+                self.0.as_device_tensor().is_none(),
+                "This tensor lives on the GPU and a browser cannot block to read it back: \
+                 download it with `to_host_async().await` (feature `unstable-wgpu-async`)."
+            );
+        }
         let dt = from_internal_dt(self.0.datum_type())?;
         Ok((dt, self.0.shape(), self.0.try_as_plain_ram()?.as_bytes()))
     }
@@ -623,6 +671,110 @@ impl Tensor {
     /// through the host. The result owns its data either way.
     pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Result<Tensor> {
         Ok(Tensor(self.0.slice(axis, start, end)?.into_arc_tensor()))
+    }
+}
+
+#[cfg(feature = "unstable-wgpu-async")]
+impl Tensor {
+    /// This tensor with its values in host memory, downloaded if they live on a
+    /// device: on wasm32, outputs of the wgpu runtime stay on the GPU, since a
+    /// browser cannot block to read them back. Natively, outputs already come
+    /// back in host memory, and a device tensor is read back synchronously.
+    pub async fn to_host_async(&self) -> Result<Tensor> {
+        use tract_gpu::tensor::DeviceTensorExt;
+        let Some(device) = self.0.as_device_tensor() else {
+            return Ok(self.clone());
+        };
+        #[cfg(target_arch = "wasm32")]
+        let host = tract_wgpu::to_host_async(device).await?.into_arc_tensor();
+        #[cfg(not(target_arch = "wasm32"))]
+        let host = device.to_host()?;
+        Ok(Tensor(host))
+    }
+}
+
+/// The WebGPU runtime's asynchronous entry points.
+#[cfg(feature = "unstable-wgpu-async")]
+pub mod wgpu {
+    use anyhow::Result;
+
+    /// Brings up the WebGPU device the `wgpu` runtime runs on. In a browser,
+    /// where requesting a device is asynchronous, await it once before
+    /// preparing a model on that runtime. Natively the device otherwise comes up
+    /// on first use, and this only reports early a host with no usable adapter.
+    pub async fn init() -> Result<()> {
+        tract_wgpu::wgpu_context_async().await?;
+        Ok(())
+    }
+}
+
+/// Produces the bytes of a weight known by its name, the first time the model needs them.
+#[cfg(feature = "unstable-named-weights")]
+pub trait WeightSource: Send + Sync + 'static {
+    /// The weight of that name, of that datum type and shape.
+    fn load(&self, name: &str, datum_type: DatumType, shape: &[usize]) -> Result<Tensor>;
+
+    /// Whether this source has a weight of that name, so that several sources can each take
+    /// theirs. All of them, unless told otherwise.
+    fn contains(&self, _name: &str) -> bool {
+        true
+    }
+}
+
+/// Reading a safetensors file at an offset, for [`Model::link_safetensors`]: implemented for
+/// files, and by whatever else holds the file's bytes, such as a browser's storage.
+#[cfg(feature = "unstable-named-weights")]
+pub use tract_nnef::safetensors::ReadAt;
+
+#[cfg(feature = "unstable-named-weights")]
+struct LinkedSource<S>(S);
+
+#[cfg(feature = "unstable-named-weights")]
+impl<S> Debug for LinkedSource<S> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WeightSource")
+    }
+}
+
+#[cfg(feature = "unstable-named-weights")]
+impl<S: WeightSource> tract_nnef::internal::WeightSource for LinkedSource<S> {
+    fn load(
+        &self,
+        name: &str,
+        dt: tract_nnef::prelude::DatumType,
+        shape: &[usize],
+    ) -> tract_nnef::prelude::TractResult<InternalTensor> {
+        Ok((*self.0.load(name, from_internal_dt(dt)?, shape)?.0).clone())
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.0.contains(name)
+    }
+}
+
+/// Linking the weights a model knows by their name, as a graph whose bytes live elsewhere loads
+/// them: unread until the model needs them, and an error if then nothing provides them.
+#[cfg(feature = "unstable-named-weights")]
+impl Model {
+    /// Reads the weights `source` [contains](WeightSource::contains) from it.
+    pub fn link_weights(&mut self, source: impl WeightSource) -> Result<()> {
+        self.link(Arc::new(LinkedSource(source)))
+    }
+
+    /// Reads the weights of a safetensors file from it, each at its offset when first needed;
+    /// only the header is read now.
+    pub fn link_safetensors(&mut self, reader: impl ReadAt + 'static) -> Result<()> {
+        self.link(Arc::new(tract_nnef::safetensors::SafetensorsSource::new(reader)?))
+    }
+
+    /// As [`Model::link_safetensors`], from the file at `path`.
+    pub fn link_safetensors_file(&mut self, path: impl AsRef<Path>) -> Result<()> {
+        self.link(Arc::new(tract_nnef::safetensors::SafetensorsSource::open(path)?))
+    }
+
+    fn link(&mut self, source: Arc<dyn tract_nnef::internal::WeightSource>) -> Result<()> {
+        use tract_nnef::tract_core::transform::ModelTransform;
+        tract_nnef::tract_core::transform::LinkWeights(source).transform(&mut self.0)
     }
 }
 

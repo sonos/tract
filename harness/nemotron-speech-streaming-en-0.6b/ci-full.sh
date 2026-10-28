@@ -1,5 +1,5 @@
 #!/bin/sh
-# ci-runners: macOS cuda-lovelace
+# ci-runners: bench-apple-m1-max bench-i9-11900kb-rtx-4060
 
 set -ex
 

@@ -122,6 +122,10 @@ struct Args {
     /// Model assets directory
     #[arg(long, default_value = "assets")]
     assets: std::path::PathBuf,
+
+    /// Run the UNet in f32 (it runs in f16 on GPU runtimes otherwise)
+    #[arg(long)]
+    f32: bool,
 }
 
 fn main() -> Result<()> {
@@ -159,19 +163,27 @@ fn main() -> Result<()> {
 
     // --- Pick runtime ---
     let gpu = tract::runtime_for_name("gpu-or-cpu")?;
-    eprintln!("runtime: {}", gpu.name()?);
+    let unet_f16 = !args.f32 && gpu.name()? != "cpu";
+    eprintln!("runtime: {}, UNet in {}", gpu.name()?, if unet_f16 { "f16" } else { "f32" });
 
     // --- Text encoding (load each encoder, run, drop to save VRAM) ---
     eprintln!("Running text encoders...");
     let onnx = tract::onnx()?;
+    let load = |name: &str, f16: bool| -> Result<_> {
+        let mut model = onnx.load(assets.join(name))?.into_model()?;
+        model.transform("transformers_detect_all")?;
+        if f16 {
+            model.transform(FloatPrecision::new(DatumType::F32, DatumType::F16))?;
+        }
+        gpu.prepare(model)
+    };
 
-    let text_encoder = gpu.prepare(onnx.load(assets.join("text_encoder.onnx"))?.into_model()?)?;
+    let text_encoder = load("text_encoder.onnx", false)?;
     let cond1 = text_encoder.run([input_ids.clone().tract()?])?;
     let uncond1 = text_encoder.run([uncond_input_ids.clone().tract()?])?;
     drop(text_encoder);
 
-    let text_encoder_2 =
-        gpu.prepare(onnx.load(assets.join("text_encoder_2.onnx"))?.into_model()?)?;
+    let text_encoder_2 = load("text_encoder_2.onnx", false)?;
     let cond2 = text_encoder_2.run([input_ids.tract()?])?;
     let uncond2 = text_encoder_2.run([uncond_input_ids.tract()?])?;
     drop(text_encoder_2);
@@ -238,7 +250,11 @@ fn main() -> Result<()> {
 
     // --- Batched denoising (load UNet, run, drop to free VRAM for VAE) ---
     eprintln!("Loading UNet...");
-    let unet = gpu.prepare(onnx.load(assets.join("unet.onnx"))?.into_model()?)?;
+    let unet = load("unet.onnx", unet_f16)?;
+    let unet_dt = if unet_f16 { DatumType::F16 } else { DatumType::F32 };
+    let text_emb = text_emb.tract()?.convert_to(unet_dt)?;
+    let time_ids = time_ids.tract()?.convert_to(unet_dt)?;
+    let pooled = pooled.tract()?.convert_to(unet_dt)?;
     use kdam::BarExt as _;
     let mut pb = kdam::Bar::builder()
         .total(num_steps)
@@ -260,13 +276,14 @@ fn main() -> Result<()> {
 
         // SDXL UNet: 5 inputs (sample, timestep, encoder_hidden_states, time_ids, text_embeds)
         let noise_pred = unet.run(vec![
-            sample.tract()?,
+            sample.tract()?.convert_to(unet_dt)?,
             timestep.tract()?,
-            text_emb.clone().tract()?,
-            time_ids.clone().tract()?,
-            pooled.clone().tract()?,
+            text_emb.clone(),
+            time_ids.clone(),
+            pooled.clone(),
         ])?;
-        let pred = noise_pred[0].as_slice::<f32>()?;
+        let noise_pred = noise_pred[0].convert_to(DatumType::F32)?;
+        let pred = noise_pred.as_slice::<f32>()?;
 
         let batch_latent_size = num_images * latent_size;
         let dt = scheduler.dt(i);
@@ -286,7 +303,7 @@ fn main() -> Result<()> {
 
     // --- VAE decode + save ---
     eprintln!("Loading VAE decoder...");
-    let vae_decoder = gpu.prepare(onnx.load(assets.join("vae_decoder.onnx"))?.into_model()?)?;
+    let vae_decoder = load("vae_decoder.onnx", false)?;
     let (h, w) = (1024usize, 1024usize);
     for n in 0..num_images {
         let img_latent: Vec<f32> = latents[n * latent_size..(n + 1) * latent_size]

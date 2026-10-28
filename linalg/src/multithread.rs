@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-#[cfg(feature = "multithread-mm")]
 use std::sync::atomic::{AtomicUsize, Ordering};
 #[allow(unused_imports)]
 use std::sync::{Arc, Mutex};
@@ -62,6 +61,22 @@ static DEFAULT_EXECUTOR: Mutex<Executor> = Mutex::new(Executor::SingleThread);
 
 thread_local! {
     static TLS_EXECUTOR_OVERRIDE: RefCell<Option<Executor>> = Default::default();
+}
+
+/// Threads in the executor that will run an op. One when tract is single-threaded.
+///
+/// Read at kernel-pick time, which is before the rayon install at dispatch, so
+/// the Apple matrix policy can score a kernel by the pool that will run it.
+/// The policy is macOS-only; other targets compile this and do not call it.
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+pub fn current_executor_threads() -> usize {
+    match current_tract_executor() {
+        Executor::SingleThread => 1,
+        #[cfg(feature = "multithread-mm")]
+        Executor::MultiThread(pool) => pool.current_num_threads().max(1),
+        #[cfg(feature = "multithread-mm")]
+        Executor::RayonGlobal => rayon::current_num_threads().max(1),
+    }
 }
 
 pub fn current_tract_executor() -> Executor {
@@ -139,11 +154,9 @@ pub fn set_threading_mac_threshold(macs: usize) {
 /// `THREADING_PANEL_THRESHOLD`: this counts elements of work, not MMM panels.
 ///
 /// Default `32768`. `0` disables the gate entirely (always thread).
-#[cfg(feature = "multithread-mm")]
 static THREADING_ELEMENT_THRESHOLD: AtomicUsize = AtomicUsize::new(32768);
 
 /// Read the current element-count threshold for the row-parallel path.
-#[cfg(feature = "multithread-mm")]
 pub fn current_threading_element_threshold() -> usize {
     THREADING_ELEMENT_THRESHOLD.load(Ordering::Relaxed)
 }
@@ -176,6 +189,13 @@ pub fn set_threading_element_threshold(elements: usize) {
 ///
 /// The signature is identical with or without the `multithread-mm` feature so
 /// callers compile unchanged; without the feature the body is just `f(0, out)`.
+///
+/// A launch needs two full [`current_threading_element_threshold`]s of work. A
+/// tensor that only just cleared one used to be cut into `4 * threads` pieces,
+/// and that launch was slower than doing the work on the caller. Once launched,
+/// the split gives every thread a chunk, since the launch is already paid and an
+/// idle core is the larger loss on slow cores, and grows with the work up to
+/// `4 * threads` for load balance.
 pub fn par_chunks_mut<T: Send>(
     out: &mut [T],
     row_len: usize,
@@ -187,12 +207,21 @@ pub fn par_chunks_mut<T: Send>(
         use rayon::prelude::*;
         debug_assert!(row_len >= 1 && out.len() % row_len == 0);
         let n_rows = out.len() / row_len;
-        if n_rows < 2 || total_elems < current_threading_element_threshold() {
+        // Checked before the executor lock. Hundreds of nodes sit under the threshold.
+        let threshold = current_threading_element_threshold();
+        if n_rows < 2 || (threshold > 0 && total_elems / threshold < 2) {
             return f(0, out);
         }
+        let threads = current_executor_threads().max(1);
+        let n_chunks = total_elems.checked_div(threshold).map_or_else(
+            || n_rows.min(threads),
+            |work| work.max(threads).min(4 * threads).min(n_rows),
+        );
+        if n_chunks < 2 {
+            return f(0, out);
+        }
+        let chunk_rows = n_rows.div_ceil(n_chunks);
         let run = |out: &mut [T]| -> TractResult<()> {
-            let n_chunks = (4 * rayon::current_num_threads()).min(n_rows);
-            let chunk_rows = n_rows.div_ceil(n_chunks);
             out.par_chunks_mut(chunk_rows * row_len)
                 .enumerate()
                 .try_for_each(|(i, chunk)| f(i * chunk_rows, chunk))
@@ -308,7 +337,10 @@ pub fn par_bin(
         use rayon::prelude::*;
         // Threshold first: reading the executor takes a global lock, and a graph
         // has hundreds of these nodes sitting below the threshold.
-        if a.len() >= current_threading_element_threshold() {
+        let threshold = current_threading_element_threshold();
+        // Two full thresholds, or the launch is larger than the work. The old
+        // `4 * threads` split did that to every tensor that merely cleared one.
+        if threshold == 0 || a.len() / threshold >= 2 {
             let executor = current_tract_executor();
             let nth = match &executor {
                 Executor::MultiThread(pool) => pool.current_num_threads(),
@@ -316,7 +348,10 @@ pub fn par_bin(
                 Executor::SingleThread => 1,
             };
             if nth > 1 {
-                let per_block = (4 * nth).div_ceil(n_blocks).max(1);
+                // Every thread gets a block once launched; more with the work, up to `4 * nth`.
+                let by_work =
+                    a.len().checked_div(threshold).map_or(nth, |w| w.max(nth).min(4 * nth));
+                let per_block = by_work.div_ceil(n_blocks).max(1);
                 let chunk = period.div_ceil(per_block).next_multiple_of(vector_size()).min(period);
                 let per_block = period.div_ceil(chunk);
                 if n_blocks * per_block > 1 {
@@ -375,9 +410,12 @@ fn chain_workers(len: usize) -> usize {
 
 /// Apply every step of `steps` to `a` in place, chunk by chunk, so each chunk
 /// of `a` is still cache-hot when the next step's kernel runs over it instead
-/// of streaming the whole tensor once per step. A chunk may not cross any
-/// step's block boundary, so its length must divide every step period; any
-/// `vector_size()` multiple dividing the gcd of the periods works. The walk
+/// of streaming the whole tensor once per step. A chunk may not cross a
+/// PerBlock step's block boundary, so its length must divide that step's
+/// period; a Lockstep step whose period is a `vector_size()` multiple may span
+/// several periods per chunk, its kernel then being called once per period
+/// piece without copying `b`. Any `vector_size()` multiple dividing the gcd
+/// of those spans works. The walk
 /// picks the largest such chunk under `CHAIN_CHUNK` elements that still
 /// splits `a` into `4 * threads` pieces — giving the same operand mapping
 /// `par_bin` would produce and a bit-identical result.
@@ -419,33 +457,23 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     let max_chunk = if workers > 1 { CHAIN_CHUNK.min(a_len / (4 * workers)) } else { CHAIN_CHUNK }
         .max(4 * vector_size());
     // A short Lockstep period (a per-channel operand over channel-last data)
-    // would cap the chunk at one period; tile its `b` so the chunk can span
-    // many periods.
-    let tiled = steps
-        .iter()
-        .map(|s| {
-            if s.share != BShare::Lockstep || s.period * 2 > max_chunk {
-                return Ok(None);
-            }
-            let blocks = a_len / s.period;
-            let k = (1..=blocks.min(max_chunk / s.period))
-                .rev()
-                .find(|k| blocks.is_multiple_of(*k))
-                .unwrap_or(1);
-            if k == 1 {
-                return Ok(None);
-            }
-            Ok(Some(
-                s.b.clone()
-                    .into_shape(&[s.period])?
-                    .broadcast_to_shape(&[k, s.period])?
-                    .into_shape(&[k * s.period])?,
-            ))
-        })
-        .collect::<TractResult<Vec<Option<Tensor>>>>()?;
-    let chain_b = |ix: usize| tiled[ix].as_ref().unwrap_or(steps[ix].b);
-    let chain_period = |ix: usize| tiled[ix].as_ref().map_or(steps[ix].period, |t| t.len());
-    let unit = (0..steps.len()).fold(a_len, |u, ix| u.gcd(&chain_period(ix)));
+    // would cap the chunk at one period; let the chunk span `k` whole periods
+    // instead, the step kernel then running once per period inside it.
+    let span = |s: &BinChainStep| -> usize {
+        if s.share != BShare::Lockstep
+            || s.period * 2 > max_chunk
+            || !s.period.is_multiple_of(vector_size())
+        {
+            return s.period;
+        }
+        let blocks = a_len / s.period;
+        let k = (1..=blocks.min(max_chunk / s.period))
+            .rev()
+            .find(|k| blocks.is_multiple_of(*k))
+            .unwrap_or(1);
+        k * s.period
+    };
+    let unit = steps.iter().fold(a_len, |u, s| u.gcd(&span(s)));
     if unit % vector_size() != 0 {
         for s in steps {
             par_bin(s.eval_fn, a, s.b, s.period, s.share)?;
@@ -478,23 +506,42 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
     let a = &*a;
     static STRIDES: [isize; 1] = [1];
     let a_shape = [chunk];
-    // `chunk` divides every step's period, so within a chunk each step's
-    // `g % period` offset and its `chunk` neighbours stay inside one block,
-    // and the disjoint chunks partition `a`: concurrent writes through the
-    // views do not alias.
+    // `chunk` divides every step's span, so a PerBlock step sees one block per
+    // chunk, and a Lockstep step crosses its period boundaries only at
+    // `vector_size()` multiples, where it restarts `b`. The disjoint chunks
+    // partition `a`: concurrent writes through the views do not alias.
     let call = |ix: usize| -> TractResult<()> {
         let g = ix * chunk;
         unsafe {
             let mut a_chunk = TensorView::from_bytes(a, g as isize * a_item, &a_shape, &STRIDES);
-            for (sx, s) in steps.iter().enumerate() {
-                let (b, period) = (chain_b(sx), chain_period(sx));
-                let b_item = b.datum_type().size_of() as isize;
-                let (b_offset, b_shape) = match s.share {
-                    BShare::Lockstep => ((g % period) as isize * b_item, [chunk]),
-                    BShare::PerBlock => ((g / period) as isize * b_item, [1]),
-                };
-                let b_chunk = TensorView::from_bytes(b, b_offset, &b_shape, &STRIDES);
-                (s.eval_fn)(&mut a_chunk, &b_chunk)?;
+            for s in steps {
+                let b_item = s.b.datum_type().size_of() as isize;
+                if s.share == BShare::PerBlock {
+                    let b_offset = (g / s.period) as isize * b_item;
+                    let b_chunk = TensorView::from_bytes(s.b, b_offset, &[1], &STRIDES);
+                    (s.eval_fn)(&mut a_chunk, &b_chunk)?;
+                    continue;
+                }
+                let mut pos = 0;
+                while pos < chunk {
+                    let offset = (g + pos) % s.period;
+                    let len = (s.period - offset).min(chunk - pos);
+                    let part_shape = [len];
+                    let mut a_part = TensorView::from_bytes(
+                        a,
+                        (g + pos) as isize * a_item,
+                        &part_shape,
+                        &STRIDES,
+                    );
+                    let b_part = TensorView::from_bytes(
+                        s.b,
+                        offset as isize * b_item,
+                        &part_shape,
+                        &STRIDES,
+                    );
+                    (s.eval_fn)(&mut a_part, &b_part)?;
+                    pos += len;
+                }
             }
             Ok(())
         }
@@ -571,9 +618,23 @@ mod chain_tests {
         let add = add();
         let mul = mul();
         let len = 12288usize;
-        for periods in [[768usize, 256, 256], [768, 24, 768], [96, 96, 12288]] {
-            let b0 = Tensor::from_shape(&[1, 1, periods[0]], &vec![2f32; periods[0]]).unwrap();
-            let b1 = Tensor::from_shape(&[periods[1]], &vec![3f32; periods[1]]).unwrap();
+        for periods in [
+            [768usize, 256, 256],
+            [768, 24, 768],
+            [96, 96, 12288],
+            [192, 192, 12288],
+            [192, 384, 128],
+        ] {
+            let b0 = Tensor::from_shape(
+                &[1, 1, periods[0]],
+                &(0..periods[0]).map(|i| i as f32).collect::<Vec<_>>(),
+            )
+            .unwrap();
+            let b1 = Tensor::from_shape(
+                &[periods[1]],
+                &(0..periods[1]).map(|i| 1.0 + i as f32 / 64.0).collect::<Vec<_>>(),
+            )
+            .unwrap();
             let b2 =
                 Tensor::from_shape(&[len / periods[2]], &vec![0.5f32; len / periods[2]]).unwrap();
             let steps = vec![
@@ -618,5 +679,94 @@ mod chain_tests {
                 assert_eq!(got, want, "len={len} periods={periods:?} nth={nth}");
             }
         }
+    }
+}
+
+// wasi has no thread spawning at all; other wasm targets run the shared rayon
+// global pool instead of a private ThreadPool.
+#[cfg(all(test, feature = "multithread-mm", not(target_os = "wasi")))]
+mod chunk_tests {
+    use super::{
+        Executor, current_threading_element_threshold, multithread_tract_scope, par_chunks_mut,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    fn pool() -> Executor {
+        #[cfg(target_family = "wasm")]
+        return Executor::RayonGlobal;
+        #[cfg(not(target_family = "wasm"))]
+        Executor::multithread(4)
+    }
+
+    /// A tensor that only just clears the element threshold stays one call on
+    /// the caller. Cutting it into `4 * threads` pieces was slower than the work.
+    #[test]
+    fn one_threshold_stays_inline() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold + 1024];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        multithread_tract_scope(pool(), || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 1);
+        assert!(data.iter().all(|b| *b == 1));
+    }
+
+    /// Two thresholds of work on four threads still gives every thread a chunk.
+    /// Splitting by work alone left half the cores idle once the launch was paid.
+    #[test]
+    fn two_thresholds_fill_every_thread() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold * 2];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        let seen = AtomicUsize::new(0);
+        let executor = pool();
+        let threads = match &executor {
+            Executor::MultiThread(pool) => pool.current_num_threads(),
+            _ => rayon::current_num_threads(),
+        };
+        multithread_tract_scope(executor, || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                seen.fetch_add(chunk.len(), Ordering::Relaxed);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), threads.max(2));
+        assert_eq!(seen.load(Ordering::Relaxed), len);
+        assert!(data.iter().all(|b| *b == 1));
+    }
+
+    /// Eight thresholds of work gives eight chunks, and every element is
+    /// visited once. The split is bounded by the work present, not threads.
+    #[test]
+    fn several_thresholds_split_once_per_thread() {
+        let threshold = current_threading_element_threshold();
+        let mut data = vec![0u8; threshold * 8];
+        let len = data.len();
+        let calls = AtomicUsize::new(0);
+        let seen = AtomicUsize::new(0);
+        multithread_tract_scope(pool(), || {
+            par_chunks_mut(&mut data, 1, len, |_first, chunk| {
+                calls.fetch_add(1, Ordering::Relaxed);
+                seen.fetch_add(chunk.len(), Ordering::Relaxed);
+                assert!(chunk.len() >= threshold);
+                chunk.fill(1);
+                Ok(())
+            })
+            .unwrap();
+        });
+        assert_eq!(calls.load(Ordering::Relaxed), 8);
+        assert_eq!(seen.load(Ordering::Relaxed), len);
+        assert!(data.iter().all(|b| *b == 1));
     }
 }

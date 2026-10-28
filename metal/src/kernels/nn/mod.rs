@@ -1,5 +1,7 @@
 pub mod apply_rope;
 pub mod gelu_approximate;
+pub mod group_norm;
+pub mod layer_norm;
 pub mod leaky_relu;
 pub mod pool;
 pub mod reduce;
@@ -11,6 +13,7 @@ pub mod softmax;
 pub use apply_rope::{ApplyRope, metal_apply_rope_dispatch};
 pub use gelu_approximate::GeluApproximate;
 pub use gelu_approximate::metal_gelu_approximate_dispatch;
+pub use group_norm::{metal_group_norm_apply_dispatch, metal_group_norm_stats_dispatch};
 pub use leaky_relu::LeakyRelu;
 pub use leaky_relu::metal_leaky_relu_dispatch;
 pub use reduce::{Reducer, metal_reduce_launch};
@@ -110,5 +113,7 @@ pub fn all_functions() -> Vec<String> {
             .into_iter()
             .flat_map(|dt| LeakyRelu.kernel_name(dt).into_iter()),
     );
+    functions.extend(group_norm::kernel_names());
+    functions.extend(layer_norm::kernel_names());
     functions.into_iter().collect()
 }

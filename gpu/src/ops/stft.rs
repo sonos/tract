@@ -1,13 +1,24 @@
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
 use tract_core::internal::*;
 
-/// The power-of-two FFT frame lengths the GPU STFT kernels support (the radix-2 kernel
-/// generalizes to any pow2; these cover Kaldi-style featurizers at 8/16/32/48 kHz).
-pub const SUPPORTED_FRAMES: [usize; 4] = [256, 512, 1024, 2048];
+/// The power-of-two lengths with a radix-2 Stockham FFT kernel (the kernel generalizes to
+/// any pow2; these cover Kaldi-style featurizers at 8/16/32/48 kHz).
+pub const STOCKHAM_LENS: [usize; 4] = [256, 512, 1024, 2048];
 
-/// Whether the GPU STFT kernels handle this frame length (a supported power of two).
-pub fn is_supported_frame(frame: usize) -> bool {
-    SUPPORTED_FRAMES.contains(&frame)
+/// Longest transform the direct DFT kernels take: the frame and its twiddle table must fit
+/// in 32 KB of block (threadgroup) memory.
+pub const MAX_DFT_LEN: usize = 2048;
+
+/// Whether this length has a Stockham FFT kernel.
+pub fn is_stockham_len(n: usize) -> bool {
+    STOCKHAM_LENS.contains(&n)
+}
+
+/// Whether the GPU FFT and STFT kernels handle this length: the Stockham kernels cover
+/// [`STOCKHAM_LENS`], the direct DFT kernels any other length up to [`MAX_DFT_LEN`]
+/// (Whisper-style featurizers use 400).
+pub fn is_supported_len(n: usize) -> bool {
+    is_stockham_len(n) || (2..=MAX_DFT_LEN).contains(&n)
 }
 
 /// Per-backend STFT kernel launcher: `(stride, input, window, output)`. `input` is
@@ -16,12 +27,11 @@ pub fn is_supported_frame(frame: usize) -> bool {
 /// from the output shape (`output[axis + 1]`).
 pub type DispatchStftFn = fn(usize, &DeviceTensor, &DeviceTensor, &DeviceTensor) -> TractResult<()>;
 
-/// Backend-agnostic fused STFT (frame + window + forward FFT). `frame` is a supported
-/// power of two ([`SUPPORTED_FRAMES`]); the window is pre-padded to `[frame]` (all-ones
-/// when the source had none), matching `core::ops::fft::Stft`'s symmetric padding. The
-/// time axis must sit just before the trailing complex pair (`axis == rank - 2`). Each
-/// backend supplies its own `dispatch` kernel; everything else (facts, output allocation,
-/// window upload) is shared.
+/// Backend-agnostic fused STFT (frame + window + forward FFT). `frame` satisfies
+/// [`is_supported_len`]; the window is pre-padded to `[frame]` (all-ones when the source had
+/// none), matching `core::ops::fft::Stft`'s symmetric padding. The time axis must sit just
+/// before the trailing complex pair (`axis == rank - 2`). Each backend supplies its own
+/// `dispatch` kernel; everything else (facts, output allocation, window upload) is shared.
 #[derive(Clone)]
 pub struct GpuStft {
     pub axis: usize,
