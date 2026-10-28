@@ -85,6 +85,12 @@ jobs:
       boxes: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
       boxes_apple: ${{ steps.split.outputs.apple }}
       boxes_linux: ${{ steps.split.outputs.linux }}
+      builds: ${{ steps.scoped.outputs.builds }}
+      build_macos: ${{ steps.scoped.outputs.build_macos }}
+      dinghy_builds: ${{ steps.scoped.outputs.dinghy_builds }}
+      dinghy_devices: ${{ steps.scoped.outputs.dinghy_devices }}
+      unaffected: ${{ steps.scoped.outputs.unaffected }}
+      bench_none: ${{ steps.scoped.outputs.bench_none }}
       macos_host: ${{ steps.split.outputs.macos_host }}
       rebench: ${{ steps.gate.outputs.rebench }}
       only: ${{ steps.rebench.outputs.only || '{}' }}
@@ -306,6 +312,29 @@ jobs:
             fi
           done
           echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
+      # On a PR push, ci/affected.py names the bench legs this change cannot affect; they and
+      # the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
+      # a `ci:full` label and CI_SCOPING=off run everything, and so does any failure here.
+      - id: changed
+        if: github.event_name == 'pull_request' && vars.CI_SCOPING != 'off' && !contains(github.event.pull_request.labels.*.name, 'ci:full')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ steps.gate.outputs.pr_number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+          # The files API lists at most 3000; past that, let everything run.
+          if [ "$(wc -l < "$RUNNER_TEMP/changed.txt")" -ge 3000 ]; then echo Cargo.lock >> "$RUNNER_TEMP/changed.txt"; fi
+          echo "files=$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+      - id: scope
+        if: steps.changed.outputs.files != ''
+        continue-on-error: true
+        env:
+          FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          python3 ci/affected.py --files "$FILES" --json "$RUNNER_TEMP/scope.json" --summary "$GITHUB_STEP_SUMMARY"
+          echo "skip=$(jq -c '[.legs[] | select(.workflow == "cli.yml" and (.affected | not)) | .leg]' "$RUNNER_TEMP/scope.json")" >> "$GITHUB_OUTPUT"
       # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
       # build-macos runs on a self-hosted Mac unless the apple box is disabled, on a hosted
       # runner then.
@@ -313,10 +342,76 @@ jobs:
         env:
           BOXES: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
           ENABLED: ${{ steps.boxes.outputs.boxes }}
+          SKIP: ${{ steps.scope.outputs.skip || '[]' }}
         run: |
+          BOXES=$(jq -c --argjson skip "$SKIP" 'map(select(("bench " + .target) | IN($skip[]) | not))' <<<"$BOXES")
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
+      # The builds, keeping only those a remaining bench or harness leg downloads. The x86_64
+      # CLI always builds: the report renders with it. ci/affected.py mirrors these legs.
+      - id: scoped
+        env:
+          SKIP: ${{ steps.scope.outputs.skip || '[]' }}
+          SCOPED: ${{ steps.scope.outputs.skip != '' }}
+          LINUX: ${{ steps.split.outputs.linux }}
+          APPLE: ${{ steps.split.outputs.apple }}
+          CASES: ${{ steps.cases.outputs.cases }}
+        run: |
+          builds=$(jq -c --argjson linux "$LINUX" \
+            'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[].triple))))' <<'EOF'
+          [
+            { "triple": "x86_64-unknown-linux-gnu", "host": "ubuntu-24.04",
+              "build": "ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite",
+              "bin": "target/release/tract" },
+            { "triple": "aarch64-unknown-linux-gnu-stretch", "host": "ubuntu-24.04",
+              "build": "TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh",
+              "bin": ".cross-cache/target/aarch64-unknown-linux-gnu/release/tract" }
+          ]
+          EOF
+          )
+          build_macos=$(jq -r --argjson apple "$APPLE" --arg scoped "$SCOPED" \
+            '$scoped != "true" or ($apple | length > 0) or any(.[]; .triple == "aarch64-apple-darwin")' <<<"$CASES")
+          devices=$(jq -c --argjson skip "$SKIP" 'map(select(("bench " + .device) | IN($skip[]) | not))' <<'EOF'
+          [
+            { "device": "cortex-a55", "triple": "aarch64-unknown-linux-gnu-stretch",
+              "runner": "dinghy-sidekick-a55", "dinghy_target": "dinghy-a55" },
+            { "device": "cortex-a53", "triple": "aarch64-unknown-linux-gnu-stretch",
+              "runner": "dinghy-sidekick-a53", "dinghy_target": "dinghy-a53" },
+            { "device": "cortex-a7", "triple": "armv7-unknown-linux-gnueabihf-stretch",
+              "runner": "dinghy-sidekick-a7", "dinghy_target": "dinghy-a7" },
+            { "device": "cortex-a9", "triple": "armv7-unknown-linux-gnueabihf-stretch",
+              "runner": "dinghy-sidekick-a9", "dinghy_target": "dinghy-a9" },
+            { "device": "beaglev-ahead", "triple": "riscv64gc-unknown-linux-musl",
+              "runner": "dinghy-sidekick-rv-beaglev", "dinghy_target": "dinghy-rv-beaglev" },
+            { "device": "orangepi-rv2", "triple": "riscv64gc-unknown-linux-musl",
+              "runner": "dinghy-sidekick-rv-rv2", "dinghy_target": "dinghy-rv-rv2" }
+          ]
+          EOF
+          )
+          # RISC-V boards run a fully-static musl CLI (built directly by cross.sh, no stretch
+          # container); one self-tuning build serves every rv64gc board. The RVV kernels are
+          # picked at runtime off the hart's VLEN, so this same binary runs them on an RVV 1.0
+          # board and the generic scalar path where the vector unit is absent or the 0.7.1 draft.
+          dinghy_builds=$(jq -c --argjson devices "$devices" 'map(select(.triple | IN($devices[].triple)))' <<'EOF'
+          [
+            { "triple": "aarch64-unknown-linux-gnu-stretch", "rustc_triple": "aarch64-unknown-linux-gnu" },
+            { "triple": "armv7-unknown-linux-gnueabihf-stretch", "rustc_triple": "armv7-unknown-linux-gnueabihf" },
+            { "triple": "riscv64gc-unknown-linux-musl", "rustc_triple": "riscv64gc-unknown-linux-musl" }
+          ]
+          EOF
+          )
+          unaffected=$(jq -r '[.[] | select(startswith("bench ")) | ltrimstr("bench ")] | join(", ")' <<<"$SKIP")
+          bench_none=$(jq -nr --argjson linux "$LINUX" --argjson apple "$APPLE" --argjson devices "$devices" \
+            '($linux + $apple + $devices) | length == 0')
+          {
+            echo "builds=$builds"
+            echo "build_macos=$build_macos"
+            echo "dinghy_devices=$devices"
+            echo "dinghy_builds=$dinghy_builds"
+            echo "unaffected=$unaffected"
+            echo "bench_none=$bench_none"
+          } >> "$GITHUB_OUTPUT"
 
   build:
     name: build ${{ matrix.triple }}
@@ -330,15 +425,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - triple: x86_64-unknown-linux-gnu
-            host: ubuntu-24.04
-            build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
-            bin: target/release/tract
-          - triple: aarch64-unknown-linux-gnu-stretch
-            host: ubuntu-24.04
-            build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh
-            bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
+        include: ${{ fromJSON(needs.prepare.outputs.builds) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -366,7 +453,7 @@ jobs:
   # On a self-hosted Mac, a cold build is faster than a cached one on a hosted runner.
   build-macos:
     needs: prepare
-    if: needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == ''
+    if: needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' && needs.prepare.outputs.build_macos == 'true'
     runs-on: ${{ needs.prepare.outputs.macos_host }}
     timeout-minutes: 45
     steps:
@@ -383,7 +470,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && needs.build-macos.result == 'success')) }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.build_macos != 'true'))) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -731,7 +818,7 @@ jobs:
   build-dinghy:
     name: build ${{ matrix.triple }} (dinghy)
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' && needs.prepare.outputs.dinghy_builds != '[]' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -739,17 +826,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - triple: aarch64-unknown-linux-gnu-stretch
-            rustc_triple: aarch64-unknown-linux-gnu
-          - triple: armv7-unknown-linux-gnueabihf-stretch
-            rustc_triple: armv7-unknown-linux-gnueabihf
-          # RISC-V boards run a fully-static musl CLI (built directly by cross.sh, no stretch
-          # container); one self-tuning build serves every rv64gc board. The RVV kernels are
-          # picked at runtime off the hart's VLEN, so this same binary runs them on an RVV 1.0
-          # board and the generic scalar path where the vector unit is absent or the 0.7.1 draft.
-          - triple: riscv64gc-unknown-linux-musl
-            rustc_triple: riscv64gc-unknown-linux-musl
+        include: ${{ fromJSON(needs.prepare.outputs.dinghy_builds) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -777,7 +854,7 @@ jobs:
   bench-dinghy:
     name: bench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.dinghy_devices != '[]' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
@@ -786,32 +863,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - device: cortex-a55
-            triple: aarch64-unknown-linux-gnu-stretch
-            runner: dinghy-sidekick-a55
-            dinghy_target: dinghy-a55
-          - device: cortex-a53
-            triple: aarch64-unknown-linux-gnu-stretch
-            runner: dinghy-sidekick-a53
-            dinghy_target: dinghy-a53
-          - device: cortex-a7
-            triple: armv7-unknown-linux-gnueabihf-stretch
-            runner: dinghy-sidekick-a7
-            dinghy_target: dinghy-a7
-          - device: cortex-a9
-            triple: armv7-unknown-linux-gnueabihf-stretch
-            runner: dinghy-sidekick-a9
-            dinghy_target: dinghy-a9
-          - device: beaglev-ahead
-            triple: riscv64gc-unknown-linux-musl
-            runner: dinghy-sidekick-rv-beaglev
-            dinghy_target: dinghy-rv-beaglev
-          # Orange Pi RV2 (SpacemiT K1, RVV 1.0), same riscv64 musl build.
-          - device: orangepi-rv2
-            triple: riscv64gc-unknown-linux-musl
-            runner: dinghy-sidekick-rv-rv2
-            dinghy_target: dinghy-rv-rv2
+        include: ${{ fromJSON(needs.prepare.outputs.dinghy_devices) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -1043,6 +1095,18 @@ jobs:
             fi
             if [ -n "$failed" ] && [ "$failed" != 0 ]; then summary="$summary · $failed failed to run"; fi
             echo "summary=$summary" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Name the boxes left out
+        if: steps.head.outputs.superseded != 'true' && needs.prepare.outputs.unaffected != ''
+        env:
+          UNAFFECTED: ${{ needs.prepare.outputs.unaffected }}
+          BENCH_NONE: ${{ needs.prepare.outputs.bench_none }}
+        run: |
+          note="Not benched, this change cannot affect them: $UNAFFECTED. \`/ci bench\` benches them anyway."
+          if [ -f pr-comment.md ]; then
+            printf '\n%s\n' "$note" >> pr-comment.md
+          elif [ "$BENCH_NONE" = true ]; then
+            printf '%s\n' "$note" > pr-comment.md
           fi
       # What a later `/ci rebench` on this head starts from: the per-device results, the
       # runs this report flagged red, and the run whose binaries they measured. A cancelled
