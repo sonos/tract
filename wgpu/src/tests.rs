@@ -849,6 +849,8 @@ fn matmul_tiled_matches_cpu() -> TractResult<()> {
         (1, 130, 17, 513, false, false, false, false, true),
         (1, 16, 300, 16, false, false, false, false, false),
         (1, 20, 960, 40, true, false, false, false, false),
+        (1, 112, 40, 130, false, false, false, false, false),
+        (1, 112, 40, 130, true, true, true, false, false),
     ] {
         let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
         let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
@@ -887,7 +889,7 @@ fn conv_tiled_matches_cpu() -> TractResult<()> {
     use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
     use tract_core::ops::nn::DataFormat;
     #[rustfmt::skip]
-    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 11] = [
+    let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 13] = [
         // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
         (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
         (DataFormat::NCHW, 1, 8, 40, [90, 90], [3, 3], [2, 2], [1, 1], 1, false),
@@ -900,6 +902,8 @@ fn conv_tiled_matches_cpu() -> TractResult<()> {
         (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
         (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
         (DataFormat::NCHW, 1, 64, 40, [7, 12], [5, 5], [1, 1], [1, 1], 2, false),
+        (DataFormat::NCHW, 1, 8, 96, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
+        (DataFormat::NHWC, 1, 8, 36, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
     ];
     for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
         cases.into_iter().enumerate()
