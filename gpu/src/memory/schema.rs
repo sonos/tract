@@ -62,6 +62,10 @@ pub struct SchemaOptions {
     /// Leave out what the model returns, directly or through a sync, so a caller may keep it
     /// past the turn.
     pub exclude_outputs: bool,
+    /// Bytes under which a node output gets a partition of its own instead of sharing one.
+    /// Sharing saves little there, and wgpu orders every reuse of a buffer within a frame
+    /// with a pipeline barrier.
+    pub min_shared_size: i64,
 }
 
 pub fn eval_device_mem_req_for_nodes(
@@ -419,6 +423,11 @@ impl DeviceMemSchema {
             let mut available = partitions
                 .iter_mut()
                 .filter(|it| it.has_no_conflict_with_lifetime(&node_mem.lifetime))
+                .filter(|_| {
+                    hinted_mem_size
+                        .get(&node_mem.outlet_id)
+                        .is_some_and(|&size| size >= options.min_shared_size)
+                })
                 .collect::<Vec<_>>();
 
             available.sort_by_cached_key(|n| {
