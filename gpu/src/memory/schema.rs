@@ -235,8 +235,8 @@ pub struct DeviceMemSchema {
     /// Total numbef in the model.
     pub model_num_nodes: usize,
     pub by_partition: Vec<Partition>,
-    // vec![vec![Option<NodeMemReq>; num_partitions]; num_steps].
-    pub by_steps: Vec<Vec<Option<NodeMemReq>>>,
+    /// Steps of the plan order the lifetimes are counted in.
+    pub num_steps: usize,
     pub exotic_facts: Vec<NodeExoticFacts>,
 }
 
@@ -326,10 +326,13 @@ impl DeviceMemSchema {
     /// symbol values, so a caller sweeping many assignments should compute them
     /// once rather than re-summing the symbolic terms for every point.
     pub fn peak_memory_terms(&self) -> Vec<TDim> {
-        self.by_steps
-            .iter()
-            .map(|active_nodes| active_nodes.iter().flatten().map(|it| it.mem_size.clone()).sum())
-            .collect()
+        let mut terms = vec![TDim::from(0); self.num_steps];
+        for node in self.by_partition.iter().flat_map(|p| &p.nodes) {
+            for term in &mut terms[node.lifetime.start..node.lifetime.end] {
+                *term += &node.mem_size;
+            }
+        }
+        terms
     }
 
     pub fn eval_peak_memory_size(&self, symbols: &SymbolValues) -> TractResult<i64> {
@@ -355,13 +358,14 @@ impl DeviceMemSchema {
 
 impl fmt::Display for DeviceMemSchema {
     fn fmt(&self, fmt: &mut std::fmt::Formatter) -> std::fmt::Result {
-        for (step, mem_step) in self.by_steps.iter().enumerate() {
+        for step in 0..self.num_steps {
             writeln!(
                 fmt,
                 "step: {:5} => |{}|",
                 step,
-                mem_step
+                self.by_partition
                     .iter()
+                    .map(|p| p.find_node_alive_at_step(step))
                     .map(|n| -> String {
                         n.as_ref()
                             .map(|it| format!("{:^7}/{:^7}", it.outlet_id.node, it.outlet_id.slot))
@@ -442,19 +446,10 @@ impl DeviceMemSchema {
             }
         }
 
-        let by_steps: Vec<Vec<Option<NodeMemReq>>> = (0..order.len())
-            .map(|step| {
-                let mem_step: Vec<_> =
-                    partitions.iter().map(|p| p.find_node_alive_at_step(step).cloned()).collect();
-                ensure!(mem_step.len() <= partitions.len());
-                Ok(mem_step)
-            })
-            .collect::<TractResult<Vec<_>>>()?;
-
         Ok(DeviceMemSchema {
             model_num_nodes: model.nodes().len(),
             by_partition: partitions,
-            by_steps,
+            num_steps: order.len(),
             exotic_facts,
         })
     }
