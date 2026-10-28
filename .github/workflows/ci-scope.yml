@@ -1,0 +1,43 @@
+name: CI scope
+
+# Dry run: decides which PR legs of cli.yml, crates.yml and cross-platform.yml this
+# change can affect (ci/affected.py) and reports it in the job summary and a ci-scope
+# artifact. Nothing is skipped yet.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-scope-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  scope:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read   # list the PR's changed files
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Changed files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+          # The files API lists at most 3000; past that, let everything run.
+          if [ "$(wc -l < "$RUNNER_TEMP/changed.txt")" -ge 3000 ]; then echo Cargo.lock >> "$RUNNER_TEMP/changed.txt"; fi
+      - name: Decide
+        run: python3 ci/affected.py --files "$RUNNER_TEMP/changed.txt" --json ci-scope.json --summary "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-scope-${{ github.event.pull_request.head.sha }}
+          path: ci-scope.json
