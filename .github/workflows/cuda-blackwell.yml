@@ -37,7 +37,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
@@ -177,7 +177,7 @@ jobs:
   report:
     needs: [ prepare, test, bench ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write

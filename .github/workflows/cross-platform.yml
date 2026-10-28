@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       test_ref: ${{ steps.set.outputs.test_ref }}
     steps:
@@ -96,7 +96,7 @@ jobs:
           - wasm32-wasi
           - wasm32-unknown-emscripten
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       id-token: write

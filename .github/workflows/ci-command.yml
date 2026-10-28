@@ -47,7 +47,7 @@ jobs:
   dispatch:
     name: Dispatch /ci comment
     if: ${{ github.event_name == 'issue_comment' && github.event.issue.pull_request }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The 👀/🚀 reactions on the /ci comment are set with this job's GITHUB_TOKEN.
     permissions:
       issues: write
@@ -67,7 +67,7 @@ jobs:
   route:
     name: Route /ci target
     if: ${{ github.event_name == 'repository_dispatch' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       issues: write

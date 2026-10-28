@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
@@ -63,7 +63,7 @@ jobs:
             await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
 
   examples:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     outputs:
       examples: ${{steps.set-matrix.outputs.examples}}
@@ -79,7 +79,7 @@ jobs:
 
   example:
     name: ${{ matrix.ex }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: [ prepare, examples ]
     permissions:
       id-token: write
@@ -111,7 +111,7 @@ jobs:
         ./ci.sh
 
   build-tract-cli:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -142,7 +142,7 @@ jobs:
           path: ./target/opt-no-lto/tract
 
   gpu-examples:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     outputs:
       examples: ${{steps.set-matrix.outputs.examples}}
@@ -220,7 +220,7 @@ jobs:
     name: Report result to PR
     needs: [ prepare, examples, example, build-tract-cli, build-tract-cli-macos, gpu-examples, gpu-example, gpu-example-metal ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write

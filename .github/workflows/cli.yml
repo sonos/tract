@@ -3,7 +3,7 @@ name: CLI
 # Build the tract CLI once per platform on GitHub-hosted runners, then everything that
 # runs it:
 # - harness cases: every harness/*/ci.sh, plus every ci-full.sh off PRs, each on the
-#   runners its `# ci-runners:` line names (ubuntu-latest when it has none);
+#   runners its `# ci-runners:` line names (ubuntu-24.04 when it has none);
 # - the LLM matrix (off PRs);
 # - the bench suite on the self-hosted bench machines, which either (nightly) appends
 #   one row per run to the bench-data branch, or (PR) compares against that reference
@@ -64,7 +64,7 @@ concurrency:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write       # pending "/ci cli" status on a dispatched PR run
@@ -221,10 +221,10 @@ jobs:
           cases=$(find harness \( $names \) | sort | while read -r script
           do
             runners=$(sed -n 's/^# ci-runners: *//p' "$script" | head -1)
-            for runner in ${runners:-ubuntu-latest}
+            for runner in ${runners:-ubuntu-24.04}
             do
               case "$runner" in
-                ubuntu-latest|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                ubuntu-24.04|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
                 macos-latest|metal-tests|bench-apple-m1-max) triple=aarch64-apple-darwin ;;
                 *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
               esac
@@ -332,11 +332,11 @@ jobs:
       matrix:
         include:
           - triple: x86_64-unknown-linux-gnu
-            host: ubuntu-latest
+            host: ubuntu-24.04
             build: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite
             bin: target/release/tract
           - triple: aarch64-unknown-linux-gnu-stretch
-            host: ubuntu-latest
+            host: ubuntu-24.04
             build: TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh
             bin: .cross-cache/target/aarch64-unknown-linux-gnu/release/tract
     steps:
@@ -417,7 +417,7 @@ jobs:
   harness-checked:
     needs: prepare
     if: needs.prepare.outputs.full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -440,7 +440,7 @@ jobs:
   llm-combos:
     needs: prepare
     if: needs.prepare.outputs.full == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       combos: ${{ steps.set-matrix.outputs.combos }}
     steps:
@@ -493,7 +493,7 @@ jobs:
     name: Report tests to PR
     needs: [ prepare, build, build-macos, test, harness-checked, llm-combos, llm ]
     if: ${{ always() && github.event_name == 'workflow_dispatch' && needs.prepare.outputs.pr_number != '' && needs.prepare.outputs.tests == 'true' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
@@ -660,7 +660,7 @@ jobs:
   build-wgpu:
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.kind == 'wgpu' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -732,7 +732,7 @@ jobs:
     name: build ${{ matrix.triple }} (dinghy)
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       packages: read      # pull the prebuilt cross-build image (ghcr, private)
@@ -883,7 +883,7 @@ jobs:
     # timed out) still lets the boards that did finish append; each leg no-ops when its own
     # result artifact is absent.
     if: ${{ always() && needs.prepare.outputs.is_pr != 'true' && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     strategy:
@@ -953,7 +953,7 @@ jobs:
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       pull-requests: write   # post the comment directly on same-repo PRs
@@ -1140,7 +1140,7 @@ jobs:
     name: Finish the /ci comment
     needs: [ prepare, report-tests, report ]
     if: ${{ always() && github.event.inputs.comment_id != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: read
@@ -1222,7 +1222,7 @@ jobs:
   build-wasm:
     needs: prepare
     if: ${{ needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.is_pr != 'true' || needs.prepare.outputs.kind == 'wasm') && needs.prepare.outputs.mt_ladder == '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
       fail-fast: false

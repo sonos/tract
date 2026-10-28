@@ -33,18 +33,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ ubuntu-latest, macOS-latest ]
+        os: [ ubuntu-24.04, macOS-latest ]
         arch: [ x86_64, aarch64, armv7 ]
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: x86_64
             target: x86_64-unknown-linux-musl
             musl: x86_64-linux-musl
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: aarch64
             target: aarch64-unknown-linux-musl
             musl: aarch64-linux-musl
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             arch: armv7
             target: armv7-unknown-linux-musleabihf
             musl: armv7l-linux-musleabihf
