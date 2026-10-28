@@ -74,29 +74,44 @@ unsafe fn strided<const S: usize>(
         // inputs, so that point has to be in the run too.
         let spare = (S > 1) as usize;
         let mut i = 0usize;
-        while i + 16 + spare <= len {
-            let mut acc = [b; 4];
+        if i + 16 + spare <= len {
+            // The four channels' taps side by side, so one load feeds four lane FMAs. On the
+            // stack up to the widest kernel a lowering takes, uninitialised so a short row
+            // does not pay for clearing it.
+            let mut stack = [std::mem::MaybeUninit::<f32>::uninit(); 4 * 576];
+            let mut heap = vec![];
+            let by_tap = if n <= 576 {
+                &mut stack[..4 * n]
+            } else {
+                heap.resize(4 * n, std::mem::MaybeUninit::uninit());
+                &mut heap[..]
+            };
             for t in 0..n {
-                let p = input.offset(offsets[t]).add(i * S);
-                let k = [
-                    vdupq_n_f32(taps[t]),
-                    vdupq_n_f32(taps[n + t]),
-                    vdupq_n_f32(taps[2 * n + t]),
-                    vdupq_n_f32(taps[3 * n + t]),
-                ];
-                for (v, row) in acc.iter_mut().enumerate() {
-                    let x = load4::<S>(p.add(4 * v * S));
-                    for (a, k) in row.iter_mut().zip(k) {
-                        *a = vfmaq_f32(*a, x, k);
+                for o in 0..4 {
+                    by_tap[4 * t + o].write(taps[o * n + t]);
+                }
+            }
+            let by_tap = by_tap.as_ptr() as *const f32;
+            while i + 16 + spare <= len {
+                let mut acc = [b; 4];
+                for (t, &offset) in offsets.iter().enumerate() {
+                    let p = input.offset(offset).add(i * S);
+                    let k = vld1q_f32(by_tap.add(4 * t));
+                    for (v, row) in acc.iter_mut().enumerate() {
+                        let x = load4::<S>(p.add(4 * v * S));
+                        row[0] = vfmaq_laneq_f32::<0>(row[0], x, k);
+                        row[1] = vfmaq_laneq_f32::<1>(row[1], x, k);
+                        row[2] = vfmaq_laneq_f32::<2>(row[2], x, k);
+                        row[3] = vfmaq_laneq_f32::<3>(row[3], x, k);
                     }
                 }
-            }
-            for (v, row) in acc.iter().enumerate() {
-                for (o, a) in row.iter().enumerate() {
-                    vst1q_f32(output.offset(o as isize * oc_stride).add(i + 4 * v), *a);
+                for (v, row) in acc.iter().enumerate() {
+                    for (o, a) in row.iter().enumerate() {
+                        vst1q_f32(output.offset(o as isize * oc_stride).add(i + 4 * v), *a);
+                    }
                 }
+                i += 16;
             }
-            i += 16;
         }
         while i + 4 + spare <= len {
             let mut acc = b;
@@ -203,6 +218,7 @@ mod tests {
                 check(in_stride, len, 3, 3);
                 check(in_stride, len, 1, 2);
             }
+            check(in_stride, 40, 65, 9);
         }
     }
 }
