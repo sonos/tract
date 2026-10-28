@@ -782,6 +782,39 @@ fn layer_norm_runs_on_device() -> TractResult<()> {
     Ok(())
 }
 
+#[test]
+fn rms_norm_runs_on_device() -> TractResult<()> {
+    use tract_transformers::ops::rms_norm::RmsNorm;
+    for (axis, scaled) in [(2, false), (2, true), (1, false), (1, true)] {
+        let shape = [2, 77, 48];
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(shape))?;
+        let op = RmsNorm { axis, eps: rctensor0(1e-5f32) };
+        let mut y = model.wire_node("rms_norm", op, &[x])?[0];
+        if scaled {
+            let mut gamma_shape = [1, 1, 1];
+            gamma_shape[axis] = shape[axis];
+            let gamma = Tensor::from_shape(&gamma_shape, &fill(3, shape[axis]))?;
+            let gamma = model.add_const("gamma", gamma)?;
+            y = model.wire_node("scale", mul(), &[y, gamma])?[0];
+        }
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        let norms = gpu
+            .nodes()
+            .iter()
+            .filter_map(|n| n.op_as::<tract_gpu::ops::rms_norm::GpuRmsNorm>())
+            .collect::<Vec<_>>();
+        ensure!(norms.len() == 1, "expected one device rms norm, got {}", norms.len());
+        ensure!(norms[0].has_scale == scaled, "gamma should fold into the norm");
+        let len = shape.iter().product();
+        gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(5, len))?)
+            .with_context(|| format!("axis {axis} scaled {scaled}"))?;
+    }
+    Ok(())
+}
+
 /// Products the tiled matmul takes: every dimension off the tile size, each
 /// transposition, a prefix, f16 and a bias epilogue.
 #[test]

@@ -1220,6 +1220,82 @@ fn layer_norm_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workg
     s
 }
 
+/// RMS norm over the middle axis of an `(outer, k, inner)` view, one workgroup
+/// per normalized row, reading `input` and writing `output` dtypes. `scaled`
+/// multiplies by an F32 scale along that axis; `round_f16` first rounds the
+/// normalized value to f16, as a graph materializing it in f16 would.
+pub fn rms_norm_module(
+    input: ShaderDtype,
+    output: ShaderDtype,
+    scaled: bool,
+    round_f16: bool,
+) -> String {
+    let (ti, to) = (input.wgsl(), output.wgsl());
+    let bindings = if scaled {
+        format!(
+            "@group(0) @binding(0) var<storage, read> inp: array<{ti}>;
+@group(0) @binding(1) var<storage, read> scale: array<f32>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{to}>;
+@group(0) @binding(3) var<uniform> params: Params;"
+        )
+    } else {
+        format!(
+            "@group(0) @binding(0) var<storage, read> inp: array<{ti}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{to}>;
+@group(0) @binding(2) var<uniform> params: Params;"
+        )
+    };
+    let round =
+        if round_f16 { "y = unpack2x16float(pack2x16float(vec2<f32>(y, 0.0))).x;" } else { "" };
+    let apply = if scaled { "y = y * scale[params.off_scale + i];" } else { "" };
+    let enable =
+        if input == ShaderDtype::F16 || output == ShaderDtype::F16 { "enable f16;\n" } else { "" };
+    format!(
+        r#"{enable}
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    off_scale: u32,
+    k: u32,
+    inner: u32,
+    rows: u32,
+    eps: f32,
+}}
+
+{bindings}
+
+var<workgroup> partial: array<f32, {LAYER_NORM_WG}>;
+
+@compute @workgroup_size({LAYER_NORM_WG})
+fn rms_norm(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row = wid.y * {GRID_LIMIT}u + wid.x;
+    if (row >= params.rows) {{ return; }}
+    let base = (row / params.inner) * params.k * params.inner + row % params.inner;
+    var sq = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        let x = f32(inp[params.off_in + base + i * params.inner]);
+        sq += x * x;
+    }}
+    partial[lid.x] = sq;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    workgroupBarrier();
+    let inv = inverseSqrt(partial[0] / f32(params.k) + params.eps);
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        var y = f32(inp[params.off_in + base + i * params.inner]) * inv;
+        {round}
+        {apply}
+        outp[params.off_out + base + i * params.inner] = {to}(y);
+    }}
+}}
+"#
+    )
+}
+
 /// Replaces each NaN of the input with `value`. NaN is told by its bits, on the value widened
 /// to f32 (which keeps a NaN a NaN): WGSL lets a compiler assume no NaN and fold `x != x`.
 pub fn nan_replace_module(dt: ShaderDtype) -> String {
