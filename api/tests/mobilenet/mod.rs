@@ -506,10 +506,59 @@ fn test_onnx_load_with_options_refuses_malformed_assertion() -> anyhow::Result<(
     Ok(())
 }
 
+fn grace_hopper_values() -> anyhow::Result<Vec<f64>> {
+    Ok(grace_hopper().as_slice::<f32>()?.iter().map(|&v| v as f64).collect())
+}
+
+#[test]
+fn test_onnx_load_with_options_constant_input() -> anyhow::Result<()> {
+    ensure_models()?;
+    let options = OnnxOptions::new().constant_input(
+        "data",
+        DatumType::F32,
+        &[1, 3, 224, 224],
+        &grace_hopper_values()?,
+    );
+    let model = onnx()?.load_with_options("mobilenetv2-7.onnx", options)?;
+    assert_eq!(model.input_count()?, 0);
+    let model = model.into_model()?.into_runnable()?;
+    let result = model.run(Vec::<Tensor>::new())?;
+    assert_eq!(argmax(result[0].as_slice::<f32>()?), 652);
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_constant_non_input() -> anyhow::Result<()> {
+    ensure_models()?;
+    let options = OnnxOptions::new().constant_input(
+        "mobilenetv20_output_flatten0_reshape0",
+        DatumType::F32,
+        &[1],
+        &[0.],
+    );
+    let err = onnx()?.load_with_options("mobilenetv2-7.onnx", options).unwrap_err().to_string();
+    assert!(err.contains("is not a model input"), "{err}");
+    Ok(())
+}
+
+#[test]
+fn test_onnx_load_with_options_refuses_constant_of_wrong_size() -> anyhow::Result<()> {
+    ensure_models()?;
+    let options = OnnxOptions::new().constant_input("data", DatumType::F32, &[1, 3], &[0.]);
+    assert!(onnx()?.load_with_options("mobilenetv2-7.onnx", options).is_err());
+    Ok(())
+}
+
 #[test]
 fn test_onnx_options_round_trip() -> anyhow::Result<()> {
-    let o = OnnxOptions::new().ignore_value_info(true).assertion("h>=0");
+    let o = OnnxOptions::new().ignore_value_info(true).assertion("h>=0").constant_input(
+        "ratio",
+        DatumType::F32,
+        &[1],
+        &[0.5],
+    );
     let json = o.to_json();
+    assert!(json.contains(r#""datum_type":"f32""#), "{json}");
     let back: OnnxOptions = serde_json::from_str(&json)?;
     assert_eq!(o, back);
     Ok(())

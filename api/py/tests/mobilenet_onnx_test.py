@@ -35,6 +35,14 @@ def test_onnx():
     confidences = result[0].to_numpy()
     assert numpy.argmax(confidences) == 652
 
+def test_onnx_load_with_constant_input():
+    options = tract.OnnxOptions().constant_input("data", grace_hopper_1x3x224x244())
+    model = tract.onnx().load("./mobilenetv2-7.onnx", options)
+    assert model.input_count() == 0
+    result = model.into_model().into_runnable().run([])
+    confidences = result[0].to_numpy()
+    assert numpy.argmax(confidences) == 652
+
 def test_state():
     model = (
         tract.onnx()
