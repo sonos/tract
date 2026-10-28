@@ -67,11 +67,18 @@ impl EvalOp for DeviceSync {
                     return Ok(tvec![input]);
                 }
                 // A tensor that came back from a previous run still on device
-                // goes straight back in, with no round trip either way.
+                // goes straight back in, with no round trip either way. A host
+                // reshape relabels the tensor around the same storage, so the
+                // host shape wins over the device tensor's.
                 if let Some(device) =
                     input.storage_as::<LazyHostStorage>().and_then(|lazy| lazy.device())
                 {
-                    return Ok(tvec![device.clone().into_tensor().into()]);
+                    let device = if device.shape() == input.shape() {
+                        device.clone()
+                    } else {
+                        device.reshaped(input.shape().into())?
+                    };
+                    return Ok(tvec![device.into_tensor().into()]);
                 }
                 let device_input = if let Some(t) = input.as_arc_tensor() {
                     Arc::clone(t).into_device()?
