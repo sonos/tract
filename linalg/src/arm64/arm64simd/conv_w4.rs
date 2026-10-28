@@ -1,7 +1,9 @@
 /// Four channels of a convolution along W, as [`crate::routines::ConvW4F32`] describes, four
-/// output points to a vector. Input strides 1 and 2 are vectorised, stride 2 de-interleaved by
-/// `vld2q`; any other stride, and the last few points of a run, are computed one point at a time.
-/// No load reaches past `offsets[t] + (len - 1) * in_stride`.
+/// output points to a vector and sixteen to a pass, so the sixteen accumulators cover the FMA
+/// latency of a wide core. Input strides 1 to 4 are vectorised, stride 2 de-interleaved by `uzp1`
+/// over two plain loads and strides 3 and 4 by `vld3q` and `vld4q`; any other stride, and the
+/// last few points of a run, are computed one point at a time. No load reaches past
+/// `offsets[t] + (len - 1) * in_stride`.
 ///
 /// # Safety
 /// As [`crate::routines::ConvW4F32`].
@@ -18,97 +20,98 @@ pub unsafe fn conv_w4_f32(
     oc_stride: isize,
 ) {
     unsafe {
+        let from = match in_stride {
+            1 => strided::<1>(input, output, taps, offsets, bias, len, oc_stride),
+            2 => strided::<2>(input, output, taps, offsets, bias, len, oc_stride),
+            3 => strided::<3>(input, output, taps, offsets, bias, len, oc_stride),
+            4 => strided::<4>(input, output, taps, offsets, bias, len, oc_stride),
+            _ => 0,
+        };
+        scalar(input, output, taps, offsets, bias, from, len, in_stride, oc_stride);
+    }
+}
+
+/// The inputs of four consecutive output points, `S` elements apart. Reads `4 * S` elements
+/// from `p`, `S - 1` more than it keeps.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn load4<const S: usize>(p: *const f32) -> std::arch::aarch64::float32x4_t {
+    unsafe {
+        use std::arch::aarch64::*;
+        match S {
+            1 => vld1q_f32(p),
+            2 => vuzp1q_f32(vld1q_f32(p), vld1q_f32(p.add(4))),
+            3 => vld3q_f32(p).0,
+            _ => vld4q_f32(p).0,
+        }
+    }
+}
+
+/// The vectorised part of [`conv_w4_f32`] at input stride `S`, returning the first point it
+/// left for the scalar loop.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+#[allow(clippy::too_many_arguments)]
+unsafe fn strided<const S: usize>(
+    input: *const f32,
+    output: *mut f32,
+    taps: &[f32],
+    offsets: &[isize],
+    bias: &[f32; 4],
+    len: usize,
+    oc_stride: isize,
+) -> usize {
+    unsafe {
         use std::arch::aarch64::*;
         let n = offsets.len();
-        let b0 = vdupq_n_f32(bias[0]);
-        let b1 = vdupq_n_f32(bias[1]);
-        let b2 = vdupq_n_f32(bias[2]);
-        let b3 = vdupq_n_f32(bias[3]);
-        let store4 = |i: usize, a0, a1, a2, a3| {
-            vst1q_f32(output.add(i), a0);
-            vst1q_f32(output.offset(oc_stride).add(i), a1);
-            vst1q_f32(output.offset(2 * oc_stride).add(i), a2);
-            vst1q_f32(output.offset(3 * oc_stride).add(i), a3);
-        };
+        let b = [
+            vdupq_n_f32(bias[0]),
+            vdupq_n_f32(bias[1]),
+            vdupq_n_f32(bias[2]),
+            vdupq_n_f32(bias[3]),
+        ];
+        // load4 reads past its last point at strides above 1, into the next output point's
+        // inputs, so that point has to be in the run too.
+        let spare = (S > 1) as usize;
         let mut i = 0usize;
-        if in_stride == 1 {
-            while i + 8 <= len {
-                let (mut a0, mut a1, mut a2, mut a3) = (b0, b1, b2, b3);
-                let (mut a4, mut a5, mut a6, mut a7) = (b0, b1, b2, b3);
-                for t in 0..n {
-                    let p = input.offset(offsets[t]).add(i);
-                    let x = vld1q_f32(p);
-                    let y = vld1q_f32(p.add(4));
-                    let k0 = vdupq_n_f32(taps[t]);
-                    let k1 = vdupq_n_f32(taps[n + t]);
-                    let k2 = vdupq_n_f32(taps[2 * n + t]);
-                    let k3 = vdupq_n_f32(taps[3 * n + t]);
-                    a0 = vfmaq_f32(a0, x, k0);
-                    a1 = vfmaq_f32(a1, x, k1);
-                    a2 = vfmaq_f32(a2, x, k2);
-                    a3 = vfmaq_f32(a3, x, k3);
-                    a4 = vfmaq_f32(a4, y, k0);
-                    a5 = vfmaq_f32(a5, y, k1);
-                    a6 = vfmaq_f32(a6, y, k2);
-                    a7 = vfmaq_f32(a7, y, k3);
+        while i + 16 + spare <= len {
+            let mut acc = [b; 4];
+            for t in 0..n {
+                let p = input.offset(offsets[t]).add(i * S);
+                let k = [
+                    vdupq_n_f32(taps[t]),
+                    vdupq_n_f32(taps[n + t]),
+                    vdupq_n_f32(taps[2 * n + t]),
+                    vdupq_n_f32(taps[3 * n + t]),
+                ];
+                for (v, row) in acc.iter_mut().enumerate() {
+                    let x = load4::<S>(p.add(4 * v * S));
+                    for (a, k) in row.iter_mut().zip(k) {
+                        *a = vfmaq_f32(*a, x, k);
+                    }
                 }
-                store4(i, a0, a1, a2, a3);
-                store4(i + 4, a4, a5, a6, a7);
-                i += 8;
             }
-            while i + 4 <= len {
-                let (mut a0, mut a1, mut a2, mut a3) = (b0, b1, b2, b3);
-                for t in 0..n {
-                    let x = vld1q_f32(input.offset(offsets[t]).add(i));
-                    a0 = vfmaq_f32(a0, x, vdupq_n_f32(taps[t]));
-                    a1 = vfmaq_f32(a1, x, vdupq_n_f32(taps[n + t]));
-                    a2 = vfmaq_f32(a2, x, vdupq_n_f32(taps[2 * n + t]));
-                    a3 = vfmaq_f32(a3, x, vdupq_n_f32(taps[3 * n + t]));
+            for (v, row) in acc.iter().enumerate() {
+                for (o, a) in row.iter().enumerate() {
+                    vst1q_f32(output.offset(o as isize * oc_stride).add(i + 4 * v), *a);
                 }
-                store4(i, a0, a1, a2, a3);
-                i += 4;
             }
-        } else if in_stride == 2 {
-            // vld2q reads one element past its last point, which belongs to the next output
-            // point, so that point has to be in the run too.
-            while i + 9 <= len {
-                let (mut a0, mut a1, mut a2, mut a3) = (b0, b1, b2, b3);
-                let (mut a4, mut a5, mut a6, mut a7) = (b0, b1, b2, b3);
-                for t in 0..n {
-                    let p = input.offset(offsets[t]).offset(i as isize * 2);
-                    let x = vld2q_f32(p).0;
-                    let y = vld2q_f32(p.add(8)).0;
-                    let k0 = vdupq_n_f32(taps[t]);
-                    let k1 = vdupq_n_f32(taps[n + t]);
-                    let k2 = vdupq_n_f32(taps[2 * n + t]);
-                    let k3 = vdupq_n_f32(taps[3 * n + t]);
-                    a0 = vfmaq_f32(a0, x, k0);
-                    a1 = vfmaq_f32(a1, x, k1);
-                    a2 = vfmaq_f32(a2, x, k2);
-                    a3 = vfmaq_f32(a3, x, k3);
-                    a4 = vfmaq_f32(a4, y, k0);
-                    a5 = vfmaq_f32(a5, y, k1);
-                    a6 = vfmaq_f32(a6, y, k2);
-                    a7 = vfmaq_f32(a7, y, k3);
-                }
-                store4(i, a0, a1, a2, a3);
-                store4(i + 4, a4, a5, a6, a7);
-                i += 8;
-            }
-            while i + 5 <= len {
-                let (mut a0, mut a1, mut a2, mut a3) = (b0, b1, b2, b3);
-                for t in 0..n {
-                    let x = vld2q_f32(input.offset(offsets[t]).offset(i as isize * 2)).0;
-                    a0 = vfmaq_f32(a0, x, vdupq_n_f32(taps[t]));
-                    a1 = vfmaq_f32(a1, x, vdupq_n_f32(taps[n + t]));
-                    a2 = vfmaq_f32(a2, x, vdupq_n_f32(taps[2 * n + t]));
-                    a3 = vfmaq_f32(a3, x, vdupq_n_f32(taps[3 * n + t]));
-                }
-                store4(i, a0, a1, a2, a3);
-                i += 4;
-            }
+            i += 16;
         }
-        scalar(input, output, taps, offsets, bias, i, len, in_stride, oc_stride);
+        while i + 4 + spare <= len {
+            let mut acc = b;
+            for t in 0..n {
+                let x = load4::<S>(input.offset(offsets[t]).add(i * S));
+                for (o, a) in acc.iter_mut().enumerate() {
+                    *a = vfmaq_f32(*a, x, vdupq_n_f32(taps[o * n + t]));
+                }
+            }
+            for (o, a) in acc.iter().enumerate() {
+                vst1q_f32(output.offset(o as isize * oc_stride).add(i), *a);
+            }
+            i += 4;
+        }
+        i
     }
 }
 
@@ -195,8 +198,8 @@ mod tests {
 
     #[test]
     fn matches_reference() {
-        for in_stride in 1..=3 {
-            for len in 0..40 {
+        for in_stride in 1..=5 {
+            for len in 0..80 {
                 check(in_stride, len, 3, 3);
                 check(in_stride, len, 1, 2);
             }
