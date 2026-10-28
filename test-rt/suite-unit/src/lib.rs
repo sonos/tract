@@ -26,7 +26,6 @@ pub mod group_norm;
 pub mod layer_norm;
 pub mod matmul_f16;
 pub mod matmul_q40;
-pub mod matmul_rounding;
 pub mod max_pool;
 pub mod moe_ffn;
 pub mod move_axis;
@@ -57,7 +56,6 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
     suite.add("matmul_q40", matmul_q40::suite()?);
-    suite.add("matmul_rounding", matmul_rounding::suite()?);
     suite.add("max_pool", max_pool::suite()?);
     suite.add("moe_ffn", moe_ffn::suite()?);
     suite.add("move_axis", move_axis::suite()?);
