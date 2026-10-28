@@ -13,6 +13,7 @@ use crate::kernels::shaders::{
     ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, MATMUL_SPLITK_MAX_M, MATMUL_SPLITK_WG,
     MATMUL_TILE, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, matmul_blocked_module,
     matmul_module, matmul_splitk_module, matmul_tiled_module, pack_u32s, rpad8_dims, rpad8_strides,
+    tile_rows,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -260,12 +261,13 @@ pub fn wgpu_matmul_dispatch(
         }
 
         let tiled = tiled_applies(prefix, m, k, n);
+        let tile_m = tile_rows(m);
         let pipeline = if tiled {
             q.context().chain_pipeline(
-                ("matmul_tiled", dt, epilogue, extras.len()),
+                ("matmul_tiled", tile_m, dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("matmul_tiled", dt),
-                || matmul_tiled_module(dt, epilogue, extras.len()),
+                || matmul_tiled_module(dt, epilogue, extras.len(), tile_m),
             )?
         } else if epilogue.is_empty() {
             q.context().pipeline(PipelineKey {
@@ -314,8 +316,7 @@ pub fn wgpu_matmul_dispatch(
         vals.extend_from_slice(&mode_extra);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
         if tiled {
-            let grid =
-                [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(MATMUL_TILE) as u32, prefix as u32];
+            let grid = [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(tile_m) as u32, prefix as u32];
             return q.dispatch_grid("matmul_tiled", &pipeline, &bg, dyn_off, grid);
         }
         q.dispatch("matmul", &pipeline, &bg, dyn_off, (prefix * m * n) as u64)
