@@ -1141,7 +1141,8 @@ fn dropped_buffers_leave_the_bind_group_cache() -> TractResult<()> {
 }
 
 /// Past its buffer budget, a run submits what it recorded and goes on reusing the buffers it no
-/// longer holds, with the same result as a run submitted once at the end.
+/// longer holds, with the same result as a run submitted once at the end. The model is symbolic,
+/// so its buffers come from the pool rather than a memory plan.
 #[test]
 fn frame_budget_submits_early() -> TractResult<()> {
     use tract_core::knobs::KnobScope;
@@ -1149,7 +1150,8 @@ fn frame_budget_submits_early() -> TractResult<()> {
     crate::context::wgpu_context();
     let shape = [1usize, 16, 128, 128];
     let mut model = TypedModel::default();
-    let mut x = model.add_source("x", f32::fact(shape))?;
+    let s = model.symbols.sym("S");
+    let mut x = model.add_source("x", f32::fact(dims![1, 16, s, 128]))?;
     let source = x;
     for i in 0..8 {
         let y = model.wire_node(format!("mul{i}"), mul(), &[x, source])?[0];
@@ -1355,5 +1357,118 @@ fn ingested_tensor_survives_to_device_without_a_copy() -> TractResult<()> {
     let sync = tract_gpu::sync::DeviceSync::new(tract_gpu::sync::DeviceSyncKind::ToDevice);
     let outputs = sync.eval_out_of_plan(tvec![input.into_tensor().into_tvalue()])?.unwrap();
     assert_eq!(outputs[0].to_device_tensor()?.device_buffer_ptr(), ptr);
+    Ok(())
+}
+
+/// Eight multiply-adds against the source: more intermediates than the plan needs partitions.
+fn residual_chain(shape: &[usize]) -> TractResult<TypedModel> {
+    use tract_core::ops::math::{add, mul};
+    let mut model = TypedModel::default();
+    let mut x = model.add_source("x", f32::fact(shape))?;
+    let source = x;
+    for i in 0..8 {
+        let y = model.wire_node(format!("mul{i}"), mul(), &[x, source])?[0];
+        x = model.wire_node(format!("add{i}"), add(), &[y, source])?[0];
+    }
+    model.select_output_outlets(&[x])?;
+    Ok(model)
+}
+
+/// Runs `model` on the wgpu runtime once per input, checking each against the CPU while every
+/// earlier output is still held, and returns how many partition buffers the thread holds after
+/// each run.
+fn planned_runs(model: TypedModel, inputs: &[Tensor]) -> TractResult<Vec<usize>> {
+    crate::context::wgpu_context();
+    let cpu = Arc::new(SimplePlan::new(model.clone())?);
+    let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+    let gpu = rt.prepare(model)?;
+    let mut held = vec![];
+    let mut kept = vec![];
+    for input in inputs {
+        let out = gpu.run(tvec!(input.clone().into()))?.remove(0).into_tensor();
+        held.push(with_wgpu_queue(|q| Ok(q.partition_buffers_held()))?);
+        kept.push((out, cpu.run(tvec!(input.clone().into()))?.remove(0).into_tensor()));
+        for (gpu, cpu) in &kept {
+            gpu.close_enough(cpu, Approximation::Approximate)?;
+        }
+    }
+    Ok(held)
+}
+
+/// A node's inputs are alive while it runs, so no planned output shares a buffer with an input
+/// of the node that writes it: a dispatch never binds one buffer as a read and a write.
+#[test]
+fn planned_partitions_never_alias_a_dispatch() -> TractResult<()> {
+    use tract_gpu::memory::{DeviceMemSchema, SchemaOptions};
+    let model = transformed(residual_chain(&[1, 4, 32, 32])?)?;
+    let plan = SimplePlan::new(model)?;
+    let options = SchemaOptions { plan_host_synced: true, exclude_outputs: true };
+    let schema = DeviceMemSchema::build_with(
+        plan.model(),
+        plan.order_without_consts(),
+        &SymbolValues::default(),
+        options,
+    )?;
+    let resolved = schema.resolve_partitions(&SymbolValues::default())?;
+    let partitions = |outlet: OutletId| -> Vec<usize> {
+        resolved.partitions_by_node[outlet.node]
+            .as_ref()
+            .and_then(|slots| slots.get(outlet.slot))
+            .map(|it| it.to_vec())
+            .unwrap_or_default()
+    };
+    let mut planned = 0;
+    for node in plan.model().nodes() {
+        for slot in 0..node.outputs.len() {
+            let written = partitions(OutletId::new(node.id, slot));
+            planned += written.len();
+            for input in &node.inputs {
+                let read = partitions(*input);
+                ensure!(
+                    written.iter().all(|p| !read.contains(p)),
+                    "{} writes partitions {written:?} it reads",
+                    node.name
+                );
+            }
+        }
+    }
+    ensure!(planned > resolved.sizes.len(), "{planned} outputs, {:?}", resolved.sizes);
+    Ok(())
+}
+
+/// A planned model takes its partition buffers back on its next run, while an output of the
+/// run before it is still held.
+#[test]
+fn planned_model_reuses_its_buffers() -> TractResult<()> {
+    let shape = [1usize, 4, 32, 32];
+    let n = shape.iter().product();
+    let inputs = [1, 2, 3].map(|seed| Tensor::from_shape(&shape, &fill(seed, n)).unwrap());
+    let held = planned_runs(residual_chain(&shape)?, &inputs)?;
+    ensure!(held[0] > 0 && held.iter().all(|h| *h == held[0]), "{held:?}");
+    Ok(())
+}
+
+/// A matmul whose `b` is computed in the turn reads what this turn wrote to the partition, not
+/// a repack of what an earlier turn left there.
+#[test]
+fn planned_matmul_of_two_activations_runs_twice() -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    use tract_core::ops::math::{add, mul};
+    let op = PrefixMatMul {
+        transpose_a: false,
+        transpose_b: false,
+        transpose_c: false,
+        quantize_output: None,
+        operating_dt: None,
+    };
+    let shape = [64usize, 64];
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact(shape))?;
+    let a = model.wire_node("a", add(), &[x, x])?[0];
+    let b = model.wire_node("b", mul(), &[x, x])?[0];
+    let y = model.wire_node("y", op, &[a, b])?[0];
+    model.select_output_outlets(&[y])?;
+    let inputs = [4, 5].map(|seed| Tensor::from_shape(&shape, &fill(seed, 64 * 64)).unwrap());
+    planned_runs(model, &inputs)?;
     Ok(())
 }
