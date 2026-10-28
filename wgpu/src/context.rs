@@ -927,6 +927,8 @@ pub struct WgpuQueue {
     /// Bytes of pool buffers handed out since the last submission, and the budget past
     /// which [`WgpuQueue::submit_frame`] runs.
     frame_bytes: Cell<u64>,
+    /// Whether an upload was written since the last submission.
+    upload_pending: Cell<bool>,
     frame_budget: Cell<Option<u64>>,
     frames_submitted: Cell<u64>,
     profile: Cell<bool>,
@@ -1063,6 +1065,7 @@ impl WgpuQueue {
             repacked: RefCell::new(HashMap::new()),
             slot_cursor: RefCell::new(HashMap::new()),
             frame_bytes: Cell::new(0),
+            upload_pending: Cell::new(false),
             frame_budget: Cell::new(None),
             frames_submitted: Cell::new(0),
             profile: Cell::new(false),
@@ -1189,6 +1192,7 @@ impl WgpuQueue {
     /// carries it completes.
     pub fn count_upload(&self, bytes: u64) -> TractResult<()> {
         self.frame_bytes.set(self.frame_bytes.get() + bytes);
+        self.upload_pending.set(true);
         if self.submit_past_budget() {
             self.context.poll_wait()?;
         }
@@ -1420,9 +1424,10 @@ impl WgpuQueue {
         if let Some(encoder) = self.encoder.replace(None) {
             self.context.queue().submit(Some(encoder.finish()));
             self.frames_submitted.set(self.frames_submitted.get() + 1);
-        } else {
+        } else if self.upload_pending.get() {
             self.context.queue().submit([]);
         }
+        self.upload_pending.set(false);
         self.retained.borrow_mut().clear();
         self.retained_textures.borrow_mut().clear();
         self.uniform_cursor.set(0);
