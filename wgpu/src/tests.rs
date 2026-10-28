@@ -972,6 +972,33 @@ fn rope_runs_on_device() -> TractResult<()> {
     gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(4, shape.iter().product()))?)
 }
 
+/// Token embedding lookups and a gather along a middle axis, by i64 indices
+/// fed from the host, negative ones included.
+#[test]
+fn gather_runs_on_device() -> TractResult<()> {
+    use tract_core::ops::array::Gather;
+    use tract_gpu::ops::gather::GpuGather;
+    for (data_shape, axis, f16_) in
+        [([1000usize, 1, 64], 0, false), ([1000, 1, 64], 0, true), ([3, 50, 6], 1, false)]
+    {
+        let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+        let len = data_shape.iter().product();
+        let data = Tensor::from_shape(&data_shape, &fill(7, len))?.cast_to_dt(dt)?.into_owned();
+        let mut model = TypedModel::default();
+        let indices = model.add_source("indices", i64::fact([2, 5]))?;
+        let data = model.add_const("table", data)?;
+        let y = model.wire_node("gather", Gather::new(axis), &[data, indices])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        ensure!(gpu.nodes().iter().any(|n| n.op_is::<GpuGather>()), "gather stayed on the CPU");
+        let n = data_shape[axis] as i64;
+        let ix = tensor2(&[[0i64, 3, n - 1, -1, -n], [17 % n, 2, 1, -2, 5]]);
+        gpu_vs_cpu(model, ix).with_context(|| format!("{data_shape:?} axis {axis} f16 {f16_}"))?;
+    }
+    Ok(())
+}
+
 /// Products the tiled matmul takes: every dimension off the tile size, each
 /// transposition, a prefix, f16, a bias epilogue, and thin products with a long
 /// `k` that fill one or two tiles.
