@@ -735,6 +735,68 @@ fn conv_winograd_matches_cpu() -> TractResult<()> {
     Ok(())
 }
 
+#[derive(Debug)]
+struct OneWeight(Tensor);
+
+impl WeightSource for OneWeight {
+    fn load(&self, _name: &str, _dt: DatumType, _shape: &[usize]) -> TractResult<Tensor> {
+        Ok(self.0.clone())
+    }
+}
+
+/// An f16 conv whose kernel is a named weight, not yet loaded, rewrites to
+/// Winograd too, and matches the CPU in f32 on the same f16-rounded values.
+#[test]
+fn conv_winograd_f16_named_weight_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    crate::context::wgpu_context();
+    let (ci, co, h, w) = (128usize, 128usize, 16usize, 16usize);
+    let rounded = |t: Tensor| -> TractResult<Tensor> {
+        Ok(t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned())
+    };
+    let kernel: Vec<f32> = fill(3, co * ci * 9).iter().map(|v| v * 0.05).collect();
+    let kernel = rounded(Tensor::from_shape(&[co, ci, 3, 3], &kernel)?)?;
+    let bias = rounded(Tensor::from_shape(&[co], &fill(4, co))?)?;
+    let build = |dt: DatumType| -> TractResult<TypedModel> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact([1, ci, h, w]))?;
+        let k = if dt == DatumType::F16 {
+            let source = Arc::new(OneWeight(kernel.cast_to::<f16>()?.into_owned()));
+            NamedStorage::new("k", dt, kernel.shape(), Some(source)).into_tensor()
+        } else {
+            kernel.clone()
+        };
+        let k = model.add_const("k", k)?;
+        let b = model.add_const("b", bias.cast_to_dt(dt)?.into_owned())?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                dilations: None,
+                strides: Some(tvec![1, 1]),
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        Ok(model)
+    };
+    let mut transformed = build(DatumType::F16)?;
+    WgpuTransform.transform(&mut transformed)?;
+    ensure!(
+        transformed.nodes().iter().any(|node| node.name.contains(".wino.")),
+        "winograd rewrite did not fire on the f16 named-weight conv"
+    );
+    let input = Tensor::from_shape(&[1, ci, h, w], &fill(5, ci * h * w))?;
+    f16_vs_f32(build, input, Approximation::Approximate)
+}
+
 /// The rewrite declines below its channel-product and tile gates, and on a
 /// stride-2 conv: those keep the plain wgpu conv.
 #[test]
