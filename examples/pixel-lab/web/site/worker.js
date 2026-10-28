@@ -1,7 +1,7 @@
-// Runs the segmenter and the compositor on one WebGPU device, off the page's thread.
+// Runs the segmenter and the compositor off the page's thread, each on a WebGPU device of its own.
 import {model, modelUrl} from './models.mjs';
 
-let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0;
+let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0, framesSeen = 0, inferredFrame = 0;
 // Composited frames submitted and not finished yet. Past this a new frame is dropped rather than
 // queued, so latency stays bounded; three still covers Firefox's ~100 ms completion callback at 30 fps.
 const MAX_GPU_FRAMES = 3;
@@ -61,7 +61,7 @@ class MaskRelay {
     this.staging = tractDevice.createBuffer({size: this.bytesPerRow * height, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
   }
 
-  // Run tract on the frame unless a mask is already on its way; resolves once the mask is copied.
+  // Run tract on the latest frame; resolves once the mask is copied.
   async infer() {
     this.busy = true;
     try {
@@ -78,6 +78,15 @@ class MaskRelay {
       this.busy = false;
     }
   }
+}
+
+// Start an inference on the latest camera frame if none is running. When a mask lands and a newer
+// frame is already there, the next inference starts at once instead of waiting for the next frame.
+function inferLatest() {
+  if (mask.busy || inferredFrame === framesSeen) return;
+  inferredFrame = framesSeen;
+  modelContext.drawImage(frameCanvas, 0, 0, modelCanvas.width, modelCanvas.height);
+  mask.infer().then(inferLatest, error => post({fatal: `Inference failed: ${error?.message || error}`}));
 }
 
 async function command(type, payload) {
@@ -100,6 +109,7 @@ async function command(type, payload) {
     frameContext = frameCanvas.getContext('2d');
     modelCanvas = new OffscreenCanvas(m.width, m.height);
     modelContext = modelCanvas.getContext('2d');
+    framesSeen = inferredFrame = 0;
     return {ops};
   }
   if (type === 'background') {
@@ -118,10 +128,8 @@ async function command(type, payload) {
       const width = frameCanvas.width / scale, height = frameCanvas.height / scale;
       frameContext.drawImage(bitmap, (bitmap.width - width) / 2, (bitmap.height - height) / 2, width, height, 0, 0, frameCanvas.width, frameCanvas.height);
       composer.uploadFrame(frameCanvas);
-      if (!mask.busy) {
-        modelContext.drawImage(frameCanvas, 0, 0, modelCanvas.width, modelCanvas.height);
-        mask.infer().catch(error => post({fatal: `Inference failed: ${error?.message || error}`}));
-      }
+      framesSeen++;
+      inferLatest();
     } finally { bitmap.close(); }
     composer.draw(payload.refine, payload.view);
     gpuFrames++;
