@@ -888,6 +888,18 @@ mod tests {
             Ok(model.wire_node("host_reshape", reshape, &[wire])?[0])
         })
     }
+
+    #[test]
+    fn host_in_place_add_between_device_ops() -> TractResult<()> {
+        run_host_nodes_between_device_ops(|model, wire| {
+            let row = Tensor::from_shape(
+                &[1, 64],
+                &(0..64).map(|i| 100. * i as f32).collect::<Vec<_>>(),
+            )?;
+            let row = model.add_const("row", row)?;
+            Ok(model.wire_node("host_add", tract_core::ops::math::add(), &[wire, row])?[0])
+        })
+    }
 }
 
 /// The flash attention kernel takes the K and V plane stride as an argument, so
