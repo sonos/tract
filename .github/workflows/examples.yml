@@ -110,6 +110,52 @@ jobs:
         cd examples/${MATRIX_EX}
         ./ci.sh
 
+  web-demos:
+    runs-on: ubuntu-24.04
+    needs: prepare
+    outputs:
+      demos: ${{steps.set-matrix.outputs.demos}}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.test_ref }}
+          persist-credentials: false
+      - id: set-matrix
+        run: |
+          echo demos=`find examples -path '*/web/build.sh' | cut -d/ -f 2 | jq -Rsc '. / "\n" - [""]'` >> "$GITHUB_OUTPUT"
+
+  web-demo:
+    name: ${{ matrix.demo }} (web)
+    runs-on: ubuntu-24.04
+    needs: [ prepare, web-demos ]
+    strategy:
+      fail-fast: false
+      matrix:
+        demo: ${{fromJSON(needs.web-demos.outputs.demos)}}
+
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        persist-credentials: false
+
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        save-if: false # restore-only: schedule/dispatch job, never save (would evict the per-PR caches under the 10 GB cap)
+
+    - name: wasm32 target and the wasm-bindgen CLI Cargo.lock pins
+      run: |
+        rustup target add wasm32-unknown-unknown
+        version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"/\1/p')
+        cargo install wasm-bindgen-cli --version "$version" --locked
+
+    - name: build the site
+      env:
+        DEMO: ${{ matrix.demo }}
+      timeout-minutes: 30
+      run: examples/"$DEMO"/web/build.sh
+
   build-tract-cli:
     runs-on: ubuntu-latest
     needs: prepare
@@ -218,7 +264,7 @@ jobs:
 
   report:
     name: Report result to PR
-    needs: [ prepare, examples, example, build-tract-cli, build-tract-cli-macos, gpu-examples, gpu-example, gpu-example-metal ]
+    needs: [ prepare, examples, example, web-demos, web-demo, build-tract-cli, build-tract-cli-macos, gpu-examples, gpu-example, gpu-example-metal ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-latest
     permissions:
