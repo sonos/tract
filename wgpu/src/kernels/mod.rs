@@ -16,6 +16,7 @@ pub mod pool;
 pub mod reduce;
 pub mod resize;
 pub mod rms_norm;
+pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod shaders;
 pub mod softmax;

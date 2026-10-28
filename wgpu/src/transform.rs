@@ -26,6 +26,7 @@ use tract_gpu::rewrite_rules::rms_norm::fuse_rms_norm_split_scale;
 use tract_gpu::rewrite_rules::rms_norm::fuse_scaled_rms_norm_in_cast;
 use tract_gpu::rewrite_rules::rms_norm::fuse_scaled_rms_norm_out_cast;
 use tract_gpu::rewrite_rules::rms_norm::remove_rms_norm_cast;
+use tract_gpu::rewrite_rules::scaled_masked_softmax::drop_unit_axes_of_scaled_masked_softmax;
 #[cfg(not(target_arch = "wasm32"))]
 use tract_gpu::sync::sync_model_outputs_if_required;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
@@ -93,6 +94,10 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("remove_rms_norm_cast", remove_rms_norm_cast)
             .with_rule_for("fuse_scaled_rms_norm_in_cast", fuse_scaled_rms_norm_in_cast)
             .with_rule_for("fuse_scaled_rms_norm_out_cast", fuse_scaled_rms_norm_out_cast)
+            .with_rule_for(
+                "drop_unit_axes_of_scaled_masked_softmax",
+                drop_unit_axes_of_scaled_masked_softmax,
+            )
             .with_rule_for("float_gather_nd_indices", crate::rewrite_rules::float_gather_nd_indices)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
