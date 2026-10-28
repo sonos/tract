@@ -1327,7 +1327,8 @@ fn planned_partitions_never_alias_a_dispatch() -> TractResult<()> {
     use tract_gpu::memory::{DeviceMemSchema, SchemaOptions};
     let model = transformed(residual_chain(&[1, 4, 32, 32])?)?;
     let plan = SimplePlan::new(model)?;
-    let options = SchemaOptions { plan_host_synced: true, exclude_outputs: true };
+    let options =
+        SchemaOptions { plan_host_synced: true, exclude_outputs: true, ..Default::default() };
     let schema = DeviceMemSchema::build_with(
         plan.model(),
         plan.order_without_consts(),

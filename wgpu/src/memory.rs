@@ -25,7 +25,11 @@ impl WgpuTurnHandler {
     ) -> TractResult<Option<Self>> {
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let Some(hints) = schema_hints(plan, hints) else { return Ok(None) };
-        let options = SchemaOptions { plan_host_synced: false, exclude_outputs: true };
+        let options = SchemaOptions {
+            plan_host_synced: false,
+            exclude_outputs: true,
+            min_shared_size: 1 << 16,
+        };
         let schema =
             DeviceMemSchema::build_with(plan.model(), plan.order_without_consts(), &hints, options)
                 .context("While planning device memory. Missing hint ?")?;
