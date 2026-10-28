@@ -832,6 +832,39 @@ fn rms_norm_runs_on_device() -> TractResult<()> {
     Ok(())
 }
 
+/// Attention scores under a causal `-inf` mask broadcast over batch and
+/// heads, with rows both shorter and longer than one workgroup.
+#[test]
+fn scaled_masked_softmax_runs_on_device() -> TractResult<()> {
+    use tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax;
+    use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
+    for (cols, f16_) in [(7usize, false), (300, false), (300, true)] {
+        let rows = 5;
+        let shape = [2, 3, rows, cols];
+        let causal = (0..rows * cols)
+            .map(|i| if i % cols > i / cols + cols - rows { f32::NEG_INFINITY } else { 0.0 })
+            .collect::<Vec<_>>();
+        let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact(shape))?;
+        let mask = Tensor::from_shape(&[1, 1, rows, cols], &causal)?.cast_to_dt(dt)?.into_owned();
+        let mask = model.add_const("mask", mask)?;
+        let op = ScaledMaskedSoftmax { scale: rctensor0(0.125f32), post_softmax_mask: false };
+        let y = model.wire_node("softmax", op, &[x, mask])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        ensure!(
+            gpu.nodes().iter().any(|n| n.op_is::<GpuScaledMaskedSoftmax>()),
+            "masked softmax stayed on the CPU"
+        );
+        let input = Tensor::from_shape(&shape, &fill(6, shape.iter().product()))?;
+        gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned())
+            .with_context(|| format!("cols {cols} f16 {f16_}"))?;
+    }
+    Ok(())
+}
+
 /// Products the tiled matmul takes: every dimension off the tile size, each
 /// transposition, a prefix, f16 and a bias epilogue.
 #[test]
