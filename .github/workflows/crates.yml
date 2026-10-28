@@ -23,7 +23,7 @@ permissions:
 
 jobs:
   prepare-matrix:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       os: ${{steps.set-matrix.outputs.os}}
       rust: ${{steps.set-matrix.outputs.rust}}
@@ -44,11 +44,11 @@ jobs:
           echo "msrv=$msrv" >> $GITHUB_OUTPUT
           if [ "$FULL" == "true" ]
           then
-            echo 'os=["ubuntu-latest", "macos-latest"]' >> $GITHUB_OUTPUT
+            echo 'os=["ubuntu-24.04", "macos-latest"]' >> $GITHUB_OUTPUT
             echo "rust=[\"$msrv\", \"stable\", \"beta\", \"nightly\"]" >> $GITHUB_OUTPUT
           else
             echo ::notice::Skipping macOS checks on PR and commit. Dispatch workflow manually if needed.
-            echo 'os=["ubuntu-latest"]' >> $GITHUB_OUTPUT
+            echo 'os=["ubuntu-24.04"]' >> $GITHUB_OUTPUT
             echo "rust=[\"$msrv\"]" >> $GITHUB_OUTPUT
           fi
 
@@ -195,7 +195,7 @@ jobs:
 
   tract-h:
     name: api/proxy/sys/tract.h matches tract-ffi
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -216,7 +216,7 @@ jobs:
     strategy:
       fail-fast: false
 
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

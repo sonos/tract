@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write
@@ -64,7 +64,7 @@ jobs:
             await ci.update(github, context, { commentId: context.payload.inputs?.comment_id, state: 'running' });
 
   old-harness:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
     permissions:
@@ -86,7 +86,7 @@ jobs:
       run: ci/test-harness.sh
 
   onnx-tests:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
     strategy:
       matrix:
@@ -106,7 +106,7 @@ jobs:
       run: ci/onnx-tests.sh ${{ matrix.opset }}
 
   tflite:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -123,7 +123,7 @@ jobs:
       run: ci/tflite.sh
 
   some-tests-with-paranoid-asserts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -143,7 +143,7 @@ jobs:
         cargo test -q --profile opt-test --features tract-core/paranoid_assertions -p test-onnx-core -p test-unit-core
 
   feature-configs:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -162,7 +162,7 @@ jobs:
         ci/feature-configs.sh
 
   check-all-targets:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -200,7 +200,7 @@ jobs:
         ci/feature-configs-apple.sh
 
   C:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -220,7 +220,7 @@ jobs:
         make
 
   python:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: prepare
 
     steps:
@@ -254,7 +254,7 @@ jobs:
     name: Report result to PR
     needs: [ prepare, old-harness, onnx-tests, tflite, some-tests-with-paranoid-asserts, feature-configs, check-all-targets, feature-configs-apple, C, python ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       statuses: write

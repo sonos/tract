@@ -14,7 +14,7 @@ permissions:
 jobs:
   build_doc:
     name: Build doc
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     if: github.repository == 'sonos/tract'
     permissions:
       contents: write
