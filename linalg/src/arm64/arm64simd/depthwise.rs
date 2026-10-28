@@ -2,11 +2,11 @@
 /// the bias plus every `taps[t] * input[offsets[t] + i * in_stride]`.
 ///
 /// `taps` and `offsets` hold one kernel tap each and must be the same length. `in_stride` is the
-/// input step one output point costs, in elements: 1 is a plain load, 2 and 3 are de-interleaved
-/// by `vld2q`/`vld3q`, and anything else stays scalar. Strides 2 and 3 vectorise one to four taps;
-/// stride 1 vectorises any count. The vector loops stop early enough that
-/// no lane reads past `offsets[t] + (len - 1) * in_stride`, so a run ending on the tensor's last
-/// element is safe.
+/// input step one output point costs, in elements. Strides 1 to 4 are vectorised for any tap
+/// count, and anything else stays scalar: one to four taps at strides 1 to 3 take a loop with
+/// the count fixed at compile time, every other case [`wide`]. The vector loops stop early
+/// enough that no lane reads past `offsets[t] + (len - 1) * in_stride`, so a run ending on the
+/// tensor's last element is safe.
 ///
 /// # Safety
 /// `input.offset(offsets[t] + i * in_stride)` must be readable for every tap and every `i` below
@@ -22,24 +22,26 @@ pub unsafe fn depthwise_w_f32(
     in_stride: isize,
 ) {
     unsafe {
-        match taps.len() {
-            1 => vectorised::<1>(input, output, taps, offsets, bias, len, in_stride),
-            2 => vectorised::<2>(input, output, taps, offsets, bias, len, in_stride),
-            3 => vectorised::<3>(input, output, taps, offsets, bias, len, in_stride),
-            4 => vectorised::<4>(input, output, taps, offsets, bias, len, in_stride),
-            _ if in_stride == 1 => contiguous(input, output, taps, offsets, bias, len),
+        match (taps.len(), in_stride) {
+            (1, 1..=3) => vectorised::<1>(input, output, taps, offsets, bias, len, in_stride),
+            (2, 1..=3) => vectorised::<2>(input, output, taps, offsets, bias, len, in_stride),
+            (3, 1..=3) => vectorised::<3>(input, output, taps, offsets, bias, len, in_stride),
+            (4, 1..=3) => vectorised::<4>(input, output, taps, offsets, bias, len, in_stride),
+            (_, 1) => wide::<1>(input, output, taps, offsets, bias, len),
+            (_, 2) => wide::<2>(input, output, taps, offsets, bias, len),
+            (_, 3) => wide::<3>(input, output, taps, offsets, bias, len),
+            (_, 4) => wide::<4>(input, output, taps, offsets, bias, len),
             _ => scalar(input, output, taps, offsets, bias, 0, len, in_stride),
         }
     }
 }
 
-/// The `in_stride == 1` case for more than four taps, with the count taken at runtime.
-///
-/// Taps are the outer loop and 32 output points the inner one, so the eight accumulators give the
-/// FMA unit eight independent chains to interleave and each tap's broadcast is paid once per 32
-/// points rather than once per vector.
+/// Any tap count at input stride `S`, with the count taken at runtime. Taps are the outer loop
+/// and up to 64 output points the inner one, so a long run gives the FMA unit sixteen
+/// independent chains, and each tap's broadcast is paid once per pass rather than once per
+/// vector. The rest of a run takes passes of 32, 16 and 4 points.
 #[cfg(target_arch = "aarch64")]
-unsafe fn contiguous(
+unsafe fn wide<const S: usize>(
     input: *const f32,
     output: *mut f32,
     taps: &[f32],
@@ -48,54 +50,70 @@ unsafe fn contiguous(
     len: usize,
 ) {
     unsafe {
-        use std::arch::aarch64::*;
-        let n = taps.len();
-        let biasv = vdupq_n_f32(bias);
+        // load4 reads past its last point at strides above 1, into the next output point's
+        // inputs, so that point has to be in the run too.
+        let spare = (S > 1) as usize;
         let mut i = 0usize;
-        while i + 32 <= len {
-            let mut a0 = biasv;
-            let mut a1 = biasv;
-            let mut a2 = biasv;
-            let mut a3 = biasv;
-            let mut a4 = biasv;
-            let mut a5 = biasv;
-            let mut a6 = biasv;
-            let mut a7 = biasv;
-            for t in 0..n {
-                let kn = vdupq_n_f32(taps[t]);
-                let p = input.offset(offsets[t]).add(i);
-                a0 = vfmaq_f32(a0, vld1q_f32(p), kn);
-                a1 = vfmaq_f32(a1, vld1q_f32(p.add(4)), kn);
-                a2 = vfmaq_f32(a2, vld1q_f32(p.add(8)), kn);
-                a3 = vfmaq_f32(a3, vld1q_f32(p.add(12)), kn);
-                a4 = vfmaq_f32(a4, vld1q_f32(p.add(16)), kn);
-                a5 = vfmaq_f32(a5, vld1q_f32(p.add(20)), kn);
-                a6 = vfmaq_f32(a6, vld1q_f32(p.add(24)), kn);
-                a7 = vfmaq_f32(a7, vld1q_f32(p.add(28)), kn);
-            }
-            vst1q_f32(output.add(i), a0);
-            vst1q_f32(output.add(i + 4), a1);
-            vst1q_f32(output.add(i + 8), a2);
-            vst1q_f32(output.add(i + 12), a3);
-            vst1q_f32(output.add(i + 16), a4);
-            vst1q_f32(output.add(i + 20), a5);
-            vst1q_f32(output.add(i + 24), a6);
-            vst1q_f32(output.add(i + 28), a7);
+        while i + 64 + spare <= len {
+            pass::<S, 16>(input, output, taps, offsets, bias, i);
+            i += 64;
+        }
+        if i + 32 + spare <= len {
+            pass::<S, 8>(input, output, taps, offsets, bias, i);
             i += 32;
         }
-        while i + 4 <= len {
-            let mut acc = biasv;
-            for t in 0..n {
-                acc = vfmaq_f32(
-                    acc,
-                    vld1q_f32(input.offset(offsets[t]).add(i)),
-                    vdupq_n_f32(taps[t]),
-                );
-            }
-            vst1q_f32(output.add(i), acc);
+        if i + 16 + spare <= len {
+            pass::<S, 4>(input, output, taps, offsets, bias, i);
+            i += 16;
+        }
+        while i + 4 + spare <= len {
+            pass::<S, 1>(input, output, taps, offsets, bias, i);
             i += 4;
         }
-        scalar(input, output, taps, offsets, bias, i, len, 1);
+        scalar(input, output, taps, offsets, bias, i, len, S as isize);
+    }
+}
+
+/// `4 * V` output points from point `i` of [`wide`], one accumulator per vector.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn pass<const S: usize, const V: usize>(
+    input: *const f32,
+    output: *mut f32,
+    taps: &[f32],
+    offsets: &[isize],
+    bias: f32,
+    i: usize,
+) {
+    unsafe {
+        use std::arch::aarch64::*;
+        let mut acc = [vdupq_n_f32(bias); V];
+        for (&tap, &offset) in taps.iter().zip(offsets) {
+            let kn = vdupq_n_f32(tap);
+            let p = input.offset(offset).add(i * S);
+            for (v, a) in acc.iter_mut().enumerate() {
+                *a = vfmaq_f32(*a, load4::<S>(p.add(4 * v * S)), kn);
+            }
+        }
+        for (v, a) in acc.iter().enumerate() {
+            vst1q_f32(output.add(i + 4 * v), *a);
+        }
+    }
+}
+
+/// The inputs of four consecutive output points, `S` elements apart. Reads `4 * S` elements
+/// from `p`, `S - 1` more than it keeps.
+#[cfg(target_arch = "aarch64")]
+#[inline(always)]
+unsafe fn load4<const S: usize>(p: *const f32) -> std::arch::aarch64::float32x4_t {
+    unsafe {
+        use std::arch::aarch64::*;
+        match S {
+            1 => vld1q_f32(p),
+            2 => vuzp1q_f32(vld1q_f32(p), vld1q_f32(p.add(4))),
+            3 => vld3q_f32(p).0,
+            _ => vld4q_f32(p).0,
+        }
     }
 }
 
@@ -368,7 +386,7 @@ mod tests {
     fn matches_reference() {
         for taps in [1usize, 2, 3, 4, 5, 6, 7, 9, 15, 16, 25, 49] {
             for in_stride in [1isize, 2, 3, 4] {
-                for len in [1usize, 3, 4, 7, 8, 9, 15, 16, 33, 481] {
+                for len in [1usize, 3, 4, 7, 8, 9, 15, 16, 33, 65, 80, 113, 481] {
                     compare(taps, len, in_stride);
                 }
             }
