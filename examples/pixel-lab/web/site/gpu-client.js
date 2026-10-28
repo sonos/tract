@@ -5,7 +5,7 @@ export class GpuClient {
     this.pending = new Map();
     this.worker.onmessage = ({data}) => {
       if(data.fatal) {this.close(new Error(data.fatal));progress(data.fatal);return;}
-      if(data.status!==undefined||data.download!==undefined) {progress(data);return;}
+      if(data.status!==undefined||data.download!==undefined||data.completed||data.mask!==undefined) {progress(data);return;}
       const pending=this.pending.get(data.id);
       if(!pending) return;
       this.pending.delete(data.id);clearTimeout(pending.timer);

@@ -1,5 +1,7 @@
 // The segmenters the page offers, fetched from Hugging Face at pinned revisions.
-// `mean` and `std` map RGB in [0, 1] to what each model was trained on.
+// `mean` and `std` map RGB in [0, 1] to what each model was trained on. MODNet takes any size
+// divisible by 32 and is given the camera's 16:9 shape: a square input stretches the face, and
+// its matte breaks up on close-ups.
 export const MODELS = [
   {
     id: 'mediapipe',
@@ -17,13 +19,26 @@ export const MODELS = [
   {
     id: 'modnet',
     name: 'MODNet portrait matting',
-    note: 'alpha matting with finer edges, 512 × 512 matte',
+    note: 'alpha matting with finer edges, 512 × 288 matte',
     repo: 'Xenova/modnet',
     revision: 'fa2fa546052fba4c08921230a26cc69a333fca12',
     file: 'onnx/model.onnx',
     bytes: 25888640,
     width: 512,
-    height: 512,
+    height: 288,
+    mean: [0.5, 0.5, 0.5],
+    std: [0.5, 0.5, 0.5],
+  },
+  {
+    id: 'modnet-fast',
+    name: 'MODNet portrait matting, fast',
+    note: 'alpha matting at a smaller size, 448 × 256 matte',
+    repo: 'Xenova/modnet',
+    revision: 'fa2fa546052fba4c08921230a26cc69a333fca12',
+    file: 'onnx/model.onnx',
+    bytes: 25888640,
+    width: 448,
+    height: 256,
     mean: [0.5, 0.5, 0.5],
     std: [0.5, 0.5, 0.5],
   },
