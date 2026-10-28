@@ -1829,3 +1829,39 @@ fn ingested_tensor_survives_to_device_without_a_copy() -> TractResult<()> {
     assert_eq!(outputs[0].to_device_tensor()?.device_buffer_ptr(), ptr);
     Ok(())
 }
+
+/// A `Move` in front of a convolution is copied first: the convolution kernels
+/// read their input in its data format's natural layout, not through strides.
+#[test]
+fn a_move_into_a_convolution_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+    use tract_core::ops::nn::DataFormat;
+    for (ci, co, hw) in [(8usize, 40usize, [9usize, 11usize]), (3, 4, [6, 7])] {
+        let shape = [1, hw[0], hw[1], ci];
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(shape))?;
+        let m = model.wire_node("mv", AxisOp::Move(3, 1), &[x])?[0];
+        let k =
+            model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(1, co * ci * 9))?)?;
+        let b = model.add_const("b", Tensor::from_shape(&[co], &fill(2, co))?)?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                dilations: None,
+                strides: None,
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        let y = model.wire_node("conv", conv, &[m, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        let input = Tensor::from_shape(&shape, &fill(3, shape.iter().product()))?;
+        gpu_vs_cpu(model, input).with_context(|| format!("ci={ci} co={co}"))?;
+    }
+    Ok(())
+}
