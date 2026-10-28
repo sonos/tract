@@ -1,9 +1,11 @@
 // Runs the segmenter and the compositor on one WebGPU device, off the page's thread.
 import {model, modelUrl} from './models.mjs';
 
-let modulePromise, segmenter, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, frames = 0, profileEvery = 15;
+let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0;
+// Composited frames submitted and not finished yet. Past this a new frame is dropped rather than
+// queued, so latency stays bounded; three still covers Firefox's ~100 ms completion callback at 30 fps.
+const MAX_GPU_FRAMES = 3;
 const post = message => postMessage(message);
-const absoluteNow = () => performance.timeOrigin + performance.now();
 
 async function wasm() {
   if (!modulePromise) modulePromise = (async () => {
@@ -49,6 +51,35 @@ function audit(runner) {
   return nodes.filter(node => gpu(node.op_name)).length;
 }
 
+// The compositor has a GPU device of its own. A device's queue runs in order, so on tract's device
+// every composite would wait behind the inference before it; here the camera is composited at its
+// own rate with the latest mask, and each finished mask is copied across, once per inference.
+class MaskRelay {
+  constructor(source, target, width, height) {
+    Object.assign(this, {source, target, width, height, busy: false});
+    this.bytesPerRow = Math.ceil(width * 4 / 256) * 256;
+    this.staging = tractDevice.createBuffer({size: this.bytesPerRow * height, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST});
+  }
+
+  // Run tract on the frame unless a mask is already on its way; resolves once the mask is copied.
+  async infer() {
+    this.busy = true;
+    try {
+      const started = performance.now();
+      segmenter.run(modelCanvas);
+      const encoder = tractDevice.createCommandEncoder({label: 'mask readback'});
+      encoder.copyTextureToBuffer({texture: this.source}, {buffer: this.staging, bytesPerRow: this.bytesPerRow}, [this.width, this.height]);
+      tractDevice.queue.submit([encoder.finish()]);
+      await this.staging.mapAsync(GPUMapMode.READ);
+      device.queue.writeTexture({texture: this.target}, this.staging.getMappedRange(), {bytesPerRow: this.bytesPerRow}, [this.width, this.height]);
+      this.staging.unmap();
+      post({mask: performance.now() - started});
+    } finally {
+      this.busy = false;
+    }
+  }
+}
+
 async function command(type, payload) {
   if (type === 'init') {
     const m = model(payload.model);
@@ -56,28 +87,20 @@ async function command(type, payload) {
     post({status: `Preparing ${m.name} on WebGPU…`});
     segmenter = await Segmenter.create(bytes, m.width, m.height, m.mean, m.std);
     const ops = audit(segmenter);
-    device = segmenter.device();
-    device.addEventListener('uncapturederror', event => post({fatal: `WebGPU: ${event.error.message}`}));
-    device.lost.then(info => post({fatal: `WebGPU device lost: ${info.message}`}));
-    composer = await Compositor.create(device, segmenter.mask_texture(), payload.canvas);
-    frames = 0;
-    // Stage timing waits for GPU completion between stages. Where that
-    // round-trip has a ~100 ms floor it would measure the floor, not the work,
-    // and stall the frame it samples, so stage timing is skipped there.
-    const roundTrips = [];
-    for (let i = 0; i < 3; i++) {
-      const started = performance.now();
-      device.queue.submit([device.createCommandEncoder().finish()]);
-      await device.queue.onSubmittedWorkDone();
-      roundTrips.push(performance.now() - started);
+    tractDevice = segmenter.device();
+    device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
+    for (const d of [tractDevice, device]) {
+      d.addEventListener('uncapturederror', event => post({fatal: `WebGPU: ${event.error.message}`}));
+      d.lost.then(info => post({fatal: `WebGPU device lost: ${info.message}`}));
     }
-    const stageTiming = roundTrips.sort((a, b) => a - b)[1] <= 25;
-    profileEvery = stageTiming ? 15 : Infinity;
+    const target = device.createTexture({size: [m.width, m.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
+    mask = new MaskRelay(segmenter.mask_texture(), target, m.width, m.height);
+    composer = await Compositor.create(device, target, payload.canvas);
     frameCanvas = new OffscreenCanvas(payload.canvas.width, payload.canvas.height);
     frameContext = frameCanvas.getContext('2d');
     modelCanvas = new OffscreenCanvas(m.width, m.height);
     modelContext = modelCanvas.getContext('2d');
-    return {ops, stageTiming};
+    return {ops};
   }
   if (type === 'background') {
     if (payload.mode === 'colour') composer.setColour(payload.colour);
@@ -85,24 +108,28 @@ async function command(type, payload) {
     return {};
   }
   if (type === 'frame') {
-    const profile = ++frames % profileEvery === 0;
     const bitmap = payload.bitmap;
+    if (gpuFrames >= MAX_GPU_FRAMES) {
+      bitmap.close();
+      return {dropped: true};
+    }
     try {
       const scale = Math.max(frameCanvas.width / bitmap.width, frameCanvas.height / bitmap.height);
       const width = frameCanvas.width / scale, height = frameCanvas.height / scale;
       frameContext.drawImage(bitmap, (bitmap.width - width) / 2, (bitmap.height - height) / 2, width, height, 0, 0, frameCanvas.width, frameCanvas.height);
-      modelContext.drawImage(frameCanvas, 0, 0, modelCanvas.width, modelCanvas.height);
       composer.uploadFrame(frameCanvas);
+      if (!mask.busy) {
+        modelContext.drawImage(frameCanvas, 0, 0, modelCanvas.width, modelCanvas.height);
+        mask.infer().catch(error => post({fatal: `Inference failed: ${error?.message || error}`}));
+      }
     } finally { bitmap.close(); }
-    if (profile) await device.queue.onSubmittedWorkDone();
-    const captured = absoluteNow();
-    segmenter.run(modelCanvas);
-    if (profile) await device.queue.onSubmittedWorkDone();
-    const inferred = absoluteNow();
-    composer.draw(payload.refine);
-    if (profile) await device.queue.onSubmittedWorkDone();
-    const composited = absoluteNow();
-    return {stages: profile ? {capture: captured - payload.captureStart, inference: inferred - captured, compositing: composited - inferred} : null, total: composited - payload.captureStart};
+    composer.draw(payload.refine, payload.view);
+    gpuFrames++;
+    device.queue.onSubmittedWorkDone().then(() => {
+      gpuFrames--;
+      post({completed: true});
+    });
+    return {};
   }
   throw new Error(`Unknown command: ${type}`);
 }

@@ -1,13 +1,13 @@
 import {MODELS, CAPTURES, model, capture} from './models.mjs';
 import {GpuClient} from './gpu-client.js';
-import {PipelineStats, FrameRate} from './pipeline-stats.mjs';
+import {FrameRate} from './frame-rate.mjs';
 
 const $ = id => document.getElementById(id);
 const status = text => ($('status').textContent = text);
 const bar = fraction => ($('bar').style.width = `${Math.round(fraction * 100)}%`);
 const go = $('go');
 const video = $('camera-feed');
-const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null, stats: null, rate: null, lastStats: 0, stageTiming: true};
+const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null};
 
 for (const m of MODELS) $('model').append(new Option(m.name, m.id));
 for (const c of CAPTURES) $('capture').append(new Option(`${c.width} × ${c.height}`, c.id));
@@ -18,28 +18,34 @@ function idle(label = 'Start camera') {
 }
 
 function resetStats() {
-  state.stats = new PipelineStats({warmup: 1});
-  state.rate = new FrameRate();
-  state.lastStats = 0;
-  state.frames = 0;
-  $('stats').textContent = '';
+  Object.assign(state, {rate: new FrameRate(), cameraRate: new FrameRate(), maskRate: new FrameRate(), frames: 0, masks: 0, latencies: [], lastStats: 0});
+  $('camera-fps').textContent = $('out-fps').textContent = $('stats').textContent = '';
 }
 
-function showStats(stages, total) {
+const median = values => [...values].sort((a, b) => a - b)[values.length >> 1];
+
+// Composited frames are counted when the GPU has finished them, not when they were submitted.
+function frameCompleted() {
+  state.rate.add(performance.now(), ++state.frames);
+  showStats();
+}
+
+function maskReady(ms) {
+  state.maskRate.add(performance.now(), ++state.masks);
+  state.latencies.push(ms);
+  if (state.latencies.length > 60) state.latencies.shift();
+  showStats();
+}
+
+function showStats() {
   const now = performance.now();
-  state.rate.add(now, (state.frames = (state.frames || 0) + 1));
-  if (stages) state.stats.add(stages, total);
   if (now - state.lastStats < 250) return;
   state.lastStats = now;
-  const fps = state.rate.fps();
-  const parts = [fps === null ? '— fps' : `${fps.toFixed(1)} fps`];
-  if (state.stats.samples.length) {
-    const s = state.stats.summary();
-    parts.push(`inference ${s.inference.median.toFixed(1)} ms`, `compositing ${s.compositing.median.toFixed(1)} ms`);
-  } else if (!state.stageTiming) {
-    parts.push('this browser is too coarse to time stages');
-  }
-  $('stats').textContent = parts.join(' · ');
+  const rate = r => (r.fps() === null ? '' : `${r.fps().toFixed(1)} fps`);
+  $('out-fps').textContent = rate(state.rate);
+  $('camera-fps').textContent = rate(state.cameraRate);
+  const maskFps = state.maskRate.fps();
+  $('stats').textContent = maskFps === null ? '' : `mask ${maskFps.toFixed(1)} fps · ${median(state.latencies).toFixed(0)} ms from frame to mask`;
 }
 
 async function applyBackground() {
@@ -61,6 +67,7 @@ function stop(message = 'Camera stopped.') {
   state.stream?.getTracks().forEach(track => track.stop());
   state.stream = null;
   video.srcObject = null;
+  $('camera-fps').textContent = $('out-fps').textContent = '';
   for (const id of ['model', 'camera', 'capture']) $(id).disabled = false;
   status(message);
   idle();
@@ -103,10 +110,11 @@ async function start() {
       if (message.download !== undefined) bar(message.download);
       if (message.status) status(message.status);
       if (message.fatal) stop(message.fatal);
+      if (message.completed && state.running) frameCompleted();
+      if (message.mask !== undefined && state.running) maskReady(message.mask);
     });
     const prepared = await state.client.request('init', {canvas, model: m.id}, [canvas], 180000);
     if (generation !== state.generation) return;
-    state.stageTiming = prepared.stageTiming;
     await applyBackground();
     bar(1);
     resetStats();
@@ -114,17 +122,16 @@ async function start() {
     go.disabled = false;
     go.textContent = 'Stop camera';
     status(`Live: ${m.name}, ${m.note}, ${prepared.ops} GPU ops.`);
-    const frame = () => {
+    const frame = (_now, metadata) => {
       if (!state.running || generation !== state.generation) return;
       state.callback = video.requestVideoFrameCallback(frame);
+      state.cameraRate.add(performance.now(), metadata.presentedFrames);
       if (state.inFlight || document.hidden) return;
       state.inFlight = (async () => {
         try {
-          const captureStart = performance.timeOrigin + performance.now();
           const bitmap = await createImageBitmap(video);
           if (!state.running || generation !== state.generation) return bitmap.close();
-          const result = await state.client.request('frame', {bitmap, captureStart, refine: $('refine').checked}, [bitmap], 15000);
-          if (state.running && generation === state.generation) showStats(result.stages, result.total);
+          await state.client.request('frame', {bitmap, refine: $('refine').checked, view: $('view').value}, [bitmap], 15000);
         } catch (error) {
           if (generation === state.generation) stop(`Stopped: ${error.message || error}`);
         } finally {
