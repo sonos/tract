@@ -20,6 +20,10 @@ required-features = ["multithread-mm"]
 name = "depthwise"
 harness = false
 
+[[bench]]
+name = "conv_w4"
+harness = false
+
 [badges]
 maintenance = { status = "actively-developed" }
 
