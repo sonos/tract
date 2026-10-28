@@ -60,10 +60,11 @@ fn refinedAlpha(uv: vec2f, centre: vec3f) -> f32 {
   if (params.mode == 1u) {
     bg = textureSampleLevel(blurTex, linearSampler, in.uv, 0.0).rgb;
   }
+  if (params.mode == 2u) { return vec4f(vec3f(alpha), 1.0); }
   return vec4f(mix(bg, fg, alpha), 1.0);
 }`;
 
-const MODES={colour:0,blur:1};
+const MODES={colour:0,blur:1,mask:2};
 const SAMPLED=GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT;
 
 export class Compositor {
@@ -114,18 +115,18 @@ export class Compositor {
     this.device.queue.copyExternalImageToTexture({source},{texture:this.frame},[this.width,this.height]);
   }
 
-  draw(refine) {
+  draw(refine,view) {
     const maskTexel=[1/this.maskTexture.width,1/this.maskTexture.height];
     const params=new ArrayBuffer(32);
     new Float32Array(params,0,6).set([...this.colour,1,...maskTexel]);
-    new Uint32Array(params,24,2).set([MODES[this.mode],refine?1:0]);
+    new Uint32Array(params,24,2).set([MODES[view==='mask'?'mask':this.mode],refine?1:0]);
     this.device.queue.writeBuffer(this.params,0,params);
     const encoder=this.device.createCommandEncoder({label:'pixel-lab composite'});
     const pass=(view,pipeline,group)=>{
       const render=encoder.beginRenderPass({colorAttachments:[{view,loadOp:'clear',storeOp:'store',clearValue:[0,0,0,1]}]});
       render.setPipeline(pipeline);render.setBindGroup(0,group);render.draw(3);render.end();
     };
-    if(this.mode==='blur') {
+    if(this.mode==='blur'&&view!=='mask') {
       pass(this.blurred[0].createView(),this.blur,this.blurGroups[0]);
       pass(this.blurred[1].createView(),this.blur,this.blurGroups[1]);
     }

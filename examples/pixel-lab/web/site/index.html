@@ -45,7 +45,9 @@
   #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
   .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   @media (max-width: 1000px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
-  figure { margin: 0; }
+  figure { margin: 0; position: relative; }
+  .fps { position: absolute; top: 30px; right: 8px; padding: 2px 8px; border-radius: 999px; font: 600 12px/1.6 ui-monospace, monospace; color: #fff; background: rgba(0, 0, 0, .55); font-variant-numeric: tabular-nums; }
+  .fps:empty { display: none; }
   figcaption { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   canvas, video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: block; }
   #stats { font-size: 13px; color: var(--muted); margin: 8px 0 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
@@ -72,6 +74,8 @@
     <select id="background"><option value="blur">Blur</option><option value="colour">Solid colour</option></select>
     <label for="colour">Colour</label>
     <input id="colour" type="color" value="#457b75" disabled>
+    <label for="view">View</label>
+    <select id="view"><option value="composited">Composited</option><option value="mask">Mask (alpha)</option></select>
     <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges</label>
     <button id="go" disabled>Loading…</button>
     <div class="bar"><div id="bar"></div></div>
@@ -79,17 +83,19 @@
   </div>
   <div class="out">
     <div class="tiles">
-      <figure><figcaption>Camera</figcaption><video id="camera-feed" autoplay muted playsinline></video></figure>
-      <figure><figcaption>Composited on the GPU</figcaption><canvas id="out" width="640" height="360"></canvas></figure>
+      <figure><figcaption>Camera</figcaption><video id="camera-feed" autoplay muted playsinline></video><span class="fps" id="camera-fps"></span></figure>
+      <figure><figcaption>Composited on the GPU</figcaption><canvas id="out" width="640" height="360"></canvas><span class="fps" id="out-fps"></span></figure>
     </div>
     <p id="stats"></p>
   </div>
   <p class="note">
-    The camera frame, the mask and the composited picture stay on the GPU; only the models come over
-    the network, straight from Hugging Face at a pinned revision, and stay in your browser's cache:
+    The camera frames stay on the GPU; only the models come over the network, straight from
+    Hugging Face at a pinned revision, and stay in your browser's cache:
     <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">MediaPipe Selfie Segmentation</a> (0.5 MB) and
     <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB), both under the Apache 2.0 license.
-    Stage timings are wall-clock times sampled every 15th frame, not GPU timestamps.
+    The camera is composited at its own frame rate with the latest mask, so a slower model makes the
+    mask lag, not the video; the mask latency runs from handing a frame to the model to its mask
+    being ready to composite.
     <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/pixel-lab/web">Source code</a><span id="build"></span></span>
   </p>
 </main>

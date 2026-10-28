@@ -11,7 +11,7 @@ test('every model is pinned and fits a 32-pixel grid', () => {
     assert.equal(m.mean.length, 3);
     assert.ok(m.std.every(s => s > 0));
   }
-  assert.equal(modelUrl(model('modnet')), 'https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx');
+  assert.equal(modelUrl(model('modnet-fast')), 'https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx');
   assert.throws(() => model('nope'), /Unknown/);
 });
 
