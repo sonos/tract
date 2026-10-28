@@ -1,5 +1,6 @@
 use anyhow::{Result, ensure};
 use boow::Bow;
+use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::path::Path;
 
@@ -114,6 +115,23 @@ pub struct OnnxOptions {
     /// instance `["h>=0", "w>=0"]`. Each one goes to tract's assertion parser
     /// unchanged.
     pub assertions: Vec<String>,
+    /// Model inputs to replace by constants once the model is parsed, by input
+    /// name. Each one stops being a model input, so analysis can resolve shapes
+    /// that depend on its value rather than only its shape, such as a resize
+    /// factor fed as an input. A name that is not a model input is an error.
+    pub constant_inputs: BTreeMap<String, ConstantInput>,
+}
+
+/// The value an [`OnnxOptions`] constant input takes.
+///
+/// `values` lists the elements in row-major order, as many as `shape` holds.
+/// Each one is converted from `f64` to `datum_type`.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConstantInput {
+    pub datum_type: DatumType,
+    pub shape: Vec<usize>,
+    pub values: Vec<f64>,
 }
 
 impl OnnxOptions {
@@ -130,6 +148,22 @@ impl OnnxOptions {
     /// Add one assertion over the model symbols.
     pub fn assertion(mut self, assertion: impl Into<String>) -> Self {
         self.assertions.push(assertion.into());
+        self
+    }
+
+    /// Replace the input called `name` by a constant of the given type, shape
+    /// and row-major values.
+    pub fn constant_input(
+        mut self,
+        name: impl Into<String>,
+        datum_type: DatumType,
+        shape: &[usize],
+        values: &[f64],
+    ) -> Self {
+        self.constant_inputs.insert(
+            name.into(),
+            ConstantInput { datum_type, shape: shape.to_vec(), values: values.to_vec() },
+        );
         self
     }
 
@@ -397,7 +431,8 @@ pub trait AsFact<M, F>: Debug {
 }
 
 #[repr(C)]
-#[derive(Debug, PartialEq, Eq, Copy, Clone)]
+#[derive(Debug, PartialEq, Eq, Copy, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum DatumType {
     Bool = 0x01,
     U8 = 0x11,
