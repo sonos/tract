@@ -63,6 +63,10 @@ struct Bench {
     /// Device keys (`--device`) this bench never runs on, e.g. a model too large for the box.
     #[serde(default)]
     skip_devices: Vec<String>,
+    /// Knobs set in the environment of this bench's native child runs, e.g.
+    /// `{ TRACT_CUDA_ALLOW_TF32 = "true" }`.
+    #[serde(default)]
+    knobs: BTreeMap<String, String>,
     /// Run only in reference mode (`--samples`), smoke, or when picked by `--select` or
     /// `--only`: a bench too slow for every PR push.
     #[serde(default)]
@@ -698,6 +702,7 @@ fn run_one(
             cmd.args(["-f", f]);
         }
         cmd.args(&bench.args);
+        cmd.envs(&bench.knobs);
         match runtime {
             Some(RuntimeKind::Cuda) => _ = cmd.arg("--cuda"),
             Some(RuntimeKind::Metal) => _ = cmd.arg("--metal"),
@@ -723,6 +728,7 @@ fn run_one(
     }
     cmd.args(&bench.args);
     if !child.is_wasm() {
+        cmd.envs(&bench.knobs);
         cmd.args(global_flags);
         cmd.args(["--readings", "--readings-heartbeat", "1000"]);
     }
