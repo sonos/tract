@@ -24,10 +24,15 @@ permissions:
 jobs:
   prepare-matrix:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read   # list the PR's changed files
     outputs:
       os: ${{steps.set-matrix.outputs.os}}
       rust: ${{steps.set-matrix.outputs.rust}}
       msrv: ${{steps.set-matrix.outputs.msrv}}
+      crates: ${{steps.scoped.outputs.crates}}
+      skip: ${{steps.scope.outputs.skip || '[]'}}
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -51,18 +56,50 @@ jobs:
             echo 'os=["ubuntu-24.04"]' >> $GITHUB_OUTPUT
             echo "rust=[\"$msrv\"]" >> $GITHUB_OUTPUT
           fi
+      # On a PR push, ci/affected.py names the legs this change cannot affect and they are
+      # left out. The nightly, a dispatch, a `ci:full` label and CI_SCOPING=off run
+      # everything, and so does any failure here.
+      - id: changed
+        if: github.event_name == 'pull_request' && vars.CI_SCOPING != 'off' && !contains(github.event.pull_request.labels.*.name, 'ci:full')
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)' > "$RUNNER_TEMP/changed.txt"
+          # The files API lists at most 3000; past that, let everything run.
+          if [ "$(wc -l < "$RUNNER_TEMP/changed.txt")" -ge 3000 ]; then echo Cargo.lock >> "$RUNNER_TEMP/changed.txt"; fi
+          echo "files=$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+      - id: scope
+        if: steps.changed.outputs.files != ''
+        continue-on-error: true
+        env:
+          FILES: ${{ steps.changed.outputs.files }}
+        run: |
+          python3 ci/affected.py --files "$FILES" --json "$RUNNER_TEMP/scope.json" --summary "$GITHUB_STEP_SUMMARY"
+          echo "skip=$(jq -c '[.legs[] | select(.workflow == "crates.yml" and (.affected | not)) | .leg]' "$RUNNER_TEMP/scope.json")" >> "$GITHUB_OUTPUT"
+      - id: scoped
+        env:
+          SKIP: ${{ steps.scope.outputs.skip || '[]' }}
+        run: |
+          crates=$(jq -c --argjson skip "$SKIP" 'map(select(("ubuntu-24.04 / " + .) | IN($skip[]) | not))' <<'EOF'
+          [ "tract-data", "tract-linalg", "tract-core", "tract-nnef", "tract-hir", "tract-onnx",
+            "tract-pulse", "tract-onnx-opl", "tract-pulse-opl", "tract",
+            "test-unit-core", "test-pulse-core", "test-onnx-core", "test-nnef-cycle", "test-f16" ]
+          EOF
+          )
+          echo "crates=$crates" >> "$GITHUB_OUTPUT"
 
   crates:
     name: ${{matrix.os}} / ${{matrix.crate}} / ${{matrix.rust}}
     needs: prepare-matrix
+    if: needs.prepare-matrix.outputs.crates != '[]'
     strategy:
       matrix:
         os: ${{fromJson(needs.prepare-matrix.outputs.os)}}
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
-        crate: [  tract-data, tract-linalg, tract-core, tract-nnef, tract-hir, tract-onnx,
-                  tract-pulse, tract-onnx-opl, tract-pulse-opl, tract,
-                  test-unit-core, test-pulse-core, test-onnx-core, test-nnef-cycle, test-f16,
-               ]
+        crate: ${{fromJson(needs.prepare-matrix.outputs.crates)}}
       fail-fast: false
 
     runs-on: ${{matrix.os}}
@@ -89,13 +126,17 @@ jobs:
     - name: Cargo test
       # tract-linalg and the test-rt suites run thousands of tiny cases; -q
       # collapses the per-test lines to dots so the CI log stays readable.
-      run: cargo test ${{ (matrix.crate == 'tract-linalg' || startsWith(matrix.crate, 'test-')) && '-q' || '' }} -p ${{matrix.crate}}
+      env:
+        CRATE: ${{ matrix.crate }}
+        QUIET: ${{ (matrix.crate == 'tract-linalg' || startsWith(matrix.crate, 'test-')) && '-q' || '' }}
+      run: cargo test $QUIET -p "$CRATE"
 
   cuda:
     # Served by entangled (4060, SM89) and, when lent, the Blackwell box (5090,
     # SM120). They take different kernel paths, so a red run must say which GPU.
     runs-on: cuda-tests
     needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'cuda') }}
     strategy:
       matrix:
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
@@ -144,6 +185,7 @@ jobs:
   metal:
     runs-on: metal-tests
     needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'metal') }}
     strategy:
       matrix:
         rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
@@ -162,6 +204,7 @@ jobs:
   pedantic:
     name: fmt, clippy, etc (${{matrix.os}} / ${{matrix.rust}})
     needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'fmt, clippy, etc') }}
     strategy:
       matrix:
         os: ${{fromJson(needs.prepare-matrix.outputs.os)}}
@@ -195,6 +238,8 @@ jobs:
 
   tract-h:
     name: api/proxy/sys/tract.h matches tract-ffi
+    needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'api/proxy/sys/tract.h matches tract-ffi') }}
     runs-on: ubuntu-24.04
 
     steps:
@@ -213,6 +258,8 @@ jobs:
         }
 
   cargo-deny:
+    needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'cargo-deny') }}
     strategy:
       fail-fast: false
 
