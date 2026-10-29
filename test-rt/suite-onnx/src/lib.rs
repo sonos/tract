@@ -210,15 +210,21 @@ pub fn ensure_onnx_git_checkout() {
             if !wanted.join("onnx/backend/test/data").exists() {
                 let tmp = wanted.with_extension("tmp");
                 let _ = std::fs::remove_dir_all(&wanted);
-                let _ = std::fs::remove_dir_all(&tmp);
-                let run = std::process::Command::new("git")
-                    .args(["clone", "--depth=1", "--branch"])
-                    .arg(format!("v{v}"))
-                    .arg("https://github.com/onnx/onnx")
-                    .arg(&tmp)
-                    .status()
-                    .unwrap();
-                if !run.success() {
+                let cloned = (0..5).any(|attempt| {
+                    if attempt > 0 {
+                        std::thread::sleep(std::time::Duration::from_secs(10 << attempt));
+                    }
+                    let _ = std::fs::remove_dir_all(&tmp);
+                    std::process::Command::new("git")
+                        .args(["clone", "--depth=1", "--branch"])
+                        .arg(format!("v{v}"))
+                        .arg("https://github.com/onnx/onnx")
+                        .arg(&tmp)
+                        .status()
+                        .unwrap()
+                        .success()
+                });
+                if !cloned {
                     panic!("Failed to clone onnx")
                 }
                 std::fs::rename(tmp, wanted).unwrap();
