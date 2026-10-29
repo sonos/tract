@@ -69,7 +69,7 @@ impl EvalOp for Cast {
 
 /// An f16 to f32 or f32 to f16 cast, converted with the half slice conversions
 /// across the executor's threads; `None` for any other pair of types.
-fn par_half_cast(input: &Tensor, to: DatumType) -> TractResult<Option<Tensor>> {
+pub(crate) fn par_half_cast(input: &Tensor, to: DatumType) -> TractResult<Option<Tensor>> {
     let from = input.datum_type();
     if !matches!((from, to), (DatumType::F16, DatumType::F32) | (DatumType::F32, DatumType::F16)) {
         return Ok(None);
