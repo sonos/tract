@@ -1,5 +1,7 @@
 use crate::internal::*;
 use crate::ops::array::MultiBroadcastTo;
+use tract_data::half::slice::HalfFloatSliceExt;
+use tract_linalg::multithread::par_chunks_mut;
 
 pub fn cast(to: DatumType) -> Cast {
     Cast { to }
@@ -46,6 +48,8 @@ impl EvalOp for Cast {
         let input = args_1!(inputs);
         if input.datum_type() == self.to {
             Ok(tvec!(input))
+        } else if let Some(output) = par_half_cast(&input, self.to)? {
+            Ok(tvec!(output.into_tvalue()))
         } else if input.datum_type() == TDim::datum_type() {
             let mut tmp = Tensor::zero_dt(i64::datum_type(), input.shape())?;
             let input_plain = input.try_as_plain_ram()?;
@@ -61,6 +65,35 @@ impl EvalOp for Cast {
             Ok(tvec!(input.cast_to_dt(self.to)?.into_owned().into_tvalue()))
         }
     }
+}
+
+/// An f16 to f32 or f32 to f16 cast, converted with the half slice conversions
+/// across the executor's threads; `None` for any other pair of types.
+fn par_half_cast(input: &Tensor, to: DatumType) -> TractResult<Option<Tensor>> {
+    let from = input.datum_type();
+    if !matches!((from, to), (DatumType::F16, DatumType::F32) | (DatumType::F32, DatumType::F16)) {
+        return Ok(None);
+    }
+    let Ok(src) = input.try_as_plain_ram() else { return Ok(None) };
+    let len = input.len();
+    let mut output = Tensor::zero_dt(to, input.shape())?;
+    {
+        let mut dst = output.try_as_plain_ram_mut()?;
+        if from == DatumType::F16 {
+            let src = src.as_slice::<f16>()?;
+            par_chunks_mut(dst.as_slice_mut::<f32>()?, 1, len, |first, chunk| {
+                src[first..][..chunk.len()].convert_to_f32_slice(chunk);
+                Ok(())
+            })?;
+        } else {
+            let src = src.as_slice::<f32>()?;
+            par_chunks_mut(dst.as_slice_mut::<f16>()?, 1, len, |first, chunk| {
+                chunk.convert_from_f32_slice(&src[first..][..chunk.len()]);
+                Ok(())
+            })?;
+        }
+    }
+    Ok(Some(output))
 }
 
 impl TypedOp for Cast {
