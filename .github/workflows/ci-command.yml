@@ -34,7 +34,10 @@ name: CI slash command
 # with a tests and/or bench section) through .github/scripts/ci-feedback.js, and a run
 # that tests something also sets a `/ci <target>` commit status on the PR head.
 
-on:
+# Hardened: the comment job checks out nothing and runs no PR code; it only hands the
+# comment to slash-command-dispatch, which drops commenters without write access. The
+# dispatched route job checks out the default branch and reads the command as data.
+on:  # zizmor: ignore[dangerous-triggers]
   issue_comment:
     types: [created]
   repository_dispatch:
