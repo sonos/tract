@@ -69,6 +69,21 @@ them on any conflict.
   is locally obvious; reach for safe alternatives first.
 - No abstraction beyond the task — three similar lines beat a premature helper.
 
+## Numerical precision
+Applies to every backend and kernel. Judge against the model's declared types.
+- No bit-level matching with other frameworks or with IEEE evaluation order:
+  reassociation, FMA, and fused epilogues are fair game.
+- Computing in a higher precision than declared is always allowed, as long as
+  the declared output type is unchanged.
+- Computing in a lower precision (f32 → TF32, bf16 or f16) happens only behind
+  an opt-in knob (e.g. `TRACT_CUDA_ALLOW_TF32`) or an explicit transform
+  (`f32_to_f16`), never by default.
+- A platform's native behaviour for the declared type (e.g. f16 accumulation in
+  arm64 fp16 kernels) is the baseline, not a lowering.
+- Special values stay correct under fast paths: `-inf` masks, `inf` and `NaN`
+  propagate as in a plain evaluation.
+- Integer arithmetic, quantized integer ops included, is exact.
+
 
 ## Issues and bug reports
 
