@@ -183,6 +183,8 @@ impl TypedOp for LayerNorm {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         rule_if!(node.inputs.len() == 1);
         rule_if_some!(axis = change.transform_axis(self.axis));
+        let last = model.outlet_fact(node.inputs[0])?.rank() - 1;
+        rule_if!(self.axis != last || axis == last);
         let op = LayerNorm { axis, eps: self.eps.clone() };
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }
