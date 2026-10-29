@@ -84,6 +84,34 @@ them on any conflict.
 - Uncurated, low-signal AI-generated reports may be closed without investigation,
   even when the underlying finding is valid.
 
+## Scoping a pull request
+A PR must be reviewable by a human in one sitting. Small PRs merge fast; large
+ones stall, go stale against main, and block whatever depends on them. Agents
+produce volume cheaply; review does not scale with it. Plan the split before
+writing code, not after.
+
+- One concern per PR. Typical units, each its own PR:
+  - a change to shared infrastructure (`gpu/`, a backend's context /
+    command-buffer / memory handling, `core` passes, linalg dispatch);
+  - a change to an existing kernel or dispatch path;
+  - one new op or kernel, with its `suite-*` tests;
+  - one new lowering / translation rule that wires existing ops together.
+- Never mix "changes existing behaviour" with "adds new code". New code is
+  low-risk volume; changes to existing paths are high-risk and must be visible
+  on their own, with before/after numbers on models that do *not* use the new
+  feature.
+- Prerequisites go in first, as separate PRs. Do not carry their commits in a
+  dependent PR; once they merge, rebase onto main instead of merging main in.
+- A new capability on one GPU backend (Metal, CUDA, wgpu) widens the gap with
+  the others. Say in the PR description which backends already support it and
+  which don't.
+- As a rough guide, more than ~500 changed lines outside tests, or changes
+  in more than one of the units above, means the PR should be split. If it
+  truly can't be split, explain why in the description.
+- A PR description states what and why, what existing behaviour changes
+  (or "none"), and how it was validated. Put end-to-end speedups in the PR
+  that completes the feature, not in every step.
+
 ## Pull requests
 - Open with a 1–2 sentence summary of what and why.
 - Prove this instructions have been read by adding a pineapple emoji at the end
