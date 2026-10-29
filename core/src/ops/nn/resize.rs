@@ -621,31 +621,40 @@ fn nearest_generic<T: Datum + Copy>(
 ) -> TractResult<TVec<TValue>> {
     let plain = input.try_as_plain_ram()?;
     let src = plain.as_slice::<T>()?;
-    let mut output = unsafe { Tensor::uninitialized::<T>(out_shape)? };
-    let rank = out_shape.len();
-    let mut in_strides = vec![1usize; rank];
-    for i in (0..rank - 1).rev() {
-        in_strides[i] = in_strides[i + 1] * input.shape()[i + 1];
+    let mut out = Vec::with_capacity(out_shape.iter().product());
+    nearest_into(src, input.shape(), scales, &mut out);
+    Ok(tvec!(tract_ndarray::ArrayD::from_shape_vec(out_shape, out)?.into_tensor().into_tvalue()))
+}
+
+/// Appends `src`, of row-major `shape`, upsampled by `scales` to `out`: each
+/// innermost element is repeated, then each upsampled block of an outer axis is
+/// copied whole.
+fn nearest_into<T: Copy>(src: &[T], shape: &[usize], scales: &[usize], out: &mut Vec<T>) {
+    if shape.is_empty() {
+        out.extend_from_slice(src);
+        return;
     }
-    let mut out_strides = vec![1usize; rank];
-    for i in (0..rank - 1).rev() {
-        out_strides[i] = out_strides[i + 1] * out_shape[i + 1];
+    if shape.len() == 1 {
+        let start = out.len();
+        let Some(&first) = src.first() else { return };
+        out.resize(start + src.len() * scales[0], first);
+        for (dst, v) in out[start..].chunks_exact_mut(scales[0]).zip(src) {
+            dst.fill(*v);
+        }
+        return;
     }
-    {
-        let mut out_plain = output.try_as_plain_ram_mut()?;
-        let dst = out_plain.as_slice_mut::<T>()?;
-        for (i, slot) in dst.iter_mut().enumerate() {
-            let mut rem = i;
-            let mut src_ix = 0usize;
-            for ax in 0..rank {
-                let c = rem / out_strides[ax];
-                rem %= out_strides[ax];
-                src_ix += (c / scales[ax]) * in_strides[ax];
-            }
-            *slot = src[src_ix];
+    let inner: usize = shape[1..].iter().product();
+    if inner == 0 {
+        return;
+    }
+    for block in src.chunks_exact(inner) {
+        let start = out.len();
+        nearest_into(block, &shape[1..], &scales[1..], out);
+        let end = out.len();
+        for _ in 1..scales[0] {
+            out.extend_from_within(start..end);
         }
     }
-    Ok(tvec!(output.into_tvalue()))
 }
 
 /// An axis length to build a probe plan on. `HalfPixel`, `Asymmetric` and
@@ -779,6 +788,22 @@ mod tests {
         assert_eq!(v[[0, 0, 3, 3]], 4.0);
         assert_eq!(v[[0, 0, 0, 2]], 2.0);
         assert_eq!(v[[0, 0, 2, 0]], 3.0);
+    }
+
+    #[test]
+    fn nearest_upsample_generic_replicates_every_axis() {
+        let shape = [2usize, 3, 4];
+        let scales = [3usize, 1, 2];
+        let src: Vec<i32> = (0..24).collect();
+        let input = Tensor::from_shape(&shape, &src).unwrap();
+        let op = NearestUpsample { scales: scales.iter().copied().collect() };
+        let out =
+            op.eval(&EvalContext::out_of_plan(), tvec!(input.into_tvalue())).unwrap().remove(0);
+        let v = out.to_plain_array_view::<i32>().unwrap();
+        assert_eq!(v.shape(), &[6, 3, 8]);
+        for ((a, b, c), x) in v.indexed_iter().map(|(ix, x)| ((ix[0], ix[1], ix[2]), *x)) {
+            assert_eq!(x, ((a / 3) * 12 + b * 4 + c / 2) as i32);
+        }
     }
 
     fn cubic_resize(input: Tensor, scales: &[f32]) -> Tensor {
