@@ -43,6 +43,11 @@ pub enum LayoutKind {
     Export,
     /// A fused elementwise chain: `n` storage buffers, the last one the output.
     Chain(u8),
+    /// `n` storage buffers of which the last `writes` are writable.
+    TailWrites {
+        n: u8,
+        writes: u8,
+    },
 }
 
 impl LayoutKind {
@@ -54,6 +59,7 @@ impl LayoutKind {
             Self::Ingest => "tract-wgpu-ingest-layout",
             Self::Export => "tract-wgpu-export-layout",
             Self::Chain(_) => "tract-wgpu-chain-layout",
+            Self::TailWrites { .. } => "tract-wgpu-tail-writes-layout",
         }
     }
 
@@ -65,6 +71,7 @@ impl LayoutKind {
             Self::Ingest => 1,
             Self::Export => 1,
             Self::Chain(n) => n as u32,
+            Self::TailWrites { n, .. } => n as u32,
         }
     }
 
@@ -139,8 +146,12 @@ impl LayoutKind {
         }
         let mut entries = Vec::new();
         let n = self.storage_count();
+        let writes = match self {
+            Self::TailWrites { writes, .. } => writes as u32,
+            _ => 1,
+        };
         for i in 0..n {
-            let read_only = i + 1 < n;
+            let read_only = i + writes < n;
             entries.push(wgpu::BindGroupLayoutEntry {
                 binding: i,
                 visibility: wgpu::ShaderStages::COMPUTE,
@@ -1356,6 +1367,95 @@ fn rms_norm(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id)
     let inv = inverseSqrt(partial[0] / f32(params.k) + params.eps);
     for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
         var y = f32(inp[params.off_in + base + i * params.inner]) * inv;
+        {round}
+        {apply}
+        outp[params.off_out + base + i * params.inner] = {to}(y);
+    }}
+}}
+"#
+    )
+}
+
+/// RMS norm of `input + residual` over the middle axis of an `(outer, k, inner)`
+/// view. The sum is computed in the input dtype, stored for the residual
+/// stream, and then normalized. `scaled` multiplies by an F32 scale along that
+/// axis; `round_f16` first rounds the normalized value to f16.
+pub fn rms_norm_residual_module(
+    input: ShaderDtype,
+    output: ShaderDtype,
+    scaled: bool,
+    round_f16: bool,
+) -> String {
+    let (ti, to) = (input.wgsl(), output.wgsl());
+    let bindings = if scaled {
+        format!(
+            "@group(0) @binding(0) var<storage, read> inp: array<{ti}>;
+@group(0) @binding(1) var<storage, read> residual: array<{ti}>;
+@group(0) @binding(2) var<storage, read> scale: array<f32>;
+@group(0) @binding(3) var<storage, read_write> outp: array<{to}>;
+@group(0) @binding(4) var<storage, read_write> sum_out: array<{ti}>;
+@group(0) @binding(5) var<uniform> params: Params;"
+        )
+    } else {
+        format!(
+            "@group(0) @binding(0) var<storage, read> inp: array<{ti}>;
+@group(0) @binding(1) var<storage, read> residual: array<{ti}>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{to}>;
+@group(0) @binding(3) var<storage, read_write> sum_out: array<{ti}>;
+@group(0) @binding(4) var<uniform> params: Params;"
+        )
+    };
+    let round =
+        if round_f16 { "y = unpack2x16float(pack2x16float(vec2<f32>(y, 0.0))).x;" } else { "" };
+    let apply = if scaled { "y = y * scale[params.off_scale + i];" } else { "" };
+    let enable =
+        if input == ShaderDtype::F16 || output == ShaderDtype::F16 { "enable f16;\n" } else { "" };
+    format!(
+        r#"{enable}
+struct Params {{
+    off_in: u32,
+    off_res: u32,
+    off_out: u32,
+    off_sum: u32,
+    off_scale: u32,
+    k: u32,
+    inner: u32,
+    rows: u32,
+    eps: f32,
+}}
+
+{bindings}
+
+var<workgroup> partial: array<f32, {LAYER_NORM_WG}>;
+
+fn summed(base: u32, i: u32) -> {ti} {{
+    let at = base + i * params.inner;
+    return inp[params.off_in + at] + residual[params.off_res + at];
+}}
+
+@compute @workgroup_size({LAYER_NORM_WG})
+fn rms_norm(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row = wid.y * {GRID_LIMIT}u + wid.x;
+    if (row >= params.rows) {{ return; }}
+    let base = (row / params.inner) * params.k * params.inner + row % params.inner;
+    var sq = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        let v = summed(base, i);
+        sum_out[params.off_sum + base + i * params.inner] = v;
+        let x = f32(v);
+        sq += x * x;
+    }}
+    partial[lid.x] = sq;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    workgroupBarrier();
+    let inv = inverseSqrt(partial[0] / f32(params.k) + params.eps);
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        var y = f32(summed(base, i)) * inv;
         {round}
         {apply}
         outp[params.off_out + base + i * params.inner] = {to}(y);

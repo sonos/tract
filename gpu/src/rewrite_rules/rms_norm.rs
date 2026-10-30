@@ -349,7 +349,7 @@ pub fn fuse_rms_norm_residual(
     op: &GpuRmsNorm,
 ) -> TractResult<Option<TypedModelPatch>> {
     rule_ensure!(!op.has_residual);
-    rule_ensure!(matches!(op.backend_name, "Metal" | "Cuda"));
+    rule_ensure!(matches!(op.backend_name, "Metal" | "Cuda" | "Wgpu"));
     rule_ensure!(!TRACT_GPU_DISABLE_RMS_NORM_RESIDUAL.get());
     let add_outlet = node.inputs[0];
     let add_node = model.node(add_outlet.node);
