@@ -39,11 +39,19 @@ pub fn cuda_context() -> &'static TractCudaContext {
 }
 
 thread_local! {
-    static CUDA_STREAM: TractCudaStream = TractCudaStream::new().expect("Could not create Cuda Stream");
+    static CUDA_STREAM: std::cell::OnceCell<TractCudaStream> = const { std::cell::OnceCell::new() };
 }
 
+/// Runs `f` on this thread's stream, creating it on first use. A failed creation
+/// is returned as an error and retried on the next call.
 pub fn with_cuda_stream<R>(f: impl FnOnce(&TractCudaStream) -> TractResult<R>) -> TractResult<R> {
-    CUDA_STREAM.with(|cell| f(cell))
+    CUDA_STREAM.with(|cell| {
+        if let Some(stream) = cell.get() {
+            return f(stream);
+        }
+        let stream = TractCudaStream::new()?;
+        f(cell.get_or_init(|| stream))
+    })
 }
 
 #[derive(Debug, Clone)]
