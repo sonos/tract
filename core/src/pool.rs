@@ -16,10 +16,16 @@
 //! [`Overloaded`], which a server can answer with a "retry later" instead of
 //! queueing without bound.
 //!
+//! A call panicking fails with an error carrying the panic message, and the
+//! worker replaces its state with a fresh one before taking the next call.
+//!
 //! Dropping the runnable closes the queue and joins the workers: their
 //! per-thread device state must be torn down before the libraries are.
 
+use std::any::Any;
 use std::fmt::Debug;
+use std::panic::AssertUnwindSafe;
+use std::panic::catch_unwind;
 use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, Sender, SyncSender, TrySendError, channel, sync_channel};
 use std::thread;
@@ -96,6 +102,7 @@ struct Meters {
     rejected: Counter,
     queue_wait: Histogram,
     run: Histogram,
+    panics: Counter,
 }
 
 impl Meters {
@@ -115,13 +122,18 @@ impl Meters {
             Unit::Seconds,
             "One call on a pool worker's state"
         );
+        metrics::describe_counter!(
+            "tract_pool_worker_panics_total",
+            "Calls a pool worker panicked on, each costing it its state"
+        );
         let labels: Vec<Label> =
             name.map(|name| Label::new("runnable", name.to_string())).into_iter().collect();
         Meters {
             queued: metrics::gauge!("tract_pool_queued", labels.clone()),
             rejected: metrics::counter!("tract_pool_rejected_total", labels.clone()),
             queue_wait: metrics::histogram!("tract_pool_queue_wait_seconds", labels.clone()),
-            run: metrics::histogram!("tract_pool_run_seconds", labels),
+            run: metrics::histogram!("tract_pool_run_seconds", labels.clone()),
+            panics: metrics::counter!("tract_pool_worker_panics_total", labels),
         }
     }
 }
@@ -157,7 +169,7 @@ impl PooledRunnable {
                 move || match inner.spawn() {
                     Ok(state) => {
                         let _ = spawned.send(Ok(()));
-                        work(state, &queued, &meters);
+                        work(&inner, state, &queued, &meters);
                     }
                     Err(e) => {
                         let _ = spawned.send(Err(e));
@@ -206,8 +218,15 @@ impl PooledRunnable {
 }
 
 /// One worker's life: take the next call, run it on the worker's own state,
-/// answer it, until the queue is closed.
-fn work(mut state: Box<dyn State>, queued: &Mutex<Receiver<Call>>, meters: &Meters) {
+/// answer it, until the queue is closed. A call panicking is answered with an
+/// error and costs the worker its state, which is replaced by a fresh one; the
+/// worker stops only if that spawn fails.
+fn work(
+    inner: &Arc<dyn Runnable>,
+    mut state: Box<dyn State>,
+    queued: &Mutex<Receiver<Call>>,
+    meters: &Meters,
+) {
     loop {
         let call = match queued.lock() {
             Ok(queued) => queued.recv(),
@@ -217,10 +236,38 @@ fn work(mut state: Box<dyn State>, queued: &Mutex<Receiver<Call>>, meters: &Mete
         meters.queued.decrement(1);
         meters.queue_wait.record(call.queued.elapsed());
         let start = Instant::now();
-        let outputs = state.run(call.inputs);
+        let inputs = call.inputs;
+        // The state is dropped after a panic, so nothing observes it half-updated.
+        let outputs = catch_unwind(AssertUnwindSafe(|| state.run(inputs)));
         meters.run.record(start.elapsed());
-        let _ = call.done.send(outputs);
+        match outputs {
+            Ok(outputs) => {
+                let _ = call.done.send(outputs);
+            }
+            Err(panic) => {
+                meters.panics.increment(1);
+                let _ = call.done.send(Err(format_err!(
+                    "A pool worker panicked running the call: {}",
+                    panic_message(&*panic)
+                )));
+                state = match inner.spawn() {
+                    Ok(state) => state,
+                    Err(e) => {
+                        log::error!("A pool worker could not replace its state, it stops: {e:?}");
+                        return;
+                    }
+                };
+            }
+        }
     }
+}
+
+fn panic_message(panic: &(dyn Any + Send)) -> &str {
+    panic
+        .downcast_ref::<&str>()
+        .copied()
+        .or_else(|| panic.downcast_ref::<String>().map(|s| s.as_str()))
+        .unwrap_or("no message")
 }
 
 impl Debug for PooledRunnable {
@@ -281,5 +328,114 @@ impl State for PooledStateHandle {
 
     fn runnable(&self) -> &dyn Runnable {
         &self.runnable
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    use super::*;
+
+    /// Answers its input as is, and panics on a negative one. Spawns succeed
+    /// until `spawnable` of them have.
+    #[derive(Clone, Debug)]
+    struct Panicky {
+        spawned: Arc<AtomicUsize>,
+        spawnable: usize,
+        properties: HashMap<String, Arc<Tensor>>,
+    }
+
+    #[derive(Clone, Debug)]
+    struct PanickyState(Panicky);
+
+    impl Panicky {
+        fn new(spawnable: usize) -> Panicky {
+            let properties = [("tract.name".to_string(), rctensor0("panicky".to_string()))].into();
+            Panicky { spawned: Arc::default(), spawnable, properties }
+        }
+
+        fn spawned(&self) -> usize {
+            self.spawned.load(Ordering::SeqCst)
+        }
+    }
+
+    impl Runnable for Panicky {
+        fn spawn(&self) -> TractResult<Box<dyn State>> {
+            ensure!(self.spawned.fetch_add(1, Ordering::SeqCst) < self.spawnable, "No more states");
+            Ok(Box::new(PanickyState(self.clone())))
+        }
+
+        fn properties(&self) -> &HashMap<String, Arc<Tensor>> {
+            &self.properties
+        }
+
+        fn typed_plan(&self) -> Option<&Arc<TypedSimplePlan>> {
+            None
+        }
+
+        fn typed_model(&self) -> Option<&Arc<TypedModel>> {
+            None
+        }
+    }
+
+    impl State for PanickyState {
+        fn run(&mut self, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+            if inputs[0].cast_to_scalar::<f32>()? < 0. {
+                panic!("negative input");
+            }
+            Ok(inputs)
+        }
+
+        fn runnable(&self) -> &dyn Runnable {
+            &self.0
+        }
+    }
+
+    fn call(pool: &PooledRunnable, x: f32) -> TractResult<f32> {
+        let outputs = pool.run(tvec!(tensor0(x).into_tvalue()))?;
+        outputs[0].cast_to_scalar::<f32>()
+    }
+
+    #[test]
+    fn a_panicking_call_fails_and_its_worker_gets_a_fresh_state() -> TractResult<()> {
+        use metrics_util::debugging::{DebugValue, DebuggingRecorder};
+        let recorder = DebuggingRecorder::new();
+        let inner = Panicky::new(usize::MAX);
+        let pool = metrics::with_local_recorder(&recorder, || {
+            PooledRunnable::wrap(Arc::new(inner.clone()), 2, 4)
+        })?;
+        assert_eq!(inner.spawned(), 2);
+        for round in 0..3 {
+            let e = call(&pool, -1.).unwrap_err();
+            assert!(format!("{e}").contains("negative input"), "{e}");
+            assert_eq!(call(&pool, round as f32)?, round as f32);
+        }
+        assert_eq!(inner.spawned(), 5);
+        let panics = recorder.snapshotter().snapshot().into_vec().into_iter().find_map(
+            |(key, _, _, value)| {
+                (key.key().name() == "tract_pool_worker_panics_total").then_some(value)
+            },
+        );
+        assert_eq!(panics, Some(DebugValue::Counter(3)));
+        Ok(())
+    }
+
+    #[test]
+    fn a_worker_failing_to_replace_its_state_stops() -> TractResult<()> {
+        let inner = Panicky::new(1);
+        let pool = PooledRunnable::wrap(Arc::new(inner.clone()), 1, 4)?;
+        assert_eq!(call(&pool, 1.)?, 1.);
+        assert!(call(&pool, -1.).is_err());
+        // Queued before the worker stops, dropped with the queue; after, refused.
+        for _ in 0..3 {
+            assert!(call(&pool, 1.).is_err());
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn a_failing_spawn_fails_the_wrap() {
+        assert!(PooledRunnable::wrap(Arc::new(Panicky::new(2)), 3, 4).is_err());
     }
 }
