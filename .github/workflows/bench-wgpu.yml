@@ -1,6 +1,6 @@
 name: wgpu bench
 
-# Nightly wgpu bench on entangled (the 4060 box), over Vulkan: ci/benches-wgpu.toml on the wgpu
+# Nightly wgpu bench on entangled (the 4060 box), over Vulkan: ci/benches.toml on the wgpu
 # runtime, appended to bench-data as device i9-11900kb_rtx-4060_wgpu. Scheduled at 01:00 UTC,
 # in the box's idle window before the 03:00 examples and the 04:00 CLI nightly.
 
@@ -61,7 +61,7 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
-            --manifest ci/benches-wgpu.toml \
+            --manifest ci/benches.toml --runtimes wgpu \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \
             --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu \

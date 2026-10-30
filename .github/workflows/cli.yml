@@ -741,7 +741,7 @@ jobs:
         include: ${{ fromJSON(needs.prepare.outputs.boxes_apple) }}
     steps: *bench-steps
 
-  # --- `/ci bench wgpu`: ci/benches-wgpu.toml on the 4060 box over Vulkan, against the
+  # --- `/ci bench wgpu`: the wgpu runs of ci/benches.toml on the 4060 box over Vulkan, against the
   # nightly wgpu series (bench-wgpu.yml). Its own build: the wgpu runtime stays out of the
   # binary the other boxes bench.
   build-wgpu:
@@ -792,7 +792,7 @@ jobs:
         run: |
           chmod +x tract-cli/tract
           tract-cli/tract bench-suite \
-            --manifest ci/benches-wgpu.toml \
+            --manifest ci/benches.toml --runtimes wgpu \
             ${SELECT:+--select "$SELECT"} \
             --bench-data bench-ref \
             --thresholds ci/bench-thresholds.toml \

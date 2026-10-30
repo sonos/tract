@@ -24,8 +24,9 @@ cargo run -p tract-cli --features bench-suite -- \
     bench-suite --manifest ci/benches.toml --skip-runtimes
 ```
 
-`--skip-runtimes` keeps it to the plain-CPU net benches; drop it to also sweep the
-accelerator/LLM benches on whatever backends the machine has.
+`--skip-runtimes` keeps it to the plain CPU runs of the net benches; drop it to also run
+their other runtimes and the LLM/large-model benches on whatever backends the machine has,
+or pick runtimes with `--runtimes cpu,wgpu`.
 
 ## Model mirror (http)
 
