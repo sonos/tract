@@ -1,0 +1,37 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Sliding-window causal SDPA, per position: each query sees itself and the
+# 4 positions before it (`0 <= i - j < 5`), the Mistral / Mimi window shape.
+#
+# The mask has no chunk divisor, so it reads as chunk 1 with band [0, 4];
+# `lt(diff, 5)` comes out of core as `5 >= diff + 1`, the constant folding
+# into the upper bound.  Any pulse fits a chunk-1 mask: Blockify rewrites
+# over one chunk per pulse, the window widening to whole pulses while the
+# per-position predicate keeps the exact band.
+
+graph network(a, b, c) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    c = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+
+    pos  = tract_core_range(0, tract_core_shape_of(a)[0], step = 1);
+    row  = unsqueeze(pos, axes = [1]);
+    col  = unsqueeze(pos, axes = [0]);
+    diff = row - col;
+
+    past   = ge(diff, 0);
+    recent = lt(diff, 5);
+    window = and(past, recent);
+
+    attn = tract_transformers_scaled_masked_softmax(scores, window, scale = 0.5, post_softmax_mask = false);
+
+    output = tract_core_einsum([attn, c], expr = "ij,jd->id", acc = "f32");
+}
