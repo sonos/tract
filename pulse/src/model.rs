@@ -10,51 +10,26 @@ use tract_pulse_opl::tract_core::ops::source::TypedSource;
 pub type PulsedModel = Graph<PulsedFact, Box<dyn PulsedOp>>;
 pub type PulsedNode = Node<PulsedFact, Box<dyn PulsedOp>>;
 
-/// Pre-flight check: reject models with wires whose size is superlinear in the
-/// streaming symbol but have no `region_of_interest` annotation.
+/// Reject a model still holding a wire that depends on the streaming symbol
+/// in more than one dimension (e.g. `[T, T]` attention scores).
 ///
-/// A wire is superlinear when the streaming symbol appears in more than one
-/// shape dimension (e.g. `[T, T]` or `[T, 2T-1]`).  Such wires cannot be
-/// pulsified unless ROI narrows the live region to linear size.
-fn check_no_unannotated_superlinear_wires(model: &TypedModel, symbol: &Symbol) -> TractResult<()> {
+/// Run on the model about to be pulsified, after Blockify: a quadratic section
+/// Blockify recognised is rewritten with a single streaming axis, so a wire
+/// left quadratic is one it did not recognise.  The pulsifier would give such
+/// a wire one streaming axis and size the other by the pulse, computing it
+/// block-local to each pulse, which is wrong for any mask reaching across
+/// pulses.
+fn check_no_quadratic_wires(model: &TypedModel, symbol: &Symbol) -> TractResult<()> {
     for node in &model.nodes {
         for (slot, output) in node.outputs.iter().enumerate() {
-            let streaming_dims: usize =
+            let streaming_dims =
                 output.fact.shape.iter().filter(|d| d.symbols().contains(symbol)).count();
-            if streaming_dims <= 1
-                || output.fact.region_of_interest.is_some()
-                || output.fact.uniform_tdim.is_some()
-                || output.fact.konst.is_some()
-            {
-                continue;
-            }
-            // Avoid false positives: if any input to this node already carries
-            // an ROI or uniform_tdim that mentions the streaming symbol, the
-            // consumer pulsifier can typically derive what it needs from that
-            // annotation without one on this wire (e.g. Iff outputs inherit
-            // the cond/scores ROI structurally; Softmax output inherits its
-            // input's ROI; MultiBroadcastTo fills inherit the broadcast target
-            // ROI).  Only ops whose *inputs* are all unannotated are genuine
-            // ROI-propagation gaps.
-            let any_input_annotated = node.inputs.iter().any(|inp| {
-                model
-                    .outlet_fact(*inp)
-                    .map(|f| f.region_of_interest.is_some() || f.uniform_tdim.is_some())
-                    .unwrap_or(false)
-            });
-            if any_input_annotated {
-                continue;
-            }
-            log::warn!(
-                "Wire {}/{} ({:?}) has shape {:?} which is superlinear in streaming \
-                 symbol {} ({} dimensions depend on it) but carries no region_of_interest \
-                 annotation, and none of its inputs do either. Pulsification may fail.",
-                node.name,
-                slot,
-                OutletId::new(node.id, slot),
+            ensure!(
+                streaming_dims <= 1 || output.fact.konst.is_some(),
+                "Output {slot} of {node} has shape {:?}, quadratic in streaming symbol \
+                 {symbol}, and blockify found no mask form to stream it with; pulsifying it \
+                 would compute it block-local to each pulse",
                 output.fact.shape,
-                symbol,
-                streaming_dims,
             );
         }
     }
@@ -188,7 +163,6 @@ impl PulsedModelExt for PulsedModel {
         symbol: Symbol,
         pulse: &TDim,
     ) -> TractResult<(PulsedModel, HashMap<OutletId, OutletId>)> {
-        check_no_unannotated_superlinear_wires(source, &symbol)?;
         use tract_core::optim::TypedPass;
         let mut blockified = source.clone();
         // Mirror PulseTransform's pre-fold so callers entering through
@@ -202,6 +176,7 @@ impl PulsedModelExt for PulsedModel {
             }
             _ => (symbol, pulse.clone()),
         };
+        check_no_quadratic_wires(&blockified, &stream_sym)?;
         let pulsifiers = crate::ops::OpPulsifier::inventory();
         let (mut pulsed, mapping) = Pulsifier(stream_sym, pulse_dim, pulsifiers)
             .translate_model_with_mappings(&blockified)?;

@@ -1,0 +1,17 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Unmasked attention: every position reads every other, past and future, so
+# the [T, T] scores have no streaming form.  Pulsification must refuse it
+# rather than compute the attention within each pulse.
+graph network(a, b) -> (output)
+{
+    a = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    b = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    scores = tract_core_einsum([a, b], expr = "id,jd->ij", acc = "f32");
+    attn   = softmax(scores, axes = [1]);
+    output = tract_core_einsum([attn, b], expr = "ij,jd->id", acc = "f32");
+}
