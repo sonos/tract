@@ -1,0 +1,5 @@
+[pooled]
+runtime = "cpu"
+
+[pooled.knobs]
+TRACT_POOL_WORKERS = 2
