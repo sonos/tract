@@ -832,6 +832,32 @@ fn rms_norm_runs_on_device() -> TractResult<()> {
     Ok(())
 }
 
+#[test]
+fn leaky_relu_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::nn::leaky_relu;
+    use tract_gpu::ops::leaky_relu::GpuLeakyRelu;
+    for (dt, alpha) in
+        [(f32::datum_type(), 0.1f32), (f32::datum_type(), 0.01), (f16::datum_type(), 0.2)]
+    {
+        let len = 10000;
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", dt.fact([len]))?;
+        let y = model.wire_node("act", leaky_relu(alpha), &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        ensure!(
+            gpu.nodes().iter().any(|n| n.op_is::<GpuLeakyRelu>()),
+            "leaky ReLU stayed on the CPU"
+        );
+        let mut values = fill(9, len);
+        values[0] = 0.0;
+        let input = Tensor::from_shape(&[len], &values)?.cast_to_dt(dt)?.into_owned();
+        gpu_vs_cpu(model, input).with_context(|| format!("{dt:?} alpha {alpha}"))?;
+    }
+    Ok(())
+}
+
 /// Attention scores under a causal `-inf` mask broadcast over batch and
 /// heads, with rows both shorter and longer than one workgroup.
 #[test]

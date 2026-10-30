@@ -10,6 +10,7 @@ pub mod gemv_pair;
 pub mod group_norm;
 pub mod ingest;
 pub mod layer_norm;
+pub mod leaky_relu;
 pub mod matmul;
 pub mod nan_replace;
 pub mod pool;
