@@ -185,6 +185,8 @@ def legs():
     cli = "cli.yml"
     leg(cli, "build x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu",
         [cli_spec("bench-suite", True)], foreign_inventory=True)
+    leg(cli, "build x86_64-unknown-linux-gnu-wgpu", "x86_64-unknown-linux-gnu",
+        [cli_spec("bench-suite,wgpu", True)], foreign_inventory=True)
     leg(cli, "build aarch64-unknown-linux-gnu-stretch", "aarch64-unknown-linux-gnu",
         [cli_spec(f"{CROSS_CLI},bench-suite,cuda-12000")], paths=STRETCH_PATHS)
     leg(cli, "build-macos", "aarch64-apple-darwin",
@@ -202,7 +204,9 @@ def legs():
                 paths=[f"harness/{case}/**"])
     for box, triple, features in [
         ("apple-m1-max", "aarch64-apple-darwin", f"{CPU},metal"),
-        ("i9-11900kb_rtx-4060", "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"),
+        ("i9-11900kb_rtx-4060", "x86_64-unknown-linux-gnu", CPU),
+        ("i9-11900kb_rtx-4060_cuda", "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"),
+        ("i9-11900kb_rtx-4060_wgpu", "x86_64-unknown-linux-gnu", f"{CPU},wgpu"),
         ("i9-9900k", "x86_64-unknown-linux-gnu", CPU),
         ("jetson-orin-nx", "aarch64-unknown-linux-gnu", f"{CPU},cuda-12000"),
     ]:
