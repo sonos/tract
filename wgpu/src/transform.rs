@@ -22,6 +22,7 @@ use tract_gpu::ops::nan_replace::GpuNanReplace;
 use tract_gpu::rewrite_rules::float_gather_indices::float_gather_nd_indices;
 use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
+use tract_gpu::rewrite_rules::rms_norm::fuse_rms_norm_residual;
 use tract_gpu::rewrite_rules::rms_norm::fuse_rms_norm_scale;
 use tract_gpu::rewrite_rules::rms_norm::fuse_rms_norm_split_scale;
 use tract_gpu::rewrite_rules::rms_norm::fuse_scaled_rms_norm_in_cast;
@@ -106,6 +107,10 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("start_elementwise_chain", crate::rewrite_rules::start_elementwise_chain)
             .with_rule_for("start_binary_chain", crate::rewrite_rules::start_binary_chain)
             .with_rule_for("grow_elementwise_chain", crate::rewrite_rules::grow_elementwise_chain)
+            .rewrite(&(), model)?;
+        // A residual add only folds once it has stayed a dispatch of its own.
+        Rewriter::default()
+            .with_rule_for("fuse_rms_norm_residual", fuse_rms_norm_residual)
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_gemv_pair", crate::rewrite_rules::fuse_gemv_pair)
