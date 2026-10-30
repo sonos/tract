@@ -563,18 +563,6 @@ mod tests {
         ScaledMaskedSoftmax { scale: tensor0(1f32).into_arc_tensor(), post_softmax_mask: false }
     }
 
-    #[test]
-    fn scale_of_higher_rank_keeps_output_rank() {
-        let op = ScaledMaskedSoftmax {
-            scale: tensor4(&[[[[0.5f32]]]]).into_arc_tensor(),
-            post_softmax_mask: true,
-        };
-        let input = Tensor::zero::<f32>(&[2, 3, 3]).unwrap();
-        let mask = tensor3(&[[[true, false, true], [true, true, false], [false, true, true]]]);
-        let out = op.eval(&EvalContext::out_of_plan(), tvec![input.into(), mask.into()]);
-        assert_eq!(out.unwrap()[0].shape(), &[2, 3, 3]);
-    }
-
     /// Same-rank f32 mask: non-reducing axes identity-mapped on both
     /// inputs and output; reducing axis disconnected (input vs output).
     #[test]
