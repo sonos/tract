@@ -18,6 +18,8 @@ where
     input: ArrayD<F>,
     mask: ArrayD<F>,
     scale: F,
+    /// Rank of the single-valued scale tensor, which may exceed the input's.
+    scale_rank: usize,
 }
 
 impl<F> Arbitrary for ScaledMaskedSoftmaxProblem<F>
@@ -29,8 +31,8 @@ where
 
     fn arbitrary_with(_params: Self::Parameters) -> Self::Strategy {
         // ScaledMaskSoftmax accepts ranks 2 to 5
-        (vec(1usize..20, 2..=5), any::<bool>(), any::<bool>())
-            .prop_flat_map(|(q_shape, broadcast_batch, broadcast_head)| {
+        (vec(1usize..20, 2..=5), any::<bool>(), any::<bool>(), 0usize..=5)
+            .prop_flat_map(|(q_shape, broadcast_batch, broadcast_head, scale_rank)| {
                 let mut m_shape = q_shape.clone();
                 if broadcast_batch {
                     m_shape[0] = 1
@@ -39,7 +41,7 @@ where
                     m_shape[1] = 1
                 };
                 (tensor::<F>(&q_shape), tensor::<f32>(&m_shape), -10..=10i32).prop_map(
-                    |(input, mask, scale)| {
+                    move |(input, mask, scale)| {
                         let mask = mask.mapv(|x| {
                             if x >= 0. {
                                 F::from(0).unwrap()
@@ -52,6 +54,7 @@ where
                             input: input.into_dimensionality().unwrap(),
                             mask: mask.into_dimensionality().unwrap(),
                             scale: F::from(scale).unwrap(),
+                            scale_rank,
                         }
                     },
                 )
@@ -76,7 +79,7 @@ where
         let output = model.wire_node(
             "scaled_masked_softmax",
             ScaledMaskedSoftmax {
-                scale: tensor0(self.scale).into_arc_tensor(),
+                scale: tensor0(self.scale).into_shape(&vec![1; self.scale_rank])?.into_arc_tensor(),
                 post_softmax_mask: false,
             },
             &[input, mask],
@@ -159,6 +162,7 @@ pub fn suite() -> TractResult<TestSuite> {
             input: tensor4(&[[[[0f32]]]]).into_plain_array()?.into_dimensionality()?,
             mask: tensor4(&[[[[0f32]]]]).into_plain_array()?.into_dimensionality()?,
             scale: 1f32,
+            scale_rank: 0,
         },
     );
 
@@ -172,6 +176,7 @@ pub fn suite() -> TractResult<TestSuite> {
                 .into_plain_array()?
                 .into_dimensionality()?,
             scale: 1f32,
+            scale_rank: 0,
         },
     );
 
@@ -181,6 +186,7 @@ pub fn suite() -> TractResult<TestSuite> {
             input: arr4(&[[[[0f32, 0f32]]]]).into_dimensionality()?,
             mask: arr4(&[[[[f32::NEG_INFINITY, 0f32]]]]).into_dimensionality()?,
             scale: 1f32,
+            scale_rank: 0,
         },
     );
 
@@ -190,6 +196,20 @@ pub fn suite() -> TractResult<TestSuite> {
             input: tensor4(&[[[[0f32, 0f32]]]]).into_plain_array()?.into_dimensionality()?,
             mask: tensor4(&[[[[0f32, 0f32]]]]).into_plain_array()?.into_dimensionality()?,
             scale: 1f32,
+            scale_rank: 0,
+        },
+    );
+    suite.add(
+        "scale_of_higher_rank",
+        ScaledMaskedSoftmaxProblem {
+            input: tensor3(&[[[0f32, 1f32], [2f32, 3f32]], [[4f32, 5f32], [6f32, 7f32]]])
+                .into_plain_array()?
+                .into_dimensionality()?,
+            mask: tensor3(&[[[0f32, f32::NEG_INFINITY], [0f32, 0f32]]])
+                .into_plain_array()?
+                .into_dimensionality()?,
+            scale: 0.5f32,
+            scale_rank: 4,
         },
     );
     Ok(suite)
