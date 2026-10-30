@@ -28,7 +28,8 @@ struct Manifest {
 struct Bench {
     kind: Kind,
     name: String,
-    /// Series label when `runtimes` is empty (a single plain CPU run).
+    /// Series label of the plain CPU run. Set on the plain net benches, which every board
+    /// and the wasm build run; unset on the large-model benches, which only sweep `runtimes`.
     #[serde(default)]
     variant: Option<String>,
     /// Model path relative to the cache dir (and to `base_url` when fetched).
@@ -42,10 +43,15 @@ struct Bench {
     /// (`"-i 264,40 --pulse 24"`), so a working argument line can be pasted as-is.
     #[serde(default, deserialize_with = "de_args")]
     args: Vec<String>,
-    /// Runtimes to sweep. Empty: one plain CPU run labelled `variant`. Non-empty:
-    /// one run per available runtime, each labelled by the runtime name.
+    /// Runtimes to sweep, one run per available runtime. Empty: the plain CPU run alone.
+    /// With a `variant`, `cpu` is the plain CPU run labelled `variant` and any other
+    /// runtime is labelled `{variant}_{runtime}`; without, each run is labelled by its
+    /// runtime name.
     #[serde(default)]
     runtimes: Vec<RuntimeKind>,
+    /// Runtimes of `runtimes` this bench runs on only where a `nightly_only` bench does.
+    #[serde(default)]
+    nightly_only_runtimes: Vec<RuntimeKind>,
     /// CPU thread counts to additionally sweep, on the runtime-less / cpu path
     /// only. Additive: the base single-thread series is always kept so its
     /// history continues; each entry adds an independent series. `0` means "guess
@@ -104,7 +110,7 @@ fn wgpu_adapter_available() -> bool {
     false
 }
 
-#[derive(Deserialize, Clone, Copy, PartialEq)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Debug, clap::ValueEnum)]
 #[serde(rename_all = "lowercase")]
 enum RuntimeKind {
     Cpu,
@@ -223,10 +229,13 @@ pub(crate) struct BenchSuiteParams {
     /// Stream each model straight from base-url into tract (no on-disk cache); for read-only targets that pull from a model server.
     #[arg(long)]
     no_cache: bool,
-    /// Skip CPU runs: drop the runtime-less (net) benches and the cpu runtime of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box.
+    /// Skip CPU runs: drop the plain CPU runs and the cpu runtime of the rest. For GPU-only devices whose CPU is redundant with another arm64/x86 box.
     #[arg(long)]
     skip_cpu: bool,
-    /// Run only the plain-CPU (runtime-less) net benches, dropping every bench that declares a runtime sweep (the LLM + accelerator/large-model suite). For small embedded CPU targets.
+    /// Only run on these runtimes (comma list); a plain CPU run counts as `cpu`. For a box whose runtimes are benched as separate legs.
+    #[arg(long, value_delimiter = ',', conflicts_with = "skip_cpu")]
+    runtimes: Option<Vec<RuntimeKind>>,
+    /// Run only the plain CPU runs of the net benches, dropping their accelerator runs and every large-model bench (those without a `variant`). For small embedded CPU targets.
     #[arg(long)]
     skip_runtimes: bool,
     /// Load-and-run every bench once on all available runtimes (CPU + accelerators), ignoring per-bench runtime sweeps and timing. Collects failures without stopping and exits non-zero if any run fails. A correctness gate, not a benchmark.
@@ -365,7 +374,13 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         ModelSource::Cache(cache_dir.clone())
     };
     let no_fetch = params.no_fetch;
-    let skip_cpu = params.skip_cpu;
+    let runtimes = match (&params.runtimes, params.skip_cpu) {
+        (Some(r), _) => r.clone(),
+        (None, true) => vec![RuntimeKind::Metal, RuntimeKind::Cuda, RuntimeKind::Wgpu],
+        (None, false) => {
+            vec![RuntimeKind::Cpu, RuntimeKind::Metal, RuntimeKind::Cuda, RuntimeKind::Wgpu]
+        }
+    };
     let skip_runtimes = params.skip_runtimes;
     let smoke = params.smoke;
     let filter = params.filter.as_deref();
@@ -400,10 +415,12 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
         if select.is_some_and(|pats| !pats.iter().any(|p| glob_match(p, &bench.name))) {
             continue;
         }
-        if bench.nightly_only && samples == 0 && !smoke && select.is_none() && only.is_none() {
+        let pr_mode = samples == 0 && !smoke && select.is_none() && only.is_none();
+        if bench.nightly_only && pr_mode {
             continue;
         }
-        if (skip_runtimes || child.is_wasm()) && !bench.runtimes.is_empty() {
+        let plain_only = skip_runtimes || child.is_wasm();
+        if plain_only && bench.variant.is_none() {
             continue;
         }
         if device.is_some_and(|d| bench.skip_devices.iter().any(|s| s == d)) {
@@ -420,7 +437,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
             [RuntimeKind::Cpu, RuntimeKind::Metal, RuntimeKind::Cuda]
                 .into_iter()
                 .filter(|b| b.available())
-                .filter(|b| !((skip_cpu || gpu_only) && matches!(b, RuntimeKind::Cpu)))
+                .filter(|b| runtimes.contains(b))
+                .filter(|b| !(gpu_only && matches!(b, RuntimeKind::Cpu)))
                 .filter(|b| !child.is_wasm() || matches!(b, RuntimeKind::Cpu))
                 .map(|b| {
                     let label = match &bench.variant {
@@ -430,25 +448,8 @@ pub fn handle(matches: &clap::ArgMatches) -> TractResult<()> {
                     (Some(b), label)
                 })
                 .collect()
-        } else if bench.runtimes.is_empty() {
-            // Runtime-less benches are a plain CPU run; --skip-cpu drops them entirely.
-            if skip_cpu {
-                vec![]
-            } else {
-                let variant = bench
-                    .variant
-                    .clone()
-                    .with_context(|| format!("{}: no variant and no runtimes", bench.name))?;
-                vec![(None, variant)]
-            }
         } else {
-            bench
-                .runtimes
-                .iter()
-                .filter(|b| b.available())
-                .filter(|b| !(skip_cpu && matches!(**b, RuntimeKind::Cpu)))
-                .map(|b| (Some(*b), b.label().to_string()))
-                .collect()
+            sweep(bench, &runtimes, pr_mode, plain_only, RuntimeKind::available)?
         };
 
         // Augment cpu-eligible runs with the requested thread sweep. The base run
@@ -843,6 +844,36 @@ fn glob_match(pattern: &str, name: &str) -> bool {
         }
     }
     rest.ends_with(last)
+}
+
+/// The (runtime, label) runs of `bench` outside smoke mode: its `runtimes` (the plain CPU run
+/// when empty) kept to `runtimes`, minus its `nightly_only_runtimes` in PR mode, minus all
+/// but the plain CPU run with `plain_only`, minus the runtimes `available` rejects. The
+/// plain CPU run has no runtime and is labelled `variant`; with a `variant`, another
+/// runtime is labelled `{variant}_{runtime}`, and without one, by the runtime name.
+fn sweep(
+    bench: &Bench,
+    runtimes: &[RuntimeKind],
+    pr_mode: bool,
+    plain_only: bool,
+    available: impl Fn(&RuntimeKind) -> bool,
+) -> TractResult<Vec<(Option<RuntimeKind>, String)>> {
+    let swept: &[RuntimeKind] =
+        if bench.runtimes.is_empty() { &[RuntimeKind::Cpu] } else { &bench.runtimes };
+    swept
+        .iter()
+        .copied()
+        .filter(|b| runtimes.contains(b))
+        .filter(|b| !(pr_mode && bench.nightly_only_runtimes.contains(b)))
+        .filter(|b| !plain_only || matches!(b, RuntimeKind::Cpu))
+        .filter(|b| available(b))
+        .map(|b| match (&bench.variant, b) {
+            (Some(v), RuntimeKind::Cpu) => Ok((None, v.clone())),
+            (Some(v), b) => Ok((Some(b), format!("{v}_{}", b.label()))),
+            (None, b) if !bench.runtimes.is_empty() => Ok((Some(b), b.label().to_string())),
+            (None, _) => bail!("{}: no variant and no runtimes", bench.name),
+        })
+        .collect()
 }
 
 /// The id of one (bench, variant) run, as its metric keys carry it: see
@@ -1394,6 +1425,43 @@ fn set_governor() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sweep_labels() {
+        use RuntimeKind::*;
+        let bench = |toml: &str| -> Bench {
+            let m: Manifest = toml::from_str(&format!(
+                "base_url = \"\"\n[[bench]]\nkind = \"net\"\nname = \"n\"\nmodel = \"m\"\n{toml}"
+            ))
+            .unwrap();
+            m.benches.into_iter().next().unwrap()
+        };
+        let all = [Cpu, Metal, Cuda, Wgpu];
+        let labels = |b: &Bench, rt: &[RuntimeKind], pr: bool, plain: bool| {
+            sweep(b, rt, pr, plain, |_| true)
+                .unwrap()
+                .into_iter()
+                .map(|(r, l)| (r.map(|r| r.label()), l))
+                .collect::<Vec<_>>()
+        };
+        let plain = bench("variant = \"pass\"");
+        assert_eq!(labels(&plain, &all, true, false), [(None, "pass".to_string())]);
+        assert!(labels(&plain, &[Cuda], true, false).is_empty());
+        let both = bench("variant = \"pass\"\nruntimes = [\"cpu\", \"wgpu\"]");
+        assert_eq!(
+            labels(&both, &all, true, false),
+            [(None, "pass".to_string()), (Some("wgpu"), "pass_wgpu".to_string())]
+        );
+        assert_eq!(labels(&both, &[Wgpu], true, false), [(Some("wgpu"), "pass_wgpu".to_string())]);
+        assert_eq!(labels(&both, &all, true, true), [(None, "pass".to_string())]);
+        let large = bench("runtimes = [\"cpu\", \"cuda\"]\nnightly_only_runtimes = [\"cuda\"]");
+        assert_eq!(
+            labels(&large, &all, false, false),
+            [(Some("cpu"), "cpu".to_string()), (Some("cuda"), "cuda".to_string())]
+        );
+        assert_eq!(labels(&large, &all, true, false), [(Some("cpu"), "cpu".to_string())]);
+        assert!(sweep(&bench(""), &all, true, false, |_| true).is_err());
+    }
 
     #[test]
     fn failure_reasons() {
