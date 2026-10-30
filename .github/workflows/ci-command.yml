@@ -185,7 +185,7 @@ jobs:
               if (patterns) {
                 // Each pattern must name a bench of the PR head's manifest for that leg, so a
                 // typo is answered here rather than by a run whose every bench leg fails.
-                const manifestPath = inputs.scope === 'wgpu' ? 'ci/benches-wgpu.toml' : 'ci/benches.toml';
+                const manifestPath = 'ci/benches.toml';
                 let names = [];
                 try {
                   const { data } = await github.rest.repos.getContent({

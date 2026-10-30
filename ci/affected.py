@@ -37,7 +37,6 @@ IGNORED = [
     "**/*.png",
     "**/*.svg",
     "**/*.xlsx",
-    "ci/benches-wgpu.toml",
     "ci/llm-*",
     "ci/llm-expectations-*/**",
     "ci/asan.sh",
