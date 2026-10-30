@@ -9,6 +9,7 @@ use fs_err as fs;
 use nu_ansi_term::Color::*;
 use tract_core::ops::cnn::conv::Im2Col;
 use tract_core::ops::matmul::pack::OptMatMulPack;
+use tract_core::pool::PooledRunnable;
 use tract_core::tract_data::itertools::izip;
 use tract_core::unbatched::UnbatchedRunnable;
 use tract_data::npy::npy_descr;
@@ -319,7 +320,9 @@ fn run_regular(
     let streams: usize =
         sub_matches.get_one::<String>("streams").map(|s| s.parse()).transpose()?.unwrap_or(1);
     let own_states = params.laned().is_some()
-        || params.runnable.as_ref().is_some_and(|runnable| runnable.is::<UnbatchedRunnable>());
+        || params.runnable.as_ref().is_some_and(|runnable| {
+            runnable.is::<UnbatchedRunnable>() || runnable.is::<PooledRunnable>()
+        });
     if streams > 1 || own_states {
         return crate::streams::run(params, sub_matches, streams);
     }
