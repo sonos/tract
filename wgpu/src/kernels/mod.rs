@@ -8,6 +8,7 @@ pub mod deconv;
 pub mod element_wise;
 pub mod gather;
 pub mod gather_nd;
+pub mod gelu_approximate;
 pub mod gemv_pair;
 pub mod group_norm;
 pub mod ingest;
