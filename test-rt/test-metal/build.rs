@@ -13,7 +13,8 @@ fn reaches_gemm(path: &[String]) -> bool {
                 .iter()
                 .any(|op| name.contains(op))
         }
-        "unit" => ["bin_einsum", "sdpa", "moe_ffn", "matmul_q40"].contains(&path[1].as_str()),
+        "unit" => ["bin_einsum", "sdpa", "moe_ffn", "matmul_q40", "matmul_f16", "matmul_rounding"]
+            .contains(&path[1].as_str()),
         "pulse" => path[1] == "einsum",
         _ => true,
     }
@@ -27,12 +28,12 @@ fn gemm_subset(suite: &infra::TestSuite) -> infra::TestSuite {
 
 fn main() {
     suite::suite().test_runtime("mlx", "suite::suite()", "runtime()", "Approximation::Approximate");
-    ggml_suite::suite().test_runtime(
-        "none",
-        "ggml_suite::suite()",
-        "runtime()",
-        "Approximation::Approximate",
+    // matmul_f16 holds only when its products go through the ggml GEMV.
+    let mut none = ggml_suite::suite().clone();
+    none.ignore(
+        &|t| matches!(t, [suite, section, ..] if suite == "unit" && section == "matmul_f16"),
     );
+    none.test_runtime("none", "ggml_suite::suite()", "runtime()", "Approximation::Approximate");
 
     for gemm in ["mlx", "mfa", "mpp"] {
         gemm_subset(suite::suite()).test_runtime(

@@ -126,52 +126,58 @@ pub fn sync_inputs_if_required(
     mapping: &HashMap<OutletId, OutletId>,
     sync_kind: DeviceSyncKind,
 ) -> TractResult<TVec<OutletId>> {
-    let mut mapped_inputs = tvec![];
-    for (i_idx, i) in node.inputs.iter().enumerate() {
-        let in_fact = model.outlet_fact(mapping[i])?;
-        match sync_kind {
-            DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
-                mapped_inputs.push(
-                    model.wire_node(
-                        format!("{}.to-cpu-{i_idx}", node.name),
-                        DeviceSync::new(sync_kind),
-                        &[mapping[i]],
-                    )?[0],
-                );
-            }
-            DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
-                // A konst fact does not make its producer a Const: a source or CPU op
-                // with a zero-volume output carries one and still yields a host tensor.
-                if let Some(ref konst) = in_fact.konst
-                    && konst.as_device_tensor().is_none()
-                {
-                    let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
-                    let device_fact = DeviceFact::from_host(in_fact.clone())?;
-                    let op =
-                        Const::new_with_exotic_fact(Arc::new(device_konst), Box::new(device_fact))?;
-                    mapped_inputs.push(
-                        model.wire_node(format!("{}.device-const-{i_idx}", node.name), op, &[])?[0],
-                    );
-                    continue;
-                }
-                ensure!(
-                    in_fact.datum_type.is_copy(),
-                    "Only copy DatumType can be sync to Device: {:?}",
-                    in_fact.datum_type
-                );
+    node.inputs
+        .iter()
+        .enumerate()
+        .map(|(i_idx, input)| {
+            let direction = match sync_kind {
+                DeviceSyncKind::ToHost => "cpu",
+                DeviceSyncKind::ToDevice => "device",
+            };
+            sync_outlet_if_required(
+                model,
+                format!("{}.to-{direction}-{i_idx}", node.name),
+                mapping[input],
+                sync_kind,
+            )
+        })
+        .collect()
+}
 
-                mapped_inputs.push(
-                    model.wire_node(
-                        format!("{}.to-device-{i_idx}", node.name),
-                        DeviceSync::new(sync_kind),
-                        &[mapping[i]],
-                    )?[0],
-                );
-            }
-            _ => mapped_inputs.push(mapping[i]),
+/// Synchronizes one outlet when its fact is on the other side of the device boundary.
+/// Constants are transferred during translation; runtime host transfers use `DeviceSync`.
+pub fn sync_outlet_if_required(
+    model: &mut TypedModel,
+    name: impl Into<String>,
+    outlet: OutletId,
+    sync_kind: DeviceSyncKind,
+) -> TractResult<OutletId> {
+    let in_fact = model.outlet_fact(outlet)?;
+    match sync_kind {
+        DeviceSyncKind::ToHost if in_fact.as_device_fact().is_some() => {
+            Ok(model.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
         }
+        DeviceSyncKind::ToDevice if in_fact.as_device_fact().is_none() => {
+            // A konst fact does not make its producer a Const: a source or CPU op
+            // with a zero-volume output carries one and still yields a host tensor.
+            if let Some(ref konst) = in_fact.konst
+                && konst.as_device_tensor().is_none()
+            {
+                let device_konst = konst.as_ref().clone().into_device()?.into_tensor();
+                let device_fact = DeviceFact::from_host(in_fact.clone())?;
+                let op =
+                    Const::new_with_exotic_fact(Arc::new(device_konst), Box::new(device_fact))?;
+                return Ok(model.wire_node(name, op, &[])?[0]);
+            }
+            ensure!(
+                in_fact.datum_type.is_copy(),
+                "Only copy DatumType can be synced to Device: {:?}",
+                in_fact.datum_type
+            );
+            Ok(model.wire_node(name, DeviceSync::new(sync_kind), &[outlet])?[0])
+        }
+        _ => Ok(outlet),
     }
-    Ok(mapped_inputs)
 }
 
 /// For model outputs that are on device, insert DeviceSync nodes to move them back to host.

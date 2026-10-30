@@ -16,7 +16,6 @@ use std::ffi::c_void;
 use std::ops::{Deref, DerefMut};
 use std::path::Path;
 use std::rc::Rc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, OnceLock, RwLock};
 
 use anyhow::{Context, anyhow};
@@ -25,6 +24,7 @@ use metal::{
     FunctionConstantValues, Library, MTLResourceOptions,
 };
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use tract_core::internal::*;
 
 thread_local! {
@@ -158,6 +158,7 @@ impl MetalContext {
         let mut cache_pipelines = self.cache_pipelines.write().map_err(|e| anyhow!("{:?}", e))?;
 
         let (library_name, func_name, constants) = key;
+        let start = std::time::Instant::now();
         let func = self.load_function(
             library_name,
             &func_name,
@@ -167,6 +168,13 @@ impl MetalContext {
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!(
+                "pipeline created: {:?}::{func_name} in {:.2} ms",
+                library_name,
+                start.elapsed().as_secs_f64() * 1e3
+            );
+        }
         cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
@@ -290,13 +298,32 @@ impl DeviceContext for MetalContext {
     }
 }
 
+/// A committed command buffer and the tensors retained until it completes.
+#[derive(Debug)]
+struct InFlightBuffer {
+    buffer: TCommandBuffer,
+    retained: Vec<DeviceTensor>,
+    kernel_names: Vec<String>,
+}
+
+/// State accumulated for the next command buffer submission.
+#[derive(Debug, Default)]
+struct OpenCommandBuffer {
+    buffer: Option<TCommandBuffer>,
+    retained: Vec<DeviceTensor>,
+    kernel_names: Vec<String>,
+    dispatches: usize,
+}
+
 #[derive(Debug)]
 pub struct MetalStream {
     context: MetalContext,
     command_queue: CommandQueue,
-    command_buffer: RefCell<Option<TCommandBuffer>>,
-    command_buffer_id: AtomicUsize,
-    retained_tensors: RefCell<Vec<DeviceTensor>>,
+    open: RefCell<OpenCommandBuffer>,
+    committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
+    command_error: RefCell<Option<String>>,
+    commit_cadence: usize,
+    max_in_flight: usize,
     profile: RefCell<Option<Rc<MetalProfileHandle>>>,
 }
 
@@ -313,9 +340,11 @@ impl MetalStream {
         Self {
             context,
             command_queue,
-            command_buffer: RefCell::new(None),
-            command_buffer_id: AtomicUsize::new(0),
-            retained_tensors: RefCell::new(vec![]),
+            open: RefCell::new(OpenCommandBuffer::default()),
+            committed_command_buffers: RefCell::new(VecDeque::new()),
+            command_error: RefCell::new(None),
+            commit_cadence: crate::tuning::TRACT_METAL_COMMIT_EVERY_N_DISPATCHES.get(),
+            max_in_flight: crate::tuning::TRACT_METAL_MAX_IN_FLIGHT.get().max(1),
             profile: RefCell::new(None),
         }
     }
@@ -358,6 +387,9 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
+        if log::log_enabled!(log::Level::Trace) {
+            self.open.borrow_mut().kernel_names.push(func_name.to_string());
+        }
         self.context.load_pipeline(library_name, func_name)
     }
 
@@ -367,17 +399,31 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
+        if log::log_enabled!(log::Level::Trace) {
+            self.open.borrow_mut().kernel_names.push(func_name.to_string());
+        }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
     pub fn retain_tensor(&self, tensor: &DeviceTensor) {
-        self.retained_tensors.borrow_mut().push(tensor.clone());
+        self.open.borrow_mut().retained.push(tensor.clone());
     }
 
     pub fn command_buffer(&self) -> TCommandBuffer {
+        let cadence = self.commit_cadence;
+        let should_commit = {
+            let open = self.open.borrow();
+            cadence > 0 && open.dispatches >= cadence && open.buffer.is_some()
+        };
+        if should_commit && let Err(error) = self.commit_current() {
+            self.command_error.borrow_mut().get_or_insert_with(|| error.to_string());
+        }
+        let mut open = self.open.borrow_mut();
+        if cadence > 0 {
+            open.dispatches += 1;
+        }
         let profile = self.profile.borrow().clone();
-        self.command_buffer
-            .borrow_mut()
+        open.buffer
             .get_or_insert_with(|| {
                 // Keep Rust's owned reference without leaving temporary
                 // ownership in the caller's (possibly absent) autorelease pool.
@@ -388,11 +434,36 @@ impl MetalStream {
             .to_owned()
     }
 
-    pub fn wait_until_completed(&self) -> TractResult<()> {
-        let Some(command_buffer) = self.command_buffer.borrow().to_owned() else { return Ok(()) };
+    fn log_completed_kernels(tag: &str, names: &[String]) {
+        if log::log_enabled!(log::Level::Trace) {
+            log::trace!("completed Metal command buffer {tag}: {names:?}");
+        }
+    }
 
-        command_buffer.end_encoding();
+    fn record_command_error(&self, buffer: &TCommandBuffer) {
+        if buffer.status() == metal::MTLCommandBufferStatus::Error {
+            self.command_error.borrow_mut().get_or_insert_with(|| {
+                format!("Metal command buffer failed on the GPU: {}", command_buffer_error(buffer))
+            });
+        }
+    }
 
+    fn check_command_error(&self) -> TractResult<()> {
+        if let Some(error) = self.command_error.borrow().as_ref() {
+            bail!("{error}");
+        }
+        Ok(())
+    }
+
+    /// Commit the current command buffer without blocking the CPU on its
+    /// completion. The next `command_buffer()` call opens a fresh one; the
+    /// queue guarantees the committed buffer executes before it. Tensors
+    /// retained so far move into the in-flight entry and are released once
+    /// that buffer completes. GPU failures remain visible to subsequent commits and waits.
+    pub fn commit_current(&self) -> TractResult<()> {
+        let Some(command_buffer) = self.open.borrow().buffer.clone() else {
+            return self.check_command_error();
+        };
         match command_buffer.status() {
             metal::MTLCommandBufferStatus::Committed
             | metal::MTLCommandBufferStatus::Scheduled
@@ -401,22 +472,49 @@ impl MetalStream {
             }
             _ => {}
         }
-        let command_buffer_id = self.command_buffer_id.load(Ordering::Relaxed);
+        command_buffer.end_encoding();
         command_buffer.commit();
-        log::trace!("Command buffer {:?} commit", command_buffer_id);
-        command_buffer.wait_until_completed();
-        log::trace!("Command buffer {:?} has completed (Blocking call)", command_buffer_id);
+        let open = std::mem::take(&mut *self.open.borrow_mut());
+        let mut committed = self.committed_command_buffers.borrow_mut();
+        committed.push_back(InFlightBuffer {
+            buffer: command_buffer,
+            retained: open.retained,
+            kernel_names: open.kernel_names,
+        });
+        loop {
+            let done = committed.front().is_some_and(|e| {
+                matches!(
+                    e.buffer.status(),
+                    metal::MTLCommandBufferStatus::Completed | metal::MTLCommandBufferStatus::Error
+                )
+            });
+            if !done && committed.len() <= self.max_in_flight {
+                break;
+            }
+            let oldest = committed.pop_front().unwrap();
+            oldest.buffer.wait_until_completed();
+            self.record_command_error(&oldest.buffer);
+            Self::log_completed_kernels("segment", &oldest.kernel_names);
 
-        // Clear local retained values used by the command buffer
-        self.retained_tensors.borrow_mut().clear();
+            drop(oldest.retained);
+        }
+        self.check_command_error()
+    }
 
-        *self.command_buffer.borrow_mut() = None;
-        anyhow::ensure!(
-            command_buffer.status() != metal::MTLCommandBufferStatus::Error,
-            "Metal command buffer {command_buffer_id:?} failed on the GPU: {}",
-            command_buffer_error(&command_buffer)
-        );
-        Ok(())
+    /// Wait for all submitted work and report any GPU failure recorded by this stream.
+    pub fn wait_until_completed(&self) -> TractResult<()> {
+        let submitted = self.commit_current();
+        let drained = std::mem::take(&mut *self.committed_command_buffers.borrow_mut());
+        if let Some(newest) = drained.back() {
+            newest.buffer.wait_until_completed();
+        }
+        for entry in drained {
+            self.record_command_error(&entry.buffer);
+            Self::log_completed_kernels("segment-tail", &entry.kernel_names);
+        }
+        *self.open.borrow_mut() = OpenCommandBuffer::default();
+        submitted?;
+        self.check_command_error()
     }
 
     pub fn capture_trace<P, F>(&self, path: P, compute: F) -> TractResult<()>
@@ -446,20 +544,7 @@ impl MetalStream {
 
 impl Drop for MetalStream {
     fn drop(&mut self) {
-        let Some(command_buffer) = self.command_buffer.borrow_mut().to_owned() else { return };
-
-        match command_buffer.status() {
-            metal::MTLCommandBufferStatus::Committed
-            | metal::MTLCommandBufferStatus::Scheduled
-            | metal::MTLCommandBufferStatus::Completed => {
-                panic!("Current Metal command buffer is already committed.")
-            }
-            _ => {}
-        }
-
-        command_buffer.end_encoding();
-        command_buffer.commit();
-        command_buffer.wait_until_completed();
+        let _ = self.wait_until_completed();
     }
 }
 
@@ -493,7 +578,6 @@ impl DeviceBuffer for MetalBuffer {
         self.inner.gpu_address() as *const c_void
     }
 }
-
 /// The description of the `NSError` a failed command buffer carries, which the
 /// `metal` crate does not expose.
 // The objc msg_send!/sel! macros expand to a cargo-clippy cfg check that older
@@ -516,5 +600,40 @@ fn command_buffer_error(command_buffer: &metal::CommandBufferRef) -> String {
             return "an error without a description".to_string();
         }
         std::ffi::CStr::from_ptr(chars).to_string_lossy().into_owned()
+    }
+}
+
+#[cfg(test)]
+mod submission_tests {
+    use super::*;
+
+    #[test]
+    fn submission_clears_open_buffer_metadata() -> TractResult<()> {
+        let stream = MetalStream::new();
+        for wait in [false, true, false, true] {
+            stream.load_pipeline(LibraryName::MoeOps, "route_select_topk_f32")?;
+            stream.command_buffer();
+            {
+                let open = stream.open.borrow();
+                if stream.commit_cadence > 0 {
+                    assert_eq!(open.dispatches, 1);
+                }
+                if log::log_enabled!(log::Level::Trace) {
+                    assert_eq!(open.kernel_names, ["route_select_topk_f32"]);
+                }
+            }
+            if wait {
+                stream.wait_until_completed()?;
+            } else {
+                stream.commit_current()?;
+            }
+            let open = stream.open.borrow();
+            assert!(open.buffer.is_none());
+            assert!(open.retained.is_empty());
+            assert!(open.kernel_names.is_empty());
+            assert_eq!(open.dispatches, 0);
+        }
+        stream.wait_until_completed()?;
+        Ok(())
     }
 }
