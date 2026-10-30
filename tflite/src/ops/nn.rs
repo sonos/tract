@@ -116,7 +116,7 @@ fn de_fully_connected(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
 }
 
 fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> {
-    let (_, axes) = args_2!(op.facts()?);
+    let (input, axes) = args_2!(op.facts()?);
     let options = builtin!(op, builtin_options_as_reducer_options);
     let axes: TVec<usize> = axes
         .konst
@@ -125,7 +125,7 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
         .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
-        .map(|d| *d as usize)
+        .map(|d| if *d < 0 { *d + input.rank() as i32 } else { *d } as usize)
         .sorted()
         .collect();
     let p = &op.prefix;
@@ -152,7 +152,7 @@ fn de_reduce_mean(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .try_as_plain_ram()?
         .as_slice::<i32>()?
         .iter()
-        .map(|d| *d as usize)
+        .map(|d| if *d < 0 { *d + input.rank() as i32 } else { *d } as usize)
         .sorted()
         .collect();
     if input.datum_type.is_float() {
@@ -580,5 +580,97 @@ mod resize {
                 .with_context(|| format!("{coord:?} {interp:?} {nearest:?}"))?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod reduce {
+    use crate::tflite::{
+        Buffer, BufferArgs, BuiltinOperator, BuiltinOptions, Model, ModelArgs, Operator,
+        OperatorArgs, OperatorCode, OperatorCodeArgs, ReducerOptions, ReducerOptionsArgs, SubGraph,
+        SubGraphArgs, Tensor as FlatTensor, TensorArgs, TensorType,
+    };
+    use flatbuffers::FlatBufferBuilder;
+    use tract_core::internal::*;
+
+    fn flat_tensor<'f>(
+        fb: &mut FlatBufferBuilder<'f>,
+        name: &str,
+        type_: TensorType,
+        shape: &[i32],
+        buffer: u32,
+    ) -> flatbuffers::WIPOffset<FlatTensor<'f>> {
+        let name = Some(fb.create_string(name));
+        let shape = Some(fb.create_vector(shape));
+        FlatTensor::create(fb, &TensorArgs { name, shape, type_, buffer, ..TensorArgs::default() })
+    }
+
+    /// TFLite reduction axes may be negative, counting from the last axis.
+    #[test]
+    fn mean_over_a_negative_axis() -> TractResult<()> {
+        let mut fb = FlatBufferBuilder::new();
+        let empty = Buffer::create(&mut fb, &BufferArgs::default());
+        let axes = fb.create_vector(&(-1i32).to_le_bytes());
+        let axes = Buffer::create(&mut fb, &BufferArgs { data: Some(axes) });
+        let buffers = fb.create_vector(&[empty, axes]);
+        let tensors = [
+            flat_tensor(&mut fb, "x", TensorType::FLOAT32, &[2, 3], 0),
+            flat_tensor(&mut fb, "axes", TensorType::INT32, &[1], 1),
+            flat_tensor(&mut fb, "y", TensorType::FLOAT32, &[2], 0),
+        ];
+        let tensors = fb.create_vector(&tensors);
+        let options = ReducerOptions::create(&mut fb, &ReducerOptionsArgs { keep_dims: false });
+        let (inputs, outputs) = (fb.create_vector(&[0, 1]), fb.create_vector(&[2]));
+        let operator = Operator::create(
+            &mut fb,
+            &OperatorArgs {
+                opcode_index: 0,
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                builtin_options_type: BuiltinOptions::ReducerOptions,
+                builtin_options: Some(options.as_union_value()),
+                ..OperatorArgs::default()
+            },
+        );
+        let operators = fb.create_vector(&[operator]);
+        let (inputs, outputs) = (fb.create_vector(&[0]), fb.create_vector(&[2]));
+        let subgraph = SubGraph::create(
+            &mut fb,
+            &SubGraphArgs {
+                tensors: Some(tensors),
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                operators: Some(operators),
+                name: None,
+            },
+        );
+        let subgraphs = fb.create_vector(&[subgraph]);
+        let code = OperatorCode::create(
+            &mut fb,
+            &OperatorCodeArgs {
+                deprecated_builtin_code: 40,
+                builtin_code: BuiltinOperator::MEAN,
+                version: 1,
+                ..OperatorCodeArgs::default()
+            },
+        );
+        let operator_codes = fb.create_vector(&[code]);
+        let model = Model::create(
+            &mut fb,
+            &ModelArgs {
+                version: 3,
+                operator_codes: Some(operator_codes),
+                subgraphs: Some(subgraphs),
+                buffers: Some(buffers),
+                ..ModelArgs::default()
+            },
+        );
+        fb.finish(model, Some("TFL3"));
+        let model = crate::tflite()
+            .model_for_read(&mut std::io::Cursor::new(fb.finished_data()))?
+            .into_runnable()?;
+        let input = tensor2(&[[1f32, 2., 3.], [4., 5., 9.]]);
+        let output = model.run(tvec!(input.into()))?;
+        output[0].close_enough(&tensor1(&[2f32, 6.]), Approximation::Exact)
     }
 }
