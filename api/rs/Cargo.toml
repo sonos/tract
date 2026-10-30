@@ -41,6 +41,7 @@ tract-cuda = { workspace = true, default-features = false, optional = true }
 
 
 [dev-dependencies]
+tract-data.workspace = true
 icu_normalizer.workspace = true
 icu_properties.workspace = true
 reqwest.workspace = true
@@ -129,7 +130,8 @@ cuda-13010 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13010"]
 cuda-13020 = ["cuda", "dep:tract-cuda", "tract-cuda/cuda-13020"]
 
 # Serve many concurrent sessions off one prepared model (`Runnable::autobatch`),
-# and the `deploy` runtime, which prepares models as a deployment config says.
+# and the `deploy` runtime, which prepares models as a deployment config says
+# (`Overloaded` is what its pooled models fail with when they are saturated).
 # Unstable: the shape of the surface is still being settled against the server
 # it is meant for, so it is not covered by the no-breaking-change commitment.
 unstable-autobatch = ["tract-core/deploy"]

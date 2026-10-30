@@ -531,6 +531,12 @@ impl RunnableInterface for Runnable {
     }
 }
 
+/// The error a call fails with when the model is pooled (`TRACT_POOL_WORKERS` in a
+/// `deploy` config) and every worker is busy with its queue full: the caller should
+/// retry later. Find it with `downcast_ref` on the returned error.
+#[cfg(feature = "unstable-autobatch")]
+pub use tract_core::pool::Overloaded;
+
 #[cfg(feature = "unstable-autobatch")]
 impl Runnable {
     /// Serve up to `max_sessions` concurrent sessions off this one prepared
