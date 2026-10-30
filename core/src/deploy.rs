@@ -31,7 +31,8 @@
 //! ```
 //!
 //! Preparing a model applies its section's transforms, prepares it on the
-//! section's runtime and autobatches it if `TRACT_AUTOBATCH_LANES` is set, all
+//! section's runtime and autobatches it if `TRACT_AUTOBATCH_LANES` is set or
+//! pools it ([`PooledRunnable`]) if `TRACT_POOL_WORKERS` is, never both, all
 //! under the section's knob scope. A model whose batch axis the transforms
 //! added keeps the contract it was handed over with, autobatched or not: its
 //! facts and properties are the unbatched ones, and its states take and give
@@ -60,6 +61,9 @@ use tract_data::knobs::set_config_global;
 use crate::internal::*;
 use crate::lanes::LanedRunnable;
 use crate::lanes::TRACT_AUTOBATCH_LANES;
+use crate::pool::PooledRunnable;
+use crate::pool::TRACT_POOL_QUEUE;
+use crate::pool::TRACT_POOL_WORKERS;
 use crate::transform::ModelTransform;
 use crate::transform::get_transform;
 use crate::transform::get_transform_with_params;
@@ -153,8 +157,22 @@ impl DeployConfig {
                 runtime_for_name(runtime)?.with_context(|| format!("Unknown runtime {runtime}"))?;
             let options = section.options_for(&model, options)?;
             let mut runnable = rt.prepare_with_options(model, &options)?;
-            if let Some(lanes) = TRACT_AUTOBATCH_LANES.get() {
-                runnable = Box::new(LanedRunnable::wrap(runnable.into(), lanes)?);
+            match (TRACT_AUTOBATCH_LANES.get(), TRACT_POOL_WORKERS.get()) {
+                (Some(_), Some(_)) => bail!(
+                    "TRACT_AUTOBATCH_LANES and TRACT_POOL_WORKERS are both set: a model is \
+                     autobatched or pooled, not both"
+                ),
+                (Some(lanes), None) => {
+                    runnable = Box::new(LanedRunnable::wrap(runnable.into(), lanes)?)
+                }
+                (None, Some(workers)) => {
+                    runnable = Box::new(PooledRunnable::wrap(
+                        runnable.into(),
+                        workers,
+                        TRACT_POOL_QUEUE.get(),
+                    )?)
+                }
+                (None, None) => (),
             }
             match original {
                 Some(original) => UnbatchedRunnable::hide(runnable, &original),
