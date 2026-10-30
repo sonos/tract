@@ -13,6 +13,13 @@ use tract_core::tract_data::half::f16;
 use tract_core::tract_data::itertools::Itertools;
 use tract_gpu::tensor::DeviceTensor;
 
+tract_core::declare_knob!(
+    TRACT_CUDA_TF32,
+    bool,
+    false,
+    "CUDA: opt in to TF32 tensor cores for f32 cuDNN convolutions on Ampere and later (operands rounded to a 10-bit mantissa, ~1/2^11 relative error per multiply). Off by default."
+);
+
 /// cuDNN descriptors for one conv. The conv descriptor accumulates in f32 whatever
 /// the data type `T`; with f16 data it also allows tensor cores.
 #[derive(Debug)]
@@ -63,11 +70,15 @@ fn build_descriptors<T: CudnnDataType>(
         )
         .context("in create_convnd")?;
     conv_descriptor.set_group_count(op.group as i32);
-    if T::DATA_TYPE == cudarc::cudnn::sys::cudnnDataType_t::CUDNN_DATA_HALF {
-        conv_descriptor
-            .set_math_type(cudarc::cudnn::sys::cudnnMathType_t::CUDNN_TENSOR_OP_MATH)
-            .context("in set_math_type")?;
-    }
+    let math_type = if T::DATA_TYPE == cudarc::cudnn::sys::cudnnDataType_t::CUDNN_DATA_HALF {
+        cudarc::cudnn::sys::cudnnMathType_t::CUDNN_TENSOR_OP_MATH
+    } else if TRACT_CUDA_TF32.get() {
+        cudarc::cudnn::sys::cudnnMathType_t::CUDNN_DEFAULT_MATH
+    } else {
+        // CUDNN_DEFAULT_MATH lets cuDNN run f32 convolutions in TF32 on Ampere and later.
+        cudarc::cudnn::sys::cudnnMathType_t::CUDNN_FMA_MATH
+    };
+    conv_descriptor.set_math_type(math_type).context("in set_math_type")?;
 
     let mut input_dims = input_shape.hw_dims().iter().map(|d| *d as i32).collect_vec();
     if input_dims.len() == 1 {
