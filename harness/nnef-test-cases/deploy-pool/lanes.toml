@@ -1,0 +1,6 @@
+[pooled]
+runtime = "cpu"
+
+[pooled.knobs]
+TRACT_POOL_WORKERS = 2
+TRACT_AUTOBATCH_LANES = 4
