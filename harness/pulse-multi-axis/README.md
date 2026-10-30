@@ -117,3 +117,14 @@ stream. `batchify_data_free` turns it into the batch axis before pulsification,
 and the case asserts the numbers are unchanged *and* that the state count is:
 a batch axis that perturbs blockify's chunk frame shows up as extra `Delay`
 states rather than as a wrong result.
+
+## ex17-two-chained-banded-sdpa
+
+ex09's two chained blocks with ex07's banded mask, both blocks reading one
+mask wire and the second block's scores taken straight from the first block's
+output.  Blockify groups sections by the data wires and joins each to the mask
+chain it reads; joining through the shared mask instead made one section whose
+second initiator tapped the first block from before the rewrite, so the first
+block stayed quadratic and streamed block-local, without its past chunk.  With
+a block-diagonal mask (ex09) that happens to be right, which is why this case
+needs the band.
