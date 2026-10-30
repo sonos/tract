@@ -857,6 +857,49 @@ mod tests {
         found[0].close_enough(&expected[0], Approximation::Approximate)?;
         Ok(())
     }
+
+    /// `x + 1`, then the `host*` nodes `wire_host` adds forced onto the CPU,
+    /// then a sum over the last axis: run on CUDA, it must match the CPU.
+    fn run_host_nodes_between_device_ops(
+        wire_host: impl FnOnce(&mut TypedModel, OutletId) -> TractResult<OutletId>,
+    ) -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([4, 64]))?;
+        let one = model.add_const("one", rctensor2(&[[1f32]]))?;
+        let a = model.wire_node("a", tract_core::ops::math::add(), &[x, one])?[0];
+        let host = wire_host(&mut model, a)?;
+        let sum = Reduce { axes: tvec!(1), reducer: tract_core::ops::nn::Reducer::Sum };
+        let b = model.wire_node("b", sum, &[host])?[0];
+        model.select_output_outlets(&[b])?;
+
+        let x = Tensor::from_shape(&[4, 64], &(0..256).map(|i| i as f32).collect::<Vec<_>>())?;
+        let expected = model.clone().into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+        let scope = tract_core::knobs::KnobScope::new([("TRACT_CUDA_FORCE_CPU", "host")])?;
+        let cuda = scope.enter(|| crate::CudaRuntime.prepare(model))?;
+        let found = cuda.spawn()?.run(tvec!(x.into_tvalue()))?;
+        found[0].close_enough(&expected[0], Approximation::Exact)
+    }
+
+    #[test]
+    fn host_reshape_between_device_ops() -> TractResult<()> {
+        run_host_nodes_between_device_ops(|model, wire| {
+            let reshape =
+                AxisOp::Reshape(0, tvec!(4.into(), 64.into()), tvec!(64.into(), 4.into()));
+            Ok(model.wire_node("host_reshape", reshape, &[wire])?[0])
+        })
+    }
+
+    #[test]
+    fn host_in_place_add_between_device_ops() -> TractResult<()> {
+        run_host_nodes_between_device_ops(|model, wire| {
+            let row = Tensor::from_shape(
+                &[1, 64],
+                &(0..64).map(|i| 100. * i as f32).collect::<Vec<_>>(),
+            )?;
+            let row = model.add_const("row", row)?;
+            Ok(model.wire_node("host_add", tract_core::ops::math::add(), &[wire, row])?[0])
+        })
+    }
 }
 
 /// The flash attention kernel takes the K and V plane stride as an argument, so

@@ -307,6 +307,10 @@ pub fn par_bin(
 
     let a_item = a.datum_type().size_of() as isize;
     let b_item = b.datum_type().size_of() as isize;
+    // The writes below go through views built from a shared reference, so the
+    // storage has to be made exclusive and plain host memory here, while we
+    // still hold `&mut`.
+    a.try_as_plain_ram_mut()?;
     let a = &*a;
     // `len` elements of block `block`, starting `offset` elements into it. Both
     // tensors are naturally strided, so a's flat element index is
@@ -503,6 +507,7 @@ pub fn par_bin_chain(steps: &[BinChainStep], a: &mut Tensor) -> TractResult<()> 
         return Ok(());
     }
     let n_chunks = a_len / chunk;
+    a.try_as_plain_ram_mut()?;
     let a = &*a;
     static STRIDES: [isize; 1] = [1];
     let a_shape = [chunk];
