@@ -132,7 +132,7 @@ pub fn pad_mode(mode: &ops::array::PadMode, dt: DatumType) -> TractResult<(&str,
             }),
         ),
         PadMode::Reflect => ("reflect", None),
-        PadMode::Edge => ("replicated", None),
+        PadMode::Edge => ("replicate", None),
     })
 }
 
