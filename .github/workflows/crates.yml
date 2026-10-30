@@ -155,13 +155,39 @@ jobs:
         echo "::notice::$RUNNER_NAME: $gpu"
         echo "GPU: \`$RUNNER_NAME\`: $gpu" >> "$GITHUB_STEP_SUMMARY"
 
+    - name: Cargo test
+      run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda
+
+  wgpu:
+    # Over Vulkan on the NVIDIA boxes of cuda-tests.
+    runs-on: cuda-tests
+    needs: prepare-matrix
+    if: ${{ !contains(fromJSON(needs.prepare-matrix.outputs.skip), 'wgpu') }}
+    strategy:
+      matrix:
+        rust: ${{fromJson(needs.prepare-matrix.outputs.rust)}}
+      fail-fast: false
+    env:
+      RUSTUP_TOOLCHAIN: ${{matrix.rust}}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ github.event.pull_request.head.sha || github.sha }}
+        persist-credentials: false
+
+    - name: Report the GPU
+      run: |
+        gpu=$(nvidia-smi --query-gpu=name,compute_cap,driver_version --format=csv,noheader | head -1)
+        echo "::notice::$RUNNER_NAME: $gpu"
+        echo "GPU: \`$RUNNER_NAME\`: $gpu" >> "$GITHUB_STEP_SUMMARY"
+
     - name: Check the Vulkan adapter is the NVIDIA GPU
       # Without the NVIDIA ICD, wgpu would settle for a CPU implementation (lavapipe)
       # and test-wgpu would pass without touching the GPU.
       run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
 
     - name: Cargo test
-      run: cargo test -q -p tract-gpu -p tract-cuda -p test-cuda -p tract-wgpu -p test-wgpu
+      run: cargo test -q -p tract-wgpu -p test-wgpu
 
   cuda-minimum-deploy:
     # Validates the BOM documented in cuda/src/context.rs. Builds tract-cli

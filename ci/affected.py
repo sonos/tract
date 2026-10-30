@@ -225,8 +225,8 @@ def legs():
                   "test-unit-core", "test-pulse-core", "test-onnx-core", "test-nnef-cycle",
                   "test-f16"]:
         leg(crates, f"ubuntu-24.04 / {crate}", host, [Spec(crate, dev=True)])
-    leg(crates, "cuda", host,
-        [Spec(p, dev=True) for p in ["tract-gpu", "tract-cuda", "test-cuda", "tract-wgpu", "test-wgpu"]])
+    leg(crates, "cuda", host, [Spec(p, dev=True) for p in ["tract-gpu", "tract-cuda", "test-cuda"]])
+    leg(crates, "wgpu", host, [Spec(p, dev=True) for p in ["tract-wgpu", "test-wgpu"]])
     leg(crates, "metal", "aarch64-apple-darwin",
         [Spec(p, dev=True) for p in ["tract-gpu", "tract-metal", "test-metal"]])
     leg(crates, "fmt, clippy, etc", host,
