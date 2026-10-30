@@ -1021,6 +1021,86 @@ fn matmul_tiled_matches_cpu() -> TractResult<()> {
     Ok(())
 }
 
+/// `m = 1` products: partial `k` and `n` tiles, every transposition, a prefix,
+/// a broadcast prefix, f16, and a bias-plus-activation epilogue.
+#[test]
+fn matmul_gemv_matches_cpu() -> TractResult<()> {
+    use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+    use tract_core::ops::nn::sigmoid;
+    for (prefix, k, n, ta, tb, tc, f16_, bias) in [
+        (1usize, 1usize, 1usize, false, false, false, false, false),
+        (1, 17, 7, false, false, false, false, false),
+        (1, 63, 64, false, false, false, false, false),
+        (1, 65, 63, false, false, false, false, false),
+        (1, 300, 130, false, false, false, false, false),
+        (1, 300, 130, true, false, false, false, false),
+        (1, 300, 130, false, true, false, false, false),
+        (1, 300, 130, false, false, true, false, false),
+        (1, 300, 130, true, true, true, false, false),
+        (4, 40, 80, false, false, false, false, false),
+        (1, 200, 1, false, false, false, false, false),
+        (1, 128, 256, false, false, false, true, false),
+        (1, 100, 50, false, false, false, false, true),
+        (1, 80, 33, false, false, false, true, true),
+    ] {
+        let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+        let a_shape = [prefix, if ta { k } else { 1 }, if ta { 1 } else { k }];
+        let b_shape = [prefix, if tb { n } else { k }, if tb { k } else { n }];
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", dt.fact(a_shape))?;
+        let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+        let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+        let op = PrefixMatMul {
+            transpose_a: ta,
+            transpose_b: tb,
+            transpose_c: tc,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let mut y = model.wire_node("mm", op, &[a, b])?[0];
+        if bias {
+            let bias = Tensor::from_shape(&[1, 1, n], &fill(2, n))?;
+            let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+            y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+            if !f16_ {
+                y = model.wire_node("act", sigmoid(), &[y])?[0];
+            }
+        }
+        model.select_output_outlets(&[y])?;
+        if bias {
+            let gpu = transformed(model.clone())?;
+            let gemm = gpu
+                .nodes()
+                .iter()
+                .find_map(|node| node.op_as::<crate::ops::matmul::WgpuGemm>())
+                .context("m=1 product left the device")?;
+            let want = if f16_ { 1 } else { 2 };
+            ensure!(gemm.epilogue.len() == want, "epilogue {:?}", gemm.epilogue);
+        }
+        let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+        gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+            format!("prefix={prefix} k={k} n={n} ta={ta} tb={tb} tc={tc} f16={f16_} bias={bias}")
+        })?;
+    }
+
+    let k = 24usize;
+    let n = 18usize;
+    let mut model = TypedModel::default();
+    let a = model.add_source("a", f32::fact([1, 1, k]))?;
+    let b = Tensor::from_shape(&[4, k, n], &fill(4, 4 * k * n))?;
+    let b = model.add_const("b", b)?;
+    let op = PrefixMatMul {
+        transpose_a: false,
+        transpose_b: false,
+        transpose_c: false,
+        quantize_output: None,
+        operating_dt: None,
+    };
+    let y = model.wire_node("mm", op, &[a, b])?[0];
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 1, k], &fill(5, k))?)
+}
+
 /// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
 /// batch, channels-last, an uneven kernel and padding, f16, a bias, whole
 /// tiles, and a long reduction over a small map that fills only a few tiles.

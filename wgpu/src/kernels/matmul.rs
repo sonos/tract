@@ -2,18 +2,18 @@
 //!
 //! The blocked and split-k kernels serve the channels-first f32 products they
 //! were tuned on (every transposition set, a unit prefix, a weight `b`); the
-//! tiled kernel takes any other product big enough to fill its tiles; what is
-//! left runs one thread per output element.
+//! tiled kernel takes any other product big enough to fill its tiles; an `m`
+//! of 1 is a GEMV; what is left runs one thread per output element.
 
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::context::RepackKey;
 use crate::kernels::shaders::{
-    ChainStep, EntryPoint, LayoutKind, MATMUL_BLOCKED_WG, MATMUL_SPLITK_MAX_M, MATMUL_SPLITK_WG,
-    MATMUL_TILE, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, matmul_blocked_module,
-    matmul_module, matmul_splitk_module, matmul_tiled_module, pack_u32s, rpad8_dims, rpad8_strides,
-    tile_rows,
+    ChainStep, EntryPoint, GRID_LIMIT, LayoutKind, MATMUL_BLOCKED_WG, MATMUL_GEMV_WG,
+    MATMUL_SPLITK_MAX_M, MATMUL_SPLITK_WG, MATMUL_TILE, ModuleKey, ModuleKind, PipelineKey,
+    ShaderDtype, keys_for, matmul_blocked_module, matmul_gemv_module, matmul_module,
+    matmul_splitk_module, matmul_tiled_module, pack_u32s, rpad8_dims, rpad8_strides, tile_rows,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -207,6 +207,8 @@ pub fn wgpu_matmul_dispatch(
             "matmul output shape {out_shape:?} does not match its inputs"
         );
         let prefix: usize = out_shape[..out_shape.len() - 2].iter().product();
+        // The other kernels tile `m`, so a single row never reaches them.
+        let gemv = m == 1 && prefix > 0 && n > 0;
 
         if blocked_applies(prefix, m, k, n, a, b, output, t) {
             let packed = repacked_b(q, b, k, n)?;
@@ -262,7 +264,14 @@ pub fn wgpu_matmul_dispatch(
 
         let tiled = tiled_applies(prefix, m, k, n);
         let tile_m = tile_rows(m);
-        let pipeline = if tiled {
+        let pipeline = if gemv {
+            q.context().chain_pipeline(
+                ("matmul_gemv", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("matmul_gemv", dt),
+                || matmul_gemv_module(dt, epilogue, extras.len()),
+            )?
+        } else if tiled {
             q.context().chain_pipeline(
                 ("matmul_tiled", tile_m, dt, epilogue, extras.len()),
                 layout,
@@ -315,6 +324,12 @@ pub fn wgpu_matmul_dispatch(
         vals.extend_from_slice(&off_extra);
         vals.extend_from_slice(&mode_extra);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+        if gemv {
+            let tiles = prefix * n.div_ceil(MATMUL_GEMV_WG as usize);
+            let x = tiles.min(GRID_LIMIT as usize) as u32;
+            let y = tiles.div_ceil(GRID_LIMIT as usize) as u32;
+            return q.dispatch_grid("matmul_gemv", &pipeline, &bg, dyn_off, [x, y, 1]);
+        }
         if tiled {
             let grid = [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(tile_m) as u32, prefix as u32];
             return q.dispatch_grid("matmul_tiled", &pipeline, &bg, dyn_off, grid);
