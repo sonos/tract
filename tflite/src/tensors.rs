@@ -115,7 +115,7 @@ pub fn flat_tensor_to_tract_fact<'m>(
     }
     let shape = flat
         .shape()
-        .unwrap()
+        .unwrap_or_default()
         .iter()
         .map(|d| {
             if d < 0 {
@@ -149,4 +149,109 @@ pub struct PerAxisQ {
     axis: usize,
     zp: Vec<i32>,
     scale: Vec<f32>,
+}
+
+#[cfg(test)]
+mod test {
+    use crate::tflite::{
+        ActivationFunctionType, AddOptions, AddOptionsArgs, Buffer, BufferArgs, BuiltinOperator,
+        BuiltinOptions, Model, ModelArgs, Operator, OperatorArgs, OperatorCode, OperatorCodeArgs,
+        SubGraph, SubGraphArgs, TensorArgs, TensorType,
+    };
+    use flatbuffers::FlatBufferBuilder;
+    use tract_core::internal::*;
+
+    fn flat_tensor<'f>(
+        fb: &mut FlatBufferBuilder<'f>,
+        name: &str,
+        shape: Option<&[i32]>,
+        buffer: u32,
+    ) -> flatbuffers::WIPOffset<crate::tflite::Tensor<'f>> {
+        let name = Some(fb.create_string(name));
+        let shape = shape.map(|s| fb.create_vector(s));
+        crate::tflite::Tensor::create(
+            fb,
+            &TensorArgs {
+                name,
+                shape,
+                type_: TensorType::FLOAT32,
+                buffer,
+                ..TensorArgs::default()
+            },
+        )
+    }
+
+    /// TFLite reads a tensor without a shape as a scalar: flatbuffers drops
+    /// empty vectors, so converters may omit the shape of scalar constants.
+    #[test]
+    fn tensor_without_shape_is_a_scalar() -> TractResult<()> {
+        let mut fb = FlatBufferBuilder::new();
+        let empty = Buffer::create(&mut fb, &BufferArgs::default());
+        let one = fb.create_vector(&1f32.to_le_bytes());
+        let one = Buffer::create(&mut fb, &BufferArgs { data: Some(one) });
+        let buffers = fb.create_vector(&[empty, one]);
+        let tensors = [
+            flat_tensor(&mut fb, "x", Some(&[2]), 0),
+            flat_tensor(&mut fb, "one", None, 1),
+            flat_tensor(&mut fb, "y", Some(&[2]), 0),
+        ];
+        let tensors = fb.create_vector(&tensors);
+        let add = AddOptions::create(
+            &mut fb,
+            &AddOptionsArgs {
+                fused_activation_function: ActivationFunctionType::NONE,
+                pot_scale_int16: false,
+            },
+        );
+        let (inputs, outputs) = (fb.create_vector(&[0, 1]), fb.create_vector(&[2]));
+        let operator = Operator::create(
+            &mut fb,
+            &OperatorArgs {
+                opcode_index: 0,
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                builtin_options_type: BuiltinOptions::AddOptions,
+                builtin_options: Some(add.as_union_value()),
+                ..OperatorArgs::default()
+            },
+        );
+        let operators = fb.create_vector(&[operator]);
+        let (inputs, outputs) = (fb.create_vector(&[0]), fb.create_vector(&[2]));
+        let subgraph = SubGraph::create(
+            &mut fb,
+            &SubGraphArgs {
+                tensors: Some(tensors),
+                inputs: Some(inputs),
+                outputs: Some(outputs),
+                operators: Some(operators),
+                name: None,
+            },
+        );
+        let subgraphs = fb.create_vector(&[subgraph]);
+        let code = OperatorCode::create(
+            &mut fb,
+            &OperatorCodeArgs {
+                builtin_code: BuiltinOperator::ADD,
+                version: 1,
+                ..OperatorCodeArgs::default()
+            },
+        );
+        let operator_codes = fb.create_vector(&[code]);
+        let model = Model::create(
+            &mut fb,
+            &ModelArgs {
+                version: 3,
+                operator_codes: Some(operator_codes),
+                subgraphs: Some(subgraphs),
+                buffers: Some(buffers),
+                ..ModelArgs::default()
+            },
+        );
+        fb.finish(model, Some("TFL3"));
+        let model = crate::tflite()
+            .model_for_read(&mut std::io::Cursor::new(fb.finished_data()))?
+            .into_runnable()?;
+        let output = model.run(tvec!(tensor1(&[1f32, 2.]).into()))?;
+        output[0].close_enough(&tensor1(&[2f32, 3.]), Approximation::Exact)
+    }
 }
