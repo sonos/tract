@@ -28,6 +28,7 @@ variant = "pass"
 model = "ARM-ML-KWS-CNN-M.pb"
 args = "-i 49,10,f32 --partial --input-node Mfcc"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 5
 
 [[bench]]
@@ -37,6 +38,7 @@ variant = "400ms"
 model = "hey_snips_v1.pb"
 args = "-i 80,40,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -45,6 +47,7 @@ variant = "400ms"
 model = "hey_snips_v3.1.pb"
 args = "-i 40,40,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -53,6 +56,7 @@ variant = "2sec"
 model = "hey_snips_v4_model17.pb"
 args = "-i 200,20,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 5
 
 [[bench]]
@@ -71,6 +75,7 @@ variant = "pulse8"
 model = "hey_snips_v4_model17.alpha1.tar"
 args = "--nnef-tract-pulse"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 5
 
 [[bench]]
@@ -80,6 +85,7 @@ variant = "pass"
 model = "mobilenet_v1_1.0_224_frozen.pb"
 args = "-i 1,224,224,3,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -97,6 +103,7 @@ variant = "pass"
 model = "inceptionv1_quant.nnef.tar.gz"
 args = "--nnef-tract-core"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -115,6 +122,7 @@ model = "en_libri_real/model.onnx"
 archive = "en_libri_real.tar.gz"
 args = "--output-node output -i 264,40"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -124,6 +132,7 @@ model = "en_libri_real/model.onnx"
 archive = "en_libri_real.tar.gz"
 args = "--output-node output -i S,40 --pulse 24"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -142,6 +151,7 @@ model = "en_tdnn_lstm_bn_q7/model.onnx"
 archive = "en_tdnn_lstm_bn_q7.tar.gz"
 args = "--output-node output -i S,40 --pulse 24"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -150,6 +160,7 @@ variant = "2600ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
 args = "--output-node output -i 264,40"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -158,6 +169,7 @@ variant = "pulse_240ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
 args = "--output-node output -i S,40 --pulse 24"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -166,6 +178,7 @@ variant = "pulse_180ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
 args = "--output-node output -i S,40 --pulse 18"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -174,6 +187,7 @@ variant = "pulse_120ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.onnx"
 args = "--output-node output -i S,40 --pulse 12"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -182,6 +196,7 @@ variant = "pulse_240ms"
 model = "mdl-en-2019-12-24-aho-corasick-18h01m33s.alpha1.a.tar"
 args = "--nnef-tract-pulse"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -206,6 +221,7 @@ variant = "pulse_120ms"
 model = "en_tdnn_15M.onnx"
 args = "--output-node output -i S,40 --pulse 12"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -214,6 +230,7 @@ variant = "pulse_240ms"
 model = "en_tdnn_15M.alpha1.tar"
 args = "--nnef-tract-pulse"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -230,6 +247,7 @@ variant = "pulse_120ms"
 model = "mdl-en-2023-03-27-allen-17h11m50s.nnef.tar"
 args = "--nnef-tract-core --pulse 12"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -246,6 +264,7 @@ variant = "2sec"
 model = "snips-voice-commands-cnn-fake-quant.pb"
 args = "-i 200,10,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -307,6 +326,7 @@ kind = "llm"
 name = "openelm-270M-q40ef16-541"
 model = "llm/541/apple--OpenELM-270M-q40ef16/apple--OpenELM-270M-q40ef16.nnef.tgz"
 runtimes = ["cpu", "metal", "cuda"]
+nightly_only_runtimes = ["metal", "cuda"]
 
 [[bench]]
 kind = "net"
@@ -344,6 +364,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-preprocessor_1s"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.preprocessor.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set INPUT_SIGNAL__TIME=16000"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["metal", "cuda", "wgpu"]
 samples = 3
 
 [[bench]]
@@ -352,6 +373,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_1s"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set AUDIO_SIGNAL__TIME=100"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 threads = [0]
 
 [[bench]]
@@ -368,6 +390,7 @@ args = [
     "-t", 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "1600")',
 ]
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 3
 
 [[bench]]
@@ -392,6 +415,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-decoder_pass"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.decoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set TARGETS__TIME=1"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["metal", "cuda", "wgpu"]
 
 [[bench]]
 kind = "net"
@@ -414,24 +438,28 @@ kind = "llm"
 name = "llama-3_2-3B-q40ef32-516"
 model = "llm/516/Llama-3.2-3B-q40ef32.516.nnef.tgz"
 runtimes = ["metal", "cuda"]
+nightly_only = true
 
 [[bench]]
 kind = "llm"
 name = "llama-3_1-8B-instruct-q40ef16-541"
 model = "llm/541/meta-llama--Llama-3.1-8B-Instruct-q40ef16/meta-llama--Llama-3.1-8B-Instruct-q40ef16.nnef.tgz"
 runtimes = ["metal", "cuda"]
+nightly_only = true
 
 [[bench]]
 kind = "llm"
 name = "llama-3_2-3B-instruct-q40ef16-541"
 model = "llm/541/meta-llama--Llama-3.2-3B-Instruct-q40ef16/meta-llama--Llama-3.2-3B-Instruct-q40ef16.nnef.tgz"
 runtimes = ["metal", "cuda"]
+nightly_only = true
 
 [[bench]]
 kind = "llm"
 name = "qwen3-1_7B-q40ef16-541"
 model = "llm/541/Qwen--Qwen3-1.7B-q40ef16/Qwen--Qwen3-1.7B-q40ef16.nnef.tgz"
 runtimes = ["metal", "cuda"]
+nightly_only = true
 
 [[bench]]
 kind = "net"
@@ -439,6 +467,7 @@ name = "sd15-dummy-f32-unet_step_b2"
 model = "sd/sd15-dummy/unet.nnef.tgz"
 args = "--nnef-tract-core --nnef-tract-transformers -t transformers_detect_all"
 runtimes = ["metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 skip_devices = ["jetson-orin-nx"]
 knobs = { TRACT_CUDA_ALLOW_TF32 = "true" }
 
@@ -456,6 +485,7 @@ name = "sd15-dummy-f32-vae_decoder_512px"
 model = "sd/sd15-dummy/vae_decoder.nnef.tgz"
 args = "--nnef-tract-core --nnef-tract-transformers -t transformers_detect_all"
 runtimes = ["metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 skip_devices = ["jetson-orin-nx"]
 knobs = { TRACT_CUDA_ALLOW_TF32 = "true" }
 
@@ -474,6 +504,7 @@ variant = "frame"
 model = "ns-panel/fastenhancer_t.spec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,16,20,f32 -i 1,16,20,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 5
 
 [[bench]]
@@ -483,6 +514,7 @@ variant = "frame"
 model = "ns-panel/fastenhancer_b.spec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,24,36,f32 -i 1,24,36,f32 -i 1,24,36,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -491,6 +523,7 @@ variant = "frame"
 model = "ns-panel/fastenhancer_s.spec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,36,48,f32 -i 1,36,48,f32 -i 1,36,48,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -499,6 +532,7 @@ variant = "frame"
 model = "ns-panel/fastenhancer_m.spec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,257,1,2,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32 -i 1,48,72,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -523,6 +557,7 @@ variant = "frame"
 model = "ns-panel/dtln_model_1.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,1,257,f32 -i 1,2,128,2,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 samples = 5
 
 [[bench]]
@@ -549,6 +584,7 @@ variant = "s100"
 model = "ns-panel/dfn3_erb_dec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,8,f32 -i 1,64,100,8,f32 -i 1,64,100,16,f32 -i 1,64,100,32,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
 
 [[bench]]
 kind = "net"
@@ -557,3 +593,4 @@ variant = "s100"
 model = "ns-panel/dfn3_df_dec.onnx"
 args = "--onnx-ignore-value-info --onnx-ignore-output-shapes -i 1,100,512,f32 -i 1,64,100,96,f32"
 runtimes = ["cpu", "wgpu"]
+nightly_only_runtimes = ["wgpu"]
