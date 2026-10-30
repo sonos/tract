@@ -9,6 +9,7 @@
 "riscv64gc-unknown-linux-musl/orangepi-rv2",
 "wasm32-wasip1/i9-9900k_simd128",
 "x86_64-unknown-linux-gnu/i9-11900kb_rtx-4060",
+"x86_64-unknown-linux-gnu/i9-11900kb_rtx-4060_cuda",
 "x86_64-unknown-linux-gnu/i9-11900kb_rtx-4060_wgpu",
 "x86_64-unknown-linux-gnu/i9-9900k"
 ]
