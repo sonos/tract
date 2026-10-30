@@ -1385,6 +1385,37 @@ fn scaled_masked_softmax_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @bu
     s
 }
 
+/// `x` when `x >= 0`, otherwise `alpha * x`. `alpha` is an f32 uniform, cast to the
+/// storage type so an f16 run uses the same slope as the f16 CPU kernel.
+pub fn leaky_relu_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    len: u32,
+    alpha: f32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn leaky_relu_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let x = inp[params.off_in + i];
+    outp[params.off_out + i] = select(x, x * {t}(params.alpha), x < {t}(0.0));
+}}
+"#
+    ));
+    s
+}
+
 /// Replaces each NaN of the input with `value`. NaN is told by its bits, on the value widened
 /// to f32 (which keeps a NaN a NaN): WGSL lets a compiler assume no NaN and fold `x != x`.
 pub fn nan_replace_module(dt: ShaderDtype) -> String {
