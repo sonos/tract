@@ -18,6 +18,9 @@ pub const MATMUL_BLOCKED_WG: u32 = 192;
 /// Columns one `m = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_WG: u32 = 64;
 
+/// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
+pub const MATMUL_GEMV_N_WG: u32 = 64;
+
 /// Threads in a cooperative sum: each output gets one workgroup this wide.
 pub const SUM_RUN_WG: u32 = 256;
 /// Steps of each of the gemv pair's reductions taken per iteration.
@@ -3352,6 +3355,124 @@ fn matmul_gemv_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(work
         var v = {t}(acc);
 {epilogue}
         outp[o_i + col * o_n_s] = v;
+    }}
+}}
+"#
+    ));
+    s
+}
+
+/// `n = 1` product. One workgroup owns [`MATMUL_GEMV_N_WG`] rows of one prefix
+/// slice: the threads stage that slice of the single column into workgroup
+/// memory and each then walks its own row. Same `Params`, strides and epilogue
+/// as [`matmul_module`]. `k` past the last partial slice is padded with zeros.
+pub fn matmul_gemv_n_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let wg = MATMUL_GEMV_N_WG;
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{t}>;
+@group(0) @binding(1) var<storage, read> b: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+var<workgroup> bvec: array<f32, {wg}>;
+
+@compute @workgroup_size({wg})
+fn matmul_gemv_n_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let tiles_m = (params.m + {wg}u - 1u) / {wg}u;
+    let tile = wid.y * {GRID_LIMIT}u + wid.x;
+    if (tile >= params.prefix * tiles_m) {{ return; }}
+    let pref = tile / tiles_m;
+    let row = (tile % tiles_m) * {wg}u + lid.x;
+
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = pref;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_m_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let a_k_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_k_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
+    let o_m_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    let o_n_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+
+    var acc = 0.0;
+    for (var k0 = 0u; k0 < params.k; k0 += {wg}u) {{
+        let kk = k0 + lid.x;
+        if (kk < params.k) {{
+            bvec[lid.x] = f32(b[b_i + kk * b_k_s]);
+        }} else {{
+            bvec[lid.x] = 0.0;
+        }}
+        workgroupBarrier();
+        if (row < params.m) {{
+            let a_base = a_i + row * a_m_s;
+            for (var t = 0u; t < {wg}u; t++) {{
+                let k = k0 + t;
+                if (k < params.k) {{
+                    acc += f32(a[a_base + k * a_k_s]) * bvec[t];
+                }}
+            }}
+        }}
+        workgroupBarrier();
+    }}
+    if (row < params.m) {{
+        let col = 0u;
+        let oe = o_i - params.off_out + row * o_m_s + col * o_n_s;
+        var v = {t}(acc);
+{epilogue}
+        outp[o_i + row * o_m_s + col * o_n_s] = v;
     }}
 }}
 "#
