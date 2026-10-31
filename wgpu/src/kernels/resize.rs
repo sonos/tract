@@ -1,5 +1,6 @@
 use anyhow::ensure;
 use tract_core::internal::*;
+use tract_core::ops::konst::Const;
 use tract_core::ops::nn::resize::Resize as CoreResize;
 use tract_gpu::ops::resize::GpuResize;
 use tract_gpu::tensor::DeviceTensor;
@@ -9,6 +10,7 @@ use crate::kernels::shaders::{
     keys_for, pack_u32s, preamble,
 };
 use crate::ops::resize2d::WgpuResize2d;
+use crate::transform::{Mapping, convert_const, input_on_device};
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
@@ -189,6 +191,29 @@ pub fn wgpu_resize(source: &TypedModel, node: &TypedNode) -> TractResult<Option<
     rule_if!(matches!(facts[0].datum_type, DatumType::F32 | DatumType::F16));
     Ok(GpuResize::from_core(source, node, op, "Wgpu", wgpu_resize_axis_dispatch)?
         .map(|op| Box::new(op) as Box<dyn TypedOp>))
+}
+
+/// Translates a `Resize`: the separable 2-D kernel when [`wgpu_resize_2d`] takes it, with its
+/// sampling tables as constants, else the per-axis [`wgpu_resize`]. Only the data moves to the
+/// device.
+pub fn translate_resize(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    if let Some(plan) = wgpu_resize_2d(source, node)? {
+        let mut inputs = tvec!(input_on_device(node, target, mapping, 0)?);
+        for (tensor, what) in plan.plans.iter().zip(["rows", "row-weights", "cols", "col-weights"])
+        {
+            let konst = convert_const(&Const::new(tensor.clone())?)?;
+            inputs.push(target.wire_node(format!("{}.{what}", node.name), konst, &[])?[0]);
+        }
+        return target.wire_node(node.name.clone(), plan.op, &inputs).map(Some);
+    }
+    rule_if_some!(gpu_op = wgpu_resize(source, node)?);
+    let input = input_on_device(node, target, mapping, 0)?;
+    target.wire_node(node.name.clone(), gpu_op, &[input]).map(Some)
 }
 
 pub(crate) fn resize_wgsl(dt: ShaderDtype) -> String {

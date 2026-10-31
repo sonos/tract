@@ -5,20 +5,16 @@ use std::sync::OnceLock;
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
+use tract_core::ops::array::Gather;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
-use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::konst::Const;
 use tract_core::ops::logic::Iff;
-use tract_core::ops::math::IsNan;
+use tract_core::ops::nn::resize::Resize;
 use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
-use tract_gpu::ops::group_norm::{
-    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
-};
-use tract_gpu::ops::nan_replace::GpuNanReplace;
 use tract_gpu::rewrite_rules::float_gather_indices::float_gather_nd_indices;
 use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
@@ -177,7 +173,7 @@ fn try_make_wgpu_op(
     Ok(None)
 }
 
-fn convert_const(op: &Const) -> TractResult<Const> {
+pub(crate) fn convert_const(op: &Const) -> TractResult<Const> {
     let typed_fact: TypedFact = Arc::clone(op.val()).try_into()?;
     let wgpu_fact = if let Some(of) = op.exotic_fact() {
         DeviceFact::from_host(typed_fact.with_exotic_fact(clone_box(of)))?
@@ -188,6 +184,62 @@ fn convert_const(op: &Const) -> TractResult<Const> {
     Const::new_with_exotic_fact(wgpu_const, Box::new(wgpu_fact))
 }
 
+/// Where each source outlet landed in the model being translated.
+pub(crate) type Mapping = HashMap<OutletId, OutletId>;
+
+/// Wires one node into `target` from its mapped inputs, moving to the device what it reads there,
+/// or declines with `None`. For translations the per-op registry can't express: several nodes, an
+/// input left on the host, or inputs the registry's dtype gate refuses.
+type TranslateNodeFn =
+    fn(&TypedModel, &TypedNode, &mut TypedModel, &Mapping) -> TractResult<Option<TVec<OutletId>>>;
+
+fn translator_for(node: &TypedNode) -> Option<TranslateNodeFn> {
+    static MAP: OnceLock<HashMap<TypeId, TranslateNodeFn>> = OnceLock::new();
+    let map = MAP.get_or_init(|| {
+        HashMap::from([
+            (TypeId::of::<PrefixMatMul>(), ops::matmul::translate_gemm as TranslateNodeFn),
+            (TypeId::of::<Conv>(), ops::conv::translate_conv),
+            (TypeId::of::<Deconv>(), ops::deconv::translate_deconv),
+            (TypeId::of::<GroupNorm>(), crate::kernels::group_norm::translate_group_norm),
+            (TypeId::of::<Resize>(), crate::kernels::resize::translate_resize),
+            (TypeId::of::<Gather>(), crate::kernels::gather::translate_gather),
+            (TypeId::of::<Iff>(), crate::kernels::nan_replace::translate_nan_replace),
+            (TypeId::of::<Const>(), translate_const),
+        ])
+    });
+    map.get(&(*node.op).type_id()).copied()
+}
+
+/// The node's `ix`-th input, moved to the device unless it is there already.
+pub(crate) fn input_on_device(
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+    ix: usize,
+) -> TractResult<OutletId> {
+    let input = mapping[&node.inputs[ix]];
+    if target.outlet_fact(input)?.as_device_fact().is_some() {
+        return Ok(input);
+    }
+    Ok(target.wire_node(
+        format!("{}.to-device-{ix}", node.name),
+        tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
+        &[input],
+    )?[0])
+}
+
+fn translate_const(
+    _source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    rule_if_some!(op = node.op_as::<Const>());
+    rule_if!(crate::utils::is_supported_dt(op.val().datum_type()) && op.exotic_fact().is_none());
+    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs).map(Some)
+}
+
 impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for WgpuTransform {
     fn translate_node(
         &self,
@@ -196,130 +248,9 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>> for Wgp
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let input_facts = source.node_input_facts(node.id)?;
-        if let Some(op) = node.op_as::<PrefixMatMul>()
-            && op.quantize_output.is_none()
-            && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
-            && input_facts.iter().all(|f| {
-                crate::kernels::matmul::is_supported_dt(f.datum_type) && f.exotic_fact().is_none()
-            })
-            && input_facts[0].datum_type == input_facts[1].datum_type
-            && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
+        if let Some(translate) = translator_for(node)
+            && let Some(outlet_ids) = translate(source, node, target, mapping)?
         {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let outlet_ids = target.wire_node(
-                node.name.clone(),
-                ops::matmul::WgpuGemm { op: *op, epilogue: vec![] },
-                &device_inputs,
-            )?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(conv) = node.op_as::<Conv>()
-            && input_facts.iter().all(|f| crate::utils::is_supported_fact(f))
-            && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
-            && conv.pool_spec.kernel_shape.len() == 2
-            && conv.q_params.is_none()
-        {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let outlet_ids = ops::conv::wire_wgpu_conv(source, node, target, &device_inputs, conv)?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(deconv) = node.op_as::<Deconv>()
-            && input_facts.iter().all(|f| crate::utils::is_supported_fact(f))
-            && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
-            && deconv.pool_spec.kernel_shape.len() == 2
-        {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let outlet_ids =
-                ops::deconv::wire_wgpu_deconv(source, node, target, &device_inputs, deconv)?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(op) = node.op_as::<GroupNorm>()
-            && crate::utils::is_supported_fact(input_facts[0])
-            && let Some(params) = GroupNormParams::from_core(op, input_facts[0])
-        {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let stats = GpuGroupNormStats {
-                params,
-                backend_name: "Wgpu",
-                dispatch: crate::kernels::group_norm::wgpu_group_norm_stats_dispatch,
-            };
-            let apply = GpuGroupNormApply {
-                params,
-                eps: op.eps.clone(),
-                backend_name: "Wgpu",
-                dispatch: crate::kernels::group_norm::wgpu_group_norm_apply_dispatch,
-            };
-            let outlet_ids =
-                wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply)?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(plan) = crate::kernels::resize::wgpu_resize_2d(source, node)? {
-            let mut input = mapping[&node.inputs[0]];
-            if target.outlet_fact(input)?.as_device_fact().is_none() {
-                input = target.wire_node(
-                    format!("{}.to-device-0", node.name),
-                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
-                    &[input],
-                )?[0];
-            }
-            let mut inputs = tvec!(input);
-            for (tensor, what) in
-                plan.plans.iter().zip(["rows", "row-weights", "cols", "col-weights"])
-            {
-                let konst = convert_const(&Const::new(tensor.clone())?)?;
-                inputs.push(target.wire_node(format!("{}.{what}", node.name), konst, &[])?[0]);
-            }
-            let outlet_ids = target.wire_node(node.name.clone(), plan.op, &inputs)?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(op) = crate::kernels::gather::wgpu_gather(source, node)? {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let outlet_ids = target.wire_node(node.name.clone(), op, &device_inputs)?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(gpu_op) = crate::kernels::resize::wgpu_resize(source, node)? {
-            let mut input = mapping[&node.inputs[0]];
-            if target.outlet_fact(input)?.as_device_fact().is_none() {
-                input = target.wire_node(
-                    format!("{}.to-device-0", node.name),
-                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
-                    &[input],
-                )?[0];
-            }
-            let outlet_ids = target.wire_node(node.name.clone(), gpu_op, &[input])?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(fill) = nan_replace_fill(source, node)? {
-            let mut input = mapping[&node.inputs[2]];
-            if target.outlet_fact(input)?.as_device_fact().is_none() {
-                input = target.wire_node(
-                    format!("{}.to-device-0", node.name),
-                    tract_gpu::sync::DeviceSync::new(DeviceSyncKind::ToDevice),
-                    &[input],
-                )?[0];
-            }
-            let op = GpuNanReplace::new(
-                fill,
-                "Wgpu",
-                crate::kernels::nan_replace::wgpu_nan_replace_dispatch,
-            );
-            let outlet_ids = target.wire_node(node.name.clone(), op, &[input])?;
-            return maybe_sync_outputs(source, node, target, outlet_ids);
-        }
-        if let Some(op) = node.op_as::<Const>()
-            && crate::utils::is_supported_dt(op.val().datum_type())
-            && op.exotic_fact().is_none()
-        {
-            let device_inputs =
-                sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-            let outlet_ids =
-                target.wire_node(node.name.clone(), convert_const(op)?, &device_inputs)?;
             return maybe_sync_outputs(source, node, target, outlet_ids);
         }
 
@@ -389,22 +320,6 @@ fn maybe_sync_outputs(
     {
         sync_model_outputs_if_required(src, node, target, outlet_ids)
     }
-}
-
-/// The value `Iff(IsNan(x), value, x)` puts in place of each NaN of `x`, when `node` is that
-/// and `x` is a tensor the kernels take: wgpu has no boolean tensor to carry the condition.
-fn nan_replace_fill(source: &TypedModel, node: &TypedNode) -> TractResult<Option<f32>> {
-    rule_if!(node.op_is::<Iff>());
-    let cond = source.node(node.inputs[0].node);
-    rule_if!(
-        cond.op_as::<ElementWiseOp>().is_some_and(|ew| ew.0.is::<IsNan>())
-            && cond.inputs[0] == node.inputs[2]
-    );
-    let x = source.outlet_fact(node.inputs[2])?;
-    rule_if!(crate::utils::is_supported_fact(x));
-    rule_if_some!(fill = source.outlet_fact(node.inputs[1])?.konst.as_ref());
-    rule_if!(fill.len() == 1 && fill.datum_type().is_float());
-    Ok(Some(fill.cast_to_scalar::<f32>()?))
 }
 
 fn split_multi_axis_reduce(

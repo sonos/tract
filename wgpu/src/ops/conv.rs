@@ -3,7 +3,29 @@ use crate::kernels::conv::wgpu_conv_dispatch;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
+use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensorExt;
+
+use crate::transform::Mapping;
+
+/// Translates a float, non-quantized 2-D `Conv` through [`wire_wgpu_conv`].
+pub fn translate_conv(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let input_facts = source.node_input_facts(node.id)?;
+    rule_if_some!(conv = node.op_as::<Conv>());
+    rule_if!(
+        input_facts.iter().all(|f| crate::utils::is_supported_fact(f))
+            && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
+            && conv.pool_spec.kernel_shape.len() == 2
+            && conv.q_params.is_none()
+    );
+    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    wire_wgpu_conv(source, node, target, &device_inputs, conv).map(Some)
+}
 
 pub fn wire_wgpu_conv(
     source: &TypedModel,
