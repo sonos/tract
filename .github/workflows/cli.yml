@@ -651,6 +651,7 @@ jobs:
     # Skipped builds mean prepare found the binaries of an earlier run (bins_run).
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
     permissions:
       contents: write     # push to bench-data (nightly only)
       actions: read       # may download the binaries of an earlier run
@@ -767,6 +768,7 @@ jobs:
     needs: [ prepare, build-macos ]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
     permissions:
       contents: write     # push to bench-data (nightly only)
       actions: read       # may download the binaries of an earlier run
