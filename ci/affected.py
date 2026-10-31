@@ -95,6 +95,10 @@ ARCH_TREES = {
 
 ALL_ARCHES = "all"
 
+# The GPU runtimes' crates. tract-cli links some of them in every build, but a CPU bench
+# never runs their code.
+GPU_CRATES = frozenset(["tract-gpu", "tract-cuda", "tract-metal", "tract-wgpu"])
+
 
 @dataclass(frozen=True)
 class Spec:
@@ -114,6 +118,7 @@ class Leg:
     foreign_inventory: bool = False
     path_only: bool = False
     claims: bool = True
+    exclude: frozenset = frozenset()
 
     @property
     def arch(self):
@@ -202,15 +207,18 @@ def legs():
             triple, features = runner_leg(runner)
             leg(cli, f"harness/{case}/ci.sh / {runner}", triple, [cli_spec(features)],
                 paths=[f"harness/{case}/**"])
+    # apple-m1-max_metal is the metal runtime of the apple-m1-max box, benched in the same leg.
     for box, triple, features in [
-        ("apple-m1-max", "aarch64-apple-darwin", f"{CPU},metal"),
+        ("apple-m1-max", "aarch64-apple-darwin", CPU),
+        ("apple-m1-max_metal", "aarch64-apple-darwin", f"{CPU},metal"),
         ("i9-11900kb_rtx-4060", "x86_64-unknown-linux-gnu", CPU),
         ("i9-11900kb_rtx-4060_cuda", "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"),
         ("i9-11900kb_rtx-4060_wgpu", "x86_64-unknown-linux-gnu", f"{CPU},wgpu"),
         ("i9-9900k", "x86_64-unknown-linux-gnu", CPU),
         ("jetson-orin-nx", "aarch64-unknown-linux-gnu", f"{CPU},cuda-12000"),
     ]:
-        leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS)
+        leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS,
+            exclude=frozenset() if features != CPU else GPU_CRATES)
     for device, triple in [
         ("cortex-a55", "aarch64-unknown-linux-gnu"),
         ("cortex-a53", "aarch64-unknown-linux-gnu"),
@@ -219,7 +227,8 @@ def legs():
         ("beaglev-ahead", "riscv64gc-unknown-linux-musl"),
         ("orangepi-rv2", "riscv64gc-unknown-linux-musl"),
     ]:
-        leg(cli, f"bench {device}", triple, [cli_spec(DINGHY_CLI)], paths=BENCH_PATHS)
+        leg(cli, f"bench {device}", triple, [cli_spec(DINGHY_CLI)], paths=BENCH_PATHS,
+            exclude=GPU_CRATES)
 
     crates = "crates.yml"
     host = "x86_64-unknown-linux-gnu"
@@ -378,6 +387,7 @@ def decide(files):
                 try:
                     for spec in leg.specs:
                         crates |= closure(spec, leg.triple, members)
+                    crates -= leg.exclude
                 except subprocess.CalledProcessError as e:
                     print(e.stderr, file=sys.stderr)
                     reason = f"cargo tree failed: {' '.join(e.cmd[2:])}"
