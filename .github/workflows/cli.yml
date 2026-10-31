@@ -104,8 +104,9 @@ jobs:
       # legs queued, holding the PR report back until GitHub times them out.
       # Each leg is a bench-data device (target). The 4060 runs three legs, its CPU, CUDA and
       # wgpu, so a change benches only the runtimes it can affect; wgpu has its own binary
-      # (artifact). suite_args: the Orin is GPU-only, its arm64 CPU is redundant with
-      # apple-m1-max. machines: one entry per box, for the nightly gates that run once per
+      # (artifact). runtimes: the box's runtimes benched in one leg, each named as its
+      # ci/affected.py leg, so a PR benches only those it can affect. suite_args: the Orin is
+      # GPU-only, its arm64 CPU is redundant with apple-m1-max. machines: one entry per box, for the nightly gates that run once per
       # box over all its runtimes.
       - id: boxes
         env:
@@ -125,7 +126,8 @@ jobs:
           )
           boxes=$(jq -c --arg disabled "$DISABLED" "$enabled" <<'EOF'
           [
-            { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin" },
+            { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin",
+              "runtimes": { "cpu": "apple-m1-max", "metal": "apple-m1-max_metal" } },
             { "target": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060", "triple": "x86_64-unknown-linux-gnu",
               "suite_args": "--runtimes cpu" },
             { "target": "i9-11900kb_rtx-4060_cuda", "box": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060",
@@ -367,7 +369,16 @@ jobs:
           ENABLED: ${{ steps.boxes.outputs.boxes }}
           SKIP: ${{ steps.scope.outputs.skip || '[]' }}
         run: |
-          BOXES=$(jq -c --argjson skip "$SKIP" 'map(select(("bench " + .target) | IN($skip[]) | not))' <<<"$BOXES")
+          BOXES=$(jq -c --argjson skip "$SKIP" '
+            def kept: ("bench " + .) | IN($skip[]) | not;
+            map(if .runtimes then
+                  ([.runtimes | to_entries[] | select(.value | kept) | .key]) as $rt
+                  | select($rt | length > 0)
+                  | if ($rt | length) < (.runtimes | length)
+                    then .suite_args = ([.suite_args // empty, "--runtimes " + ($rt | join(","))] | join(" "))
+                    else . end
+                  | del(.runtimes)
+                else select(.target | kept) end)' <<<"$BOXES")
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
