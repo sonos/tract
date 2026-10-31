@@ -170,7 +170,9 @@ def harness_runners():
 def runner_leg(runner):
     if runner in ("ubuntu-24.04",):
         return "x86_64-unknown-linux-gnu", CPU
-    if runner in ("cuda-tests", "bench-i9-11900kb-rtx-4060"):
+    if runner == "cuda-tests":
+        return "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000,wgpu"
+    if runner == "bench-i9-11900kb-rtx-4060":
         return "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"
     if runner in ("macos-latest", "metal-tests", "bench-apple-m1-max"):
         return "aarch64-apple-darwin", f"{CPU},metal"

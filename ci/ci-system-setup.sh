@@ -103,5 +103,12 @@ then
     TRACT_RUNTIMES="$TRACT_RUNTIMES --cuda"
 fi
 
+# Only over the NVIDIA Vulkan driver: elsewhere wgpu would settle for a CPU implementation.
+if vulkaninfo --summary 2>/dev/null | grep -q "driverName *= NVIDIA" \
+    && $TRACT_RUN list-runtimes 2>/dev/null | grep -qw wgpu
+then
+    TRACT_RUNTIMES="$TRACT_RUNTIMES --runtime=wgpu"
+fi
+
 export TRACT_RUNTIMES
 echo $TRACT_RUNTIMES
