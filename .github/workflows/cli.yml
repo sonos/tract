@@ -81,7 +81,7 @@ jobs:
       kind: ${{ steps.gate.outputs.kind }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
-      cases: ${{ steps.cases.outputs.cases }}
+      cases: ${{ steps.scoped.outputs.cases }}
       boxes: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
       machines: ${{ steps.boxes.outputs.machines }}
       boxes_apple: ${{ steps.split.outputs.apple }}
@@ -335,8 +335,8 @@ jobs:
             fi
           done
           echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
-      # On a PR push, ci/affected.py names the bench legs this change cannot affect; they and
-      # the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
+      # On a PR push, ci/affected.py names the bench legs and harness cases this change cannot
+      # affect; they and the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
       # a `ci:full` label and CI_SCOPING=off run everything, and so does any failure here.
       - id: changed
         if: github.event_name == 'pull_request' && vars.CI_SCOPING != 'off' && !contains(github.event.pull_request.labels.*.name, 'ci:full')
@@ -371,8 +371,9 @@ jobs:
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
-      # The builds, keeping only those a remaining bench or harness leg downloads. The x86_64
-      # CLI always builds: the report renders with it. ci/affected.py mirrors these legs.
+      # The harness cases a change can affect, then the builds, keeping only those a remaining
+      # bench or harness leg downloads. The x86_64 CLI always builds: the report renders with
+      # it. ci/affected.py mirrors these legs.
       - id: scoped
         env:
           SKIP: ${{ steps.scope.outputs.skip || '[]' }}
@@ -381,6 +382,8 @@ jobs:
           APPLE: ${{ steps.split.outputs.apple }}
           CASES: ${{ steps.cases.outputs.cases }}
         run: |
+          CASES=$(jq -c --argjson skip "$SKIP" 'map(select((.script + " / " + .runner) | IN($skip[]) | not))' <<<"$CASES")
+          jq -r '.[] | select(startswith("harness/")) | "::notice::not run, this change cannot affect it: \(.)"' <<<"$SKIP"
           builds=$(jq -c --argjson linux "$LINUX" \
             'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[] | .artifact // .triple))))' <<'EOF'
           [
@@ -431,6 +434,7 @@ jobs:
           bench_none=$(jq -nr --argjson linux "$LINUX" --argjson apple "$APPLE" --argjson devices "$devices" \
             '($linux + $apple + $devices) | length == 0')
           {
+            echo "cases=$CASES"
             echo "builds=$builds"
             echo "build_macos=$build_macos"
             echo "dinghy_devices=$devices"
@@ -496,7 +500,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.build_macos != 'true'))) }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && needs.prepare.outputs.cases != '[]' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.build_macos != 'true'))) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
