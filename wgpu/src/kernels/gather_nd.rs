@@ -3,7 +3,9 @@ use tract_core::ops::array::GatherNd;
 use tract_gpu::ops::gather_nd::{GpuGatherNd, MAX_COORDS};
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::kernels::shaders::{EntryPoint, LayoutKind, ShaderDtype, gather_nd_module, pack_u32s};
+use crate::kernels::shaders::{
+    EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
+};
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
 
@@ -68,3 +70,45 @@ register_wgpu_op!(GatherNd, |source, node, op| {
     rule_if!(GpuGatherNd::is_supported(&source.node_input_facts(node.id)?));
     Ok(Some(Box::new(GpuGatherNd::new(op.batch_dims, "Wgpu", wgpu_gather_nd_dispatch))))
 });
+
+pub fn gather_nd_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_data: u32,
+    off_idx: u32,
+    off_out: u32,
+    len: u32,
+    inner: u32,
+    rows: u32,
+    n: u32,
+    batch_stride: u32,
+    dims: vec4<u32>,
+    strides: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> data: array<{t}>;
+@group(0) @binding(1) var<storage, read> idx: array<f32>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn gather_nd_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let row = i / params.inner;
+    var src = params.off_data + (row / params.rows) * params.batch_stride + i % params.inner;
+    for (var k = 0u; k < params.n; k++) {{
+        var c = i32(idx[params.off_idx + row * params.n + k]);
+        if (c < 0) {{ c += i32(params.dims[k]); }}
+        src += u32(c) * params.strides[k];
+    }}
+    outp[params.off_out + i] = data[src];
+}}
+"#
+    ));
+    s
+}
