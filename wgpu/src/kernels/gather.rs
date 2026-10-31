@@ -1,11 +1,13 @@
 use tract_core::internal::*;
 use tract_core::ops::array::Gather;
 use tract_gpu::ops::gather::GpuGather;
+use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
     EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
 };
+use crate::transform::Mapping;
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
@@ -70,6 +72,18 @@ pub fn wgpu_gather(source: &TypedModel, node: &TypedNode) -> TractResult<Option<
     rule_if!(facts[1].datum_type == i64::datum_type() && facts[1].is_plain());
     rule_if!(op.output_type.is_none_or(|dt| dt == facts[0].datum_type));
     Ok(Some(GpuGather::new(op.axis, "Wgpu", wgpu_gather_dispatch)))
+}
+
+/// Translates the `Gather` [`wgpu_gather`] takes, both of its inputs moved to the device.
+pub fn translate_gather(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    rule_if_some!(op = wgpu_gather(source, node)?);
+    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    target.wire_node(node.name.clone(), op, &device_inputs).map(Some)
 }
 
 /// `out[o, i, r] = data[o, indices[i], r]` over `(outer, axis, inner)` views,

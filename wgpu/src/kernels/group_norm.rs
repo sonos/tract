@@ -1,10 +1,15 @@
 use tract_core::internal::*;
-use tract_gpu::ops::group_norm::GroupNormView;
+use tract_core::ops::nn::GroupNorm;
+use tract_gpu::ops::group_norm::{
+    GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, GroupNormView, wire_gpu_group_norm,
+};
+use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
     EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
 };
+use crate::transform::Mapping;
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
@@ -329,6 +334,32 @@ fn group_norm_apply_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 "#
     ));
     s
+}
+
+/// Translates a `GroupNorm` the kernels take into the stats and apply passes.
+pub fn translate_group_norm(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let input_facts = source.node_input_facts(node.id)?;
+    rule_if_some!(op = node.op_as::<GroupNorm>());
+    rule_if!(crate::utils::is_supported_fact(input_facts[0]));
+    rule_if_some!(params = GroupNormParams::from_core(op, input_facts[0]));
+    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    let stats = GpuGroupNormStats {
+        params,
+        backend_name: "Wgpu",
+        dispatch: wgpu_group_norm_stats_dispatch,
+    };
+    let apply = GpuGroupNormApply {
+        params,
+        eps: op.eps.clone(),
+        backend_name: "Wgpu",
+        dispatch: wgpu_group_norm_apply_dispatch,
+    };
+    wire_gpu_group_norm(target, &node.name, device_inputs[0], stats, apply).map(Some)
 }
 
 #[cfg(test)]

@@ -1,9 +1,14 @@
 use tract_core::internal::*;
+use tract_core::ops::element_wise::ElementWiseOp;
+use tract_core::ops::logic::Iff;
+use tract_core::ops::math::IsNan;
+use tract_gpu::ops::nan_replace::GpuNanReplace;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
     EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
 };
+use crate::transform::{Mapping, input_on_device};
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
 
@@ -38,6 +43,36 @@ pub fn wgpu_nan_replace_dispatch(
         let dyn_off = q.alloc_uniform(&params)?;
         q.dispatch("nan_replace", &pipeline, &bg, dyn_off, input.len() as u64)
     })
+}
+
+/// Translates `Iff(IsNan(x), value, x)` into one [`GpuNanReplace`] of `x`; the condition is
+/// not wired.
+pub fn translate_nan_replace(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    rule_if_some!(fill = nan_replace_fill(source, node)?);
+    let input = input_on_device(node, target, mapping, 2)?;
+    let op = GpuNanReplace::new(fill, "Wgpu", wgpu_nan_replace_dispatch);
+    target.wire_node(node.name.clone(), op, &[input]).map(Some)
+}
+
+/// The value `Iff(IsNan(x), value, x)` puts in place of each NaN of `x`, when `node` is that
+/// and `x` is a tensor the kernels take: wgpu has no boolean tensor to carry the condition.
+fn nan_replace_fill(source: &TypedModel, node: &TypedNode) -> TractResult<Option<f32>> {
+    rule_if!(node.op_is::<Iff>());
+    let cond = source.node(node.inputs[0].node);
+    rule_if!(
+        cond.op_as::<ElementWiseOp>().is_some_and(|ew| ew.0.is::<IsNan>())
+            && cond.inputs[0] == node.inputs[2]
+    );
+    let x = source.outlet_fact(node.inputs[2])?;
+    rule_if!(crate::utils::is_supported_fact(x));
+    rule_if_some!(fill = source.outlet_fact(node.inputs[1])?.konst.as_ref());
+    rule_if!(fill.len() == 1 && fill.datum_type().is_float());
+    Ok(Some(fill.cast_to_scalar::<f32>()?))
 }
 
 /// Replaces each NaN of the input with `value`. NaN is told by its bits, on the value widened
