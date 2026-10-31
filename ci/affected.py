@@ -66,12 +66,12 @@ NOT_GLOBAL = [
     "ci/benches.toml",
     "ci/bench-*",
     "ci/cargo-deny-check.sh",
+    "ci/android-ndk.sh",
 ]
 
 SCRIPT_WORKFLOWS = {
     ".github/scripts/ci-feedback.js": ["cli.yml"],
     "ci/cross.sh": ["cli.yml", "cross-platform.yml"],
-    "ci/android-ndk.sh": ["cross-platform.yml"],
 }
 
 BENCH_PATHS = ["ci/benches.toml", "ci/bench-*", ".github/workflows/bench-comment.yml"]
@@ -272,7 +272,8 @@ def legs():
         ("i686-linux-android", "i686-linux-android"),
         ("x86_64-linux-android", "x86_64-linux-android"),
     ]:
-        leg(cross, f"linux ({platform})", rustc, [Spec("tract-linalg"), Spec("tract-ffi")])
+        leg(cross, f"linux ({platform})", rustc, [Spec("tract-linalg"), Spec("tract-ffi")],
+            paths=["ci/android-ndk.sh"])
     wasm = [Spec("tract-onnx", "getrandom-js"), Spec("tract-tensorflow")]
     leg(cross, "linux (wasm32-unknown-unknown)", "wasm32-unknown-unknown", wasm)
     leg(cross, "linux (wasm32-unknown-emscripten)", "wasm32-unknown-emscripten", wasm)
