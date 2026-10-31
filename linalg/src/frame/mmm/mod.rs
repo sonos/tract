@@ -874,10 +874,11 @@ fn chunk_grid(
 /// `pool`:
 ///   * `Some(p)` with `p.current_num_threads() > 1` → scoped via `p.install`
 ///     (native, custom pool path).
-///   * `Some(p)` with single-thread pool, or `None` → dispatched via
-///     `into_par_iter` directly, which uses rayon's GLOBAL pool. This is
-///     the only working path on `wasm32-unknown-unknown` via
-///     `wasm_bindgen_rayon::init_thread_pool`.
+///   * `Some(p)` with a single-thread pool → the whole grid runs as one chunk
+///     on the calling thread, so a one-thread executor is genuinely serial.
+///   * `None` → dispatched via `into_par_iter` directly, which uses rayon's
+///     GLOBAL pool. This is the only working path on `wasm32-unknown-unknown`
+///     via `wasm_bindgen_rayon::init_thread_pool`.
 #[cfg(feature = "multithread-mm")]
 #[allow(clippy::too_many_arguments)]
 unsafe fn chunked_dispatch_rayon<F>(
@@ -898,14 +899,15 @@ where
     if n_panels_m == 0 || n_panels_n == 0 {
         return Ok(());
     }
-    if n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold()
-        && macs < crate::multithread::current_threading_mac_threshold()
+    if pool.is_some_and(|p| p.current_num_threads() <= 1)
+        || (n_panels_m * n_panels_n < crate::multithread::current_threading_panel_threshold()
+            && macs < crate::multithread::current_threading_mac_threshold())
     {
-        // Below the threading threshold: run the whole grid as a single chunk
-        // on the calling thread. Closure handles its own TLS scope.
+        // A one-thread pool, or below the threading threshold: run the whole
+        // grid as a single chunk on the calling thread. Closure handles its own TLS scope.
         return run_chunk(0, n_panels_m, 0, n_panels_n, 1);
     }
-    let use_global = pool.is_none_or(|p| p.current_num_threads() <= 1);
+    let use_global = pool.is_none();
     let cpt = chunks_per_thread(packed_operand_bytes(n_panels_m, n_panels_n, mr, nr, k, elem));
     let body = || {
         let nth = rayon::current_num_threads();
@@ -924,6 +926,34 @@ where
         })
     };
     if use_global { body() } else { pool.unwrap().install(body) }
+}
+
+#[cfg(all(test, feature = "multithread-mm"))]
+mod dispatch_tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    fn dispatch(
+        pool: Option<&rayon::ThreadPool>,
+    ) -> Vec<(usize, usize, usize, usize, Option<usize>)> {
+        let calls = Mutex::new(vec![]);
+        unsafe {
+            chunked_dispatch_rayon(pool, 32, 32, 8, 8, 1024, 4, usize::MAX, |a, b, c, d, conc| {
+                assert_eq!(conc, 1);
+                calls.lock().unwrap().push((a, b, c, d, rayon::current_thread_index()));
+                Ok(())
+            })
+            .unwrap();
+        }
+        calls.into_inner().unwrap()
+    }
+
+    #[test]
+    fn one_thread_pool_runs_inline() {
+        let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
+        // Off any rayon worker, so a global-pool dispatch would show up as Some(index).
+        assert_eq!(dispatch(Some(&pool)), vec![(0, 32, 0, 32, None)]);
+    }
 }
 
 #[cfg(test)]
