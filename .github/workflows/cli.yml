@@ -254,7 +254,8 @@ jobs:
             for runner in ${runners:-ubuntu-24.04}
             do
               case "$runner" in
-                ubuntu-24.04|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                ubuntu-24.04|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                cuda-tests) triple=x86_64-unknown-linux-gnu-wgpu ;;
                 macos-latest|metal-tests|bench-apple-m1-max) triple=aarch64-apple-darwin ;;
                 *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
               esac
@@ -395,8 +396,8 @@ jobs:
         run: |
           CASES=$(jq -c --argjson skip "$SKIP" 'map(select((.script + " / " + .runner) | IN($skip[]) | not))' <<<"$CASES")
           jq -r '.[] | select(startswith("harness/")) | "::notice::not run, this change cannot affect it: \(.)"' <<<"$SKIP"
-          builds=$(jq -c --argjson linux "$LINUX" \
-            'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[] | .artifact // .triple))))' <<'EOF'
+          builds=$(jq -c --argjson linux "$LINUX" --argjson cases "$CASES" \
+            'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[] | .artifact // .triple)) or (.triple | IN($cases[].triple))))' <<'EOF'
           [
             { "triple": "x86_64-unknown-linux-gnu", "host": "ubuntu-24.04",
               "build": "ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite",

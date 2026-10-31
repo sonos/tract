@@ -17,5 +17,5 @@ do
     case "$rt" in -O) continue;; esac
     $TRACT_RUN --nnef-tract-transformers . $rt run --input-from-npz io.npz \
         --assert-output-bundle io.npz -q \
-        --assert-op-only 'Cuda*,Metal*,Gpu*,DeviceSync*,Const,Source'
+        --assert-op-only 'Cuda*,Metal*,Wgpu*,Gpu*,DeviceSync*,Const,Source'
 done
