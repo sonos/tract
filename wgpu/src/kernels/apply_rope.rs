@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ShaderDtype, apply_rope_module, pack_u32s, rotate_half_module,
+    EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -150,3 +150,91 @@ register_wgpu_op!(tract_transformers::ops::apply_rope::RotateHalf, |_source, _no
         wgpu_rotate_half_dispatch,
     ))))
 });
+
+/// Rotary embedding `x * cos + rotate_half(x) * sin` over a rank-4 view of
+/// the input, one thread per pair of elements half an innermost row apart.
+/// The input, `cos` and `sin` are read through their strides (zero along the
+/// axes `cos` and `sin` broadcast); the output is contiguous.
+pub fn apply_rope_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_cos: u32,
+    off_sin: u32,
+    off_out: u32,
+    d1: u32,
+    d2: u32,
+    half: u32,
+    len: u32,
+    x_strides: vec4<u32>,
+    cos_strides: vec4<u32>,
+    sin_strides: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> cosv: array<{t}>;
+@group(0) @binding(2) var<storage, read> sinv: array<{t}>;
+@group(0) @binding(3) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(4) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn apply_rope_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let j = i % params.half;
+    let row = i / params.half;
+    let i2 = row % params.d2;
+    let i1 = (row / params.d2) % params.d1;
+    let i0 = row / (params.d2 * params.d1);
+    let at = vec4<u32>(i0, i1, i2, j);
+    let x = params.off_in + dot(at, params.x_strides);
+    let c = params.off_cos + dot(at, params.cos_strides);
+    let s = params.off_sin + dot(at, params.sin_strides);
+    let x_rot = x + params.half * params.x_strides.w;
+    let c_rot = c + params.half * params.cos_strides.w;
+    let s_rot = s + params.half * params.sin_strides.w;
+    let o = params.off_out + row * 2u * params.half + j;
+    outp[o] = inp[x] * cosv[c] - inp[x_rot] * sinv[s];
+    outp[o + params.half] = inp[x_rot] * cosv[c_rot] + inp[x] * sinv[s_rot];
+}}
+"#
+    ));
+    s
+}
+
+/// `concat(-x[half..], x[..half])` along the innermost axis, one thread per
+/// pair of elements half a row apart.
+pub fn rotate_half_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    half: u32,
+    len: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn rotate_half_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let at = (i / params.half) * 2u * params.half + i % params.half;
+    let x = inp[params.off_in + at];
+    outp[params.off_out + at] = -inp[params.off_in + at + params.half];
+    outp[params.off_out + at + params.half] = x;
+}}
+"#
+    ));
+    s
+}

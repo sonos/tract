@@ -3,8 +3,8 @@ use tract_gpu::ops::reduce::Reducer;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, SUM_RUN_WG, ShaderDtype, keys_for,
-    op_in_set, pack_u32s, sum_run_module,
+    EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, WORKGROUP,
+    keys_for, op_in_set, pack_u32s, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -141,3 +141,160 @@ register_wgpu_op!(tract_core::ops::nn::Reduce, |source, node, op| {
     }
     Ok(None)
 });
+
+/// Threads in a cooperative sum: each output gets one workgroup this wide.
+pub const SUM_RUN_WG: u32 = 256;
+
+/// A sum over the trailing values of each output: one workgroup per output,
+/// threads striding over its `k` values, then a tree over workgroup memory.
+pub fn sum_run_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    k: u32,
+    _p0: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+var<workgroup> partial: array<f32, {SUM_RUN_WG}>;
+
+@compute @workgroup_size({SUM_RUN_WG})
+fn sum_run_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let base = params.off_in + wid.x * params.k;
+    var acc = 0.0;
+    for (var i = lid.x; i < params.k; i += {SUM_RUN_WG}u) {{
+        acc += f32(inp[base + i]);
+    }}
+    partial[lid.x] = acc;
+    for (var stride = {SUM_RUN_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    if (lid.x == 0u) {{
+        outp[params.off_out + wid.x] = {t}(partial[0]);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+pub(crate) fn reduce_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    outer: u32,
+    k: u32,
+    inner: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_sum_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = 0.0;
+    for (var k = 0u; k < params.k; k++) {{
+        acc += f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = {t}(acc);
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_prod_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = 1.0;
+    for (var k = 0u; k < params.k; k++) {{
+        acc *= f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = {t}(acc);
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_max_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = inp[params.off_in + (o * params.k) * params.inner + r];
+    for (var k = 1u; k < params.k; k++) {{
+        acc = max(acc, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_min_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = inp[params.off_in + (o * params.k) * params.inner + r];
+    for (var k = 1u; k < params.k; k++) {{
+        acc = min(acc, inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = acc;
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_mean_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = 0.0;
+    for (var k = 0u; k < params.k; k++) {{
+        acc += f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+    }}
+    outp[params.off_out + i] = {t}(acc / f32(params.k));
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn reduce_mean_of_squares_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var acc = 0.0;
+    for (var k = 0u; k < params.k; k++) {{
+        let v = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        acc += v * v;
+    }}
+    outp[params.off_out + i] = {t}(acc / f32(params.k));
+}}
+"#
+    ));
+    s
+}
