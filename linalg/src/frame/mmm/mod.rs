@@ -949,6 +949,7 @@ mod dispatch_tests {
     }
 
     #[test]
+    #[cfg_attr(target_family = "wasm", ignore = "rayon cannot spawn pool threads on wasm")]
     fn one_thread_pool_runs_inline() {
         let pool = rayon::ThreadPoolBuilder::new().num_threads(1).build().unwrap();
         // Off any rayon worker, so a global-pool dispatch would show up as Some(index).
