@@ -461,7 +461,7 @@ fn main() -> TractResult<()> {
         std::thread::spawn(move || {
             std::thread::sleep(std::time::Duration::from_secs(seconds));
             eprintln!("Timeout: process killed after {seconds}s");
-            std::process::exit(124);
+            exit_process(124);
         });
     }
 
@@ -503,11 +503,27 @@ fn main() -> TractResult<()> {
 
     if let Err(e) = res {
         error!("{e:?}");
-        std::process::exit(1);
+        exit_process(1);
     }
 
     info_usage("done", probe.as_ref());
-    Ok(())
+    exit_process(0)
+}
+
+/// End the process with `code`. Once a wgpu device exists the exit handlers are skipped:
+/// NVIDIA's Vulkan driver tears itself down from an atexit handler while its own shader
+/// compile threads are still running, which crashes or hangs a process whose work is done.
+fn exit_process(code: i32) -> ! {
+    #[cfg(all(unix, not(target_family = "wasm"), feature = "wgpu"))]
+    if tract_wgpu::wgpu_context_created() {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        let _ = std::io::stderr().flush();
+        // SAFETY: `_exit` takes no pointers and does not return; skipping destructors and
+        // atexit handlers is the point, and std's buffered stdout was flushed just above.
+        unsafe { libc::_exit(code) };
+    }
+    std::process::exit(code)
 }
 
 #[allow(clippy::let_and_return)]
