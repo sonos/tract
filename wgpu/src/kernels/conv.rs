@@ -1022,3 +1022,335 @@ fn conv2d_pixel_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+    use tract_core::transform::ModelTransform;
+
+    use crate::WgpuTransform;
+    use crate::test_utils::{OneWeight, f16_vs_f32, fill, gpu_vs_cpu, transformed};
+
+    /// A dense 3x3 convolution takes the per-pixel kernel, every output channel
+    /// of a pixel from one thread; the shapes cover the stem, a batch, a stride-1
+    /// layer with more input channels, and an odd size, against the CPU.
+    #[test]
+    fn conv_3x3_per_pixel() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        for (n, ci, co, h, w, stride, pad) in [
+            (1usize, 3usize, 16usize, 144usize, 256usize, 2usize, 1usize),
+            (2, 3, 8, 20, 30, 2, 1),
+            (1, 7, 5, 13, 17, 1, 1),
+            (1, 4, 6, 9, 9, 1, 0),
+        ] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+            let k = model
+                .add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+            let b = model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                    dilations: None,
+                    strides: Some(tvec![stride, stride]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            gpu_vs_cpu(model, Tensor::from_shape(&[n, ci, h, w], &fill(5, n * ci * h * w))?)
+                .with_context(|| format!("n{n} ci{ci} co{co} {h}x{w} s{stride} p{pad}"))?;
+        }
+        Ok(())
+    }
+
+    /// A qualifying dense stride-1 3x3 conv rewrites to Winograd F(4,3): a
+    /// tile-extracting grouped conv plus two batched GEMMs. The shapes, all at the
+    /// smallest tile count the rewrite takes, cover aligned tiles, odd sizes (tail
+    /// tiles cropped) with a batch and no bias, and no padding.
+    #[test]
+    fn conv_winograd_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        for (n, ci, co, h, w, pad, bias) in [
+            (1usize, 128usize, 128usize, 16usize, 16usize, 1usize, true),
+            (2, 128, 136, 13, 15, 1, false),
+            (1, 128, 128, 18, 18, 0, true),
+        ] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+            let k = model
+                .add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+            let b = if bias {
+                model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?
+            } else {
+                model.add_const("b", Tensor::zero::<f32>(&[co])?)?
+            };
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                    dilations: None,
+                    strides: Some(tvec![1, 1]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            let mut transformed = model.clone();
+            WgpuTransform.transform(&mut transformed)?;
+            ensure!(
+                transformed.nodes().iter().any(|node| node.name.contains(".wino.")),
+                "winograd rewrite did not fire for {ci}->{co} {h}x{w}"
+            );
+            gpu_vs_cpu(model, Tensor::from_shape(&[n, ci, h, w], &fill(5, n * ci * h * w))?)
+                .with_context(|| format!("n{n} ci{ci} co{co} {h}x{w} p{pad}"))?;
+        }
+        Ok(())
+    }
+
+    /// An f16 conv whose kernel is a named weight, not yet loaded, rewrites to
+    /// Winograd too, and matches the CPU in f32 on the same f16-rounded values.
+    #[test]
+    fn conv_winograd_f16_named_weight_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        crate::context::wgpu_context();
+        let (ci, co, h, w) = (128usize, 128usize, 16usize, 16usize);
+        let rounded = |t: Tensor| -> TractResult<Tensor> {
+            Ok(t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned())
+        };
+        let kernel: Vec<f32> = fill(3, co * ci * 9).iter().map(|v| v * 0.05).collect();
+        let kernel = rounded(Tensor::from_shape(&[co, ci, 3, 3], &kernel)?)?;
+        let bias = rounded(Tensor::from_shape(&[co], &fill(4, co))?)?;
+        let build = |dt: DatumType| -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact([1, ci, h, w]))?;
+            let k = if dt == DatumType::F16 {
+                let source = Arc::new(OneWeight(kernel.cast_to::<f16>()?.into_owned()));
+                NamedStorage::new("k", dt, kernel.shape(), Some(source)).into_tensor()
+            } else {
+                kernel.clone()
+            };
+            let k = model.add_const("k", k)?;
+            let b = model.add_const("b", bias.cast_to_dt(dt)?.into_owned())?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: Some(tvec![1, 1]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            Ok(model)
+        };
+        let mut transformed = build(DatumType::F16)?;
+        WgpuTransform.transform(&mut transformed)?;
+        ensure!(
+            transformed.nodes().iter().any(|node| node.name.contains(".wino.")),
+            "winograd rewrite did not fire on the f16 named-weight conv"
+        );
+        let input = Tensor::from_shape(&[1, ci, h, w], &fill(5, ci * h * w))?;
+        f16_vs_f32(build, input, Approximation::Approximate)
+    }
+
+    /// The rewrite declines below its channel-product and tile gates, and on a
+    /// stride-2 conv: those keep the plain wgpu conv.
+    #[test]
+    fn conv_winograd_skips_unfit() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        for (n, ci, co, h, w, stride) in [
+            (1usize, 64usize, 64usize, 16usize, 16usize, 2usize),
+            (1, 8, 8, 64, 64, 1),
+            (1, 16, 16, 12, 12, 1),
+            (1, 64, 64, 16, 16, 1),
+            (1, 64, 64, 64, 64, 1),
+            (1, 128, 64, 32, 32, 1),
+            (1, 128, 128, 8, 8, 1),
+        ] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact([n, ci, h, w]))?;
+            let k = model
+                .add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &fill(3, co * ci * 9))?)?;
+            let b = model.add_const("b", Tensor::from_shape(&[co], &fill(4, co))?)?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: Some(tvec![stride, stride]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            WgpuTransform.transform(&mut model)?;
+            ensure!(
+                !model.nodes().iter().any(|node| node.name.contains(".wino.")),
+                "winograd rewrite fired for {ci}->{co} {h}x{w} s{stride}"
+            );
+            ensure!(
+                model
+                    .nodes()
+                    .iter()
+                    .any(|node| node.op_as::<crate::ops::conv::WgpuConv>().is_some()),
+                "expected a plain WgpuConv for {ci}->{co} {h}x{w} s{stride}"
+            );
+        }
+        Ok(())
+    }
+
+    /// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
+    /// batch, channels-last, an uneven kernel and padding, f16, a bias, whole
+    /// tiles, and a long reduction over a small map that fills only a few tiles.
+    #[test]
+    fn conv_tiled_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        #[rustfmt::skip]
+        let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 13] = [
+            // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
+            (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 8, 40, [90, 90], [3, 3], [2, 2], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 8, 40, [49, 49], [3, 3], [1, 1], [2, 2], 0, false),
+            (DataFormat::NCHW, 1, 16, 80, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 2, 8, 40, [33, 33], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NHWC, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 8, 40, [45, 47], [1, 5], [1, 1], [1, 1], 2, false),
+            (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
+            (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 32, 64, [46, 46], [3, 3], [1, 1], [1, 1], 1, true),
+            (DataFormat::NCHW, 1, 64, 40, [7, 12], [5, 5], [1, 1], [1, 1], 2, false),
+            (DataFormat::NCHW, 1, 8, 96, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NHWC, 1, 8, 36, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
+        ];
+        for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
+            cases.into_iter().enumerate()
+        {
+            let group = if ci == 16 { 2 } else { 1 };
+            let shape = fmt.from_n_c_hw(n, ci, hw)?.shape.to_vec();
+            let k_shape = [co, ci / group, kernel[0], kernel[1]];
+            // An f16 case runs on the GPU in f16 and is checked against the CPU in f32 on the
+            // same f16-rounded values: the CPU's own f16 convolution is the less exact of the two.
+            let values = |seed, shape: &[usize]| -> TractResult<Tensor> {
+                let t = Tensor::from_shape(shape, &fill(seed, shape.iter().product()))?;
+                Ok(if f16_ { t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned() } else { t })
+            };
+            let input = values(3, &shape)?;
+            let build = |dt: DatumType| -> TractResult<TypedModel> {
+                let mut model = TypedModel::default();
+                let x = model.add_source("x", dt.fact(&shape))?;
+                let k = model.add_const("k", values(1, &k_shape)?.cast_to_dt(dt)?.into_owned())?;
+                let b = model.add_const("b", values(2, &[co])?.cast_to_dt(dt)?.into_owned())?;
+                let conv = Conv {
+                    pool_spec: PoolSpec {
+                        data_format: fmt,
+                        kernel_shape: kernel.iter().copied().collect(),
+                        padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, 0]),
+                        dilations: Some(dilation.iter().copied().collect()),
+                        strides: Some(stride.iter().copied().collect()),
+                        input_channels: ci,
+                        output_channels: co,
+                    },
+                    kernel_fmt: KernelFormat::OIHW,
+                    group,
+                    q_params: None,
+                };
+                let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+                model.select_output_outlets(&[y])?;
+                Ok(model)
+            };
+            if f16_ {
+                let rt =
+                    tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+                let gpu = rt.prepare(build(f16::datum_type())?)?;
+                let g = gpu.run(tvec!(input.cast_to::<f16>()?.into_owned().into()))?.remove(0);
+                let cpu = Arc::new(SimplePlan::new(build(f32::datum_type())?)?);
+                let c = cpu.run(tvec!(input.clone().into()))?.remove(0);
+                let c = c.cast_to::<f16>()?.into_owned();
+                g.into_tensor().close_enough(&c, Approximation::Approximate)
+            } else {
+                gpu_vs_cpu(build(f32::datum_type())?, input)
+            }
+            .with_context(|| format!("case {i}"))?;
+        }
+        Ok(())
+    }
+
+    /// Convolutions over one spatial axis run as two-dimensional ones on the device: dilated,
+    /// padded, strided, channels-last.
+    #[test]
+    fn conv_1d_runs_on_device() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        #[rustfmt::skip]
+        let cases = [
+            // fmt, ci, co, len, kernel, stride, dilation, pad
+            (DataFormat::NCHW, 8, 16, 50, 3, 1, 2, 2),
+            (DataFormat::NCHW, 16, 40, 200, 2, 1, 4, 0),
+            (DataFormat::NHWC, 8, 16, 50, 3, 2, 1, 1),
+        ];
+        for (i, (fmt, ci, co, len, kernel, stride, dilation, pad)) in cases.into_iter().enumerate()
+        {
+            let shape = fmt.from_n_c_hw(1, ci, [len])?.shape.to_vec();
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact(&shape))?;
+            let k = model.add_const(
+                "k",
+                Tensor::from_shape(&[co, ci, kernel], &fill(1, co * ci * kernel))?,
+            )?;
+            let b = model.add_const("b", Tensor::from_shape(&[co], &fill(2, co))?)?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: fmt,
+                    kernel_shape: tvec![kernel],
+                    padding: PaddingSpec::Explicit(tvec![pad], tvec![pad]),
+                    dilations: Some(tvec![dilation]),
+                    strides: Some(tvec![stride]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            let translated = transformed(model.clone())?;
+            ensure!(
+                translated.nodes().iter().any(|n| n.op.name() == "WgpuConv"),
+                "case {i}: the convolution did not reach the device"
+            );
+            let n: usize = shape.iter().product();
+            gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(3, n))?)
+                .with_context(|| format!("case {i}"))?;
+        }
+        Ok(())
+    }
+}

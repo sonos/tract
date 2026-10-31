@@ -1104,3 +1104,332 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// A residual: the operand is another tensor shaped like the product, read
+    /// element for element. Two products chained so the residual is an op's
+    /// output. With `transposed` every flag is set, as a channels-first pointwise
+    /// convolution lowers, and the sizes are multiples of four so the blocked
+    /// kernel takes it.
+    fn matmul_residual(m: usize, k: usize, n: usize, transposed: bool) -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        let mut model = TypedModel::default();
+        let op = PrefixMatMul {
+            transpose_a: transposed,
+            transpose_b: transposed,
+            transpose_c: transposed,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let (a_shape, b_shape, bias_shape, w2_shape) = if transposed {
+            (vec![k, m], vec![n, k], vec![n, 1], vec![n, n])
+        } else {
+            (vec![m, k], vec![k, n], vec![1, n], vec![n, n])
+        };
+        let a = model.add_source("a", f32::fact(&*a_shape))?;
+        let b = model.add_const("b", Tensor::from_shape(&b_shape, &fill(1, k * n))?)?;
+        let bias = model.add_const("bias", Tensor::from_shape(&bias_shape, &fill(2, n))?)?;
+        let first = model.wire_node("first", op, &[a, b])?[0];
+        let first = model.wire_node("first_bias", tract_core::ops::math::add(), &[first, bias])?[0];
+        let w2 = model.add_const("w2", Tensor::from_shape(&w2_shape, &fill(3, n * n))?)?;
+        let second = model.wire_node("second", op, &[first, w2])?[0];
+        let y = model.wire_node("residual", tract_core::ops::math::add(), &[second, first])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, m * k))?)
+    }
+
+    /// `k` a multiple of four but not of eight, so the blocked kernel's unrolled
+    /// loop leaves a four-step tail to run.
+    #[test]
+    fn matmul_blocked_k_tail_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        for (m, k, n) in [(64usize, 12usize, 16usize), (144, 20, 32), (16, 4, 8)] {
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", f32::fact([k, m]))?;
+            let b = model.add_const("b", Tensor::from_shape(&[n, k], &fill(1, n * k))?)?;
+            let op = PrefixMatMul {
+                transpose_a: true,
+                transpose_b: true,
+                transpose_c: true,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let out = model.wire_node("mm", op, &[a, b])?[0];
+            let bias = model.add_const("bias", Tensor::from_shape(&[n, 1], &fill(2, n))?)?;
+            let y = model.wire_node("bias_add", tract_core::ops::math::add(), &[out, bias])?[0];
+            model.select_output_outlets(&[y])?;
+            gpu_vs_cpu(model, Tensor::from_shape(&[k, m], &fill(3, k * m))?)
+                .with_context(|| format!("m={m} k={k} n={n}"))?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn matmul_residual_matches_cpu() -> TractResult<()> {
+        matmul_residual(6, 5, 7, false)?;
+        matmul_residual(8, 8, 16, true)
+    }
+
+    /// Products the tiled matmul takes: every dimension off the tile size, each
+    /// transposition, a prefix, f16, a bias epilogue, and thin products with a long
+    /// `k` that fill one or two tiles.
+    #[test]
+    fn matmul_tiled_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        for (prefix, m, k, n, ta, tb, tc, f16_, bias) in [
+            (1usize, 130usize, 17usize, 513usize, false, false, false, false, false),
+            (1, 130, 17, 513, true, false, false, false, false),
+            (1, 130, 17, 513, false, true, false, false, false),
+            (1, 130, 17, 513, false, false, true, false, false),
+            (1, 130, 17, 513, true, true, true, false, false),
+            (8, 65, 33, 63, false, false, false, false, false),
+            (1, 130, 17, 513, false, false, false, true, false),
+            (1, 130, 17, 513, false, false, false, false, true),
+            (1, 16, 300, 16, false, false, false, false, false),
+            (1, 20, 960, 40, true, false, false, false, false),
+            (1, 112, 40, 130, false, false, false, false, false),
+            (1, 112, 40, 130, true, true, true, false, false),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
+            let b_shape = [prefix, if tb { n } else { k }, if tb { k } else { n }];
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", dt.fact(a_shape))?;
+            let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+            let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+            let op = PrefixMatMul {
+                transpose_a: ta,
+                transpose_b: tb,
+                transpose_c: tc,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let mut y = model.wire_node("mm", op, &[a, b])?[0];
+            if bias {
+                let bias = Tensor::from_shape(&[1, 1, n], &fill(2, n))?;
+                let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+                y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+                format!("prefix={prefix} m={m} k={k} n={n} ta={ta} tb={tb} tc={tc} f16={f16_}")
+            })?;
+        }
+        Ok(())
+    }
+
+    /// `m = 1` products: partial `k` and `n` tiles, every transposition, a prefix,
+    /// a broadcast prefix, f16, and a bias-plus-activation epilogue.
+    #[test]
+    fn matmul_gemv_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        use tract_core::ops::nn::sigmoid;
+        for (prefix, k, n, ta, tb, tc, f16_, bias) in [
+            (1usize, 1usize, 1usize, false, false, false, false, false),
+            (1, 17, 7, false, false, false, false, false),
+            (1, 63, 64, false, false, false, false, false),
+            (1, 65, 63, false, false, false, false, false),
+            (1, 300, 130, false, false, false, false, false),
+            (1, 300, 130, true, false, false, false, false),
+            (1, 300, 130, false, true, false, false, false),
+            (1, 300, 130, false, false, true, false, false),
+            (1, 300, 130, true, true, true, false, false),
+            (4, 40, 80, false, false, false, false, false),
+            (1, 200, 1, false, false, false, false, false),
+            (1, 128, 256, false, false, false, true, false),
+            (1, 100, 50, false, false, false, false, true),
+            (1, 80, 33, false, false, false, true, true),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let a_shape = [prefix, if ta { k } else { 1 }, if ta { 1 } else { k }];
+            let b_shape = [prefix, if tb { n } else { k }, if tb { k } else { n }];
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", dt.fact(a_shape))?;
+            let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+            let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+            let op = PrefixMatMul {
+                transpose_a: ta,
+                transpose_b: tb,
+                transpose_c: tc,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let mut y = model.wire_node("mm", op, &[a, b])?[0];
+            if bias {
+                let bias = Tensor::from_shape(&[1, 1, n], &fill(2, n))?;
+                let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+                y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+                if !f16_ {
+                    y = model.wire_node("act", sigmoid(), &[y])?[0];
+                }
+            }
+            model.select_output_outlets(&[y])?;
+            if bias {
+                let gpu = transformed(model.clone())?;
+                let gemm = gpu
+                    .nodes()
+                    .iter()
+                    .find_map(|node| node.op_as::<crate::ops::matmul::WgpuGemm>())
+                    .context("m=1 product left the device")?;
+                let want = if f16_ { 1 } else { 2 };
+                ensure!(gemm.epilogue.len() == want, "epilogue {:?}", gemm.epilogue);
+            }
+            let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+                format!(
+                    "prefix={prefix} k={k} n={n} ta={ta} tb={tb} tc={tc} f16={f16_} bias={bias}"
+                )
+            })?;
+        }
+
+        let k = 24usize;
+        let n = 18usize;
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([1, 1, k]))?;
+        let b = Tensor::from_shape(&[4, k, n], &fill(4, 4 * k * n))?;
+        let b = model.add_const("b", b)?;
+        let op = PrefixMatMul {
+            transpose_a: false,
+            transpose_b: false,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let y = model.wire_node("mm", op, &[a, b])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[1, 1, k], &fill(5, k))?)
+    }
+
+    /// `n = 1` products: partial `k` and `m` tiles, every transposition, a prefix,
+    /// a broadcast prefix, f16, a bias-plus-activation epilogue, and a residual
+    /// laid out like the output.
+    #[test]
+    fn matmul_gemv_n_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        use tract_core::ops::nn::sigmoid;
+        for (prefix, m, k, ta, tb, tc, f16_, bias) in [
+            (1usize, 1usize, 1usize, false, false, false, false, false),
+            (1, 7, 17, false, false, false, false, false),
+            (1, 64, 63, false, false, false, false, false),
+            (1, 63, 64, false, false, false, false, false),
+            (1, 65, 65, false, false, false, false, false),
+            (1, 130, 300, false, false, false, false, false),
+            (1, 130, 300, true, false, false, false, false),
+            (1, 130, 300, false, true, false, false, false),
+            (1, 130, 300, false, false, true, false, false),
+            (1, 130, 300, true, true, true, false, false),
+            (4, 80, 40, false, false, false, false, false),
+            (1, 1, 200, false, false, false, false, false),
+            (1, 70, 65, false, false, false, true, false),
+            (1, 50, 100, false, false, false, false, true),
+            (1, 33, 40, false, false, false, true, true),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
+            let b_shape = [prefix, if tb { 1 } else { k }, if tb { k } else { 1 }];
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", dt.fact(a_shape))?;
+            let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+            let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+            let op = PrefixMatMul {
+                transpose_a: ta,
+                transpose_b: tb,
+                transpose_c: tc,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let mut y = model.wire_node("mm", op, &[a, b])?[0];
+            if bias {
+                let bias = Tensor::from_shape(&[1, 1, 1], &fill(2, 1))?;
+                let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+                y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+                if !f16_ {
+                    y = model.wire_node("act", sigmoid(), &[y])?[0];
+                }
+            }
+            model.select_output_outlets(&[y])?;
+            if bias {
+                let gpu = transformed(model.clone())?;
+                let gemm = gpu
+                    .nodes()
+                    .iter()
+                    .find_map(|node| node.op_as::<crate::ops::matmul::WgpuGemm>())
+                    .context("n=1 product left the device")?;
+                let want = if f16_ { 1 } else { 2 };
+                ensure!(gemm.epilogue.len() == want, "epilogue {:?}", gemm.epilogue);
+            }
+            let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+                format!(
+                    "prefix={prefix} m={m} k={k} ta={ta} tb={tb} tc={tc} f16={f16_} bias={bias}"
+                )
+            })?;
+        }
+
+        for (a_prefix, b_prefix, m, k) in [(1usize, 4usize, 24usize, 18usize), (4, 1, 24, 18)] {
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", f32::fact([a_prefix, m, k]))?;
+            let b = Tensor::from_shape(&[b_prefix, k, 1], &fill(4, b_prefix * k))?;
+            let b = model.add_const("b", b)?;
+            let op = PrefixMatMul {
+                transpose_a: false,
+                transpose_b: false,
+                transpose_c: false,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let y = model.wire_node("mm", op, &[a, b])?[0];
+            model.select_output_outlets(&[y])?;
+            gpu_vs_cpu(model, Tensor::from_shape(&[a_prefix, m, k], &fill(5, a_prefix * m * k))?)
+                .with_context(|| format!("broadcast a={a_prefix} b={b_prefix}"))?;
+        }
+
+        for (ta, tb, tc) in [(false, false, false), (true, false, false), (true, true, true)] {
+            let (m, k) = (20usize, 16usize);
+            let a_shape = [1usize, if ta { k } else { m }, if ta { m } else { k }];
+            let b_shape = [1, if tb { 1 } else { k }, if tb { k } else { 1 }];
+            let o_shape = if tc { [1, 1, m] } else { [1, m, 1] };
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", f32::fact(a_shape))?;
+            let b = Tensor::from_shape(&b_shape, &fill(6, b_shape.iter().product()))?;
+            let b = model.add_const("b", b)?;
+            let op = PrefixMatMul {
+                transpose_a: ta,
+                transpose_b: tb,
+                transpose_c: tc,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let y = model.wire_node("mm", op, &[a, b])?[0];
+            let r = model.add_source("r", f32::fact(o_shape))?;
+            let y = model.wire_node("residual", tract_core::ops::math::add(), &[y, r])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu_model = transformed(model.clone())?;
+            let gemm = gpu_model
+                .nodes()
+                .iter()
+                .find_map(|node| node.op_as::<crate::ops::matmul::WgpuGemm>())
+                .context("residual left the device")?;
+            ensure!(gemm.epilogue.len() == 1, "epilogue {:?}", gemm.epilogue);
+            let a_in = Tensor::from_shape(&a_shape, &fill(7, a_shape.iter().product()))?;
+            let r_in = Tensor::from_shape(&o_shape, &fill(8, m))?;
+            crate::context::wgpu_context();
+            let cpu = SimplePlan::new(model.clone())?;
+            let rt = tract_core::runtime::runtime_for_name("wgpu")?
+                .context("wgpu runtime not registered")?;
+            let gpu = rt.prepare(model)?;
+            let g =
+                gpu.run(tvec!(a_in.clone().into(), r_in.clone().into()))?.remove(0).into_tensor();
+            let c = Arc::new(cpu).run(tvec!(a_in.into(), r_in.into()))?.remove(0).into_tensor();
+            g.close_enough(&c, Approximation::Approximate)
+                .with_context(|| format!("residual ta={ta} tb={tb} tc={tc}"))?;
+        }
+        Ok(())
+    }
+}

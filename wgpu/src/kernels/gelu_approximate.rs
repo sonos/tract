@@ -131,3 +131,44 @@ fn gelu_approx_fast_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    #[test]
+    fn gelu_approximate_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::nn::gelu_approximate::gelu_approximate;
+        use tract_gpu::ops::gelu_approximate::GpuGeluApproximate;
+        for (dt, fast) in [
+            (f32::datum_type(), false),
+            (f32::datum_type(), true),
+            (f16::datum_type(), false),
+            (f16::datum_type(), true),
+        ] {
+            let len = 10000;
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact([len]))?;
+            let y = model.wire_node("act", gelu_approximate(fast), &[x])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            let ops = gpu
+                .nodes()
+                .iter()
+                .filter_map(|n| n.op_as::<GpuGeluApproximate>())
+                .collect::<Vec<_>>();
+            ensure!(ops.len() == 1, "approximate GELU stayed on the CPU");
+            ensure!(ops[0].fast_impl == fast, "fast_impl was not preserved");
+            let mut values = fill(11, len);
+            values[0] = 0.0;
+            values[1] = 2.5;
+            values[2] = -2.5;
+            let input = Tensor::from_shape(&[len], &values)?.cast_to_dt(dt)?.into_owned();
+            gpu_vs_cpu(model, input).with_context(|| format!("{dt:?} fast {fast}"))?;
+        }
+        Ok(())
+    }
+}

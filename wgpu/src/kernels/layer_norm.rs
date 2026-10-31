@@ -164,3 +164,42 @@ fn layer_norm_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workg
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, transformed};
+
+    #[test]
+    fn layer_norm_runs_on_device() -> TractResult<()> {
+        use tract_core::ops::math::{add, mul};
+        use tract_core::ops::nn::LayerNorm;
+        for (axis, affine) in [(2, false), (2, true), (1, false)] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact([2, 77, 48]))?;
+            let op = LayerNorm { axis, eps: rctensor0(1e-5f32) };
+            let mut y = model.wire_node("layer_norm", op, &[x])?[0];
+            if affine {
+                let gamma =
+                    model.add_const("gamma", Tensor::from_shape(&[1, 1, 48], &fill(1, 48))?)?;
+                let beta =
+                    model.add_const("beta", Tensor::from_shape(&[1, 1, 48], &fill(2, 48))?)?;
+                y = model.wire_node("scale", mul(), &[y, gamma])?[0];
+                y = model.wire_node("shift", add(), &[y, beta])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let model = transformed(model)?;
+            crate::ensure_wgpu_coverage(&model)?;
+            let norms = model
+                .nodes()
+                .iter()
+                .filter(|n| n.op_is::<tract_gpu::ops::layer_norm::GpuLayerNorm>())
+                .collect::<Vec<_>>();
+            ensure!(norms.len() == 1, "expected one device layer norm, got {}", norms.len());
+            let inputs = if affine { 3 } else { 1 };
+            ensure!(norms[0].inputs.len() == inputs, "gamma and beta should fold into the norm");
+        }
+        Ok(())
+    }
+}
