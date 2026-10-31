@@ -330,3 +330,26 @@ fn group_norm_apply_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::transformed;
+
+    #[test]
+    fn group_norm_runs_on_device() -> TractResult<()> {
+        use tract_core::ops::nn::GroupNorm;
+        for (shape, axis, reduced_axes) in
+            [([2, 32, 9, 7], 1, tvec![2, 3]), ([2, 9, 7, 32], 3, tvec![1, 2])]
+        {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact(shape))?;
+            let op = GroupNorm { axis, groups: 8, reduced_axes, eps: rctensor0(1e-5f32) };
+            let y = model.wire_node("group_norm", op, &[x])?[0];
+            model.select_output_outlets(&[y])?;
+            crate::ensure_wgpu_coverage(&transformed(model)?)?;
+        }
+        Ok(())
+    }
+}

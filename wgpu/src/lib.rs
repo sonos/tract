@@ -30,6 +30,7 @@ mod memory;
 pub mod ops;
 mod rewrite_rules;
 mod tensor;
+mod test_utils;
 mod tests;
 mod transform;
 mod utils;

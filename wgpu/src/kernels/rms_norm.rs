@@ -316,3 +316,115 @@ fn rms_norm(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id)
 "#
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+    use tract_core::ops::math::mul;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    #[test]
+    fn rms_norm_runs_on_device() -> TractResult<()> {
+        use tract_transformers::ops::rms_norm::RmsNorm;
+        for (axis, scaled) in [(2, false), (2, true), (1, false), (1, true)] {
+            let shape = [2, 77, 48];
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact(shape))?;
+            let op = RmsNorm { axis, eps: rctensor0(1e-5f32) };
+            let mut y = model.wire_node("rms_norm", op, &[x])?[0];
+            if scaled {
+                let mut gamma_shape = [1, 1, 1];
+                gamma_shape[axis] = shape[axis];
+                let gamma = Tensor::from_shape(&gamma_shape, &fill(3, shape[axis]))?;
+                let gamma = model.add_const("gamma", gamma)?;
+                y = model.wire_node("scale", mul(), &[y, gamma])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            let norms = gpu
+                .nodes()
+                .iter()
+                .filter_map(|n| n.op_as::<tract_gpu::ops::rms_norm::GpuRmsNorm>())
+                .collect::<Vec<_>>();
+            ensure!(norms.len() == 1, "expected one device rms norm, got {}", norms.len());
+            ensure!(norms[0].has_scale == scaled, "gamma should fold into the norm");
+            let len = shape.iter().product();
+            gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(5, len))?)
+                .with_context(|| format!("axis {axis} scaled {scaled}"))?;
+        }
+        Ok(())
+    }
+
+    /// A same-shape add in front of RMSNorm is the residual stream. The fused
+    /// kernel returns that sum on its second output. Two negations read the sum
+    /// back on device, so the comparison sees the value the kernel stored.
+    #[test]
+    fn rms_norm_residual_fuses_and_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::math::neg;
+        use tract_gpu::ops::rms_norm::GpuRmsNorm;
+        use tract_transformers::ops::rms_norm::RmsNorm;
+        let cases: &[(&[usize], usize, bool, DatumType)] = &[
+            (&[2, 77, 48], 2, false, f32::datum_type()),
+            (&[2, 77, 48], 1, true, f32::datum_type()),
+            (&[1, 300], 1, false, f32::datum_type()),
+            (&[2, 16, 32], 2, false, f16::datum_type()),
+            (&[4, 8], 0, true, f16::datum_type()),
+        ];
+        for &(shape, axis, scaled, dt) in cases {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact(shape))?;
+            let r = model.add_source("r", dt.fact(shape))?;
+            let sum = model.wire_node("add", tract_core::ops::math::add(), &[x, r])?[0];
+            let op = RmsNorm { axis, eps: rctensor0(1e-5f32) };
+            let mut y = model.wire_node("rms_norm", op, &[sum])?[0];
+            if scaled {
+                let mut gamma_shape = vec![1; shape.len()];
+                gamma_shape[axis] = shape[axis];
+                let gamma = Tensor::from_shape(&gamma_shape, &fill(3, shape[axis]))?
+                    .cast_to_dt(dt)?
+                    .into_owned();
+                let gamma = model.add_const("gamma", gamma)?;
+                y = model.wire_node("scale", mul(), &[y, gamma])?[0];
+            }
+            let echoed = model.wire_node("echo", neg(), &[sum])?[0];
+            let echoed = model.wire_node("echo2", neg(), &[echoed])?[0];
+            model.select_output_outlets(&[y, echoed])?;
+            let gpu_model = transformed(model.clone())?;
+            let norms = gpu_model
+                .nodes()
+                .iter()
+                .filter_map(|n| n.op_as::<GpuRmsNorm>())
+                .collect::<Vec<_>>();
+            let names = gpu_model.nodes().iter().map(|n| n.name.as_str()).collect::<Vec<_>>();
+            ensure!(norms.len() == 1, "expected one device rms norm, got {names:?}");
+            ensure!(norms[0].has_residual, "residual add stayed a separate dispatch: {names:?}");
+            ensure!(norms[0].has_scale == scaled, "gamma should fold into the norm: {names:?}");
+            ensure!(norms[0].round_scale_f16 == (scaled && dt == f16::datum_type()));
+            let n = shape.iter().product();
+            let a = Tensor::from_shape(shape, &fill(5, n))?.cast_to_dt(dt)?.into_owned();
+            let b = Tensor::from_shape(shape, &fill(9, n))?.cast_to_dt(dt)?.into_owned();
+            let inputs = [a, b];
+            crate::context::wgpu_context();
+            let cpu = SimplePlan::new(model.clone())?;
+            let rt = tract_core::runtime::runtime_for_name("wgpu")?
+                .context("wgpu runtime not registered")?;
+            let gpu = rt.prepare(model)?;
+            let values =
+                |xs: &[Tensor]| -> TVec<TValue> { xs.iter().cloned().map(|t| t.into()).collect() };
+            let mut g = gpu.run(values(&inputs))?;
+            let mut c = Arc::new(cpu).run(values(&inputs))?;
+            ensure!(g.len() == 2 && c.len() == 2);
+            g.remove(0)
+                .into_tensor()
+                .close_enough(&c.remove(0).into_tensor(), Approximation::Approximate)
+                .with_context(|| format!("norm {shape:?} axis {axis} scaled {scaled} {dt:?}"))?;
+            g.remove(0)
+                .into_tensor()
+                .close_enough(&c.remove(0).into_tensor(), Approximation::Exact)
+                .with_context(|| format!("residual sum {shape:?} axis {axis} {dt:?}"))?;
+        }
+        Ok(())
+    }
+}

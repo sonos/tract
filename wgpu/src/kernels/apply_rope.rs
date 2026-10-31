@@ -238,3 +238,45 @@ fn rotate_half_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// Rotary embeddings with cos/sin broadcast over the leading axes, as
+    /// attention heads use them, and a RotateHalf on its own.
+    #[test]
+    fn rope_runs_on_device() -> TractResult<()> {
+        use tract_gpu::ops::apply_rope::GpuApplyRope;
+        use tract_gpu::ops::rotate_half::GpuRotateHalf;
+        use tract_transformers::ops::apply_rope::{ApplyRope, RotateHalf};
+        let shape = [2, 3, 7, 16];
+        for cs_shape in [&[7usize, 16][..], &[1, 1, 7, 16], &[2, 1, 7, 16], &[2, 3, 7, 16], &[16]] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact(shape))?;
+            let len = cs_shape.iter().product();
+            let cos = model.add_const("cos", Tensor::from_shape(cs_shape, &fill(1, len))?)?;
+            let sin = model.add_const("sin", Tensor::from_shape(cs_shape, &fill(2, len))?)?;
+            let y = model.wire_node("rope", ApplyRope, &[x, cos, sin])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            ensure!(
+                gpu.nodes().iter().any(|n| n.op_is::<GpuApplyRope>()),
+                "rope stayed on the CPU"
+            );
+            gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(3, shape.iter().product()))?)
+                .with_context(|| format!("cos/sin {cs_shape:?}"))?;
+        }
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(shape))?;
+        let y = model.wire_node("rotate", RotateHalf, &[x])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        crate::ensure_wgpu_coverage(&gpu)?;
+        ensure!(gpu.nodes().iter().any(|n| n.op_is::<GpuRotateHalf>()), "rotate stayed on the CPU");
+        gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(4, shape.iter().product()))?)
+    }
+}

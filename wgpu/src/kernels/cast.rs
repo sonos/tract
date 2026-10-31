@@ -104,3 +104,30 @@ fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+    use tract_gpu::tensor::{DeviceTensor, IntoDevice};
+
+    use super::wgpu_cast_dispatch;
+    use crate::test_utils::close;
+    use crate::with_wgpu_queue;
+
+    #[test]
+    fn cast_f32_f16_roundtrip() -> TractResult<()> {
+        with_wgpu_queue(|q| {
+            if !q.context().shader_f16() {
+                return Ok(());
+            }
+            let t = Tensor::from_shape(&[4], &[1.0f32, -2.5, 0.25, 100.0])?;
+            let src = t.clone().into_device()?;
+            let half = DeviceTensor::uninitialized_dt(DatumType::F16, &[4])?;
+            let back = DeviceTensor::uninitialized_dt(DatumType::F32, &[4])?;
+            wgpu_cast_dispatch(&src, &half)?;
+            wgpu_cast_dispatch(&half, &back)?;
+            q.flush()?;
+            close(&back.to_host()?.into_tensor(), &t)
+        })
+    }
+}

@@ -322,3 +322,66 @@ fn flash_sdpa_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgrou
     );
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, transformed};
+
+    /// Attention shapes: queries and keys off the tile sizes, rank 3 and 4, a value
+    /// head dim unlike the query's, the largest head dim the flash kernel takes, f16
+    /// and an explicit scale; a head dim past it falls back to primitives, still all
+    /// on the device.
+    #[test]
+    fn flash_sdpa_matches_cpu() -> TractResult<()> {
+        use tract_transformers::ops::sdpa::Sdpa;
+        #[rustfmt::skip]
+        let cases: [(&[usize], usize, usize, usize, usize, bool, Option<f32>, bool); 6] = [
+            // prefix, sq, sk, d, dv, f16, scale, flash
+            (&[2, 3], 70, 77, 40, 40, false, None, true),
+            (&[2], 33, 128, 16, 24, false, Some(0.3), true),
+            (&[1, 2], 64, 64, 48, 48, false, None, true),
+            (&[2, 3], 70, 77, 40, 40, true, None, true),
+            (&[1, 2], 40, 200, 8, 8, true, None, true),
+            (&[1, 2], 40, 50, 64, 64, false, None, false),
+        ];
+        for (i, (prefix, sq, sk, d, dv, f16_, scale, flash)) in cases.into_iter().enumerate() {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let shape =
+                |s: usize, c: usize| prefix.iter().copied().chain([s, c]).collect::<Vec<_>>();
+            let values = |seed, shape: &[usize]| -> TractResult<Tensor> {
+                let centred: Vec<f32> =
+                    fill(seed, shape.iter().product()).iter().map(|x| x + 1.5).collect();
+                Ok(Tensor::from_shape(shape, &centred)?.cast_to_dt(dt)?.into_owned())
+            };
+            let inputs =
+                [values(1, &shape(sq, d))?, values(2, &shape(sk, d))?, values(3, &shape(sk, dv))?];
+            let mut model = TypedModel::default();
+            let wires = ["q", "k", "v"]
+                .iter()
+                .zip(&inputs)
+                .map(|(name, t)| model.add_source(*name, dt.fact(t.shape())))
+                .collect::<TractResult<Vec<_>>>()?;
+            let op = Sdpa {
+                scale: scale.map(tensor0),
+                datum_type: dt,
+                acc_datum_type: f32::datum_type(),
+                is_causal: false,
+            };
+            let y = model.wire_node("sdpa", op, &wires)?[0];
+            model.select_output_outlets(&[y])?;
+            let translated = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&translated).with_context(|| format!("case {i}"))?;
+            let flashed =
+                translated.nodes().iter().any(|n| n.op_is::<crate::ops::sdpa::WgpuFlashSdpa>());
+            ensure!(flashed == flash, "case {i}: flash kernel used: {flashed}");
+            let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+            let tv = || inputs.iter().map(|t| t.clone().into_tvalue()).collect::<TVec<_>>();
+            let g = rt.prepare(model.clone())?.run(tv())?.remove(0).into_tensor();
+            let c = Arc::new(SimplePlan::new(model)?).run(tv())?.remove(0).into_tensor();
+            g.close_enough(&c, Approximation::Approximate).with_context(|| format!("case {i}"))?;
+        }
+        Ok(())
+    }
+}

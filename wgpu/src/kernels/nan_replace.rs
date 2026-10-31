@@ -71,3 +71,38 @@ fn nan_replace_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     ));
     s
 }
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// `Iff(IsNan(x), value, x)` runs on the device as one op, NaNs replaced and other values
+    /// untouched, with no boolean tensor left on the CPU.
+    #[test]
+    fn nan_replace_runs_on_device() -> TractResult<()> {
+        use tract_core::ops::logic::Iff;
+        use tract_core::ops::math::is_nan;
+        for (dt, value) in [(f32::datum_type(), 0.0f32), (f16::datum_type(), -2.5)] {
+            let build = || -> TractResult<TypedModel> {
+                let mut model = TypedModel::default();
+                let x = model.add_source("x", dt.fact([3, 5]))?;
+                let nan = model.wire_node("nan", is_nan(), &[x])?[0];
+                let value = tensor2(&[[value]]).cast_to_dt(dt)?.into_owned();
+                let value = model.add_const("value", value)?;
+                let y = model.wire_node("y", Iff, &[nan, value, x])?[0];
+                model.select_output_outlets(&[y])?;
+                Ok(model)
+            };
+            crate::ensure_wgpu_coverage(&transformed(build()?)?)?;
+            let mut data = fill(1, 15);
+            for i in [0, 6, 14] {
+                data[i] = f32::NAN;
+            }
+            let input = Tensor::from_shape(&[3, 5], &data)?.cast_to_dt(dt)?.into_owned();
+            gpu_vs_cpu(build()?, input).with_context(|| format!("{dt:?}"))?;
+        }
+        Ok(())
+    }
+}
