@@ -334,6 +334,7 @@ name = "parakeet-tdt-600m-v3-f32f32-preprocessor_1s"
 model = "asr/608/nvidia--parakeet-tdt-0.6b-v3-f32f32/nvidia--parakeet-tdt-0.6b-v3-f32f32.preprocessor.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set B=1 --set A=16000"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
+nightly_only_runtimes = ["cpu"]
 samples = 3
 
 [[bench]]
@@ -373,7 +374,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-encoder_1s"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.encoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set AUDIO_SIGNAL__TIME=100"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
-nightly_only_runtimes = ["wgpu"]
+nightly_only_runtimes = ["cpu", "wgpu"]
 threads = [0]
 
 [[bench]]
@@ -390,7 +391,7 @@ args = [
     "-t", 'pulse(symbol: Some("INPUT_SIGNAL__TIME"), pulse: "1600")',
 ]
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
-nightly_only_runtimes = ["wgpu"]
+nightly_only_runtimes = ["cpu", "wgpu"]
 samples = 3
 
 [[bench]]
@@ -415,7 +416,7 @@ name = "nemotron-3_5-asr-streaming-0_6b-f32f32-decoder_pass"
 model = "asr/634/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32/nvidia--nemotron-3.5-asr-streaming-0.6b-f32f32.decoder.nnef.tgz"
 args = "-t transformers_detect_all --nnef-tract-transformers --set BATCH=1 --set TARGETS__TIME=1"
 runtimes = ["cpu", "metal", "cuda", "wgpu"]
-nightly_only_runtimes = ["metal", "cuda", "wgpu"]
+nightly_only = true
 
 [[bench]]
 kind = "net"
