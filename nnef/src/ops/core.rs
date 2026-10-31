@@ -21,6 +21,7 @@ mod gru_seq;
 mod is_inf;
 mod layer_norm;
 mod lstm_cell;
+mod lstm_seq;
 mod matmul;
 mod named_weight;
 mod one_hot;
@@ -75,6 +76,7 @@ pub fn register(registry: &mut Registry) {
     grid_sample::register(registry);
     gru_cell::register(registry);
     gru_seq::register(registry);
+    lstm_seq::register(registry);
     lstm_cell::register(registry);
     matmul::register(registry);
     one_hot::register(registry);
