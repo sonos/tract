@@ -46,6 +46,14 @@ mod dump;
 mod hwbench;
 #[cfg(feature = "transformers")]
 mod llm;
+#[cfg(all(
+    feature = "gpu",
+    any(
+        target_os = "macos",
+        target_os = "ios",
+        all(any(target_os = "linux", target_os = "windows"), feature = "cuda")
+    )
+))]
 mod memory_arena;
 mod params;
 mod plan_options;
