@@ -73,8 +73,28 @@ for (const candidate of TIERS) {
 const view = $('view');
 const video = $('video');
 const ctx = view.getContext('2d');
-const state = { rgb: null, width: 0, height: 0, lines: [], stream: null, job: 0, hover: -1, phase: 'image' };
+const state = {
+  rgb: null,
+  width: 0,
+  height: 0,
+  lines: [],
+  stream: null,
+  job: 0,
+  hover: -1,
+  phase: 'image',
+  mode: 'idle',
+  ticket: 0,
+};
 let request = 0;
+
+function where() {
+  return $('runtime').value === 'wgpu' ? 'GPU' : 'CPU';
+}
+
+function controls() {
+  $('start').disabled = !worker || !state.rgb || state.mode === 'running';
+  $('stop').disabled = state.mode !== 'running';
+}
 
 let worker;
 try {
@@ -85,13 +105,15 @@ try {
 
 worker?.addEventListener('error', (event) => {
   state.phase = 'image';
+  state.mode = 'idle';
   stopPace();
+  controls();
   status(event.message || 'The reader stopped.', true);
 });
 
 worker?.addEventListener('message', ({ data }) => {
   if (data.model) {
-    if (data.model !== modelSelect.value) return;
+    if (state.mode !== 'running' || data.model !== modelSelect.value) return;
     state.phase = 'model';
     if (data.progress) {
       const { label, got, total } = data.progress;
@@ -107,6 +129,17 @@ worker?.addEventListener('message', ({ data }) => {
     }
     return;
   }
+  if (data.ticket !== state.ticket) return;
+  if (data.stopped) {
+    stopPace();
+    bar(0);
+    if (state.mode === 'running') {
+      state.mode = 'idle';
+      controls();
+      status('Stopped.');
+    }
+    return;
+  }
   if (data.accepted) {
     state.job = data.job;
     return;
@@ -114,7 +147,9 @@ worker?.addEventListener('message', ({ data }) => {
   if (data.job !== state.job) return;
   state.phase = 'image';
   if (data.error) {
+    state.mode = 'idle';
     stopPace();
+    controls();
     status(data.error, true);
     bar(0);
     return;
@@ -134,7 +169,9 @@ worker?.addEventListener('message', ({ data }) => {
   }
   if (data.lines) {
     const elapsed = jobStarted ? (performance.now() - jobStarted) / 1000 : 0;
+    state.mode = 'done';
     stopPace();
+    controls();
     if (data.status && elapsed >= 1) status(`${data.status.replace(/\.$/, '')} · ${seconds(elapsed)}.`);
     state.lines = data.lines;
     state.hover = -1;
@@ -220,21 +257,38 @@ function useImage(source) {
   view.hidden = false;
   $('snap').hidden = true;
   draw();
-  recognize();
+  if (state.mode === 'running') cancel();
+  state.mode = 'idle';
+  controls();
+  status('Press Start to read.');
+}
+
+function cancel() {
+  state.ticket += 1;
+  state.job = 0;
+  stopPace();
+  bar(0);
+  worker?.postMessage({ stop: true, ticket: state.ticket });
 }
 
 function recognize() {
   if (!worker || !state.rgb) return;
-  // A download already on screen belongs to this model. Leave it up while the
-  // picture changes, or the bar resets and the reader looks idle.
-  if (state.phase !== 'model') {
-    barBusy();
-    jobStarted = performance.now();
-    beginPace('wait', 'Finding text…');
-  }
+  state.ticket += 1;
+  state.job = 0;
+  state.mode = 'running';
+  state.lines = [];
+  state.hover = -1;
+  controls();
+  showLines();
+  draw();
+  state.phase = 'image';
+  barBusy();
+  jobStarted = performance.now();
+  beginPace('wait', `Finding text on the ${where()}…`);
   const rgb = state.rgb.slice();
   worker.postMessage(
     {
+      ticket: state.ticket,
       tier: modelSelect.value,
       runtime: $('runtime').value,
       rgb,
@@ -356,8 +410,17 @@ async function grabCameraFrame() {
   }
 }
 
+$('start').onclick = () => recognize();
+$('stop').onclick = () => {
+  if (state.mode !== 'running') return;
+  cancel();
+  state.mode = 'idle';
+  controls();
+  status('Stopped.');
+};
+
 modelSelect.onchange = () => {
-  if (state.width) recognize();
+  if (state.mode === 'running' || state.mode === 'done') recognize();
 };
 const runtimeSelect = $('runtime');
 if (!navigator.gpu) {
@@ -367,7 +430,7 @@ if (!navigator.gpu) {
   runtimeSelect.value = 'cpu';
 }
 runtimeSelect.onchange = () => {
-  if (state.width) recognize();
+  if (state.mode === 'running' || state.mode === 'done') recognize();
 };
 
 $('copy').onclick = async () => {
@@ -394,5 +457,6 @@ async function buildInfo() {
   }
 }
 
+controls();
 buildInfo();
 loadSample().catch((error) => status(error.message, true));

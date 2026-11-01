@@ -498,6 +498,9 @@ export async function recognize(image, sessions, alphabet, model, hooks = {}) {
   const geometry = detGeometry(image.width, image.height);
   const tensor = new sessions.Tensor('float32', detTensor(image.rgb, image.width, image.height, geometry), [1, 3, geometry.resizeH, geometry.resizeW]);
   const detected = await sessions.det.run({ [sessions.det.inputNames[0]]: tensor });
+  // tract's run blocks the worker until it returns, so a Stop or a runtime
+  // switch posted during that call is only seen at this yield.
+  await new Promise((resolve) => setTimeout(resolve, 0));
   if (hooks.cancelled?.()) return null;
   const map = detected[sessions.det.outputNames[0]];
   const mapHeight = map.dims[2];
@@ -509,6 +512,7 @@ export async function recognize(image, sessions, alphabet, model, hooks = {}) {
   });
   const kept = [];
   for (let index = 0; index < boxes.length; index++) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
     if (hooks.cancelled?.()) return null;
     const crop = warpRgb(image.rgb, image.width, image.height, boxes[index].quad);
     const encoded = recTensor(crop, 1280);
