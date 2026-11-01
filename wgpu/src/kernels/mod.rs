@@ -5,6 +5,7 @@ pub mod chain;
 pub mod conv;
 pub mod copy;
 pub mod deconv;
+pub mod diag_gather;
 pub mod element_wise;
 pub mod gather;
 pub mod gather_nd;
