@@ -24,7 +24,7 @@ cargo build --release -p sd15-web --lib --target wasm32-unknown-unknown
 rm -rf dist
 mkdir -p dist/pkg dist/models
 cp site/* dist/
-wasm-bindgen --target web --out-dir dist/pkg $ROOT/target/wasm32-unknown-unknown/release/sd15_web.wasm
+wasm-bindgen --target web --out-dir dist/pkg ${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-unknown-unknown/release/sd15_web.wasm
 
 for c in text_encoder unet vae_decoder
 do
