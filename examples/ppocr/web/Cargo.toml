@@ -1,0 +1,23 @@
+[package]
+name = "ppocr-web"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow.workspace = true
+tract = { path = "../../../api/rs", default-features = false, features = [
+  "onnx",
+  "wgpu",
+  "unstable-wgpu-async",
+] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { workspace = true, features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"

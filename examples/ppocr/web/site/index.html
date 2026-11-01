@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Read a picture</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <a class="crumb" href="../">← tract demos</a>
+    <h1>Read a picture, in your browser</h1>
+    <p class="sub">PP-OCRv6 finds the lines and reads them with <a href="https://github.com/sonos/tract">tract</a>, on the CPU or on WebGPU. Nothing is uploaded. Tiny, Small and Medium are fetched from Hugging Face the first time and kept in this browser.</p>
+  </header>
+  <section class="controls">
+    <label>Model
+      <select id="model"></select>
+    </label>
+    <label>Runtime
+      <select id="runtime">
+        <option value="cpu">CPU</option>
+        <option value="wgpu">GPU</option>
+      </select>
+    </label>
+    <div class="buttons">
+      <button id="sample" type="button">Sample</button>
+      <button id="upload" type="button">Upload</button>
+      <button id="camera" type="button">Camera</button>
+      <button id="snap" type="button" hidden>Take snapshot</button>
+    </div>
+    <input id="file" type="file" accept="image/*" hidden>
+  </section>
+  <p id="status">Loading the sample…</p>
+  <div id="bar"><span></span></div>
+  <section class="stage">
+    <div class="picture">
+      <video id="video" playsinline autoplay muted hidden></video>
+      <canvas id="view"></canvas>
+    </div>
+    <div class="readout">
+      <div class="readout-bar">
+        <h2>Text</h2>
+        <button id="copy" type="button" disabled>Copy</button>
+      </div>
+      <ol id="lines"></ol>
+    </div>
+  </section>
+  <p class="note">
+    Sample page from the PP-OCRv6 model card. Detection and recognition weights:
+    <a href="https://huggingface.co/PaddlePaddle/PP-OCRv6_tiny_det_onnx">PaddlePaddle ONNX</a>, Apache-2.0.
+    The graphs run in tract, compiled to WebAssembly.
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/ppocr/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>
