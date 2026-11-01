@@ -55,11 +55,13 @@
   button.link { width: auto; margin: 8px 0 0; padding: 4px 10px; font-size: 12px; font-weight: 500; color: var(--fg); background: transparent; border: 1px solid var(--line); border-radius: 6px; }
   button.link:hover:not(:disabled) { border-color: #d0432f; color: #d0432f; }
   a { color: var(--accent); }
+  .crumb { display: inline-block; font-size: 13px; margin-bottom: 4px; }
 </style>
 </head>
 <body>
 <main class="grid">
   <header>
+    <a class="crumb" href="../">← tract demos</a>
     <h1>Stable Diffusion 1.5, in your browser</h1>
     <p class="sub">Runs on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>. Nothing leaves your machine.</p>
   </header>

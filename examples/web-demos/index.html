@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tract in your browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; --warn: #b5541c; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; --warn: #e08a52; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  #gpu { font-size: 13px; color: var(--muted); margin: 0 0 20px; min-height: 1.5em; }
+  #gpu.warn { color: var(--warn); }
+  .demos { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  a.demo { display: block; color: inherit; text-decoration: none; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  a.demo:hover { border-color: var(--accent); }
+  .demo h2 { font-size: 17px; margin: 0 0 6px; color: var(--accent); }
+  .demo p { margin: 0 0 8px; }
+  .demo .meta { font-size: 13px; color: var(--muted); margin: 0; }
+  .demo .meta.warn { color: var(--warn); }
+  .note { font-size: 12px; color: var(--muted); margin: 24px 0 0; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>tract in your browser</h1>
+  <p class="sub">Neural networks running on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>, compiled to WebAssembly. Nothing leaves your machine.</p>
+  <p id="gpu"></p>
+  <div class="demos">
+    <a class="demo" href="sd15/" data-needs="shader-f16">
+      <h2>Stable Diffusion 1.5</h2>
+      <p>Text to image, 512 × 512, with a prompt, a negative prompt and a choice of sampler.</p>
+      <p class="meta">Downloads 2.1 GB of fp16 weights from Hugging Face on the first visit. Needs WebGPU with <code>shader-f16</code>.</p>
+    </a>
+    <a class="demo" href="pixel-lab/">
+      <h2>Background replacement</h2>
+      <p>Person segmentation on your camera, with the background blurred or replaced by a colour, live.</p>
+      <p class="meta">Uses your camera. Downloads a 0.5 MB or 26 MB model from Hugging Face. Needs WebGPU.</p>
+    </a>
+  </div>
+  <p class="note"><a href="https://github.com/sonos/tract/tree/main/examples">Source code</a> of the demos, in tract's examples.</p>
+</main>
+<script type="module">
+const gpu = document.getElementById('gpu');
+const adapter = navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null);
+if (!adapter) {
+  gpu.textContent = 'This browser gives no WebGPU adapter, so the demos will not run here. Recent Chrome, Edge, Firefox and Safari support WebGPU on most GPUs.';
+  gpu.className = 'warn';
+} else {
+  for (const demo of document.querySelectorAll('[data-needs]')) {
+    if (!adapter.features.has(demo.dataset.needs)) {
+      const meta = demo.querySelector('.meta');
+      meta.textContent += ` Your GPU's WebGPU has no ${demo.dataset.needs}, so this one will not run here.`;
+      meta.classList.add('warn');
+    }
+  }
+}
+</script>
+</body>
+</html>
