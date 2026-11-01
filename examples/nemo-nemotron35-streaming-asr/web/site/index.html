@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nemotron speech recognition, in your browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; --warn: #b5541c; --tag: #e8eefb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; --warn: #e08a52; --tag: #24304a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "form head" "form out" "form note";
+    column-gap: 24px;
+    row-gap: 16px;
+    align-items: start;
+  }
+  header { grid-area: head; }
+  .panel { grid-area: form; }
+  .out { grid-area: out; }
+  .note { grid-area: note; }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "form" "out" "note"; }
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  select { width: 100%; padding: 6px; font: inherit; background: var(--bg); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; }
+  button { margin-top: 12px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+  button.quiet { font-weight: 400; color: var(--accent); background: none; border: 1px solid var(--line); }
+  button:disabled { opacity: .45; cursor: default; }
+  input[type=file] { display: none; }
+  progress { width: 100%; margin-top: 12px; }
+  #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
+  #status.warn { color: var(--warn); }
+  #transcript { min-height: 220px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; font-size: 19px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #transcript:empty::before { content: attr(data-placeholder); color: var(--muted); }
+  .tag { font-size: 12px; padding: 1px 6px; margin: 0 4px; border-radius: 4px; background: var(--tag); color: var(--accent); vertical-align: 2px; white-space: nowrap; }
+  #stats { font-size: 13px; color: var(--muted); margin: 8px 0 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
+  .note { font-size: 12px; color: var(--muted); margin: 0; }
+  .build { display: block; margin-top: 10px; opacity: .75; }
+  #build { font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px; }
+  a { color: var(--accent); }
+  .crumb { display: inline-block; font-size: 13px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main class="grid">
+  <header>
+    <a class="crumb" href="../">← tract demos</a>
+    <h1>Nemotron speech recognition, in your browser</h1>
+    <p class="sub">Streaming transcription of your microphone, in dozens of languages, on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>. Nothing leaves your machine.</p>
+  </header>
+  <div class="panel">
+    <label for="lang">Language</label>
+    <select id="lang"></select>
+    <button id="go" disabled>Loading…</button>
+    <button id="file-button" class="quiet" disabled>Transcribe an audio file…</button>
+    <input id="file" type="file" accept="audio/*">
+    <progress id="progress" hidden></progress>
+    <div id="status">Starting…</div>
+    <button id="forget" class="quiet" hidden>Delete the cached model</button>
+  </div>
+  <div class="out">
+    <div id="transcript" data-placeholder="The transcript appears here as you speak."></div>
+    <p id="stats"></p>
+  </div>
+  <p class="note">
+    The model is NVIDIA's
+    <a href="https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b">Nemotron 3.5 ASR Streaming 0.6B</a>
+    (OpenMDW-1.1): a streaming Conformer encoder and an RNN-T decoder. Its 2.6 GB of
+    weights come straight from Hugging Face on the first visit and stay on this device for the
+    next ones. tract streams the log-Mel features in 100 ms steps and the encoder in 320 ms
+    attention chunks, on the GPU; the RNN-T decoder runs greedily on the CPU. The model tags
+    the language it hears, shown in the transcript.
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/nemo-nemotron35-streaming-asr/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>

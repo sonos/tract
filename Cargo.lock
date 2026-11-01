@@ -2825,6 +2825,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nemotron-web"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "getrandom 0.4.3",
+ "hound",
+ "js-sys",
+ "pollster",
+ "serde_json",
+ "tract",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "new_debug_unreachable"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
