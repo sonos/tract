@@ -161,3 +161,98 @@ mul_mat_vec(const T *__restrict__ x, const T *__restrict__ y,
 
 INSTANTIATE_MAT_VEC_FOR_T(f32, float)
 INSTANTIATE_MAT_VEC_FOR_T(f16, half)
+
+// dst[m, n] = y[m, k] . x[n, k]^T for a few activation rows (ncols_dst): each
+// block computes rows_per_block rows of x, so every activation load serves
+// all of them.
+template <int ncols_dst, int rows_per_block, int block_size>
+static __device__ void
+mul_mat_skinny_f32(const float *__restrict__ x, const float *__restrict__ y,
+                   float *__restrict__ dst, const int32_t ncols2,
+                   const int32_t nrows, const int32_t stride_row,
+                   const int32_t stride_col_y2, const int32_t stride_col_dst,
+                   const int32_t channel_ratio, const int32_t stride_channel_x,
+                   const int32_t stride_channel_y,
+                   const int32_t stride_channel_dst) {
+  const int row0 = blockIdx.x * rows_per_block;
+  const int channel_dst = blockIdx.y;
+  const int tid = threadIdx.x;
+  x += (int64_t)(channel_dst / channel_ratio) * stride_channel_x;
+  y += (int64_t)channel_dst * stride_channel_y;
+  dst += (int64_t)channel_dst * stride_channel_dst;
+
+  const float2 *y2 = (const float2 *)y;
+  const float2 *x2[rows_per_block];
+#pragma unroll
+  for (int r = 0; r < rows_per_block; ++r) {
+    x2[r] = (const float2 *)(x + (int64_t)min(row0 + r, nrows - 1) * stride_row);
+  }
+
+  float sumf[rows_per_block][ncols_dst] = {{0.0f}};
+  for (int col2 = tid; col2 < ncols2; col2 += block_size) {
+    float2 tmpy[ncols_dst];
+#pragma unroll
+    for (int j = 0; j < ncols_dst; ++j) {
+      tmpy[j] = y2[j * stride_col_y2 + col2];
+    }
+#pragma unroll
+    for (int r = 0; r < rows_per_block; ++r) {
+      const float2 tmpx = x2[r][col2];
+#pragma unroll
+      for (int j = 0; j < ncols_dst; ++j) {
+        sumf[r][j] += tmpx.x * tmpy[j].x;
+        sumf[r][j] += tmpx.y * tmpy[j].y;
+      }
+    }
+  }
+
+  constexpr int nwarps = block_size / WARP_SIZE;
+  __shared__ float partial[nwarps][rows_per_block * ncols_dst];
+#pragma unroll
+  for (int r = 0; r < rows_per_block; ++r) {
+#pragma unroll
+    for (int j = 0; j < ncols_dst; ++j) {
+      const float s = warp_reduce_sum<WARP_SIZE>(sumf[r][j]);
+      if (tid % WARP_SIZE == 0) {
+        partial[tid / WARP_SIZE][r * ncols_dst + j] = s;
+      }
+    }
+  }
+  __syncthreads();
+  for (int i = tid; i < rows_per_block * ncols_dst; i += block_size) {
+    const int r = i / ncols_dst;
+    const int j = i % ncols_dst;
+    if (row0 + r < nrows) {
+      float s = 0.0f;
+#pragma unroll
+      for (int w = 0; w < nwarps; ++w) {
+        s += partial[w][i];
+      }
+      dst[j * stride_col_dst + row0 + r] = s;
+    }
+  }
+}
+
+#define INSTANTIATE_SKINNY(ncols_dst, rows_per_block, block_size)              \
+  extern "C" __global__ void __launch_bounds__(block_size)                     \
+      ggml_skinny_f32_ncols_##ncols_dst##_rows_##rows_per_block(               \
+          const float *__restrict__ x, const float *__restrict__ y,            \
+          float *__restrict__ dst, const int32_t ncols2, const int32_t nrows,  \
+          const int32_t stride_row, const int32_t stride_col_y2,               \
+          const int32_t stride_col_dst, const int32_t channel_ratio,           \
+          const int32_t stride_channel_x, const int32_t stride_channel_y,      \
+          const int32_t stride_channel_dst) {                                  \
+    mul_mat_skinny_f32<ncols_dst, rows_per_block, block_size>(                 \
+        x, y, dst, ncols2, nrows, stride_row, stride_col_y2, stride_col_dst,   \
+        channel_ratio, stride_channel_x, stride_channel_y,                     \
+        stride_channel_dst);                                                   \
+  }
+
+INSTANTIATE_SKINNY(9, 2, 128)
+INSTANTIATE_SKINNY(10, 2, 128)
+INSTANTIATE_SKINNY(11, 2, 128)
+INSTANTIATE_SKINNY(12, 2, 128)
+INSTANTIATE_SKINNY(13, 2, 128)
+INSTANTIATE_SKINNY(14, 2, 128)
+INSTANTIATE_SKINNY(15, 2, 128)
+INSTANTIATE_SKINNY(16, 2, 128)
