@@ -31,7 +31,7 @@
 <body>
 <main>
   <h1>tract in your browser</h1>
-  <p class="sub">Neural networks running on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>, compiled to WebAssembly. Nothing leaves your machine.</p>
+  <p class="sub">Neural networks running in your browser, on your GPU through WebGPU or on your CPU, with <a href="https://github.com/sonos/tract">tract</a>, compiled to WebAssembly. Nothing leaves your machine.</p>
   <p id="gpu"></p>
   <div class="demos">
     <a class="demo" href="sd15/" data-needs="shader-f16">
@@ -44,6 +44,11 @@
       <p>Person segmentation on your camera, with the background blurred or replaced by a colour, live.</p>
       <p class="meta">Uses your camera. Downloads a 0.5 MB or 26 MB model from Hugging Face. Needs WebGPU.</p>
     </a>
+    <a class="demo" href="hey-snips/">
+      <h2>Hey Snips</h2>
+      <p>Wake word detection on your microphone, streaming, from raw samples to a score every 10 ms.</p>
+      <p class="meta">Uses your microphone. Runs on the CPU in WebAssembly, no WebGPU needed. 1.2 MB model.</p>
+    </a>
   </div>
   <p class="note"><a href="https://github.com/sonos/tract/tree/main/examples">Source code</a> of the demos, in tract's examples.</p>
 </main>
@@ -51,7 +56,7 @@
 const gpu = document.getElementById('gpu');
 const adapter = navigator.gpu && await navigator.gpu.requestAdapter().catch(() => null);
 if (!adapter) {
-  gpu.textContent = 'This browser gives no WebGPU adapter, so the demos will not run here. Recent Chrome, Edge, Firefox and Safari support WebGPU on most GPUs.';
+  gpu.textContent = 'This browser gives no WebGPU adapter, so only the CPU demos will run here. Recent Chrome, Edge, Firefox and Safari support WebGPU on most GPUs.';
   gpu.className = 'warn';
 } else {
   for (const demo of document.querySelectorAll('[data-needs]')) {
