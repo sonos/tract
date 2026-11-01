@@ -26,8 +26,6 @@ fn compute_reshaped_inputs(
     grouped_axis_ops: &TVec<TVec<GpuAxisOp>>,
     ctx: &EvalContext,
 ) -> TractResult<TVec<TValue>> {
-    // Apply Axis Ops per input
-
     inputs
         .into_iter()
         .zip(grouped_axis_ops.iter())
@@ -36,39 +34,49 @@ fn compute_reshaped_inputs(
                 return Ok(input);
             };
             let m_input = input.to_device_tensor()?;
-            let reshaped_input = axis_ops.iter().try_fold(
-                m_input.clone(),
-                |t, axis_op| -> TractResult<DeviceTensor> {
-                    let new_shape = match &axis_op.inner {
-                        AxisOp::Reshape(skip, from, to) => {
-                            let from = from.iter().map(|d| d.eval(ctx.symbols)).collect();
-                            let to = to.iter().map(|d| d.eval(ctx.symbols)).collect();
-                            let mut shape: TVec<usize> = t.shape().into();
-                            AxisOp::Reshape(*skip, from, to)
-                                .change_shape_array(&mut shape, false)?;
-                            shape
-                        }
-                        AxisOp::Add(_) | AxisOp::Rm(_) | AxisOp::Move(..) => {
-                            let mut shape: TVec<usize> = t.shape().into();
-                            axis_op.inner.change_shape_array(&mut shape, false)?;
-                            shape
-                        }
-                    };
-                    if let AxisOp::Move(from, to) = axis_op.inner {
-                        let mut out_strides: TVec<isize> = t.strides().to_smallvec();
-                        let removed_stride = out_strides.remove(from);
-                        out_strides.insert(to, removed_stride);
-                        let tmp_t = t.reshaped(new_shape)?;
-                        tmp_t.restrided(out_strides)
-                    } else {
-                        t.reshaped(new_shape)
-                    }
-                },
-            )?;
-
+            let reshaped_input = axis_ops
+                .iter()
+                .try_fold(m_input.clone(), |t, axis_op| view_through(&t, axis_op, ctx))?;
             Ok(reshaped_input.into_tensor().into())
         })
         .collect::<TractResult<TVec<_>>>()
+}
+
+/// `axis_op` applied to `t` as a view of the same bytes. `Move`, `Add` and
+/// `Rm` only edit the strides, so they hold on a view an earlier `Move` has
+/// already restrided; a `Reshape` needs its input packed.
+fn view_through(
+    t: &DeviceTensor,
+    axis_op: &GpuAxisOp,
+    ctx: &EvalContext,
+) -> TractResult<DeviceTensor> {
+    let mut shape: TVec<usize> = t.shape().into();
+    let mut strides: TVec<isize> = t.strides().to_smallvec();
+    match &axis_op.inner {
+        AxisOp::Reshape(skip, from, to) => {
+            ensure!(
+                strides.as_slice() == Tensor::natural_strides(&shape).as_slice(),
+                "a fused Reshape needs a packed input, got shape {shape:?} with strides {strides:?}"
+            );
+            let from = from.iter().map(|d| d.eval(ctx.symbols)).collect();
+            let to = to.iter().map(|d| d.eval(ctx.symbols)).collect();
+            AxisOp::Reshape(*skip, from, to).change_shape_array(&mut shape, false)?;
+            return t.reshaped(shape);
+        }
+        AxisOp::Move(from, to) => {
+            let stride = strides.remove(*from);
+            strides.insert(*to, stride);
+        }
+        AxisOp::Add(axis) => {
+            let stride = shape.get(*axis).map_or(1, |dim| *dim as isize * strides[*axis]);
+            strides.insert(*axis, stride);
+        }
+        AxisOp::Rm(axis) => {
+            strides.remove(*axis);
+        }
+    }
+    axis_op.inner.change_shape_array(&mut shape, false)?;
+    t.reshaped(shape)?.restrided(strides)
 }
 
 impl OpState for WgpuFusedAxisOpState {

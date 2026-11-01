@@ -199,6 +199,22 @@ fn a_move_rides_the_op_that_reads_it() -> TractResult<()> {
     Ok(())
 }
 
+/// A unit axis removed between two moves keeps the first move's strides, so
+/// the whole run rides the add as one view.
+#[test]
+fn a_move_a_unit_axis_removal_and_a_move_ride_the_op_that_reads_them() -> TractResult<()> {
+    use tract_core::ops::math::add;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 3, 2, 2]))?;
+    let mut w = model.wire_node("mv0", AxisOp::Move(3, 1), &[x])?[0];
+    w = model.wire_node("rm", AxisOp::Rm(0), &[w])?[0];
+    w = model.wire_node("mv1", AxisOp::Move(2, 1), &[w])?[0];
+    let c = model.add_const("c", Tensor::from_shape(&[2, 2, 3], &fill(7, 12))?)?;
+    let y = model.wire_node("add", add(), &[w, c])?[0];
+    model.select_output_outlets(&[y])?;
+    gpu_vs_cpu(model, Tensor::from_shape(&[1, 3, 2, 2], &fill(3, 12))?)
+}
+
 #[test]
 fn axis_op_at_a_model_output_is_left_alone() -> TractResult<()> {
     use tract_gpu::ops::change_axes::GpuAxisOp;
