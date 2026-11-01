@@ -486,7 +486,6 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn pack_past_the_session_budget_is_not_kept() -> TractResult<()> {
         let (plan, _) = activation_pack()?;
@@ -500,6 +499,7 @@ mod tests {
         Ok(())
     }
 
+    #[cfg(not(target_family = "wasm"))]
     #[test]
     fn pack_of_session_dropped_on_another_thread_is_reaped() -> TractResult<()> {
         let (plan, _) = activation_pack()?;
