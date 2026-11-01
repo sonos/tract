@@ -18,9 +18,25 @@
 //!   → Reduce<Sum> on a streaming axis, contracting EinSum, or
 //!     ScaledMaskedSoftmax + downstream contracting EinSum
 //!
+//! A bare `coord` is chunk 1: a per-position band such as a sliding
+//! window `0 ≤ i − j < W`.  A constant inside either bound's `D` folds
+//! into the bound (`lt(D, W)` reduces to `W ≥ D + 1`, i.e. `upper = W − 1`).
+//!
 //! `mask.lower > 0` (purely-future, skipping current) and `mask.upper < 0`
 //! (purely-past) are rejected — they don't appear in attention masks and
 //! would need different pulsifier wiring.
+//!
+//! # Rewrite chunk
+//!
+//! The rewrite chunks at the mask's own chunk size unless the caller asks
+//! for coarser chunks of `K` tokens, a multiple `r` of it
+//! (`MaskForm::coarsened`): the pulse-driven path does so, one chunk per
+//! pulse, when a pulse holds no whole number of source units per mask
+//! chunk or the mask is per position.  `[lower, upper]` then bound rewrite
+//! chunks — every rewrite chunk holding at least one in-band pair of mask
+//! chunks — so the window over-covers the band by under one rewrite chunk
+//! on each side, and the mask predicate, still evaluated per mask chunk,
+//! decides the slots in between.
 //!
 //! # Pipeline
 //!
@@ -197,7 +213,7 @@ impl ModelTransform for BlockifyTransform {
             HashMap::from([(stream_sym.clone(), chunk_sym.to_dim() * k)]);
         let new_model = model.set_symbols(&subs)?;
         *model = new_model;
-        rewrite_sections(model, &chunk_sym, k)?;
+        rewrite_sections(model, &chunk_sym, k, None)?;
         model.properties.insert(
             BLOCKIFY_ORIGINAL_SYMBOL.to_string(),
             tensor1(&[symbol_name.to_string()]).into_arc_tensor(),
@@ -230,15 +246,23 @@ pub fn section_stream_dims(
 /// already be in post-substitute form (streaming dim = `multiplier · chunk_sym`).
 /// `substitute_multiplier` is recorded as `BLOCKIFY_CHUNK_SIZE` for downstream
 /// pulse-value translation; the section rewrite itself uses each section's
-/// own `mask.chunk_size` for its chunked Reshape.
+/// own `mask.chunk_size` for its chunked Reshape, or `chunk_tokens` when given:
+/// every section is then rewritten over chunks of that many tokens, a multiple
+/// of its mask chunk (see `MaskForm::coarsened`).
 pub fn rewrite_sections(
     model: &mut TypedModel,
     chunk_sym: &Symbol,
     substitute_multiplier: i64,
+    chunk_tokens: Option<i64>,
 ) -> TractResult<bool> {
-    let sections = find_quadratic_sections(model, chunk_sym)?;
+    let mut sections = find_quadratic_sections(model, chunk_sym)?;
     if sections.is_empty() {
         return Ok(false);
+    }
+    if let Some(tokens) = chunk_tokens {
+        for sec in &mut sections {
+            sec.mask = sec.mask.coarsened(tokens)?;
+        }
     }
     let k = sections[0].mask.chunk_size;
     if !sections.iter().all(|s| s.mask.chunk_size == k) {
@@ -348,11 +372,35 @@ struct MaskForm {
     axis_a: usize,
     /// Axis whose chunk index appears negated in the diff, in mask frame.
     axis_b: usize,
+    /// Mask chunks per rewrite chunk.  1 when the rewrite chunks at the mask's
+    /// own granularity; above 1 after `coarsened`, where `[lower, upper]` bound
+    /// rewrite chunks and the mask predicate still runs per mask chunk.
+    sub_chunks: i64,
 }
 
 impl MaskForm {
     fn is_block_diag(&self) -> bool {
         self.lower == 0 && self.upper == 0
+    }
+
+    /// The same predicate rewritten over chunks of `tokens` (a multiple of
+    /// `chunk_size`): the band widens to every rewrite chunk holding at least one
+    /// in-band pair of mask chunks, and `sub_chunks` records the ratio.
+    fn coarsened(&self, tokens: i64) -> TractResult<MaskForm> {
+        ensure!(self.sub_chunks == 1, "Mask form is already coarsened");
+        ensure!(
+            tokens > 0 && tokens % self.chunk_size == 0,
+            "Rewrite chunk of {tokens} tokens is not a multiple of the mask chunk {}",
+            self.chunk_size
+        );
+        let r = tokens / self.chunk_size;
+        Ok(MaskForm {
+            chunk_size: tokens,
+            lower: -(-(self.lower - (r - 1))).div_euclid(r),
+            upper: (self.upper + (r - 1)).div_euclid(r),
+            sub_chunks: r,
+            ..*self
+        })
     }
 }
 
@@ -625,6 +673,7 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
             upper: 0,
             axis_a: axis_a - leading,
             axis_b: axis_b - leading,
+            sub_chunks: 1,
         });
     }
 
@@ -645,8 +694,9 @@ fn decode_mask(expr: &TDim, streaming_axes: &[usize]) -> Option<MaskForm> {
     None
 }
 
-/// `upper_term = Ge(Val(upper), D)` and `lower_term = Ge(D, Val(lower))`.
-/// `D = coord_a/k - coord_b/k`.
+/// `upper_term = Ge(Val(upper), D + c_u)` and `lower_term = Ge(D + c_l, Val(lower))`.
+/// `D = coord_a/k - coord_b/k`; the constant offsets fold into the bounds, so
+/// `250 >= D + 1` reads as `upper = 249`.
 fn decode_banded_terms(upper_term: &TDim, lower_term: &TDim) -> Option<MaskForm> {
     let TDim::Ge(u_val, d_upper) = upper_term else {
         return None;
@@ -660,11 +710,32 @@ fn decode_banded_terms(upper_term: &TDim, lower_term: &TDim) -> Option<MaskForm>
     let TDim::Val(lower) = **l_val else {
         return None;
     };
+    let (d_upper, c_upper) = split_constant(d_upper);
+    let (d_lower, c_lower) = split_constant(d_lower);
     if d_lower != d_upper {
         return None;
     }
-    let (axis_a, axis_b, k) = decode_diff(d_lower)?;
-    Some(MaskForm { chunk_size: k as i64, lower, upper, axis_a, axis_b })
+    let (axis_a, axis_b, k) = decode_diff(&d_lower)?;
+    Some(MaskForm {
+        chunk_size: k as i64,
+        lower: lower - c_lower,
+        upper: upper - c_upper,
+        axis_a,
+        axis_b,
+        sub_chunks: 1,
+    })
+}
+
+/// Split the constant term off a sum: `X + c` → `(X, c)`, anything else → `(expr, 0)`.
+fn split_constant(expr: &TDim) -> (TDim, i64) {
+    let TDim::Add(terms) = expr else {
+        return (expr.clone(), 0);
+    };
+    let c: i64 =
+        terms.iter().filter_map(|t| if let TDim::Val(v) = t { Some(*v) } else { None }).sum();
+    let rest: Vec<TDim> = terms.iter().filter(|t| !matches!(t, TDim::Val(_))).cloned().collect();
+    let rest = if rest.len() == 1 { rest[0].clone() } else { TDim::Add(rest) };
+    (rest, c)
 }
 
 /// Match `Add([MulInt(-1, Div(Sym(🎯b), k)), Div(Sym(🎯a), k)])` (the canonical
@@ -693,16 +764,21 @@ fn decode_diff(expr: &TDim) -> Option<(usize, usize, u64)> {
     None
 }
 
-/// Match `Div(Sym(🎯<axis>), k)` and return `(axis, k)`.
+/// Match `Div(Sym(🎯<axis>), k)` and return `(axis, k)`.  A bare `Sym(🎯<axis>)`
+/// is a chunk size of 1: a per-position band such as a sliding window.
 fn decode_coord_div(expr: &TDim) -> Option<(usize, u64)> {
-    let TDim::Div(num, k) = expr else {
-        return None;
-    };
-    let TDim::Sym(sym) = num.as_ref() else {
-        return None;
+    let (sym, k) = match expr {
+        TDim::Div(num, k) => {
+            let TDim::Sym(sym) = num.as_ref() else {
+                return None;
+            };
+            (sym, *k)
+        }
+        TDim::Sym(sym) => (sym, 1),
+        _ => return None,
     };
     let axis = tract_core::ops::logic::sym_to_coord_axis(sym)?;
-    Some((axis, *k))
+    Some((axis, k))
 }
 
 /// Build a TypedModelPatch that chunkifies one quadratic section.
@@ -999,6 +1075,7 @@ fn wire_initiator_diag_gather(
     chunk_sym: &Symbol,
     k: i64,
 ) -> TractResult<OutletId> {
+    ensure!(mask.sub_chunks == 1, "DiagGather initiator needs the rewrite chunk to be the mask's");
     let out_streaming = streaming_positions(&node.outputs[0].fact, chunk_sym);
     ensure!(
         out_streaming.len() == 2 && out_streaming[1] == out_streaming[0] + 1,
@@ -1429,6 +1506,13 @@ fn wire_uniform_tdim_initiator(
 /// `lower + j` on the `axis_a` side and `upper - j` on the `axis_b` one
 /// — while leaving no absolute position for a shared clock to get
 /// wrong.
+///
+/// Over coarsened chunks (`mask.sub_chunks = r > 1`) every token also
+/// carries its mask-chunk index within its rewrite chunk, and the slot
+/// offsets count `r` mask chunks per window slot: the initiator then
+/// reproduces the source's mask-chunk difference on every in-window slot,
+/// and the predicate decides the over-covered edges of the window as it
+/// does the rest of the band.
 #[allow(clippy::too_many_arguments)]
 fn chunkify_uniform_tdim_input(
     patch: &mut TypedModelPatch,
@@ -1472,6 +1556,24 @@ fn chunkify_uniform_tdim_input(
     // chunk axis at `stream_axis` and the within-block axis at
     // `stream_axis + 1`.
     wire = wire_chunk_split(patch, name_prefix, wire, stream_axis, chunk_sym, k)?;
+
+    // A coarsened rewrite chunk holds `sub_chunks` mask chunks: each token's
+    // value is the index of its mask chunk within the rewrite chunk.
+    if mask.sub_chunks > 1 {
+        let mask_chunk = k / mask.sub_chunks;
+        let mut shape = tvec!(1; patch.outlet_fact(wire)?.rank());
+        shape[stream_axis + 1] = k as usize;
+        let sub_index: Vec<i64> = (0..k).map(|token| token / mask_chunk).collect();
+        let sub_index = patch.add_const(
+            format!("{name_prefix}.sub_chunk_index"),
+            Tensor::from_shape(&shape, &sub_index)?,
+        )?;
+        wire = patch.wire_node(
+            format!("{name_prefix}.sub_chunk"),
+            tract_core::ops::math::add(),
+            &[wire, sub_index],
+        )?[0];
+    }
 
     // Move the chunk axis to the section frame's chunk position, right
     // behind whatever the initiator carries in front of its mask frame.
@@ -1538,7 +1640,8 @@ fn chunkify_uniform_tdim_input(
         // against the chunk axis, so it holds at every stream position.
         let mut offsets_shape = tvec!(1; patch.outlet_fact(wire)?.rank());
         offsets_shape[merged_axis] = window_size * k as usize;
-        let offsets: Vec<i64> = (0..window_size as i64 * k).map(|slot| start + slot / k).collect();
+        let offsets: Vec<i64> =
+            (0..window_size as i64 * k).map(|slot| (start + slot / k) * mask.sub_chunks).collect();
         let offsets = patch.add_const(
             format!("{name_prefix}.slot_offsets"),
             Tensor::from_shape(&offsets_shape, &offsets)?.cast_to_dt(dt)?.into_owned(),
@@ -2300,6 +2403,48 @@ mod tests {
             Box::new(TDim::Div(Box::new(TDim::Add(vec![coord(&scope, 1), TDim::Val(1)])), 2)),
         );
         assert_eq!(decode_mask(&expr, &[0, 1]), None);
+    }
+
+    #[test]
+    fn decode_mask_recognises_per_position_sliding_window() {
+        // `0 <= i - j < 5` on raw positions, `lt` reducing to `5 >= i - j + 1`.
+        let scope = SymbolScope::default();
+        let diff = (coord(&scope, 0) - coord(&scope, 1)).reduce();
+        let ge_upper =
+            TDim::Ge(Box::new(TDim::Val(5)), Box::new((diff.clone() + 1).reduce())).reduce();
+        let ge_lower = TDim::Ge(Box::new(diff), Box::new(TDim::Val(0))).reduce();
+        let expr = TDim::Mul(vec![ge_upper, ge_lower]).reduce();
+        let m = decode_mask(&expr, &[0, 1]).unwrap();
+        assert_eq!((m.chunk_size, m.lower, m.upper, m.sub_chunks), (1, 0, 4, 1));
+    }
+
+    #[test]
+    fn coarsened_band_holds_exactly_the_rewrite_chunks_with_an_in_band_pair() {
+        for (chunk_size, lower, upper) in
+            [(1, 0, 249), (1, 0, 4), (2, 0, 1), (2, -1, 1), (3, -2, 0)]
+        {
+            let mask = MaskForm { chunk_size, lower, upper, axis_a: 0, axis_b: 1, sub_chunks: 1 };
+            for r in 1..6 {
+                let coarse = mask.coarsened(chunk_size * r).unwrap();
+                let reached: BTreeSet<i64> = (0..r)
+                    .flat_map(|sa| (0..r).map(move |sb| (sa, sb)))
+                    .flat_map(|(sa, sb)| {
+                        (-300i64..300).filter(move |d| (lower..=upper).contains(&(d * r + sa - sb)))
+                    })
+                    .collect();
+                let expected: BTreeSet<i64> = (coarse.lower..=coarse.upper).collect();
+                assert_eq!(reached, expected, "{mask:?} coarsened by {r}");
+                assert_eq!((coarse.chunk_size, coarse.sub_chunks), (chunk_size * r, r));
+            }
+        }
+    }
+
+    #[test]
+    fn coarsened_to_the_mask_chunk_keeps_the_band() {
+        let mask =
+            MaskForm { chunk_size: 2, lower: -1, upper: 1, axis_a: 0, axis_b: 1, sub_chunks: 1 };
+        assert_eq!(mask.coarsened(2).unwrap(), mask);
+        assert!(mask.coarsened(3).is_err());
     }
 
     fn einsum_for(inputs: &[&str], output: &str) -> EinSum {
