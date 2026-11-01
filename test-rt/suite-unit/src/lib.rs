@@ -17,6 +17,7 @@ pub mod conv_f32;
 pub mod conv_q;
 pub mod cumsum;
 pub mod deconv;
+pub mod diag_gather;
 pub mod downsample;
 pub mod elmwise;
 pub mod gather_elements;
@@ -49,6 +50,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("conv_q", conv_q::suite()?);
     suite.add("cumsum", cumsum::suite()?);
     suite.add("deconv", deconv::suite()?);
+    suite.add("diag_gather", diag_gather::suite()?);
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
     suite.add("matmul_q40", matmul_q40::suite()?);
