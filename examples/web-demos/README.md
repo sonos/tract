@@ -8,6 +8,7 @@ prefix of the `tract-demo` R2 bucket:
 |---------------|---------------------------------------------|
 | `/sd15/`      | [`stable-diffusion/web`](../stable-diffusion/web) |
 | `/pixel-lab/` | [`pixel-lab/web`](../pixel-lab/web)         |
+| `/hey-snips/` | [`hey-snips/web`](../hey-snips/web)         |
 
 A new demo gets a card in `index.html` and a line here; its page links back to `../`.
 
