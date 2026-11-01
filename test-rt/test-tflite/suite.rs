@@ -257,6 +257,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "matmul_q40",
         "moe_ffn",
         "rms_norm",
+        "rotate_half",
         "scaled_masked_softmax",
         "sdpa",
         "silu",
