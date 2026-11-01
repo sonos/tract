@@ -126,21 +126,27 @@ function engineFor(runtime, id) {
 }
 
 self.onmessage = ({ data }) => {
+  if (data.stop) {
+    active += 1;
+    post({ ticket: data.ticket, stopped: true });
+    return;
+  }
   const job = ++active;
-  post({ job, accepted: true });
+  post({ ticket: data.ticket, job, accepted: true });
   const pending = engineFor(data.runtime || 'cpu', data.tier);
   task(data, job, pending);
 };
 
 async function task(data, job, pending) {
   const where = runtimeName(data.runtime || 'cpu');
+  const reply = (message) => post({ ticket: data.ticket, job, ...message });
   try {
     const prepared = await pending;
     if (job !== active) return;
     const release = await acquire();
     try {
       if (job !== active) return;
-      post({ job, status: `Finding text on the ${where}…` });
+      reply({ status: `Finding text on the ${where}…` });
       const lines = await recognize(
         { rgb: data.rgb, width: data.width, height: data.height },
         prepared.sessions,
@@ -150,18 +156,18 @@ async function task(data, job, pending) {
           cancelled: () => job !== active,
           onLine: (done, total) => {
             if (job === active) {
-              post({ job, status: `Reading line ${done} of ${total} on the ${where}…`, read: { done, total } });
+              reply({ status: `Reading line ${done} of ${total} on the ${where}…`, read: { done, total } });
             }
           },
         },
       );
       if (!lines || job !== active) return;
       const status = lines.length ? `Read ${lines.length} lines on the ${where}.` : `No text found on the ${where}.`;
-      post({ job, status, lines });
+      reply({ status, lines });
     } finally {
       release();
     }
   } catch (error) {
-    if (job === active) post({ job, error: error?.message || String(error) });
+    if (job === active) reply({ error: error?.message || String(error) });
   }
 }

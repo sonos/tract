@@ -2,8 +2,10 @@
 
 PP-OCRv6 finds the lines in a picture and reads them, through tract compiled to
 WebAssembly. The page can run the same graphs on the CPU or on WebGPU. A sample
-page is already loaded. A visitor can upload another picture or take a camera
-snapshot. Nothing leaves the machine except the model download.
+page is shown, and nothing is read until Start. Stop cancels the current read.
+Changing the runtime or the model starts it again on that choice. A visitor can
+upload another picture or take a camera snapshot. Nothing leaves the machine
+except the model download.
 
 ## How it works
 
