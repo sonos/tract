@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, pack_u32s, scaled_masked_softmax_module,
+    EntryPoint, GRID_LIMIT, LAYER_NORM_WG, LayoutKind, ShaderDtype, pack_u32s, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -110,3 +110,130 @@ register_wgpu_op!(
         ))))
     }
 );
+
+/// `softmax(x * scale + mask)` over the innermost axis of a rank-5 view, one
+/// workgroup per row. The input and mask are read through their strides (the
+/// mask's zero along the axes it broadcasts); the output is contiguous.
+pub fn scaled_masked_softmax_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_mask: u32,
+    off_out: u32,
+    d1: u32,
+    d2: u32,
+    d3: u32,
+    k: u32,
+    rows: u32,
+    scale: f32,
+    x_inner: u32,
+    mask_inner: u32,
+    _pad: u32,
+    x_strides: vec4<u32>,
+    mask_strides: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> mask: array<{t}>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+var<workgroup> partial: array<f32, {LAYER_NORM_WG}>;
+
+fn logit(x: u32, m: u32, i: u32) -> f32 {{
+    return f32(inp[x + i * params.x_inner]) * params.scale + f32(mask[m + i * params.mask_inner]);
+}}
+
+@compute @workgroup_size({LAYER_NORM_WG})
+fn scaled_masked_softmax_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row = wid.y * {GRID_LIMIT}u + wid.x;
+    if (row >= params.rows) {{ return; }}
+    let at = vec4<u32>(
+        row / (params.d1 * params.d2 * params.d3),
+        (row / (params.d2 * params.d3)) % params.d1,
+        (row / params.d3) % params.d2,
+        row % params.d3,
+    );
+    let x = params.off_in + dot(at, params.x_strides);
+    let m = params.off_mask + dot(at, params.mask_strides);
+    let o = params.off_out + row * params.k;
+    var hi = -3.4028235e38;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        hi = max(hi, logit(x, m, i));
+    }}
+    partial[lid.x] = hi;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] = max(partial[lid.x], partial[lid.x + stride]);
+        }}
+    }}
+    workgroupBarrier();
+    hi = partial[0];
+    workgroupBarrier();
+    var sum = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        sum += exp(logit(x, m, i) - hi);
+    }}
+    partial[lid.x] = sum;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    workgroupBarrier();
+    let inv = 1.0 / partial[0];
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        outp[o + i] = {t}(exp(logit(x, m, i) - hi) * inv);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// Attention scores under a causal `-inf` mask broadcast over batch and
+    /// heads, with rows both shorter and longer than one workgroup.
+    #[test]
+    fn scaled_masked_softmax_runs_on_device() -> TractResult<()> {
+        use tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax;
+        use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
+        for (cols, f16_) in [(7usize, false), (300, false), (300, true)] {
+            let rows = 5;
+            let shape = [2, 3, rows, cols];
+            let causal = (0..rows * cols)
+                .map(|i| if i % cols > i / cols + cols - rows { f32::NEG_INFINITY } else { 0.0 })
+                .collect::<Vec<_>>();
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact(shape))?;
+            let mask =
+                Tensor::from_shape(&[1, 1, rows, cols], &causal)?.cast_to_dt(dt)?.into_owned();
+            let mask = model.add_const("mask", mask)?;
+            let op = ScaledMaskedSoftmax { scale: rctensor0(0.125f32), post_softmax_mask: false };
+            let y = model.wire_node("softmax", op, &[x, mask])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            ensure!(
+                gpu.nodes().iter().any(|n| n.op_is::<GpuScaledMaskedSoftmax>()),
+                "masked softmax stayed on the CPU"
+            );
+            let input = Tensor::from_shape(&shape, &fill(6, shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned())
+                .with_context(|| format!("cols {cols} f16 {f16_}"))?;
+        }
+        Ok(())
+    }
+}

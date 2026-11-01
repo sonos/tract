@@ -51,15 +51,17 @@ fn pulsify(
     // surfaces as `Broadcast(c·pulse, c·pulse + k)` and downstream
     // pulse-divisibility checks bail).
     //
-    // `guess_slope` returns `(num, den)` for the rational slope; we
-    // require integer slopes (den == 1) — Range over a fractional-slope
-    // stream dim doesn't have a single per-pulse count.
+    // `guess_slope` returns `(num, den)` for the rational slope, e.g. 1/2
+    // for an arange over a stride-2 conv's output.  A pulse must hold a
+    // whole number of elements; otherwise there is no single per-pulse count.
     let (slope_num, slope_den) = stream_dim.guess_slope(symbol);
-    rule_if!(slope_num > 0 && slope_den == 1);
+    rule_if!(slope_num > 0 && slope_den > 0);
     let pulse_int = pulse.to_usize()?;
-    let per_pulse: usize = (slope_num as usize).checked_mul(pulse_int).ok_or_else(|| {
+    let scaled: usize = (slope_num as usize).checked_mul(pulse_int).ok_or_else(|| {
         format_err!("Range pulsification: per-pulse overflow ({}*{})", slope_num, pulse_int)
     })?;
+    rule_if!(scaled.is_multiple_of(slope_den as usize));
+    let per_pulse = scaled / slope_den as usize;
     let pulsed =
         PulsedRange { datum_type, start, step, stream_dim: stream_dim.clone(), pulse: per_pulse };
     target.wire_node(&*node.name, pulsed, &[]).map(Some)

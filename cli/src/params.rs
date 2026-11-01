@@ -1134,6 +1134,7 @@ impl Parameters {
             .or_else(|| Arc::downcast(self.tract_model.clone()).ok())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn req_typed_model(&self) -> Arc<TypedModel> {
         self.typed_model().expect("Not a TypedModel")
     }

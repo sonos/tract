@@ -81,8 +81,9 @@ jobs:
       kind: ${{ steps.gate.outputs.kind }}
       same_repo: ${{ steps.gate.outputs.same_repo }}
       mt_ladder: ${{ steps.gate.outputs.mt_ladder }}
-      cases: ${{ steps.cases.outputs.cases }}
+      cases: ${{ steps.scoped.outputs.cases }}
       boxes: ${{ steps.rebench.outputs.boxes || steps.boxes.outputs.boxes }}
+      machines: ${{ steps.boxes.outputs.machines }}
       boxes_apple: ${{ steps.split.outputs.apple }}
       boxes_linux: ${{ steps.split.outputs.linux }}
       builds: ${{ steps.scoped.outputs.builds }}
@@ -98,21 +99,22 @@ jobs:
       bins_run: ${{ steps.bins.outputs.bins_run }}
       dinghy: ${{ steps.rebench.outputs.dinghy || 'true' }}
     steps:
-      # The self-hosted bench boxes, minus the targets listed (space-separated) in the
-      # BENCH_DISABLED_BOXES repo variable: a box that is down would otherwise leave its
+      # The bench legs of the self-hosted boxes, minus the boxes listed (space-separated) in
+      # the BENCH_DISABLED_BOXES repo variable: a box that is down would otherwise leave its
       # legs queued, holding the PR report back until GitHub times them out.
-      # suite_args: the Orin is GPU-only, its arm64 CPU is redundant with apple-m1-max.
+      # Each leg is a bench-data device (target). The 4060 runs three legs, its CPU, CUDA and
+      # wgpu, so a change benches only the runtimes it can affect; wgpu has its own binary
+      # (artifact). runtimes: the box's runtimes benched in one leg, each named as its
+      # ci/affected.py leg, so a PR benches only those it can affect. suite_args: the Orin is
+      # GPU-only, its arm64 CPU is redundant with apple-m1-max. machines: one entry per box, for the nightly gates that run once per
+      # box over all its runtimes.
       - id: boxes
         env:
           DISABLED: ${{ vars.BENCH_DISABLED_BOXES }}
           SCOPE: ${{ github.event.inputs.scope }}
         run: |
-          if [ "$SCOPE" = wgpu ] || [ "$SCOPE" = wasm ]; then
-            echo "boxes=[]" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          boxes=$(jq -c --arg disabled "$DISABLED" \
-            '($disabled | split(" ") | map(select(. != ""))) as $off | map(select(.target | IN($off[]) | not))' <<'EOF'
+          enabled='($disabled | split(" ") | map(select(. != ""))) as $off | map(select((.box // .target) | IN($off[]) | not))'
+          machines=$(jq -c --arg disabled "$DISABLED" "$enabled" <<'EOF'
           [
             { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin" },
             { "target": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060", "triple": "x86_64-unknown-linux-gnu" },
@@ -122,8 +124,30 @@ jobs:
           ]
           EOF
           )
+          boxes=$(jq -c --arg disabled "$DISABLED" "$enabled" <<'EOF'
+          [
+            { "target": "apple-m1-max", "runner": "bench-apple-m1-max", "triple": "aarch64-apple-darwin",
+              "runtimes": { "cpu": "apple-m1-max", "metal": "apple-m1-max_metal" } },
+            { "target": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060", "triple": "x86_64-unknown-linux-gnu",
+              "suite_args": "--runtimes cpu" },
+            { "target": "i9-11900kb_rtx-4060_cuda", "box": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060",
+              "triple": "x86_64-unknown-linux-gnu", "suite_args": "--runtimes cuda" },
+            { "target": "i9-11900kb_rtx-4060_wgpu", "box": "i9-11900kb_rtx-4060", "runner": "bench-i9-11900kb-rtx-4060",
+              "triple": "x86_64-unknown-linux-gnu", "artifact": "x86_64-unknown-linux-gnu-wgpu",
+              "suite_args": "--runtimes wgpu", "wgpu": true },
+            { "target": "i9-9900k", "runner": "i99900k", "triple": "x86_64-unknown-linux-gnu" },
+            { "target": "jetson-orin-nx", "runner": "orin-nx-16g", "triple": "aarch64-unknown-linux-gnu-stretch",
+              "suite_args": "--skip-cpu" }
+          ]
+          EOF
+          )
+          case "$SCOPE" in
+            wgpu) boxes=$(jq -c 'map(select(.wgpu))' <<<"$boxes") ;;
+            wasm) boxes='[]' ;;
+          esac
           for off in $DISABLED; do echo "::notice::bench box $off disabled via BENCH_DISABLED_BOXES"; done
           echo "boxes=$boxes" >> "$GITHUB_OUTPUT"
+          echo "machines=$machines" >> "$GITHUB_OUTPUT"
       # A pull_request run's sha is the PR's own code, and it has no /ci command to report on.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: ${{ github.event_name != 'pull_request' }}
@@ -230,7 +254,8 @@ jobs:
             for runner in ${runners:-ubuntu-24.04}
             do
               case "$runner" in
-                ubuntu-24.04|cuda-tests|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                ubuntu-24.04|bench-i9-11900kb-rtx-4060) triple=x86_64-unknown-linux-gnu ;;
+                cuda-tests) triple=x86_64-unknown-linux-gnu-wgpu ;;
                 macos-latest|metal-tests|bench-apple-m1-max) triple=aarch64-apple-darwin ;;
                 *) echo "::error file=$script::no CLI build for runner $runner" >&2; exit 1 ;;
               esac
@@ -284,6 +309,7 @@ jobs:
           CANDIDATE: ${{ steps.rebench.outputs.bins_run }}
           NEEDED: >-
             tract-cli-x86_64-unknown-linux-gnu
+            tract-cli-x86_64-unknown-linux-gnu-wgpu
             tract-cli-aarch64-unknown-linux-gnu-stretch
             tract-cli-aarch64-apple-darwin
             tract-cli-aarch64-unknown-linux-gnu-stretch-dinghy
@@ -312,8 +338,8 @@ jobs:
             fi
           done
           echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
-      # On a PR push, ci/affected.py names the bench legs this change cannot affect; they and
-      # the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
+      # On a PR push, ci/affected.py names the bench legs and harness cases this change cannot
+      # affect; they and the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
       # a `ci:full` label and CI_SCOPING=off run everything, and so does any failure here.
       - id: changed
         if: github.event_name == 'pull_request' && vars.CI_SCOPING != 'off' && !contains(github.event.pull_request.labels.*.name, 'ci:full')
@@ -344,12 +370,22 @@ jobs:
           ENABLED: ${{ steps.boxes.outputs.boxes }}
           SKIP: ${{ steps.scope.outputs.skip || '[]' }}
         run: |
-          BOXES=$(jq -c --argjson skip "$SKIP" 'map(select(("bench " + .target) | IN($skip[]) | not))' <<<"$BOXES")
+          BOXES=$(jq -c --argjson skip "$SKIP" '
+            def kept: ("bench " + .) | IN($skip[]) | not;
+            map(if .runtimes then
+                  ([.runtimes | to_entries[] | select(.value | kept) | .key]) as $rt
+                  | select($rt | length > 0)
+                  | if ($rt | length) < (.runtimes | length)
+                    then .suite_args = ([.suite_args // empty, "--runtimes " + ($rt | join(","))] | join(" "))
+                    else . end
+                  | del(.runtimes)
+                else select(.target | kept) end)' <<<"$BOXES")
           echo "apple=$(jq -c 'map(select(.triple == "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "linux=$(jq -c 'map(select(.triple != "aarch64-apple-darwin"))' <<<"$BOXES")" >> "$GITHUB_OUTPUT"
           echo "macos_host=$(jq -r 'if any(.[]; .runner == "bench-apple-m1-max") then "metal-tests" else "macos-latest" end' <<<"$ENABLED")" >> "$GITHUB_OUTPUT"
-      # The builds, keeping only those a remaining bench or harness leg downloads. The x86_64
-      # CLI always builds: the report renders with it. ci/affected.py mirrors these legs.
+      # The harness cases a change can affect, then the builds, keeping only those a remaining
+      # bench or harness leg downloads. The x86_64 CLI always builds: the report renders with
+      # it. ci/affected.py mirrors these legs.
       - id: scoped
         env:
           SKIP: ${{ steps.scope.outputs.skip || '[]' }}
@@ -358,11 +394,16 @@ jobs:
           APPLE: ${{ steps.split.outputs.apple }}
           CASES: ${{ steps.cases.outputs.cases }}
         run: |
-          builds=$(jq -c --argjson linux "$LINUX" \
-            'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[].triple))))' <<'EOF'
+          CASES=$(jq -c --argjson skip "$SKIP" 'map(select((.script + " / " + .runner) | IN($skip[]) | not))' <<<"$CASES")
+          jq -r '.[] | select(startswith("harness/")) | "::notice::not run, this change cannot affect it: \(.)"' <<<"$SKIP"
+          builds=$(jq -c --argjson linux "$LINUX" --argjson cases "$CASES" \
+            'map(select(.triple == "x86_64-unknown-linux-gnu" or (.triple | IN($linux[] | .artifact // .triple)) or (.triple | IN($cases[].triple))))' <<'EOF'
           [
             { "triple": "x86_64-unknown-linux-gnu", "host": "ubuntu-24.04",
               "build": "ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite",
+              "bin": "target/release/tract" },
+            { "triple": "x86_64-unknown-linux-gnu-wgpu", "host": "ubuntu-24.04",
+              "build": "ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite,wgpu",
               "bin": "target/release/tract" },
             { "triple": "aarch64-unknown-linux-gnu-stretch", "host": "ubuntu-24.04",
               "build": "TRACT_CROSS_BUILD_CLI=1 CARGO_TARGET_DIR=.cross-cache/target PLATFORM=aarch64-unknown-linux-gnu-stretch ./ci/cross.sh",
@@ -405,6 +446,7 @@ jobs:
           bench_none=$(jq -nr --argjson linux "$LINUX" --argjson apple "$APPLE" --argjson devices "$devices" \
             '($linux + $apple + $devices) | length == 0')
           {
+            echo "cases=$CASES"
             echo "builds=$builds"
             echo "build_macos=$build_macos"
             echo "dinghy_devices=$devices"
@@ -470,7 +512,7 @@ jobs:
   test:
     name: ${{ matrix.script }} / ${{ matrix.runner }}
     needs: [ prepare, build, build-macos ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.build_macos != 'true'))) }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.tests == 'true' && needs.prepare.outputs.cases != '[]' && (needs.prepare.outputs.bins_run != '' || (needs.build.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.build_macos != 'true'))) }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     env:
@@ -621,6 +663,7 @@ jobs:
     # Skipped builds mean prepare found the binaries of an earlier run (bins_run).
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_linux != '[]' }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
     permissions:
       contents: write     # push to bench-data (nightly only)
       actions: read       # may download the binaries of an earlier run
@@ -638,7 +681,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: tract-cli-${{ matrix.triple }}
+          name: tract-cli-${{ matrix.artifact || matrix.triple }}
           path: tract-cli
           run-id: ${{ needs.prepare.outputs.bins_run }}
           github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
@@ -655,6 +698,11 @@ jobs:
       - name: Reset the Metal compiler cache
         if: runner.os == 'macOS'
         run: rm -rf "$(getconf DARWIN_USER_CACHE_DIR)com.apple.metal"
+      # Without the NVIDIA ICD, wgpu would settle for a CPU implementation (lavapipe) and
+      # the leg would silently record CPU numbers.
+      - name: Check the Vulkan adapter is the NVIDIA GPU
+        if: matrix.wgpu
+        run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
       - name: Run bench suite
         env:
           TRIPLE: ${{ matrix.triple }}
@@ -732,6 +780,7 @@ jobs:
     needs: [ prepare, build-macos ]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-macos.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes_apple != '[]' }}
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
     permissions:
       contents: write     # push to bench-data (nightly only)
       actions: read       # may download the binaries of an earlier run
@@ -740,75 +789,6 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.boxes_apple) }}
     steps: *bench-steps
-
-  # --- `/ci bench wgpu`: the wgpu runs of ci/benches.toml on the 4060 box over Vulkan, against the
-  # nightly wgpu series (bench-wgpu.yml). Its own build: the wgpu runtime stays out of the
-  # binary the other boxes bench.
-  build-wgpu:
-    needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.kind == 'wgpu' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
-          persist-credentials: false
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-        with:
-          key: x86_64-unknown-linux-gnu-wgpu
-          save-if: false
-      - run: ROOT=. ./ci/ci-system-setup.sh && cargo build -p tract-cli --release --features bench-suite,wgpu
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: tract-cli-wgpu
-          path: target/release/tract
-
-  bench-wgpu:
-    needs: [ prepare, build-wgpu ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.kind == 'wgpu' }}
-    runs-on: bench-i9-11900kb-rtx-4060
-    timeout-minutes: 60
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: ${{ needs.prepare.outputs.ref }}
-          persist-credentials: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: tract-cli-wgpu
-          path: tract-cli
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          ref: bench-data
-          path: bench-ref
-          fetch-depth: 1
-          persist-credentials: false
-      - name: Check the Vulkan adapter is the NVIDIA GPU
-        run: vulkaninfo --summary | grep -q "driverName *= NVIDIA"
-      - name: Run bench suite
-        env:
-          SELECT: ${{ github.event.inputs.select }}
-        run: |
-          chmod +x tract-cli/tract
-          tract-cli/tract bench-suite \
-            --manifest ci/benches.toml --runtimes wgpu \
-            ${SELECT:+--select "$SELECT"} \
-            --bench-data bench-ref \
-            --thresholds ci/bench-thresholds.toml \
-            --triple x86_64-unknown-linux-gnu --device i9-11900kb_rtx-4060_wgpu
-      - name: Stage PR result
-        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
-        run: |
-          mkdir -p result
-          cp metrics result/metrics
-          if [ -f metrics.failures ]; then cp metrics.failures result/; fi
-          printf '{"device":"i9-11900kb_rtx-4060_wgpu","triple":"x86_64-unknown-linux-gnu"}\n' > result/meta.json
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() && hashFiles('metrics') != '' }}
-        with:
-          name: bench-result-i9-11900kb_rtx-4060_wgpu
-          path: result
 
   # --- dinghy target fleet (kill switch: BENCH_DINGHY_ENABLED=false). ---
   # A sidekick runner cross-runs the CLI on each target over dinghy's ssh transport; per-target
@@ -1001,7 +981,7 @@ jobs:
   report:
     name: Report bench to PR
     # After report-tests, so the two never edit the /ci command comment at once.
-    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wgpu, bench-wasm, report-tests ]
+    needs: [ prepare, build, build-macos, bench, bench-macos, bench-dinghy, bench-wasm, report-tests ]
     # always() (not !cancelled()) so a cancelled/failed device leg still reports from the rest;
     # bench-report writes no file with nothing to compare, so a fully-cancelled run posts nothing.
     if: ${{ always() && needs.prepare.outputs.is_pr == 'true' && needs.prepare.outputs.enabled == 'true' && (needs.prepare.outputs.rebench != 'true' || needs.prepare.outputs.only != '{}') }}
@@ -1261,12 +1241,12 @@ jobs:
   # only for now. Shares the per-box concurrency group so it never fights a running bench.
   hwbench:
     needs: [ prepare, build, build-macos ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.machines != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
+        include: ${{ fromJSON(needs.prepare.outputs.machines) }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -1464,13 +1444,13 @@ jobs:
   # sharing the per-box concurrency group so it never fights a running bench.
   smoke:
     needs: [ prepare, build, build-macos ]
-    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.boxes != '[]' && github.event_name == 'schedule' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && needs.prepare.outputs.machines != '[]' && github.event_name == 'schedule' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.boxes) }}
+        include: ${{ fromJSON(needs.prepare.outputs.machines) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

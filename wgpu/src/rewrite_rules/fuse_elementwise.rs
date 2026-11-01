@@ -3,8 +3,10 @@ use tract_gpu::ops::binary::GpuBinOp;
 use tract_gpu::ops::element_wise::GpuElementWise;
 use tract_gpu::rule_ensure;
 
+use crate::kernels::bin_ops::BINARY_OPS;
 use crate::kernels::chain::MAX_EXTRA_INPUTS;
-use crate::kernels::shaders::{BINARY_OPS, ChainStep, ELEMENT_WISE_OPS};
+use crate::kernels::element_wise::ELEMENT_WISE_OPS;
+use crate::kernels::shaders::ChainStep;
 use crate::ops::chain::WgpuElementWiseChain;
 
 /// The op's name as the generated WGSL spells it, if there is one.

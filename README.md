@@ -7,6 +7,7 @@
 [![Embedded targets status](https://github.com/sonos/tract/workflows/Embedded%20targets/badge.svg)](https://github.com/sonos/tract/actions)
 [![Doc](https://docs.rs/tract-core/badge.svg)](https://docs.rs/tract-core)
 [![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://pypi.org/project/tract/)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/sonos/tract)
 
 Sonos' neural-network inference engine.
 

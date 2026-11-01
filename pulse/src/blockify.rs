@@ -41,7 +41,9 @@
 //! # Pipeline
 //!
 //! 1. **Detect** quadratic sections globally (`find_quadratic_sections`):
-//!    connected components of multi-T-axis nodes, with at least one
+//!    connected components of multi-T-axis data nodes, each joined by the
+//!    mask chain it reads (a mask several blocks share joins all of them,
+//!    not the blocks to one another), with at least one
 //!    `uniform_tdim`-annotated wire whose AST decodes to a `MaskForm`.
 //!    Determine the score axis the terminator contracts and translate
 //!    it to mask frame.
@@ -468,8 +470,32 @@ fn find_quadratic_sections(
         return Ok(vec![]);
     }
 
-    // Phase 1b — connected components over the multi-T-axis subgraph.
-    let groups = connected_components(model, &multi_nodes);
+    // Phase 1b — connected components over the multi-T-axis data wires, each
+    // then joined by the mask chain it reads.  A mask is a function of
+    // positions alone, so several attention blocks may read one: joining
+    // through it would merge chained blocks into one section, the second
+    // block's initiator tapping the first one's output from before the rewrite.
+    let mask_nodes: BTreeSet<usize> = multi_nodes
+        .iter()
+        .copied()
+        .filter(|&nid| model.nodes[nid].outputs[0].fact.uniform_tdim.is_some())
+        .collect();
+    let data_nodes: BTreeSet<usize> = multi_nodes.difference(&mask_nodes).copied().collect();
+    let mut groups = connected_components(model, &data_nodes);
+    let mut attached: BTreeSet<usize> = BTreeSet::new();
+    for group in &mut groups {
+        let mut todo: Vec<usize> = group.iter().copied().collect();
+        while let Some(nid) = todo.pop() {
+            for input in &model.nodes[nid].inputs {
+                if mask_nodes.contains(&input.node) && group.insert(input.node) {
+                    attached.insert(input.node);
+                    todo.push(input.node);
+                }
+            }
+        }
+    }
+    let unread_masks: BTreeSet<usize> = mask_nodes.difference(&attached).copied().collect();
+    groups.extend(connected_components(model, &unread_masks));
 
     // For each component, run phase 2 + 3.  Drop components that don't have
     // a recognisable mask anchoring them.
@@ -481,10 +507,12 @@ fn find_quadratic_sections(
             .filter(|&nid| !model.nodes[nid].inputs.iter().any(|i| section.contains(&i.node)))
             .collect();
 
+        // Consumers dropping back to linear: another section's node reading a
+        // shared mask is not one.
         let mut terminators_set: BTreeSet<usize> = BTreeSet::new();
         for &nid in &section {
             for cons in model.outlet_successors(OutletId::new(nid, 0)) {
-                if !section.contains(&cons.node) {
+                if !section.contains(&cons.node) && !multi_nodes.contains(&cons.node) {
                     terminators_set.insert(cons.node);
                 }
             }

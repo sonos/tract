@@ -135,3 +135,13 @@ stream never holds a whole number of frames per mask chunk.  Blockify rewrites
 over one chunk per pulse with the band widened to whole pulses, and the mask
 head feeds each position's mask-chunk index within its pulse so the predicate
 stays exact.  Runs at 1 and 3 frames per pulse.
+## ex17-two-chained-banded-sdpa
+
+ex09's two chained blocks with ex07's banded mask, both blocks reading one
+mask wire and the second block's scores taken straight from the first block's
+output.  Blockify groups sections by the data wires and joins each to the mask
+chain it reads; joining through the shared mask instead made one section whose
+second initiator tapped the first block from before the rewrite, so the first
+block stayed quadratic and streamed block-local, without its past chunk.  With
+a block-diagonal mask (ex09) that happens to be right, which is why this case
+needs the band.

@@ -12,7 +12,7 @@ $TRACT_RUN . -O run --input-from-npz io.npz --assert-output-bundle io.npz --appr
 
 for rt in $TRACT_RUNTIMES
 do
-    case "$rt" in --cuda) backend=Cuda;; --metal) backend=Metal;; *) continue;; esac
+    case "$rt" in --cuda) backend=Cuda;; --metal) backend=Metal;; --runtime=wgpu) backend=Wgpu;; *) continue;; esac
     $TRACT_RUN . $rt run --input-from-npz io.npz --assert-output-bundle io.npz --approx approximate \
         -q --assert-op-only "${backend}LayerNorm,DeviceSync*,Const,Source"
 done

@@ -308,6 +308,43 @@ typedef decltype(gather<float>) gather_t;
     template [[host_name(                                                      \
         "array_ops::gather_" #tname)]] [[kernel]] gather_t gather<type>;
 
+// GatherNd with f32 coordinate rows: output element i copies the element of
+// slice `row = i / inner` at `i % inner`, the slice being picked in batch
+// `row / rows` by the n coordinates of that row. Negative coordinates wrap.
+//
+// params layout: [len, inner, rows, n, batch_stride, dims[4], strides[4]]
+template <typename T>
+[[kernel]] void gather_nd(device const void *data_b [[buffer(0)]],
+                          device const float *indices [[buffer(1)]],
+                          device void *output_b [[buffer(2)]],
+                          constant const long *params [[buffer(3)]],
+                          uint tpig [[thread_position_in_grid]]) {
+    const long i = (long)tpig;
+    if (i >= params[0])
+        return;
+    const long inner = params[1];
+    const long rows = params[2];
+    const long n = params[3];
+    device const T *data = (device const T *)data_b;
+    device T *output = (device T *)output_b;
+    const long row = i / inner;
+    long src = (row / rows) * params[4] + i % inner;
+    for (long k = 0; k < n; k++) {
+        long c = (long)indices[row * n + k];
+        if (c < 0)
+            c += params[5 + k];
+        src += c * params[9 + k];
+    }
+    output[i] = data[src];
+}
+
+typedef decltype(gather_nd<float>) gather_nd_t;
+
+#define INSTANTIATE_GATHER_ND(tname, type)                                     \
+    template [[host_name(                                                      \
+        "array_ops::gather_nd_" #tname)]] [[kernel]] gather_nd_t               \
+        gather_nd<type>;
+
 // Resample one axis against a host-built plan: every output index owns a window
 // of `window` input indices (already clamped) and their weights, so nearest,
 // linear, cubic and their antialiased variants all run through this kernel.
@@ -397,6 +434,11 @@ INSTANTIATE_DIAG_GATHER(f16, half)
 INSTANTIATE_GATHER(f32, float)
 INSTANTIATE_GATHER(f16, half)
 INSTANTIATE_GATHER(i64, int64_t)
+
+// GatherNd: f32, f16 and i64 (indices are f32).
+INSTANTIATE_GATHER_ND(f32, float)
+INSTANTIATE_GATHER_ND(f16, half)
+INSTANTIATE_GATHER_ND(i64, int64_t)
 
 // Axis resample: f32 and f16 only (plan indices are int32, weights f32).
 INSTANTIATE_RESIZE_AXIS(f32, float)

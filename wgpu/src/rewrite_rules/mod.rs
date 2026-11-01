@@ -1,11 +1,11 @@
-mod float_gather_indices;
 mod fuse_axis_op;
 mod fuse_elementwise;
 mod fuse_epilogue;
 mod fuse_gemv_pair;
+mod winograd;
 
-pub use float_gather_indices::float_gather_nd_indices;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use fuse_elementwise::{grow_elementwise_chain, start_binary_chain, start_elementwise_chain};
 pub use fuse_epilogue::{fuse_conv_epilogue, fuse_deconv_epilogue, fuse_gemm_epilogue};
 pub use fuse_gemv_pair::{fuse_gemv_pair, fuse_gemv_pair_tail};
+pub use winograd::conv_to_winograd_f43;

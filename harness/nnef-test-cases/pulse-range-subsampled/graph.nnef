@@ -1,0 +1,18 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Positions over a stride-2 conv's output, as RoPE builds them: the range has
+# length S/2, so its slope in the streaming symbol is 1/2 while a pulse of 4
+# holds exactly 2 of its elements.
+graph network(input) -> (output)
+{
+    input  = external<scalar>(shape = [1, 1, S]);
+    kernel = [[[0.5, 0.5]]];
+    frames = conv(input, kernel, dilation = [1], padding = [(0, 0)], stride = [2], groups = 1, border = 'constant');
+    pos    = tract_core_range(0, tract_core_shape_of(frames)[2], step = 1);
+    posf   = tract_core_cast(unsqueeze(pos, axes = [0, 1]), to = 'f32');
+    output = add(frames, posf);
+}

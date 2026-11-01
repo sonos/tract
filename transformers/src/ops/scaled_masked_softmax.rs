@@ -64,6 +64,8 @@ fn ser_scaled_masked_softmax(
 /// The mask dtype determines which mode is used at eval time.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct ScaledMaskedSoftmax {
+    /// A single value, of any rank: the detections keep the rank of the constant they
+    /// lift it from. It scales as a scalar, and never adds axes to the output.
     pub scale: Arc<Tensor>,
     pub post_softmax_mask: bool,
 }
@@ -89,7 +91,7 @@ impl EvalOp for ScaledMaskedSoftmax {
         let (input, mask) = args_2!(inputs);
         let softmax_axis = tvec!(input.rank() - 1);
         let dt = input.datum_type();
-        let scale = self.scale.cast_to_dt(dt)?.into_owned();
+        let scale = self.scale.cast_to_dt(dt)?.into_owned().into_shape(&[])?;
         let scaled = Mul.eval(input, scale.into_tvalue(), dt)?;
 
         let pre_softmax: TValue = if mask.datum_type() == bool::datum_type() {

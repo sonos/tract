@@ -2,7 +2,8 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, pack_u32s,
+    EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, WORKGROUP,
+    pack_u32s,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -63,3 +64,70 @@ register_wgpu_op!(tract_core::ops::cast::Cast, |_source, _node, op| {
     Ok(tract_gpu::ops::cast::GpuCast::new(op.to, "Wgpu", wgpu_cast_dispatch, is_supported_dt)
         .map(|c| Box::new(c) as _))
 });
+
+pub(crate) fn cast_wgsl(dt: ShaderDtype) -> String {
+    match dt {
+        ShaderDtype::F32 => {
+            // f32 -> f16
+            format!(
+                r#"
+enable f16;
+struct Params {{ off_in: u32, off_out: u32, len: u32, _p: u32 }}
+@group(0) @binding(0) var<storage, read> inp: array<f32>;
+@group(0) @binding(1) var<storage, read_write> outp: array<f16>;
+@group(0) @binding(2) var<uniform> params: Params;
+@compute @workgroup_size({WORKGROUP})
+fn cast_f32_f16(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    outp[params.off_out + i] = f16(inp[params.off_in + i]);
+}}
+"#
+            )
+        }
+        ShaderDtype::F16 => {
+            format!(
+                r#"
+enable f16;
+struct Params {{ off_in: u32, off_out: u32, len: u32, _p: u32 }}
+@group(0) @binding(0) var<storage, read> inp: array<f16>;
+@group(0) @binding(1) var<storage, read_write> outp: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+@compute @workgroup_size({WORKGROUP})
+fn cast_f16_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    outp[params.off_out + i] = f32(inp[params.off_in + i]);
+}}
+"#
+            )
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+    use tract_gpu::tensor::{DeviceTensor, IntoDevice};
+
+    use super::wgpu_cast_dispatch;
+    use crate::test_utils::close;
+    use crate::with_wgpu_queue;
+
+    #[test]
+    fn cast_f32_f16_roundtrip() -> TractResult<()> {
+        with_wgpu_queue(|q| {
+            if !q.context().shader_f16() {
+                return Ok(());
+            }
+            let t = Tensor::from_shape(&[4], &[1.0f32, -2.5, 0.25, 100.0])?;
+            let src = t.clone().into_device()?;
+            let half = DeviceTensor::uninitialized_dt(DatumType::F16, &[4])?;
+            let back = DeviceTensor::uninitialized_dt(DatumType::F32, &[4])?;
+            wgpu_cast_dispatch(&src, &half)?;
+            wgpu_cast_dispatch(&half, &back)?;
+            q.flush()?;
+            close(&back.to_host()?.into_tensor(), &t)
+        })
+    }
+}
