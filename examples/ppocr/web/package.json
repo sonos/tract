@@ -1,0 +1,9 @@
+{
+  "name": "ppocr-web",
+  "private": true,
+  "type": "module",
+  "description": "PP-OCRv6 picture reader running on tract.",
+  "scripts": {
+    "start": "python3 -m http.server 8760 -d dist"
+  }
+}

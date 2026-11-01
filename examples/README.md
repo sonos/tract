@@ -64,6 +64,18 @@ example declares in its `Cargo.toml` — `tract` itself no longer re-exports
 `ndarray`. See the macro's rustdoc or `onnx-mobilenet-v2/src/main.rs` for
 the basic pattern.
 
+## In the browser
+
+Static sites under `examples/*/web`, linked from [`web-demos`](web-demos).
+Each one compiles tract to WebAssembly. Read a picture can run on the CPU
+or on WebGPU. The others need WebGPU.
+
+| Example | What it shows |
+|---------|---------------|
+| [`ppocr`](ppocr) | PP-OCRv6 reads a sample page, an uploaded picture, or a camera snapshot. |
+| [`pixel-lab`](pixel-lab) | Live person segmentation, with the background blurred or replaced. |
+| [`stable-diffusion`](stable-diffusion) | SD 1.5 text to image. The `web` crate is the browser build. |
+
 ## Legacy
 
 TensorFlow and TFLite are legacy formats as far as tract is concerned:
