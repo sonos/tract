@@ -50,6 +50,7 @@ members = [
     "examples/causal_llm",
     "examples/stable-diffusion",
     "examples/hey-snips/web",
+    "examples/nemo-nemotron35-streaming-asr/web",
     "examples/pixel-lab/web",
     "examples/stable-diffusion/web",
     "examples/stable-diffusion-3",

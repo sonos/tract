@@ -193,7 +193,7 @@ fn {name}_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup
     let x = params.off_in + dot(at, params.x_strides);
     let m = params.off_mask + dot(at, params.mask_strides);
     let o = params.off_out + row * params.k;
-    var hi = -3.4028235e38;
+    var hi = bitcast<f32>(0xff7fffffu);
     for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
         if (keep(m, i)) {{ hi = max(hi, logit(x, m, i)); }}
     }}
