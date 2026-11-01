@@ -142,6 +142,12 @@ fn flatten_unfused_sdpa(
     op.patch_sdpa(model, node)
 }
 
+/// The inputs a kernel reads as bool, bytes packed four to a word. Every other
+/// input of a translated node is a float.
+fn reads_bool_input(node: &TypedNode, slot: usize) -> bool {
+    slot == 1 && node.op_is::<tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax>()
+}
+
 fn try_make_wgpu_op(
     source: &TypedModel,
     node: &TypedNode,
@@ -157,7 +163,8 @@ fn try_make_wgpu_op(
     });
 
     let input_facts = source.node_input_facts(node.id)?;
-    rule_if!(input_facts.iter().all(|f| crate::utils::is_supported_fact(f)));
+    rule_if!(input_facts.iter().enumerate().all(|(slot, f)| crate::utils::is_supported_fact(f)
+        || (f.datum_type == bool::datum_type() && reads_bool_input(node, slot))));
 
     if let Some(op) = tract_gpu::ops::copy_based::try_make_copy_based_op(source, node)? {
         return Ok(Some(op));
