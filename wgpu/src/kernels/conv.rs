@@ -34,11 +34,11 @@ fn as_u32_i32(v: i32) -> u32 {
     v as u32
 }
 
-/// One filter per channel, no cross-channel sum: the tiled kernel applies.
-fn depthwise_shape(op: &Conv, channels_last: bool) -> Option<DepthwiseShape> {
+/// One filter per channel, no cross-channel sum: the tiled kernel applies, in
+/// either data format, since it addresses input and output through their strides.
+fn depthwise_shape(op: &Conv) -> Option<DepthwiseShape> {
     let spec = &op.pool_spec;
-    if channels_last
-        || op.group == 1
+    if op.group == 1
         || op.group != spec.input_channels
         || spec.output_channels != spec.input_channels
         || spec.kernel_shape.len() != 2
@@ -146,8 +146,7 @@ pub fn wgpu_conv_dispatch(
         }
         q.retain_tensor(output);
         ensure!(matches!(input.datum_type(), DatumType::F32 | DatumType::F16));
-        let channels_last = op.pool_spec.data_format.c_is_last();
-        if let Some(shape) = depthwise_shape(op, channels_last) {
+        if let Some(shape) = depthwise_shape(op) {
             return dispatch_depthwise(q, op, shape, epilogue, input, weights, extras, output);
         }
         let dt = ShaderDtype::from_datum(input.datum_type())?;
