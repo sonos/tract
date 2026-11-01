@@ -1,0 +1,23 @@
+[package]
+name = "hey-snips-web"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[[bin]]
+name = "hey-snips-native"
+path = "src/bin/native.rs"
+
+[dependencies]
+anyhow.workspace = true
+# Only NNEF and the pulse operators: the model is a pulsed NNEF graph that runs on the CPU.
+tract = { path = "../../../api/rs", default-features = false }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { workspace = true, features = ["wasm_js"] }
+wasm-bindgen = "0.2"
