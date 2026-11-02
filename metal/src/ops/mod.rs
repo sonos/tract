@@ -14,3 +14,6 @@ pub use clamped_swiglu::MetalClampedSwiGlu;
 
 pub mod routed_combine;
 pub use routed_combine::MetalRoutedCombine;
+
+pub mod routed_q40_matmul;
+pub use routed_q40_matmul::MetalRoutedQ40MatMul;
