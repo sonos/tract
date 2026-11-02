@@ -546,6 +546,27 @@ pub fn suite() -> TractResult<TestSuite> {
         );
     }
 
+    for (name, n, ci, co, h, w, ker, bias) in [
+        ("long_reduction_small_map_odd_channels", 1, 237, 37, 11, 13, [3, 3], true),
+        ("long_reduction_small_map_5x5", 1, 200, 96, 7, 9, [5, 5], true),
+        ("long_reduction_small_map_no_bias_batch", 2, 300, 33, 4, 5, [3, 3], false),
+    ] {
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::NCHW.from_n_c_hw(n, ci, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: 1,
+                data: ramp(&[n, ci, h, w]),
+                kernel: ramp(&[co, ci, ker[0], ker[1]]),
+                bias: bias.then(|| ramp(&[co])),
+                pad: PaddingSpec::SameUpper,
+                strides: tvec!(1, 1),
+                dilations: tvec!(1, 1),
+            },
+        );
+    }
+
     for (name, n, c, h, w, ker, pad, strides) in [
         ("depthwise_nhwc_mobilenet_3x3", 1, 32, 14, 14, [3, 3], PaddingSpec::SameUpper, [1, 1]),
         ("depthwise_nhwc_mobilenet_3x3_s2", 1, 96, 28, 28, [3, 3], PaddingSpec::SameUpper, [2, 2]),
