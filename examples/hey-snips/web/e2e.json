@@ -1,0 +1,32 @@
+{
+  "path": "hey-snips/",
+  "timeout": 300,
+  "media": {
+    "speech": {
+      "url": "https://tract-test-assets.tract.rs/e2e/hey-snips-tts.wav",
+      "sha256": "1f3a8ec4350d56f233f33841b39d1a5ee81ed8cd289a6998b38011c7681f8552",
+      "about": "22 s of macOS text-to-speech, 4 \"Hey Snips\" among 3 other phrases, looped by Chrome"
+    }
+  },
+  "microphone": "speech",
+  "progress": "document.getElementById('status').textContent",
+  "fail": "document.getElementById('go').textContent === 'Unsupported' && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Ready')"
+    },
+    {
+      "run": "document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent === 'Listening.'"
+    },
+    {
+      "run": "new Promise((r) => setTimeout(r, 25000))"
+    },
+    {
+      "name": "wakes on the spoken Hey Snips, and only on them",
+      "check": "(() => { const n = document.querySelectorAll('#hits > *').length; return { fail: (n < 3 || n > 5) && `${n} hits in one 22 s loop of 4 wake words`, info: `${n} hits, ${document.getElementById('stats').textContent}` }; })()"
+    }
+  ]
+}

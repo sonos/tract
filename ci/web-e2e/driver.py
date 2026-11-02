@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Runs the web demos' end-to-end specs in headless Chrome, over the DevTools protocol.
 
-    driver.py --chrome BIN --profile DIR --base URL --out DIR [--serve DIR] [--commit SHA] SPEC...
+    driver.py --chrome BIN --profile DIR --base URL --out DIR [--media DIR] [--serve DIR]
+              [--commit SHA] SPEC...
 
 With --serve, the driver serves DIR at --base, which must then be http://localhost:<port>/.
 
@@ -9,25 +10,36 @@ Each SPEC is a demo's `web/e2e.json`:
 
     {
       "path": "sd15/",              page under --base, as deployed on demo.tract.rs
+      "name": "landing",            in the results, when not the path
+      "build_json": false,          the page has no build.json for --commit to check
       "timeout": 1800,              seconds for the whole demo
+      "media": {                    files fetched once into --media, checked against their hash
+        "<key>": {"url": "...", "sha256": "..."}
+      },
+      "camera": "<key>",            Chrome's fake camera plays this .y4m
+      "microphone": "<key>",        Chrome's fake microphone plays this .wav, in a loop
       "progress": "<js>",           logged whenever its value changes
       "fail": "<js>",               a string when the page shows an error, else falsy
       "steps": [
         {"wait": "<js>"},           poll until truthy (and `fail` stays falsy)
         {"run": "<js>"},            evaluate once
+        {"file": "<css selector>", "media": "<key>"},
+                                    choose that file in that file input
         {"check": "<js>"}           null or "" when good, else the reason it is not; or
                                     {fail: <that>, info: <a measurement to log>}
       ]
     }
 
 Expressions run in the page, awaited, with the spec itself bound to `SPEC`. Exceptions thrown in
-the page or its workers fail the demo. Each demo gets a screenshot in --out, and results.json
-and summary.md sum them up. Standard library only, Python 3.9.
+the page or its workers fail the demo. Each demo runs in its own Chrome on the shared profile,
+and gets a screenshot in --out; results.json and summary.md sum them up. Standard library only,
+Python 3.9.
 """
 
 import argparse
 import base64
 import functools
+import hashlib
 import http.server
 import json
 import os
@@ -191,6 +203,13 @@ class Tab:
         except socket.timeout:
             pass
 
+    def set_file(self, selector, path):
+        root = self.call("DOM.getDocument")["root"]["nodeId"]
+        node = self.call("DOM.querySelector", nodeId=root, selector=selector)["nodeId"]
+        if not node:
+            raise AssertionError(f"no {selector} in the page")
+        self.call("DOM.setFileInputFiles", nodeId=node, files=[os.path.abspath(path)])
+
     def screenshot(self, path):
         self.call("Emulation.setDeviceMetricsOverride", width=1280, height=1000, deviceScaleFactor=1, mobile=False)
         shot = self.call("Page.captureScreenshot", format="png", captureBeyondViewport=True)
@@ -207,17 +226,51 @@ def first_lines(text, n=4):
     return "\n    ".join(lines[:n]) + (" …" if len(lines) > n else "")
 
 
-def run_demo(port, base, spec_path, out, commit):
+def fetch_media(spec, media_dir):
+    """Paths of the spec's media, downloaded into media_dir unless already there."""
+    paths = {}
+    for key, m in spec.get("media", {}).items():
+        path = os.path.join(media_dir, m["sha256"] + "-" + os.path.basename(m["url"]))
+        if not os.path.exists(path):
+            os.makedirs(media_dir, exist_ok=True)
+            # curl, not urllib: the CDN turns away clients that are not browsers or curl.
+            subprocess.run(["curl", "-fsSL", "--retry", "3", "-o", path + ".part", m["url"]], check=True)
+            with open(path + ".part", "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+            if digest != m["sha256"]:
+                os.remove(path + ".part")
+                raise AssertionError(f"{m['url']} has sha256 {digest}, expected {m['sha256']}")
+            os.rename(path + ".part", path)
+        paths[key] = path
+    return paths
+
+
+def run_demo(chrome, base, spec_path, out, media_dir, commit):
     spec = json.load(open(spec_path))
-    name = spec["path"].strip("/")
+    name = spec.get("name") or spec["path"].strip("/")
     url = base.rstrip("/") + "/" + spec["path"]
     deadline = time.time() + spec.get("timeout", 600)
     result = {"demo": name, "url": url, "ok": False, "reason": None, "seconds": None}
     t0 = time.time()
     log(f"== {name}: {url}")
 
-    tab = Tab(port, url)
     try:
+        media = fetch_media(spec, media_dir)
+    except Exception as e:
+        result["reason"] = f"media: {e}"
+        log(f"  FAIL {result['reason']}")
+        return result
+    flags = []
+    if "camera" in spec:
+        flags.append(f"--use-file-for-fake-video-capture={media[spec['camera']]}")
+    if "microphone" in spec:
+        # Chrome's sandbox keeps the audio service from opening the file.
+        flags += [f"--use-file-for-fake-audio-capture={media[spec['microphone']]}", "--no-sandbox"]
+    browser = os.path.join(out, f"{name}.chrome.log")
+    tab = None
+    try:
+        chrome.start(flags, browser)
+        tab = Tab(chrome.port, url)
         last = None
 
         # Page.navigate returns before the document commits: until then the steps would be
@@ -227,7 +280,7 @@ def run_demo(port, base, spec_path, out, commit):
                 raise AssertionError("the page did not load")
             tab.pump(POLL)
 
-        if commit:
+        if commit and spec.get("build_json", True):
             # The page fetches it: the CDN turns away clients that are not browsers.
             built = tab.eval("fetch('build.json', { cache: 'no-store' }).then((r) => r.json())", spec)
             if built.get("commit") != commit or built.get("dirty"):
@@ -257,6 +310,8 @@ def run_demo(port, base, spec_path, out, commit):
                 poll_once()
             elif "run" in step:
                 tab.eval(step["run"], spec)
+            elif "file" in step:
+                tab.set_file(step["file"], media[step["media"]])
             elif "check" in step:
                 why = tab.eval(step["check"], spec)
                 info = ""
@@ -268,17 +323,26 @@ def run_demo(port, base, spec_path, out, commit):
         result["ok"] = True
     except Exception as e:
         result["reason"] = str(e)
-        if tab.console_errors:
+        if tab and tab.console_errors:
             first = " ".join(tab.console_errors[0].splitlines()[:2])
             result["reason"] = f"{first} / {str(e).splitlines()[0]}"
         log(f"  FAIL {first_lines(e, 6)}")
     finally:
         result["seconds"] = round(time.time() - t0, 1)
-        try:
-            tab.screenshot(os.path.join(out, f"{name}.png"))
-        except Exception as e:
-            log(f"  no screenshot: {e}")
-        tab.close()
+        if tab:
+            try:
+                tab.screenshot(os.path.join(out, f"{name}.png"))
+            except Exception as e:
+                log(f"  no screenshot: {e}")
+            try:
+                tab.close()
+            except Exception:
+                pass
+        chrome.stop()
+    if not result["ok"] and os.path.exists(browser):
+        with open(browser, errors="replace") as f:
+            tail = [l for l in f.read().splitlines() if "CVDisplayLinkCreateWithCGDisplay" not in l][-30:]
+        log(f"  tail of {os.path.basename(browser)}:\n    " + "\n    ".join(tail))
     log(f"  {'ok' if result['ok'] else 'FAILED'} in {result['seconds']} s")
     return result
 
@@ -301,34 +365,48 @@ def serve(directory, base):
     log(f"serving {directory} at {base}")
 
 
-def start_chrome(binary, profile, port, log_path):
-    flags = [
-        "--headless=new",
-        f"--remote-debugging-port={port}",
-        f"--user-data-dir={profile}",
-        "--no-first-run",
-        "--no-default-browser-check",
-        "--enable-unsafe-webgpu",
-        "--use-mock-keychain",
-        "--password-store=basic",
-        "--use-fake-ui-for-media-stream",
-        "--use-fake-device-for-media-stream",
-        "--disable-background-timer-throttling",
-        "--disable-renderer-backgrounding",
-        "--disable-backgrounding-occluded-windows",
-        "about:blank",
-    ]
-    stderr = open(log_path, "w")
-    proc = subprocess.Popen([binary] + flags, stdout=stderr, stderr=stderr)
-    for _ in range(60):
-        try:
-            version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=5))
-            log(f"{version['Browser']}, profile {profile}")
-            return proc
-        except OSError:
-            time.sleep(0.5)
-    proc.kill()
-    sys.exit("Chrome did not open its DevTools port")
+class Chrome:
+    """Starts and stops Chrome on one profile; the profile keeps the demos' caches."""
+
+    def __init__(self, binary, profile, port):
+        self.binary, self.profile, self.port, self.proc = binary, profile, port, None
+
+    def start(self, extra_flags, log_path):
+        flags = [
+            "--headless=new",
+            f"--remote-debugging-port={self.port}",
+            f"--user-data-dir={self.profile}",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--enable-unsafe-webgpu",
+            "--use-mock-keychain",
+            "--password-store=basic",
+            "--use-fake-ui-for-media-stream",
+            "--use-fake-device-for-media-stream",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-backgrounding-occluded-windows",
+        ] + extra_flags + ["about:blank"]
+        self.proc = subprocess.Popen([self.binary] + flags, stdout=open(log_path, "w"), stderr=subprocess.STDOUT)
+        for _ in range(60):
+            try:
+                version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/version", timeout=5))
+                log(f"  {version['Browser']}{' ' + ' '.join(extra_flags) if extra_flags else ''}")
+                return log_path
+            except OSError:
+                time.sleep(0.5)
+        self.stop()
+        raise RuntimeError("Chrome did not open its DevTools port")
+
+    def stop(self):
+        if self.proc:
+            self.proc.terminate()
+            try:
+                self.proc.wait(10)
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
+                self.proc.wait()
+            self.proc = None
 
 
 def main():
@@ -338,6 +416,7 @@ def main():
     ap.add_argument("--base", required=True, help="site root, as http://localhost:8123/ or https://demo.tract.rs/")
     ap.add_argument("--out", required=True)
     ap.add_argument("--serve", help="directory to serve at --base")
+    ap.add_argument("--media", help="cache of the specs' media (default: <out>/media)")
     ap.add_argument("--commit", help="fail unless every demo's build.json names this clean commit")
     ap.add_argument("--port", type=int, default=9333)
     ap.add_argument("specs", nargs="+")
@@ -346,16 +425,13 @@ def main():
     if args.serve:
         serve(args.serve, args.base)
 
-    chrome_log = os.path.join(args.out, "chrome.log")
-    chrome = start_chrome(args.chrome, args.profile, args.port, chrome_log)
+    chrome = Chrome(args.chrome, args.profile, args.port)
+    media_dir = args.media or os.path.join(args.out, "media")
+    log(f"profile {args.profile}")
     try:
-        results = [run_demo(args.port, args.base, s, args.out, args.commit) for s in args.specs]
+        results = [run_demo(chrome, args.base, s, args.out, media_dir, args.commit) for s in args.specs]
     finally:
-        chrome.terminate()
-        try:
-            chrome.wait(10)
-        except subprocess.TimeoutExpired:
-            chrome.kill()
+        chrome.stop()
 
     with open(os.path.join(args.out, "results.json"), "w") as f:
         json.dump(results, f, indent=2)
@@ -365,10 +441,6 @@ def main():
             reason = re.sub(r"\s+", " ", r["reason"] or "")[:200].replace("|", "\\|")
             f.write(f"| {r['demo']} | {'✅' if r['ok'] else '❌ ' + reason} | {r['seconds']} s |\n")
     failed = [r["demo"] for r in results if not r["ok"]]
-    if failed:
-        with open(chrome_log, errors="replace") as f:
-            tail = [l for l in f.read().splitlines() if "CVDisplayLinkCreateWithCGDisplay" not in l][-40:]
-        log("== tail of chrome.log\n" + "\n".join(tail))
     log(f"failed: {', '.join(failed)}" if failed else "all demos ok")
     sys.exit(1 if failed else 0)
 
