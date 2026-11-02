@@ -1,4 +1,5 @@
 pub mod conv_nhwc;
+pub mod float_gather_indices;
 pub mod layer_norm;
 pub mod rewire_sdpa;
 pub mod rewire_syncs;

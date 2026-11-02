@@ -97,10 +97,12 @@ impl TypedOp for CudaConv {
 
 // cudnn descriptors are not Send and carry no meaning the model depends on, so
 // they are scratch the op keeps itself: a thread-local keyed by the session and
-// node the EvalContext names, emptied for a session in `drop_session`.
+// node the EvalContext names, emptied for a session in `drop_session`, or at
+// this thread's next eval when the session ended on another thread.
 thread_local! {
     static CUDA_CONV_SCRATCH: RefCell<HashMap<(SessionId, usize), Box<dyn ConvKernelScratch>>> =
         RefCell::new(HashMap::new());
+    static CUDA_CONV_REAPER: RefCell<SessionReaper> = const { RefCell::new(SessionReaper::new()) };
 }
 
 impl EvalOp for CudaConv {
@@ -119,6 +121,9 @@ impl EvalOp for CudaConv {
         if output.len() > 0 {
             crate::with_cuda_stream(|stream| {
                 CUDA_CONV_SCRATCH.with_borrow_mut(|cache| {
+                    CUDA_CONV_REAPER.with_borrow_mut(|reaper| {
+                        reaper.reap(|live| cache.retain(|(s, _), _| live(*s)))
+                    });
                     let scratch = cache
                         .entry((ctx.session, ctx.node_id))
                         .or_insert_with(|| self.kernel.state());

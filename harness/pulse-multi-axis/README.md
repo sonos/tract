@@ -117,3 +117,31 @@ stream. `batchify_data_free` turns it into the batch axis before pulsification,
 and the case asserts the numbers are unchanged *and* that the state count is:
 a batch axis that perturbs blockify's chunk frame shows up as extra `Delay`
 states rather than as a wrong result.
+
+## ex15-sliding-window-sdpa
+
+A per-position causal window, `0 ≤ i − j < 5`, in front of scaled masked
+softmax: the Mistral / Mimi attention shape.  The mask has no chunk divisor, so
+Blockify reads it as chunk 1 with band `[0, 4]` (`lt` reduces to `5 ≥ D + 1`,
+the constant folding into the bound).  Any pulse fits such a mask; Blockify
+rewrites over one chunk per pulse, so the case runs pulses of 2 and of 3
+positions, the latter not dividing the window.
+
+## ex16-upsampled-banded-sdpa
+
+ex07's chunk-2 band behind a 4× upsample (an all-ones stride-4 depthwise
+`deconv`): a pulse of `P` input frames is `2P` mask chunks, so the input
+stream never holds a whole number of frames per mask chunk.  Blockify rewrites
+over one chunk per pulse with the band widened to whole pulses, and the mask
+head feeds each position's mask-chunk index within its pulse so the predicate
+stays exact.  Runs at 1 and 3 frames per pulse.
+## ex17-two-chained-banded-sdpa
+
+ex09's two chained blocks with ex07's banded mask, both blocks reading one
+mask wire and the second block's scores taken straight from the first block's
+output.  Blockify groups sections by the data wires and joins each to the mask
+chain it reads; joining through the shared mask instead made one section whose
+second initiator tapped the first block from before the rewrite, so the first
+block stayed quadratic and streamed block-local, without its past chunk.  With
+a block-diagonal mask (ex09) that happens to be right, which is why this case
+needs the band.

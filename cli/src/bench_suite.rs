@@ -10,6 +10,7 @@ use crate::bench_common::higher_better;
 use clap::{Args, FromArgMatches};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
+use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -748,17 +749,27 @@ fn run_one(
     cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let mut process = cmd.spawn().context("spawning child tract")?;
+    let mut stdout = process.stdout.take().context("child stdout")?;
     let stderr = process.stderr.take().context("child stderr")?;
     let tee = std::thread::spawn(move || tee_stderr(stderr));
-    let output = process.wait_with_output().context("waiting for child tract")?;
+    let collect = std::thread::spawn(move || {
+        let mut buf = vec![];
+        let _ = stdout.read_to_end(&mut buf);
+        buf
+    });
+    let status = wait_with_deadline(&mut process, CHILD_DEADLINE)?;
+    let stdout = collect.join().unwrap_or_default();
     let tail = tee.join().unwrap_or_default();
-    if !output.status.success() {
+    let Some(status) = status else {
+        bail!("child killed after {}s, still running past its --timeout", CHILD_DEADLINE.as_secs())
+    };
+    if !status.success() {
         match failure_reason(&tail) {
-            Some(reason) => bail!("child exited with {}: {reason}", output.status),
-            None => bail!("child exited with {}", output.status),
+            Some(reason) => bail!("child exited with {status}: {reason}"),
+            None => bail!("child exited with {status}"),
         }
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = String::from_utf8_lossy(&stdout);
 
     let mut metrics = vec![];
     for line in stdout.lines().filter(|l| !l.trim().is_empty()) {
@@ -770,6 +781,32 @@ fn run_one(
     }
     ensure!(!metrics.is_empty(), "child produced no metrics");
     Ok(metrics)
+}
+
+/// Wall-clock bound on a bench child, enforced from the parent. The child's own `--timeout`
+/// watchdog exits through the process's exit handlers, and a GPU driver can block those
+/// forever (NVIDIA's Vulkan teardown waits on a shader compile that never returns), so only a
+/// kill from outside is guaranteed to end the run. Kept above the 180s `--timeout` so a
+/// watchdog that works still reports its own exit code.
+const CHILD_DEADLINE: std::time::Duration = std::time::Duration::from_secs(240);
+
+/// Wait for `process` to exit, or SIGKILL it once `deadline` has elapsed and return `None`.
+fn wait_with_deadline(
+    process: &mut std::process::Child,
+    deadline: std::time::Duration,
+) -> TractResult<Option<std::process::ExitStatus>> {
+    let start = Instant::now();
+    loop {
+        if let Some(status) = process.try_wait().context("waiting for child tract")? {
+            return Ok(Some(status));
+        }
+        if start.elapsed() >= deadline {
+            process.kill().context("killing child tract")?;
+            process.wait().context("reaping child tract")?;
+            return Ok(None);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
 }
 
 /// Copy a child's stderr to ours line by line, as it comes, and return its last lines.

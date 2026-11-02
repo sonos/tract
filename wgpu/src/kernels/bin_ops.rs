@@ -3,8 +3,9 @@ use tract_core::ops::binary::BinMiniOp;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    BINARY_OPS, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, Width,
-    broadcast_strides, dtypes, op_in_set, pack_u32s, pad8_u32,
+    AT8, EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype,
+    WORKGROUP, Width, binary_ops_vec4_wgsl, binary_ops_wgsl, broadcast_strides, dtypes, op_in_set,
+    pack_u32s, pad8_u32, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -111,3 +112,126 @@ register_wgpu_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
     rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
     Ok(Some(Box::new(wgpu_bin_op(op.0.clone()))))
 });
+
+pub(crate) fn binary_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let lib = binary_ops_wgsl(t);
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_lhs: u32,
+    off_rhs: u32,
+    off_out: u32,
+    rank: u32,
+    len: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+    lhs_s0: vec4<u32>,
+    lhs_s1: vec4<u32>,
+    rhs_s0: vec4<u32>,
+    rhs_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> lhs: array<{t}>;
+@group(0) @binding(1) var<storage, read> rhs: array<{t}>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+{AT8}
+
+fn gather_idx(linear: u32, is_lhs: bool) -> u32 {{
+    var rest = linear;
+    var idx = 0u;
+    let r = params.rank;
+    for (var k = 0u; k < r; k++) {{
+        let axis = r - 1u - k;
+        let dim = max(at8(params.out_sh0, params.out_sh1, axis), 1u);
+        let c = rest % dim;
+        rest = rest / dim;
+        let stride = select(
+            at8(params.rhs_s0, params.rhs_s1, axis),
+            at8(params.lhs_s0, params.lhs_s1, axis),
+            is_lhs,
+        );
+        idx += c * stride;
+    }}
+    return idx;
+}}
+
+{lib}"#
+    ));
+    for name in BINARY_OPS {
+        s.push_str(&format!(
+            r#"
+@compute @workgroup_size({WORKGROUP})
+fn {name}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let li = params.off_lhs + gather_idx(i, true);
+    let ri = params.off_rhs + gather_idx(i, false);
+    outp[params.off_out + i] = op_{name}(lhs[li], rhs[ri]);
+}}
+"#
+        ));
+    }
+    s.push_str(&binary_vec4_entries(t, suf));
+    s
+}
+
+/// The four-wide binary entries. `_v4` is both operands element for element
+/// with the output; `_v4s` is a right operand that broadcasts over the last
+/// axis, so one value covers the four a thread handles. Anything else gathers
+/// per element and gains nothing from a wider thread.
+fn binary_vec4_entries(t: &str, suf: &str) -> String {
+    let mut s = String::new();
+    s.push_str(&format!(
+        r#"
+fn lhs4(i: u32) -> vec4<{t}> {{
+    let b = params.off_lhs + i * 4u;
+    return vec4<{t}>(lhs[b], lhs[b + 1u], lhs[b + 2u], lhs[b + 3u]);
+}}
+
+fn rhs4(i: u32) -> vec4<{t}> {{
+    let b = params.off_rhs + i * 4u;
+    return vec4<{t}>(rhs[b], rhs[b + 1u], rhs[b + 2u], rhs[b + 3u]);
+}}
+
+fn store4(i: u32, v: vec4<{t}>) {{
+    let b = params.off_out + i * 4u;
+    outp[b] = v.x;
+    outp[b + 1u] = v.y;
+    outp[b + 2u] = v.z;
+    outp[b + 3u] = v.w;
+}}
+"#
+    ));
+    s.push_str(&binary_ops_vec4_wgsl(t));
+    for name in BINARY_OPS {
+        s.push_str(&format!(
+            r#"
+@compute @workgroup_size({WORKGROUP})
+fn {name}_v4_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i * 4u >= params.len) {{ return; }}
+    store4(i, op_{name}_v(lhs4(i), rhs4(i)));
+}}
+
+@compute @workgroup_size({WORKGROUP})
+fn {name}_v4s_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i * 4u >= params.len) {{ return; }}
+    let r = vec4<{t}>(rhs[params.off_rhs + gather_idx(i * 4u, false)]);
+    store4(i, op_{name}_v(lhs4(i), r));
+}}
+"#
+        ));
+    }
+    s
+}
+
+pub const BINARY_OPS: &[&str] = &["mul", "add", "div", "sub", "pow", "min", "max"];

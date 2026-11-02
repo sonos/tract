@@ -12,18 +12,39 @@ fn is_supported_axis_op(op: &GpuAxisOp) -> bool {
 
 /// Ops that read every input through explicit strides, so a `Move` in front of
 /// one is a permutation of those strides rather than a copy.
+fn is_strided_reader(node: &TypedNode) -> bool {
+    node.op_is::<crate::ops::matmul::WgpuGemm>()
+        || node.op_is::<crate::ops::gemv_pair::WgpuGemvPair>()
+        || node.op_is::<crate::ops::chain::WgpuElementWiseChain>()
+        || node.op_is::<tract_gpu::ops::binary::GpuBinOp>()
+        || node.op_is::<tract_gpu::ops::concat::GpuConcat>()
+        || node.op_is::<tract_gpu::ops::apply_rope::GpuApplyRope>()
+        || node.op_is::<tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax>()
+        || node.op_is::<tract_gpu::ops::slice::GpuSlice>()
+        || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
+        || node.op_is::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>()
+}
+
 fn can_fuse_move(model: &TypedModel, axis_node: &TypedNode) -> bool {
-    model.single_succ(axis_node.id).unwrap().is_some_and(|node| {
-        node.op_is::<crate::ops::matmul::WgpuGemm>()
-            || node.op_is::<crate::ops::gemv_pair::WgpuGemvPair>()
-            || node.op_is::<crate::ops::chain::WgpuElementWiseChain>()
-            || node.op_is::<tract_gpu::ops::concat::GpuConcat>()
-            || node.op_is::<tract_gpu::ops::apply_rope::GpuApplyRope>()
-            || node.op_is::<tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax>()
-            || node.op_is::<tract_gpu::ops::slice::GpuSlice>()
-            || node.op_is::<tract_gpu::ops::broadcast::GpuMultiBroadcastTo>()
-            || node.op_is::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>()
-    })
+    model.single_succ(axis_node.id).unwrap().is_some_and(is_strided_reader)
+}
+
+/// Whether the axis-op run `move_node` belongs to is read by a strided consumer
+/// through moves alone. Between the move and that consumer only `Move`, `Add`
+/// and `Rm` may sit: each restrides the view, so the consumer wrap collects the
+/// whole run as views and no copy is needed at all.
+fn move_run_reaches_reader(model: &TypedModel, move_node: &TypedNode) -> TractResult<bool> {
+    let mut cursor = move_node;
+    while let Some(next) = model.single_succ(cursor.id)? {
+        let Some(op) = next.op_as::<GpuAxisOp>() else {
+            return Ok(is_strided_reader(next));
+        };
+        if !matches!(op.inner, AxisOp::Move(..) | AxisOp::Add(_) | AxisOp::Rm(_)) {
+            return Ok(false);
+        }
+        cursor = next;
+    }
+    Ok(false)
 }
 
 pub fn collect_chain_of_axis_ops<'a>(
@@ -35,7 +56,17 @@ pub fn collect_chain_of_axis_ops<'a>(
 
     while let Some(axis_op) = cursor.op_as::<GpuAxisOp>().filter(|o| {
         is_supported_axis_op(o)
-            || (matches!(o.inner, AxisOp::Move(..)) && can_fuse_move(model, cursor))
+            || (matches!(o.inner, AxisOp::Move(..))
+                && (can_fuse_move(model, cursor) || {
+                    // A mid-chain Move restrides the view like any other. What
+                    // it needs is the chain's consumer to read strides -- an
+                    // earlier Move in the run already checked that -- and no
+                    // collected Reshape, which a strided input could not merge.
+                    acc_axis_ops.iter().any(|a: &GpuAxisOp| matches!(a.inner, AxisOp::Move(..)))
+                        && acc_axis_ops.iter().all(|a: &GpuAxisOp| {
+                            matches!(a.inner, AxisOp::Move(..) | AxisOp::Add(_) | AxisOp::Rm(_))
+                        })
+                }))
     }) {
         acc_axis_ops.push(axis_op.clone());
         head_of_chain = cursor;
@@ -141,6 +172,11 @@ pub fn fuse_axis_op(
     if let Some(op) = node.op_as::<GpuAxisOp>()
         && matches!(op.inner, AxisOp::Move(..))
     {
+        // A run of moves ending at a strided reader fuses there instead: the
+        // whole run rides into the consumer as views and copies nothing.
+        if move_run_reaches_reader(model, node)? {
+            return Ok(None);
+        }
         let should_defer_move = !grouped_axis_ops[0].is_empty() && !can_fuse_move(model, node);
         if should_defer_move {
             let out = patch.wire_node(

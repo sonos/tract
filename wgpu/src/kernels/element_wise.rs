@@ -3,8 +3,8 @@ use tract_core::ops::element_wise::ElementWiseMiniOp;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    ELEMENT_WISE_OPS, EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype,
-    keys_for, op_in_set, pack_u32s,
+    EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, WORKGROUP,
+    keys_for, op_in_set, pack_u32s, preamble, unary_ops_wgsl,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -60,3 +60,72 @@ register_wgpu_op!(tract_core::ops::element_wise::ElementWiseOp, |source, node, o
     rule_if!(is_supported(&*op.0, source.node_input_facts(node.id)?[0].datum_type));
     Ok(Some(Box::new(wgpu_element_wise_op(op.0.clone()))))
 });
+
+pub(crate) fn element_wise_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let lib = unary_ops_wgsl(t);
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    len: u32,
+    _pad: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+{lib}
+"#
+    ));
+    for name in ELEMENT_WISE_OPS {
+        s.push_str(&format!(
+            r#"
+@compute @workgroup_size({WORKGROUP})
+fn {name}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    outp[params.off_out + i] = op_{name}(inp[params.off_in + i]);
+}}
+"#
+        ));
+    }
+    s
+}
+
+pub const ELEMENT_WISE_OPS: &[&str] = &[
+    "abs",
+    "exp",
+    "ln",
+    "sigmoid",
+    "square",
+    "sqrt",
+    "rsqrt",
+    "recip",
+    "ceil",
+    "floor",
+    "round",
+    "roundhalftoeven",
+    "cos",
+    "acos",
+    "acosh",
+    "cosh",
+    "sin",
+    "asin",
+    "asinh",
+    "sinh",
+    "tan",
+    "atan",
+    "atanh",
+    "tanh",
+    "erf",
+    "neg",
+    "sign",
+    "hardswish",
+    "silu",
+    "geluexact",
+];

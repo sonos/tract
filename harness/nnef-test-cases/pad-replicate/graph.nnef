@@ -1,0 +1,8 @@
+version 1.0;
+
+graph network(input) -> (spec, legacy)
+{
+    input = external<scalar>(shape = [1, 2, 4]);
+    spec = pad(input, padding = [(0, 0), (0, 0), (2, 1)], border = 'replicate');
+    legacy = pad(input, padding = [(0, 0), (0, 0), (2, 1)], border = 'replicated');
+}

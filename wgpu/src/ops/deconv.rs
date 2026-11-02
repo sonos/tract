@@ -4,7 +4,28 @@ use crate::kernels::shaders::ChainStep;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Deconv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
+use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensorExt;
+
+use crate::transform::Mapping;
+
+/// Translates a float 2-D `Deconv` through [`wire_wgpu_deconv`].
+pub fn translate_deconv(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    let input_facts = source.node_input_facts(node.id)?;
+    rule_if_some!(deconv = node.op_as::<Deconv>());
+    rule_if!(
+        input_facts.iter().all(|f| crate::utils::is_supported_fact(f))
+            && matches!(input_facts[0].datum_type, DatumType::F16 | DatumType::F32)
+            && deconv.pool_spec.kernel_shape.len() == 2
+    );
+    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    wire_wgpu_deconv(source, node, target, &device_inputs, deconv).map(Some)
+}
 
 pub fn wire_wgpu_deconv(
     source: &TypedModel,

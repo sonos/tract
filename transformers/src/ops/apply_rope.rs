@@ -17,6 +17,13 @@ pub fn register(registry: &mut Registry) {
         &[("output", TypeName::Scalar.tensor())],
         de_apply_rope,
     );
+    registry.register_dumper(ser_rotate_half);
+    registry.register_primitive(
+        "tract_transformers_rotate_half",
+        &[TypeName::Scalar.tensor().named("input")],
+        &[("output", TypeName::Scalar.tensor())],
+        de_rotate_half,
+    );
 }
 
 fn de_apply_rope(
@@ -38,6 +45,23 @@ fn ser_apply_rope(
     let cos: Arc<RValue> = ast.mapping[&node.inputs[1]].clone();
     let sin: Arc<RValue> = ast.mapping[&node.inputs[2]].clone();
     Ok(Some(invocation("tract_transformers_apply_rope", &[input, cos, sin], &[])))
+}
+
+fn de_rotate_half(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    builder.wire(RotateHalf, &[input])
+}
+
+fn ser_rotate_half(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    _op: &RotateHalf,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation("tract_transformers_rotate_half", &[input], &[])))
 }
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]

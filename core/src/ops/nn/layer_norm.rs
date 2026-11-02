@@ -46,7 +46,12 @@ impl EvalOp for LayerNorm {
         } else {
             None
         };
-        let mut x = inputs[0].cast_to::<f32>()?.into_owned();
+        let input = inputs.into_iter().next().unwrap();
+        let mut x = if in_dt == DatumType::F32 {
+            input.into_tensor()
+        } else {
+            input.cast_to::<f32>()?.into_owned()
+        };
         let shape = x.shape().to_vec();
         let dim = shape[self.axis];
         let inner: usize = shape[self.axis + 1..].iter().product();
@@ -64,30 +69,78 @@ impl EvalOp for LayerNorm {
         if block > 0 {
             let mut view = x.try_as_plain_ram_mut()?;
             let data = view.as_slice_mut::<f32>()?;
-            let total = data.len();
-            tract_linalg::multithread::par_chunks_mut(data, block, total, |_, chunk| {
-                for block in chunk.chunks_mut(block) {
-                    for i in 0..inner {
-                        let mean = (0..dim).map(|d| block[d * inner + i]).sum::<f32>() / dim as f32;
-                        let var = (0..dim)
-                            .map(|d| (block[d * inner + i] - mean) * (block[d * inner + i] - mean))
-                            .sum::<f32>()
-                            / dim as f32;
-                        let inv = (var + eps).sqrt().recip();
-                        for d in 0..dim {
-                            let v = &mut block[d * inner + i];
-                            *v = (*v - mean) * inv;
-                            if let Some((s, b)) = affine {
-                                *v = *v * s[d] + b[d];
-                            }
-                        }
-                    }
-                }
-                Ok(())
-            })?;
+            if inner == 1 {
+                normalize_rows(data, dim, eps, affine)?;
+            } else {
+                normalize_strided(data, dim, inner, eps, affine)?;
+            }
+        }
+        if in_dt == DatumType::F32 {
+            return Ok(tvec!(x.into_tvalue()));
         }
         Ok(tvec!(x.cast_to_dt(in_dt)?.into_owned().into_tvalue()))
     }
+}
+
+/// Rows contiguous along the normalized axis: the mean through the linalg sum kernel, then the
+/// centered row through the fused RmsNorm kernel, which leaves `(x - mean) / sqrt(var + eps)`.
+fn normalize_rows(
+    data: &mut [f32],
+    dim: usize,
+    eps: f32,
+    affine: Option<(&[f32], &[f32])>,
+) -> TractResult<()> {
+    let sum = tract_linalg::routines::Func::ReduceSum.reduce_f32()?;
+    let rms_norm = tract_linalg::routines::rms_norm_f32()?;
+    let total = data.len();
+    tract_linalg::multithread::par_chunks_mut(data, dim, total, |_, chunk| {
+        for row in chunk.chunks_mut(dim) {
+            let mean = sum.run_with_params(row, ())? / dim as f32;
+            row.iter_mut().for_each(|v| *v -= mean);
+            rms_norm(row, eps);
+            if let Some((s, b)) = affine {
+                row.iter_mut().zip(s).zip(b).for_each(|((v, s), b)| *v = *v * s + b);
+            }
+        }
+        Ok(())
+    })
+}
+
+/// The normalized axis has `inner` contiguous elements behind each of its `dim` steps: the
+/// statistics accumulate one contiguous `inner` row at a time, so every loop runs over contiguous
+/// lanes.
+fn normalize_strided(
+    data: &mut [f32],
+    dim: usize,
+    inner: usize,
+    eps: f32,
+    affine: Option<(&[f32], &[f32])>,
+) -> TractResult<()> {
+    let block = dim * inner;
+    let total = data.len();
+    tract_linalg::multithread::par_chunks_mut(data, block, total, |_, chunk| {
+        let mut mean = vec![0f32; inner];
+        let mut inv = vec![0f32; inner];
+        for block in chunk.chunks_mut(block) {
+            mean.fill(0.0);
+            inv.fill(0.0);
+            for row in block.chunks(inner) {
+                mean.iter_mut().zip(row).for_each(|(m, x)| *m += x);
+            }
+            mean.iter_mut().for_each(|m| *m /= dim as f32);
+            for row in block.chunks(inner) {
+                inv.iter_mut().zip(row).zip(&mean).for_each(|((v, x), m)| *v += (x - m) * (x - m));
+            }
+            inv.iter_mut().for_each(|v| *v = (*v / dim as f32 + eps).sqrt().recip());
+            for (d, row) in block.chunks_mut(inner).enumerate() {
+                row.iter_mut().zip(&mean).zip(&inv).for_each(|((x, m), i)| *x = (*x - m) * i);
+                if let Some((s, b)) = affine {
+                    row.iter_mut().for_each(|x| *x = *x * s[d] + b[d]);
+                }
+            }
+        }
+        Ok(())
+    })
 }
 
 impl TypedOp for LayerNorm {
@@ -130,6 +183,8 @@ impl TypedOp for LayerNorm {
     ) -> TractResult<Option<AxisChangeConsequence>> {
         rule_if!(node.inputs.len() == 1);
         rule_if_some!(axis = change.transform_axis(self.axis));
+        let last = model.outlet_fact(node.inputs[0])?.rank() - 1;
+        rule_if!(self.axis != last || axis == last);
         let op = LayerNorm { axis, eps: self.eps.clone() };
         Ok(Some(AxisChangeConsequence::new(model, node, Some(Box::new(op)), change)))
     }

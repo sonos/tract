@@ -1,7 +1,9 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::kernels::shaders::{EntryPoint, LayoutKind, ShaderDtype, leaky_relu_module, pack_u32s};
+use crate::kernels::shaders::{
+    EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP, pack_u32s, preamble,
+};
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
 
@@ -51,3 +53,67 @@ register_wgpu_op!(tract_core::ops::element_wise::ElementWiseOp, |_source, _node,
         wgpu_leaky_relu_dispatch,
     ))))
 });
+
+/// `x` when `x >= 0`, otherwise `alpha * x`. `alpha` is an f32 uniform, cast to the
+/// storage type so an f16 run uses the same slope as the f16 CPU kernel.
+pub fn leaky_relu_module(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    len: u32,
+    alpha: f32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn leaky_relu_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    let x = inp[params.off_in + i];
+    outp[params.off_out + i] = select(x, x * {t}(params.alpha), x < {t}(0.0));
+}}
+"#
+    ));
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    #[test]
+    fn leaky_relu_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::nn::leaky_relu;
+        use tract_gpu::ops::leaky_relu::GpuLeakyRelu;
+        for (dt, alpha) in
+            [(f32::datum_type(), 0.1f32), (f32::datum_type(), 0.01), (f16::datum_type(), 0.2)]
+        {
+            let len = 10000;
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact([len]))?;
+            let y = model.wire_node("act", leaky_relu(alpha), &[x])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            ensure!(
+                gpu.nodes().iter().any(|n| n.op_is::<GpuLeakyRelu>()),
+                "leaky ReLU stayed on the CPU"
+            );
+            let mut values = fill(9, len);
+            values[0] = 0.0;
+            let input = Tensor::from_shape(&[len], &values)?.cast_to_dt(dt)?.into_owned();
+            gpu_vs_cpu(model, input).with_context(|| format!("{dt:?} alpha {alpha}"))?;
+        }
+        Ok(())
+    }
+}

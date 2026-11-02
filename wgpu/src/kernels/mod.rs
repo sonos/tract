@@ -1,11 +1,15 @@
+pub mod apply_rope;
 pub mod bin_ops;
 pub mod cast;
 pub mod chain;
 pub mod conv;
 pub mod copy;
 pub mod deconv;
+pub mod diag_gather;
 pub mod element_wise;
+pub mod gather;
 pub mod gather_nd;
+pub mod gelu_approximate;
 pub mod gemv_pair;
 pub mod group_norm;
 pub mod ingest;
@@ -21,6 +25,7 @@ pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod shaders;
 pub mod softmax;
+pub mod tiled_gemm;
 
 /// Every pipeline this crate's kernels can need. They are built when the
 /// context is created so that no frame ever waits on a shader compile.

@@ -287,6 +287,28 @@ impl Resize {
         }
     }
 
+    /// Whether every axis keeps its length at a scale of 1, which `eval` passes through untouched
+    /// whatever the interpolation, outside of `tf_crop_and_resize`.
+    fn is_identity(&self, model: &TypedModel, node: &TypedNode) -> TractResult<bool> {
+        if self.coord_transformer == CoordTransform::TfCropAndResize {
+            return Ok(false);
+        }
+        let Some(shape) = model.outlet_fact(node.inputs[0])?.shape.as_concrete() else {
+            return Ok(false);
+        };
+        let konst = |ix: Option<usize>| -> TractResult<Option<Arc<Tensor>>> {
+            let Some(ix) = ix else { return Ok(None) };
+            Ok(model.outlet_fact(node.inputs[ix])?.konst.clone())
+        };
+        let scales = konst(self.optional_scales_input)?;
+        let sizes = konst(self.optional_sizes_input)?;
+        let Ok((scales, output_shape)) = self.resolve(shape, scales.as_deref(), sizes.as_deref())
+        else {
+            return Ok(false);
+        };
+        Ok(*output_shape == *shape && scales.iter().all(|s| *s == 1.0))
+    }
+
     /// The clean subset reachable by `tract_core::ops::nn::resize::Resize`:
     /// default `cubic_coeff_a`, no `exclude_outside`, no antialiasing, no ROI,
     /// a stretching aspect ratio and a nearest mode core understands. `None`
@@ -419,6 +441,15 @@ impl TypedOp for Resize {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
+        if self.is_identity(model, node)? {
+            let patch = TypedModelPatch::rewire(
+                model,
+                &node.inputs[..1],
+                &[node.id.into()],
+                &|_, inputs| Ok(inputs.into()),
+            )?;
+            return Ok(Some(patch));
+        }
         let input_fact = model.outlet_fact(node.inputs[0])?;
         let rank = input_fact.rank();
         let axes = self.resized_axes(rank)?;

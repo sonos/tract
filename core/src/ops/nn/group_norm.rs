@@ -1,5 +1,6 @@
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
+use crate::ops::cast::par_half_cast;
 use crate::ops::math::Sub;
 use crate::ops::nn::{Reduce, Reducer, RmsNorm};
 use tract_itertools::Itertools;
@@ -49,7 +50,14 @@ impl EvalOp for GroupNorm {
             .chain(self.reduced_axes.iter().copied())
             .collect();
         let shape = input.shape().to_vec();
-        let x = input.cast_to::<f32>()?.into_owned().permute_axes(&order)?;
+        let x = if in_dt == f32::datum_type() {
+            input.into_tensor()
+        } else if let Some(x) = par_half_cast(&input, f32::datum_type())? {
+            x
+        } else {
+            input.cast_to::<f32>()?.into_owned()
+        };
+        let x = x.permute_axes(&order)?;
         let permuted_shape = x.shape().to_vec();
         let rows = shape.iter().enumerate().filter(|(ax, _)| !self.reduced_axes.contains(ax));
         let rows = rows.map(|(_, d)| d).product::<usize>() / shape[self.axis] * self.groups;
@@ -75,7 +83,14 @@ impl EvalOp for GroupNorm {
         let mut inverse = tvec!(0; rank);
         order.iter().enumerate().for_each(|(pos, ax)| inverse[*ax] = pos);
         let y = x.into_shape(&permuted_shape)?.permute_axes(&inverse)?;
-        Ok(tvec!(y.cast_to_dt(in_dt)?.into_owned().into_tvalue()))
+        let y = if in_dt == f32::datum_type() {
+            y
+        } else if let Some(y) = par_half_cast(&y, in_dt)? {
+            y
+        } else {
+            y.cast_to_dt(in_dt)?.into_owned()
+        };
+        Ok(tvec!(y.into_tvalue()))
     }
 }
 

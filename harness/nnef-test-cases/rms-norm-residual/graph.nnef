@@ -1,0 +1,15 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A pre-norm transformer block: the residual add feeds an RmsNorm, and the residual stream carries
+# on past it into the next add.
+graph network( x, r ) -> ( output )
+{
+    x = external<scalar>(shape = [2, 6, 48]);
+    r = external<scalar>(shape = [2, 6, 48]);
+    gamma = [[[0.733, 0.871, 1.282, 1.208, 0.674, 1.113, 0.705, 0.823, 0.576, 0.895, 1.233, 0.602, 0.829, 1.023, 0.941, 1.010, 1.348, 0.740, 0.527, 1.206, 1.475, 0.638, 1.344, 0.966, 0.598, 0.658, 0.913, 1.351, 0.648, 0.831, 0.782, 0.888, 0.970, 1.160, 0.747, 1.200, 0.651, 0.842, 0.932, 1.042, 0.503, 1.257, 0.624, 0.824, 1.368, 1.054, 1.040, 1.020]]];
+    residual = add(x, r);
+    normed = mul(tract_core_rms_norm(residual, axis = 2, eps = 1e-5), gamma);
+    output = add(residual, normed);
+}

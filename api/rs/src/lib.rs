@@ -15,12 +15,16 @@ extern crate tract_wgpu;
 
 #[cfg(feature = "onnx")]
 use std::borrow::Cow;
+#[cfg(feature = "onnx")]
+use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
 use std::io::Cursor;
 use std::path::Path;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+#[cfg(feature = "onnx")]
+use tract_core::ops::konst::Const;
 use tract_extra::WithTractExtra;
 #[cfg(feature = "profile")]
 use tract_libcli::annotations::Annotations;
@@ -60,8 +64,8 @@ pub mod prelude {
 
     // User-facing API types
     pub use tract_api::{
-        Datum, DatumType, FloatPrecision, OnnxOptions, OnnxOptionsSpec, Pulse, SetSymbols,
-        TransformSpec, tensor,
+        ConstantInput, Datum, DatumType, FloatPrecision, OnnxOptions, OnnxOptionsSpec, Pulse,
+        SetSymbols, TransformSpec, tensor,
     };
 
     // Traits needed for method resolution — hidden from namespace
@@ -208,6 +212,30 @@ fn apply_assertions(
     Ok(())
 }
 
+/// Replace each input named in `constant_inputs` by a `Const` holding its value.
+#[cfg(feature = "onnx")]
+fn apply_constant_inputs(
+    model: &mut tract_onnx::prelude::InferenceModel,
+    constant_inputs: &BTreeMap<String, ConstantInput>,
+) -> Result<()> {
+    for (name, input) in constant_inputs {
+        let node = model.node_id_by_name(name)?;
+        let ix = model
+            .inputs
+            .iter()
+            .position(|outlet| outlet.node == node)
+            .with_context(|| format!("{name:?} is not a model input"))?;
+        let value = InternalTensor::from_shape(&input.shape, &input.values)
+            .with_context(|| format!("Building the value of constant input {name:?}"))?
+            .cast_to_dt(to_internal_dt(input.datum_type))?
+            .into_owned();
+        model.inputs.remove(ix);
+        model.nodes[node].op = Box::new(Const::new(value.into_arc_tensor())?);
+        model.nodes[node].outputs[0].fact = Default::default();
+    }
+    Ok(())
+}
+
 #[cfg(feature = "onnx")]
 impl Onnx {
     /// The loader to parse with.
@@ -238,8 +266,9 @@ impl OnnxInterface for Onnx {
         options: impl Into<OnnxOptionsSpec>,
     ) -> Result<Self::InferenceModel> {
         let options = options.into().parse()?;
-        let model = self.loader(&options).model_for_path(path)?;
+        let mut model = self.loader(&options).model_for_path(path)?;
         apply_assertions(&model, &options.assertions)?;
+        apply_constant_inputs(&mut model, &options.constant_inputs)?;
         Ok(InferenceModel(model))
     }
 
@@ -249,8 +278,9 @@ impl OnnxInterface for Onnx {
         options: impl Into<OnnxOptionsSpec>,
     ) -> Result<Self::InferenceModel> {
         let options = options.into().parse()?;
-        let model = self.loader(&options).model_for_read(&mut Cursor::new(data))?;
+        let mut model = self.loader(&options).model_for_read(&mut Cursor::new(data))?;
         apply_assertions(&model, &options.assertions)?;
+        apply_constant_inputs(&mut model, &options.constant_inputs)?;
         Ok(InferenceModel(model))
     }
 }

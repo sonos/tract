@@ -80,6 +80,11 @@ fn context_slot() -> &'static OnceLock<WgpuContext> {
     &INSTANCE
 }
 
+/// Whether this process has created its wgpu context (and so holds a live device).
+pub fn wgpu_context_created() -> bool {
+    context_slot().get().is_some()
+}
+
 fn install_context(ctxt: WgpuContext) -> TractResult<WgpuContext> {
     let _ = tract_gpu::device::set_context(Box::new(ctxt.clone()));
     let _ = context_slot().set(ctxt.clone());

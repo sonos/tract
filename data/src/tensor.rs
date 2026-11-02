@@ -1754,7 +1754,8 @@ impl Tensor {
 
     /// Access the data as a mutable pointer.
     pub fn as_ptr_mut<D: Datum>(&mut self) -> TractResult<*mut D> {
-        self.as_ptr::<D>().map(|p| p as *mut D)
+        self.check_for_access::<D>()?;
+        Ok(self.plain_ram_storage_mut().as_mut_ptr() as *mut D)
     }
 
     /// Access the data as a slice.

@@ -2,7 +2,7 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, pack_u32s, scaled_masked_softmax_module,
+    EntryPoint, GRID_LIMIT, LAYER_NORM_WG, LayoutKind, ShaderDtype, pack_u32s, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -32,9 +32,8 @@ fn broadcast_strides(t: &DeviceTensor, shape: &[usize; MAX_RANK]) -> TractResult
     Ok(strides)
 }
 
-/// Dispatch for `GpuScaledMaskedSoftmax` with a float mask of the input's
-/// dtype. A bool mask never reaches it: the backend keeps bool tensors on the
-/// CPU.
+/// Dispatch for `GpuScaledMaskedSoftmax`, with a float mask of the input's
+/// dtype or a bool one.
 pub fn wgpu_scaled_masked_softmax_dispatch(
     input: &DeviceTensor,
     scale: &Tensor,
@@ -43,8 +42,9 @@ pub fn wgpu_scaled_masked_softmax_dispatch(
     output: &DeviceTensor,
 ) -> TractResult<()> {
     ensure!(output.shape() == input.shape() && output.datum_type() == input.datum_type());
-    ensure!(mask.datum_type() == input.datum_type(), "wgpu takes float masks only");
-    ensure!(!post_softmax_mask, "post_softmax_mask needs a bool mask");
+    let bool_mask = mask.datum_type() == bool::datum_type();
+    ensure!(bool_mask || mask.datum_type() == input.datum_type());
+    ensure!(bool_mask || !post_softmax_mask, "post_softmax_mask needs a bool mask");
     ensure!((2..=MAX_RANK).contains(&input.rank()) && mask.rank() == input.rank());
     let shape = left_padded(input.shape(), 1);
     let x_strides = broadcast_strides(input, &shape)?;
@@ -61,12 +61,11 @@ pub fn wgpu_scaled_masked_softmax_dispatch(
         }
         let dt = ShaderDtype::from_datum(input.datum_type())?;
         let layout = LayoutKind::Chain(3);
-        let pipeline = q.context().chain_pipeline(
-            ("scaled_masked_softmax", dt),
-            layout,
-            EntryPoint::typed("scaled_masked_softmax", dt),
-            || scaled_masked_softmax_module(dt),
-        )?;
+        let name = if bool_mask { "scaled_masked_softmax_bool" } else { "scaled_masked_softmax" };
+        let pipeline =
+            q.context().chain_pipeline((name, dt), layout, EntryPoint::typed(name, dt), || {
+                scaled_masked_softmax_module(dt, bool_mask)
+            })?;
         let bg = q.context().bind_group(
             layout,
             &[get_wgpu_buffer(input), get_wgpu_buffer(mask), get_wgpu_buffer(output)],
@@ -84,6 +83,10 @@ pub fn wgpu_scaled_masked_softmax_dispatch(
             scale.to_bits(),
             x_strides[4],
             mask_strides[4],
+            post_softmax_mask as u32,
+            f32::NAN.to_bits(),
+            0,
+            0,
             0,
         ];
         params.extend(&x_strides[..4]);
@@ -91,7 +94,7 @@ pub fn wgpu_scaled_masked_softmax_dispatch(
         let dyn_off = q.alloc_uniform(&pack_u32s(&params))?;
         let x = rows.min(GRID_LIMIT as usize) as u32;
         let y = rows.div_ceil(GRID_LIMIT as usize) as u32;
-        q.dispatch_grid("scaled_masked_softmax", &pipeline, &bg, dyn_off, [x, y, 1])
+        q.dispatch_grid(name, &pipeline, &bg, dyn_off, [x, y, 1])
     })
 }
 
@@ -99,14 +102,179 @@ register_wgpu_op!(
     tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax,
     |source, node, op| {
         let facts = source.node_input_facts(node.id)?;
-        rule_if!(!op.post_softmax_mask);
-        rule_if!(facts[1].datum_type == facts[0].datum_type);
+        let bool_mask = facts[1].datum_type == bool::datum_type();
+        rule_if!(
+            bool_mask || (facts[1].datum_type == facts[0].datum_type && !op.post_softmax_mask)
+        );
         rule_if!((2..=MAX_RANK).contains(&facts[0].rank()) && facts[1].rank() == facts[0].rank());
         Ok(Some(Box::new(tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax::new(
             op.scale.clone(),
-            false,
+            op.post_softmax_mask,
             "Wgpu",
             wgpu_scaled_masked_softmax_dispatch,
         ))))
     }
 );
+
+/// `softmax(x * scale + mask)` over the innermost axis of a rank-5 view, one
+/// workgroup per row. The input and mask are read through their strides (the
+/// mask's zero along the axes it broadcasts); the output is contiguous.
+///
+/// With a bool mask, bytes packed four to a word, the scores it masks take no
+/// part in the softmax and come out zero; a row whose sum vanishes comes out
+/// NaN, except for the masked scores under `post_softmax_mask`.
+pub fn scaled_masked_softmax_module(dt: ShaderDtype, bool_mask: bool) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let (name, mask_t, keep, logit) = if bool_mask {
+        (
+            "scaled_masked_softmax_bool",
+            "u32",
+            "let b = m + i * params.mask_inner;\n    return ((mask[b / 4u] >> ((b % 4u) * 8u)) & 0xffu) != 0u;",
+            "return f32(inp[x + i * params.x_inner]) * params.scale;",
+        )
+    } else {
+        (
+            "scaled_masked_softmax",
+            t,
+            "return true;",
+            "return f32(inp[x + i * params.x_inner]) * params.scale + f32(mask[m + i * params.mask_inner]);",
+        )
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_mask: u32,
+    off_out: u32,
+    d1: u32,
+    d2: u32,
+    d3: u32,
+    k: u32,
+    rows: u32,
+    scale: f32,
+    x_inner: u32,
+    mask_inner: u32,
+    post: u32,
+    nan_bits: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+    x_strides: vec4<u32>,
+    mask_strides: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read> mask: array<{mask_t}>;
+@group(0) @binding(2) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+var<workgroup> partial: array<f32, {LAYER_NORM_WG}>;
+
+fn keep(m: u32, i: u32) -> bool {{
+    {keep}
+}}
+
+fn logit(x: u32, m: u32, i: u32) -> f32 {{
+    {logit}
+}}
+
+@compute @workgroup_size({LAYER_NORM_WG})
+fn {name}_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let row = wid.y * {GRID_LIMIT}u + wid.x;
+    if (row >= params.rows) {{ return; }}
+    let at = vec4<u32>(
+        row / (params.d1 * params.d2 * params.d3),
+        (row / (params.d2 * params.d3)) % params.d1,
+        (row / params.d3) % params.d2,
+        row % params.d3,
+    );
+    let x = params.off_in + dot(at, params.x_strides);
+    let m = params.off_mask + dot(at, params.mask_strides);
+    let o = params.off_out + row * params.k;
+    var hi = bitcast<f32>(0xff7fffffu);
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        if (keep(m, i)) {{ hi = max(hi, logit(x, m, i)); }}
+    }}
+    partial[lid.x] = hi;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] = max(partial[lid.x], partial[lid.x + stride]);
+        }}
+    }}
+    workgroupBarrier();
+    hi = partial[0];
+    workgroupBarrier();
+    var sum = 0.0;
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        if (keep(m, i)) {{ sum += exp(logit(x, m, i) - hi); }}
+    }}
+    partial[lid.x] = sum;
+    for (var stride = {LAYER_NORM_WG}u / 2u; stride > 0u; stride /= 2u) {{
+        workgroupBarrier();
+        if (lid.x < stride) {{
+            partial[lid.x] += partial[lid.x + stride];
+        }}
+    }}
+    workgroupBarrier();
+    sum = partial[0];
+    let inv = 1.0 / sum;
+    let nan = bitcast<f32>(params.nan_bits);
+    for (var i = lid.x; i < params.k; i += {LAYER_NORM_WG}u) {{
+        let kept = keep(m, i);
+        var y = 0.0;
+        if (sum == 0.0) {{
+            if (kept || params.post == 0u) {{ y = nan; }}
+        }} else if (kept) {{
+            y = exp(logit(x, m, i) - hi) * inv;
+        }}
+        outp[o + i] = {t}(y);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::{fill, gpu_vs_cpu, transformed};
+
+    /// Attention scores under a causal `-inf` mask broadcast over batch and
+    /// heads, with rows both shorter and longer than one workgroup.
+    #[test]
+    fn scaled_masked_softmax_runs_on_device() -> TractResult<()> {
+        use tract_gpu::ops::scaled_masked_softmax::GpuScaledMaskedSoftmax;
+        use tract_transformers::ops::scaled_masked_softmax::ScaledMaskedSoftmax;
+        for (cols, f16_) in [(7usize, false), (300, false), (300, true)] {
+            let rows = 5;
+            let shape = [2, 3, rows, cols];
+            let causal = (0..rows * cols)
+                .map(|i| if i % cols > i / cols + cols - rows { f32::NEG_INFINITY } else { 0.0 })
+                .collect::<Vec<_>>();
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact(shape))?;
+            let mask =
+                Tensor::from_shape(&[1, 1, rows, cols], &causal)?.cast_to_dt(dt)?.into_owned();
+            let mask = model.add_const("mask", mask)?;
+            let op = ScaledMaskedSoftmax { scale: rctensor0(0.125f32), post_softmax_mask: false };
+            let y = model.wire_node("softmax", op, &[x, mask])?[0];
+            model.select_output_outlets(&[y])?;
+            let gpu = transformed(model.clone())?;
+            crate::ensure_wgpu_coverage(&gpu)?;
+            ensure!(
+                gpu.nodes().iter().any(|n| n.op_is::<GpuScaledMaskedSoftmax>()),
+                "masked softmax stayed on the CPU"
+            );
+            let input = Tensor::from_shape(&shape, &fill(6, shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned())
+                .with_context(|| format!("cols {cols} f16 {f16_}"))?;
+        }
+        Ok(())
+    }
+}

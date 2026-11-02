@@ -51,7 +51,7 @@ from .runnable import Runnable
 from .runtime import Runtime, runtime_for_name
 from .transform import TransformSpec, SetSymbols, FloatPrecision, Pulse
 from .nnef import Nnef
-from .onnx import Onnx
+from .onnx import Onnx, OnnxOptions
 from . import npz
 
 def version() -> str:

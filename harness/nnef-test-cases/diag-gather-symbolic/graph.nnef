@@ -1,0 +1,12 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+
+# The relative-position skew of T query rows over a 2T-1 wide table, with the
+# offset and width written in terms of T.
+graph diag_gather_symbolic(scores) -> (absolute)
+{
+    scores = external<scalar>(shape = [2, T, 2 * T - 1]);
+    absolute = tract_transformers_diag_gather(scores, offset = T - 1, out_len = T);
+}

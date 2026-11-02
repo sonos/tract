@@ -24,6 +24,7 @@ use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
 use tract_gpu::ops::group_norm::{
     GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
 };
+use tract_gpu::rewrite_rules::float_gather_indices::float_gather_nd_indices;
 use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
@@ -262,6 +263,7 @@ impl MetalTransform {
             .with_rule_for("split_multi_axis_reduce", split_multi_axis_reduce)
             .with_rule_for("fold_gdn_beta_sigmoid", rewrite_rules::fold_gdn_beta_sigmoid)
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
+            .with_rule_for("float_gather_nd_indices", float_gather_nd_indices)
             .rewrite(&(), model)?;
         tract_gpu::rewrite_rules::conv_nhwc::propagate_nhwc(model)?;
 

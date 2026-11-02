@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hey Snips, in your browser</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; --hit: #1f9d55; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; --hit: #3ccf7f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 1280px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0; }
+  .grid {
+    display: grid;
+    grid-template-columns: 240px minmax(0, 1fr);
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas: "form head" "form out" "form note";
+    column-gap: 24px;
+    row-gap: 16px;
+    align-items: start;
+  }
+  header { grid-area: head; }
+  .panel { grid-area: form; }
+  .out { grid-area: out; }
+  .note { grid-area: note; }
+  @media (max-width: 760px) {
+    .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "form" "out" "note"; }
+  }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=range] { width: 100%; }
+  button { margin-top: 16px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
+  #wake { font-size: 28px; font-weight: 700; margin: 0 0 8px; color: var(--muted); transition: color .3s; }
+  #wake.hit { color: var(--hit); transition: none; }
+  canvas { width: 100%; height: 220px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: block; }
+  #stats { font-size: 13px; color: var(--muted); margin: 8px 0 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
+  #hits { font-size: 13px; margin: 8px 0 0; padding-left: 20px; font-variant-numeric: tabular-nums; }
+  .note { font-size: 12px; color: var(--muted); margin: 0; }
+  .build { display: block; margin-top: 10px; opacity: .75; }
+  #build { font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px; }
+  a { color: var(--accent); }
+  .crumb { display: inline-block; font-size: 13px; margin-bottom: 4px; }
+</style>
+</head>
+<body>
+<main class="grid">
+  <header>
+    <a class="crumb" href="../">← tract demos</a>
+    <h1>Hey Snips, in your browser</h1>
+    <p class="sub">Wake word detection on your microphone, on your CPU through WebAssembly with <a href="https://github.com/sonos/tract">tract</a>. Nothing leaves your machine.</p>
+  </header>
+  <div class="panel">
+    <label for="threshold">Threshold <span id="threshold-value"></span></label>
+    <input id="threshold" type="range" min="0.5" max="0.995" step="0.005" value="0.95">
+    <button id="go" disabled>Loading…</button>
+    <div id="status">Starting…</div>
+  </div>
+  <div class="out">
+    <p id="wake">Say “Hey Snips”</p>
+    <canvas id="trace" width="1200" height="220"></canvas>
+    <p id="stats"></p>
+    <ol id="hits"></ol>
+  </div>
+  <p class="note">
+    The trace is the keyword probability over the last ten seconds, each point for the 1.8 s of
+    audio ending there. tract runs the whole chain as one streaming graph, 80 ms at a time:
+    resampling to 16 kHz, log-Mel features, and the gated dilated convolutions of
+    <a href="https://arxiv.org/abs/1811.07684">Coucke et al., 2018</a>.
+    Model © Snips and © Sonos.
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/hey-snips/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>

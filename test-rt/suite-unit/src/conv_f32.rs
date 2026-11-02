@@ -557,6 +557,21 @@ pub fn suite() -> TractResult<TestSuite> {
         );
     }
 
+    suite.add(
+        "depthwise_nhwc_5x5_dilated",
+        ConvProblem {
+            shape_in: DataFormat::NHWC.from_n_c_hw(1, 24, [13, 15])?,
+            kernel_format: KernelFormat::OIHW,
+            group: 24,
+            data: ramp(&[1, 13, 15, 24]),
+            kernel: ramp(&[24, 1, 5, 5]),
+            bias: Some(ramp(&[24])),
+            pad: PaddingSpec::Explicit(tvec!(4, 4), tvec!(4, 4)),
+            strides: tvec!(1, 1),
+            dilations: tvec!(2, 2),
+        },
+    );
+
     // Grouped conv (group>1, ci_per_group>1) with a unit spatial axis: the
     // im2col matmul is batched over the group, and reshape_group carries a unit
     // axis entangled with that batch. Absorbing the reshape into the matmul

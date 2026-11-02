@@ -4,8 +4,9 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    ChainOperand, ChainStep, EntryPoint, LayoutKind, ShaderDtype, broadcast_strides, chain_wgsl,
-    pack_u32s, pad8_u32,
+    AT8, ChainStep, EntryPoint, GRID_LIMIT, LayoutKind, ShaderDtype, WORKGROUP,
+    binary_ops_vec4_wgsl, binary_ops_wgsl, broadcast_strides, pack_u32s, pad8_u32, preamble,
+    unary_ops_vec4_wgsl, unary_ops_wgsl,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::with_wgpu_queue;
@@ -84,4 +85,182 @@ pub fn wgpu_chain_dispatch(
         let threads = if kinds.is_some() { output.len() / 4 } else { output.len() };
         q.dispatch("chain", &pipeline, &bg, dyn_off, threads as u64)
     })
+}
+
+/// Names the generated program, and so keys its pipeline. `contiguous` says
+/// which inputs share the output's layout and can skip index arithmetic.
+/// How a chain operand is read: element for element with the output, one value
+/// splatted across the four a thread handles, or gathered through its strides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ChainOperand {
+    Contiguous,
+    Splat,
+    Gather,
+}
+
+/// The chain over `vec4`s: a thread takes four values at a time, which is
+/// where the win is on a bandwidth-bound kernel. The four are adjacent along
+/// the last axis, so an operand broadcasting over that axis is read once and
+/// splatted.
+fn chain_vec4_wgsl(dt: ShaderDtype, steps: &[ChainStep], kinds: &[ChainOperand]) -> String {
+    let t = dt.wgsl();
+    let inputs = kinds.len();
+    let mut s = preamble(dt);
+    s.push_str("struct Params {\n    off_out: u32,\n    len: u32,\n    rank: u32,\n    _p: u32,\n    off_in: vec4<u32>,\n    out_sh0: vec4<u32>,\n    out_sh1: vec4<u32>,\n");
+    for i in 0..inputs {
+        s.push_str(&format!("    s{i}_0: vec4<u32>,\n    s{i}_1: vec4<u32>,\n"));
+    }
+    s.push_str("}\n\n");
+    for (i, kind) in kinds.iter().enumerate() {
+        let ty = match kind {
+            ChainOperand::Contiguous => format!("array<vec4<{t}>>"),
+            _ => format!("array<{t}>"),
+        };
+        s.push_str(&format!("@group(0) @binding({i}) var<storage, read> in{i}: {ty};\n"));
+    }
+    s.push_str(&format!(
+        "@group(0) @binding({inputs}) var<storage, read_write> outp: array<vec4<{t}>>;\n"
+    ));
+    s.push_str(&format!("@group(0) @binding({}) var<uniform> params: Params;\n\n", inputs + 1));
+    s.push_str(AT8);
+    s.push_str("\n\n");
+    s.push_str(&unary_ops_wgsl(t));
+    s.push_str(&binary_ops_wgsl(t));
+    s.push_str(&unary_ops_vec4_wgsl(t));
+    s.push_str(&binary_ops_vec4_wgsl(t));
+    for (i, kind) in kinds.iter().enumerate() {
+        if *kind == ChainOperand::Contiguous {
+            continue;
+        }
+        s.push_str(&format!(
+            r#"
+fn gather{i}(linear: u32) -> u32 {{
+    var rest = linear;
+    var idx = 0u;
+    for (var k = 0u; k < params.rank; k++) {{
+        let axis = params.rank - 1u - k;
+        let dim = max(at8(params.out_sh0, params.out_sh1, axis), 1u);
+        let c = rest % dim;
+        rest = rest / dim;
+        idx += c * at8(params.s{i}_0, params.s{i}_1, axis);
+    }}
+    return idx;
+}}
+"#
+        ));
+    }
+    s.push_str(&format!(
+        r#"
+@compute @workgroup_size({WORKGROUP})
+fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let base = i * 4u;
+    if (base >= params.len) {{ return; }}
+    var v = in0[params.off_in[0u] / 4u + i];
+"#
+    ));
+    for step in steps {
+        match step {
+            ChainStep::Unary(op) => s.push_str(&format!("    v = op_{op}_v(v);\n")),
+            ChainStep::Binary { op, rhs, swapped } => {
+                match kinds[*rhs] {
+                    ChainOperand::Contiguous => s.push_str(&format!(
+                        "    let b{rhs} = in{rhs}[params.off_in[{rhs}u] / 4u + i];\n"
+                    )),
+                    _ => s.push_str(&format!(
+                        "    let b{rhs} = vec4<{t}>(in{rhs}[params.off_in[{rhs}u] + gather{rhs}(base)]);\n"
+                    )),
+                }
+                if *swapped {
+                    s.push_str(&format!("    v = op_{op}_v(b{rhs}, v);\n"));
+                } else {
+                    s.push_str(&format!("    v = op_{op}_v(v, b{rhs});\n"));
+                }
+            }
+        }
+    }
+    s.push_str("    outp[params.off_out / 4u + i] = v;\n}\n");
+    s
+}
+
+/// A whole elementwise chain as one kernel: the running value stays in
+/// registers, so only the chain's own inputs and its final output touch memory.
+/// Extra operands broadcast against the output shape; the head and the output
+/// share it.
+pub fn chain_wgsl(
+    dt: ShaderDtype,
+    steps: &[ChainStep],
+    contiguous: &[bool],
+    kinds: Option<&[ChainOperand]>,
+) -> String {
+    if let Some(kinds) = kinds {
+        return chain_vec4_wgsl(dt, steps, kinds);
+    }
+    let t = dt.wgsl();
+    let inputs = contiguous.len();
+    let mut s = preamble(dt);
+    s.push_str("struct Params {\n    off_out: u32,\n    len: u32,\n    rank: u32,\n    _p: u32,\n    off_in: vec4<u32>,\n    out_sh0: vec4<u32>,\n    out_sh1: vec4<u32>,\n");
+    for i in 0..inputs {
+        s.push_str(&format!("    s{i}_0: vec4<u32>,\n    s{i}_1: vec4<u32>,\n"));
+    }
+    s.push_str("}\n\n");
+    for i in 0..inputs {
+        s.push_str(&format!("@group(0) @binding({i}) var<storage, read> in{i}: array<{t}>;\n"));
+    }
+    s.push_str(&format!(
+        "@group(0) @binding({inputs}) var<storage, read_write> outp: array<{t}>;\n"
+    ));
+    s.push_str(&format!("@group(0) @binding({}) var<uniform> params: Params;\n\n", inputs + 1));
+    s.push_str(AT8);
+    s.push_str("\n\n");
+    s.push_str(&unary_ops_wgsl(t));
+    s.push_str(&binary_ops_wgsl(t));
+    for (i, contig) in contiguous.iter().enumerate() {
+        if *contig {
+            s.push_str(&format!("\nfn gather{i}(linear: u32) -> u32 {{ return linear; }}\n"));
+            continue;
+        }
+        s.push_str(&format!(
+            r#"
+fn gather{i}(linear: u32) -> u32 {{
+    var rest = linear;
+    var idx = 0u;
+    for (var k = 0u; k < params.rank; k++) {{
+        let axis = params.rank - 1u - k;
+        let dim = max(at8(params.out_sh0, params.out_sh1, axis), 1u);
+        let c = rest % dim;
+        rest = rest / dim;
+        idx += c * at8(params.s{i}_0, params.s{i}_1, axis);
+    }}
+    return idx;
+}}
+"#
+        ));
+    }
+    s.push_str(&format!(
+        r#"
+@compute @workgroup_size({WORKGROUP})
+fn chain(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    var v = in0[params.off_in[0] + gather0(i)];
+"#
+    ));
+    for step in steps {
+        match step {
+            ChainStep::Unary(op) => s.push_str(&format!("    v = op_{op}(v);\n")),
+            ChainStep::Binary { op, rhs, swapped } => {
+                s.push_str(&format!(
+                    "    let b{rhs} = in{rhs}[params.off_in[{rhs}] + gather{rhs}(i)];\n"
+                ));
+                if *swapped {
+                    s.push_str(&format!("    v = op_{op}(b{rhs}, v);\n"));
+                } else {
+                    s.push_str(&format!("    v = op_{op}(v, b{rhs});\n"));
+                }
+            }
+        }
+    }
+    s.push_str("    outp[params.off_out + i] = v;\n}\n");
+    s
 }

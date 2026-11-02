@@ -35,6 +35,7 @@ use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
 use tract_gpu::ops::group_norm::{
     GpuGroupNormApply, GpuGroupNormStats, GroupNormParams, wire_gpu_group_norm,
 };
+use tract_gpu::rewrite_rules::float_gather_indices::float_gather_nd_indices;
 use tract_gpu::rewrite_rules::layer_norm::fuse_layer_norm_affine;
 use tract_gpu::rewrite_rules::rewire_syncs::rewire_syncs;
 use tract_gpu::rewrite_rules::rms_norm::{
@@ -118,6 +119,7 @@ impl CudaTransform {
                 drop_unit_axes_of_scaled_masked_softmax,
             )
             .with_rule_for("nearest_upsample_to_broadcast", rewrite_nearest_upsample_to_broadcast)
+            .with_rule_for("float_gather_nd_indices", float_gather_nd_indices)
             .rewrite(&(), model)?;
 
         Rewriter::default()
@@ -856,6 +858,49 @@ mod tests {
         let found = cuda.into_runnable()?.run(inputs)?;
         found[0].close_enough(&expected[0], Approximation::Approximate)?;
         Ok(())
+    }
+
+    /// `x + 1`, then the `host*` nodes `wire_host` adds forced onto the CPU,
+    /// then a sum over the last axis: run on CUDA, it must match the CPU.
+    fn run_host_nodes_between_device_ops(
+        wire_host: impl FnOnce(&mut TypedModel, OutletId) -> TractResult<OutletId>,
+    ) -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([4, 64]))?;
+        let one = model.add_const("one", rctensor2(&[[1f32]]))?;
+        let a = model.wire_node("a", tract_core::ops::math::add(), &[x, one])?[0];
+        let host = wire_host(&mut model, a)?;
+        let sum = Reduce { axes: tvec!(1), reducer: tract_core::ops::nn::Reducer::Sum };
+        let b = model.wire_node("b", sum, &[host])?[0];
+        model.select_output_outlets(&[b])?;
+
+        let x = Tensor::from_shape(&[4, 64], &(0..256).map(|i| i as f32).collect::<Vec<_>>())?;
+        let expected = model.clone().into_runnable()?.run(tvec!(x.clone().into_tvalue()))?;
+        let scope = tract_core::knobs::KnobScope::new([("TRACT_CUDA_FORCE_CPU", "host")])?;
+        let cuda = scope.enter(|| crate::CudaRuntime.prepare(model))?;
+        let found = cuda.spawn()?.run(tvec!(x.into_tvalue()))?;
+        found[0].close_enough(&expected[0], Approximation::Exact)
+    }
+
+    #[test]
+    fn host_reshape_between_device_ops() -> TractResult<()> {
+        run_host_nodes_between_device_ops(|model, wire| {
+            let reshape =
+                AxisOp::Reshape(0, tvec!(4.into(), 64.into()), tvec!(64.into(), 4.into()));
+            Ok(model.wire_node("host_reshape", reshape, &[wire])?[0])
+        })
+    }
+
+    #[test]
+    fn host_in_place_add_between_device_ops() -> TractResult<()> {
+        run_host_nodes_between_device_ops(|model, wire| {
+            let row = Tensor::from_shape(
+                &[1, 64],
+                &(0..64).map(|i| 100. * i as f32).collect::<Vec<_>>(),
+            )?;
+            let row = model.add_const("row", row)?;
+            Ok(model.wire_node("host_add", tract_core::ops::math::add(), &[wire, row])?[0])
+        })
     }
 }
 

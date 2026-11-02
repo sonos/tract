@@ -1,0 +1,41 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol F;
+extension tract_assert F>=0;
+
+# Banded causal SDPA behind a 4x upsample: a frame of the input stream is 4
+# positions of the attention, and the mask band is `0 <= chunk(i) - chunk(j)
+# <= 1` over chunks of 2 positions (ex07's mask).
+#
+# A pulse of P frames brings 4P positions, i.e. 2P mask chunks, so the input
+# stream never holds a whole number of frames per mask chunk.  Blockify then
+# rewrites over one chunk per pulse (2P mask chunks each): the band widens to
+# whole pulses and the mask head feeds each position's mask-chunk index
+# within its pulse, keeping the predicate exact.
+
+graph network(x) -> (output)
+{
+    x      = tract_core_external(shape = [1, 4, F], datum_type = 'f32');
+    repeat = [[[1.0, 1.0, 1.0, 1.0]], [[1.0, 1.0, 1.0, 1.0]], [[1.0, 1.0, 1.0, 1.0]], [[1.0, 1.0, 1.0, 1.0]]];
+    up     = deconv(x, repeat, padding = [(0, 0)], stride = [4], dilation = [1], groups = 4, border = 'constant');
+    t      = squeeze(transpose(up, axes = [0, 2, 1]), axes = [0]);
+
+    scores = tract_core_einsum([t, t], expr = "id,jd->ij", acc = "f32");
+
+    pos      = tract_core_range(0, tract_core_shape_of(t)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+
+    left_ok  = ge(diff, 0);
+    right_ok = le(diff, 1);
+    in_band  = and(left_ok, right_ok);
+
+    attn = tract_transformers_scaled_masked_softmax(scores, in_band, scale = 0.5, post_softmax_mask = false);
+
+    output = tract_core_einsum([attn, t], expr = "ij,jd->id", acc = "f32");
+}

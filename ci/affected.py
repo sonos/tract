@@ -66,12 +66,12 @@ NOT_GLOBAL = [
     "ci/benches.toml",
     "ci/bench-*",
     "ci/cargo-deny-check.sh",
+    "ci/android-ndk.sh",
 ]
 
 SCRIPT_WORKFLOWS = {
     ".github/scripts/ci-feedback.js": ["cli.yml"],
     "ci/cross.sh": ["cli.yml", "cross-platform.yml"],
-    "ci/android-ndk.sh": ["cross-platform.yml"],
 }
 
 BENCH_PATHS = ["ci/benches.toml", "ci/bench-*", ".github/workflows/bench-comment.yml"]
@@ -95,6 +95,10 @@ ARCH_TREES = {
 
 ALL_ARCHES = "all"
 
+# The GPU runtimes' crates. tract-cli links some of them in every build, but a CPU bench
+# never runs their code.
+GPU_CRATES = frozenset(["tract-gpu", "tract-cuda", "tract-metal", "tract-wgpu"])
+
 
 @dataclass(frozen=True)
 class Spec:
@@ -114,6 +118,7 @@ class Leg:
     foreign_inventory: bool = False
     path_only: bool = False
     claims: bool = True
+    exclude: frozenset = frozenset()
 
     @property
     def arch(self):
@@ -165,7 +170,9 @@ def harness_runners():
 def runner_leg(runner):
     if runner in ("ubuntu-24.04",):
         return "x86_64-unknown-linux-gnu", CPU
-    if runner in ("cuda-tests", "bench-i9-11900kb-rtx-4060"):
+    if runner == "cuda-tests":
+        return "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000,wgpu"
+    if runner == "bench-i9-11900kb-rtx-4060":
         return "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"
     if runner in ("macos-latest", "metal-tests", "bench-apple-m1-max"):
         return "aarch64-apple-darwin", f"{CPU},metal"
@@ -185,6 +192,8 @@ def legs():
     cli = "cli.yml"
     leg(cli, "build x86_64-unknown-linux-gnu", "x86_64-unknown-linux-gnu",
         [cli_spec("bench-suite", True)], foreign_inventory=True)
+    leg(cli, "build x86_64-unknown-linux-gnu-wgpu", "x86_64-unknown-linux-gnu",
+        [cli_spec("bench-suite,wgpu", True)], foreign_inventory=True)
     leg(cli, "build aarch64-unknown-linux-gnu-stretch", "aarch64-unknown-linux-gnu",
         [cli_spec(f"{CROSS_CLI},bench-suite,cuda-12000")], paths=STRETCH_PATHS)
     leg(cli, "build-macos", "aarch64-apple-darwin",
@@ -200,13 +209,18 @@ def legs():
             triple, features = runner_leg(runner)
             leg(cli, f"harness/{case}/ci.sh / {runner}", triple, [cli_spec(features)],
                 paths=[f"harness/{case}/**"])
+    # apple-m1-max_metal is the metal runtime of the apple-m1-max box, benched in the same leg.
     for box, triple, features in [
-        ("apple-m1-max", "aarch64-apple-darwin", f"{CPU},metal"),
-        ("i9-11900kb_rtx-4060", "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"),
+        ("apple-m1-max", "aarch64-apple-darwin", CPU),
+        ("apple-m1-max_metal", "aarch64-apple-darwin", f"{CPU},metal"),
+        ("i9-11900kb_rtx-4060", "x86_64-unknown-linux-gnu", CPU),
+        ("i9-11900kb_rtx-4060_cuda", "x86_64-unknown-linux-gnu", f"{CPU},cuda-13000"),
+        ("i9-11900kb_rtx-4060_wgpu", "x86_64-unknown-linux-gnu", f"{CPU},wgpu"),
         ("i9-9900k", "x86_64-unknown-linux-gnu", CPU),
         ("jetson-orin-nx", "aarch64-unknown-linux-gnu", f"{CPU},cuda-12000"),
     ]:
-        leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS)
+        leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS,
+            exclude=frozenset() if features != CPU else GPU_CRATES)
     for device, triple in [
         ("cortex-a55", "aarch64-unknown-linux-gnu"),
         ("cortex-a53", "aarch64-unknown-linux-gnu"),
@@ -215,7 +229,8 @@ def legs():
         ("beaglev-ahead", "riscv64gc-unknown-linux-musl"),
         ("orangepi-rv2", "riscv64gc-unknown-linux-musl"),
     ]:
-        leg(cli, f"bench {device}", triple, [cli_spec(DINGHY_CLI)], paths=BENCH_PATHS)
+        leg(cli, f"bench {device}", triple, [cli_spec(DINGHY_CLI)], paths=BENCH_PATHS,
+            exclude=GPU_CRATES)
 
     crates = "crates.yml"
     host = "x86_64-unknown-linux-gnu"
@@ -268,7 +283,8 @@ def legs():
         ("i686-linux-android", "i686-linux-android"),
         ("x86_64-linux-android", "x86_64-linux-android"),
     ]:
-        leg(cross, f"linux ({platform})", rustc, [Spec("tract-linalg"), Spec("tract-ffi")])
+        leg(cross, f"linux ({platform})", rustc, [Spec("tract-linalg"), Spec("tract-ffi")],
+            paths=["ci/android-ndk.sh"])
     wasm = [Spec("tract-onnx", "getrandom-js"), Spec("tract-tensorflow")]
     leg(cross, "linux (wasm32-unknown-unknown)", "wasm32-unknown-unknown", wasm)
     leg(cross, "linux (wasm32-unknown-emscripten)", "wasm32-unknown-emscripten", wasm)
@@ -373,6 +389,7 @@ def decide(files):
                 try:
                     for spec in leg.specs:
                         crates |= closure(spec, leg.triple, members)
+                    crates -= leg.exclude
                 except subprocess.CalledProcessError as e:
                     print(e.stderr, file=sys.stderr)
                     reason = f"cargo tree failed: {' '.join(e.cmd[2:])}"

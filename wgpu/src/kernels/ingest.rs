@@ -9,7 +9,8 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, pack_u32s,
+    EntryPoint, GRID_LIMIT, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, WORKGROUP, pack_u32s,
+    preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{wgpu_context, with_wgpu_queue};
@@ -299,4 +300,199 @@ pub fn tensor_to_texture(
         q.retain_texture(texture.clone());
         q.dispatch("export", &pipeline, &bg, dyn_off, (width * height) as u64)
     })
+}
+
+pub(crate) fn export_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    width: u32,
+    height: u32,
+    _p: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var dst: texture_storage_2d<rgba8unorm, write>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn export_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.width * params.height;
+    if (i >= n) {{ return; }}
+    let x = i % params.width;
+    let y = i / params.width;
+    let v = clamp(f32(inp[params.off_in + i]), 0.0, 1.0);
+    textureStore(dst, vec2<i32>(i32(x), i32(y)), vec4<f32>(v, v, v, 1.0));
+}}
+"#
+    ));
+    s
+}
+
+pub(crate) fn ingest_wgsl(dt: ShaderDtype) -> String {
+    let _ = dt;
+    format!(
+        r#"
+struct Params {{
+    off_out: u32,
+    width: u32,
+    height: u32,
+    _p: u32,
+    scale: vec4<f32>,
+    offset: vec4<f32>,
+}}
+
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var<storage, read_write> outp: array<f32>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn rgba_to_nchw_f32(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.width * params.height;
+    if (i >= n) {{ return; }}
+    let x = i % params.width;
+    let y = i / params.width;
+    let px = textureLoad(src, vec2<i32>(i32(x), i32(y)), 0) * params.scale + params.offset;
+    let hw = params.width * params.height;
+    let o = params.off_out + i;
+    outp[o] = px.r;
+    outp[o + hw] = px.g;
+    outp[o + 2u * hw] = px.b;
+}}
+"#
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use tract_core::internal::*;
+
+    use crate::test_utils::close;
+    use crate::with_wgpu_queue;
+
+    #[test]
+    fn rgba8_ingest_to_nchw_f32() -> TractResult<()> {
+        with_wgpu_queue(|q| {
+            // 2x2 packed RGBA8. textureLoad of rgba8unorm yields 0..1 floats.
+            let rgba: [u8; 16] = [
+                255, 0, 0, 255, // (0,0) red
+                0, 255, 0, 255, // (1,0) green
+                0, 0, 255, 255, // (0,1) blue
+                255, 255, 255, 255, // (1,1) white
+            ];
+            let gpu = crate::tensor_from_rgba8(2, 2, &rgba)?;
+            q.flush()?;
+            let host = gpu.to_host()?.into_tensor();
+            let expected = Tensor::from_shape(
+                &[1, 3, 2, 2],
+                &[
+                    1.0f32, 0.0, 0.0, 1.0, // R
+                    0.0, 1.0, 0.0, 1.0, // G
+                    0.0, 0.0, 1.0, 1.0, // B
+                ],
+            )?;
+            close(&host, &expected)
+        })
+    }
+
+    #[test]
+    fn rgba8_ingest_applies_normalization() -> TractResult<()> {
+        with_wgpu_queue(|q| {
+            let rgba: [u8; 8] = [255, 0, 51, 255, 0, 255, 204, 255];
+            let normalization =
+                crate::Normalization { mean: [0.5, 0.25, 0.0], std: [0.5, 0.25, 2.0] };
+            let gpu =
+                crate::kernels::ingest::tensor_from_rgba8_normalized(2, 1, &rgba, normalization)?;
+            q.flush()?;
+            let host = gpu.to_host()?.into_tensor();
+            let expected = Tensor::from_shape(&[1, 3, 1, 2], &[1.0f32, -1.0, -1.0, 3.0, 0.1, 0.4])?;
+            close(&host, &expected)?;
+            let bad = crate::Normalization { mean: [0.0; 3], std: [1.0, 0.0, 1.0] };
+            ensure!(
+                crate::kernels::ingest::tensor_from_rgba8_normalized(2, 1, &rgba, bad).is_err()
+            );
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn packed_ingest_rejects_invalid_input() {
+        for (width, height, len) in [(0, 2, 0), (2, 0, 0), (2, 2, 7), (2, 2, 9), (u32::MAX, 2, 0)] {
+            assert!(crate::tensor_from_rgb565(width, height, &vec![0; len]).is_err());
+        }
+        for (width, height, len) in
+            [(0, 2, 0), (3, 2, 9), (2, 3, 9), (2, 2, 5), (2, 2, 7), (65536, 65536, 0)]
+        {
+            assert!(crate::tensor_from_nv12(width, height, &vec![0; len]).is_err());
+        }
+    }
+
+    #[test]
+    fn rgb565_ingest_unaligned_slice_and_partial_word() -> TractResult<()> {
+        let bytes = [99u8, 0x00, 0xf8, 0xe0, 0x07, 0x1f, 0x00];
+        let tensor = crate::tensor_from_rgb565(3, 1, &bytes[1..])?.to_host()?;
+        assert_eq!(tensor.shape(), &[1, 3, 1, 3]);
+        assert_eq!(
+            tensor.try_as_plain_ram()?.as_slice::<f32>()?,
+            &[1., 0., 0., 0., 1., 0., 0., 0., 1.]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn rgb565_ingest_all_bit_patterns() -> TractResult<()> {
+        let bytes: Vec<u8> = (0..=u16::MAX).flat_map(u16::to_le_bytes).collect();
+        let tensor = crate::tensor_from_rgb565(256, 256, &bytes)?.to_host()?;
+        let values = tensor.try_as_plain_ram()?.as_slice::<f32>()?;
+        for pixel in 0..=u16::MAX {
+            let expected = [
+                f32::from(pixel >> 11) / 31.,
+                f32::from((pixel >> 5) & 63) / 63.,
+                f32::from(pixel & 31) / 31.,
+            ];
+            for c in 0..3 {
+                assert!((values[c * 65536 + usize::from(pixel)] - expected[c]).abs() < 1e-6);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn nv12_ingest_neutral_and_colored_blocks() -> TractResult<()> {
+        let bytes = [0u8, 255, 128, 64, 32, 200, 40, 230, 128, 128, 90, 240];
+        let tensor = crate::tensor_from_nv12(4, 2, &bytes)?.to_host()?;
+        let actual = tensor.try_as_plain_ram()?.as_slice::<f32>()?;
+        assert_eq!(tensor.shape(), &[1, 3, 2, 4]);
+        let (kr, kb) = (0.299f64, 0.114f64);
+        for i in 0..8 {
+            let uv = 8 + ((i % 4) / 2) * 2;
+            let y = f64::from(bytes[i]);
+            let cb = f64::from(bytes[uv]) - 128.;
+            let cr = f64::from(bytes[uv + 1]) - 128.;
+            let r = y + 2. * (1. - kr) * cr;
+            let b = y + 2. * (1. - kb) * cb;
+            let g = (y - kr * r - kb * b) / (1. - kr - kb);
+            for (c, value) in [r, g, b].into_iter().enumerate() {
+                assert!((actual[c * 8 + i] - (value / 255.).clamp(0., 1.) as f32).abs() < 1e-6);
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn ingested_tensor_survives_to_device_without_a_copy() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensorExt;
+        let input = crate::tensor_from_rgb565(1, 1, &[0, 0xf8])?;
+        let ptr = input.device_buffer_ptr();
+        let sync = tract_gpu::sync::DeviceSync::new(tract_gpu::sync::DeviceSyncKind::ToDevice);
+        let outputs = sync.eval_out_of_plan(tvec![input.into_tensor().into_tvalue()])?.unwrap();
+        assert_eq!(outputs[0].to_device_tensor()?.device_buffer_ptr(), ptr);
+        Ok(())
+    }
 }

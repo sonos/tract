@@ -11,9 +11,47 @@
 //! reason about than the chain it replaces.
 
 use tract_nnef::internal::*;
+use tract_nnef::ser::tdim;
 use tract_nnef::tract_core::ops::array::{Pad, PadMode, Slice};
 use tract_nnef::tract_core::ops::change_axes::{AxisChangeConsequence, AxisOp, InOut};
 use tract_nnef::tract_core::rule_if;
+
+pub fn register(registry: &mut Registry) {
+    registry.register_dumper(ser_diag_gather);
+    registry.register_primitive(
+        "tract_transformers_diag_gather",
+        &[
+            TypeName::Scalar.tensor().named("input"),
+            TypeName::Integer.named("offset"),
+            TypeName::Integer.named("out_len"),
+        ],
+        &[("output", TypeName::Scalar.tensor())],
+        de_diag_gather,
+    );
+}
+
+fn de_diag_gather(
+    builder: &mut ModelBuilder,
+    invocation: &ResolvedInvocation,
+) -> TractResult<Value> {
+    let input = invocation.named_arg_as(builder, "input")?;
+    let offset = invocation.named_arg_as(builder, "offset")?;
+    let out_len = invocation.named_arg_as(builder, "out_len")?;
+    builder.wire(DiagGather { offset, out_len }, &[input])
+}
+
+fn ser_diag_gather(
+    ast: &mut IntoAst,
+    node: &TypedNode,
+    op: &DiagGather,
+) -> TractResult<Option<Arc<RValue>>> {
+    let input = ast.mapping[&node.inputs[0]].clone();
+    Ok(Some(invocation(
+        "tract_transformers_diag_gather",
+        &[input],
+        &[("offset", tdim(&op.offset)), ("out_len", tdim(&op.out_len))],
+    )))
+}
 
 /// Diagonal gather: `output[…, i, k] = input[…, i, offset + k − i]`
 ///

@@ -25,7 +25,49 @@ impl SessionId {
     pub const NONE: SessionId = SessionId(u64::MAX);
 
     fn next() -> SessionId {
-        SessionId(NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        let id = SessionId(NEXT_SESSION_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed));
+        LIVE_SESSIONS.lock().unwrap().insert(id);
+        id
+    }
+
+    fn end(self) {
+        LIVE_SESSIONS.lock().unwrap().remove(&self);
+        ENDED_SESSIONS.fetch_add(1, std::sync::atomic::Ordering::Release);
+    }
+}
+
+static LIVE_SESSIONS: std::sync::Mutex<std::collections::BTreeSet<SessionId>> =
+    std::sync::Mutex::new(std::collections::BTreeSet::new());
+static ENDED_SESSIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Lets a thread-local cache keyed on [`SessionId`] drop the entries of
+/// sessions that ended on another thread. [`EvalOp::drop_session`] runs on the
+/// thread dropping the state, so it only reaches that thread's cache; a cache
+/// calls [`SessionReaper::reap`] when it is next used to catch up with the rest.
+pub struct SessionReaper {
+    seen: u64,
+}
+
+impl SessionReaper {
+    pub const fn new() -> SessionReaper {
+        SessionReaper { seen: 0 }
+    }
+
+    /// Calls `retain` with a predicate telling live sessions from ended ones,
+    /// if any session ended since the last call. Otherwise costs one atomic load.
+    pub fn reap(&mut self, retain: impl FnOnce(&dyn Fn(SessionId) -> bool)) {
+        let ended = ENDED_SESSIONS.load(std::sync::atomic::Ordering::Acquire);
+        if ended != self.seen {
+            self.seen = ended;
+            let live = LIVE_SESSIONS.lock().unwrap();
+            retain(&|session| live.contains(&session));
+        }
+    }
+}
+
+impl Default for SessionReaper {
+    fn default() -> SessionReaper {
+        SessionReaper::new()
     }
 }
 
@@ -504,6 +546,7 @@ where
         for (ix, node) in self.plan.model.nodes.iter().enumerate() {
             node.op().drop_session(self.session, ix);
         }
+        self.session.end();
     }
 }
 

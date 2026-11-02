@@ -2,7 +2,8 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
-    EntryPoint, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, keys_for, pack_u32s,
+    EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype, WORKGROUP,
+    keys_for, pack_u32s, preamble,
 };
 use crate::utils::{element_offset, get_wgpu_buffer};
 use crate::{register_wgpu_op, with_wgpu_queue};
@@ -68,3 +69,50 @@ register_wgpu_op!(tract_core::ops::nn::Softmax, |source, node, op| {
         wgpu_softmax_dispatch,
     )?)))
 });
+
+pub(crate) fn softmax_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_in: u32,
+    off_out: u32,
+    outer: u32,
+    k: u32,
+    inner: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<{t}>;
+@group(0) @binding(1) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding(2) var<uniform> params: Params;
+
+@compute @workgroup_size({WORKGROUP})
+fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    let n = params.outer * params.inner;
+    if (i >= n) {{ return; }}
+    let o = i / params.inner;
+    let r = i % params.inner;
+    var m = f32(inp[params.off_in + (o * params.k) * params.inner + r]);
+    for (var k = 1u; k < params.k; k++) {{
+        m = max(m, f32(inp[params.off_in + (o * params.k + k) * params.inner + r]));
+    }}
+    var sum = 0.0;
+    for (var k = 0u; k < params.k; k++) {{
+        sum += exp(f32(inp[params.off_in + (o * params.k + k) * params.inner + r]) - m);
+    }}
+    let inv = 1.0 / sum;
+    for (var k = 0u; k < params.k; k++) {{
+        let x = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
+        outp[params.off_out + (o * params.k + k) * params.inner + r] = {t}(exp(x - m) * inv);
+    }}
+}}
+"#
+    ));
+    s
+}

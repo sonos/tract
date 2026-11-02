@@ -1,0 +1,40 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol T;
+extension tract_assert T>=0;
+
+# Two chained banded causal SDPA blocks reading one mask (ex07's band,
+# `0 <= chunk(i) - chunk(j) <= 1`), the second block's scores taken straight
+# from the first block's output.
+#
+# Blockify must rewrite both blocks.  The shared mask must not join them
+# into one section: the second block's initiator would then tap the first
+# block's output from before the rewrite, leaving the first block quadratic,
+# which pulsification computes block-local and so without its past chunk.
+
+graph network(q, k1, v1, k2, v2) -> (output)
+{
+    q  = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k1 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v1 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    k2 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+    v2 = tract_core_external(shape = [T, 4], datum_type = 'f32');
+
+    pos      = tract_core_range(0, tract_core_shape_of(q)[0], step = 1);
+    chunk_id = pos / 2;
+
+    chunk_row = unsqueeze(chunk_id, axes = [1]);
+    chunk_col = unsqueeze(chunk_id, axes = [0]);
+    diff      = chunk_row - chunk_col;
+    in_band   = and(ge(diff, 0), le(diff, 1));
+
+    scores1 = tract_core_einsum([q, k1], expr = "id,jd->ij", acc = "f32");
+    attn1   = tract_transformers_scaled_masked_softmax(scores1, in_band, scale = 0.5, post_softmax_mask = false);
+    block1  = tract_core_einsum([attn1, v1], expr = "ij,jd->id", acc = "f32");
+
+    scores2 = tract_core_einsum([block1, k2], expr = "id,jd->ij", acc = "f32");
+    attn2   = tract_transformers_scaled_masked_softmax(scores2, in_band, scale = 0.5, post_softmax_mask = false);
+    output  = tract_core_einsum([attn2, v2], expr = "ij,jd->id", acc = "f32");
+}

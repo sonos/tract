@@ -309,14 +309,25 @@ pub fn handle(
                 "Memory arena is only enabled for MacOS / iOS devices or CUDA devices",
             )?;
         }
-        #[cfg(not(any(
-            target_os = "macos",
-            target_os = "ios",
-            all(any(target_os = "linux", target_os = "windows"), feature = "cuda")
+        #[cfg(not(all(
+            feature = "gpu",
+            any(
+                target_os = "macos",
+                target_os = "ios",
+                all(any(target_os = "linux", target_os = "windows"), feature = "cuda")
+            )
         )))]
         bail!(
             "Memory arena requires CUDA (Linux/Windows with cuda-* feature) or Metal (macOS/iOS)"
         );
+        #[cfg(all(
+            feature = "gpu",
+            any(
+                target_os = "macos",
+                target_os = "ios",
+                all(any(target_os = "linux", target_os = "windows"), feature = "cuda")
+            )
+        ))]
         crate::memory_arena::dump_metrics(
             &params.req_typed_model(),
             &plan_options_from_subcommand(sub_matches)?,

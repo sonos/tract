@@ -5,9 +5,10 @@ use tract_gpu::ops::change_axes::GpuAxisOp;
 use tract_gpu::ops::element_wise::GpuElementWise;
 use tract_gpu::rule_ensure;
 
+use crate::kernels::element_wise::ELEMENT_WISE_OPS;
 use crate::kernels::gemv_pair::{MAX_ACT_OPERANDS, MAX_WIDTH};
 use crate::kernels::matmul::mkn;
-use crate::kernels::shaders::{ChainStep, ELEMENT_WISE_OPS};
+use crate::kernels::shaders::ChainStep;
 use crate::ops::chain::WgpuElementWiseChain;
 use crate::ops::gemv_pair::WgpuGemvPair;
 use crate::ops::matmul::WgpuGemm;

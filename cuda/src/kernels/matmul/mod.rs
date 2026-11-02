@@ -254,6 +254,44 @@ fn dispatch_ggml_matvec(
     Ok(())
 }
 
+/// f32 GEMM for 9 to 16 activation rows, where cuBLAS's skinny kernels leave most of the
+/// memory bandwidth unused: each block reads two weight rows against all activation rows.
+fn dispatch_ggml_skinny_f32(
+    stream: &TractCudaStream,
+    weights: &DeviceTensor,
+    activs: &DeviceTensor,
+    output: &DeviceTensor,
+    params: GemmParams,
+) -> TractResult<()> {
+    ensure!(params.act_batch.is_multiple_of(params.w_batch) && params.k.is_multiple_of(2));
+    let rows_per_block = 2;
+    let w_view = get_cuda_view(weights);
+    let act_view = get_cuda_view(activs);
+    let output_view = get_cuda_view(output);
+    let kernel_name = format!("ggml_skinny_f32_ncols_{}_rows_{rows_per_block}", params.m);
+    let func = cuda_context().load_pipeline(LibraryName::Ggml, kernel_name)?;
+    let mut launch_args = TractLaunchArgs::new(stream, &func);
+    launch_args.push_view(&w_view);
+    launch_args.push_view(&act_view);
+    launch_args.push_view(&output_view);
+    launch_args.push_i32(params.k / 2);
+    launch_args.push_i32(params.n);
+    launch_args.push_i32(params.w_strides[1]);
+    launch_args.push_i32(params.act_strides[1] / 2);
+    launch_args.push_i32(params.out_strides[1]);
+    launch_args.push_i32(params.act_batch / params.w_batch);
+    launch_args.push_i32(params.w_strides[0]);
+    launch_args.push_i32(params.act_strides[0]);
+    launch_args.push_i32(params.out_strides[0]);
+    let cfg = LaunchConfig {
+        grid_dim: (params.n.div_ceil(rows_per_block) as _, params.act_batch as _, 1),
+        block_dim: (128, 1, 1),
+        shared_mem_bytes: 0,
+    };
+    launch_args.launch(cfg)?;
+    Ok(())
+}
+
 fn dispatch_cublas_gemm<F: Datum + Float>(
     stream: &TractCudaStream,
     weights: &DeviceTensor,
@@ -724,6 +762,12 @@ impl GgmlGemm {
             }
         } else if (params.k % 2 == 0) && params.m <= 8 {
             dispatch_ggml_matvec(stream, weights, activs, out, params, None)?;
+        } else if activs.datum_type() == DatumType::F32
+            && params.k.is_multiple_of(2)
+            && params.m <= 16
+            && params.act_batch.is_multiple_of(params.w_batch)
+        {
+            dispatch_ggml_skinny_f32(stream, weights, activs, out, params)?;
         } else if activs.datum_type() == DatumType::F32 {
             dispatch_cublas_gemm::<f32>(stream, weights, activs, out, params)?;
         } else {
@@ -1002,6 +1046,10 @@ mod tests {
         run_mmm_test_case((2, 2, 15, 1, 2), false, true, F32, F32)?;
         run_mmm_test_case((2, 1, 10, 32, 2), false, true, F32, F32)?;
         run_mmm_test_case((1, 2, 12, 1, 2), false, true, F32, F32)?;
+        run_mmm_test_case((1, 1, 13, 1024, 77), false, true, F32, F32)?;
+        run_mmm_test_case((3, 1, 16, 130, 5), false, true, F32, F32)?;
+        run_mmm_test_case((2, 2, 9, 4096, 3), false, true, F32, F32)?;
+        run_mmm_test_case((1, 2, 14, 64, 33), false, true, F32, F32)?;
 
         // f16_f16
         run_mmm_test_case((1, 1, 12, 7, 2), false, true, F16, F16)?;
