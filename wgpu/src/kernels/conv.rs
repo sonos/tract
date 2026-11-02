@@ -18,11 +18,13 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
 
 /// Whether the implicit-GEMM kernel should serve this convolution: per group,
 /// enough output channels, pixels and reduction to fill a good part of its
-/// tiles, with every tile index inside one grid dimension. The number of tiles
-/// does not matter: a few tiles staging a long reduction through workgroup
-/// memory still beat one thread per output reading it from global memory.
+/// tiles, with every tile index inside one grid dimension. Sixteen output
+/// channels are enough once the map and the reduction are large. The number of
+/// tiles does not matter: a few tiles staging a long reduction through
+/// workgroup memory still beat one thread per output reading it from global
+/// memory.
 fn tiled_applies(groups: usize, co_pg: usize, pixels: usize, k: usize) -> bool {
-    co_pg >= 32
+    (co_pg >= 32 || (co_pg >= 16 && pixels >= 14400 && k >= 256))
         && pixels >= 32
         && k >= 16
         && groups <= 65535
@@ -1227,13 +1229,14 @@ mod tests {
 
     /// Convolutions the implicit-GEMM kernel takes: strides, dilation, groups, a
     /// batch, channels-last, an uneven kernel and padding, f16, a bias, whole
-    /// tiles, and a long reduction over a small map that fills only a few tiles.
+    /// tiles, a long reduction over a small map that fills only a few tiles, and
+    /// 16 to 31 output channels over a large map.
     #[test]
     fn conv_tiled_matches_cpu() -> TractResult<()> {
         use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
         use tract_core::ops::nn::DataFormat;
         #[rustfmt::skip]
-        let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 13] = [
+        let cases: [(DataFormat, usize, usize, usize, [usize; 2], [usize; 2], [usize; 2], [usize; 2], usize, bool); 16] = [
             // fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16
             (DataFormat::NCHW, 1, 8, 40, [46, 46], [3, 3], [1, 1], [1, 1], 1, false),
             (DataFormat::NCHW, 1, 8, 40, [90, 90], [3, 3], [2, 2], [1, 1], 1, false),
@@ -1248,6 +1251,9 @@ mod tests {
             (DataFormat::NCHW, 1, 64, 40, [7, 12], [5, 5], [1, 1], [1, 1], 2, false),
             (DataFormat::NCHW, 1, 8, 96, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
             (DataFormat::NHWC, 1, 8, 36, [20, 20], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 35, 16, [120, 121], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 40, 20, [120, 121], [3, 3], [1, 1], [1, 1], 1, false),
+            (DataFormat::NCHW, 1, 29, 24, [121, 121], [3, 3], [1, 1], [1, 1], 1, false),
         ];
         for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, pad, f16_)) in
             cases.into_iter().enumerate()
