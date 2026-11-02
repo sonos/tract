@@ -112,7 +112,7 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       # beta/nightly change too often to cache usefully and just evict the stable
       # entries under the 10 GB/repo cap; and only main should save, so PR runs
       # restore without adding transient caches that push main's out.
@@ -245,7 +245,7 @@ jobs:
         ref: ${{ github.event.pull_request.head.sha || github.sha }}
         persist-credentials: false
 
-    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+    - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       if: matrix.rust != 'beta' && matrix.rust != 'nightly'
       with:
         save-if: ${{ github.ref == 'refs/heads/main' }}
