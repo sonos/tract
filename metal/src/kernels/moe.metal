@@ -184,3 +184,26 @@ enum RouteGateMode : uint {
     }
     output[gid] = acc;
 }
+
+// Fused per-route expert bias add: out[route, col] = value[route, col] +
+// bias[expert_ids[route], col]. Replaces a gather of a full [routes, n]
+// bias matrix plus a separate binary add (two passes and a 20+ MB
+// intermediate per MoE matmul at prefill).
+[[kernel]] void routed_bias_add_f32(
+    device const float *value [[buffer(0)]],
+    device const float *bias [[buffer(1)]],
+    device const long *route_expert_ids [[buffer(2)]],
+    device float *out [[buffer(3)]],
+    constant uint &route_count [[buffer(4)]],
+    constant uint &n [[buffer(5)]],
+    uint gid [[thread_position_in_grid]])
+{
+    const uint total = route_count * n;
+    if (gid >= total) {
+        return;
+    }
+    const uint route = gid / n;
+    const uint col = gid - route * n;
+    const uint expert = (uint)route_expert_ids[route];
+    out[gid] = value[gid] + bias[expert * n + col];
+}
