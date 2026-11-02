@@ -8,3 +8,6 @@ pub use gemm::MetalGemm;
 
 pub mod route_topk;
 pub use route_topk::MetalRouteTopK;
+
+pub mod clamped_swiglu;
+pub use clamped_swiglu::MetalClampedSwiGlu;
