@@ -1,0 +1,43 @@
+{
+  "path": "sd15/",
+  "timeout": 2400,
+  "progress": "document.getElementById('status').textContent",
+  "fail": "(document.getElementById('status').textContent.startsWith('Error') || document.getElementById('go').textContent === 'Unsupported') && document.getElementById('status').textContent",
+  "reference": {
+    "about": "16x16 block means of (r+g+b)/3 of the Fox example at 8 steps, rendered by sd15-native",
+    "max_mean_abs_diff": 3,
+    "luma": [
+        152, 83, 109, 57, 50, 45, 95, 224, 243, 238, 219, 43, 52, 211, 233, 172,
+        100, 67, 75, 55, 54, 50, 89, 211, 212, 173, 178, 50, 27, 102, 226, 241,
+        85, 70, 72, 58, 62, 62, 66, 137, 181, 193, 127, 30, 34, 82, 185, 198,
+        88, 74, 76, 63, 75, 61, 57, 103, 217, 247, 195, 36, 56, 127, 151, 181,
+        92, 69, 78, 75, 99, 67, 93, 111, 227, 205, 141, 36, 35, 82, 106, 203,
+        85, 76, 81, 74, 134, 68, 135, 78, 113, 101, 80, 33, 34, 63, 85, 115,
+        77, 63, 83, 76, 106, 95, 94, 98, 86, 76, 68, 69, 85, 70, 75, 99,
+        75, 60, 88, 101, 163, 138, 173, 109, 36, 53, 35, 53, 49, 66, 87, 80,
+        70, 58, 73, 80, 202, 174, 196, 104, 45, 56, 35, 58, 44, 55, 51, 87,
+        66, 55, 75, 127, 205, 205, 159, 108, 42, 42, 31, 58, 65, 77, 36, 46,
+        94, 87, 93, 72, 90, 100, 96, 86, 34, 55, 63, 76, 96, 43, 33, 65,
+        104, 80, 86, 94, 57, 59, 118, 21, 19, 77, 92, 93, 92, 121, 188, 185,
+        133, 136, 156, 127, 204, 82, 140, 42, 76, 157, 113, 142, 192, 180, 210, 243,
+        222, 214, 245, 200, 186, 45, 74, 117, 204, 198, 164, 98, 121, 127, 161, 178,
+        214, 194, 141, 109, 141, 141, 123, 197, 226, 221, 186, 202, 224, 121, 210, 177,
+        71, 99, 81, 122, 96, 140, 87, 115, 139, 155, 250, 244, 207, 233, 221, 87
+      ]
+  },
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent === 'Ready.'"
+    },
+    {
+      "run": "[...document.querySelectorAll('#examples button')].find((b) => b.textContent === 'Fox').click(), document.getElementById('steps').value = 8, document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Done')"
+    },
+    {
+      "name": "image matches the native rendering",
+      "check": "(() => { const c = document.getElementById('out'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; const n = 16, bw = c.width / n, bh = c.height / n, ref = SPEC.reference; let diff = 0; for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) { let s = 0; for (let y = by * bh; y < (by + 1) * bh; y++) for (let x = bx * bw; x < (bx + 1) * bw; x++) { const i = (y * c.width + x) * 4; s += d[i] + d[i + 1] + d[i + 2]; } diff += Math.abs(s / (3 * bw * bh) - ref.luma[by * n + bx]); } diff /= n * n; return { fail: diff > ref.max_mean_abs_diff && 'the image differs from the reference', info: `mean abs diff ${diff.toFixed(2)} / ${ref.max_mean_abs_diff}` }; })()"
+    }
+  ]
+}

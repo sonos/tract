@@ -1,0 +1,39 @@
+name: Web demos live
+
+# Runs the web demos' e2e specs against the deployed site: every night, and by hand after a
+# deploy, with the commit the deploy was built from.
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: "Commit every deployed demo's build.json must name. Leave empty to skip."
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  live:
+    name: demo.tract.rs in Chrome (M1)
+    runs-on: browser-apple-m1
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: run the demos
+      timeout-minutes: 60
+      env:
+        E2E_COMMIT: ${{ inputs.commit }}
+      run: ci/web-e2e/run.sh live https://demo.tract.rs/ web-e2e-out
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ !cancelled() }}
+      with:
+        name: web-demos-live
+        path: web-e2e-out
+        retention-days: 14
