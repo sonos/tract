@@ -118,3 +118,42 @@ pub fn dispatch_route_topk_f32(
     stream.retain_tensor(&scores);
     Ok(())
 }
+
+pub fn dispatch_clamped_swiglu_f32(
+    stream: &MetalStream,
+    gate: &DeviceTensor,
+    up: &DeviceTensor,
+    alpha: f32,
+    limit: f32,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    stream.retain_tensor(gate);
+    stream.retain_tensor(up);
+    stream.retain_tensor(output);
+
+    ensure!(gate.datum_type() == f32::datum_type());
+    ensure!(up.datum_type() == f32::datum_type());
+    ensure!(output.datum_type() == f32::datum_type());
+    ensure!(gate.shape() == up.shape());
+    ensure!(gate.shape() == output.shape());
+
+    let len = gate.len() as u32;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "clamped_swiglu_f32")?;
+    let group_width = pipeline.max_total_threads_per_threadgroup().min(256).min(len as u64).max(1);
+    let grid_width = (len as u64).div_ceil(group_width);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, gate, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, up, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &[alpha]);
+        encoder.set_slice(4, &[limit]);
+        encoder.set_slice(5, &[len]);
+
+        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
+}
