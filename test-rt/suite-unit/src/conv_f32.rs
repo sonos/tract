@@ -509,6 +509,43 @@ pub fn suite() -> TractResult<TestSuite> {
         );
     }
 
+    for (name, n, ci, co, h, w, pad, edge) in [
+        ("direct_3x3_co8_row_tail", 1, 5, 16, 9, 16, PaddingSpec::SameUpper, None),
+        ("direct_3x3_co_tail_batch2", 2, 3, 7, 8, 20, PaddingSpec::SameUpper, None),
+        ("direct_3x3_multi_workgroup", 1, 12, 24, 21, 64, PaddingSpec::SameUpper, None),
+        (
+            "direct_3x3_wider_output",
+            1,
+            4,
+            8,
+            8,
+            16,
+            PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 5)),
+            None,
+        ),
+        ("direct_3x3_inf_top_row", 1, 3, 8, 9, 16, PaddingSpec::SameUpper, Some(0)),
+        ("direct_3x3_inf_bottom_row", 1, 3, 8, 9, 16, PaddingSpec::SameUpper, Some(8)),
+    ] {
+        let mut data = ramp(&[n, ci, h, w]);
+        if let Some(row) = edge {
+            data[[0, ci / 2, row, w / 2 + 1]] = f32::INFINITY;
+        }
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::NCHW.from_n_c_hw(n, ci, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: 1,
+                data,
+                kernel: ramp(&[co, ci, 3, 3]),
+                bias: Some(ramp(&[co])),
+                pad,
+                strides: tvec!(1, 1),
+                dilations: tvec!(1, 1),
+            },
+        );
+    }
+
     for (name, n, c, h, w, ker, pad, strides) in [
         ("depthwise_nhwc_mobilenet_3x3", 1, 32, 14, 14, [3, 3], PaddingSpec::SameUpper, [1, 1]),
         ("depthwise_nhwc_mobilenet_3x3_s2", 1, 96, 28, 28, [3, 3], PaddingSpec::SameUpper, [2, 2]),
