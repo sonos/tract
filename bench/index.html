@@ -180,7 +180,10 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   }
   const short = n => { const p = n.split('.'); return (p[0] === 'net' || p[0] === 'llm') ? p[1] + ' · ' + p.slice(3).join('.') : p.slice(1).join('.'); };
   const deviceOf = f => f.split('/').pop();
-  const isGpu = n => /\.(cuda|metal|wgpu)$/.test(n);
+  // GPU series end in the backend, alone (".cuda") or after a variant (".pass_wgpu").
+  const backendOf = n => (n.split('.').pop().match(/(?:^|_)(cuda|metal|wgpu)$/) || [])[1];
+  const isGpu = n => !!backendOf(n);
+  const gpuVariantOf = n => n.split('.').slice(3).join('.').replace(/_?(cuda|metal|wgpu)$/, '');
   const byDevice = (a, b) => deviceOf(a).localeCompare(deviceOf(b), 'en', { numeric: true });
   const inPart = (n, part) => !part || (part === 'gpu') === isGpu(n);
   const partsOf = f => Object.keys(files[f].series).some(isGpu) ? ['cpu', 'gpu'] : [null];
@@ -506,18 +509,22 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
     $('mNote').textContent = `${readingLabel(r)} of ${state.model}, one line per device, log scale. ${higherIsBetter(r) ? 'Higher' : 'Lower'} is better. Δ compares the median of the last 7 points in the window with the median of its first 7.`;
     const roster = new Map();
     for (const f of ok.slice().sort(byDevice)) {
-      const backs = [...new Set(Object.keys(files[f].series).filter(isGpu).map(n => n.split('.').pop()))].sort();
+      const backs = [...new Set(Object.keys(files[f].series).filter(isGpu).map(backendOf))].sort();
       for (const key of [`${f}|`, ...backs.map(b => `${f}|${b}`)]) {
         const c = catOf(f, !key.endsWith('|')).id; if (!roster.has(c)) roster.set(c, []); roster.get(c).push(key);
       }
     }
+    // A GPU backend with per-variant series follows the CPU variant picker when it has that variant.
+    const gpuHit = new Set(inR.filter(([, n]) => isGpu(n) && gpuVariantOf(n) === state.mVariant).map(([f, n]) => `${f}|${backendOf(n)}`));
     const lines = [];
     for (const [f, n] of inR) {
       const gpu = isGpu(n); if (!gpu && variantOf(n) !== state.mVariant) continue;
+      const key = `${f}|${gpu ? backendOf(n) : ''}`, gv = gpu ? gpuVariantOf(n) : '';
+      if (gv && gv !== state.mVariant && gpuHit.has(key)) continue;
       const pts = clip(f, n, files[f].series[n], wd, last); if (pts.length < 2) continue;
-      const cat = catOf(f, gpu), key = `${f}|${gpu ? n.split('.').pop() : ''}`;
+      const cat = catOf(f, gpu);
       const slot = Math.min(5, (roster.get(cat.id) || [key]).indexOf(key)) + 1;
-      lines.push({ f, n, cat, pts, color: css('--s' + slot), label: deviceOf(f) + (gpu ? ' · ' + n.split('.').pop() : ''), s: summarize(pts) });
+      lines.push({ f, n, cat, pts, color: css('--s' + slot), label: deviceOf(f) + (gpu ? ' · ' + backendOf(n) + (gv && gv !== state.mVariant ? ' ' + gv : '') : ''), s: summarize(pts) });
     }
     const host = $('mSections'); host.textContent = '';
     if (!lines.length) host.textContent = 'No device has points for this series in this window.';
@@ -555,7 +562,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
         for (const [n, all] of Object.entries(d.series)) {
           if (!inReading(n, r) || !inPart(n, part)) continue;
           const pts = clip(f, n, all, wd, last), s = summarize(pts); if (!s) continue;
-          nSeries++; if (part === 'gpu') backends.add(n.split('.').pop());
+          nSeries++; if (part === 'gpu') backends.add(backendOf(n));
           for (const [day, v, c] of pts) { const a = acc.get(day) || [0, 0, c]; a[0] += Math.log(v / s.base); a[1]++; acc.set(day, a); }
           const caveat = CAVEATS.some(c => c.file.test(f) && c.metric.test(n));
           if (!caveat && !(/^time_to/.test(readingOf(n)) && s.base < MIN_LOAD_SECONDS) && Math.abs(s.delta) >= 5 && Math.abs(s.delta) >= 3 * s.noise) movers.push({ f, n, d: s.delta, w: worse(r, s.delta), cat: catOf(f, isGpu(n)).id });
