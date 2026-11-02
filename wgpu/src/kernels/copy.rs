@@ -41,6 +41,26 @@ pub fn wgpu_copy_nd_dispatch(
         "A copy of {output_shape:?} merges to rank {}, past the {PARAM_AXES} axes the shader takes",
         geo.shape.len()
     );
+    let mut geo = geo;
+    for axis in (0..geo.shape.len()).rev() {
+        if geo.shape[axis] == 1 {
+            geo.shape.remove(axis);
+            geo.input_strides.remove(axis);
+            geo.output_strides.remove(axis);
+        }
+    }
+    let mut axis = geo.shape.len().saturating_sub(1);
+    while axis > 0 {
+        axis -= 1;
+        let extent = geo.shape[axis + 1] as isize;
+        if geo.input_strides[axis] == geo.input_strides[axis + 1] * extent
+            && geo.output_strides[axis] == geo.output_strides[axis + 1] * extent
+        {
+            geo.shape[axis] *= geo.shape.remove(axis + 1);
+            geo.input_strides.remove(axis);
+            geo.output_strides.remove(axis);
+        }
+    }
     let (output_shape, input_strides, output_strides) =
         (&geo.shape[..], &geo.input_strides[..], &geo.output_strides[..]);
     with_wgpu_queue(|q| {
@@ -142,6 +162,10 @@ struct Params {{
 fn copy_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
     if (i >= params.len) {{ return; }}
+    if (params.rank == 1u) {{
+        outp[params.off_out + i * params.out_s0.x] = inp[params.off_in + i * params.in_s0.x];
+        return;
+    }}
     var rest = i;
     var in_i = params.off_in;
     var out_i = params.off_out;
@@ -308,6 +332,47 @@ mod tests {
             wgpu_copy_nd_dispatch(&src, 0, src.strides(), &dst, 0, &shape, dst.strides())?;
             q.flush()?;
             close(&dst.to_host()?.into_tensor(), &t)
+        })
+    }
+    #[test]
+    fn copy_nd_offsets_strides_and_singletons() -> TractResult<()> {
+        with_wgpu_queue(|q| {
+            type CopyCase = (usize, &'static [usize], &'static [isize], &'static [isize]);
+            let cases: &[CopyCase] = &[
+                (3, &[1, 2, 1, 7], &[999, 7, 777, 1], &[9999, 11, 888, 1]),
+                (3, &[1, 1, 1], &[999, 777, 1], &[9999, 888, 1]),
+                (3, &[1, 3, 7], &[999, 0, 1], &[9999, 7, 1]),
+                (3, &[1, 3, 7], &[999, 7, 1], &[9999, 7, 1]),
+            ];
+            for &(offset, shape, input_strides, output_strides) in cases {
+                let values: Vec<f32> = (0..80).map(|i| i as f32).collect();
+                let src = Tensor::from_shape(&[80], &values)?.into_device()?;
+                let mut expected = vec![-999f32; 160];
+                let dst = Tensor::from_shape(&[160], &expected)?.into_device()?;
+                for i in 0..shape.iter().product::<usize>() {
+                    let mut rest = i;
+                    let (mut src_at, mut dst_at) = (offset as isize, 5isize);
+                    for axis in (0..shape.len()).rev() {
+                        let coordinate = (rest % shape[axis]) as isize;
+                        rest /= shape[axis];
+                        src_at += coordinate * input_strides[axis];
+                        dst_at += coordinate * output_strides[axis];
+                    }
+                    expected[dst_at as usize] = values[src_at as usize];
+                }
+                wgpu_copy_nd_dispatch(
+                    &src,
+                    offset * 4,
+                    input_strides,
+                    &dst,
+                    5 * 4,
+                    shape,
+                    output_strides,
+                )?;
+                q.flush()?;
+                assert_eq!(dst.to_host()?.into_tensor(), Tensor::from_shape(&[160], &expected)?);
+            }
+            Ok(())
         })
     }
 }
