@@ -22,6 +22,12 @@ updates:
       rust-dependencies:
         patterns:
           - "*"
+    ignore:
+      # The workspace range allows 0.13 so downstream can dedup, but 0.13 needs
+      # rustc 1.95 (MSRV is 1.91) and wgpu 30 still pins 0.12. Lift this when
+      # MSRV >= 1.95 and wgpu has moved.
+      - dependency-name: "parking_lot"
+        versions: [">=0.13"]
     cooldown:
       default-days: 7
 
