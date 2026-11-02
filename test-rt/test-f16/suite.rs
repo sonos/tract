@@ -41,6 +41,7 @@ fn mk_suite() -> infra::TestSuite {
     infra::TestSuite::default().with("onnx", onnx).with("unit", unit)
 }
 
+/// Routing scores require f32 ordering and the routing ops have no NNEF serializers.
 fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     #[allow(clippy::collapsible_if)]
     if let Some(qcp) = case.downcast_ref::<QConvProblem>() {
@@ -61,7 +62,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     if section == "conv_f32" && unit.starts_with("long_reduction_") {
         return true;
     }
-    ["q_flavours"].contains(&&**section)
+    ["q_flavours", "route_topk"].contains(&&**section)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {

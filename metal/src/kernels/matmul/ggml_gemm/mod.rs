@@ -253,8 +253,15 @@ fn mv_kernel_name_and_dispatch_params(
         // Activation/output dtype is carried at runtime by GgmlGemvParams::out_f16.
         Ok((format!("kernel_mul_mv_{}", quant.tname()), (8, 8, 1)))
     } else if params.dts[1] == F32 {
-        ensure!(params.dts[0] == F32);
-        Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
+        if params.dts[0] == F16 {
+            // f32 weights, f16 activations, full-precision f32 output (the
+            // MoE router score path; bit-identical to upcasting first).
+            ensure!(params.dts[2] == F32);
+            Ok(("kernel_mul_mv_f32_f16_of32".to_string(), (32, 1, 4)))
+        } else {
+            ensure!(params.dts[0] == F32);
+            Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
+        }
     } else if params.dts[1] == F16 {
         if params.dts[0] == F32 {
             if (params.m * params.a_batch) < 4 {
@@ -376,6 +383,50 @@ fn dispatch_metal_ggml_gemm(
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
 
+    Ok(())
+}
+
+/// Computes router scores with f32 products and accumulation for every token count.
+/// Inputs are dense rank-2 f16/f32 activations and f32 weights; output is f32.
+pub(crate) fn dispatch_router_scores(
+    stream: &MetalStream,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    ensure!(input.rank() == 2 && weights.rank() == 2 && output.rank() == 2);
+    ensure!(matches!(input.datum_type(), F16 | F32));
+    ensure!(weights.datum_type() == F32 && output.datum_type() == F32);
+    ensure!(input.shape()[1] == weights.shape()[1]);
+    ensure!(output.shape() == [input.shape()[0], weights.shape()[0]]);
+    if output.len() == 0 {
+        return Ok(());
+    }
+    let _retained = stream.retain_for_dispatch(&[input, weights, output]);
+    let dispatches = GemmDispatchParams::compute_dispatches_params::<GgmlGemm>(
+        [input.datum_type(), weights.datum_type(), output.datum_type()],
+        input.buffer_offset(),
+        input.shape(),
+        false,
+        weights.buffer_offset(),
+        weights.shape(),
+        true,
+        None,
+        output.buffer_offset(),
+        output.shape(),
+    )?;
+    for params in dispatches {
+        dispatch_metal_ggml_gemv(
+            stream,
+            params.clone(),
+            params.a_offset,
+            get_metal_buffer(input),
+            params.b_offset,
+            get_metal_buffer(weights),
+            get_metal_buffer(output),
+            params.c_offset,
+        )?;
+    }
     Ok(())
 }
 

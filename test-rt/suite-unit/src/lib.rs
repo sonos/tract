@@ -38,6 +38,7 @@ pub mod q_helpers;
 pub mod reduce_arg;
 pub mod rms_norm;
 pub mod rotate_half;
+pub mod route_topk;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
 pub mod silu;
@@ -46,6 +47,7 @@ pub mod sum_pool;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
+    suite.add("route_topk", route_topk::suite()?);
     suite.add("bin_einsum", bin_einsum::suite()?);
     suite.add("clamped_swiglu", clamped_swiglu::suite()?);
     suite.add("conv_f16", conv_f16::suite()?);
