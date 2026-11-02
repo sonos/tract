@@ -1,0 +1,32 @@
+{
+  "path": "nemotron/",
+  "timeout": 900,
+  "media": {
+    "speech": {
+      "url": "https://dldata-public.s3.us-east-2.amazonaws.com/2086-149220-0033.wav",
+      "sha256": "5fceacff0315d49cb59fcc505bcecf1ed5f2f35c2897b1e65a59f30e5d922150"
+    }
+  },
+  "expected": "well I don't wish to see it any more, observed Phoebe, turning away her eyes. It is certainly very like the old portrait",
+  "progress": "document.getElementById('status').textContent",
+  "fail": "document.getElementById('status').classList.contains('warn') && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "!document.getElementById('file-button').disabled"
+    },
+    {
+      "run": "document.getElementById('lang').value = '0'"
+    },
+    {
+      "file": "#file",
+      "media": "speech"
+    },
+    {
+      "wait": "document.getElementById('status').textContent === 'Done.'"
+    },
+    {
+      "name": "transcribes the LibriSpeech clip in English",
+      "check": "(() => { const words = (t) => t.toLowerCase().replace(/[^a-z' ]+/g, ' ').split(/\\s+/).filter(Boolean); const out = document.getElementById('transcript').cloneNode(true); out.querySelectorAll('.tag').forEach((t) => t.remove()); const got = words(out.textContent), want = words(SPEC.expected); const d = Array.from({ length: want.length + 1 }, (_, i) => [i]); for (let j = 1; j <= got.length; j++) d[0][j] = j; for (let i = 1; i <= want.length; i++) for (let j = 1; j <= got.length; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (want[i - 1] === got[j - 1] ? 0 : 1)); const e = d[want.length][got.length]; return { fail: e > 1 && `${e} word errors: ${got.join(' ')}`, info: `${e} word errors, ${document.getElementById('stats').textContent}` }; })()"
+    }
+  ]
+}

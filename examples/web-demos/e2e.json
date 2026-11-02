@@ -1,0 +1,15 @@
+{
+  "path": "",
+  "name": "landing",
+  "build_json": false,
+  "timeout": 60,
+  "steps": [
+    {
+      "wait": "document.readyState === 'complete'"
+    },
+    {
+      "name": "every link on the site resolves",
+      "check": "(async () => { const bad = []; for (const a of document.querySelectorAll('a[href]')) { const u = new URL(a.href, location.href); if (u.origin !== location.origin) continue; const r = await fetch(u, { cache: 'no-store' }); if (!r.ok) bad.push(`${u.pathname} ${r.status}`); } return bad.join(', '); })()"
+    }
+  ]
+}

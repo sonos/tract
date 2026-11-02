@@ -1,0 +1,57 @@
+{
+  "path": "pixel-lab/",
+  "timeout": 600,
+  "media": {
+    "portrait": {
+      "url": "https://tract-test-assets.tract.rs/e2e/grace-hopper-640x360.y4m",
+      "sha256": "0909d4f26eeabf14d486e81d66a06071fb07a65a137343e1b25e9b4847115578",
+      "about": "Grace Hopper's portrait (public domain, examples/*/grace_hopper.jpg), centred on a grey 640x360 frame"
+    }
+  },
+  "camera": "portrait",
+  "progress": "document.getElementById('status').textContent",
+  "fail": "(document.getElementById('go').textContent === 'Unsupported' || /rror|could not|denied|not available|disconnected/i.test(document.getElementById('status').textContent)) && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Ready')"
+    },
+    {
+      "run": "document.getElementById('model').value = 'mediapipe', document.getElementById('capture').value = '640x360', document.getElementById('view').value = 'mask', document.getElementById('view').dispatchEvent(new Event('change')), document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Live:') && parseFloat(document.getElementById('stats').textContent.replace('mask ', '')) > 0"
+    },
+    {
+      "run": "new Promise((r) => setTimeout(r, 3000))"
+    },
+    {
+      "name": "mediapipe masks the person",
+      "check": "(() => { const src = document.getElementById('out'); const c = document.createElement('canvas'); c.width = 64; c.height = 36; const g = c.getContext('2d'); g.drawImage(src, 0, 0, 64, 36); const d = g.getImageData(0, 0, 64, 36).data; const mean = (x0, x1) => { let s = 0, n = 0; for (let y = 4; y < 36; y++) for (let x = x0; x < x1; x++) { s += d[(y * 64 + x) * 4]; n++; } return s / n; }; const person = mean(26, 38), sides = (mean(0, 12) + mean(52, 64)) / 2; return { fail: person - sides < 100 && 'the mask does not single out the person', info: `mask ${person.toFixed(0)} on the person, ${sides.toFixed(0)} on the sides, ${document.getElementById('stats').textContent}` }; })()"
+    },
+    {
+      "run": "document.getElementById('go').click()"
+    },
+    {
+      "wait": "!document.getElementById('go').disabled && document.getElementById('go').textContent === 'Start camera'"
+    },
+    {
+      "run": "document.getElementById('model').value = 'modnet', document.getElementById('capture').value = '640x360', document.getElementById('view').value = 'mask', document.getElementById('view').dispatchEvent(new Event('change')), document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent.startsWith('Live:') && parseFloat(document.getElementById('stats').textContent.replace('mask ', '')) > 0"
+    },
+    {
+      "run": "new Promise((r) => setTimeout(r, 3000))"
+    },
+    {
+      "name": "modnet masks the person",
+      "check": "(() => { const src = document.getElementById('out'); const c = document.createElement('canvas'); c.width = 64; c.height = 36; const g = c.getContext('2d'); g.drawImage(src, 0, 0, 64, 36); const d = g.getImageData(0, 0, 64, 36).data; const mean = (x0, x1) => { let s = 0, n = 0; for (let y = 4; y < 36; y++) for (let x = x0; x < x1; x++) { s += d[(y * 64 + x) * 4]; n++; } return s / n; }; const person = mean(26, 38), sides = (mean(0, 12) + mean(52, 64)) / 2; return { fail: person - sides < 100 && 'the mask does not single out the person', info: `mask ${person.toFixed(0)} on the person, ${sides.toFixed(0)} on the sides, ${document.getElementById('stats').textContent}` }; })()"
+    },
+    {
+      "run": "document.getElementById('go').click()"
+    },
+    {
+      "wait": "!document.getElementById('go').disabled && document.getElementById('go').textContent === 'Start camera'"
+    }
+  ]
+}

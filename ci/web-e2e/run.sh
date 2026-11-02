@@ -46,6 +46,7 @@ case $mode in
         site=$(mktemp -d)
         trap 'stop_chrome; rm -rf "$site"' EXIT
         cp "$root/examples/web-demos/index.html" "$site/"
+        specs+=("$root/examples/web-demos/e2e.json")
         for spec in "$root"/examples/*/web/e2e.json
         do
             example=$(basename "$(dirname "$(dirname "$spec")")")
@@ -62,7 +63,7 @@ case $mode in
         args=(--serve "$site" --base "http://localhost:$http_port/")
         ;;
     live)
-        specs=("$root"/examples/*/web/e2e.json)
+        specs=("$root/examples/web-demos/e2e.json" "$root"/examples/*/web/e2e.json)
         args=(--base "$src")
         [ -z "${E2E_COMMIT:-}" ] || args+=(--commit "$E2E_COMMIT")
         ;;
@@ -70,7 +71,7 @@ case $mode in
 esac
 
 status=0
-python3 "$root/ci/web-e2e/driver.py" --chrome "$chrome" --profile "$profile" --port "$devtools_port" --out "$out" "${args[@]}" "${specs[@]}" || status=$?
+python3 "$root/ci/web-e2e/driver.py" --chrome "$chrome" --profile "$profile" --port "$devtools_port" --media "$home/media" --out "$out" "${args[@]}" "${specs[@]}" || status=$?
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
 [ -z "${missing:-}" ] || status=1
 exit $status
