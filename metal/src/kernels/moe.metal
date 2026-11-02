@@ -127,3 +127,22 @@ enum RouteGateMode : uint {
         }
     }
 }
+
+[[kernel]] void clamped_swiglu_f32(
+    device const float *gate_in [[buffer(0)]],
+    device const float *up_in [[buffer(1)]],
+    device float *output [[buffer(2)]],
+    constant float &alpha [[buffer(3)]],
+    constant float &limit [[buffer(4)]],
+    constant uint &len [[buffer(5)]],
+    uint gid [[thread_position_in_grid]])
+{
+    if (gid >= len) {
+        return;
+    }
+
+    const float gate = min(gate_in[gid], limit);
+    const float up = clamp(up_in[gid], -limit, limit);
+    const float glu = gate / (1.0f + exp(-alpha * gate));
+    output[gid] = (up + 1.0f) * glu;
+}
