@@ -157,3 +157,69 @@ pub fn dispatch_clamped_swiglu_f32(
     });
     Ok(())
 }
+
+pub fn dispatch_routed_combine_f32(
+    stream: &MetalStream,
+    route_values: &DeviceTensor,
+    route_token_ids: &DeviceTensor,
+    route_weights: &DeviceTensor,
+    output: &DeviceTensor,
+    routes_per_token: usize,
+) -> TractResult<()> {
+    stream.retain_tensor(route_values);
+    stream.retain_tensor(route_token_ids);
+    stream.retain_tensor(route_weights);
+    stream.retain_tensor(output);
+
+    ensure!(route_values.rank() == 2, "route_values must be [routes, d_model]");
+    ensure!(route_token_ids.rank() == 1, "route_token_ids must be [routes]");
+    ensure!(route_weights.rank() == 1, "route_weights must be [routes]");
+    ensure!(output.rank() == 2 || output.rank() == 3, "output must be rank 2 or 3");
+    ensure!(route_values.datum_type() == f32::datum_type());
+    ensure!(route_token_ids.datum_type() == i64::datum_type());
+    ensure!(route_weights.datum_type() == f32::datum_type());
+    ensure!(output.datum_type() == f32::datum_type());
+
+    let route_count = route_token_ids.shape()[0];
+    ensure!(route_values.shape()[0] == route_count);
+    ensure!(route_weights.shape()[0] == route_count);
+
+    let d_model = *output.shape().last().context("output has no feature axis")?;
+    let token_count: usize = output.shape()[..output.rank() - 1].iter().product();
+    ensure!(
+        route_values.shape()[1] == d_model,
+        "route value dim {} does not match output dim {d_model}",
+        route_values.shape()[1]
+    );
+
+    // Only trust the token-major fast path when the counts line up.
+    let rpt = if routes_per_token > 0 && token_count * routes_per_token == route_count {
+        routes_per_token as u32
+    } else {
+        0
+    };
+    let route_count = route_count as u32;
+    let token_count = token_count as u32;
+    let d_model = d_model as u32;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_combine_f32")?;
+    let total = output.len() as u64;
+    let group_width = pipeline.max_total_threads_per_threadgroup().min(256).min(total).max(1);
+    let grid_width = total.div_ceil(group_width);
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, route_values, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, route_token_ids, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, route_weights, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(4, &[route_count]);
+        encoder.set_slice(5, &[token_count]);
+        encoder.set_slice(6, &[d_model]);
+        encoder.set_slice(7, &[rpt]);
+
+        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
+        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
+}
