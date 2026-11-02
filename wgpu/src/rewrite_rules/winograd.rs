@@ -14,6 +14,7 @@ use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::ops::math::add;
 use tract_core::ops::nn::DataFormat;
+use tract_core::tract_data::half::slice::HalfFloatSliceExt;
 
 /// Input transform `B^T` of the F(4x4, 3x3) algorithm, applied as `B^T d B` to
 /// each 6x6 input tile. Points {0, +-1, +-2, infinity} after Lavin & Gray.
@@ -27,7 +28,9 @@ const BT: [[f64; 6]; 6] = [
     [0.,  4.,  0., -5.,  0., 1.],
 ];
 
-/// Filter transform `G` of F(4,3), applied as `G g G^T` to each 3x3 kernel.
+/// Filter transform `G` of F(4,3), applied as `G g G^T` to each 3x3 kernel; `apply_g` writes
+/// it out.
+#[cfg(test)]
 #[rustfmt::skip]
 const G: [[f64; 3]; 6] = [
     [1. / 4.,    0.,       0.     ],
@@ -78,31 +81,72 @@ fn input_transform_weights(ci: usize) -> TractResult<Tensor> {
     Tensor::from_shape(&[ci * 36, 1, 6, 6], &w)
 }
 
-/// `G g G^T` of every `(co, ci)` kernel pair, packed as `[36, n, co, ci]` for
-/// the batched accumulation GEMM: `u[i*6+j][n][co][ci]`.
-fn transformed_weights(kernel: &Tensor, co: usize, ci: usize) -> TractResult<Tensor> {
+/// `G g G^T` of every `(co, ci)` kernel pair, in `dt`, packed as `[36, 1, co, ci]` for the
+/// accumulation GEMM, which broadcasts the unit axis over the batch: `u[i*6+j][0][o][c]`.
+fn transformed_weights(
+    kernel: &Tensor,
+    dt: DatumType,
+    co: usize,
+    ci: usize,
+) -> TractResult<Tensor> {
     // `cast_to` panics on a named weight it cannot load; this read fails instead.
     kernel.try_as_plain_ram()?;
     let kernel = kernel.cast_to::<f32>()?;
-    let k = kernel.to_plain_array_view::<f32>()?;
-    let mut u = vec![0f32; 36 * co * ci];
-    for o in 0..co {
-        for c in 0..ci {
+    let kernel = kernel.try_as_plain_ram()?.as_slice::<f32>()?;
+    let mut u = Tensor::zero_dt(dt, &[36, 1, co, ci])?;
+    match dt {
+        DatumType::F16 => {
+            transform_kernels(kernel, &mut u, |u: &mut [f16], v| u.convert_from_f32_slice(v))?
+        }
+        _ => transform_kernels(kernel, &mut u, |u: &mut [f32], v| u.copy_from_slice(v))?,
+    }
+    Ok(u)
+}
+
+/// `G v`, written out to share the sums `G`'s rows have in common: it runs nine times per
+/// kernel, over hundreds of millions of weights when a model loads, as scalar wasm in the
+/// browser.
+#[inline(always)]
+fn apply_g([a, b, c]: [f32; 3]) -> [f32; 6] {
+    let ac = a + c;
+    let q = a * (1. / 24.) + c * (1. / 6.);
+    let b12 = b * (1. / 12.);
+    [a * (1. / 4.), (ac + b) * (-1. / 6.), (ac - b) * (-1. / 6.), q + b12, q - b12, c]
+}
+
+/// Fills `u`, laid out `[36, pairs]`, with `G g G^T` of each 3x3 kernel of `kernels`, as two
+/// passes of `G` over three-vectors: down the columns of `g`, then along the rows of `G g`. A
+/// block of pairs is transformed in f32 then stored a row at a time, so that `store` converts
+/// contiguous runs.
+fn transform_kernels<T: Datum + Copy>(
+    kernels: &[f32],
+    u: &mut Tensor,
+    store: impl Fn(&mut [T], &[f32]),
+) -> TractResult<()> {
+    const BLOCK: usize = 1024;
+    // Rows a power of two apart would all fall in one L1 set.
+    const STRIDE: usize = BLOCK + 16;
+    let pairs = kernels.len() / 9;
+    let mut u = u.try_as_plain_ram_mut()?;
+    let u = u.as_slice_mut::<T>()?;
+    let mut block = vec![0f32; 36 * STRIDE];
+    for (b, chunk) in kernels.chunks(9 * BLOCK).enumerate() {
+        let n = chunk.len() / 9;
+        for (p, k) in chunk.as_chunks::<9>().0.iter().enumerate() {
+            let gg = [0, 1, 2].map(|c| apply_g([k[c], k[3 + c], k[6 + c]]));
             for i in 0..6 {
-                for j in 0..6 {
-                    let mut acc = 0f64;
-                    for a in 0..3 {
-                        for b in 0..3 {
-                            acc += G[i][a] * k[[o, c, a, b]] as f64 * G[j][b];
-                        }
-                    }
-                    u[(i * 6 + j) * co * ci + o * ci + c] = acc as f32;
+                let row = apply_g([gg[0][i], gg[1][i], gg[2][i]]);
+                for (j, v) in row.into_iter().enumerate() {
+                    block[(i * 6 + j) * STRIDE + p] = v;
                 }
             }
         }
+        for ij in 0..36 {
+            let at = ij * pairs + b * BLOCK;
+            store(&mut u[at..][..n], &block[ij * STRIDE..][..n]);
+        }
     }
-    // Unit batch axis: the accumulation GEMM broadcasts it over the batch.
-    Tensor::from_shape(&[36, 1, co, ci], &u)
+    Ok(())
 }
 
 /// `A^T ⊗ A^T` packed as `[16, 36]`: `at[i'*4+j'][i*6+j] = AT[i'][i]*AT[j'][j]`,
@@ -181,10 +225,8 @@ pub fn conv_to_winograd_f43(
         input_transform_weights(ci)?.cast_to_dt(dt)?.into_owned(),
     )?;
     let zero = patch.add_const(format!("{name}.wino.zero"), Tensor::zero_dt(dt, &[ci * 36])?)?;
-    let w_u = patch.add_const(
-        format!("{name}.wino.g"),
-        transformed_weights(kernel, co, ci)?.cast_to_dt(dt)?.into_owned(),
-    )?;
+    let w_u =
+        patch.add_const(format!("{name}.wino.g"), transformed_weights(kernel, dt, co, ci)?)?;
     let w_at = patch
         .add_const(format!("{name}.wino.at"), output_transform()?.cast_to_dt(dt)?.into_owned())?;
 
@@ -284,4 +326,20 @@ pub fn conv_to_winograd_f43(
     }
     patch.shunt_outside(model, node.id.into(), wire)?;
     Ok(Some(patch))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn apply_g_is_g() {
+        for v in [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.], [0.3, -1.7, 2.9]] {
+            let want = G.map(|row| (row[0] * v[0] + row[1] * v[1] + row[2] * v[2]) as f32);
+            let got = apply_g(v.map(|x| x as f32));
+            for (w, g) in want.iter().zip(got) {
+                assert!((w - g).abs() <= 1e-6 * w.abs().max(1.), "{want:?} vs {got:?}");
+            }
+        }
+    }
 }
