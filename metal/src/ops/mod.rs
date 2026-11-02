@@ -20,3 +20,6 @@ pub use routed_q40_matmul::MetalRoutedQ40MatMul;
 
 pub mod routed_bias_add;
 pub use routed_bias_add::MetalRoutedBiasAdd;
+
+pub mod routed_q40_swiglu;
+pub use routed_q40_swiglu::MetalRoutedQ40SwiGlu;
