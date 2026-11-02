@@ -223,3 +223,41 @@ pub fn dispatch_routed_combine_f32(
     });
     Ok(())
 }
+
+/// Fused per-route expert bias add (see routed_bias_add_f32).
+pub fn dispatch_routed_bias_add_f32(
+    stream: &MetalStream,
+    value: &DeviceTensor,
+    bias: &DeviceTensor,
+    route_expert_ids: &DeviceTensor,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    for t in [value, bias, route_expert_ids] {
+        stream.retain_tensor(t);
+    }
+    stream.retain_tensor(out);
+    ensure!(value.datum_type() == f32::datum_type());
+    ensure!(bias.datum_type() == f32::datum_type());
+    ensure!(route_expert_ids.datum_type() == i64::datum_type());
+    let n = *value.shape().last().context("value rank 0")?;
+    let route_count = value.len() / n;
+    ensure!(bias.shape().last() == Some(&n));
+    ensure!(route_expert_ids.len() == route_count);
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_bias_add_f32")?;
+    let total = (route_count * n) as u64;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_metal_tensor(0, value, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, bias, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, route_expert_ids, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, out, metal::MTLResourceUsage::Write);
+        encoder.set_slice(4, &[route_count as u32]);
+        encoder.set_slice(5, &[n as u32]);
+        let group_width = total.clamp(1, 256);
+        let grid = MTLSize { width: total.div_ceil(group_width), height: 1, depth: 1 };
+        let group = MTLSize { width: group_width, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid, group);
+    });
+    Ok(())
+}
