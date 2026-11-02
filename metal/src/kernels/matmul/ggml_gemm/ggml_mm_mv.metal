@@ -58,6 +58,17 @@ typedef struct {
     int16_t  out_f16; // q4_0 path: when set, src1 and dst are f16 rather than f32
 } ggml_metal_kargs_mul_mv;
 
+typedef struct {
+    int32_t  k;
+    int32_t  n;
+    int32_t  route_count;
+    int32_t  input_mode; // 0: route_token_ids indexes input rows, 1: route row == input row
+    uint64_t weight_expert_stride;
+    uint64_t weight_row_stride;
+    uint64_t input_row_stride;
+    uint64_t output_route_stride;
+} routed_q40_f32_args;
+
 #define N_MV_T_T 4
 
 template<typename T0, typename T04, typename T1, typename T14, typename args_t, typename TO = T1>
@@ -692,3 +703,351 @@ template [[host_name("kernel_mul_mm_f16_f16")]]     kernel mat_mm_t kernel_mul_m
 template [[host_name("kernel_mul_mm_q4_0_f16")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, half>;
 template [[host_name("kernel_mul_mm_q2_0_t_f32")]]  kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q2_0_t,  2,     dequantize_q2_0_t, float>;
 template [[host_name("kernel_mul_mm_q2_0_t_f16")]]  kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q2_0_t,  2,     dequantize_q2_0_t, half>;
+
+// ---- Expert-grouped routed Q4_0 matmul (prefill path) ----
+//
+// The per-route kernel above re-reads an expert's full weight slice for
+// every route hitting it (a 512-token prefill chunk with top-4 routing reads
+// each expert ~64x: ~9.5 GB of weight traffic per matmul). The grouped pair
+// below first bins routes by expert (single-threadgroup counting sort), then
+// processes GROUPED_ROUTES routes per threadgroup so each weight block is
+// read once per 32 routes, with the x tile staged in threadgroup memory.
+
+#define GROUPED_ROUTES 32
+#define GROUPED_COLS 256
+#define GROUPED_MAX_EXPERTS 256
+
+// Also emits a compact work-chunk list (chunks of GROUPED_ROUTES routes,
+// one expert each) so the grouped matmul launches exactly the threadgroups
+// that have work: `chunks` rows of [expert, base, len], sentinel-terminated.
+kernel void route_sort_by_expert(
+        device const long * route_expert_ids,
+        device uint * expert_offsets,   // [num_experts + 1]
+        device uint * sorted_routes,    // [route_count], expert-grouped
+        device uint * chunks,           // [3 * max_chunks]
+        constant uint & route_count,
+        constant uint & num_experts,
+        constant uint & max_chunks,
+        uint lane [[thread_position_in_threadgroup]],
+        uint tptg [[threads_per_threadgroup]])
+{
+    threadgroup atomic_uint hist[GROUPED_MAX_EXPERTS];
+    for (uint e = lane; e < num_experts; e += tptg) {
+        atomic_store_explicit(&hist[e], 0u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    if (lane == 0) {
+        uint run = 0;
+        uint chunk = 0;
+        for (uint e = 0; e < num_experts; e++) {
+            const uint c = atomic_load_explicit(&hist[e], memory_order_relaxed);
+            expert_offsets[e] = run;
+            atomic_store_explicit(&hist[e], run, memory_order_relaxed);
+            for (uint b = 0; b < c && chunk < max_chunks; b += GROUPED_ROUTES, chunk++) {
+                chunks[3 * chunk + 0] = e;
+                chunks[3 * chunk + 1] = run + b;
+                chunks[3 * chunk + 2] = min((uint)GROUPED_ROUTES, c - b);
+            }
+            run += c;
+        }
+        expert_offsets[num_experts] = run;
+        for (; chunk < max_chunks; chunk++) {
+            chunks[3 * chunk + 0] = 0xffffffffu;
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint r = lane; r < route_count; r += tptg) {
+        const uint slot =
+            atomic_fetch_add_explicit(&hist[(uint)route_expert_ids[r]], 1u, memory_order_relaxed);
+        sorted_routes[slot] = r;
+    }
+}
+
+kernel void kernel_routed_q4_0_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int nb = args.k/QK4_0;
+
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+
+    device const block_q4_0 * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        // Clamp so the last (partial) row group never builds pointers past
+        // the expert's weight slice when n is not a multiple of N_DST: the
+        // dot loop dereferences every ax[row], only the store is guarded.
+        const int weight_row = min(first_row + row, args.n - 1);
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax[row] = (device const block_q4_0 *) (weights + offset);
+    }
+
+    float yl[16];
+    float sumf[N_DST] = {0.f};
+
+    const short ix = tiisg/2;
+    const short il = (tiisg%2)*8;
+
+    device const float * yb = y + ix*QK4_0 + il;
+
+    for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
+        float sumy[2] = { 0.f, 0.f };
+
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            sumy[0]  += yb[i +  0] + yb[i +  1];
+            yl[i + 0] = yb[i +  0];
+            yl[i + 1] = yb[i +  1]/256.f;
+
+            sumy[1]  += yb[i + 16] + yb[i + 17];
+            yl[i + 8] = yb[i + 16]/16.f;
+            yl[i + 9] = yb[i + 17]/4096.f;
+        }
+
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
+        }
+
+        yb += QK4_0 * 16;
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const float tot = simd_sum(sumf[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            dst_route[weight_row] = tot;
+        }
+    }
+}
+
+// Gather activation rows into expert-sorted order, always staging as f32.
+// One thread moves 4 consecutive elements (vectorized load/store, 4x fewer
+// index divisions than the old per-element scheme, which ran ~6x off memory
+// roofline). TX is the source dtype: the f16 instantiation converts each
+// element exactly, so downstream mm consumers see the same f32 rows as if
+// the activations had been upcast beforehand.
+template<typename TX, typename TX4>
+kernel void routed_gather_rows(
+        constant routed_q40_f32_args & args,
+        device const char * src,
+        device float * dst,
+        device const uint * sorted_routes,
+        device const long * route_token_ids,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint k4 = ((uint)args.k + 3) / 4;
+    const uint total = (uint)args.route_count * k4;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / k4;
+    const uint kk = (gid - i * k4) * 4;
+    const uint orig = sorted_routes[i];
+    const long xrow = args.input_mode == 0 ? route_token_ids[orig] : (long)orig;
+    device const TX * y = (device const TX *)(
+        src + (uint64_t)xrow * args.input_row_stride);
+    device float * d = dst + (uint64_t)i * (uint)args.k;
+    if (kk + 4 <= (uint)args.k) {
+        *(device packed_float4 *)(d + kk) = (packed_float4)(*(device const TX4 *)(y + kk));
+    } else {
+        for (uint c = kk; c < (uint)args.k; c++) {
+            d[c] = (float) y[c];
+        }
+    }
+}
+
+typedef decltype(routed_gather_rows<float, packed_float4>) routed_gather_rows_t;
+
+template [[host_name("routed_gather_rows_f32")]]  kernel routed_gather_rows_t routed_gather_rows<float, packed_float4>;
+template [[host_name("routed_gather_rows_f16x")]] kernel routed_gather_rows_t routed_gather_rows<half, packed_half4>;
+
+// Scatter expert-sorted result rows back to original route order (f32).
+// Vectorized like the gather.
+kernel void routed_scatter_rows_f32(
+        constant routed_q40_f32_args & args,
+        device const float * src,
+        device float * dst,
+        device const uint * sorted_routes,
+        uint gid [[thread_position_in_grid]])
+{
+    const uint n4 = ((uint)args.n + 3) / 4;
+    const uint total = (uint)args.route_count * n4;
+    if (gid >= total) {
+        return;
+    }
+    const uint i = gid / n4;
+    const uint col = (gid - i * n4) * 4;
+    const uint orig = sorted_routes[i];
+    device const float * s = src + (uint64_t)i * (uint)args.n;
+    device float * out = (device float *)(
+        (device char *)dst + (uint64_t)orig * args.output_route_stride);
+    if (col + 4 <= (uint)args.n) {
+        *(device packed_float4 *)(out + col) = *(device const packed_float4 *)(s + col);
+    } else {
+        for (uint c = col; c < (uint)args.n; c++) {
+            out[c] = s[c];
+        }
+    }
+}
+
+// Expert-sorted tiled matmul over the routed experts: the simdgroup-matrix
+// mm (kernel_mul_mm) with the activation-row tile driven by the sort
+// kernel's chunk list ([expert, base, len] per 32-route chunk). A is the
+// gathered f32 activations [route_count, k]; C is written expert-sorted
+// [route_count, n] and scattered afterwards. This is what fixes prefill:
+// the scalar per-route gemv runs at ~1.7 TFLOPS while this path uses the
+// same simdgroup-matrix pipeline as the dense q40 matmuls.
+kernel void kernel_mul_mm_q4_0_routed_f32(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * a_sorted,
+        device const uint * chunks,
+        device float * c_sorted,
+        threadgroup char * shmem [[threadgroup(0)]],
+        uint3  tgpig[[threadgroup_position_in_grid]],   // (chunk, n_tile, 1)
+        ushort tiitg[[thread_index_in_threadgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]])
+{
+    const uint expert = chunks[3 * tgpig.x + 0];
+    if (expert == 0xffffffffu) {
+        return;
+    }
+    const uint base = chunks[3 * tgpig.x + 1];
+    const uint len = chunks[3 * tgpig.x + 2];
+
+    threadgroup half  * sa = (threadgroup half  *)(shmem);
+    threadgroup float * sb = (threadgroup float *)(shmem + 4096);
+
+    const int r0 = tgpig.y;
+
+    const short n_rows = ((uint)args.n - r0*BLOCK_SIZE_M < BLOCK_SIZE_M)
+        ? (args.n - r0*BLOCK_SIZE_M) : BLOCK_SIZE_M;
+    const short n_cols = (short)min((uint)BLOCK_SIZE_N, len);
+
+    const short thread_row = ((short)tiitg/THREAD_PER_ROW) < n_rows ? ((short)tiitg/THREAD_PER_ROW) : n_rows - 1;
+    const short thread_col = ((short)tiitg/THREAD_PER_COL) < n_cols ? ((short)tiitg/THREAD_PER_COL) : n_cols - 1;
+
+    // Each simdgroup owns a 16-wide slice of the N (route) axis. Ragged
+    // expert chunks (len <= 16, the common case: ~tokens*top_k/n_experts
+    // routes per expert per prompt chunk) leave the upper slice entirely
+    // garbage: its columns are never stored. Skip its matmul work.
+    const bool n_slice_active = (short)(16*(sgitg >> 1)) < n_cols;
+
+    simdgroup_half8x8  ma[4];
+    simdgroup_float8x8 mb[2];
+    simdgroup_float8x8 mc[8];
+
+    for (short i = 0; i < 8; i++){
+        mc[i] = make_filled_simdgroup_matrix<float, 8>(0.f);
+    }
+
+    const short nl = 2;
+    short il = (tiitg % THREAD_PER_ROW);
+
+    device const block_q4_0 * x = (device const block_q4_0 *)(weights
+        + (uint64_t)expert * args.weight_expert_stride
+        + args.weight_row_stride*(r0*BLOCK_SIZE_M + thread_row)) + (il/nl);
+
+    device const float * y = a_sorted
+        + (uint64_t)(base + thread_col) * (uint)args.k
+        + (BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL));
+
+    for (int loop_k = 0; loop_k < args.k; loop_k += BLOCK_SIZE_K) {
+        half4x4 temp_a;
+        dequantize_q4_0(x, il, temp_a);
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        #pragma unroll(16)
+        for (short i = 0; i < 16; i++) {
+            *(sa + SG_MAT_SIZE * ((tiitg/THREAD_PER_ROW/8) \
+            +                     (tiitg%THREAD_PER_ROW)*16 + (i/8)*8) \
+            +                     (tiitg/THREAD_PER_ROW)%8  + (i&7)*8) = temp_a[i/4][i%4];
+        }
+
+        *(threadgroup float2x4 *)(sb + 32*8*(tiitg%THREAD_PER_COL) + 8*(tiitg/THREAD_PER_COL)) = *((device const float2x4 *) y);
+
+        il = (il + 2 < nl) ? il + 2 : il % 2;
+        x  = (il < 2) ? x + (2 + nl - 1)/nl : x;
+        y += BLOCK_SIZE_K;
+
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+
+        if (n_slice_active) {
+            threadgroup const half  * lsma = (sa + THREAD_MAT_M*SG_MAT_SIZE*(sgitg%2));
+            threadgroup const float * lsmb = (sb + THREAD_MAT_N*SG_MAT_SIZE*(sgitg/2));
+
+            #pragma unroll(4)
+            for (short ik = 0; ik < BLOCK_SIZE_K/8; ik++) {
+                #pragma unroll(4)
+                for (short i = 0; i < 4; i++) {
+                    simdgroup_load(ma[i], lsma + SG_MAT_SIZE * i);
+                }
+
+                simdgroup_barrier(mem_flags::mem_none);
+
+                #pragma unroll(2)
+                for (short i = 0; i < 2; i++) {
+                    simdgroup_load(mb[i], lsmb + SG_MAT_SIZE * i);
+                }
+
+                #pragma unroll(8)
+                for (short i = 0; i < 8; i++){
+                    simdgroup_multiply_accumulate(mc[i], mb[i/4], ma[i%4], mc[i]);
+                }
+
+                lsma += (BLOCK_SIZE_M/SG_MAT_ROW)*SG_MAT_SIZE;
+                lsmb += (BLOCK_SIZE_N/SG_MAT_ROW)*SG_MAT_SIZE;
+            }
+        }
+    }
+
+    // C rows are the expert-sorted routes: row (activation) index = base+j,
+    // col = weight row. Always go through threadgroup memory (the ragged
+    // len < 32 case is common: every expert's tail chunk).
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    threadgroup float * temp_all = (threadgroup float *) shmem;
+    threadgroup float * temp_str = temp_all \
+                                 + 32*(sgitg&1) + (16*(sgitg >> 1))*BLOCK_SIZE_M;
+    if (n_slice_active) {
+        for (short i = 0; i < 8; i++) {
+            simdgroup_store(mc[i], temp_str + 8*(i%4) + 8*BLOCK_SIZE_M*(i/4), BLOCK_SIZE_M);
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    // All threads cooperatively write the n_rows x n_cols tile (the old
+    // single-simdgroup scalar loop serialized the store and idled 3/4 of
+    // the threadgroup on every tile).
+    for (int idx = tiitg; idx < n_rows * n_cols; idx += THREAD_PER_BLOCK) {
+        const int j = idx / n_rows;
+        const int i = idx % n_rows;
+        c_sorted[(uint64_t)(base + j) * (uint)args.n + r0*BLOCK_SIZE_M + i]
+            = temp_all[j*BLOCK_SIZE_M + i];
+    }
+}
