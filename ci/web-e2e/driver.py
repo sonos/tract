@@ -216,16 +216,19 @@ def run_demo(port, base, spec_path, out, commit):
     t0 = time.time()
     log(f"== {name}: {url}")
 
-    if commit:
-        built = json.load(urllib.request.urlopen(url + "build.json", timeout=30))
-        if built.get("commit") != commit or built.get("dirty"):
-            result["reason"] = f"build.json is {built}, expected {commit}"
-            log(f"  FAIL {result['reason']}")
-            return result
-
     tab = Tab(port, url)
     try:
         last = None
+
+        if commit:
+            # The page fetches it: the CDN turns away clients that are not browsers.
+            while not tab.eval(f"location.href.startsWith({json.dumps(url)}) && document.readyState !== 'loading'", spec):
+                if time.time() > deadline:
+                    raise AssertionError("the page did not load")
+                tab.pump(POLL)
+            built = tab.eval("fetch('build.json', { cache: 'no-store' }).then((r) => r.json())", spec)
+            if built.get("commit") != commit or built.get("dirty"):
+                raise AssertionError(f"build.json is {built}, expected {commit}")
 
         def poll_once():
             nonlocal last
@@ -361,7 +364,7 @@ def main():
     failed = [r["demo"] for r in results if not r["ok"]]
     if failed:
         with open(chrome_log, errors="replace") as f:
-            tail = f.read().splitlines()[-40:]
+            tail = [l for l in f.read().splitlines() if "CVDisplayLinkCreateWithCGDisplay" not in l][-40:]
         log("== tail of chrome.log\n" + "\n".join(tail))
     log(f"failed: {', '.join(failed)}" if failed else "all demos ok")
     sys.exit(1 if failed else 0)
