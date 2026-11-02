@@ -7,7 +7,10 @@ mod mpp;
 
 pub use basic::BasicMatMul;
 pub(crate) use ggml_gemm::dispatch_router_scores;
-pub use ggml_gemm::{GgmlGemm, RoutedQ40InputMode, dispatch_routed_q40_f32, eval_routed_q40_f32};
+pub use ggml_gemm::{
+    GgmlGemm, RoutedQ40InputMode, RoutedSwigluAct, dispatch_routed_q40_f32,
+    dispatch_routed_q40_swiglu_f32, eval_routed_q40_f32,
+};
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mpp::MppGemm;
