@@ -60,7 +60,7 @@ typedef struct {
 
 #define N_MV_T_T 4
 
-template<typename T0, typename T04, typename T1, typename T14, typename args_t>
+template<typename T0, typename T04, typename T1, typename T14, typename args_t, typename TO = T1>
 void kernel_mul_mv_impl(
         args_t args,
         device const char * src0,
@@ -79,10 +79,12 @@ void kernel_mul_mv_impl(
 
     device const T0 * x = (device const T0 *) (src0 + offset0);
 
-    // Output dtype follows the activation dtype (T1): f32 activations keep f32
-    // outputs, f16 activations produce f16 outputs directly, removing the
-    // f32->activation cast tract would otherwise insert after the matmul.
-    device T1 * dst_o = (device T1 *) dst + (uint64_t)im*args.ne0*args.ne1;
+    // Output dtype defaults to the activation dtype (T1): f32 activations
+    // keep f32 outputs, f16 activations produce f16 outputs directly,
+    // removing the f32->activation cast tract would otherwise insert after
+    // the matmul. TO overrides it for mixed cases (f16 activations with
+    // full-precision f32 outputs, e.g. MoE router scores).
+    device TO * dst_o = (device TO *) dst + (uint64_t)im*args.ne0*args.ne1;
 
     if (args.ne00 < 128) {
         for (int row = 0; row < N_MV_T_T; ++row) {
@@ -102,7 +104,7 @@ void kernel_mul_mv_impl(
 
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     } else {
@@ -126,13 +128,13 @@ void kernel_mul_mv_impl(
             float all_sum = simd_sum(sumf);
             if (tiisg == 0) {
                 for (int i = 4*(args.ne00/4); i < args.ne00; ++i) all_sum += (float) x[i] * (float) y[i];
-                dst_o[(uint64_t)r1*args.ne0 + r0] = (T1) all_sum;
+                dst_o[(uint64_t)r1*args.ne0 + r0] = (TO) all_sum;
             }
         }
     }
 }
 
-template<typename T0, typename T04, typename T1, typename T14>
+template<typename T0, typename T04, typename T1, typename T14, typename TO = T1>
 kernel void kernel_mul_mv(
         constant ggml_metal_kargs_mul_mv & args,
         device const char * src0,
@@ -140,7 +142,7 @@ kernel void kernel_mul_mv(
         device       char * dst,
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]]) {
-    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &>(
+    kernel_mul_mv_impl<T0, T04, T1, T14, constant ggml_metal_kargs_mul_mv &, TO>(
         args,
         src0,
         src1,
@@ -154,6 +156,12 @@ typedef decltype(kernel_mul_mv<half, half4, half, half4>) mul_mv_t;
 template [[host_name("kernel_mul_mv_f32_f32")]]   kernel mul_mv_t kernel_mul_mv<float,  float4,  float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f32")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   float,  float4>;
 template [[host_name("kernel_mul_mv_f16_f16")]]   kernel mul_mv_t kernel_mul_mv<half,   half4,   half,   half4>;
+// Mixed variant: f32 weights, f16 activations, full-precision f32 output
+// (bit-identical to upcasting the activations then running f32_f32: the
+// half->float element conversion is exact and the accumulation order is the
+// same). Used by the MoE router so the expert scores stay exact f32 while
+// the block input skips its f16->f32 cast dispatch.
+template [[host_name("kernel_mul_mv_f32_f16_of32")]] kernel mul_mv_t kernel_mul_mv<float, float4, half, half4, float>;
 
 template<typename T, typename T4>
 kernel void kernel_mul_mv_1row(

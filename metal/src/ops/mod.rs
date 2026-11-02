@@ -5,3 +5,6 @@ pub mod winograd;
 
 pub use fused_axis_op::MetalFusedAxisOp;
 pub use gemm::MetalGemm;
+
+pub mod route_topk;
+pub use route_topk::MetalRouteTopK;
