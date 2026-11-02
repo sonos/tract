@@ -170,8 +170,8 @@ impl RoutedMatMul {
     ) -> TractResult<Vec<Vec<usize>>> {
         let mut expert_routes = vec![Vec::new(); num_experts];
         for (r, &eid) in route_expert_ids.iter().enumerate().take(route_count) {
-            ensure!(eid >= 0, "route {r} has negative expert id");
-            let eid = eid as usize;
+            let eid = usize::try_from(eid)
+                .with_context(|| format!("route {r} has invalid expert id {eid}"))?;
             ensure!(
                 eid < num_experts,
                 "route {r} references expert {eid}, but weights have {num_experts} experts"
@@ -184,8 +184,9 @@ impl RoutedMatMul {
     fn source_row(&self, r: usize, route_token_ids: &[i64]) -> TractResult<usize> {
         match self.input_mode {
             RoutedInputMode::TokenRows => {
-                ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
-                Ok(route_token_ids[r] as usize)
+                let token = route_token_ids[r];
+                usize::try_from(token)
+                    .with_context(|| format!("route {r} has invalid token id {token}"))
             }
             RoutedInputMode::RouteRows => Ok(r),
         }
@@ -536,8 +537,9 @@ impl RoutedQ40MatMul {
     fn source_row(&self, route: usize, route_token_ids: &[i64]) -> TractResult<usize> {
         match self.input_mode {
             RoutedInputMode::TokenRows => {
-                ensure!(route_token_ids[route] >= 0, "route {route} has negative token id");
-                Ok(route_token_ids[route] as usize)
+                let token = route_token_ids[route];
+                usize::try_from(token)
+                    .with_context(|| format!("route {route} has invalid token id {token}"))
             }
             RoutedInputMode::RouteRows => Ok(route),
         }
@@ -550,8 +552,8 @@ impl RoutedQ40MatMul {
     ) -> TractResult<Vec<Vec<usize>>> {
         let mut expert_routes = vec![Vec::new(); num_experts];
         for (route, &eid) in route_expert_ids.iter().enumerate().take(route_count) {
-            ensure!(eid >= 0, "route {route} has negative expert id");
-            let eid = eid as usize;
+            let eid = usize::try_from(eid)
+                .with_context(|| format!("route {route} has invalid expert id {eid}"))?;
             ensure!(
                 eid < num_experts,
                 "route {route} references expert {eid}, but weights have {num_experts} experts"
@@ -717,8 +719,9 @@ impl EvalOp for RoutedCombine {
 
         let mut output = Array2::<f32>::zeros((t_tokens, d_model));
         for r in 0..route_token_ids.len() {
-            ensure!(route_token_ids[r] >= 0, "route {r} has negative token id");
-            let token = route_token_ids[r] as usize;
+            let token = usize::try_from(route_token_ids[r]).with_context(|| {
+                format!("route {r} has invalid token id {}", route_token_ids[r])
+            })?;
             ensure!(
                 token < t_tokens,
                 "route {r} references token {token}, but output has {t_tokens} tokens"
