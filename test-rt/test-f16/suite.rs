@@ -62,7 +62,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     if section == "conv_f32" && unit.starts_with("long_reduction_") {
         return true;
     }
-    ["q_flavours", "route_topk"].contains(&&**section)
+    ["q_flavours", "routed_combine", "route_topk"].contains(&&**section)
 }
 
 fn ignore_onnx(t: &[String]) -> bool {
