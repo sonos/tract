@@ -7,7 +7,8 @@
 #                                         the clean commit every demo's build.json names
 #
 # The Chrome profile in $WEB_E2E_HOME keeps the demos' weight caches between runs and starts
-# over once it is a week old, so that downloading them gets tested too.
+# over once it is a week old, so that downloading them gets tested too. E2E_HTTP_PORT (8123) and
+# E2E_DEVTOOLS_PORT (9333) move the local site and Chrome's DevTools.
 
 set -euo pipefail
 
@@ -19,6 +20,15 @@ home=${WEB_E2E_HOME:-$HOME/web-e2e}
 mkdir -p "$home" "$out"
 
 profile=$home/profile
+http_port=${E2E_HTTP_PORT:-8123}
+devtools_port=${E2E_DEVTOOLS_PORT:-9333}
+
+# A Chrome a killed job left behind holds the profile lock and the ports.
+stop_chrome() {
+    pkill -f -- "--user-data-dir=$profile" || true
+}
+stop_chrome
+trap stop_chrome EXIT
 if [ -d "$profile" ] && [ -n "$(find "$profile/.created" -mtime +6 2>/dev/null)" -o ! -e "$profile/.created" ]
 then
     echo "starting from an empty Chrome profile"
@@ -34,7 +44,7 @@ args=()
 case $mode in
     local)
         site=$(mktemp -d)
-        trap 'rm -rf "$site"' EXIT
+        trap 'stop_chrome; rm -rf "$site"' EXIT
         cp "$root/examples/web-demos/index.html" "$site/"
         for spec in "$root"/examples/*/web/e2e.json
         do
@@ -49,7 +59,7 @@ case $mode in
                 missing=1
             fi
         done
-        args=(--serve "$site" --base http://localhost:8123/)
+        args=(--serve "$site" --base "http://localhost:$http_port/")
         ;;
     live)
         specs=("$root"/examples/*/web/e2e.json)
@@ -60,7 +70,7 @@ case $mode in
 esac
 
 status=0
-python3 "$root/ci/web-e2e/driver.py" --chrome "$chrome" --profile "$profile" --out "$out" "${args[@]}" "${specs[@]}" || status=$?
+python3 "$root/ci/web-e2e/driver.py" --chrome "$chrome" --profile "$profile" --port "$devtools_port" --out "$out" "${args[@]}" "${specs[@]}" || status=$?
 [ -z "${GITHUB_STEP_SUMMARY:-}" ] || cat "$out/summary.md" >> "$GITHUB_STEP_SUMMARY"
 [ -z "${missing:-}" ] || status=1
 exit $status

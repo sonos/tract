@@ -36,12 +36,13 @@ import socket
 import struct
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 import urllib.request
 
 POLL = 1.0
+# A hung browser fails the demo instead of the job's timeout.
+CALL_TIMEOUT = 120
 
 
 class Tab:
@@ -49,7 +50,7 @@ class Tab:
 
     def __init__(self, port, url):
         req = urllib.request.Request(f"http://127.0.0.1:{port}/json/new?about:blank", method="PUT")
-        self.target = json.load(urllib.request.urlopen(req))
+        self.target = json.load(urllib.request.urlopen(req, timeout=30))
         self.port = port
         path = self.target["webSocketDebuggerUrl"].split(f":{port}", 1)[1]
         self.sock = socket.create_connection(("127.0.0.1", port))
@@ -75,16 +76,25 @@ class Tab:
         try:
             self.sock.close()
         finally:
-            urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/close/{self.target['id']}")
+            urllib.request.urlopen(f"http://127.0.0.1:{self.port}/json/close/{self.target['id']}", timeout=30)
 
-    def _recv_exact(self, n):
-        while len(self.buf) < n:
-            chunk = self.sock.recv(1 << 20)
-            if not chunk:
-                raise ConnectionError("DevTools connection closed")
-            self.buf += chunk
-        out, self.buf = self.buf[:n], self.buf[n:]
-        return out
+    def _frame(self):
+        """Pops one whole frame off the buffer: (header byte, payload), or None for a partial one."""
+        if len(self.buf) < 2:
+            return None
+        n, at = self.buf[1] & 0x7F, 2
+        if n == 126:
+            if len(self.buf) < 4:
+                return None
+            n, at = struct.unpack(">H", self.buf[2:4])[0], 4
+        elif n == 127:
+            if len(self.buf) < 10:
+                return None
+            n, at = struct.unpack(">Q", self.buf[2:10])[0], 10
+        if len(self.buf) < at + n:
+            return None
+        head, payload, self.buf = self.buf[0], self.buf[at : at + n], self.buf[at + n :]
+        return head, payload
 
     def _send(self, obj):
         data = json.dumps(obj).encode()
@@ -98,20 +108,27 @@ class Tab:
         mask = os.urandom(4)
         self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(data)))
 
-    def _recv(self):
+    def _recv(self, timeout):
+        """The next message; socket.timeout after `timeout` seconds, with the buffer intact."""
+        deadline = time.time() + timeout
         msg = b""
         while True:
-            b0, b1 = self._recv_exact(2)
-            n = b1 & 0x7F
-            if n == 126:
-                n = struct.unpack(">H", self._recv_exact(2))[0]
-            elif n == 127:
-                n = struct.unpack(">Q", self._recv_exact(8))[0]
-            payload = self._recv_exact(n)
-            if b0 & 0x0F in (0x8, 0x9, 0xA):
+            frame = self._frame()
+            if frame is None:
+                left = deadline - time.time()
+                if left <= 0:
+                    raise socket.timeout()
+                self.sock.settimeout(left)
+                chunk = self.sock.recv(1 << 20)
+                if not chunk:
+                    raise ConnectionError("DevTools connection closed")
+                self.buf += chunk
+                continue
+            head, payload = frame
+            if head & 0x0F in (0x8, 0x9, 0xA):
                 continue
             msg += payload
-            if b0 & 0x80:
+            if head & 0x80:
                 return json.loads(msg)
 
     def _post(self, method, session=None, **params):
@@ -124,8 +141,12 @@ class Tab:
 
     def call(self, method, **params):
         i = self._post(method, **params)
+        deadline = time.time() + CALL_TIMEOUT
         while True:
-            m = self._recv()
+            try:
+                m = self._recv(deadline - time.time())
+            except socket.timeout:
+                raise TimeoutError(f"Chrome did not answer {method} within {CALL_TIMEOUT} s") from None
             if m.get("id") == i and "sessionId" not in m:
                 if "error" in m:
                     raise RuntimeError(f"{method}: {m['error']}")
@@ -163,14 +184,12 @@ class Tab:
 
     def pump(self, seconds):
         """Handles the events that arrive within `seconds`."""
-        self.sock.settimeout(seconds)
+        deadline = time.time() + seconds
         try:
             while True:
-                self._event(self._recv())
+                self._event(self._recv(deadline - time.time()))
         except socket.timeout:
             pass
-        finally:
-            self.sock.settimeout(None)
 
     def screenshot(self, path):
         self.call("Emulation.setDeviceMetricsOverride", width=1280, height=1000, deviceScaleFactor=1, mobile=False)
@@ -198,7 +217,7 @@ def run_demo(port, base, spec_path, out, commit):
     log(f"== {name}: {url}")
 
     if commit:
-        built = json.load(urllib.request.urlopen(url + "build.json"))
+        built = json.load(urllib.request.urlopen(url + "build.json", timeout=30))
         if built.get("commit") != commit or built.get("dirty"):
             result["reason"] = f"build.json is {built}, expected {commit}"
             log(f"  FAIL {result['reason']}")
@@ -276,7 +295,7 @@ def serve(directory, base):
     log(f"serving {directory} at {base}")
 
 
-def start_chrome(binary, profile, port):
+def start_chrome(binary, profile, port, log_path):
     flags = [
         "--headless=new",
         f"--remote-debugging-port={port}",
@@ -284,6 +303,8 @@ def start_chrome(binary, profile, port):
         "--no-first-run",
         "--no-default-browser-check",
         "--enable-unsafe-webgpu",
+        "--use-mock-keychain",
+        "--password-store=basic",
         "--use-fake-ui-for-media-stream",
         "--use-fake-device-for-media-stream",
         "--disable-background-timer-throttling",
@@ -291,11 +312,11 @@ def start_chrome(binary, profile, port):
         "--disable-backgrounding-occluded-windows",
         "about:blank",
     ]
-    stderr = open(os.path.join(tempfile.gettempdir(), "web-e2e-chrome.log"), "w")
+    stderr = open(log_path, "w")
     proc = subprocess.Popen([binary] + flags, stdout=stderr, stderr=stderr)
     for _ in range(60):
         try:
-            version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version"))
+            version = json.load(urllib.request.urlopen(f"http://127.0.0.1:{port}/json/version", timeout=5))
             log(f"{version['Browser']}, profile {profile}")
             return proc
         except OSError:
@@ -319,7 +340,8 @@ def main():
     if args.serve:
         serve(args.serve, args.base)
 
-    chrome = start_chrome(args.chrome, args.profile, args.port)
+    chrome_log = os.path.join(args.out, "chrome.log")
+    chrome = start_chrome(args.chrome, args.profile, args.port, chrome_log)
     try:
         results = [run_demo(args.port, args.base, s, args.out, args.commit) for s in args.specs]
     finally:
@@ -337,6 +359,10 @@ def main():
             reason = re.sub(r"\s+", " ", r["reason"] or "")[:200].replace("|", "\\|")
             f.write(f"| {r['demo']} | {'✅' if r['ok'] else '❌ ' + reason} | {r['seconds']} s |\n")
     failed = [r["demo"] for r in results if not r["ok"]]
+    if failed:
+        with open(chrome_log, errors="replace") as f:
+            tail = f.read().splitlines()[-40:]
+        log("== tail of chrome.log\n" + "\n".join(tail))
     log(f"failed: {', '.join(failed)}" if failed else "all demos ok")
     sys.exit(1 if failed else 0)
 
