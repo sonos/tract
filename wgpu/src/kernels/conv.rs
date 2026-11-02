@@ -2,6 +2,7 @@ use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::tensor::DeviceTensor;
 
+use crate::kernels::conv_splitk;
 use crate::kernels::shaders::{
     ChainStep, EntryPoint, GRID_LIMIT, LayoutKind, ModuleKey, ModuleKind, PipelineKey, ShaderDtype,
     WORKGROUP, binary_ops_wgsl, epilogue_body, keys_for, pack_u32s, preamble, unary_ops_wgsl,
@@ -189,6 +190,7 @@ pub fn wgpu_conv_dispatch(
         );
         let pixels = n * oh * ow;
         let tiled = direct.is_none() && tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
+        let tile_m = tile_rows(co_pg);
         // The per-pixel kernel unrolls 3x3 taps at dilation 1 and wants every
         // output channel of a pixel from one thread. With one thread per pixel
         // it only keeps the device busy when that thread's work is a stem's,
@@ -203,40 +205,6 @@ pub fn wgpu_conv_dispatch(
             && dilations[1] == 1
             && (ci * co <= 64 || pixels >= 32768)
             && pixels.div_ceil(CONV_PIXEL_WG as usize) <= 65535;
-        let tile_m = tile_rows(co_pg);
-        let pipeline = if let Some(co_tile) = direct {
-            q.context().chain_pipeline(
-                ("conv_direct", co_tile, epilogue, extras.len()),
-                layout,
-                EntryPoint::typed("conv2d_direct", dt),
-                || conv_direct_module(epilogue, extras.len(), co_tile),
-            )?
-        } else if tiled {
-            q.context().chain_pipeline(
-                ("conv_tiled", tile_m, dt, epilogue, extras.len()),
-                layout,
-                EntryPoint::typed("conv2d_tiled", dt),
-                || conv_tiled_module(dt, epilogue, extras.len(), tile_m),
-            )?
-        } else if per_pixel {
-            q.context().chain_pipeline(
-                ("conv_pixel", dt, epilogue, extras.len()),
-                layout,
-                EntryPoint::typed("conv2d_pixel", dt),
-                || conv_pixel_module(dt, epilogue, extras.len()),
-            )?
-        } else if epilogue.is_empty() {
-            q.context().pipeline(PipelineKey {
-                module: ModuleKey { kind: ModuleKind::Conv, dtype: dt },
-                entry: EntryPoint::typed("conv2d", dt),
-            })?
-        } else {
-            let key = ("conv", dt, epilogue, extras.len());
-            q.context().chain_pipeline(key, layout, EntryPoint::typed("conv2d", dt), || {
-                conv_module(dt, epilogue, extras.len())
-            })?
-        };
-
         let in_sn = *in_shape.n_stride().unwrap_or(&0);
         let in_sc = *in_shape.c_stride();
         let in_sh = in_shape.hw_strides()[0];
@@ -254,11 +222,6 @@ pub fn wgpu_conv_dispatch(
         let w_sh = ws[2];
         let w_sw = ws[3];
 
-        let mut buffers: Vec<&crate::context::WgpuBuffer> =
-            vec![get_wgpu_buffer(input), get_wgpu_buffer(weights)];
-        buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
-        buffers.push(get_wgpu_buffer(output));
-        let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
         let params = pack_u32s(&[
             element_offset(input, 0) as u32,
             element_offset(weights, 0) as u32,
@@ -306,6 +269,54 @@ pub fn wgpu_conv_dispatch(
         tail.extend_from_slice(&mode_extra);
         let mut params = params;
         params.extend_from_slice(&pack_u32s(&tail));
+        let tiled_grid =
+            [pixels.div_ceil(MATMUL_TILE) as u32, co_pg.div_ceil(tile_m) as u32, groups as u32];
+        if tiled
+            && let Some(slices) =
+                conv_splitk::slices(dt, groups, co_pg, pixels, ci_pg * kh * kw, tile_m)
+        {
+            return conv_splitk::dispatch(
+                q, dt, tile_m, slices, epilogue, input, weights, extras, output, params, tiled_grid,
+            );
+        }
+        let pipeline = if let Some(co_tile) = direct {
+            q.context().chain_pipeline(
+                ("conv_direct", co_tile, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("conv2d_direct", dt),
+                || conv_direct_module(epilogue, extras.len(), co_tile),
+            )?
+        } else if tiled {
+            q.context().chain_pipeline(
+                ("conv_tiled", tile_m, dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("conv2d_tiled", dt),
+                || conv_tiled_module(dt, epilogue, extras.len(), tile_m),
+            )?
+        } else if per_pixel {
+            q.context().chain_pipeline(
+                ("conv_pixel", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("conv2d_pixel", dt),
+                || conv_pixel_module(dt, epilogue, extras.len()),
+            )?
+        } else if epilogue.is_empty() {
+            q.context().pipeline(PipelineKey {
+                module: ModuleKey { kind: ModuleKind::Conv, dtype: dt },
+                entry: EntryPoint::typed("conv2d", dt),
+            })?
+        } else {
+            let key = ("conv", dt, epilogue, extras.len());
+            q.context().chain_pipeline(key, layout, EntryPoint::typed("conv2d", dt), || {
+                conv_module(dt, epilogue, extras.len())
+            })?
+        };
+
+        let mut buffers: Vec<&crate::context::WgpuBuffer> =
+            vec![get_wgpu_buffer(input), get_wgpu_buffer(weights)];
+        buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
+        buffers.push(get_wgpu_buffer(output));
+        let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
         let dyn_off = q.alloc_uniform(&params)?;
         if let Some(co_tile) = direct {
             let threads = n * oh * (ow / DIRECT_PX);
@@ -314,9 +325,7 @@ pub fn wgpu_conv_dispatch(
             return q.dispatch_grid("conv_direct", &pipeline, &bg, dyn_off, grid);
         }
         if tiled {
-            let grid =
-                [pixels.div_ceil(MATMUL_TILE) as u32, co_pg.div_ceil(tile_m) as u32, groups as u32];
-            return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, grid);
+            return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, tiled_grid);
         }
         if per_pixel {
             let groups = pixels.div_ceil(CONV_PIXEL_WG as usize) as u32;
@@ -1536,6 +1545,119 @@ mod tests {
             .with_context(|| format!("case {i}"))?;
         }
         Ok(())
+    }
+
+    /// Convolutions whose few output tiles leave the device idle and whose long
+    /// reduction the split-K path cuts into slices: odd channel counts, a
+    /// reduction that is not a whole number of `k` steps, pixel and row tails, a
+    /// batch, channels-last, strides, dilation, groups, a 1x1 kernel, and a bias,
+    /// a bias then a sigmoid, a sigmoid alone, or no epilogue.
+    #[test]
+    fn conv_splitk_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::{DataFormat, sigmoid};
+        #[rustfmt::skip]
+        let cases = [
+            // fmt, n, ci, co, hw, kernel, stride, dilation, group, bias, sigmoid
+            (DataFormat::NCHW, 1, 200, 96, [7, 9], [5, 5], 1, 1, 1, true, false),
+            (DataFormat::NCHW, 1, 237, 37, [11, 13], [3, 3], 1, 1, 1, true, true),
+            (DataFormat::NCHW, 2, 300, 50, [15, 15], [3, 3], 2, 1, 1, false, true),
+            (DataFormat::NHWC, 1, 231, 70, [9, 10], [3, 3], 1, 2, 1, true, false),
+            (DataFormat::NCHW, 1, 512, 64, [10, 10], [3, 3], 1, 1, 2, true, false),
+            (DataFormat::NCHW, 1, 4100, 33, [6, 6], [1, 1], 1, 1, 1, false, false),
+            (DataFormat::NHWC, 1, 1280, 96, [14, 24], [5, 5], 1, 1, 1, true, false),
+            (DataFormat::NCHW, 1, 1280, 96, [18, 32], [5, 5], 1, 1, 1, true, true),
+        ];
+        for (i, (fmt, n, ci, co, hw, kernel, stride, dilation, group, bias, act)) in
+            cases.into_iter().enumerate()
+        {
+            let pad = (kernel[0] - 1) / 2 * dilation;
+            let shape = fmt.from_n_c_hw(n, ci, hw)?.shape.to_vec();
+            let k_shape = [co, ci / group, kernel[0], kernel[1]];
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact(&shape))?;
+            let weights: Vec<f32> =
+                fill(1, k_shape.iter().product()).iter().map(|v| v * 0.02).collect();
+            let k = model.add_const("k", Tensor::from_shape(&k_shape, &weights)?)?;
+            let b = if bias {
+                model.add_const("b", Tensor::from_shape(&[co], &fill(2, co))?)?
+            } else {
+                model.add_const("b", Tensor::zero::<f32>(&[co])?)?
+            };
+            let pool_spec = PoolSpec {
+                data_format: fmt,
+                kernel_shape: kernel.iter().copied().collect(),
+                padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, 0]),
+                dilations: Some(tvec![dilation, dilation]),
+                strides: Some(tvec![stride, stride]),
+                input_channels: ci,
+                output_channels: co,
+            };
+            let out_shape = pool_spec.output_shape(&shape)?;
+            let pixels = n * out_shape.hw_dims().iter().product::<usize>();
+            let (co_pg, k_len) = (co / group, ci / group * kernel[0] * kernel[1]);
+            let tile_m = super::tile_rows(co_pg);
+            ensure!(
+                super::tiled_applies(group, co_pg, pixels, k_len)
+                    && super::conv_splitk::slices(
+                        super::ShaderDtype::F32,
+                        group,
+                        co_pg,
+                        pixels,
+                        k_len,
+                        tile_m
+                    )
+                    .is_some(),
+                "case {i} does not take the split-K path"
+            );
+            let conv = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group, q_params: None };
+            let mut y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            if act {
+                y = model.wire_node("act", sigmoid(), &[y])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let total: usize = shape.iter().product();
+            gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(3, total))?)
+                .with_context(|| format!("case {i}"))?;
+        }
+        Ok(())
+    }
+
+    /// A NaN in the input and an infinite weight reach the split-K result as
+    /// they reach a plain evaluation's.
+    #[test]
+    fn conv_splitk_propagates_nan_and_inf() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        let (ci, co, h, w) = (256usize, 40usize, 8usize, 8usize);
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([1, ci, h, w]))?;
+        let mut weights = fill(1, co * ci * 9);
+        weights[5 * ci * 9 + 100] = f32::INFINITY;
+        let k = model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &weights)?)?;
+        let b = model.add_const("b", Tensor::from_shape(&[co], &fill(2, co))?)?;
+        let conv = Conv {
+            pool_spec: PoolSpec {
+                data_format: DataFormat::NCHW,
+                kernel_shape: tvec![3, 3],
+                padding: PaddingSpec::Valid,
+                dilations: None,
+                strides: None,
+                input_channels: ci,
+                output_channels: co,
+            },
+            kernel_fmt: KernelFormat::OIHW,
+            group: 1,
+            q_params: None,
+        };
+        ensure!(
+            super::conv_splitk::slices(super::ShaderDtype::F32, 1, co, 36, ci * 9, 40).is_some()
+        );
+        let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+        model.select_output_outlets(&[y])?;
+        let mut input = fill(3, ci * h * w);
+        input[200 * h * w + 3 * w + 4] = f32::NAN;
+        gpu_vs_cpu(model, Tensor::from_shape(&[1, ci, h, w], &input)?)
     }
 
     /// Convolutions over one spatial axis run as two-dimensional ones on the device: dilated,
