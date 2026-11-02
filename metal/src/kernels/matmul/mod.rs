@@ -7,6 +7,7 @@ mod mpp;
 
 pub use basic::BasicMatMul;
 pub use ggml_gemm::GgmlGemm;
+pub(crate) use ggml_gemm::dispatch_router_scores;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mpp::MppGemm;
