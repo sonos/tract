@@ -80,15 +80,14 @@ fn input_transform_weights(ci: usize) -> TractResult<Tensor> {
 
 /// `G g G^T` of every `(co, ci)` kernel pair, packed as `[36, n, co, ci]` for
 /// the batched accumulation GEMM: `u[i*6+j][n][co][ci]`.
-fn transformed_weights(kernel: &Tensor, n: usize, co: usize, ci: usize) -> TractResult<Tensor> {
+fn transformed_weights(kernel: &Tensor, co: usize, ci: usize) -> TractResult<Tensor> {
     // `cast_to` panics on a named weight it cannot load; this read fails instead.
     kernel.try_as_plain_ram()?;
     let kernel = kernel.cast_to::<f32>()?;
     let k = kernel.to_plain_array_view::<f32>()?;
-    let mut u = vec![0f32; 36 * n * co * ci];
+    let mut u = vec![0f32; 36 * co * ci];
     for o in 0..co {
         for c in 0..ci {
-            let mut u6 = [[0f64; 6]; 6];
             for i in 0..6 {
                 for j in 0..6 {
                     let mut acc = 0f64;
@@ -97,19 +96,13 @@ fn transformed_weights(kernel: &Tensor, n: usize, co: usize, ci: usize) -> Tract
                             acc += G[i][a] * k[[o, c, a, b]] as f64 * G[j][b];
                         }
                     }
-                    u6[i][j] = acc;
-                }
-            }
-            for i in 0..6 {
-                for j in 0..6 {
-                    for nn in 0..n {
-                        u[((i * 6 + j) * n + nn) * co * ci + o * ci + c] = u6[i][j] as f32;
-                    }
+                    u[(i * 6 + j) * co * ci + o * ci + c] = acc as f32;
                 }
             }
         }
     }
-    Tensor::from_shape(&[36, n, co, ci], &u)
+    // Unit batch axis: the accumulation GEMM broadcasts it over the batch.
+    Tensor::from_shape(&[36, 1, co, ci], &u)
 }
 
 /// `A^T ⊗ A^T` packed as `[16, 36]`: `at[i'*4+j'][i*6+j] = AT[i'][i]*AT[j'][j]`,
@@ -190,7 +183,7 @@ pub fn conv_to_winograd_f43(
     let zero = patch.add_const(format!("{name}.wino.zero"), Tensor::zero_dt(dt, &[ci * 36])?)?;
     let w_u = patch.add_const(
         format!("{name}.wino.g"),
-        transformed_weights(kernel, n, co, ci)?.cast_to_dt(dt)?.into_owned(),
+        transformed_weights(kernel, co, ci)?.cast_to_dt(dt)?.into_owned(),
     )?;
     let w_at = patch
         .add_const(format!("{name}.wino.at"), output_transform()?.cast_to_dt(dt)?.into_owned())?;
