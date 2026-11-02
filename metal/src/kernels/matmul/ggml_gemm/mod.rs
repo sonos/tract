@@ -1,4 +1,5 @@
 use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlQuant};
+use crate::utils::get_metal_buffer;
 use crate::{LibraryName, MetalStream};
 use DatumType::{F16, F32};
 use anyhow::ensure;
@@ -7,7 +8,7 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_quant_fact;
+use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -169,6 +170,43 @@ impl GemmKernel for GgmlGemm {
         b_buffer: &Buffer,
         c_buffer: &Buffer,
     ) -> TractResult<()> {
+        let (mut a_buffer, mut b_buffer) = (a_buffer, b_buffer);
+        // A gemv-shaped problem can reach us in weight-first orientation:
+        // A = weights [m rows, k], B = a single activation row [n=1, k]
+        // (e.g. qwen3.5 linear-attention in-projections at decode, exported
+        // as W @ x). The tiled GEMM kernel wastes 63/64 of each 32x64 tile
+        // on it. C [m,1] and C^T [1,m] are byte-identical, so swap the
+        // operands and let the bandwidth-bound mat-vec kernel handle it.
+        let params = if params.n == 1
+            && params.m > 4
+            && params.a_batch == 1
+            && params.b_batch == 1
+            && !params.transpose_a
+            && params.transpose_b
+            && params.quant_b.is_none()
+            && params.dts[0] == params.dts[1]
+        {
+            std::mem::swap(&mut a_buffer, &mut b_buffer);
+            GemmDispatchParams {
+                dts: params.dts,
+                a_batch: 1,
+                b_batch: 1,
+                m: 1,
+                n: params.m,
+                k: params.k,
+                transpose_a: false,
+                a_offset: params.b_offset,
+                transpose_b: true,
+                b_offset: params.a_offset,
+                quant_b: None,
+                c_offset: params.c_offset,
+                a_strides: natural_strides(&[1, 1, params.k]),
+                b_strides: natural_strides(&[1, params.m, params.k]),
+            }
+        } else {
+            params
+        };
+
         let GemmDispatchParams {
             dts,
             a_batch,
@@ -190,7 +228,7 @@ impl GemmKernel for GgmlGemm {
         // the f16/f32 mat-vec kernels are tuned for 4.
         let gemv_max_rows = if quant_b.is_some() { 8 } else { 4 };
         if matches!(dts[0], F32 | F16)
-            && (k % 32 == 0)
+            && (k.is_multiple_of(32))
             && (k >= 64)
             && ((m > gemv_max_rows) || (quant_b.is_some() && a_batch > 1))
         {
@@ -357,6 +395,7 @@ mod tests {
     use crate::kernels::matmul::GemmImpl;
     use crate::kernels::matmul::tests::run_mmm_test_case;
     use tract_gpu::tensor::IntoDevice;
+    use tract_ndarray::{Ix2, Ix3};
 
     #[test]
     fn test_ggml_compilation() -> TractResult<()> {
@@ -481,7 +520,7 @@ mod tests {
                 let b_tensor =
                     Q4_0.simulate_precision_loss(Tensor::from_shape(&b_shape, &b_data)?, 2)?;
 
-                ensure!(k % 32 == 0);
+                ensure!(k.is_multiple_of(32));
                 let b_q4_0_tensor = BlockQuantStorage::new(
                     Box::new(Q4_0),
                     batch * n,
