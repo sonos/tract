@@ -156,6 +156,39 @@ jobs:
       timeout-minutes: 30
       run: examples/"$DEMO"/web/build.sh
 
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: web-demo-${{ matrix.demo }}
+        path: examples/${{ matrix.demo }}/web/dist
+        retention-days: 3
+
+  web-demo-e2e:
+    name: web demos in Chrome (M1)
+    runs-on: browser-apple-m1
+    needs: [ prepare, web-demo ]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        ref: ${{ needs.prepare.outputs.test_ref }}
+        persist-credentials: false
+
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        pattern: web-demo-*
+        path: web-demos-built
+
+    - name: run the demos
+      timeout-minutes: 60
+      run: ci/web-e2e/run.sh local web-demos-built web-e2e-out
+
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      if: ${{ !cancelled() }}
+      with:
+        name: web-demo-e2e
+        path: web-e2e-out
+        retention-days: 14
+
   build-tract-cli:
     runs-on: ubuntu-24.04
     needs: prepare
@@ -264,7 +297,7 @@ jobs:
 
   report:
     name: Report result to PR
-    needs: [ prepare, examples, example, web-demos, web-demo, build-tract-cli, build-tract-cli-macos, gpu-examples, gpu-example, gpu-example-metal ]
+    needs: [ prepare, examples, example, web-demos, web-demo, web-demo-e2e, build-tract-cli, build-tract-cli-macos, gpu-examples, gpu-example, gpu-example-metal ]
     if: ${{ always() && needs.prepare.outputs.pr_number != '' }}
     runs-on: ubuntu-24.04
     permissions:

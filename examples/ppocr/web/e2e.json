@@ -1,0 +1,31 @@
+{
+  "path": "ppocr/",
+  "timeout": 900,
+  "progress": "document.getElementById('status').textContent",
+  "fail": "document.getElementById('status').classList.contains('warn') && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent === 'Press Start to read.' && !document.getElementById('start').disabled"
+    },
+    {
+      "run": "document.getElementById('model').value = 'tiny', document.getElementById('runtime').value = 'cpu', document.getElementById('start').click()"
+    },
+    {
+      "wait": "[...document.querySelectorAll('#lines li:not(.empty)')].length > 0 && document.getElementById('stop').disabled"
+    },
+    {
+      "name": "reads the sample on the CPU",
+      "check": "(() => { const text = [...document.querySelectorAll('#lines li:not(.empty)')].map((li) => li.firstChild.textContent).join('\\n'); return text.includes('Markov Entropy Decomposition') && [...document.querySelectorAll('#lines li:not(.empty)')].length >= 40 ? null : `read ${[...document.querySelectorAll('#lines li:not(.empty)')].length} lines: ${text.slice(0, 200)}`; })()"
+    },
+    {
+      "run": "(() => { const r = document.getElementById('runtime'); r.value = 'wgpu'; r.dispatchEvent(new Event('change')); })()"
+    },
+    {
+      "wait": "[...document.querySelectorAll('#lines li:not(.empty)')].length > 0 && document.getElementById('stop').disabled"
+    },
+    {
+      "name": "reads the sample on WebGPU",
+      "check": "(() => { const text = [...document.querySelectorAll('#lines li:not(.empty)')].map((li) => li.firstChild.textContent).join('\\n'); return text.includes('Markov Entropy Decomposition') && [...document.querySelectorAll('#lines li:not(.empty)')].length >= 40 ? null : `read ${[...document.querySelectorAll('#lines li:not(.empty)')].length} lines: ${text.slice(0, 200)}`; })()"
+    }
+  ]
+}
