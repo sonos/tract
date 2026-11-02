@@ -246,11 +246,13 @@ fn work(
             }
             Err(panic) => {
                 meters.panics.increment(1);
-                let _ = call.done.send(Err(format_err!(
+                let error = format_err!(
                     "A pool worker panicked running the call: {}",
                     panic_message(&*panic)
-                )));
-                state = match inner.spawn() {
+                );
+                let respawned = inner.spawn();
+                let _ = call.done.send(Err(error));
+                state = match respawned {
                     Ok(state) => state,
                     Err(e) => {
                         log::error!("A pool worker could not replace its state, it stops: {e:?}");
