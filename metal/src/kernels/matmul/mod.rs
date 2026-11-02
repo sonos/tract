@@ -6,8 +6,8 @@ pub mod mlx_sdpa;
 mod mpp;
 
 pub use basic::BasicMatMul;
-pub use ggml_gemm::GgmlGemm;
 pub(crate) use ggml_gemm::dispatch_router_scores;
+pub use ggml_gemm::{GgmlGemm, RoutedQ40InputMode, dispatch_routed_q40_f32, eval_routed_q40_f32};
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mpp::MppGemm;
