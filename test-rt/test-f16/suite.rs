@@ -55,7 +55,12 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
 
-    let [section, _unit] = t else { return false };
+    let [section, unit] = t else { return false };
+    // Reductions of 2-7k terms over integer ramps reach thousands: past 2048, f16 accumulation
+    // drifts by whole units. These cases exercise the wgpu split-K path, not f16.
+    if section == "conv_f32" && unit.starts_with("long_reduction_") {
+        return true;
+    }
     ["q_flavours"].contains(&&**section)
 }
 
