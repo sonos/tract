@@ -103,6 +103,12 @@ impl CudaTransform {
         cuda_context();
 
         rewire_sdpa_cuda(model)?;
+        Rewriter::default()
+            .with_rule_for(
+                "deconv_as_matmul",
+                tract_gpu::rewrite_rules::deconv_as_matmul::deconv_as_matmul,
+            )
+            .rewrite(&(), model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
             return Ok(());

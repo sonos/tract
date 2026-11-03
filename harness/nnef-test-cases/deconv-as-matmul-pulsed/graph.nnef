@@ -1,0 +1,15 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# deconv-as-matmul's kernel without a bias, pulsified: the per-pulse deconv
+# carries output adjustments, the trailing samples the next pulse's overlap
+# completes, which the GPU rewrite appends as zeros.
+graph network(input) -> (output)
+{
+    input  = external<scalar>(shape = [1, 64, S]);
+    kernel = variable<scalar>(label = 'kernel', shape = [64, 64, 8]);
+    output = deconv(input, kernel, padding = [(2, 2)], stride = [4], dilation = [1], groups = 1, border = 'constant');
+}
