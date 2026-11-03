@@ -8,6 +8,8 @@ const bar = fraction => ($('bar').style.width = `${Math.round(fraction * 100)}%`
 const go = $('go');
 const video = $('camera-feed');
 const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null};
+// Past this without a composited frame or a mask, the camera is stopped with what was pending.
+const STALL_MS = 15000;
 
 for (const m of MODELS) $('model').append(new Option(m.name, m.id));
 for (const c of CAPTURES) $('capture').append(new Option(`${c.width} × ${c.height}`, c.id));
@@ -26,12 +28,14 @@ const median = values => [...values].sort((a, b) => a - b)[values.length >> 1];
 
 // Composited frames are counted when the GPU has finished them, not when they were submitted.
 function frameCompleted() {
-  state.rate.add(performance.now(), ++state.frames);
+  state.lastCompleted = performance.now();
+  state.rate.add(state.lastCompleted, ++state.frames);
   showStats();
 }
 
 function maskReady(ms) {
-  state.maskRate.add(performance.now(), ++state.masks);
+  state.lastMask = performance.now();
+  state.maskRate.add(state.lastMask, ++state.masks);
   state.latencies.push(ms);
   if (state.latencies.length > 60) state.latencies.shift();
   showStats();
@@ -56,6 +60,34 @@ async function applyBackground() {
 $('background').onchange = () => applyBackground().catch(error => status(error.message));
 $('colour').oninput = () => applyBackground().catch(error => status(error.message));
 $('refine').onchange = resetStats;
+
+// What the frame loop is stuck on, or '' while frames and masks keep coming.
+function stallReport(now = performance.now()) {
+  const ago = t => `${((now - t) / 1000).toFixed(0)} s`;
+  const timers = state.tick !== undefined && now - state.tick > 3000 ? [`page timers last ran ${ago(state.tick)} ago`] : [];
+  if (!state.running) {
+    const worker = state.starting && state.lastWorker ? [`starting, last word from the GPU worker ${ago(state.lastWorker.at)} ago: ${state.lastWorker.status}`] : [];
+    return [...worker, ...timers].join('; ');
+  }
+  if (document.hidden) return timers.join('; ');
+  const since = t => Math.max(t ?? 0, state.liveSince);
+  const stalled = [];
+  if (now - since(state.lastCompleted) > STALL_MS) stalled.push(`no composited frame for ${ago(since(state.lastCompleted))}`);
+  if (now - since(state.lastMask) > STALL_MS) stalled.push(`no mask for ${ago(since(state.lastMask))}`);
+  if (!stalled.length) return timers.join('; ');
+  const reply = state.lastReply;
+  const cause = state.waiting ? `${state.waiting.stage} pending for ${ago(state.waiting.since)}`
+    : reply ? `last frame reply ${ago(reply.at)} ago: ${reply.dropped ? 'dropped, ' : ''}${reply.gpuFrames} frames on the GPU, mask inference ${reply.inferring ? 'running' : 'idle'}`
+    : 'no frame sent yet';
+  return [...stalled, cause, ...timers].join('; ');
+}
+window.pixelLabStall = () => stallReport();
+
+function watch() {
+  const report = state.running && stallReport();
+  if (report) stop(`Stopped: ${report}`);
+}
+setInterval(() => ((state.tick = performance.now()), watch()), 1000);
 
 function stop(message = 'Camera stopped.') {
   state.generation++;
@@ -107,6 +139,7 @@ async function start() {
     bar(0);
     state.client = new GpuClient(message => {
       if (generation !== state.generation) return;
+      if (message.status) state.lastWorker = {at: performance.now(), status: message.status};
       if (message.download !== undefined) bar(message.download);
       if (message.status) status(message.status);
       if (message.fatal) stop(message.fatal);
@@ -118,6 +151,7 @@ async function start() {
     await applyBackground();
     bar(1);
     resetStats();
+    Object.assign(state, {liveSince: performance.now(), lastCompleted: undefined, lastMask: undefined, lastReply: null, waiting: null, lastWorker: null});
     state.running = true;
     go.disabled = false;
     go.textContent = 'Stop camera';
@@ -126,15 +160,20 @@ async function start() {
       if (!state.running || generation !== state.generation) return;
       state.callback = video.requestVideoFrameCallback(frame);
       state.cameraRate.add(performance.now(), metadata.presentedFrames);
-      if (state.inFlight || document.hidden) return;
+      watch();
+      if (!state.running || state.inFlight || document.hidden) return;
       state.inFlight = (async () => {
         try {
+          state.waiting = {stage: 'createImageBitmap', since: performance.now()};
           const bitmap = await createImageBitmap(video);
           if (!state.running || generation !== state.generation) return bitmap.close();
-          await state.client.request('frame', {bitmap, refine: $('refine').checked, view: $('view').value}, [bitmap], 15000);
+          state.waiting = {stage: 'frame request', since: performance.now()};
+          const reply = await state.client.request('frame', {bitmap, refine: $('refine').checked, view: $('view').value}, [bitmap], 15000);
+          state.lastReply = {...reply, at: performance.now()};
         } catch (error) {
           if (generation === state.generation) stop(`Stopped: ${error.message || error}`);
         } finally {
+          state.waiting = null;
           state.inFlight = null;
         }
       })();
@@ -156,7 +195,7 @@ async function start() {
 
 go.onclick = () => (state.running ? stop() : start());
 $('camera').onchange = () => state.running && (stop(), start());
-document.addEventListener('visibilitychange', () => !document.hidden && state.running && resetStats());
+document.addEventListener('visibilitychange', () => !document.hidden && state.running && (resetStats(), (state.liveSince = performance.now())));
 window.addEventListener('pagehide', () => stop());
 
 // Which commit and day this page was built from, when the build says so.
