@@ -2,7 +2,8 @@ name: CI scope
 
 # Dry run: decides which PR legs of cli.yml, crates.yml and cross-platform.yml this
 # change can affect (ci/affected.py) and reports it in the job summary and a ci-scope
-# artifact. Nothing is skipped yet.
+# artifact. Nothing is skipped yet. Runs on the merge commit, so a PR forked from an older
+# main is scoped by the current rules.
 
 on:
   pull_request:
@@ -24,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
       - name: Changed files
         env:
