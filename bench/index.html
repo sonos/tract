@@ -136,6 +136,7 @@ footer { margin-top: 40px; font-size: 12px; color: var(--muted); }
   const BREAKS = [
     { file: /./, metric: /\.time_to_/, before: '2026-08-02', note: 'Load times before 2026-08-02 include the model download.' },
     { file: /orangepi-rv2$/, metric: /./, before: '2026-09-01', note: 'The first orangepi-rv2 nightlies ran during board bring-up.' },
+    { file: /i9-11900kb_rtx-4060(_cuda|_wgpu)?$/, metric: /./, before: '2026-11-04', note: 'The i9-11900KB box runs with CPU governor performance from 2026-11-04; earlier points ran under powersave.' },
   ];
   const CAVEATS = [
     { file: /apple-m1-max$/, metric: /\.(rsz|active|time_to)_[a-z_]+\.metal$/, note: 'Metal load metrics on the M1 Max drift upward for weeks at a time with no code change, and drop back when the machine is reset.' },
