@@ -353,13 +353,21 @@ jobs:
           # The files API lists at most 3000; past that, let everything run.
           if [ "$(wc -l < "$RUNNER_TEMP/changed.txt")" -ge 3000 ]; then echo Cargo.lock >> "$RUNNER_TEMP/changed.txt"; fi
           echo "files=$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+      # The merge commit carries the current scoping rules even when the PR forks from an older main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.changed.outputs.files != ''
+        continue-on-error: true
+        with:
+          ref: ${{ github.sha }}
+          path: .ci-merge
+          persist-credentials: false
       - id: scope
         if: steps.changed.outputs.files != ''
         continue-on-error: true
         env:
           FILES: ${{ steps.changed.outputs.files }}
         run: |
-          python3 ci/affected.py --files "$FILES" --json "$RUNNER_TEMP/scope.json" --summary "$GITHUB_STEP_SUMMARY"
+          python3 .ci-merge/ci/affected.py --files "$FILES" --json "$RUNNER_TEMP/scope.json" --summary "$GITHUB_STEP_SUMMARY"
           echo "skip=$(jq -c '[.legs[] | select(.workflow == "cli.yml" and (.affected | not)) | .leg]' "$RUNNER_TEMP/scope.json")" >> "$GITHUB_OUTPUT"
       # The apple boxes bench as soon as build-macos is done, the others as soon as build is.
       # build-macos runs on a self-hosted Mac unless the apple box is disabled, on a hosted
