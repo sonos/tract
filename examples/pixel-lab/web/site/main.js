@@ -10,6 +10,7 @@ const video = $('camera-feed');
 const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null};
 // Past this without a composited frame or a mask, the camera is stopped with what was pending.
 const STALL_MS = 15000;
+const WORKER_SILENCE_MS = 10000;
 
 for (const m of MODELS) $('model').append(new Option(m.name, m.id));
 for (const c of CAPTURES) $('capture').append(new Option(`${c.width} × ${c.height}`, c.id));
@@ -66,7 +67,7 @@ function stallReport(now = performance.now()) {
   const ago = t => `${((now - t) / 1000).toFixed(0)} s`;
   const timers = state.tick !== undefined && now - state.tick > 3000 ? [`page timers last ran ${ago(state.tick)} ago`] : [];
   if (!state.running) {
-    const worker = state.starting && state.lastWorker ? [`starting, last word from the GPU worker ${ago(state.lastWorker.at)} ago: ${state.lastWorker.status}`] : [];
+    const worker = state.starting && state.lastWorker && now - state.lastWorker.at > WORKER_SILENCE_MS ? [`starting, last word from the GPU worker ${ago(state.lastWorker.at)} ago: ${state.lastWorker.status}`] : [];
     return [...worker, ...timers].join('; ');
   }
   if (document.hidden) return timers.join('; ');
@@ -92,6 +93,7 @@ setInterval(() => ((state.tick = performance.now()), watch()), 1000);
 function stop(message = 'Camera stopped.') {
   state.generation++;
   state.running = false;
+  state.inFlight = state.waiting = null;
   if (state.callback !== null) video.cancelVideoFrameCallback(state.callback);
   state.callback = null;
   state.client?.close();
@@ -173,8 +175,7 @@ async function start() {
         } catch (error) {
           if (generation === state.generation) stop(`Stopped: ${error.message || error}`);
         } finally {
-          state.waiting = null;
-          state.inFlight = null;
+          if (generation === state.generation) state.inFlight = state.waiting = null;
         }
       })();
     };
