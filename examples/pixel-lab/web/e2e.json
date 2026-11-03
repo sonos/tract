@@ -9,8 +9,8 @@
     }
   },
   "camera": "portrait",
-  "progress": "document.getElementById('status').textContent",
-  "fail": "(document.getElementById('go').textContent === 'Unsupported' || /rror|could not|denied|not available|disconnected/i.test(document.getElementById('status').textContent)) && document.getElementById('status').textContent",
+  "progress": "document.getElementById('status').textContent + (window.pixelLabStall?.() ? ` [stall: ${window.pixelLabStall()}]` : '')",
+  "fail": "(document.getElementById('go').textContent === 'Unsupported' || /^Stopped:|rror|could not|denied|not available|disconnected/i.test(document.getElementById('status').textContent)) && document.getElementById('status').textContent",
   "steps": [
     {
       "wait": "document.getElementById('status').textContent.startsWith('Ready')"
