@@ -549,6 +549,13 @@ pub fn suite() -> TractResult<TestSuite> {
     for (name, n, ci, co, h, w, ker, bias) in [
         ("long_reduction_small_map_odd_channels", 1, 237, 37, 11, 13, [3, 3], true),
         ("long_reduction_small_map_5x5", 1, 200, 96, 7, 9, [5, 5], true),
+        ("small_grid_128_128", 1, 128, 128, 12, 20, [3, 3], true),
+        ("small_grid_128_64", 1, 128, 64, 12, 20, [3, 3], false),
+        ("small_grid_171_80", 1, 171, 80, 23, 40, [3, 3], true),
+        ("small_grid_short_map", 1, 128, 128, 12, 16, [3, 3], true),
+        ("small_grid_short_reduction", 1, 64, 64, 24, 40, [3, 3], true),
+        ("small_grid_reduction_below", 1, 113, 64, 12, 20, [3, 3], true),
+        ("small_grid_reduction_above", 1, 114, 64, 12, 20, [3, 3], true),
         ("long_reduction_small_map_no_bias_batch", 2, 300, 33, 4, 5, [3, 3], false),
     ] {
         suite.add(

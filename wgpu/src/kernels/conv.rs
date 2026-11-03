@@ -1103,7 +1103,28 @@ fn direct_tiling(
     }
     let co_tile = if co.is_multiple_of(8) { 8 } else { 4 };
     let threads = n * oh * (ow / DIRECT_PX);
-    (threads.div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize).then_some(co_tile)
+    let spatial_groups = threads.div_ceil(CONV_DIRECT_WG as usize);
+    let workgroups = spatial_groups * co.div_ceil(co_tile);
+    if splitk_over_direct(dt, co, n * oh * ow, spec.input_channels * 9, workgroups) {
+        return None;
+    }
+    (spatial_groups <= GRID_LIMIT as usize).then_some(co_tile)
+}
+
+/// Whether a direct-eligible convolution has a small grid, at least four
+/// spatial tiles and a long enough reduction to prefer the two-pass split-K path.
+fn splitk_over_direct(
+    dt: ShaderDtype,
+    co: usize,
+    pixels: usize,
+    reduction: usize,
+    direct_workgroups: usize,
+) -> bool {
+    direct_workgroups < 64
+        && pixels.div_ceil(MATMUL_TILE) >= 4
+        && reduction >= 1024
+        && tiled_applies(1, co, pixels, reduction)
+        && conv_splitk::slices(dt, 1, co, pixels, reduction, tile_rows(co)).is_some()
 }
 
 /// Register-blocked direct 3x3 convolution: each thread owns `DIRECT_PX`
@@ -1545,6 +1566,32 @@ mod tests {
             .with_context(|| format!("case {i}"))?;
         }
         Ok(())
+    }
+
+    #[test]
+    fn small_grid_direct_routing() {
+        for (ci, co, h, w, splitk) in [
+            (128usize, 128usize, 12usize, 20usize, true),
+            (128, 64, 12, 20, true),
+            (171, 80, 23, 40, true),
+            (128, 128, 12, 16, false),
+            (128, 128, 8, 16, false),
+            (16, 32, 12, 20, false),
+            (64, 64, 24, 40, false),
+            (113, 64, 12, 20, false),
+            (114, 64, 12, 20, true),
+            (128, 64, 32, 64, false),
+        ] {
+            let co_tile = if co.is_multiple_of(8) { 8 } else { 4 };
+            let groups = (h * w / super::DIRECT_PX).div_ceil(super::CONV_DIRECT_WG as usize)
+                * co.div_ceil(co_tile);
+            assert_eq!(
+                super::splitk_over_direct(super::ShaderDtype::F32, co, h * w, ci * 9, groups),
+                splitk,
+                "{ci}->{co} {h}x{w}"
+            );
+            assert!(!super::splitk_over_direct(super::ShaderDtype::F16, co, h * w, ci * 9, groups));
+        }
     }
 
     /// Convolutions whose few output tiles leave the device idle and whose long
