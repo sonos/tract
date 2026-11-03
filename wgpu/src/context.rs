@@ -13,7 +13,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::as_q40_tensor;
+use tract_gpu::utils::as_q40_or_q20t_tensor;
 use wgpu::util::DeviceExt;
 
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
@@ -805,7 +805,7 @@ impl DeviceContext for WgpuContext {
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             view.datum_type(),
         );
-        let bqs = as_q40_tensor(view.tensor);
+        let bqs = as_q40_or_q20t_tensor(view.tensor);
         let (data_bytes, bqf) = if let Some(bqs) = bqs {
             (
                 bqs.value().as_bytes(),

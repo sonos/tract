@@ -14,9 +14,8 @@ pub fn is_supported_dt(dt: DatumType) -> bool {
     matches!(dt, DatumType::F32 | DatumType::F16)
 }
 
-/// Whether a node input can reach a kernel. No kernel here decodes a
-/// block-quantized tensor, so an exotic fact keeps the node on the CPU however
-/// its datum type reads.
+/// Whether a generic kernel can take this input. Packed weights stay off this
+/// path: `translate_gemm` accepts `Q4_0` and `Q2_0_T` on its B operand.
 pub fn is_supported_fact(f: &TypedFact) -> bool {
     is_supported_dt(f.datum_type) && f.exotic_fact().is_none()
 }

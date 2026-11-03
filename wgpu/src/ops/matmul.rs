@@ -1,5 +1,8 @@
 use tract_core::internal::*;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_core::tract_linalg::block_quant::Q2_0_T;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -77,8 +80,37 @@ impl TypedOp for WgpuGemm {
     }
 }
 
-/// Translates a float `PrefixMatMul` whose operands share a dtype and fit the kernels' rank into a
-/// [`WgpuGemm`] with no epilogue yet.
+/// A `Q4_0` or `Q2_0_T` weight on B, K last, block 32, rank 2 or 3.
+/// Anything else stays on the CPU.
+fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
+    if facts.len() < 2 || op.quantize_output.is_some() || !op.transpose_b {
+        return false;
+    }
+    let (a, b) = (facts[0], facts[1]);
+    if a.exotic_fact().is_some()
+        || !crate::kernels::matmul::is_supported_dt(a.datum_type)
+        || op.operating_dt.is_some_and(|dt| dt != a.datum_type)
+        || a.rank() < 2
+        || a.rank() > 3
+        || a.rank() != b.rank()
+    {
+        return false;
+    }
+    let Some(bqf) = b.exotic_fact().and_then(|f| f.downcast_ref::<BlockQuantFact>()) else {
+        return false;
+    };
+    let k = b.shape.dims().last().and_then(|d| d.to_usize().ok());
+    k == Some(bqf.k())
+        && bqf.k() % 32 == 0
+        && bqf.format.block_len() == 32
+        && (bqf.format.dyn_eq(&Q4_0) || bqf.format.dyn_eq(&Q2_0_T))
+}
+
+/// Translates a `PrefixMatMul` into a [`WgpuGemm`] with no epilogue yet.
+///
+/// Float operands must share a dtype. A `Q4_0` or `Q2_0_T` weight is accepted
+/// on B when `transpose_b` is set, the rank is 2 or 3, and K is a multiple of
+/// the block. A packed weight in any other position stays on the CPU.
 pub fn translate_gemm(
     source: &TypedModel,
     node: &TypedNode,
@@ -87,15 +119,18 @@ pub fn translate_gemm(
 ) -> TractResult<Option<TVec<OutletId>>> {
     let input_facts = source.node_input_facts(node.id)?;
     rule_if_some!(op = node.op_as::<PrefixMatMul>());
-    rule_if!(
-        op.quantize_output.is_none()
-            && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
-            && input_facts.iter().all(|f| {
-                crate::kernels::matmul::is_supported_dt(f.datum_type) && f.exotic_fact().is_none()
-            })
-            && input_facts[0].datum_type == input_facts[1].datum_type
-            && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
-    );
+    if !packed_weight_ok(op, &input_facts) {
+        rule_if!(
+            op.quantize_output.is_none()
+                && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
+                && input_facts.iter().all(|f| {
+                    crate::kernels::matmul::is_supported_dt(f.datum_type)
+                        && f.exotic_fact().is_none()
+                })
+                && input_facts[0].datum_type == input_facts[1].datum_type
+                && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
+        );
+    }
     let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
     let outlet_ids = target.wire_node(
         node.name.clone(),
