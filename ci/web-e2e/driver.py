@@ -220,12 +220,15 @@ def run_demo(port, base, spec_path, out, commit):
     try:
         last = None
 
+        # Page.navigate returns before the document commits: until then the steps would be
+        # evaluated against about:blank.
+        while not tab.eval(f"location.href.startsWith({json.dumps(url)}) && document.readyState !== 'loading'", spec):
+            if time.time() > deadline:
+                raise AssertionError("the page did not load")
+            tab.pump(POLL)
+
         if commit:
             # The page fetches it: the CDN turns away clients that are not browsers.
-            while not tab.eval(f"location.href.startsWith({json.dumps(url)}) && document.readyState !== 'loading'", spec):
-                if time.time() > deadline:
-                    raise AssertionError("the page did not load")
-                tab.pump(POLL)
             built = tab.eval("fetch('build.json', { cache: 'no-store' }).then((r) => r.json())", spec)
             if built.get("commit") != commit or built.get("dirty"):
                 raise AssertionError(f"build.json is {built}, expected {commit}")
