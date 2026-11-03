@@ -1,5 +1,6 @@
 #![allow(unpredictable_function_pointer_comparisons)]
 use crate::device::{DeviceContext, get_context};
+use crate::ops::binary::GpuBinOp;
 use crate::ops::change_axes::GpuAxisOp;
 use crate::ops::fused_output::make_fused_output_for_node;
 use crate::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice};
@@ -8,7 +9,7 @@ use crate::utils::compute_broadcast_strides;
 use std::ops::Range;
 use tract_core::internal::*;
 use tract_core::ops::array::PadMode;
-use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulsePad};
+use tract_pulse_opl::ops::{AffineChunkTrim, DeconvDelay, Delay, PulseMask, PulsePad};
 
 // ─── GpuDelay ────────────────────────────────────────────────────────────────
 
@@ -633,4 +634,207 @@ impl TypedOp for GpuAffineChunkTrim {
     }
 
     as_op!();
+}
+
+/// Device counterpart of [`DeconvDelay`]: the overlap-add a pulsed transposed
+/// convolution needs across pulses.  Each pulse's deconv output carries
+/// `overlap` trailing frames that belong to the next pulse's head; the state
+/// keeps them on the device and adds them in with the backend's `add`.
+///
+/// Serves a single stream, as [`DeconvDelay`] does.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GpuDeconvDelay {
+    pub inner: DeconvDelay,
+    pub add: GpuBinOp,
+}
+
+impl GpuDeconvDelay {
+    pub fn new(inner: &DeconvDelay, add: GpuBinOp) -> Self {
+        Self { inner: inner.clone(), add }
+    }
+}
+
+impl Op for GpuDeconvDelay {
+    fn name(&self) -> StaticName {
+        "GpuDeconvDelay".into()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for GpuDeconvDelay {
+    not_out_of_plan!();
+
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(GpuDeconvDelayState {
+            valid_inputed: -(self.inner.delay as isize),
+            buffer: None,
+        })))
+    }
+}
+
+impl TypedOp for GpuDeconvDelay {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        crate::utils::facts_to_device_facts(inputs, |facts| self.inner.output_facts(facts))
+            .with_context(|| format!("Error while computing output facts for {}", self.name()))
+    }
+
+    as_op!();
+}
+
+#[derive(Debug, Clone)]
+struct GpuDeconvDelayState {
+    valid_inputed: isize,
+    buffer: Option<DeviceTensor>,
+}
+
+impl OpState for GpuDeconvDelayState {
+    fn eval(
+        &mut self,
+        ctx: &EvalContext,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let input = args_1!(inputs);
+        let gpu_op =
+            op.downcast_ref::<GpuDeconvDelay>().ok_or_else(|| format_err!("Wrong Op type"))?;
+        let op = &gpu_op.inner;
+        ensure!(ctx.seating.max_lanes() <= 1, "GpuDeconvDelay is not lane-aware");
+        let input = input.as_device_tensor().context("Expected a GPU tensor")?;
+        let device = get_context()?;
+        let (axis, overlap) = (op.axis, op.overlap);
+        let input_pulse = input.shape()[axis];
+        let output_pulse = input_pulse - overlap;
+        let dt = input.datum_type();
+        let mut overlap_shape: TVec<usize> = input.shape().into();
+        overlap_shape[axis] = overlap;
+        if self.buffer.is_none() {
+            self.buffer = Some(Tensor::zero_dt(dt, &overlap_shape)?.into_device()?);
+        }
+        let buffer = self.buffer.as_ref().unwrap();
+
+        let acc = DeviceTensor::uninitialized_dt(dt, input.shape())?;
+        copy_lane(&*device, &acc, None, 0, input, None, 0, axis, input_pulse)?;
+        self.valid_inputed += output_pulse as isize;
+        if let Ok(input_dim) = op.deconv_input_dim.eval(ctx.symbols).to_isize()
+            && self.valid_inputed > input_dim
+        {
+            let zeroed = ((self.valid_inputed - input_dim) as usize).min(input_pulse);
+            let zero = Tensor::zero_dt(dt, &[])?.into_device()?;
+            fill_lane(&*device, &acc, None, axis, input_pulse - zeroed..input_pulse, &zero)?;
+        }
+
+        if overlap > 0 {
+            let head = DeviceTensor::uninitialized_dt(dt, &overlap_shape)?;
+            copy_lane(&*device, &head, None, 0, &acc, None, 0, axis, overlap)?;
+            let sum = DeviceTensor::uninitialized_dt(dt, &overlap_shape)?;
+            (gpu_op.add.dispatch)(&*gpu_op.add.mini_op, &head, buffer, &sum)?;
+            copy_lane(&*device, &acc, None, 0, &sum, None, 0, axis, overlap)?;
+        }
+
+        let mut output_shape: TVec<usize> = input.shape().into();
+        output_shape[axis] = output_pulse;
+        let output = make_tensor_for_node(ctx, dt, &output_shape)?;
+        copy_lane(&*device, &output, None, 0, &acc, None, 0, axis, output_pulse)?;
+        copy_lane(&*device, buffer, None, 0, &acc, None, output_pulse, axis, overlap)?;
+        Ok(tvec!(output.into_tensor().into_tvalue()))
+    }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GpuDeconvDelay is not lane-aware: buffer has no lane axis")
+    }
+}
+
+/// Device counterpart of [`PulseMask`]: fills the frames of each pulse that
+/// lie before `begin` or past `end` of the stream with `value`, forwarding
+/// pulses that lie wholly inside it.
+///
+/// Serves a single stream, as [`PulseMask`] does.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct GpuPulseMask {
+    pub inner: PulseMask,
+}
+
+impl GpuPulseMask {
+    pub fn new(inner: &PulseMask) -> Self {
+        Self { inner: inner.clone() }
+    }
+}
+
+impl Op for GpuPulseMask {
+    fn name(&self) -> StaticName {
+        "GpuPulseMask".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        self.inner.info()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for GpuPulseMask {
+    not_out_of_plan!();
+
+    fn forwards_input(&self) -> Option<usize> {
+        Some(0)
+    }
+
+    fn state(&self, _ctx: &EvalContext) -> TractResult<Option<Box<dyn OpState>>> {
+        Ok(Some(Box::new(GpuPulseMaskState { current_pos: 0 })))
+    }
+}
+
+impl TypedOp for GpuPulseMask {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        crate::utils::facts_to_device_facts(inputs, |facts| self.inner.output_facts(facts))
+            .with_context(|| format!("Error while computing output facts for {}", self.name()))
+    }
+
+    as_op!();
+}
+
+#[derive(Debug, Clone)]
+struct GpuPulseMaskState {
+    current_pos: usize,
+}
+
+impl OpState for GpuPulseMaskState {
+    fn eval(
+        &mut self,
+        ctx: &EvalContext,
+        op: &dyn Op,
+        inputs: TVec<TValue>,
+    ) -> TractResult<TVec<TValue>> {
+        let input_value = args_1!(inputs);
+        let op =
+            &op.downcast_ref::<GpuPulseMask>().ok_or_else(|| format_err!("Wrong Op type"))?.inner;
+        ensure!(ctx.seating.max_lanes() <= 1, "GpuPulseMask is not lane-aware");
+        let input = input_value.as_device_tensor().context("Expected a GPU tensor")?;
+        let pulse = input.shape()[op.axis];
+        let pulse_begin = self.current_pos;
+        let pulse_end = self.current_pos + pulse;
+        self.current_pos += pulse;
+        let end = op.end.eval(ctx.symbols).to_usize().unwrap_or(usize::MAX);
+        if pulse_begin >= op.begin && pulse_end <= end {
+            return Ok(tvec!(input_value));
+        }
+        let device = get_context()?;
+        let output = make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
+        copy_lane(&*device, &output, None, 0, input, None, 0, op.axis, pulse)?;
+        let value = op.value.cast_to_dt(input.datum_type())?.into_owned().into_device()?;
+        if pulse_begin < op.begin {
+            let fill_up_to = (op.begin - pulse_begin).min(pulse);
+            fill_lane(&*device, &output, None, op.axis, 0..fill_up_to, &value)?;
+        }
+        if pulse_end > end {
+            let fill_from = pulse - (pulse_end - end).min(pulse);
+            fill_lane(&*device, &output, None, op.axis, fill_from..pulse, &value)?;
+        }
+        Ok(tvec!(output.into_tensor().into_tvalue()))
+    }
+
+    fn reset_lanes(&mut self, _lanes: &[LaneId]) -> TractResult<()> {
+        bail!("GpuPulseMask is not lane-aware: current_pos has no lane axis")
+    }
 }

@@ -222,6 +222,12 @@ crate::register_metal_op!(tract_core::ops::binary::TypedBinOp, |source, node, op
     Ok(Some(Box::new(metal_bin_op(op.0.clone()))))
 });
 
+crate::register_metal_op!(tract_pulse_opl::ops::DeconvDelay, |source, node, op| {
+    let add = Box::new(tract_core::ops::math::Add);
+    rule_if!(is_supported(&*add, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuDeconvDelay::new(op, metal_bin_op(add)))))
+});
+
 crate::register_metal_op!(tract_core::ops::logic::Iff, |_source, _node, _op| {
     Ok(Some(Box::new(tract_gpu::ops::iff::GpuIff::new("Metal", metal_iff_dispatch))))
 });
