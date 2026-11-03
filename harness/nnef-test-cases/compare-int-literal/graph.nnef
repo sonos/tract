@@ -1,0 +1,17 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# An integer wire compared with integer literals, as torch-to-nnef writes
+# `0 <= x < 250`.  The literals are TDim constants, which promotes the
+# comparisons to TDim; declutter compares in I64 instead, so no Cast to TDim
+# is left and a GPU runtime keeps the comparisons on the device.
+graph network(x) -> (window)
+{
+    x      = tract_core_external(shape = [S], datum_type = 'i64');
+    past   = ge(x, 0);
+    recent = lt(x, 250);
+    window = and(past, recent);
+}
