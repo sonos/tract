@@ -76,6 +76,12 @@ impl ModelTransform for WgpuTransform {
         Rewriter::default()
             .with_rule_for("flatten_unfused_sdpa", flatten_unfused_sdpa)
             .rewrite(&(), model)?;
+        Rewriter::default()
+            .with_rule_for(
+                "deconv_as_matmul",
+                tract_gpu::rewrite_rules::deconv_as_matmul::deconv_as_matmul,
+            )
+            .rewrite(&(), model)?;
         // Pointwise convolutions reach the backend as EinSum, so a segmenter is
         // mostly matmuls until this runs.
         rewrite_einsum_to_prefix_matmul(model, false)?;
