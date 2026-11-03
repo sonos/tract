@@ -240,10 +240,17 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv, const in
                     if (j1 > jlim1)
                         r[3] = -CUDART_INF_F;
                 } else if constexpr (MASK_MODE == mask) {
-                    r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
-                    r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
-                    r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
-                    r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+                    // A tail Q tile's rows past len_q have no mask row to read.
+                    const bool i0_valid = Q_TILE_MODE == fullq ? true : (i0g < len_q);
+                    const bool i1_valid = Q_TILE_MODE == fullq ? true : (i1g < len_q);
+                    if (i0_valid) {
+                        r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+                        r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+                    }
+                    if (i1_valid) {
+                        r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+                        r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+                    }
                 }
             }
 
