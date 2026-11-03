@@ -5,6 +5,7 @@ let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameC
 // Composited frames submitted and not finished yet. Past this a new frame is dropped rather than
 // queued, so latency stays bounded; three still covers Firefox's ~100 ms completion callback at 30 fps.
 const MAX_GPU_FRAMES = 3;
+const DOWNLOAD_STALL_MS = 30000;
 const post = message => postMessage(message);
 
 async function wasm() {
@@ -30,7 +31,9 @@ async function download(m) {
   const reader = response.body.getReader();
   let loaded = 0;
   for (;;) {
-    const {done, value} = await reader.read();
+    let timer;
+    const stalled = new Promise((_, reject) => (timer = setTimeout(() => reject(new Error(`${m.name}: download stalled at ${(loaded / 1e6).toFixed(1)} MB`)), DOWNLOAD_STALL_MS)));
+    const {done, value} = await Promise.race([reader.read(), stalled]).finally(() => clearTimeout(timer));
     if (done) break;
     if (loaded + value.length > bytes.length) throw new Error(`${m.name}: more bytes than expected`);
     bytes.set(value, loaded);
@@ -121,7 +124,7 @@ async function command(type, payload) {
     const bitmap = payload.bitmap;
     if (gpuFrames >= MAX_GPU_FRAMES) {
       bitmap.close();
-      return {dropped: true};
+      return {dropped: true, gpuFrames, inferring: mask.busy};
     }
     try {
       const scale = Math.max(frameCanvas.width / bitmap.width, frameCanvas.height / bitmap.height);
@@ -137,7 +140,7 @@ async function command(type, payload) {
       gpuFrames--;
       post({completed: true});
     });
-    return {};
+    return {gpuFrames, inferring: mask.busy};
   }
   throw new Error(`Unknown command: ${type}`);
 }
