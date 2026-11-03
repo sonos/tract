@@ -337,6 +337,9 @@ impl TypedOp for TypedBinOp {
         {
             return Ok(Some(broadcast_patch));
         }
+        if let Some(patch) = declutter_comparison_through_tdim_cast(model, node, self)? {
+            return Ok(Some(patch));
+        }
         self.0.declutter(model, node)
     }
 
@@ -1679,4 +1682,62 @@ mod tests {
         assert_eq!(&*before[0], &*after[0]);
         Ok(())
     }
+}
+
+/// Compare an integer wire with a constant in the wire's own type rather than
+/// through a cast to TDim.
+///
+/// An integer literal reaches the graph as a TDim constant (NNEF integers are
+/// dims), so comparing an integer wire with it promotes the wire to TDim.  The
+/// result is the same when the constant holds plain integers that fit the
+/// wire's type, and the comparison then stays numeric: TDim only evaluates on
+/// the host.  `uniform_tdim` propagates from an integer constant as it does from
+/// a TDim one.
+fn declutter_comparison_through_tdim_cast(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &TypedBinOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    use crate::ops::cast::Cast;
+    use crate::ops::logic::{CompEq, CompGT, CompGTE, CompLT, CompLTE, CompNE};
+    let mini = &op.0;
+    rule_if!(
+        mini.is::<CompEq>()
+            || mini.is::<CompNE>()
+            || mini.is::<CompLT>()
+            || mini.is::<CompGT>()
+            || mini.is::<CompLTE>()
+            || mini.is::<CompGTE>()
+    );
+    for cast_slot in 0..2 {
+        let cast_node = model.node(node.inputs[cast_slot].node);
+        let Some(cast_op) = cast_node.op_as::<Cast>() else { continue };
+        if cast_op.to != TDim::datum_type() {
+            continue;
+        }
+        let source = cast_node.inputs[0];
+        let source_dt = model.outlet_fact(source)?.datum_type;
+        if !source_dt.is_integer() {
+            continue;
+        }
+        let Some(konst) = model.outlet_fact(node.inputs[1 - cast_slot])?.konst.clone() else {
+            continue;
+        };
+        let Ok(as_i64) = konst.cast_to::<i64>() else { continue };
+        let Ok(typed) = as_i64.cast_to_dt(source_dt) else { continue };
+        if typed.cast_to::<i64>()?.as_ref() != as_i64.as_ref() {
+            continue;
+        }
+        let mut patch = TypedModelPatch::default();
+        let wire = patch.tap_model(model, source)?;
+        let konst = patch.add_const(format!("{}.konst", node.name), typed.into_owned())?;
+        let mut inputs = tvec!(wire, konst);
+        if cast_slot == 1 {
+            inputs.swap(0, 1);
+        }
+        let out = patch.wire_node(&node.name, op.clone(), &inputs)?;
+        patch.shunt_outside(model, node.id.into(), out[0])?;
+        return Ok(Some(patch));
+    }
+    Ok(None)
 }
