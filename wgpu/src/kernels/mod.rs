@@ -17,6 +17,7 @@ pub mod ingest;
 pub mod layer_norm;
 pub mod leaky_relu;
 pub mod matmul;
+pub mod matmul_bq;
 pub mod nan_replace;
 pub mod pool;
 pub mod reduce;

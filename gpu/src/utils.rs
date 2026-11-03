@@ -1,6 +1,9 @@
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuant;
-use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage, Q4_0};
+use tract_linalg::block_quant::BlockQuantFact;
+use tract_linalg::block_quant::BlockQuantStorage;
+use tract_linalg::block_quant::Q2_0_T;
+use tract_linalg::block_quant::Q4_0;
 
 use crate::fact::*;
 use crate::tensor::DeviceTensor;
@@ -66,6 +69,13 @@ pub fn as_quant_fact<'a>(
 
 pub fn as_q40_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {
     a.storage_as::<BlockQuantStorage>().filter(|bqs| bqs.format().dyn_eq(&Q4_0))
+}
+
+/// Packed `Q4_0` or ternary `Q2_0_T` bytes. `as_q40_tensor` stays Q4_0-only:
+/// Metal's GEMM is registered for that format alone.
+pub fn as_q40_or_q20t_tensor(a: &Tensor) -> Option<&BlockQuantStorage> {
+    a.storage_as::<BlockQuantStorage>()
+        .filter(|bqs| bqs.format().dyn_eq(&Q4_0) || bqs.format().dyn_eq(&Q2_0_T))
 }
 
 pub fn get_quant_fact(t: &DeviceTensor, format: &dyn BlockQuant) -> Option<BlockQuantFact> {

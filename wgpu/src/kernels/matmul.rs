@@ -88,7 +88,11 @@ pub fn epilogue_mode(extra: &DeviceTensor, n: usize) -> TractResult<u32> {
 
 /// As [`epilogue_mode`], plus an operand laid out exactly like the output,
 /// read element for element.
-fn gemm_epilogue_mode(extra: &DeviceTensor, n: usize, output: &DeviceTensor) -> TractResult<u32> {
+pub(crate) fn gemm_epilogue_mode(
+    extra: &DeviceTensor,
+    n: usize,
+    output: &DeviceTensor,
+) -> TractResult<u32> {
     if extra.len() == output.len() && extra.len() != 1 && extra.len() != n {
         ensure!(
             extra.shape() == output.shape() && extra.strides() == output.strides(),
@@ -189,6 +193,9 @@ pub fn wgpu_matmul_dispatch(
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
 ) -> TractResult<()> {
+    if crate::kernels::matmul_bq::is_block_quant_weight(b) {
+        return crate::kernels::matmul_bq::wgpu_bq_dispatch(t, epilogue, a, b, extras, output);
+    }
     let (transpose_a, transpose_b, transpose_c) = (t.a, t.b, t.c);
     with_wgpu_queue(|q| {
         q.retain_tensor(a);
