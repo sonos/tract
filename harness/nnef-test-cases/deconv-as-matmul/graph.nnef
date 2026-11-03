@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# A transposed convolution large enough for the GPU matmul-and-overlap-add
+# rewrite: 64 -> 64 channels, kernel 8 at stride 4, padding (2, 2), with a
+# bias.
+graph network(input) -> (output)
+{
+    input  = external<scalar>(shape = [1, 64, S]);
+    kernel = variable<scalar>(label = 'kernel', shape = [64, 64, 8]);
+    bias   = variable<scalar>(label = 'bias', shape = [1, 64]);
+    output = deconv(input, kernel, bias, padding = [(2, 2)], stride = [4], dilation = [1], groups = 1, border = 'constant');
+}
