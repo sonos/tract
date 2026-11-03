@@ -479,7 +479,11 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
         }
 
         // Wait V, load V and do O += P@V
-        asm volatile("cp.async.wait_group 1;");
+        if (kv_id + 1 < kv_full_iters) {
+            asm volatile("cp.async.wait_group 1;");
+        } else {
+            asm volatile("cp.async.wait_all;");
+        }
         __syncthreads();
 
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
@@ -539,7 +543,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
                                scale, MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp);
         }
         // Wait V and finish O += P@V (tail)
-        asm volatile("cp.async.wait_group 1;");
+        asm volatile("cp.async.wait_all;");
         __syncthreads();
         _Pragma("unroll") for (int kvt = 0; kvt < BLOCK_KV / MMA_K; ++kvt)
             _Pragma("unroll") for (int d = 0; d < PADDED_DIM / MMA_N; d++) {
