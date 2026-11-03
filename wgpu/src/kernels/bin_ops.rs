@@ -113,6 +113,12 @@ register_wgpu_op!(tract_core::ops::binary::TypedBinOp, |source, node, op| {
     Ok(Some(Box::new(wgpu_bin_op(op.0.clone()))))
 });
 
+register_wgpu_op!(tract_pulse_opl::ops::DeconvDelay, |source, node, op| {
+    let add = Box::new(tract_core::ops::math::Add);
+    rule_if!(is_supported(&*add, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuDeconvDelay::new(op, wgpu_bin_op(add)))))
+});
+
 pub(crate) fn binary_wgsl(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();

@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Transposed convolution, kernel 4 at stride 2: each input frame's output
+# overlaps the next one's by 2 samples.  Pulsified, the deconv sits between a
+# PulseMask and a DeconvDelay carrying that overlap from one pulse to the next;
+# on a GPU both run on the device.
+graph network(input) -> (output)
+{
+    input  = external<scalar>(shape = [1, 2, S]);
+    kernel = [[[0.5, -1.0, 0.25, 2.0], [1.5, 0.5, -0.5, 1.0]], [[-0.25, 1.0, 0.75, -1.5], [0.5, 0.5, 1.0, -0.5]], [[1.0, 0.0, -1.0, 0.5], [0.25, -0.75, 0.5, 1.25]]];
+    output = deconv(input, kernel, padding = [(0, 0)], stride = [2], dilation = [1], groups = 1, border = 'constant');
+}

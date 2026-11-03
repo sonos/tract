@@ -213,6 +213,12 @@ crate::register_cuda_op!(tract_core::ops::binary::TypedBinOp, |source, node, op|
     Ok(Some(Box::new(cuda_bin_op(op.0.clone()))))
 });
 
+crate::register_cuda_op!(tract_pulse_opl::ops::DeconvDelay, |source, node, op| {
+    let add = Box::new(tract_core::ops::math::Add);
+    rule_if!(is_supported(&*add, source.node_input_facts(node.id)?[0].datum_type));
+    Ok(Some(Box::new(tract_gpu::ops::pulse::GpuDeconvDelay::new(op, cuda_bin_op(add)))))
+});
+
 #[cfg(test)]
 mod tests {
     use tract_gpu::tensor::IntoDevice;

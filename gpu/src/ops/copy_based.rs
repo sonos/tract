@@ -5,7 +5,7 @@
 use tract_core::internal::*;
 use tract_core::ops::array::{MultiBroadcastTo, Pad, Slice, TypedConcat};
 use tract_core::ops::downsample::Downsample;
-use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulsePad};
+use tract_pulse_opl::ops::{AffineChunkTrim, Delay, PulseMask, PulsePad};
 use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
 
 /// Try to translate a node into a copy-based GPU op.
@@ -39,6 +39,9 @@ pub fn try_make_copy_based_op(
     if let Some(op) = node.op_as::<PulsePad>() {
         let dt = source.node_input_facts(node.id)?[0].datum_type;
         return Ok(Some(Box::new(super::pulse::GpuPulsePad::new(op, dt)?)));
+    }
+    if let Some(op) = node.op_as::<PulseMask>() {
+        return Ok(Some(Box::new(super::pulse::GpuPulseMask::new(op))));
     }
     if let Some(op) = node.op_as::<AffineChunkTrim>() {
         return Ok(Some(Box::new(super::pulse::GpuAffineChunkTrim::new(op))));
