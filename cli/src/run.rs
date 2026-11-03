@@ -175,45 +175,36 @@ where
     // resolved_symbols).  Without this, PulsePad's `end_input.eval(...)`
     // hits the `usize::MAX` fallback and the tail-pad fill silently never
     // triggers — pulse output then disagrees with batch on the boundary.
-    let pulse_sym_binding: Option<(Symbol, i64)> =
-        if let (Some(sym_name), Some(stream_len), Some(first_input)) = (
-            state
-                .model()
-                .properties
-                .get("pulse.streaming_symbol")
-                .and_then(|t| t.to_plain_array_view::<String>().ok())
-                .and_then(|a| a.first().cloned()),
-            inputs.streaming_input_len,
-            inputs.sources.first().and_then(|t| t.first()),
-        ) {
-            let input_axes = state
-                .model()
-                .properties
-                .get("pulse.input_axes")
-                .context("Expect pulse.input_axes when pulse.streaming_symbol is set")?
-                .cast_to::<i64>()?;
-            let input_axis = input_axes.try_as_plain_ram()?.as_slice::<i64>()?[0] as usize;
-            // Linear case: stream.dim = frames_per_symbol · symbol, the
-            // symbol counting pulses, or attention chunks once blockified.
-            // For non-linear dims (e.g. `4·s + 1`) this would be wrong, but
-            // blockified models arrive here with a chunk-aligned linear dim by
-            // construction.
-            let frames_per_symbol = state
-                .model()
-                .properties
-                .get("blockify.chunk_size")
-                .and_then(|t| t.cast_to_scalar::<i64>().ok())
-                .map(|k| k as usize)
-                .unwrap_or(first_input.shape()[input_axis]);
-            if frames_per_symbol > 0 && stream_len % frames_per_symbol == 0 {
-                let sym = state.model().symbols.sym(&sym_name);
-                Some((sym, (stream_len / frames_per_symbol) as i64))
-            } else {
-                None
-            }
+    let pulse_sym_binding: Option<(Symbol, i64)> = if let (Some(sym_name), Some(stream_len)) = (
+        state
+            .model()
+            .properties
+            .get("pulse.streaming_symbol")
+            .and_then(|t| t.to_plain_array_view::<String>().ok())
+            .and_then(|a| a.first().cloned()),
+        inputs.streaming_input_len,
+    ) {
+        // Linear case: stream.dim = frames_per_symbol · symbol.  The symbol
+        // counts input frames, or attention chunks of `blockify.chunk_size`
+        // frames once blockified.  For non-linear dims (e.g. `4·s + 1`) this
+        // would be wrong, but blockified models arrive here with a
+        // chunk-aligned linear dim by construction.
+        let frames_per_symbol = state
+            .model()
+            .properties
+            .get("blockify.chunk_size")
+            .and_then(|t| t.cast_to_scalar::<i64>().ok())
+            .map(|k| k as usize)
+            .unwrap_or(1);
+        if frames_per_symbol > 0 && stream_len % frames_per_symbol == 0 {
+            let sym = state.model().symbols.sym(&sym_name);
+            Some((sym, (stream_len / frames_per_symbol) as i64))
         } else {
             None
-        };
+        }
+    } else {
+        None
+    };
 
     let mut sources = inputs.sources;
     for turn_ix in 0..sources.len() {
