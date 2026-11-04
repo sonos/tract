@@ -4,7 +4,7 @@ use byteorder::{LE, ReadBytesExt, WriteBytesExt};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q8_1;
 use tract_linalg::block_quant::{
-    BlockQuant, BlockQuantStorage, IQ2_S, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
+    BlockQuant, BlockQuantStorage, IQ2_S, Q2_0_T, Q4_0, Q4_K, Q5_K, Q6_K, Q8_0,
 };
 
 const TRACT_ITEM_TYPE_VENDOR: u16 = ((b'T' as u16) << 8u16) | b'R' as u16;
@@ -284,6 +284,7 @@ pub fn tract_to_gguf_q4_0_packing(data: &mut Blob) -> TractResult<()> {
 fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Tensor> {
     let format: Box<dyn BlockQuant> = match header.item_type {
         0x2040 | 0x3040 => Box::new(Q4_0),
+        0x3020 => Box::new(Q2_0_T),
         0x3080 => Box::new(Q8_0),
         0x3081 => Box::new(Q8_1),
         0x3140 => Box::new(Q4_K),
@@ -321,6 +322,8 @@ fn read_block_quant_value(r: &mut impl Read, header: &Header) -> TractResult<Ten
 fn block_quant_item_type(format: &dyn BlockQuant) -> TractResult<u16> {
     if format.dyn_eq(&Q4_0) {
         Ok(0x3040)
+    } else if format.dyn_eq(&Q2_0_T) {
+        Ok(0x3020)
     } else if format.dyn_eq(&Q8_0) {
         Ok(0x3080)
     } else if format.dyn_eq(&Q8_1) {
@@ -384,6 +387,11 @@ mod test {
         assert_eq!(back.shape(), t.shape());
         assert_eq!(read.value().as_bytes(), written.value().as_bytes());
         Ok(())
+    }
+
+    #[test]
+    fn serde_block_quant_q2_0_t() -> TractResult<()> {
+        block_quant_round_trip(Box::new(Q2_0_T))
     }
 
     #[test]
