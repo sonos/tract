@@ -12,6 +12,13 @@ typedef struct {
     uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
 
+#define QK2_0_T 32
+// Ternary weights: code c in bits 2*(i%4) of qs[i/4] is weight i, worth (c - 1) * d.
+typedef struct {
+    half d;
+    uint8_t qs[QK2_0_T / 4];
+} block_q2_0_t;
+
 typedef struct {
     int32_t  ne00;
     int32_t  ne02;
@@ -315,6 +322,52 @@ inline void mul_vec_q_n_accumulate(
     }
 }
 
+// Inner product of the 16 weights of a q2_0_t block a thread owns, at il..il+7 and
+// 16+il..16+il+7, with yl, the matching activations. sumy is SUM(yl[i]).
+inline float block_q2_0_t_dot_y(device const block_q2_0_t * qb, float sumy, thread float * yl, int il) {
+    device const uint8_t * lo = qb->qs + il/4;
+    device const uint8_t * hi = qb->qs + 4 + il/4;
+
+    float acc = 0.f;
+    for (int b = 0; b < 2; b++) {
+        for (int j = 0; j < 4; j++) {
+            acc += yl[4*b + j]     * ((lo[b] >> (2*j)) & 3);
+            acc += yl[8 + 4*b + j] * ((hi[b] >> (2*j)) & 3);
+        }
+    }
+
+    return qb->d * (acc - sumy);
+}
+
+template<int nr, int nw, typename T_y>
+inline void mul_vec_q_n_accumulate(
+        thread device const block_q2_0_t * const * ax,
+        device const T_y * yb,
+        int nb,
+        short ix,
+        short il,
+        thread float * sumf) {
+    float yl[16];
+
+    for (int ib = ix; ib < nb; ib += nw/2) {
+        float sumy = 0.f;
+
+#pragma unroll
+        for (int i = 0; i < 8; i++) {
+            yl[i]     = (float) yb[i];
+            yl[i + 8] = (float) yb[i + 16];
+            sumy += yl[i] + yl[i + 8];
+        }
+
+#pragma unroll
+        for (int row = 0; row < nr; row++) {
+            sumf[row] += block_q2_0_t_dot_y(ax[row] + ib, sumy, yl, il);
+        }
+
+        yb += QK2_0_T * 16;
+    }
+}
+
 template<typename block_q_type, int nr, int nsg, int nw, typename args_t>
 void mul_vec_q_n_f32_impl(
         args_t args,
@@ -386,6 +439,17 @@ kernel void kernel_mul_mv_q4_0(
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
     mul_vec_q_n_f32_impl<block_q4_0, N_DST, N_SIMDGROUP, N_SIMDWIDTH, constant ggml_metal_kargs_mul_mv &>(args, src0, src1, dst, nullptr, tgpig, tiisg, sgitg);
+}
+
+kernel void kernel_mul_mv_q2_0_t(
+        constant ggml_metal_kargs_mul_mv & args,
+        device const char * src0,
+        device const char * src1,
+        device       char * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    mul_vec_q_n_f32_impl<block_q2_0_t, N_DST, N_SIMDGROUP, N_SIMDWIDTH, constant ggml_metal_kargs_mul_mv &>(args, src0, src1, dst, nullptr, tgpig, tiisg, sgitg);
 }
 
 #define BLOCK_SIZE_M 64 // 8 simdgroup matrices from matrix A
@@ -595,6 +659,22 @@ void dequantize_q4_0(device const block_q4_0 * xb, short il, thread type4x4 & re
     reg = (type4x4) reg_f;
 }
 
+template <typename type4x4>
+void dequantize_q2_0_t(device const block_q2_0_t * xb, short il, thread type4x4 & reg) {
+    device const uint8_t * qs = xb->qs + 4*il;
+    const float d = xb->d;
+
+    float4x4 reg_f;
+
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            reg_f[i][j] = d * (float((qs[i] >> (2*j)) & 3) - 1.f);
+        }
+    }
+
+    reg = (type4x4) reg_f;
+}
+
 typedef decltype(kernel_mul_mm<half, half4x4, simdgroup_half8x8, float4x4, 1, dequantize_f32, float>) mat_mm_t;
 
 template [[host_name("kernel_mul_mm_f32_f32")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   float4x4,      1,     dequantize_f32,  float>;
@@ -602,3 +682,5 @@ template [[host_name("kernel_mul_mm_f16_f32")]]     kernel mat_mm_t kernel_mul_m
 template [[host_name("kernel_mul_mm_q4_0_f32")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, float>;
 template [[host_name("kernel_mul_mm_f16_f16")]]     kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   half4x4,       1,     dequantize_f16,  half>;
 template [[host_name("kernel_mul_mm_q4_0_f16")]]    kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q4_0,    2,     dequantize_q4_0, half>;
+template [[host_name("kernel_mul_mm_q2_0_t_f32")]]  kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q2_0_t,  2,     dequantize_q2_0_t, float>;
+template [[host_name("kernel_mul_mm_q2_0_t_f16")]]  kernel mat_mm_t kernel_mul_mm<half,   half4x4,   simdgroup_half8x8,   block_q2_0_t,  2,     dequantize_q2_0_t, half>;

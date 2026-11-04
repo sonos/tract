@@ -1,4 +1,4 @@
-use crate::kernels::matmul::{GemmDispatchParams, GemmKernel};
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlQuant};
 use crate::{LibraryName, MetalStream};
 use DatumType::{F16, F32};
 use anyhow::ensure;
@@ -33,11 +33,12 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let b_el_size = if params.q40_b { Q4_0.block_bytes() } else { params.dts[1].size_of() };
+        let quant_b = params.quant_b.map(|q| q.format());
+        let b_el_size = quant_b.map(|f| f.block_bytes()).unwrap_or(params.dts[1].size_of());
         let mut b_strides = params.b_strides;
-        if params.q40_b {
-            b_strides[0] /= Q4_0.block_len() as isize;
-            b_strides[1] /= Q4_0.block_len() as isize;
+        if let Some(format) = quant_b {
+            b_strides[0] /= format.block_len() as isize;
+            b_strides[1] /= format.block_len() as isize;
         };
 
         // Kernel produced transposed output so we swap the inputs
@@ -89,11 +90,12 @@ impl From<GemmDispatchParams> for GgmlGemvParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let b_el_size = if params.q40_b { Q4_0.block_bytes() } else { params.dts[1].size_of() };
+        let quant_b = params.quant_b.map(|q| q.format());
+        let b_el_size = quant_b.map(|f| f.block_bytes()).unwrap_or(params.dts[1].size_of());
         let mut b_strides = params.b_strides;
-        if params.q40_b {
-            b_strides[0] /= Q4_0.block_len() as isize;
-            b_strides[1] /= Q4_0.block_len() as isize;
+        if let Some(format) = quant_b {
+            b_strides[0] /= format.block_len() as isize;
+            b_strides[1] /= format.block_len() as isize;
         };
 
         // Kernel produced transposed output so we swap the inputs
@@ -149,7 +151,7 @@ impl GemmKernel for GgmlGemm {
             );
 
         regular_types_support
-            || (as_quant_fact(&facts[1], &Q4_0).is_some()
+            || (GgmlQuant::of_fact(&facts[1]).is_some()
                 && facts[0].is_plain()
                 && matches!(facts[0].datum_type, F16 | F32))
     }
@@ -177,20 +179,20 @@ impl GemmKernel for GgmlGemm {
             transpose_b,
             b_offset,
             c_offset,
-            q40_b,
+            quant_b,
             ..
         } = params;
 
         ensure!(!transpose_a && transpose_b);
 
-        // The q4_0 matrix-vector kernel stays bandwidth-bound (one weight read)
-        // for several activation rows, so it beats the tiled GEMM until ~8 rows;
+        // The quantized matrix-vector kernels stay bandwidth-bound (one weight read)
+        // for several activation rows, so they beat the tiled GEMM until ~8 rows;
         // the f16/f32 mat-vec kernels are tuned for 4.
-        let gemv_max_rows = if q40_b { 8 } else { 4 };
+        let gemv_max_rows = if quant_b.is_some() { 8 } else { 4 };
         if matches!(dts[0], F32 | F16)
             && (k % 32 == 0)
             && (k >= 64)
-            && ((m > gemv_max_rows) || (q40_b && a_batch > 1))
+            && ((m > gemv_max_rows) || (quant_b.is_some() && a_batch > 1))
         {
             dispatch_metal_ggml_gemm(
                 stream, params, a_offset, a_buffer, b_offset, b_buffer, c_buffer, c_offset,
@@ -208,10 +210,10 @@ impl GemmKernel for GgmlGemm {
 fn mv_kernel_name_and_dispatch_params(
     params: &GemmDispatchParams,
 ) -> TractResult<(String, (u64, u64, u64))> {
-    if params.q40_b {
+    if let Some(quant) = params.quant_b {
         ensure!(matches!(params.dts[0], F32 | F16));
         // Activation/output dtype is carried at runtime by GgmlGemvParams::out_f16.
-        Ok(("kernel_mul_mv_q4_0".to_string(), (8, 8, 1)))
+        Ok((format!("kernel_mul_mv_{}", quant.tname()), (8, 8, 1)))
     } else if params.dts[1] == F32 {
         ensure!(params.dts[0] == F32);
         Ok(("kernel_mul_mv_f32_f32".to_string(), (32, 1, 4)))
@@ -263,7 +265,7 @@ fn dispatch_metal_ggml_gemv(
         encoder.set_buffer(2, Some(a_buffer), a_offset as NSUInteger);
         encoder.set_buffer(3, Some(output), output_offset as NSUInteger);
 
-        let grid_size = if !params.q40_b {
+        let grid_size = if params.quant_b.is_none() {
             MTLSize {
                 width: params.n as u64,
                 height: (params.m as u64).div_ceil(nrows),
@@ -295,15 +297,16 @@ fn dispatch_metal_ggml_gemm(
     output: &Buffer,
     output_offset: usize,
 ) -> TractResult<()> {
-    let GemmDispatchParams { dts, q40_b, .. } = params;
+    let GemmDispatchParams { dts, quant_b, .. } = params;
 
-    ensure!((matches!(dts[1], F32 | F16) || q40_b) && matches!(dts[0], F32 | F16));
+    ensure!((matches!(dts[1], F32 | F16) || quant_b.is_some()) && matches!(dts[0], F32 | F16));
 
     // The GEMM is templated on both weight (i1) and activation/output (i2)
     // dtype: a single fat runtime-branched kernel regressed prefill and PSO
     // load on apple-m1-max (the dead f16-output path inflates the f32 kernel's
     // footprint), so each combination gets its own specialized kernel.
-    let i1_tname = if !q40_b { DeviceTensor::tname(dts[1])? } else { "q4_0" };
+    let i1_tname =
+        if let Some(quant) = quant_b { quant.tname() } else { DeviceTensor::tname(dts[1])? };
     let i2_tname = DeviceTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");

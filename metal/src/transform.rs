@@ -5,7 +5,9 @@ use std::str::FromStr;
 use std::sync::OnceLock;
 
 use crate::context::metal_context;
-use crate::kernels::matmul::{GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm};
+use crate::kernels::matmul::{
+    GemmKernel, GgmlGemm, GgmlQuant, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm,
+};
 use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
@@ -17,7 +19,6 @@ use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
 use tract_core::ops::konst::Const;
 use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
@@ -36,7 +37,6 @@ use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
-use tract_gpu::utils::as_quant_fact;
 
 use crate::rewrite_rules;
 
@@ -492,7 +492,7 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
     // Assume weights are in second postion
-    let b_batch_dims: Vec<TDim> = if as_quant_fact(facts[1], &Q4_0).is_some() {
+    let b_batch_dims: Vec<TDim> = if GgmlQuant::of_fact(facts[1]).is_some() {
         facts[1].shape.dims().to_vec()
     } else {
         let rank = facts[1].rank();
@@ -517,8 +517,8 @@ pub fn resolve_gemm_impl(
 ) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
-    } else if as_quant_fact(input_facts[0], &Q4_0).is_some()
-        || as_quant_fact(input_facts[1], &Q4_0).is_some()
+    } else if GgmlQuant::of_fact(input_facts[0]).is_some()
+        || GgmlQuant::of_fact(input_facts[1]).is_some()
         || input_facts[0].datum_type != input_facts[1].datum_type
         || is_input_broadcast(input_facts)
     {
@@ -609,8 +609,8 @@ fn convert_matmul_to_metal(
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
                 ensure!(
-                    as_quant_fact(input_facts[a_pos], &Q4_0).is_none(),
-                    "Cannot transpose Q40 tensor"
+                    GgmlQuant::of_fact(input_facts[a_pos]).is_none(),
+                    "Cannot transpose a block-quant tensor"
                 );
 
                 let rank = input_facts[a_pos].rank();
@@ -626,8 +626,8 @@ fn convert_matmul_to_metal(
 
             if !op.transpose_b {
                 ensure!(
-                    as_quant_fact(input_facts[b_pos], &Q4_0).is_none(),
-                    "Cannot transpose Q40 tensor"
+                    GgmlQuant::of_fact(input_facts[b_pos]).is_none(),
+                    "Cannot transpose a block-quant tensor"
                 );
 
                 let rank = input_facts[b_pos].rank();

@@ -8,7 +8,6 @@ use metal::NSUInteger;
 use tract_core::tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::as_q40_tensor;
 
 use std::alloc::Layout;
 use std::cell::RefCell;
@@ -193,7 +192,10 @@ impl DeviceContext for MetalContext {
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             view.datum_type(),
         );
-        let bqs = as_q40_tensor(view.tensor);
+        let bqs = view
+            .tensor
+            .storage_as::<BlockQuantStorage>()
+            .filter(|bqs| crate::kernels::matmul::GgmlQuant::of(bqs.format()).is_some());
 
         let (data_bytes, bqf) = if let Some(bqs) = bqs {
             (
