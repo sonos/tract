@@ -7,34 +7,51 @@ use tract_core::internal::*;
 use tract_core::ndarray::Ix2;
 use tract_core::ops::array::{Pad, PadMode};
 use tract_core::ops::konst::Const;
-use tract_core::tract_linalg::block_quant::{
-    BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0, Q8_1,
-};
+use tract_core::tract_linalg::block_quant::BlockQuant;
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_core::tract_linalg::block_quant::BlockQuantStorage;
+use tract_core::tract_linalg::block_quant::Q2_0_T;
+use tract_core::tract_linalg::block_quant::Q4_0;
+use tract_core::tract_linalg::block_quant::Q8_1;
 use tract_ndarray::{ArrayD, Axis};
 
 use tract_core::ops::einsum::EinSum;
 
-#[derive(Debug, Clone, Default)]
-pub struct MatmulQ40ProblemParams {
+#[derive(Debug, Clone)]
+pub struct MatmulBlockQuantProblemParams {
+    format: Box<dyn BlockQuant>,
     weights_in_b: bool,
 }
 
+impl Default for MatmulBlockQuantProblemParams {
+    fn default() -> Self {
+        MatmulBlockQuantProblemParams { format: Box::new(Q4_0), weights_in_b: false }
+    }
+}
+
+/// A matmul of an f32 input by a constant weight `a` quantized to `format`, with K padded
+/// to the format's block.
 #[derive(Clone)]
-pub struct MatmulQ40Problem {
+pub struct MatmulBlockQuantProblem {
+    format: Box<dyn BlockQuant>,
     a: Tensor,
     b: Tensor,
     weights_in_b: bool,
 }
 
-impl std::fmt::Debug for MatmulQ40Problem {
+impl std::fmt::Debug for MatmulBlockQuantProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "a:{:?} b:{:?} weights_in_b:{:?}", self.a, self.b, self.weights_in_b)
+        write!(
+            f,
+            "format:{:?} a:{:?} b:{:?} weights_in_b:{:?}",
+            self.format, self.a, self.b, self.weights_in_b
+        )
     }
 }
 
-impl Arbitrary for MatmulQ40Problem {
-    type Parameters = MatmulQ40ProblemParams;
-    type Strategy = BoxedStrategy<MatmulQ40Problem>;
+impl Arbitrary for MatmulBlockQuantProblem {
+    type Parameters = MatmulBlockQuantProblemParams;
+    type Strategy = BoxedStrategy<MatmulBlockQuantProblem>;
 
     fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
         (1..10usize, 1..128usize, 1..10usize)
@@ -44,7 +61,12 @@ impl Arbitrary for MatmulQ40Problem {
 
                 (a, b)
             })
-            .prop_map(move |(a, b)| MatmulQ40Problem { a, b, weights_in_b: params.weights_in_b })
+            .prop_map(move |(a, b)| MatmulBlockQuantProblem {
+                format: params.format.clone(),
+                a,
+                b,
+                weights_in_b: params.weights_in_b,
+            })
             .boxed()
     }
 }
@@ -57,7 +79,7 @@ fn mm_q40_tensor(shape: &[usize]) -> BoxedStrategy<Tensor> {
         .boxed()
 }
 
-impl MatmulQ40Problem {
+impl MatmulBlockQuantProblem {
     fn pad_tensor(a: &Tensor, k_axis: usize) -> TractResult<Tensor> {
         let (mn, k) = (a.shape()[1 - k_axis], a.shape()[k_axis]);
         let shape =
@@ -79,12 +101,12 @@ impl MatmulQ40Problem {
 
         let padded_a = Self::pad_tensor(&self.a, 1)?;
 
-        let quant_a = Q4_0.quant_f32(padded_a.try_as_plain_ram()?.as_slice::<f32>()?)?;
+        let quant_a = self.format.quant_f32(padded_a.try_as_plain_ram()?.as_slice::<f32>()?)?;
 
         let m = padded_a.shape()[0];
         let k = padded_a.shape()[1];
-        let bqs = BlockQuantStorage::new(Box::new(Q4_0), m, k, Arc::new(quant_a))?;
-        let bqf = BlockQuantFact::new(Box::new(Q4_0), tvec!(1, m, k));
+        let bqs = BlockQuantStorage::new(self.format.clone(), m, k, Arc::new(quant_a))?;
+        let bqf = BlockQuantFact::new(self.format.clone(), tvec!(1, m, k));
         let packed_a = Arc::new(bqs.into_tensor_with_shape(f32::datum_type(), &[1, m, k]));
 
         let a =
@@ -116,7 +138,7 @@ impl MatmulQ40Problem {
 
     fn reference(&self, simulate_q81_activation_loss: bool) -> TractResult<Tensor> {
         let padded_a = Self::pad_tensor(&self.a, 1)?;
-        let quant_dequant_a = Q4_0.simulate_precision_loss(padded_a, 1)?;
+        let quant_dequant_a = self.format.simulate_precision_loss(padded_a, 1)?;
 
         // The GGML CUDA kernel internally quantizes activations to Q8_1.
         // When testing against such a runtime, the reference must account
@@ -143,7 +165,7 @@ impl MatmulQ40Problem {
     }
 }
 
-impl Test for MatmulQ40Problem {
+impl Test for MatmulBlockQuantProblem {
     fn run_with_approx(
         &self,
         id: &str,
@@ -165,52 +187,56 @@ impl Test for MatmulQ40Problem {
     }
 }
 
-pub fn suite() -> TractResult<TestSuite> {
+fn suite_for(format: &dyn BlockQuant) -> TestSuite {
     let mut suite = TestSuite::default();
+    let format = || tract_core::dyn_clone::clone_box(format);
+    let problem = |a: Tensor, b: Tensor, weights_in_b: bool| MatmulBlockQuantProblem {
+        format: format(),
+        a,
+        b,
+        weights_in_b,
+    };
 
-    suite.add_arbitrary::<MatmulQ40Problem>("proptest", MatmulQ40ProblemParams::default());
-    suite.add_arbitrary::<MatmulQ40Problem>(
+    suite.add_arbitrary::<MatmulBlockQuantProblem>(
+        "proptest",
+        MatmulBlockQuantProblemParams { format: format(), weights_in_b: false },
+    );
+    suite.add_arbitrary::<MatmulBlockQuantProblem>(
         "proptest_weights_in_b",
-        MatmulQ40ProblemParams { weights_in_b: true },
+        MatmulBlockQuantProblemParams { format: format(), weights_in_b: true },
     );
 
-    suite.add(
-        "minimal_inputs",
-        MatmulQ40Problem { a: tensor2(&[[0f32]]), b: tensor2(&[[0f32]]), weights_in_b: false },
-    );
-
-    suite.add(
-        "minimal_matvec",
-        MatmulQ40Problem {
-            a: tensor2(&[[-1f32]]),
-            b: tensor2(&[[0f32], [-1f32]]),
-            weights_in_b: false,
-        },
-    );
-
+    suite.add("minimal_inputs", problem(tensor2(&[[0f32]]), tensor2(&[[0f32]]), false));
+    suite.add("minimal_matvec", problem(tensor2(&[[-1f32]]), tensor2(&[[0f32], [-1f32]]), false));
     suite.add(
         "minimal_matvec_weights_in_b_0",
-        MatmulQ40Problem {
-            a: tensor2(&[[0f32, 1f32]]),
-            b: tensor2(&[[0f32, 1f32]]),
-            weights_in_b: true,
-        },
+        problem(tensor2(&[[0f32, 1f32]]), tensor2(&[[0f32, 1f32]]), true),
     );
-
-    //  a:1,1,F32 0 b:1,1,F32 0
     suite.add(
         "minimal_matvec_weights_in_b_1",
-        MatmulQ40Problem { a: tensor2(&[[0f32]]), b: tensor2(&[[0f32]]), weights_in_b: true },
+        problem(tensor2(&[[0f32]]), tensor2(&[[0f32]]), true),
     );
-
     suite.add(
         "minimal_matvec_weights_in_b_2",
-        MatmulQ40Problem {
-            a: tensor2(&[[0f32], [0f32]]),
-            b: tensor2(&[[0f32]]),
-            weights_in_b: true,
-        },
+        problem(tensor2(&[[0f32], [0f32]]), tensor2(&[[0f32]]), true),
     );
+
+    for (name, m, k, n) in [("matmul_m40", 40, 96, 24), ("matmul_m130_k600", 130, 600, 136)] {
+        let values = |len: usize, salt: usize| -> Vec<f32> {
+            (0..len).map(|i| (((i * 7919 + salt) % 201) as f32 - 100.0) / 100.0).collect()
+        };
+        let weights = Tensor::from_shape(&[n, k], &values(n * k, 1)).unwrap();
+        let input = Tensor::from_shape(&[m, k], &values(m * k, 2)).unwrap();
+        suite.add(name, problem(weights.clone(), input.clone(), false));
+        suite.add(format!("{name}_weights_in_b"), problem(weights, input, true));
+    }
+
+    suite
+}
+
+/// `Q4_0` weights.
+pub fn suite_q40() -> TractResult<TestSuite> {
+    let mut suite = suite_for(&Q4_0);
 
     // Reduced from proptest — k=87 (not a multiple of 32) triggers Q8_1
     // activation quantization mismatch between CUDA GGML kernel and CPU reference.
@@ -247,8 +273,13 @@ pub fn suite() -> TractResult<TestSuite> {
         b_data[87..2 * 87].copy_from_slice(b_row1);
         let b = Tensor::from_shape(&[7, 87], &b_data).unwrap();
 
-        MatmulQ40Problem { a, b, weights_in_b: false }
+        MatmulBlockQuantProblem { format: Box::new(Q4_0), a, b, weights_in_b: false }
     });
 
     Ok(suite)
+}
+
+/// Ternary `Q2_0_T` weights.
+pub fn suite_q20t() -> TractResult<TestSuite> {
+    Ok(suite_for(&Q2_0_T))
 }

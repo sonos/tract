@@ -25,7 +25,7 @@ pub mod gelu_approximate;
 pub mod gelu_exact;
 pub mod group_norm;
 pub mod layer_norm;
-pub mod matmul_q40;
+pub mod matmul_block_quant;
 pub mod max_pool;
 pub mod moe_ffn;
 pub mod move_axis;
@@ -54,7 +54,8 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("diag_gather", diag_gather::suite()?);
     suite.add("downsample", downsample::suite()?);
     suite.add("gather_elements", gather_elements::suite()?);
-    suite.add("matmul_q40", matmul_q40::suite()?);
+    suite.add("matmul_q40", matmul_block_quant::suite_q40()?);
+    suite.add("matmul_q20t", matmul_block_quant::suite_q20t()?);
     suite.add("max_pool", max_pool::suite()?);
     suite.add("moe_ffn", moe_ffn::suite()?);
     suite.add("move_axis", move_axis::suite()?);
