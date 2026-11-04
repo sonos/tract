@@ -507,6 +507,27 @@ mod tests {
         gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(9, 3 * k))?)
     }
 
+    fn packed_on_a(format: &dyn BlockQuant) -> TractResult<()> {
+        let (m, k, n) = (13usize, 64usize, 17usize);
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact([m, k]))?;
+        let w = model.wire_node("w", pack(format, &[n, k], &fill(3, n * k))?, &[])?[0];
+        let y = model.wire_node("mm", mm(false, true, true, f32::datum_type()), &[w, x])?[0];
+        model.select_output_outlets(&[y])?;
+        assert_gemm(&transformed(model.clone())?)?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[m, k], &fill(8, m * k))?)
+    }
+
+    #[test]
+    fn q4_0_on_a_moves_to_b() -> TractResult<()> {
+        packed_on_a(&Q4_0)
+    }
+
+    #[test]
+    fn q2_0_t_on_a_moves_to_b() -> TractResult<()> {
+        packed_on_a(&Q2_0_T)
+    }
+
     #[test]
     fn einsum_nk_weight_runs_on_gpu() -> TractResult<()> {
         let (m, k, n) = (13usize, 64usize, 17usize);

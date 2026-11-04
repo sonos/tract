@@ -106,20 +106,37 @@ fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
         && (bqf.format.dyn_eq(&Q4_0) || bqf.format.dyn_eq(&Q2_0_T))
 }
 
+/// The same product with its operands exchanged: `(A B)^T = B^T A^T`.
+fn swapped(op: &PrefixMatMul) -> PrefixMatMul {
+    PrefixMatMul {
+        transpose_a: !op.transpose_b,
+        transpose_b: !op.transpose_a,
+        transpose_c: !op.transpose_c,
+        ..*op
+    }
+}
+
 /// Translates a `PrefixMatMul` into a [`WgpuGemm`] with no epilogue yet.
 ///
 /// Float operands must share a dtype. A `Q4_0` or `Q2_0_T` weight is accepted
 /// on B when `transpose_b` is set, the rank is 2 or 3, and K is a multiple of
-/// the block. A packed weight in any other position stays on the CPU.
+/// the block; on A, it is moved to B when that makes such a product. A packed
+/// weight in any other position stays on the CPU.
 pub fn translate_gemm(
     source: &TypedModel,
     node: &TypedNode,
     target: &mut TypedModel,
     mapping: &Mapping,
 ) -> TractResult<Option<TVec<OutletId>>> {
-    let input_facts = source.node_input_facts(node.id)?;
+    let mut input_facts = source.node_input_facts(node.id)?;
     rule_if_some!(op = node.op_as::<PrefixMatMul>());
-    if !packed_weight_ok(op, &input_facts) {
+    let mut op = *op;
+    let on_a = input_facts.len() == 2 && input_facts[0].exotic_fact().is_some();
+    if on_a {
+        input_facts.swap(0, 1);
+        op = swapped(&op);
+    }
+    if !packed_weight_ok(&op, &input_facts) {
         rule_if!(
             op.quantize_output.is_none()
                 && op.operating_dt.is_none_or(|dt| dt == input_facts[0].datum_type)
@@ -131,11 +148,12 @@ pub fn translate_gemm(
                 && input_facts[0].rank() <= crate::kernels::matmul::MAX_RANK
         );
     }
-    let device_inputs = sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
-    let outlet_ids = target.wire_node(
-        node.name.clone(),
-        WgpuGemm { op: *op, epilogue: vec![] },
-        &device_inputs,
-    )?;
+    let mut device_inputs =
+        sync_inputs_if_required(target, node, mapping, DeviceSyncKind::ToDevice)?;
+    if on_a {
+        device_inputs.swap(0, 1);
+    }
+    let outlet_ids =
+        target.wire_node(node.name.clone(), WgpuGemm { op, epilogue: vec![] }, &device_inputs)?;
     Ok(Some(outlet_ids))
 }
