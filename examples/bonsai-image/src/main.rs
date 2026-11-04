@@ -10,7 +10,7 @@ use tract::prelude::*;
 
 tract::impl_ndarray_interop!();
 
-const TEXT_LEN: usize = 256;
+const TEXT_LEN: usize = 64;
 const TEXT_DIM: usize = 7680;
 const LATENT_DIM: usize = 128;
 

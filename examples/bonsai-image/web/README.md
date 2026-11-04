@@ -13,7 +13,8 @@ the image after each step: `x - sigma * v` through a small linear map to RGB, fi
 Every size shares one weights tar per stage. `split_stages.py` keeps what differs between sizes in
 a small `<stage>-<HxW>.tar`, which reads as one stream with `<stage>.weights.tar`.
 
-The transformer takes 64 text tokens, so a prompt has 52 once the chat template is in.
+The encoder and the transformer both take 64 text tokens, so a prompt has 52 once the chat
+template is in.
 
 ## Building the site
 

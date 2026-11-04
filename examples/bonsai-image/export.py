@@ -9,8 +9,7 @@ import torch
 
 ASSETS = Path(os.environ.get("ASSETS", "assets"))
 HEIGHT, WIDTH = map(int, os.environ.get("SIZE", "256x256").split("x"))
-TEXT_LEN = 256
-DIT_TEXT_LEN = int(os.environ.get("DIT_TEXT_LEN", TEXT_LEN))
+TEXT_LEN = int(os.environ.get("TEXT_LEN", 64))
 BLOCK = 128
 TEXT_LAYERS = (9, 18, 27)
 MODEL_ID = "prism-ml/bonsai-image-ternary-4B-unpacked"
@@ -107,9 +106,9 @@ class ExplicitRmsNorm(torch.nn.Module):
 
 
 class Transformer(torch.nn.Module):
-    """hidden (1, N, 128), enc (1, DIT_TEXT_LEN, 7680), t (1) -> velocity (1, N, 128).
+    """hidden (1, N, 128), enc (1, TEXT_LEN, 7680), t (1) -> velocity (1, N, 128).
 
-    Position ids are fixed by HEIGHT, WIDTH and DIT_TEXT_LEN, so they are constants of the graph.
+    Position ids are fixed by HEIGHT, WIDTH and TEXT_LEN, so they are constants of the graph.
     """
 
     def __init__(self, transformer, img_ids, txt_ids):
@@ -136,7 +135,7 @@ def transformer_inputs():
     h, w = HEIGHT // 16, WIDTH // 16
     g = torch.Generator().manual_seed(0)
     hidden = torch.randn(1, h * w, 128, generator=g)
-    enc = torch.randn(1, DIT_TEXT_LEN, 7680, generator=g)
+    enc = torch.randn(1, TEXT_LEN, 7680, generator=g)
     t = torch.tensor([0.75])
     img_ids = Flux2KleinPipeline._prepare_latent_ids(torch.zeros(1, 128, h, w))[0]
     txt_ids = Flux2KleinPipeline._prepare_text_ids(enc)[0]

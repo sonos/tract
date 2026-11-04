@@ -20,7 +20,7 @@ for size in $SIZES
 do
     for stage in transformer vae_decoder
     do
-        ASSETS=$TMP HF_SNAPSHOT=$HF SIZE=$size DIT_TEXT_LEN=64 EXPORT_COMPONENT=$stage python ../export.py
+        ASSETS=$TMP HF_SNAPSHOT=$HF SIZE=$size EXPORT_COMPONENT=$stage python ../export.py
         $TRACT $TMP/$stage.onnx --nnef-tract-core --nnef-tract-transformers dump -q --nnef-tar $OUT/$stage-$size.nnef.tar
         [ $size = $BASE ] || python split_stages.py add $OUT $stage $BASE $size
     done

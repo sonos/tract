@@ -9,7 +9,7 @@ use anyhow::Result;
 use tract::prelude::*;
 use wasm_bindgen::prelude::*;
 
-use crate::pipeline::{DIT_TEXT_LEN, Progress, generate as run_pipeline, load};
+use crate::pipeline::{Progress, TEXT_LEN, generate as run_pipeline, load};
 
 #[wasm_bindgen]
 extern "C" {
@@ -74,7 +74,7 @@ pub fn count_tokens(text: &str) -> Result<i32, JsValue> {
 /// Tokens a prompt can use before the end is cut: the transformer's, less the chat template's 12.
 #[wasm_bindgen]
 pub fn prompt_token_limit() -> u32 {
-    DIT_TEXT_LEN as u32 - 12
+    TEXT_LEN as u32 - 12
 }
 
 /// A square RGBA image. `on_progress(stage, step, steps)` is called as it goes.

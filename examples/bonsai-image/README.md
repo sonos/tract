@@ -17,8 +17,8 @@ cp -r hf/tokenizer assets/
 cargo run --release -p bonsai-image -- -p "a photo of a bonsai tree"
 ```
 
-`SIZE=HxW` picks the size, 256x256 by default, with both multiples of 16. `DIT_TEXT_LEN` trims
-the text tokens the transformer takes, which the demo must then be told with `--text-len`.
+`SIZE=HxW` picks the size, 256x256 by default, with both multiples of 16. `TEXT_LEN` sets the
+text tokens the encoder and transformer take, which the demo must then be told with `--text-len`.
 
 ## In the browser
 

@@ -7,9 +7,8 @@ use tract::prelude::*;
 
 use crate::latent_rgb::LATENT_RGB;
 
-const TEXT_LEN: usize = 256;
-/// Text tokens the transformer takes: enough for a prompt, a quarter of the encoder's padding.
-pub const DIT_TEXT_LEN: usize = 64;
+/// Text tokens the encoder and the transformer take: enough for a prompt.
+pub const TEXT_LEN: usize = 64;
 const TEXT_DIM: usize = 7680;
 const LATENT_DIM: usize = 128;
 
@@ -139,10 +138,7 @@ pub async fn generate(
     let text_encoder = stage("text_encoder")?;
     progress(Progress::Encoding);
     let embeddings = run(&text_encoder, vec![ids, mask]).await?;
-    let embeddings = Tensor::from_slice(
-        &[1, DIT_TEXT_LEN, TEXT_DIM],
-        &embeddings.as_slice::<f32>()?[..DIT_TEXT_LEN * TEXT_DIM],
-    )?;
+    ensure!(embeddings.shape() == [1, TEXT_LEN, TEXT_DIM], "unexpected embeddings shape");
 
     progress(Progress::Loading("transformer"));
     let transformer = stage("transformer")?;
