@@ -177,13 +177,36 @@ pub fn wgpu_bq_dispatch(
         ensure!(fact.m() == packed_rows, "packed rows {} do not match the weight shape", fact.m());
 
         let format = if fact.format.dyn_eq(&Q4_0) { 0 } else { 1 };
+        let a_off = u32_of(element_offset(a, 0))?;
+        let b_off = u32_of(b.buffer_offset::<usize>())?;
+        let tiled = dt == ShaderDtype::F32
+            && a_stride_k == 1
+            && a_stride_m.is_multiple_of(4)
+            && a_off.is_multiple_of(4)
+            && a_prefix.is_multiple_of(4)
+            && b_off.is_multiple_of(2)
+            && b_prefix.is_multiple_of(2);
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
-        let pipeline = q.context().chain_pipeline(
-            ("matmul_bq", dt, epilogue, extras.len()),
-            layout,
-            EntryPoint::typed("bq_matmul", dt),
-            || bq_module(dt, epilogue, extras.len()),
-        )?;
+        let pipeline = if tiled {
+            q.context().chain_pipeline(
+                (
+                    if format == 0 { "matmul_bq_q4" } else { "matmul_bq_q2" },
+                    dt,
+                    epilogue,
+                    extras.len(),
+                ),
+                layout,
+                EntryPoint::typed("bq_tiled", dt),
+                || bq_tiled_module(format == 0, epilogue, extras.len()),
+            )?
+        } else {
+            q.context().chain_pipeline(
+                ("matmul_bq", dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("bq_matmul", dt),
+                || bq_module(dt, epilogue, extras.len()),
+            )?
+        };
         let mut buffers = vec![get_wgpu_buffer(a), get_wgpu_buffer(b)];
         buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
         buffers.push(get_wgpu_buffer(output));
@@ -199,11 +222,11 @@ pub fn wgpu_bq_dispatch(
             u32_of(k)?,
             u32_of(n)?,
             u32_of(prefix)?,
-            u32_of(element_offset(a, 0))?,
+            a_off,
             a_prefix,
             a_stride_m,
             a_stride_k,
-            u32_of(b.buffer_offset::<usize>())?,
+            b_off,
             b_prefix,
             u32_of(blocks_per_row)?,
             u32_of(block_bytes)?,
@@ -220,13 +243,199 @@ pub fn wgpu_bq_dispatch(
         vals.extend_from_slice(&mode_extra);
         debug_assert_eq!(vals.len(), 28);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
-        let grid = [
-            n.div_ceil(TILE as usize) as u32,
-            m.div_ceil(TILE as usize) as u32,
-            prefix.max(1) as u32,
-        ];
+        let grid = if tiled {
+            [
+                n.div_ceil(4).div_ceil(TILE as usize) as u32,
+                m.div_ceil(4).div_ceil(TILE as usize) as u32,
+                prefix.max(1) as u32,
+            ]
+        } else {
+            [
+                n.div_ceil(TILE as usize) as u32,
+                m.div_ceil(TILE as usize) as u32,
+                prefix.max(1) as u32,
+            ]
+        };
         q.dispatch_grid("matmul_bq", &pipeline, &bg, dyn_off, grid)
     })
+}
+
+/// `bq_module`'s product for f32 rows laid out contiguously: one 4x4 output tile per invocation,
+/// each block's scale and codes read once, and four codes unpacked at a time against a `vec4` of
+/// A. Takes no workgroup memory, so it has no barriers.
+fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
+    let dt = ShaderDtype::F32;
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let words = if q4 { 4 } else { 2 };
+    let load = (0..4)
+        .map(|j| {
+            let fields = (0..words)
+                .map(|w| format!("        let w{j}_{w} = rd(o{j} + {}u);\n", 2 + 4 * w))
+                .collect::<String>();
+            format!(
+                "        let o{j} = base + n{j} * params.blocks_per_row * params.block_bytes + block_bytes;
+        let s{j} = f16_bits_to_f32(rd(o{j}) & 65535u);
+{fields}"
+            )
+        })
+        .collect::<String>();
+    // Scalars and `select`: a dynamically indexed `let` array is far slower under Tint.
+    let code = |j: usize| {
+        if q4 {
+            format!(
+                "vec4<f32>((vec4<u32>(select(select(w{j}_0, w{j}_1, (c & 1u) == 1u), select(w{j}_2, w{j}_3, (c & 1u) == 1u), (c & 2u) == 2u) >> (4u * (c >> 2u))) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(15u)) - 8.0"
+            )
+        } else {
+            format!(
+                "vec4<f32>((vec4<u32>(select(w{j}_0, w{j}_1, c >= 4u) >> ((c & 3u) * 8u)) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) - 1.0"
+            )
+        }
+    };
+    let dots = (0..4)
+        .map(|j| {
+            format!(
+                "            let q{j} = {};
+            b{j} += vec4<f32>(dot(a0, q{j}), dot(a1, q{j}), dot(a2, q{j}), dot(a3, q{j}));
+",
+                code(j)
+            )
+        })
+        .collect::<String>();
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    m: u32,
+    k: u32,
+    n: u32,
+    prefix: u32,
+    a_off: u32,
+    a_prefix_stride: u32,
+    a_stride_m: u32,
+    a_stride_k: u32,
+    b_off: u32,
+    b_prefix_stride: u32,
+    blocks_per_row: u32,
+    block_bytes: u32,
+    format: u32,
+    c_off: u32,
+    c_prefix_stride: u32,
+    c_stride_m: u32,
+    c_stride_n: u32,
+    _p0: u32,
+    _p1: u32,
+    _p2: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
+@group(0) @binding(1) var<storage, read> b: array<u32>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+fn f16_bits_to_f32(bits: u32) -> f32 {{
+    let sign = (bits >> 15u) & 1u;
+    let exp = (bits >> 10u) & 31u;
+    let mant = bits & 1023u;
+    if (exp == 0u) {{
+        let mag = f32(mant) * 5.960464477539063e-8;
+        return select(mag, -mag, sign == 1u);
+    }}
+    if (exp == 31u) {{
+        return bitcast<f32>((sign << 31u) | (255u << 23u) | (mant << 13u));
+    }}
+    return bitcast<f32>((sign << 31u) | ((exp + 112u) << 23u) | (mant << 13u));
+}}
+
+// A little-endian word at an even byte offset.
+fn rd(off: u32) -> u32 {{
+    let w = off >> 2u;
+    if ((off & 2u) == 0u) {{
+        return b[w];
+    }}
+    return (b[w] >> 16u) | (b[w + 1u] << 16u);
+}}
+
+fn emit(value: f32, row: u32, col: u32, pref: u32) {{
+    if (row >= params.m || col >= params.n) {{
+        return;
+    }}
+    let oe = pref * params.c_prefix_stride + row * params.c_stride_m + col * params.c_stride_n;
+    var v = value;
+{epilogue}    outp[params.c_off + oe] = v;
+}}
+
+@compute @workgroup_size({TILE}, {TILE})
+fn bq_tiled_{suf}(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {{
+    let row0 = (wid.y * {TILE}u + lid.y) * 4u;
+    let col0 = (wid.x * {TILE}u + lid.x) * 4u;
+    let pref = wid.z;
+    if (row0 >= params.m || col0 >= params.n || pref >= params.prefix) {{
+        return;
+    }}
+    let base = params.b_off + pref * params.b_prefix_stride;
+    let a_base = (params.a_off + pref * params.a_prefix_stride) >> 2u;
+    let rows = params.a_stride_m >> 2u;
+    let last_row = params.m - 1u;
+    let last_col = params.n - 1u;
+    let r0 = a_base + min(row0, last_row) * rows;
+    let r1 = a_base + min(row0 + 1u, last_row) * rows;
+    let r2 = a_base + min(row0 + 2u, last_row) * rows;
+    let r3 = a_base + min(row0 + 3u, last_row) * rows;
+    let n0 = min(col0, last_col);
+    let n1 = min(col0 + 1u, last_col);
+    let n2 = min(col0 + 2u, last_col);
+    let n3 = min(col0 + 3u, last_col);
+    var acc0 = vec4<f32>(0.0);
+    var acc1 = vec4<f32>(0.0);
+    var acc2 = vec4<f32>(0.0);
+    var acc3 = vec4<f32>(0.0);
+    for (var block = 0u; block < params.blocks_per_row; block++) {{
+        let block_bytes = block * params.block_bytes;
+{load}        var b0 = vec4<f32>(0.0);
+        var b1 = vec4<f32>(0.0);
+        var b2 = vec4<f32>(0.0);
+        var b3 = vec4<f32>(0.0);
+        for (var c = 0u; c < 8u; c++) {{
+            let kv = block * 8u + c;
+            let a0 = a4[r0 + kv];
+            let a1 = a4[r1 + kv];
+            let a2 = a4[r2 + kv];
+            let a3 = a4[r3 + kv];
+{dots}        }}
+        acc0 += b0 * s0;
+        acc1 += b1 * s1;
+        acc2 += b2 * s2;
+        acc3 += b3 * s3;
+    }}
+    for (var i = 0u; i < 4u; i++) {{
+        emit(acc0[i], row0 + i, col0, pref);
+        emit(acc1[i], row0 + i, col0 + 1u, pref);
+        emit(acc2[i], row0 + i, col0 + 2u, pref);
+        emit(acc3[i], row0 + i, col0 + 3u, pref);
+    }}
+}}
+"#
+    ));
+    s
 }
 
 fn bq_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
