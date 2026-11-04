@@ -60,7 +60,10 @@ impl super::TypedPass for ConcatThenEinsum {
                 let mut inputs: TVec<TVec<OutletId>> = tvec!();
                 for (slot, input) in einsum_node.inputs.iter().enumerate() {
                     let tap = patch.tap_model(model, *input)?;
-                    if axis_info.inputs[slot].len() > 1 {
+                    let exotic = model.outlet_fact(*input)?.is_exotic();
+                    if axis_info.inputs[slot].len() > 1
+                        || (exotic && axis_info.inputs[slot].len() == 1)
+                    {
                         continue 'outer;
                     } else if axis_info.inputs[slot].len() == 1 {
                         let mut slices = tvec!();
@@ -132,5 +135,36 @@ fn next_inlet(model: &TypedModel, inlet: &InletId) -> Option<InletId> {
             .iter()
             .find(|n| n.inputs.len() > 0)
             .map(|n| InletId::new(n.id, 0))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ops::konst::Const;
+    use tract_linalg::block_quant::{BlockQuant, BlockQuantFact, BlockQuantStorage, Q4_0};
+
+    #[test]
+    fn keeps_block_quant_weight_whole_behind_a_concat() -> TractResult<()> {
+        let (n, k) = (2, 64);
+        let blob = Q4_0.quant_f32(&vec![1f32; n * k])?;
+        let storage = BlockQuantStorage::new(Box::new(Q4_0), n, k, Arc::new(blob))?;
+        let weight = Const::new_with_exotic_fact(
+            Arc::new(storage.into_tensor_with_shape(f32::datum_type(), &[n, k])),
+            Box::new(BlockQuantFact::new(Box::new(Q4_0), tvec![n, k])),
+        )?;
+
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([1, k / 2]))?;
+        let b = model.add_source("b", f32::fact([1, k / 2]))?;
+        let concat = model.wire_node("concat", TypedConcat::new(1), &[a, b])?[0];
+        let weight = model.wire_node("weight", weight, &[])?[0];
+        let einsum = EinSum::new("ak,nk->an".parse()?, f32::datum_type());
+        let y = model.wire_node("einsum", einsum, &[concat, weight])?[0];
+        model.select_output_outlets(&[y])?;
+
+        let model = model.into_decluttered()?;
+        ensure!(!model.nodes.iter().any(|n| n.op_is::<Slice>()));
+        Ok(())
     }
 }
