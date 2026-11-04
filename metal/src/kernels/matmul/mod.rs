@@ -10,7 +10,7 @@ pub use ggml_gemm::GgmlGemm;
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;
 pub use mpp::MppGemm;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q2_0_T, Q4_0};
 
 use crate::MetalStream;
 use crate::utils::get_metal_buffer;
@@ -30,6 +30,48 @@ pub enum MetalGemmImplKind {
     Mpp,
 }
 
+/// A block-quant weight format the GGML kernels take on B.
+#[allow(non_camel_case_types)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+pub enum GgmlQuant {
+    Q4_0,
+    Q2_0_T,
+}
+
+impl GgmlQuant {
+    pub fn of(format: &dyn BlockQuant) -> Option<GgmlQuant> {
+        if format.dyn_eq(&Q4_0) {
+            Some(GgmlQuant::Q4_0)
+        } else if format.dyn_eq(&Q2_0_T) {
+            Some(GgmlQuant::Q2_0_T)
+        } else {
+            None
+        }
+    }
+
+    pub fn of_fact(fact: &TypedFact) -> Option<GgmlQuant> {
+        fact.exotic_fact
+            .as_ref()
+            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            .and_then(|bqf| Self::of(&*bqf.format))
+    }
+
+    pub fn format(&self) -> &'static dyn BlockQuant {
+        match self {
+            GgmlQuant::Q4_0 => &Q4_0,
+            GgmlQuant::Q2_0_T => &Q2_0_T,
+        }
+    }
+
+    /// The weight type in the GGML kernel names.
+    pub fn tname(&self) -> &'static str {
+        match self {
+            GgmlQuant::Q4_0 => "q4_0",
+            GgmlQuant::Q2_0_T => "q2_0_t",
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub struct GemmDispatchParams {
     pub dts: [DatumType; 3],
@@ -42,7 +84,7 @@ pub struct GemmDispatchParams {
     pub a_offset: usize,
     pub transpose_b: bool,
     pub b_offset: usize,
-    pub q40_b: bool,
+    pub quant_b: Option<GgmlQuant>,
     pub c_offset: usize,
     pub a_strides: TVec<isize>,
     pub b_strides: TVec<isize>,
@@ -58,7 +100,7 @@ impl GemmDispatchParams {
         b_offset: usize,
         b_shape: &[usize],
         transpose_b: bool,
-        q40_b: bool,
+        quant_b: Option<GgmlQuant>,
         c_offset: usize,
         c_shape: &[usize],
     ) -> TractResult<Vec<GemmDispatchParams>> {
@@ -88,11 +130,12 @@ impl GemmDispatchParams {
             natural_strides(&[b_batch, k, n])
         };
 
-        let b_batch_stride = if !q40_b {
-            n * k * dts[1].size_of()
+        let b_batch_stride = if let Some(quant) = quant_b {
+            let format = quant.format();
+            ensure!(k % format.block_len() == 0);
+            n * (k / format.block_len()) * format.block_bytes()
         } else {
-            ensure!(k % Q4_0.block_len() == 0);
-            n * (k / Q4_0.block_len()) * Q4_0.block_bytes()
+            n * k * dts[1].size_of()
         };
 
         match (a_batch, b_batch) {
@@ -109,7 +152,7 @@ impl GemmDispatchParams {
                 a_offset,
                 transpose_b,
                 b_offset,
-                q40_b,
+                quant_b,
                 c_offset,
                 a_strides,
                 b_strides,
@@ -129,7 +172,7 @@ impl GemmDispatchParams {
                     a_offset: a_offset + a_batch_idx * m * k * dts[0].size_of(),
                     transpose_b,
                     b_offset,
-                    q40_b,
+                    quant_b,
                     c_offset: c_offset + a_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
@@ -152,7 +195,7 @@ impl GemmDispatchParams {
                     a_offset,
                     transpose_b,
                     b_offset: b_offset + b_batch_idx * b_batch_stride,
-                    q40_b,
+                    quant_b,
                     c_offset: c_offset + b_batch_idx * m * n * dts[2].size_of(),
                     a_strides: a_strides.clone(),
                     b_strides: b_strides.clone(),
@@ -171,7 +214,7 @@ impl GemmDispatchParams {
                         a_offset,
                         transpose_b,
                         b_offset,
-                        q40_b,
+                        quant_b,
                         c_offset,
                         a_strides,
                         b_strides,
@@ -193,7 +236,7 @@ impl GemmDispatchParams {
                         a_offset,
                         transpose_b,
                         b_offset,
-                        q40_b,
+                        quant_b,
                         c_offset,
                         a_strides,
                         b_strides,
@@ -289,7 +332,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         a: &DeviceTensor,
         b: &DeviceTensor,
     ) -> TractResult<DeviceTensor> {
-        // For q40 weights the tensor shape already carries the full logical
+        // For block-quant weights the tensor shape already carries the full logical
         // dimensions [batch, n, k].  No need to chain with the fact shape.
         let b_shape = b.shape().to_vec();
 
@@ -313,8 +356,14 @@ impl<M: GemmKernel> GemmImpl<M> {
         stream.retain_tensor(b);
         stream.retain_tensor(c);
 
-        let q40_b = get_quant_fact(b, &Q4_0);
-        // For q40 weights the tensor shape already carries the full logical
+        let quant_b = match b {
+            DeviceTensor::Owned(t) => t
+                .exotic_fact()
+                .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+                .and_then(|bqf| GgmlQuant::of(&*bqf.format)),
+            DeviceTensor::View(_) => None,
+        };
+        // For block-quant weights the tensor shape already carries the full logical
         // dimensions [batch, n, k].  No need to chain with the fact shape.
         let b_shape = b.shape().to_vec();
 
@@ -332,7 +381,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             b.buffer_offset(),
             &b_shape,
             self.transpose_b,
-            q40_b.is_some(),
+            quant_b,
             c.buffer_offset(),
             c.shape(),
         )?;
@@ -571,7 +620,7 @@ mod tests {
                 0,
                 &[1, k, n],
                 false,
-                false,
+                None,
                 0,
                 &[1, m, n],
             )?,
@@ -586,7 +635,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
-                q40_b: false,
+                quant_b: None,
                 c_offset: 0,
                 a_strides: natural_strides(&[1, m, k]),
                 b_strides: natural_strides(&[1, k, n])
@@ -602,7 +651,7 @@ mod tests {
                 0,
                 &[10, k, n],
                 false,
-                false,
+                None,
                 0,
                 &[10, m, n],
             )?,
@@ -617,7 +666,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
-                q40_b: false,
+                quant_b: None,
                 c_offset: 0,
                 a_strides: natural_strides(&[10, m, k]),
                 b_strides: natural_strides(&[10, k, n])
@@ -633,7 +682,7 @@ mod tests {
                 0,
                 &[2, k, n],
                 false,
-                false,
+                None,
                 10,
                 &[2, m, n],
             )?,
@@ -649,7 +698,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 0,
-                    q40_b: false,
+                    quant_b: None,
                     c_offset: 10,
                     a_strides: natural_strides(&[1, m, k]),
                     b_strides: natural_strides(&[2, k, n])
@@ -665,7 +714,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 1 * n * k * dt.size_of(),
-                    q40_b: false,
+                    quant_b: None,
                     c_offset: 10 + m * n * dt.size_of(),
                     a_strides: natural_strides(&[1, m, k]),
                     b_strides: natural_strides(&[2, k, n])
@@ -682,7 +731,7 @@ mod tests {
                 0,
                 &[2, k, n],
                 false,
-                false,
+                None,
                 100,
                 &[2, m, n],
             )?,
@@ -697,7 +746,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
-                q40_b: false,
+                quant_b: None,
                 c_offset: 100,
                 a_strides: natural_strides(&[2, k, m]),
                 b_strides: natural_strides(&[2, k, n])
@@ -713,7 +762,7 @@ mod tests {
                 0,
                 &[1, k, n],
                 false,
-                false,
+                None,
                 100,
                 &[2, m, n],
             )?,
@@ -729,7 +778,7 @@ mod tests {
                     a_offset: 0,
                     transpose_b: false,
                     b_offset: 0,
-                    q40_b: false,
+                    quant_b: None,
                     c_offset: 100,
                     a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n])
@@ -745,7 +794,7 @@ mod tests {
                     a_offset: 1 * m * k * dt.size_of(),
                     transpose_b: false,
                     b_offset: 0,
-                    q40_b: false,
+                    quant_b: None,
                     c_offset: 100 + 1 * m * n * dt.size_of(),
                     a_strides: natural_strides(&[2, k, m]),
                     b_strides: natural_strides(&[1, k, n])
@@ -762,7 +811,7 @@ mod tests {
                 10,
                 &[1, k, n],
                 false,
-                false,
+                None,
                 0,
                 &[10, m, n],
             )?,
@@ -777,7 +826,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 10,
-                q40_b: false,
+                quant_b: None,
                 c_offset: 0,
                 a_strides: natural_strides(&[10, m, k]),
                 b_strides: natural_strides(&[1, k, n])
@@ -793,7 +842,7 @@ mod tests {
                 0,
                 &[2, k, n],
                 false,
-                false,
+                None,
                 0,
                 &[4, m, n],
             )?,
@@ -808,7 +857,7 @@ mod tests {
                 a_offset: 0,
                 transpose_b: false,
                 b_offset: 0,
-                q40_b: false,
+                quant_b: None,
                 c_offset: 0,
                 a_strides: natural_strides(&[4, m, k]),
                 b_strides: natural_strides(&[2, k, n])
