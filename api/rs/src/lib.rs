@@ -104,6 +104,14 @@ pub fn version() -> &'static str {
 
 pub struct Nnef(tract_nnef::internal::Nnef);
 
+impl Nnef {
+    /// Loads a NNEF model from a stream of its `tar` or `tar.gz` file, for a model too large to
+    /// hold in a buffer while it is parsed.
+    pub fn load_read(&self, reader: &mut dyn std::io::Read) -> Result<Model> {
+        Ok(Model(self.0.model_for_read(reader)?.into_decluttered()?))
+    }
+}
+
 impl Debug for Nnef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Nnef")
