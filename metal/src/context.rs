@@ -168,13 +168,11 @@ impl MetalContext {
             .new_compute_pipeline_state_with_function(&func)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
-        if log::log_enabled!(log::Level::Trace) {
-            log::trace!(
-                "pipeline created: {:?}::{func_name} in {:.2} ms",
-                library_name,
-                start.elapsed().as_secs_f64() * 1e3
-            );
-        }
+        log::trace!(
+            "pipeline created: {:?}::{func_name} in {:.2} ms",
+            library_name,
+            start.elapsed().as_secs_f64() * 1e3
+        );
         cache_pipelines.insert((library_name, func_name.to_string(), constants), pipeline.clone());
         Ok(pipeline)
     }
@@ -312,7 +310,6 @@ struct OpenCommandBuffer {
     buffer: Option<TCommandBuffer>,
     retained: Vec<DeviceTensor>,
     kernel_names: Vec<String>,
-    dispatches: usize,
 }
 
 #[derive(Debug)]
@@ -322,7 +319,7 @@ pub struct MetalStream {
     open: RefCell<OpenCommandBuffer>,
     committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
     command_error: RefCell<Option<String>>,
-    commit_cadence: usize,
+    commit_every_n_dispatches: usize,
     max_in_flight: usize,
     profile: RefCell<Option<Rc<MetalProfileHandle>>>,
 }
@@ -343,7 +340,7 @@ impl MetalStream {
             open: RefCell::new(OpenCommandBuffer::default()),
             committed_command_buffers: RefCell::new(VecDeque::new()),
             command_error: RefCell::new(None),
-            commit_cadence: crate::tuning::TRACT_METAL_COMMIT_EVERY_N_DISPATCHES.get(),
+            commit_every_n_dispatches: crate::tuning::TRACT_METAL_COMMIT_EVERY_N_DISPATCHES.get(),
             max_in_flight: crate::tuning::TRACT_METAL_MAX_IN_FLIGHT.get().max(1),
             profile: RefCell::new(None),
         }
@@ -409,19 +406,18 @@ impl MetalStream {
         self.open.borrow_mut().retained.push(tensor.clone());
     }
 
+    /// Return the current buffer, submitting it first if its launch count reached the limit.
+    /// Submission happens at acquisition boundaries; an existing handle can encode more launches.
     pub fn command_buffer(&self) -> TCommandBuffer {
-        let cadence = self.commit_cadence;
-        let should_commit = {
-            let open = self.open.borrow();
-            cadence > 0 && open.dispatches >= cadence && open.buffer.is_some()
-        };
+        let should_commit =
+            self.commit_every_n_dispatches > 0
+                && self.open.borrow().buffer.as_ref().is_some_and(|buffer| {
+                    buffer.dispatch_count() >= self.commit_every_n_dispatches
+                });
         if should_commit && let Err(error) = self.commit_current() {
             self.command_error.borrow_mut().get_or_insert_with(|| error.to_string());
         }
         let mut open = self.open.borrow_mut();
-        if cadence > 0 {
-            open.dispatches += 1;
-        }
         let profile = self.profile.borrow().clone();
         open.buffer
             .get_or_insert_with(|| {
@@ -435,9 +431,7 @@ impl MetalStream {
     }
 
     fn log_completed_kernels(tag: &str, names: &[String]) {
-        if log::log_enabled!(log::Level::Trace) {
-            log::trace!("completed Metal command buffer {tag}: {names:?}");
-        }
+        log::trace!("completed Metal command buffer {tag}: {names:?}");
     }
 
     fn record_command_error(&self, buffer: &TCommandBuffer) {
@@ -459,7 +453,8 @@ impl MetalStream {
     /// completion. The next `command_buffer()` call opens a fresh one; the
     /// queue guarantees the committed buffer executes before it. Tensors
     /// retained so far move into the in-flight entry and are released once
-    /// that buffer completes. GPU failures remain visible to subsequent commits and waits.
+    /// that buffer completes. GPU failures remain visible until `wait_until_completed`
+    /// drains the stream and reports them.
     pub fn commit_current(&self) -> TractResult<()> {
         let Some(command_buffer) = self.open.borrow().buffer.clone() else {
             return self.check_command_error();
@@ -501,7 +496,8 @@ impl MetalStream {
         self.check_command_error()
     }
 
-    /// Wait for all submitted work and report any GPU failure recorded by this stream.
+    /// Wait for all submitted work, then report and clear the recorded GPU failure.
+    /// A subsequent run starts without the previous run's error.
     pub fn wait_until_completed(&self) -> TractResult<()> {
         let submitted = self.commit_current();
         let drained = std::mem::take(&mut *self.committed_command_buffers.borrow_mut());
@@ -513,8 +509,12 @@ impl MetalStream {
             Self::log_completed_kernels("segment-tail", &entry.kernel_names);
         }
         *self.open.borrow_mut() = OpenCommandBuffer::default();
+        let command_error = self.command_error.borrow_mut().take();
         submitted?;
-        self.check_command_error()
+        if let Some(error) = command_error {
+            bail!("{error}");
+        }
+        Ok(())
     }
 
     pub fn capture_trace<P, F>(&self, path: P, compute: F) -> TractResult<()>
@@ -608,6 +608,78 @@ mod submission_tests {
     use super::*;
 
     #[test]
+    fn submission_counts_kernel_launches() -> TractResult<()> {
+        use crate::encoder::EncoderExt;
+        use tract_gpu::tensor::IntoDevice;
+
+        for profile in [false, true] {
+            let mut stream = MetalStream::new();
+            stream.commit_every_n_dispatches = 2;
+            stream.max_in_flight = 1;
+            if profile {
+                if !stream
+                    .context
+                    .device
+                    .supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+                {
+                    continue;
+                }
+                stream.enable_profiling()?;
+            }
+            let input = tensor1(&[1u32, 2, 3, 4]).into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?;
+            let pipeline =
+                stream.load_pipeline(LibraryName::ArrayOps, "array_ops::copy_unicast_u32")?;
+            let first = stream.command_buffer();
+            for _ in 0..4 {
+                stream.command_buffer().encode(|encoder| {
+                    encoder.set_compute_pipeline_state(&pipeline);
+                });
+            }
+            assert_eq!(first.dispatch_count(), 0);
+            assert_eq!(first.status(), metal::MTLCommandBufferStatus::NotEnqueued);
+            let alias = first.clone();
+            first.encode(|encoder| {
+                encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.dispatch_thread_groups(
+                    metal::MTLSize::new(4, 1, 1),
+                    metal::MTLSize::new(1, 1, 1),
+                );
+            });
+            assert_eq!(alias.dispatch_count(), 1);
+            let same = stream.command_buffer();
+            assert_eq!(same.dispatch_count(), 1);
+            assert_eq!(first.status(), metal::MTLCommandBufferStatus::NotEnqueued);
+            same.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&pipeline);
+                encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+                encoder
+                    .dispatch_threads(metal::MTLSize::new(4, 1, 1), metal::MTLSize::new(1, 1, 1));
+                encoder.dispatch_thread_groups(
+                    metal::MTLSize::new(4, 1, 1),
+                    metal::MTLSize::new(1, 1, 1),
+                );
+            });
+            assert_eq!(alias.dispatch_count(), 3);
+            assert_eq!(stream.command_buffer().dispatch_count(), 0);
+            assert!(matches!(
+                first.status(),
+                metal::MTLCommandBufferStatus::Committed
+                    | metal::MTLCommandBufferStatus::Scheduled
+                    | metal::MTLCommandBufferStatus::Completed
+            ));
+            stream.wait_until_completed()?;
+            output.to_host()?.close_enough(&tensor1(&[1u32, 2, 3, 4]), Approximation::Exact)?;
+            assert_eq!(stream.command_buffer().dispatch_count(), 0);
+            stream.wait_until_completed()?;
+        }
+        Ok(())
+    }
+
+    #[test]
     fn submission_clears_open_buffer_metadata() -> TractResult<()> {
         let stream = MetalStream::new();
         for wait in [false, true, false, true] {
@@ -615,9 +687,7 @@ mod submission_tests {
             stream.command_buffer();
             {
                 let open = stream.open.borrow();
-                if stream.commit_cadence > 0 {
-                    assert_eq!(open.dispatches, 1);
-                }
+                assert_eq!(open.buffer.as_ref().unwrap().dispatch_count(), 0);
                 if log::log_enabled!(log::Level::Trace) {
                     assert_eq!(open.kernel_names, ["kernel_mul_mv_f32_f32"]);
                 }
@@ -631,7 +701,6 @@ mod submission_tests {
             assert!(open.buffer.is_none());
             assert!(open.retained.is_empty());
             assert!(open.kernel_names.is_empty());
-            assert_eq!(open.dispatches, 0);
         }
         stream.wait_until_completed()?;
         Ok(())
