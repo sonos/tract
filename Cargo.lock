@@ -542,6 +542,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "bonsai-image"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "image",
+ "kdam",
+ "ndarray",
+ "rand 0.10.3",
+ "rand_distr 0.6.0",
+ "tokenizers",
+ "tract",
+ "tract-core",
+ "tract-gpu",
+ "tract-wgpu",
+]
+
+[[package]]
+name = "bonsai-web"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "console_error_panic_hook",
+ "getrandom 0.4.3",
+ "js-sys",
+ "tokenizers",
+ "tract",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
 name = "boow"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

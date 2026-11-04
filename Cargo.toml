@@ -55,6 +55,8 @@ members = [
     "examples/ppocr/web",
     "examples/stable-diffusion/web",
     "examples/stable-diffusion-3",
+    "examples/bonsai-image",
+    "examples/bonsai-image/web",
     "examples/stable-diffusion-xl",
     "examples/wasm-model-bench",
 

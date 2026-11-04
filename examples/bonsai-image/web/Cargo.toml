@@ -1,0 +1,29 @@
+[package]
+name = "bonsai-web"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+anyhow.workspace = true
+# Not the workspace's `tract`, which brings ONNX, pulse and gzip a browser build has no use for.
+tract = { path = "../../../api/rs", default-features = false, features = [
+  "transformers",
+  "wgpu",
+  "unstable-wgpu-async",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+console_error_panic_hook = "0.1"
+getrandom = { workspace = true, features = ["wasm_js"] }
+js-sys = "0.3"
+tokenizers = { version = "0.23", default-features = false, features = ["unstable_wasm"] }
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
