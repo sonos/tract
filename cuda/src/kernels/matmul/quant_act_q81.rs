@@ -5,7 +5,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q8_1};
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::Q40_ROW_PADDING;
+use crate::GGML_Q_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::matmul::{MMQ_X_MAX, squeeze_batch_axes};
@@ -35,7 +35,7 @@ impl GgmlQuantQ81 {
         let mut o_shape = shape.dims().to_owned();
         let rank = o_shape.len();
         let k = o_shape[rank - 1].as_i64().context("Expected concrete k")? as usize;
-        let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
+        let padded_k = k.next_multiple_of(GGML_Q_ROW_PADDING);
         o_shape[rank - 1] = TDim::Val(padded_k as i64);
         o_shape[rank - 2] += (MMQ_X_MAX * 4 * Q8_1.block_bytes()).div_ceil(padded_k);
 
@@ -59,7 +59,7 @@ impl GgmlQuantQ81 {
         let m = squeezed_shape[1];
         let k = squeezed_shape[2];
 
-        let padded_k = k.next_multiple_of(Q40_ROW_PADDING);
+        let padded_k = k.next_multiple_of(GGML_Q_ROW_PADDING);
         let mut out_shape = input.shape().to_owned();
         out_shape[rank - 1] = padded_k;
         if m > 8 {

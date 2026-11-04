@@ -89,6 +89,11 @@ fn cnn_ops() -> &'static str {
     CNN_OPS.get_or_init(conv_source::conv_library_source)
 }
 
+fn ggml_q_ternary_ops() -> &'static str {
+    static OPS: OnceLock<String> = OnceLock::new();
+    OPS.get_or_init(|| format!("#define GGML_Q_TERNARY\n{GGML_MM_MV_Q}"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LibraryName {
     ElementWise,
@@ -99,6 +104,7 @@ pub enum LibraryName {
     GdnRecurrent,
     Ggml,
     GgmlQ,
+    GgmlQTernary,
     Quant,
     FlashAttn,
     Fft,
@@ -117,8 +123,9 @@ fn fnv1a64(parts: &[&str]) -> u64 {
 }
 
 impl LibraryName {
-    // Libraries compiled when a CUDA context is created. Gated DeltaNet is
-    // intentionally omitted: it is model-specific and compiled on first use.
+    // Libraries compiled when a CUDA context is created. Gated DeltaNet and the
+    // ternary GGML kernels are intentionally omitted: they are model-specific and
+    // compiled on first use.
     pub const EAGER: [LibraryName; 10] = [
         Self::FlashAttn,
         Self::ElementWise,
@@ -142,6 +149,7 @@ impl LibraryName {
             Self::GdnRecurrent => GDN_RECURRENT,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
+            Self::GgmlQTernary => ggml_q_ternary_ops(),
             Self::Quant => GGML_QUANTIZE,
             Self::FlashAttn => FLASH_ATTN,
             Self::Fft => FFT_OPS,
@@ -160,6 +168,7 @@ impl LibraryName {
             Self::GdnRecurrent => "gdn_recurrent",
             Self::Ggml => "mm_mv",
             Self::GgmlQ => "mm_mv_q",
+            Self::GgmlQTernary => "mm_mv_q20t",
             Self::Quant => "quantize",
             Self::FlashAttn => "flash_attn",
             Self::Fft => "fft",

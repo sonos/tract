@@ -4,12 +4,11 @@ use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::fact::DeviceFact;
 use tract_gpu::rule_ensure;
 use tract_gpu::tensor::{DeviceTensor, DeviceTensorExt, IntoDevice, OwnedDeviceTensor};
-use tract_gpu::utils::as_q40_tensor;
 
-use crate::Q40_ROW_PADDING;
+use crate::GGML_Q_ROW_PADDING;
 use crate::ops::{CudaFusedAxisOp, CudaGgmlGemm};
 use crate::tensor::CudaTensor;
-use crate::utils::pad_q40;
+use crate::utils::{as_ggml_q_tensor, is_ggml_q_format, pad_ggml_q};
 use tract_gpu::ops::change_axes::GpuAxisOp;
 
 /// Walk the successor chain from a Const node to find a GEMM consumer.
@@ -47,8 +46,8 @@ fn effective_gemm_shape(
     Ok(None)
 }
 
-// This rule is necessary GGML Q40 Matmul kernels that requires k % 512 == 0
-pub fn pad_q40_weights(
+// This rule is necessary GGML quantized Matmul kernels that requires k % 512 == 0
+pub fn pad_ggml_q_weights(
     _ctx: &(),
     model: &TypedModel,
     node: &TypedNode,
@@ -63,7 +62,7 @@ pub fn pad_q40_weights(
     let bqf = cuda_tensor
         .exotic_fact()
         .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-        .filter(|bqf| bqf.format.dyn_eq(&Q4_0));
+        .filter(|bqf| is_ggml_q_format(&*bqf.format));
     rule_ensure!(bqf.is_some());
     let bqf = bqf.unwrap();
 
@@ -73,20 +72,20 @@ pub fn pad_q40_weights(
     // collapsed before the GEMM.
     rule_if_some!(effective_shape = effective_gemm_shape(model, node, bqf.shape())?);
     let effective_k = *effective_shape.last().unwrap();
-    rule_ensure!(effective_k % Q40_ROW_PADDING != 0);
+    rule_ensure!(effective_k % GGML_Q_ROW_PADDING != 0);
 
     let host_tensor = dev_tensor.to_host()?.into_tensor();
-    let bqs = as_q40_tensor(&host_tensor).expect("expected Q4_0 tensor view");
-    // Compute flat (m, k) matching the contiguous Q4_0 data layout.
+    let bqs = as_ggml_q_tensor(&host_tensor).expect("expected GGML quantized tensor view");
+    // Compute flat (m, k) matching the contiguous block-quant data layout.
     // The data can be viewed as flat_m rows of effective_k elements each.
     let total_elements: usize = bqf.shape().iter().product();
     let flat_m = total_elements / effective_k;
-    let padded_bqs = pad_q40(bqs, flat_m, effective_k)?;
+    let padded_bqs = pad_ggml_q(bqs, flat_m, effective_k)?;
 
     // Build padded shape preserving the rank and batch structure expected by
     // the GEMM.  effective_shape already incorporates all GpuAxisOp and
     // CudaFusedAxisOp transformations, so we just replace k with padded_k.
-    let padded_k = effective_k.next_multiple_of(Q40_ROW_PADDING);
+    let padded_k = effective_k.next_multiple_of(GGML_Q_ROW_PADDING);
     let mut padded_shape = effective_shape.clone();
     *padded_shape.last_mut().unwrap() = padded_k;
     let padded_bqf = BlockQuantFact::new(

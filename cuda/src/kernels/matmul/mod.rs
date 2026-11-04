@@ -4,7 +4,7 @@ use cudarc::cublas::{self, CudaBlas, Gemm};
 use cudarc::cublaslt::{Matmul, MatmulConfig};
 use cudarc::driver::sys::CUfunction_attribute;
 use cudarc::driver::{CudaView, CudaViewMut, LaunchConfig, PushKernelArg};
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0, Q8_1};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q2_0_T, Q4_0, Q8_1};
 
 use num_traits::{Float, One};
 use std::fmt;
@@ -12,14 +12,14 @@ use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
-use crate::Q40_ROW_PADDING;
+use crate::GGML_Q_ROW_PADDING;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::matmul::quant_act_q81::{QUANTIZE_BLOCK_SIZE, QUANTIZE_BLOCK_SIZE_MMQ};
 use crate::kernels::{
     LibraryName, get_cuda_view, get_cuda_view_mut, get_sliced_cuda_view, get_sliced_cuda_view_mut,
 };
-use crate::utils::get_ggml_q81_fact;
+use crate::utils::{get_ggml_q_fact, get_ggml_q81_fact};
 
 use DatumType::{F16, F32};
 
@@ -60,8 +60,7 @@ pub fn get_concrete_shapes(
     b: &DeviceTensor,
 ) -> TractResult<(Vec<usize>, Vec<usize>)> {
     let q81_a = get_ggml_q81_fact(a);
-    let q40_b = get_quant_fact(b, &Q4_0);
-    ensure!(q40_b.is_none() || (q40_b.is_some() && q81_a.is_some()));
+    ensure!(get_ggml_q_fact(b).is_none() || q81_a.is_some());
 
     let a_shape = match q81_a {
         Some(bqf) => {
@@ -71,7 +70,7 @@ pub fn get_concrete_shapes(
         None => a.shape().to_vec(),
     };
 
-    // For q40 weights the tensor shape already carries the full logical
+    // For block-quant weights the tensor shape already carries the full logical
     // dimensions [batch, n, k].  No need to chain with the fact shape.
     let b_shape = b.shape().to_vec();
 
@@ -413,15 +412,29 @@ fn dispatch_cublaslt_gemm_bias(
     Ok(())
 }
 
-fn kernel_name_q40(
+/// The library holding the GGML quantized kernels for a weight format, and the tag naming
+/// them.
+fn ggml_q_kernels(format: &dyn BlockQuant) -> TractResult<(LibraryName, &'static str)> {
+    if format.dyn_eq(&Q4_0) {
+        Ok((LibraryName::GgmlQ, "q40"))
+    } else if format.dyn_eq(&Q2_0_T) {
+        Ok((LibraryName::GgmlQTernary, "q20t"))
+    } else {
+        bail!("No GGML quantized kernel for {format:?}")
+    }
+}
+
+fn kernel_name_ggml_q(
+    format: &dyn BlockQuant,
     params: &GemmParams,
     mmq_w: usize,
     mmq_act: usize,
     fixup: bool,
-) -> TractResult<String> {
+) -> TractResult<(LibraryName, String)> {
     let need_check = !params.n.is_multiple_of(mmq_act);
     let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
-    Ok(format!("mul_mat_q40_{fixup_str}{mmq_w}_8_{need_check}"))
+    let (library, tag) = ggml_q_kernels(format)?;
+    Ok((library, format!("mul_mat_{tag}_{fixup_str}{mmq_w}_8_{need_check}")))
 }
 
 fn find_best_mmq_w(smbpo: usize, m: usize) -> usize {
@@ -445,7 +458,8 @@ fn find_best_mmq_w(smbpo: usize, m: usize) -> usize {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn launch_matmul_q40(
+fn launch_matmul_ggml_q(
+    format: &dyn BlockQuant,
     stream: &TractCudaStream,
     weights: &CudaView<'_, u8>,
     quant_activ: &CudaView<'_, u8>,
@@ -459,11 +473,11 @@ fn launch_matmul_q40(
     nbytes_shared: usize,
 ) -> TractResult<()> {
     let n_blocks = w_batch_stride / params.n;
-    let kernel_name = kernel_name_q40(params, mmq_w_best, MMQ_X_MAX, false)?;
+    let (library, kernel_name) = kernel_name_ggml_q(format, params, mmq_w_best, MMQ_X_MAX, false)?;
 
     let context = cuda_context();
     let props = context.properties();
-    let func = context.load_pipeline_with(LibraryName::GgmlQ, kernel_name, |func| {
+    let func = context.load_pipeline_with(library, kernel_name, |func| {
         func.set_attribute(
             CUfunction_attribute::CU_FUNC_ATTRIBUTE_MAX_DYNAMIC_SHARED_SIZE_BYTES,
             nbytes_shared as i32,
@@ -497,18 +511,19 @@ fn launch_matmul_q40(
     Ok(())
 }
 
-fn launch_fixup_q40(
+fn launch_fixup_ggml_q(
+    format: &dyn BlockQuant,
     stream: &TractCudaStream,
     output: &CudaView<'_, u8>,
     fixup_tens: &CudaView<'_, u8>,
     params: &GemmParams,
     mmq_w_best: usize,
 ) -> TractResult<()> {
-    let kernel_name = kernel_name_q40(params, mmq_w_best, MMQ_X_MAX, true)?;
+    let (library, kernel_name) = kernel_name_ggml_q(format, params, mmq_w_best, MMQ_X_MAX, true)?;
 
     let context = cuda_context();
     let props = context.properties();
-    let func = context.load_pipeline(LibraryName::GgmlQ, kernel_name)?;
+    let func = context.load_pipeline(library, kernel_name)?;
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(output);
     launch_args.push_view(fixup_tens);
@@ -529,7 +544,8 @@ fn launch_fixup_q40(
     Ok(())
 }
 
-fn dispatch_ggml_matmul_q40(
+fn dispatch_ggml_matmul_q(
+    format: &dyn BlockQuant,
     stream: &TractCudaStream,
     weights: &CudaView<'_, u8>,
     activs: &CudaView<'_, u8>,
@@ -543,8 +559,8 @@ fn dispatch_ggml_matmul_q40(
 
     let null_ptr = stream.null()?;
 
-    let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
-    let n_blocks = padded_k / Q4_0.block_len(); // padded Q40 weights
+    let padded_k = params.k.next_multiple_of(GGML_Q_ROW_PADDING);
+    let n_blocks = padded_k / format.block_len();
 
     let n_mmq_blocks = padded_k / (Q8_1.block_len() * 4);
     let act_batch_stride = n_mmq_blocks * params.m * Q8_1.block_bytes();
@@ -571,7 +587,8 @@ fn dispatch_ggml_matmul_q40(
 
     let fixup_view = fixup_tensor.as_ref().map(|t| get_cuda_view(t)).unwrap_or(null_ptr.as_view());
 
-    launch_matmul_q40(
+    launch_matmul_ggml_q(
+        format,
         stream,
         weights,
         activs,
@@ -586,13 +603,14 @@ fn dispatch_ggml_matmul_q40(
     )?;
 
     if let Some(ref fixup) = fixup_tensor {
-        launch_fixup_q40(stream, output, &fixup_view, &params, mmq_w_best)?;
+        launch_fixup_ggml_q(format, stream, output, &fixup_view, &params, mmq_w_best)?;
     }
 
     Ok(())
 }
 
-fn dispatch_ggml_matvec_q40(
+fn dispatch_ggml_matvec_q(
+    format: &dyn BlockQuant,
     stream: &TractCudaStream,
     weights: &CudaView<'_, u8>,
     activs: &CudaView<'_, u8>,
@@ -604,9 +622,9 @@ fn dispatch_ggml_matvec_q40(
     let context = cuda_context();
     let null_ptr = stream.null::<u8>()?;
 
-    let padded_k = params.k.next_multiple_of(Q40_ROW_PADDING);
+    let padded_k = params.k.next_multiple_of(GGML_Q_ROW_PADDING);
 
-    let n_blocks = padded_k / Q4_0.block_len();
+    let n_blocks = padded_k / format.block_len();
     let stride_col_act = padded_k / Q8_1.block_len();
     let stride_col_out = params.n;
     let stride_channel_w = n_blocks * params.n;
@@ -615,7 +633,8 @@ fn dispatch_ggml_matvec_q40(
 
     let batch_ratio = params.act_batch / params.w_batch;
 
-    let func = context.load_pipeline(LibraryName::GgmlQ, format!("mul_vec_q40_m_{}", params.m))?;
+    let (library, tag) = ggml_q_kernels(format)?;
+    let func = context.load_pipeline(library, format!("mul_vec_{tag}_m_{}", params.m))?;
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(weights);
     launch_args.push_view(activs);
@@ -749,16 +768,30 @@ impl GgmlGemm {
         )?;
 
         if let Some(bias) = bias {
-            ensure!(get_quant_fact(weights, &Q4_0).is_none());
+            ensure!(get_ggml_q_fact(weights).is_none());
             dispatch_cublaslt_gemm_bias(stream, weights, activs, out, bias, params)?;
-        } else if get_quant_fact(weights, &Q4_0).is_some() {
+        } else if let Some(bqf) = get_ggml_q_fact(weights) {
             let act_view = get_cuda_view(activs);
             let w_view = get_cuda_view(weights);
             let out_view = get_cuda_view(out);
             if params.m <= 8 {
-                dispatch_ggml_matvec_q40(stream, &w_view, &act_view, &out_view, params)?;
+                dispatch_ggml_matvec_q(
+                    &*bqf.format,
+                    stream,
+                    &w_view,
+                    &act_view,
+                    &out_view,
+                    params,
+                )?;
             } else {
-                dispatch_ggml_matmul_q40(stream, &w_view, &act_view, &out_view, params)?;
+                dispatch_ggml_matmul_q(
+                    &*bqf.format,
+                    stream,
+                    &w_view,
+                    &act_view,
+                    &out_view,
+                    params,
+                )?;
             }
         } else if (params.k % 2 == 0) && params.m <= 8 {
             dispatch_ggml_matvec(stream, weights, activs, out, params, None)?;
@@ -785,7 +818,7 @@ mod tests {
 
     use crate::kernels::matmul::quant_act_q81::GgmlQuantQ81;
     use crate::ops::GgmlQuantQ81Fact;
-    use crate::utils::pad_q40;
+    use crate::utils::pad_ggml_q;
     use num_traits::AsPrimitive;
     use num_traits::Float;
     use proptest::collection::vec;
@@ -1273,8 +1306,8 @@ mod tests {
                             self.k,
                             Arc::new(w_quant),
                         )?;
-                        let padded_q40 = pad_q40(&bqs, self.b * self.n, self.k)?;
-                        let padded_k = self.k.next_multiple_of(crate::Q40_ROW_PADDING);
+                        let padded_q40 = pad_ggml_q(&bqs, self.b * self.n, self.k)?;
+                        let padded_k = self.k.next_multiple_of(crate::GGML_Q_ROW_PADDING);
                         padded_q40
                             .into_tensor_with_shape(f32::datum_type(), &[self.b, self.n, padded_k])
                     }
