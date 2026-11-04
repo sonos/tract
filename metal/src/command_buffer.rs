@@ -1,8 +1,7 @@
+use crate::encoder::TComputeCommandEncoder;
 use crate::profile::MetalProfileHandle;
-use metal::{
-    CommandBuffer, ComputeCommandEncoder, ComputeCommandEncoderRef, ComputePassDescriptor,
-};
-use std::cell::RefCell;
+use metal::{CommandBuffer, ComputeCommandEncoder, ComputePassDescriptor};
+use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 
@@ -15,16 +14,22 @@ pub struct TCommandBuffer {
     inner: CommandBuffer,
     encoder: Rc<RefCell<Option<ComputeCommandEncoder>>>,
     profile: Option<Rc<MetalProfileHandle>>,
+    dispatches: Rc<Cell<usize>>,
 }
 
 impl TCommandBuffer {
     pub fn new(command_buffer: CommandBuffer, profile: Option<Rc<MetalProfileHandle>>) -> Self {
-        TCommandBuffer { inner: command_buffer, encoder: Rc::new(RefCell::new(None)), profile }
+        TCommandBuffer {
+            inner: command_buffer,
+            encoder: Rc::new(RefCell::new(None)),
+            profile,
+            dispatches: Rc::new(Cell::new(0)),
+        }
     }
 
     pub fn encode<EncodeCallback>(&self, encode_cb: EncodeCallback)
     where
-        EncodeCallback: Fn(&ComputeCommandEncoderRef),
+        EncodeCallback: Fn(&TComputeCommandEncoder<'_>),
     {
         if let Some(handle) = self.profile.as_ref() {
             let slot = handle.profile.borrow_mut().next_slot(handle.node_id.get());
@@ -44,12 +49,17 @@ impl TCommandBuffer {
                     attachment.set_end_of_encoder_sample_index(end);
                     self.inner.compute_command_encoder_with_descriptor(descriptor).to_owned()
                 });
-                encode_cb(&encoder);
+                encode_cb(&TComputeCommandEncoder::new(&encoder, &self.dispatches));
                 encoder.end_encoding();
                 return;
             }
         }
-        encode_cb(&self.shared_encoder());
+        encode_cb(&TComputeCommandEncoder::new(&self.shared_encoder(), &self.dispatches));
+    }
+
+    /// Number of kernel launches encoded in this buffer, shared by all its clones.
+    pub fn dispatch_count(&self) -> usize {
+        self.dispatches.get()
     }
 
     /// Close the pass the dispatches share, if one is open. A command buffer
