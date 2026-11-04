@@ -95,17 +95,30 @@ impl OwnedDeviceTensor for WgpuTensor {
         };
         let bytes = download_owned_bytes(&self.buffer.inner, offset, len)?;
         let t = if let Some(of) = &self.exotic_fact {
-            let bqf = of
-                .downcast_ref::<tract_core::tract_linalg::block_quant::BlockQuantFact>()
-                .context("Unknown exotic fact")?;
-            let blob = tract_data::internal::Blob::from_bytes(&bytes)?;
-            tract_core::tract_linalg::block_quant::BlockQuantStorage::new(
-                bqf.format.clone(),
-                bqf.m(),
-                bqf.k(),
-                Arc::new(blob),
-            )?
-            .into_tensor_with_shape(self.datum_type, &self.shape)
+            if let Some(bqf) =
+                of.downcast_ref::<tract_core::tract_linalg::block_quant::BlockQuantFact>()
+            {
+                let blob = tract_data::internal::Blob::from_bytes(&bytes)?;
+                tract_core::tract_linalg::block_quant::BlockQuantStorage::new(
+                    bqf.format.clone(),
+                    bqf.m(),
+                    bqf.k(),
+                    Arc::new(blob),
+                )?
+                .into_tensor_with_shape(self.datum_type, &self.shape)
+            } else if let Some(wq) = of.downcast_ref::<crate::kernels::matmul_bq::WgpuBqFact>() {
+                let unpacked = wq.host_bytes(&bytes)?;
+                let blob = tract_data::internal::Blob::from_bytes(&unpacked)?;
+                tract_core::tract_linalg::block_quant::BlockQuantStorage::new(
+                    wq.inner.format.clone(),
+                    wq.inner.m(),
+                    wq.inner.k(),
+                    Arc::new(blob),
+                )?
+                .into_tensor_with_shape(self.datum_type, &self.shape)
+            } else {
+                bail!("Unknown exotic fact");
+            }
         } else {
             unsafe { Tensor::from_raw_dt(self.datum_type, &self.shape, &bytes)? }
         };

@@ -805,18 +805,31 @@ impl DeviceContext for WgpuContext {
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             view.datum_type(),
         );
-        let bqs = as_q40_or_q20t_tensor(view.tensor);
-        let (data_bytes, bqf) = if let Some(bqs) = bqs {
-            (
+        if let Some(bqs) = as_q40_or_q20t_tensor(view.tensor) {
+            let shape = view.shape();
+            let (packed, group) = crate::kernels::matmul_bq::repack_weight(
                 bqs.value().as_bytes(),
-                Some(Box::new(BlockQuantFact::new(
+                bqs.format(),
+                shape,
+            )?;
+            let fact = crate::kernels::matmul_bq::WgpuBqFact {
+                inner: BlockQuantFact::new(
                     tract_core::dyn_clone::clone_box(bqs.format()),
-                    tensor.view().tensor.shape().into(),
-                )) as Box<dyn ExoticFact>),
-            )
-        } else {
-            (view.tensor.as_bytes(), None)
-        };
+                    shape.into(),
+                ),
+                group,
+            };
+            let buffer = Arc::new(self.wrap_storage(self.create_storage_buffer(&packed)));
+            with_wgpu_queue(|q| q.count_upload(packed.len() as u64))?;
+            return Ok(Box::new(WgpuTensor {
+                buffer,
+                datum_type: view.datum_type(),
+                shape: shape.into(),
+                strides: view.strides().into(),
+                exotic_fact: Some(Box::new(fact)),
+            }));
+        }
+        let data_bytes = view.tensor.as_bytes();
         let buffer = Arc::new(self.wrap_storage(self.create_storage_buffer(data_bytes)));
         with_wgpu_queue(|q| q.count_upload(data_bytes.len() as u64))?;
         Ok(Box::new(WgpuTensor {
@@ -824,7 +837,7 @@ impl DeviceContext for WgpuContext {
             datum_type: view.datum_type(),
             shape: view.shape().into(),
             strides: view.strides().into(),
-            exotic_fact: bqf,
+            exotic_fact: None,
         }))
     }
 

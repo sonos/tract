@@ -1,8 +1,14 @@
-//! `Q4_0` and ternary `Q2_0_T` matmul. B is K-inner packed bytes; the shader
-//! dequants one block of 32 into f32 and accumulates there. Group 128 is four
-//! of those blocks, each with its own scale.
+//! `Q4_0` and ternary `Q2_0_T` matmul. B is K-inner. The shader dequants one
+//! block of 32 into f32 and accumulates there.
+//!
+//! The uploaded buffer is not the host interleave. Scale words come first, one
+//! little-endian f16 in the low half of a `u32` per run of `group` blocks, then
+//! every block's code bytes. `group` is 4 when each row's blocks, taken four at
+//! a time, share one scale bit pattern, and 1 otherwise. A run does not cross a
+//! row. Host facts stay [`BlockQuantFact`].
 
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::BlockQuant;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_core::tract_linalg::block_quant::Q2_0_T;
 use tract_core::tract_linalg::block_quant::Q4_0;
@@ -27,19 +33,187 @@ use crate::with_wgpu_queue;
 
 const TILE: u32 = 8;
 
+/// Uniform block shared by both kernels. Twenty scalars, then two `vec4`s:
+/// a `vec4` in a uniform buffer starts on a 16-byte boundary.
+const BQ_PARAMS: &str = "
+struct Params {
+    m: u32,
+    k: u32,
+    n: u32,
+    prefix: u32,
+    a_off: u32,
+    a_prefix_stride: u32,
+    a_stride_m: u32,
+    a_stride_k: u32,
+    scale_off: u32,
+    scale_prefix: u32,
+    blocks_per_row: u32,
+    code_off: u32,
+    format: u32,
+    c_off: u32,
+    c_prefix_stride: u32,
+    c_stride_m: u32,
+    c_stride_n: u32,
+    code_prefix: u32,
+    bq_group: u32,
+    _pad: u32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}
+";
+
+/// Uploaded `Q4_0` or `Q2_0_T` weight.
+///
+/// `inner` is the host fact. `group` is 4 when every in-row run of four blocks
+/// repeats one scale bit pattern, and 1 otherwise. The buffer is one scale word
+/// per run, low 16 bits little-endian f16, then each block's code bytes.
+#[derive(Clone, Hash, PartialEq, Eq)]
+pub(crate) struct WgpuBqFact {
+    pub(crate) inner: BlockQuantFact,
+    pub(crate) group: u32,
+}
+
+impl std::fmt::Debug for WgpuBqFact {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "WgpuBq({:?}, group={})", self.inner, self.group)
+    }
+}
+
+impl ExoticFact for WgpuBqFact {
+    fn buffer_sizes(&self) -> TVec<TDim> {
+        tvec!(packed_len(&self.inner, self.group).to_dim())
+    }
+}
+
+impl WgpuBqFact {
+    /// Host interleave `[scale:2][codes]` for this uploaded buffer.
+    pub(crate) fn host_bytes(&self, packed: &[u8]) -> TractResult<Vec<u8>> {
+        let (rows, blocks_per_row, block_bytes) = geometry(&self.inner)?;
+        unpack_bq(packed, block_bytes, blocks_per_row, rows, self.group)
+    }
+}
+
+fn is_repackable(format: &dyn BlockQuant) -> bool {
+    format.block_len() == 32 && (format.dyn_eq(&Q4_0) || format.dyn_eq(&Q2_0_T))
+}
+
+fn geometry(fact: &BlockQuantFact) -> TractResult<(usize, usize, usize)> {
+    let block_len = fact.format.block_len();
+    let block_bytes = fact.format.block_bytes();
+    ensure!(block_len == 32, "block length is {block_len}");
+    ensure!(fact.k().is_multiple_of(block_len), "K {} is not a multiple of {block_len}", fact.k());
+    ensure!(block_bytes >= 2 && (block_bytes - 2).is_multiple_of(4), "code bytes are not words");
+    let blocks_per_row = fact.k() / block_len;
+    Ok((fact.m(), blocks_per_row, block_bytes))
+}
+
+fn packed_len(fact: &BlockQuantFact, group: u32) -> usize {
+    let Ok((rows, blocks_per_row, block_bytes)) = geometry(fact) else {
+        return 0;
+    };
+    let group = group.max(1) as usize;
+    let total = rows * blocks_per_row;
+    total.div_ceil(group) * 4 + total * (block_bytes - 2)
+}
+
+/// Repacks host `Q4_0` / `Q2_0_T` bytes for the wgpu kernels.
+///
+/// `shape` is the weight, K last. Returns the device bytes and `group`.
+pub(crate) fn repack_weight(
+    bytes: &[u8],
+    format: &dyn BlockQuant,
+    shape: &[usize],
+) -> TractResult<(Vec<u8>, u32)> {
+    ensure!(is_repackable(format), "only Q4_0 and Q2_0_T are repacked");
+    let k = *shape.last().context("block-quant weight has no K")?;
+    let block_len = format.block_len();
+    ensure!(k.is_multiple_of(block_len), "K {k} is not a multiple of {block_len}");
+    let rows = shape.iter().product::<usize>().checked_div(k).unwrap_or(0);
+    repack_bq(bytes, format.block_bytes(), k / block_len, rows)
+}
+
+fn repack_bq(
+    bytes: &[u8],
+    block_bytes: usize,
+    blocks_per_row: usize,
+    rows: usize,
+) -> TractResult<(Vec<u8>, u32)> {
+    let code_bytes = block_bytes - 2;
+    ensure!(block_bytes >= 2 && code_bytes.is_multiple_of(4), "code bytes are not words");
+    let total_blocks = blocks_per_row * rows;
+    ensure!(
+        bytes.len() >= total_blocks * block_bytes,
+        "block-quant blob is {} bytes, {total_blocks} blocks need {}",
+        bytes.len(),
+        total_blocks * block_bytes
+    );
+    let scale_at = |i: usize| -> u16 {
+        let off = i * block_bytes;
+        u16::from_le_bytes([bytes[off], bytes[off + 1]])
+    };
+    let group = if blocks_per_row.is_multiple_of(4)
+        && (0..rows).all(|r| {
+            (0..blocks_per_row).step_by(4).all(|c| {
+                let base = r * blocks_per_row + c;
+                let s0 = scale_at(base);
+                (1..4).all(|j| scale_at(base + j) == s0)
+            })
+        }) {
+        4u32
+    } else {
+        1
+    };
+    let scale_words = total_blocks.div_ceil(group as usize);
+    let mut out = vec![0u8; scale_words * 4 + total_blocks * code_bytes];
+    for i in 0..total_blocks {
+        if i % group as usize == 0 {
+            let w = i / group as usize * 4;
+            out[w..w + 2].copy_from_slice(&scale_at(i).to_le_bytes());
+        }
+        let src = i * block_bytes + 2;
+        let dst = scale_words * 4 + i * code_bytes;
+        out[dst..dst + code_bytes].copy_from_slice(&bytes[src..src + code_bytes]);
+    }
+    Ok((out, group))
+}
+
+fn unpack_bq(
+    bytes: &[u8],
+    block_bytes: usize,
+    blocks_per_row: usize,
+    rows: usize,
+    group: u32,
+) -> TractResult<Vec<u8>> {
+    ensure!(group == 1 || group == 4, "scale group is {group}");
+    let code_bytes = block_bytes - 2;
+    let total_blocks = blocks_per_row * rows;
+    let scale_words = total_blocks.div_ceil(group as usize);
+    let need = scale_words * 4 + total_blocks * code_bytes;
+    ensure!(bytes.len() >= need, "repacked buffer is {} bytes, layout needs {need}", bytes.len());
+    let mut out = vec![0u8; total_blocks * block_bytes];
+    for i in 0..total_blocks {
+        let sw = i / group as usize * 4;
+        out[i * block_bytes..i * block_bytes + 2].copy_from_slice(&bytes[sw..sw + 2]);
+        let src = scale_words * 4 + i * code_bytes;
+        let dst = i * block_bytes + 2;
+        out[dst..dst + code_bytes].copy_from_slice(&bytes[src..src + code_bytes]);
+    }
+    Ok(out)
+}
+
 /// `Q4_0` or `Q2_0_T` on this tensor, owned or viewed.
 pub(crate) fn is_block_quant_weight(b: &DeviceTensor) -> bool {
     bq_fact(b).is_some()
 }
 
-fn bq_fact(t: &DeviceTensor) -> Option<BlockQuantFact> {
+fn bq_fact(t: &DeviceTensor) -> Option<WgpuBqFact> {
     let fact = match t {
         DeviceTensor::Owned(t) => t.exotic_fact(),
         DeviceTensor::View(t) => t.exotic_fact(),
     }?;
-    let bqf = fact.downcast_ref::<BlockQuantFact>()?.clone();
-    if bqf.format.block_len() == 32 && (bqf.format.dyn_eq(&Q4_0) || bqf.format.dyn_eq(&Q2_0_T)) {
-        Some(bqf)
+    let wgpu = fact.downcast_ref::<WgpuBqFact>()?;
+    if is_repackable(&*wgpu.inner.format) && (wgpu.group == 1 || wgpu.group == 4) {
+        Some(wgpu.clone())
     } else {
         None
     }
@@ -103,6 +277,7 @@ fn logical_strides(strides: &[isize], transposed: bool) -> TractResult<(u32, u32
 }
 
 /// Q4_0 (format 0) or Q2_0_T (format 1) times a plain f16/f32 activation.
+/// The weight is the [`WgpuBqFact`] buffer: scale words, then code bytes.
 /// Workgroup is 8×8, K tiled by 32. Threads past M or N still hit both barriers.
 pub fn wgpu_bq_dispatch(
     t: Transposes,
@@ -128,7 +303,7 @@ pub fn wgpu_bq_dispatch(
         }
         let dt = ShaderDtype::from_datum(a.datum_type())?;
         let (m, k, n) = crate::kernels::matmul::mkn(a.shape(), b.shape(), t.a, t.b)?;
-        ensure!(fact.k() == k, "packed K is {}, matmul K is {k}", fact.k());
+        ensure!(fact.inner.k() == k, "packed K is {}, matmul K is {k}", fact.inner.k());
         ensure!(k % 32 == 0, "block-quant matmul needs K a multiple of 32, got {k}");
         let rank = a.rank();
         let out_shape = output.shape();
@@ -165,27 +340,50 @@ pub fn wgpu_bq_dispatch(
         let b_elem_prefix =
             broadcast_prefix_stride(prefix_dims, &b.shape()[..rank - 2], &b.strides()[..rank - 2])?;
         let blocks_per_row = k / 32;
-        let block_bytes = fact.format.block_bytes();
-        let b_prefix = if b_elem_prefix == 0 {
+        let (packed_rows, fact_blocks_per_row, block_bytes) = geometry(&fact.inner)?;
+        ensure!(
+            fact_blocks_per_row == blocks_per_row,
+            "packed blocks per row {fact_blocks_per_row} do not match K {k}"
+        );
+        let shape_rows = b.shape()[..rank - 1].iter().product::<usize>();
+        ensure!(
+            packed_rows == shape_rows,
+            "packed rows {packed_rows} do not match the weight shape"
+        );
+        ensure!(
+            b.buffer_offset::<usize>() == 0,
+            "block-quant matmul reads a weight at the start of its buffer"
+        );
+        let group = fact.group;
+        ensure!(group == 1 || blocks_per_row.is_multiple_of(group as usize));
+        let words_per_block = (block_bytes - 2) / 4;
+        let rows_per_prefix = if b_elem_prefix == 0 {
             0
         } else {
             ensure!(k != 0 && (b_elem_prefix as usize).is_multiple_of(k));
-            let rows = b_elem_prefix as usize / k;
-            u32_of(rows * blocks_per_row * block_bytes)?
+            b_elem_prefix as usize / k
         };
-        let packed_rows = b.shape()[..rank - 1].iter().product::<usize>();
-        ensure!(fact.m() == packed_rows, "packed rows {} do not match the weight shape", fact.m());
+        let scale_prefix = if rows_per_prefix == 0 {
+            0
+        } else {
+            u32_of(rows_per_prefix * blocks_per_row / group as usize)?
+        };
+        let code_prefix = if rows_per_prefix == 0 {
+            0
+        } else {
+            u32_of(rows_per_prefix * blocks_per_row * words_per_block)?
+        };
+        let total_blocks = packed_rows * blocks_per_row;
+        let scale_off = 0u32;
+        let code_off = u32_of(total_blocks.div_ceil(group as usize))?;
 
-        let format = if fact.format.dyn_eq(&Q4_0) { 0 } else { 1 };
+        let format = if fact.inner.format.dyn_eq(&Q4_0) { 0 } else { 1 };
         let a_off = u32_of(element_offset(a, 0))?;
-        let b_off = u32_of(b.buffer_offset::<usize>())?;
         let tiled = dt == ShaderDtype::F32
             && a_stride_k == 1
             && a_stride_m.is_multiple_of(4)
             && a_off.is_multiple_of(4)
-            && a_prefix.is_multiple_of(4)
-            && b_off.is_multiple_of(2)
-            && b_prefix.is_multiple_of(2);
+            && a_prefix.is_multiple_of(4);
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
         let pipeline = if tiled {
             q.context().chain_pipeline(
@@ -226,17 +424,17 @@ pub fn wgpu_bq_dispatch(
             a_prefix,
             a_stride_m,
             a_stride_k,
-            b_off,
-            b_prefix,
+            scale_off,
+            scale_prefix,
             u32_of(blocks_per_row)?,
-            u32_of(block_bytes)?,
+            code_off,
             format,
             u32_of(element_offset(output, 0))?,
             c_prefix,
             c_stride_m,
             c_stride_n,
-            0,
-            0,
+            code_prefix,
+            group,
             0,
         ];
         vals.extend_from_slice(&off_extra);
@@ -284,11 +482,12 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
     let load = (0..4)
         .map(|j| {
             let fields = (0..words)
-                .map(|w| format!("        let w{j}_{w} = rd(o{j} + {}u);\n", 2 + 4 * w))
+                .map(|w| format!("        let w{j}_{w} = b[cw{j} + {w}u];\n"))
                 .collect::<String>();
             format!(
-                "        let o{j} = base + n{j} * params.blocks_per_row * params.block_bytes + block_bytes;
-        let s{j} = f16_bits_to_f32(rd(o{j}) & 65535u);
+                "        let bi{j} = n{j} * params.blocks_per_row + block;
+        let s{j} = unpack2x16float(b[scale_base + bi{j} / params.bq_group]).x;
+        let cw{j} = code_base + bi{j} * {words}u;
 {fields}"
             )
         })
@@ -301,7 +500,7 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
             )
         } else {
             format!(
-                "vec4<f32>((vec4<u32>(select(w{j}_0, w{j}_1, c >= 4u) >> ((c & 3u) * 8u)) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) - 1.0"
+                "bitcast<vec4<f32>>(((vec4<u32>(select(w{j}_0, w{j}_1, c >= 4u) >> ((c & 3u) * 8u)) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) | vec4<u32>(0x4b000000u)) - vec4<f32>(8388609.0)"
             )
         }
     };
@@ -315,62 +514,16 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
             )
         })
         .collect::<String>();
+    let params = BQ_PARAMS;
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
-struct Params {{
-    m: u32,
-    k: u32,
-    n: u32,
-    prefix: u32,
-    a_off: u32,
-    a_prefix_stride: u32,
-    a_stride_m: u32,
-    a_stride_k: u32,
-    b_off: u32,
-    b_prefix_stride: u32,
-    blocks_per_row: u32,
-    block_bytes: u32,
-    format: u32,
-    c_off: u32,
-    c_prefix_stride: u32,
-    c_stride_m: u32,
-    c_stride_n: u32,
-    _p0: u32,
-    _p1: u32,
-    _p2: u32,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
-}}
-
+{params}
 @group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
 @group(0) @binding(1) var<storage, read> b: array<u32>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-fn f16_bits_to_f32(bits: u32) -> f32 {{
-    let sign = (bits >> 15u) & 1u;
-    let exp = (bits >> 10u) & 31u;
-    let mant = bits & 1023u;
-    if (exp == 0u) {{
-        let mag = f32(mant) * 5.960464477539063e-8;
-        return select(mag, -mag, sign == 1u);
-    }}
-    if (exp == 31u) {{
-        return bitcast<f32>((sign << 31u) | (255u << 23u) | (mant << 13u));
-    }}
-    return bitcast<f32>((sign << 31u) | ((exp + 112u) << 23u) | (mant << 13u));
-}}
-
-// A little-endian word at an even byte offset.
-fn rd(off: u32) -> u32 {{
-    let w = off >> 2u;
-    if ((off & 2u) == 0u) {{
-        return b[w];
-    }}
-    return (b[w] >> 16u) | (b[w + 1u] << 16u);
-}}
-
 fn emit(value: f32, row: u32, col: u32, pref: u32) {{
     if (row >= params.m || col >= params.n) {{
         return;
@@ -391,7 +544,8 @@ fn bq_tiled_{suf}(
     if (row0 >= params.m || col0 >= params.n || pref >= params.prefix) {{
         return;
     }}
-    let base = params.b_off + pref * params.b_prefix_stride;
+    let scale_base = params.scale_off + pref * params.scale_prefix;
+    let code_base = params.code_off + pref * params.code_prefix;
     let a_base = (params.a_off + pref * params.a_prefix_stride) >> 2u;
     let rows = params.a_stride_m >> 2u;
     let last_row = params.m - 1u;
@@ -409,7 +563,6 @@ fn bq_tiled_{suf}(
     var acc2 = vec4<f32>(0.0);
     var acc3 = vec4<f32>(0.0);
     for (var block = 0u; block < params.blocks_per_row; block++) {{
-        let block_bytes = block * params.block_bytes;
 {load}        var b0 = vec4<f32>(0.0);
         var b1 = vec4<f32>(0.0);
         var b2 = vec4<f32>(0.0);
@@ -454,34 +607,11 @@ fn bq_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let params = BQ_PARAMS;
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
-struct Params {{
-    m: u32,
-    k: u32,
-    n: u32,
-    prefix: u32,
-    a_off: u32,
-    a_prefix_stride: u32,
-    a_stride_m: u32,
-    a_stride_k: u32,
-    b_off: u32,
-    b_prefix_stride: u32,
-    blocks_per_row: u32,
-    block_bytes: u32,
-    format: u32,
-    c_off: u32,
-    c_prefix_stride: u32,
-    c_stride_m: u32,
-    c_stride_n: u32,
-    _p0: u32,
-    _p1: u32,
-    _p2: u32,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
-}}
-
+{params}
 @group(0) @binding(0) var<storage, read> a: array<{t}>;
 @group(0) @binding(1) var<storage, read> b: array<u32>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
@@ -512,18 +642,21 @@ fn load_u8(off: u32) -> u32 {{
     return (word >> ((off & 3u) * 8u)) & 255u;
 }}
 
-fn dequant(n_row: u32, kk: u32, pref_bytes: u32) -> f32 {{
+fn dequant(n_row: u32, kk: u32, pref: u32) -> f32 {{
     let block = kk >> 5u;
     let inner = kk & 31u;
-    let base = params.b_off + pref_bytes + (n_row * params.blocks_per_row + block) * params.block_bytes;
-    let scale = f16_bits_to_f32(load_u8(base) | (load_u8(base + 1u) << 8u));
+    let bi = n_row * params.blocks_per_row + block;
+    let scale_word = b[params.scale_off + pref * params.scale_prefix + bi / params.bq_group];
+    let scale = f16_bits_to_f32(scale_word & 0xffffu);
+    let words = select(2u, 4u, params.format == 0u);
+    let code_byte = (params.code_off + pref * params.code_prefix + bi * words) * 4u;
     if (params.format == 0u) {{
         // ggml Q4_0: byte j holds position j in the low nibble and j+16 in the high nibble.
-        let byte = load_u8(base + 2u + (inner & 15u));
+        let byte = load_u8(code_byte + (inner & 15u));
         let nib = select(byte >> 4u, byte & 15u, inner < 16u);
         return (f32(nib) - 8.0) * scale;
     }}
-    let byte = load_u8(base + 2u + (inner >> 2u));
+    let byte = load_u8(code_byte + (inner >> 2u));
     let code = (byte >> ((inner & 3u) * 2u)) & 3u;
     return (f32(code) - 1.0) * scale;
 }}
@@ -538,7 +671,6 @@ fn bq_matmul_{suf}(
     let col = wid.x * 8u + lid.x;
     let pref = wid.z;
     let in_range = row < params.m && col < params.n && pref < params.prefix;
-    let pref_bytes = pref * params.b_prefix_stride;
     var acc = 0.0;
     for (var kb = 0u; kb < params.k; kb += 32u) {{
         for (var i = 0u; i < 4u; i++) {{
@@ -556,7 +688,7 @@ fn bq_matmul_{suf}(
             a_tile[elem] = av;
             var bv = 0.0;
             if (gn < params.n && gk < params.k) {{
-                bv = dequant(gn, gk, pref_bytes);
+                bv = dequant(gn, gk, pref);
             }}
             b_tile[elem] = bv;
         }}
@@ -591,7 +723,11 @@ mod tests {
     use tract_core::tract_linalg::block_quant::BlockQuantStorage;
     use tract_core::tract_linalg::block_quant::Q2_0_T;
     use tract_core::tract_linalg::block_quant::Q4_0;
+    use tract_gpu::fact::DeviceFact;
+    use tract_gpu::tensor::DeviceTensor;
+    use tract_gpu::tensor::DeviceTensorExt;
 
+    use super::WgpuBqFact;
     use crate::ops::matmul::WgpuGemm;
     use crate::test_utils::fill;
     use crate::test_utils::gpu_vs_cpu;
@@ -749,5 +885,161 @@ mod tests {
         model.select_output_outlets(&[y])?;
         assert_gemm(&transformed(model.clone())?)?;
         gpu_vs_cpu(model, Tensor::from_shape(&[m, k], &fill(8, m * k))?)
+    }
+
+    fn q2_interleaved(scales: &[u16]) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for (i, scale) in scales.iter().enumerate() {
+            bytes.extend_from_slice(&scale.to_le_bytes());
+            bytes.extend(std::iter::repeat_n(i as u8, 8));
+        }
+        bytes
+    }
+
+    #[test]
+    fn repack_keeps_groups_inside_rows() -> TractResult<()> {
+        let blocks_per_row = 8usize;
+        let scales = [1u16, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4];
+        let bytes = q2_interleaved(&scales);
+        let (packed, group) = super::repack_bq(&bytes, 10, blocks_per_row, 2)?;
+        ensure!(group == 4, "group is {group}");
+        ensure!(packed.len() == 16 + 16 * 8, "packed len {}", packed.len());
+        ensure!(u16::from_le_bytes([packed[0], packed[1]]) == 1);
+        ensure!(u16::from_le_bytes([packed[4], packed[5]]) == 2);
+        ensure!(u16::from_le_bytes([packed[8], packed[9]]) == 3);
+        ensure!(u16::from_le_bytes([packed[12], packed[13]]) == 4);
+        ensure!(packed[16] == 0 && packed[24] == 1 && packed[16 + 15 * 8] == 15);
+        ensure!(super::unpack_bq(&packed, 10, blocks_per_row, 2, group)? == bytes);
+
+        let mut broken = scales;
+        broken[7] = 9;
+        let bytes = q2_interleaved(&broken);
+        let (packed, group) = super::repack_bq(&bytes, 10, blocks_per_row, 2)?;
+        ensure!(group == 1, "a broken run of four stayed group {group}");
+        ensure!(super::unpack_bq(&packed, 10, blocks_per_row, 2, group)? == bytes);
+
+        let same = [7u16; 12];
+        let bytes = q2_interleaved(&same);
+        let (packed, group) = super::repack_bq(&bytes, 10, 6, 2)?;
+        ensure!(group == 1, "a row that is not a multiple of 4 became group {group}");
+        ensure!(super::unpack_bq(&packed, 10, 6, 2, group)? == bytes);
+        Ok(())
+    }
+
+    fn assert_uploaded(model: &TypedModel, original: &[u8], group: u32) -> TractResult<()> {
+        let mut found = false;
+        for node in model.nodes() {
+            let Some(op) = node.op_as::<Const>() else { continue };
+            let Some(device) = op.val().as_device_tensor() else { continue };
+            let stored = match device {
+                DeviceTensor::Owned(t) => t.exotic_fact(),
+                DeviceTensor::View(t) => t.exotic_fact(),
+            };
+            let Some(wq) = stored.and_then(|f| f.downcast_ref::<WgpuBqFact>()) else { continue };
+            let host = op
+                .exotic_fact()
+                .and_then(|f| f.downcast_ref::<DeviceFact>())
+                .context("weight const is not a device fact")?;
+            ensure!(
+                host.fact
+                    .exotic_fact()
+                    .is_some_and(|e| e.downcast_ref::<BlockQuantFact>().is_some()),
+                "graph fact is no longer BlockQuantFact"
+            );
+            ensure!(wq.group == group, "scale group is {}, wanted {group}", wq.group);
+            let back = device.to_host()?;
+            let got = back
+                .storage_as::<BlockQuantStorage>()
+                .context("readback is not block-quant")?
+                .value()
+                .as_bytes();
+            ensure!(got == original, "readback bytes differ from the host weight");
+            found = true;
+        }
+        ensure!(found, "no repacked weight");
+        Ok(())
+    }
+
+    fn run_prequantized(
+        format: &dyn BlockQuant,
+        blob: Blob,
+        a_shape: &[usize],
+        b_shape: &[usize],
+        dt: DatumType,
+        expect_group: u32,
+    ) -> TractResult<()> {
+        let k = *b_shape.last().unwrap();
+        let rows = b_shape.iter().product::<usize>() / k;
+        let original = blob.as_bytes().to_vec();
+        let storage = BlockQuantStorage::new(clone_box(format), rows, k, Arc::new(blob))?;
+        let tensor = storage.into_tensor_with_shape(f32::datum_type(), b_shape);
+        let fact = BlockQuantFact::new(clone_box(format), b_shape.into());
+        let w = Const::new_with_exotic_fact(Arc::new(tensor), Box::new(fact))?;
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", dt.fact(a_shape))?;
+        let w = model.wire_node("w", w, &[])?[0];
+        let y = model.wire_node("mm", mm(false, true, false, dt), &[a, w])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        assert_gemm(&gpu)?;
+        assert_uploaded(&gpu, &original, expect_group)?;
+        let input = Tensor::from_shape(a_shape, &fill(4, a_shape.iter().product()))?
+            .cast_to_dt(dt)?
+            .into_owned();
+        gpu_vs_cpu(model, input)
+    }
+
+    #[test]
+    fn q2_0_t_repeated_scale_is_group4() -> TractResult<()> {
+        let (n, k) = (5usize, 256usize);
+        let blocks = k / 32;
+        let codes: Vec<u8> = (0..n * k).map(|i| (i % 4) as u8).collect();
+        let mut scales = vec![0f32; n * blocks];
+        for row in 0..n {
+            for blk in 0..blocks {
+                scales[row * blocks + blk] = if blk < 4 { -1.25 } else { 0.5 + row as f32 };
+            }
+        }
+        let blob = Q2_0_T.pack_prequantized(&codes, &scales, n, k)?;
+        run_prequantized(&Q2_0_T, blob, &[7, k], &[n, k], f32::datum_type(), 4)
+    }
+
+    #[test]
+    fn q2_0_t_distinct_scale_is_group1() -> TractResult<()> {
+        let (n, k) = (4usize, 128usize);
+        let blocks = k / 32;
+        let codes: Vec<u8> = (0..n * k).map(|i| (i % 4) as u8).collect();
+        let scales: Vec<f32> = (0..n * blocks).map(|i| 0.25 * (i + 1) as f32).collect();
+        let blob = Q2_0_T.pack_prequantized(&codes, &scales, n, k)?;
+        run_prequantized(&Q2_0_T, blob, &[3, k], &[n, k], f32::datum_type(), 1)
+    }
+
+    #[test]
+    fn q4_0_repeated_scale_f16_is_group4() -> TractResult<()> {
+        let (n, k) = (6usize, 128usize);
+        let blocks = k / 32;
+        let codes: Vec<u8> = (0..n * k).map(|i| (i % 16) as u8).collect();
+        let scales = (0..n * blocks)
+            .map(|i| if i / blocks % 2 == 0 { 0.5 } else { -2.0 })
+            .collect::<Vec<_>>();
+        let blob = Q4_0.pack_prequantized(&codes, &scales, n, k)?;
+        run_prequantized(&Q4_0, blob, &[5, k], &[n, k], f16::datum_type(), 4)
+    }
+
+    #[test]
+    fn q2_0_t_group4_broadcast_and_batched() -> TractResult<()> {
+        let (n, k) = (5usize, 128usize);
+        let blocks = k / 32;
+        let codes: Vec<u8> = (0..n * k).map(|i| (i % 4) as u8).collect();
+        let scales = vec![0.5f32; n * blocks];
+        let blob = Q2_0_T.pack_prequantized(&codes, &scales, n, k)?;
+        run_prequantized(&Q2_0_T, blob, &[2, 3, k], &[1, n, k], f32::datum_type(), 4)?;
+
+        let rows = 2 * n;
+        let codes: Vec<u8> = (0..rows * k).map(|i| (i % 4) as u8).collect();
+        let scales =
+            (0..rows * blocks).map(|i| if i / blocks < n { -0.5 } else { 1.5 }).collect::<Vec<_>>();
+        let blob = Q2_0_T.pack_prequantized(&codes, &scales, rows, k)?;
+        run_prequantized(&Q2_0_T, blob, &[2, 3, k], &[2, n, k], f32::datum_type(), 4)
     }
 }
