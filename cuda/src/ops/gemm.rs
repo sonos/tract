@@ -1,13 +1,11 @@
 use crate::kernels::matmul::GgmlGemm;
 use crate::ops::GgmlQuantQ81Fact;
-use crate::utils::get_ggml_q81_fact;
+use crate::utils::{as_ggml_q_fact, get_ggml_q81_fact};
 
 use anyhow::{bail, ensure};
 use derive_new::new;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensorExt;
-use tract_gpu::utils::as_quant_fact;
 
 #[derive(Debug, new, Default, Clone, PartialEq, Eq)]
 pub struct CudaGgmlGemm;
@@ -42,11 +40,11 @@ impl CudaGgmlGemm {
             ensure!(ak.compatible_with(bk), "Incompatible contraction dim: {ak} vs {bk}");
             let out_shape = GgmlGemm.output_shape(&a.shape, &b.shape);
             Ok(tvec![a.datum_type().unwrap().fact(out_shape)])
-        } else if as_quant_fact(inputs[1], &Q4_0).is_some() {
+        } else if as_ggml_q_fact(inputs[1]).is_some() {
             let Some(b_ggml_qf) =
                 inputs[0].exotic_fact.as_ref().and_then(|of| of.downcast_ref::<GgmlQuantQ81Fact>())
             else {
-                bail!("Expected GGML Q81 activations for Q40 MM")
+                bail!("Expected GGML Q81 activations for a block-quant MM")
             };
             let a_shape: ShapeFact =
                 a.shape.iter().cloned().chain(b_ggml_qf.in_shape().to_owned()).collect();

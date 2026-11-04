@@ -94,6 +94,60 @@ load_tiles_q4_0(const char *__restrict__ x, int *__restrict__ x_tile,
   }
 }
 
+// Four 2-bit codes, one per byte, minus the zero point 1.
+static __device__ __forceinline__ int q2_0_t_codes_to_i8x4(const int byte) {
+  const int spread = (byte & 0x03) | ((byte & 0x0C) << 6) |
+                     ((byte & 0x30) << 12) | ((byte & 0xC0) << 18);
+  return __vsubss4(spread, 0x01010101);
+}
+
+template <int mmq_y, int nwarps, bool need_check>
+static __device__ __forceinline__ void
+load_tiles_q2_0_t(const char *__restrict__ x, int *__restrict__ x_tile,
+                  const int kbx0, const int i_max, const int stride) {
+
+  int *x_qs = (int *)x_tile;
+  float *x_df = (float *)(x_qs + 2 * WARP_SIZE);
+
+  constexpr int threads_per_block = QK2_0_T / 8;
+  const int kbx = threadIdx.x / threads_per_block;
+  const int kqsx = threadIdx.x % threads_per_block;
+
+  _Pragma("unroll") for (int i0 = 0; i0 < mmq_y; i0 += N_WARPS) {
+    int i = i0 + threadIdx.y;
+
+    if (need_check) {
+      i = min(i, i_max);
+    }
+    const block_q2_0_t *bxi =
+        (const block_q2_0_t *)x + kbx0 + i * stride + kbx;
+    const int qs = ((const uint16_t *)bxi->qs)[kqsx];
+
+    x_qs[i * MMQ_MMA_TILE_X_K_Q8_0 + kbx * QI8_0 + 2 * kqsx + 0] =
+        q2_0_t_codes_to_i8x4(qs & 0xFF);
+    x_qs[i * MMQ_MMA_TILE_X_K_Q8_0 + kbx * QI8_0 + 2 * kqsx + 1] =
+        q2_0_t_codes_to_i8x4(qs >> 8);
+  }
+
+  constexpr int blocks_per_tile_x_row = WARP_SIZE / threads_per_block;
+  const int kbxd = threadIdx.x % blocks_per_tile_x_row;
+
+  _Pragma("unroll") for (int i0 = 0; i0 < MMQ_Y;
+                         i0 += N_WARPS * threads_per_block) {
+    int i = i0 + threadIdx.y * threads_per_block +
+            threadIdx.x / blocks_per_tile_x_row;
+
+    if (need_check) {
+      i = min(i, i_max);
+    }
+
+    const block_q2_0_t *bxi =
+        (const block_q2_0_t *)x + kbx0 + i * stride + kbxd;
+
+    x_df[i * MMQ_MMA_TILE_X_K_Q8_0 + kbxd] = bxi->d;
+  }
+}
+
 template <int mmq_x, int mmq_y, int nwarps>
 static __device__ __forceinline__ void
 vec_dot_q8_0_q8_1_mma(const int *__restrict__ x, const int *__restrict__ y,
@@ -207,16 +261,26 @@ mmq_write_back_mma(const float *__restrict__ sum,
   }
 }
 
+template <typename block_t, int mmq_x, int mmq_y, int nwarps, bool need_check>
+struct mmq_type_traits;
+
 template <int mmq_x, int mmq_y, int nwarps, bool need_check>
-struct mmq_type_traits {
-  static constexpr int vdr = VDR_Q4_0_Q8_1_MMQ;
+struct mmq_type_traits<block_q4_0, mmq_x, mmq_y, nwarps, need_check> {
   static constexpr load_tiles_mmq_t load_tiles =
       load_tiles_q4_0<mmq_y, nwarps, need_check>;
   static constexpr vec_dot_mmq_t vec_dot_mma =
       vec_dot_q8_0_q8_1_mma<mmq_x, mmq_y, nwarps>;
 };
 
-template <int mmq_x, int nwarps, bool need_check, bool fixup>
+template <int mmq_x, int mmq_y, int nwarps, bool need_check>
+struct mmq_type_traits<block_q2_0_t, mmq_x, mmq_y, nwarps, need_check> {
+  static constexpr load_tiles_mmq_t load_tiles =
+      load_tiles_q2_0_t<mmq_y, nwarps, need_check>;
+  static constexpr vec_dot_mmq_t vec_dot_mma =
+      vec_dot_q8_0_q8_1_mma<mmq_x, mmq_y, nwarps>;
+};
+
+template <typename block_t, int mmq_x, int nwarps, bool need_check, bool fixup>
 static __device__ __forceinline__ void mul_mat_q_process_tile(
     const char *__restrict__ x, const int offset_x, const int *__restrict__ y,
     const int *__restrict__ ids_dst, float *__restrict__ dst,
@@ -226,7 +290,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 
   constexpr int qk = QK4_0;
   constexpr load_tiles_mmq_t load_tiles =
-      mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::load_tiles;
+      mmq_type_traits<block_t, mmq_x, MMQ_Y, N_WARPS, need_check>::load_tiles;
 
   extern __shared__ int data_mul_mat_q[];
   int *tile_y = data_mul_mat_q + mmq_x;
@@ -234,7 +298,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
                              N_WARPS * WARP_SIZE);
 
   constexpr vec_dot_mmq_t vec_dot =
-      mmq_type_traits<mmq_x, MMQ_Y, N_WARPS, need_check>::vec_dot_mma;
+      mmq_type_traits<block_t, mmq_x, MMQ_Y, N_WARPS, need_check>::vec_dot_mma;
   constexpr mmq_write_back_t write_back =
       mmq_write_back_mma<mmq_x, MMQ_Y, N_WARPS, need_check>;
 
@@ -293,7 +357,7 @@ static __device__ __forceinline__ void mul_mat_q_process_tile(
 // The mul_mat_q kernel implements "stream-k" work partitioning as described in
 // https://arxiv.org/abs/2301.03598
 
-template <int mmq_x, int nwarps, bool need_check>
+template <typename block_t, int mmq_x, int nwarps, bool need_check>
 static __device__ __forceinline__ void
 mul_mat_q(const char *__restrict__ x, const int *__restrict__ y,
           float *__restrict__ dst, float *__restrict__ tmp_fixup,
@@ -363,7 +427,7 @@ mul_mat_q(const char *__restrict__ x, const int *__restrict__ y,
     constexpr bool fixup =
         false; // All but (potentially) the last iterations write their data to
                // dst rather than the fixup buffer.
-    mul_mat_q_process_tile<mmq_x, nwarps, need_check, fixup>(
+    mul_mat_q_process_tile<block_t, mmq_x, nwarps, need_check, fixup>(
         x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup,
         stride_row_x, ncols_y, stride_col_dst, tile_x_max_i, tile_y_max_j,
         kb0_start, kb0_stop);
@@ -401,7 +465,7 @@ mul_mat_q(const char *__restrict__ x, const int *__restrict__ y,
 
   constexpr bool fixup = true; // Last index writes its data to fixup buffer to
                                // avoid data races with other blocks.
-  mul_mat_q_process_tile<mmq_x, nwarps, need_check, fixup>(
+  mul_mat_q_process_tile<block_t, mmq_x, nwarps, need_check, fixup>(
       x, offset_x, y + offset_y, ids_dst_shared, dst + offset_dst, tmp_fixup,
       stride_row_x, ncols_y, stride_col_dst, tile_x_max_i, tile_y_max_j,
       kb0_start, kb0_stop);
@@ -521,9 +585,9 @@ mul_mat_q_stream_k_fixup(float *__restrict__ dst,
   }
 }
 
-#define INSTANTIATE_MMQ_KERNEL(mmq_x, nwarps, need_check)                      \
+#define INSTANTIATE_MMQ_KERNEL(name, block_t, mmq_x, nwarps, need_check)       \
   extern "C" {                                                                 \
-  __launch_bounds__(WARP_SIZE *nwarps, 1) __global__ void mul_mat_q40##_       \
+  __launch_bounds__(WARP_SIZE *nwarps, 1) __global__ void mul_mat_##name##_    \
       ##mmq_x##_##nwarps##_                                                    \
       ##need_check(const char *__restrict__ x, const int *__restrict__ y,      \
                    float *__restrict__ dst, float *__restrict__ tmp_fixup,     \
@@ -532,14 +596,14 @@ mul_mat_q_stream_k_fixup(float *__restrict__ dst,
                    const int32_t stride_col_dst, const int32_t channel_ratio,          \
                    const int32_t nchannels_y, const int32_t stride_channel_x,          \
                    const int32_t stride_channel_y, const int32_t stride_channel_dst) { \
-    mul_mat_q<mmq_x, nwarps, need_check>(                                      \
+    mul_mat_q<block_t, mmq_x, nwarps, need_check>(                             \
         x, y, dst, tmp_fixup, ncols_x, nrows_x, ncols_dst, stride_row_x,       \
         ncols_y, stride_col_dst, channel_ratio, nchannels_y, stride_channel_x, \
         stride_channel_y, stride_channel_dst);                                 \
   }                                                                            \
                                                                                \
   __global__ void                                                              \
-      mul_mat_q40_stream_k_fixup##_##mmq_x##_##nwarps##_##need_check(          \
+      mul_mat_##name##_stream_k_fixup##_##mmq_x##_##nwarps##_##need_check(     \
           float *__restrict__ dst, const float *__restrict__ tmp_last_tile,    \
           const int32_t ncols_x, const int32_t nrows_x, const int32_t ncols_dst,           \
           const int32_t stride_col_dst, const int32_t nchannels_y,                     \
@@ -550,21 +614,27 @@ mul_mat_q_stream_k_fixup(float *__restrict__ dst,
   }                                                                            \
   }
 
-#define INSTANTIATE_MMQ_KERNEL_FOR_T(n_warps, needs_check)                     \
-  INSTANTIATE_MMQ_KERNEL(8, n_warps, needs_check)                              \
-  INSTANTIATE_MMQ_KERNEL(16, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(24, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(32, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(40, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(48, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(64, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(80, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(96, n_warps, needs_check)                             \
-  INSTANTIATE_MMQ_KERNEL(112, n_warps, needs_check)                            \
-  INSTANTIATE_MMQ_KERNEL(128, n_warps, needs_check)
+#define INSTANTIATE_MMQ_KERNEL_FOR_T(name, block_t, n_warps, needs_check)      \
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 8, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 16, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 24, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 32, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 40, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 48, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 64, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 80, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 96, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 112, n_warps, needs_check)\
+  INSTANTIATE_MMQ_KERNEL(name, block_t, 128, n_warps, needs_check)
 
-INSTANTIATE_MMQ_KERNEL_FOR_T(N_WARPS, true)
-INSTANTIATE_MMQ_KERNEL_FOR_T(N_WARPS, false)
+// GGML_Q_TERNARY selects the Q2_0_T kernels, a separate library compiled on first use.
+#ifdef GGML_Q_TERNARY
+INSTANTIATE_MMQ_KERNEL_FOR_T(q20t, block_q2_0_t, N_WARPS, true)
+INSTANTIATE_MMQ_KERNEL_FOR_T(q20t, block_q2_0_t, N_WARPS, false)
+#else
+INSTANTIATE_MMQ_KERNEL_FOR_T(q40, block_q4_0, N_WARPS, true)
+INSTANTIATE_MMQ_KERNEL_FOR_T(q40, block_q4_0, N_WARPS, false)
+#endif
 
 static constexpr __host__ __device__ int calc_nwarps(int ncols_dst) {
   switch (ncols_dst) {
@@ -626,7 +696,46 @@ vec_dot_q4_0_q8_1(const void *__restrict__ vbq,
   return vec_dot_q4_0_q8_1_impl<VDR_Q4_0_Q8_1_MMVQ>(v, u, bq4_0->d, bq8_1->ds);
 }
 
-template <int ncols_dst>
+static __device__ __forceinline__ float
+vec_dot_q2_0_t_q8_1(const void *__restrict__ vbq,
+                    const block_q8_1 *__restrict__ bq8_1, const int &kbx,
+                    const int &iqs) {
+
+  const block_q2_0_t *bq2 = (const block_q2_0_t *)vbq + kbx;
+  const int v = get_int_b2(bq2->qs, iqs);
+
+  int sumi = 0;
+#pragma unroll
+  for (int i = 0; i < 4; ++i) {
+    sumi = __dp4a(q2_0_t_codes_to_i8x4((v >> (8 * i)) & 0xFF),
+                  get_int_b4(bq8_1->qs, 4 * iqs + i), sumi);
+  }
+
+  return __half2float(bq2->d) * __low2float(bq8_1->ds) * sumi;
+}
+
+typedef float (*vec_dot_mmvq_t)(const void *__restrict__ vbq,
+                                const block_q8_1 *__restrict__ bq8_1,
+                                const int &kbx, const int &iqs);
+
+// qi: ints of codes per block, vdr: ints each thread reads per block.
+template <typename block_t> struct mmvq_type_traits;
+
+template <> struct mmvq_type_traits<block_q4_0> {
+  static constexpr int qk = QK4_0;
+  static constexpr int qi = QI4_0;
+  static constexpr int vdr = VDR_Q4_0_Q8_1_MMVQ;
+  static constexpr vec_dot_mmvq_t vec_dot = vec_dot_q4_0_q8_1;
+};
+
+template <> struct mmvq_type_traits<block_q2_0_t> {
+  static constexpr int qk = QK2_0_T;
+  static constexpr int qi = QK2_0_T / 16;
+  static constexpr int vdr = 1;
+  static constexpr vec_dot_mmvq_t vec_dot = vec_dot_q2_0_t_q8_1;
+};
+
+template <typename block_t, int ncols_dst>
 static __device__ void
 mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
               float *__restrict__ dst, const int ncols_x, const int nchannels_y,
@@ -635,9 +744,10 @@ mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
               const int stride_channel_x, const int stride_channel_y,
               const int stride_channel_dst) {
 
-  constexpr int qk = QK4_0;
-  constexpr int qi = QI4_0;
-  constexpr int vdr = VDR_Q4_0_Q8_1_MMVQ;
+  constexpr int qk = mmvq_type_traits<block_t>::qk;
+  constexpr int qi = mmvq_type_traits<block_t>::qi;
+  constexpr int vdr = mmvq_type_traits<block_t>::vdr;
+  constexpr vec_dot_mmvq_t vec_dot = mmvq_type_traits<block_t>::vec_dot;
   constexpr int nwarps = calc_nwarps(ncols_dst);
   constexpr int rows_per_cuda_block = ncols_dst == 1 ? 1 : 2;
 
@@ -668,11 +778,11 @@ mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
 #pragma unroll
       for (int i0 = 0; i0 < rows_per_cuda_block; ++i0) {
         int i = i0 + row0;
-        if (i >= stride_col_dst) { // Avoid OOB read from Q4_0
+        if (i >= stride_col_dst) { // Avoid OOB read from the weights
           break;
         }
         tmp[j][i0] +=
-            vec_dot_q4_0_q8_1(vx, &y[j * stride_col_y + kby],
+            vec_dot(vx, &y[j * stride_col_y + kby],
                               kbx_offset + i * stride_row_x + kbx, kqs);
       }
     }
@@ -716,28 +826,39 @@ mul_mat_vec_q(const void *__restrict__ vx, const void *__restrict__ vy,
   }
 }
 
-#define INSTANTIATE_MMQV_KERNEL(ncols_dst)                                     \
+#define INSTANTIATE_MMQV_KERNEL(name, block_t, ncols_dst)                      \
   extern "C" {                                                                 \
   __launch_bounds__(calc_nwarps(ncols_dst) * WARP_SIZE, 1) __global__          \
-      void mul_vec_q40_m_                                                      \
+      void mul_vec_##name##_m_                                                 \
       ##ncols_dst(const void *__restrict__ vx, const void *__restrict__ vy,    \
                   float *__restrict__ dst, const int32_t ncols_x,                  \
                   const int32_t nchannels_y, const int32_t stride_row_x,               \
                   const int32_t stride_col_y, const int32_t stride_col_dst,            \
                   const int32_t channel_ratio, const int32_t stride_channel_x,         \
                   const int32_t stride_channel_y, const int32_t stride_channel_dst) {  \
-    mul_mat_vec_q<ncols_dst>(vx, vy, dst, ncols_x, nchannels_y, stride_row_x,  \
+    mul_mat_vec_q<block_t, ncols_dst>(vx, vy, dst, ncols_x, nchannels_y, stride_row_x,  \
                              stride_col_y, stride_col_dst, channel_ratio,      \
                              stride_channel_x, stride_channel_y,               \
                              stride_channel_dst);                              \
   }                                                                            \
   }
 
-INSTANTIATE_MMQV_KERNEL(1)
-INSTANTIATE_MMQV_KERNEL(2)
-INSTANTIATE_MMQV_KERNEL(3)
-INSTANTIATE_MMQV_KERNEL(4)
-INSTANTIATE_MMQV_KERNEL(5)
-INSTANTIATE_MMQV_KERNEL(6)
-INSTANTIATE_MMQV_KERNEL(7)
-INSTANTIATE_MMQV_KERNEL(8)
+#ifdef GGML_Q_TERNARY
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 1)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 2)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 3)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 4)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 5)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 6)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 7)
+INSTANTIATE_MMQV_KERNEL(q20t, block_q2_0_t, 8)
+#else
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 1)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 2)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 3)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 4)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 5)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 6)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 7)
+INSTANTIATE_MMQV_KERNEL(q40, block_q4_0, 8)
+#endif

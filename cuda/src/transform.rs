@@ -4,6 +4,7 @@ use std::sync::OnceLock;
 
 use crate::context::cuda_context;
 use crate::ops::wire_cuda_conv;
+use crate::utils::as_ggml_q_fact;
 use crate::{kernels, ops, rewrite_rules};
 use DatumType::{F16, F32};
 use tract_core::dyn_clone::clone_box;
@@ -28,7 +29,6 @@ tract_core::declare_knob!(
     "Log nodes that fail output-fact validation during CUDA translation."
 );
 use tract_core::ops::nn::{GroupNorm, Reduce, rewrite_nearest_upsample_to_broadcast};
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_core::transform::ModelTransform;
 use tract_gpu::fact::{DeviceFact, DeviceTypedFactExt};
 use tract_gpu::ops::deconv::{GpuDeconv, wire_gpu_deconv};
@@ -47,7 +47,6 @@ use tract_gpu::sync::{
     DeviceSync, DeviceSyncKind, sync_inputs_if_required, sync_model_outputs_if_required,
 };
 use tract_gpu::tensor::{DeviceTensor, IntoDevice};
-use tract_gpu::utils::as_quant_fact;
 use tract_transformers::ops::sdpa::Sdpa;
 
 /// A registered translator that can convert a core op into a CUDA GPU op.
@@ -176,7 +175,7 @@ impl CudaTransform {
         rewire_syncs(model)?;
 
         Rewriter::default()
-            .with_rule_for("pad_q40_weights", rewrite_rules::pad_q40_weights)
+            .with_rule_for("pad_ggml_q_weights", rewrite_rules::pad_ggml_q_weights)
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("window_kv_cache_output", window_kv_cache_output)
@@ -251,7 +250,7 @@ fn can_convert_to_cuda_gemm(facts: &[TypedFact]) -> bool {
         );
 
     regular_types_support
-        || (as_quant_fact(&facts[1], &Q4_0).is_some() && matches!(facts[0].datum_type, F16 | F32))
+        || (as_ggml_q_fact(&facts[1]).is_some() && matches!(facts[0].datum_type, F16 | F32))
 }
 
 fn convert_matmul_to_cuda(
@@ -291,7 +290,7 @@ fn convert_matmul_to_cuda(
         *act_outlet = target.wire_node(perm_act_name, perm_act_op, &[*act_outlet])?[0];
     }
 
-    if act_fact.datum_type == DatumType::F16 && as_quant_fact(weight_fact, &Q4_0).is_some() {
+    if act_fact.datum_type == DatumType::F16 && as_ggml_q_fact(weight_fact).is_some() {
         let in_cast_op = cuda_cast_new(DatumType::F32).unwrap();
         *act_outlet =
             target.wire_node(node.name.clone() + ".in_cast", in_cast_op, &[*act_outlet])?[0];
@@ -302,7 +301,7 @@ fn convert_matmul_to_cuda(
     }
 
     if !transpose_weight {
-        ensure!(as_quant_fact(weight_fact, &Q4_0).is_none(), "Cannot transpose Q40 tensor");
+        ensure!(as_ggml_q_fact(weight_fact).is_none(), "Cannot transpose a block-quant tensor");
 
         let rank = weight_fact.rank();
         let perm_weights_op =
@@ -312,7 +311,7 @@ fn convert_matmul_to_cuda(
             target.wire_node(perm_weights_name, perm_weights_op, &[*weights_outlet])?[0];
     }
 
-    if as_quant_fact(weight_fact, &Q4_0).is_some() {
+    if as_ggml_q_fact(weight_fact).is_some() {
         let device_fact = target.outlet_fact(*act_outlet)?.to_device_fact()?;
         let quant_op = ops::CudaGgmlQuantQ81::new(device_fact.shape.clone())?;
         *act_outlet =

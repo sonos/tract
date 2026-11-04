@@ -13,7 +13,7 @@ use tract_gpu::device::DeviceContext;
 pub use transform::CudaTransform;
 
 use crate::utils::ensure_cuda_runtime_dependencies;
-const Q40_ROW_PADDING: usize = 512;
+const GGML_Q_ROW_PADDING: usize = 512;
 
 #[derive(Debug)]
 struct CudaRuntime;

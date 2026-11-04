@@ -33,6 +33,16 @@ typedef struct {
   uint8_t qs[QK4_0 / 2]; // nibbles / quants
 } block_q4_0;
 
+#define QK2_0_T 32
+
+// Ternary weights: code c in bits 2*(i%4) of qs[i/4] is weight i, worth (c - 1) * d.
+typedef struct {
+  half d;
+  uint8_t qs[QK2_0_T / 4];
+} block_q2_0_t;
+static_assert(sizeof(block_q2_0_t) == sizeof(half) + QK2_0_T / 4,
+              "wrong q2_0_t block size/padding");
+
 typedef struct {
   half2 ds;
   int8_t qs[QK8_1]; // quants

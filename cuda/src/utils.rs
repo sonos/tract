@@ -8,7 +8,7 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::tensor::DeviceTensor;
 
-use crate::Q40_ROW_PADDING;
+use crate::GGML_Q_ROW_PADDING;
 use crate::ops::GgmlQuantQ81Fact;
 
 static CULIBS_MISSING: OnceLock<Option<&'static str>> = OnceLock::new();
@@ -249,17 +249,50 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     }
 }
 
-pub fn pad_q40(bqs: &BlockQuantStorage, m: usize, k: usize) -> TractResult<BlockQuantStorage> {
-    ensure!(k % 32 == 0);
+/// Whether the GGML quantized matmul kernels take weights in `format`.
+pub fn is_ggml_q_format(format: &dyn BlockQuant) -> bool {
+    format.dyn_eq(&Q4_0) || format.dyn_eq(&Q2_0_T)
+}
 
-    let to_pad = k.next_multiple_of(Q40_ROW_PADDING) - k;
+/// The block-quant fact of a weight the GGML quantized matmul kernels take.
+pub fn as_ggml_q_fact(fact: &TypedFact) -> Option<&BlockQuantFact> {
+    fact.exotic_fact
+        .as_ref()
+        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        .filter(|bqf| is_ggml_q_format(&*bqf.format))
+}
+
+/// The block-quant storage of a weight the GGML quantized matmul kernels take.
+pub fn as_ggml_q_tensor(t: &Tensor) -> Option<&BlockQuantStorage> {
+    t.storage_as::<BlockQuantStorage>().filter(|bqs| is_ggml_q_format(bqs.format()))
+}
+
+/// The block-quant fact of a device weight the GGML quantized matmul kernels take.
+pub fn get_ggml_q_fact(t: &DeviceTensor) -> Option<BlockQuantFact> {
+    if let DeviceTensor::Owned(t) = t {
+        t.exotic_fact()
+            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+            .filter(|bqf| is_ggml_q_format(&*bqf.format))
+            .cloned()
+    } else {
+        None
+    }
+}
+
+/// `m` rows of `k` weights in a GGML quantized format, each padded with zeros to a multiple
+/// of `GGML_Q_ROW_PADDING`.
+pub fn pad_ggml_q(bqs: &BlockQuantStorage, m: usize, k: usize) -> TractResult<BlockQuantStorage> {
+    let format = bqs.format();
+    ensure!(k % format.block_len() == 0);
+
+    let to_pad = k.next_multiple_of(GGML_Q_ROW_PADDING) - k;
     if to_pad == 0 {
         return Ok(bqs.clone()); // No padding needed
     }
 
-    let row_bytes = k * Q4_0.block_bytes() / Q4_0.block_len();
+    let row_bytes = k * format.block_bytes() / format.block_len();
 
-    let pad_quant = Q4_0.quant_f32(&vec![0f32; to_pad])?;
+    let pad_quant = format.quant_f32(&vec![0f32; to_pad])?;
     let pad_bytes = pad_quant.len();
 
     let mut new_data = Vec::with_capacity(m * (row_bytes + pad_bytes));
