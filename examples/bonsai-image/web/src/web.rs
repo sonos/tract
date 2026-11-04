@@ -42,6 +42,8 @@ thread_local! {
     static TOKENIZER: RefCell<Option<tokenizers::Tokenizer>> = const { RefCell::new(None) };
     /// The models ready to run: each stage's, for the last size it was asked for.
     static STAGES: RefCell<HashMap<&'static str, (String, Runnable)>> = RefCell::new(HashMap::new());
+    /// The last prompt's embeddings, reused on a Remix of the same prompt.
+    static LAST_EMBEDDINGS: RefCell<Option<(String, Tensor)>> = const { RefCell::new(None) };
 }
 
 fn js(e: impl std::fmt::Display) -> JsValue {
@@ -139,7 +141,19 @@ pub async fn generate(
             &JsValue::from(steps as u32),
         );
     };
-    run_pipeline(&tokenizer, &prompt, steps, seed as u64, width, height, &mut stage, &mut report)
-        .await
-        .map_err(js)
+    let mut cached = LAST_EMBEDDINGS.with_borrow_mut(Option::take);
+    let result = run_pipeline(
+        &tokenizer,
+        &prompt,
+        steps,
+        seed as u64,
+        width,
+        height,
+        &mut stage,
+        &mut report,
+        &mut cached,
+    )
+    .await;
+    LAST_EMBEDDINGS.with_borrow_mut(|c| *c = cached);
+    result.map_err(js)
 }

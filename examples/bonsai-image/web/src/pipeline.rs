@@ -119,7 +119,8 @@ fn tokens_to_latent(tokens: &[f32], grid_h: usize, grid_w: usize) -> Result<Tens
 }
 
 /// A `width`x`height` RGBA image for `prompt`, both multiples of 16. `stage` hands out each model
-/// by name.
+/// by name. `cached_embeddings` is read and updated: a prompt matching its entry skips the text
+/// encoder entirely, since the embeddings depend on nothing else `generate` takes.
 #[allow(clippy::too_many_arguments)]
 pub async fn generate(
     tokenizer: &tokenizers::Tokenizer,
@@ -130,15 +131,23 @@ pub async fn generate(
     height: usize,
     stage: &mut dyn FnMut(&'static str) -> Result<Runnable>,
     progress: &mut dyn FnMut(Progress),
+    cached_embeddings: &mut Option<(String, Tensor)>,
 ) -> Result<Vec<u8>> {
     ensure!(steps >= 1, "at least one step");
-    let [ids, mask] = tokenize(tokenizer, prompt)?;
 
-    progress(Progress::Loading("text encoder"));
-    let text_encoder = stage("text_encoder")?;
-    progress(Progress::Encoding);
-    let embeddings = run(&text_encoder, vec![ids, mask]).await?;
-    ensure!(embeddings.shape()? == [1, TEXT_LEN, TEXT_DIM], "unexpected embeddings shape");
+    let embeddings = match cached_embeddings {
+        Some((cached_prompt, embeddings)) if cached_prompt == prompt => embeddings.clone(),
+        _ => {
+            let [ids, mask] = tokenize(tokenizer, prompt)?;
+            progress(Progress::Loading("text encoder"));
+            let text_encoder = stage("text_encoder")?;
+            progress(Progress::Encoding);
+            let embeddings = run(&text_encoder, vec![ids, mask]).await?;
+            ensure!(embeddings.shape()? == [1, TEXT_LEN, TEXT_DIM], "unexpected embeddings shape");
+            *cached_embeddings = Some((prompt.to_string(), embeddings.clone()));
+            embeddings
+        }
+    };
 
     progress(Progress::Loading("transformer"));
     let transformer = stage("transformer")?;
