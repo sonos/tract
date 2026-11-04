@@ -68,7 +68,9 @@ the basic pattern.
 
 Static sites under `examples/*/web`, linked from [`web-demos`](web-demos).
 Each one compiles tract to WebAssembly. Read a picture can run on the CPU
-or on WebGPU. The others need WebGPU.
+or on WebGPU. The others need WebGPU, and that path is core WebGPU only.
+Compatibility mode is unsupported, so a phone limited to OpenGL ES 3.1
+cannot run the GPU path.
 
 | Example | What it shows |
 |---------|---------------|
