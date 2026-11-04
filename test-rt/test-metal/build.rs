@@ -13,7 +13,8 @@ fn reaches_gemm(path: &[String]) -> bool {
                 .iter()
                 .any(|op| name.contains(op))
         }
-        "unit" => ["bin_einsum", "sdpa", "moe_ffn", "matmul_q40"].contains(&path[1].as_str()),
+        "unit" => ["bin_einsum", "sdpa", "moe_ffn", "matmul_q40", "matmul_q20t"]
+            .contains(&path[1].as_str()),
         "pulse" => path[1] == "einsum",
         _ => true,
     }
