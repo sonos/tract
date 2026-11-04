@@ -54,6 +54,7 @@ available runtime (`cuda` → `metal` → cpu).
 | [`stable-diffusion`](stable-diffusion) | SD 1.5 txt2img; Euler scheduler built from scratch, classifier-free guidance, 512×512 output. |
 | [`stable-diffusion-xl`](stable-diffusion-xl) | SDXL 1.0 txt2img; two text encoders, pooled + hidden-state embeddings, time_ids, 1024×1024 output. |
 | [`stable-diffusion-3`](stable-diffusion-3) | SD 3 Medium txt2img; MMDiT transformer backbone, optional T5-XXL text encoder, flow-matching scheduler. |
+| [`bonsai-image`](bonsai-image) | Ternary Bonsai Image on `wgpu`, native and [in the browser](bonsai-image/web): packed Q2_0_T and Q4_0 weights, a live preview while it denoises. |
 
 ## Ndarray interop
 

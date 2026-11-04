@@ -288,7 +288,7 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
                 .collect::<String>();
             format!(
                 "        let o{j} = base + n{j} * params.blocks_per_row * params.block_bytes + block_bytes;
-        let s{j} = f16_bits_to_f32(rd(o{j}) & 65535u);
+        let s{j} = unpack2x16float(rd(o{j})).x;
 {fields}"
             )
         })
@@ -301,7 +301,7 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
             )
         } else {
             format!(
-                "vec4<f32>((vec4<u32>(select(w{j}_0, w{j}_1, c >= 4u) >> ((c & 3u) * 8u)) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) - 1.0"
+                "bitcast<vec4<f32>>(((vec4<u32>(select(w{j}_0, w{j}_1, c >= 4u) >> ((c & 3u) * 8u)) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) | vec4<u32>(0x4b000000u)) - vec4<f32>(8388609.0)"
             )
         }
     };
@@ -348,20 +348,6 @@ struct Params {{
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-fn f16_bits_to_f32(bits: u32) -> f32 {{
-    let sign = (bits >> 15u) & 1u;
-    let exp = (bits >> 10u) & 31u;
-    let mant = bits & 1023u;
-    if (exp == 0u) {{
-        let mag = f32(mant) * 5.960464477539063e-8;
-        return select(mag, -mag, sign == 1u);
-    }}
-    if (exp == 31u) {{
-        return bitcast<f32>((sign << 31u) | (255u << 23u) | (mant << 13u));
-    }}
-    return bitcast<f32>((sign << 31u) | ((exp + 112u) << 23u) | (mant << 13u));
-}}
-
 // A little-endian word at an even byte offset.
 fn rd(off: u32) -> u32 {{
     let w = off >> 2u;

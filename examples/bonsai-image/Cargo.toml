@@ -1,0 +1,17 @@
+[package]
+name = "bonsai-image"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+clap = { workspace = true, features = ["derive"] }
+image = "0.25"
+kdam = "0.6"
+ndarray.workspace = true
+rand = "0.10"
+rand_distr = "0.6"
+tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
+tract = { workspace = true, features = ["cuda-13000", "metal", "unstable-npyz", "wgpu"] }
