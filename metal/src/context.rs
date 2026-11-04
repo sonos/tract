@@ -451,9 +451,9 @@ impl MetalStream {
         Ok(())
     }
 
-    /// Commit the current command buffer without blocking the CPU on its
-    /// completion. The next `command_buffer()` call opens a fresh one; the
-    /// queue guarantees the committed buffer executes before it. Tensors
+    /// Commit the current command buffer, waiting for older work if needed to
+    /// make room within the in-flight limit. The next `command_buffer()` call
+    /// opens a fresh one, ordered after this buffer by the queue. Tensors
     /// retained so far move into the in-flight entry and are released once
     /// that buffer completes. GPU failures remain visible until `wait_until_completed`
     /// drains the stream and reports them.
@@ -470,14 +470,7 @@ impl MetalStream {
             _ => {}
         }
         command_buffer.end_encoding();
-        command_buffer.commit();
-        let open = std::mem::take(&mut *self.open.borrow_mut());
         let mut committed = self.committed_command_buffers.borrow_mut();
-        committed.push_back(InFlightBuffer {
-            buffer: command_buffer,
-            retained: open.retained,
-            kernel_names: open.kernel_names,
-        });
         loop {
             let done = committed.front().is_some_and(|e| {
                 matches!(
@@ -485,7 +478,7 @@ impl MetalStream {
                     metal::MTLCommandBufferStatus::Completed | metal::MTLCommandBufferStatus::Error
                 )
             });
-            if !done && committed.len() <= self.max_in_flight {
+            if !done && committed.len() < self.max_in_flight {
                 break;
             }
             let oldest = committed.pop_front().unwrap();
@@ -495,6 +488,13 @@ impl MetalStream {
 
             drop(oldest.retained);
         }
+        command_buffer.commit();
+        let open = std::mem::take(&mut *self.open.borrow_mut());
+        committed.push_back(InFlightBuffer {
+            buffer: command_buffer,
+            retained: open.retained,
+            kernel_names: open.kernel_names,
+        });
         self.check_command_error()
     }
 
