@@ -97,7 +97,6 @@ jobs:
       only: ${{ steps.rebench.outputs.only || '{}' }}
       previous: ${{ steps.rebench.outputs.previous }}
       bins_run: ${{ steps.bins.outputs.bins_run }}
-      dinghy: ${{ steps.rebench.outputs.dinghy || 'true' }}
     steps:
       # The bench legs of the self-hosted boxes, minus the boxes listed (space-separated) in
       # the BENCH_DISABLED_BOXES repo variable: a box that is down would otherwise leave its
@@ -288,56 +287,12 @@ jobs:
           only=$(jq -c 'map_values(join(","))' state/reds.json)
           [ "$only" = '{}' ] && echo "::notice::the last report on ${SHA:0:9} has no reds; nothing to rebench"
           boxes=$(jq -c --argjson only "$only" 'map(select(.target | in($only)) + {only: $only[.target]})' <<<"$BOXES")
-          dinghy=$(jq -r --argjson boxes "$BOXES" '(keys - ($boxes | map(.target))) | length > 0' <<<"$only")
           {
             echo "previous=$id"
             echo "bins_run=$bins_run"
             echo "only=$only"
             echo "boxes=$boxes"
-            echo "dinghy=$dinghy"
           } >> "$GITHUB_OUTPUT"
-      # A dispatched PR run benches and tests the binaries of an earlier run on the same head
-      # (for a rebench, those its bench state measured) instead of building them again, if
-      # that run built them with this repo's own workflow (a dispatch, or a pull_request from
-      # a branch of this repo, never one from a fork) and still has every tract-cli artifact
-      # a native run downloads. Otherwise bins_run stays empty and the builds run.
-      - id: bins
-        if: steps.gate.outputs.is_pr == 'true' && github.event_name == 'workflow_dispatch' && steps.gate.outputs.kind == 'native'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          SHA: ${{ steps.gate.outputs.ref }}
-          CANDIDATE: ${{ steps.rebench.outputs.bins_run }}
-          NEEDED: >-
-            tract-cli-x86_64-unknown-linux-gnu
-            tract-cli-x86_64-unknown-linux-gnu-wgpu
-            tract-cli-aarch64-unknown-linux-gnu-stretch
-            tract-cli-aarch64-apple-darwin
-            tract-cli-aarch64-unknown-linux-gnu-stretch-dinghy
-            tract-cli-armv7-unknown-linux-gnueabihf-stretch-dinghy
-            tract-cli-riscv64gc-unknown-linux-musl-dinghy
-        run: |
-          candidates=$CANDIDATE
-          if [ -z "$candidates" ]; then
-            candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/cli.yml/runs?head_sha=$SHA&per_page=20" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id")
-          fi
-          for run in $candidates; do
-            trusted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
-              --jq '.event != "pull_request" or .head_repository.full_name == .repository.full_name')
-            [ "$trusted" = true ] || continue
-            have=" $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" \
-              --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
-            complete=true
-            for name in $NEEDED; do
-              case "$have" in *" $name "*) ;; *) complete=false ;; esac
-            done
-            if [ "$complete" = true ]; then
-              echo "::notice::benching the binaries of run $run"
-              echo "bins_run=$run" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
       # On a PR push, ci/affected.py names the bench legs and harness cases this change cannot
       # affect; they and the builds only they consume are left out. Dispatches (any `/ci` command), the nightly,
       # a `ci:full` label and CI_SCOPING=off run everything, and so does any failure here.
@@ -400,7 +355,9 @@ jobs:
           SCOPED: ${{ steps.scope.outputs.skip != '' }}
           LINUX: ${{ steps.split.outputs.linux }}
           APPLE: ${{ steps.split.outputs.apple }}
-          CASES: ${{ steps.cases.outputs.cases }}
+          CASES: ${{ steps.gate.outputs.tests == 'true' && steps.cases.outputs.cases || '[]' }}
+          REBENCH: ${{ steps.gate.outputs.rebench }}
+          ONLY: ${{ steps.rebench.outputs.only || '{}' }}
         run: |
           CASES=$(jq -c --argjson skip "$SKIP" 'map(select((.script + " / " + .runner) | IN($skip[]) | not))' <<<"$CASES")
           jq -r '.[] | select(startswith("harness/")) | "::notice::not run, this change cannot affect it: \(.)"' <<<"$SKIP"
@@ -419,9 +376,10 @@ jobs:
           ]
           EOF
           )
-          build_macos=$(jq -r --argjson apple "$APPLE" --arg scoped "$SCOPED" \
-            '$scoped != "true" or ($apple | length > 0) or any(.[]; .triple == "aarch64-apple-darwin")' <<<"$CASES")
-          devices=$(jq -c --argjson skip "$SKIP" 'map(select(("bench " + .device) | IN($skip[]) | not))' <<'EOF'
+          build_macos=$(jq -r --argjson apple "$APPLE" --arg scoped "$SCOPED" --arg rebench "$REBENCH" \
+            '($scoped != "true" and $rebench != "true") or ($apple | length > 0) or any(.[]; .triple == "aarch64-apple-darwin")' <<<"$CASES")
+          devices=$(jq -c --argjson skip "$SKIP" --argjson only "$ONLY" --arg rebench "$REBENCH" \
+            'map(select(("bench " + .device) | IN($skip[]) | not) | select($rebench != "true" or (.device | in($only))))' <<'EOF'
           [
             { "device": "cortex-a55", "triple": "aarch64-unknown-linux-gnu-stretch",
               "runner": "dinghy-sidekick-a55", "dinghy_target": "dinghy-a55" },
@@ -462,6 +420,46 @@ jobs:
             echo "unaffected=$unaffected"
             echo "bench_none=$bench_none"
           } >> "$GITHUB_OUTPUT"
+      # A dispatched PR run benches and tests the binaries of an earlier run on the same head
+      # (for a rebench, those its bench state measured) instead of building them again, if
+      # that run built them with this repo's own workflow (a dispatch, or a pull_request from
+      # a branch of this repo, never one from a fork) and still has every tract-cli artifact
+      # this run downloads. Otherwise bins_run stays empty and the builds run.
+      - id: bins
+        if: steps.gate.outputs.is_pr == 'true' && github.event_name == 'workflow_dispatch' && steps.gate.outputs.kind == 'native'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.gate.outputs.ref }}
+          CANDIDATE: ${{ steps.rebench.outputs.bins_run }}
+          BUILDS: ${{ steps.scoped.outputs.builds }}
+          BUILD_MACOS: ${{ steps.scoped.outputs.build_macos }}
+          DINGHY_BUILDS: ${{ vars.BENCH_DINGHY_ENABLED != 'false' && steps.scoped.outputs.dinghy_builds || '[]' }}
+        run: |
+          NEEDED=$(jq -nr --argjson builds "$BUILDS" --argjson dinghy "$DINGHY_BUILDS" --arg macos "$BUILD_MACOS" \
+            '[$builds[].triple, if $macos == "true" then "aarch64-apple-darwin" else empty end, ($dinghy[].triple + "-dinghy")]
+             | map("tract-cli-" + .) | join(" ")')
+          candidates=$CANDIDATE
+          if [ -z "$candidates" ]; then
+            candidates=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/cli.yml/runs?head_sha=$SHA&per_page=20" \
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | .id")
+          fi
+          for run in $candidates; do
+            trusted=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" \
+              --jq '.event != "pull_request" or .head_repository.full_name == .repository.full_name')
+            [ "$trusted" = true ] || continue
+            have=" $(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/artifacts?per_page=100" \
+              --jq '[.artifacts[] | select(.expired | not) | .name] | join(" ")') "
+            complete=true
+            for name in $NEEDED; do
+              case "$have" in *" $name "*) ;; *) complete=false ;; esac
+            done
+            if [ "$complete" = true ]; then
+              echo "::notice::benching the binaries of run $run"
+              echo "bins_run=$run" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done
+          echo "::notice::no earlier run on ${SHA:0:9} to take binaries from; building them"
 
   build:
     name: build ${{ matrix.triple }}
@@ -806,7 +804,7 @@ jobs:
   build-dinghy:
     name: build ${{ matrix.triple }} (dinghy)
     needs: prepare
-    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' && needs.prepare.outputs.dinghy_builds != '[]' }}
+    if: ${{ needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.bins_run == '' && needs.prepare.outputs.dinghy_builds != '[]' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -842,7 +840,7 @@ jobs:
   bench-dinghy:
     name: bench ${{ matrix.device }}
     needs: [ prepare, build-dinghy ]
-    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.dinghy == 'true' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.dinghy_devices != '[]' }}
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && (needs.build-dinghy.result == 'success' || needs.prepare.outputs.bins_run != '') && needs.prepare.outputs.enabled == 'true' && vars.BENCH_DINGHY_ENABLED != 'false' && needs.prepare.outputs.kind == 'native' && needs.prepare.outputs.dinghy_devices != '[]' }}
     # One sidekick runner per target (label per board), so boards bench in parallel.
     runs-on: ${{ matrix.runner }}
     # Bound the run so an offline/stuck target can't hang the PR report (which fans this in).
@@ -863,9 +861,7 @@ jobs:
           path: tract-cli
           run-id: ${{ needs.prepare.outputs.bins_run }}
           github-token: ${{ needs.prepare.outputs.bins_run && github.token || '' }}
-      # A rebench only re-runs the boards its previous report flagged.
       - name: Bench on the dinghy target
-        if: needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]
         env:
           ONLY: ${{ fromJSON(needs.prepare.outputs.only)[matrix.device] }}
           SELECT: ${{ github.event.inputs.select }}
@@ -910,7 +906,7 @@ jobs:
             exit 1
           fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ !cancelled() && hashFiles('result/meta.json') != '' && (needs.prepare.outputs.rebench != 'true' || fromJSON(needs.prepare.outputs.only)[matrix.device]) }}
+        if: ${{ !cancelled() && hashFiles('result/meta.json') != '' }}
         with:
           name: bench-result-${{ matrix.device }}
           path: result
