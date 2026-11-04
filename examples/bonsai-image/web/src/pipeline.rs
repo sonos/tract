@@ -138,7 +138,7 @@ pub async fn generate(
     let text_encoder = stage("text_encoder")?;
     progress(Progress::Encoding);
     let embeddings = run(&text_encoder, vec![ids, mask]).await?;
-    ensure!(embeddings.shape() == [1, TEXT_LEN, TEXT_DIM], "unexpected embeddings shape");
+    ensure!(embeddings.shape()? == [1, TEXT_LEN, TEXT_DIM], "unexpected embeddings shape");
 
     progress(Progress::Loading("transformer"));
     let transformer = stage("transformer")?;
