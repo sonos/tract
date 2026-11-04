@@ -554,9 +554,6 @@ dependencies = [
  "rand_distr 0.6.0",
  "tokenizers",
  "tract",
- "tract-core",
- "tract-gpu",
- "tract-wgpu",
 ]
 
 [[package]]

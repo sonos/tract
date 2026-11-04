@@ -15,6 +15,3 @@ rand = "0.10"
 rand_distr = "0.6"
 tokenizers = { version = "0.23", default-features = false, features = ["onig"] }
 tract = { workspace = true, features = ["cuda-13000", "metal", "unstable-npyz", "wgpu"] }
-tract-core.workspace = true
-tract-gpu.workspace = true
-tract-wgpu.workspace = true

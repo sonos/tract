@@ -20,8 +20,6 @@ cargo run --release -p bonsai-image -- -p "a photo of a bonsai tree"
 `SIZE=HxW` picks the size, 256x256 by default, with both multiples of 16. `DIT_TEXT_LEN` trims
 the text tokens the transformer takes, which the demo must then be told with `--text-len`.
 
-`--staged` runs a load-then-free stand-in of the three stages on tiny graphs.
-
 ## In the browser
 
 See [web](web).

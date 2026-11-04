@@ -11,7 +11,7 @@ HF=`realpath $1`
 OUT=`realpath $2`
 cd `dirname $0`
 : ${TRACT:=cargo run -q --release -p tract-cli --}
-: ${SIZES:=256x256 384x384 512x512 384x512 512x384}
+: ${SIZES:=256x256 384x384 512x512 384x512 512x384 768x768}
 TMP=$OUT/onnx
 mkdir -p $TMP
 

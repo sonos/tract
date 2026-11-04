@@ -1,8 +1,7 @@
 //! Bonsai Image (ternary Flux2 Klein 4B) with tract.
 //!
 //! Prompt to PNG through the Qwen3 encoder, the ternary DiT and the Flux2 VAE exported by
-//! `export.py`, each dropped before the next is loaded. `--staged` runs the load-then-free
-//! stand-in instead.
+//! `export.py`, each dropped before the next is loaded.
 
 use std::path::PathBuf;
 
@@ -10,8 +9,6 @@ use anyhow::*;
 use tract::prelude::*;
 
 tract::impl_ndarray_interop!();
-
-mod staged;
 
 const TEXT_LEN: usize = 256;
 const TEXT_DIM: usize = 7680;
@@ -70,9 +67,6 @@ struct Args {
     /// Output file
     #[arg(short, long, default_value = "output.png")]
     output: PathBuf,
-    /// Run the staged Q4_0 / Q2_0_T / float stand-in on the wgpu runtime
-    #[arg(long)]
-    staged: bool,
 }
 
 /// `(1, N, C)` row-major tokens over a square grid to `(1, C, side, side)`.
@@ -131,12 +125,6 @@ fn main() -> Result<()> {
     use clap::Parser as _;
     use rand::SeedableRng;
     let args = Args::parse();
-
-    if args.staged {
-        let peak = staged::run_schedule()?;
-        println!("load-then-free peak resident stages: {peak}");
-        return Ok(());
-    }
 
     let gpu = tract::runtime_for_name(&args.runtime)?;
     eprintln!("runtime: {}", gpu.name()?);
