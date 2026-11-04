@@ -23,7 +23,9 @@ Everything goes through the public `tract` crate, with these features:
 
 A browser build also enables getrandom's `wasm_js` feature (see `Cargo.toml`).
 
-Browsers need WebGPU with the `shader-f16` feature: recent Chrome, Edge and Firefox on most GPUs.
+Browsers need core WebGPU with the `shader-f16` feature: recent Chrome, Edge
+and Firefox on most GPUs. Compatibility mode is unsupported, so a device
+limited to OpenGL ES 3.1 cannot run this page.
 
 ## Building the site
 

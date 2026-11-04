@@ -730,6 +730,10 @@ impl Tensor {
 }
 
 /// The WebGPU runtime's asynchronous entry points.
+///
+/// Requires a core WebGPU device. Compatibility mode is unsupported, so a
+/// device whose only backend is OpenGL ES 3.1 or Direct3D 11, including an
+/// Android phone without a Vulkan 1.1 driver, cannot run it.
 #[cfg(feature = "unstable-wgpu-async")]
 pub mod wgpu {
     use anyhow::Result;

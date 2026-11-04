@@ -1,5 +1,10 @@
 //! WebGPU backend for tract, built on the `wgpu` crate.
 //!
+//! Requires a core WebGPU device (Vulkan, Metal, or Direct3D 12), natively
+//! and in the browser. Compatibility mode is unsupported: a device whose only
+//! backend is OpenGL ES 3.1 or Direct3D 11 cannot run these kernels. On
+//! Android that is a phone without a Vulkan 1.1 driver.
+//!
 //! Native (Vulkan/Metal/DX12): blocking `request_adapter` / `PollType::Wait`.
 //! Wasm (`wasm32-unknown-unknown`): enable wgpu's
 //! `fragile-send-sync-non-atomic-wasm` feature (on by default here). That is
