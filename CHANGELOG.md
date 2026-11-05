@@ -9,6 +9,81 @@
 
 For normal usage we recommend adopting the **`tract` facade crate** (the public API at `api/rs`) instead of wiring `tract-core`, `tract-nnef`, `tract-onnx`, `tract-pulse`, `tract-cuda`, `tract-metal`, etc. directly. The facade exposes one stable surface — `nnef()`, `onnx()`, `runtime_for_name("cpu" | "gpu" | "gpu-or-cpu" | "cuda" | "metal" | ...)`, plus `Model`, `Runnable`, `State`, `Tensor`, `TDim`, and a `SetSymbols` transform builder — with all the backends curated behind it. `impl_ndarray_interop!()` (0.23.0-dev.5) keeps `ndarray` interop opt-in without leaking an `ndarray` version into the public API. Downstream code that pinned `tract-core` + `tract-onnx` directly can usually drop those deps in favour of `tract = "0.23"` and `use tract::prelude::*;`. Examples are now organised around this facade — see `examples/onnx-mobilenet-v2`, `examples/nnef-mobilenet-v2`, and `examples/causal_llm`.
 
+# 0.23.10 - 2026-10-05
+
+### Web demos
+
+- **[demo.tract.rs](https://demo.tract.rs/) runs tract in the browser**, on the public `tract` crate only, with weights fetched from Hugging Face at pinned revisions into the browser's storage. Five demos, each under `examples/<example>/web`: Stable Diffusion 1.5 and Nemotron streaming speech recognition on WebGPU, Pixel Lab live background replacement on WebGPU (contributed by Ckristian Zoli), PP-OCRv6 on the CPU or WebGPU (contributed by Ckristian Zoli), and the Hey Snips wake word on the CPU as one pulsed graph that resamples and featurizes in-graph.
+
+### WebGPU (wgpu)
+
+- **The public crate reaches WebGPU.** An opt-in `wgpu` feature links tract-wgpu natively and on wasm32. `unstable-wgpu-async` adds `tract::wgpu::init().await` and `Tensor::to_host_async().await` for the browser, where the device can only be requested asynchronously; a blocking read of a GPU-resident tensor on wasm32 fails with a pointer to them. On wasm, `Tensor` can also ingest a canvas (optionally normalizing channels in the same pass), NV12 and RGB565 frames on the GPU, share the device with a page, and write a mask texture. (Contributed by Ckristian Zoli.) The backend requires core WebGPU: OpenGL ES 3.1 and Direct3D 11 devices cannot run it.
+- **Tiled GEMM core** shared by the matmul and an implicit-GEMM dense convolution: f16 tiles in the tensor type, vec4 staging along k, 8x4 blocks per thread, row tiles sized to the rows, and split-K for convolutions that fill too few tiles. Dedicated GEMV kernels for m = 1 and n = 1, a register-blocked direct 3x3 kernel for decoder convolutions, Winograd F(4,3) for wide dense 3x3 convolutions (f16 and named-weight kernels included, weights broadcast over the batch), and a flash attention kernel for unmasked Sdpa with head dims up to 48. (Largely contributed by Ckristian Zoli.)
+- **Many more ops stay on the device:** GroupNorm, LayerNorm, RmsNorm (with the residual add fused), ScaledMaskedSoftmax with float and bool masks, ApplyRope and RotateHalf, Gather by i64 indices, GatherNd for deformable convolutions, DiagGather, Mean reduce, Leaky ReLU, exact and approximate GELU, 1D convolutions (as 2D), channels-last depthwise convolutions, global average pooling, large 1D transposed convolutions (as a matmul and an overlap-add), and Q4_0/Q2_0_T matmuls dequantized in the shader with a word-aligned upload layout. (Contributions by Ckristian Zoli and Evan Carroll.)
+- **Memory:** a model with known shapes runs on tract-gpu's memory plan, one buffer per partition, small tensors in partitions of their own; a run past `TRACT_WGPU_FRAME_BUDGET_MB` (256 by default) is submitted in frames so buffers are reused (an SD f32 UNet went from 12.8 GB to 7 GB); bind groups are evicted with the buffers they bind. (Contributions by Evan Carroll.)
+
+### Named weights and lazy loading
+
+- **A graph can refer to weights it does not carry.** `NamedStorage` is a weight known by its name, read from a `WeightSource` the first time its bytes are needed, and kept out of constant folding. ONNX can load external tensors that way (`lazy_external_data`, `--onnx-lazy-external-data`), NNEF writes them as `tract_core_named_weight(label, shape, datum_type)`, and `LinkWeights` / `SafetensorsSource` link them to a safetensors file read on demand (`--link-safetensors` in the CLI, `Model::link_weights` and `link_safetensors` under `unstable-named-weights` in the API).
+- The NNEF safetensors loader streams tensor by tensor instead of holding the file twice, handles every integer and float dtype, and no longer depends on the safetensors crate.
+- The ONNX data resolver receives external locations as the model names them, so a resolver with no file system behind it can serve them.
+
+### Core
+
+- **GroupNorm and LayerNorm are core ops**, detected from their ONNX decompositions (with LayerNorm's affine part folded in), with NNEF forms `tract_core_group_norm`, `tract_core_layer_norm` and `tract_core_affine_layer_norm`. ONNX InstanceNormalization loads as a GroupNorm with one group per channel. The CPU LayerNorm runs through the linalg sum and RmsNorm kernels, and a last-axis LayerNorm keeps its axis last.
+- **`Reducer::Mean` accumulates in f32**: an f16 mean was a sum then a scale, which overflowed on SD-sized group norms. Sum followed by 1/N declutters into it, Mean(Square) into MeanOfSquares; hir's float Mean and tflite's float MEAN load as it.
+- **Axis ops move through the graph more freely:** a Move commutes with a Reshape it leaves alone or jumps over, `sink_axis_op` / `hoist_axis_op` move an AxisOp or IntoShape past its neighbour through `change_axes`, replacing hand-written swaps in OptMatMul and MultiBroadcastTo. A MoveAxis that keeps memory order becomes an alias. (Contributions by Ckristian Zoli.)
+- Exported attention (EinSum, Softmax, EinSum) is detected as `Sdpa`, and the unmasked fallback scales Q instead of the scores. GeluExact is detected in SD's spelling and serializes as `tract_core_gelu_exact`. A running-sum Scan folds into CumSum. A gather by a constant scalar index is a slice, and a resize to the input's own shape is dropped. (Contributions by Evan Carroll.)
+- Packs kept between turns are bounded by `TRACT_KEPT_PACK_BYTES` (64 MiB by default), and the per-session caches of a session dropped on another thread are reaped. (Contributions by Evan Carroll and Ckristian Zoli.)
+- f16/f32 casts and GroupNorm's conversions run across the executor's threads, f32/f16 tensor casts use half's slice conversion (F16C, aarch64 fp16), constant Pad copies contiguous runs, nearest upsample copies rows for every datum type, and an einsum with m == n keeps its constant operand on A. (Contributions by Evan Carroll and Ckristian Zoli.)
+
+### Streaming / pulse
+
+- **Blockify covers more attention masks:** sliding-window masks, pulses finer than the mask chunk (as behind an upsample), and chained attention blocks sharing one mask.
+- A Range whose slope is a fraction of the streaming symbol pulsifies when a pulse holds a whole number of its elements. Pulsed transposed convolutions keep DeconvDelay and PulseMask on CUDA, Metal and wgpu, and integer comparisons against NNEF literals no longer go through TDim on the host.
+
+### Transformers / LLM
+
+- **ggml block formats** Q8_0, Q4_K, Q5_K, Q6_K and IQ2_S, with llama.cpp's reference quantizers and NNEF `.dat` item types; Q2_0_T gets its NNEF item type, and CUDA and Metal multiply it on their GGML kernels. Fix: Q8_1 blobs could not be read back. (Contributed by Ckristian Zoli.)
+- DiagGather and RotateHalf serialize to NNEF (`tract_transformers_diag_gather`, `tract_transformers_rotate_half`).
+
+### Deployment
+
+- **The deploy runtime can pool a model** behind `TRACT_POOL_WORKERS` worker threads with a bounded queue (`TRACT_POOL_QUEUE`), so a host on an unbounded thread pool no longer grows device memory with its concurrency. A full queue fails a call at once with `tract::Overloaded` (under `unstable-autobatch`), and a worker survives a panicking call.
+
+### CPU / linalg
+
+- **Direct spatial convolution:** NEON `conv_w4` with sixteen accumulators, strides up to 4 and one tap load for four channels, an AVX-512 `conv_w4`, and the op limited to 64 inputs and a W stride of 2 where it wins. (Contributed by Evan Carroll.)
+- NEON `depthwise_w` vectorises any tap count at strides 1 to 4 (contributed by Evan Carroll), and the x86 depthwise kernel runs stride-two rows with AVX (contributed by Reza Sayar).
+- Parallel launches size their chunks by the work, so a tensor barely over the threshold is no longer shredded and every thread gets a chunk. A packed operand's buffer is reused across turns. `par_bin_chain` no longer copies short operands every eval. mmm runs inline on a one-thread pool instead of the global pool (contributed by Dundy Pasupuleti). (Contributions by Ckristian Zoli.)
+
+### GPU
+
+- **TF32 is opt-in for f32 cuDNN convolutions** (`TRACT_CUDA_ALLOW_TF32`); cuDNN's default ran them on TF32 tensor cores. This follows the precision policy now stated in `AGENTS.md`: lowering below the declared type needs a knob or an explicit transform.
+- **Convolutions run channels-last on CUDA and Metal** for f16/f32 2D NCHW models, with the NHWC layout propagated between convolutions so the transposes cancel, symbolic batch included. f16 cuDNN convolutions accumulate in f32 on tensor cores with a per-stream workspace. Metal ports mlx's specialized implicit-GEMM conv, runs large 3x3 convolutions as F(6x6, 3x3) Winograd, and runs GEMMs through Metal 4's `matmul2d` where it compiles (macOS 26.2+).
+- **More ops on CUDA and Metal:** GroupNorm, LayerNorm with its affine part, Mean reduce, CumSum, GeluExact, deconvolution, GatherNd for deformable convolutions, FFT/STFT of any length up to 2048; on CUDA alone, resize, max and sum pooling, flash attention for head dims 40, 80 and 160, a GEMM bias in the cuBLASLt epilogue, an f32 GEMM for 9 to 16 rows, and large 1D transposed convolutions as a matmul and an overlap-add. Copies swapping the innermost axes take a tiled transpose.
+- GPU arena storage can be retained across evaluations behind `TRACT_GPU_RETAIN_ARENA` (contributed by Julien Balian).
+
+### NNEF / ONNX / TFLite
+
+- ONNX: `OnnxOptions::constant_input` names inputs replaced by constants after parsing, through Rust, C and Python (contributed by Ckristian Zoli). com.microsoft MultiHeadAttention takes `attention_bias` as Sdpa's mask (contributed by Evan Carroll). Gemm builds alpha and beta in the matmul's type. A Resize at scale 1 declutters away.
+- NNEF reads and writes the edge padding border as `replicate`, still reading `replicated`.
+- TFLite reads PRELU and float16 DEQUANTIZE (contributed by Nicolas Falesy). Fix: a tensor without a shape vector and reductions with a negative axis panicked (contributed by WannaBeKratos).
+
+### API
+
+- `unstable-npyz` reads and writes numpy `.npy` and `.npz` in the Rust, C and Python APIs, on an in-tree parser that replaces ndarray-npy.
+- `tract.h` is regenerated and checked against tract-ffi on every PR.
+
+### CLI
+
+- `wgpu` runtime feature, and tract-gpu is only linked with a GPU runtime. Once a wgpu device exists the CLI exits without running exit handlers, which NVIDIA's Vulkan driver could crash or hang in.
+
+### Dependencies
+
+- ndarray-npy, whose header parser backtracked exponentially on nested input, is replaced by an in-tree parser, and zip moves to 9 (RUSTSEC-2026-0367/0368/0369). basic-toml is dropped (RUSTSEC-2026-0374), webpki updated (RUSTSEC-2026-0381).
+- tract-wgpu is published. parking_lot 0.12 or 0.13 (contributed by Paul Mabileau), minijinja 3, routine dependency bumps.
+
 # 0.23.9 - 2026-10-15
 
 ### Core
