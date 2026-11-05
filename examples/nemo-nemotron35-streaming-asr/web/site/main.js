@@ -115,7 +115,7 @@ worker.onmessage = ({ data }) => {
   } else if (data.type === "ready") {
     state.ready = true;
     $("forget").hidden = false;
-    status(`Ready (prepared in ${(data.ms / 1000).toFixed(1)} s). Nothing is recorded or sent anywhere.`);
+    status(`Ready (prepared in ${(data.ms / 1000).toFixed(1)} s). Your audio is not recorded or sent anywhere.`);
     controls();
   } else if (data.type === "text") {
     show(data.text);

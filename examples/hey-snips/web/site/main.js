@@ -145,6 +145,6 @@ if (problem) {
   status(problem);
   go.textContent = 'Unsupported';
 } else {
-  status('Ready. Nothing is recorded or sent anywhere.');
+  status('Ready. Your audio is not recorded or sent anywhere.');
   idle();
 }

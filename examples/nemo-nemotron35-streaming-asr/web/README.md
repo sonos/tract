@@ -3,7 +3,7 @@
 Streaming transcription of the visitor's microphone with NVIDIA's
 [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b)
 (OpenMDW-1.1), the encoder on the visitor's GPU through WebGPU and tract's `wgpu` runtime.
-Nothing leaves the machine.
+The audio never leaves the machine.
 
 ## How it works
 

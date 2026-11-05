@@ -1,7 +1,7 @@
 # Stable Diffusion 1.5 in the browser
 
-Text to image on the visitor's GPU, through WebGPU and tract's `wgpu` runtime. Nothing leaves the
-machine. Deployed at <https://demo.tract.rs/sd15/>.
+Text to image on the visitor's GPU, through WebGPU and tract's `wgpu` runtime. Prompts and images
+never leave the machine. Deployed at <https://demo.tract.rs/sd15/>.
 
 ## How it works
 

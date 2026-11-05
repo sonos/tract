@@ -1,7 +1,7 @@
 # Hey Snips in the browser
 
 Wake word detection on the visitor's microphone, on the CPU through WebAssembly and tract's pulsed
-(streaming) graphs. Nothing leaves the machine. Deployed at <https://demo.tract.rs/hey-snips/>.
+(streaming) graphs. The audio never leaves the machine. Deployed at <https://demo.tract.rs/hey-snips/>.
 
 ## How it works
 
