@@ -37,7 +37,8 @@ do
 done
 
 commit=`git rev-parse HEAD`
+version=`sed -n 's/^version = "\(.*\)"$/\1/p' $ROOT/api/rs/Cargo.toml`
 dirty=false
 git diff --quiet HEAD -- $ROOT || dirty=true
-printf '{"commit":"%s","dirty":%s,"date":"%s"}\n' $commit $dirty `date -u +%Y-%m-%d` > dist/build.json
+printf '{"version":"%s","commit":"%s","dirty":%s,"date":"%s"}\n' $version $commit $dirty `date -u +%Y-%m-%d` > dist/build.json
 echo "dist/ ready: $(du -sh dist | cut -f1), commit ${commit%${commit#?????????}}$($dirty && echo +dirty)"

@@ -449,9 +449,9 @@ window.addEventListener('pagehide', stopCamera);
 
 async function buildInfo() {
   try {
-    const { commit, dirty, date } = await (await fetch('build.json')).json();
+    const { version, commit, dirty, date } = await (await fetch('build.json')).json();
     $('source').href = `https://github.com/sonos/tract/tree/${commit}/examples/ppocr/web`;
-    $('build').textContent = `${commit.slice(0, 9)}${dirty ? '+dirty' : ''} · ${date}`;
+    $('build').textContent = `${version ? `tract ${version} · ` : ''}${commit.slice(0, 9)}${dirty ? '+dirty' : ''} · ${date}`;
   } catch {
     // The source tree has no build.json; the link stays on main.
   }

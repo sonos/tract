@@ -75,9 +75,9 @@ function examples() {
 // Which commit and day this page was built from, when the build says so.
 async function buildInfo() {
   try {
-    const { commit, dirty, date } = await (await fetch("build.json")).json();
+    const { version, commit, dirty, date } = await (await fetch("build.json")).json();
     $("source").href = `https://github.com/sonos/tract/tree/${commit}/examples/stable-diffusion/web`;
-    $("build").textContent = `${commit.slice(0, 9)}${dirty ? "+dirty" : ""} · ${date}`;
+    $("build").textContent = `${version ? `tract ${version} · ` : ""}${commit.slice(0, 9)}${dirty ? "+dirty" : ""} · ${date}`;
   } catch {}
 }
 

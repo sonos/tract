@@ -176,9 +176,9 @@ async function languages() {
 
 async function buildInfo() {
   try {
-    const { commit, dirty, date } = await (await fetch("build.json")).json();
+    const { version, commit, dirty, date } = await (await fetch("build.json")).json();
     $("source").href = `https://github.com/sonos/tract/tree/${commit}/examples/nemo-nemotron35-streaming-asr/web`;
-    $("build").textContent = `${commit.slice(0, 9)}${dirty ? "+dirty" : ""} · ${date}`;
+    $("build").textContent = `${version ? `tract ${version} · ` : ""}${commit.slice(0, 9)}${dirty ? "+dirty" : ""} · ${date}`;
   } catch {}
 }
 
