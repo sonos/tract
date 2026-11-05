@@ -6,6 +6,7 @@
 # <example> is a directory under examples/ with a web/ site; `all` is every one of them plus the
 # landing page. Each demo is taken from its examples/<example>/web/dist, or from
 # $DIST_ROOT/web-demo-<example> when DIST_ROOT is set (the Examples workflow's artifacts).
+# Each demo's prefix is made to hold exactly its site: files a new build no longer has are deleted.
 # A demo whose build.json is dirty is refused.
 #
 #   R2             rclone remote holding the tract-demo bucket (RCLONE_CONFIG locates its config)
@@ -62,6 +63,7 @@ do
     read -r commit dirty < <(python3 -c 'import json, sys; b = json.load(open(sys.argv[1])); print(b["commit"], str(b["dirty"]).lower())' "$dist/build.json")
     [ "$dirty" = false ] || { echo "$example: built from a dirty tree, refusing" >&2; exit 1; }
     prefix=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["path"].strip("/"))' "$root/examples/$example/web/e2e.json")
+    [ -n "$prefix" ] || { echo "$example: its e2e.json has no path, refusing to sync the bucket root" >&2; exit 1; }
     echo "$example -> /$prefix/ (${commit:0:9})"
     dists+=("$dist")
     prefixes+=("$prefix")
@@ -71,7 +73,7 @@ upload=(--checksum --ignore-times --s3-no-check-bucket --header-upload "Cache-Co
 
 for i in ${!dists[@]}
 do
-    rclone copy "${dists[$i]}" "$R2:$bucket/${prefixes[$i]}" "${upload[@]}"
+    rclone sync "${dists[$i]}" "$R2:$bucket/${prefixes[$i]}" "${upload[@]}"
 done
 if $landing
 then
