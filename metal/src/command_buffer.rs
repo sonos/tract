@@ -4,6 +4,7 @@ use metal::{CommandBuffer, ComputeCommandEncoder, ComputePassDescriptor};
 use std::cell::{Cell, RefCell};
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
+use tract_gpu::tensor::DeviceTensor;
 
 /// A command buffer and the compute pass its dispatches share. A profiled
 /// buffer gives each dispatch a pass of its own instead, so the device's
@@ -15,6 +16,7 @@ pub struct TCommandBuffer {
     encoder: Rc<RefCell<Option<ComputeCommandEncoder>>>,
     profile: Option<Rc<MetalProfileHandle>>,
     dispatches: Rc<Cell<usize>>,
+    retained: Rc<RefCell<Vec<DeviceTensor>>>,
 }
 
 impl TCommandBuffer {
@@ -24,6 +26,7 @@ impl TCommandBuffer {
             encoder: Rc::new(RefCell::new(None)),
             profile,
             dispatches: Rc::new(Cell::new(0)),
+            retained: Rc::new(RefCell::new(vec![])),
         }
     }
 
@@ -49,12 +52,26 @@ impl TCommandBuffer {
                     attachment.set_end_of_encoder_sample_index(end);
                     self.inner.compute_command_encoder_with_descriptor(descriptor).to_owned()
                 });
-                encode_cb(&TComputeCommandEncoder::new(&encoder, &self.dispatches));
+                encode_cb(&TComputeCommandEncoder::new(&encoder, &self.dispatches, &self.retained));
                 encoder.end_encoding();
                 return;
             }
         }
-        encode_cb(&TComputeCommandEncoder::new(&self.shared_encoder(), &self.dispatches));
+        encode_cb(&TComputeCommandEncoder::new(
+            &self.shared_encoder(),
+            &self.dispatches,
+            &self.retained,
+        ));
+    }
+
+    /// Keep a tensor's Rust owner alive for this command buffer and all its clones.
+    pub fn retain_tensor(&self, tensor: &DeviceTensor) {
+        self.retained.borrow_mut().push(tensor.clone());
+    }
+
+    #[cfg(test)]
+    pub(crate) fn retains_tensor(&self, tensor: &DeviceTensor) -> bool {
+        self.retained.borrow().contains(tensor)
     }
 
     /// Number of kernel launches encoded in this buffer, shared by all its clones.
@@ -108,7 +125,6 @@ mod tests {
         commit: bool,
         open_tail: bool,
     ) -> tract_core::internal::TractResult<()> {
-        use crate::encoder::EncoderExt;
         use crate::kernels::LibraryName;
         use tract_core::internal::*;
         use tract_gpu::tensor::DeviceTensor;

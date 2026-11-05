@@ -352,9 +352,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
-        stream.retain_tensor(a);
-        stream.retain_tensor(b);
-        stream.retain_tensor(c);
+        let _retained = stream.retain_for_dispatch(&[a, b, c]);
 
         let quant_b = match b {
             DeviceTensor::Owned(t) => t
