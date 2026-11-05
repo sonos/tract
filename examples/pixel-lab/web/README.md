@@ -1,8 +1,8 @@
 # Background replacement in the browser
 
 Person segmentation on the visitor's camera, as a videoconference would use it, through WebGPU and
-tract's `wgpu` runtime, with the background blurred or replaced by a colour. Nothing leaves the
-machine.
+tract's `wgpu` runtime, with the background blurred or replaced by a colour. The camera feed never
+leaves the machine.
 
 ## How it works
 
