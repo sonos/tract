@@ -30,17 +30,37 @@ ci/web-e2e/run.sh live https://demo.tract.rs/ /tmp/e2e-out
 
 ## Deploying
 
-With `$R2` an rclone remote on the bucket's account:
+Build a demo from a commit on main: the page links to its source at the commit it was built from.
+Deploy with `deploy.sh`, `$R2` being an rclone remote on the bucket's account, and a Cloudflare
+token allowed to purge the zone's cache:
 
 ```sh
-rclone copy examples/web-demos/index.html $R2:tract-demo/ --checksum
-rclone copy examples/<example>/web/dist $R2:tract-demo/<prefix> --checksum
+R2=<remote> CF_API_TOKEN=<token> CF_ZONE_ID=<zone> examples/web-demos/deploy.sh <example>...
 ```
 
-Build a demo from a commit on main: the page links to its source at the commit it was built from.
+`all` deploys every demo and the landing page, `landing` the landing page alone. Set `DIST_ROOT` to
+take the sites from the Examples workflow's `web-demo-<example>` artifacts instead of each `dist/`.
+
+Cloudflare keeps every file of the site at the edge until its cache is purged, and browsers
+revalidate each file on every load. An upload that skips the purge stays invisible, so go through
+`deploy.sh`: it uploads with `Cache-Control: no-cache`, purges, then checks that every file is
+served as built.
+
 Then run the Web demos live workflow with that commit, which checks every deployed page names it
 and works:
 
 ```sh
 gh workflow run web-demos-live.yml -f commit=<sha>
+```
+
+## Releasing
+
+A tract release redeploys every demo from its tag. Run the Examples workflow on the tag, deploy its
+artifacts, then check the live site names the tag's commit:
+
+```sh
+gh workflow run examples.yml --ref v<version>
+gh run download <run id> --pattern 'web-demo-*' --dir <dir>
+DIST_ROOT=<dir> examples/web-demos/deploy.sh all
+gh workflow run web-demos-live.yml -f commit=$(git rev-parse v<version>^{commit})
 ```
