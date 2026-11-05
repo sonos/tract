@@ -309,9 +309,7 @@ impl<M: GemmKernel> GemmImpl<M> {
         b: &DeviceTensor,
         c: &DeviceTensor,
     ) -> TractResult<()> {
-        stream.retain_tensor(a);
-        stream.retain_tensor(b);
-        stream.retain_tensor(c);
+        let _retained = stream.retain_for_dispatch(&[a, b, c]);
 
         let q40_b = get_quant_fact(b, &Q4_0);
         // For q40 weights the tensor shape already carries the full logical

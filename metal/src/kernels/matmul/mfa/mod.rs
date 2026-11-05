@@ -411,15 +411,8 @@ pub fn mfa_attention_head_major(
     let kn = permute(k, &[h, c, d], &[h, d, c], &[0, 2, 1])?; // [H,D,C]
     let vn = permute(v, &[h, c, d], &[c, h, d], &[1, 0, 2])?; // [C,H,D]
     let on = unsafe { DeviceTensor::uninitialized_dt(dt, &[r, h, d])? };
-    // keep intermediates + mask alive until the command buffer completes
-    stream.retain_tensor(&qn);
-    stream.retain_tensor(&kn);
-    stream.retain_tensor(&vn);
-    stream.retain_tensor(&on);
-    stream.retain_tensor(out);
-    if let Some(m) = mask {
-        stream.retain_tensor(m);
-    }
+    let _retained = stream.retain_for_dispatch(&[&qn, &kn, &vn, &on]);
+    let _mask_retained = mask.map(|m| stream.retain_for_dispatch(&[m]));
     dispatch_metal_mfa_attention(
         stream,
         dt,

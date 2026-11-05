@@ -319,9 +319,23 @@ pub struct MetalStream {
     open: RefCell<OpenCommandBuffer>,
     committed_command_buffers: RefCell<VecDeque<InFlightBuffer>>,
     command_error: RefCell<Option<String>>,
+    dispatch_tensors: RefCell<Vec<DeviceTensor>>,
     commit_every_n_dispatches: usize,
     max_in_flight: usize,
     profile: RefCell<Option<Rc<MetalProfileHandle>>>,
+}
+
+/// Retains raw-buffer dispatch owners on every command buffer acquired in this scope.
+/// Scopes must be dropped in reverse creation order.
+pub(crate) struct DispatchTensorScope<'a> {
+    tensors: &'a RefCell<Vec<DeviceTensor>>,
+    previous_len: usize,
+}
+
+impl Drop for DispatchTensorScope<'_> {
+    fn drop(&mut self) {
+        self.tensors.borrow_mut().truncate(self.previous_len);
+    }
 }
 
 impl Default for MetalStream {
@@ -340,6 +354,7 @@ impl MetalStream {
             open: RefCell::new(OpenCommandBuffer::default()),
             committed_command_buffers: RefCell::new(VecDeque::new()),
             command_error: RefCell::new(None),
+            dispatch_tensors: RefCell::new(vec![]),
             commit_every_n_dispatches: crate::tuning::TRACT_METAL_COMMIT_EVERY_N_DISPATCHES.get(),
             max_in_flight: crate::tuning::TRACT_METAL_MAX_IN_FLIGHT.get().max(1),
             profile: RefCell::new(None),
@@ -402,6 +417,14 @@ impl MetalStream {
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
+    /// Keep raw-buffer kernel owners on every buffer acquired until the scope ends.
+    pub(crate) fn retain_for_dispatch(&self, tensors: &[&DeviceTensor]) -> DispatchTensorScope<'_> {
+        let mut retained = self.dispatch_tensors.borrow_mut();
+        let previous_len = retained.len();
+        retained.extend(tensors.iter().map(|t| (*t).clone()));
+        DispatchTensorScope { tensors: &self.dispatch_tensors, previous_len }
+    }
+
     pub fn retain_tensor(&self, tensor: &DeviceTensor) {
         self.open.borrow_mut().retained.push(tensor.clone());
     }
@@ -419,7 +442,8 @@ impl MetalStream {
         }
         let mut open = self.open.borrow_mut();
         let profile = self.profile.borrow().clone();
-        open.buffer
+        let buffer = open
+            .buffer
             .get_or_insert_with(|| {
                 // Keep Rust's owned reference without leaving temporary
                 // ownership in the caller's (possibly absent) autorelease pool.
@@ -427,7 +451,11 @@ impl MetalStream {
                     TCommandBuffer::new(self.command_queue.new_command_buffer().to_owned(), profile)
                 })
             })
-            .to_owned()
+            .to_owned();
+        for tensor in self.dispatch_tensors.borrow().iter() {
+            buffer.retain_tensor(tensor);
+        }
+        buffer
     }
 
     fn log_completed_kernels(tag: &str, names: &[String]) {
@@ -608,8 +636,63 @@ mod submission_tests {
     use super::*;
 
     #[test]
+    fn submission_retains_consuming_tensor_views() -> TractResult<()> {
+        use crate::kernels::array::Memcpy;
+        use crate::utils::get_metal_buffer;
+        use tract_gpu::tensor::IntoDevice;
+
+        for profile in [false, true] {
+            for raw_buffers in [false, true] {
+                let mut stream = MetalStream::new();
+                stream.commit_every_n_dispatches = 1;
+                stream.max_in_flight = 1;
+                if profile {
+                    if !stream
+                        .context
+                        .device
+                        .supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+                    {
+                        continue;
+                    }
+                    stream.enable_profiling()?;
+                }
+                let input = tensor1(&[1u32, 2, 3, 4]).into_device()?.prefix_window(0, 4)?;
+                let output =
+                    DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?.prefix_window(0, 4)?;
+                let pipeline =
+                    stream.load_pipeline(LibraryName::ArrayOps, "array_ops::copy_unicast_u32")?;
+                let retained = raw_buffers.then(|| stream.retain_for_dispatch(&[&input, &output]));
+                for _ in 0..3 {
+                    if raw_buffers {
+                        stream.command_buffer().encode(|encoder| {
+                            encoder.set_compute_pipeline_state(&pipeline);
+                            encoder.set_buffer(0, Some(get_metal_buffer(&input)), 0);
+                            encoder.set_buffer(1, Some(get_metal_buffer(&output)), 0);
+                            encoder.dispatch_threads(
+                                metal::MTLSize::new(4, 1, 1),
+                                metal::MTLSize::new(1, 1, 1),
+                            );
+                        });
+                    } else {
+                        Memcpy.dispatch_eval(&stream, &input, 0, &output)?;
+                    }
+                    let open = stream.open.borrow();
+                    let buffer = open.buffer.as_ref().unwrap();
+                    assert!(buffer.retains_tensor(&input));
+                    assert!(buffer.retains_tensor(&output));
+                }
+                drop(retained);
+                assert!(stream.dispatch_tensors.borrow().is_empty());
+                drop(input);
+                stream.wait_until_completed()?;
+                output.to_host()?.close_enough(&tensor1(&[1u32, 2, 3, 4]), Approximation::Exact)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
     fn submission_counts_kernel_launches() -> TractResult<()> {
-        use crate::encoder::EncoderExt;
         use tract_gpu::tensor::IntoDevice;
 
         for profile in [false, true] {

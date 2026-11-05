@@ -1,5 +1,5 @@
 use metal::{ComputeCommandEncoderRef, MTLResourceUsage, MTLSize};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::ops::Deref;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
@@ -49,16 +49,40 @@ impl EncoderExt for ComputeCommandEncoderRef {
     }
 }
 
-/// A compute encoder that counts kernel launches for command-buffer submission.
-/// Buffer bindings and other encoder configuration do not count as dispatches.
+/// A compute encoder that retains bound tensor owners and counts kernel launches.
+/// Tensor bindings retain their Rust owners on this command buffer; bindings and
+/// other encoder configuration do not count as dispatches.
 pub struct TComputeCommandEncoder<'a> {
     inner: &'a ComputeCommandEncoderRef,
     dispatches: &'a Cell<usize>,
+    retained: &'a RefCell<Vec<DeviceTensor>>,
 }
 
 impl<'a> TComputeCommandEncoder<'a> {
-    pub(crate) fn new(inner: &'a ComputeCommandEncoderRef, dispatches: &'a Cell<usize>) -> Self {
-        Self { inner, dispatches }
+    pub(crate) fn new(
+        inner: &'a ComputeCommandEncoderRef,
+        dispatches: &'a Cell<usize>,
+        retained: &'a RefCell<Vec<DeviceTensor>>,
+    ) -> Self {
+        Self { inner, dispatches, retained }
+    }
+
+    /// Bind a tensor and retain its Rust owner on the consuming command buffer.
+    pub fn set_metal_tensor(&self, idx: u64, tensor: &DeviceTensor, usage: MTLResourceUsage) {
+        self.retained.borrow_mut().push(tensor.clone());
+        self.inner.set_metal_tensor(idx, tensor, usage);
+    }
+
+    /// Bind a tensor at a byte offset and retain its Rust owner on this command buffer.
+    pub fn set_metal_tensor_with_offset(
+        &self,
+        idx: u64,
+        tensor: &DeviceTensor,
+        offset: u64,
+        usage: MTLResourceUsage,
+    ) {
+        self.retained.borrow_mut().push(tensor.clone());
+        self.inner.set_metal_tensor_with_offset(idx, tensor, offset, usage);
     }
 
     /// Encode a threadgroup launch and count it toward this buffer's submission threshold.
