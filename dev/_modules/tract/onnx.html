@@ -4,7 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>tract.onnx - tract-python documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
@@ -230,11 +230,85 @@
         </div>
         <article role="main" id="furo-main-content">
           <h1>Source code for tract.onnx</h1><div class="highlight"><pre>
-<span></span><span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span></span><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">.bindings</span><span class="w"> </span><span class="kn">import</span> <span class="n">check</span><span class="p">,</span> <span class="n">lib</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Optional</span><span class="p">,</span> <span class="n">Union</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.bindings</span><span class="w"> </span><span class="kn">import</span> <span class="n">TractError</span><span class="p">,</span> <span class="n">check</span><span class="p">,</span> <span class="n">lib</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">.inference_model</span><span class="w"> </span><span class="kn">import</span> <span class="n">InferenceModel</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">.tensor</span><span class="w"> </span><span class="kn">import</span> <span class="n">DatumType</span><span class="p">,</span> <span class="n">dt_numpy_to_tract</span>
+
+<div class="viewcode-block" id="OnnxOptions">
+<a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.OnnxOptions">[docs]</a>
+<span class="k">class</span><span class="w"> </span><span class="nc">OnnxOptions</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">"""</span>
+<span class="sd">    Options for the ONNX loader, passed to :meth:`Onnx.load`.</span>
+
+<span class="sd">    Mirrors ``OnnxOptions`` in the Rust API and serializes to the same JSON.</span>
+
+<span class="sd">    .. code-block:: python</span>
+
+<span class="sd">        # turn the downsample_ratio input into a constant, so the shapes it</span>
+<span class="sd">        # drives can be inferred</span>
+<span class="sd">        options = tract.OnnxOptions().constant_input(</span>
+<span class="sd">            "downsample_ratio", numpy.array([0.5], dtype=numpy.float32)</span>
+<span class="sd">        )</span>
+<span class="sd">        model = tract.onnx().load("./rvm.onnx", options)</span>
+<span class="sd">    """</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">ignore_value_info</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">assertions</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="n">List</span><span class="p">[</span><span class="nb">str</span><span class="p">]]</span> <span class="o">=</span> <span class="kc">None</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ignore_value_info</span> <span class="o">=</span> <span class="n">ignore_value_info</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assertions</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">assertions</span><span class="p">)</span> <span class="k">if</span> <span class="n">assertions</span> <span class="k">else</span> <span class="p">[]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_constant_inputs</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">dict</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+
+<div class="viewcode-block" id="OnnxOptions.ignore_value_info">
+<a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.OnnxOptions.ignore_value_info">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">ignore_value_info</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ignore</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"OnnxOptions"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Discard the shapes the model file declares and let tract infer them. Returns self for chaining."""</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_ignore_value_info</span> <span class="o">=</span> <span class="n">ignore</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="OnnxOptions.assertion">
+<a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.OnnxOptions.assertion">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">assertion</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">assertion</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"OnnxOptions"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Add one assertion over the model symbols, e.g. ``"h&gt;=0"``. Returns self for chaining."""</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_assertions</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">assertion</span><span class="p">)</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="OnnxOptions.constant_input">
+<a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.OnnxOptions.constant_input">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">constant_input</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">value</span><span class="p">:</span> <span class="n">numpy</span><span class="o">.</span><span class="n">ndarray</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"OnnxOptions"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""</span>
+<span class="sd">        Replace the input called ``name`` by a constant holding ``value``. Returns self for chaining.</span>
+
+<span class="sd">        The input stops being a model input, so analysis can resolve shapes that depend on its</span>
+<span class="sd">        value rather than only its shape. ``value`` must hold real numbers or booleans.</span>
+<span class="sd">        """</span>
+        <span class="n">value</span> <span class="o">=</span> <span class="n">numpy</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">value</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">value</span><span class="o">.</span><span class="n">dtype</span><span class="o">.</span><span class="n">kind</span> <span class="ow">not</span> <span class="ow">in</span> <span class="s2">"biuf"</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="n">TractError</span><span class="p">(</span><span class="sa">f</span><span class="s2">"Unsupported dtype for a constant input: </span><span class="si">{</span><span class="n">value</span><span class="o">.</span><span class="n">dtype</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_constant_inputs</span><span class="p">[</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+            <span class="s2">"datum_type"</span><span class="p">:</span> <span class="n">DatumType</span><span class="p">(</span><span class="n">dt_numpy_to_tract</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">dtype</span><span class="p">))</span><span class="o">.</span><span class="n">name</span><span class="o">.</span><span class="n">lower</span><span class="p">(),</span>
+            <span class="s2">"shape"</span><span class="p">:</span> <span class="nb">list</span><span class="p">(</span><span class="n">value</span><span class="o">.</span><span class="n">shape</span><span class="p">),</span>
+            <span class="s2">"values"</span><span class="p">:</span> <span class="n">value</span><span class="o">.</span><span class="n">astype</span><span class="p">(</span><span class="n">numpy</span><span class="o">.</span><span class="n">float64</span><span class="p">)</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span><span class="o">.</span><span class="n">tolist</span><span class="p">(),</span>
+        <span class="p">}</span>
+        <span class="k">return</span> <span class="bp">self</span></div>
+
+
+<div class="viewcode-block" id="OnnxOptions.to_json">
+<a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.OnnxOptions.to_json">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_json</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Serialize to the JSON the loader expects."""</span>
+        <span class="k">return</span> <span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">({</span>
+            <span class="s2">"ignore_value_info"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_ignore_value_info</span><span class="p">,</span>
+            <span class="s2">"assertions"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_assertions</span><span class="p">,</span>
+            <span class="s2">"constant_inputs"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">_constant_inputs</span><span class="p">,</span>
+        <span class="p">})</span></div>
+</div>
+
 
 <div class="viewcode-block" id="Onnx">
 <a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.Onnx">[docs]</a>
@@ -271,13 +345,22 @@
 
 <div class="viewcode-block" id="Onnx.load">
 <a class="viewcode-back" href="../../docs/onnx.html#tract.onnx.Onnx.load">[docs]</a>
-    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n">InferenceModel</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">],</span> <span class="n">options</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="n">OnnxOptions</span><span class="p">,</span> <span class="nb">str</span><span class="p">,</span> <span class="kc">None</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">InferenceModel</span><span class="p">:</span>
 <span class="w">        </span><span class="sd">"""</span>
 <span class="sd">        Load an ONNX file as an InferenceModel</span>
+
+<span class="sd">        ``options`` is an :class:`OnnxOptions` or the JSON for one, and configures the loader.</span>
 <span class="sd">        """</span>
         <span class="n">model</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
         <span class="n">path</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)</span>
-        <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_onnx_load</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
+        <span class="k">if</span> <span class="n">options</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_onnx_load</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">if</span> <span class="nb">isinstance</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">OnnxOptions</span><span class="p">):</span>
+                <span class="n">options</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">to_json</span><span class="p">()</span>
+            <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_onnx_load_with_options</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">path</span><span class="p">,</span> <span class="n">options</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">model</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">InferenceModel</span><span class="p">(</span><span class="n">model</span><span class="p">)</span></div>
 </div>
 

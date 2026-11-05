@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="prev" title="Runtime, Runnable and State" href="runnable.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>Tensor - tract-python documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
@@ -271,6 +271,34 @@ restored afterwards: a scalar input must stay a scalar to match a rank-0 fact.</
 <dd><p>Same as to_numpy(), but drop the tensor content once the numpy array is built.</p>
 </dd></dl>
 
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.tensor.Tensor.load_npy">
+<span class="sig-name descname"><span class="pre">load_npy</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.tensor.Tensor" title="tract.tensor.Tensor"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.load_npy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.load_npy" title="Link to this definition">¶</a></dt>
+<dd><p>Read a tensor from a numpy <code class="docutils literal notranslate"><span class="pre">.npy</span></code> file.</p>
+<p>Unstable: needs libtract built with the <code class="docutils literal notranslate"><span class="pre">unstable-npyz</span></code> feature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.tensor.Tensor.load_npy_buffer">
+<span class="sig-name descname"><span class="pre">load_npy_buffer</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.tensor.Tensor" title="tract.tensor.Tensor"><span class="pre">Tensor</span></a></span></span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.load_npy_buffer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.load_npy_buffer" title="Link to this definition">¶</a></dt>
+<dd><p>Read a tensor from the content of a numpy <code class="docutils literal notranslate"><span class="pre">.npy</span></code> file.</p>
+<p>Unstable: needs libtract built with the <code class="docutils literal notranslate"><span class="pre">unstable-npyz</span></code> feature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.tensor.Tensor.save_npy">
+<span class="sig-name descname"><span class="pre">save_npy</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.save_npy"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.save_npy" title="Link to this definition">¶</a></dt>
+<dd><p>Write the tensor as a numpy <code class="docutils literal notranslate"><span class="pre">.npy</span></code> file, as <code class="docutils literal notranslate"><span class="pre">numpy.save</span></code> would.</p>
+<p>Unstable: needs libtract built with the <code class="docutils literal notranslate"><span class="pre">unstable-npyz</span></code> feature.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.tensor.Tensor.to_npy_buffer">
+<span class="sig-name descname"><span class="pre">to_npy_buffer</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bytes</span></span></span><a class="reference internal" href="../_modules/tract/tensor.html#Tensor.to_npy_buffer"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.tensor.Tensor.to_npy_buffer" title="Link to this definition">¶</a></dt>
+<dd><p>Serialize the tensor in numpy <code class="docutils literal notranslate"><span class="pre">.npy</span></code> format.</p>
+<p>Unstable: needs libtract built with the <code class="docutils literal notranslate"><span class="pre">unstable-npyz</span></code> feature.</p>
+</dd></dl>
+
 </dd></dl>
 
 </section>
@@ -328,6 +356,10 @@ restored afterwards: a scalar input must stay a scalar to match a rank-0 fact.</
 <li><a class="reference internal" href="#tract.tensor.Tensor.from_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.from_numpy()</span></code></a></li>
 <li><a class="reference internal" href="#tract.tensor.Tensor.to_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.to_numpy()</span></code></a></li>
 <li><a class="reference internal" href="#tract.tensor.Tensor.into_numpy"><code class="docutils literal notranslate"><span class="pre">Tensor.into_numpy()</span></code></a></li>
+<li><a class="reference internal" href="#tract.tensor.Tensor.load_npy"><code class="docutils literal notranslate"><span class="pre">Tensor.load_npy()</span></code></a></li>
+<li><a class="reference internal" href="#tract.tensor.Tensor.load_npy_buffer"><code class="docutils literal notranslate"><span class="pre">Tensor.load_npy_buffer()</span></code></a></li>
+<li><a class="reference internal" href="#tract.tensor.Tensor.save_npy"><code class="docutils literal notranslate"><span class="pre">Tensor.save_npy()</span></code></a></li>
+<li><a class="reference internal" href="#tract.tensor.Tensor.to_npy_buffer"><code class="docutils literal notranslate"><span class="pre">Tensor.to_npy_buffer()</span></code></a></li>
 </ul>
 </li>
 </ul>

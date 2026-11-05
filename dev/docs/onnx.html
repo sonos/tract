@@ -5,7 +5,7 @@
     <meta name="color-scheme" content="light dark"><meta name="viewport" content="width=device-width, initial-scale=1" />
 <link rel="index" title="Index" href="../genindex.html"><link rel="search" title="Search" href="../search.html"><link rel="next" title="NNEF" href="nnef.html"><link rel="prev" title="tract python bindings" href="index.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>ONNX - tract-python documentation</title>
       <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/furo.css?v=7bdb33bb" />
@@ -239,6 +239,47 @@
           <section id="module-tract.onnx">
 <span id="onnx"></span><h1>ONNX<a class="headerlink" href="#module-tract.onnx" title="Link to this heading">¶</a></h1>
 <dl class="py class">
+<dt class="sig sig-object py" id="tract.onnx.OnnxOptions">
+<span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">tract.onnx.</span></span><span class="sig-name descname"><span class="pre">OnnxOptions</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="keyword-only-separator o"><abbr title="Keyword-only parameters separator (PEP 3102)"><span class="pre">*</span></abbr></span></em>, <em class="sig-param"><span class="n"><span class="pre">ignore_value_info</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">assertions</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="../_modules/tract/onnx.html#OnnxOptions"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.OnnxOptions" title="Link to this definition">¶</a></dt>
+<dd><p>Options for the ONNX loader, passed to <a class="reference internal" href="#tract.onnx.Onnx.load" title="tract.onnx.Onnx.load"><code class="xref py py-meth docutils literal notranslate"><span class="pre">Onnx.load()</span></code></a>.</p>
+<p>Mirrors <code class="docutils literal notranslate"><span class="pre">OnnxOptions</span></code> in the Rust API and serializes to the same JSON.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="c1"># turn the downsample_ratio input into a constant, so the shapes it</span>
+<span class="c1"># drives can be inferred</span>
+<span class="n">options</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">OnnxOptions</span><span class="p">()</span><span class="o">.</span><span class="n">constant_input</span><span class="p">(</span>
+    <span class="s2">"downsample_ratio"</span><span class="p">,</span> <span class="n">numpy</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.5</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">numpy</span><span class="o">.</span><span class="n">float32</span><span class="p">)</span>
+<span class="p">)</span>
+<span class="n">model</span> <span class="o">=</span> <span class="n">tract</span><span class="o">.</span><span class="n">onnx</span><span class="p">()</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="s2">"./rvm.onnx"</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+</pre></div>
+</div>
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.onnx.OnnxOptions.ignore_value_info">
+<span class="sig-name descname"><span class="pre">ignore_value_info</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">ignore</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">bool</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">True</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.onnx.OnnxOptions" title="tract.onnx.OnnxOptions"><span class="pre">OnnxOptions</span></a></span></span><a class="reference internal" href="../_modules/tract/onnx.html#OnnxOptions.ignore_value_info"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.OnnxOptions.ignore_value_info" title="Link to this definition">¶</a></dt>
+<dd><p>Discard the shapes the model file declares and let tract infer them. Returns self for chaining.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.onnx.OnnxOptions.assertion">
+<span class="sig-name descname"><span class="pre">assertion</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">assertion</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.onnx.OnnxOptions" title="tract.onnx.OnnxOptions"><span class="pre">OnnxOptions</span></a></span></span><a class="reference internal" href="../_modules/tract/onnx.html#OnnxOptions.assertion"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.OnnxOptions.assertion" title="Link to this definition">¶</a></dt>
+<dd><p>Add one assertion over the model symbols, e.g. <code class="docutils literal notranslate"><span class="pre">&quot;h&gt;=0&quot;</span></code>. Returns self for chaining.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.onnx.OnnxOptions.constant_input">
+<span class="sig-name descname"><span class="pre">constant_input</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">ndarray</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#tract.onnx.OnnxOptions" title="tract.onnx.OnnxOptions"><span class="pre">OnnxOptions</span></a></span></span><a class="reference internal" href="../_modules/tract/onnx.html#OnnxOptions.constant_input"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.OnnxOptions.constant_input" title="Link to this definition">¶</a></dt>
+<dd><p>Replace the input called <code class="docutils literal notranslate"><span class="pre">name</span></code> by a constant holding <code class="docutils literal notranslate"><span class="pre">value</span></code>. Returns self for chaining.</p>
+<p>The input stops being a model input, so analysis can resolve shapes that depend on its
+value rather than only its shape. <code class="docutils literal notranslate"><span class="pre">value</span></code> must hold real numbers or booleans.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="tract.onnx.OnnxOptions.to_json">
+<span class="sig-name descname"><span class="pre">to_json</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">str</span></span></span><a class="reference internal" href="../_modules/tract/onnx.html#OnnxOptions.to_json"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.OnnxOptions.to_json" title="Link to this definition">¶</a></dt>
+<dd><p>Serialize to the JSON the loader expects.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
 <dt class="sig sig-object py" id="tract.onnx.Onnx">
 <span class="property"><span class="k"><span class="pre">class</span></span><span class="w"> </span></span><span class="sig-prename descclassname"><span class="pre">tract.onnx.</span></span><span class="sig-name descname"><span class="pre">Onnx</span></span><a class="reference internal" href="../_modules/tract/onnx.html#Onnx"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.Onnx" title="Link to this definition">¶</a></dt>
 <dd><p>Represent the ONNX context in tract.</p>
@@ -260,8 +301,9 @@ before converting the <code class="docutils literal notranslate"><span class="pr
 </div>
 <dl class="py method">
 <dt class="sig sig-object py" id="tract.onnx.Onnx.load">
-<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="inference_model.html#tract.inference_model.InferenceModel" title="tract.inference_model.InferenceModel"><span class="pre">InferenceModel</span></a></span></span><a class="reference internal" href="../_modules/tract/onnx.html#Onnx.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.Onnx.load" title="Link to this definition">¶</a></dt>
+<span class="sig-name descname"><span class="pre">load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">Path</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#tract.onnx.OnnxOptions" title="tract.onnx.OnnxOptions"><span class="pre">OnnxOptions</span></a><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="inference_model.html#tract.inference_model.InferenceModel" title="tract.inference_model.InferenceModel"><span class="pre">InferenceModel</span></a></span></span><a class="reference internal" href="../_modules/tract/onnx.html#Onnx.load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#tract.onnx.Onnx.load" title="Link to this definition">¶</a></dt>
 <dd><p>Load an ONNX file as an InferenceModel</p>
+<p><code class="docutils literal notranslate"><span class="pre">options</span></code> is an <a class="reference internal" href="#tract.onnx.OnnxOptions" title="tract.onnx.OnnxOptions"><code class="xref py py-class docutils literal notranslate"><span class="pre">OnnxOptions</span></code></a> or the JSON for one, and configures the loader.</p>
 </dd></dl>
 
 </dd></dl>
@@ -324,6 +366,13 @@ before converting the <code class="docutils literal notranslate"><span class="pr
           <div class="toc-tree">
             <ul>
 <li><a class="reference internal" href="#">ONNX</a><ul>
+<li><a class="reference internal" href="#tract.onnx.OnnxOptions"><code class="docutils literal notranslate"><span class="pre">OnnxOptions</span></code></a><ul>
+<li><a class="reference internal" href="#tract.onnx.OnnxOptions.ignore_value_info"><code class="docutils literal notranslate"><span class="pre">OnnxOptions.ignore_value_info()</span></code></a></li>
+<li><a class="reference internal" href="#tract.onnx.OnnxOptions.assertion"><code class="docutils literal notranslate"><span class="pre">OnnxOptions.assertion()</span></code></a></li>
+<li><a class="reference internal" href="#tract.onnx.OnnxOptions.constant_input"><code class="docutils literal notranslate"><span class="pre">OnnxOptions.constant_input()</span></code></a></li>
+<li><a class="reference internal" href="#tract.onnx.OnnxOptions.to_json"><code class="docutils literal notranslate"><span class="pre">OnnxOptions.to_json()</span></code></a></li>
+</ul>
+</li>
 <li><a class="reference internal" href="#tract.onnx.Onnx"><code class="docutils literal notranslate"><span class="pre">Onnx</span></code></a><ul>
 <li><a class="reference internal" href="#tract.onnx.Onnx.load"><code class="docutils literal notranslate"><span class="pre">Onnx.load()</span></code></a></li>
 </ul>

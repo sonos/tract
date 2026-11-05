@@ -4,7 +4,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <meta name="color-scheme" content="light dark"><link rel="index" title="Index" href="../../genindex.html"><link rel="search" title="Search" href="../../search.html">
 
-    <!-- Generated with Sphinx 9.1.0 and Furo 2025.12.19 -->
+    <!-- Generated with Sphinx 9.1.1 and Furo 2025.12.19 -->
         <title>tract.tensor - tract-python documentation</title>
       <link rel="stylesheet" type="text/css" href="../../_static/pygments.css?v=d111a655" />
     <link rel="stylesheet" type="text/css" href="../../_static/styles/furo.css?v=7bdb33bb" />
@@ -233,8 +233,9 @@
 <span></span><span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span>
 <span class="kn">import</span><span class="w"> </span><span class="nn">math</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">ctypes</span><span class="w"> </span><span class="kn">import</span> <span class="o">*</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">typing</span><span class="w"> </span><span class="kn">import</span> <span class="n">Dict</span><span class="p">,</span> <span class="n">List</span><span class="p">,</span> <span class="n">Union</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">tract.bindings</span><span class="w"> </span><span class="kn">import</span> <span class="n">TractError</span><span class="p">,</span> <span class="n">check</span><span class="p">,</span> <span class="n">lib</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">tract.bindings</span><span class="w"> </span><span class="kn">import</span> <span class="n">TractError</span><span class="p">,</span> <span class="n">check</span><span class="p">,</span> <span class="n">lib</span><span class="p">,</span> <span class="n">take_buffer</span><span class="p">,</span> <span class="n">unstable_npyz</span>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">enum</span><span class="w"> </span><span class="kn">import</span> <span class="n">IntEnum</span>
 
@@ -408,6 +409,55 @@
         <span class="n">result</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">to_numpy</span><span class="p">()</span>
         <span class="n">check</span><span class="p">(</span><span class="n">lib</span><span class="o">.</span><span class="n">tract_tensor_destroy</span><span class="p">(</span><span class="n">byref</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">)))</span>
         <span class="k">return</span> <span class="n">result</span></div>
+
+
+<div class="viewcode-block" id="Tensor.load_npy">
+<a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.load_npy">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_npy</span><span class="p">(</span><span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="s2">"Tensor"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Read a tensor from a numpy ``.npy`` file.</span>
+
+<span class="sd">        Unstable: needs libtract built with the ``unstable-npyz`` feature.</span>
+<span class="sd">        """</span>
+        <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">unstable_npyz</span><span class="p">(</span><span class="s2">"tract_tensor_load_npy"</span><span class="p">)(</span><span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">ptr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Tensor.load_npy_buffer">
+<a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.load_npy_buffer">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">load_npy_buffer</span><span class="p">(</span><span class="n">data</span><span class="p">:</span> <span class="nb">bytes</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s2">"Tensor"</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Read a tensor from the content of a numpy ``.npy`` file.</span>
+
+<span class="sd">        Unstable: needs libtract built with the ``unstable-npyz`` feature.</span>
+<span class="sd">        """</span>
+        <span class="n">ptr</span> <span class="o">=</span> <span class="n">c_void_p</span><span class="p">()</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">unstable_npyz</span><span class="p">(</span><span class="s2">"tract_tensor_load_npy_buffer"</span><span class="p">)(</span><span class="n">data</span><span class="p">,</span> <span class="n">c_size_t</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">data</span><span class="p">)),</span> <span class="n">byref</span><span class="p">(</span><span class="n">ptr</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">Tensor</span><span class="p">(</span><span class="n">ptr</span><span class="p">)</span></div>
+
+
+<div class="viewcode-block" id="Tensor.save_npy">
+<a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.save_npy">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">save_npy</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">path</span><span class="p">:</span> <span class="n">Union</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Path</span><span class="p">]):</span>
+<span class="w">        </span><span class="sd">"""Write the tensor as a numpy ``.npy`` file, as ``numpy.save`` would.</span>
+
+<span class="sd">        Unstable: needs libtract built with the ``unstable-npyz`` feature.</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">unstable_npyz</span><span class="p">(</span><span class="s2">"tract_tensor_save_npy"</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="nb">str</span><span class="p">(</span><span class="n">path</span><span class="p">)</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s2">"utf-8"</span><span class="p">)))</span></div>
+
+
+<div class="viewcode-block" id="Tensor.to_npy_buffer">
+<a class="viewcode-back" href="../../docs/tensor.html#tract.tensor.Tensor.to_npy_buffer">[docs]</a>
+    <span class="k">def</span><span class="w"> </span><span class="nf">to_npy_buffer</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bytes</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">"""Serialize the tensor in numpy ``.npy`` format.</span>
+
+<span class="sd">        Unstable: needs libtract built with the ``unstable-npyz`` feature.</span>
+<span class="sd">        """</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_valid</span><span class="p">()</span>
+        <span class="n">data</span> <span class="o">=</span> <span class="n">POINTER</span><span class="p">(</span><span class="n">c_uint8</span><span class="p">)()</span>
+        <span class="n">length</span> <span class="o">=</span> <span class="n">c_size_t</span><span class="p">()</span>
+        <span class="n">check</span><span class="p">(</span><span class="n">unstable_npyz</span><span class="p">(</span><span class="s2">"tract_tensor_to_npy_buffer"</span><span class="p">)(</span><span class="bp">self</span><span class="o">.</span><span class="n">ptr</span><span class="p">,</span> <span class="n">byref</span><span class="p">(</span><span class="n">data</span><span class="p">),</span> <span class="n">byref</span><span class="p">(</span><span class="n">length</span><span class="p">)))</span>
+        <span class="k">return</span> <span class="n">take_buffer</span><span class="p">(</span><span class="n">data</span><span class="p">,</span> <span class="n">length</span><span class="p">)</span></div>
 
 
     <span class="k">def</span><span class="w"> </span><span class="nf">datum_type</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DatumType</span><span class="p">:</span>
