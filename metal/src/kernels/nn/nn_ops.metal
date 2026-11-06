@@ -264,6 +264,106 @@ INSTANTIATE_REDUCE(prod, Prod, f16, half)
 INSTANTIATE_REDUCE(all, All, bool, char)
 INSTANTIATE_REDUCE(any, Any, bool, char)
 
+// The best (value, index) pair over a simdgroup's active lanes: the extreme
+// value first, then the lowest (or, with LAST, highest) index holding it.
+template <bool IS_MAX, bool LAST>
+METAL_FUNC void arg_simd_reduce(thread float &v, thread uint &i) {
+    float best = IS_MAX ? simd_max(v) : simd_min(v);
+    uint candidate = v == best ? i : (LAST ? 0u : UINT_MAX);
+    i = LAST ? simd_max(candidate) : simd_min(candidate);
+    v = best;
+}
+
+// Index of the extreme value along the middle axis of a rank-3 view, written as
+// int64. The scan starts from (0, +-max of F) and skips NaN, like core's
+// ArgMax/ArgMin, and ties resolve on the index, so the result does not depend
+// on how threads split the axis.
+template <typename F, bool IS_MAX, bool LAST, typename IdxT>
+[[kernel]] void arg_reduce_nd3(device const void *input_b,
+                               device void *output_b,
+                               constant const size_t input_shape[3],
+                               constant const size_t input_strides[3],
+                               constant const size_t output_strides[3],
+                               uint3 tgpig [[threadgroup_position_in_grid]],
+                               uint tiisg [[thread_index_in_simdgroup]],
+                               uint tpsg [[threads_per_simdgroup]],
+                               uint sgitg [[simdgroup_index_in_threadgroup]],
+                               uint3 ntg [[threads_per_threadgroup]]) {
+    device const F *input = (device const F *)input_b;
+    device long *output = (device long *)output_b;
+
+    IdxT reduce_dim = input_shape[1];
+    IdxT stride = input_strides[1];
+
+    IdxT out_idx = IdxT(tgpig.x) * IdxT(output_strides[2]) +
+                   IdxT(tgpig.y) * IdxT(output_strides[1]) +
+                   IdxT(tgpig.z) * IdxT(output_strides[0]);
+
+    device const F *row = input + IdxT(tgpig.x) * IdxT(input_strides[2]) +
+                          IdxT(tgpig.z) * IdxT(input_strides[0]);
+
+    IdxT nthreads = ntg.x;
+    IdxT tid = sgitg * tpsg + tiisg;
+
+    const float start = IS_MAX ? -float(metal::numeric_limits<F>::max())
+                               : float(metal::numeric_limits<F>::max());
+    float best = start;
+    uint best_i = 0;
+    for (IdxT i = tid; i < reduce_dim; i += nthreads) {
+        float v = float(row[i * stride]);
+        bool better = IS_MAX ? v > best : v < best;
+        bool tie = v == best && (LAST ? uint(i) > best_i : uint(i) < best_i);
+        if (!isnan(v) && (better || tie)) {
+            best = v;
+            best_i = uint(i);
+        }
+    }
+
+    arg_simd_reduce<IS_MAX, LAST>(best, best_i);
+    if (nthreads <= tpsg) {
+        if (tiisg == 0) {
+            output[out_idx] = long(best_i);
+        }
+        return;
+    }
+
+    threadgroup float partial_v[32];
+    threadgroup uint partial_i[32];
+    if (tiisg == 0) {
+        partial_v[sgitg] = best;
+        partial_i[sgitg] = best_i;
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+
+    if (sgitg == 0) {
+        uint nsg = (ntg.x + tpsg - 1) / tpsg;
+        best = tiisg < nsg ? partial_v[tiisg] : start;
+        best_i = tiisg < nsg ? partial_i[tiisg] : 0u;
+        arg_simd_reduce<IS_MAX, LAST>(best, best_i);
+        if (tiisg == 0) {
+            output[out_idx] = long(best_i);
+        }
+    }
+}
+
+typedef decltype(arg_reduce_nd3<float, true, false, uint>) arg_reduce_nd3_t;
+
+#define INSTANTIATE_ARG_REDUCE_1(name, is_max, last, tname, type)              \
+    template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname)]] [[kernel]]   \
+    arg_reduce_nd3_t arg_reduce_nd3<type, is_max, last, uint>;                 \
+    template [[host_name("nn_ops::reduce_" #name "_nd3_" #tname                 \
+                         "_large")]] [[kernel]] arg_reduce_nd3_t               \
+    arg_reduce_nd3<type, is_max, last, size_t>;
+
+#define INSTANTIATE_ARG_REDUCE(tname, type)                                    \
+    INSTANTIATE_ARG_REDUCE_1(argmax, true, false, tname, type)                 \
+    INSTANTIATE_ARG_REDUCE_1(argmax_last, true, true, tname, type)             \
+    INSTANTIATE_ARG_REDUCE_1(argmin, false, false, tname, type)                \
+    INSTANTIATE_ARG_REDUCE_1(argmin_last, false, true, tname, type)
+
+INSTANTIATE_ARG_REDUCE(f32, float)
+INSTANTIATE_ARG_REDUCE(f16, half)
+
 template <typename FI, typename FO>
 [[kernel]] void rms_norm_nd3(device const void *input_b, constant void *eps_b,
                              device void *output_b,
