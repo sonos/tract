@@ -163,8 +163,11 @@ impl MetalContext {
             &func_name,
             constants.as_ref().map(|c| c.function_constant_values()),
         )?;
+        let descriptor = metal::ComputePipelineDescriptor::new();
+        descriptor.set_compute_function(Some(&func));
+        descriptor.set_label(&func_name);
         let pipeline = self.device
-            .new_compute_pipeline_state_with_function(&func)
+            .new_compute_pipeline_state(&descriptor)
             .map_err(|e| anyhow!("{}", e))
             .with_context(|| format!("Error while creating compute pipeline for function {func_name} from source: {:?}", library_name))?;
         log::trace!(
@@ -303,7 +306,6 @@ impl DeviceContext for MetalContext {
 struct InFlightBuffer {
     buffer: TCommandBuffer,
     retained: Vec<DeviceTensor>,
-    kernel_names: Vec<String>,
 }
 
 /// State accumulated for the next command buffer submission.
@@ -311,7 +313,6 @@ struct InFlightBuffer {
 struct OpenCommandBuffer {
     buffer: Option<TCommandBuffer>,
     retained: Vec<DeviceTensor>,
-    kernel_names: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -401,9 +402,6 @@ impl MetalStream {
         library_name: LibraryName,
         func_name: &str,
     ) -> TractResult<ComputePipelineState> {
-        if log::log_enabled!(log::Level::Trace) {
-            self.open.borrow_mut().kernel_names.push(func_name.to_string());
-        }
         self.context.load_pipeline(library_name, func_name)
     }
 
@@ -413,9 +411,6 @@ impl MetalStream {
         func_name: &str,
         constants: Option<ConstantValues>,
     ) -> TractResult<ComputePipelineState> {
-        if log::log_enabled!(log::Level::Trace) {
-            self.open.borrow_mut().kernel_names.push(func_name.to_string());
-        }
         self.context.load_pipeline_with_constants(library_name, func_name, constants)
     }
 
@@ -512,17 +507,13 @@ impl MetalStream {
             let oldest = committed.pop_front().unwrap();
             oldest.buffer.wait_until_completed();
             self.record_command_error(&oldest.buffer);
-            Self::log_completed_kernels("segment", &oldest.kernel_names);
+            Self::log_completed_kernels("segment", &oldest.buffer.trace.borrow().kernel_names);
 
             drop(oldest.retained);
         }
         command_buffer.commit();
         let open = std::mem::take(&mut *self.open.borrow_mut());
-        committed.push_back(InFlightBuffer {
-            buffer: command_buffer,
-            retained: open.retained,
-            kernel_names: open.kernel_names,
-        });
+        committed.push_back(InFlightBuffer { buffer: command_buffer, retained: open.retained });
         self.check_command_error()
     }
 
@@ -536,7 +527,7 @@ impl MetalStream {
         }
         for entry in drained {
             self.record_command_error(&entry.buffer);
-            Self::log_completed_kernels("segment-tail", &entry.kernel_names);
+            Self::log_completed_kernels("segment-tail", &entry.buffer.trace.borrow().kernel_names);
         }
         *self.open.borrow_mut() = OpenCommandBuffer::default();
         let command_error = self.command_error.borrow_mut().take();
@@ -636,6 +627,66 @@ fn command_buffer_error(command_buffer: &metal::CommandBufferRef) -> String {
 #[cfg(test)]
 mod submission_tests {
     use super::*;
+
+    #[test]
+    fn submission_traces_consuming_buffer_launches() -> TractResult<()> {
+        use tract_gpu::tensor::IntoDevice;
+
+        for profile in [false, true] {
+            let mut stream = MetalStream::new();
+            stream.commit_every_n_dispatches = 1;
+            if profile {
+                if !stream
+                    .context
+                    .device
+                    .supports_counter_sampling(metal::MTLCounterSamplingPoint::AtStageBoundary)
+                {
+                    continue;
+                }
+                stream.enable_profiling()?;
+            }
+            let input = tensor1(&[1u32, 2, 3, 4]).into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?;
+            let name_a = "array_ops::copy_unicast_u32";
+            let name_b = "array_ops::copy_unicast_u16";
+            let a = stream.load_pipeline(LibraryName::ArrayOps, name_a)?;
+            let first = stream.command_buffer();
+            first.encode(|encoder| encoder.set_compute_pipeline_state(&a));
+            assert!(first.trace.borrow().kernel_names.is_empty());
+            first.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&a);
+                encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+                encoder
+                    .dispatch_threads(metal::MTLSize::new(4, 1, 1), metal::MTLSize::new(1, 1, 1));
+                encoder.dispatch_thread_groups(
+                    metal::MTLSize::new(4, 1, 1),
+                    metal::MTLSize::new(1, 1, 1),
+                );
+            });
+            let b = stream.load_pipeline_with_constants(
+                LibraryName::ArrayOps,
+                name_b,
+                Some(ConstantValues::new(vec![])),
+            )?;
+            stream.load_pipeline(LibraryName::ArrayOps, "array_ops::copy_unicast_u8")?;
+            let second = stream.command_buffer();
+            assert_eq!(first.trace.borrow().kernel_names, [name_a, name_a]);
+            assert!(second.trace.borrow().kernel_names.is_empty());
+            second.encode(|encoder| {
+                encoder.set_compute_pipeline_state(&b);
+                encoder.set_metal_tensor(0, &input, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(1, &output, metal::MTLResourceUsage::Write);
+                encoder
+                    .dispatch_threads(metal::MTLSize::new(8, 1, 1), metal::MTLSize::new(1, 1, 1));
+            });
+            stream.wait_until_completed()?;
+            assert_eq!(first.trace.borrow().kernel_names, [name_a, name_a]);
+            assert_eq!(second.trace.borrow().kernel_names, [name_b]);
+            output.to_host()?.close_enough(&tensor1(&[1u32, 2, 3, 4]), Approximation::Exact)?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn submission_waits_before_exceeding_in_flight_limit() -> TractResult<()> {
@@ -813,9 +864,7 @@ mod submission_tests {
             {
                 let open = stream.open.borrow();
                 assert_eq!(open.buffer.as_ref().unwrap().dispatch_count(), 0);
-                if log::log_enabled!(log::Level::Trace) {
-                    assert_eq!(open.kernel_names, ["kernel_mul_mv_f32_f32"]);
-                }
+                assert!(open.buffer.as_ref().unwrap().trace.borrow().kernel_names.is_empty());
             }
             if wait {
                 stream.wait_until_completed()?;
@@ -825,7 +874,6 @@ mod submission_tests {
             let open = stream.open.borrow();
             assert!(open.buffer.is_none());
             assert!(open.retained.is_empty());
-            assert!(open.kernel_names.is_empty());
         }
         stream.wait_until_completed()?;
         Ok(())

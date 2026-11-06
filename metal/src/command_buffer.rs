@@ -1,4 +1,4 @@
-use crate::encoder::TComputeCommandEncoder;
+use crate::encoder::{CommandBufferTrace, TComputeCommandEncoder};
 use crate::profile::MetalProfileHandle;
 use metal::{CommandBuffer, ComputeCommandEncoder, ComputePassDescriptor};
 use std::cell::{Cell, RefCell};
@@ -17,6 +17,7 @@ pub struct TCommandBuffer {
     profile: Option<Rc<MetalProfileHandle>>,
     dispatches: Rc<Cell<usize>>,
     retained: Rc<RefCell<Vec<DeviceTensor>>>,
+    pub(crate) trace: Rc<RefCell<CommandBufferTrace>>,
 }
 
 impl TCommandBuffer {
@@ -27,6 +28,7 @@ impl TCommandBuffer {
             profile,
             dispatches: Rc::new(Cell::new(0)),
             retained: Rc::new(RefCell::new(vec![])),
+            trace: Rc::new(RefCell::new(CommandBufferTrace::default())),
         }
     }
 
@@ -52,7 +54,13 @@ impl TCommandBuffer {
                     attachment.set_end_of_encoder_sample_index(end);
                     self.inner.compute_command_encoder_with_descriptor(descriptor).to_owned()
                 });
-                encode_cb(&TComputeCommandEncoder::new(&encoder, &self.dispatches, &self.retained));
+                self.trace.borrow_mut().pipeline = None;
+                encode_cb(&TComputeCommandEncoder::new(
+                    &encoder,
+                    &self.dispatches,
+                    &self.retained,
+                    &self.trace,
+                ));
                 encoder.end_encoding();
                 return;
             }
@@ -61,6 +69,7 @@ impl TCommandBuffer {
             &self.shared_encoder(),
             &self.dispatches,
             &self.retained,
+            &self.trace,
         ));
     }
 
@@ -86,6 +95,7 @@ impl TCommandBuffer {
     pub fn end_encoding(&self) {
         if let Some(encoder) = self.encoder.borrow_mut().take() {
             encoder.end_encoding();
+            self.trace.borrow_mut().pipeline = None;
         }
     }
 
@@ -254,8 +264,11 @@ mod tests {
                 .get_function("lifetime_test", None)
                 .map_err(|e| tract_core::internal::anyhow!("{e}"))?;
             for _ in 0..4 {
+                let descriptor = metal::ComputePipelineDescriptor::new();
+                descriptor.set_compute_function(Some(&function));
+                descriptor.set_label("lifetime_test");
                 let pipeline = device
-                    .new_compute_pipeline_state_with_function(&function)
+                    .new_compute_pipeline_state(&descriptor)
                     .map_err(|e| tract_core::internal::anyhow!("{e}"))?;
                 let zeros = [0u32; 8];
                 let output = device.new_buffer_with_data(
