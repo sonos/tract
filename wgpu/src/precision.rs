@@ -5,6 +5,7 @@ use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::cast::cast;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+use tract_core::ops::nn::resize::Resize;
 use tract_core::ops::source::TypedSource;
 use tract_core::transform::ModelTransform;
 
@@ -101,6 +102,22 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
                 })
                 .collect::<TractResult<TVec<_>>>()?;
             target.wire_node(&node.name, op, &inputs)?
+        } else if let Some(op) = node.op_as::<Resize>() {
+            let mut inputs: TVec<OutletId> = node.inputs.iter().map(|i| mapping[i]).collect();
+            if target.outlet_fact(inputs[0])?.datum_type == DatumType::F32 {
+                inputs[0] = target.wire_node(
+                    format!("{}.half-input", node.name),
+                    cast(DatumType::F16),
+                    &[inputs[0]],
+                )?[0];
+            }
+            if let Some(slot) = op.optional_scales_input
+                && let Some(scales) = source.outlet_fact(node.inputs[slot])?.konst.as_ref()
+            {
+                // Resize scales determine integer output dimensions.
+                inputs[slot] = target.add_const(format!("{}.scales", node.name), scales.clone())?;
+            }
+            target.wire_node(&node.name, op.clone(), &inputs)?
         } else {
             FloatPrecisionTranslator::new(DatumType::F32, DatumType::F16)
                 .translate_node(source, node, target, mapping)?
@@ -149,6 +166,36 @@ mod tests {
         assert_eq!(&*output[1], &input);
         assert_eq!(output[0].datum_type(), DatumType::F32);
         assert!((output[0].try_as_plain_ram()?.as_slice::<f32>()?[0] - 0.075).abs() < 0.0001);
+        Ok(())
+    }
+
+    #[test]
+    fn internal_storage_preserves_resize_geometry() -> TractResult<()> {
+        use tract_core::ops::nn::resize::{CoordTransformer, Interpolator, Nearest};
+
+        let mut original = TypedModel::default();
+        let input = original.add_source("rgb", f32::fact([1, 3, 1080, 1920]))?;
+        let scales = original.add_const("scales", tensor1(&[1f32, 1., 0.4, 0.4]))?;
+        let resized = original.wire_node(
+            "resize",
+            Resize {
+                coord_transformer: CoordTransformer::HalfPixel,
+                interpolator: Interpolator::Linear,
+                nearest: Nearest::RoundPreferCeil,
+                optional_scales_input: Some(1),
+                optional_sizes_input: None,
+            },
+            &[input, scales],
+        )?[0];
+        original.select_output_outlets(&[resized])?;
+
+        let converted = InternalFloatPrecision.translate_model(&original)?;
+        let resize = converted.node_by_name("resize")?;
+        assert_eq!(resize.outputs[0].fact.shape.as_concrete(), Some(&[1, 3, 432, 768][..]));
+        assert_eq!(resize.outputs[0].fact.datum_type, DatumType::F16);
+        let scales = converted.outlet_fact(resize.inputs[1])?.konst.as_ref().unwrap();
+        assert_eq!(scales.try_as_plain_ram()?.as_slice::<f32>()?, &[1., 1., 0.4, 0.4]);
+        assert_eq!(converted.output_fact(0)?, original.output_fact(0)?);
         Ok(())
     }
 
