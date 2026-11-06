@@ -718,8 +718,8 @@ mod submission_tests {
                     }
                     let open = stream.open.borrow();
                     let buffer = open.buffer.as_ref().unwrap();
-                    assert!(buffer.retains_tensor(&input));
-                    assert!(buffer.retains_tensor(&output));
+                    assert!(buffer.retains_buffer_of(&input));
+                    assert!(buffer.retains_buffer_of(&output));
                 }
                 drop(retained);
                 assert!(stream.dispatch_tensors.borrow().is_empty());
