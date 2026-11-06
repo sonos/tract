@@ -1,4 +1,6 @@
 use crate::pack::Packing;
+#[allow(unused_imports)]
+use tract_data::internal::*;
 
 panel_extractor!(aarch64; kernel_packed_32_q40_to_f32 as packed_32_q40_to_f32(
     Box::new(super::q40p32z16se()),
@@ -94,3 +96,60 @@ unsafe fn kernel_packed_32_q40_to_f32(input: *const u8, output: *mut u8, k: usiz
 }
 
 bail_stub!(aarch64; unsafe fn kernel_packed_32_q40_to_f32(*const u8, *mut u8, usize));
+
+panel_extractor!(aarch64; kernel_packed_32_q20t_to_f32 as packed_32_q20t_to_f32(
+    Box::new(super::q20tp32()),
+    f32::packing(32).align(16)
+));
+
+// NEON unpack of a ternary (Q2_0_T) r=32, zip=0 panel into an f32 packing(32) panel.
+// Per 32-block: 32 f16 row-scales then 32 k-positions, each with 32 rows of 2-bit codes
+// (8 bytes). Row `r` of a position is `(byte[r/4] >> 2*(r%4)) & 3`: a table lookup spreads
+// each byte over four lanes and a per-lane shift picks the code, then `(code - 1) * scale`.
+#[cfg(target_arch = "aarch64")]
+unsafe fn kernel_packed_32_q20t_to_f32(input: *const u8, output: *mut u8, k: usize) {
+    use std::arch::aarch64::*;
+    unsafe {
+        debug_assert!(k % 32 == 0);
+        let spread_lo = vld1q_u8([0u8, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3].as_ptr());
+        let spread_hi = vld1q_u8([4u8, 4, 4, 4, 5, 5, 5, 5, 6, 6, 6, 6, 7, 7, 7, 7].as_ptr());
+        let shifts =
+            vld1q_s8([0i8, -2, -4, -6, 0, -2, -4, -6, 0, -2, -4, -6, 0, -2, -4, -6].as_ptr());
+        let three = vdupq_n_u8(3);
+        let one = vdupq_n_s8(1);
+        let mut i = input;
+        let mut o = output as *mut f32;
+        for _ in 0..k / 32 {
+            let mut scales = [0f32; 32];
+            for (r, s) in scales.iter_mut().enumerate() {
+                *s = (i as *const f16).add(r).read_unaligned().to_f32();
+            }
+            let scales: [float32x4_t; 8] =
+                std::array::from_fn(|q| vld1q_f32(scales.as_ptr().add(4 * q)));
+            i = i.add(64);
+            for _ in 0..32 {
+                let bytes = vld1_u8(i);
+                let bytes = vcombine_u8(bytes, bytes);
+                for (half, spread) in [spread_lo, spread_hi].into_iter().enumerate() {
+                    let codes = vandq_u8(vshlq_u8(vqtbl1q_u8(bytes, spread), shifts), three);
+                    let codes = vsubq_s8(vreinterpretq_s8_u8(codes), one);
+                    let lo = vmovl_s8(vget_low_s8(codes));
+                    let hi = vmovl_high_s8(codes);
+                    let quads = [
+                        vmovl_s16(vget_low_s16(lo)),
+                        vmovl_high_s16(lo),
+                        vmovl_s16(vget_low_s16(hi)),
+                        vmovl_high_s16(hi),
+                    ];
+                    for (q, quad) in quads.into_iter().enumerate() {
+                        vst1q_f32(o, vmulq_f32(vcvtq_f32_s32(quad), scales[4 * half + q]));
+                        o = o.add(4);
+                    }
+                }
+                i = i.add(8);
+            }
+        }
+    }
+}
+
+bail_stub!(aarch64; unsafe fn kernel_packed_32_q20t_to_f32(*const u8, *mut u8, usize));
