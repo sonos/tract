@@ -1,4 +1,4 @@
-use metal::{ComputeCommandEncoderRef, MTLResourceUsage, MTLSize};
+use metal::{ComputeCommandEncoderRef, ComputePipelineStateRef, MTLResourceUsage, MTLSize};
 use std::cell::{Cell, RefCell};
 use std::ops::Deref;
 use tract_core::internal::*;
@@ -49,6 +49,13 @@ impl EncoderExt for ComputeCommandEncoderRef {
     }
 }
 
+/// Bound pipeline and launch names shared by all handles of one command buffer.
+#[derive(Debug, Default)]
+pub(crate) struct CommandBufferTrace {
+    pub pipeline: Option<String>,
+    pub kernel_names: Vec<String>,
+}
+
 /// A compute encoder that retains bound tensor owners and counts kernel launches.
 /// Tensor bindings retain their Rust owners on this command buffer; bindings and
 /// other encoder configuration do not count as dispatches.
@@ -56,6 +63,7 @@ pub struct TComputeCommandEncoder<'a> {
     inner: &'a ComputeCommandEncoderRef,
     dispatches: &'a Cell<usize>,
     retained: &'a RefCell<Vec<DeviceTensor>>,
+    trace: &'a RefCell<CommandBufferTrace>,
 }
 
 impl<'a> TComputeCommandEncoder<'a> {
@@ -63,8 +71,29 @@ impl<'a> TComputeCommandEncoder<'a> {
         inner: &'a ComputeCommandEncoderRef,
         dispatches: &'a Cell<usize>,
         retained: &'a RefCell<Vec<DeviceTensor>>,
+        trace: &'a RefCell<CommandBufferTrace>,
     ) -> Self {
-        Self { inner, dispatches, retained }
+        Self { inner, dispatches, retained, trace }
+    }
+
+    /// Bind a labeled pipeline; its label is recorded for each launch on this buffer.
+    pub fn set_compute_pipeline_state(&self, pipeline: &ComputePipelineStateRef) {
+        self.inner.set_compute_pipeline_state(pipeline);
+        if cfg!(test) || log::log_enabled!(target: "tract_metal::context", log::Level::Trace) {
+            self.trace.borrow_mut().pipeline = Some(pipeline.label().to_owned());
+        } else {
+            self.trace.borrow_mut().pipeline = None;
+        }
+    }
+
+    fn record_launch(&self) {
+        self.dispatches.set(self.dispatches.get().saturating_add(1));
+        if cfg!(test) || log::log_enabled!(target: "tract_metal::context", log::Level::Trace) {
+            let mut trace = self.trace.borrow_mut();
+            if let Some(name) = trace.pipeline.clone() {
+                trace.kernel_names.push(name);
+            }
+        }
     }
 
     /// Bind a tensor and retain its Rust owner on the consuming command buffer.
@@ -88,13 +117,13 @@ impl<'a> TComputeCommandEncoder<'a> {
     /// Encode a threadgroup launch and count it toward this buffer's submission threshold.
     pub fn dispatch_thread_groups(&self, groups: MTLSize, threads_per_group: MTLSize) {
         self.inner.dispatch_thread_groups(groups, threads_per_group);
-        self.dispatches.set(self.dispatches.get().saturating_add(1));
+        self.record_launch();
     }
 
     /// Encode a thread launch and count it toward this buffer's submission threshold.
     pub fn dispatch_threads(&self, threads: MTLSize, threads_per_group: MTLSize) {
         self.inner.dispatch_threads(threads, threads_per_group);
-        self.dispatches.set(self.dispatches.get().saturating_add(1));
+        self.record_launch();
     }
 }
 
