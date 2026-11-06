@@ -17,6 +17,7 @@ for rt in $TRACT_RUNTIMES
 do
     case "$rt" in
         --cuda) asserts="--assert-op-count CudaDeconv 0";;
+        --metal) asserts="--assert-op-count MetalDeconv 0";;
         --runtime=wgpu) asserts="--assert-op-count WgpuConvTranspose 0 --assert-op-count DeconvSum 0";;
         *) continue;;
     esac
