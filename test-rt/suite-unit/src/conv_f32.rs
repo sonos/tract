@@ -679,6 +679,7 @@ pub fn suite() -> TractResult<TestSuite> {
             [1, 1],
             None,
         ),
+        ("depthwise_nchw_9x9", 1, 24, 20, 60, [9, 9], PaddingSpec::SameUpper, [1, 1], [1, 1], None),
         (
             "depthwise_nchw_width_tail",
             1,

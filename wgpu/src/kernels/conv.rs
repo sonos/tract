@@ -96,7 +96,8 @@ fn dispatch_depthwise(
         in_shape.hw_dims()[1],
         in_strides,
         element_offset(input, 0),
-    );
+    )
+    .filter(|_| dt != ShaderDtype::F32 || (shape.kh < 9 && shape.kw < 9));
     let pipeline = if let Some(rows) = vec_rows {
         let key = ("conv_dw_vec", shape, pad, rows, dt, f32_accum, epilogue, extras.len());
         q.context().chain_pipeline(key, layout, EntryPoint::typed("conv_dw_vec", dt), || {
