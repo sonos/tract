@@ -22,6 +22,7 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
 /// window) plans as [`wgpu_resize_axis_dispatch`] takes them.
 pub fn wgpu_resize_2d_dispatch(
     input: &DeviceTensor,
+    second: Option<&DeviceTensor>,
     rows: (&DeviceTensor, &DeviceTensor, usize),
     cols: (&DeviceTensor, &DeviceTensor, usize),
     output: &DeviceTensor,
@@ -39,20 +40,24 @@ pub fn wgpu_resize_2d_dispatch(
             rows.1.datum_type() == f32::datum_type() && cols.1.datum_type() == f32::datum_type()
         );
         let dt = ShaderDtype::from_datum(input.datum_type())?;
-        let layout = LayoutKind::Chain(6);
-        let outer: usize = input.shape()[..rank - 2].iter().product::<usize>().max(1);
+        let layout = LayoutKind::Chain(if second.is_some() { 7 } else { 6 });
+        let outer: usize = output.shape()[..rank - 2].iter().product::<usize>().max(1);
         let (h_in, w_in) = (input.shape()[rank - 2], input.shape()[rank - 1]);
         let (h_out, w_out) = (output.shape()[rank - 2], output.shape()[rank - 1]);
         let [wx, wy, wz] = RESIZE_2D_WG.map(|d| d as usize);
         let grid = [w_out.div_ceil(wx), h_out.div_ceil(wy), outer.div_ceil(wz)];
         let bilinear = rows.2 == 2 && cols.2 == 2 && grid.iter().all(|&g| g <= 65535);
+        ensure!(second.is_none() || (bilinear && rank == 4 && input.shape()[0] == 1));
+        let name =
+            if second.is_some() { "resize_2d_concat_bilinear" } else { "resize_2d_bilinear" };
         let pipeline = if bilinear {
-            q.context().chain_pipeline(
-                ("resize_2d_bilinear", dt),
-                layout,
-                EntryPoint::typed("resize_2d_bilinear", dt),
-                || resize_2d_bilinear_module(dt),
-            )?
+            q.context().chain_pipeline((name, dt), layout, EntryPoint::typed(name, dt), || {
+                if second.is_some() {
+                    bilinear_module(dt, true)
+                } else {
+                    resize_2d_bilinear_module(dt)
+                }
+            })?
         } else {
             q.context().chain_pipeline(
                 ("resize_2d", dt),
@@ -61,19 +66,20 @@ pub fn wgpu_resize_2d_dispatch(
                 || resize_2d_module(dt),
             )?
         };
-        let bg = q.context().bind_group(
-            layout,
-            &[
-                get_wgpu_buffer(input),
-                get_wgpu_buffer(rows.0),
-                get_wgpu_buffer(rows.1),
-                get_wgpu_buffer(cols.0),
-                get_wgpu_buffer(cols.1),
-                get_wgpu_buffer(output),
-            ],
-            q.uniform(),
-        )?;
-        let params = pack_u32s(&[
+        let mut buffers = tvec![
+            get_wgpu_buffer(input),
+            get_wgpu_buffer(rows.0),
+            get_wgpu_buffer(rows.1),
+            get_wgpu_buffer(cols.0),
+            get_wgpu_buffer(cols.1),
+        ];
+        if let Some(second) = second {
+            q.retain_tensor(second);
+            buffers.push(get_wgpu_buffer(second));
+        }
+        buffers.push(get_wgpu_buffer(output));
+        let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
+        let mut params = vec![
             element_offset(input, 0) as u32,
             element_offset(rows.0, 0) as u32,
             element_offset(rows.1, 0) as u32,
@@ -90,11 +96,18 @@ pub fn wgpu_resize_2d_dispatch(
             0,
             0,
             0,
-        ]);
-        let dyn_off = q.alloc_uniform(&params)?;
+        ];
+        if let Some(second) = second {
+            params[13] = input.shape()[1] as u32;
+            params[14] = element_offset(second, 0) as u32;
+            params.extend(
+                input.strides()[1..].iter().chain(&second.strides()[1..]).map(|&s| s as u32),
+            );
+        }
+        let dyn_off = q.alloc_uniform(&pack_u32s(&params))?;
         if bilinear {
             let grid = grid.map(|g| g as u32);
-            return q.dispatch_grid("resize_2d_bilinear", &pipeline, &bg, dyn_off, grid);
+            return q.dispatch_grid(name, &pipeline, &bg, dyn_off, grid);
         }
         q.dispatch("resize_2d", &pipeline, &bg, dyn_off, (outer * h_out * w_out) as u64)
     })
@@ -179,6 +192,7 @@ pub fn wgpu_resize_2d(source: &TypedModel, node: &TypedNode) -> TractResult<Opti
             window_h: baked.windows[0],
             window_w: baked.windows[1],
             output_shape: baked.output_shape.clone(),
+            concat_inputs: false,
         },
         plans: [ih.clone(), wh.clone(), iw.clone(), ww.clone()],
     }))
@@ -338,8 +352,52 @@ pub const RESIZE_2D_WG: [u32; 3] = [8, 8, 2];
 /// (6.8x over the generic kernel there, 144 -> 21 us per frame of the
 /// segmenter's three upsamples).
 pub fn resize_2d_bilinear_module(dt: ShaderDtype) -> String {
+    bilinear_module(dt, false)
+}
+
+fn bilinear_module(dt: ShaderDtype, concat: bool) -> String {
     let t = dt.wgsl();
+    let entry = if concat { "resize_2d_concat_bilinear" } else { "resize_2d_bilinear" };
+    let (uniform, extra_fields, second_binding, accum) = if concat {
+        (
+            7,
+            "stride_c: u32, stride_h: u32, stride_w: u32, stride_c2: u32, stride_h2: u32, stride_w2: u32,",
+            format!("@group(0) @binding(5) var<storage, read> inp2: array<{t}>;"),
+            r#"
+        var acc: f32;
+        if (c < params._p0) {
+            let base = params.off_in + c * params.stride_c;
+            let r0 = base + ih0 * params.stride_h;
+            let r1 = base + ih1 * params.stride_h;
+            let x0 = iw0 * params.stride_w;
+            let x1 = iw1 * params.stride_w;
+            acc = f32(inp[r0 + x0]) * wh0 * ww0 + f32(inp[r0 + x1]) * wh0 * ww1
+                + f32(inp[r1 + x0]) * wh1 * ww0 + f32(inp[r1 + x1]) * wh1 * ww1;
+        } else {
+            let base = params._p1 + (c - params._p0) * params.stride_c2;
+            let r0 = base + ih0 * params.stride_h2;
+            let r1 = base + ih1 * params.stride_h2;
+            let x0 = iw0 * params.stride_w2;
+            let x1 = iw1 * params.stride_w2;
+            acc = f32(inp2[r0 + x0]) * wh0 * ww0 + f32(inp2[r0 + x1]) * wh0 * ww1
+                + f32(inp2[r1 + x0]) * wh1 * ww0 + f32(inp2[r1 + x1]) * wh1 * ww1;
+        }"#,
+        )
+    } else {
+        (
+            6,
+            "",
+            String::new(),
+            r#"
+        let in_base = params.off_in + c * params.h_in * params.w_in;
+        let acc = f32(inp[in_base + row0 + iw0]) * wh0 * ww0
+            + f32(inp[in_base + row0 + iw1]) * wh0 * ww1
+            + f32(inp[in_base + row1 + iw0]) * wh1 * ww0
+            + f32(inp[in_base + row1 + iw1]) * wh1 * ww1;"#,
+        )
+    };
     let suf = dt.suffix();
+    let out_binding = uniform - 1;
     let [wx, wy, wz] = RESIZE_2D_WG;
     let mut s = preamble(dt);
     s.push_str(&format!(
@@ -361,6 +419,7 @@ struct Params {{
     _p0: u32,
     _p1: u32,
     _p2: u32,
+    {extra_fields}
 }}
 
 @group(0) @binding(0) var<storage, read> inp: array<{t}>;
@@ -368,11 +427,12 @@ struct Params {{
 @group(0) @binding(2) var<storage, read> wt_h: array<f32>;
 @group(0) @binding(3) var<storage, read> idx_w: array<i32>;
 @group(0) @binding(4) var<storage, read> wt_w: array<f32>;
-@group(0) @binding(5) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding(6) var<uniform> params: Params;
+@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+{second_binding}
+@group(0) @binding({uniform}) var<uniform> params: Params;
 
 @compute @workgroup_size({wx}, {wy}, {wz})
-fn resize_2d_bilinear_{suf}(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
     let yo = wgid.y * {wy}u + lid.y;
     let xo = wgid.x * {wx}u + lid.x;
     if (yo >= params.h_out || xo >= params.w_out) {{ return; }}
@@ -389,12 +449,8 @@ fn resize_2d_bilinear_{suf}(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(loc
     let out_pos = yo * params.w_out + xo;
     let c = wgid.z * {wz}u + lid.z;
     if (c < params.outer) {{
-        let in_base = params.off_in + c * params.h_in * params.w_in;
         let out_base = params.off_out + c * params.h_out * params.w_out;
-        let acc = f32(inp[in_base + row0 + iw0]) * wh0 * ww0
-            + f32(inp[in_base + row0 + iw1]) * wh0 * ww1
-            + f32(inp[in_base + row1 + iw0]) * wh1 * ww0
-            + f32(inp[in_base + row1 + iw1]) * wh1 * ww1;
+        {accum}
         outp[out_base + out_pos] = {t}(acc);
     }}
 }}
@@ -407,7 +463,50 @@ fn resize_2d_bilinear_{suf}(@builtin(workgroup_id) wgid: vec3<u32>, @builtin(loc
 mod tests {
     use tract_core::internal::*;
 
-    use crate::test_utils::{fill, gpu_vs_cpu};
+    use crate::test_utils::{f16_vs_f32, fill, gpu_vs_cpu, transformed};
+
+    #[test]
+    fn concat_bilinear_resize_eliminates_copies() -> TractResult<()> {
+        use tract_core::ops::array::{Slice, TypedConcat};
+        use tract_core::ops::nn::resize::{CoordTransformer, Interpolator, Nearest, Resize};
+
+        let shape = [1, 5, 7, 11];
+        let build = |dt: DatumType| -> TractResult<TypedModel> {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", dt.fact(shape))?;
+            let a = model.wire_node("first", Slice::new(1, 0, 3), &[x])?[0];
+            let b = model.wire_node("second", Slice::new(1, 3, 5), &[x])?[0];
+            let a = model.wire_node("tanh", tract_core::ops::math::tanh(), &[a])?[0];
+            let y = model.wire_node("concat", TypedConcat::new(1), &[a, b])?[0];
+            let scales = model.add_const("scales", tensor1(&[1f32, 1., 2., 2.]))?;
+            let out = model.wire_node(
+                "resize",
+                Resize {
+                    coord_transformer: CoordTransformer::HalfPixel,
+                    interpolator: Interpolator::Linear,
+                    nearest: Nearest::RoundPreferCeil,
+                    optional_scales_input: Some(1),
+                    optional_sizes_input: None,
+                },
+                &[y, scales],
+            )?[0];
+            model.select_output_outlets(&[out])?;
+            Ok(model)
+        };
+        let lowered = transformed(build(f16::datum_type())?)?;
+        assert!(
+            lowered
+                .nodes()
+                .iter()
+                .any(|n| n.op_as::<super::WgpuResize2d>().is_some_and(|r| r.concat_inputs))
+        );
+        assert!(!lowered.nodes().iter().any(|n| n.op_is::<tract_gpu::ops::concat::GpuConcat>()));
+        f16_vs_f32(
+            build,
+            Tensor::from_shape(&shape, &fill(7, shape.iter().product()))?,
+            Approximation::Approximate,
+        )
+    }
 
     /// A resize over the two trailing axes runs as one launch, two taps unrolled
     /// when it is bilinear and the generic gather otherwise, and matches the CPU.
