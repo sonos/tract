@@ -100,13 +100,13 @@ pub fn pick_by_shape(query: &Query, suitable: &[Suitable]) -> Option<usize> {
             .max_by_key(|(_, (mmm, _, pe))| (mmm.nr() == 1, pe.is_none(), mmm.mr()))
             .map(|(ix, _)| ix),
         // For a 2D matmul a GEMV kernel (nr == 1) is a poor fit: it processes one output
-        // column per pass. Demote it so it never wins the `nr * mr` tie against a square
-        // tile (i8 64x1 and 8x8 both have nr * mr == 64). Ordering among nr > 1 kernels is
-        // left untouched.
+        // column per pass, so a matrix kernel beats it even behind a panel extractor, and
+        // it never wins the `nr * mr` tie against a square tile (i8 64x1 and 8x8 both have
+        // nr * mr == 64). Ordering among nr > 1 kernels is left untouched.
         Some(n) if n > 1 => suitable
             .iter()
             .enumerate()
-            .max_by_key(|(_, (mmm, _, pe))| (pe.is_none(), mmm.nr() > 1, mmm.nr() * mmm.mr()))
+            .max_by_key(|(_, (mmm, _, pe))| (mmm.nr() > 1, pe.is_none(), mmm.nr() * mmm.mr()))
             .map(|(ix, _)| ix),
         _ => None,
     }
