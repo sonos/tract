@@ -1,0 +1,10 @@
+version 1.0;
+
+# Softmax over rows masked with -inf, as a causal or sliding-window attention
+# mask leaves them: a row's first query sees only itself, so whole runs of the
+# row, and whole lanes of a device reduction, hold nothing but -inf.
+graph network(x) -> (y)
+{
+    x = external<scalar>(shape = [5, 64]);
+    y = softmax(x, axes = [1]);
+}

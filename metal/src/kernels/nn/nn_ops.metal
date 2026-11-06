@@ -930,6 +930,15 @@ template [[host_name(
 template [[host_name(
     "nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
 
+// Bit test, so fast math cannot fold it away.
+METAL_FUNC bool is_neg_inf(float v) { return as_type<uint>(v) == 0xff800000u; }
+
+// A lane's running exp-sum, taken from its max `from` to `to`. A lane that has
+// only seen -inf so far holds nothing: exp(-inf - -inf) would be NaN.
+METAL_FUNC float rescaled_sum(float psum, float from, float to) {
+    return is_neg_inf(from) ? 0.0f : psum * fast::exp(from - to);
+}
+
 // Fast path for softmax_nd3 restricted to a contiguous softmax axis
 // (strides[1]==1) whose length is a multiple of 4; the caller guarantees both
 // so the F4 loads stay in bounds and 16-byte aligned. F4 is F's 4-wide vector.
@@ -953,17 +962,17 @@ template <typename F, typename F4>
     for (uint v = tiisg; v < vec_dim; v += tpsg) {
         float4 x = float4(in4[v]);
         float vmax = max(max(x[0], x[1]), max(x[2], x[3]));
-        if (vmax > pmax) { psum *= fast::exp(pmax - vmax); pmax = vmax; }
-        psum += dot(fast::exp(x - pmax), float4(1.0f));
+        if (vmax > pmax) { psum = rescaled_sum(psum, pmax, vmax); pmax = vmax; }
+        if (!is_neg_inf(pmax)) psum += dot(fast::exp(x - pmax), float4(1.0f));
     }
     for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
         float x = float(input[base + i]);
-        if (x > pmax) { psum *= fast::exp(pmax - x); pmax = x; }
-        psum += fast::exp(x - pmax);
+        if (x > pmax) { psum = rescaled_sum(psum, pmax, x); pmax = x; }
+        if (!is_neg_inf(pmax)) psum += fast::exp(x - pmax);
     }
 
     float amax = simd_max(pmax);
-    float inv = 1.0f / simd_sum(psum * fast::exp(pmax - amax));
+    float inv = 1.0f / simd_sum(rescaled_sum(psum, pmax, amax));
 
     for (uint v = tiisg; v < vec_dim; v += tpsg) {
         float4 x = float4(in4[v]);
