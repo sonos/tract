@@ -106,6 +106,41 @@ pub enum RoutedQ40InputMode {
     RouteRows,
 }
 
+/// Activation epilogue of the fused routed w1/w3 swiglu (must match
+/// routed_swiglu_args in ggml_mm_mv.metal).
+#[derive(Debug)]
+#[repr(C)]
+struct RoutedSwigluParams {
+    act_mode: i32,
+    has_bias: i32,
+    alpha: f32,
+    limit: f32,
+}
+
+/// Activation of the fused routed w1/w3 pair: plain swiglu silu(g)*u or the
+/// clamped gpt-oss variant ((clamp(u)+1) * min(g,limit)*sigmoid(alpha*g)).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RoutedSwigluAct {
+    Plain,
+    Clamped { alpha: f32, limit: f32 },
+}
+
+impl RoutedSwigluAct {
+    fn params(&self, has_bias: bool) -> RoutedSwigluParams {
+        match self {
+            RoutedSwigluAct::Plain => {
+                RoutedSwigluParams { act_mode: 0, has_bias: has_bias as i32, alpha: 0., limit: 0. }
+            }
+            RoutedSwigluAct::Clamped { alpha, limit } => RoutedSwigluParams {
+                act_mode: 1,
+                has_bias: has_bias as i32,
+                alpha: *alpha,
+                limit: *limit,
+            },
+        }
+    }
+}
+
 impl From<GemmDispatchParams> for GgmlGemvParams {
     fn from(params: GemmDispatchParams) -> Self {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
@@ -663,6 +698,255 @@ pub fn dispatch_routed_q40_f32(
     Ok(())
 }
 
+/// Fused routed expert up-projection: one pass computes g = w1 x (+bias1),
+/// u = w3 x (+bias3) and writes act(g, u). Decode-sized route lists run a
+/// single gemv-pair dispatch; prefill-sized lists share ONE expert sort and
+/// ONE activation gather between the two tiled matmuls, and the scatter
+/// applies bias + activation on the way out (replacing 2x(sort, gather,
+/// scatter) + bias adds + activation dispatches of the unfused lowering).
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_routed_q40_swiglu_f32(
+    stream: &MetalStream,
+    input: &DeviceTensor,
+    w1: &DeviceTensor,
+    w3: &DeviceTensor,
+    biases: Option<(&DeviceTensor, &DeviceTensor)>,
+    route_token_ids: &DeviceTensor,
+    route_expert_ids: &DeviceTensor,
+    input_mode: RoutedQ40InputMode,
+    act: RoutedSwigluAct,
+    output: &DeviceTensor,
+) -> TractResult<()> {
+    let _retained =
+        stream.retain_for_dispatch(&[input, w1, w3, route_token_ids, route_expert_ids, output]);
+    let _biases_retained = biases.map(|(b1, b3)| stream.retain_for_dispatch(&[b1, b3]));
+
+    ensure!(input.rank() == 2, "routed swiglu input must be [rows,k], got {:?}", input.shape());
+    ensure!(matches!(input.datum_type(), F32 | F16), "routed swiglu input must be f32 or f16");
+    ensure!(
+        route_token_ids.rank() == 1
+            && route_expert_ids.rank() == 1
+            && route_token_ids.datum_type() == i64::datum_type()
+            && route_expert_ids.datum_type() == i64::datum_type()
+            && route_token_ids.shape() == route_expert_ids.shape()
+    );
+    ensure!(
+        w1.rank() == 3 && get_quant_fact(w1, &Q4_0).is_some(),
+        "routed swiglu w1 must be Q4_0 [experts,n,k], got {:?}",
+        w1.shape()
+    );
+    ensure!(w3.rank() == 3 && get_quant_fact(w3, &Q4_0).is_some());
+    ensure!(w1.shape() == w3.shape(), "w1/w3 must share [experts,n,k]");
+    ensure!(output.rank() == 2 && output.datum_type() == F32);
+
+    let route_count = route_token_ids.shape()[0];
+    let n_experts = w1.shape()[0];
+    let n = w1.shape()[1];
+    let k = w1.shape()[2];
+    ensure!(input.shape()[1] == k);
+    ensure!(output.shape() == [route_count, n]);
+    ensure!(k.is_multiple_of(Q4_0.block_len()));
+    if let Some((b1, b3)) = biases {
+        for b in [b1, b3] {
+            ensure!(
+                b.datum_type() == F32 && b.shape() == [n_experts, n],
+                "routed swiglu bias must be f32 [experts,n], got {:?}",
+                b.shape()
+            );
+        }
+    }
+    if input_mode == RoutedQ40InputMode::RouteRows {
+        ensure!(input.shape()[0] == route_count);
+    }
+    if route_count == 0 || n == 0 {
+        return Ok(());
+    }
+
+    let block_count = k / Q4_0.block_len();
+    let weight_row_stride = block_count * Q4_0.block_bytes();
+    let params = RoutedQ40F32Params {
+        k: k as i32,
+        n: n as i32,
+        route_count: route_count as i32,
+        input_mode: match input_mode {
+            RoutedQ40InputMode::TokenRows => 0,
+            RoutedQ40InputMode::RouteRows => 1,
+        },
+        weight_expert_stride: (n * weight_row_stride) as u64,
+        weight_row_stride: weight_row_stride as u64,
+        input_row_stride: (input.strides()[0] as usize * input.datum_type().size_of()) as u64,
+        output_route_stride: (output.strides()[0] as usize * output.datum_type().size_of()) as u64,
+    };
+    let sparams = act.params(biases.is_some());
+    // Unused bias bind points fall back to w1 (the kernel never reads them
+    // when has_bias == 0).
+    let (b1_buf, b1_off, b3_buf, b3_off) = match biases {
+        Some((b1, b3)) => (
+            get_metal_buffer(b1),
+            b1.buffer_offset::<u64>(),
+            get_metal_buffer(b3),
+            b3.buffer_offset::<u64>(),
+        ),
+        None => (
+            get_metal_buffer(w1),
+            w1.buffer_offset::<u64>(),
+            get_metal_buffer(w1),
+            w1.buffer_offset::<u64>(),
+        ),
+    };
+
+    let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
+    if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
+        // Same grouped machinery as dispatch_routed_q40_f32, with the sort
+        // and gather shared between the two matmuls.
+        let max_chunks = route_count.div_ceil(32) + n_experts;
+        let offsets = DeviceTensor::uninitialized_dt(u32::datum_type(), &[n_experts + 1])?;
+        let sorted = DeviceTensor::uninitialized_dt(u32::datum_type(), &[route_count])?;
+        let chunks = DeviceTensor::uninitialized_dt(u32::datum_type(), &[3 * max_chunks])?;
+        let a_sorted = DeviceTensor::uninitialized_dt(f32::datum_type(), &[route_count, k])?;
+        let c1_sorted = DeviceTensor::uninitialized_dt(f32::datum_type(), &[route_count, n])?;
+        let c3_sorted = DeviceTensor::uninitialized_dt(f32::datum_type(), &[route_count, n])?;
+        let _staging_retained = stream
+            .retain_for_dispatch(&[&offsets, &sorted, &chunks, &a_sorted, &c1_sorted, &c3_sorted]);
+        let sort = stream.load_pipeline(LibraryName::Ggml, "route_sort_by_expert")?;
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            encoder.set_compute_pipeline_state(&sort);
+            encoder.set_metal_tensor(0, route_expert_ids, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(1, &offsets, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(2, &sorted, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Write);
+            encoder.set_slice(4, &[route_count as u32]);
+            encoder.set_slice(5, &[n_experts as u32]);
+            encoder.set_slice(6, &[max_chunks as u32]);
+            let grid = MTLSize { width: 1, height: 1, depth: 1 };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        let set_args = |encoder: &metal::ComputeCommandEncoderRef| {
+            encoder.set_bytes(
+                0,
+                std::mem::size_of::<RoutedQ40F32Params>() as u64,
+                &params as *const _ as *const _,
+            );
+        };
+        // The gather stages activations as f32 whatever the input dtype (the
+        // f16 variant converts exactly), so both mms and the scatter below
+        // are dtype-blind.
+        let gather_name = if input.datum_type() == F16 {
+            "routed_gather_rows_f16x"
+        } else {
+            "routed_gather_rows_f32"
+        };
+        let gather = stream.load_pipeline(LibraryName::Ggml, gather_name)?;
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            set_args(encoder);
+            encoder.set_compute_pipeline_state(&gather);
+            encoder.set_buffer(1, Some(get_metal_buffer(input)), input.buffer_offset::<u64>());
+            encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Write);
+            encoder.set_metal_tensor(3, &sorted, metal::MTLResourceUsage::Read);
+            encoder.set_buffer(
+                4,
+                Some(get_metal_buffer(route_token_ids)),
+                route_token_ids.buffer_offset::<u64>(),
+            );
+            // one thread per 4 elements (vectorized gather)
+            let total = (route_count * k.div_ceil(4)) as u64;
+            let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        let mm = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mm_q4_0_routed_f32")?;
+        for (w, c_sorted) in [(w1, &c1_sorted), (w3, &c3_sorted)] {
+            let command_buffer = stream.command_buffer();
+            command_buffer.encode(|encoder| {
+                set_args(encoder);
+                encoder.set_compute_pipeline_state(&mm);
+                encoder.set_buffer(1, Some(get_metal_buffer(w)), w.buffer_offset::<u64>());
+                encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Read);
+                encoder.set_metal_tensor(4, c_sorted, metal::MTLResourceUsage::Write);
+                encoder.set_threadgroup_memory_length(0, 8192);
+                let grid =
+                    MTLSize { width: max_chunks as u64, height: (n as u64).div_ceil(64), depth: 1 };
+                let group = MTLSize { width: 128, height: 1, depth: 1 };
+                encoder.dispatch_thread_groups(grid, group);
+            });
+        }
+        let scatter = stream.load_pipeline(LibraryName::Ggml, "routed_swiglu_scatter_f32")?;
+        let command_buffer = stream.command_buffer();
+        command_buffer.encode(|encoder| {
+            set_args(encoder);
+            encoder.set_bytes(
+                1,
+                std::mem::size_of::<RoutedSwigluParams>() as u64,
+                &sparams as *const _ as *const _,
+            );
+            encoder.set_compute_pipeline_state(&scatter);
+            encoder.set_metal_tensor(2, &c1_sorted, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(3, &c3_sorted, metal::MTLResourceUsage::Read);
+            encoder.set_metal_tensor(4, &sorted, metal::MTLResourceUsage::Read);
+            encoder.set_buffer(
+                5,
+                Some(get_metal_buffer(route_expert_ids)),
+                route_expert_ids.buffer_offset::<u64>(),
+            );
+            encoder.set_buffer(6, Some(b1_buf), b1_off as NSUInteger);
+            encoder.set_buffer(7, Some(b3_buf), b3_off as NSUInteger);
+            encoder.set_buffer(8, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
+            // one thread per 4 elements (vectorized swiglu scatter)
+            let total = (route_count * n.div_ceil(4)) as u64;
+            let grid = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
+            let group = MTLSize { width: 256, height: 1, depth: 1 };
+            encoder.dispatch_thread_groups(grid, group);
+        });
+        return Ok(());
+    }
+
+    let gemv_name = if input.datum_type() == F16 {
+        "kernel_routed_q4_0_swiglu_f16x_f32"
+    } else {
+        "kernel_routed_q4_0_swiglu_f32"
+    };
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, gemv_name)?;
+    let command_buffer = stream.command_buffer();
+    command_buffer.encode(|encoder| {
+        encoder.set_compute_pipeline_state(&pipeline);
+        encoder.set_bytes(
+            0,
+            std::mem::size_of::<RoutedQ40F32Params>() as u64,
+            &params as *const _ as *const _,
+        );
+        encoder.set_bytes(
+            1,
+            std::mem::size_of::<RoutedSwigluParams>() as u64,
+            &sparams as *const _ as *const _,
+        );
+        encoder.set_buffer(2, Some(get_metal_buffer(w1)), w1.buffer_offset::<u64>());
+        encoder.set_buffer(3, Some(get_metal_buffer(w3)), w3.buffer_offset::<u64>());
+        encoder.set_buffer(4, Some(get_metal_buffer(input)), input.buffer_offset::<u64>());
+        encoder.set_buffer(
+            5,
+            Some(get_metal_buffer(route_token_ids)),
+            route_token_ids.buffer_offset::<u64>(),
+        );
+        encoder.set_buffer(
+            6,
+            Some(get_metal_buffer(route_expert_ids)),
+            route_expert_ids.buffer_offset::<u64>(),
+        );
+        encoder.set_buffer(7, Some(b1_buf), b1_off as NSUInteger);
+        encoder.set_buffer(8, Some(b3_buf), b3_off as NSUInteger);
+        encoder.set_buffer(9, Some(get_metal_buffer(output)), output.buffer_offset::<u64>());
+
+        let grid_size =
+            MTLSize { width: (n as u64).div_ceil(8), height: route_count as u64, depth: 1 };
+        let group_size = MTLSize { width: 8, height: 8, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
+    });
+    Ok(())
+}
 #[cfg(test)]
 mod tests {
     use crate::utils::with_borrowed_metal_stream;
@@ -992,6 +1276,107 @@ mod tests {
     #[test]
     fn test_routed_q40_route_rows() -> TractResult<()> {
         run_routed_q40_case(RoutedQ40InputMode::RouteRows)
+    }
+
+    /// The f16-activation variants must be BIT-IDENTICAL to upcasting the
+    /// activations to f32 first: same kernels, same accumulation order, the
+    /// half->float element conversion is exact. Covers the per-route gemv
+    /// (few routes) and the expert-grouped gather+mm path (many routes), and
+    /// the router score gemv through dispatch_route_topk_f32.
+    #[test]
+    fn test_routed_swiglu_and_router_f16_input_bit_exact() -> TractResult<()> {
+        use tract_num_traits::AsPrimitive;
+        for tokens in [3usize, 40] {
+            with_borrowed_metal_stream(|stream| {
+                let experts = 8;
+                let per_token = 4;
+                let routes = tokens * per_token;
+                let n = 48;
+                let k = 64;
+                let input_f16 = Tensor::from_shape(
+                    &[tokens, k],
+                    &(0..tokens * k)
+                        .map(|i| {
+                            let v: f32 = ((i * 13 % 97) as f32 - 48.0) / 64.0;
+                            let h: f16 = v.as_();
+                            h
+                        })
+                        .collect::<Vec<_>>(),
+                )?;
+                let input_f32 = input_f16.cast_to::<f32>()?.into_owned();
+                let weight_data = (0..experts * n * k)
+                    .map(|i| ((i * 17 % 101) as f32 - 50.0) / 80.0)
+                    .collect::<Vec<_>>();
+                let w1 = q40_weights_tensor(&[experts, n, k], &weight_data)?.into_device()?;
+                let w3 = q40_weights_tensor(&[experts, n, k], &weight_data)?.into_device()?;
+                let route_token_ids: Vec<i64> =
+                    (0..routes as i64).map(|r| r / per_token as i64).collect();
+                let route_expert_ids: Vec<i64> =
+                    (0..routes as i64).map(|r| (r * 5 + r / 7) % experts as i64).collect();
+                let token_ids = Tensor::from_shape(&[routes], &route_token_ids)?.into_device()?;
+                let expert_ids = Tensor::from_shape(&[routes], &route_expert_ids)?.into_device()?;
+
+                let x16 = input_f16.clone().into_device()?;
+                let x32 = input_f32.clone().into_device()?;
+                let mut outs: Vec<Tensor> = vec![];
+                for x in [&x32, &x16] {
+                    let output = DeviceTensor::uninitialized_dt(F32, &[routes, n])?;
+                    dispatch_routed_q40_swiglu_f32(
+                        stream,
+                        x,
+                        &w1,
+                        &w3,
+                        None,
+                        &token_ids,
+                        &expert_ids,
+                        RoutedQ40InputMode::TokenRows,
+                        RoutedSwigluAct::Plain,
+                        &output,
+                    )?;
+                    stream.wait_until_completed()?;
+                    outs.push(output.to_host()?.into_tensor());
+                }
+                ensure!(outs[0] == outs[1], "swiglu f16 input diverged from upcast-first");
+
+                // Router scores + topk: same exactness contract.
+                let wg = Tensor::from_shape(
+                    &[experts, k],
+                    &(0..experts * k)
+                        .map(|i| ((i * 7 % 89) as f32 - 44.0) / 60.0)
+                        .collect::<Vec<_>>(),
+                )?
+                .into_device()?;
+                let kk = 4usize;
+                let mut routed: Vec<(Tensor, Tensor, Tensor)> = vec![];
+                for x in [&x32, &x16] {
+                    let tid = DeviceTensor::uninitialized_dt(DatumType::I64, &[tokens * kk])?;
+                    let eid = DeviceTensor::uninitialized_dt(DatumType::I64, &[tokens * kk])?;
+                    let wts = DeviceTensor::uninitialized_dt(F32, &[tokens * kk])?;
+                    crate::kernels::moe::dispatch_route_topk_f32(
+                        stream,
+                        x,
+                        &wg,
+                        None,
+                        kk,
+                        &tract_transformers::ops::moe_ffn::GateMode::SoftmaxTopk,
+                        &tid,
+                        &eid,
+                        &wts,
+                    )?;
+                    stream.wait_until_completed()?;
+                    routed.push((
+                        tid.to_host()?.into_tensor(),
+                        eid.to_host()?.into_tensor(),
+                        wts.to_host()?.into_tensor(),
+                    ));
+                }
+                ensure!(routed[0].0 == routed[1].0, "router token ids diverged");
+                ensure!(routed[0].1 == routed[1].1, "router expert ids diverged");
+                ensure!(routed[0].2 == routed[1].2, "router weights diverged");
+                Ok(())
+            })?;
+        }
+        Ok(())
     }
 
     #[test]
