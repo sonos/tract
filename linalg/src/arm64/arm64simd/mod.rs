@@ -39,7 +39,7 @@ pub use silu_fused::arm64simd_silu_f32_4n_fused;
 pub use sum::arm64simd_sum_f32_16n;
 pub use unicast::*;
 
-use crate::block_quant::{PackedBlockQuantFormat, Q4_0};
+use crate::block_quant::{PackedBlockQuantFormat, Q2_0_T, Q4_0};
 use crate::pack::PackedFormat;
 
 use super::Kind;
@@ -72,6 +72,10 @@ MMMExternKernel!(aarch64; arm64simd_mmm_f32_64x1_gen<f32>(64, 1)@(16, 16));
 
 fn q40p32z16se() -> PackedBlockQuantFormat {
     PackedBlockQuantFormat::new(&Q4_0, 32, 16, true)
+}
+
+fn q20tp32() -> PackedBlockQuantFormat {
+    PackedBlockQuantFormat::new(&Q2_0_T, 32, 0, false)
 }
 
 MMMExternKernel!(aarch64; arm64simd_mmm_f32_32x1_gen<f32>(32, 1)@(16, 16)
