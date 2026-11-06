@@ -5,6 +5,7 @@ mod fuse_axis_op;
 mod untranspose_matmul_output;
 
 pub use add_matmul_broadcast::add_broadcast_pre_matmul;
+pub use add_matmul_broadcast::is_ggml_batch_broadcast;
 pub use conv_nhwc::rewrite_conv_to_nhwc;
 pub use fold_gdn_beta_sigmoid::fold_gdn_beta_sigmoid;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};

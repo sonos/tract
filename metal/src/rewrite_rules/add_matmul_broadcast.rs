@@ -4,6 +4,26 @@ use tract_core::ops::array::MultiBroadcastTo;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_gpu::rule_ensure;
 
+/// Whether every Metal GEMM takes these batch axes as they are: both sides
+/// equal, or one side all ones.
+pub fn batches_need_no_broadcast(a: &[TDim], b: &[TDim]) -> bool {
+    a == b || a.iter().all(|d| d.is_one()) || b.iter().all(|d| d.is_one())
+}
+
+/// Whether GGML's batch broadcast computes these batch axes: it reads B's
+/// batch `i / (a_batch / b_batch)` for A's batch `i`, which is right only when
+/// B matches A on a prefix of the axes and is one on the rest.
+pub fn is_ggml_batch_broadcast(a: &[TDim], b: &[TDim]) -> bool {
+    a.len() == b.len()
+        && a != b
+        && (0..=a.len())
+            .any(|split| a[..split] == b[..split] && b[split..].iter().all(|d| d.is_one()))
+}
+
+/// Broadcasts the inputs of a matmul whose batch axes no Metal GEMM runs as
+/// they are (see [`batches_need_no_broadcast`], and
+/// [`is_ggml_batch_broadcast`] when GGML is to run it) to their common batch
+/// shape, so the GEMM sees equal batches.
 pub fn add_broadcast_pre_matmul(
     ctx: &MetalTransform,
     model: &TypedModel,
@@ -12,70 +32,39 @@ pub fn add_broadcast_pre_matmul(
     op: &PrefixMatMul,
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
-    // GGML supports broadcast
-    rule_ensure!(in_facts[0].rank() > 2);
-    rule_ensure!(
-        !(ctx.gemm_impl == Some(MetalGemmImplKind::Ggml)
-            || (ctx.gemm_impl.is_none() && in_facts[0].datum_type == DatumType::F32))
-    );
+    let rank = in_facts[0].rank();
+    rule_ensure!(rank > 2 && in_facts[1].rank() == rank);
+    let a_batch = &in_facts[0].shape.dims()[..rank - 2];
+    let b_batch = &in_facts[1].shape.dims()[..rank - 2];
+    rule_ensure!(!batches_need_no_broadcast(a_batch, b_batch));
+    let ggml = ctx.gemm_impl == Some(MetalGemmImplKind::Ggml)
+        || (ctx.gemm_impl.is_none() && in_facts[0].datum_type == DatumType::F32);
+    rule_ensure!(!(ggml && is_ggml_batch_broadcast(a_batch, b_batch)));
 
-    // Detect broadcast
-    let a_shape = &in_facts[0].shape;
-    let b_shape = &in_facts[1].shape;
-    let a_rank = a_shape.rank();
-
-    let a_batch = &a_shape[..a_rank - 2];
-    let b_batch = &b_shape[..a_rank - 2];
-
-    // Remove from batch_dim array all symbolic dimensions also present in the other batch_dim array
-    // Symbolic Dimensions will be considered as 1 in gcd() so this allows identifying a
-    // symbolic broadcast factor.
-    let a_batch_dims: Vec<_> = a_batch
-        .iter()
-        .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || b_batch.contains(tdim))
-        .cloned()
-        .collect();
-
-    let b_batch_dims: Vec<_> = b_batch
-        .iter()
-        .filter(|tdim| !matches!(tdim, TDim::Sym(_)) || a_batch.contains(tdim))
-        .cloned()
-        .collect();
-
-    let symb_in_a = a_batch_dims != a_batch;
-    let symb_in_b = b_batch_dims != b_batch;
-
-    let a_batch_size = a_batch_dims.iter().product::<TDim>().gcd();
-    let b_batch_size = b_batch_dims.iter().product::<TDim>().gcd();
-
-    let (activ_slot, weight_slot) = if (a_batch_size % b_batch_size == 0)
-        && ((a_batch_size != b_batch_size) || symb_in_a)
-    {
-        (0, 1)
-    } else if (b_batch_size % a_batch_size == 0) && ((a_batch_size != b_batch_size) || symb_in_b) {
-        (1, 0)
-    } else {
-        return Ok(None);
-    };
+    let mut batch = tvec!();
+    for (a, b) in a_batch.iter().zip(b_batch) {
+        if a == b || b.is_one() {
+            batch.push(a.clone());
+        } else if a.is_one() {
+            batch.push(b.clone());
+        } else {
+            return Ok(None);
+        }
+    }
 
     let mut patch = TypedModelPatch::default();
-    let activ = patch.tap_model(model, node.inputs[activ_slot])?;
-    let weights = patch.tap_model(model, node.inputs[weight_slot])?;
-    let brd_shape = ShapeFact::from_dims(
-        [
-            in_facts[activ_slot].shape.dims()[..a_rank - 2].to_vec(),
-            in_facts[weight_slot].shape.dims()[a_rank - 2..].to_vec(),
-        ]
-        .concat(),
-    );
-    let brd = MultiBroadcastTo { shape: brd_shape };
-
-    let brd_out = patch.wire_node(format!("{node_name}.broadcast"), brd, &[weights])?[0];
-
-    let inputs = if activ_slot == 1 { [brd_out, activ] } else { [activ, brd_out] };
+    let mut inputs = tvec!();
+    for (slot, fact) in in_facts.iter().enumerate() {
+        let mut wire = patch.tap_model(model, node.inputs[slot])?;
+        if fact.shape.dims()[..rank - 2] != *batch {
+            let shape: TVec<TDim> =
+                batch.iter().chain(&fact.shape.dims()[rank - 2..]).cloned().collect();
+            let brd = MultiBroadcastTo { shape: shape.into() };
+            wire = patch.wire_node(format!("{node_name}.broadcast_{slot}"), brd, &[wire])?[0];
+        }
+        inputs.push(wire);
+    }
     let mm_out = patch.wire_node(node_name, *op, &inputs)?[0];
-
     patch.shunt_outside(model, node.id.into(), mm_out)?;
-
     Ok(Some(patch))
 }

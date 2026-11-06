@@ -1,0 +1,28 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# Matmuls whose batch axes broadcast one axis at a time.  A device GEMM folds
+# each side's batch axes into one, so only some layouts survive it: equal
+# batches, one side all ones, and (on GGML) the weight side matching on a
+# prefix and one on the rest.  `lead` broadcasts the weights on a leading axis,
+# `trail` on the trailing one, and `mixed` broadcasts the left side over a
+# trailing axis of the right one, as a pulsed attention's queries meet the
+# keys of a window of chunks.
+graph network(lead_a, lead_b, trail_a, trail_b, mixed_a, mixed_b, half_a, half_b)
+    -> (lead, trail, mixed, half)
+{
+    lead_a = tract_core_external(shape = [2, 3, 4, 8], datum_type = 'f32');
+    lead_b = tract_core_external(shape = [1, 3, 8, 5], datum_type = 'f32');
+    trail_a = tract_core_external(shape = [3, 2, 4, 8], datum_type = 'f32');
+    trail_b = tract_core_external(shape = [3, 1, 8, 5], datum_type = 'f32');
+    mixed_a = tract_core_external(shape = [1, 8, 1, 1, 2, 64], datum_type = 'f32');
+    mixed_b = tract_core_external(shape = [1, 8, 1, 2, 64, 6], datum_type = 'f32');
+    half_a = tract_core_external(shape = [2, 3, 4, 8], datum_type = 'f16');
+    half_b = tract_core_external(shape = [1, 3, 8, 5], datum_type = 'f16');
+
+    lead = matmul(lead_a, lead_b);
+    trail = matmul(trail_a, trail_b);
+    mixed = matmul(mixed_a, mixed_b);
+    half = matmul(half_a, half_b);
+}
