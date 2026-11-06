@@ -379,8 +379,7 @@ pub fn wgpu_bq_dispatch(
 
         let format = if fact.inner.format.dyn_eq(&Q4_0) { 0 } else { 1 };
         let a_off = u32_of(element_offset(a, 0))?;
-        let tiled = dt == ShaderDtype::F32
-            && a_stride_k == 1
+        let tiled = a_stride_k == 1
             && a_stride_m.is_multiple_of(4)
             && a_off.is_multiple_of(4)
             && a_prefix.is_multiple_of(4);
@@ -395,7 +394,7 @@ pub fn wgpu_bq_dispatch(
                 ),
                 layout,
                 EntryPoint::typed("bq_tiled", dt),
-                || bq_tiled_module(format == 0, epilogue, extras.len()),
+                || bq_tiled_module(format == 0, dt, epilogue, extras.len()),
             )?
         } else {
             q.context().chain_pipeline(
@@ -458,11 +457,11 @@ pub fn wgpu_bq_dispatch(
     })
 }
 
-/// `bq_module`'s product for f32 rows laid out contiguously: one 4x4 output tile per invocation,
+/// `bq_module`'s product for A rows laid out contiguously: one 4x4 output tile per invocation,
 /// each block's scale and codes read once, and four codes unpacked at a time against a `vec4` of
-/// A. Takes no workgroup memory, so it has no barriers.
-fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
-    let dt = ShaderDtype::F32;
+/// A. An f16 A is widened on load, so the product and its accumulation are f32 whatever `dt`.
+/// Takes no workgroup memory, so it has no barriers.
+fn bq_tiled_module(q4: bool, dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let out_binding = 2 + extras;
@@ -519,7 +518,7 @@ fn bq_tiled_module(q4: bool, epilogue: &[ChainStep], extras: usize) -> String {
     s.push_str(&format!(
         r#"
 {params}
-@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
+@group(0) @binding(0) var<storage, read> a4: array<vec4<{t}>>;
 @group(0) @binding(1) var<storage, read> b: array<u32>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
@@ -529,7 +528,7 @@ fn emit(value: f32, row: u32, col: u32, pref: u32) {{
         return;
     }}
     let oe = pref * params.c_prefix_stride + row * params.c_stride_m + col * params.c_stride_n;
-    var v = value;
+    var v = {t}(value);
 {epilogue}    outp[params.c_off + oe] = v;
 }}
 
@@ -569,10 +568,10 @@ fn bq_tiled_{suf}(
         var b3 = vec4<f32>(0.0);
         for (var c = 0u; c < 8u; c++) {{
             let kv = block * 8u + c;
-            let a0 = a4[r0 + kv];
-            let a1 = a4[r1 + kv];
-            let a2 = a4[r2 + kv];
-            let a3 = a4[r3 + kv];
+            let a0 = vec4<f32>(a4[r0 + kv]);
+            let a1 = vec4<f32>(a4[r1 + kv]);
+            let a2 = vec4<f32>(a4[r2 + kv]);
+            let a3 = vec4<f32>(a4[r3 + kv]);
 {dots}        }}
         acc0 += b0 * s0;
         acc1 += b1 * s1;
