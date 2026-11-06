@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol S;
+extension tract_assert S>=0;
+
+# Replicate left padding feeding a strided causal conv, as Mimi's encoder
+# downsamples.  The conv pulsifier pads its own window with the first frame,
+# so the edge padding costs no delay, even with a pulse no longer than it.
+graph network(input) -> (output)
+{
+    input  = external<scalar>(shape = [1, 2, S]);
+    padded = pad(input, padding = [(0, 0), (0, 0), (2, 0)], border = 'replicate');
+    kernel = [[[0.5, -1.0, 2.0, 0.25], [1.0, 0.5, -0.5, 1.5]], [[-1.0, 0.75, 0.5, 1.0], [0.25, -0.5, 1.0, 2.0]]];
+    output = conv(padded, kernel, dilation = [1], padding = [(0, 0)], stride = [2], groups = 1, border = 'constant');
+}

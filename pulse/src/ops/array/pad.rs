@@ -7,7 +7,7 @@ register_all!(Pad: pulsify);
 
 fn pulsify(
     op: &Pad,
-    _source: &TypedModel,
+    source: &TypedModel,
     node: &TypedNode,
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
@@ -17,6 +17,9 @@ fn pulsify(
     let mut input = mapping[&node.inputs[0]];
     let fact = target.outlet_fact(input)?.clone();
     let stream = fact.stream.as_ref().unwrap();
+    if crate::ops::cnn::absorbed_edge_pad(source, node.id.into(), stream.axis)?.is_some() {
+        return Ok(Some(tvec!(input)));
+    }
     // Non-constant mode can't handle non-stream-axis padding
     let has_non_stream_axis_padding =
         op.pads.iter().enumerate().any(|(ax, &(a, b))| ax != stream.axis && (a != 0 || b != 0));
