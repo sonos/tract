@@ -34,6 +34,7 @@ pub mod q_binary;
 pub mod q_elmwise;
 pub mod q_flavours;
 pub mod q_helpers;
+pub mod reduce_arg;
 pub mod rms_norm;
 pub mod rotate_half;
 pub mod scaled_masked_softmax;
@@ -61,6 +62,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("move_axis", move_axis::suite()?);
     suite.add("pad", pad::suite()?);
     suite.add("q_flavours", q_flavours::suite()?);
+    suite.add("reduce_arg", reduce_arg::suite()?);
     suite.add("rms_norm", rms_norm::suite()?);
     suite.add("apply_rope", apply_rope::suite()?);
     suite.add("rotate_half", rotate_half::suite()?);

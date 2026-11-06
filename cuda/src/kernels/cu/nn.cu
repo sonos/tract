@@ -194,6 +194,124 @@ __device__ void reduce(const T *input, T *output, const int32_t shape_0,
     INSTANTIATE_REDUCE_1(mean_of_squares, name, T, MeanOfSquaresOp, bname,     \
                          block_size)
 
+// Largest finite value of T, as float: the starting candidate of an arg
+// reduction is (index 0, +-max) like core's fold from T::max_value().
+template <typename T> struct ArgLimit;
+template <> struct ArgLimit<float> {
+    __device__ __forceinline__ static float max() { return FLT_MAX; }
+};
+template <> struct ArgLimit<__half> {
+    __device__ __forceinline__ static float max() { return 65504.0f; }
+};
+
+// Strict total order on (value, index) pairs: the reduction result does not
+// depend on how threads split the axis.
+template <bool IS_MAX, bool LAST>
+__device__ __forceinline__ bool arg_better(float bv, int32_t bi, float av,
+                                           int32_t ai) {
+    if (IS_MAX ? bv > av : bv < av)
+        return true;
+    return bv == av && (LAST ? bi > ai : bi < ai);
+}
+
+template <bool IS_MAX, bool LAST>
+__device__ __forceinline__ void arg_warp_reduce(float &v, int32_t &i) {
+#pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+        float ov = __shfl_xor_sync(0xffffffff, v, offset, WARP_SIZE);
+        int32_t oi = __shfl_xor_sync(0xffffffff, i, offset, WARP_SIZE);
+        if (arg_better<IS_MAX, LAST>(ov, oi, v, i)) {
+            v = ov;
+            i = oi;
+        }
+    }
+}
+
+// Index of the extreme value along the middle axis of a rank-3 view, written
+// as int64. NaN elements are skipped, as in core's ArgMax/ArgMin.
+template <typename T, int BLOCK_THREADS, bool IS_MAX, bool LAST>
+__device__ void
+arg_reduce(const T *input, int64_t *output, const int32_t shape_0,
+           const int32_t shape_1, const int32_t shape_2,
+           const int32_t in_stride_0, const int32_t in_stride_1,
+           const int32_t in_stride_2, const int32_t out_stride_0,
+           const int32_t out_stride_1, const int32_t out_stride_2) {
+    int64_t linear =
+        (int64_t)blockIdx.x + (int64_t)blockIdx.y * (int64_t)gridDim.x;
+    int64_t total = (int64_t)shape_0 * (int64_t)shape_2;
+    if (linear >= total)
+        return;
+
+    int32_t y = (int32_t)(linear / shape_2);
+    int32_t x = (int32_t)(linear - (int64_t)y * shape_2);
+
+    input += (int64_t)y * in_stride_0 + (int64_t)x * in_stride_2;
+    output += (int64_t)y * out_stride_0 + (int64_t)x * out_stride_2;
+
+    const float start = IS_MAX ? -ArgLimit<T>::max() : ArgLimit<T>::max();
+    float best = start;
+    int32_t best_i = 0;
+    for (int32_t i = threadIdx.x; i < shape_1; i += BLOCK_THREADS) {
+        float v = (float)input[(int64_t)i * in_stride_1];
+        if (!isnan(v) && arg_better<IS_MAX, LAST>(v, i, best, best_i)) {
+            best = v;
+            best_i = i;
+        }
+    }
+
+    arg_warp_reduce<IS_MAX, LAST>(best, best_i);
+
+    constexpr int NUM_WARPS = (BLOCK_THREADS + WARP_SIZE - 1) / WARP_SIZE;
+    if constexpr (NUM_WARPS == 1) {
+        if (threadIdx.x == 0) {
+            *output = (int64_t)best_i;
+        }
+    } else {
+        const int warp_id = threadIdx.x / WARP_SIZE;
+        const int lane_id = threadIdx.x % WARP_SIZE;
+
+        __shared__ float shared_v[NUM_WARPS];
+        __shared__ int32_t shared_i[NUM_WARPS];
+
+        if (lane_id == 0) {
+            shared_v[warp_id] = best;
+            shared_i[warp_id] = best_i;
+        }
+        __syncthreads();
+
+        if (warp_id == 0) {
+            best = lane_id < NUM_WARPS ? shared_v[lane_id] : start;
+            best_i = lane_id < NUM_WARPS ? shared_i[lane_id] : 0;
+            arg_warp_reduce<IS_MAX, LAST>(best, best_i);
+            if (lane_id == 0) {
+                *output = (int64_t)best_i;
+            }
+        }
+    }
+}
+
+#define INSTANTIATE_ARG_REDUCE_1(op_name, name, T, IS_MAX, LAST, bname,       \
+                                 block_size)                                   \
+    extern "C" __global__ void CAT5(reduce_, op_name, _, bname, name)(         \
+        const T *input, int64_t *output, const int32_t shape_0,                \
+        const int32_t shape_1, const int32_t shape_2,                          \
+        const int32_t in_stride_0, const int32_t in_stride_1,                  \
+        const int32_t in_stride_2, const int32_t out_stride_0,                 \
+        const int32_t out_stride_1, const int32_t out_stride_2) {              \
+        arg_reduce<T, block_size, IS_MAX, LAST>(                               \
+            input, output, shape_0, shape_1, shape_2, in_stride_0,             \
+            in_stride_1, in_stride_2, out_stride_0, out_stride_1,              \
+            out_stride_2);                                                     \
+    }
+
+#define INSTANTIATE_ARG_REDUCE(name, T, bname, block_size)                     \
+    INSTANTIATE_ARG_REDUCE_1(argmax, name, T, true, false, bname, block_size)  \
+    INSTANTIATE_ARG_REDUCE_1(argmax_last, name, T, true, true, bname,          \
+                             block_size)                                       \
+    INSTANTIATE_ARG_REDUCE_1(argmin, name, T, false, false, bname, block_size) \
+    INSTANTIATE_ARG_REDUCE_1(argmin_last, name, T, false, true, bname,         \
+                             block_size)
+
 extern "C" __global__ void gelu_approx_f32(const float *input, float *output,
                                            int32_t len) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
@@ -1034,6 +1152,10 @@ INSTANTIATE_REDUCE(f32, float, small_, 32)
 INSTANTIATE_REDUCE(f32, float, , 1024)
 INSTANTIATE_REDUCE(f16, __half, small_, 32)
 INSTANTIATE_REDUCE(f16, __half, , 1024)
+INSTANTIATE_ARG_REDUCE(f32, float, small_, 32)
+INSTANTIATE_ARG_REDUCE(f32, float, , 1024)
+INSTANTIATE_ARG_REDUCE(f16, __half, small_, 32)
+INSTANTIATE_ARG_REDUCE(f16, __half, , 1024)
 INSTANTIATE_REDUCE_1(any, bool, char, BoolOrOp, small_, 32)
 INSTANTIATE_REDUCE_1(any, bool, char, BoolOrOp, , 1024)
 INSTANTIATE_REDUCE_1(all, bool, char, BoolAndOp, small_, 32)

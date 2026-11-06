@@ -16,6 +16,12 @@ pub enum Reducer {
     Max,
     All,
     Any,
+    /// Index of the largest element, the last one among ties when the flag is
+    /// set; NaN never wins. Writes i64, matching core's `Reducer::ArgMax`.
+    ArgMax(bool),
+    /// Index of the smallest element, the last one among ties when the flag is
+    /// set; NaN never wins. Writes i64, matching core's `Reducer::ArgMin`.
+    ArgMin(bool),
 }
 
 impl fmt::Display for Reducer {
@@ -29,6 +35,10 @@ impl fmt::Display for Reducer {
             Self::Max => write!(f, "max"),
             Self::All => write!(f, "all"),
             Self::Any => write!(f, "any"),
+            Self::ArgMax(false) => write!(f, "argmax"),
+            Self::ArgMax(true) => write!(f, "argmax_last"),
+            Self::ArgMin(false) => write!(f, "argmin"),
+            Self::ArgMin(true) => write!(f, "argmin_last"),
         }
     }
 }
@@ -45,12 +55,33 @@ impl Reducer {
         Self::Any,
     ];
 
+    /// The index reducers, kept out of `ALL`: a backend opts into them with its
+    /// own dtype check once it has their kernels.
+    pub const ARG: [Reducer; 4] =
+        [Self::ArgMax(false), Self::ArgMax(true), Self::ArgMin(false), Self::ArgMin(true)];
+
     pub fn is_logic(&self) -> bool {
         *self == Reducer::All || *self == Reducer::Any
     }
 
+    pub fn is_arg(&self) -> bool {
+        matches!(self, Reducer::ArgMax(_) | Reducer::ArgMin(_))
+    }
+
+    /// Value reducers on the backend-shared dtypes; false for the index
+    /// reducers, which each backend enables separately.
     pub fn is_supported_dt(&self, dt: DatumType) -> bool {
-        if self.is_logic() { dt.is::<bool>() } else { dt.is::<f32>() || dt.is::<f16>() }
+        if self.is_arg() {
+            false
+        } else if self.is_logic() {
+            dt.is::<bool>()
+        } else {
+            dt.is::<f32>() || dt.is::<f16>()
+        }
+    }
+
+    pub fn output_dt(&self, input_dt: DatumType) -> DatumType {
+        if self.is_arg() { DatumType::I64 } else { input_dt }
     }
 
     pub fn from_tract_core(reducer: &core_ops_nn::Reducer) -> TractResult<Self> {
@@ -63,7 +94,8 @@ impl Reducer {
             core_ops_nn::Reducer::Max => Ok(Reducer::Max),
             core_ops_nn::Reducer::All => Ok(Reducer::All),
             core_ops_nn::Reducer::Any => Ok(Reducer::Any),
-            _ => bail!("Unsupported reducer {:?} on GPU", reducer),
+            core_ops_nn::Reducer::ArgMax(last) => Ok(Reducer::ArgMax(*last)),
+            core_ops_nn::Reducer::ArgMin(last) => Ok(Reducer::ArgMin(*last)),
         }
     }
 }
@@ -133,8 +165,11 @@ impl EvalOp for GpuReduce {
         let input = input_value.to_device_tensor()?;
         let mut output_shape = input.shape().to_vec();
         output_shape[self.axes[0]] = 1;
-        let output =
-            crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), &output_shape)?;
+        let output = crate::turn_handler::make_tensor_for_node(
+            ctx,
+            self.reducer.output_dt(input.datum_type()),
+            &output_shape,
+        )?;
         (self.dispatch)(&self.reducer, input, self.axes[0], &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
@@ -148,7 +183,7 @@ impl TypedOp for GpuReduce {
             for &ax in &self.axes {
                 shape[ax] = 1.to_dim();
             }
-            let dt = facts[0].datum_type;
+            let dt = self.reducer.output_dt(facts[0].datum_type);
             Ok(tvec!(dt.fact(shape)))
         })
         .with_context(|| format!("Error while computing facts for {:?}", self.name()))

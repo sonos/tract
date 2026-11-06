@@ -10,6 +10,7 @@ pub use tract_gpu::ops::reduce::Reducer;
 fn cuda_reduce_is_supported_dt(reducer: &Reducer, dt: DatumType) -> bool {
     reducer.is_supported_dt(dt)
         || (matches!(reducer, Reducer::Sum | Reducer::Prod) && dt.is::<i64>())
+        || (reducer.is_arg() && (dt.is::<f32>() || dt.is::<f16>()))
 }
 
 pub fn kernel_name(reducer: &Reducer, dt: DatumType, n_cols: usize) -> TractResult<String> {
@@ -33,7 +34,7 @@ pub fn cuda_reduce_launch(
     output: &DeviceTensor,
 ) -> TractResult<()> {
     crate::with_cuda_stream(|stream| {
-        ensure!(output.datum_type() == input.datum_type());
+        ensure!(output.datum_type() == reducer.output_dt(input.datum_type()));
         ensure!(output.shape()[axis] == 1);
 
         let input_shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
@@ -125,8 +126,9 @@ mod tests {
             let cpu_output = tract_reducer.reduce(&[axis], &a.to_host()?.into_tensor())?;
             let mut o_shape = a.shape().to_vec();
             o_shape[axis] = 1;
-            let cuda_output_dt =
-                unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+            let cuda_output_dt = unsafe {
+                DeviceTensor::uninitialized_dt(reducer.output_dt(a.datum_type()), &o_shape)?
+            };
             cuda_reduce_launch(&reducer, &a, axis, &cuda_output_dt)?;
             stream.synchronize()?;
             let cuda_output = cuda_output_dt;
@@ -285,6 +287,73 @@ mod tests {
         Ok(())
     }
 
+    fn arg_case<F: Datum + Copy>(shape: &[usize], axis: usize, values: &[F]) -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            let input = Tensor::from_shape(shape, values)?;
+            let device = input.clone().into_device()?;
+            let mut o_shape = shape.to_vec();
+            o_shape[axis] = 1;
+            for reducer in Reducer::ARG {
+                let expected = match reducer {
+                    Reducer::ArgMax(last) => TractReducer::ArgMax(last),
+                    Reducer::ArgMin(last) => TractReducer::ArgMin(last),
+                    _ => unreachable!(),
+                }
+                .reduce(&[axis], &input)?;
+                let output =
+                    unsafe { DeviceTensor::uninitialized_dt(i64::datum_type(), &o_shape)? };
+                cuda_reduce_launch(&reducer, &device, axis, &output)?;
+                stream.synchronize()?;
+                let found = output.to_host()?.into_tensor();
+                ensure!(
+                    found == expected,
+                    "{reducer} over axis {axis} of {:?}: cuda {:?}, cpu {:?}",
+                    input.dump(true),
+                    found.dump(true),
+                    expected.dump(true)
+                );
+            }
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_reduce_arg_ties_and_specials() -> TractResult<()> {
+        let nan = f32::NAN;
+        let inf = f32::INFINITY;
+        for values in [
+            vec![3.0, 1.0, 1.0, 3.0, 2.0, 1.0],
+            vec![2.0f32; 6],
+            vec![nan, 1.0, nan, -1.0, nan, 1.0],
+            vec![nan; 6],
+            vec![inf, inf, -inf, -inf, inf, -inf],
+            vec![f32::MAX, f32::MIN, f32::MAX, nan, f32::MIN, 0.0],
+        ] {
+            arg_case::<f32>(&[6], 0, &values)?;
+            arg_case::<f32>(&[2, 3], 1, &values)?;
+            arg_case::<f32>(&[2, 3], 0, &values)?;
+            let halves = values.iter().map(|v| f16::from_f32(*v)).collect_vec();
+            arg_case::<f16>(&[3, 2], 0, &halves)?;
+        }
+        let halves = [f16::MAX, f16::MIN, f16::INFINITY, f16::MAX, f16::NAN, f16::MIN];
+        arg_case::<f16>(&[6], 0, &halves)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_reduce_arg_long_rows() -> TractResult<()> {
+        for (len, at) in [(1000usize, 999usize), (2048, 7), (5000, 2500), (40000, 39999)] {
+            let mut values = (0..len).map(|i| ((i * 7919) % 97) as f32).collect_vec();
+            values[at] = -1.0;
+            values[len - 1 - at] = 200.0;
+            arg_case::<f32>(&[1, len], 1, &values)?;
+            arg_case::<f32>(&[len, 1], 0, &values)?;
+            let halves = values.iter().map(|v| f16::from_f32(*v)).collect_vec();
+            arg_case::<f16>(&[2, len / 2], 1, &halves)?;
+        }
+        Ok(())
+    }
+
     proptest::proptest! {
         #[test]
         fn reduce_prop_f32(pb in any::<ReduceProblem<f32>>()) {
@@ -333,7 +402,11 @@ mod tests {
         type Strategy = BoxedStrategy<Self>;
 
         fn arbitrary_with(_: ()) -> Self::Strategy {
-            let reducers = Reducer::ALL.into_iter().filter(|r| !r.is_logic()).collect_vec();
+            let reducers = Reducer::ALL
+                .into_iter()
+                .chain(Reducer::ARG)
+                .filter(|r| !r.is_logic())
+                .collect_vec();
             (0..reducers.len(), 0usize..3, 0usize..3)
                 .prop_flat_map(move |(op_ix, left, right)| {
                     let axis = left;
@@ -367,6 +440,8 @@ mod tests {
                 Reducer::Max => TractReducer::Max.reduce(&[self.axis], &a)?,
                 Reducer::Any => TractReducer::Any.reduce(&[self.axis], &a)?,
                 Reducer::All => TractReducer::All.reduce(&[self.axis], &a)?,
+                Reducer::ArgMax(last) => TractReducer::ArgMax(last).reduce(&[self.axis], &a)?,
+                Reducer::ArgMin(last) => TractReducer::ArgMin(last).reduce(&[self.axis], &a)?,
             };
             Ok(cpu_output)
         }
@@ -376,7 +451,9 @@ mod tests {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
                 let mut o_shape = a.shape().to_vec();
                 o_shape[self.axis] = 1;
-                let output = unsafe { DeviceTensor::uninitialized_dt(a.datum_type(), &o_shape)? };
+                let output = unsafe {
+                    DeviceTensor::uninitialized_dt(self.op.output_dt(a.datum_type()), &o_shape)?
+                };
                 cuda_reduce_launch(&self.op, &a, self.axis, &output)?;
                 stream.synchronize()?;
                 Ok(output.to_host()?.into_tensor())

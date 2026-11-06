@@ -47,6 +47,7 @@ pub fn all_functions() -> Vec<String> {
     functions.extend(
         Reducer::ALL
             .into_iter()
+            .chain(Reducer::ARG)
             .flat_map(|op| {
                 tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().map(move |dt| (op, dt))
             })
