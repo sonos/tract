@@ -13,6 +13,7 @@ pub struct WgpuResize2d {
     pub window_h: usize,
     pub window_w: usize,
     pub output_shape: TVec<usize>,
+    pub concat_inputs: bool,
 }
 
 impl Op for WgpuResize2d {
@@ -42,6 +43,7 @@ impl EvalOp for WgpuResize2d {
         if output.len() > 0 {
             wgpu_resize_2d_dispatch(
                 input,
+                if self.concat_inputs { Some(inputs[5]) } else { None },
                 (inputs[1], inputs[2], self.window_h),
                 (inputs[3], inputs[4], self.window_w),
                 &output,

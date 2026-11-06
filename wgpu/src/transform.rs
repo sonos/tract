@@ -125,6 +125,7 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("fuse_deconv_epilogue", crate::rewrite_rules::fuse_deconv_epilogue)
             .rewrite(&(), model)?;
         Rewriter::default()
+            .with_rule_for("fuse_concat_resize", crate::rewrite_rules::fuse_concat_resize)
             .with_rule_for("fuse_move_axis", crate::rewrite_rules::fuse_move_axis)
             .rewrite(&(), model)?;
         Rewriter::default()
