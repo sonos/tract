@@ -107,8 +107,9 @@ test_unsqueeze
     .any(|s| t.last().unwrap() == s.trim())
 }
 
+/// Routing ops are MoE lowering products without NNEF serializers.
 fn ignore_unit(t: &[String], tc: &dyn Test) -> bool {
-    if t[0] == "q_flavours" {
+    if ["q_flavours", "routed_q40", "routed_combine", "route_topk"].contains(&&*t[0]) {
         return true;
     }
     if let Some(qcp) = tc.downcast_ref::<QConvProblem>() {
