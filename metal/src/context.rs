@@ -638,6 +638,46 @@ mod submission_tests {
     use super::*;
 
     #[test]
+    fn submission_waits_before_exceeding_in_flight_limit() -> TractResult<()> {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        for limit in [1, 2, 8] {
+            let (ready_tx, ready_rx) = mpsc::channel();
+            let (done_tx, done_rx) = mpsc::channel();
+            let worker = std::thread::spawn(move || -> TractResult<()> {
+                let mut stream = MetalStream::new();
+                stream.max_in_flight = limit;
+                let gate = stream.context.device.new_shared_event();
+                let first = stream.command_buffer();
+                first.encode_wait_for_event(&gate, 1);
+                stream.commit_current()?;
+                for _ in 1..limit {
+                    stream.command_buffer();
+                    stream.commit_current()?;
+                }
+                let next = stream.command_buffer();
+                ready_tx.send((gate, std::ops::Deref::deref(&next).clone()))?;
+                let result = stream.commit_current();
+                done_tx.send(())?;
+                result?;
+                stream.wait_until_completed()?;
+                Ok(())
+            });
+            let (gate, next) = ready_rx.recv_timeout(Duration::from_secs(10))?;
+            let early_return = done_rx.recv_timeout(Duration::from_millis(250));
+            let status_before_release = next.status();
+            gate.set_signaled_value(1);
+            let result = worker.join().expect("submission worker panicked");
+            result?;
+            assert!(matches!(early_return, Err(mpsc::RecvTimeoutError::Timeout)));
+            assert_eq!(status_before_release, metal::MTLCommandBufferStatus::NotEnqueued);
+            assert_eq!(next.status(), metal::MTLCommandBufferStatus::Completed);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn submission_retains_consuming_tensor_views() -> TractResult<()> {
         use crate::kernels::array::Memcpy;
         use crate::utils::get_metal_buffer;
