@@ -109,7 +109,7 @@ MMMExternKernel! { x86_64; fma_mmm_f32_32x1<f32>(32,1)@(256,4) isa(X86_64Avx, X8
     packing[2] = q40f16 => |k| k.with_packing(pq40_r32(), f16::packing(1));
     packing[3] = f16f16 => |k| k.with_packing(f16::packing(32), f16::packing(1));
     packing[4] = f16f32 => |k| k.with_packing(f16::packing(32), f32::packing(1));
-    packing[5] = f32f16 => |k| k.with_packing(f32::packing(32), f16::packing(1));
+    packing[5] = f32f16 => |k| k.with_packing(f32::packing(32).align(256), f16::packing(1));
 
     boost(FMA_F32_PEER)
     store(f16)
