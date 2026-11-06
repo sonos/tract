@@ -70,8 +70,9 @@ impl TCommandBuffer {
     }
 
     #[cfg(test)]
-    pub(crate) fn retains_tensor(&self, tensor: &DeviceTensor) -> bool {
-        self.retained.borrow().contains(tensor)
+    pub(crate) fn retains_buffer_of(&self, tensor: &DeviceTensor) -> bool {
+        let buffer = tensor.device_buffer_ptr();
+        self.retained.borrow().iter().any(|retained| retained.device_buffer_ptr() == buffer)
     }
 
     /// Number of kernel launches encoded in this buffer, shared by all its clones.
@@ -119,6 +120,27 @@ mod tests {
     use crate::context::MetalStream;
     use metal::foreign_types::ForeignTypeRef;
     use objc::rc::{WeakPtr, autoreleasepool};
+
+    #[test]
+    fn retention_checks_buffer_identity() -> tract_core::internal::TractResult<()> {
+        use tract_core::internal::*;
+        use tract_gpu::tensor::IntoDevice;
+
+        let stream = MetalStream::new();
+        let retained = tensor1(&[1u32, 2, 3, 4]).into_device()?.prefix_window(0, 4)?;
+        let equal_values = tensor1(&[1u32, 2, 3, 4]).into_device()?.prefix_window(0, 4)?;
+        let uninitialized =
+            DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?.prefix_window(0, 4)?;
+        assert_ne!(retained.device_buffer_ptr(), equal_values.device_buffer_ptr());
+        let command = stream.command_buffer();
+        command.retain_tensor(&retained);
+        assert!(command.retains_buffer_of(&retained.clone()));
+        assert!(command.retains_buffer_of(&retained.prefix_window(0, 2)?));
+        assert!(!command.retains_buffer_of(&equal_values));
+        assert!(!command.retains_buffer_of(&uninitialized));
+        stream.wait_until_completed()?;
+        Ok(())
+    }
 
     fn check_tensor_storage_retained(
         profile: bool,
