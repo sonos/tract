@@ -18,6 +18,8 @@ pub struct TCommandBuffer {
     dispatches: Rc<Cell<usize>>,
     retained: Rc<RefCell<Vec<DeviceTensor>>>,
     pub(crate) trace: Rc<RefCell<CommandBufferTrace>>,
+    #[cfg(test)]
+    pub(crate) injected_error: Rc<RefCell<Option<String>>>,
 }
 
 impl TCommandBuffer {
@@ -29,6 +31,21 @@ impl TCommandBuffer {
             dispatches: Rc::new(Cell::new(0)),
             retained: Rc::new(RefCell::new(vec![])),
             trace: Rc::new(RefCell::new(CommandBufferTrace::default())),
+            #[cfg(test)]
+            injected_error: Rc::new(RefCell::new(None)),
+        }
+    }
+
+    /// Inject a reported failure only after the real GPU work has completed.
+    #[cfg(test)]
+    pub fn status(&self) -> metal::MTLCommandBufferStatus {
+        let status = self.inner.status();
+        if status == metal::MTLCommandBufferStatus::Completed
+            && self.injected_error.borrow().is_some()
+        {
+            metal::MTLCommandBufferStatus::Error
+        } else {
+            status
         }
     }
 

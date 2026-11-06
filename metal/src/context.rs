@@ -602,7 +602,11 @@ impl DeviceBuffer for MetalBuffer {
 // The objc msg_send!/sel! macros expand to a cargo-clippy cfg check that older
 // toolchains report at the call site; the allow covers it.
 #[allow(unexpected_cfgs)]
-fn command_buffer_error(command_buffer: &metal::CommandBufferRef) -> String {
+fn command_buffer_error(command_buffer: &TCommandBuffer) -> String {
+    #[cfg(test)]
+    if let Some(error) = command_buffer.injected_error.borrow().as_ref() {
+        return error.clone();
+    }
     use metal::foreign_types::ForeignTypeRef;
     use objc::runtime::Object;
     use objc::{msg_send, sel, sel_impl};
@@ -625,6 +629,52 @@ fn command_buffer_error(command_buffer: &metal::CommandBufferRef) -> String {
 #[cfg(test)]
 mod submission_tests {
     use super::*;
+
+    #[test]
+    fn submission_reports_injected_failure_and_recovers() -> TractResult<()> {
+        use crate::kernels::array::Memcpy;
+        use tract_gpu::tensor::IntoDevice;
+
+        for reap_before_wait in [false, true] {
+            let mut stream = MetalStream::new();
+            stream.commit_every_n_dispatches = 0;
+            stream.max_in_flight = 1;
+            let input = tensor1(&[1u32, 2, 3, 4]).into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::U32, &[4])?;
+            Memcpy.dispatch_eval(&stream, &input, 0, &output)?;
+            let failed = stream.command_buffer();
+            *failed.injected_error.borrow_mut() = Some("injected driver failure".to_owned());
+            let expected = "Metal command buffer failed on the GPU: injected driver failure";
+            let mut tail = None;
+            if reap_before_wait {
+                stream.commit_current()?;
+                failed.wait_until_completed();
+                Memcpy.dispatch_eval(&stream, &input, 0, &output)?;
+                tail = Some(stream.command_buffer());
+                assert_eq!(stream.commit_current().unwrap_err().to_string(), expected);
+                assert_eq!(stream.commit_current().unwrap_err().to_string(), expected);
+            }
+            assert_eq!(stream.wait_until_completed().unwrap_err().to_string(), expected);
+            assert_eq!(failed.status(), metal::MTLCommandBufferStatus::Error);
+            assert_eq!(
+                std::ops::Deref::deref(&failed).status(),
+                metal::MTLCommandBufferStatus::Completed
+            );
+            if let Some(tail) = tail {
+                assert_eq!(tail.status(), metal::MTLCommandBufferStatus::Completed);
+            }
+            assert!(stream.command_error.borrow().is_none());
+            assert!(stream.committed_command_buffers.borrow().is_empty());
+            assert!(stream.open.borrow().buffer.is_none());
+            assert!(stream.open.borrow().retained.is_empty());
+            stream.wait_until_completed()?;
+            let input = tensor1(&[5u32, 6, 7, 8]).into_device()?;
+            Memcpy.dispatch_eval(&stream, &input, 0, &output)?;
+            stream.wait_until_completed()?;
+            output.to_host()?.close_enough(&tensor1(&[5u32, 6, 7, 8]), Approximation::Exact)?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn submission_traces_consuming_buffer_launches() -> TractResult<()> {
