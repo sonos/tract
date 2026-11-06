@@ -491,24 +491,13 @@ fn check_matmul_in_dts(in_facts: &[TypedFact]) -> bool {
 }
 
 fn is_input_broadcast(facts: TVec<&TypedFact>) -> bool {
-    // Assume weights are in second postion
-    let b_batch_dims: Vec<TDim> = if GgmlQuant::of_fact(facts[1]).is_some() {
-        facts[1].shape.dims().to_vec()
-    } else {
-        let rank = facts[1].rank();
-        facts[1].shape.dims()[..rank - 2].to_vec()
-    };
-
-    let a_rank = facts[0].rank();
-    let mut a_batch_dims = facts[0].shape[..(a_rank - 2)].to_vec();
-
-    a_batch_dims.retain(|tdim| !matches!(tdim, TDim::Sym(_)) || b_batch_dims.contains(tdim));
-    let symb_in_a = a_batch_dims != facts[0].shape[..(a_rank - 2)].to_vec();
-
-    let a_batch_size = a_batch_dims.iter().product::<TDim>().gcd();
-    let b_batch_size = b_batch_dims.iter().product::<TDim>().gcd();
-
-    (a_batch_size % b_batch_size == 0) && ((a_batch_size != b_batch_size) || symb_in_a)
+    let rank = facts[0].rank();
+    rank > 2
+        && facts[1].rank() == rank
+        && rewrite_rules::is_ggml_batch_broadcast(
+            &facts[0].shape.dims()[..rank - 2],
+            &facts[1].shape.dims()[..rank - 2],
+        )
 }
 
 pub fn resolve_gemm_impl(
