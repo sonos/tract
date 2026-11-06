@@ -19,7 +19,7 @@ fn pulsify_max_pool(
     let fact = target.outlet_fact(mapping[&node.inputs[0]])?;
     let min = dispatch_numbers!(min_value(fact.datum_type)());
     if let Some((wire, pool_spec)) =
-        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(min))?
+        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, Some(min), 0)?
     {
         Ok(Some(target.wire_node(&node.name, MaxPool { pool_spec, ..op.clone() }, &[wire])?))
     } else {
@@ -37,7 +37,7 @@ fn pulsify_sum_pool(
     _pulse: &TDim,
 ) -> TractResult<Option<TVec<OutletId>>> {
     if let Some((wire, pool_spec)) =
-        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, None)?
+        pulsify_pooled_input(&op.pool_spec, source, node, target, mapping, None, 0)?
     {
         Ok(Some(target.wire_node(&node.name, SumPool { pool_spec, ..op.clone() }, &[wire])?))
     } else {
@@ -100,6 +100,10 @@ pub fn pulsed_output_facts(
     Ok(tvec!(fact))
 }
 
+/// Delays and pads the streamed input of a pooled op so that each pulse holds a
+/// whole window of the op. `edge_before` frames of edge padding on the
+/// streaming axis, taken over from an upstream `Pad`, come on top of the op's
+/// own padding there, which must then be zero.
 pub fn pulsify_pooled_input(
     spec: &PoolSpec,
     _source: &TypedModel,
@@ -107,6 +111,7 @@ pub fn pulsify_pooled_input(
     target: &mut PulsedModel,
     mapping: &HashMap<OutletId, OutletId>,
     padding_value: Option<Tensor>,
+    edge_before: usize,
 ) -> TractResult<Option<(OutletId, PoolSpec)>> {
     let mut wire = mapping[&node.inputs[0]];
     let input_fact: PulsedFact = target.outlet_fact(wire)?.clone();
@@ -136,7 +141,7 @@ pub fn pulsify_pooled_input(
         spec.stride(geo_axis),
     );
 
-    let before = computed_padding.pad_before.to_usize()?;
+    let before = computed_padding.pad_before.to_usize()? + edge_before;
     let early = input_stream.delay as isize + overlap as isize - before as isize;
     let mut extra_delay = if early < 0 { (-early) as usize } else { 0 };
     let delayed_input = input_stream.delay + overlap + extra_delay - before;
@@ -158,13 +163,14 @@ pub fn pulsify_pooled_input(
         )?[0];
     }
 
-    let has_padding =
-        !computed_padding.pad_before.is_zero() || !computed_padding.pad_after.is_zero();
+    let has_padding = before > 0 || !computed_padding.pad_after.is_zero();
 
     if has_padding {
         use tract_core::ops::array::PadMode;
-        let value = if let Some(tensor) = padding_value {
-            tensor.into_arc_tensor()
+        let mode = if edge_before > 0 {
+            PadMode::Edge
+        } else if let Some(tensor) = padding_value {
+            PadMode::Constant(tensor.into_arc_tensor())
         } else {
             bail!("No padding value for streaming pool operation");
         };
@@ -177,7 +183,7 @@ pub fn pulsify_pooled_input(
                 + input_stream.delay
                 + extra_delay
                 + overlap.to_dim(),
-            mode: PadMode::Constant(value),
+            mode,
             overlap,
         };
         wire = target.wire_node(format!("{}.pulse-pad", node.name), op, &[wire])?[0];
@@ -250,6 +256,45 @@ mod test {
         )?;
         model.select_output_outlets(&conv)?;
         let pulsed = PulsedModel::new(&model, stream_sym, &1.to_dim())?;
+        let output_fact = pulsed.output_fact(0)?;
+        assert_eq!(output_fact.stream.as_ref().unwrap().delay, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn edge_padded_strided_conv_wo_delay() -> TractResult<()> {
+        use tract_core::ops::array::{Pad, PadMode};
+        let mut model = TypedModel::default();
+        let stream_sym = model.symbols.sym("S");
+        let stream_dim = stream_sym.to_dim();
+        let source = model.add_source("source", f32::fact(dims!(1, 1, stream_dim)))?;
+        let padded = model.wire_node(
+            "pad",
+            Pad { pads: vec![(0, 0), (0, 0), (2, 0)], mode: PadMode::Edge },
+            &[source],
+        )?;
+        let kernel = model.add_const("kernel", rctensor3(&[[[1f32, 2f32, 3f32, 4f32]]]))?;
+        let bias = model.add_const("bias", rctensor0(0f32))?;
+        let conv = model.wire_node(
+            "conv",
+            Conv {
+                pool_spec: PoolSpec {
+                    data_format: tract_core::ops::nn::DataFormat::NCHW,
+                    dilations: None,
+                    strides: Some(tvec![2]),
+                    kernel_shape: tvec![4],
+                    padding: tract_core::ops::cnn::PaddingSpec::Valid,
+                    input_channels: 1,
+                    output_channels: 1,
+                },
+                kernel_fmt: tract_core::ops::cnn::KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            },
+            &[padded[0], kernel, bias],
+        )?;
+        model.select_output_outlets(&conv)?;
+        let pulsed = PulsedModel::new(&model, stream_sym, &2.to_dim())?;
         let output_fact = pulsed.output_fact(0)?;
         assert_eq!(output_fact.stream.as_ref().unwrap().delay, 0);
         Ok(())
