@@ -3,7 +3,7 @@
 Writes, under <assets>/model:
 - mimi-encoder / mimi-decoder: the Mimi codec, as in the kyutai-mimi example
 - helium.nnef.tgz: the 7B main transformer, f16, one step graph with a KV cache. Inputs:
-  tokens [1, 17, S] (text + 16 audio streams, -1 = no token), past_k{i} / past_v{i}
+  tokens [1, 17, S] (text + 16 audio streams), past_k{i} / past_v{i}
   [1, 32, P, 128]. Outputs: hidden [1, S, 4096] (after out_norm), text_logits [1, S, 32000],
   k{i} / v{i} [1, 32, P + S, 128], which tract folds into a stateful KV cache.
 - depformer-step{0..7}.nnef.tgz: the depth transformer, f16, one graph per step, each with
@@ -63,8 +63,7 @@ def rotate_half(x):
 
 
 def embed(table, tokens):
-    present = (tokens != -1).unsqueeze(-1).to(table.dtype)
-    return F.embedding(tokens.clamp(min=0), table) * present
+    return F.embedding(tokens, table)
 
 
 class Helium(torch.nn.Module):
