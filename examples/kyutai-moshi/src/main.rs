@@ -27,7 +27,7 @@ struct Args {
     runtime: String,
     #[arg(long, default_value_t = 1)]
     seed: u64,
-    /// Quantize Helium to Q4_0 at load time.
+    /// Quantize Helium and the depformer to Q4_0 at load time.
     #[arg(long)]
     q4: bool,
 }

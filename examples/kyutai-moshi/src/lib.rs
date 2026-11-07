@@ -36,8 +36,8 @@ fn pulsed(
 
 impl Models {
     /// Loads the graphs export.py wrote to `dir`, folding Helium's K/V into a stateful cache
-    /// and pulsing Mimi to one frame. With `q4`, Helium's weights go to Q4_0 blocks: a quarter
-    /// of the memory and of the bandwidth a frame takes, for GPUs short of either. With
+    /// and pulsing Mimi to one frame. With `q4`, Helium's and the depformer's weights go to
+    /// Q4_0 blocks: a quarter of the memory and of the bandwidth a frame takes. With
     /// `exact`, loads the f32 depformer export.py --check writes, for exact greedy runs.
     pub fn load(dir: &str, runtime: &Runtime, q4: bool, exact: bool) -> Result<Models> {
         let nnef = tract::nnef()?.with_tract_transformers()?;
@@ -50,7 +50,11 @@ impl Models {
         }
         let helium = runtime.prepare(helium)?;
         let depformer = if exact { "depformer-f32" } else { "depformer" };
-        let depformer = runtime.prepare(nnef.load(format!("{dir}/{depformer}.nnef.tgz"))?)?;
+        let mut depformer = nnef.load(format!("{dir}/{depformer}.nnef.tgz"))?;
+        if q4 {
+            depformer.transform("block_quant")?;
+        }
+        let depformer = runtime.prepare(depformer)?;
         let vocab = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/vocab.json"))?)?;
         Ok(Models { encoder, decoder, helium, depformer, vocab })
     }
