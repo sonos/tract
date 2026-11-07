@@ -194,3 +194,67 @@ impl Sampler {
         ix[ix.len() - 1] as i64
     }
 }
+
+/// Wire format between the server and its client, both ways little-endian: the client sends
+/// frames of 1920 f32 samples; the server answers each with a u32 text length, the text,
+/// a u32 sample count and the samples (0 for the first frame).
+pub mod wire {
+    use std::io::{Read, Write};
+
+    pub fn write_frame(w: &mut impl Write, pcm: &[f32]) -> std::io::Result<()> {
+        let bytes: Vec<u8> = pcm.iter().flat_map(|s| s.to_le_bytes()).collect();
+        w.write_all(&bytes)
+    }
+
+    pub fn read_frame(r: &mut impl Read) -> std::io::Result<Vec<f32>> {
+        let mut bytes = vec![0u8; super::FRAME * 4];
+        r.read_exact(&mut bytes)?;
+        Ok(bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect())
+    }
+
+    pub fn write_reply(w: &mut impl Write, text: &str, audio: &[f32]) -> std::io::Result<()> {
+        let mut out = (text.len() as u32).to_le_bytes().to_vec();
+        out.extend_from_slice(text.as_bytes());
+        out.extend_from_slice(&(audio.len() as u32).to_le_bytes());
+        out.extend(audio.iter().flat_map(|s| s.to_le_bytes()));
+        w.write_all(&out)
+    }
+
+    pub fn read_reply(r: &mut impl Read) -> std::io::Result<(String, Vec<f32>)> {
+        let mut len = [0u8; 4];
+        r.read_exact(&mut len)?;
+        let mut text = vec![0u8; u32::from_le_bytes(len) as usize];
+        r.read_exact(&mut text)?;
+        r.read_exact(&mut len)?;
+        let mut bytes = vec![0u8; u32::from_le_bytes(len) as usize * 4];
+        r.read_exact(&mut bytes)?;
+        let audio = bytes.as_chunks::<4>().0.iter().map(|b| f32::from_le_bytes(*b)).collect();
+        Ok((String::from_utf8_lossy(&text).into_owned(), audio))
+    }
+}
+
+/// Linear-interpolation resampler for a mono stream, stateful across chunks.
+pub struct Resampler {
+    step: f64,
+    pos: f64,
+    pending: Vec<f32>,
+}
+
+impl Resampler {
+    pub fn new(from_rate: f64, to_rate: f64) -> Resampler {
+        Resampler { step: from_rate / to_rate, pos: 0.0, pending: vec![] }
+    }
+
+    pub fn push(&mut self, input: &[f32], out: &mut Vec<f32>) {
+        self.pending.extend_from_slice(input);
+        while self.pos + 1.0 < self.pending.len() as f64 {
+            let i = self.pos as usize;
+            let frac = (self.pos - i as f64) as f32;
+            out.push(self.pending[i] * (1.0 - frac) + self.pending[i + 1] * frac);
+            self.pos += self.step;
+        }
+        let consumed = (self.pos as usize).min(self.pending.len());
+        self.pending.drain(..consumed);
+        self.pos -= consumed as f64;
+    }
+}
