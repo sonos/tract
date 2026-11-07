@@ -1,11 +1,12 @@
 export class GpuClient {
   constructor(progress = () => {}) {
-    this.worker = new Worker(new URL('./worker.js',import.meta.url),{type:'module'});
+    const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
+    this.worker = new Worker(new URL(`./worker.js?stamp=${stamp}`, import.meta.url), {type: 'module'});
     this.nextId = 1;
     this.pending = new Map();
     this.worker.onmessage = ({data}) => {
       if(data.fatal) {this.close(new Error(data.fatal));progress(data.fatal);return;}
-      if(data.status!==undefined||data.download!==undefined||data.completed||data.mask!==undefined) {progress(data);return;}
+      if(data.status!==undefined||data.download!==undefined||data.completed||data.compositeMs!==undefined||data.mask!==undefined) {progress(data);return;}
       const pending=this.pending.get(data.id);
       if(!pending) return;
       this.pending.delete(data.id);clearTimeout(pending.timer);
