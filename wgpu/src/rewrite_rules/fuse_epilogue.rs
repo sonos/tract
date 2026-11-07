@@ -90,6 +90,7 @@ pub fn fuse_conv_epilogue(
     absorb(model, node, node_name, channels, &op.epilogue, false, |steps| WgpuConv {
         op: op.op.clone(),
         epilogue: steps,
+        accumulate_f32: op.accumulate_f32,
     })
 }
 
@@ -112,6 +113,7 @@ pub fn fuse_gemm_epilogue(
     absorb(model, node, node_name, columns, &op.epilogue, true, |steps| WgpuGemm {
         op: op.op,
         epilogue: steps,
+        accumulate_f32: op.accumulate_f32,
     })
 }
 
