@@ -35,8 +35,12 @@ Mimi export checks its graphs with a tract binary that reads replicate padding: 
 
 Helium is exported in f16 and reads all of its 14 GB of weights every frame, so the GPU
 needs about 17 GB of memory, and keeping up with 80 ms frames takes well over 175 GB/s of
-memory bandwidth, plus the time of the depformer's 8 sequential steps and of Mimi. The
-example prints the time per frame against that 80 ms budget.
+memory bandwidth, plus the time of the depformer's and Mimi's kernels. The example prints
+the time per frame against that 80 ms budget.
+
+`--q4` quantizes Helium and the depformer to Q4_0 blocks when loading them: about 5 GB of
+memory and a quarter of the bandwidth, for GPUs short of either. It costs some quality, and
+the reads of the KV cache still grow with the conversation.
 
 A conversation can last up to Helium's 3000-frame context (4 minutes); past that the KV cache
 would need a sliding window, which this example does not do.
