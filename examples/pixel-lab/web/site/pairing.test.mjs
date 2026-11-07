@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {presentationKey, ringSlot, shownPicture} from './pairing.mjs';
+import {presentationKey, ringSlot, shouldWarp, shownPicture} from './pairing.mjs';
 
 test('a slow mask keeps the frame it was measured on', () => {
   const ring = Array(8).fill(-1);
@@ -48,6 +48,21 @@ test('the output count stays on the mask until motion shows each new frame', () 
     present(shownPicture({warped: true, frameId: id, maskFrameId: 5, matched: true, heldFrameId: 5}));
   }
   assert.equal(frames, 11);
+});
+
+test('the warp fills camera frames that will not get their own mask', () => {
+  assert.equal(shouldWarp(false, 5, 4, 3), false);
+  assert.equal(shouldWarp(true, 4, 4, 3), false);
+  assert.equal(shouldWarp(true, 4, 4, 4), false);
+  assert.equal(shouldWarp(true, 5, 4, -1), false);
+  assert.equal(shouldWarp(true, 5, 4, 3), true);
+});
+
+test('the true mask landing on the frame already shown is not a new picture', () => {
+  const warped = shownPicture({warped: true, frameId: 30, maskFrameId: 20, matched: true, heldFrameId: 20});
+  const landed = shownPicture({warped: false, frameId: 30, maskFrameId: 30, matched: true, heldFrameId: 20});
+  assert.equal(presentationKey(warped), '30');
+  assert.equal(presentationKey(landed), presentationKey(warped));
 });
 
 test('a missing mask frame repeats the last matched picture', () => {

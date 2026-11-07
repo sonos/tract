@@ -32,41 +32,51 @@ and input normalization.
 A worker hands camera frames to tract with `Tensor::from_canvas_normalized`, which copies a frame
 onto the GPU at the model's size and normalizes it there; the model writes its mask into an RGBA8
 texture with `WgpuMask`. A WebGPU compositor (`site/compositor.js`) blends every camera frame over
-the blurred or coloured background at the camera's resolution, resampling the mask along the
-image's edges, or shows the mask itself. The page opens on RVM. Blur strength is Low (5 px) or
-High (12 px), High by default, shown only while the background is Blur, and it can change while
-the camera is running.
+the blurred, coloured, or still-image background at the camera's resolution, resampling the mask along the
+image's edges, or shows the mask itself. Four still images come from
+[Livestorm's virtual background library](https://livestorm.co/virtual-background-library), which
+offers them free for commercial use: a library, a conference room, a beach, and a mountain path.
+A fifth is the white Sonos Five pair from [Sonos.com](https://www.sonos.com/). The page names the image and links its source while it is selected. The page opens on RVM. Blur strength is Low, a
+5 px blur after the frame is shrunk by 2, or High, a 12 px blur after the frame is shrunk by 8. High is the default,
+shown only while the background is Blur, and it can change while the camera is running. Harmonize colours
+is off by default and appears for a solid colour or a still image. On, it shifts the person's colour
+toward that background and leaves the brightness alone.
 
 The compositor runs on a GPU device of its own. A device's queue runs in order, so on tract's
 device each composite would wait behind the inference queued before it. Drawing stays on the
 compositor's device, and a new inference starts as soon as the previous mask is ready. With motion
 off, the picture is the camera frame that mask was measured on. That frame is kept until the next
 mask replaces it, so a slow model steps the output at the mask rate instead of leaving the cutout
-behind a newer frame. With motion on, each new camera frame is shown and the mask is warped onto
-it. A repeated call for the same camera frame is ignored, so the output stays
+behind a newer frame. With motion on, the frame inference is computing waits for its own mask.
+A later camera frame, which will not get a mask of its own, is shown with the last mask moved onto it.
+A repeated call for the same camera frame is ignored, so the output stays
 on the camera clock instead of the display refresh. Each mask crosses from tract's device to the
-compositor's through one readback.
+compositor's through one readback. On Firefox, while that readback or a composite is waiting to
+finish, the page submits an empty command so the GPU process polls instead of waiting on its 100 ms
+timer. Chrome and Safari are unchanged.
 MediaPipe and MODNet masks are 256 KB to 600 KB. RVM's alpha is the camera frame, so that copy
 grows with the capture size. Camera frames stay on the GPU.
 
 Two mask controls sit under the view picker. “Smooth mask edges” is on by default and stands alone:
 it softens the mask and pulls the edge onto the camera image whether or not the mask moves.
-“Move the mask with the camera” is off unless the visitor turns it on. While it is on, the
-compositor keeps a luma pyramid of the frame each inference starts from and, on later frames,
-estimates one similarity for the person from textured points, entirely on its own GPU. Bare skin
-inherits that motion. A coarse grid may differ from it only where the texture agrees, and smoothness
-keeps a hand attached to the arm. The mask is then
-read at `x + flow(x)`, the whole step or none of it. Only the outline is compared with the frame the
-mask was copied from, and coverage that fails there is removed outright, so a flat background
-colour cannot show through as a fringe or as the outline of a hand that has closed. A one-pixel
-hole inside that mask is closed. Coverage the mask never had is left empty. With the control off,
-the composite shows the camera frame the mask was measured on, so the outline and the person share
-that frame's id. The preview keeps running live. With the control on, the newest frame is shown and
-the mask is warped from its own frame; if that warp cannot be built, the matched pair is shown instead.
+“Move the mask with the camera” is off unless the visitor turns it on. While it is off, the
+composite shows the camera frame the mask was measured on, so the output steps at the mask rate.
+While it is on, a frame that inference is computing waits for that mask and is shown as that pair.
+A camera frame that arrives during that wait will not get a mask of its own, so the last mask is
+moved onto it and the output stays on the camera clock. The compositor keeps a luma pyramid of the
+frame each inference starts from and estimates one similarity for the person from textured points,
+entirely on its own GPU. Bare skin inherits that motion. A coarse grid may differ from it only where
+the texture agrees, and smoothness keeps a hand attached to the arm. The mask is then read at
+`x + flow(x)`, the whole step or none of it. Only the outline is compared with the frame the mask
+was copied from, and coverage that fails there is removed outright, so a flat background colour
+cannot show through as a fringe or as the outline of a hand that has closed. A one-pixel hole inside
+that mask is closed. Coverage the mask never had is left empty. If the warp cannot be built, the
+matched pair is shown instead. The preview keeps running live.
 
 The camera tile shows the camera rate. The output tile shows how often the composited picture
 changes: the mask rate while the matched frame is held, and the camera rate while the mask is
-moved. Redrawing the same held frame does not count. At most three composited frames wait on the
+being moved forward to fill the gap. Redrawing the same held frame does not count, and neither does the true mask
+replacing the warp on the camera frame already on screen. At most three composited frames wait on the
 GPU, after which camera frames are dropped rather than queued. Under the tiles, the mask rate and
 the time from handing a frame to the model to its mask being ready to composite.
 Below that, the frame budget is inference plus compositing against one frame at

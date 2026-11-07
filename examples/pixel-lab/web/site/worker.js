@@ -4,12 +4,17 @@ const stamped = file => import(`./${file}?stamp=${stamp}`);
 // The page posts the first command as soon as the worker is created. A top-level
 // await yields before onmessage exists, and Chrome drops that message, so the
 // canvas is transferred and never drawn. Load the modules in the handler instead.
-let model, modelUrl, rvmScale, formatR;
-const modulesReady = stamped('models.mjs').then(loaded => {
-  ({model, modelUrl, rvmScale, formatR} = loaded);
+let model, modelUrl, rvmScale, formatR, shouldWarp, isFirefox, createCompletionPoll;
+const modulesReady = Promise.all([
+  stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'),
+]).then(([models, pairing, firefoxPoll]) => {
+  ({model, modelUrl, rvmScale, formatR} = models);
+  shouldWarp = pairing.shouldWarp;
+  ({isFirefox, createCompletionPoll} = firefoxPoll);
 });
 
 let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0, framesSeen = 0, inferredFrame = 0, motion = false;
+let tractPoll, compositePoll;
 // Set while a new R factor is installed, so the in-flight mask can finish and the next one waits.
 let holdInference = false;
 let rvmSize = null;
@@ -19,7 +24,7 @@ let shown = null;
 // The picture last counted on the output. Redrawing that same picture is not a new frame.
 let lastPresented = null;
 // Composited frames submitted and not finished yet. Past this a new frame is dropped rather than
-// queued, so latency stays bounded; three still covers Firefox's ~100 ms completion callback at 30 fps.
+// queued, so latency stays bounded.
 const MAX_GPU_FRAMES = 3;
 const DOWNLOAD_STALL_MS = 30000;
 const post = message => postMessage(message);
@@ -89,7 +94,7 @@ class MaskRelay {
       const encoder = tractDevice.createCommandEncoder({label: 'mask readback'});
       encoder.copyTextureToBuffer({texture: this.source}, {buffer: this.staging, bytesPerRow: this.bytesPerRow}, [this.width, this.height]);
       tractDevice.queue.submit([encoder.finish()]);
-      await this.staging.mapAsync(GPUMapMode.READ);
+      await tractPoll.track(this.staging.mapAsync(GPUMapMode.READ));
       device.queue.writeTexture({texture: this.target}, this.staging.getMappedRange(), {bytesPerRow: this.bytesPerRow}, [this.width, this.height]);
       this.staging.unmap();
       composer.setMaskFrame(this.frameId);
@@ -105,9 +110,15 @@ class MaskRelay {
 
 // Composite the latest uploaded frame again. Skipped when too many draws are
 // still on the GPU; the next camera frame shows the mask instead.
+// The checkbox asks for the fill. A frame inference is already computing waits
+// for that mask. Only a camera frame that will not get one is warped.
+function warpNow(frameId) {
+  return shouldWarp(motion, frameId, inferredFrame, composer.maskFrameId);
+}
+
 function showMask() {
   if (!shown || gpuFrames >= MAX_GPU_FRAMES) return;
-  present(composer.draw(shown.refine, shown.view, {frameId: framesSeen, motion: shown.motion}));
+  present(composer.draw(shown.refine, shown.view, {frameId: framesSeen, motion: warpNow(framesSeen)}));
 }
 
 // Count a composited picture once. A held frame is drawn on every camera frame,
@@ -117,9 +128,9 @@ function present(drawn) {
   lastPresented = drawn.presented;
   const submitted = performance.now();
   gpuFrames++;
-  device.queue.onSubmittedWorkDone().then(() => {
+  compositePoll.track(device.queue.onSubmittedWorkDone()).then(() => {
     gpuFrames--;
-    post({compositeMs: performance.now() - submitted, advanced});
+    post({compositeMs: performance.now() - submitted, advanced, warped: drawn.warped, held: drawn.held, synced: drawn.synced});
   }, () => { gpuFrames--; });
 }
 
@@ -149,6 +160,14 @@ async function command(type, payload) {
     const ops = audit(segmenter);
     tractDevice = segmenter.device();
     device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
+    const poll = gpu => createCompletionPoll({
+      firefox: isFirefox(navigator.userAgent),
+      device: gpu,
+      schedule: (fn, ms) => setTimeout(fn, ms),
+      clear: id => clearTimeout(id),
+    });
+    tractPoll = poll(tractDevice);
+    compositePoll = poll(device);
     for (const d of [tractDevice, device]) {
       d.addEventListener('uncapturederror', event => post({fatal: `WebGPU: ${event.error.message}`}));
       d.lost.then(info => post({fatal: `WebGPU device lost: ${info.message}`}));
@@ -179,9 +198,20 @@ async function command(type, payload) {
       inferLatest();
     }
   }
+  if (type === 'harmonize') {
+    composer.setHarmonize(payload.enabled);
+    return {};
+  }
   if (type === 'background') {
-    if (payload.mode === 'colour') composer.setColour(payload.colour);
-    else composer.setBlur(payload.blur);
+    const bitmap = payload.bitmap;
+    try {
+      if (payload.mode === 'colour') composer.setColour(payload.colour);
+      else if (payload.mode === 'image') composer.setImage(bitmap);
+      else composer.setBlur(payload.blur);
+      composer.setHarmonize(payload.harmonize);
+    } finally {
+      bitmap?.close();
+    }
     return {};
   }
   if (type === 'frame') {
@@ -201,7 +231,7 @@ async function command(type, payload) {
       inferLatest();
     } finally { bitmap.close(); }
     shown = {refine: payload.refine, view: payload.view, motion};
-    const drawn = composer.draw(payload.refine, payload.view, {frameId: framesSeen, motion});
+    const drawn = composer.draw(payload.refine, payload.view, {frameId: framesSeen, motion: warpNow(framesSeen)});
     present(drawn);
     return {gpuFrames, inferring: mask.busy, warped: drawn.warped, held: drawn.held, synced: drawn.synced};
   }

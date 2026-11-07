@@ -21,9 +21,10 @@ test('spread is the gap variation', () => {
 
 test('texture bytes count the camera frames, the mask, and motion once it exists', () => {
   const still = textureBytes({width: 1280, height: 720, maskWidth: 1280, maskHeight: 720});
-  assert.equal(still, 1280 * 720 * 4 * 12);
+  assert.equal(still, 1280 * 720 * 4 * 10 + 160 * 90 * 4 * 2);
+  assert.equal(textureBytes({width: 1280, height: 720, maskWidth: 1280, maskHeight: 720, blur: 'low'}), 1280 * 720 * 4 * 10 + 640 * 360 * 4 * 2);
   assert.equal(motionBytes(), 4233600);
-  assert.equal(textureBytes({width: 320, height: 180, maskWidth: 256, maskHeight: 144, motion: true}), 320 * 180 * 4 * 11 + 256 * 144 * 4 + 4233600);
+  assert.equal(textureBytes({width: 320, height: 180, maskWidth: 256, maskHeight: 144, motion: true}), 320 * 180 * 4 * 9 + 40 * 22 * 4 * 2 + 256 * 144 * 4 + 4233600);
 });
 
 test('the four meters use the samples they are given', () => {

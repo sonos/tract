@@ -116,9 +116,19 @@
     <p class="hint" id="scale" hidden></p>
     <label for="background">Background</label>
     <div class="choice">
-      <select id="background"><option value="blur">Blur</option><option value="colour">Solid colour</option></select>
+      <select id="background">
+        <option value="blur">Blur</option>
+        <option value="colour">Solid colour</option>
+        <option value="library">Library</option>
+        <option value="conference">Conference room</option>
+        <option value="beach">Beach</option>
+        <option value="mountains">Swiss mountains</option>
+        <option value="sonos">Sonos Five</option>
+      </select>
       <input id="colour" type="color" value="#457b75" disabled aria-label="Background colour" title="Change the background colour">
     </div>
+    <p class="hint" id="background-credit" hidden>“<span id="background-credit-title"></span>” from <a id="background-credit-link" href="https://livestorm.co/virtual-background-library"><span id="background-credit-source">the Livestorm virtual background library</span></a>.</p>
+    <label class="check" id="harmonize-label" hidden><input id="harmonize" type="checkbox">Harmonize colours<span class="info"><button type="button" class="info-i" aria-label="About colour harmonization">i</button><span class="info-text" role="tooltip">Shifts the person's colour toward the background and keeps the brightness. Used for a solid colour or a still image.</span></span></label>
     <label for="blur" id="blur-label">Blur strength</label>
     <select id="blur"><option value="low">Low</option><option value="high" selected>High</option></select>
     <label for="view">View</label>
@@ -127,7 +137,7 @@
     <select id="layout"><option value="both">Side by side</option><option value="output">Output only</option></select>
     <p class="hint">Side by side keeps the camera on the left. Output only shows the composited picture or the mask.</p>
     <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges<span class="info"><button type="button" class="info-i" aria-label="About smooth mask edges">i</button><span class="info-text" role="tooltip">Softens the mask and pulls its edge onto the camera image. Works whether or not the mask is moved.</span></span></label>
-    <label class="check"><input id="motion" type="checkbox">Move the mask with the camera<span class="info"><button type="button" class="info-i" aria-label="About moving the mask">i</button><span class="info-text" role="tooltip">Off, the composited picture stays on the camera frame the mask was measured from, so the two share one timestamp. On, the newest frame stays up and the person moves as one, measured where the picture has real detail. Skin follows that motion. Only the outline is checked against the picture. The preview keeps running live.</span></span></label>
+    <label class="check"><input id="motion" type="checkbox">Move the mask with the camera<span class="info"><button type="button" class="info-i" aria-label="About moving the mask">i</button><span class="info-text" role="tooltip">Off, the composited picture stays on the camera frame the mask was measured from. On, that pair is shown while the mask keeps up with the camera. When the camera gets ahead, the last mask is moved onto those extra frames, so the output stays on the camera clock. The preview keeps running live.</span></span></label>
     <button id="go" disabled>Loading…</button>
     <div class="bar"><div id="bar"></div></div>
     <div id="status">Starting…</div>
@@ -183,8 +193,9 @@
     holds that pair instead of painting the new picture with the old mask. The preview keeps running
     live. The mask latency runs from handing a frame to the model to its mask being ready to composite.
     “Smooth mask edges” softens the mask on its own. “Move the mask with
-    the camera” shows the newest frame and moves the mask with the person, using one motion
-    measured where the picture has real detail. Skin follows that motion. Only the outline is
+    the camera” keeps the output on the camera clock. A frame that gets its own mask is shown
+    as that pair. A frame that arrives while a mask is still being computed is filled by moving
+    the last mask onto it. Skin follows that motion. Only the outline is
     checked against the picture, so a flat colour does not show through a fringe or a hand that
     has closed, and the face is left whole. It holds the matched pair when the warp has no source
     frame. A one-pixel hole inside the mask is closed. Coverage the mask never had is not invented.

@@ -12,7 +12,14 @@ export function ringSlot(frameIds, frameId, keep) {
   return best;
 }
 
-// The picture actually shown. Motion shows the newest camera frame. Otherwise the
+// Warp a camera frame only to fill the gap between the mask rate and the camera
+// clock. The frame inference is running on waits for its own mask. A newer frame
+// has no mask coming, so the last mask is moved onto it.
+export function shouldWarp(motion, frameId, inferredFrame, maskFrameId) {
+  return Boolean(motion) && maskFrameId >= 0 && frameId !== maskFrameId && frameId !== inferredFrame;
+}
+
+// The picture actually shown. A fill frame shows the newest camera frame. Otherwise the
 // picture is the mask's frame, or the last one of those still stored.
 export function shownPicture({warped, frameId, maskFrameId, matched, heldFrameId}) {
   if (warped) return {live: true, id: frameId};
@@ -21,7 +28,9 @@ export function shownPicture({warped, frameId, maskFrameId, matched, heldFrameId
   return {live: true, id: frameId};
 }
 
-// Same key means the output picture did not change. Redrawing a held frame is not a new frame.
+// Same key means the output picture did not change. The id is the camera frame on
+// screen. A warp of that frame and the true mask landing on it are one picture,
+// so a fast model does not count the frame twice.
 export function presentationKey(picture) {
-  return `${picture.live ? 'w' : 'm'}${picture.id}`;
+  return String(picture.id);
 }
