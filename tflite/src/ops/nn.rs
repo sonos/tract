@@ -16,6 +16,8 @@ use crate::ser::BuiltinOp;
 use crate::ser::SubgraphBuilder;
 use crate::tflite::ArgMaxOptions;
 use crate::tflite::ArgMaxOptionsArgs;
+use crate::tflite::ArgMinOptions;
+use crate::tflite::ArgMinOptionsArgs;
 use crate::tflite::BatchMatMulOptions;
 use crate::tflite::BatchMatMulOptionsArgs;
 use crate::tflite::BuiltinOptions;
@@ -56,6 +58,8 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::REDUCE_MIN, |op| de_reduce(op, Reducer::Min));
     reg.reg_to_tract(BuiltinOperator::SUM, |op| de_reduce(op, Reducer::Sum));
     reg.reg_to_tract(BuiltinOperator::REDUCE_PROD, |op| de_reduce(op, Reducer::Prod));
+    reg.reg_to_tract(BuiltinOperator::ARG_MAX, de_arg_max);
+    reg.reg_to_tract(BuiltinOperator::ARG_MIN, de_arg_min);
 }
 
 fn de_batch_matmul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -139,6 +143,38 @@ fn de_reduce(op: &mut DeserOp, reducer: Reducer) -> TractResult<TVec<OutletId>> 
             wire =
                 op.ctx.target.wire_node(format!("{p}.rm_axis_{axis}"), AxisOp::Rm(*axis), &wire)?;
         }
+    }
+    Ok(wire)
+}
+
+fn de_arg_max(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let output_type = builtin!(op, builtin_options_as_arg_max_options).output_type();
+    de_arg_reduce(op, Reducer::ArgMax(false), output_type.try_into()?)
+}
+
+fn de_arg_min(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let output_type = builtin!(op, builtin_options_as_arg_min_options).output_type();
+    de_arg_reduce(op, Reducer::ArgMin(false), output_type.try_into()?)
+}
+
+fn de_arg_reduce(
+    op: &mut DeserOp,
+    reducer: Reducer,
+    output_dt: DatumType,
+) -> TractResult<TVec<OutletId>> {
+    let (input, axis) = args_2!(op.facts()?);
+    let axis = axis.konst.as_ref().context("ArgMax/ArgMin axis must be a constant")?;
+    let axis = axis.cast_to_scalar::<i64>()?;
+    let axis = if axis < 0 { axis + input.rank() as i64 } else { axis } as usize;
+    let p = &op.prefix;
+    let mut wire = op.ctx.target.wire_node(
+        format!("{p}.reduce"),
+        core::nn::Reduce::new(tvec![axis], reducer),
+        &[op.inputs[0]],
+    )?;
+    wire = op.ctx.target.wire_node(format!("{p}.rm_axis"), AxisOp::Rm(axis), &wire)?;
+    if output_dt != i64::datum_type() {
+        wire = op.ctx.target.wire_node(format!("{p}.cast"), Cast { to: output_dt }, &wire)?;
     }
     Ok(wire)
 }
@@ -443,23 +479,34 @@ fn ser_reduce(
     let inputs = [builder.map_outlet(model, node.inputs[0])?, axes];
     let output = builder.map_outlets(model, [OutletId::from(node.id)])?;
     if matches!(op.reducer, Reducer::ArgMin(_) | Reducer::ArgMax(_)) {
+        ensure!(op.axes.len() == 1, "tflite ArgMax/ArgMin reduce a single axis");
         let mut intermediate_shape = model.outlet_fact(node.inputs[0])?.shape.to_vec();
         for axis in op.axes.iter().sorted().rev() {
             intermediate_shape.remove(*axis);
         }
-        let intermediate_fact = i32::fact(intermediate_shape);
+        let intermediate_fact = i64::fact(intermediate_shape);
         let intermediate_tensor =
             builder.write_fact(format!("{}.removed_axes", node.name), intermediate_fact)?;
-        let options = ArgMaxOptions::create(
-            builder.fb(),
-            &ArgMaxOptionsArgs { output_type: TensorType::INT64 },
-        );
-        builder.write_op_with_options(
-            &inputs,
-            &[intermediate_tensor],
-            BuiltinOp::new(56, 1, BuiltinOperator::ARG_MAX, BuiltinOptions::ArgMaxOptions),
-            options.as_union_value(),
-        )?;
+        let (builtin, options) = match op.reducer {
+            Reducer::ArgMax(false) => (
+                BuiltinOp::new(56, 1, BuiltinOperator::ARG_MAX, BuiltinOptions::ArgMaxOptions),
+                ArgMaxOptions::create(
+                    builder.fb(),
+                    &ArgMaxOptionsArgs { output_type: TensorType::INT64 },
+                )
+                .as_union_value(),
+            ),
+            Reducer::ArgMin(false) => (
+                BuiltinOp::new(79, 1, BuiltinOperator::ARG_MIN, BuiltinOptions::ArgMinOptions),
+                ArgMinOptions::create(
+                    builder.fb(),
+                    &ArgMinOptionsArgs { output_type: TensorType::INT64 },
+                )
+                .as_union_value(),
+            ),
+            _ => bail!("tflite has no last-index ArgMax/ArgMin"),
+        };
+        builder.write_op_with_options(&inputs, &[intermediate_tensor], builtin, options)?;
         let expand_dim_options = ExpandDimsOptions::create(builder.fb(), &ExpandDimsOptionsArgs {});
         builder.write_op_with_options(
             &[intermediate_tensor, axes],

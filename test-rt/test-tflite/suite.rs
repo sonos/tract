@@ -5,8 +5,11 @@ use suite_unit::conv_f32::{ConvProblem, ConvProblemParams};
 use suite_unit::conv_q::{QConvProblem, QConvProblemParams};
 use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
 use suite_unit::move_axis::MoveAxisProblem;
+use suite_unit::reduce_arg::ReduceArgProblem;
+use suite_unit::reduce_arg::ReduceArgProblemParams;
 use tract_core::internal::*;
 use tract_core::ops::cnn::PaddingSpec;
+use tract_core::ops::nn::Reducer;
 
 pub fn suite() -> &'static infra::TestSuite {
     lazy_static::lazy_static! {
@@ -44,6 +47,10 @@ fn mk_suite() -> infra::TestSuite {
         "proptest",
         (),
         compatible_move_axis,
+    );
+    unit.get_sub_mut("reduce_arg").add_arbitrary::<ReduceArgProblem>(
+        "proptest",
+        ReduceArgProblemParams { no_nan: true, no_last: true },
     );
 
     let einsum_params = BinEinsumProblemParams { max_dims: 4, ..BinEinsumProblemParams::default() };
@@ -234,6 +241,13 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
 
+    #[allow(clippy::collapsible_if)]
+    if let Some(ra) = case.downcast_ref::<ReduceArgProblem>() {
+        if !compatible_reduce_arg(ra) {
+            return true;
+        }
+    }
+
     if t[0] == "bin_einsum" && t[1] == "proptest" {
         return true;
     }
@@ -317,4 +331,9 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
         return true;
     }
     false
+}
+
+fn compatible_reduce_arg(ra: &ReduceArgProblem) -> bool {
+    !matches!(ra.reducer, Reducer::ArgMax(true) | Reducer::ArgMin(true))
+        && !ra.input.iter().any(|x| x.is_nan())
 }
