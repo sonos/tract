@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the deployable site into dist/: the wasm, the page and build.json. The models are not part
-# of it: the page fetches them from Hugging Face.
+# of it: the page fetches MediaPipe, MODNet and a pinned copy of official RVM from Hugging Face.
 #
 # Needs the wasm32-unknown-unknown target and a wasm-bindgen CLI of the version Cargo.lock pins.
 

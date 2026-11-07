@@ -16,7 +16,7 @@
       "wait": "document.getElementById('status').textContent.startsWith('Ready')"
     },
     {
-      "run": "document.getElementById('model').value = 'mediapipe', document.getElementById('capture').value = '640x360', document.getElementById('view').value = 'mask', document.getElementById('view').dispatchEvent(new Event('change')), document.getElementById('go').click()"
+      "run": "document.getElementById('capture').value = '640x360', document.getElementById('capture').dispatchEvent(new Event('change')), document.getElementById('model').value = 'mediapipe-landscape', document.getElementById('view').value = 'mask', document.getElementById('view').dispatchEvent(new Event('change')), document.getElementById('go').click()"
     },
     {
       "wait": "document.getElementById('status').textContent.startsWith('Live:') && parseFloat(document.getElementById('stats').textContent.replace('mask ', '')) > 0"

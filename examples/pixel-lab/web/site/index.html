@@ -6,9 +6,9 @@
 <title>Background replacement in your browser</title>
 <link rel="icon" href="data:,">
 <style>
-  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; }
+  :root { --bg: #fafafa; --fg: #1b1b1b; --muted: #6b6b6b; --line: #dcdcdc; --accent: #2f6fdd; --panel: #fff; --spark: #0f9f6e; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; }
+    :root { --bg: #151515; --fg: #ececec; --muted: #9a9a9a; --line: #333; --accent: #6c9cf0; --panel: #1e1e1e; --spark: #3ddc97; }
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, sans-serif; }
@@ -31,13 +31,23 @@
   @media (max-width: 760px) {
     .grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "form" "out" "note"; }
   }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
+  .panel { position: relative; z-index: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; }
   label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
   input, select { width: 100%; font: inherit; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
   select { background: var(--panel); }
-  input[type=color] { padding: 2px; height: 38px; }
+  .choice { display: flex; gap: 8px; align-items: stretch; }
+  .choice select { flex: 1; width: auto; min-width: 0; }
+  .choice input[type=color] { width: 46px; height: 38px; padding: 4px; flex: none; cursor: pointer; background: var(--panel); }
+  .choice input[type=color]:disabled { display: none; }
   input[type=checkbox] { width: auto; margin: 0 8px 0 0; }
   .check { display: flex; align-items: center; color: var(--fg); font-size: 14px; margin-top: 14px; }
+  .hint + .check { margin-top: 10px; }
+  .hint { margin: 2px 0 0; font-size: 12px; line-height: 1.35; color: var(--muted); }
+  .info { position: relative; display: inline-flex; margin-left: 6px; }
+  .info-i { width: 16px; height: 16px; margin: 0; padding: 0; border-radius: 50%; border: 1px solid var(--muted); background: transparent; color: var(--muted); font: 700 11px/14px system-ui, sans-serif; cursor: help; }
+  .info-text { display: none; position: absolute; left: calc(100% + 8px); top: 50%; transform: translateY(-50%); width: 280px; padding: 8px 10px; background: var(--panel); color: var(--fg); border: 1px solid var(--line); border-radius: 8px; font-size: 12px; font-weight: 400; line-height: 1.4; box-shadow: 0 8px 24px rgba(0, 0, 0, .18); z-index: 2; }
+  .info:hover .info-text, .info:focus-within .info-text { display: block; }
+  label.check.disabled { opacity: 0.45; }
   button { margin-top: 16px; width: 100%; padding: 10px; font: inherit; font-weight: 600; color: #fff; background: var(--accent); border: 0; border-radius: 6px; cursor: pointer; }
   button:disabled { opacity: .45; cursor: default; }
   .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 14px; }
@@ -45,17 +55,40 @@
   #status { margin-top: 8px; font-size: 13px; color: var(--muted); min-height: 1.5em; white-space: pre-wrap; }
   .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
   @media (max-width: 1000px) { .tiles { grid-template-columns: minmax(0, 1fr); } }
+  .tiles.output { grid-template-columns: minmax(0, 1fr); }
+  .tiles.output .camera { position: fixed; left: -480px; top: 0; width: 320px; height: 180px; margin: 0; pointer-events: none; }
   figure { margin: 0; position: relative; }
+  .frame { position: relative; }
   .fps { position: absolute; top: 30px; right: 8px; padding: 2px 8px; border-radius: 999px; font: 600 12px/1.6 ui-monospace, monospace; color: #fff; background: rgba(0, 0, 0, .55); font-variant-numeric: tabular-nums; }
   .fps:empty { display: none; }
+  .chip { position: absolute; top: 8px; left: 8px; padding: 2px 8px; border-radius: 999px; font: 600 12px/1.6 ui-monospace, monospace; color: #fff; background: rgba(0, 0, 0, .55); font-variant-numeric: tabular-nums; pointer-events: none; }
+  .chip:empty { display: none; }
   figcaption { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   canvas, video { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); display: block; }
   #stats { font-size: 13px; color: var(--muted); margin: 8px 0 0; font-variant-numeric: tabular-nums; min-height: 1.5em; }
+  .budget { margin-top: 14px; }
+  .budget-label { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .budget-label span:first-child { font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+  .budget-track { margin-top: 6px; height: 8px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .budget-track > div { height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, #7b5cff, #d946ef, #fb923c); }
+  .budget-track.over > div { background: linear-gradient(90deg, #fb923c, #ef4444); }
+  .inspector { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+  @media (max-width: 1000px) { .inspector { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  .inspector article { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 6px; background: var(--panel); min-width: 0; }
+  .inspector h3 { margin: 0; font-size: 11px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .inspector .value { margin: 4px 0 0; font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+  .inspector .detail { margin: 0; min-height: 1.2em; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .inspector svg { width: 100%; height: 36px; display: block; margin-top: 6px; color: var(--spark); }
+  .inspector polyline { fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
   .note { font-size: 12px; color: var(--muted); margin: 0; }
   .build { display: block; margin-top: 10px; opacity: .75; }
   #build { font-family: ui-monospace, monospace; font-size: 11px; margin-left: 8px; }
   a { color: var(--accent); }
   .crumb { display: inline-block; font-size: 13px; margin-bottom: 4px; }
+  .author { max-width: 1280px; margin: 0 auto; padding: 8px 16px 32px; display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; font-size: 13px; color: var(--muted); }
+  .author a { display: inline-flex; align-items: center; gap: 8px; color: inherit; text-decoration: none; }
+  .author a:hover { color: var(--accent); }
+  .author svg { display: block; }
 </style>
 </head>
 <body>
@@ -66,42 +99,111 @@
     <p class="sub">Person segmentation on your camera, on your GPU through WebGPU with <a href="https://github.com/sonos/tract">tract</a>. Your camera feed never leaves your machine.</p>
   </header>
   <div class="panel">
-    <label for="model">Model</label>
-    <select id="model"></select>
     <label for="camera">Camera</label>
     <select id="camera"><option value="">Default camera</option></select>
     <label for="capture">Capture size</label>
     <select id="capture"></select>
+    <label for="model">Model</label>
+    <select id="model"></select>
+    <label for="r-factor" id="r-label" hidden>R factor</label>
+    <select id="r-factor" hidden>
+      <option value="auto">Auto</option>
+      <option value="0.25">R=0.25</option>
+      <option value="0.5">R=0.5</option>
+      <option value="0.75">R=0.75</option>
+      <option value="1">R=1.0</option>
+    </select>
+    <p class="hint" id="scale" hidden></p>
     <label for="background">Background</label>
-    <select id="background"><option value="blur">Blur</option><option value="colour">Solid colour</option></select>
-    <label for="colour">Colour</label>
-    <input id="colour" type="color" value="#457b75" disabled>
+    <div class="choice">
+      <select id="background"><option value="blur">Blur</option><option value="colour">Solid colour</option></select>
+      <input id="colour" type="color" value="#457b75" disabled aria-label="Background colour" title="Change the background colour">
+    </div>
+    <label for="blur" id="blur-label">Blur strength</label>
+    <select id="blur"><option value="low">Low</option><option value="high" selected>High</option></select>
     <label for="view">View</label>
     <select id="view"><option value="composited">Composited</option><option value="mask">Mask (alpha)</option></select>
-    <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges</label>
+    <label for="layout">Layout</label>
+    <select id="layout"><option value="both">Side by side</option><option value="output">Output only</option></select>
+    <p class="hint">Side by side keeps the camera on the left. Output only shows the composited picture or the mask.</p>
+    <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges<span class="info"><button type="button" class="info-i" aria-label="About smooth mask edges">i</button><span class="info-text" role="tooltip">Softens the mask and pulls its edge onto the camera image. Works whether or not the mask is moved.</span></span></label>
+    <label class="check"><input id="motion" type="checkbox">Move the mask with the camera<span class="info"><button type="button" class="info-i" aria-label="About moving the mask">i</button><span class="info-text" role="tooltip">Off, the composited picture stays on the camera frame the mask was measured from, so the two share one timestamp. On, the newest frame stays up and the person moves as one, measured where the picture has real detail. Skin follows that motion. Only the outline is checked against the picture. The preview keeps running live.</span></span></label>
     <button id="go" disabled>Loading…</button>
     <div class="bar"><div id="bar"></div></div>
     <div id="status">Starting…</div>
   </div>
   <div class="out">
-    <div class="tiles">
-      <figure><figcaption>Camera</figcaption><video id="camera-feed" autoplay muted playsinline></video><span class="fps" id="camera-fps"></span></figure>
-      <figure><figcaption>Composited on the GPU</figcaption><canvas id="out" width="640" height="360"></canvas><span class="fps" id="out-fps"></span></figure>
+    <div class="tiles" id="tiles">
+      <figure class="camera"><figcaption id="input-caption">Input</figcaption><div class="frame"><video id="camera-feed" autoplay muted playsinline></video><span class="chip" id="capture-chip"></span></div><span class="fps" id="camera-fps"></span></figure>
+      <figure><figcaption id="output-caption">Output: Composited</figcaption><canvas id="out" width="640" height="360"></canvas><span class="fps" id="out-fps"></span></figure>
     </div>
     <p id="stats"></p>
+    <div class="budget">
+      <div class="budget-label"><span>Frame budget</span><span id="budget-value">— / — ms</span></div>
+      <div class="budget-track" id="budget-track"><div id="budget-fill"></div></div>
+    </div>
+    <section class="inspector" aria-label="Pipeline">
+      <article>
+        <h3>Ingest</h3>
+        <p class="value" id="ingest-value">—</p>
+        <p class="detail" id="ingest-detail">Waiting for the camera</p>
+        <svg viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true"><polyline id="ingest-spark"></polyline></svg>
+      </article>
+      <article>
+        <h3>Inference</h3>
+        <p class="value" id="inference-value">—</p>
+        <p class="detail" id="inference-detail">Waiting for a mask</p>
+        <svg viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true"><polyline id="inference-spark"></polyline></svg>
+      </article>
+      <article>
+        <h3>Compositing</h3>
+        <p class="value" id="composite-value">—</p>
+        <p class="detail" id="composite-detail">Waiting for a frame</p>
+        <svg viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true"><polyline id="composite-spark"></polyline></svg>
+      </article>
+      <article>
+        <h3>Output</h3>
+        <p class="value" id="output-value">—</p>
+        <p class="detail" id="output-detail">Waiting for a picture</p>
+        <svg viewBox="0 0 120 36" preserveAspectRatio="none" aria-hidden="true"><polyline id="output-spark"></polyline></svg>
+      </article>
+    </section>
   </div>
   <p class="note">
-    The camera frames stay on the GPU; only the models come over the network, straight from
-    Hugging Face at a pinned revision, and stay in your browser's cache:
+    The camera frames stay on the GPU; only the models come over the network, and they stay in your browser's cache.
     MediaPipe Selfie Segmentation, <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">square</a>
     or <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape">landscape</a> (0.5 MB), and
-    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB), all under the Apache 2.0 license.
-    The camera is composited at its own frame rate with the latest mask, so a slower model makes the
-    mask lag, not the video; the mask latency runs from handing a frame to the model to its mask
-    being ready to composite.
+    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB) at 512 × 288, 448 × 256 and 384 × 224,
+    come from Hugging Face at a pinned revision, under the Apache 2.0 license.
+    <a href="https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0">RVM MobileNetV3</a>
+    is the official v1.0.0 fp32 file (15 MB), GPL-3.0. The page downloads it from a pinned Hugging Face copy,
+    because the release host does not let a web page read it. It reads the camera frame itself. Auto keeps the long side of the inner frame at 512,
+    and a smaller camera is not shrunk. A fixed R factor replaces that, including while the camera is running. Changing it clears the model's memory.
+    The composited picture uses the camera frame the mask was measured from, so a slower model
+    holds that pair instead of painting the new picture with the old mask. The preview keeps running
+    live. The mask latency runs from handing a frame to the model to its mask being ready to composite.
+    “Smooth mask edges” softens the mask on its own. “Move the mask with
+    the camera” shows the newest frame and moves the mask with the person, using one motion
+    measured where the picture has real detail. Skin follows that motion. Only the outline is
+    checked against the picture, so a flat colour does not show through a fringe or a hand that
+    has closed, and the face is left whole. It holds the matched pair when the warp has no source
+    frame. A one-pixel hole inside the mask is closed. Coverage the mask never had is not invented.
     <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/pixel-lab/web">Source code</a><span id="build"></span></span>
   </p>
 </main>
-<script type="module" src="main.js"></script>
+<footer class="author">
+  <span>Author</span>
+  <a href="https://github.com/czoli1976">
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    github.com/czoli1976
+  </a>
+  <a href="https://www.linkedin.com/in/ckristianzoli">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM7.12 20.45H3.56V9h3.56v11.45zM22.23 0H1.77C.79 0 0 .77 0 1.73v20.54C0 23.23.79 24 1.77 24h20.46c.98 0 1.77-.77 1.77-1.73V1.73C24 .77 23.21 0 22.23 0z"/></svg>
+    linkedin.com/in/ckristianzoli
+  </a>
+</footer>
+<script type="module">
+import(`./main.js?stamp=${Date.now()}`);
+</script>
 </body>
 </html>

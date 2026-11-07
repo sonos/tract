@@ -1,7 +1,23 @@
 // Runs the segmenter and the compositor off the page's thread, each on a WebGPU device of its own.
-import {model, modelUrl} from './models.mjs';
+const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
+const stamped = file => import(`./${file}?stamp=${stamp}`);
+// The page posts the first command as soon as the worker is created. A top-level
+// await yields before onmessage exists, and Chrome drops that message, so the
+// canvas is transferred and never drawn. Load the modules in the handler instead.
+let model, modelUrl, rvmScale, formatR;
+const modulesReady = stamped('models.mjs').then(loaded => {
+  ({model, modelUrl, rvmScale, formatR} = loaded);
+});
 
-let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0, framesSeen = 0, inferredFrame = 0;
+let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameContext, modelCanvas, modelContext, mask, gpuFrames = 0, framesSeen = 0, inferredFrame = 0, motion = false;
+// Set while a new R factor is installed, so the in-flight mask can finish and the next one waits.
+let holdInference = false;
+let rvmSize = null;
+// How the latest camera frame was drawn. A finished mask is shown with these,
+// instead of waiting for the next camera frame.
+let shown = null;
+// The picture last counted on the output. Redrawing that same picture is not a new frame.
+let lastPresented = null;
 // Composited frames submitted and not finished yet. Past this a new frame is dropped rather than
 // queued, so latency stays bounded; three still covers Firefox's ~100 ms completion callback at 30 fps.
 const MAX_GPU_FRAMES = 3;
@@ -76,18 +92,45 @@ class MaskRelay {
       await this.staging.mapAsync(GPUMapMode.READ);
       device.queue.writeTexture({texture: this.target}, this.staging.getMappedRange(), {bytesPerRow: this.bytesPerRow}, [this.width, this.height]);
       this.staging.unmap();
+      composer.setMaskFrame(this.frameId);
       post({mask: performance.now() - started});
+      // The camera loop only draws on a new video frame. Show this mask on the
+      // frame already uploaded, so a fast model is not held for a whole frame.
+      showMask();
     } finally {
       this.busy = false;
     }
   }
 }
 
+// Composite the latest uploaded frame again. Skipped when too many draws are
+// still on the GPU; the next camera frame shows the mask instead.
+function showMask() {
+  if (!shown || gpuFrames >= MAX_GPU_FRAMES) return;
+  present(composer.draw(shown.refine, shown.view, {frameId: framesSeen, motion: shown.motion}));
+}
+
+// Count a composited picture once. A held frame is drawn on every camera frame,
+// and only the first of those draws is a new output frame.
+function present(drawn) {
+  const advanced = drawn.presented !== lastPresented;
+  lastPresented = drawn.presented;
+  const submitted = performance.now();
+  gpuFrames++;
+  device.queue.onSubmittedWorkDone().then(() => {
+    gpuFrames--;
+    post({compositeMs: performance.now() - submitted, advanced});
+  }, () => { gpuFrames--; });
+}
+
 // Start an inference on the latest camera frame if none is running. When a mask lands and a newer
 // frame is already there, the next inference starts at once instead of waiting for the next frame.
 function inferLatest() {
-  if (mask.busy || inferredFrame === framesSeen) return;
+  if (holdInference || mask.busy || inferredFrame === framesSeen) return;
   inferredFrame = framesSeen;
+  mask.frameId = inferredFrame;
+  composer.setInferenceFrame(inferredFrame);
+  if (motion) composer.captureKey(inferredFrame);
   modelContext.drawImage(frameCanvas, 0, 0, modelCanvas.width, modelCanvas.height);
   mask.infer().then(inferLatest, error => post({fatal: `Inference failed: ${error?.message || error}`}));
 }
@@ -95,9 +138,14 @@ function inferLatest() {
 async function command(type, payload) {
   if (type === 'init') {
     const m = model(payload.model);
-    const [{Segmenter}, bytes, {Compositor}] = await Promise.all([wasm(), download(m), import('./compositor.js')]);
+    const [{Segmenter}, bytes, {Compositor}] = await Promise.all([wasm(), download(m), stamped('compositor.js')]);
+    const width = m.kind === 'rvm' ? payload.canvas.width : m.width;
+    const height = m.kind === 'rvm' ? payload.canvas.height : m.height;
+    const ratio = m.kind === 'rvm' ? rvmScale(width, height, payload.ratio) : undefined;
     post({status: `Preparing ${m.name} on WebGPU…`});
-    segmenter = await Segmenter.create(bytes, m.width, m.height, m.mean, m.std);
+    segmenter = m.kind === 'rvm'
+      ? await Segmenter.create_rvm(bytes, width, height, ratio)
+      : await Segmenter.create(bytes, width, height, m.mean, m.std);
     const ops = audit(segmenter);
     tractDevice = segmenter.device();
     device = await (await navigator.gpu.requestAdapter({powerPreference: 'high-performance'})).requestDevice();
@@ -105,19 +153,35 @@ async function command(type, payload) {
       d.addEventListener('uncapturederror', event => post({fatal: `WebGPU: ${event.error.message}`}));
       d.lost.then(info => post({fatal: `WebGPU device lost: ${info.message}`}));
     }
-    const target = device.createTexture({size: [m.width, m.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
-    mask = new MaskRelay(segmenter.mask_texture(), target, m.width, m.height);
+    const target = device.createTexture({size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
+    mask = new MaskRelay(segmenter.mask_texture(), target, width, height);
     composer = await Compositor.create(device, target, payload.canvas);
     frameCanvas = new OffscreenCanvas(payload.canvas.width, payload.canvas.height);
     frameContext = frameCanvas.getContext('2d');
-    modelCanvas = new OffscreenCanvas(m.width, m.height);
+    modelCanvas = new OffscreenCanvas(width, height);
     modelContext = modelCanvas.getContext('2d');
     framesSeen = inferredFrame = 0;
-    return {ops};
+    lastPresented = null;
+    rvmSize = m.kind === 'rvm' ? {width, height} : null;
+    return {ops, ratio};
+  }
+  if (type === 'ratio') {
+    if (!rvmSize) throw new Error('R factor is only for RVM');
+    const ratio = rvmScale(rvmSize.width, rvmSize.height, payload.ratio);
+    holdInference = true;
+    try {
+      while (mask?.busy) await new Promise(resolve => setTimeout(resolve, 5));
+      post({status: `Preparing R=${formatR(ratio)}…`});
+      const applied = segmenter.set_ratio(ratio);
+      return {ratio: applied, ops: audit(segmenter)};
+    } finally {
+      holdInference = false;
+      inferLatest();
+    }
   }
   if (type === 'background') {
     if (payload.mode === 'colour') composer.setColour(payload.colour);
-    else composer.setBlur();
+    else composer.setBlur(payload.blur);
     return {};
   }
   if (type === 'frame') {
@@ -130,17 +194,16 @@ async function command(type, payload) {
       const scale = Math.max(frameCanvas.width / bitmap.width, frameCanvas.height / bitmap.height);
       const width = frameCanvas.width / scale, height = frameCanvas.height / scale;
       frameContext.drawImage(bitmap, (bitmap.width - width) / 2, (bitmap.height - height) / 2, width, height, 0, 0, frameCanvas.width, frameCanvas.height);
-      composer.uploadFrame(frameCanvas);
-      framesSeen++;
+      const frameId = ++framesSeen;
+      motion = Boolean(payload.motion);
+      if (motion) await composer.ensureMotion();
+      composer.uploadFrame(frameCanvas, frameId);
       inferLatest();
     } finally { bitmap.close(); }
-    composer.draw(payload.refine, payload.view);
-    gpuFrames++;
-    device.queue.onSubmittedWorkDone().then(() => {
-      gpuFrames--;
-      post({completed: true});
-    });
-    return {gpuFrames, inferring: mask.busy};
+    shown = {refine: payload.refine, view: payload.view, motion};
+    const drawn = composer.draw(payload.refine, payload.view, {frameId: framesSeen, motion});
+    present(drawn);
+    return {gpuFrames, inferring: mask.busy, warped: drawn.warped, held: drawn.held, synced: drawn.synced};
   }
   throw new Error(`Unknown command: ${type}`);
 }
@@ -149,6 +212,7 @@ let pending = Promise.resolve();
 self.onmessage = ({data}) => {
   pending = pending.then(async () => {
     try {
+      await modulesReady;
       postMessage({id: data.id, result: await command(data.type, data.payload)});
     } catch (error) {
       postMessage({id: data.id, error: `${error?.name || 'Error'}: ${error?.message || error}`});
