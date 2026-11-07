@@ -774,12 +774,26 @@ jobs:
           cp metrics result/metrics
           if [ -f metrics.failures ]; then cp metrics.failures result/; fi
           printf '{"device":"%s","triple":"%s"}\n' "$DEVICE" "$TRIPLE" > result/meta.json
+      # The MacStudio's DNS drops out in bursts (CreateArtifact: ENOTFOUND, ~1 job in 7 on bad
+      # days) and the PR report then loses the leg after a full bench. Retry once after a pause.
       - name: Upload PR result
+        id: upload-pr-result
         if: ${{ !cancelled() && hashFiles('metrics') != '' && needs.prepare.outputs.is_pr == 'true' }}
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: bench-result-${{ matrix.target }}
           path: result
+      - name: Wait before retrying the upload
+        if: ${{ !cancelled() && steps.upload-pr-result.outcome == 'failure' }}
+        run: sleep 60
+      - name: Upload PR result (retry)
+        if: ${{ !cancelled() && steps.upload-pr-result.outcome == 'failure' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bench-result-${{ matrix.target }}
+          path: result
+          overwrite: true
 
   bench-macos:
     name: bench ${{ matrix.target }}
