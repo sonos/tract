@@ -1,5 +1,5 @@
 use crate::kernels::bin_ops::wgpu_bin_op;
-use crate::kernels::conv::wgpu_conv_dispatch;
+use crate::kernels::conv::wgpu_conv_dispatch_with_precision;
 use tract_core::internal::*;
 use tract_core::ops::cnn::Conv;
 use tract_gpu::ops::change_axes::GpuAxisOp;
@@ -42,7 +42,11 @@ pub fn wire_wgpu_conv(
     let conv_name = format!("{prefix}.conv");
     let mut conv_wire = target.wire_node(
         if need_bias { &conv_name } else { &node.name },
-        WgpuConv { op: op.clone(), epilogue: vec![] },
+        WgpuConv {
+            op: op.clone(),
+            epilogue: vec![],
+            accumulate_f32: crate::precision::for_model(source)?,
+        },
         &inputs[0..2],
     )?[0];
     if need_bias {
@@ -69,6 +73,8 @@ pub fn wire_wgpu_conv(
 pub struct WgpuConv {
     pub op: Conv,
     pub epilogue: Vec<crate::kernels::shaders::ChainStep>,
+    /// FP16 arithmetic policy captured during model translation.
+    pub accumulate_f32: bool,
 }
 
 impl Op for WgpuConv {
@@ -76,7 +82,9 @@ impl Op for WgpuConv {
         "WgpuConv".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
-        self.op.info()
+        let mut info = self.op.info()?;
+        info.push(format!("f16_accumulate_f32: {}", self.accumulate_f32));
+        Ok(info)
     }
     op_as_typed_op!();
 }
@@ -94,13 +102,14 @@ impl EvalOp for WgpuConv {
             &output_shape.shape,
         )?;
         if output.len() > 0 {
-            wgpu_conv_dispatch(
+            wgpu_conv_dispatch_with_precision(
                 &self.op,
                 &self.epilogue,
                 inputs[0],
                 inputs[1],
                 &inputs[2..],
                 &output,
+                self.accumulate_f32,
             )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
