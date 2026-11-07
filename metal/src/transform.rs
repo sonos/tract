@@ -303,6 +303,7 @@ impl MetalTransform {
 
         Rewriter::default()
             .with_rule_for("window_kv_cache_output", window_kv_cache_output)
+            .with_rule_for("window_fused_kv_cache_output", window_fused_kv_cache_output)
             .rewrite(&(), model)?;
         Ok(())
     }
@@ -732,8 +733,30 @@ fn window_kv_cache_output(
     _node_name: &str,
     op: &tract_gpu::ops::dyn_kv_cache::GpuDynKVCache,
 ) -> TractResult<Option<TypedModelPatch>> {
-    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, |succ| {
-        succ.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
-            || succ.op_is::<tract_gpu::sync::DeviceSync>()
-    })
+    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, reads_kv_window)
+}
+
+/// `window_kv_cache_output` for a cache wrapped with axis ops fused on its input, as a
+/// value row transposed into its cache ends up.
+fn window_fused_kv_cache_output(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _node_name: &str,
+    op: &crate::ops::MetalFusedAxisOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if_some!(cache = op.op.downcast_ref::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>());
+    rule_if_some!(
+        cache = tract_gpu::ops::dyn_kv_cache::windowed(model, node, cache, reads_kv_window)?
+    );
+    let fused = crate::ops::MetalFusedAxisOp {
+        grouped_axis_ops: op.grouped_axis_ops.clone(),
+        op: Box::new(cache),
+    };
+    TypedModelPatch::replace_single_op(model, node, &node.inputs, fused).map(Some)
+}
+
+fn reads_kv_window(succ: &TypedNode) -> bool {
+    succ.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
+        || succ.op_is::<tract_gpu::sync::DeviceSync>()
 }
