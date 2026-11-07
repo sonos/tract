@@ -261,12 +261,11 @@ impl CommonRec {
         }
 
         // A fused whole-sequence op, when the body has one and the scan carries
-        // nothing it cannot express: no peepholes, no extra cell state, no
-        // sequence_lens, a concrete hidden size, and a constant R, which a fused op
-        // may pack once instead of reading it every iteration as the Scan does.
+        // nothing it cannot express: no peepholes, no sequence_lens, a concrete
+        // hidden size, and a constant R, which a fused op may pack once instead of
+        // reading it every iteration as the Scan does.
         let r_is_const = target.outlet_fact(inputs[2])?.konst.is_some();
         let fused = (self.optional_p_input.is_none()
-            && !self.body.have_extra_c_state()
             && self.optional_sequence_lens_input.is_none()
             && r_is_const)
             .then(|| h_size.to_usize().ok())
@@ -287,11 +286,14 @@ impl CommonRec {
 
         let scan_outputs = if let Some(op) = fused {
             let outs = target.wire_node(prefix, op, &outer_inputs)?;
-            // GruSeq yields (Y, Y_h); place them where the scan's mapping would.
+            // Fused ops yield (Y, Y_h) or (Y, Y_h, Y_c); place them where the scan's
+            // mapping would.
             let mut slots: TVec<OutletId> = tvec!();
             for slot in 0..self.nboutputs()? {
                 if Some(slot) == self.optional_y_output {
                     slots.push(outs[0]);
+                } else if Some(slot) == self.optional_y_c_output {
+                    slots.push(outs[2]);
                 } else {
                     slots.push(outs[1]);
                 }
