@@ -6,13 +6,15 @@ Writes, under <assets>/model:
   tokens [1, 17, S] (text + 16 audio streams), past_k{i} / past_v{i}
   [1, 32, P, 128]. Outputs: hidden [1, S, 4096] (after out_norm), text_logits [1, S, 32000],
   k{i} / v{i} [1, 32, P + S, 128], which tract folds into a stateful KV cache.
-- depformer-step{0..7}.nnef.tgz: the depth transformer, f16, one graph per step, each with
-  that step's weights. Inputs: token [1, 1], hidden [1, 1, 4096], past K/V of the earlier
-  steps. Outputs: logits [1, 2048] and the K/V extended by one position.
+- depformer.nnef.tgz: the depth transformer, f16, a whole frame of its 8 steps in one
+  graph, each step with its own weights and sampling its code in the graph. Inputs:
+  text_token [1, 1], hidden [1, 1, 4096], noise [8, 2048] f32 (temperature times Gumbel
+  noise; zeros for greedy). Output: codes [1, 8].
 - vocab.json: the text tokenizer's pieces.
 
-With --check, also runs Kyutai's own LMGen greedily over the first frames of the sample and
-writes <assets>/reference/moshi_greedy.json for the example's --check. This needs Kyutai's
+With --check, also writes depformer-f32.nnef.tgz, an f32 copy for the example's --check (in
+f16 the deepest codes have near-ties that rounding decides), and runs Kyutai's own LMGen
+greedily over the first frames of the sample into <assets>/reference/moshi_greedy.json. This needs Kyutai's
 `moshi` package and about 48 GB of RAM (the model runs in f32 on the CPU).
 
 Usage: python export.py <assets> <sample.wav> [--check]
@@ -47,8 +49,8 @@ mimi_export = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mimi_export)
 
 
-def param(t):
-    return torch.nn.Parameter(t.to(DT).contiguous(), requires_grad=False)
+def param(t, dt=DT):
+    return torch.nn.Parameter(t.to(dt).contiguous(), requires_grad=False)
 
 
 def rms_norm(x, alpha):
@@ -130,9 +132,10 @@ class Helium(torch.nn.Module):
 class DepformerStep(torch.nn.Module):
     """Step k of the depth transformer, with its own slice of every per-step weight."""
 
-    def __init__(self, weights, k):
+    def __init__(self, weights, k, dt):
         super().__init__()
         step = lambda name: weights[name].view(DEP_STEPS, -1, *weights[name].shape[1:])[k]
+        param = lambda t: globals()["param"](t, dt)
         self.depformer_in = param(weights[f"depformer_in.{k}.weight"])
         self.emb = param(weights["depformer_text_emb.weight" if k == 0 else f"depformer_emb.{k - 1}.weight"])
         self.layers = torch.nn.ModuleList()
@@ -220,20 +223,38 @@ def export_helium(weights_path, model_dir):
         )
 
 
-def export_depformer(weights_path, model_dir):
+class Depformer(torch.nn.Module):
+    """A whole frame of the depth transformer: the 8 steps chained, each sampling its code
+    as argmax(logits + noise) and feeding it to the next. With noise = temperature times
+    Gumbel noise this samples the softmax at that temperature (without Kyutai's top-k); with
+    zero noise it is greedy."""
+
+    def __init__(self, weights, dt):
+        super().__init__()
+        self.dt = dt
+        self.steps = torch.nn.ModuleList([DepformerStep(weights, k, dt) for k in range(DEP_STEPS)])
+
+    def forward(self, text_token, hidden, noise):
+        hidden = hidden.to(self.dt)
+        token, past, codes = text_token, (), []
+        for k, step in enumerate(self.steps):
+            logits, *past = step(token, hidden, *past)
+            token = (logits.float() + noise[k : k + 1]).argmax(-1, keepdim=True)
+            codes.append(token)
+        return torch.cat(codes, dim=1)
+
+
+def export_depformer(weights_path, path, dt):
     weights = load(weights_path, lambda k: k.startswith(("depformer", "linears")))
-    for k in range(DEP_STEPS):
-        past = tuple(torch.randn(1, DEP_HEADS, k, DEP_HEAD_DIM, dtype=DT) for _ in range(2 * DEP_LAYERS))
-        kv_in = [f"past_{kv}{i}" for i in range(DEP_LAYERS) for kv in "kv"] if k else []
-        with torch.no_grad():
-            export_model_to_nnef(
-                model=DepformerStep(weights, k).eval(),
-                args=(torch.tensor([[3]]), torch.randn(1, 1, DIM, dtype=DT), *(past if k else ())),
-                file_path_export=model_dir / f"depformer-step{k}.nnef.tgz",
-                input_names=["token", "hidden", *kv_in],
-                output_names=["logits", *[f"{kv}{i}" for i in range(DEP_LAYERS) for kv in "kv"]],
-                inference_target=target(),
-            )
+    with torch.no_grad():
+        export_model_to_nnef(
+            model=Depformer(weights, dt).eval(),
+            args=(torch.tensor([[3]]), torch.randn(1, 1, DIM, dtype=DT), torch.zeros(DEP_STEPS, 2048)),
+            file_path_export=path,
+            input_names=["text_token", "hidden", "noise"],
+            output_names=["codes"],
+            inference_target=target(),
+        )
 
 
 def greedy_reference(weights_path, codes, path):
@@ -266,8 +287,9 @@ def main(assets, wav, check):
 
     codes = export_mimi(model_dir, audio)
     export_helium(weights_path, model_dir)
-    export_depformer(weights_path, model_dir)
+    export_depformer(weights_path, model_dir / "depformer.nnef.tgz", DT)
     if check:
+        export_depformer(weights_path, model_dir / "depformer-f32.nnef.tgz", torch.float32)
         (assets / "reference").mkdir(exist_ok=True)
         greedy_reference(weights_path, codes, assets / "reference" / "moshi_greedy.json")
 

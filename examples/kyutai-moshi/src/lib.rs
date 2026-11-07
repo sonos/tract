@@ -1,5 +1,6 @@
 //! Moshi on tract: Mimi in and out, Helium and the depformer on Kyutai's delayed token
-//! schedule, one 80 ms frame per step.
+//! schedule, one 80 ms frame per step. Text is sampled with Kyutai's settings; the depformer
+//! samples its codes in its graph, at Kyutai's temperature but without its top-k.
 
 use anyhow::*;
 use tract::prelude::*;
@@ -16,7 +17,7 @@ pub struct Models {
     encoder: Runnable,
     decoder: Runnable,
     helium: Runnable,
-    depformer: Vec<Runnable>,
+    depformer: Runnable,
     vocab: Vec<String>,
 }
 
@@ -35,17 +36,21 @@ fn pulsed(
 
 impl Models {
     /// Loads the graphs export.py wrote to `dir`, folding Helium's K/V into a stateful cache
-    /// and pulsing Mimi to one frame.
-    pub fn load(dir: &str, runtime: &Runtime) -> Result<Models> {
+    /// and pulsing Mimi to one frame. With `q4`, Helium's weights go to Q4_0 blocks: a quarter
+    /// of the memory and of the bandwidth a frame takes, for GPUs short of either. With
+    /// `exact`, loads the f32 depformer export.py --check writes, for exact greedy runs.
+    pub fn load(dir: &str, runtime: &Runtime, q4: bool, exact: bool) -> Result<Models> {
         let nnef = tract::nnef()?.with_tract_transformers()?;
         let encoder = pulsed(&nnef, runtime, format!("{dir}/mimi-encoder.nnef.tgz"), "T", FRAME)?;
         let decoder = pulsed(&nnef, runtime, format!("{dir}/mimi-decoder.nnef.tgz"), "F", 1)?;
         let mut helium = nnef.load(format!("{dir}/helium.nnef.tgz"))?;
         helium.transform("transformers_detect_all")?;
+        if q4 {
+            helium.transform("block_quant")?;
+        }
         let helium = runtime.prepare(helium)?;
-        let depformer = (0..8)
-            .map(|k| runtime.prepare(nnef.load(format!("{dir}/depformer-step{k}.nnef.tgz"))?))
-            .collect::<Result<Vec<_>>>()?;
+        let depformer = if exact { "depformer-f32" } else { "depformer" };
+        let depformer = runtime.prepare(nnef.load(format!("{dir}/{depformer}.nnef.tgz"))?)?;
         let vocab = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/vocab.json"))?)?;
         Ok(Models { encoder, decoder, helium, depformer, vocab })
     }
@@ -116,18 +121,13 @@ impl Session<'_> {
         let hidden = out.remove(0);
         let text_token = self.sampler.sample(&text_logits, 0.7, 25);
 
-        let mut codes = [0i64; 8];
-        let mut prev = text_token;
-        let mut past: Vec<Tensor> = vec![];
-        for (k, step) in self.models.depformer.iter().enumerate() {
-            let mut inputs = vec![Tensor::from_slice(&[1, 1], &[prev])?, hidden.clone()];
-            inputs.append(&mut past);
-            let mut out = step.run(inputs)?;
-            let logits = to_f32(&out.remove(0))?;
-            past = out;
-            codes[k] = self.sampler.sample(&logits, 0.8, 250);
-            prev = codes[k];
-        }
+        let noise = Tensor::from_slice(&[8, 2048], &self.sampler.gumbel(8 * 2048, 0.8))?;
+        let out = self.models.depformer.run([
+            Tensor::from_slice(&[1, 1], &[text_token])?,
+            hidden,
+            noise,
+        ])?;
+        let codes: [i64; 8] = out[0].as_slice::<i64>()?.try_into()?;
 
         let next = offset + 1;
         self.offset = next;
@@ -159,6 +159,21 @@ impl Sampler {
         self.state ^= self.state >> 7;
         self.state ^= self.state << 17;
         (self.state >> 11) as f64 / (1u64 << 53) as f64
+    }
+
+    /// Noise that makes argmax(logits + noise) sample the softmax at `temp`: zeros when
+    /// greedy.
+    fn gumbel(&mut self, len: usize, temp: f32) -> Vec<f32> {
+        (0..len)
+            .map(|_| {
+                if self.greedy {
+                    0.0
+                } else {
+                    let u = self.uniform().max(f64::MIN_POSITIVE);
+                    temp * -(-u.ln()).ln() as f32
+                }
+            })
+            .collect()
     }
 
     /// Kyutai's sample_token: softmax at `temp` over the `top_k` largest logits.
