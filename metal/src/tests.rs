@@ -637,6 +637,55 @@ mod tests {
         Ok(())
     }
 
+    // A value row reaches its cache transposed, an axis op the transform fuses into the
+    // cache node; that cache must still hand the MLX kernel a window over its buffer, or it
+    // packs the whole past into a new tensor every turn.
+    #[test]
+    fn transposed_value_cache_hands_out_a_window() -> TractResult<()> {
+        use tract_transformers::ops::dyn_kv_cache::DynKeyValueCache;
+        let (h, d) = (4i64, 64i64);
+        let mut model = TypedModel::default();
+        let s = model.symbols.sym("S").to_dim();
+        let p = model.symbols.sym("P").to_dim();
+        let heads_first = |len: &TDim| f32::fact(tvec![1.into(), h.into(), len.clone(), d.into()]);
+        let q = model.add_source("q", heads_first(&s))?;
+        let k = model.add_source("k", heads_first(&s))?;
+        let v_row =
+            model.add_source("v", f32::fact(tvec![1.into(), s.clone(), h.into(), d.into()]))?;
+        let v = model.wire_node("v.heads", AxisOp::Move(1, 2), &[v_row])?[0];
+        let cache = |name: &str| DynKeyValueCache {
+            name: name.to_string(),
+            axis: 2,
+            past_sequence_fact: heads_first(&p),
+            input_sequence_fact: heads_first(&s),
+        };
+        let k = model.wire_node("k.cache", cache("k.cache"), &[k])?[0];
+        let v = model.wire_node("v.cache", cache("v.cache"), &[v])?[0];
+        let sdpa = tract_transformers::ops::sdpa::Sdpa {
+            scale: None,
+            datum_type: f32::datum_type(),
+            acc_datum_type: f32::datum_type(),
+            is_causal: false,
+        };
+        let out = model.wire_node("sdpa", sdpa, &[q, k, v])?;
+        model.select_output_outlets(&out)?;
+
+        let metal = MetalTransform::default().transform_into(model)?;
+        let windows: Vec<(String, bool)> = metal
+            .nodes()
+            .iter()
+            .filter_map(|n| {
+                let cache = n.op_as::<GpuDynKVCache>().or_else(|| {
+                    n.op_as::<crate::ops::MetalFusedAxisOp>()?.op.downcast_ref::<GpuDynKVCache>()
+                })?;
+                Some((n.name.clone(), cache.window_output))
+            })
+            .collect();
+        assert_eq!(windows.len(), 2, "{windows:?}");
+        assert!(windows.iter().all(|(_, w)| *w), "{windows:?}");
+        Ok(())
+    }
+
     // GQA at a head dim neither fused kernel supports (48: not an MLX dim, and
     // the MFA kernel predates GQA) must explode and still match CPU.
     #[test]

@@ -179,6 +179,7 @@ impl CudaTransform {
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("window_kv_cache_output", window_kv_cache_output)
+            .with_rule_for("window_fused_kv_cache_output", window_fused_kv_cache_output)
             .rewrite(&(), model)?;
         Ok(())
     }
@@ -773,7 +774,9 @@ mod tests {
     /// A cache whose K (or V) feeds the flash-attention kernel may hand out a
     /// window; one whose consumer is the exploded attention may not, because
     /// those primitives read a packed tensor.
-    fn kv_cache_sdpa_model(head_dim: usize) -> TractResult<TypedModel> {
+    /// With `transposed_value`, the value row comes in sequence-first and is transposed into
+    /// its cache, an axis op the transform fuses into the cache node.
+    fn kv_cache_sdpa_model(head_dim: usize, transposed_value: bool) -> TractResult<TypedModel> {
         let (heads, seq) = (4usize, 32usize);
         let dims = |s: &[usize]| s.iter().map(|d| TDim::from(*d as i64)).collect::<TVec<_>>();
         let q_fact = f16::fact(dims(&[1, heads, seq, head_dim]));
@@ -782,7 +785,12 @@ mod tests {
         let q = model.add_source("q", q_fact)?;
         let mut cached = tvec!();
         for name in ["k", "v"] {
-            let src = model.add_source(name, step_fact.clone())?;
+            let src = if name == "v" && transposed_value {
+                let row = model.add_source(name, f16::fact(dims(&[1, 1, heads, head_dim])))?;
+                model.wire_node("v_heads", AxisOp::Move(1, 2), &[row])?[0]
+            } else {
+                model.add_source(name, step_fact.clone())?
+            };
             cached.push(
                 model.wire_node(
                     format!("{name}_cache"),
@@ -814,14 +822,18 @@ mod tests {
         model
             .nodes()
             .iter()
-            .filter_map(|n| n.op_as::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>())
+            .filter_map(|n| {
+                type Cache = tract_gpu::ops::dyn_kv_cache::GpuDynKVCache;
+                n.op_as::<Cache>()
+                    .or_else(|| n.op_as::<ops::CudaFusedAxisOp>()?.op.downcast_ref::<Cache>())
+            })
             .map(|op| op.window_output)
             .collect()
     }
 
     #[test]
     fn kv_cache_feeding_flash_attention_windows_its_output() -> TractResult<()> {
-        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(64)?)?;
+        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(64, false)?)?;
         let windowing = caches_window_their_output(&cuda);
         assert_eq!(windowing.len(), 2, "expected the K and V caches to survive");
         assert!(windowing.iter().all(|w| *w), "a cache feeding flash attention should window");
@@ -829,8 +841,17 @@ mod tests {
     }
 
     #[test]
+    fn transposed_value_cache_feeding_flash_attention_windows_its_output() -> TractResult<()> {
+        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(64, true)?)?;
+        let windowing = caches_window_their_output(&cuda);
+        assert_eq!(windowing.len(), 2, "expected the K and V caches to survive");
+        assert!(windowing.iter().all(|w| *w), "a transposed value cache should window too");
+        Ok(())
+    }
+
+    #[test]
     fn kv_cache_feeding_exploded_attention_packs_its_output() -> TractResult<()> {
-        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(8)?)?;
+        let cuda = CudaTransform.transform_into(kv_cache_sdpa_model(8, false)?)?;
         let windowing = caches_window_their_output(&cuda);
         assert_eq!(windowing.len(), 2, "expected the K and V caches to survive");
         assert!(
@@ -923,8 +944,30 @@ fn window_kv_cache_output(
     _node_name: &str,
     op: &tract_gpu::ops::dyn_kv_cache::GpuDynKVCache,
 ) -> TractResult<Option<TypedModelPatch>> {
-    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, |succ| {
-        succ.op_is::<crate::ops::flash_attn::CudaFlashAttention>()
-            || succ.op_is::<tract_gpu::sync::DeviceSync>()
-    })
+    tract_gpu::ops::dyn_kv_cache::window_output_for(model, node, op, reads_kv_window)
+}
+
+/// `window_kv_cache_output` for a cache wrapped with axis ops fused on its input, as a
+/// value row transposed into its cache ends up.
+fn window_fused_kv_cache_output(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _node_name: &str,
+    op: &crate::ops::CudaFusedAxisOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if_some!(cache = op.op.downcast_ref::<tract_gpu::ops::dyn_kv_cache::GpuDynKVCache>());
+    rule_if_some!(
+        cache = tract_gpu::ops::dyn_kv_cache::windowed(model, node, cache, reads_kv_window)?
+    );
+    let fused = crate::ops::CudaFusedAxisOp {
+        grouped_axis_ops: op.grouped_axis_ops.clone(),
+        op: Box::new(cache),
+    };
+    TypedModelPatch::replace_single_op(model, node, &node.inputs, fused).map(Some)
+}
+
+fn reads_kv_window(succ: &TypedNode) -> bool {
+    succ.op_is::<crate::ops::flash_attn::CudaFlashAttention>()
+        || succ.op_is::<tract_gpu::sync::DeviceSync>()
 }

@@ -192,16 +192,24 @@ pub fn window_output_for(
     op: &GpuDynKVCache,
     tolerates: impl Fn(&TypedNode) -> bool,
 ) -> TractResult<Option<TypedModelPatch>> {
+    rule_if_some!(windowed = windowed(model, node, op, tolerates)?);
+    TypedModelPatch::replace_single_op(model, node, &node.inputs, windowed).map(Some)
+}
+
+/// `op` with its output windowed, for `node`, which runs it bare or wrapped with axis ops
+/// fused on its inputs: those reshape the chunk the cache appends, not the cache it hands
+/// out, so a backend applies [`window_output_for`]'s condition to its fused form too.
+/// `None` when the output already is a window or a consumer is not `tolerates`.
+pub fn windowed(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &GpuDynKVCache,
+    tolerates: impl Fn(&TypedNode) -> bool,
+) -> TractResult<Option<GpuDynKVCache>> {
     rule_ensure!(!op.window_output);
     let succs = model.all_succ(node.id)?.context("A KV cache with no consumer")?;
     rule_ensure!(!succs.is_empty() && succs.iter().copied().all(tolerates));
-    TypedModelPatch::replace_single_op(
-        model,
-        node,
-        &node.inputs,
-        GpuDynKVCache { window_output: true, ..op.clone() },
-    )
-    .map(Some)
+    Ok(Some(GpuDynKVCache { window_output: true, ..op.clone() }))
 }
 
 #[derive(Clone)]
