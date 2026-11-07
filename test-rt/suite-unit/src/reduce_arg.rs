@@ -11,10 +11,19 @@ use tract_core::ops::nn::Reducer;
 /// from a handful of levels plus NaN and infinities, so ties and skipped NaNs
 /// are the common case.
 #[derive(Debug, Clone)]
-struct ReduceArgProblem {
-    input: ArrayD<f32>,
-    axis: usize,
-    reducer: Reducer,
+pub struct ReduceArgProblem {
+    pub input: ArrayD<f32>,
+    pub axis: usize,
+    pub reducer: Reducer,
+}
+
+/// Restricts generated cases for runtimes that only implement part of core's
+/// ArgMax / ArgMin contract: `no_nan` drops NaN from the inputs, `no_last`
+/// keeps only first-index reducers.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ReduceArgProblemParams {
+    pub no_nan: bool,
+    pub no_last: bool,
 }
 
 fn level(ix: u8) -> f32 {
@@ -26,20 +35,22 @@ fn level(ix: u8) -> f32 {
     }
 }
 
-fn reducer() -> impl Strategy<Value = Reducer> {
-    (any::<bool>(), any::<bool>())
+fn reducer(no_last: bool) -> impl Strategy<Value = Reducer> {
+    let last = if no_last { Just(false).boxed() } else { any::<bool>().boxed() };
+    (any::<bool>(), last)
         .prop_map(|(max, last)| if max { Reducer::ArgMax(last) } else { Reducer::ArgMin(last) })
 }
 
 impl Arbitrary for ReduceArgProblem {
-    type Parameters = ();
+    type Parameters = ReduceArgProblemParams;
     type Strategy = BoxedStrategy<ReduceArgProblem>;
-    fn arbitrary_with(_: Self::Parameters) -> Self::Strategy {
+    fn arbitrary_with(params: Self::Parameters) -> Self::Strategy {
+        let first_level = params.no_nan as u8;
         vec(1usize..6, 1..4usize)
-            .prop_flat_map(|shape| {
+            .prop_flat_map(move |shape| {
                 let len = shape.iter().product::<usize>();
                 let rank = shape.len();
-                (Just(shape), vec(0u8..10, len..=len), 0..rank, reducer())
+                (Just(shape), vec(first_level..10, len..=len), 0..rank, reducer(params.no_last))
             })
             .prop_map(|(shape, levels, axis, reducer)| ReduceArgProblem {
                 input: ArrayD::from_shape_vec(
@@ -76,7 +87,7 @@ impl Test for ReduceArgProblem {
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
-    suite.add_arbitrary::<ReduceArgProblem>("proptest", ());
+    suite.add_arbitrary::<ReduceArgProblem>("proptest", ReduceArgProblemParams::default());
     let long_row = |len: usize, reducer| {
         let input =
             ArrayD::from_shape_fn(IxDyn(&[2, len]), |ix| ((ix[0] * 31 + ix[1] * 7919) % 97) as f32);
