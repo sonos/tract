@@ -2,10 +2,12 @@
 
 Writes, under <assets>/model:
 - mimi-encoder / mimi-decoder: the Mimi codec, as in the kyutai-mimi example
-- helium.nnef.tgz: the 7B main transformer, f16, one step graph with a KV cache. Inputs:
-  tokens [1, 17, S] (text + 16 audio streams), past_k{i} / past_v{i}
-  [1, 32, P, 128]. Outputs: hidden [1, S, 4096] (after out_norm), text_logits [1, S, 32000],
-  k{i} / v{i} [1, 32, P + S, 128], which tract folds into a stateful KV cache.
+- helium.nnef.tgz: the 7B main transformer, f16, a step graph with a KV cache. Inputs:
+  tokens [1, 17, S] (text + 16 audio streams), past_k{i} / past_v{i} [1, 32, P, 128].
+  Outputs: hidden [1, S, 4096] (after out_norm), text_logits [1, S, 32000], k{i} / v{i}
+  [1, 32, P + S, 128], which tract folds into a stateful KV cache (it needs S symbolic).
+  Feed it one frame per step (S = 1): a single query may attend to the whole past, so the
+  graph has no mask, which holds up to Helium's 3000-frame context.
 - depformer-step{0..7}.nnef.tgz: the depth transformer, f16, one graph per step, each with
   that step's weights. Inputs: token [1, 1], hidden [1, 1, 4096], past K/V of the earlier
   steps. Outputs: logits [1, 2048] and the K/V extended by one position.
@@ -13,7 +15,7 @@ Writes, under <assets>/model:
 
 With --check, also runs Kyutai's own LMGen greedily over the first frames of the sample and
 writes <assets>/reference/moshi_greedy.json for the example's --check. This needs Kyutai's
-`moshi` package and about 48 GB of RAM (the model runs in f32 on the CPU).
+`moshi` package and about 60 GB of RAM (the model runs in f32 on the CPU).
 
 Usage: python export.py <assets> <sample.wav> [--check]
 """
@@ -35,7 +37,7 @@ from torch_to_nnef import export_model_to_nnef
 from transformers import MimiModel
 
 REPO = "kyutai/moshiko-pytorch-bf16"
-DIM, HEADS, LAYERS, HIDDEN, CONTEXT = 4096, 32, 32, 11264, 3000
+DIM, HEADS, LAYERS, HIDDEN = 4096, 32, 32, 11264
 HEAD_DIM = DIM // HEADS
 DEP_DIM, DEP_HEADS, DEP_LAYERS, DEP_HIDDEN, DEP_STEPS = 1024, 16, 6, 2816, 8
 DEP_HEAD_DIM = DEP_DIM // DEP_HEADS
@@ -100,13 +102,9 @@ class Helium(torch.nn.Module):
         x = embed(self.text_emb, tokens[:, 0])
         for i in range(16):
             x = x + embed(self.emb[i], tokens[:, i + 1])
-        pos_q = torch.arange(s) + p
-        pos_k = torch.arange(s + p)
-        freqs = pos_q.float()[:, None] * self.inv_freq[None, :]
+        freqs = (torch.arange(s) + p).float()[:, None] * self.inv_freq[None, :]
         emb = torch.cat((freqs, freqs), dim=-1)
         cos, sin = emb.cos().to(DT), emb.sin().to(DT)
-        delta = pos_q[:, None] - pos_k[None, :]
-        mask = (delta >= 0) & (delta < CONTEXT)
         present = []
         for i, layer in enumerate(self.layers):
             h = rms_norm(x, layer.norm1)
@@ -118,8 +116,7 @@ class Helium(torch.nn.Module):
             k = torch.cat([past[2 * i], k], dim=2)
             v = torch.cat([past[2 * i + 1], v], dim=2)
             present += [k, v]
-            scores = (q @ k.transpose(2, 3)) / math.sqrt(HEAD_DIM)
-            att = scores.masked_fill(~mask, float("-inf")).softmax(-1) @ v
+            att = F.scaled_dot_product_attention(q, k, v)
             x = x + F.linear(att.transpose(1, 2).reshape(1, s, DIM), layer.o)
             g = F.linear(rms_norm(x, layer.norm2), layer.gate_in).view(1, s, 2, HIDDEN)
             x = x + F.linear(F.silu(g[:, :, 0]) * g[:, :, 1], layer.gate_out)
@@ -207,11 +204,12 @@ def export_helium(weights_path, model_dir):
     past = tuple(torch.randn(1, HEADS, 3, HEAD_DIM, dtype=DT) for _ in range(2 * LAYERS))
     kv_in = [f"past_{kv}{i}" for i in range(LAYERS) for kv in "kv"]
     it = target()
+    it.reify_sdpa_operator = True
     it.dynamic_axes = {"tokens": {2: "S"}, **{n: {2: "P"} for n in kv_in}}
     with torch.no_grad():
         export_model_to_nnef(
             model=model,
-            args=(torch.randint(0, 2048, (1, 17, 2)), *past),
+            args=(torch.randint(0, 2048, (1, 17, 1)), *past),
             file_path_export=model_dir / "helium.nnef.tgz",
             input_names=["tokens", *kv_in],
             output_names=["hidden", "text_logits", *[f"{kv}{i}" for i in range(LAYERS) for kv in "kv"]],
