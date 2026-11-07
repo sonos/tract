@@ -31,6 +31,32 @@ Mimi export checks its graphs with a tract binary that reads replicate padding: 
 `tract-cli` from this repository and point `TRACT_BIN` at it, as the kyutai-mimi example's
 `ci.sh` does.
 
+## Talking to it live
+
+Moshi needs a large GPU, while the microphone and speakers are often on another machine. The
+example splits the two over TCP: `moshi-server` runs the model, `moshi-client` streams the
+microphone in 80 ms frames and plays Moshi's voice as it comes back.
+
+On the GPU machine:
+
+```sh
+cargo run --release --features cuda --bin moshi-server
+```
+
+It loads `assets/model` (`--q4` as above), listens on port 8998 (`--listen` to change it)
+and holds one conversation at a time, each starting fresh. On the machine with the microphone:
+
+```sh
+cargo run --release --features live --bin moshi-client -- --server <gpu-host>:8998
+```
+
+The client uses the default input and output devices and resamples to and from 24 kHz.
+Use headphones: through speakers, Moshi hears itself. Stop with Ctrl-C. Without the `live`
+feature, `--input` and `--output` make the client stream a WAV in real time and record the
+answer instead.
+
+The protocol is bare PCM over a trusted network, with no authentication or encryption.
+
 ## What it needs
 
 Helium is exported in f16 and reads all of its 14 GB of weights every frame, so the GPU
