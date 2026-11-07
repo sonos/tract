@@ -100,6 +100,7 @@ function showInspector() {
       maskWidth: mask.width,
       maskHeight: mask.height,
       motion: state.motionAllocated,
+      blur: $('blur').value,
     }),
     outputFps: state.rate?.fps() ?? null,
     outputTimes: state.outputTimes || [],
@@ -128,21 +129,76 @@ function motionSuffix() {
   return '';
 }
 
-function showBlur() {
-  const blur = $('background').value === 'blur';
-  $('blur-label').hidden = $('blur').hidden = !blur;
+// Still images. Livestorm's library is free for commercial use. The Sonos photo is credited
+// to Sonos.com. The page credits whichever one is selected.
+const LIVESTORM = 'the Livestorm virtual background library';
+const SCENES = {
+  library: {
+    file: 'backgrounds/library.jpg',
+    title: 'White library with shelves and stairs',
+    page: 'https://livestorm.co/virtual-background-library/white-library-with-shelves-and-stairs',
+    source: LIVESTORM,
+  },
+  conference: {
+    file: 'backgrounds/conference.jpg',
+    title: 'Hewn oak wood conference room table',
+    page: 'https://livestorm.co/virtual-background-library/hewn-oak-wood-conference-room-table',
+    source: LIVESTORM,
+  },
+  beach: {
+    file: 'backgrounds/beach.jpg',
+    title: 'Palm trees on white beach near ocean',
+    page: 'https://livestorm.co/virtual-background-library/palm-trees-on-white-beach-near-ocean',
+    source: LIVESTORM,
+  },
+  mountains: {
+    file: 'backgrounds/mountains.jpg',
+    title: 'Path leading through Swiss mountains',
+    page: 'https://livestorm.co/virtual-background-library/path-leading-through-swiss-mountains',
+    source: LIVESTORM,
+  },
+  sonos: {
+    file: 'backgrounds/sonos.jpg',
+    title: 'White Sonos Five pair',
+    page: 'https://www.sonos.com/',
+    source: 'Sonos.com',
+  },
+};
+
+function showBackground() {
+  const mode = $('background').value;
+  const scene = SCENES[mode];
+  $('blur-label').hidden = $('blur').hidden = mode !== 'blur';
+  $('colour').disabled = mode !== 'colour';
+  $('harmonize-label').hidden = mode === 'blur';
+  $('background-credit').hidden = !scene;
+  if (!scene) return;
+  $('background-credit-title').textContent = scene.title;
+  $('background-credit-source').textContent = scene.source;
+  $('background-credit-link').href = scene.page;
 }
 
 async function applyBackground() {
-  showBlur();
+  showBackground();
   const mode = $('background').value;
-  $('colour').disabled = mode !== 'colour';
-  if (state.client) await state.client.request('background', {mode, colour: $('colour').value, blur: $('blur').value});
+  if (!state.client) return;
+  const scene = SCENES[mode];
+  const harmonize = $('harmonize').checked;
+  if (scene) {
+    const bitmap = await createImageBitmap(await (await fetch(scene.file)).blob());
+    await state.client.request('background', {mode: 'image', bitmap, harmonize}, [bitmap]);
+    return;
+  }
+  await state.client.request('background', {mode, colour: $('colour').value, blur: $('blur').value, harmonize});
 }
 $('background').onchange = () => applyBackground().catch(error => status(error.message));
 $('colour').oninput = () => applyBackground().catch(error => status(error.message));
 $('blur').onchange = () => applyBackground().catch(error => status(error.message));
-showBlur();
+$('harmonize').onchange = () => {
+  if (!state.client) return;
+  state.client.request('harmonize', {enabled: $('harmonize').checked}).catch(error => status(error.message));
+};
+showBackground();
 $('refine').onchange = resetStats;
 
 const LOAD_CONTROLS = ['model', 'camera', 'capture'];
@@ -348,7 +404,10 @@ async function start() {
       if (message.download !== undefined) bar(message.download);
       if (message.status) status(message.status);
       if (message.fatal) stop(message.fatal);
-      if (message.compositeMs !== undefined && state.running) noteComposite(message.compositeMs, message.advanced);
+      if (message.compositeMs !== undefined && state.running) {
+        if (message.synced !== undefined) state.lastReply = {warped: message.warped, held: message.held, synced: message.synced, at: performance.now()};
+        noteComposite(message.compositeMs, message.advanced);
+      }
       if (message.mask !== undefined && state.running) maskReady(message.mask);
     });
     const choice = $('r-factor').value;

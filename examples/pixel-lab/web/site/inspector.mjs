@@ -49,11 +49,17 @@ export function motionBytes() {
   return pyramid * 4 + flows + rgba16(coarseWidth, coarseHeight) + rgba16(gridWidth, gridHeight) * 3 + rgba16(320, 180);
 }
 
-// Resident compositor textures: 8 camera frames, 2 blur passes, one full frame,
-// and the mask. Motion textures are added once that path has been created.
-export function textureBytes({width, height, maskWidth, maskHeight, motion = false}) {
+// Two blur targets at the active shrink. Low is half size, High is one eighth.
+export function blurBytes(width, height, level = 'high') {
+  const scale = level === 'low' ? 2 : 8;
+  return rgba8(Math.max(1, Math.floor(width / scale)), Math.max(1, Math.floor(height / scale))) * 2;
+}
+
+// Resident compositor textures: 8 camera frames, one full frame, the small blur
+// pair, and the mask. Motion textures are added once that path has been created.
+export function textureBytes({width, height, maskWidth, maskHeight, motion = false, blur = 'high'}) {
   if (!(width > 0) || !(height > 0) || !(maskWidth > 0) || !(maskHeight > 0)) return 0;
-  const frames = rgba8(width, height) * 11 + rgba8(maskWidth, maskHeight);
+  const frames = rgba8(width, height) * 9 + blurBytes(width, height, blur) + rgba8(maskWidth, maskHeight);
   return frames + (motion ? motionBytes() : 0);
 }
 

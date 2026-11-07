@@ -17,22 +17,51 @@ struct VsOut { @builtin(position) position: vec4f, @location(0) uv: vec2f };
   return out;
 }`;
 
-// Full-resolution separable gaussian. Low is a 5 px radius (sigma 2.5). High is 12 px (sigma 6).
-// The loop covers the wider one; taps past the chosen radius are skipped.
-const BLUR = FULLSCREEN + `
-struct Blur { step: vec2f, radius: f32, sigma: f32 };
+// Separable gaussian on the reduced frame. Low is radius 5 (sigma 2.5) after a
+// half-size shrink. High is radius 12 (sigma 6) after an 8× shrink.
+function separableBlur(radius, sigma) {
+  const denom = 2 * sigma * sigma;
+  return FULLSCREEN + `
+struct Blur { step: vec2f, pad: vec2f };
 @group(0) @binding(0) var linearSampler: sampler;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var<uniform> blur: Blur;
 @fragment fn fs(in: VsOut) -> @location(0) vec4f {
   var sum = vec3f(0.0);
   var total = 0.0;
-  let spread = max(blur.sigma, 1.0);
-  for (var i = -12; i <= 12; i++) {
-    if (f32(abs(i)) > blur.radius) { continue; }
-    let w = exp(-f32(i * i) / (2.0 * spread * spread));
+  for (var i = -${radius}; i <= ${radius}; i++) {
+    let w = exp(-f32(i * i) / ${denom});
     sum += w * textureSampleLevel(source, linearSampler, in.uv + f32(i) * blur.step, 0.0).rgb;
     total += w;
+  }
+  return vec4f(sum / max(total, 1e-6), 1.0);
+}`;
+}
+const BLUR_LOW = separableBlur(5, 2.5);
+const BLUR_HIGH = separableBlur(12, 6);
+
+// Average the camera frame into the smaller blur target. The window is the
+// source pixels covered by one output pixel. The loop allows nine so a size
+// that does not divide evenly still covers the whole frame.
+const DOWNSAMPLE = FULLSCREEN + `
+struct Down { window: vec2f, pad: vec2f };
+@group(0) @binding(0) var linearSampler: sampler;
+@group(0) @binding(1) var source: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> down: Down;
+@fragment fn fs(in: VsOut) -> @location(0) vec4f {
+  let srcSize = vec2f(textureDimensions(source));
+  let centre = in.uv * srcSize;
+  let start = centre - down.window * 0.5;
+  var sum = vec3f(0.0);
+  var total = 0.0;
+  for (var y = 0; y < 9; y++) {
+    if (f32(y) + 0.5 >= down.window.y) { continue; }
+    for (var x = 0; x < 9; x++) {
+      if (f32(x) + 0.5 >= down.window.x) { continue; }
+      let p = (start + vec2f(f32(x), f32(y)) + 0.5) / srcSize;
+      sum += textureSampleLevel(source, linearSampler, p, 0.0).rgb;
+      total += 1.0;
+    }
   }
   return vec4f(sum / max(total, 1e-6), 1.0);
 }`;
@@ -42,7 +71,18 @@ struct Blur { step: vec2f, radius: f32, sigma: f32 };
 // there is to the frame colour at the output pixel, so the edge follows the
 // image rather than the low-resolution mask grid.
 const COMPOSITE = FULLSCREEN + `
-struct Params { colour: vec4f, maskTexel: vec2f, mode: u32, refine: u32, motion: u32, haveKey: u32, pad0: u32, pad1: u32 };
+struct Params { colour: vec4f, maskTexel: vec2f, mode: u32, refine: u32, motion: u32, haveKey: u32, pad0: u32, pad1: u32, harmon: vec4f };
+fn lumaOf(color: vec3f) -> f32 { return dot(color, vec3f(0.299, 0.587, 0.114)); }
+// Shift chroma toward the background colour and put the original brightness back.
+fn harmonized(color: vec3f) -> vec3f {
+  let strength = params.harmon.w;
+  if (strength <= 0.0) { return color; }
+  let ambient = params.harmon.rgb;
+  let fgLuma = lumaOf(color);
+  let ambientLuma = lumaOf(ambient);
+  var shifted = vec3f(fgLuma) + mix(color - vec3f(fgLuma), ambient - vec3f(ambientLuma), strength);
+  return clamp(shifted + vec3f(fgLuma - lumaOf(shifted)), vec3f(0.0), vec3f(1.0));
+}
 @group(0) @binding(0) var linearSampler: sampler;
 @group(0) @binding(1) var frameTex: texture_2d<f32>;
 @group(0) @binding(2) var maskTex: texture_2d<f32>;
@@ -139,19 +179,38 @@ fn refinedAlpha(uv: vec2f, centre: vec3f, shift: vec2f) -> f32 {
     if (kept >= 5) { alpha = nearby; }
   }
   var bg = params.colour.rgb;
-  if (params.mode == 1u) {
+  // Blur and a still image both come through blurTex. The bind group points that
+  // binding at the blurred frame or at the chosen background.
+  if (params.mode == 1u || params.mode == 3u) {
     bg = textureSampleLevel(blurTex, linearSampler, in.uv, 0.0).rgb;
   }
   if (params.mode == 2u) { return vec4f(vec3f(alpha), 1.0); }
-  return vec4f(mix(bg, fg, alpha), 1.0);
+  return vec4f(mix(bg, harmonized(fg), alpha), 1.0);
 }`;
 
-const MODES={colour:0,blur:1,mask:2};
-// Radius in camera pixels, then sigma. High is the wider of the two.
-const BLUR_LEVELS={low:[5,2.5],high:[12,6]};
+const MODES={colour:0,blur:1,mask:2,image:3};
+const LOW_SCALE=2;
+const HIGH_SCALE=8;
+// Medium strength from the replacement harmonization pass: chroma only.
+const HARMONIZE_STRENGTH=0.14;
 const RING=8;
 const SAMPLED=GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST|GPUTextureUsage.RENDER_ATTACHMENT;
 const RING_USAGE=SAMPLED|GPUTextureUsage.COPY_SRC;
+
+function averageColour(source) {
+  const sample = new OffscreenCanvas(4, 4);
+  const ctx = sample.getContext('2d', {willReadFrequently: true});
+  ctx.drawImage(source, 0, 0, 4, 4);
+  const data = ctx.getImageData(0, 0, 4, 4).data;
+  let red = 0, green = 0, blue = 0;
+  for (let i = 0; i < data.length; i += 4) {
+    red += data[i];
+    green += data[i + 1];
+    blue += data[i + 2];
+  }
+  const scale = 1 / (16 * 255);
+  return [red * scale, green * scale, blue * scale];
+}
 
 export class Compositor {
   static async create(device,maskTexture,canvas) {
@@ -163,26 +222,25 @@ export class Compositor {
       const module=device.createShaderModule({code});
       return device.createRenderPipelineAsync({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:target}]},primitive:{topology:'triangle-list'}});
     };
-    const [composite,blur]=await Promise.all([pipeline(COMPOSITE,format),pipeline(BLUR,'rgba8unorm')]);
-    return new Compositor(device,maskTexture,canvas,context,composite,blur);
+    const [composite,blurLow,blurHigh,downsample]=await Promise.all([
+      pipeline(COMPOSITE,format),pipeline(BLUR_LOW,'rgba8unorm'),pipeline(BLUR_HIGH,'rgba8unorm'),pipeline(DOWNSAMPLE,'rgba8unorm'),
+    ]);
+    return new Compositor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample);
   }
 
-  constructor(device,maskTexture,canvas,context,composite,blur) {
-    Object.assign(this,{device,maskTexture,context,composite,blur});
+  constructor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample) {
+    Object.assign(this,{device,maskTexture,context,composite,blurLow,blurHigh,downsample});
     this.width=canvas.width;this.height=canvas.height;
     this.sampler=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
     this.frame=device.createTexture({size:[this.width,this.height],format:'rgba8unorm',usage:SAMPLED});
-    this.blurred=[0,1].map(()=>device.createTexture({size:[this.width,this.height],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.RENDER_ATTACHMENT}));
-    const blurUniform=()=>device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
-    this.blurStep=blurUniform();
-    this.blurDown=blurUniform();
-    this.vertical=device.createBindGroup({layout:blur.getBindGroupLayout(0),entries:[
-      {binding:0,resource:this.sampler},{binding:1,resource:this.blurred[0].createView()},{binding:2,resource:{buffer:this.blurDown}}]});
-    this.blurCache=new WeakMap();
+    this.downCache=new WeakMap();
+    this.reducedCache=new WeakMap();
     this.compositeCache=new WeakMap();
     this.textureSerial=new WeakMap();
     this.nextTextureSerial=1;
-    this.params=device.createBuffer({size:48,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    this.params=device.createBuffer({size:64,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    this.harmonize=false;
+    this.imageAmbient=[0.5,0.5,0.5];
     this.noFlow=device.createTexture({size:[1,1],format:'rgba8unorm',usage:GPUTextureUsage.TEXTURE_BINDING|GPUTextureUsage.COPY_DST});
     device.queue.writeTexture({texture:this.noFlow},new Uint8Array(4),{bytesPerRow:4},[1,1]);
     this.colour=[0.27,0.48,0.46];
@@ -211,12 +269,64 @@ export class Compositor {
     this.mode='colour';
   }
 
+  setImage(bitmap) {
+    this.mode = 'image';
+    if (!this.imageCanvas) this.imageCanvas = new OffscreenCanvas(this.width, this.height);
+    const ctx = this.imageCanvas.getContext('2d');
+    const scale = Math.max(this.width / bitmap.width, this.height / bitmap.height);
+    const width = this.width / scale;
+    const height = this.height / scale;
+    ctx.drawImage(bitmap, (bitmap.width - width) / 2, (bitmap.height - height) / 2, width, height, 0, 0, this.width, this.height);
+    if (!this.imageTexture) {
+      this.imageTexture = this.device.createTexture({
+        size: [this.width, this.height],
+        format: 'rgba8unorm',
+        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT,
+      });
+    }
+    this.device.queue.copyExternalImageToTexture(
+      {source: this.imageCanvas},
+      {texture: this.imageTexture},
+      [this.width, this.height],
+    );
+    this.imageAmbient = averageColour(this.imageCanvas);
+  }
+
+  setHarmonize(enabled) {
+    this.harmonize = Boolean(enabled);
+  }
+
   setBlur(level = 'high') {
     this.mode='blur';
-    const spec = BLUR_LEVELS[level] || BLUR_LEVELS.high;
-    const write = (buffer, step) => this.device.queue.writeBuffer(buffer, 0, new Float32Array([...step, ...spec]));
-    write(this.blurStep, [1 / this.width, 0]);
-    write(this.blurDown, [0, 1 / this.height]);
+    this.blurLevel = level === 'low' ? 'low' : 'high';
+    const scale = this.blurLevel === 'low' ? LOW_SCALE : HIGH_SCALE;
+    this.activeBlur = this.blurLevel === 'low' ? this.blurLow : this.blurHigh;
+    const [width, height] = this.ensureReduced(scale);
+    const write = (buffer, step) => this.device.queue.writeBuffer(buffer, 0, new Float32Array([step[0], step[1], 0, 0]));
+    write(this.reducedStep, [1 / width, 0]);
+    write(this.reducedDown, [0, 1 / height]);
+  }
+
+  // Both levels blur a shrunk frame. The two textures trade places: the shrink
+  // fills the first, the horizontal pass the second, the vertical pass the first again.
+  ensureReduced(scale) {
+    const width = Math.max(1, Math.floor(this.width / scale));
+    const height = Math.max(1, Math.floor(this.height / scale));
+    if (!this.reducedStep) {
+      const uniform = () => this.device.createBuffer({size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST});
+      this.reducedStep = uniform();
+      this.reducedDown = uniform();
+      this.downWindow = uniform();
+    }
+    if (!this.reduced || this.reducedScale !== scale) {
+      this.reduced?.forEach(texture => texture.destroy());
+      const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT;
+      this.reduced = [0, 1].map(() => this.device.createTexture({size: [width, height], format: 'rgba8unorm', usage}));
+      this.reducedCache = new WeakMap();
+      this.reducedScale = scale;
+    }
+    this.device.queue.writeBuffer(this.downWindow, 0, new Float32Array([this.width / width, this.height / height, 0, 0]));
+    return [width, height];
   }
 
   // The frame inference has just started on. uploadFrame will not recycle it.
@@ -258,26 +368,38 @@ export class Compositor {
     return value;
   }
 
-  blurFrom(source) {
-    let cache = this.blurCache.get(source);
+  downFrom(source) {
+    let cache = this.downCache.get(source);
     if (!cache) {
       cache = new Map();
-      this.blurCache.set(source, cache);
+      this.downCache.set(source, cache);
     }
-    return this.cached(cache, 'h', () => this.device.createBindGroup({layout: this.blur.getBindGroupLayout(0), entries: [
-      {binding: 0, resource: this.sampler}, {binding: 1, resource: source.createView()}, {binding: 2, resource: {buffer: this.blurStep}}]}));
+    return this.cached(cache, 'down', () => this.device.createBindGroup({layout: this.downsample.getBindGroupLayout(0), entries: [
+      {binding: 0, resource: this.sampler}, {binding: 1, resource: source.createView()}, {binding: 2, resource: {buffer: this.downWindow}}]}));
   }
 
-  compositeFrom(source, flow, currentLuma, keyLuma, keyFrame) {
+  reducedFrom(texture, axis) {
+    let cache = this.reducedCache.get(texture);
+    if (!cache) {
+      cache = new Map();
+      this.reducedCache.set(texture, cache);
+    }
+    const buffer = axis === 'h' ? this.reducedStep : this.reducedDown;
+    return this.cached(cache, axis, () => this.device.createBindGroup({layout: this.activeBlur.getBindGroupLayout(0), entries: [
+      {binding: 0, resource: this.sampler}, {binding: 1, resource: texture.createView()}, {binding: 2, resource: {buffer}}]}));
+  }
+
+  compositeFrom(source, flow, currentLuma, keyLuma, keyFrame, blurTexture) {
     let cache = this.compositeCache.get(source);
     if (!cache) {
       cache = new Map();
       this.compositeCache.set(source, cache);
     }
-    const key = `${this.textureId(flow)}:${this.textureId(currentLuma)}:${this.textureId(keyLuma)}:${this.textureId(keyFrame)}`;
+    const background = this.mode === 'image' && this.imageTexture ? this.imageTexture : blurTexture;
+    const key = `${this.textureId(background)}:${this.textureId(flow)}:${this.textureId(currentLuma)}:${this.textureId(keyLuma)}:${this.textureId(keyFrame)}`;
     return this.cached(cache, key, () => this.device.createBindGroup({layout: this.composite.getBindGroupLayout(0), entries: [
       {binding: 0, resource: this.sampler}, {binding: 1, resource: source.createView()}, {binding: 2, resource: this.maskTexture.createView()},
-      {binding: 3, resource: this.blurred[1].createView()}, {binding: 4, resource: {buffer: this.params}}, {binding: 5, resource: flow.createView()},
+      {binding: 3, resource: background.createView()}, {binding: 4, resource: {buffer: this.params}}, {binding: 5, resource: flow.createView()},
       {binding: 6, resource: currentLuma.createView()}, {binding: 7, resource: keyLuma.createView()},
       {binding: 8, resource: keyFrame.createView()}]}));
   }
@@ -304,9 +426,12 @@ export class Compositor {
     const synced = !warped && !held && this.maskFrameId === frameId;
     const keyLuma = warped ? this.motion.keyLuma(this.motion.maskFrameId) : null;
     const keyFrame = warped ? this.ringTexture(this.motion.maskFrameId) : null;
-    const params=new ArrayBuffer(48);
+    const params=new ArrayBuffer(64);
     new Float32Array(params,0,6).set([...this.colour,1,...maskTexel]);
     new Uint32Array(params,24,6).set([MODES[view==='mask'?'mask':this.mode],refine?1:0,warped?1:0,keyFrame?1:0,0,0]);
+    const replacement = this.harmonize && view !== 'mask' && (this.mode === 'colour' || this.mode === 'image');
+    const ambient = this.mode === 'colour' ? this.colour : this.imageAmbient;
+    new Float32Array(params,48,4).set([...ambient, replacement ? HARMONIZE_STRENGTH : 0]);
     this.device.queue.writeBuffer(this.params,0,params);
     const flow = warped ? this.motion.flowTexture : this.noFlow;
     const currentLuma = keyLuma ? this.motion.currentLuma : this.noFlow;
@@ -316,11 +441,15 @@ export class Compositor {
       const render=encoder.beginRenderPass({colorAttachments:[{view:attachment,loadOp:'clear',storeOp:'store',clearValue:[0,0,0,1]}]});
       render.setPipeline(pipeline);render.setBindGroup(0,bind);render.draw(3);render.end();
     };
+    let blurTexture = this.noFlow;
     if(this.mode==='blur'&&view!=='mask') {
-      pass(this.blurred[0].createView(),this.blur,this.blurFrom(source));
-      pass(this.blurred[1].createView(),this.blur,this.vertical);
+      const [shrunk, horizontal] = this.reduced;
+      pass(shrunk.createView(), this.downsample, this.downFrom(source));
+      pass(horizontal.createView(), this.activeBlur, this.reducedFrom(shrunk, 'h'));
+      pass(shrunk.createView(), this.activeBlur, this.reducedFrom(horizontal, 'v'));
+      blurTexture = shrunk;
     }
-    pass(this.context.getCurrentTexture().createView(),this.composite,this.compositeFrom(source, flow, currentLuma, boundKey, boundFrame));
+    pass(this.context.getCurrentTexture().createView(),this.composite,this.compositeFrom(source, flow, currentLuma, boundKey, boundFrame, blurTexture));
     this.device.queue.submit([encoder.finish()]);
     return {warped, held, synced, presented: presentationKey(picture)};
   }
