@@ -141,6 +141,28 @@ pub fn wgpu_conv_dispatch(
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
 ) -> TractResult<()> {
+    wgpu_conv_dispatch_with_precision(
+        op,
+        epilogue,
+        input,
+        weights,
+        extras,
+        output,
+        crate::precision::f16_accumulate_f32(),
+    )
+}
+
+/// Dispatches convolution with explicit f16 arithmetic precision. F32 tensors
+/// always use f32 arithmetic; `accumulate_f32` widens f16 fast-path arithmetic.
+pub fn wgpu_conv_dispatch_with_precision(
+    op: &Conv,
+    epilogue: &[ChainStep],
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    extras: &[&DeviceTensor],
+    output: &DeviceTensor,
+    accumulate_f32: bool,
+) -> TractResult<()> {
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
         q.retain_tensor(weights);
@@ -183,6 +205,7 @@ pub fn wgpu_conv_dispatch(
         let direct = direct_tiling(
             op,
             dt,
+            accumulate_f32,
             input,
             [padding[0].pad_before, padding[1].pad_before],
             [n, co, ih, iw, oh, ow],
@@ -276,15 +299,27 @@ pub fn wgpu_conv_dispatch(
                 conv_splitk::slices(dt, groups, co_pg, pixels, ci_pg * kh * kw, tile_m)
         {
             return conv_splitk::dispatch(
-                q, dt, tile_m, slices, epilogue, input, weights, extras, output, params, tiled_grid,
+                q,
+                dt,
+                accumulate_f32,
+                tile_m,
+                slices,
+                epilogue,
+                input,
+                weights,
+                extras,
+                output,
+                params,
+                tiled_grid,
             );
         }
-        let pipeline = if let Some(co_tile) = direct {
+        let pipeline = if let Some(tile) = direct {
+            let f32_accum = dt == ShaderDtype::F16 && accumulate_f32;
             q.context().chain_pipeline(
-                ("conv_direct", co_tile, epilogue, extras.len()),
+                ("conv_direct", dt, f32_accum, tile.co, tile.rows, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("conv2d_direct", dt),
-                || conv_direct_module(epilogue, extras.len(), co_tile),
+                || conv_direct_typed_module(dt, f32_accum, epilogue, extras.len(), tile),
             )?
         } else if tiled {
             q.context().chain_pipeline(
@@ -318,10 +353,12 @@ pub fn wgpu_conv_dispatch(
         buffers.push(get_wgpu_buffer(output));
         let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
         let dyn_off = q.alloc_uniform(&params)?;
-        if let Some(co_tile) = direct {
-            let threads = n * oh * (ow / DIRECT_PX);
-            let grid =
-                [threads.div_ceil(CONV_DIRECT_WG as usize) as u32, co.div_ceil(co_tile) as u32, 1];
+        if let Some(tile) = direct {
+            let grid = [
+                tile.threads(n, oh, ow).div_ceil(CONV_DIRECT_WG as usize) as u32,
+                co.div_ceil(tile.co) as u32,
+                1,
+            ];
             return q.dispatch_grid("conv_direct", &pipeline, &bg, dyn_off, grid);
         }
         if tiled {
@@ -1068,23 +1105,51 @@ pub const CONV_DIRECT_WG: u32 = 64;
 /// `vec4` of input along W feeds all of them.
 const DIRECT_PX: usize = 4;
 
-/// Output channels one direct-convolution thread owns, if the
-/// register-blocked kernel can serve this convolution: dense 3x3, stride 1,
-/// dilation 1, NCHW f32, one pad on each side so the output keeps the input's
-/// size, and every input offset and stride a multiple of four elements so the
-/// input reads as `vec4`. Winograd takes the large channel counts before
-/// translation; this takes up to 128 output channels.
+/// Register tile of one direct-convolution thread: `co` output channels by
+/// `rows` consecutive output rows, each row `DIRECT_PX` pixels wide. The
+/// `rows + 2` input rows the tile needs are loaded once per input channel and
+/// shared across the `rows` outputs.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DirectTile {
+    pub co: usize,
+    pub rows: usize,
+}
+
+impl DirectTile {
+    /// Tile for the storage and accumulator types: f16 arithmetic spends its
+    /// eight `vec4<f16>` accumulators on two rows of four channels; f32
+    /// accumulation keeps one row of up to eight channels.
+    fn for_types(dt: ShaderDtype, f32_accum: bool, co: usize) -> DirectTile {
+        if dt == ShaderDtype::F16 && !f32_accum {
+            DirectTile { co: 4, rows: 2 }
+        } else {
+            DirectTile { co: if co.is_multiple_of(8) { 8 } else { 4 }, rows: 1 }
+        }
+    }
+
+    fn threads(self, n: usize, oh: usize, ow: usize) -> usize {
+        n * oh.div_ceil(self.rows) * (ow / DIRECT_PX)
+    }
+}
+
+/// Register tile of the direct convolution, if the register-blocked kernel can
+/// serve this convolution: dense 3x3, stride 1, dilation 1, NCHW f32/f16, one
+/// pad on each side so the output keeps the input's size, and every input
+/// offset and stride a multiple of four elements so the input reads as `vec4`.
+/// Winograd takes the large channel counts before translation; this takes up
+/// to 128 output channels.
 #[allow(clippy::too_many_arguments)]
 fn direct_tiling(
     op: &Conv,
     dt: ShaderDtype,
+    accumulate_f32: bool,
     input: &DeviceTensor,
     pad_before: [usize; 2],
     [n, co, ih, iw, oh, ow]: [usize; 6],
     in_strides: [usize; 4],
-) -> Option<usize> {
+) -> Option<DirectTile> {
     let spec = &op.pool_spec;
-    if dt != ShaderDtype::F32
+    if !matches!(dt, ShaderDtype::F32 | ShaderDtype::F16)
         || op.group != 1
         || spec.data_format.c_is_last()
         || spec.kernel_shape[..] != [3, 3]
@@ -1101,34 +1166,51 @@ fn direct_tiling(
     {
         return None;
     }
-    let co_tile = if co.is_multiple_of(8) { 8 } else { 4 };
-    let threads = n * oh * (ow / DIRECT_PX);
-    (threads.div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize).then_some(co_tile)
+    let tile = DirectTile::for_types(dt, dt == ShaderDtype::F16 && accumulate_f32, co);
+    (tile.threads(n, oh, ow).div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize)
+        .then_some(tile)
 }
 
 /// Register-blocked direct 3x3 convolution: each thread owns `DIRECT_PX`
-/// consecutive output pixels of one row for `co_tile` output channels, loads
-/// the three input rows it needs once per input channel as `vec4` along W, and
-/// reads its weights as workgroup-uniform scalars, with no workgroup memory and
-/// no barrier. Padded taps read zero through `select`, so an `inf` or `NaN` at
-/// an edge never leaks into a padded output. Serves the convolutions
-/// [`direct_tiling`] admits.
-pub fn conv_direct_module(epilogue: &[ChainStep], extras: usize, co_tile: usize) -> String {
+/// consecutive output pixels of `tile.rows` rows for `tile.co` output
+/// channels, loads the `tile.rows + 2` input rows it needs once per input
+/// channel as `vec4` along W, and reads its weights as workgroup-uniform
+/// scalars, with no workgroup memory and no barrier. Padded taps read zero
+/// through `select`, so an `inf` or `NaN` at an edge never leaks into a padded
+/// output. Serves the convolutions [`direct_tiling`] admits.
+pub fn conv_direct_module(epilogue: &[ChainStep], extras: usize, tile: DirectTile) -> String {
+    conv_direct_typed_module(ShaderDtype::F32, false, epilogue, extras, tile)
+}
+
+/// The direct kernel with f16 or f32 storage; `f32_accum` widens f16 inputs
+/// before multiplication and keeps the accumulator and epilogue in f32.
+pub fn conv_direct_typed_module(
+    dt: ShaderDtype,
+    f32_accum: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+    tile: DirectTile,
+) -> String {
+    let t = dt.wgsl();
+    let a = if dt == ShaderDtype::F16 && !f32_accum { "f16" } else { "f32" };
+    let suf = dt.suffix();
     let out_binding = 2 + extras;
     let uniform_binding = 3 + extras;
     let extra_bindings = (0..extras)
         .map(|i| {
-            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<f32>;\n", 2 + i)
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
         })
         .collect::<String>();
     let lib = if epilogue.is_empty() {
         String::new()
     } else {
-        format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"))
+        format!("{}{}", unary_ops_wgsl(a), binary_ops_wgsl(a))
     };
-    let epilogue = epilogue_body(epilogue, "co");
-    let (decls, taps, stores) = conv_direct_body(co_tile);
-    let mut s = preamble(ShaderDtype::F32);
+    let epilogue = conv_direct_epilogue(epilogue, t != a);
+    let result = if t == a { "v".to_owned() } else { format!("{t}(v)") };
+    let DirectTile { co: co_tile, rows } = tile;
+    let (decls, rows_setup, taps, stores) = conv_direct_body(tile, t, a);
+    let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
 struct Params {{
@@ -1171,37 +1253,33 @@ struct Params {{
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> inp: array<vec4<f32>>;
-@group(0) @binding(1) var<storage, read> wgt: array<f32>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<f32>;
+@group(0) @binding(0) var<storage, read> inp: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-fn epi(acc: f32, co: u32) -> f32 {{
+fn epi(acc: {a}, co: u32) -> {t} {{
     var v = acc;
 {epilogue}
-    return v;
+    return {result};
 }}
 
 @compute @workgroup_size({CONV_DIRECT_WG})
-fn conv2d_direct_f32(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+fn conv2d_direct_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
     let xqw = params.ow / 4u;
+    let row_tiles = (params.oh + {rows}u - 1u) / {rows}u;
     let i = wid.x * {CONV_DIRECT_WG}u + lid;
-    if (i >= params.n * params.oh * xqw) {{ return; }}
+    if (i >= params.n * row_tiles * xqw) {{ return; }}
     let xq = i % xqw;
-    let y0 = (i / xqw) % params.oh;
-    let n = i / (xqw * params.oh);
+    let rt = i / xqw;
+    let y0 = (rt % row_tiles) * {rows}u;
+    let n = rt / row_tiles;
     let co0 = wid.y * {co_tile}u;
     let x0 = xq * 4u;
 {decls}    let in_row_base = i32(params.off_in) + i32(n) * params.in_sn;
     let x_left_ok = xq > 0u;
     let x_right_ok = x0 + 4u < params.iw;
-    let iy0 = y0 - 1u;
-    let row_ok0 = iy0 < params.ih;
-    let iy1 = y0;
-    let row_ok1 = iy1 < params.ih;
-    let iy2 = y0 + 1u;
-    let row_ok2 = iy2 < params.ih;
-    for (var ci = 0u; ci < params.ci_pg; ci++) {{
+{rows_setup}    for (var ci = 0u; ci < params.ci_pg; ci++) {{
         let ci_base = in_row_base + i32(ci) * params.in_sc;
 {taps}    }}
 {stores}}}
@@ -1210,57 +1288,114 @@ fn conv2d_direct_f32(@builtin(local_invocation_index) lid: u32, @builtin(workgro
     s
 }
 
-/// The unrolled pieces of [`conv_direct_module`]: one named `vec4` accumulator
-/// per output channel, the three input rows of each input channel, and the
-/// nine taps and the stores of each output channel, so the register tile never
-/// becomes an indexed private array.
-fn conv_direct_body(co_tile: usize) -> (String, String, String) {
+/// The unrolled pieces of [`conv_direct_module`]: one named `vec4`
+/// accumulator per output row and channel, the `rows + 2` input rows of each
+/// input channel, and the nine taps and the stores of each output, so the
+/// register tile never becomes an indexed private array.
+fn conv_direct_body(tile: DirectTile, t: &str, a: &str) -> (String, String, String, String) {
     use std::fmt::Write;
+    let DirectTile { co: co_tile, rows } = tile;
     let mut decls = String::new();
-    for c in 0..co_tile {
-        writeln!(decls, "    var acc{c} = vec4<f32>(0.0);").unwrap();
+    for d in 0..rows {
+        for c in 0..co_tile {
+            writeln!(decls, "    var acc{d}_{c} = vec4<{a}>(0.0);").unwrap();
+        }
+    }
+    let mut rows_setup = String::new();
+    for u in 0..rows + 2 {
+        let iy = if u == 0 { "y0 - 1u".to_owned() } else { format!("y0 + {}u", u - 1) };
+        writeln!(rows_setup, "    let iy{u} = {iy};").unwrap();
+        writeln!(rows_setup, "    let row_ok{u} = iy{u} < params.ih;").unwrap();
     }
     let mut taps = String::new();
-    for r in 0..3 {
-        writeln!(taps, "        let base{r} = u32((ci_base + i32(select(0u, iy{r}, row_ok{r})) * params.in_sh) / 4);").unwrap();
-        writeln!(taps, "        let a0_{r} = select(vec4<f32>(0.0), inp[base{r} + xq - 1u], row_ok{r} && x_left_ok);").unwrap();
+    for u in 0..rows + 2 {
+        let load = |which: &str, guard: &str| {
+            let load = format!("select(vec4<{t}>(0.0), inp[base{u} + {which}], {guard})");
+            if t == a { load } else { format!("vec4<{a}>({load})") }
+        };
+        writeln!(taps, "        let base{u} = u32((ci_base + i32(select(0u, iy{u}, row_ok{u})) * params.in_sh) / 4);").unwrap();
         writeln!(
             taps,
-            "        let a1_{r} = select(vec4<f32>(0.0), inp[base{r} + xq], row_ok{r});"
+            "        let a0_{u} = {};",
+            load("xq - 1u", &format!("row_ok{u} && x_left_ok"))
         )
         .unwrap();
-        writeln!(taps, "        let a2_{r} = select(vec4<f32>(0.0), inp[base{r} + xq + 1u], row_ok{r} && x_right_ok);").unwrap();
-        writeln!(taps, "        let left{r} = vec4<f32>(a0_{r}.w, a1_{r}.xyz);").unwrap();
-        writeln!(taps, "        let right{r} = vec4<f32>(a1_{r}.yzw, a2_{r}.x);").unwrap();
+        writeln!(taps, "        let a1_{u} = {};", load("xq", &format!("row_ok{u}"))).unwrap();
+        writeln!(
+            taps,
+            "        let a2_{u} = {};",
+            load("xq + 1u", &format!("row_ok{u} && x_right_ok"))
+        )
+        .unwrap();
+        writeln!(taps, "        let left{u} = vec4<{a}>(a0_{u}.w, a1_{u}.xyz);").unwrap();
+        writeln!(taps, "        let mid{u} = vec4<{a}>(a1_{u});").unwrap();
+        writeln!(taps, "        let right{u} = vec4<{a}>(a1_{u}.yzw, a2_{u}.x);").unwrap();
     }
     for c in 0..co_tile {
         writeln!(taps, "        {{").unwrap();
-        writeln!(taps, "            let wi0 = u32(i32(params.off_w) + i32(co0 + {c}u) * params.w_so + i32(ci) * params.w_si);").unwrap();
-        writeln!(taps, "            let wi1 = wi0 + u32(params.w_sh);").unwrap();
-        writeln!(taps, "            let wi2 = wi1 + u32(params.w_sh);").unwrap();
+        writeln!(taps, "            let wi = u32(i32(params.off_w) + i32(co0 + {c}u) * params.w_so + i32(ci) * params.w_si);").unwrap();
         for r in 0..3 {
-            writeln!(taps, "            acc{c} = fma(vec4<f32>(wgt[wi{r}]), left{r}, acc{c});")
-                .unwrap();
-            writeln!(taps, "            acc{c} = fma(vec4<f32>(wgt[wi{r} + u32(params.w_sw)]), a1_{r}, acc{c});").unwrap();
-            writeln!(taps, "            acc{c} = fma(vec4<f32>(wgt[wi{r} + u32(2 * params.w_sw)]), right{r}, acc{c});").unwrap();
+            for k in 0..3 {
+                let index = format!("wi + {r}u * u32(params.w_sh) + {k}u * u32(params.w_sw)");
+                let value = format!("wgt[{index}]");
+                let value = if t == a { value } else { format!("{a}({value})") };
+                writeln!(taps, "            let w{r}{k} = vec4<{a}>({value});").unwrap();
+            }
+        }
+        for d in 0..rows {
+            for r in 0..3 {
+                let u = d + r;
+                for (k, win) in ["left", "mid", "right"].iter().enumerate() {
+                    writeln!(taps, "            acc{d}_{c} = fma(w{r}{k}, {win}{u}, acc{d}_{c});")
+                        .unwrap();
+                }
+            }
         }
         writeln!(taps, "        }}").unwrap();
     }
     let mut stores = String::new();
-    for c in 0..co_tile {
-        writeln!(stores, "    if (co0 + {c}u < params.co) {{").unwrap();
-        writeln!(stores, "        let co = co0 + {c}u;").unwrap();
-        writeln!(stores, "        let o = i32(params.off_out) + i32(n) * params.out_sn + i32(co) * params.out_sc + i32(y0) * params.out_sh + i32(x0) * params.out_sw;").unwrap();
-        for (x, lane) in ["x", "y", "z", "w"].iter().enumerate() {
-            writeln!(
-                stores,
-                "        outp[u32(o + {x} * params.out_sw)] = epi(acc{c}.{lane}, co);"
-            )
-            .unwrap();
+    for d in 0..rows {
+        for c in 0..co_tile {
+            let row_guard =
+                if rows == 1 { String::new() } else { format!("y0 + {d}u < params.oh && ") };
+            writeln!(stores, "    if ({row_guard}co0 + {c}u < params.co) {{").unwrap();
+            writeln!(stores, "        let co = co0 + {c}u;").unwrap();
+            writeln!(stores, "        let o = i32(params.off_out) + i32(n) * params.out_sn + i32(co) * params.out_sc + i32(y0 + {d}u) * params.out_sh + i32(x0) * params.out_sw;").unwrap();
+            for (x, lane) in ["x", "y", "z", "w"].iter().enumerate() {
+                writeln!(
+                    stores,
+                    "        outp[u32(o + {x} * params.out_sw)] = epi(acc{d}_{c}.{lane}, co);"
+                )
+                .unwrap();
+            }
+            writeln!(stores, "    }}").unwrap();
         }
-        writeln!(stores, "    }}").unwrap();
     }
-    (decls, taps, stores)
+    (decls, rows_setup, taps, stores)
+}
+
+pub(crate) fn conv_direct_epilogue(steps: &[ChainStep], widen: bool) -> String {
+    if !widen {
+        return epilogue_body(steps, "co");
+    }
+    let mut result = String::new();
+    for step in steps {
+        match step {
+            ChainStep::Unary(op) => result.push_str(&format!("    v = op_{op}(v);\n")),
+            ChainStep::Binary { op, rhs, swapped } => {
+                let i = rhs - 1;
+                result.push_str(&format!(
+                    "    let e{i} = f32(extra{i}[params.off_extra[{i}u] + select(0u, co, params.mode_extra[{i}u] == 1u)]);\n"
+                ));
+                if *swapped {
+                    result.push_str(&format!("    v = op_{op}(e{i}, v);\n"));
+                } else {
+                    result.push_str(&format!("    v = op_{op}(v, e{i});\n"));
+                }
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]

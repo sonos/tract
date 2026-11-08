@@ -33,6 +33,7 @@ pub mod jspi;
 pub mod kernels;
 mod memory;
 pub mod ops;
+pub mod precision;
 mod rewrite_rules;
 mod tensor;
 mod test_utils;
