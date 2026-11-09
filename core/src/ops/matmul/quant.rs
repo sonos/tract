@@ -222,6 +222,50 @@ mod test {
     use proptest::prelude::*;
     use tract_ndarray::prelude::*;
 
+    /// The weights of a quantized matmul (a constant `b` over `CONST_FOLD_MEM_BUDGET`)
+    /// get their zero-point sum computed at codegen: the optimized plan sums no weight
+    /// at run time and gives the reference answer.
+    #[test]
+    fn a_large_constant_b_is_not_summed_at_run_time() -> TractResult<()> {
+        use crate::ops::einsum::EinSum;
+        use crate::ops::nn::Reduce;
+        let (m, k, n) = (4, 2048, 2560);
+        let a = Array2::<i8>::from_shape_fn((m, k), |(i, j)| ((i * 7 + j * 3) % 255) as i8);
+        let b = Array2::<i8>::from_shape_fn((k, n), |(i, j)| {
+            (((i * 31 + j * 7) % 255) as i32 - 127) as i8
+        });
+        let mut model = TypedModel::default();
+        let mut inputs = tvec![model.add_source("a", i8::fact([m, k]))?];
+        inputs.push(model.add_const("b", b.into_tensor())?);
+        inputs.push(model.add_const("bias", rctensor0(0i32))?);
+        inputs.push(model.add_const("a0", rctensor0(1i8))?);
+        inputs.push(model.add_const("a_scale", rctensor0(0.02f32))?);
+        inputs.push(model.add_const("b0", rctensor0(3i8))?);
+        inputs.push(model.add_const("b_scale", rctensor0(0.01f32))?);
+        inputs.push(model.add_const("c0", rctensor0(0i8))?);
+        inputs.push(model.add_const("c_scale", rctensor0(50f32))?);
+        let einsum = EinSum {
+            axes: "mk,kn,,,,,,,->mn".parse()?,
+            operating_dt: i32::datum_type(),
+            q_params: Some(i8::datum_type()),
+        };
+        let output = model.wire_node("einsum", einsum, &inputs)?;
+        model.select_output_outlets(&output)?;
+        let input = tvec!(a.into_tvalue());
+        let reference = model.clone().into_runnable()?.run(input.clone())?.remove(0);
+        let optimized = model.into_optimized()?;
+        let summed: Vec<&str> = optimized
+            .nodes()
+            .iter()
+            .filter(|n| n.op_is::<Reduce>() && n.name.ends_with(".sum_b"))
+            .map(|n| n.name.as_str())
+            .collect();
+        assert!(summed.is_empty(), "weights summed at run time by {summed:?}");
+        let got = optimized.into_runnable()?.run(input)?.remove(0);
+        assert_eq!(got, reference);
+        Ok(())
+    }
+
     proptest! {
         #[test]
         fn prop_i8_i8_i8(pb in any::<QMatMulProblemI8I8I8>()) {

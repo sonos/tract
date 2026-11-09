@@ -789,6 +789,30 @@ fn wire_axes_fix(
     Ok(outlet)
 }
 
+/// The sum over `axis` (k) of quantized operand `input`, as i32, for the zero-point
+/// compensation.
+///
+/// A constant operand, such as the weights of an ONNX `MatMulInteger`, gets its sum
+/// computed here and wired as a constant. Left to `PropConst`, it would stay in the
+/// plan: the i32 cast of a weight over `CONST_FOLD_MEM_BUDGET` is too large to fold,
+/// so every run would sum the whole weight again.
+fn wire_sum_over_k(
+    patch: &mut TypedModelPatch,
+    name: &str,
+    operand: &str,
+    input: OutletId,
+    axis: usize,
+) -> TractResult<TVec<OutletId>> {
+    let reduce = Reduce::new(tvec!(axis), Reducer::Sum);
+    if let Some(k) = patch.outlet_fact(input)?.konst.clone() {
+        let sum = reduce.reducer.reduce(&[axis], &*k.cast_to::<i32>()?)?;
+        return Ok(tvec!(patch.add_const(format!("{name}.sum_{operand}"), sum)?));
+    }
+    let as_i32 =
+        patch.wire_node(format!("{name}.{operand}_as_i32"), cast(i32::datum_type()), &[input])?;
+    patch.wire_node(format!("{name}.sum_{operand}"), reduce, &as_i32)
+}
+
 fn dequant(
     model: &TypedModel,
     node: &TypedNode,
@@ -827,18 +851,8 @@ fn dequant(
         &[a, b],
     )?;
 
-    let a_i32 = patch.wire_node(format!("{name}.a_as_i32"), cast(i32::datum_type()), &[a])?[0];
-    let b_i32 = patch.wire_node(format!("{name}.b_as_i32"), cast(i32::datum_type()), &[b])?[0];
-    let sum_a = patch.wire_node(
-        format!("{name}.sum_a"),
-        Reduce::new(tvec!(k_axis.inputs[0][0]), Reducer::Sum),
-        &[a_i32],
-    )?;
-    let sum_b = patch.wire_node(
-        format!("{name}.sum_b"),
-        Reduce::new(tvec!(k_axis.inputs[1][0]), Reducer::Sum),
-        &[b_i32],
-    )?;
+    let sum_a = wire_sum_over_k(&mut patch, name, "a", a, k_axis.inputs[0][0])?;
+    let sum_b = wire_sum_over_k(&mut patch, name, "b", b, k_axis.inputs[1][0])?;
 
     let sum_a =
         wire_axes_fix(&mut patch, name, "sum_a", &op.axes.extract_sub_mapping(&[0], &[0])?, sum_a)?;
