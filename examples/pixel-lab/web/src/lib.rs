@@ -95,23 +95,16 @@ fn build_rvm(model: &[u8], width: u32, height: u32, ratio: f32) -> Result<RvmRea
             return Err(JsValue::from_str(&format!("RVM input {i} is {actual}, expected {name}")));
         }
     }
-    // The official fp16 file types src and the recurrent states as f16.
-    // downsample_ratio stays f32. The body keeps that precision; f32_boundary
-    // casts around it so the canvas and the mask stay f32.
     let declared = inference.input_fact(0).map_err(js_error)?.to_string();
-    let dt = if declared.ends_with("f16") {
-        "f16"
-    } else if declared.ends_with("f32") {
-        "f32"
-    } else {
-        return Err(JsValue::from_str(&format!("RVM src is {declared}, expected f16 or f32")));
-    };
-    inference.set_input_fact(0, format!("1,3,{height},{width},{dt}").as_str()).map_err(js_error)?;
+    if !declared.ends_with("f32") {
+        return Err(JsValue::from_str(&format!("RVM src is {declared}, expected f32")));
+    }
+    inference.set_input_fact(0, format!("1,3,{height},{width},f32").as_str()).map_err(js_error)?;
     for (i, shape) in shapes.iter().enumerate() {
         inference
             .set_input_fact(
                 i + 1,
-                format!("{},{},{},{},{dt}", shape[0], shape[1], shape[2], shape[3]).as_str(),
+                format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]).as_str(),
             )
             .map_err(js_error)?;
     }
@@ -125,10 +118,7 @@ fn build_rvm(model: &[u8], width: u32, height: u32, ratio: f32) -> Result<RvmRea
     for i in 0..output_count {
         inference.set_output_fact(i, ()).map_err(js_error)?;
     }
-    let mut built = inference.into_model().map_err(js_error)?;
-    if dt == "f16" {
-        built.f32_boundary().map_err(js_error)?;
-    }
+    let built = inference.into_model().map_err(js_error)?;
     let mut expected =
         vec![format!("1,3,{height},{width},f32"), format!("1,1,{height},{width},f32")];
     for shape in &shapes {
