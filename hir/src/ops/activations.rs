@@ -96,7 +96,8 @@ activation!(Celu, |op, name: &str, model: &mut TypedModel, inputs| {
     let x_over_alpha_exp = model.wire_node(name.to_string() + ".exp", exp(), &[x_over_alpha[0]])?;
     let minus_one =
         model.wire_node(name.to_string() + ".minus_one", sub(), &[x_over_alpha_exp[0], one])?;
-    let wire = model.wire_node(name.to_string() + ".sat-zero", min(), &[zero, minus_one[0]])?;
+    let scaled = model.wire_node(name.to_string() + ".mul_alpha", mul(), &[alpha, minus_one[0]])?;
+    let wire = model.wire_node(name.to_string() + ".sat-zero", min(), &[zero, scaled[0]])?;
     let relu = model.wire_node(name.to_string() + ".relu", max(), &[zero, inputs[0]])?;
     let wire = model.wire_node(name.to_string(), add(), &[relu[0], wire[0]])?;
     Ok(wire)

@@ -2,10 +2,11 @@ use infra::TestSuite;
 use tract_hir::internal::*;
 use tract_onnx::pb::*;
 
+mod celu;
 mod convolution;
 
 pub fn suite() -> TestSuite {
-    TestSuite::default().with("convolution", convolution::suite())
+    TestSuite::default().with("convolution", convolution::suite()).with("celu", celu::suite())
 }
 
 fn proto(name: &str, tensor: &Tensor) -> TensorProto {
