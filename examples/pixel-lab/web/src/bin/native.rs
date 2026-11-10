@@ -48,19 +48,15 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
         ensure!(inference.input_name(i)? == *name, "RVM input {i} is not {name}");
     }
     let declared = inference.input_fact(0)?.to_string();
-    let dt = if declared.ends_with("f16") {
-        "f16"
-    } else if declared.ends_with("f32") || declared.ends_with("f32?") {
-        "f32"
-    } else {
-        anyhow::bail!("RVM src is {declared}, expected f16 or f32")
-    };
-    println!("src fact {declared}, using {dt}");
-    inference.set_input_fact(0, format!("1,3,{height},{width},{dt}").as_str())?;
+    ensure!(
+        declared.ends_with("f32") || declared.ends_with("f32?"),
+        "RVM src is {declared}, expected f32"
+    );
+    inference.set_input_fact(0, format!("1,3,{height},{width},f32").as_str())?;
     for (i, shape) in shapes.iter().enumerate() {
         inference.set_input_fact(
             i + 1,
-            format!("{},{},{},{},{dt}", shape[0], shape[1], shape[2], shape[3]).as_str(),
+            format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]).as_str(),
         )?;
     }
     let output_count = inference.output_count()?;
@@ -68,12 +64,7 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
     for i in 0..output_count {
         inference.set_output_fact(i, ())?;
     }
-    let mut model = inference.into_model()?;
-    // The f16 file keeps an f16 body. Casts at the boundary let this checker,
-    // and the page, keep feeding and reading f32.
-    if dt == "f16" {
-        model.f32_boundary()?;
-    }
+    let model = inference.into_model()?;
     let mut expected =
         vec![format!("1,3,{height},{width},f32"), format!("1,1,{height},{width},f32")];
     for shape in &shapes {

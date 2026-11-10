@@ -439,66 +439,6 @@ impl ModelInterface for Model {
     }
 }
 
-impl Model {
-    /// Speak f32 at every plain f16 input and output. The body stays f16, with a
-    /// cast on each side, so a caller that already feeds and reads f32 can run
-    /// an f16 file. An f32 model is left as it is.
-    pub fn f32_boundary(&mut self) -> Result<()> {
-        use tract_nnef::prelude::DatumType;
-        let model = &mut self.0;
-        let inputs = model.inputs.clone();
-        for outlet in inputs {
-            let fact = model.outlet_fact(outlet)?.clone();
-            if fact.datum_type != DatumType::F16 || !fact.is_plain() {
-                continue;
-            }
-            let successors = model.outlet_successors(outlet).to_vec();
-            let mut widened = fact;
-            widened.datum_type = DatumType::F32;
-            // The source op owns the fact. Declutter copies it back onto the
-            // outlet, so changing the outlet alone leaves the input f16.
-            let source = model
-                .node_mut(outlet.node)
-                .op_as_mut::<tract_core::ops::source::TypedSource>()
-                .context("f16 input is not a source")?;
-            source.fact = widened.clone();
-            model.set_outlet_fact(outlet, widened)?;
-            let name = model.node(outlet.node).name.clone();
-            let casted = tract_core::ops::cast::wire_cast(
-                format!("{name}.f32-in"),
-                model,
-                &[outlet],
-                DatumType::F16,
-            )?[0];
-            for inlet in successors {
-                model.add_edge(casted, inlet)?;
-            }
-            for output in &mut model.outputs {
-                if *output == outlet {
-                    *output = casted;
-                }
-            }
-        }
-        let outputs = model.outputs.clone();
-        let mut widened_outputs = outputs.clone();
-        for (index, outlet) in outputs.into_iter().enumerate() {
-            let fact = model.outlet_fact(outlet)?;
-            if fact.datum_type != DatumType::F16 || !fact.is_plain() {
-                continue;
-            }
-            widened_outputs[index] = tract_core::ops::cast::wire_cast(
-                format!("output-{index}.f32-out"),
-                model,
-                &[outlet],
-                DatumType::F32,
-            )?[0];
-        }
-        model.select_output_outlets(&widened_outputs)?;
-        model.declutter()?;
-        Ok(())
-    }
-}
-
 // RUNTIME
 pub struct Runtime(&'static dyn tract_nnef::internal::Runtime);
 
