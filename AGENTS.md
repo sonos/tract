@@ -117,6 +117,9 @@ writing code, not after.
   feature.
 - Prerequisites go in first, as separate PRs. Do not carry their commits in a
   dependent PR; once they merge, rebase onto main instead of merging main in.
+- Independent changes are parallel PRs against main; stack only real
+  dependencies. Shared plumbing (a new module, a library registration) is a
+  prerequisite PR, not a reason to stack.
 - A new capability on one GPU backend (Metal, CUDA, wgpu) widens the gap with
   the others. Say in the PR description which backends already support it and
   which don't.
