@@ -65,14 +65,16 @@ impl ScatterNd {
             }
             let mut data = data.view_mut();
             for x in indices_into_data {
-                if *x < 0 || *x as usize >= data.shape()[0] {
+                let dimension = data.shape()[0] as i64;
+                let index = if *x < 0 { *x + dimension } else { *x };
+                if index < 0 || index >= dimension {
                     anyhow::bail!(
                         "ScatterND index {x} out of bounds for data shape {:?} (indices tensor {:?})",
                         data.shape(),
                         indices
                     );
                 }
-                data.index_axis_inplace(Axis(0), *x as usize);
+                data.index_axis_inplace(Axis(0), index as usize);
             }
             data.assign(&updates)
         }
@@ -97,7 +99,10 @@ impl ScatterNd {
             }
             let mut data = data.view_mut();
             for x in indices_into_data {
-                data.index_axis_inplace(Axis(0), *x as usize);
+                let dimension = data.shape()[0] as i64;
+                let index = if *x < 0 { *x + dimension } else { *x };
+                ensure!(index >= 0 && index < dimension, "ScatterND index {x} out of bounds");
+                data.index_axis_inplace(Axis(0), index as usize);
             }
             Zip::from(&mut data).and(&updates).for_each(|d, u| match reduction {
                 ScatterReduction::Add => *d += u.clone(),

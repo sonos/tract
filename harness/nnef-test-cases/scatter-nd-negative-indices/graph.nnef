@@ -1,0 +1,13 @@
+version 1.0;
+extension tract_registry tract_core;
+graph network(data) -> (assigned, added, multiplied, minimum, maximum)
+{
+    data = tract_core_external(shape = [2, 3], datum_type = 'f32');
+    indices = tract_core_cast([[-1.0, -1.0], [-2.0, 0.0]], to = 'i64');
+    updates = [10.0, 20.0];
+    assigned = tract_core_scatter_nd(data, indices, updates, reduction = 'none');
+    added = tract_core_scatter_nd(data, indices, updates, reduction = 'add');
+    multiplied = tract_core_scatter_nd(data, indices, updates, reduction = 'mul');
+    minimum = tract_core_scatter_nd(data, indices, updates, reduction = 'min');
+    maximum = tract_core_scatter_nd(data, indices, updates, reduction = 'max');
+}
