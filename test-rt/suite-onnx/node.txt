@@ -514,6 +514,9 @@ test_resize_upsample_nearest                                                    
 test_resize_upsample_sizes_nearest_ceil_half_pixel                                  input:X since:12
 test_resize_upsample_sizes_nearest_floor_align_corners                              input:X since:12
 test_resize_upsample_sizes_nearest_round_prefer_ceil_asymmetric                     input:X since:12
+# ONNX <=1.23 fixtures use unrounded widths; onnx/onnx@a95e28e corrects
+# these expected outputs on the opset-29 development branch.
+test_resize_downsample_scales_(linear|cubic)_align_corners                          input:X since:29
 test_resize.*                                                                       input:X
 test_rnn_seq_length
 test_round
