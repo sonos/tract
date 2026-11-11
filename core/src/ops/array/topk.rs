@@ -5,6 +5,10 @@ use tract_ndarray::{ArrayViewMutD, Axis, Dimension};
 
 use crate::internal::*;
 
+/// The `k` best entries along `axis`, sorted, with their indices: the largest when
+/// `largest`, else the smallest. Ties go to the lowest index; NaN comes after every number.
+/// `k` is the second input; `fallback_k` stands for it in the output shape when it is not
+/// a constant.
 #[derive(Debug, Clone, new, Default, Hash, PartialEq, Eq)]
 pub struct Topk {
     pub axis: usize,
@@ -55,6 +59,23 @@ impl EvalOp for Topk {
 }
 
 impl Topk {
+    /// The order the output follows: the largest values first when `largest`, else the
+    /// smallest, and NaN after every number either way. A total order, so the stable sort
+    /// keeps equal values, NaNs included, in input order: ties go to the lowest index.
+    fn rank<T: PartialOrd>(&self, a: &T, b: &T) -> Ordering {
+        #[allow(clippy::eq_op)]
+        let is_nan = |x: &T| x != x;
+        match (is_nan(a), is_nan(b)) {
+            (true, true) => Ordering::Equal,
+            (true, false) => Ordering::Greater,
+            (false, true) => Ordering::Less,
+            (false, false) => {
+                let ord = a.partial_cmp(b).unwrap_or(Ordering::Equal);
+                if self.largest { ord.reverse() } else { ord }
+            }
+        }
+    }
+
     fn inner_loop_t<T: Datum + PartialOrd>(
         &self,
         coords: &mut [usize],
@@ -75,10 +96,7 @@ impl Topk {
             .iter()
             .cloned()
             .enumerate()
-            .sorted_by(|a, b| {
-                let ord = { a.1.partial_cmp(&b.1).unwrap_or(Ordering::Less) };
-                if self.largest { ord.reverse() } else { ord }
-            })
+            .sorted_by(|a, b| self.rank(&a.1, &b.1))
             .take(k)
             .enumerate()
         {
