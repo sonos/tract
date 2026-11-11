@@ -135,12 +135,12 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_test("signed_zeros", row(64, 40, true, &|i| if i % 2 == 0 { 0.0 } else { -0.0 }));
     suite.add_test("all_nan", row(17, 5, true, &|_| f32::NAN));
     suite.add_test("k_is_the_whole_row", row(37, 37, false, &spread));
-    let distinct = |i: usize| ((i * 2654435761) % 1000003) as f32;
+    let scattered = |i: usize| (i as u64 * 2654435761 % 2039) as f32;
     for len in [2047, 2048, 2049, 4096, 32000] {
-        suite.add_test(format!("row_{len}_k1"), row(len, 1, true, &distinct));
-        suite.add_test(format!("row_{len}_k250"), row(len, 250, false, &distinct));
+        suite.add_test(format!("row_{len}_k1"), row(len, 1, true, &scattered));
+        suite.add_test(format!("row_{len}_k250"), row(len, 250, false, &scattered));
     }
-    suite.add_test("row_70000_k1024", row(70000, 1024, true, &distinct));
+    suite.add_test("row_70000_k1024", row(70000, 1024, true, &scattered));
     suite.add_test("many_rows", rows(300, 50, 7, true, &spread));
     Ok(suite)
 }
