@@ -5,6 +5,7 @@ use crate::ops::cast::{Cast, cast};
 use crate::ops::einsum::EinSum;
 use crate::ops::element_wise::ElementWiseOp;
 use crate::ops::konst::Const;
+use crate::ops::nn::resize::Resize;
 use crate::ops::scan::Scan;
 use crate::ops::source::TypedSource;
 use crate::transform::ModelTransform;
@@ -91,6 +92,22 @@ impl FloatPrecisionTranslator {
         }
         Ok(outputs)
     }
+
+    /// Resize scales determine the integer output shape: a constant scales
+    /// input keeps its declared type so rounding cannot change the geometry.
+    fn keep_resize_scales(
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        inputs: &mut TVec<OutletId>,
+    ) -> TractResult<()> {
+        if let Some(slot) = node.op_as::<Resize>().and_then(|op| op.optional_scales_input)
+            && let Some(scales) = source.outlet_fact(node.inputs[slot])?.konst.clone()
+        {
+            inputs[slot] = target.add_const(format!("{}.scales", node.name), scales)?;
+        }
+        Ok(())
+    }
 }
 
 impl std::fmt::Debug for FloatPrecisionTranslator {
@@ -128,13 +145,16 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
         if !self.should_translate_node(node) && !is_source {
             let new_op = node.op.clone();
 
-            let casted_inputs =
+            let mut casted_inputs =
                 self.cast_inputs_if_required(target, node, mapping, self.from_dt)?;
+            Self::keep_resize_scales(source, node, target, &mut casted_inputs)?;
             let target_node_outlet_ids = target.wire_node(&node.name, new_op, &casted_inputs)?;
 
             self.cast_model_outputs_if_required(source, node, target, target_node_outlet_ids)
         } else {
-            let casted_inputs = self.cast_inputs_if_required(target, node, mapping, self.to_dt)?;
+            let mut casted_inputs =
+                self.cast_inputs_if_required(target, node, mapping, self.to_dt)?;
+            Self::keep_resize_scales(source, node, target, &mut casted_inputs)?;
 
             let new_op = if let Some(source_op) = node.op_as::<TypedSource>() {
                 let mut fact = source_op.fact.clone();
@@ -267,6 +287,39 @@ mod test {
                 .is_nan()
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn f16_transform_keeps_resize_geometry() -> TractResult<()> {
+        use crate::ops::nn::resize::{CoordTransformer, Interpolator, Nearest};
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([1, 3, 1080, 1920]))?;
+        let scales = model.add_const("scales", tensor1(&[1f32, 1., 0.4, 0.4]))?;
+        let resize = Resize {
+            coord_transformer: CoordTransformer::HalfPixel,
+            interpolator: Interpolator::Linear,
+            nearest: Nearest::RoundPreferCeil,
+            optional_scales_input: Some(1),
+            optional_sizes_input: None,
+        };
+        let output = model.wire_node("resize", resize, &[input, scales])?;
+        model.select_output_outlets(&output)?;
+        let expected = model.output_fact(0)?.shape.clone();
+        assert_eq!(expected.as_concrete(), Some(&[1, 3, 432, 768][..]));
+
+        let translated = crate::transform::get_transform("f32_to_f16")?
+            .unwrap()
+            .transform_into(model.clone())?;
+        assert_eq!(translated.output_fact(0)?.shape, expected);
+        assert_eq!(translated.output_fact(0)?.datum_type, f16::datum_type());
+
+        let excluded =
+            FloatPrecisionTranslator::with_filter(f32::datum_type(), f16::datum_type(), |node| {
+                node.name != "resize"
+            })
+            .transform_into(model)?;
+        assert_eq!(excluded.output_fact(0)?.shape, expected);
         Ok(())
     }
 
