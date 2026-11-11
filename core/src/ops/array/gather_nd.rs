@@ -69,7 +69,10 @@ impl GatherNd {
 
                 let mut i = i.view();
                 for x in coords {
-                    i.index_axis_inplace(Axis(0), *x as usize);
+                    let dimension = i.shape()[0] as i64;
+                    let index = if *x < 0 { *x as i64 + dimension } else { *x as i64 };
+                    ensure!(index >= 0 && index < dimension, "GatherND index {x} out of bounds");
+                    i.index_axis_inplace(Axis(0), index as usize);
                 }
 
                 let mut o = output.view_mut();
@@ -127,6 +130,15 @@ impl TypedOp for GatherNd {
             && indices.rank() == 2
             && indices.shape()[0] == 1
         {
+            if indices
+                .cast_to::<i32>()?
+                .try_as_plain_ram()?
+                .as_slice::<i32>()?
+                .iter()
+                .any(|i| *i < 0)
+            {
+                return Ok(None);
+            }
             let mut patch = TypedModelPatch::default();
             let mut wire = patch.tap_model(model, node.inputs[0])?;
             for (axis, &i) in
