@@ -166,12 +166,25 @@ impl Expansion for Pad18 {
             .as_ref()
             .context("Expect padding to be constant")?
             .cast_to::<i64>()?;
-        let pads = pads.try_as_plain_ram()?.as_slice::<i64>()?;
+        let pads = pads.try_as_plain_ram()?.as_slice::<i64>()?.to_vec();
 
         let mut fixed_pads = vec![(0, 0); rank];
+        let mut wire = inputs[0];
         for (ix, &axis) in axes.iter().enumerate() {
-            fixed_pads[axis] = (pads[ix] as usize, pads[ix + pads.len() / 2] as usize);
+            let before = pads[ix];
+            let after = pads[ix + pads.len() / 2];
+            if before < 0 || after < 0 {
+                let start = before.saturating_neg().max(0) as usize;
+                let end =
+                    model.outlet_fact(wire)?.shape[axis].clone() - after.saturating_neg().max(0);
+                wire = model.wire_node(
+                    format!("{name}.crop-{axis}"),
+                    tract_core::ops::array::Slice::new(axis, start, end),
+                    &[wire],
+                )?[0];
+            }
+            fixed_pads[axis] = (before.max(0) as usize, after.max(0) as usize);
         }
-        model.wire_node(name, array::Pad { mode, pads: fixed_pads }, &inputs[0..1])
+        model.wire_node(name, array::Pad { mode, pads: fixed_pads }, &[wire])
     }
 }
