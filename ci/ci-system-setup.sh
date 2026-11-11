@@ -17,21 +17,48 @@ then
     then
         SUDO=sudo
     fi
+    apt_set_mirror() {
+        if [ -f /etc/apt/apt-mirrors.txt ]
+        then
+            printf '%s\tpriority:1\n' "$1" | $SUDO tee /etc/apt/apt-mirrors.txt >/dev/null
+        fi
+        $SUDO sed -i -E "s#https?://(azure\.archive\.ubuntu\.com|archive\.ubuntu\.com|security\.ubuntu\.com|mirrors\.edge\.kernel\.org)/ubuntu/?#$1#g" \
+            /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
+        echo "$1" > /tmp/ci-apt-mirror
+    }
+    # Mirrors in order of preference. All *.ubuntu.com names go through
+    # Canonical's DNS, so kernel.org is the fallback that survives its outages.
+    # Each mirror's host is probed first: a dead resolver otherwise stalls apt
+    # for minutes before it reports anything.
     apt_retry() {
-        tries=0
-        while [ $tries -lt 3 ]
+        printf 'Acquire::Retries "1";\nAcquire::http::Timeout "20";\nAcquire::https::Timeout "20";\n' \
+            | $SUDO tee /etc/apt/apt.conf.d/99ci-fail-fast >/dev/null
+        current=$(cat /tmp/ci-apt-mirror 2>/dev/null || echo http://azure.archive.ubuntu.com/ubuntu/)
+        tried=
+        for mirror in $current http://azure.archive.ubuntu.com/ubuntu/ http://archive.ubuntu.com/ubuntu/ http://mirrors.edge.kernel.org/ubuntu/
         do
+            case " $tried " in *" $mirror "*) continue ;; esac
+            tried="$tried $mirror"
+            host=$(echo $mirror | cut -d/ -f3)
+            if ! timeout 5 getent hosts $host >/dev/null
+            then
+                echo "apt_retry: $host does not resolve, skipping it"
+                continue
+            fi
+            if [ "$mirror" != "$current" ]
+            then
+                echo "apt_retry: switching to $mirror"
+                apt_set_mirror $mirror
+                current=$mirror
+                if [ "$2" != update ]
+                then
+                    timeout 120 $SUDO apt-get update || continue
+                fi
+            fi
             timeout 150 $SUDO "$@" && return 0
-            tries=$((tries + 1))
             # If the timeout killed apt mid-install, dpkg stays locked in an
             # "interrupted" state and every retry fails immediately.
             $SUDO dpkg --configure -a 2>/dev/null || true
-            # azure.archive.ubuntu.com is a known flaky mirror; after the
-            # first failure, drop it so the rest of the retries go
-            # straight to the canonical mirror instead of stalling again.
-            $SUDO sed -i '/azure\.archive\.ubuntu\.com/d' /etc/apt/apt-mirrors.txt 2>/dev/null || true
-            $SUDO sed -i 's/azure\.archive\.ubuntu\.com/archive.ubuntu.com/g' /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list 2>/dev/null || true
-            sleep 5
         done
         return 1
     }
