@@ -17,4 +17,4 @@ include = [ "/Cargo.toml", "/LICENSE*", "/src/**/*.rs", "/build.rs", "/tract.h" 
 unstable-npyz = []
 
 [build-dependencies]
-bindgen = "0.73.1"
+bindgen = { version = "0.73.1", default-features = false, features = ["logging", "runtime"] }
