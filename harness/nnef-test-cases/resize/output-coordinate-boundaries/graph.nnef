@@ -1,0 +1,14 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_onnx;
+graph network(data, image) -> (aligned, cropped, center, pixel)
+{
+    data = tract_core_external(shape = [1, 1, 1, 5], datum_type = 'f32');
+    image = tract_core_external(shape = [1, 1, 2, 2], datum_type = 'f32');
+    scales = [1.0, 1.0, 1.0, 0.7];
+    roi = [0.0, 0.0, 0.0, 0.25, 1.0, 1.0, 1.0, 0.75];
+    aligned = tract_core_resize(data, scales, interpolator = 'linear', coord_transformer = 'align_corners');
+    cropped = tract_onnx_resize(data, scales, roi = roi, interpolator = 'linear', coord_transformer = 'tf_crop_and_resize');
+    center = tract_onnx_resize(data, [1.0, 1.0, 1.0, 0.3], roi = roi, interpolator = 'linear', coord_transformer = 'tf_crop_and_resize');
+    pixel = tract_core_resize(image, [1.0, 1.0, 0.5, 0.5], interpolator = 'cubic', coord_transformer = 'pytorch_half_pixel');
+}

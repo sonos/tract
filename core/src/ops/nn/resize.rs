@@ -18,11 +18,10 @@ impl CoordTransformer {
         match self {
             CoordTransformer::HalfPixel => (x_out as f32 + 0.5) / scale - 0.5,
             CoordTransformer::AlignCorners => {
-                let output_width = scale * len_in as f32;
-                if output_width == 1.0 {
+                if len_out == 1 {
                     0.0
                 } else {
-                    (x_out as f32 * (len_in as f32 - 1.0)) / (output_width - 1.0)
+                    (x_out as f32 * (len_in as f32 - 1.0)) / (len_out as f32 - 1.0)
                 }
             }
             CoordTransformer::Asymmetric => (x_out as f32) / scale,
@@ -30,7 +29,7 @@ impl CoordTransformer {
                 if len_out > 1 {
                     (x_out as f32 + 0.5) / scale - 0.5
                 } else {
-                    -0.5
+                    0.0
                 }
             }
             CoordTransformer::HalfPixelSymmetric => {

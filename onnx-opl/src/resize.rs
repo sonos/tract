@@ -261,7 +261,7 @@ impl Resize {
             CoordTransform::TfCropAndResize => {
                 let last = len_in as f32 - 1.0;
                 let span = last * (roi.1 - roi.0);
-                let width = scale * len_in as f32;
+                let width = len_out as f32;
                 Box::new(move |x| {
                     let offset =
                         if width == 1.0 { span / 2.0 } else { x as f32 * span / (width - 1.0) };
