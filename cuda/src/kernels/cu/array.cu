@@ -461,10 +461,11 @@ INSTANTIATE_CUMSUM(i64, int64_t, int64_t)
 #define TOPK_THREADS 1024
 
 static __device__ __forceinline__ uint32_t topk_order(float v, int32_t largest) {
-    if (v != v)
+    uint32_t u = __float_as_uint(v);
+    const uint32_t magnitude = u & 0x7FFFFFFFu;
+    if (magnitude > 0x7F800000u)
         return 1;
-    uint32_t u = __float_as_uint(v == 0.0f ? 0.0f : v);
-    u = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+    u = magnitude == 0 ? 0x80000000u : (u & 0x80000000u) ? ~u : (u | 0x80000000u);
     return largest ? u : ~u;
 }
 
