@@ -456,3 +456,95 @@ INSTANTIATE_CUMSUM(f32, float, float)
 INSTANTIATE_CUMSUM(f16, __half, float)
 INSTANTIATE_CUMSUM(i32, int32_t, int32_t)
 INSTANTIATE_CUMSUM(i64, int64_t, int64_t)
+
+#define TOPK_CHUNK 2048
+#define TOPK_THREADS 1024
+
+static __device__ __forceinline__ uint32_t topk_order(float v, int32_t largest) {
+    if (v != v)
+        return 1;
+    uint32_t u = __float_as_uint(v == 0.0f ? 0.0f : v);
+    u = (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+    return largest ? u : ~u;
+}
+
+static __device__ void topk_sort_chunk(unsigned long long *s) {
+    const int32_t t = threadIdx.x;
+    for (int32_t size = 2; size <= TOPK_CHUNK; size <<= 1) {
+        for (int32_t stride = size >> 1; stride > 0; stride >>= 1) {
+            __syncthreads();
+            const int32_t lo = 2 * t - (t & (stride - 1));
+            const int32_t hi = lo + stride;
+            const bool desc = (lo & size) == 0;
+            const unsigned long long a = s[lo];
+            const unsigned long long b = s[hi];
+            if ((a < b) == desc) {
+                s[lo] = b;
+                s[hi] = a;
+            }
+        }
+    }
+    __syncthreads();
+}
+
+static __device__ void topk_store_chunk(const unsigned long long *s,
+                                        unsigned long long *out,
+                                        const int64_t row, const int32_t chunk,
+                                        const int32_t k, const int32_t out_len) {
+    for (int32_t j = threadIdx.x; j < k; j += TOPK_THREADS)
+        out[row * out_len + (int64_t)chunk * k + j] = s[j];
+}
+
+#define INSTANTIATE_TOPK(name, T)                                              \
+    extern "C" __global__ void topk_chunk_values_##name(                       \
+        const T *values, unsigned long long *keys, const int32_t n,            \
+        const int32_t k, const int32_t largest, const int32_t chunks,          \
+        const int32_t out_len) {                                               \
+        __shared__ unsigned long long s[TOPK_CHUNK];                           \
+        const int64_t row = blockIdx.x / chunks;                               \
+        const int32_t chunk = blockIdx.x % chunks;                             \
+        for (int32_t i = threadIdx.x; i < TOPK_CHUNK; i += TOPK_THREADS) {     \
+            const int32_t ix = chunk * TOPK_CHUNK + i;                         \
+            unsigned long long key = 0;                                        \
+            if (ix < n) {                                                      \
+                const uint32_t ord =                                           \
+                    topk_order((float)values[row * n + ix], largest);          \
+                key = ((unsigned long long)ord << 32) |                        \
+                      (unsigned long long)(0xFFFFFFFFu - (uint32_t)ix);        \
+            }                                                                  \
+            s[i] = key;                                                        \
+        }                                                                      \
+        topk_sort_chunk(s);                                                    \
+        topk_store_chunk(s, keys, row, chunk, k, out_len);                     \
+    }                                                                          \
+                                                                               \
+    extern "C" __global__ void topk_finish_##name(                             \
+        const unsigned long long *keys, const T *values, T *out_values,        \
+        int64_t *out_indices, const int32_t n, const int32_t k) {              \
+        const int64_t row = blockIdx.y;                                        \
+        const int32_t j = blockIdx.x * blockDim.x + threadIdx.x;               \
+        if (j >= k)                                                            \
+            return;                                                            \
+        const uint32_t ix = 0xFFFFFFFFu - (uint32_t)keys[row * k + j];         \
+        out_values[row * k + j] = values[row * n + ix];                        \
+        out_indices[row * k + j] = (int64_t)ix;                                \
+    }
+
+INSTANTIATE_TOPK(f32, float)
+INSTANTIATE_TOPK(f16, __half)
+
+extern "C" __global__ void topk_chunk_keys(const unsigned long long *keys,
+                                           unsigned long long *out,
+                                           const int32_t len, const int32_t k,
+                                           const int32_t chunks,
+                                           const int32_t out_len) {
+    __shared__ unsigned long long s[TOPK_CHUNK];
+    const int64_t row = blockIdx.x / chunks;
+    const int32_t chunk = blockIdx.x % chunks;
+    for (int32_t i = threadIdx.x; i < TOPK_CHUNK; i += TOPK_THREADS) {
+        const int32_t ix = chunk * TOPK_CHUNK + i;
+        s[i] = ix < len ? keys[row * len + ix] : 0;
+    }
+    topk_sort_chunk(s);
+    topk_store_chunk(s, out, row, chunk, k, out_len);
+}

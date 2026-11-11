@@ -18,6 +18,7 @@ pub struct TopkProblem {
     pub axis: usize,
     pub k: usize,
     pub largest: bool,
+    pub dt: DatumType,
 }
 
 fn level(ix: u8) -> f32 {
@@ -37,13 +38,14 @@ impl Arbitrary for TopkProblem {
             .prop_flat_map(|shape| {
                 let len = shape.iter().product::<usize>();
                 let rank = shape.len();
-                (Just(shape), vec(0u8..10, len..=len), 0..rank, any::<bool>())
+                let dt = prop_oneof![Just(DatumType::F32), Just(DatumType::F16)];
+                (Just(shape), vec(0u8..10, len..=len), 0..rank, any::<bool>(), dt)
             })
-            .prop_flat_map(|(shape, levels, axis, largest)| {
+            .prop_flat_map(|(shape, levels, axis, largest, dt)| {
                 let n = shape[axis];
-                (Just(shape), Just(levels), Just(axis), 1..=n, Just(largest))
+                (Just(shape), Just(levels), Just(axis), 1..=n, Just(largest), Just(dt))
             })
-            .prop_map(|(shape, levels, axis, k, largest)| TopkProblem {
+            .prop_map(|(shape, levels, axis, k, largest, dt)| TopkProblem {
                 input: ArrayD::from_shape_vec(
                     IxDyn(&shape),
                     levels.into_iter().map(level).collect(),
@@ -52,6 +54,7 @@ impl Arbitrary for TopkProblem {
                 axis,
                 k,
                 largest,
+                dt,
             })
             .boxed()
     }
@@ -94,16 +97,17 @@ impl Test for TopkProblem {
         let (values, indices) = self.reference();
         let mut model = TypedModel::default();
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
-        let input = model.add_source("input", f32::fact(self.input.shape()))?;
+        let input = model.add_source("input", self.dt.fact(self.input.shape()))?;
         let k = model.add_const("k", rctensor0(self.k as i64))?;
         let op = Topk { axis: self.axis, largest: self.largest, fallback_k: self.k.to_dim() };
         let outputs = model.wire_node("topk", op, &[input, k])?;
         model.select_output_outlets(&outputs)?;
-        let mut found =
-            runtime.prepare(model)?.run(tvec![self.input.clone().into_tensor().into_tvalue()])?;
+        let input = self.input.clone().into_tensor().cast_to_dt(self.dt)?.into_owned();
+        let mut found = runtime.prepare(model)?.run(tvec![input.into_tvalue()])?;
         let found_indices = found.remove(1).into_tensor();
         let found_values = found.remove(0).into_tensor();
-        found_values.close_enough(&values.into_tensor(), Approximation::Exact)?;
+        let values = values.into_tensor().cast_to_dt(self.dt)?.into_owned();
+        found_values.close_enough(&values, Approximation::Exact)?;
         found_indices.close_enough(&indices.into_tensor(), Approximation::Exact)
     }
 }
@@ -111,17 +115,32 @@ impl Test for TopkProblem {
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<TopkProblem>("proptest", ());
-    let row = |len: usize, k: usize, largest: bool, f: &dyn Fn(usize) -> f32| TopkProblem {
-        input: ArrayD::from_shape_fn(IxDyn(&[2, len]), |ix| f(ix[0] * 31 + ix[1] * 7919)),
-        axis: 1,
-        k,
-        largest,
-    };
+    let rows =
+        |rows: usize, len: usize, k: usize, largest: bool, f: &dyn Fn(usize) -> f32| TopkProblem {
+            input: ArrayD::from_shape_fn(IxDyn(&[rows, len]), |ix| f(ix[0] * 31 + ix[1] * 7919)),
+            axis: 1,
+            k,
+            largest,
+            dt: DatumType::F32,
+        };
+    let row = |len, k, largest, f: &dyn Fn(usize) -> f32| rows(2, len, k, largest, f);
     let spread = |i: usize| (i % 97) as f32;
     suite.add_test("long_row_largest", row(9000, 300, true, &spread));
     suite.add_test("long_row_smallest", row(9000, 300, false, &spread));
     suite.add_test("long_row_all_equal", row(9000, 300, true, &|_| 1.0));
+    suite.add_test(
+        "long_row_f16",
+        TopkProblem { dt: DatumType::F16, ..row(9000, 300, true, &spread) },
+    );
+    suite.add_test("signed_zeros", row(64, 40, true, &|i| if i % 2 == 0 { 0.0 } else { -0.0 }));
     suite.add_test("all_nan", row(17, 5, true, &|_| f32::NAN));
     suite.add_test("k_is_the_whole_row", row(37, 37, false, &spread));
+    let distinct = |i: usize| ((i * 2654435761) % 1000003) as f32;
+    for len in [2047, 2048, 2049, 4096, 32000] {
+        suite.add_test(format!("row_{len}_k1"), row(len, 1, true, &distinct));
+        suite.add_test(format!("row_{len}_k250"), row(len, 250, false, &distinct));
+    }
+    suite.add_test("row_70000_k1024", row(70000, 1024, true, &distinct));
+    suite.add_test("many_rows", rows(300, 50, 7, true, &spread));
     Ok(suite)
 }

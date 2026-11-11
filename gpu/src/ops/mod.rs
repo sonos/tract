@@ -33,3 +33,4 @@ pub mod scaled_masked_softmax;
 pub mod slice;
 pub mod softmax;
 pub mod stft;
+pub mod topk;
