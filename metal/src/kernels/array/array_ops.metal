@@ -490,3 +490,125 @@ INSTANTIATE_CUMSUM(f32, float, float)
 INSTANTIATE_CUMSUM(f16, half, float)
 INSTANTIATE_CUMSUM(i32, int32_t, int32_t)
 INSTANTIATE_CUMSUM(i64, int64_t, int64_t)
+
+// Top-k over rows by chunks of TOPK_CHUNK u64 keys: order-preserving u32 image
+// of the value (inverted for smallest; NaN = 1, padding = 0) in the high half,
+// ~index in the low half. Each threadgroup sorts one chunk descending and keeps
+// its first k keys.
+#define TOPK_CHUNK 2048
+
+METAL_FUNC uint topk_order(float v, bool largest) {
+    uint u = as_type<uint>(v);
+    const uint magnitude = u & 0x7FFFFFFFu;
+    if (magnitude > 0x7F800000u)
+        return 1;
+    u = magnitude == 0 ? 0x80000000u : (u & 0x80000000u) ? ~u : (u | 0x80000000u);
+    return largest ? u : ~u;
+}
+
+METAL_FUNC void topk_sort_chunk(threadgroup ulong *s, uint tid, uint tsize) {
+    for (uint size = 2; size <= TOPK_CHUNK; size <<= 1) {
+        for (uint stride = size >> 1; stride > 0; stride >>= 1) {
+            threadgroup_barrier(mem_flags::mem_threadgroup);
+            for (uint t = tid; t < TOPK_CHUNK / 2; t += tsize) {
+                const uint lo = 2 * t - (t & (stride - 1));
+                const uint hi = lo + stride;
+                const bool desc = (lo & size) == 0;
+                const ulong a = s[lo];
+                const ulong b = s[hi];
+                if ((a < b) == desc) {
+                    s[lo] = b;
+                    s[hi] = a;
+                }
+            }
+        }
+    }
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+}
+
+// params layout: [len, k, largest, chunks, out_len]
+template <typename T>
+[[kernel]] void topk_chunk_values(device const void *values_b [[buffer(0)]],
+                                  device ulong *keys [[buffer(1)]],
+                                  constant const int32_t *params [[buffer(2)]],
+                                  uint group [[threadgroup_position_in_grid]],
+                                  uint tid [[thread_position_in_threadgroup]],
+                                  uint tsize [[threads_per_threadgroup]]) {
+    threadgroup ulong s[TOPK_CHUNK];
+    device const T *values = (device const T *)values_b;
+    const int32_t n = params[0];
+    const int32_t k = params[1];
+    const bool largest = params[2] != 0;
+    const int32_t chunks = params[3];
+    const int32_t out_len = params[4];
+    const long row = group / chunks;
+    const int32_t chunk = group % chunks;
+    for (uint i = tid; i < TOPK_CHUNK; i += tsize) {
+        const int32_t ix = chunk * TOPK_CHUNK + (int32_t)i;
+        ulong key = 0;
+        if (ix < n) {
+            const uint ord = topk_order((float)values[row * n + ix], largest);
+            key = ((ulong)ord << 32) | (ulong)(0xFFFFFFFFu - (uint)ix);
+        }
+        s[i] = key;
+    }
+    topk_sort_chunk(s, tid, tsize);
+    for (int32_t j = (int32_t)tid; j < k; j += (int32_t)tsize)
+        keys[row * out_len + (long)chunk * k + j] = s[j];
+}
+
+// params layout: [len, k, chunks, out_len]
+[[host_name("array_ops::topk_chunk_keys")]] [[kernel]] void topk_chunk_keys(device const ulong *keys [[buffer(0)]],
+                                device ulong *out [[buffer(1)]],
+                                constant const int32_t *params [[buffer(2)]],
+                                uint group [[threadgroup_position_in_grid]],
+                                uint tid [[thread_position_in_threadgroup]],
+                                uint tsize [[threads_per_threadgroup]]) {
+    threadgroup ulong s[TOPK_CHUNK];
+    const int32_t len = params[0];
+    const int32_t k = params[1];
+    const int32_t chunks = params[2];
+    const int32_t out_len = params[3];
+    const long row = group / chunks;
+    const int32_t chunk = group % chunks;
+    for (uint i = tid; i < TOPK_CHUNK; i += tsize) {
+        const int32_t ix = chunk * TOPK_CHUNK + (int32_t)i;
+        s[i] = ix < len ? keys[row * len + ix] : 0;
+    }
+    topk_sort_chunk(s, tid, tsize);
+    for (int32_t j = (int32_t)tid; j < k; j += (int32_t)tsize)
+        out[row * out_len + (long)chunk * k + j] = s[j];
+}
+
+// params layout: [n, k]
+template <typename T>
+[[kernel]] void topk_finish(device const ulong *keys [[buffer(0)]],
+                            device const void *values_b [[buffer(1)]],
+                            device void *out_values_b [[buffer(2)]],
+                            device int64_t *out_indices [[buffer(3)]],
+                            constant const int32_t *params [[buffer(4)]],
+                            uint2 tpig [[thread_position_in_grid]]) {
+    const int32_t n = params[0];
+    const int32_t k = params[1];
+    const int32_t j = (int32_t)tpig.x;
+    const long row = tpig.y;
+    if (j >= k)
+        return;
+    device const T *values = (device const T *)values_b;
+    device T *out_values = (device T *)out_values_b;
+    const uint ix = 0xFFFFFFFFu - (uint)keys[row * k + j];
+    out_values[row * k + j] = values[row * n + ix];
+    out_indices[row * k + j] = (int64_t)ix;
+}
+
+typedef decltype(topk_chunk_values<float>) topk_chunk_values_t;
+typedef decltype(topk_finish<float>) topk_finish_t;
+
+#define INSTANTIATE_TOPK(tname, type)                                          \
+    template [[host_name("array_ops::topk_chunk_values_" #tname)]] [[kernel]] \
+    topk_chunk_values_t topk_chunk_values<type>;                               \
+    template [[host_name("array_ops::topk_finish_" #tname)]] [[kernel]]       \
+    topk_finish_t topk_finish<type>;
+
+INSTANTIATE_TOPK(f32, float)
+INSTANTIATE_TOPK(f16, half)
