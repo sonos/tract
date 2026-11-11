@@ -124,6 +124,7 @@ impl TypedOp for GatherNd {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         if let Some(indices) = &model.outlet_fact(node.inputs[1])?.konst
+            && self.batch_dims == 0
             && indices.rank() == 2
             && indices.shape()[0] == 1
         {
