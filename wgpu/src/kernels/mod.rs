@@ -28,6 +28,7 @@ pub mod sdpa;
 pub mod shaders;
 pub mod softmax;
 pub mod tiled_gemm;
+pub mod topk;
 
 /// Every pipeline this crate's kernels can need. They are built when the
 /// context is created so that no frame ever waits on a shader compile.
