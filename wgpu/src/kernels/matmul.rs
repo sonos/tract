@@ -1,6 +1,6 @@
 //! Prefix-broadcasting GEMM, `PrefixMatMul`'s kernels.
 //!
-//! The blocked and split-k kernels serve the channels-first f32 products they
+//! The blocked and split-k kernels serve the aligned channels-first products they
 //! were tuned on (every transposition set, a unit prefix, a weight `b`); the
 //! tiled kernel takes any other product big enough to fill its tiles; an `m`
 //! or an `n` of 1 is a GEMV; what is left runs one thread per output element.
@@ -139,7 +139,7 @@ fn repacked_b(
 }
 
 /// Whether the blocked kernel can serve this product: it reads both operands as
-/// `vec4<f32>`, so the data must be f32 and the tile must divide the shape and the fastest axis of each
+/// four-wide vectors, so the tile must divide the shape and the fastest axis of each
 /// operand must be the one it widens. `b` is repacked once and read back by
 /// buffer id, which only a buffer outside the frame pool keeps.
 #[allow(clippy::too_many_arguments)]
@@ -154,7 +154,7 @@ fn blocked_applies(
     t: Transposes,
 ) -> bool {
     let rank = a.rank();
-    a.datum_type() == f32::datum_type()
+    is_supported_dt(a.datum_type())
         && !get_wgpu_buffer(b).pooled
         && prefix == 1
         && m.is_multiple_of(4)
@@ -862,6 +862,9 @@ pub const MATMUL_SPLITK_MAX_M: usize = 2304;
 /// [`matmul_blocked_module`]; `k` a multiple of four.
 pub fn matmul_splitk_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
+    let acc = "f32";
+    let (widen, widen_end) = if t == acc { ("", "") } else { ("vec4<f32>(", ")") };
+    let (narrow, narrow_end) = if t == acc { ("", "") } else { ("vec4<f16>(", ")") };
     let suf = dt.suffix();
     let out_binding = 2 + extras;
     let uniform_binding = 3 + extras;
@@ -870,8 +873,22 @@ pub fn matmul_splitk_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usi
             format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
         })
         .collect::<String>();
-    let lib = format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"));
+    let lib = format!("{}{}", unary_ops_wgsl(acc), binary_ops_wgsl(acc));
     let epi = epilogue_body_at(epilogue, "col", "oe");
+    let epi = if t != acc {
+        epi.lines()
+            .map(|line| {
+                if line.contains(" = extra") {
+                    line.replace(" = ", " = f32(").replace("];", "]);")
+                } else {
+                    line.to_string()
+                }
+            })
+            .map(|line| line + "\n")
+            .collect::<String>()
+    } else {
+        epi
+    };
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -888,17 +905,17 @@ struct Params {{
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
-@group(0) @binding(1) var<storage, read> b4: array<vec4<f32>>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<f32>>;
+@group(0) @binding(0) var<storage, read> a4: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> b4: array<vec4<{t}>>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<{t}>>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-var<workgroup> sh0: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh1: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh2: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh3: array<vec4<f32>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh0: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh1: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh2: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh3: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
 
-fn epi(v_in: f32, col: u32, oe: u32) -> f32 {{
+fn epi(v_in: {acc}, col: u32, oe: u32) -> {acc} {{
     var v = v_in;
 {epi}
     return v;
@@ -916,10 +933,10 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
     let row_tile = min(row_tile_raw, m4 - 1u);
     let col_tile = min(col_tile_raw, n4 - 1u);
 
-    var acc0 = vec4<f32>(0.0);
-    var acc1 = vec4<f32>(0.0);
-    var acc2 = vec4<f32>(0.0);
-    var acc3 = vec4<f32>(0.0);
+    var acc0 = vec4<{acc}>(0.0);
+    var acc1 = vec4<{acc}>(0.0);
+    var acc2 = vec4<{acc}>(0.0);
+    var acc3 = vec4<{acc}>(0.0);
 
     let chunk = params.k >> 2u;
     let k_start = lane * chunk;
@@ -935,10 +952,10 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
         let bb2 = bb1 + n4;
         let ab3 = ab2 + m4;
         let bb3 = bb2 + n4;
-        let a0v = a4[ab0]; let b0v = b4[bb0];
-        let a1v = a4[ab1]; let b1v = b4[bb1];
-        let a2v = a4[ab2]; let b2v = b4[bb2];
-        let a3v = a4[ab3]; let b3v = b4[bb3];
+        let a0v = {widen}a4[ab0]{widen_end}; let b0v = {widen}b4[bb0]{widen_end};
+        let a1v = {widen}a4[ab1]{widen_end}; let b1v = {widen}b4[bb1]{widen_end};
+        let a2v = {widen}a4[ab2]{widen_end}; let b2v = {widen}b4[bb2]{widen_end};
+        let a3v = {widen}a4[ab3]{widen_end}; let b3v = {widen}b4[bb3]{widen_end};
         acc0 += a0v * b0v.x + a1v * b1v.x + a2v * b2v.x + a3v * b3v.x;
         acc1 += a0v * b0v.y + a1v * b1v.y + a2v * b2v.y + a3v * b3v.y;
         acc2 += a0v * b0v.z + a1v * b1v.z + a2v * b2v.z + a3v * b3v.z;
@@ -950,8 +967,8 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
         if (kk >= k_end) {{ break; }}
         let ab = params.off_a + kk * m4 + row_tile;
         let bb = params.off_b + kk * n4 + col_tile;
-        let av = a4[ab];
-        let bv = b4[bb];
+        let av = {widen}a4[ab]{widen_end};
+        let bv = {widen}b4[bb]{widen_end};
         acc0 += av * bv.x;
         acc1 += av * bv.y;
         acc2 += av * bv.z;
@@ -979,10 +996,10 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
             let e1 = e0 + params.m;
             let e2 = e1 + params.m;
             let e3 = e2 + params.m;
-            c4[cc] = vec4<f32>(epi(s0.x, col0, e0), epi(s0.y, col0, e0 + 1u), epi(s0.z, col0, e0 + 2u), epi(s0.w, col0, e0 + 3u));
-            c4[cc + m4] = vec4<f32>(epi(s1.x, col0 + 1u, e1), epi(s1.y, col0 + 1u, e1 + 1u), epi(s1.z, col0 + 1u, e1 + 2u), epi(s1.w, col0 + 1u, e1 + 3u));
-            c4[cc + 2u * m4] = vec4<f32>(epi(s2.x, col0 + 2u, e2), epi(s2.y, col0 + 2u, e2 + 1u), epi(s2.z, col0 + 2u, e2 + 2u), epi(s2.w, col0 + 2u, e2 + 3u));
-            c4[cc + 3u * m4] = vec4<f32>(epi(s3.x, col0 + 3u, e3), epi(s3.y, col0 + 3u, e3 + 1u), epi(s3.z, col0 + 3u, e3 + 2u), epi(s3.w, col0 + 3u, e3 + 3u));
+            c4[cc] = {narrow}vec4<{acc}>(epi(s0.x, col0, e0), epi(s0.y, col0, e0 + 1u), epi(s0.z, col0, e0 + 2u), epi(s0.w, col0, e0 + 3u)){narrow_end};
+            c4[cc + m4] = {narrow}vec4<{acc}>(epi(s1.x, col0 + 1u, e1), epi(s1.y, col0 + 1u, e1 + 1u), epi(s1.z, col0 + 1u, e1 + 2u), epi(s1.w, col0 + 1u, e1 + 3u)){narrow_end};
+            c4[cc + 2u * m4] = {narrow}vec4<{acc}>(epi(s2.x, col0 + 2u, e2), epi(s2.y, col0 + 2u, e2 + 1u), epi(s2.z, col0 + 2u, e2 + 2u), epi(s2.w, col0 + 2u, e2 + 3u)){narrow_end};
+            c4[cc + 3u * m4] = {narrow}vec4<{acc}>(epi(s3.x, col0 + 3u, e3), epi(s3.y, col0 + 3u, e3 + 1u), epi(s3.z, col0 + 3u, e3 + 2u), epi(s3.w, col0 + 3u, e3 + 3u)){narrow_end};
         }}
     }}
 }}
@@ -993,6 +1010,9 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
 
 pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
     let t = dt.wgsl();
+    let acc = "f32";
+    let (widen, widen_end) = if t == acc { ("", "") } else { ("vec4<f32>(", ")") };
+    let (narrow, narrow_end) = if t == acc { ("", "") } else { ("vec4<f16>(", ")") };
     let suf = dt.suffix();
     let out_binding = 2 + extras;
     let uniform_binding = 3 + extras;
@@ -1001,8 +1021,22 @@ pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: us
             format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
         })
         .collect::<String>();
-    let lib = format!("{}{}", unary_ops_wgsl("f32"), binary_ops_wgsl("f32"));
+    let lib = format!("{}{}", unary_ops_wgsl(acc), binary_ops_wgsl(acc));
     let epi = epilogue_body_at(epilogue, "col", "oe");
+    let epi = if t != acc {
+        epi.lines()
+            .map(|line| {
+                if line.contains(" = extra") {
+                    line.replace(" = ", " = f32(").replace("];", "]);")
+                } else {
+                    line.to_string()
+                }
+            })
+            .map(|line| line + "\n")
+            .collect::<String>()
+    } else {
+        epi
+    };
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -1019,13 +1053,13 @@ struct Params {{
     mode_extra: vec4<u32>,
 }}
 
-@group(0) @binding(0) var<storage, read> a4: array<vec4<f32>>;
-@group(0) @binding(1) var<storage, read> b4: array<vec4<f32>>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<f32>>;
+@group(0) @binding(0) var<storage, read> a4: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> b4: array<vec4<{t}>>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<{t}>>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
 
-fn epi(v_in: f32, col: u32, oe: u32) -> f32 {{
+fn epi(v_in: {acc}, col: u32, oe: u32) -> {acc} {{
     var v = v_in;
 {epi}
     return v;
@@ -1039,30 +1073,30 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let row_tile = tile % m4;
     let col_tile = tile / m4;
     if (col_tile >= n4) {{ return; }}
-    var acc0 = vec4<f32>(0.0);
-    var acc1 = vec4<f32>(0.0);
-    var acc2 = vec4<f32>(0.0);
-    var acc3 = vec4<f32>(0.0);
+    var acc0 = vec4<{acc}>(0.0);
+    var acc1 = vec4<{acc}>(0.0);
+    var acc2 = vec4<{acc}>(0.0);
+    var acc3 = vec4<{acc}>(0.0);
     var kk = 0u;
     for (; kk + 8u <= params.k; kk += 8u) {{
         let ab = params.off_a + kk * m4 + row_tile;
         let bb = params.off_b + kk * n4 + col_tile;
-        let a0 = a4[ab];
-        let a1 = a4[ab + m4];
-        let a2 = a4[ab + 2u * m4];
-        let a3 = a4[ab + 3u * m4];
-        let a4v = a4[ab + 4u * m4];
-        let a5 = a4[ab + 5u * m4];
-        let a6 = a4[ab + 6u * m4];
-        let a7 = a4[ab + 7u * m4];
-        let b0 = b4[bb];
-        let b1 = b4[bb + n4];
-        let b2 = b4[bb + 2u * n4];
-        let b3 = b4[bb + 3u * n4];
-        let b4v = b4[bb + 4u * n4];
-        let b5 = b4[bb + 5u * n4];
-        let b6 = b4[bb + 6u * n4];
-        let b7 = b4[bb + 7u * n4];
+        let a0 = {widen}a4[ab]{widen_end};
+        let a1 = {widen}a4[ab + m4]{widen_end};
+        let a2 = {widen}a4[ab + 2u * m4]{widen_end};
+        let a3 = {widen}a4[ab + 3u * m4]{widen_end};
+        let a4v = {widen}a4[ab + 4u * m4]{widen_end};
+        let a5 = {widen}a4[ab + 5u * m4]{widen_end};
+        let a6 = {widen}a4[ab + 6u * m4]{widen_end};
+        let a7 = {widen}a4[ab + 7u * m4]{widen_end};
+        let b0 = {widen}b4[bb]{widen_end};
+        let b1 = {widen}b4[bb + n4]{widen_end};
+        let b2 = {widen}b4[bb + 2u * n4]{widen_end};
+        let b3 = {widen}b4[bb + 3u * n4]{widen_end};
+        let b4v = {widen}b4[bb + 4u * n4]{widen_end};
+        let b5 = {widen}b4[bb + 5u * n4]{widen_end};
+        let b6 = {widen}b4[bb + 6u * n4]{widen_end};
+        let b7 = {widen}b4[bb + 7u * n4]{widen_end};
         acc0 += a0 * b0.x + a1 * b1.x + a2 * b2.x + a3 * b3.x
               + a4v * b4v.x + a5 * b5.x + a6 * b6.x + a7 * b7.x;
         acc1 += a0 * b0.y + a1 * b1.y + a2 * b2.y + a3 * b3.y
@@ -1075,14 +1109,14 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     for (; kk < params.k; kk += 4u) {{
         let ab = params.off_a + kk * m4 + row_tile;
         let bb = params.off_b + kk * n4 + col_tile;
-        let a0 = a4[ab];
-        let a1 = a4[ab + m4];
-        let a2 = a4[ab + 2u * m4];
-        let a3 = a4[ab + 3u * m4];
-        let b0 = b4[bb];
-        let b1 = b4[bb + n4];
-        let b2 = b4[bb + 2u * n4];
-        let b3 = b4[bb + 3u * n4];
+        let a0 = {widen}a4[ab]{widen_end};
+        let a1 = {widen}a4[ab + m4]{widen_end};
+        let a2 = {widen}a4[ab + 2u * m4]{widen_end};
+        let a3 = {widen}a4[ab + 3u * m4]{widen_end};
+        let b0 = {widen}b4[bb]{widen_end};
+        let b1 = {widen}b4[bb + n4]{widen_end};
+        let b2 = {widen}b4[bb + 2u * n4]{widen_end};
+        let b3 = {widen}b4[bb + 3u * n4]{widen_end};
         acc0 += a0 * b0.x + a1 * b1.x + a2 * b2.x + a3 * b3.x;
         acc1 += a0 * b0.y + a1 * b1.y + a2 * b2.y + a3 * b3.y;
         acc2 += a0 * b0.z + a1 * b1.z + a2 * b2.z + a3 * b3.z;
@@ -1094,18 +1128,18 @@ fn matmul_blocked_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
     let e1 = e0 + m4 * 4u;
     let e2 = e1 + m4 * 4u;
     let e3 = e2 + m4 * 4u;
-    c4[cc] = vec4<f32>(
+    c4[cc] = {narrow}vec4<{acc}>(
         epi(acc0.x, col0, e0), epi(acc0.y, col0, e0 + 1u),
-        epi(acc0.z, col0, e0 + 2u), epi(acc0.w, col0, e0 + 3u));
-    c4[cc + m4] = vec4<f32>(
+        epi(acc0.z, col0, e0 + 2u), epi(acc0.w, col0, e0 + 3u)){narrow_end};
+    c4[cc + m4] = {narrow}vec4<{acc}>(
         epi(acc1.x, col0 + 1u, e1), epi(acc1.y, col0 + 1u, e1 + 1u),
-        epi(acc1.z, col0 + 1u, e1 + 2u), epi(acc1.w, col0 + 1u, e1 + 3u));
-    c4[cc + 2u * m4] = vec4<f32>(
+        epi(acc1.z, col0 + 1u, e1 + 2u), epi(acc1.w, col0 + 1u, e1 + 3u)){narrow_end};
+    c4[cc + 2u * m4] = {narrow}vec4<{acc}>(
         epi(acc2.x, col0 + 2u, e2), epi(acc2.y, col0 + 2u, e2 + 1u),
-        epi(acc2.z, col0 + 2u, e2 + 2u), epi(acc2.w, col0 + 2u, e2 + 3u));
-    c4[cc + 3u * m4] = vec4<f32>(
+        epi(acc2.z, col0 + 2u, e2 + 2u), epi(acc2.w, col0 + 2u, e2 + 3u)){narrow_end};
+    c4[cc + 3u * m4] = {narrow}vec4<{acc}>(
         epi(acc3.x, col0 + 3u, e3), epi(acc3.y, col0 + 3u, e3 + 1u),
-        epi(acc3.z, col0 + 3u, e3 + 2u), epi(acc3.w, col0 + 3u, e3 + 3u));
+        epi(acc3.z, col0 + 3u, e3 + 2u), epi(acc3.w, col0 + 3u, e3 + 3u)){narrow_end};
 }}
 "#
     ));
@@ -1172,6 +1206,74 @@ mod tests {
             model.select_output_outlets(&[y])?;
             gpu_vs_cpu(model, Tensor::from_shape(&[k, m], &fill(3, k * m))?)
                 .with_context(|| format!("m={m} k={k} n={n}"))?;
+        }
+        Ok(())
+    }
+
+    /// f16 operands take the blocked and split-K kernels, which accumulate and
+    /// run the epilogue in f32 and round once on store.
+    #[test]
+    fn matmul_blocked_f16_accumulates_in_f32() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+
+        use super::Transposes;
+        use super::blocked_applies;
+        use super::wgpu_matmul_dispatch;
+        use crate::kernels::shaders::ChainStep;
+
+        crate::context::wgpu_context();
+        let transposes = Transposes { a: true, b: true, c: true };
+        for (m, k, n) in [(12usize, 4usize, 12usize), (144, 20, 32), (2304, 12, 16)] {
+            let values = |len: usize, seed: usize| {
+                (0..len)
+                    .map(|i| f16::from_f32(((i * 17 + seed) % 9) as f32 / 16.0 - 0.25))
+                    .collect::<Vec<_>>()
+            };
+            let av = values(k * m, 1);
+            let bv = values(n * k, 3);
+            let a = Tensor::from_shape(&[k, m], &av)?.into_device()?;
+            let b = Tensor::from_shape(&[n, k], &bv)?.into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::F16, &[n, m])?;
+            ensure!(blocked_applies(1, m, k, n, &a, &b, &output, transposes));
+            for mode in 0..3 {
+                let extra_len = [1, n, n * m][mode];
+                let extra_values = values(extra_len, 5);
+                let extra_shape = [vec![1], vec![n, 1], vec![n, m]][mode].clone();
+                let extra = Tensor::from_shape(&extra_shape, &extra_values)?.into_device()?;
+                let epilogue = [ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }];
+                let mut reference = vec![];
+                for col in 0..n {
+                    for row in 0..m {
+                        let sum: f64 = (0..k)
+                            .map(|kk| av[kk * m + row].to_f64() * bv[col * k + kk].to_f64())
+                            .sum();
+                        let extra_index = [0, col, col * m + row][mode];
+                        reference.push(f16::from_f64(sum + extra_values[extra_index].to_f64()));
+                    }
+                }
+                wgpu_matmul_dispatch(transposes, &epilogue, &a, &b, &[&extra], &output)?;
+                crate::with_wgpu_queue(|q| q.flush())?;
+                let actual = output.to_host()?;
+                for (i, (actual, expected)) in
+                    actual.try_as_plain_ram()?.as_slice::<f16>()?.iter().zip(&reference).enumerate()
+                {
+                    ensure!(
+                        actual == expected,
+                        "m={m} k={k} n={n} mode={mode} index={i}: {actual} != {expected}"
+                    );
+                }
+            }
+        }
+        let a = Tensor::from_shape(&[4, 4], &[f16::from_f32(300.0); 16])?.into_device()?;
+        let b_values = [300.0f32, -300.0, 0.0, 0.0].repeat(4);
+        let b_values = b_values.into_iter().map(f16::from_f32).collect::<Vec<_>>();
+        let b = Tensor::from_shape(&[4, 4], &b_values)?.into_device()?;
+        let output = DeviceTensor::uninitialized_dt(DatumType::F16, &[4, 4])?;
+        wgpu_matmul_dispatch(transposes, &[], &a, &b, &[], &output)?;
+        let actual = output.to_host()?;
+        for value in actual.try_as_plain_ram()?.as_slice::<f16>()? {
+            ensure!(*value == f16::ZERO, "partial sum overflowed f16: {value}");
         }
         Ok(())
     }
