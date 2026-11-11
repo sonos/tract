@@ -7,6 +7,7 @@ mod gather;
 mod gather_nd;
 mod resize;
 mod rotate_half;
+mod topk;
 
 pub use cast::Cast;
 pub use cast::metal_cast_dispatch;
@@ -75,6 +76,8 @@ pub fn all_functions() -> Vec<String> {
             .into_iter()
             .flat_map(|dt| cumsum::kernel_name(dt).ok()),
     );
+
+    functions.extend(topk::kernel_names());
 
     functions.into_iter().collect()
 }
