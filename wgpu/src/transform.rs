@@ -6,6 +6,7 @@ use tract_core::dyn_clone::clone_box;
 use tract_core::internal::translator::Translate;
 use tract_core::internal::*;
 use tract_core::ops::array::Gather;
+use tract_core::ops::array::Topk;
 use tract_core::ops::cnn::conv::{rewrite_kernel_conv_in_oihw, rewrite_kernel_deconv_in_oihw};
 use tract_core::ops::cnn::{Conv, Deconv, rewrite_conv_1d_to_2d, rewrite_conv_with_n_axis};
 use tract_core::ops::einsum::prefix_matmul::{PrefixMatMul, rewrite_einsum_to_prefix_matmul};
@@ -217,6 +218,7 @@ fn translator_for(node: &TypedNode) -> Option<TranslateNodeFn> {
             (TypeId::of::<GroupNorm>(), crate::kernels::group_norm::translate_group_norm),
             (TypeId::of::<Resize>(), crate::kernels::resize::translate_resize),
             (TypeId::of::<Gather>(), crate::kernels::gather::translate_gather),
+            (TypeId::of::<Topk>(), crate::kernels::topk::translate_topk),
             (TypeId::of::<Iff>(), crate::kernels::nan_replace::translate_nan_replace),
             (TypeId::of::<Const>(), translate_const),
         ])
