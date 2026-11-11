@@ -91,12 +91,18 @@ pub fn build_float_translator(
     to_dt: DatumType,
     filter: NodeFilter,
 ) -> Box<dyn ModelTransform> {
+    Box::new(float_translator(from_dt, to_dt, filter))
+}
+
+fn float_translator(
+    from_dt: DatumType,
+    to_dt: DatumType,
+    filter: NodeFilter,
+) -> FloatPrecisionTranslator {
     if filter.is_pass_through() {
-        return Box::new(FloatPrecisionTranslator::new(from_dt, to_dt));
+        return FloatPrecisionTranslator::new(from_dt, to_dt);
     }
-    Box::new(FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| {
-        filter.matches(&node.name)
-    }))
+    FloatPrecisionTranslator::with_filter(from_dt, to_dt, move |node| filter.matches(&node.name))
 }
 
 pub trait ModelTransform: Debug {
@@ -120,6 +126,9 @@ pub struct FloatTranslatorConfig {
     /// Exclude patterns — matching nodes are excluded from translation.
     #[serde(default)]
     pub exclude: Option<Vec<String>>,
+    /// Keep the model's input and output types, casting at its boundary.
+    #[serde(default)]
+    pub keep_io: bool,
 }
 
 impl FloatTranslatorConfig {
@@ -143,6 +152,9 @@ pub struct FloatPrecisionConfig {
     /// Exclude patterns — matching nodes are excluded from translation.
     #[serde(default)]
     pub exclude: Option<Vec<String>>,
+    /// Keep the model's input and output types, casting at its boundary.
+    #[serde(default)]
+    pub keep_io: bool,
 }
 
 pub struct ModelTransformFactory {
@@ -496,7 +508,11 @@ inventory::submit! {
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f32_to_f16 config: {e}"))?;
-            Ok(build_float_translator(DatumType::F32, DatumType::F16, config.into_node_filter()?))
+            let keep_io = config.keep_io;
+            Ok(Box::new(
+                float_translator(DatumType::F32, DatumType::F16, config.into_node_filter()?)
+                    .keeping_io(keep_io),
+            ))
         },
     }
 }
@@ -508,7 +524,11 @@ inventory::submit! {
         build: |de| {
             let config: FloatTranslatorConfig = erased_serde::deserialize(de)
                 .map_err(|e| anyhow::anyhow!("deserializing f16_to_f32 config: {e}"))?;
-            Ok(build_float_translator(DatumType::F16, DatumType::F32, config.into_node_filter()?))
+            let keep_io = config.keep_io;
+            Ok(Box::new(
+                float_translator(DatumType::F16, DatumType::F32, config.into_node_filter()?)
+                    .keeping_io(keep_io),
+            ))
         },
     }
 }
@@ -527,7 +547,7 @@ inventory::submit! {
             let to_dt: DatumType = config.to.parse()
                 .map_err(|e| anyhow::anyhow!("parsing 'to' datum type: {e}"))?;
             let filter = NodeFilter { include: config.include, exclude: config.exclude };
-            Ok(build_float_translator(from_dt, to_dt, filter))
+            Ok(Box::new(float_translator(from_dt, to_dt, filter).keeping_io(config.keep_io)))
         },
     }
 }

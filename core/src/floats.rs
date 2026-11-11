@@ -14,11 +14,12 @@ pub struct FloatPrecisionTranslator {
     to_dt: DatumType,
     #[allow(clippy::type_complexity)]
     node_predicate: Option<Box<dyn Fn(&TypedNode) -> bool>>,
+    keep_io: bool,
 }
 
 impl FloatPrecisionTranslator {
     pub fn new(from_dt: DatumType, to_dt: DatumType) -> Self {
-        Self { from_dt, to_dt, node_predicate: None }
+        Self { from_dt, to_dt, node_predicate: None, keep_io: false }
     }
 
     pub fn with_filter(
@@ -26,7 +27,15 @@ impl FloatPrecisionTranslator {
         to_dt: DatumType,
         node_predicate: impl Fn(&TypedNode) -> bool + 'static,
     ) -> Self {
-        Self { from_dt, to_dt, node_predicate: Some(Box::new(node_predicate)) }
+        Self { from_dt, to_dt, node_predicate: Some(Box::new(node_predicate)), keep_io: false }
+    }
+
+    /// With `keep_io`, the translated model keeps the original's input and
+    /// output types: sources stay at their declared type and are cast where a
+    /// translated node consumes them, and every model output is cast back to
+    /// its declared type.
+    pub fn keeping_io(self, keep_io: bool) -> Self {
+        Self { keep_io, ..self }
     }
 
     fn should_translate_node(&self, node: &TypedNode) -> bool {
@@ -98,6 +107,7 @@ impl std::fmt::Debug for FloatPrecisionTranslator {
         f.debug_struct("FloatPrecisionTranslator")
             .field("from", &self.from_dt)
             .field("to", &self.to_dt)
+            .field("keep_io", &self.keep_io)
             .finish()
     }
 }
@@ -124,6 +134,41 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
+        let outlets = self.wire_translated(source, node, target, mapping)?;
+        if !self.keep_io {
+            return Ok(outlets);
+        }
+        outlets
+            .into_iter()
+            .enumerate()
+            .map(|(slot, outlet)| {
+                let declared = node.outputs[slot].fact.datum_type;
+                let fact = target.outlet_fact(outlet)?;
+                if source.outputs.contains(&OutletId::new(node.id, slot))
+                    && fact.datum_type != declared
+                    && fact.is_plain()
+                {
+                    Ok(target.wire_node(
+                        format!("{}.cast-out-{slot}", node.name),
+                        cast(declared),
+                        &[outlet],
+                    )?[0])
+                } else {
+                    Ok(outlet)
+                }
+            })
+            .collect()
+    }
+}
+
+impl FloatPrecisionTranslator {
+    fn wire_translated(
+        &self,
+        source: &TypedModel,
+        node: &TypedNode,
+        target: &mut TypedModel,
+        mapping: &HashMap<OutletId, OutletId>,
+    ) -> TractResult<TVec<OutletId>> {
         let is_source = node.op_as::<TypedSource>().is_some();
         if !self.should_translate_node(node) && !is_source {
             let new_op = node.op.clone();
@@ -131,14 +176,16 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
             let casted_inputs =
                 self.cast_inputs_if_required(target, node, mapping, self.from_dt)?;
             let target_node_outlet_ids = target.wire_node(&node.name, new_op, &casted_inputs)?;
-
+            if self.keep_io {
+                return Ok(target_node_outlet_ids);
+            }
             self.cast_model_outputs_if_required(source, node, target, target_node_outlet_ids)
         } else {
             let casted_inputs = self.cast_inputs_if_required(target, node, mapping, self.to_dt)?;
 
             let new_op = if let Some(source_op) = node.op_as::<TypedSource>() {
                 let mut fact = source_op.fact.clone();
-                if fact.datum_type == self.from_dt {
+                if fact.datum_type == self.from_dt && !self.keep_io {
                     fact.datum_type = self.to_dt;
                 }
                 Box::new(TypedSource::new(fact))
@@ -319,6 +366,47 @@ mod test {
                 .to_scalar::<f16>()?
                 .is_nan()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn keep_io_preserves_model_interface() -> TractResult<()> {
+        let mut model = TypedModel::default();
+        let input = model.add_source("input", f32::fact([2]))?;
+        let scale = model.add_const("scale", tensor1(&[0.25f32]))?;
+        let scaled = model.wire_node("scaled", math::mul(), &[input, scale])?[0];
+        model.select_output_outlets(&[scaled, input])?;
+
+        let translated = FloatPrecisionTranslator::new(f32::datum_type(), f16::datum_type())
+            .keeping_io(true)
+            .transform_into(model.clone())?;
+        assert_eq!(translated.input_fact(0)?, model.input_fact(0)?);
+        assert_eq!(translated.output_fact(0)?, model.output_fact(0)?);
+        assert_eq!(translated.output_fact(1)?, model.output_fact(1)?);
+        let scaled = translated.node_by_name("scaled")?;
+        assert_eq!(scaled.outputs[0].fact.datum_type, f16::datum_type());
+
+        let input = tensor1(&[2.0f32, -6.0]);
+        let outputs = translated.into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
+        assert_eq!(*outputs[0], tensor1(&[0.5f32, -1.5]));
+        assert_eq!(*outputs[1], input);
+        Ok(())
+    }
+
+    #[test]
+    fn keep_io_leaves_excluded_outputs_alone() -> TractResult<()> {
+        let model = build_f32_model()?;
+        let translated =
+            FloatPrecisionTranslator::with_filter(f32::datum_type(), f16::datum_type(), |node| {
+                !node.name.contains("layer.1")
+            })
+            .keeping_io(true)
+            .transform_into(model.clone())?;
+        assert_eq!(translated.input_fact(0)?, model.input_fact(0)?);
+        assert_eq!(translated.output_fact(0)?, model.output_fact(0)?);
+        assert!(!translated.nodes.iter().any(|n| n.name.contains("cast-out")));
+        let outputs = translated.into_runnable()?.run(tvec![tensor1(&[5.0f32]).into_tvalue()])?;
+        assert_eq!(*outputs[0], tensor1(&[f32::NEG_INFINITY]));
         Ok(())
     }
 }

@@ -1,0 +1,7 @@
+version 1.0;
+
+graph net(input) -> (output)
+{
+    input = external<scalar>(shape = [2]);
+    output = mul(input, 0.25);
+}
