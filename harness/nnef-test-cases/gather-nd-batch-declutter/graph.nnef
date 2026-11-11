@@ -1,0 +1,8 @@
+version 1.0;
+extension tract_registry tract_core;
+graph network(data) -> (batched, unbatched)
+{
+    data = tract_core_external(shape = [1, 2, 3], datum_type = 'f32');
+    batched = tract_core_gather_nd(data, [[1.0, 2.0]], batch_dims = 1);
+    unbatched = tract_core_gather_nd(data, [[0.0, 1.0, 2.0]], batch_dims = 0);
+}
