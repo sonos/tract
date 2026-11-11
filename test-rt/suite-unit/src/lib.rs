@@ -46,6 +46,7 @@ pub mod sdpa;
 pub mod silu;
 pub mod slice;
 pub mod sum_pool;
+pub mod topk;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
@@ -81,6 +82,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("sdpa", sdpa::suite()?);
     suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
+    suite.add("topk", topk::suite()?);
     suite.add("sum_pool", sum_pool::suite()?);
     suite.add("q_binary", q_binary::suite()?);
     suite.add("q_elmwise", q_elmwise::suite()?);
