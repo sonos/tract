@@ -36,15 +36,27 @@ fn pulsed(
 impl Models {
     /// Loads the graphs export.py wrote to `dir`, folding Helium's K/V into a stateful cache
     /// and pulsing Mimi to one frame.
-    pub fn load(dir: &str, runtime: &Runtime) -> Result<Models> {
+    ///
+    /// With `q4`, Helium's and the depformer's weights go to Q4_0 blocks: about a quarter of
+    /// the memory and of the bandwidth a frame takes, for GPUs short of either.
+    pub fn load(dir: &str, runtime: &Runtime, q4: bool) -> Result<Models> {
         let nnef = tract::nnef()?.with_tract_transformers()?;
         let encoder = pulsed(&nnef, runtime, format!("{dir}/mimi-encoder.nnef.tgz"), "T", FRAME)?;
         let decoder = pulsed(&nnef, runtime, format!("{dir}/mimi-decoder.nnef.tgz"), "F", 1)?;
         let mut helium = nnef.load(format!("{dir}/helium.nnef.tgz"))?;
         helium.transform("transformers_detect_all")?;
+        if q4 {
+            helium.transform("block_quant")?;
+        }
         let helium = runtime.prepare(helium)?;
         let depformer = (0..8)
-            .map(|k| runtime.prepare(nnef.load(format!("{dir}/depformer-step{k}.nnef.tgz"))?))
+            .map(|k| {
+                let mut step = nnef.load(format!("{dir}/depformer-step{k}.nnef.tgz"))?;
+                if q4 {
+                    step.transform("block_quant")?;
+                }
+                runtime.prepare(step)
+            })
             .collect::<Result<Vec<_>>>()?;
         let vocab = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/vocab.json"))?)?;
         Ok(Models { encoder, decoder, helium, depformer, vocab })

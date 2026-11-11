@@ -27,6 +27,9 @@ struct Args {
     runtime: String,
     #[arg(long, default_value_t = 1)]
     seed: u64,
+    /// Quantize Helium and the depformer to Q4_0 at load time.
+    #[arg(long)]
+    q4: bool,
 }
 
 fn read_wav(path: &str) -> Result<Vec<f32>> {
@@ -49,7 +52,7 @@ fn main() -> Result<()> {
     let args = Args::parse();
     let t0 = Instant::now();
     let runtime = tract::runtime_for_name(&args.runtime)?;
-    let models = Models::load(&format!("{}/model", args.assets), &runtime)?;
+    let models = Models::load(&format!("{}/model", args.assets), &runtime, args.q4)?;
     eprintln!("loaded on {} in {:.1}s", runtime.name()?, t0.elapsed().as_secs_f64());
 
     let reference: Option<serde_json::Value> = if args.check {
