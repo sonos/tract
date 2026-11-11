@@ -121,6 +121,29 @@ pub fn suite() -> TractResult<TestSuite> {
         "filter_heavy_bias",
         filter_heavy(1, Some(ArrayD::from_shape_fn(vec![64], |ix| ix[0] as f32 * 0.25 - 8.0)))?,
     );
+    // Dense 3x3 "same" convolutions over four-aligned rows: the shape GPU
+    // backends run on a register-blocked direct kernel.
+    let dense_3x3 =
+        |ci: usize, hw: [usize; 2], co: usize, bias: bool| -> TractResult<ConvProblemF16> {
+            Ok(ConvProblemF16(ConvProblem {
+                shape_in: DataFormat::NCHW.from_n_c_hw(1, ci, hw)?,
+                kernel_format: KernelFormat::OIHW,
+                group: 1,
+                data: ArrayD::from_shape_fn(vec![1, ci, hw[0], hw[1]], |ix| {
+                    ((ix[1] * 3 + ix[2] * 5 + ix[3] * 7) % 11) as f32 * 0.125 - 0.625
+                }),
+                kernel: ArrayD::from_shape_fn(vec![co, ci, 3, 3], |ix| {
+                    ((ix[0] * 5 + ix[1] * 3 + ix[2] * 2 + ix[3]) % 9) as f32 * 0.0625 - 0.25
+                }),
+                bias: bias.then(|| ArrayD::from_shape_fn(vec![co], |ix| ix[0] as f32 * 0.5 - 2.0)),
+                pad: PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1)),
+                strides: tvec!(1, 1),
+                dilations: tvec!(1, 1),
+            }))
+        };
+    suite.add("direct_3x3", dense_3x3(8, [8, 16], 16, false)?);
+    suite.add("direct_3x3_bias", dense_3x3(8, [8, 20], 12, true)?);
+
     let same = || PaddingSpec::Explicit(tvec!(1, 1), tvec!(1, 1));
     let winograd = |n, hw, c, o, pad, bias| -> TractResult<ConvProblemF16> {
         Ok(ConvProblemF16(crate::conv_f32::winograd_sized(n, hw, c, o, pad, bias)?))
