@@ -1,0 +1,9 @@
+version 1.0;
+extension tract_registry tract_core;
+graph network(data) -> (many, single, slice)
+{
+    data = tract_core_external(shape = [2, 3], datum_type = 'f32');
+    many = tract_core_gather_nd(data, [[-1.0, -1.0], [-2.0, -3.0], [0.0, 1.0]], batch_dims = 0);
+    single = tract_core_gather_nd(data, [[-1.0, -1.0]], batch_dims = 0);
+    slice = tract_core_gather_nd(data, [[-1.0]], batch_dims = 0);
+}
