@@ -62,15 +62,20 @@ activation!(Clip, |op, name: &str, model: &mut TypedModel, inputs| {
     Ok(wire)
 });
 
+/// Computes ln(1 + exp(x)) with a bounded exponential for floating-point tensors.
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct Softplus;
 
 activation!(Softplus, |_op, name: &str, model: &mut TypedModel, inputs| {
     cst!(model, inputs, name, one, 1.0);
-    let wire = model.wire_node(name.to_string() + ".exp", exp(), inputs)?;
+    cst!(model, inputs, name, zero, 0.0);
+    let positive = model.wire_node(name.to_string() + ".positive", max(), &[inputs[0], zero])?;
+    let magnitude = model.wire_node(name.to_string() + ".abs", abs(), inputs)?;
+    let exponent = model.wire_node(name.to_string() + ".neg", neg(), &magnitude)?;
+    let wire = model.wire_node(name.to_string() + ".exp", exp(), &exponent)?;
     let wire = model.wire_node(name.to_string() + ".plus_one", add(), &[wire[0], one])?;
-    let wire = model.wire_node(name.to_string() + ".ln", ln(), &wire)?;
-    Ok(wire)
+    let logarithm = model.wire_node(name.to_string() + ".ln", ln(), &wire)?;
+    model.wire_node(name, add(), &[positive[0], logarithm[0]])
 });
 
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
