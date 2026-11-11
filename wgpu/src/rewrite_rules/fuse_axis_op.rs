@@ -113,8 +113,8 @@ fn split_succs(
         op_ins[idx] = axis_out;
 
         let op_outs = patch.wire_node(succ.name.clone(), succ.op.clone(), &op_ins)?;
-        for out in op_outs {
-            patch.shunt_outside(model, succ.id.into(), out)?;
+        for (slot, out) in op_outs.into_iter().enumerate() {
+            patch.shunt_outside(model, OutletId::new(succ.id, slot), out)?;
         }
     }
 
@@ -198,7 +198,9 @@ pub fn fuse_axis_op(
         WgpuFusedAxisOp { grouped_axis_ops, op: node.op.clone() },
         &tap_inputs,
     )?;
-    patch.shunt_outside(model, node.id.into(), out[0])?;
+    for (slot, o) in out.iter().enumerate() {
+        patch.shunt_outside(model, OutletId::new(node.id, slot), *o)?;
+    }
     Ok(Some(patch))
 }
 
