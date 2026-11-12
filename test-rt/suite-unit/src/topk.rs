@@ -19,6 +19,9 @@ pub struct TopkProblem {
     pub k: usize,
     pub largest: bool,
     pub dt: DatumType,
+    /// Feed both outputs to another op instead of making them the model's outputs: the
+    /// values are negated, the indices cast to f32.
+    pub consumed: bool,
 }
 
 fn level(ix: u8) -> f32 {
@@ -55,6 +58,7 @@ impl Arbitrary for TopkProblem {
                 k,
                 largest,
                 dt,
+                consumed: false,
             })
             .boxed()
     }
@@ -94,13 +98,26 @@ impl Test for TopkProblem {
         runtime: &dyn Runtime,
         _approx: Approximation,
     ) -> infra::TestResult {
-        let (values, indices) = self.reference();
+        let (mut values, indices) = self.reference();
+        let mut indices = indices.into_tensor();
+        if self.consumed {
+            values.mapv_inplace(|v| -v);
+            indices = indices.cast_to::<f32>()?.into_owned();
+        }
         let mut model = TypedModel::default();
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let input = model.add_source("input", self.dt.fact(self.input.shape()))?;
         let k = model.add_const("k", rctensor0(self.k as i64))?;
         let op = Topk { axis: self.axis, largest: self.largest, fallback_k: self.k.to_dim() };
-        let outputs = model.wire_node("topk", op, &[input, k])?;
+        let mut outputs = model.wire_node("topk", op, &[input, k])?;
+        if self.consumed {
+            outputs[0] = model.wire_node("neg", tract_core::ops::math::neg(), &[outputs[0]])?[0];
+            outputs[1] = model.wire_node(
+                "cast",
+                tract_core::ops::cast::cast(f32::datum_type()),
+                &[outputs[1]],
+            )?[0];
+        }
         model.select_output_outlets(&outputs)?;
         let input = self.input.clone().into_tensor().cast_to_dt(self.dt)?.into_owned();
         let mut found = runtime.prepare(model)?.run(tvec![input.into_tvalue()])?;
@@ -108,7 +125,7 @@ impl Test for TopkProblem {
         let found_values = found.remove(0).into_tensor();
         let values = values.into_tensor().cast_to_dt(self.dt)?.into_owned();
         found_values.close_enough(&values, Approximation::Exact)?;
-        found_indices.close_enough(&indices.into_tensor(), Approximation::Exact)
+        found_indices.close_enough(&indices, Approximation::Exact)
     }
 }
 
@@ -122,6 +139,7 @@ pub fn suite() -> TractResult<TestSuite> {
             k,
             largest,
             dt: DatumType::F32,
+            consumed: false,
         };
     let row = |len, k, largest, f: &dyn Fn(usize) -> f32| rows(2, len, k, largest, f);
     let spread = |i: usize| (i % 97) as f32;
@@ -142,5 +160,9 @@ pub fn suite() -> TractResult<TestSuite> {
     }
     suite.add_test("row_70000_k1024", row(70000, 1024, true, &scattered));
     suite.add_test("many_rows", rows(300, 50, 7, true, &spread));
+    suite.add_test(
+        "consumed_outputs",
+        TopkProblem { consumed: true, ..row(4096, 250, true, &scattered) },
+    );
     Ok(suite)
 }

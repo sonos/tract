@@ -125,10 +125,18 @@ impl EvalOp for GpuTopK {
         ensure!(k <= n, "{} takes {k} of a row of {n}", self.name());
         let mut out_shape: TVec<usize> = shape.into();
         *out_shape.last_mut().unwrap() = k;
-        let out_values =
-            crate::turn_handler::make_tensor_for_node(ctx, values.datum_type(), &out_shape)?;
-        let out_indices =
-            crate::turn_handler::make_tensor_for_node(ctx, i64::datum_type(), &out_shape)?;
+        let out_values = crate::turn_handler::make_tensor_for_node_output(
+            ctx,
+            0,
+            values.datum_type(),
+            &out_shape,
+        )?;
+        let out_indices = crate::turn_handler::make_tensor_for_node_output(
+            ctx,
+            1,
+            i64::datum_type(),
+            &out_shape,
+        )?;
         if rows == 0 {
             return Ok(tvec!(
                 out_values.into_tensor().into_tvalue(),
