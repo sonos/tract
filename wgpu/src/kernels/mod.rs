@@ -1,6 +1,7 @@
 pub mod apply_rope;
 pub mod bin_ops;
 pub mod cast;
+pub mod causal_conv1d_update;
 pub mod chain;
 pub mod conv;
 pub mod conv_splitk;
