@@ -244,7 +244,9 @@ impl Test for MoeProblem {
             inputs.extend(extra_inputs.iter().cloned());
             inputs
         };
-        let mut state = runtime.prepare(model)?.spawn()?;
+        let hints = SymbolValues::default().with(&tokens, self.x.shape()[0] as i64 + 1);
+        let options = RunOptions { memory_sizing_hints: Some(hints), ..RunOptions::default() };
+        let mut state = runtime.prepare_with_options(model, &options)?.spawn()?;
         let actual = state.run(run_inputs(self.x.clone()))?;
         actual[0].close_enough(&expected, approx)?;
         let mut cloned = tract_core::dyn_clone::clone_box(&*state);
