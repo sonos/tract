@@ -6,6 +6,8 @@ use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
 
+const MAX_TAPS: usize = 8;
+
 #[derive(Debug, Clone)]
 pub struct CudaCausalConv1dUpdate;
 
@@ -22,7 +24,7 @@ impl CudaCausalConv1dUpdate {
         ensure!(input.datum_type() == DatumType::F16);
         ensure!(weight.datum_type() == DatumType::F16 && state.datum_type() == DatumType::F16);
         let kernel_width = *weight.shape().last().context("conv weight must have a kernel axis")?;
-        ensure!(kernel_width == 4, "Qwen3.5 requires a four-tap convolution");
+        ensure!(kernel_width <= MAX_TAPS, "the CUDA causal conv takes at most {MAX_TAPS} taps");
         ensure!(state.rank() >= 2, "conv state must be [b, C, K]");
         let batch = if state.rank() == 3 { state.shape()[0] } else { 1 };
         ensure!(state.len().is_multiple_of(batch * kernel_width));
@@ -46,16 +48,21 @@ impl CudaCausalConv1dUpdate {
         Ok((batch, channels, kernel_width, s_len))
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch_eval(
         &self,
         stream: &TractCudaStream,
         input: &DeviceTensor,
         weight: &DeviceTensor,
         state: &DeviceTensor,
+        bias: Option<&DeviceTensor>,
         output: &DeviceTensor,
         final_state: &DeviceTensor,
     ) -> TractResult<()> {
         let (batch, channels, kernel_width, s_len) = self.validate(input, weight, state)?;
+        if let Some(bias) = bias {
+            ensure!(bias.datum_type() == DatumType::F16 && bias.len() == channels);
+        }
         ensure!(output.shape() == input.shape() && output.datum_type() == DatumType::F16);
         ensure!(final_state.shape() == state.shape() && final_state.datum_type() == DatumType::F16);
         let function = cuda_context().load_pipeline(
@@ -65,12 +72,17 @@ impl CudaCausalConv1dUpdate {
         let i = get_cuda_view(input);
         let w = get_cuda_view(weight);
         let s = get_cuda_view(state);
+        let b = bias.map(get_cuda_view);
         let o = get_cuda_view(output);
         let ns = get_cuda_view(final_state);
         let mut args = TractLaunchArgs::new(stream, &function);
         args.push_view(&i);
         args.push_view(&w);
         args.push_view(&s);
+        match &b {
+            Some(b) => args.push_view(b),
+            None => args.push_null_ptr(),
+        }
         args.push_view(&o);
         args.push_view(&ns);
         args.push_i32(channels);
@@ -90,7 +102,7 @@ impl CudaCausalConv1dUpdate {
     ) -> TractResult<(DeviceTensor, DeviceTensor)> {
         let output = DeviceTensor::uninitialized_dt(DatumType::F16, input.shape())?;
         let final_state = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
-        self.dispatch_eval(stream, input, weight, state, &output, &final_state)?;
+        self.dispatch_eval(stream, input, weight, state, None, &output, &final_state)?;
         stream.synchronize()?;
         Ok((output, final_state))
     }
@@ -100,11 +112,20 @@ pub fn cuda_causal_conv1d_update_launch(
     input: &DeviceTensor,
     weight: &DeviceTensor,
     state: &DeviceTensor,
+    bias: Option<&DeviceTensor>,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
 ) -> TractResult<()> {
     crate::with_cuda_stream(|stream| {
-        CudaCausalConv1dUpdate.dispatch_eval(stream, input, weight, state, output, final_state)
+        CudaCausalConv1dUpdate.dispatch_eval(
+            stream,
+            input,
+            weight,
+            state,
+            bias,
+            output,
+            final_state,
+        )
     })
 }
 
@@ -113,8 +134,9 @@ crate::register_cuda_op!(
     |source, node, _op| {
         // The cuda kernel is f16-only; the op's layout is [b, C, S] and the
         // kernel loops over S and batch (port of the Metal kernel).
-        rule_if!(node.inputs.len() == 3);
         let facts = source.node_input_facts(node.id)?;
+        rule_if_some!(taps = facts[1].shape.last().and_then(|d| d.as_i64()));
+        rule_if!(taps as usize <= MAX_TAPS);
         let rank_ok = facts[0].rank() == 3;
         let dts_ok = facts.iter().all(|f| f.datum_type == DatumType::F16);
         // The kernel loops over S and batch internally, so symbolic or

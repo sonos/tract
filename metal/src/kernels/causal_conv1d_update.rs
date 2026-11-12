@@ -60,9 +60,11 @@ pub fn metal_causal_conv1d_update_launch(
     input: &DeviceTensor,
     weight: &DeviceTensor,
     state: &DeviceTensor,
+    bias: Option<&DeviceTensor>,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
 ) -> TractResult<()> {
+    ensure!(bias.is_none(), "the Metal causal conv kernel takes no bias");
     crate::with_metal_stream(|stream| {
         dispatch_eval(stream, input, weight, state, output, final_state)
     })

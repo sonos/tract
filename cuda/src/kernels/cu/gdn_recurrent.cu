@@ -79,6 +79,7 @@ extern "C" __global__ void tract_causal_conv1d_update_f16(
     const __half* input,
     const __half* weight,
     const __half* initial_state,
+    const __half* bias,
     __half* output,
     __half* final_state,
     int channels,
@@ -105,7 +106,7 @@ extern "C" __global__ void tract_causal_conv1d_update_f16(
       window[tap] = window[tap + 1];
     }
     window[kernel_width - 1] = __half2float(input[input_base + t]);
-    float sum = 0.0f;
+    float sum = bias ? __half2float(bias[channel]) : 0.0f;
     for (int tap = 0; tap < kernel_width; ++tap) {
       sum = fmaf(window[tap], __half2float(weight[weight_base + tap]), sum);
     }
