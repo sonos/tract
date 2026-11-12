@@ -80,8 +80,8 @@ impl TypedOp for WgpuGemm {
     }
 }
 
-/// A `Q4_0` or `Q2_0_T` weight on B, K last, block 32, rank 2 or 3.
-/// Anything else stays on the CPU.
+/// A `Q4_0` or `Q2_0_T` weight on B, K last, block 32, with each operand broadcast over the whole
+/// prefix or not at all. Anything else stays on the CPU.
 fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
     if facts.len() < 2 || op.quantize_output.is_some() || !op.transpose_b {
         return false;
@@ -91,8 +91,9 @@ fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
         || !crate::kernels::matmul::is_supported_dt(a.datum_type)
         || op.operating_dt.is_some_and(|dt| dt != a.datum_type)
         || a.rank() < 2
-        || a.rank() > 3
+        || a.rank() > crate::kernels::matmul::MAX_RANK
         || a.rank() != b.rank()
+        || !prefix_is_one_stride(a, b)
     {
         return false;
     }
@@ -104,6 +105,17 @@ fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
         && bqf.k() % 32 == 0
         && bqf.format.block_len() == 32
         && (bqf.format.dyn_eq(&Q4_0) || bqf.format.dyn_eq(&Q2_0_T))
+}
+
+/// Whether the kernel's single prefix stride per operand can address A and B: each is broadcast
+/// over every prefix axis, or over none.
+fn prefix_is_one_stride(a: &TypedFact, b: &TypedFact) -> bool {
+    let prefix = a.rank() - 2;
+    let (pa, pb) = (&a.shape.dims()[..prefix], &b.shape.dims()[..prefix]);
+    let out: TVec<&TDim> = pa.iter().zip(pb).map(|(x, y)| if x.is_one() { y } else { x }).collect();
+    [pa, pb]
+        .iter()
+        .all(|p| p.iter().all(|d| d.is_one()) || p.iter().zip(&out).all(|(d, o)| d == *o))
 }
 
 /// The same product with its operands exchanged: `(A B)^T = B^T A^T`.
