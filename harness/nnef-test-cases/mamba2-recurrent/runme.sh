@@ -12,7 +12,7 @@ $TRACT_RUN --nnef-tract-core --nnef-tract-transformers . run \
 
 for rt in $TRACT_RUNTIMES
 do
-    case "$rt" in --cuda) backend=Cuda;; *) continue;; esac
+    case "$rt" in --cuda) backend=Cuda;; --metal) backend=Metal;; *) continue;; esac
     $TRACT_RUN --nnef-tract-core --nnef-tract-transformers . $rt run \
         --input-from-bundle io.npz \
         --assert-output-bundle io.npz \

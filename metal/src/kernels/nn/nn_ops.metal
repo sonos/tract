@@ -1753,3 +1753,73 @@ typedef decltype(layer_norm<float>) layer_norm_t;
 
 template [[host_name("nn_ops::layer_norm_f32")]] [[kernel]] layer_norm_t layer_norm<float>;
 template [[host_name("nn_ops::layer_norm_f16")]] [[kernel]] layer_norm_t layer_norm<half>;
+
+// Mamba-2 recurrence: one simdgroup per state row (batch, head, p), the row's
+// N values spread over the lanes and kept in registers across the S steps.
+// params: [batch, steps, heads, head_dim, groups, d_state]
+#define MAMBA2_MAX_PER_LANE 8
+
+template <typename T, typename D, typename St>
+[[kernel]] void mamba2_recurrent(
+    device const T *x [[buffer(0)]], device const T *b [[buffer(1)]],
+    device const T *c [[buffer(2)]], device const D *log_decay [[buffer(3)]],
+    device const St *initial_state [[buffer(4)]], device T *output [[buffer(5)]],
+    device St *final_state [[buffer(6)]],
+    constant const int32_t *params [[buffer(7)]],
+    uint group [[threadgroup_position_in_grid]],
+    uint simd [[simdgroup_index_in_threadgroup]],
+    uint simds [[simdgroups_per_threadgroup]],
+    uint lane [[thread_index_in_simdgroup]]) {
+    const int32_t batch = params[0], steps = params[1], heads = params[2];
+    const int32_t head_dim = params[3], groups = params[4], d_state = params[5];
+    const int32_t row = int32_t(group * simds + simd);
+    if (row >= batch * heads * head_dim)
+        return;
+    const int32_t p = row % head_dim;
+    const int32_t h = (row / head_dim) % heads;
+    const int32_t bi = row / (head_dim * heads);
+    const int32_t g = h / (heads / groups);
+    const long state_base = long(row) * d_state;
+
+    float s[MAMBA2_MAX_PER_LANE];
+    for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+        const int32_t n = int32_t(lane) + k * 32;
+        s[k] = n < d_state ? float(initial_state[state_base + n]) : 0.0f;
+    }
+    for (int32_t t = 0; t < steps; t++) {
+        const long step = long(bi) * steps + t;
+        const long xi = (step * heads + h) * head_dim + p;
+        const long bc = (step * groups + g) * d_state;
+        const float decay = exp(float(log_decay[step * heads + h]));
+        const float xv = float(x[xi]);
+        float acc = 0.0f;
+        for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+            const int32_t n = int32_t(lane) + k * 32;
+            if (n < d_state) {
+                s[k] = s[k] * decay + xv * float(b[bc + n]);
+                acc += s[k] * float(c[bc + n]);
+            }
+        }
+        acc = simd_sum(acc);
+        if (lane == 0)
+            output[xi] = T(acc);
+    }
+    for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+        const int32_t n = int32_t(lane) + k * 32;
+        if (n < d_state)
+            final_state[state_base + n] = St(s[k]);
+    }
+}
+
+#define INSTANTIATE_MAMBA2(tn, T, dn, D, sn, St)                               \
+    template [[host_name("nn_ops::mamba2_recurrent_" #tn "_" #dn "_" #sn)]]    \
+    [[kernel]] decltype(mamba2_recurrent<T, D, St>) mamba2_recurrent<T, D, St>;
+
+#define INSTANTIATE_MAMBA2_STATES(tn, T, dn, D)                                \
+    INSTANTIATE_MAMBA2(tn, T, dn, D, f32, float)                               \
+    INSTANTIATE_MAMBA2(tn, T, dn, D, f16, half)
+
+INSTANTIATE_MAMBA2_STATES(f32, float, f32, float)
+INSTANTIATE_MAMBA2_STATES(f32, float, f16, half)
+INSTANTIATE_MAMBA2_STATES(f16, half, f32, float)
+INSTANTIATE_MAMBA2_STATES(f16, half, f16, half)

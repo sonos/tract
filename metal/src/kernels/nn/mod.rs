@@ -3,6 +3,7 @@ pub mod gelu_approximate;
 pub mod group_norm;
 pub mod layer_norm;
 pub mod leaky_relu;
+pub mod mamba2_recurrent;
 pub mod pool;
 pub mod reduce;
 pub mod rms_norm;
@@ -116,5 +117,7 @@ pub fn all_functions() -> Vec<String> {
     );
     functions.extend(group_norm::kernel_names());
     functions.extend(layer_norm::kernel_names());
+    functions.extend(mamba2_recurrent::kernel_names());
+
     functions.into_iter().collect()
 }
