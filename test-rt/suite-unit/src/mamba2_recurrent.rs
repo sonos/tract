@@ -5,6 +5,7 @@ use proptest::collection::vec;
 use proptest::prelude::*;
 use tract_core::internal::*;
 use tract_core::ndarray::ArrayD;
+use tract_core::ndarray::Dimension;
 use tract_core::num_traits::Float;
 use tract_transformers::ops::mamba2_recurrent::Mamba2Recurrent;
 
@@ -138,9 +139,50 @@ where
     }
 }
 
+impl<F> Mamba2RecurrentProblem<F>
+where
+    F: Datum + Float,
+{
+    /// Deterministic values in [-1, 1] (log_decay in [-2, 0]) for the given dims.
+    fn sized(
+        batch: usize,
+        s_len: usize,
+        groups: usize,
+        heads: usize,
+        head_dim: usize,
+        d_state: usize,
+    ) -> Self {
+        let fill = |shape: &[usize], seed: usize, scale: f32, offset: f32| {
+            ArrayD::from_shape_fn(shape, |ix| {
+                let i = ix.slice().iter().fold(seed as u64, |acc, &v| acc * 31 + v as u64);
+                let unit = (i.wrapping_mul(2654435761) % 1000) as f32 / 1000.0;
+                F::from(unit * scale + offset).unwrap()
+            })
+        };
+        Self {
+            x: fill(&[batch, s_len, heads, head_dim], 1, 2.0, -1.0),
+            b: fill(&[batch, s_len, groups, d_state], 2, 2.0, -1.0),
+            c: fill(&[batch, s_len, groups, d_state], 3, 2.0, -1.0),
+            log_decay: fill(&[batch, s_len, heads], 4, 2.0, -2.0),
+            state: fill(&[batch, heads, head_dim, d_state], 5, 2.0, -1.0),
+        }
+    }
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<Mamba2RecurrentProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<Mamba2RecurrentProblem<f16>>("proptest_f16", ());
+    for d_state in [128, 200, 256] {
+        suite.add_test(
+            format!("state_{d_state}_f32"),
+            Mamba2RecurrentProblem::<f32>::sized(1, 3, 2, 8, 16, d_state),
+        );
+        suite.add_test(
+            format!("state_{d_state}_f16"),
+            Mamba2RecurrentProblem::<f16>::sized(1, 3, 2, 8, 16, d_state),
+        );
+    }
+    suite.add_test("batch_2", Mamba2RecurrentProblem::<f32>::sized(2, 4, 4, 8, 8, 64));
     Ok(suite)
 }

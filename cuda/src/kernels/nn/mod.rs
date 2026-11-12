@@ -3,6 +3,7 @@ mod gelu_approximate;
 mod group_norm;
 mod layer_norm;
 mod leaky_relu;
+mod mamba2_recurrent;
 mod pool;
 mod reduce;
 mod rms_norm;
@@ -18,6 +19,7 @@ pub use group_norm::{
 };
 pub use leaky_relu::LeakyRelu;
 pub use leaky_relu::cuda_leaky_relu_dispatch;
+pub use mamba2_recurrent::cuda_mamba2_recurrent_dispatch;
 pub use pool::cuda_pool_dispatch;
 pub use reduce::{Reducer, cuda_reduce_launch};
 pub use rms_norm::RmsNorm;
@@ -137,6 +139,8 @@ pub fn all_functions() -> Vec<String> {
             })
             .flat_map(|(kind, dt)| pool::kernel_name(kind, dt).into_iter()),
     );
+
+    functions.extend(mamba2_recurrent::kernel_names());
 
     functions.into_iter().collect()
 }

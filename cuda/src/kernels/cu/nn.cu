@@ -1422,3 +1422,76 @@ __device__ void group_norm_apply(const T *x, const float *partials, T *y, int32_
 
 INSTANTIATE_GROUP_NORM(f32, float)
 INSTANTIATE_GROUP_NORM(f16, __half)
+
+// Mamba-2 recurrence: one warp per state row (batch, head, p), the row's N
+// values spread over the lanes and kept in registers across the S steps.
+#define MAMBA2_MAX_PER_LANE 8
+
+template <typename T, typename D, typename St>
+static __device__ void mamba2_recurrent(
+    const T *x, const T *b, const T *c, const D *log_decay, const St *initial_state,
+    T *output, St *final_state, const int32_t batch, const int32_t steps,
+    const int32_t heads, const int32_t head_dim, const int32_t groups,
+    const int32_t d_state) {
+    const int32_t row = (blockIdx.x * blockDim.x + threadIdx.x) / WARP_SIZE;
+    const int32_t lane = threadIdx.x % WARP_SIZE;
+    if (row >= batch * heads * head_dim)
+        return;
+    const int32_t p = row % head_dim;
+    const int32_t h = (row / head_dim) % heads;
+    const int32_t bi = row / (head_dim * heads);
+    const int32_t group = h / (heads / groups);
+    const int64_t state_base = (int64_t)row * d_state;
+
+    float s[MAMBA2_MAX_PER_LANE];
+#pragma unroll
+    for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+        const int32_t n = lane + k * WARP_SIZE;
+        s[k] = n < d_state ? (float)initial_state[state_base + n] : 0.0f;
+    }
+    for (int32_t t = 0; t < steps; t++) {
+        const int64_t step = (int64_t)bi * steps + t;
+        const int64_t xi = (step * heads + h) * head_dim + p;
+        const int64_t bc = (step * groups + group) * d_state;
+        const float decay = expf((float)log_decay[step * heads + h]);
+        const float xv = (float)x[xi];
+        float acc = 0.0f;
+#pragma unroll
+        for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+            const int32_t n = lane + k * WARP_SIZE;
+            if (n < d_state) {
+                s[k] = s[k] * decay + xv * (float)b[bc + n];
+                acc += s[k] * (float)c[bc + n];
+            }
+        }
+        acc = warp_reduce_sum(acc);
+        if (lane == 0)
+            output[xi] = (T)acc;
+    }
+#pragma unroll
+    for (int k = 0; k < MAMBA2_MAX_PER_LANE; k++) {
+        const int32_t n = lane + k * WARP_SIZE;
+        if (n < d_state)
+            final_state[state_base + n] = (St)s[k];
+    }
+}
+
+#define INSTANTIATE_MAMBA2(tn, T, dn, D, sn, St)                               \
+    extern "C" __global__ void mamba2_recurrent_##tn##_##dn##_##sn(            \
+        const T *x, const T *b, const T *c, const D *log_decay,                \
+        const St *initial_state, T *output, St *final_state,                   \
+        const int32_t batch, const int32_t steps, const int32_t heads,         \
+        const int32_t head_dim, const int32_t groups, const int32_t d_state) { \
+        mamba2_recurrent<T, D, St>(x, b, c, log_decay, initial_state, output,  \
+                                   final_state, batch, steps, heads, head_dim, \
+                                   groups, d_state);                           \
+    }
+
+#define INSTANTIATE_MAMBA2_STATES(tn, T, dn, D)                                \
+    INSTANTIATE_MAMBA2(tn, T, dn, D, f32, float)                               \
+    INSTANTIATE_MAMBA2(tn, T, dn, D, f16, __half)
+
+INSTANTIATE_MAMBA2_STATES(f32, float, f32, float)
+INSTANTIATE_MAMBA2_STATES(f32, float, f16, __half)
+INSTANTIATE_MAMBA2_STATES(f16, __half, f32, float)
+INSTANTIATE_MAMBA2_STATES(f16, __half, f16, __half)

@@ -21,6 +21,7 @@ pub mod group_norm;
 pub mod iff;
 pub mod layer_norm;
 pub mod leaky_relu;
+pub mod mamba2_recurrent;
 pub mod nan_replace;
 pub mod pad;
 pub mod pool;
