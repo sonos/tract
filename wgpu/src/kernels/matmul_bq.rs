@@ -826,6 +826,58 @@ mod tests {
     }
 
     #[test]
+    fn rank4_broadcast_weight() -> TractResult<()> {
+        run_packed(
+            &Q2_0_T,
+            &[2, 3, 13, 64],
+            &[1, 1, 17, 64],
+            f32::datum_type(),
+            false,
+            false,
+            false,
+        )?;
+        run_packed(&Q4_0, &[2, 3, 13, 64], &[1, 1, 17, 64], f16::datum_type(), false, false, false)
+    }
+
+    #[test]
+    fn rank4_and_5_batched_weight() -> TractResult<()> {
+        run_packed(
+            &Q2_0_T,
+            &[2, 3, 9, 32],
+            &[2, 3, 11, 32],
+            f32::datum_type(),
+            false,
+            false,
+            false,
+        )?;
+        run_packed(
+            &Q4_0,
+            &[2, 2, 2, 32, 9],
+            &[2, 2, 2, 11, 32],
+            f32::datum_type(),
+            true,
+            true,
+            false,
+        )
+    }
+
+    #[test]
+    fn rank4_partly_broadcast_weight_stays_on_cpu() -> TractResult<()> {
+        let (a_shape, b_shape) = ([2usize, 3, 9, 32], [1usize, 3, 11, 32]);
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact(a_shape))?;
+        let w = model.wire_node("w", pack(&Q2_0_T, &b_shape, &fill(1, 3 * 11 * 32))?, &[])?[0];
+        let y = model.wire_node("mm", mm(false, true, false, f32::datum_type()), &[a, w])?[0];
+        model.select_output_outlets(&[y])?;
+        let gpu = transformed(model.clone())?;
+        ensure!(
+            !gpu.nodes().iter().any(|n| n.op_is::<WgpuGemm>()),
+            "partial broadcast went to the GPU"
+        );
+        gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, 2 * 3 * 9 * 32))?)
+    }
+
+    #[test]
     fn q2_0_t_negative_scale_and_code3() -> TractResult<()> {
         let (n, k) = (5usize, 32usize);
         let mut codes = vec![1u8; n * k];
