@@ -30,6 +30,7 @@ pub mod reduce;
 pub mod resize;
 pub mod rms_norm;
 pub mod rotate_half;
+pub mod routing;
 pub mod scaled_masked_softmax;
 pub mod slice;
 pub mod softmax;
