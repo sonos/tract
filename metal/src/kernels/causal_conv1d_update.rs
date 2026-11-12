@@ -73,6 +73,7 @@ crate::register_metal_op!(
     |source, node, _op| {
         // The Metal kernel is f16-only; other dtype mixes (e.g. an all-f32
         // test export) stay on the CPU op.
+        rule_if!(node.inputs.len() == 3);
         let facts = source.node_input_facts(node.id)?;
         if facts.iter().any(|f| f.datum_type != DatumType::F16) {
             return Ok(None);

@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_registry tract_core;
+
+# Mamba-2's front convolution: a bias added before the SiLU.
+
+graph causal_conv1d_bias(input, weight, initial_state, bias) -> (output, final_state)
+{
+    input = tract_core_external(shape = [1, 16, 3], datum_type = 'f16');
+    weight = tract_core_external(shape = [16, 4], datum_type = 'f16');
+    initial_state = tract_core_external(shape = [1, 16, 4], datum_type = 'f16');
+    bias = tract_core_external(shape = [16], datum_type = 'f16');
+    (output, final_state) = tract_transformers_causal_conv1d_update(
+        input, weight, initial_state, bias = bias);
+}
