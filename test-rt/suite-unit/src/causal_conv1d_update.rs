@@ -120,9 +120,37 @@ where
     }
 }
 
+impl<F> CausalConv1dUpdateProblem<F>
+where
+    F: Datum + Float,
+{
+    /// Deterministic values in [-1, 1] for the given dims.
+    fn sized(batch: usize, channels: usize, s_len: usize, with_bias: bool) -> Self {
+        let fill = |shape: &[usize], seed: u64| {
+            let len = shape.iter().product::<usize>() as u64;
+            let v = (0..len)
+                .map(|i| {
+                    let unit = ((i + seed * 7919).wrapping_mul(2654435761) % 17) as f32 / 8.0;
+                    F::from(unit - 1.0).unwrap()
+                })
+                .collect();
+            ArrayD::from_shape_vec(shape, v).unwrap()
+        };
+        Self {
+            input: fill(&[batch, channels, s_len], 1),
+            weight: fill(&[channels, TAPS], 2),
+            state: fill(&[batch, channels, TAPS], 3),
+            bias: with_bias.then(|| fill(&[channels], 4)),
+        }
+    }
+}
+
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite = TestSuite::default();
     suite.add_arbitrary::<CausalConv1dUpdateProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<CausalConv1dUpdateProblem<f16>>("proptest_f16", ());
+    suite.add_test("bias_f16", CausalConv1dUpdateProblem::<f16>::sized(2, 48, 3, true));
+    suite.add_test("no_bias_f16", CausalConv1dUpdateProblem::<f16>::sized(2, 48, 3, false));
+    suite.add_test("bias_f32", CausalConv1dUpdateProblem::<f32>::sized(2, 48, 3, true));
     Ok(suite)
 }
