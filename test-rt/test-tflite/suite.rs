@@ -7,6 +7,7 @@ use suite_unit::max_pool::{MaxPoolProblem, MaxPoolProblemParams};
 use suite_unit::move_axis::MoveAxisProblem;
 use suite_unit::reduce_arg::ReduceArgProblem;
 use suite_unit::reduce_arg::ReduceArgProblemParams;
+use suite_unit::topk::TopkProblem;
 use tract_core::internal::*;
 use tract_core::ops::cnn::PaddingSpec;
 use tract_core::ops::nn::Reducer;
@@ -248,7 +249,14 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         }
     }
 
-    if t[0] == "bin_einsum" && t[1] == "proptest" {
+    #[allow(clippy::collapsible_if)]
+    if let Some(tp) = case.downcast_ref::<TopkProblem>() {
+        if !compatible_topk(tp) {
+            return true;
+        }
+    }
+
+    if (t[0] == "bin_einsum" || t[0] == "topk") && t[1] == "proptest" {
         return true;
     }
 
@@ -334,6 +342,15 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
         return true;
     }
     false
+}
+
+/// What TOPK_V2 can express: the largest entries along the last axis, on a type its
+/// kernel has. Its comparator gives no defined order to NaN.
+fn compatible_topk(tp: &TopkProblem) -> bool {
+    tp.largest
+        && tp.axis + 1 == tp.input.ndim()
+        && tp.dt == DatumType::F32
+        && !tp.input.iter().any(|x| x.is_nan())
 }
 
 fn compatible_reduce_arg(ra: &ReduceArgProblem) -> bool {

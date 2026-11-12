@@ -1,6 +1,7 @@
 use tract_core::internal::*;
-use tract_core::ops::array::{MultiBroadcastTo, Slice, TypedConcat};
+use tract_core::ops::array::{MultiBroadcastTo, Slice, Topk, TypedConcat};
 use tract_core::ops::cast::wire_cast;
+use tract_core::ops::cast::Cast;
 use tract_core::ops::Downsample;
 use tract_core::prelude::tract_itertools::Itertools;
 use tract_ndarray::ArrayView2;
@@ -8,10 +9,11 @@ use tract_ndarray::ArrayView2;
 use crate::registry::{DeserOp, Registry};
 use crate::ser::{BuiltinOp, SubgraphBuilder};
 use crate::tflite::{
-    ActivationFunctionType, BuiltinOperator, BuiltinOptions, ConcatenationOptions,
-    ConcatenationOptionsArgs, ExpandDimsOptions, ExpandDimsOptionsArgs, ReshapeOptions,
-    ReshapeOptionsArgs, SliceOptions, SliceOptionsArgs, SqueezeOptions, SqueezeOptionsArgs,
-    StridedSliceOptions, StridedSliceOptionsArgs, TransposeOptions, TransposeOptionsArgs,
+    ActivationFunctionType, BuiltinOperator, BuiltinOptions, CastOptions, CastOptionsArgs,
+    ConcatenationOptions, ConcatenationOptionsArgs, ExpandDimsOptions, ExpandDimsOptionsArgs,
+    ReshapeOptions, ReshapeOptionsArgs, SliceOptions, SliceOptionsArgs, SqueezeOptions,
+    SqueezeOptionsArgs, StridedSliceOptions, StridedSliceOptionsArgs, TensorType, TopKV2Options,
+    TopKV2OptionsArgs, TransposeOptions, TransposeOptionsArgs,
 };
 
 use super::wire_fused_activation;
@@ -22,6 +24,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser_concat);
     reg.reg_to_tflite(ser_downsample);
     reg.reg_to_tflite(ser_slice);
+    reg.reg_to_tflite(ser_topk);
 
     reg.reg_to_tract(BuiltinOperator::BROADCAST_TO, de_broadcast_to);
     reg.reg_to_tract(BuiltinOperator::CONCATENATION, de_concat);
@@ -33,6 +36,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::SLICE, de_slice);
     reg.reg_to_tract(BuiltinOperator::SQUEEZE, de_squeeze);
     reg.reg_to_tract(BuiltinOperator::STRIDED_SLICE, de_strided_slice);
+    reg.reg_to_tract(BuiltinOperator::TOPK_V2, de_topk_v2);
     reg.reg_to_tract(BuiltinOperator::TRANSPOSE, de_transpose);
 }
 
@@ -47,6 +51,26 @@ fn de_broadcast_to(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
         .map(|d| *d as usize)
         .collect();
     op.ctx.target.wire_node(op.prefix, MultiBroadcastTo { shape }, &op.inputs[0..1])
+}
+
+/// TOPK_V2: the `k` largest entries along the last axis, sorted, ties to the lowest index.
+/// Indices come out of tract's `Topk` as i64 and are cast to the declared index type.
+fn de_topk_v2(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let (input, k) = args_2!(op.facts()?);
+    let p = &op.prefix;
+    let fallback_k = if let Some(k) = &k.konst {
+        k.cast_to_scalar::<i64>()?.to_dim()
+    } else {
+        op.ctx.target.symbols.new_with_prefix("k").into()
+    };
+    let topk = Topk { axis: input.rank() - 1, largest: true, fallback_k };
+    let mut wires = op.ctx.target.wire_node(format!("{p}.topk"), topk, &op.inputs[0..2])?;
+    let index_dt = op.output_facts[1].datum_type;
+    if index_dt != i64::datum_type() {
+        wires[1] =
+            op.ctx.target.wire_node(format!("{p}.cast"), Cast { to: index_dt }, &[wires[1]])?[0];
+    }
+    Ok(wires)
 }
 
 fn de_concat(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
@@ -276,6 +300,55 @@ fn ser_broadcast_to(
         .write_fact(format!("{}.shape", node.name), TypedFact::try_from(tensor1(&shape))?)?;
     inputs.push(shape);
     builder.write_op(&inputs, &[output], 130, 3, BuiltinOperator::BROADCAST_TO)
+}
+
+/// Writes `Topk` as TOPK_V2 followed by a CAST of its i32 indices to i64. TOPK_V2 only
+/// covers the largest entries along the last axis, with a constant `k`, and its kernel has
+/// no f16 or f64 variant.
+fn ser_topk(
+    builder: &mut SubgraphBuilder,
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &Topk,
+) -> TractResult<()> {
+    let input = model.outlet_fact(node.inputs[0])?;
+    ensure!(op.largest, "tflite TOPK_V2 only selects the largest entries");
+    ensure!(op.axis + 1 == input.rank(), "tflite TOPK_V2 only works on the last axis");
+    ensure!(
+        ![f16::datum_type(), f64::datum_type()].contains(&input.datum_type),
+        "tflite TOPK_V2 has no {:?} kernel",
+        input.datum_type
+    );
+    let k = model.outlet_fact(node.inputs[1])?;
+    let k = k.konst.as_ref().context("tflite TOPK_V2 serialization needs a constant k")?;
+    let k = builder.write_fact(
+        format!("{}.k", node.name),
+        TypedFact::try_from(tensor0(k.cast_to_scalar::<i32>()?))?,
+    )?;
+    let inputs = [builder.map_outlet(model, node.inputs[0])?, k];
+    let outputs =
+        builder.map_outlets(model, [OutletId::new(node.id, 0), OutletId::new(node.id, 1)])?;
+    let indices_i32 = builder.write_fact(
+        format!("{}.indices_i32", node.name),
+        i32::fact(node.outputs[1].fact.shape.to_vec()),
+    )?;
+    let options = TopKV2Options::create(builder.fb(), &TopKV2OptionsArgs {});
+    builder.write_op_with_options(
+        &inputs,
+        &[outputs[0], indices_i32],
+        BuiltinOp::new(48, 1, BuiltinOperator::TOPK_V2, BuiltinOptions::TopKV2Options),
+        options.as_union_value(),
+    )?;
+    let options = CastOptions::create(
+        builder.fb(),
+        &CastOptionsArgs { in_data_type: TensorType::INT32, out_data_type: TensorType::INT64 },
+    );
+    builder.write_op_with_options(
+        &[indices_i32],
+        &[outputs[1]],
+        BuiltinOp::new(53, 1, BuiltinOperator::CAST, BuiltinOptions::CastOptions),
+        options.as_union_value(),
+    )
 }
 
 fn ser_concat(
