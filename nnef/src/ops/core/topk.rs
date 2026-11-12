@@ -1,6 +1,7 @@
 use crate::internal::*;
 use crate::ser::*;
 use tract_core::ops::array::Topk;
+use tract_core::ops::cast::cast;
 
 pub fn register(registry: &mut Registry) {
     registry.register_dumper(ser_topk);
@@ -30,6 +31,7 @@ fn ser_topk(ast: &mut IntoAst, node: &TypedNode, op: &Topk) -> TractResult<Optio
 fn de_topk(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> TractResult<Value> {
     let input = invocation.named_arg_as(builder, "input")?;
     let k = invocation.named_arg_as(builder, "k")?;
+    let k = builder.wire_as_outlets(cast(DatumType::I64), &[k])?[0];
     let axis = invocation.named_arg_as(builder, "axis")?;
     let largest = invocation.named_arg_as(builder, "largest")?;
     let fallback_k = builder.model.symbols.new_with_prefix("k").into();
