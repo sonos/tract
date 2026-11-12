@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A top-k whose k is an integer literal, the way torch-to-nnef writes it.
+
+graph topk_literal_k(input) -> (values, indices)
+{
+    input = external<scalar>(shape = [2, 3000]);
+    values, indices = tract_core_topk(input, k = 25, axis = 1, largest = true);
+}
