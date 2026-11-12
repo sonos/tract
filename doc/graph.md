@@ -45,7 +45,7 @@ outlet.
 When the network is ran, tract executes the nodes in the order induced by the
 links: a node can only be ran all when tract knows the value of all its inputs.
 
-Note that links between nodes (often called *wires*) are not symetrical: a
+Note that links between nodes (often called *wires*) are not symmetrical: a
 tensor produced by a node after its op is ran, can be fed to more than one
 operator. An outlet can be connected to one or several inlets. On the other
 hand one inlet can only have its value set by one outlet. A wire connects
@@ -63,7 +63,7 @@ The `BaseNode` incoming wires are materialized by the `inputs` field, as a
 simple vector.
 
 For easier graph traversal, tract also maintains in `BaseNode` a redundant list
-of outgoing wires: `outputs.successors` field. Additionaly, BaseNode stores a
+of outgoing wires: `outputs.successors` field. Additionally, BaseNode stores a
 `Fact` for each of its outgoing wires. Fact is the topic of the next section.
 
 Finally, `Graph` owns two lists of OutletId designating the model inputs and
@@ -201,7 +201,7 @@ to build a graph from the Source inputs (assuming we know their Fact) to its
 outputs, discovering the full facts operation after operation.
 
 The InferenceOp interface is a bit more involved, but allow to build the graph
-in any aritrary order, leaving some facts partially determined, then running
+in any arbitrary order, leaving some facts partially determined, then running
 the analyse to complete the missing bits.
 
 ```rust
