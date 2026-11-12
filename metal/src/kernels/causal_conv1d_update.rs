@@ -4,11 +4,15 @@ use metal::MTLSize;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
 
+const MAX_TAPS: usize = 8;
+
+#[allow(clippy::too_many_arguments)]
 pub fn dispatch_eval(
     stream: &MetalStream,
     input: &DeviceTensor,
     weight: &DeviceTensor,
     state: &DeviceTensor,
+    bias: Option<&DeviceTensor>,
     output: &DeviceTensor,
     final_state: &DeviceTensor,
 ) -> TractResult<()> {
@@ -19,7 +23,7 @@ pub fn dispatch_eval(
     ensure!(input.rank() == 3, "conv input must be [b, C, S], got {:?}", input.shape());
     let (batch, channels, s_len) = (input.shape()[0], input.shape()[1], input.shape()[2]);
     let kernel_width = *weight.shape().last().context("conv weight must have a kernel axis")?;
-    ensure!(kernel_width <= 8, "the Metal causal conv kernel supports at most 8 taps");
+    ensure!(kernel_width <= MAX_TAPS, "the Metal causal conv takes at most {MAX_TAPS} taps");
     ensure!(weight.len() == channels * kernel_width);
     ensure!(
         state.shape() == [batch, channels, kernel_width],
@@ -28,7 +32,10 @@ pub fn dispatch_eval(
     );
     ensure!(output.shape() == input.shape() && output.datum_type() == DatumType::F16);
     ensure!(final_state.shape() == state.shape() && final_state.datum_type() == DatumType::F16);
-    for tensor in [input, weight, state, output, final_state] {
+    if let Some(bias) = bias {
+        ensure!(bias.datum_type() == DatumType::F16 && bias.len() == channels);
+    }
+    for tensor in [input, weight, state, output, final_state].into_iter().chain(bias) {
         stream.retain_tensor(tensor);
     }
     let pipeline = stream.load_pipeline(LibraryName::GdnRecurrent, "causal_conv1d_update_f16")?;
@@ -48,6 +55,9 @@ pub fn dispatch_eval(
         encoder.set_bytes(6, size_of::<i32>() as u64, &kernel_width as *const i32 as *const _);
         encoder.set_bytes(7, size_of::<i32>() as u64, &s_len as *const i32 as *const _);
         encoder.set_bytes(8, size_of::<i32>() as u64, &batch as *const i32 as *const _);
+        encoder.set_metal_tensor(9, bias.unwrap_or(weight), metal::MTLResourceUsage::Read);
+        let has_bias = bias.is_some() as i32;
+        encoder.set_bytes(10, size_of::<i32>() as u64, &has_bias as *const i32 as *const _);
         encoder.dispatch_threads(
             MTLSize { width: (batch * channels) as u64, height: 1, depth: 1 },
             MTLSize { width: 256.min(channels) as u64, height: 1, depth: 1 },
@@ -64,9 +74,8 @@ pub fn metal_causal_conv1d_update_launch(
     output: &DeviceTensor,
     final_state: &DeviceTensor,
 ) -> TractResult<()> {
-    ensure!(bias.is_none(), "the Metal causal conv kernel takes no bias");
     crate::with_metal_stream(|stream| {
-        dispatch_eval(stream, input, weight, state, output, final_state)
+        dispatch_eval(stream, input, weight, state, bias, output, final_state)
     })
 }
 
@@ -75,8 +84,9 @@ crate::register_metal_op!(
     |source, node, _op| {
         // The Metal kernel is f16-only; other dtype mixes (e.g. an all-f32
         // test export) stay on the CPU op.
-        rule_if!(node.inputs.len() == 3);
         let facts = source.node_input_facts(node.id)?;
+        rule_if_some!(taps = facts[1].shape.last().and_then(|d| d.as_i64()));
+        rule_if!(taps as usize <= MAX_TAPS);
         if facts.iter().any(|f| f.datum_type != DatumType::F16) {
             return Ok(None);
         }
@@ -108,7 +118,7 @@ mod tests {
             let state = Tensor::from_shape(&[1, channels, 4], &cvt(&state_f))?.into_device()?;
             let output = DeviceTensor::uninitialized_dt(DatumType::F16, input.shape())?;
             let next = DeviceTensor::uninitialized_dt(DatumType::F16, state.shape())?;
-            dispatch_eval(stream, &input, &weight, &state, &output, &next)?;
+            dispatch_eval(stream, &input, &weight, &state, None, &output, &next)?;
             stream.wait_until_completed()?;
             let output = output.to_host()?.into_tensor();
             let next = next.to_host()?.into_tensor();
@@ -157,7 +167,7 @@ mod tests {
             let state_d = state.into_device()?;
             let output = DeviceTensor::uninitialized_dt(DatumType::F16, input_d.shape())?;
             let next = DeviceTensor::uninitialized_dt(DatumType::F16, state_d.shape())?;
-            dispatch_eval(stream, &input_d, &weight_d, &state_d, &output, &next)?;
+            dispatch_eval(stream, &input_d, &weight_d, &state_d, None, &output, &next)?;
             stream.wait_until_completed()?;
             let output = output.to_host()?.into_tensor();
             let next = next.to_host()?.into_tensor();
