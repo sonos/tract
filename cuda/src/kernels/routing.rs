@@ -1,15 +1,22 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
+use tract_gpu::ops::routing::GpuRoutedLinear;
+use tract_gpu::ops::routing::RoutedLinearKernels;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::tensor::DeviceTensor;
+use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
+use tract_transformers::ops::moe_ffn::RoutedLinear;
 
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
+use crate::utils::as_ggml_q_fact;
+use crate::utils::get_ggml_q_fact;
 
 #[allow(clippy::too_many_arguments)]
 fn select(
@@ -94,3 +101,119 @@ crate::register_cuda_op!(RoutedCombine, |source, node, op| {
     Ok(GpuRoutedCombine::from_tract_core(source, node, op, "Cuda", CUDA_ROUTING_KERNELS)?
         .map(|op| Box::new(op) as _))
 });
+
+const ROUTED_WARPS: u32 = 4;
+
+/// Plain f32 or f16 expert weights, or Q4_0 and Q2_0_T ones with K in whole blocks.
+fn supports(weights: &TypedFact) -> bool {
+    if let Some(bqf) = as_ggml_q_fact(weights) {
+        bqf.k() % bqf.format.block_len() == 0
+    } else {
+        weights.is_plain() && matches!(weights.datum_type, DatumType::F32 | DatumType::F16)
+    }
+}
+
+fn project(
+    stream: &TractCudaStream,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
+    ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
+    let name = match get_ggml_q_fact(weights) {
+        Some(bqf) if bqf.format.dyn_eq(&Q4_0) => "q40",
+        Some(_) => "q20t",
+        None => DeviceTensor::tname(weights.datum_type())?,
+    };
+    let func =
+        cuda_context().load_pipeline(LibraryName::Routing, format!("routed_mul_vec_{name}"))?;
+    let w = get_cuda_view(weights);
+    let x = get_cuda_view(input);
+    let o = get_cuda_view(out);
+    let rows = rows.map(get_cuda_view);
+    let ids = get_cuda_view(expert_ids);
+    let mut args = TractLaunchArgs::new(stream, &func);
+    args.push_view(&w);
+    args.push_view(&x);
+    args.push_view(&o);
+    match &rows {
+        Some(rows) => args.push_view(rows),
+        None => args.push_null_ptr(),
+    }
+    args.push_view(&ids);
+    args.push_i32(k);
+    args.push_i32(n);
+    args.launch(LaunchConfig {
+        grid_dim: (n as u32, routes as u32, 1),
+        block_dim: (32, ROUTED_WARPS, 1),
+        shared_mem_bytes: 0,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn postamble(
+    stream: &TractCudaStream,
+    gate: &DeviceTensor,
+    up: Option<&DeviceTensor>,
+    bias: Option<&DeviceTensor>,
+    bias_up: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    (activation, alpha, limit): (u32, f32, f32),
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    let (routes, n) = (gate.shape()[0], gate.shape()[1]);
+    let func = cuda_context().load_pipeline(LibraryName::Routing, "routed_postamble".into())?;
+    let optional = [up, bias, bias_up].map(|t| t.map(get_cuda_view));
+    let (g, ids, o) = (get_cuda_view(gate), get_cuda_view(expert_ids), get_cuda_view(out));
+    let mut args = TractLaunchArgs::new(stream, &func);
+    args.push_view(&g);
+    for view in &optional {
+        match view {
+            Some(view) => args.push_view(view),
+            None => args.push_null_ptr(),
+        }
+    }
+    args.push_view(&ids);
+    args.push_view(&o);
+    args.push_i32(routes);
+    args.push_i32(n);
+    args.push_i32(activation);
+    args.push::<f32>(alpha);
+    args.push::<f32>(limit);
+    args.launch(LaunchConfig {
+        grid_dim: ((routes * n).div_ceil(256) as u32, 1, 1),
+        block_dim: (256, 1, 1),
+        shared_mem_bytes: 0,
+    })
+}
+
+const CUDA_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
+    supports,
+    project: |input, weights, rows, expert_ids, out| {
+        crate::with_cuda_stream(|s| project(s, input, weights, rows, expert_ids, out))
+    },
+    postamble: |gate, up, bias, bias_up, expert_ids, activation, out| {
+        crate::with_cuda_stream(|s| {
+            postamble(s, gate, up, bias, bias_up, expert_ids, activation, out)
+        })
+    },
+};
+
+crate::register_cuda_op!(RoutedLinear, |source, node, op| {
+    Ok(GpuRoutedLinear::from_tract_core(source, node, op, "Cuda", CUDA_ROUTED_LINEAR_KERNELS)?
+        .map(|op| Box::new(op) as _))
+});
+
+/// [`tract_gpu::ops::routing::lower_moe_ffn`] for the weights CUDA projects.
+pub fn lower_moe_ffn(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    _name: &str,
+    op: &MoeFfn,
+) -> TractResult<Option<TypedModelPatch>> {
+    tract_gpu::ops::routing::lower_moe_ffn(model, node, op, supports)
+}

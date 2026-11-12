@@ -2,9 +2,13 @@ use crate::tensor::DeviceTensor;
 use crate::tensor::DeviceTensorExt;
 use tract_core::internal::*;
 use tract_transformers::ops::moe_ffn::GateMode;
+use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
 use tract_transformers::ops::moe_ffn::RouteTopK;
+use tract_transformers::ops::moe_ffn::RoutedActivation;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
+use tract_transformers::ops::moe_ffn::RoutedInputMode;
+use tract_transformers::ops::moe_ffn::RoutedLinear;
 
 /// Most experts a [`GpuRouteSelect`] scores: one warp of 32 lanes, eight scores each.
 pub const ROUTE_SELECT_MAX_EXPERTS: usize = 256;
@@ -254,4 +258,214 @@ impl TypedOp for GpuRoutedCombine {
     }
 
     as_op!();
+}
+
+/// One backend's routed projection kernels.
+#[derive(Clone, Copy)]
+pub struct RoutedLinearKernels {
+    /// Whether `project` takes weights of this fact, `[E, N, K]`.
+    pub supports: fn(&TypedFact) -> bool,
+    /// f32 `input [rows, K]`, `weights [E, N, K]`, the row each route reads (`None` for row
+    /// `r`) and `expert_ids [R]` to f32 `out [R, N]`.
+    #[allow(clippy::type_complexity)]
+    pub project: fn(
+        &DeviceTensor,
+        &DeviceTensor,
+        Option<&DeviceTensor>,
+        &DeviceTensor,
+        &DeviceTensor,
+    ) -> TractResult<()>,
+    /// The postamble over f32 `[R, N]` projections: `gate`, then `up`, `bias` and `bias_up`
+    /// (`[E, N]`, read at the route's expert from `expert_ids`) when present, the activation
+    /// (see [`routed_activation_code`]) to f32 `out [R, N]`.
+    #[allow(clippy::type_complexity)]
+    pub postamble: fn(
+        &DeviceTensor,
+        Option<&DeviceTensor>,
+        Option<&DeviceTensor>,
+        Option<&DeviceTensor>,
+        &DeviceTensor,
+        (u32, f32, f32),
+        &DeviceTensor,
+    ) -> TractResult<()>,
+}
+
+/// A postamble kernel's activation: its code (0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped
+/// SwiGLU), then the clamped SwiGLU's alpha and limit.
+pub fn routed_activation_code(activation: &RoutedActivation) -> (u32, f32, f32) {
+    match activation {
+        RoutedActivation::None => (0, 0.0, 0.0),
+        RoutedActivation::Silu => (1, 0.0, 0.0),
+        RoutedActivation::Gelu => (2, 0.0, 0.0),
+        RoutedActivation::Relu => (3, 0.0, 0.0),
+        RoutedActivation::ClampedSwiGlu { alpha_bits, limit_bits } => {
+            (4, f32::from_bits(*alpha_bits), f32::from_bits(*limit_bits))
+        }
+    }
+}
+
+/// Whether the ids at `outlet` are known to lie in `0..bound`: constants checked here, or the
+/// `slot` output of a [`RouteSelect`] or [`RouteTopK`] whose first input has `rows` rows.
+fn ids_in_range(
+    source: &TypedModel,
+    outlet: OutletId,
+    slot: usize,
+    bound: &TDim,
+    rows: Option<&TDim>,
+) -> TractResult<bool> {
+    let fact = source.outlet_fact(outlet)?;
+    if let Some(ids) = &fact.konst {
+        let bound = bound.to_i64()?;
+        let ids = ids.cast_to::<i64>()?;
+        return Ok(ids.to_plain_array_view::<i64>()?.iter().all(|id| (0..bound).contains(id)));
+    }
+    let node = source.node(outlet.node);
+    if outlet.slot != slot || !(node.op_is::<RouteSelect>() || node.op_is::<RouteTopK>()) {
+        return Ok(false);
+    }
+    let scores = source.outlet_fact(node.inputs[0])?;
+    let token_count = scores.shape.dims()[..scores.rank() - 1].iter().product::<TDim>();
+    Ok(rows.is_none_or(|rows| *rows == token_count))
+}
+
+/// Backend-agnostic [`RoutedLinear`] over f32 inputs and biases, for weights the backend's
+/// [`RoutedLinearKernels::supports`].
+#[derive(Clone)]
+pub struct GpuRoutedLinear {
+    pub op: RoutedLinear,
+    pub backend_name: &'static str,
+    pub kernels: RoutedLinearKernels,
+}
+
+impl GpuRoutedLinear {
+    pub fn from_tract_core(
+        source: &TypedModel,
+        node: &TypedNode,
+        op: &RoutedLinear,
+        backend_name: &'static str,
+        kernels: RoutedLinearKernels,
+    ) -> TractResult<Option<GpuRoutedLinear>> {
+        let facts = source.node_input_facts(node.id)?;
+        rule_if!(facts[0].datum_type == f32::datum_type());
+        let rows = &facts[0].shape[0];
+        rule_if!(ids_in_range(source, node.inputs[2], 1, &facts[3].shape[0], None)?);
+        if op.input_mode == RoutedInputMode::TokenRows {
+            rule_if!(ids_in_range(source, node.inputs[1], 0, rows, Some(rows))?);
+        } else {
+            rule_if!(*rows == facts[1].shape[0]);
+        }
+        let weights = 3..4 + op.pair as usize;
+        rule_if!(facts[weights.clone()].iter().all(|f| (kernels.supports)(f)));
+        rule_if!(facts[weights.end..].iter().all(|f| f.datum_type == f32::datum_type()));
+        Ok(Some(GpuRoutedLinear { op: op.clone(), backend_name, kernels }))
+    }
+}
+
+impl std::fmt::Debug for GpuRoutedLinear {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}{:?}", self.backend_name, self.op)
+    }
+}
+
+impl PartialEq for GpuRoutedLinear {
+    fn eq(&self, other: &Self) -> bool {
+        self.backend_name == other.backend_name && self.op == other.op
+    }
+}
+
+impl Eq for GpuRoutedLinear {}
+
+impl std::hash::Hash for GpuRoutedLinear {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.backend_name.hash(state);
+        self.op.hash(state);
+    }
+}
+
+impl Op for GpuRoutedLinear {
+    fn name(&self) -> StaticName {
+        format!("{}RoutedLinear", self.backend_name).into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        self.op.info()
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for GpuRoutedLinear {
+    op_out_of_plan!();
+
+    fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let device =
+            inputs.iter().map(|i| i.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
+        let (input, token_ids, expert_ids) = (device[0], device[1], device[2]);
+        ensure!(input.strides() == &*Tensor::natural_strides(input.shape()));
+        let rows = (self.op.input_mode == RoutedInputMode::TokenRows).then_some(token_ids);
+        let shape = [token_ids.shape()[0], device[3].shape()[1]];
+        let out = crate::turn_handler::make_tensor_for_node(ctx, f32::datum_type(), &shape)?;
+        if out.len() == 0 {
+            return Ok(tvec!(out.into_tensor().into_tvalue()));
+        }
+        let direct = !self.op.pair && !self.op.bias && self.op.activation == RoutedActivation::None;
+        let project = |weights: &DeviceTensor, out: &DeviceTensor| {
+            (self.kernels.project)(input, weights, rows, expert_ids, out)
+                .with_context(|| format!("Error while dispatching eval for {}", self.name()))
+        };
+        if direct {
+            project(device[3], &out)?;
+        } else {
+            let scratch = || DeviceTensor::uninitialized_dt(f32::datum_type(), &shape);
+            let gate = scratch()?;
+            project(device[3], &gate)?;
+            let up = if self.op.pair {
+                let up = scratch()?;
+                project(device[4], &up)?;
+                Some(up)
+            } else {
+                None
+            };
+            let bias_at = 4 + self.op.pair as usize;
+            let bias = self.op.bias.then(|| device[bias_at]);
+            let bias_up = (self.op.bias && self.op.pair).then(|| device[bias_at + 1]);
+            (self.kernels.postamble)(
+                &gate,
+                up.as_ref(),
+                bias,
+                bias_up,
+                expert_ids,
+                routed_activation_code(&self.op.activation),
+                &out,
+            )?;
+        }
+        Ok(tvec!(out.into_tensor().into_tvalue()))
+    }
+}
+
+impl TypedOp for GpuRoutedLinear {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        crate::utils::facts_to_device_facts(inputs, |facts| self.op.output_facts(facts))
+            .with_context(|| format!("Error while computing facts for {:?}", self.name()))
+    }
+
+    as_op!();
+}
+
+/// A rewrite rule body: `op` as [`MoeFfn::routed_linear_patch`] makes it, when the backend can
+/// run every piece of it: routing within [`ROUTE_SELECT_MAX_EXPERTS`] and
+/// [`ROUTE_SELECT_MAX_K`], and expert weights its kernels `supports` once laid out `[E, N, K]`.
+pub fn lower_moe_ffn(
+    model: &TypedModel,
+    node: &TypedNode,
+    op: &MoeFfn,
+    supports: fn(&TypedFact) -> bool,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!((1..=ROUTE_SELECT_MAX_K).contains(&op.k));
+    let facts = model.node_input_facts(node.id)?;
+    let experts = facts[1].shape[facts[1].rank() - 2].as_i64();
+    rule_if!(experts.is_some_and(|e| (1..=ROUTE_SELECT_MAX_EXPERTS as i64).contains(&e)));
+    let expert_inputs: &[usize] = if op.has_w3 { &[2, 3, 4] } else { &[2, 3] };
+    rule_if!(expert_inputs.iter().all(|&ix| supports(facts[ix])));
+    op.routed_linear_patch(model, node)
 }

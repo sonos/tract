@@ -107,6 +107,7 @@ impl CudaTransform {
                 "deconv_as_matmul",
                 tract_gpu::rewrite_rules::deconv_as_matmul::deconv_as_matmul,
             )
+            .with_rule_for("lower_moe_ffn", kernels::routing::lower_moe_ffn)
             .rewrite(&(), model)?;
         rewrite_einsum_to_prefix_matmul(model, false)?;
         if stop_at_phase == 0 {
