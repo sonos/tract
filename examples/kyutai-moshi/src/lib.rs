@@ -16,7 +16,7 @@ pub struct Models {
     encoder: Runnable,
     decoder: Runnable,
     helium: Runnable,
-    depformer: Vec<Runnable>,
+    depformer: Runnable,
     vocab: Vec<String>,
 }
 
@@ -49,15 +49,11 @@ impl Models {
             helium.transform("block_quant")?;
         }
         let helium = runtime.prepare(helium)?;
-        let depformer = (0..8)
-            .map(|k| {
-                let mut step = nnef.load(format!("{dir}/depformer-step{k}.nnef.tgz"))?;
-                if q4 {
-                    step.transform("block_quant")?;
-                }
-                runtime.prepare(step)
-            })
-            .collect::<Result<Vec<_>>>()?;
+        let mut depformer = nnef.load(format!("{dir}/depformer.nnef.tgz"))?;
+        if q4 {
+            depformer.transform("block_quant")?;
+        }
+        let depformer = runtime.prepare(depformer)?;
         let vocab = serde_json::from_str(&std::fs::read_to_string(format!("{dir}/vocab.json"))?)?;
         Ok(Models { encoder, decoder, helium, depformer, vocab })
     }
@@ -94,10 +90,6 @@ pub struct Session<'m> {
     sampler: Sampler,
 }
 
-fn to_f32(t: &Tensor) -> Result<Vec<f32>> {
-    Ok(t.convert_to(DatumType::F32)?.as_slice::<f32>()?.to_vec())
-}
-
 impl Session<'_> {
     /// One frame of the user's audio, 1920 samples at 24 kHz.
     pub fn step_audio(&mut self, pcm: &[f32]) -> Result<Frame> {
@@ -124,28 +116,16 @@ impl Session<'_> {
             .collect();
         ensure!(tokens.iter().all(|&t| t >= 0), "ungenerated token at frame {offset}: {tokens:?}");
         let mut out = self.helium.run([Tensor::from_slice(&[1, 17, 1], &tokens)?])?;
-        let text_logits = to_f32(&out[1])?;
+        let text_logits = out.remove(1);
         let hidden = out.remove(0);
-        let text_token = self.sampler.sample(&text_logits, 0.7, 25);
-
-        let mut codes = [0i64; 8];
-        let mut prev = text_token;
-        let mut past: Vec<Tensor> = vec![];
-        for (k, step) in self.models.depformer.iter().enumerate() {
-            let mut inputs = vec![Tensor::from_slice(&[1, 1], &[prev])?, hidden.clone()];
-            inputs.append(&mut past);
-            let mut out = step.run(inputs)?;
-            let logits = to_f32(&out.remove(0))?;
-            past = out;
-            codes[k] = self.sampler.sample(&logits, 0.8, 250);
-            prev = codes[k];
-        }
+        let noise = Tensor::from_slice(&[9, 250], &self.sampler.gumbel(9 * 250))?;
+        let sampled = self.models.depformer.run([text_logits, hidden, noise])?;
+        let sampled = sampled[0].as_slice::<i64>()?;
 
         let next = offset + 1;
         self.offset = next;
-        self.cache[0][next % RING] = text_token;
-        for (k, &code) in codes.iter().enumerate() {
-            self.cache[1 + k][next % RING] = code;
+        for (c, &token) in sampled.iter().enumerate() {
+            self.cache[c][next % RING] = token;
         }
         if next <= 1 {
             return Ok(Frame { text: None, tokens: None, audio: vec![] });
@@ -166,32 +146,20 @@ struct Sampler {
 }
 
 impl Sampler {
-    fn uniform(&mut self) -> f64 {
-        self.state ^= self.state << 13;
-        self.state ^= self.state >> 7;
-        self.state ^= self.state << 17;
-        (self.state >> 11) as f64 / (1u64 << 53) as f64
-    }
-
-    /// Kyutai's sample_token: softmax at `temp` over the `top_k` largest logits.
-    fn sample(&mut self, logits: &[f32], temp: f32, top_k: usize) -> i64 {
-        let mut ix: Vec<usize> = (0..logits.len()).collect();
-        ix.sort_by(|&a, &b| logits[b].total_cmp(&logits[a]));
-        if self.greedy {
-            return ix[0] as i64;
-        }
-        ix.truncate(top_k);
-        let max = logits[ix[0]];
-        let weights: Vec<f64> =
-            ix.iter().map(|&i| (((logits[i] - max) / temp) as f64).exp()).collect();
-        let mut r = self.uniform() * weights.iter().sum::<f64>();
-        for (w, &i) in weights.iter().zip(&ix) {
-            r -= w;
-            if r <= 0.0 {
-                return i as i64;
-            }
-        }
-        ix[ix.len() - 1] as i64
+    /// Standard Gumbel noise for the depformer's draws, or zeros for greedy decoding.
+    fn gumbel(&mut self, len: usize) -> Vec<f32> {
+        (0..len)
+            .map(|_| {
+                if self.greedy {
+                    return 0.0;
+                }
+                self.state ^= self.state << 13;
+                self.state ^= self.state >> 7;
+                self.state ^= self.state << 17;
+                let u = ((self.state >> 11) as f64 + 0.5) / (1u64 << 53) as f64;
+                -(-u.ln()).ln() as f32
+            })
+            .collect()
     }
 }
 
