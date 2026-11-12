@@ -53,6 +53,7 @@ mod activation;
 mod cpu;
 mod nnef;
 mod q40;
+mod routed_linear;
 mod routing;
 #[cfg(test)]
 mod tests;
@@ -62,7 +63,10 @@ pub use cpu::OptMoeFfn;
 use cpu::{build_expert_plan, build_router_plan};
 pub use nnef::register;
 use q40::{build_q40_linear_expert_plan, q40_direct_activation_supported};
-pub use routing::{RouteTopK, RoutedCombine, RoutedInputMode, RoutedMatMul, RoutedQ40MatMul};
+pub use routed_linear::{RoutedActivation, RoutedLinear};
+pub use routing::{
+    RouteSelect, RouteTopK, RoutedCombine, RoutedInputMode, RoutedMatMul, RoutedQ40MatMul,
+};
 use std::sync::Arc;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;

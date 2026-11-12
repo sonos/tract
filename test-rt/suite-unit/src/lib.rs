@@ -42,6 +42,7 @@ pub mod rms_norm;
 pub mod rotate_half;
 pub mod route_topk;
 pub mod routed_combine;
+pub mod routed_linear;
 pub mod routed_q40;
 pub mod scaled_masked_softmax;
 pub mod sdpa;
@@ -52,6 +53,7 @@ pub mod topk;
 
 pub fn suite() -> TractResult<TestSuite> {
     let mut suite: TestSuite = Default::default();
+    suite.add("routed_linear", routed_linear::suite()?);
     suite.add("routed_q40", routed_q40::suite()?);
     suite.add("routed_combine", routed_combine::suite()?);
     suite.add("route_topk", route_topk::suite()?);

@@ -16,6 +16,9 @@ use tract_nnef::tract_core::tract_linalg::mmm::{
 };
 use tract_nnef::tract_core::tract_linalg::pack::PackedFormat;
 
+/// Picks each token's `k` experts: router logits `x . wg^T` (plus the optional `wg_bias [E]`),
+/// then `gate` turns them into weights. Outputs `route_token_ids`, `route_expert_ids` (i64) and
+/// `route_weights` (f32), `T * k` each, token-major.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RouteTopK {
     pub k: usize,
@@ -33,7 +36,10 @@ impl EvalOp for RouteTopK {
     op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        let (x_t, wg_t) = args_2!(inputs);
+        ensure!(inputs.len() == 2 || inputs.len() == 3);
+        let bias_t = inputs.get(2).map(|b| b.cast_to::<f32>()).transpose()?;
+        let bias = bias_t.as_ref().map(|b| plain_f32_slice(b, "wg_bias")).transpose()?;
+        let (x_t, wg_t) = (&inputs[0], &inputs[1]);
         let x_t = x_t.cast_to::<f32>()?;
         let wg_t = wg_t.cast_to::<f32>()?;
         let x = as_2d_tokens(x_t.to_plain_array_view::<f32>()?)?;
@@ -53,7 +59,13 @@ impl EvalOp for RouteTopK {
         let mut route_expert_ids = Vec::with_capacity(route_count);
         let mut route_weights = Vec::with_capacity(route_count);
 
-        let router_logits: Array2<f32> = x.dot(&wg.t());
+        let mut router_logits: Array2<f32> = x.dot(&wg.t());
+        if let Some(bias) = bias {
+            ensure!(bias.len() == wg.shape()[0], "router bias must have one value per expert");
+            for mut row in router_logits.rows_mut() {
+                row.iter_mut().zip(bias).for_each(|(v, b)| *v += b);
+            }
+        }
         for t in 0..t_tokens {
             let row = router_logits.row(t);
             let full: Vec<f32> = row.iter().copied().collect();
@@ -79,7 +91,8 @@ impl EvalOp for RouteTopK {
 
 impl TypedOp for RouteTopK {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == 2);
+        ensure!(inputs.len() == 2 || inputs.len() == 3);
+        ensure!(inputs.get(2).is_none_or(|b| b.rank() == 1), "RouteTopK bias must be [E]");
         ensure!(
             inputs[0].rank() == 2 || inputs[0].rank() == 3,
             "RouteTopK expects rank-2 or rank-3 x, got {}",
@@ -91,6 +104,82 @@ impl TypedOp for RouteTopK {
             inputs[1].rank()
         );
         let route_count = token_count_dim(&inputs[0].shape) * self.k;
+        Ok(tvec![
+            i64::datum_type().fact(std::slice::from_ref(&route_count)),
+            i64::datum_type().fact(std::slice::from_ref(&route_count)),
+            f32::datum_type().fact(&[route_count]),
+        ])
+    }
+
+    as_op!();
+}
+
+/// Picks each token's `k` experts from its router scores `[T, E]` (f32) plus the optional
+/// `bias [E]`; `gate` turns the chosen scores into weights. Outputs `route_token_ids`,
+/// `route_expert_ids` (i64) and `route_weights` (f32), `T * k` each and token-major: route
+/// `t * k + j` is token `t`'s `j`-th best expert, ties going to the lower expert index.
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+pub struct RouteSelect {
+    pub k: usize,
+    pub gate: GateMode,
+}
+
+impl Op for RouteSelect {
+    fn name(&self) -> StaticName {
+        "RouteSelect".into()
+    }
+
+    fn info(&self) -> TractResult<Vec<String>> {
+        Ok(vec![format!("k: {}, gate: {:?}", self.k, self.gate)])
+    }
+
+    op_as_typed_op!();
+}
+
+impl EvalOp for RouteSelect {
+    op_out_of_plan!();
+
+    fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        ensure!(inputs.len() == 1 || inputs.len() == 2);
+        let scores_t = inputs[0].cast_to::<f32>()?;
+        let scores: ArrayView2<f32> =
+            scores_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+        let bias_t = inputs.get(1).map(|b| b.cast_to::<f32>()).transpose()?;
+        let bias = bias_t.as_ref().map(|b| plain_f32_slice(b, "bias")).transpose()?;
+        let (tokens, experts) = scores.dim();
+        ensure!(self.k <= experts, "top-k {} exceeds expert count {experts}", self.k);
+        ensure!(bias.is_none_or(|b| b.len() == experts), "bias must have one value per expert");
+        let route_count = tokens * self.k;
+        let mut token_ids = Vec::with_capacity(route_count);
+        let mut expert_ids = Vec::with_capacity(route_count);
+        let mut weights = Vec::with_capacity(route_count);
+        for (t, row) in scores.outer_iter().enumerate() {
+            let full: Vec<f32> = match bias {
+                Some(b) => row.iter().zip(b).map(|(s, b)| s + b).collect(),
+                None => row.to_vec(),
+            };
+            let mut selected: Vec<(usize, f32)> = full.iter().copied().enumerate().collect();
+            select_routes(&mut selected, self.k);
+            for ((e, _), w) in selected.iter().zip(self.gate.weights(&full, &selected)) {
+                token_ids.push(t as i64);
+                expert_ids.push(*e as i64);
+                weights.push(w);
+            }
+        }
+        Ok(tvec![
+            Tensor::from_shape(&[route_count], &token_ids)?.into_tvalue(),
+            Tensor::from_shape(&[route_count], &expert_ids)?.into_tvalue(),
+            Tensor::from_shape(&[route_count], &weights)?.into_tvalue(),
+        ])
+    }
+}
+
+impl TypedOp for RouteSelect {
+    fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!(inputs.len() == 1 || inputs.len() == 2);
+        ensure!(inputs[0].rank() == 2, "RouteSelect scores must be [T, E]");
+        ensure!(inputs.get(1).is_none_or(|b| b.rank() == 1), "RouteSelect bias must be [E]");
+        let route_count = inputs[0].shape[0].clone() * self.k;
         Ok(tvec![
             i64::datum_type().fact(std::slice::from_ref(&route_count)),
             i64::datum_type().fact(std::slice::from_ref(&route_count)),
