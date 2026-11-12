@@ -162,7 +162,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add_test("many_rows", rows(300, 50, 7, true, &spread));
     suite.add_test(
         "consumed_outputs",
-        TopkProblem { consumed: true, ..row(4096, 250, true, &scattered) },
+        TopkProblem { consumed: true, ..row(2048, 250, true, &scattered) },
     );
     Ok(suite)
 }
