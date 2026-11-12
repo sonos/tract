@@ -7,6 +7,7 @@ use crate::tflite::{
     SquareOptionsArgs,
 };
 use tract_core::internal::*;
+use tract_core::ops::cast::Cast;
 use tract_core::ops::element_wise::ElementWiseOp;
 use tract_core::ops::logic::{not, Not};
 use tract_core::ops::math::*;
@@ -16,6 +17,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tflite(ser);
 
     reg.reg_to_tract(BuiltinOperator::ABS, |op| deser(op, abs()));
+    reg.reg_to_tract(BuiltinOperator::CAST, de_cast);
     reg.reg_to_tract(BuiltinOperator::CEIL, |op| deser(op, ceil()));
     reg.reg_to_tract(BuiltinOperator::COS, |op| deser(op, cos()));
     reg.reg_to_tract(BuiltinOperator::EXP, |op| deser(op, exp()));
@@ -34,6 +36,11 @@ pub fn register_all(reg: &mut Registry) {
 
 fn deser(op: &mut DeserOp, ew: ElementWiseOp) -> TractResult<TVec<OutletId>> {
     op.ctx.target.wire_node(op.prefix, ew, op.inputs)
+}
+
+fn de_cast(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let to = op.output_facts[0].datum_type;
+    op.ctx.target.wire_node(op.prefix, Cast { to }, op.inputs)
 }
 
 fn de_leaky_relu(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
