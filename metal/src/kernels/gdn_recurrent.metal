@@ -164,6 +164,8 @@ kernel void causal_conv1d_update_f16(
     constant int &kernel_width [[buffer(6)]],
     constant int &s_len [[buffer(7)]],
     constant int &batch [[buffer(8)]],
+    device const half *bias [[buffer(9)]],
+    constant int &has_bias [[buffer(10)]],
     uint gid [[thread_position_in_grid]]) {
   const int channel = gid % channels;
   const int b = gid / channels;
@@ -185,7 +187,7 @@ kernel void causal_conv1d_update_f16(
       window[tap] = window[tap + 1];
     }
     window[kernel_width - 1] = float(input[input_base + t]);
-    float sum = 0.0f;
+    float sum = has_bias ? float(bias[channel]) : 0.0f;
     for (int tap = 0; tap < kernel_width; ++tap) {
       sum += window[tap] * float(weight[weight_base + tap]);
     }
