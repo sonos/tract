@@ -8,9 +8,11 @@ Writes, under <assets>/model:
   [1, 32, P + S, 128], which tract folds into a stateful KV cache (it needs S symbolic).
   Feed it one frame per step (S = 1): a single query may attend to the whole past, so the
   graph has no mask, which holds up to Helium's 3000-frame context.
-- depformer-step{0..7}.nnef.tgz: the depth transformer, f16, one graph per step, each with
-  that step's weights. Inputs: token [1, 1], hidden [1, 1, 4096], past K/V of the earlier
-  steps. Outputs: logits [1, 2048] and the K/V extended by one position.
+- depformer.nnef.tgz: a whole frame of the depth transformer, f16, sampling included. Inputs:
+  text_logits [1, 1, 32000] and hidden [1, 1, 4096] from Helium, noise [9, 250] of standard
+  Gumbel noise. Output: tokens [1, 9], the text token then the 8 audio codes, each drawn like
+  Kyutai's sample_token (top-k, then softmax at the temperature) with its row of noise; zero
+  noise makes it greedy.
 - vocab.json: the text tokenizer's pieces.
 
 With --check, also runs Kyutai's own LMGen greedily over the first frames of the sample and
@@ -163,6 +165,34 @@ class DepformerStep(torch.nn.Module):
         return (F.linear(x, self.head)[:, 0], *kv)
 
 
+def sample(logits, noise, temp, top_k):
+    """Kyutai's sample_token for one row of logits: the softmax at `temp` over the `top_k`
+    largest, drawn as the argmax of the scaled logits plus `noise`, standard Gumbel noise
+    for the first `top_k` entries. Zero noise takes the largest logit, ties to the lowest
+    index."""
+    values, indices = torch.topk(logits.float(), top_k, dim=-1)
+    pick = (values / temp + noise[:, :top_k]).argmax(-1)
+    return indices[0].index_select(0, pick).view(1, 1)
+
+
+class Depformer(torch.nn.Module):
+    """A whole frame after Helium: the text token sampled from Helium's logits, then the 8
+    depformer steps, each sampling its code and feeding it to the next."""
+
+    def __init__(self, weights):
+        super().__init__()
+        self.steps = torch.nn.ModuleList([DepformerStep(weights, k) for k in range(DEP_STEPS)])
+
+    def forward(self, text_logits, hidden, noise):
+        token = sample(text_logits[:, 0], noise[0:1], 0.7, 25)
+        tokens, past = [token], ()
+        for k, step in enumerate(self.steps):
+            logits, *past = step(token, hidden, *past)
+            token = sample(logits, noise[k + 1 : k + 2], 0.8, 250)
+            tokens.append(token)
+        return torch.cat(tokens, dim=1)
+
+
 def target():
     it = mimi_export.target()
     it.check_io = False
@@ -220,18 +250,15 @@ def export_helium(weights_path, model_dir):
 
 def export_depformer(weights_path, model_dir):
     weights = load(weights_path, lambda k: k.startswith(("depformer", "linears")))
-    for k in range(DEP_STEPS):
-        past = tuple(torch.randn(1, DEP_HEADS, k, DEP_HEAD_DIM, dtype=DT) for _ in range(2 * DEP_LAYERS))
-        kv_in = [f"past_{kv}{i}" for i in range(DEP_LAYERS) for kv in "kv"] if k else []
-        with torch.no_grad():
-            export_model_to_nnef(
-                model=DepformerStep(weights, k).eval(),
-                args=(torch.tensor([[3]]), torch.randn(1, 1, DIM, dtype=DT), *(past if k else ())),
-                file_path_export=model_dir / f"depformer-step{k}.nnef.tgz",
-                input_names=["token", "hidden", *kv_in],
-                output_names=["logits", *[f"{kv}{i}" for i in range(DEP_LAYERS) for kv in "kv"]],
-                inference_target=target(),
-            )
+    with torch.no_grad():
+        export_model_to_nnef(
+            model=Depformer(weights).eval(),
+            args=(torch.randn(1, 1, 32000, dtype=DT), torch.randn(1, 1, DIM, dtype=DT), torch.zeros(DEP_STEPS + 1, 250)),
+            file_path_export=model_dir / "depformer.nnef.tgz",
+            input_names=["text_logits", "hidden", "noise"],
+            output_names=["tokens"],
+            inference_target=target(),
+        )
 
 
 def greedy_reference(weights_path, codes, path):

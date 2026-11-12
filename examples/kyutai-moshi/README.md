@@ -91,8 +91,11 @@ torch, hence `--no-deps`.
   cache. Moshi's rotary embedding rotates interleaved pairs; the export permutes the query
   and key rows of each head to the half-split layout, which leaves attention unchanged and
   gives the form tract fuses.
-- **The depformer** is one graph per step: each step has its own weights, and its past is
-  always the earlier steps of the frame, so every shape is fixed.
+- **The depformer** is one graph for a whole frame: its 8 steps, each with its own weights,
+  chained with their sampling in between. Every token is drawn like Kyutai's `sample_token`
+  (top-k, then softmax at the temperature) as the argmax of its top-k logits plus Gumbel
+  noise the host passes in; zero noise is greedy. The text token is sampled there too, from
+  Helium's logits, so a frame reads back nothing but its 9 tokens.
 - **Mimi** is pulsed to one frame, as in the kyutai-mimi example.
 
 The checkpoint is Kyutai's; see its model card for its licence.
