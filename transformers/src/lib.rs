@@ -37,6 +37,7 @@ pub fn register(registry: &mut Registry) {
     ops::moe_ffn::register(registry);
     ops::quant_dyn_kv_cache::register(registry);
     ops::gdn_recurrent::register(registry);
+    ops::mamba2_recurrent::register(registry);
 }
 
 pub trait WithTractTransformers {
