@@ -8,6 +8,7 @@ pub mod flash_sdpa;
 pub mod gdn_recurrent;
 pub mod inplace_kv_cache;
 pub mod kv_quant;
+pub mod mamba2_recurrent;
 pub mod moe_ffn;
 pub mod quant_dyn_kv_cache;
 mod routed_matmul;

@@ -1,0 +1,16 @@
+version 1.0;
+
+extension tract_registry tract_transformers;
+extension tract_registry tract_core;
+
+graph mamba2_recurrent(x, b, c, log_decay, initial_state)
+    -> (output, final_state)
+{
+    x = tract_core_external(shape = [1, 3, 4, 8], datum_type = 'f32');
+    b = tract_core_external(shape = [1, 3, 2, 16], datum_type = 'f32');
+    c = tract_core_external(shape = [1, 3, 2, 16], datum_type = 'f32');
+    log_decay = tract_core_external(shape = [1, 3, 4], datum_type = 'f32');
+    initial_state = tract_core_external(shape = [1, 4, 8, 16], datum_type = 'f32');
+    (output, final_state) = tract_transformers_mamba2_recurrent(
+        x, b, c, log_decay, initial_state);
+}
