@@ -15,6 +15,7 @@ mod iff;
 pub(crate) mod launch_args;
 pub mod matmul;
 pub mod nn;
+pub mod routing;
 pub(crate) mod utils;
 
 use std::env;
@@ -79,6 +80,7 @@ const GGML_MM_MV_Q: &str = include_str!("cu/mm_mv_q.cu");
 const GGML_QUANTIZE: &str = include_str!("cu/quantize.cu");
 const FLASH_ATTN: &str = include_str!("cu/flash_attn.cu");
 const GDN_RECURRENT: &str = include_str!("cu/gdn_recurrent.cu");
+const ROUTING: &str = include_str!("cu/routing.cu");
 const FFT_OPS: &str = include_str!("cu/fft.cu");
 pub const COMMON_H: &str = include_str!("cu/common.cuh");
 
@@ -102,6 +104,7 @@ pub enum LibraryName {
     NN,
     Cnn,
     GdnRecurrent,
+    Routing,
     Ggml,
     GgmlQ,
     GgmlQTernary,
@@ -123,9 +126,9 @@ fn fnv1a64(parts: &[&str]) -> u64 {
 }
 
 impl LibraryName {
-    // Libraries compiled when a CUDA context is created. Gated DeltaNet and the
-    // ternary GGML kernels are intentionally omitted: they are model-specific and
-    // compiled on first use.
+    // Libraries compiled when a CUDA context is created. Gated DeltaNet, the
+    // ternary GGML kernels and MoE routing are intentionally omitted: they are
+    // model-specific and compiled on first use.
     pub const EAGER: [LibraryName; 10] = [
         Self::FlashAttn,
         Self::ElementWise,
@@ -147,6 +150,7 @@ impl LibraryName {
             Self::NN => NN_OPS,
             Self::Cnn => cnn_ops(),
             Self::GdnRecurrent => GDN_RECURRENT,
+            Self::Routing => ROUTING,
             Self::Ggml => GGML_MM_MV,
             Self::GgmlQ => GGML_MM_MV_Q,
             Self::GgmlQTernary => ggml_q_ternary_ops(),
@@ -166,6 +170,7 @@ impl LibraryName {
             Self::NN => "nn",
             Self::Cnn => "cnn",
             Self::GdnRecurrent => "gdn_recurrent",
+            Self::Routing => "routing",
             Self::Ggml => "mm_mv",
             Self::GgmlQ => "mm_mv_q",
             Self::GgmlQTernary => "mm_mv_q20t",
