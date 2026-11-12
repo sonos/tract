@@ -113,6 +113,7 @@ crate::register_cuda_op!(
     |source, node, _op| {
         // The cuda kernel is f16-only; the op's layout is [b, C, S] and the
         // kernel loops over S and batch (port of the Metal kernel).
+        rule_if!(node.inputs.len() == 3);
         let facts = source.node_input_facts(node.id)?;
         let rank_ok = facts[0].rank() == 3;
         let dts_ok = facts.iter().all(|f| f.datum_type == DatumType::F16);

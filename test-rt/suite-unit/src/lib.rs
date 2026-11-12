@@ -11,6 +11,7 @@ use tract_ndarray::*;
 pub mod apply_rope;
 pub mod bin_einsum;
 pub mod binary;
+pub mod causal_conv1d_update;
 pub mod clamped_swiglu;
 pub mod conv_f16;
 pub mod conv_f32;
@@ -55,6 +56,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("routed_combine", routed_combine::suite()?);
     suite.add("route_topk", route_topk::suite()?);
     suite.add("bin_einsum", bin_einsum::suite()?);
+    suite.add("causal_conv1d_update", causal_conv1d_update::suite()?);
     suite.add("clamped_swiglu", clamped_swiglu::suite()?);
     suite.add("conv_f16", conv_f16::suite()?);
     suite.add("conv_f32", conv_f32::suite()?);

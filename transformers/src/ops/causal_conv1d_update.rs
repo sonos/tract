@@ -7,10 +7,11 @@ pub fn register(registry: &mut Registry) {
         builder: &mut ModelBuilder,
         invocation: &ResolvedInvocation,
     ) -> TractResult<Value> {
-        let inputs = ["input", "weight", "initial_state"]
+        let mut inputs = ["input", "weight", "initial_state"]
             .map(|name| invocation.named_arg_as(builder, name))
             .into_iter()
             .collect::<TractResult<TVec<_>>>()?;
+        inputs.extend(invocation.optional_named_arg_as::<OutletId>(builder, "bias")?);
         builder.wire(CausalConv1dUpdate, &inputs)
     }
     fn serialize(
@@ -31,6 +32,7 @@ pub fn register(registry: &mut Registry) {
                 TypeName::Scalar.tensor().named("input"),
                 TypeName::Scalar.tensor().named("weight"),
                 TypeName::Scalar.tensor().named("initial_state"),
+                TypeName::Scalar.tensor().named("bias").default(false),
             ],
             &[("output", TypeName::Scalar.tensor()), ("final_state", TypeName::Scalar.tensor())],
             deserialize,
@@ -38,14 +40,16 @@ pub fn register(registry: &mut Registry) {
     }
 }
 
-/// Stateful causal depthwise conv1d + SiLU (Qwen3.5 linear attention front).
+/// Stateful causal depthwise conv1d + SiLU (the front of Qwen3.5's linear
+/// attention and of Mamba-2's mixer).
 ///
 /// Semantics match HF transformers `torch_causal_conv1d_update`:
-/// `full = concat(state, input)` along time; `output[t] = silu(sum_tap
-/// weight[c, tap] * full[c, t + 1 + tap])` for the last S positions;
+/// `full = concat(state, input)` along time; `output[t] = silu(bias[c] +
+/// sum_tap weight[c, tap] * full[c, t + 1 + tap])` for the last S positions;
 /// `final_state = full[..., -k:]`.
 ///
-/// Layout: input `[b, C, S]`, weight `[C, k]`, state `[b, C, k]`.
+/// Layout: input `[b, C, S]`, weight `[C, k]`, state `[b, C, k]`, and an
+/// optional fourth input, bias `[C]` (zero when absent).
 /// Outputs: `[b, C, S]` in the input datum type, final state in the state
 /// datum type. Compute is f32.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -62,7 +66,10 @@ impl EvalOp for CausalConv1dUpdate {
     op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
-        ensure!(inputs.len() == 3, "causal conv update expects input, weight, state");
+        ensure!(
+            matches!(inputs.len(), 3 | 4),
+            "causal conv update expects input, weight, state and an optional bias"
+        );
         let input_shape: TVec<usize> = inputs[0].shape().into();
         let weight_shape: TVec<usize> = inputs[1].shape().into();
         let state_shape: TVec<usize> = inputs[2].shape().into();
@@ -84,6 +91,10 @@ impl EvalOp for CausalConv1dUpdate {
         let input = to_f32_vec(&inputs[0])?;
         let weight = to_f32_vec(&inputs[1])?;
         let state = to_f32_vec(&inputs[2])?;
+        let bias = inputs.get(3).map(to_f32_vec).transpose()?;
+        if let Some(bias) = &bias {
+            ensure!(bias.len() == channels, "bias must have C elements, got {}", bias.len());
+        }
 
         let mut output = vec![0f32; input.len()];
         let mut final_state = vec![0f32; state.len()];
@@ -96,7 +107,7 @@ impl EvalOp for CausalConv1dUpdate {
                 full[..kernel_width].copy_from_slice(&state[sb..sb + kernel_width]);
                 full[kernel_width..].copy_from_slice(&input[ib..ib + s_len]);
                 for t in 0..s_len {
-                    let mut sum = 0f32;
+                    let mut sum = bias.as_ref().map_or(0.0, |b| b[c]);
                     for tap in 0..kernel_width {
                         sum += weight[wb + tap] * full[t + 1 + tap];
                     }
@@ -115,7 +126,7 @@ impl EvalOp for CausalConv1dUpdate {
 
 impl TypedOp for CausalConv1dUpdate {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
-        ensure!(inputs.len() == 3);
+        ensure!(matches!(inputs.len(), 3 | 4));
         let dts: Vec<DatumType> = inputs.iter().map(|i| i.datum_type).collect();
         // The GPU kernels are f16-only (falling back to this CPU op for any
         // other mix, e.g. an all-f32 test export), and this CPU op upcasts
