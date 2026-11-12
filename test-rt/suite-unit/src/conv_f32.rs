@@ -630,6 +630,125 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    for (name, n, c, h, w, ker, pad, strides, dilations, edge) in [
+        (
+            "depthwise_nchw_3x3_odd_rows",
+            1,
+            16,
+            9,
+            16,
+            [3, 3],
+            PaddingSpec::SameUpper,
+            [1, 1],
+            [1, 1],
+            None,
+        ),
+        (
+            "depthwise_nchw_3x3_s2",
+            1,
+            64,
+            18,
+            32,
+            [3, 3],
+            PaddingSpec::SameUpper,
+            [2, 2],
+            [1, 1],
+            None,
+        ),
+        (
+            "depthwise_nchw_5x5_dil2",
+            1,
+            24,
+            23,
+            40,
+            [5, 5],
+            PaddingSpec::Explicit(tvec!(4, 4), tvec!(4, 4)),
+            [1, 1],
+            [2, 2],
+            None,
+        ),
+        (
+            "depthwise_nchw_5x5_s2",
+            1,
+            8,
+            12,
+            24,
+            [5, 5],
+            PaddingSpec::SameUpper,
+            [2, 2],
+            [1, 1],
+            None,
+        ),
+        ("depthwise_nchw_9x9", 1, 24, 20, 60, [9, 9], PaddingSpec::SameUpper, [1, 1], [1, 1], None),
+        (
+            "depthwise_nchw_width_tail",
+            1,
+            8,
+            7,
+            14,
+            [3, 3],
+            PaddingSpec::SameUpper,
+            [1, 1],
+            [1, 1],
+            None,
+        ),
+        (
+            "depthwise_nchw_valid_batch2",
+            2,
+            8,
+            10,
+            12,
+            [3, 3],
+            PaddingSpec::Valid,
+            [1, 1],
+            [1, 1],
+            None,
+        ),
+        (
+            "depthwise_nchw_inf_top_row",
+            1,
+            8,
+            9,
+            16,
+            [3, 3],
+            PaddingSpec::SameUpper,
+            [1, 1],
+            [1, 1],
+            Some(0),
+        ),
+        (
+            "depthwise_nchw_inf_right_col",
+            1,
+            8,
+            9,
+            16,
+            [3, 3],
+            PaddingSpec::SameUpper,
+            [1, 1],
+            [1, 1],
+            Some(4),
+        ),
+    ] {
+        let mut data = ramp(&[n, c, h, w]);
+        if let Some(row) = edge {
+            data[[0, c / 2, row, w - 1]] = f32::INFINITY;
+        }
+        suite.add(
+            name,
+            ConvProblem {
+                shape_in: DataFormat::NCHW.from_n_c_hw(n, c, [h, w])?,
+                kernel_format: KernelFormat::OIHW,
+                group: c,
+                data,
+                kernel: ramp(&[c, 1, ker[0], ker[1]]),
+                bias: Some(ramp(&[c])),
+                pad,
+                strides: strides.into_iter().collect(),
+                dilations: dilations.into_iter().collect(),
+            },
+        );
+    }
+
     // Grouped conv (group>1, ci_per_group>1) with a unit spatial axis: the
     // im2col matmul is batched over the group, and reshape_group carries a unit
     // axis entangled with that batch. Absorbing the reshape into the matmul
