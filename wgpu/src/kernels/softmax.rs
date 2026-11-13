@@ -75,6 +75,7 @@ register_wgpu_op!(tract_core::ops::nn::Softmax, |source, node, op| {
         DatumType::F32 | DatumType::F16
     ));
     rule_if!(op.quant_output_dt.is_none());
+    rule_if!(op.axes.len() == 1);
     Ok(Some(Box::new(tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
         op,
         "Wgpu",

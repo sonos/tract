@@ -95,6 +95,7 @@ pub fn cuda_softmax_dispatch(
 
 crate::register_cuda_op!(tract_core::ops::nn::Softmax, |source, node, op| {
     rule_if!(Softmax::is_supported_dt(source.node_input_facts(node.id)?[0].datum_type));
+    rule_if!(op.axes.len() == 1);
     Ok(Some(Box::new(tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
         op,
         "Cuda",
