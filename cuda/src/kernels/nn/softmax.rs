@@ -30,6 +30,16 @@ impl Softmax {
         Ok(format!("{op}_{size}{tname}"))
     }
 
+    pub fn split_kernel_names(dt: DatumType) -> TractResult<[String; 3]> {
+        ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda softmaxop", dt);
+        let tname = DeviceTensor::tname(dt)?;
+        Ok([
+            format!("softmax_split_partial_{tname}"),
+            format!("softmax_split_finalize_{tname}"),
+            format!("log_softmax_split_finalize_{tname}"),
+        ])
+    }
+
     pub fn eval(
         &self,
         stream: &TractCudaStream,
@@ -57,6 +67,13 @@ impl Softmax {
         let shape_nd3 = utils::reshape_to_rank_3(input.shape(), axis);
         let strides_nd3 = Tensor::natural_strides(&shape_nd3);
 
+        let rows = shape_nd3[0] * shape_nd3[2];
+        if shape_nd3[2] == 1
+            && let Some(chunk) = split_chunk(rows, shape_nd3[1])
+        {
+            return self.dispatch_split(stream, input, kind, output, rows, shape_nd3[1], chunk);
+        }
+
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
@@ -82,7 +99,64 @@ impl Softmax {
 
         launch_args.launch(cfg)
     }
+
+    #[allow(clippy::too_many_arguments)]
+    fn dispatch_split(
+        &self,
+        stream: &TractCudaStream,
+        input: &DeviceTensor,
+        kind: SoftmaxKind,
+        output: &DeviceTensor,
+        rows: usize,
+        k: usize,
+        chunk: usize,
+    ) -> TractResult<()> {
+        let [partial_name, softmax_name, log_softmax_name] =
+            Self::split_kernel_names(input.datum_type())?;
+        let splits = k.div_ceil(chunk);
+        let part = DeviceTensor::uninitialized_dt(DatumType::F32, &[rows, splits, 2])?;
+        let i_view = get_cuda_view(input);
+        let o_view = get_cuda_view(output);
+        let p_view = get_cuda_view(&part);
+        let cfg = LaunchConfig {
+            grid_dim: (splits as _, rows as _, 1),
+            block_dim: (MAX_THREADS as _, 1, 1),
+            shared_mem_bytes: 0,
+        };
+
+        let partial = cuda_context().load_pipeline(LibraryName::NN, partial_name)?;
+        let mut args = TractLaunchArgs::new(stream, &partial);
+        args.push_view(&i_view);
+        args.push_view(&p_view);
+        args.push_i32(k);
+        args.push_i32(chunk);
+        args.launch(cfg)?;
+
+        let finalize_name = match kind {
+            SoftmaxKind::Softmax => softmax_name,
+            SoftmaxKind::LogSoftmax => log_softmax_name,
+        };
+        let finalize = cuda_context().load_pipeline(LibraryName::NN, finalize_name)?;
+        let mut args = TractLaunchArgs::new(stream, &finalize);
+        args.push_view(&i_view);
+        args.push_view(&o_view);
+        args.push_view(&p_view);
+        args.push_i32(k);
+        args.push_i32(chunk);
+        args.launch(cfg)
+    }
 }
+
+/// The chunk length when a last-axis softmax splits each row over several blocks: with too few
+/// rows to give every SM one, a row spreads over enough blocks to make about one per SM, each of
+/// at least `SPLIT_MIN_CHUNK` elements. `None` keeps a block per row.
+fn split_chunk(rows: usize, k: usize) -> Option<usize> {
+    let sms = cuda_context().properties().multiProcessorCount as usize;
+    let splits = (sms / rows).min(k / SPLIT_MIN_CHUNK);
+    (splits >= 2).then(|| k.div_ceil(splits))
+}
+
+const SPLIT_MIN_CHUNK: usize = 2048;
 
 pub fn cuda_softmax_dispatch(
     input: &DeviceTensor,
@@ -229,13 +303,14 @@ mod tests {
     fn test_softmax_masked_f32() -> TractResult<()> {
         crate::with_cuda_stream(|stream| {
             for kind in [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax] {
-                for k in [7, 300, 5000] {
+                for k in [7, 300, 5000, 20001, 70000] {
                     let mut input =
                         (0..3 * k).map(|f| ((f * 37) % 101) as f32 / 10.0).collect::<Vec<_>>();
                     for r in 0..3 {
                         input[r * k + (r * 5) % k] = f32::NEG_INFINITY;
                         input[r * k] = f32::NEG_INFINITY;
                     }
+                    input[..k / 2].iter_mut().for_each(|x| *x = f32::NEG_INFINITY);
                     let a = Tensor::from_shape(&[3, k], &input)?.into_device()?;
                     let cpu = TractSoftmax { axes: tvec![1], quant_output_dt: None, kind }
                         .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
