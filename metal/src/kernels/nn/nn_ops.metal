@@ -978,54 +978,76 @@ typedef decltype(leaky_relu<float>) leaky_relu_t;
 template [[host_name("nn_ops::leaky_relu_f32")]] [[kernel]] leaky_relu_t leaky_relu<float>;
 template [[host_name("nn_ops::leaky_relu_f16")]] [[kernel]] leaky_relu_t leaky_relu<half>;
 
+// Bit test, so fast math cannot fold it away.
+METAL_FUNC bool is_neg_inf(float v) { return as_type<uint>(v) == 0xff800000u; }
+
+// A running exp-sum, taken from its max `from` to `to`. A sum that has only
+// seen -inf so far holds nothing: exp(-inf - -inf) would be NaN.
+METAL_FUNC float rescaled_sum(float psum, float from, float to) {
+    return is_neg_inf(from) ? 0.0f : psum * fast::exp(from - to);
+}
+
+METAL_FUNC void softmax_accumulate(thread float &pmax, thread float &psum, float x) {
+    if (x > pmax) { psum = rescaled_sum(psum, pmax, x); pmax = x; }
+    if (!is_neg_inf(pmax)) psum += fast::exp(x - pmax);
+}
+
+// Merges every thread's running max and exp-sum into the row's, in every
+// thread. `nsg` is uniform over the threadgroup.
+METAL_FUNC void softmax_reduce(thread float &pmax, thread float &psum,
+                               threadgroup float *tg_max, threadgroup float *tg_sum,
+                               uint sgitg, uint tiisg, uint nsg) {
+    float m = simd_max(pmax);
+    float s = simd_sum(rescaled_sum(psum, pmax, m));
+    if (nsg > 1) {
+        if (tiisg == 0) { tg_max[sgitg] = m; tg_sum[sgitg] = s; }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        float pm = tiisg < nsg ? tg_max[tiisg] : -INFINITY;
+        float ps = tiisg < nsg ? tg_sum[tiisg] : 0.0f;
+        m = simd_max(pm);
+        s = simd_sum(rescaled_sum(ps, pm, m));
+    }
+    pmax = m;
+    psum = s;
+}
+
 template <typename F, bool LOG>
 [[kernel]] void softmax_nd3(device const void *input_b, device void *output_b,
                             constant const size_t shape[3],
                             constant const size_t strides[3],
                             uint3 tgpig [[threadgroup_position_in_grid]],
-                            uint tiisg [[thread_index_in_simdgroup]],
-                            uint tpsg [[threads_per_simdgroup]]) {
-
+                            uint3 tid3  [[thread_position_in_threadgroup]],
+                            uint3 tptg3 [[threads_per_threadgroup]],
+                            uint sgitg  [[simdgroup_index_in_threadgroup]],
+                            uint tiisg  [[thread_index_in_simdgroup]],
+                            uint nsg    [[simdgroups_per_threadgroup]]) {
+    const uint tid = tid3.x;
+    const uint tptg = tptg3.x;
+    threadgroup float tg_max[32];
+    threadgroup float tg_sum[32];
     device const F *input = (device const F *)input_b;
     device F *output = (device F *)output_b;
-
     size_t dim = shape[1];
+    size_t base = tgpig.x * strides[2] + tgpig.z * strides[0];
 
-    size_t base_idx = tgpig.x * strides[2] + tgpig.z * strides[0];
-
-    // Get max value on softmax dim
-    float partial_max = -INFINITY;
-    for (size_t i = tiisg; i < dim; i += tpsg) {
-        auto idx = base_idx + i * strides[1];
-        float el = static_cast<float>(input[idx]);
-        partial_max = max(partial_max, el);
+    float pmax = -INFINITY;
+    float psum = 0.0f;
+    for (size_t i = tid; i < dim; i += tptg) {
+        softmax_accumulate(pmax, psum, static_cast<float>(input[base + i * strides[1]]));
     }
+    softmax_reduce(pmax, psum, tg_max, tg_sum, sgitg, tiisg, nsg);
 
-    float axis_max = simd_max(partial_max);
-
-    // Compute Sum(exp(x - max))
-    float partial_norm = 0;
-    for (size_t i = tiisg; i < dim; i += tpsg) {
-        auto idx = base_idx + i * strides[1];
-        float el = static_cast<float>(input[idx]);
-        float exp_el = fast::exp(el - axis_max);
-        partial_norm += exp_el;
-        if (!LOG) output[idx] = static_cast<F>(exp_el);
-    }
-
-    float axis_norm = simd_sum(partial_norm);
     if (LOG) {
-        float shift = axis_max + precise::log(axis_norm);
-        for (size_t i = tiisg; i < dim; i += tpsg) {
-            auto idx = base_idx + i * strides[1];
+        float shift = pmax + precise::log(psum);
+        for (size_t i = tid; i < dim; i += tptg) {
+            auto idx = base + i * strides[1];
             output[idx] = static_cast<F>(static_cast<float>(input[idx]) - shift);
         }
     } else {
-        float inv_axis_norm = 1.0 / axis_norm;
-        for (size_t i = tiisg; i < dim; i += tpsg) {
-            auto idx = base_idx + i * strides[1];
-            float exp_el = static_cast<float>(output[idx]);
-            output[idx] = static_cast<F>(exp_el * inv_axis_norm);
+        float inv = 1.0f / psum;
+        for (size_t i = tid; i < dim; i += tptg) {
+            auto idx = base + i * strides[1];
+            output[idx] = static_cast<F>(fast::exp(static_cast<float>(input[idx]) - pmax) * inv);
         }
     }
 }
@@ -1041,15 +1063,6 @@ template [[host_name(
 template [[host_name(
     "nn_ops::log_softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half, true>;
 
-// Bit test, so fast math cannot fold it away.
-METAL_FUNC bool is_neg_inf(float v) { return as_type<uint>(v) == 0xff800000u; }
-
-// A lane's running exp-sum, taken from its max `from` to `to`. A lane that has
-// only seen -inf so far holds nothing: exp(-inf - -inf) would be NaN.
-METAL_FUNC float rescaled_sum(float psum, float from, float to) {
-    return is_neg_inf(from) ? 0.0f : psum * fast::exp(from - to);
-}
-
 // Fast path for softmax_nd3 restricted to a contiguous softmax axis
 // (strides[1]==1) whose length is a multiple of 4; the caller guarantees both
 // so the F4 loads stay in bounds and 16-byte aligned. F4 is F's 4-wide vector.
@@ -1058,8 +1071,15 @@ template <typename F, typename F4, bool LOG>
                                    constant const size_t shape[3],
                                    constant const size_t strides[3],
                                    uint3 tgpig [[threadgroup_position_in_grid]],
+                                   uint3 tid3  [[thread_position_in_threadgroup]],
+                                   uint3 tptg3 [[threads_per_threadgroup]],
+                                   uint sgitg  [[simdgroup_index_in_threadgroup]],
                                    uint tiisg  [[thread_index_in_simdgroup]],
-                                   uint tpsg   [[threads_per_simdgroup]]) {
+                                   uint nsg    [[simdgroups_per_threadgroup]]) {
+    const uint tid = tid3.x;
+    const uint tptg = tptg3.x;
+    threadgroup float tg_max[32];
+    threadgroup float tg_sum[32];
     device const F *input = (device const F *)input_b;
     device F *output = (device F *)output_b;
     size_t dim = shape[1];
@@ -1070,37 +1090,23 @@ template <typename F, typename F4, bool LOG>
 
     float pmax = -INFINITY;
     float psum = 0.0f;
-    for (uint v = tiisg; v < vec_dim; v += tpsg) {
+    for (uint v = tid; v < vec_dim; v += tptg) {
         float4 x = float4(in4[v]);
         float vmax = max(max(x[0], x[1]), max(x[2], x[3]));
         if (vmax > pmax) { psum = rescaled_sum(psum, pmax, vmax); pmax = vmax; }
         if (!is_neg_inf(pmax)) psum += dot(fast::exp(x - pmax), float4(1.0f));
     }
-    for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
-        float x = float(input[base + i]);
-        if (x > pmax) { psum = rescaled_sum(psum, pmax, x); pmax = x; }
-        if (!is_neg_inf(pmax)) psum += fast::exp(x - pmax);
-    }
-
-    float amax = simd_max(pmax);
-    float sum = simd_sum(rescaled_sum(psum, pmax, amax));
+    softmax_reduce(pmax, psum, tg_max, tg_sum, sgitg, tiisg, nsg);
 
     if (LOG) {
-        float shift = amax + precise::log(sum);
-        for (uint v = tiisg; v < vec_dim; v += tpsg) {
+        float shift = pmax + precise::log(psum);
+        for (uint v = tid; v < vec_dim; v += tptg) {
             out4[v] = F4(float4(in4[v]) - shift);
         }
-        for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
-            output[base + i] = F(float(input[base + i]) - shift);
-        }
     } else {
-        float inv = 1.0f / sum;
-        for (uint v = tiisg; v < vec_dim; v += tpsg) {
-            float4 x = float4(in4[v]);
-            out4[v] = F4(fast::exp(x - amax) * inv);
-        }
-        for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
-            output[base + i] = F(fast::exp(float(input[base + i]) - amax) * inv);
+        float inv = 1.0f / psum;
+        for (uint v = tid; v < vec_dim; v += tptg) {
+            out4[v] = F4(fast::exp(float4(in4[v]) - pmax) * inv);
         }
     }
 }
