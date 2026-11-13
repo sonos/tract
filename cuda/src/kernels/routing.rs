@@ -129,12 +129,15 @@ fn project(
         Some(_) => "q20t",
         None => DeviceTensor::tname(weights.datum_type())?,
     };
-    let tiled_routes_per_expert = if get_ggml_q_fact(weights).is_some() { 12 } else { 6 };
-    if experts <= RMM_MAX_EXPERTS
-        && k.is_multiple_of(RMM_K)
-        && routes >= tiled_routes_per_expert * experts
-    {
-        return project_tiled(stream, name, input, weights, rows, expert_ids, out);
+    let per_expert = routes / experts.max(1);
+    let block_quant = get_ggml_q_fact(weights).is_some();
+    if experts <= RMM_MAX_EXPERTS && k.is_multiple_of(RMM_K) {
+        if per_expert >= if block_quant { 14 } else { 20 } {
+            return project_sorted(stream, name, RMM_M, input, weights, rows, expert_ids, out);
+        }
+        if !block_quant && per_expert >= 3 {
+            return project_sorted(stream, name, RMV_ROUTES, input, weights, rows, expert_ids, out);
+        }
     }
     ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
     let rows_per_warp = if get_ggml_q_fact(weights).is_some() { ROUTED_ROWS } else { 1 };
@@ -169,13 +172,17 @@ fn project(
 
 const RMM_M: usize = 64;
 const RMM_N: usize = 64;
+const RMV_ROUTES: usize = 8;
 const RMM_K: usize = 32;
 const RMM_MAX_EXPERTS: usize = 256;
 
-/// The routes sorted by expert, then one tiled matmul over every expert's routes.
-fn project_tiled(
+/// The routes sorted by expert in chunks of `chunk`, then the grouped GEMV (chunks of
+/// [`RMV_ROUTES`]) or the tiled matmul over every chunk.
+#[allow(clippy::too_many_arguments)]
+fn project_sorted(
     stream: &TractCudaStream,
     name: &str,
+    chunk: usize,
     input: &DeviceTensor,
     weights: &DeviceTensor,
     rows: Option<&DeviceTensor>,
@@ -184,8 +191,12 @@ fn project_tiled(
 ) -> TractResult<()> {
     let (routes, experts) = (expert_ids.shape()[0], weights.shape()[0]);
     let (n, k) = (weights.shape()[1], input.shape()[1]);
-    let max_chunks = routes.div_ceil(RMM_M) + experts;
-    ensure!(max_chunks <= 65535, "CUDA RoutedLinear takes up to {} routes", 65535 * RMM_M);
+    ensure!(
+        chunk != RMV_ROUTES || input.buffer_offset::<usize>().is_multiple_of(16),
+        "the grouped routed GEMV reads its input as float4"
+    );
+    let max_chunks = routes.div_ceil(chunk) + experts;
+    ensure!(max_chunks <= 65535, "CUDA RoutedLinear takes up to {} routes", 65535 * chunk);
     let sorted = DeviceTensor::uninitialized_dt(i32::datum_type(), &[routes])?;
     let chunks = DeviceTensor::uninitialized_dt(i32::datum_type(), &[max_chunks * 3])?;
     let ids = get_cuda_view(expert_ids);
@@ -198,9 +209,13 @@ fn project_tiled(
     args.push_view(&sorted_view);
     args.push_view(&chunks_view);
     args.push_i32(max_chunks);
+    args.push_i32(chunk);
     args.launch(LaunchConfig { grid_dim: (1, 1, 1), block_dim: (256, 1, 1), shared_mem_bytes: 0 })?;
 
-    let func = cuda_context().load_pipeline(LibraryName::Routing, format!("routed_mm_{name}"))?;
+    let grouped = chunk == RMV_ROUTES;
+    let kernel =
+        if grouped { format!("routed_mv_grouped_{name}") } else { format!("routed_mm_{name}") };
+    let func = cuda_context().load_pipeline(LibraryName::Routing, kernel)?;
     let (w, x, o) = (get_cuda_view(weights), get_cuda_view(input), get_cuda_view(out));
     let rows = rows.map(get_cuda_view);
     let mut args = TractLaunchArgs::new(stream, &func);
@@ -215,11 +230,24 @@ fn project_tiled(
     args.push_view(&chunks_view);
     args.push_i32(k);
     args.push_i32(n);
-    args.launch(LaunchConfig {
-        grid_dim: (n.div_ceil(RMM_N) as u32, max_chunks as u32, 1),
-        block_dim: (256, 1, 1),
-        shared_mem_bytes: 0,
-    })
+    let cfg = if grouped {
+        LaunchConfig {
+            grid_dim: (
+                n.div_ceil(ROUTED_WARPS as usize * ROUTED_ROWS) as u32,
+                max_chunks as u32,
+                1,
+            ),
+            block_dim: (32, ROUTED_WARPS, 1),
+            shared_mem_bytes: 0,
+        }
+    } else {
+        LaunchConfig {
+            grid_dim: (n.div_ceil(RMM_N) as u32, max_chunks as u32, 1),
+            block_dim: (256, 1, 1),
+            shared_mem_bytes: 0,
+        }
+    };
+    args.launch(cfg)
 }
 
 #[allow(clippy::too_many_arguments)]

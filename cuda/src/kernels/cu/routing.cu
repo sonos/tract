@@ -296,11 +296,11 @@ extern "C" __global__ void routed_postamble(
 #define RMM_MAX_EXPERTS 256
 
 // Sorts routes by expert: `sorted` lists each expert's routes contiguously,
-// and `chunks` holds [expert, base, len] for every RMM_M routes of an expert,
-// then expert -1 up to `max_chunks`. One block of 256 threads.
+// and `chunks` holds [expert, base, len] for every `chunk` routes of an
+// expert, then expert -1 up to `max_chunks`. One block of 256 threads.
 extern "C" __global__ void route_plan(const long long *expert_ids, int routes,
                                       int experts, int *sorted, int *chunks,
-                                      int max_chunks) {
+                                      int max_chunks, int chunk) {
   __shared__ int count[RMM_MAX_EXPERTS];
   __shared__ int offset[RMM_MAX_EXPERTS];
   __shared__ int cursor[RMM_MAX_EXPERTS];
@@ -322,17 +322,17 @@ extern "C" __global__ void route_plan(const long long *expert_ids, int routes,
       offset[e] = o;
       chunk_offset[e] = c;
       o += count[e];
-      c += (count[e] + RMM_M - 1) / RMM_M;
+      c += (count[e] + chunk - 1) / chunk;
     }
     chunk_offset[experts] = c;
   }
   __syncthreads();
   for (int e = t; e < experts; e += blockDim.x) {
-    for (int i = 0; i * RMM_M < count[e]; i++) {
+    for (int i = 0; i * chunk < count[e]; i++) {
       const int ch = chunk_offset[e] + i;
       chunks[3 * ch] = e;
-      chunks[3 * ch + 1] = offset[e] + i * RMM_M;
-      chunks[3 * ch + 2] = min(RMM_M, count[e] - i * RMM_M);
+      chunks[3 * ch + 1] = offset[e] + i * chunk;
+      chunks[3 * ch + 2] = min(chunk, count[e] - i * chunk);
     }
   }
   for (int ch = chunk_offset[experts] + t; ch < max_chunks; ch += blockDim.x) {
@@ -503,3 +503,123 @@ INSTANTIATE_ROUTED_MM(f32, rmm_f32)
 INSTANTIATE_ROUTED_MM(f16, rmm_f16)
 INSTANTIATE_ROUTED_MM(q40, rmm_q40)
 INSTANTIATE_ROUTED_MM(q20t, rmm_q20t)
+
+#define RMV_ROUTES 8
+
+// Weights 4 * sub .. 4 * sub + 3 of block b (32 weights) of row `row`, as f32.
+struct rmv_f32 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int k, int b, int sub) {
+    return *(const float4 *)((const float *)w + row * k + 32 * b + 4 * sub);
+  }
+};
+
+struct rmv_f16 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int k, int b, int sub) {
+    const half2 *p =
+        (const half2 *)((const half *)w + row * k + 32 * b + 4 * sub);
+    const float2 lo = __half22float2(p[0]);
+    const float2 hi = __half22float2(p[1]);
+    return make_float4(lo.x, lo.y, hi.x, hi.y);
+  }
+};
+
+struct rmv_q40 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int k, int b, int sub) {
+    const block_q4_0 *blk = (const block_q4_0 *)w + row * (k / 32) + b;
+    const float d = __half2float(blk->d);
+    const int shift = sub < 4 ? 0 : 4;
+    const uint8_t *qs = blk->qs + 4 * (sub & 3);
+    return make_float4((float)(((qs[0] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[1] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[2] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[3] >> shift) & 0xF) - 8) * d);
+  }
+};
+
+struct rmv_q20t {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int k, int b, int sub) {
+    const block_q2_0_t *blk = (const block_q2_0_t *)w + row * (k / 32) + b;
+    const float d = __half2float(blk->d);
+    const int q = blk->qs[sub];
+    return make_float4((float)((q & 3) - 1) * d, (float)(((q >> 2) & 3) - 1) * d,
+                       (float)(((q >> 4) & 3) - 1) * d,
+                       (float)(((q >> 6) & 3) - 1) * d);
+  }
+};
+
+// One chunk of up to RMV_ROUTES of an expert's sorted routes (blockIdx.y):
+// each warp loads ROUTED_ROWS weight rows once and dots them with every route
+// of the chunk, eight lanes per block of 32 weights, four each.
+template <typename L>
+static __device__ void routed_mv_grouped(const void *w, const float *x,
+                                         float *dst, const long long *row_ids,
+                                         const int *sorted, const int *chunks,
+                                         int k, int n) {
+  const int expert = chunks[3 * blockIdx.y];
+  if (expert < 0) {
+    return;
+  }
+  const int base = chunks[3 * blockIdx.y + 1];
+  const int len = chunks[3 * blockIdx.y + 2];
+  const int row0 = (blockIdx.x * ROUTED_WARPS + threadIdx.y) * ROUTED_ROWS;
+  if (row0 >= n) {
+    return;
+  }
+  const int rows = min(ROUTED_ROWS, n - row0);
+  const int sub = threadIdx.x % 8;
+  const float *xr[RMV_ROUTES];
+  long long route[RMV_ROUTES];
+#pragma unroll
+  for (int c = 0; c < RMV_ROUTES; c++) {
+    route[c] = c < len ? sorted[base + c] : 0;
+    xr[c] = x + (row_ids ? row_ids[route[c]] : route[c]) * k;
+  }
+  float acc[ROUTED_ROWS][RMV_ROUTES] = {{0.0f}};
+  const long long w_row = (long long)expert * n + row0;
+  for (int b = threadIdx.x / 8; b < k / 32; b += WARP_SIZE / 8) {
+    float4 wv[ROUTED_ROWS];
+#pragma unroll
+    for (int r = 0; r < ROUTED_ROWS; r++) {
+      wv[r] = r < rows ? L::load4(w, w_row + r, k, b, sub)
+                       : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
+    }
+#pragma unroll
+    for (int c = 0; c < RMV_ROUTES; c++) {
+      if (c < len) {
+        const float4 xv = *(const float4 *)(xr[c] + 32 * b + 4 * sub);
+#pragma unroll
+        for (int r = 0; r < ROUTED_ROWS; r++) {
+          acc[r][c] += wv[r].x * xv.x + wv[r].y * xv.y + wv[r].z * xv.z +
+                       wv[r].w * xv.w;
+        }
+      }
+    }
+  }
+#pragma unroll
+  for (int r = 0; r < ROUTED_ROWS; r++) {
+#pragma unroll
+    for (int c = 0; c < RMV_ROUTES; c++) {
+      const float sum = warp_reduce_sum<WARP_SIZE>(acc[r][c]);
+      if (threadIdx.x == 0 && r < rows && c < len) {
+        dst[route[c] * n + row0 + r] = sum;
+      }
+    }
+  }
+}
+
+#define INSTANTIATE_ROUTED_MV_GROUPED(name, L)                                 \
+  extern "C" __launch_bounds__(ROUTED_WARPS *WARP_SIZE) __global__ void        \
+      routed_mv_grouped_##name(const void *w, const float *x, float *dst,      \
+                               const long long *row_ids, const int *sorted,    \
+                               const int *chunks, int k, int n) {              \
+    routed_mv_grouped<L>(w, x, dst, row_ids, sorted, chunks, k, n);            \
+  }
+
+INSTANTIATE_ROUTED_MV_GROUPED(f32, rmv_f32)
+INSTANTIATE_ROUTED_MV_GROUPED(f16, rmv_f16)
+INSTANTIATE_ROUTED_MV_GROUPED(q40, rmv_q40)
+INSTANTIATE_ROUTED_MV_GROUPED(q20t, rmv_q20t)

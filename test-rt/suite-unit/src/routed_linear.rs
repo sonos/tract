@@ -79,23 +79,35 @@ struct RoutedLinearProblem {
     pair: bool,
     bias: bool,
     activation: RoutedActivation,
-    /// Enough routes per expert for a backend's prefill path, and a partial output tile.
-    prefill: bool,
+    size: Size,
+}
+
+/// How many routes per expert a [`RoutedLinearProblem`] has, to reach each of a backend's
+/// kernels: one or two, ten, or 150 with a partial output tile.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Size {
+    Small,
+    Mid,
+    Large,
 }
 
 impl RoutedLinearProblem {
     const EXPERTS: usize = 4;
 
     fn n_k(&self) -> (usize, usize) {
-        if self.prefill { (70, 96) } else { (24, 64) }
+        if self.size == Size::Large { (70, 96) } else { (24, 64) }
     }
 
     fn tokens(&self) -> usize {
-        if self.prefill { 75 } else { 3 }
+        match self.size {
+            Size::Small => 3,
+            Size::Mid => 5,
+            Size::Large => 75,
+        }
     }
 
     fn ids(&self) -> (Vec<i64>, Vec<i64>) {
-        if !self.prefill {
+        if self.size == Size::Small {
             return (vec![0, 2, 1, 2, 0, 1, 2], vec![3, 0, 3, 1, 0, 3, 2]);
         }
         let routes = self.tokens() * 8;
@@ -392,21 +404,52 @@ pub fn suite() -> TractResult<TestSuite> {
         RoutedActivation::Relu,
         clamped,
     ];
-    let mut add_sized =
-        |format: Format, mode, pair, bias, activation: RoutedActivation, prefill| {
-            let act = format!("{activation:?}").split(' ').next().unwrap().to_lowercase();
-            let size = if prefill { "_prefill" } else { "" };
-            suite.add(
-                format!("{format:?}_{mode:?}_pair{pair}_bias{bias}_{act}{size}").to_lowercase(),
-                RoutedLinearProblem { format, mode, pair, bias, activation, prefill },
-            );
-        };
+    let mut add_sized = |format: Format, mode, pair, bias, activation: RoutedActivation, size| {
+        let act = format!("{activation:?}").split(' ').next().unwrap().to_lowercase();
+        let suffix = if size == Size::Small { String::new() } else { format!("_{size:?}") };
+        suite.add(
+            format!("{format:?}_{mode:?}_pair{pair}_bias{bias}_{act}{suffix}").to_lowercase(),
+            RoutedLinearProblem { format, mode, pair, bias, activation, size },
+        );
+    };
     for format in [Format::F32, Format::F16, Format::Q40, Format::Q20T] {
-        add_sized(format, RoutedInputMode::TokenRows, true, true, RoutedActivation::Silu, true);
-        add_sized(format, RoutedInputMode::RouteRows, false, false, RoutedActivation::None, true);
+        add_sized(
+            format,
+            RoutedInputMode::TokenRows,
+            true,
+            true,
+            RoutedActivation::Silu,
+            Size::Large,
+        );
+        add_sized(
+            format,
+            RoutedInputMode::RouteRows,
+            false,
+            false,
+            RoutedActivation::None,
+            Size::Large,
+        );
+    }
+    for format in [Format::F32, Format::F16] {
+        add_sized(
+            format,
+            RoutedInputMode::TokenRows,
+            true,
+            true,
+            RoutedActivation::Silu,
+            Size::Mid,
+        );
+        add_sized(
+            format,
+            RoutedInputMode::RouteRows,
+            false,
+            false,
+            RoutedActivation::None,
+            Size::Mid,
+        );
     }
     let mut add = |format, mode, pair, bias, activation| {
-        add_sized(format, mode, pair, bias, activation, false)
+        add_sized(format, mode, pair, bias, activation, Size::Small)
     };
     for mode in [RoutedInputMode::TokenRows, RoutedInputMode::RouteRows] {
         for pair in [false, true] {
