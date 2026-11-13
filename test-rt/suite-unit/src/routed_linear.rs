@@ -79,17 +79,33 @@ struct RoutedLinearProblem {
     pair: bool,
     bias: bool,
     activation: RoutedActivation,
+    /// Enough routes per expert for a backend's prefill path, and a partial output tile.
+    prefill: bool,
 }
 
 impl RoutedLinearProblem {
     const EXPERTS: usize = 4;
-    const N: usize = 24;
-    const K: usize = 64;
-    const TOKEN_IDS: [i64; 7] = [0, 2, 1, 2, 0, 1, 2];
-    const EXPERT_IDS: [i64; 7] = [3, 0, 3, 1, 0, 3, 2];
+
+    fn n_k(&self) -> (usize, usize) {
+        if self.prefill { (70, 96) } else { (24, 64) }
+    }
+
+    fn tokens(&self) -> usize {
+        if self.prefill { 75 } else { 3 }
+    }
+
+    fn ids(&self) -> (Vec<i64>, Vec<i64>) {
+        if !self.prefill {
+            return (vec![0, 2, 1, 2, 0, 1, 2], vec![3, 0, 3, 1, 0, 3, 2]);
+        }
+        let routes = self.tokens() * 8;
+        let tokens = (0..routes).map(|r| ((r * 37) % self.tokens()) as i64).collect();
+        let experts = (0..routes).map(|r| ((r * 7 + r / 5) % Self::EXPERTS) as i64).collect();
+        (tokens, experts)
+    }
 
     fn rows(&self) -> usize {
-        if self.mode == RoutedInputMode::TokenRows { 3 } else { Self::TOKEN_IDS.len() }
+        if self.mode == RoutedInputMode::TokenRows { self.tokens() } else { self.ids().0.len() }
     }
 }
 
@@ -113,12 +129,13 @@ impl Test for RoutedLinearProblem {
         runtime: &dyn Runtime,
         approx: Approximation,
     ) -> TestResult {
-        let (e, n, k) = (Self::EXPERTS, Self::N, Self::K);
+        let (e, (n, k)) = (Self::EXPERTS, self.n_k());
+        let (token_ids, expert_ids) = self.ids();
         let x = fill(&[self.rows(), k], 1);
         let mut model = TypedModel::default();
         let source = model.add_source("x", f32::fact([self.rows(), k]))?;
-        let tokens = model.add_const("token_ids", tensor1(&Self::TOKEN_IDS))?;
-        let experts = model.add_const("expert_ids", tensor1(&Self::EXPERT_IDS))?;
+        let tokens = model.add_const("token_ids", tensor1(&token_ids))?;
+        let experts = model.add_const("expert_ids", tensor1(&expert_ids))?;
         let mut inputs = tvec!(source, tokens, experts);
         let mut plain_weights = vec![];
         for p in 0..1 + self.pair as usize {
@@ -145,14 +162,11 @@ impl Test for RoutedLinearProblem {
         model.properties.insert("tract-rt-test.id".into(), rctensor0(id.to_string()));
 
         let xa = x.to_plain_array_view::<f32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
-        let mut expected = Array2::<f32>::zeros((Self::TOKEN_IDS.len(), n));
+        let mut expected = Array2::<f32>::zeros((token_ids.len(), n));
         for (r, mut out) in expected.axis_iter_mut(Axis(0)).enumerate() {
-            let row = if self.mode == RoutedInputMode::TokenRows {
-                Self::TOKEN_IDS[r] as usize
-            } else {
-                r
-            };
-            let expert = Self::EXPERT_IDS[r] as usize;
+            let row =
+                if self.mode == RoutedInputMode::TokenRows { token_ids[r] as usize } else { r };
+            let expert = expert_ids[r] as usize;
             let project = |p: usize| -> TractResult<Vec<f32>> {
                 let w = plain_weights[p].to_plain_array_view::<f32>()?;
                 Ok((0..n)
@@ -378,12 +392,21 @@ pub fn suite() -> TractResult<TestSuite> {
         RoutedActivation::Relu,
         clamped,
     ];
-    let mut add = |format: Format, mode, pair, bias, activation: RoutedActivation| {
-        let act = format!("{activation:?}").split(' ').next().unwrap().to_lowercase();
-        suite.add(
-            format!("{format:?}_{mode:?}_pair{pair}_bias{bias}_{act}").to_lowercase(),
-            RoutedLinearProblem { format, mode, pair, bias, activation },
-        );
+    let mut add_sized =
+        |format: Format, mode, pair, bias, activation: RoutedActivation, prefill| {
+            let act = format!("{activation:?}").split(' ').next().unwrap().to_lowercase();
+            let size = if prefill { "_prefill" } else { "" };
+            suite.add(
+                format!("{format:?}_{mode:?}_pair{pair}_bias{bias}_{act}{size}").to_lowercase(),
+                RoutedLinearProblem { format, mode, pair, bias, activation, prefill },
+            );
+        };
+    for format in [Format::F32, Format::F16, Format::Q40, Format::Q20T] {
+        add_sized(format, RoutedInputMode::TokenRows, true, true, RoutedActivation::Silu, true);
+        add_sized(format, RoutedInputMode::RouteRows, false, false, RoutedActivation::None, true);
+    }
+    let mut add = |format, mode, pair, bias, activation| {
+        add_sized(format, mode, pair, bias, activation, false)
     };
     for mode in [RoutedInputMode::TokenRows, RoutedInputMode::RouteRows] {
         for pair in [false, true] {

@@ -291,3 +291,217 @@ extern "C" __global__ void routed_postamble(
     out[ix] = routed_activate(g, activation) * u;
   }
 }
+
+#define RMM_M 64
+#define RMM_N 64
+#define RMM_K 32
+#define RMM_MAX_EXPERTS 256
+
+// Sorts routes by expert: `sorted` lists each expert's routes contiguously,
+// and `chunks` holds [expert, base, len] for every RMM_M routes of an expert,
+// then expert -1 up to `max_chunks`. One block of 256 threads.
+extern "C" __global__ void route_plan(const long long *expert_ids, int routes,
+                                      int experts, int *sorted, int *chunks,
+                                      int max_chunks) {
+  __shared__ int count[RMM_MAX_EXPERTS];
+  __shared__ int offset[RMM_MAX_EXPERTS];
+  __shared__ int cursor[RMM_MAX_EXPERTS];
+  __shared__ int chunk_offset[RMM_MAX_EXPERTS + 1];
+  const int t = threadIdx.x;
+  for (int e = t; e < experts; e += blockDim.x) {
+    count[e] = 0;
+    cursor[e] = 0;
+  }
+  __syncthreads();
+  for (int r = t; r < routes; r += blockDim.x) {
+    atomicAdd(&count[expert_ids[r]], 1);
+  }
+  __syncthreads();
+  if (t == 0) {
+    int o = 0;
+    int c = 0;
+    for (int e = 0; e < experts; e++) {
+      offset[e] = o;
+      chunk_offset[e] = c;
+      o += count[e];
+      c += (count[e] + RMM_M - 1) / RMM_M;
+    }
+    chunk_offset[experts] = c;
+  }
+  __syncthreads();
+  for (int e = t; e < experts; e += blockDim.x) {
+    for (int i = 0; i * RMM_M < count[e]; i++) {
+      const int ch = chunk_offset[e] + i;
+      chunks[3 * ch] = e;
+      chunks[3 * ch + 1] = offset[e] + i * RMM_M;
+      chunks[3 * ch + 2] = min(RMM_M, count[e] - i * RMM_M);
+    }
+  }
+  for (int ch = chunk_offset[experts] + t; ch < max_chunks; ch += blockDim.x) {
+    chunks[3 * ch] = -1;
+  }
+  for (int r = t; r < routes; r += blockDim.x) {
+    const int e = (int)expert_ids[r];
+    sorted[offset[e] + atomicAdd(&cursor[e], 1)] = r;
+  }
+}
+
+// Eight consecutive weights of row `row`, from k0 + 8 * part, as f32.
+struct rmm_f32 {
+  static __device__ __forceinline__ void load(const void *w, long long row,
+                                              int k0, int part, int k,
+                                              float *v) {
+    const float *p = (const float *)w + row * k + k0 + 8 * part;
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      v[j] = p[j];
+    }
+  }
+};
+
+struct rmm_f16 {
+  static __device__ __forceinline__ void load(const void *w, long long row,
+                                              int k0, int part, int k,
+                                              float *v) {
+    const half *p = (const half *)w + row * k + k0 + 8 * part;
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      v[j] = __half2float(p[j]);
+    }
+  }
+};
+
+struct rmm_q40 {
+  static __device__ __forceinline__ void load(const void *w, long long row,
+                                              int k0, int part, int k,
+                                              float *v) {
+    const block_q4_0 *b = (const block_q4_0 *)w + row * (k / 32) + k0 / 32;
+    const float d = __half2float(b->d);
+    const int shift = part < 2 ? 0 : 4;
+    const uint8_t *qs = b->qs + 8 * (part & 1);
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      v[j] = (float)(((qs[j] >> shift) & 0xF) - 8) * d;
+    }
+  }
+};
+
+struct rmm_q20t {
+  static __device__ __forceinline__ void load(const void *w, long long row,
+                                              int k0, int part, int k,
+                                              float *v) {
+    const block_q2_0_t *b = (const block_q2_0_t *)w + row * (k / 32) + k0 / 32;
+    const float d = __half2float(b->d);
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      const int q = b->qs[2 * part + j / 4];
+      v[j] = (float)(((q >> (2 * (j % 4))) & 3) - 1) * d;
+    }
+  }
+};
+
+// One chunk of an expert's sorted routes (blockIdx.y) by RMM_N output rows
+// (blockIdx.x): f32 tiles of the gathered input rows and of the expert's
+// weights unpacked to f32, scattered back to the routes' output rows.
+template <typename L>
+static __device__ void routed_mm(const void *w, const float *x, float *dst,
+                                 const long long *row_ids, const int *sorted,
+                                 const int *chunks, int k, int n) {
+  const int expert = chunks[3 * blockIdx.y];
+  if (expert < 0) {
+    return;
+  }
+  const int base = chunks[3 * blockIdx.y + 1];
+  const int len = chunks[3 * blockIdx.y + 2];
+  const int n0 = blockIdx.x * RMM_N;
+  __shared__ float as[RMM_K][RMM_M + 4];
+  __shared__ float bs[RMM_K][RMM_N + 4];
+  const int t = threadIdx.x;
+  const int tx = t % 16;
+  const int ty = t / 16;
+  const int load_row = t / 4;
+  const int part = t % 4;
+  const bool a_valid = load_row < len;
+  const int a_route = a_valid ? sorted[base + load_row] : 0;
+  const long long a_row = row_ids ? row_ids[a_route] : a_route;
+  const int b_n = n0 + load_row;
+  const bool b_valid = b_n < n;
+  const long long b_row = (long long)expert * n + b_n;
+  float acc[4][4] = {{0.0f}};
+  for (int k0 = 0; k0 < k; k0 += RMM_K) {
+    float v[8];
+    if (a_valid) {
+      const float *p = x + a_row * k + k0 + 8 * part;
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        v[j] = p[j];
+      }
+    } else {
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        v[j] = 0.0f;
+      }
+    }
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      as[8 * part + j][load_row] = v[j];
+    }
+    if (b_valid) {
+      L::load(w, b_row, k0, part, k, v);
+    } else {
+#pragma unroll
+      for (int j = 0; j < 8; j++) {
+        v[j] = 0.0f;
+      }
+    }
+#pragma unroll
+    for (int j = 0; j < 8; j++) {
+      bs[8 * part + j][load_row] = v[j];
+    }
+    __syncthreads();
+#pragma unroll 8
+    for (int kk = 0; kk < RMM_K; kk++) {
+      float a[4];
+      float b[4];
+#pragma unroll
+      for (int i = 0; i < 4; i++) {
+        a[i] = as[kk][ty * 4 + i];
+        b[i] = bs[kk][tx * 4 + i];
+      }
+#pragma unroll
+      for (int i = 0; i < 4; i++) {
+#pragma unroll
+        for (int j = 0; j < 4; j++) {
+          acc[i][j] += a[i] * b[j];
+        }
+      }
+    }
+    __syncthreads();
+  }
+#pragma unroll
+  for (int i = 0; i < 4; i++) {
+    const int m = ty * 4 + i;
+    if (m < len) {
+      const long long route = sorted[base + m];
+#pragma unroll
+      for (int j = 0; j < 4; j++) {
+        const int col = n0 + tx * 4 + j;
+        if (col < n) {
+          dst[route * n + col] = acc[i][j];
+        }
+      }
+    }
+  }
+}
+
+#define INSTANTIATE_ROUTED_MM(name, L)                                         \
+  extern "C" __launch_bounds__(256) __global__ void routed_mm_##name(          \
+      const void *w, const float *x, float *dst, const long long *row_ids,     \
+      const int *sorted, const int *chunks, int k, int n) {                    \
+    routed_mm<L>(w, x, dst, row_ids, sorted, chunks, k, n);                    \
+  }
+
+INSTANTIATE_ROUTED_MM(f32, rmm_f32)
+INSTANTIATE_ROUTED_MM(f16, rmm_f16)
+INSTANTIATE_ROUTED_MM(q40, rmm_q40)
+INSTANTIATE_ROUTED_MM(q20t, rmm_q20t)
