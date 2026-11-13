@@ -1,0 +1,7 @@
+version 1.0;
+
+graph softmax_two_axes(x) -> (y)
+{
+    x = external(shape = [2, 3, 4]);
+    y = softmax(x, axes = [1, 2]);
+}
