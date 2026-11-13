@@ -146,6 +146,10 @@ unstable-npyz = ["dep:tract-data", "tract-data/npz"]
 # on demand. Unstable: the shape of this API may change.
 unstable-named-weights = ["tract-nnef/unstable-safetensors"]
 
+# Loading a NNEF model from any `Read` (`Nnef::load_read`), for a tar that is neither a file
+# nor small enough to buffer. Unstable: the shape of this API may change.
+unstable-load-read = []
+
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wgpu = { workspace = true, optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
