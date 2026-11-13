@@ -3,6 +3,7 @@ use crate::kernels::utils;
 use crate::{LibraryName, MetalStream};
 use metal::MTLSize;
 use tract_core::internal::*;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -13,10 +14,20 @@ impl Softmax {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType) -> TractResult<String> {
+    pub fn kernel_name(
+        &self,
+        dt: DatumType,
+        kind: SoftmaxKind,
+        contig: bool,
+    ) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal softmaxop", dt);
         let tname = DeviceTensor::tname(dt)?;
-        Ok(format!("nn_ops::softmax_nd3_{tname}"))
+        let op = match kind {
+            SoftmaxKind::Softmax => "softmax",
+            SoftmaxKind::LogSoftmax => "log_softmax",
+        };
+        let contig = if contig { "_contig" } else { "" };
+        Ok(format!("nn_ops::{op}_nd3{contig}_{tname}"))
     }
 
     pub fn eval(
@@ -24,9 +35,10 @@ impl Softmax {
         stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
+        kind: SoftmaxKind,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, axis, &output)?;
+        self.dispatch_eval(stream, input, axis, kind, &output)?;
         stream.wait_until_completed()?;
         Ok(output)
     }
@@ -36,6 +48,7 @@ impl Softmax {
         stream: &MetalStream,
         input: &DeviceTensor,
         axis: usize,
+        kind: SoftmaxKind,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         stream.retain_tensor(input);
@@ -50,15 +63,8 @@ impl Softmax {
         // Fast path for contiguous last-axis softmax (strides[1]==1) whose dim is
         // a multiple of 4 (so every row start stays 16-byte aligned for the
         // float4/half4 loads). Falls back to the general strided kernel otherwise.
-        let dt = input.datum_type();
-        let tname = DeviceTensor::tname(dt)?;
         let use_contig = strides_nd3[1] == 1 && shape_nd3[1].is_multiple_of(4);
-        let kernel_name = if use_contig {
-            ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for metal softmaxop", dt);
-            format!("nn_ops::softmax_nd3_contig_{tname}")
-        } else {
-            self.kernel_name(dt)?
-        };
+        let kernel_name = self.kernel_name(input.datum_type(), kind, use_contig)?;
         let pipeline = stream.load_pipeline(LibraryName::NNOps, &kernel_name)?;
 
         let command_buffer = stream.command_buffer();
@@ -82,9 +88,10 @@ impl Softmax {
 pub fn metal_softmax_dispatch(
     input: &DeviceTensor,
     axis: usize,
+    kind: SoftmaxKind,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    crate::with_metal_stream(|stream| Softmax.dispatch_eval(stream, input, axis, output))
+    crate::with_metal_stream(|stream| Softmax.dispatch_eval(stream, input, axis, kind, output))
 }
 
 crate::register_metal_op!(tract_core::ops::nn::Softmax, |source, node, op| {
@@ -107,7 +114,6 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Softmax as TractSoftmax;
-    use tract_core::ops::nn::SoftmaxKind;
     use tract_gpu::tensor::IntoDevice;
 
     #[test]
@@ -130,7 +136,7 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -160,7 +166,7 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -190,7 +196,7 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let metal_output = Softmax.eval(stream, &a, axis)?;
+            let metal_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -232,6 +238,7 @@ mod tests {
     {
         pub shape: Vec<usize>,
         pub axis: usize,
+        pub kind: SoftmaxKind,
         pub input: Vec<F>,
     }
 
@@ -249,13 +256,15 @@ mod tests {
                     let axis = left;
                     let shape_len = usize::min(left + right + 1, 4);
                     let shape = 1usize..10;
-                    (vec(shape, shape_len..=shape_len), Just(axis))
+                    let kind =
+                        prop_oneof![Just(SoftmaxKind::Softmax), Just(SoftmaxKind::LogSoftmax)];
+                    (vec(shape, shape_len..=shape_len), Just(axis), kind)
                 })
-                .prop_map(|(shape, axis)| {
+                .prop_map(|(shape, axis, kind)| {
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
                         .collect::<Vec<_>>();
-                    Self { shape, axis, input }
+                    Self { shape, axis, kind, input }
                 })
                 .boxed()
         }
@@ -269,11 +278,8 @@ mod tests {
         pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_softmax = TractSoftmax {
-                axes: tvec![self.axis],
-                quant_output_dt: None,
-                kind: SoftmaxKind::Softmax,
-            };
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![self.axis], quant_output_dt: None, kind: self.kind };
             let cpu_output = cpu_softmax
                 .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue()])?[0]
                 .clone()
@@ -284,7 +290,7 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             with_borrowed_metal_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let metal_output = Softmax.eval(stream, &a, self.axis)?;
+                let metal_output = Softmax.eval(stream, &a, self.axis, self.kind)?;
                 Ok(metal_output.to_host()?.into_tensor())
             })
         }

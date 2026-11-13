@@ -52,7 +52,7 @@ fn coverage_accepts_fully_translated_model() -> TractResult<()> {
 }
 
 #[test]
-fn hybrid_logsoftmax_matches_cpu() -> TractResult<()> {
+fn hybrid_pow_const_matches_cpu() -> TractResult<()> {
     crate::context::wgpu_context();
     ensure!(
         crate::hybrid_fallback_available(),
@@ -60,50 +60,34 @@ fn hybrid_logsoftmax_matches_cpu() -> TractResult<()> {
     );
     let mut model = TypedModel::default();
     let x = model.add_source("x", f32::fact([2, 4]))?;
-    let y = model.wire_node(
-        "attn_sm",
-        tract_core::ops::nn::Softmax::new(
-            tvec![1],
-            None,
-            tract_core::ops::nn::SoftmaxKind::LogSoftmax,
-        ),
-        &[x],
-    )?[0];
+    let y = model.wire_node("x_pow", tract_core::ops::math::pow_const(0.7), &[x])?[0];
     model.select_output_outlets(&[y])?;
     let cpu_model = model.clone();
     let rt =
         tract_core::runtime::runtime_for_name("wgpu")?.context("wgpu runtime not registered")?;
     let gpu = rt.prepare(model)?;
     let cpu_plan = SimplePlan::new(cpu_model)?;
-    let input = Tensor::from_shape(&[2, 4], &[0.1f32, 0.2, 0.3, 0.4, -1.0, 0.0, 1.0, 2.0])?;
+    let input = Tensor::from_shape(&[2, 4], &[0.1f32, 0.2, 0.3, 0.4, 1.0, 0.0, 1.5, 2.0])?;
     let gpu_out = gpu.run(tvec!(input.clone().into()))?.remove(0).into_tensor();
     let cpu_out = Arc::new(cpu_plan).run(tvec!(input.into()))?.remove(0).into_tensor();
     close(&gpu_out, &cpu_out)
 }
 
 #[test]
-fn coverage_rejects_logsoftmax_by_name() -> TractResult<()> {
+fn coverage_rejects_pow_const_by_name() -> TractResult<()> {
     crate::context::wgpu_context();
     let mut model = TypedModel::default();
     let x = model.add_source("x", f32::fact([2, 4]))?;
     let two = model.add_const("two", tensor2(&[[2.0f32]]))?;
     let x2 = model.wire_node("mul", mul(), &[x, two])?[0];
-    let y = model.wire_node(
-        "attn_sm",
-        tract_core::ops::nn::Softmax::new(
-            tvec![1],
-            None,
-            tract_core::ops::nn::SoftmaxKind::LogSoftmax,
-        ),
-        &[x2],
-    )?[0];
+    let y = model.wire_node("x_pow", tract_core::ops::math::pow_const(0.7), &[x2])?[0];
     model.select_output_outlets(&[y])?;
     WgpuTransform.transform(&mut model)?;
     model = model.into_optimized()?;
-    let err = crate::ensure_wgpu_coverage(&model).expect_err("logsoftmax must be uncovered");
+    let err = crate::ensure_wgpu_coverage(&model).expect_err("pow_const must be uncovered");
     let msg = format!("{err:?}");
-    ensure!(msg.contains("LogSoftmax"), "error should name LogSoftmax, got {msg}");
-    ensure!(msg.contains("attn_sm"), "error should name the node, got {msg}");
+    ensure!(msg.contains("PowConst"), "error should name PowConst, got {msg}");
+    ensure!(msg.contains("x_pow"), "error should name the node, got {msg}");
     Ok(())
 }
 

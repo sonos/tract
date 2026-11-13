@@ -3,6 +3,7 @@ use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, MAX_THREADS, get_cuda_view, launch_args, utils};
 use cudarc::driver::{CudaStream, LaunchConfig, PushKernelArg};
 use tract_core::internal::*;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_gpu::tensor::DeviceTensor;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -13,14 +14,20 @@ impl Softmax {
         matches!(dt, DatumType::F32 | DatumType::F16)
     }
 
-    pub fn kernel_name(&self, dt: DatumType, n_cols: usize) -> TractResult<String> {
+    pub fn kernel_name(
+        &self,
+        dt: DatumType,
+        n_cols: usize,
+        kind: SoftmaxKind,
+    ) -> TractResult<String> {
         ensure!(Self::is_supported_dt(dt), "Unsupported dt {:?} for cuda softmaxop", dt);
         let tname = DeviceTensor::tname(dt)?;
-        if n_cols < MAX_THREADS {
-            Ok(format!("softmax_small_{tname}"))
-        } else {
-            Ok(format!("softmax_{tname}"))
-        }
+        let op = match kind {
+            SoftmaxKind::Softmax => "softmax",
+            SoftmaxKind::LogSoftmax => "log_softmax",
+        };
+        let size = if n_cols < MAX_THREADS { "small_" } else { "" };
+        Ok(format!("{op}_{size}{tname}"))
     }
 
     pub fn eval(
@@ -28,9 +35,10 @@ impl Softmax {
         stream: &TractCudaStream,
         input: &DeviceTensor,
         axis: usize,
+        kind: SoftmaxKind,
     ) -> TractResult<DeviceTensor> {
         let output = unsafe { DeviceTensor::uninitialized_dt(input.datum_type(), input.shape())? };
-        self.dispatch_eval(stream, input, axis, &output)?;
+        self.dispatch_eval(stream, input, axis, kind, &output)?;
         stream.synchronize()?;
         Ok(output)
     }
@@ -40,6 +48,7 @@ impl Softmax {
         stream: &TractCudaStream,
         input: &DeviceTensor,
         axis: usize,
+        kind: SoftmaxKind,
         output: &DeviceTensor,
     ) -> TractResult<()> {
         ensure!(output.shape() == input.shape());
@@ -51,8 +60,10 @@ impl Softmax {
         let i_view = get_cuda_view(input);
         let o_view = get_cuda_view(output);
 
-        let func = cuda_context()
-            .load_pipeline(LibraryName::NN, self.kernel_name(input.datum_type(), shape_nd3[1])?)?;
+        let func = cuda_context().load_pipeline(
+            LibraryName::NN,
+            self.kernel_name(input.datum_type(), shape_nd3[1], kind)?,
+        )?;
         let mut launch_args = TractLaunchArgs::new(stream, &func);
         launch_args.push_view(&i_view);
         launch_args.push_view(&o_view);
@@ -76,9 +87,10 @@ impl Softmax {
 pub fn cuda_softmax_dispatch(
     input: &DeviceTensor,
     axis: usize,
+    kind: SoftmaxKind,
     output: &DeviceTensor,
 ) -> TractResult<()> {
-    crate::with_cuda_stream(|stream| Softmax.dispatch_eval(stream, input, axis, output))
+    crate::with_cuda_stream(|stream| Softmax.dispatch_eval(stream, input, axis, kind, output))
 }
 
 crate::register_cuda_op!(tract_core::ops::nn::Softmax, |source, node, op| {
@@ -101,7 +113,6 @@ mod tests {
     use proptest::prelude::*;
     use tract_core::internal::Tensor;
     use tract_core::ops::nn::Softmax as TractSoftmax;
-    use tract_core::ops::nn::SoftmaxKind;
     use tract_gpu::tensor::IntoDevice;
 
     #[test]
@@ -124,7 +135,7 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let cuda_output = Softmax.eval(stream, &a, axis)?;
+            let cuda_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
 
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)?;
@@ -155,7 +166,7 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let cuda_output = Softmax.eval(stream, &a, axis)?;
+            let cuda_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
@@ -185,10 +196,31 @@ mod tests {
                 .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
                 .clone()
                 .into_tensor();
-            let cuda_output = Softmax.eval(stream, &a, axis)?;
+            let cuda_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)?;
             Ok(())
+        })
+    }
+
+    #[test]
+    fn test_log_softmax_large_f32() -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            let shape = [3, 2000];
+            let input = (0..6000).map(|f| ((f * 37) % 101) as f32 / 10.0).collect::<Vec<_>>();
+            let a = Tensor::from_shape(&shape, &input)?.into_device()?;
+            let cpu_softmax = TractSoftmax {
+                axes: tvec![1],
+                quant_output_dt: None,
+                kind: SoftmaxKind::LogSoftmax,
+            };
+            let cpu_output = cpu_softmax
+                .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
+                .clone()
+                .into_tensor();
+            let cuda_output = Softmax.eval(stream, &a, 1, SoftmaxKind::LogSoftmax)?;
+            cpu_output
+                .close_enough(&cuda_output.to_host()?.into_tensor(), Approximation::Approximate)
         })
     }
 
@@ -227,6 +259,7 @@ mod tests {
     {
         pub shape: Vec<usize>,
         pub axis: usize,
+        pub kind: SoftmaxKind,
         pub input: Vec<F>,
     }
 
@@ -244,13 +277,15 @@ mod tests {
                     let axis = left;
                     let shape_len = usize::min(left + right + 1, 4);
                     let shape = 1usize..10;
-                    (vec(shape, shape_len..=shape_len), Just(axis))
+                    let kind =
+                        prop_oneof![Just(SoftmaxKind::Softmax), Just(SoftmaxKind::LogSoftmax)];
+                    (vec(shape, shape_len..=shape_len), Just(axis), kind)
                 })
-                .prop_map(|(shape, axis)| {
+                .prop_map(|(shape, axis, kind)| {
                     let input = (0..shape.iter().product::<usize>())
                         .map(|f| f.as_() / 1000.as_())
                         .collect::<Vec<_>>();
-                    Self { shape, axis, input }
+                    Self { shape, axis, kind, input }
                 })
                 .boxed()
         }
@@ -264,11 +299,8 @@ mod tests {
         pub fn reference(&self) -> TractResult<Tensor> {
             let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?;
 
-            let cpu_softmax = TractSoftmax {
-                axes: tvec![self.axis],
-                quant_output_dt: None,
-                kind: SoftmaxKind::Softmax,
-            };
+            let cpu_softmax =
+                TractSoftmax { axes: tvec![self.axis], quant_output_dt: None, kind: self.kind };
             let cpu_output = cpu_softmax
                 .eval(&EvalContext::out_of_plan(), tvec![a.into_tvalue()])?[0]
                 .clone()
@@ -279,7 +311,7 @@ mod tests {
         pub fn run(&self) -> TractResult<Tensor> {
             crate::with_cuda_stream(|stream| {
                 let a = Tensor::from_shape(self.shape.as_slice(), &self.input)?.into_device()?;
-                let cuda_output = Softmax.eval(stream, &a, self.axis)?;
+                let cuda_output = Softmax.eval(stream, &a, self.axis, self.kind)?;
                 Ok(cuda_output.to_host()?.into_tensor())
             })
         }

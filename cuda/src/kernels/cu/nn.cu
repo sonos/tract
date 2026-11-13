@@ -527,8 +527,8 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
                               input[idx] * sin[rot_cos_sin_idx];               \
     }
 
-#define INSTANTIATE_SOFTMAX(name, T, bname, block_size)                        \
-    extern "C" __global__ void softmax_##bname##name(                          \
+#define INSTANTIATE_SOFTMAX(name, T, op, bname, block_size, log)               \
+    extern "C" __global__ void op##_##bname##name(                             \
         const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,      \
         const int32_t shape_2, const int32_t stride_0, const int32_t stride_1, \
         const int32_t stride_2) {                                              \
@@ -568,7 +568,9 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
             float el = x[i * stride_1];                                        \
             const float val = __expf(el - max_val);                            \
             tmp += val;                                                        \
-            dst[i * stride_1] = val;                                           \
+            if (!log) {                                                        \
+                dst[i * stride_1] = val;                                       \
+            }                                                                  \
         }                                                                      \
                                                                                \
         tmp = warp_reduce_sum(tmp);                                            \
@@ -588,10 +590,16 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
             tmp = warp_reduce_sum(tmp);                                        \
         }                                                                      \
                                                                                \
-        const float inv_sum = 1.0f / tmp;                                      \
-                                                                               \
-        for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
-            dst[i * stride_1] *= inv_sum;                                      \
+        if (log) {                                                             \
+            const float shift = max_val + logf(tmp);                           \
+            for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {          \
+                dst[i * stride_1] = (float)x[i * stride_1] - shift;            \
+            }                                                                  \
+        } else {                                                               \
+            const float inv_sum = 1.0f / tmp;                                  \
+            for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {          \
+                dst[i * stride_1] *= inv_sum;                                  \
+            }                                                                  \
         }                                                                      \
     }
 
@@ -1110,10 +1118,14 @@ INSTANTIATE_RMS_NORM_INOUT(f16, __half, f32, float, , 1024)
 INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, small_, 32)
 INSTANTIATE_RMS_NORM_INOUT(f32, float, f16, __half, , 1024)
 
-INSTANTIATE_SOFTMAX(f32, float, small_, 32)
-INSTANTIATE_SOFTMAX(f32, float, , 1024)
-INSTANTIATE_SOFTMAX(f16, __half, small_, 32)
-INSTANTIATE_SOFTMAX(f16, __half, , 1024)
+INSTANTIATE_SOFTMAX(f32, float, softmax, small_, 32, false)
+INSTANTIATE_SOFTMAX(f32, float, softmax, , 1024, false)
+INSTANTIATE_SOFTMAX(f16, __half, softmax, small_, 32, false)
+INSTANTIATE_SOFTMAX(f16, __half, softmax, , 1024, false)
+INSTANTIATE_SOFTMAX(f32, float, log_softmax, small_, 32, true)
+INSTANTIATE_SOFTMAX(f32, float, log_softmax, , 1024, true)
+INSTANTIATE_SOFTMAX(f16, __half, log_softmax, small_, 32, true)
+INSTANTIATE_SOFTMAX(f16, __half, log_softmax, , 1024, true)
 
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T)                       \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32)                        \

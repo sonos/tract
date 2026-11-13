@@ -978,7 +978,7 @@ typedef decltype(leaky_relu<float>) leaky_relu_t;
 template [[host_name("nn_ops::leaky_relu_f32")]] [[kernel]] leaky_relu_t leaky_relu<float>;
 template [[host_name("nn_ops::leaky_relu_f16")]] [[kernel]] leaky_relu_t leaky_relu<half>;
 
-template <typename F>
+template <typename F, bool LOG>
 [[kernel]] void softmax_nd3(device const void *input_b, device void *output_b,
                             constant const size_t shape[3],
                             constant const size_t strides[3],
@@ -1010,25 +1010,36 @@ template <typename F>
         float el = static_cast<float>(input[idx]);
         float exp_el = fast::exp(el - axis_max);
         partial_norm += exp_el;
-        output[idx] = static_cast<F>(exp_el);
+        if (!LOG) output[idx] = static_cast<F>(exp_el);
     }
 
     float axis_norm = simd_sum(partial_norm);
-    float inv_axis_norm = 1.0 / axis_norm;
-
-    for (size_t i = tiisg; i < dim; i += tpsg) {
-        auto idx = base_idx + i * strides[1];
-        float exp_el = static_cast<float>(output[idx]);
-        output[idx] = static_cast<F>(exp_el * inv_axis_norm);
+    if (LOG) {
+        float shift = axis_max + precise::log(axis_norm);
+        for (size_t i = tiisg; i < dim; i += tpsg) {
+            auto idx = base_idx + i * strides[1];
+            output[idx] = static_cast<F>(static_cast<float>(input[idx]) - shift);
+        }
+    } else {
+        float inv_axis_norm = 1.0 / axis_norm;
+        for (size_t i = tiisg; i < dim; i += tpsg) {
+            auto idx = base_idx + i * strides[1];
+            float exp_el = static_cast<float>(output[idx]);
+            output[idx] = static_cast<F>(exp_el * inv_axis_norm);
+        }
     }
 }
 
-typedef decltype(softmax_nd3<float>) softmax_nd3_t;
+typedef decltype(softmax_nd3<float, false>) softmax_nd3_t;
 
 template [[host_name(
-    "nn_ops::softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float>;
+    "nn_ops::softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float, false>;
 template [[host_name(
-    "nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half>;
+    "nn_ops::softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half, false>;
+template [[host_name(
+    "nn_ops::log_softmax_nd3_f32")]] [[kernel]] softmax_nd3_t softmax_nd3<float, true>;
+template [[host_name(
+    "nn_ops::log_softmax_nd3_f16")]] [[kernel]] softmax_nd3_t softmax_nd3<half, true>;
 
 // Bit test, so fast math cannot fold it away.
 METAL_FUNC bool is_neg_inf(float v) { return as_type<uint>(v) == 0xff800000u; }
@@ -1042,7 +1053,7 @@ METAL_FUNC float rescaled_sum(float psum, float from, float to) {
 // Fast path for softmax_nd3 restricted to a contiguous softmax axis
 // (strides[1]==1) whose length is a multiple of 4; the caller guarantees both
 // so the F4 loads stay in bounds and 16-byte aligned. F4 is F's 4-wide vector.
-template <typename F, typename F4>
+template <typename F, typename F4, bool LOG>
 [[kernel]] void softmax_nd3_contig(device const void *input_b, device void *output_b,
                                    constant const size_t shape[3],
                                    constant const size_t strides[3],
@@ -1072,23 +1083,38 @@ template <typename F, typename F4>
     }
 
     float amax = simd_max(pmax);
-    float inv = 1.0f / simd_sum(rescaled_sum(psum, pmax, amax));
+    float sum = simd_sum(rescaled_sum(psum, pmax, amax));
 
-    for (uint v = tiisg; v < vec_dim; v += tpsg) {
-        float4 x = float4(in4[v]);
-        out4[v] = F4(fast::exp(x - amax) * inv);
-    }
-    for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
-        output[base + i] = F(fast::exp(float(input[base + i]) - amax) * inv);
+    if (LOG) {
+        float shift = amax + precise::log(sum);
+        for (uint v = tiisg; v < vec_dim; v += tpsg) {
+            out4[v] = F4(float4(in4[v]) - shift);
+        }
+        for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
+            output[base + i] = F(float(input[base + i]) - shift);
+        }
+    } else {
+        float inv = 1.0f / sum;
+        for (uint v = tiisg; v < vec_dim; v += tpsg) {
+            float4 x = float4(in4[v]);
+            out4[v] = F4(fast::exp(x - amax) * inv);
+        }
+        for (uint i = vec_dim * 4 + tiisg; i < (uint)dim; i += tpsg) {
+            output[base + i] = F(fast::exp(float(input[base + i]) - amax) * inv);
+        }
     }
 }
 
-typedef decltype(softmax_nd3_contig<float, float4>) softmax_nd3_contig_f32_t;
+typedef decltype(softmax_nd3_contig<float, float4, false>) softmax_nd3_contig_f32_t;
 template [[host_name("nn_ops::softmax_nd3_contig_f32")]] [[kernel]]
-softmax_nd3_contig_f32_t softmax_nd3_contig<float, float4>;
-typedef decltype(softmax_nd3_contig<half, half4>) softmax_nd3_contig_f16_t;
+softmax_nd3_contig_f32_t softmax_nd3_contig<float, float4, false>;
+template [[host_name("nn_ops::log_softmax_nd3_contig_f32")]] [[kernel]]
+softmax_nd3_contig_f32_t softmax_nd3_contig<float, float4, true>;
+typedef decltype(softmax_nd3_contig<half, half4, false>) softmax_nd3_contig_f16_t;
 template [[host_name("nn_ops::softmax_nd3_contig_f16")]] [[kernel]]
-softmax_nd3_contig_f16_t softmax_nd3_contig<half, half4>;
+softmax_nd3_contig_f16_t softmax_nd3_contig<half, half4, false>;
+template [[host_name("nn_ops::log_softmax_nd3_contig_f16")]] [[kernel]]
+softmax_nd3_contig_f16_t softmax_nd3_contig<half, half4, true>;
 
 template <typename F>
 [[kernel]] void scaled_masked_softmax_nd5(
