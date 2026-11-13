@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph main(x) -> (result)
+{
+    x = external<scalar>(shape = [4]);
+    quotient = div(x, 0.1);
+    rounded = tract_core_round_even(quotient);
+    result = tract_core_cast(rounded, to = 'i32');
+}

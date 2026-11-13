@@ -4,6 +4,7 @@
 
 use super::array::MultiBroadcastTo;
 use super::binary::TypedBinOp;
+use super::element_wise::ElementWiseOp;
 use crate::internal::*;
 use crate::ops::quant::scale_by;
 use num_traits::bounds::Bounded;
@@ -475,6 +476,14 @@ fn declutter_div(
             )?));
         }
         if dt.is_float() {
+            if node.outputs[0].successors.iter().any(|successor| {
+                model
+                    .node(successor.node)
+                    .op_as::<ElementWiseOp>()
+                    .is_some_and(|op| op.0.is::<RoundHalfToEven>())
+            }) {
+                return Ok(None);
+            }
             return Ok(Some(TypedModelPatch::rewire(
                 model,
                 &node.inputs,
