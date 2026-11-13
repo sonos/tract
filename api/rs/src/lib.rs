@@ -110,6 +110,18 @@ impl Debug for Nnef {
     }
 }
 
+#[cfg(feature = "unstable-load-read")]
+impl Nnef {
+    /// Load a NNEF model from a stream into a tract-core model.
+    ///
+    /// `reader` yields the content of a NNEF model, as a `tar` file or a `tar.gz` file. It is
+    /// read once, front to back, entry by entry, without buffering the archive: it need not be a
+    /// file or seekable, so it can be a browser's storage or several sources chained together.
+    pub fn load_read(&self, mut reader: impl std::io::Read) -> Result<Model> {
+        Ok(Model(self.0.model_for_read(&mut reader)?.into_decluttered()?))
+    }
+}
+
 impl NnefInterface for Nnef {
     type Model = Model;
     fn load(&self, path: impl AsRef<Path>) -> Result<Model> {
