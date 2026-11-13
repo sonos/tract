@@ -710,3 +710,28 @@ fn a_move_into_a_convolution_matches_cpu() -> TractResult<()> {
     }
     Ok(())
 }
+
+/// Last-axis softmax rows, short and longer than a workgroup, with a masked entry per row.
+#[test]
+fn softmax_rows_match_cpu() -> TractResult<()> {
+    use tract_core::ops::nn::{Softmax, SoftmaxKind};
+    for kind in [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax] {
+        for (rows, k) in [(3, 1), (2, 7), (4, 256), (3, 1000), (1, 70000)] {
+            let mut data = fill(k as u64, rows * k);
+            for r in 0..rows {
+                data[r * k + (r * 7) % k] = f32::NEG_INFINITY;
+            }
+            if k == 1 {
+                data.iter_mut().for_each(|x| *x = 0.5);
+            }
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f32::fact([rows, k]))?;
+            let op = Softmax { axes: tvec![1], quant_output_dt: None, kind };
+            let y = model.wire_node("softmax", op, &[x])?[0];
+            model.select_output_outlets(&[y])?;
+            gpu_vs_cpu(model, Tensor::from_shape(&[rows, k], &data)?)
+                .with_context(|| format!("{kind:?} {rows}x{k}"))?;
+        }
+    }
+    Ok(())
+}
