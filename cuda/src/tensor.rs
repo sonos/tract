@@ -53,7 +53,7 @@ pub struct CudaTensor {
 
 impl CudaTensor {
     pub fn from_tensor(tensor: &Tensor) -> TractResult<Self> {
-        if let Some(bqs) = crate::utils::as_ggml_q_tensor(tensor) {
+        if let Some(bqs) = tensor.storage_as::<BlockQuantStorage>() {
             let bqf = BlockQuantFact::new(
                 tract_core::dyn_clone::clone_box(bqs.format()),
                 tensor.shape().into(),

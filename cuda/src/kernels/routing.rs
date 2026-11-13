@@ -1,5 +1,8 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
+use tract_core::tract_linalg::block_quant::BlockQuant;
+use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_core::tract_linalg::block_quant::Q2_0_T;
 use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
@@ -15,8 +18,6 @@ use tract_transformers::ops::moe_ffn::RoutedLinear;
 use crate::context::{TractCudaStream, cuda_context};
 use crate::kernels::launch_args::TractLaunchArgs;
 use crate::kernels::{LibraryName, get_cuda_view};
-use crate::utils::as_ggml_q_fact;
-use crate::utils::get_ggml_q_fact;
 
 #[allow(clippy::too_many_arguments)]
 fn select(
@@ -105,12 +106,36 @@ crate::register_cuda_op!(RoutedCombine, |source, node, op| {
 const ROUTED_WARPS: u32 = 4;
 const ROUTED_ROWS: usize = 4;
 
-/// Plain f32 or f16 expert weights, or Q4_0 and Q2_0_T ones with K in whole blocks.
+/// The block-quantized formats the routed kernels read, with the name their kernels carry.
+/// A format here needs a `w_<name>` struct in `routing.cu`, instantiated with
+/// `INSTANTIATE_ROUTED_BLOCK_QUANT`.
+fn block_quant_kernel_name(format: &dyn BlockQuant) -> Option<&'static str> {
+    let formats: [(&dyn BlockQuant, &'static str); 2] = [(&Q4_0, "q40"), (&Q2_0_T, "q20t")];
+    formats.into_iter().find(|(f, _)| f.dyn_eq(format)).map(|(_, name)| name)
+}
+
+/// Plain f32 or f16 expert weights, or block-quantized ones in a format the routed kernels
+/// read, with K in whole blocks.
 fn supports(weights: &TypedFact) -> bool {
-    if let Some(bqf) = as_ggml_q_fact(weights) {
-        bqf.k() % bqf.format.block_len() == 0
+    if let Some(bqf) = weights.exotic_fact().and_then(|f| f.downcast_ref::<BlockQuantFact>()) {
+        block_quant_kernel_name(&*bqf.format).is_some() && bqf.k() % bqf.format.block_len() == 0
     } else {
         weights.is_plain() && matches!(weights.datum_type, DatumType::F32 | DatumType::F16)
+    }
+}
+
+/// The routed kernels' name for these weights, and whether they are block-quantized.
+fn weights_kernel_name(weights: &DeviceTensor) -> TractResult<(&'static str, bool)> {
+    let exotic = match weights {
+        DeviceTensor::Owned(t) => t.exotic_fact(),
+        DeviceTensor::View(v) => v.exotic_fact(),
+    };
+    if let Some(bqf) = exotic.and_then(|f| f.downcast_ref::<BlockQuantFact>()) {
+        let name = block_quant_kernel_name(&*bqf.format)
+            .with_context(|| format!("No CUDA routed kernel for {:?}", bqf.format))?;
+        Ok((name, true))
+    } else {
+        Ok((DeviceTensor::tname(weights.datum_type())?, false))
     }
 }
 
@@ -124,13 +149,8 @@ fn project(
 ) -> TractResult<()> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
     let experts = weights.shape()[0];
-    let name = match get_ggml_q_fact(weights) {
-        Some(bqf) if bqf.format.dyn_eq(&Q4_0) => "q40",
-        Some(_) => "q20t",
-        None => DeviceTensor::tname(weights.datum_type())?,
-    };
+    let (name, block_quant) = weights_kernel_name(weights)?;
     let per_expert = routes / experts.max(1);
-    let block_quant = get_ggml_q_fact(weights).is_some();
     if experts <= RMM_MAX_EXPERTS && k.is_multiple_of(RMM_K) {
         if per_expert >= if block_quant { 14 } else { 20 } {
             return project_sorted(stream, name, RMM_M, input, weights, rows, expert_ids, out);
@@ -140,7 +160,7 @@ fn project(
         }
     }
     ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
-    let rows_per_warp = if get_ggml_q_fact(weights).is_some() { ROUTED_ROWS } else { 1 };
+    let rows_per_warp = if block_quant { ROUTED_ROWS } else { 1 };
     ensure!(
         rows_per_warp == 1 || input.buffer_offset::<usize>().is_multiple_of(16),
         "the block-quant routed GEMV reads its input as float4"
