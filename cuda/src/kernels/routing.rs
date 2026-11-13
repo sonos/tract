@@ -122,12 +122,17 @@ fn project(
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
-    ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
+    let experts = weights.shape()[0];
     let name = match get_ggml_q_fact(weights) {
         Some(bqf) if bqf.format.dyn_eq(&Q4_0) => "q40",
         Some(_) => "q20t",
         None => DeviceTensor::tname(weights.datum_type())?,
     };
+    let tiled_routes_per_expert = if get_ggml_q_fact(weights).is_some() { 1 } else { 6 };
+    if experts <= RMM_MAX_EXPERTS && k % RMM_K == 0 && routes >= tiled_routes_per_expert * experts {
+        return project_tiled(stream, name, input, weights, rows, expert_ids, out);
+    }
+    ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
     let func =
         cuda_context().load_pipeline(LibraryName::Routing, format!("routed_mul_vec_{name}"))?;
     let w = get_cuda_view(weights);
@@ -149,6 +154,61 @@ fn project(
     args.launch(LaunchConfig {
         grid_dim: (n as u32, routes as u32, 1),
         block_dim: (32, ROUTED_WARPS, 1),
+        shared_mem_bytes: 0,
+    })
+}
+
+const RMM_M: usize = 64;
+const RMM_N: usize = 64;
+const RMM_K: usize = 32;
+const RMM_MAX_EXPERTS: usize = 256;
+
+/// The routes sorted by expert, then one tiled matmul over every expert's routes.
+fn project_tiled(
+    stream: &TractCudaStream,
+    name: &str,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    let (routes, experts) = (expert_ids.shape()[0], weights.shape()[0]);
+    let (n, k) = (weights.shape()[1], input.shape()[1]);
+    let max_chunks = routes.div_ceil(RMM_M) + experts;
+    ensure!(max_chunks <= 65535, "CUDA RoutedLinear takes up to {} routes", 65535 * RMM_M);
+    let sorted = DeviceTensor::uninitialized_dt(i32::datum_type(), &[routes])?;
+    let chunks = DeviceTensor::uninitialized_dt(i32::datum_type(), &[max_chunks * 3])?;
+    let ids = get_cuda_view(expert_ids);
+    let (sorted_view, chunks_view) = (get_cuda_view(&sorted), get_cuda_view(&chunks));
+    let plan = cuda_context().load_pipeline(LibraryName::Routing, "route_plan".into())?;
+    let mut args = TractLaunchArgs::new(stream, &plan);
+    args.push_view(&ids);
+    args.push_i32(routes);
+    args.push_i32(experts);
+    args.push_view(&sorted_view);
+    args.push_view(&chunks_view);
+    args.push_i32(max_chunks);
+    args.launch(LaunchConfig { grid_dim: (1, 1, 1), block_dim: (256, 1, 1), shared_mem_bytes: 0 })?;
+
+    let func = cuda_context().load_pipeline(LibraryName::Routing, format!("routed_mm_{name}"))?;
+    let (w, x, o) = (get_cuda_view(weights), get_cuda_view(input), get_cuda_view(out));
+    let rows = rows.map(get_cuda_view);
+    let mut args = TractLaunchArgs::new(stream, &func);
+    args.push_view(&w);
+    args.push_view(&x);
+    args.push_view(&o);
+    match &rows {
+        Some(rows) => args.push_view(rows),
+        None => args.push_null_ptr(),
+    }
+    args.push_view(&sorted_view);
+    args.push_view(&chunks_view);
+    args.push_i32(k);
+    args.push_i32(n);
+    args.launch(LaunchConfig {
+        grid_dim: (n.div_ceil(RMM_N) as u32, max_chunks as u32, 1),
+        block_dim: (256, 1, 1),
         shared_mem_bytes: 0,
     })
 }
