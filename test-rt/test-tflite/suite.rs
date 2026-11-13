@@ -263,6 +263,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
     [
         "apply_rope",
         "binary",
+        "causal_conv1d_update",
         "clamped_swiglu",
         "conv_f16",
         "cumsum",
@@ -274,6 +275,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "gelu_exact",
         "group_norm",
         "layer_norm",
+        "mamba2_recurrent",
         "q_flavours",
         "q_binary",
         "q_elmwise",
@@ -284,6 +286,7 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "rotate_half",
         "route_topk",
         "routed_combine",
+        "routed_linear",
         "routed_q40",
         "scaled_masked_softmax",
         "sdpa",
@@ -345,9 +348,11 @@ fn compatible_conv_q(qcp: &QConvProblem) -> bool {
 }
 
 /// What TOPK_V2 can express: the largest entries along the last axis, on a type its
-/// kernel has. Its comparator gives no defined order to NaN.
+/// kernel has. Its comparator gives no defined order to NaN. The writer has no NEG, which
+/// the consumed-outputs case feeds the values into.
 fn compatible_topk(tp: &TopkProblem) -> bool {
     tp.largest
+        && !tp.consumed
         && tp.axis + 1 == tp.input.ndim()
         && tp.dt == DatumType::F32
         && !tp.input.iter().any(|x| x.is_nan())
