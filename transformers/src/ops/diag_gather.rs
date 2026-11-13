@@ -359,10 +359,11 @@ fn trace_back_to_slice(
     Ok(None)
 }
 
-/// Extract `(lo, hi_excl)` TDim bounds from a band ROI predicate of shape
-/// `Mul(Ge(hi, 🎯_axis), Ge(🎯_axis, lo))` (either order).  The returned
-/// `hi_excl = hi + 1` matches the half-open `[lo, hi_excl)` convention
-/// used by `Slice::{start, end}`.
+/// Extract `(lo, hi_excl)` TDim bounds from a band ROI predicate
+/// `Mul(Ge(a, b), Ge(c, d))` where each `Ge` is affine in `🎯_axis` with a
+/// coefficient of ±1, e.g. `Ge(hi, 🎯)` and `Ge(🎯, lo)`, or `Ge(70, (N − 8·🎯)/8)`
+/// as TDim's wiggle folds `N/8 − 🎯`.  The returned `hi_excl = hi + 1`
+/// matches the half-open `[lo, hi_excl)` convention used by `Slice::{start, end}`.
 fn bounds_on_axis_tdim(roi: &TDim, axis_sym: &Symbol) -> Option<(TDim, TDim)> {
     let TDim::Mul(terms) = roi else { return None };
     if terms.len() != 2 {
@@ -372,21 +373,49 @@ fn bounds_on_axis_tdim(roi: &TDim, axis_sym: &Symbol) -> Option<(TDim, TDim)> {
     let mut hi: Option<TDim> = None;
     for term in terms {
         let TDim::Ge(left, right) = term else { return None };
-        if let TDim::Sym(s) = left.as_ref()
-            && s == axis_sym
-        {
-            lo = Some((**right).clone());
-            continue;
+        let (a_left, b_left) = affine_in(left, axis_sym)?;
+        let (a_right, b_right) = affine_in(right, axis_sym)?;
+        // a·🎯 + b >= 0
+        let b = (b_left - b_right).reduce();
+        match a_left - a_right {
+            1 => lo = Some((-b).reduce()),
+            -1 => hi = Some(b),
+            _ => return None,
         }
-        if let TDim::Sym(s) = right.as_ref()
-            && s == axis_sym
-        {
-            hi = Some((**left).clone());
-            continue;
-        }
-        return None;
     }
-    Some((lo?, hi? + TDim::Val(1)))
+    Some((lo?, (hi? + TDim::Val(1)).reduce()))
+}
+
+/// Split `expr` as `a·🎯 + b` with `b` free of `🎯`.  A `Div(x, q)` whose
+/// `🎯` coefficient in `x` is a multiple of `q` splits as `(a/q)·🎯 + b/q`,
+/// reading the division as exact on the `🎯` term: the form wiggle produces
+/// when it folds `b/q + (a/q)·🎯` into a single quotient.
+fn affine_in(expr: &TDim, sym: &Symbol) -> Option<(i64, TDim)> {
+    if !expr.symbols().contains(sym) {
+        return Some((0, expr.clone()));
+    }
+    match expr {
+        TDim::Sym(s) if s == sym => Some((1, TDim::Val(0))),
+        TDim::Add(terms) => {
+            let mut a = 0;
+            let mut b = TDim::Val(0);
+            for t in terms {
+                let (ta, tb) = affine_in(t, sym)?;
+                a += ta;
+                b += tb;
+            }
+            Some((a, b))
+        }
+        TDim::MulInt(m, x) => {
+            let (a, b) = affine_in(x, sym)?;
+            Some((m * a, b * *m))
+        }
+        TDim::Div(x, q) => {
+            let (a, b) = affine_in(x, sym)?;
+            (a % *q as i64 == 0).then(|| (a / *q as i64, b / *q))
+        }
+        _ => None,
+    }
 }
 
 // ─── Detect pass: Pad → Reshape → Slice → Reshape → Slice  →  DiagGather ──
@@ -466,6 +495,30 @@ pub fn diag_gather_rule(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn band_bounds_through_folded_quotient() -> TractResult<()> {
+        let scope = SymbolScope::default();
+        let t = scope.sym("T");
+        let row = scope.coord_sym(0);
+        let rel = TDim::Div(
+            Box::new(TDim::Add(vec![
+                TDim::Sym(t.clone()),
+                TDim::Val(6),
+                TDim::MulInt(-8, Box::new(TDim::Sym(row.clone()))),
+            ])),
+            8,
+        );
+        let roi = TDim::Mul(vec![
+            TDim::Ge(Box::new(TDim::Val(70)), Box::new(rel.clone())),
+            TDim::Ge(Box::new(rel), Box::new(TDim::Val(0))),
+        ]);
+        let (lo, hi_excl) = bounds_on_axis_tdim(&roi, &row).unwrap();
+        let centre = (TDim::Sym(t) + 6) / 8;
+        assert_eq!(lo, (centre.clone() - 70).reduce());
+        assert_eq!(hi_excl, (centre + 1).reduce());
+        Ok(())
+    }
 
     /// Build the skew trick chain and verify DiagGather fold produces correct output.
     #[test]
