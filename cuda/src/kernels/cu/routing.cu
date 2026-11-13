@@ -144,69 +144,63 @@ extern "C" __global__ void routed_combine_f16(const float *values,
 
 #define ROUTED_WARPS 4
 
-// Sum of each thread's partial over the ROUTED_WARPS warps of the block,
-// valid in thread (0, 0).
-static __device__ __forceinline__ float routed_block_sum(float partial) {
-  __shared__ float shared[ROUTED_WARPS - 1][WARP_SIZE];
-  if (threadIdx.y > 0) {
-    shared[threadIdx.y - 1][threadIdx.x] = partial;
-  }
-  __syncthreads();
-  if (threadIdx.y == 0) {
-    for (int w = 0; w < ROUTED_WARPS - 1; w++) {
-      partial += shared[w][threadIdx.x];
-    }
-    partial = warp_reduce_sum<WARP_SIZE>(partial);
-  }
-  return partial;
-}
+#define ROUTED_ROWS 4
 
-static __device__ __forceinline__ float block_dot(const block_q4_0 *b,
-                                                 const float *x) {
-  float sum = 0.0f;
-#pragma unroll
-  for (int j = 0; j < 16; j++) {
-    const int q = b->qs[j];
-    sum += (float)((q & 0xF) - 8) * x[j] + (float)((q >> 4) - 8) * x[j + 16];
-  }
+// Weights 4 * sub .. 4 * sub + 3 of block `b`, unpacked, dotted with `x`.
+static __device__ __forceinline__ float quad_dot(const block_q4_0 *b, int sub,
+                                                float4 x) {
+  const int shift = sub < 4 ? 0 : 4;
+  const uint8_t *qs = b->qs + 4 * (sub & 3);
+  const float sum = (float)(((qs[0] >> shift) & 0xF) - 8) * x.x +
+                    (float)(((qs[1] >> shift) & 0xF) - 8) * x.y +
+                    (float)(((qs[2] >> shift) & 0xF) - 8) * x.z +
+                    (float)(((qs[3] >> shift) & 0xF) - 8) * x.w;
   return __half2float(b->d) * sum;
 }
 
-static __device__ __forceinline__ float block_dot(const block_q2_0_t *b,
-                                                 const float *x) {
-  float sum = 0.0f;
-#pragma unroll
-  for (int j = 0; j < 8; j++) {
-    const int q = b->qs[j];
-#pragma unroll
-    for (int c = 0; c < 4; c++) {
-      sum += (float)(((q >> (2 * c)) & 3) - 1) * x[4 * j + c];
-    }
-  }
+static __device__ __forceinline__ float quad_dot(const block_q2_0_t *b, int sub,
+                                                float4 x) {
+  const int q = b->qs[sub];
+  const float sum = (float)((q & 3) - 1) * x.x + (float)(((q >> 2) & 3) - 1) * x.y +
+                    (float)(((q >> 4) & 3) - 1) * x.z + (float)(((q >> 6) & 3) - 1) * x.w;
   return __half2float(b->d) * sum;
 }
 
-// Output row blockIdx.x of route blockIdx.y: the route's f32 input row dotted
-// with row `n_row` of its expert's block-quantized weights, unpacked to f32.
+// One warp per ROUTED_ROWS output rows of route blockIdx.y, all reading the
+// same f32 input row: eight lanes share each block of 32 weights, four each,
+// so a warp reads four consecutive blocks and 128 consecutive inputs a step.
 template <typename block_t>
 static __device__ void routed_mul_vec_q(const block_t *w, const float *x,
                                         float *dst, const long long *row_ids,
                                         const long long *expert_ids, int k,
                                         int n) {
   const int route = blockIdx.y;
-  const int n_row = blockIdx.x;
+  const int row0 = (blockIdx.x * ROUTED_WARPS + threadIdx.y) * ROUTED_ROWS;
+  if (row0 >= n) {
+    return;
+  }
   const long long in_row = row_ids ? row_ids[route] : route;
   const int blocks = k / 32;
-  const block_t *wr = w + (expert_ids[route] * n + n_row) * (long long)blocks;
+  const block_t *wr = w + (expert_ids[route] * n + row0) * (long long)blocks;
   const float *xr = x + in_row * k;
-  float partial = 0.0f;
-  for (int b = WARP_SIZE * threadIdx.y + threadIdx.x; b < blocks;
-       b += ROUTED_WARPS * WARP_SIZE) {
-    partial += block_dot(wr + b, xr + 32 * b);
+  const int sub = threadIdx.x % 8;
+  const int rows = min(ROUTED_ROWS, n - row0);
+  float acc[ROUTED_ROWS] = {0.0f};
+  for (int b = threadIdx.x / 8; b < blocks; b += WARP_SIZE / 8) {
+    const float4 xv = *(const float4 *)(xr + 32 * b + 4 * sub);
+#pragma unroll
+    for (int r = 0; r < ROUTED_ROWS; r++) {
+      if (r < rows) {
+        acc[r] += quad_dot(wr + r * blocks + b, sub, xv);
+      }
+    }
   }
-  const float sum = routed_block_sum(partial);
-  if (threadIdx.x == 0 && threadIdx.y == 0) {
-    dst[(long long)route * n + n_row] = sum;
+#pragma unroll
+  for (int r = 0; r < ROUTED_ROWS; r++) {
+    acc[r] = warp_reduce_sum<WARP_SIZE>(acc[r]);
+    if (threadIdx.x == 0 && r < rows) {
+      dst[(long long)route * n + row0 + r] = acc[r];
+    }
   }
 }
 
@@ -221,6 +215,8 @@ static __device__ void routed_mul_vec_q(const block_t *w, const float *x,
 INSTANTIATE_ROUTED_MUL_VEC_Q(q40, block_q4_0)
 INSTANTIATE_ROUTED_MUL_VEC_Q(q20t, block_q2_0_t)
 
+// One warp per output row: row blockIdx.x * ROUTED_WARPS + threadIdx.y of
+// route blockIdx.y, lanes on consecutive inputs.
 template <typename T>
 static __device__ void routed_mul_vec_plain(const T *w, const float *x,
                                             float *dst,
@@ -228,18 +224,20 @@ static __device__ void routed_mul_vec_plain(const T *w, const float *x,
                                             const long long *expert_ids, int k,
                                             int n) {
   const int route = blockIdx.y;
-  const int n_row = blockIdx.x;
+  const int n_row = blockIdx.x * ROUTED_WARPS + threadIdx.y;
+  if (n_row >= n) {
+    return;
+  }
   const long long in_row = row_ids ? row_ids[route] : route;
   const T *wr = w + (expert_ids[route] * n + n_row) * (long long)k;
   const float *xr = x + in_row * k;
   float partial = 0.0f;
-  for (int i = WARP_SIZE * threadIdx.y + threadIdx.x; i < k;
-       i += ROUTED_WARPS * WARP_SIZE) {
+  for (int i = threadIdx.x; i < k; i += WARP_SIZE) {
     partial += (float)wr[i] * xr[i];
   }
-  const float sum = routed_block_sum(partial);
-  if (threadIdx.x == 0 && threadIdx.y == 0) {
-    dst[(long long)route * n + n_row] = sum;
+  partial = warp_reduce_sum<WARP_SIZE>(partial);
+  if (threadIdx.x == 0) {
+    dst[(long long)route * n + n_row] = partial;
   }
 }
 
