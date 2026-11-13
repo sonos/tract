@@ -1,0 +1,17 @@
+[package]
+name = "nemotron-voicechat"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+hound = "3.5.1"
+serde_json.workspace = true
+tract.workspace = true
+tungstenite = "0.26"
+
+[features]
+cuda = ["tract/cuda-13000"]
+metal = ["tract/metal"]
+wgpu = ["tract/wgpu"]
