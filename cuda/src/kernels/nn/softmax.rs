@@ -224,6 +224,31 @@ mod tests {
         })
     }
 
+    #[test]
+    fn test_softmax_masked_f32() -> TractResult<()> {
+        crate::with_cuda_stream(|stream| {
+            for kind in [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax] {
+                for k in [7, 300, 5000] {
+                    let mut input =
+                        (0..3 * k).map(|f| ((f * 37) % 101) as f32 / 10.0).collect::<Vec<_>>();
+                    for r in 0..3 {
+                        input[r * k + (r * 5) % k] = f32::NEG_INFINITY;
+                        input[r * k] = f32::NEG_INFINITY;
+                    }
+                    let a = Tensor::from_shape(&[3, k], &input)?.into_device()?;
+                    let cpu = TractSoftmax { axes: tvec![1], quant_output_dt: None, kind }
+                        .eval(&EvalContext::out_of_plan(), tvec![a.to_host()?.into_tvalue()])?[0]
+                        .clone()
+                        .into_tensor();
+                    let cuda = Softmax.eval(stream, &a, 1, kind)?;
+                    cpu.close_enough(&cuda.to_host()?.into_tensor(), Approximation::Approximate)
+                        .with_context(|| format!("{kind:?} k={k}"))?;
+                }
+            }
+            Ok(())
+        })
+    }
+
     proptest::proptest! {
         #[test]
         fn softmax_prop_f32(pb in any::<SoftmaxProblem<f32>>()) {

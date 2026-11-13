@@ -527,6 +527,32 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
                               input[idx] * sin[rot_cos_sin_idx];               \
     }
 
+// A running exp-sum taken from its max `from` to `to`. A sum that has only
+// seen -inf holds nothing: exp(-inf - -inf) would be NaN.
+static __device__ __forceinline__ float softmax_rescaled(float sum, float from,
+                                                         float to) {
+    return from == -CUDART_INF_F ? 0.0f : sum * __expf(from - to);
+}
+
+static __device__ __forceinline__ void softmax_merge(float &max_val, float &sum,
+                                                     float other_max,
+                                                     float other_sum) {
+    const float m = fmaxf(max_val, other_max);
+    sum = softmax_rescaled(sum, max_val, m) +
+          softmax_rescaled(other_sum, other_max, m);
+    max_val = m;
+}
+
+static __device__ __forceinline__ void warp_reduce_max_sum(float &max_val,
+                                                           float &sum) {
+#pragma unroll
+    for (int offset = WARP_SIZE / 2; offset > 0; offset >>= 1) {
+        softmax_merge(max_val, sum,
+                      __shfl_xor_sync(0xffffffff, max_val, offset),
+                      __shfl_xor_sync(0xffffffff, sum, offset));
+    }
+}
+
 #define INSTANTIATE_SOFTMAX(name, T, op, bname, block_size, log)               \
     extern "C" __global__ void op##_##bname##name(                             \
         const T *x, T *dst, const int32_t shape_0, const int32_t shape_1,      \
@@ -541,64 +567,47 @@ indices_to_idx_4(int x, int y, int z, int x_shape, int y_shape, int z_shape,
         const int lane_id = threadIdx.x % WARP_SIZE;                           \
                                                                                \
         float max_val = -CUDART_INF_F;                                         \
-        _Pragma("unroll") for (int i = threadIdx.x; i < shape_1;               \
-                               i += blockDim.x) {                              \
-            max_val = max(max_val, x[i * stride_1]);                           \
+        float sum = 0.0f;                                                      \
+        for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
+            const float el = x[i * stride_1];                                  \
+            if (el > max_val) {                                                \
+                sum = softmax_rescaled(sum, max_val, el);                      \
+                max_val = el;                                                  \
+            }                                                                  \
+            if (max_val != -CUDART_INF_F) {                                    \
+                sum += __expf(el - max_val);                                   \
+            }                                                                  \
         }                                                                      \
                                                                                \
-        max_val = warp_reduce_max(max_val);                                    \
+        warp_reduce_max_sum(max_val, sum);                                     \
         if (block_size > WARP_SIZE) {                                          \
             __shared__ float s_max[32];                                        \
-            if (warp_id == 0) {                                                \
-                s_max[lane_id] = -CUDART_INF_F;                                \
-            }                                                                  \
-            __syncthreads();                                                   \
-                                                                               \
-            if (lane_id == 0) {                                                \
-                s_max[warp_id] = max_val;                                      \
-            }                                                                  \
-            __syncthreads();                                                   \
-                                                                               \
-            max_val = s_max[lane_id];                                          \
-            max_val = warp_reduce_max(max_val);                                \
-        }                                                                      \
-                                                                               \
-        float tmp = 0.0f;                                                      \
-        for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {              \
-            float el = x[i * stride_1];                                        \
-            const float val = __expf(el - max_val);                            \
-            tmp += val;                                                        \
-            if (!log) {                                                        \
-                dst[i * stride_1] = val;                                       \
-            }                                                                  \
-        }                                                                      \
-                                                                               \
-        tmp = warp_reduce_sum(tmp);                                            \
-        if (block_size > WARP_SIZE) {                                          \
             __shared__ float s_sum[32];                                        \
             if (warp_id == 0) {                                                \
+                s_max[lane_id] = -CUDART_INF_F;                                \
                 s_sum[lane_id] = 0.0f;                                         \
             }                                                                  \
             __syncthreads();                                                   \
-                                                                               \
             if (lane_id == 0) {                                                \
-                s_sum[warp_id] = tmp;                                          \
+                s_max[warp_id] = max_val;                                      \
+                s_sum[warp_id] = sum;                                          \
             }                                                                  \
             __syncthreads();                                                   \
-                                                                               \
-            tmp = s_sum[lane_id];                                              \
-            tmp = warp_reduce_sum(tmp);                                        \
+            max_val = s_max[lane_id];                                          \
+            sum = s_sum[lane_id];                                              \
+            warp_reduce_max_sum(max_val, sum);                                 \
         }                                                                      \
                                                                                \
         if (log) {                                                             \
-            const float shift = max_val + logf(tmp);                           \
+            const float shift = max_val + logf(sum);                           \
             for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {          \
                 dst[i * stride_1] = (float)x[i * stride_1] - shift;            \
             }                                                                  \
         } else {                                                               \
-            const float inv_sum = 1.0f / tmp;                                  \
+            const float inv_sum = 1.0f / sum;                                  \
             for (int i = threadIdx.x; i < shape_1; i += blockDim.x) {          \
-                dst[i * stride_1] *= inv_sum;                                  \
+                dst[i * stride_1] =                                            \
+                    __expf((float)x[i * stride_1] - max_val) * inv_sum;        \
             }                                                                  \
         }                                                                      \
     }
