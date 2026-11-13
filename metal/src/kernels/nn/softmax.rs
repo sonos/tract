@@ -6,6 +6,10 @@ use tract_core::internal::*;
 use tract_core::ops::nn::SoftmaxKind;
 use tract_gpu::tensor::DeviceTensor;
 
+/// Most threads sharing a row of the last axis. A row along an inner axis keeps one simdgroup:
+/// its loads do not coalesce, so more threads cost occupancy without speeding it up.
+const LAST_AXIS_ROW_THREADS: usize = 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Softmax;
 
@@ -77,8 +81,12 @@ impl Softmax {
 
             let grid_size =
                 MTLSize { width: shape_nd3[2] as _, height: 1, depth: shape_nd3[0] as _ };
-            let group_size =
-                MTLSize { width: usize::min(32, shape_nd3[1]) as _, height: 1, depth: 1 };
+            let work = if use_contig { shape_nd3[1] / 4 } else { shape_nd3[1] };
+            let cap = if shape_nd3[2] == 1 { LAST_AXIS_ROW_THREADS } else { 32 };
+            let max = pipeline.max_total_threads_per_threadgroup() as usize;
+            let threads =
+                if work <= 32 { work.max(1) } else { work.next_multiple_of(32).min(cap).min(max) };
+            let group_size = MTLSize { width: threads as _, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid_size, group_size);
         });
         Ok(())
@@ -199,6 +207,39 @@ mod tests {
             let metal_output = Softmax.eval(stream, &a, axis, SoftmaxKind::Softmax)?;
             cpu_output
                 .close_enough(&metal_output.to_host()?.into_tensor(), Approximation::Approximate)?;
+            Ok(())
+        })
+    }
+
+    #[test]
+    fn test_softmax_masked_long_rows_f32() -> TractResult<()> {
+        with_borrowed_metal_stream(|stream| {
+            for kind in [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax] {
+                for k in [7, 300, 4095, 5000, 70000] {
+                    let mut input =
+                        (0..3 * k).map(|f| ((f * 37) % 101) as f32 / 10.0).collect::<Vec<_>>();
+                    for r in 0..3 {
+                        input[r * k + (r * 5) % k] = f32::NEG_INFINITY;
+                        input[r * k] = f32::NEG_INFINITY;
+                    }
+                    for (shape, axis) in [([3, k, 1], 1), ([1, k, 3], 1)] {
+                        let a = Tensor::from_shape(&shape, &input)?.into_device()?;
+                        let cpu = TractSoftmax { axes: tvec![axis], quant_output_dt: None, kind }
+                            .eval(
+                            &EvalContext::out_of_plan(),
+                            tvec![a.to_host()?.into_tvalue()],
+                        )?[0]
+                            .clone()
+                            .into_tensor();
+                        let metal = Softmax.eval(stream, &a, axis, kind)?;
+                        cpu.close_enough(
+                            &metal.to_host()?.into_tensor(),
+                            Approximation::Approximate,
+                        )
+                        .with_context(|| format!("{kind:?} {shape:?}"))?;
+                    }
+                }
+            }
             Ok(())
         })
     }
