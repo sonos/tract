@@ -103,6 +103,7 @@ crate::register_cuda_op!(RoutedCombine, |source, node, op| {
 });
 
 const ROUTED_WARPS: u32 = 4;
+const ROUTED_ROWS: usize = 4;
 
 /// Plain f32 or f16 expert weights, or Q4_0 and Q2_0_T ones with K in whole blocks.
 fn supports(weights: &TypedFact) -> bool {
@@ -128,11 +129,19 @@ fn project(
         Some(_) => "q20t",
         None => DeviceTensor::tname(weights.datum_type())?,
     };
-    let tiled_routes_per_expert = if get_ggml_q_fact(weights).is_some() { 1 } else { 6 };
-    if experts <= RMM_MAX_EXPERTS && k % RMM_K == 0 && routes >= tiled_routes_per_expert * experts {
+    let tiled_routes_per_expert = if get_ggml_q_fact(weights).is_some() { 12 } else { 6 };
+    if experts <= RMM_MAX_EXPERTS
+        && k.is_multiple_of(RMM_K)
+        && routes >= tiled_routes_per_expert * experts
+    {
         return project_tiled(stream, name, input, weights, rows, expert_ids, out);
     }
     ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
+    let rows_per_warp = if get_ggml_q_fact(weights).is_some() { ROUTED_ROWS } else { 1 };
+    ensure!(
+        rows_per_warp == 1 || input.buffer_offset::<usize>().is_multiple_of(16),
+        "the block-quant routed GEMV reads its input as float4"
+    );
     let func =
         cuda_context().load_pipeline(LibraryName::Routing, format!("routed_mul_vec_{name}"))?;
     let w = get_cuda_view(weights);
@@ -152,7 +161,7 @@ fn project(
     args.push_i32(k);
     args.push_i32(n);
     args.launch(LaunchConfig {
-        grid_dim: (n as u32, routes as u32, 1),
+        grid_dim: (n.div_ceil(ROUTED_WARPS as usize * rows_per_warp) as u32, routes as u32, 1),
         block_dim: (32, ROUTED_WARPS, 1),
         shared_mem_bytes: 0,
     })
