@@ -1,0 +1,138 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>VoiceChat on tract</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 720px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+  button { font-size: 1.1rem; padding: .5rem 1.2rem; }
+  #state { color: #666; margin-left: 1rem; }
+  .pane { white-space: pre-wrap; margin-top: .4rem; line-height: 1.5; min-height: 4rem; border: 1px solid #ddd; border-radius: 6px; padding: .75rem; }
+  h2 { font-size: 1rem; margin: 1.2rem 0 0; color: #555; }
+  #events { font-size: .85rem; color: #777; min-height: 2rem; }
+</style>
+</head>
+<body>
+<h1>VoiceChat on tract</h1>
+<p>Use headphones: the model hears whatever the microphone picks up, its own voice included.</p>
+<button id="go">Start</button><span id="state"></span>
+<h2>You (RNNT transcript)</h2>
+<div id="user" class="pane"></div>
+<h2>Agent</h2>
+<div id="reply" class="pane"></div>
+<h2>Turn-taking rules fired</h2>
+<div id="events" class="pane"></div>
+<script>
+// Both worklets run at the device's native rate (Firefox will not connect a microphone to a
+// context at another rate) and resample: capture averages down to 16 kHz, playback
+// interpolates the 22.05 kHz reply up.
+const CAPTURE = `
+class Capture extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.step = sampleRate / 16000; this.t = 0; this.acc = 0; this.cnt = 0;
+    this.buf = new Float32Array(1280); this.n = 0;
+  }
+  process(inputs) {
+    const x = inputs[0][0];
+    if (x) for (let k = 0; k < x.length; k++) {
+      this.acc += x[k]; this.cnt++; this.t += 1;
+      if (this.t >= this.step) {
+        this.t -= this.step;
+        this.buf[this.n++] = this.acc / this.cnt; this.acc = 0; this.cnt = 0;
+        if (this.n === 1280) { this.port.postMessage(this.buf.slice()); this.n = 0; }
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('capture', Capture);`;
+// Plays queued 22.05 kHz blocks; waits for 160 ms of audio before starting and after any underrun.
+const PLAY = `
+class Play extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.step = 22050 / sampleRate; this.q = []; this.off = 0; this.frac = 0; this.primed = false;
+    this.port.onmessage = e => this.q.push(e.data);
+  }
+  queued() { let n = -this.off; for (const b of this.q) n += b.length; return n; }
+  process(_, outputs) {
+    const out = outputs[0][0];
+    if (!this.primed) { if (this.queued() < 3528) return true; this.primed = true; }
+    for (let k = 0; k < out.length; k++) {
+      if (this.queued() < 2) { this.primed = false; break; }
+      const b = this.q[0];
+      const a = b[this.off];
+      const c = this.off + 1 < b.length ? b[this.off + 1] : this.q[1][0];
+      out[k] = a + (c - a) * this.frac;
+      this.frac += this.step;
+      while (this.frac >= 1) {
+        this.frac -= 1;
+        if (++this.off === this.q[0].length) { this.q.shift(); this.off = 0; }
+      }
+    }
+    return true;
+  }
+}
+registerProcessor('play', Play);`;
+const moduleUrl = src => URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+const $ = id => document.getElementById(id);
+
+async function start() {
+  if (!navigator.mediaDevices) {
+    throw new Error('the browser blocks the microphone on plain http. Chrome: add this origin to '
+      + 'chrome://flags/#unsafely-treat-insecure-origin-as-secure. Firefox: in about:config set '
+      + 'media.devices.insecure.enabled and media.getusermedia.insecure.enabled to true. Then reload.');
+  }
+  const mic = await navigator.mediaDevices.getUserMedia({
+    audio: { channelCount: 1, echoCancellation: true, noiseSuppression: false, autoGainControl: false },
+  });
+  const ctx = new AudioContext();
+  await ctx.resume();
+  await ctx.audioWorklet.addModule(moduleUrl(CAPTURE));
+  await ctx.audioWorklet.addModule(moduleUrl(PLAY));
+  const player = new AudioWorkletNode(ctx, 'play');
+  player.connect(ctx.destination);
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.binaryType = 'arraybuffer';
+  ws.onerror = () => { $('state').textContent = 'websocket error'; };
+  ws.onmessage = e => {
+    if (typeof e.data !== 'string') {
+      player.port.postMessage(new Float32Array(e.data));
+    } else if (e.data === '\u0001ready') {
+      $('state').textContent = `listening (audio at ${ctx.sampleRate} Hz)`;
+      const capture = new AudioWorkletNode(ctx, 'capture');
+      capture.port.onmessage = m => { if (ws.readyState === WebSocket.OPEN) ws.send(m.data.buffer); };
+      const mute = ctx.createGain();
+      mute.gain.value = 0;
+      ctx.createMediaStreamSource(mic).connect(capture).connect(mute).connect(ctx.destination);
+    } else if (e.data.startsWith('\u0002')) {
+      $('user').textContent += e.data.slice(1);
+    } else if (e.data.startsWith('\u0003')) {
+      $('events').textContent += e.data.slice(1) + '\n';
+    } else {
+      $('reply').textContent += e.data;
+    }
+  };
+  ws.onclose = () => {
+    $('state').textContent = 'disconnected';
+    $('go').disabled = false;
+    mic.getTracks().forEach(t => t.stop());
+    ctx.close();
+  };
+  $('state').textContent = 'loading the session…';
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  $('state').textContent = 'starting…';
+  try {
+    await start();
+  } catch (err) {
+    $('state').textContent = 'error: ' + (err && err.message ? err.message : err);
+    $('go').disabled = false;
+  }
+};
+</script>
+</body>
+</html>
