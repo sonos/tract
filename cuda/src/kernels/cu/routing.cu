@@ -146,31 +146,62 @@ extern "C" __global__ void routed_combine_f16(const float *values,
 
 #define ROUTED_ROWS 4
 
-// Weights 4 * sub .. 4 * sub + 3 of block `b`, unpacked, dotted with `x`.
-static __device__ __forceinline__ float quad_dot(const block_q4_0 *b, int sub,
-                                                float4 x) {
-  const int shift = sub < 4 ? 0 : 4;
-  const uint8_t *qs = b->qs + 4 * (sub & 3);
-  const float sum = (float)(((qs[0] >> shift) & 0xF) - 8) * x.x +
-                    (float)(((qs[1] >> shift) & 0xF) - 8) * x.y +
-                    (float)(((qs[2] >> shift) & 0xF) - 8) * x.z +
-                    (float)(((qs[3] >> shift) & 0xF) - 8) * x.w;
-  return __half2float(b->d) * sum;
-}
+// One struct per weight format the routed kernels read: `load4` gives
+// weights k .. k + 3 of row `row`, k a multiple of 4, as f32.
+struct w_f32 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int row_len, int k) {
+    return *(const float4 *)((const float *)w + row * row_len + k);
+  }
+};
 
-static __device__ __forceinline__ float quad_dot(const block_q2_0_t *b, int sub,
-                                                float4 x) {
-  const int q = b->qs[sub];
-  const float sum = (float)((q & 3) - 1) * x.x + (float)(((q >> 2) & 3) - 1) * x.y +
-                    (float)(((q >> 4) & 3) - 1) * x.z + (float)(((q >> 6) & 3) - 1) * x.w;
-  return __half2float(b->d) * sum;
+struct w_f16 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int row_len, int k) {
+    const half2 *p = (const half2 *)((const half *)w + row * row_len + k);
+    const float2 lo = __half22float2(p[0]);
+    const float2 hi = __half22float2(p[1]);
+    return make_float4(lo.x, lo.y, hi.x, hi.y);
+  }
+};
+
+struct w_q40 {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int row_len, int k) {
+    const block_q4_0 *b = (const block_q4_0 *)w + row * (row_len / 32) + k / 32;
+    const float d = __half2float(b->d);
+    const int i = k % 32;
+    const int shift = i < 16 ? 0 : 4;
+    const uint8_t *qs = b->qs + i % 16;
+    return make_float4((float)(((qs[0] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[1] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[2] >> shift) & 0xF) - 8) * d,
+                       (float)(((qs[3] >> shift) & 0xF) - 8) * d);
+  }
+};
+
+struct w_q20t {
+  static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                                 int row_len, int k) {
+    const block_q2_0_t *b =
+        (const block_q2_0_t *)w + row * (row_len / 32) + k / 32;
+    const float d = __half2float(b->d);
+    const int q = b->qs[(k % 32) / 4];
+    return make_float4((float)((q & 3) - 1) * d, (float)(((q >> 2) & 3) - 1) * d,
+                       (float)(((q >> 4) & 3) - 1) * d,
+                       (float)(((q >> 6) & 3) - 1) * d);
+  }
+};
+
+static __device__ __forceinline__ float dot4(float4 a, float4 b) {
+  return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
 }
 
 // One warp per ROUTED_ROWS output rows of route blockIdx.y, all reading the
-// same f32 input row: eight lanes share each block of 32 weights, four each,
-// so a warp reads four consecutive blocks and 128 consecutive inputs a step.
-template <typename block_t>
-static __device__ void routed_mul_vec_q(const block_t *w, const float *x,
+// same f32 input row: eight lanes share each run of 32 weights, four each,
+// so a warp reads 128 consecutive weights and inputs a step.
+template <typename W>
+static __device__ void routed_mul_vec_q(const void *w, const float *x,
                                         float *dst, const long long *row_ids,
                                         const long long *expert_ids, int k,
                                         int n) {
@@ -180,18 +211,16 @@ static __device__ void routed_mul_vec_q(const block_t *w, const float *x,
     return;
   }
   const long long in_row = row_ids ? row_ids[route] : route;
-  const int blocks = k / 32;
-  const block_t *wr = w + (expert_ids[route] * n + row0) * (long long)blocks;
+  const long long w_row = expert_ids[route] * n + row0;
   const float *xr = x + in_row * k;
-  const int sub = threadIdx.x % 8;
   const int rows = min(ROUTED_ROWS, n - row0);
   float acc[ROUTED_ROWS] = {0.0f};
-  for (int b = threadIdx.x / 8; b < blocks; b += WARP_SIZE / 8) {
-    const float4 xv = *(const float4 *)(xr + 32 * b + 4 * sub);
+  for (int kk = 4 * threadIdx.x; kk < k; kk += 4 * WARP_SIZE) {
+    const float4 xv = *(const float4 *)(xr + kk);
 #pragma unroll
     for (int r = 0; r < ROUTED_ROWS; r++) {
       if (r < rows) {
-        acc[r] += quad_dot(wr + r * blocks + b, sub, xv);
+        acc[r] += dot4(W::load4(w, w_row + r, k, kk), xv);
       }
     }
   }
@@ -203,17 +232,6 @@ static __device__ void routed_mul_vec_q(const block_t *w, const float *x,
     }
   }
 }
-
-#define INSTANTIATE_ROUTED_MUL_VEC_Q(name, block_t)                            \
-  extern "C" __launch_bounds__(ROUTED_WARPS *WARP_SIZE, 1) __global__ void     \
-      routed_mul_vec_##name(const block_t *w, const float *x, float *dst,      \
-                            const long long *row_ids,                          \
-                            const long long *expert_ids, int k, int n) {       \
-    routed_mul_vec_q<block_t>(w, x, dst, row_ids, expert_ids, k, n);           \
-  }
-
-INSTANTIATE_ROUTED_MUL_VEC_Q(q40, block_q4_0)
-INSTANTIATE_ROUTED_MUL_VEC_Q(q20t, block_q2_0_t)
 
 // One warp per output row: row blockIdx.x * ROUTED_WARPS + threadIdx.y of
 // route blockIdx.y, lanes on consecutive inputs.
@@ -344,64 +362,10 @@ extern "C" __global__ void route_plan(const long long *expert_ids, int routes,
   }
 }
 
-// Eight consecutive weights of row `row`, from k0 + 8 * part, as f32.
-struct rmm_f32 {
-  static __device__ __forceinline__ void load(const void *w, long long row,
-                                              int k0, int part, int k,
-                                              float *v) {
-    const float *p = (const float *)w + row * k + k0 + 8 * part;
-#pragma unroll
-    for (int j = 0; j < 8; j++) {
-      v[j] = p[j];
-    }
-  }
-};
-
-struct rmm_f16 {
-  static __device__ __forceinline__ void load(const void *w, long long row,
-                                              int k0, int part, int k,
-                                              float *v) {
-    const half *p = (const half *)w + row * k + k0 + 8 * part;
-#pragma unroll
-    for (int j = 0; j < 8; j++) {
-      v[j] = __half2float(p[j]);
-    }
-  }
-};
-
-struct rmm_q40 {
-  static __device__ __forceinline__ void load(const void *w, long long row,
-                                              int k0, int part, int k,
-                                              float *v) {
-    const block_q4_0 *b = (const block_q4_0 *)w + row * (k / 32) + k0 / 32;
-    const float d = __half2float(b->d);
-    const int shift = part < 2 ? 0 : 4;
-    const uint8_t *qs = b->qs + 8 * (part & 1);
-#pragma unroll
-    for (int j = 0; j < 8; j++) {
-      v[j] = (float)(((qs[j] >> shift) & 0xF) - 8) * d;
-    }
-  }
-};
-
-struct rmm_q20t {
-  static __device__ __forceinline__ void load(const void *w, long long row,
-                                              int k0, int part, int k,
-                                              float *v) {
-    const block_q2_0_t *b = (const block_q2_0_t *)w + row * (k / 32) + k0 / 32;
-    const float d = __half2float(b->d);
-#pragma unroll
-    for (int j = 0; j < 8; j++) {
-      const int q = b->qs[2 * part + j / 4];
-      v[j] = (float)(((q >> (2 * (j % 4))) & 3) - 1) * d;
-    }
-  }
-};
-
 // One chunk of an expert's sorted routes (blockIdx.y) by RMM_N output rows
 // (blockIdx.x): f32 tiles of the gathered input rows and of the expert's
 // weights unpacked to f32, scattered back to the routes' output rows.
-template <typename L>
+template <typename W>
 static __device__ void routed_mm(const void *w, const float *x, float *dst,
                                  const long long *row_ids, const int *sorted,
                                  const int *chunks, int k, int n) {
@@ -445,7 +409,16 @@ static __device__ void routed_mm(const void *w, const float *x, float *dst,
       as[8 * part + j][load_row] = v[j];
     }
     if (b_valid) {
-      L::load(w, b_row, k0, part, k, v);
+      const float4 lo = W::load4(w, b_row, k, k0 + 8 * part);
+      const float4 hi = W::load4(w, b_row, k, k0 + 8 * part + 4);
+      v[0] = lo.x;
+      v[1] = lo.y;
+      v[2] = lo.z;
+      v[3] = lo.w;
+      v[4] = hi.x;
+      v[5] = hi.y;
+      v[6] = hi.z;
+      v[7] = hi.w;
     } else {
 #pragma unroll
       for (int j = 0; j < 8; j++) {
@@ -492,69 +465,13 @@ static __device__ void routed_mm(const void *w, const float *x, float *dst,
   }
 }
 
-#define INSTANTIATE_ROUTED_MM(name, L)                                         \
-  extern "C" __launch_bounds__(256) __global__ void routed_mm_##name(          \
-      const void *w, const float *x, float *dst, const long long *row_ids,     \
-      const int *sorted, const int *chunks, int k, int n) {                    \
-    routed_mm<L>(w, x, dst, row_ids, sorted, chunks, k, n);                    \
-  }
-
-INSTANTIATE_ROUTED_MM(f32, rmm_f32)
-INSTANTIATE_ROUTED_MM(f16, rmm_f16)
-INSTANTIATE_ROUTED_MM(q40, rmm_q40)
-INSTANTIATE_ROUTED_MM(q20t, rmm_q20t)
 
 #define RMV_ROUTES 8
-
-// Weights 4 * sub .. 4 * sub + 3 of block b (32 weights) of row `row`, as f32.
-struct rmv_f32 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int k, int b, int sub) {
-    return *(const float4 *)((const float *)w + row * k + 32 * b + 4 * sub);
-  }
-};
-
-struct rmv_f16 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int k, int b, int sub) {
-    const half2 *p =
-        (const half2 *)((const half *)w + row * k + 32 * b + 4 * sub);
-    const float2 lo = __half22float2(p[0]);
-    const float2 hi = __half22float2(p[1]);
-    return make_float4(lo.x, lo.y, hi.x, hi.y);
-  }
-};
-
-struct rmv_q40 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int k, int b, int sub) {
-    const block_q4_0 *blk = (const block_q4_0 *)w + row * (k / 32) + b;
-    const float d = __half2float(blk->d);
-    const int shift = sub < 4 ? 0 : 4;
-    const uint8_t *qs = blk->qs + 4 * (sub & 3);
-    return make_float4((float)(((qs[0] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[1] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[2] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[3] >> shift) & 0xF) - 8) * d);
-  }
-};
-
-struct rmv_q20t {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int k, int b, int sub) {
-    const block_q2_0_t *blk = (const block_q2_0_t *)w + row * (k / 32) + b;
-    const float d = __half2float(blk->d);
-    const int q = blk->qs[sub];
-    return make_float4((float)((q & 3) - 1) * d, (float)(((q >> 2) & 3) - 1) * d,
-                       (float)(((q >> 4) & 3) - 1) * d,
-                       (float)(((q >> 6) & 3) - 1) * d);
-  }
-};
 
 // One chunk of up to RMV_ROUTES of an expert's sorted routes (blockIdx.y):
 // each warp loads ROUTED_ROWS weight rows once and dots them with every route
 // of the chunk, eight lanes per block of 32 weights, four each.
-template <typename L>
+template <typename W>
 static __device__ void routed_mv_grouped(const void *w, const float *x,
                                          float *dst, const long long *row_ids,
                                          const int *sorted, const int *chunks,
@@ -584,7 +501,7 @@ static __device__ void routed_mv_grouped(const void *w, const float *x,
     float4 wv[ROUTED_ROWS];
 #pragma unroll
     for (int r = 0; r < ROUTED_ROWS; r++) {
-      wv[r] = r < rows ? L::load4(w, w_row + r, k, b, sub)
+      wv[r] = r < rows ? W::load4(w, w_row + r, k, 32 * b + 4 * sub)
                        : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
     }
 #pragma unroll
@@ -611,15 +528,31 @@ static __device__ void routed_mv_grouped(const void *w, const float *x,
   }
 }
 
-#define INSTANTIATE_ROUTED_MV_GROUPED(name, L)                                 \
+#define INSTANTIATE_ROUTED_TILED(name, W)                                      \
+  extern "C" __launch_bounds__(256) __global__ void routed_mm_##name(          \
+      const void *w, const float *x, float *dst, const long long *row_ids,     \
+      const int *sorted, const int *chunks, int k, int n) {                    \
+    routed_mm<W>(w, x, dst, row_ids, sorted, chunks, k, n);                    \
+  }                                                                            \
   extern "C" __launch_bounds__(ROUTED_WARPS *WARP_SIZE) __global__ void        \
       routed_mv_grouped_##name(const void *w, const float *x, float *dst,      \
                                const long long *row_ids, const int *sorted,    \
                                const int *chunks, int k, int n) {              \
-    routed_mv_grouped<L>(w, x, dst, row_ids, sorted, chunks, k, n);            \
+    routed_mv_grouped<W>(w, x, dst, row_ids, sorted, chunks, k, n);            \
   }
 
-INSTANTIATE_ROUTED_MV_GROUPED(f32, rmv_f32)
-INSTANTIATE_ROUTED_MV_GROUPED(f16, rmv_f16)
-INSTANTIATE_ROUTED_MV_GROUPED(q40, rmv_q40)
-INSTANTIATE_ROUTED_MV_GROUPED(q20t, rmv_q20t)
+// Block-quantized formats also get the per-route GEMV over load4; plain ones
+// keep routed_mul_vec_plain, one warp per output row.
+#define INSTANTIATE_ROUTED_BLOCK_QUANT(name, W)                                \
+  INSTANTIATE_ROUTED_TILED(name, W)                                            \
+  extern "C" __launch_bounds__(ROUTED_WARPS *WARP_SIZE, 1) __global__ void     \
+      routed_mul_vec_##name(const void *w, const float *x, float *dst,         \
+                            const long long *row_ids,                          \
+                            const long long *expert_ids, int k, int n) {       \
+    routed_mul_vec_q<W>(w, x, dst, row_ids, expert_ids, k, n);                 \
+  }
+
+INSTANTIATE_ROUTED_TILED(f32, w_f32)
+INSTANTIATE_ROUTED_TILED(f16, w_f16)
+INSTANTIATE_ROUTED_BLOCK_QUANT(q40, w_q40)
+INSTANTIATE_ROUTED_BLOCK_QUANT(q20t, w_q20t)
