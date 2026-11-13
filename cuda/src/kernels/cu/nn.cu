@@ -1136,6 +1136,102 @@ INSTANTIATE_SOFTMAX(f32, float, log_softmax, , 1024, true)
 INSTANTIATE_SOFTMAX(f16, __half, log_softmax, small_, 32, true)
 INSTANTIATE_SOFTMAX(f16, __half, log_softmax, , 1024, true)
 
+// Max and exp-sum of the whole block, in every thread. blockDim.x is a
+// multiple of WARP_SIZE.
+static __device__ __forceinline__ void block_reduce_max_sum(float &max_val,
+                                                            float &sum) {
+    __shared__ float s_max[32];
+    __shared__ float s_sum[32];
+    const int warp_id = threadIdx.x / WARP_SIZE;
+    const int lane_id = threadIdx.x % WARP_SIZE;
+    warp_reduce_max_sum(max_val, sum);
+    if (lane_id == 0) {
+        s_max[warp_id] = max_val;
+        s_sum[warp_id] = sum;
+    }
+    __syncthreads();
+    const bool live = lane_id < blockDim.x / WARP_SIZE;
+    max_val = live ? s_max[lane_id] : -CUDART_INF_F;
+    sum = live ? s_sum[lane_id] : 0.0f;
+    warp_reduce_max_sum(max_val, sum);
+}
+
+// Max and exp-sum of chunk blockIdx.x of row blockIdx.y of a contiguous
+// [rows, k] tensor, written to part[row * gridDim.x + chunk].
+template <typename T>
+static __device__ void softmax_split_partial(const T *x, float2 *part,
+                                             const int32_t k,
+                                             const int32_t chunk) {
+    const T *row = x + (long long)blockIdx.y * k;
+    const int end = min(k, (int)(blockIdx.x + 1) * chunk);
+    float max_val = -CUDART_INF_F;
+    float sum = 0.0f;
+    for (int i = blockIdx.x * chunk + threadIdx.x; i < end; i += blockDim.x) {
+        const float el = row[i];
+        if (el > max_val) {
+            sum = softmax_rescaled(sum, max_val, el);
+            max_val = el;
+        }
+        if (max_val != -CUDART_INF_F) {
+            sum += __expf(el - max_val);
+        }
+    }
+    block_reduce_max_sum(max_val, sum);
+    if (threadIdx.x == 0) {
+        part[blockIdx.y * gridDim.x + blockIdx.x] = make_float2(max_val, sum);
+    }
+}
+
+// Merges the gridDim.x partials of row blockIdx.y, then writes chunk
+// blockIdx.x of its softmax or log-softmax.
+template <typename T, bool log>
+static __device__ void softmax_split_finalize(const T *x, T *dst,
+                                              const float2 *part,
+                                              const int32_t k,
+                                              const int32_t chunk) {
+    const long long offset = (long long)blockIdx.y * k;
+    const float2 *row_part = part + blockIdx.y * gridDim.x;
+    float max_val = -CUDART_INF_F;
+    float sum = 0.0f;
+    for (int j = 0; j < gridDim.x; j++) {
+        const float2 p = row_part[j];
+        softmax_merge(max_val, sum, p.x, p.y);
+    }
+    const int end = min(k, (int)(blockIdx.x + 1) * chunk);
+    if (log) {
+        const float shift = max_val + logf(sum);
+        for (int i = blockIdx.x * chunk + threadIdx.x; i < end;
+             i += blockDim.x) {
+            dst[offset + i] = (float)x[offset + i] - shift;
+        }
+    } else {
+        const float inv_sum = 1.0f / sum;
+        for (int i = blockIdx.x * chunk + threadIdx.x; i < end;
+             i += blockDim.x) {
+            dst[offset + i] = __expf((float)x[offset + i] - max_val) * inv_sum;
+        }
+    }
+}
+
+#define INSTANTIATE_SOFTMAX_SPLIT(name, T)                                     \
+    extern "C" __global__ void softmax_split_partial_##name(                   \
+        const T *x, float2 *part, const int32_t k, const int32_t chunk) {      \
+        softmax_split_partial<T>(x, part, k, chunk);                           \
+    }                                                                          \
+    extern "C" __global__ void softmax_split_finalize_##name(                  \
+        const T *x, T *dst, const float2 *part, const int32_t k,               \
+        const int32_t chunk) {                                                 \
+        softmax_split_finalize<T, false>(x, dst, part, k, chunk);              \
+    }                                                                          \
+    extern "C" __global__ void log_softmax_split_finalize_##name(              \
+        const T *x, T *dst, const float2 *part, const int32_t k,               \
+        const int32_t chunk) {                                                 \
+        softmax_split_finalize<T, true>(x, dst, part, k, chunk);               \
+    }
+
+INSTANTIATE_SOFTMAX_SPLIT(f32, float)
+INSTANTIATE_SOFTMAX_SPLIT(f16, __half)
+
 #define INSTANTIATE_SCALED_MASKED_SOFTMAX_FOR_T(name, T)                       \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 32_, 32)                        \
     INSTANTIATE_SCALED_MASKED_SOFTMAX(name, T, 64_, 64)                        \

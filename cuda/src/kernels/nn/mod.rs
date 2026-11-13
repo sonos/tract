@@ -67,6 +67,11 @@ pub fn all_functions() -> Vec<String> {
                     .flat_map(move |kind| Softmax.kernel_name(dt, n_cols, kind).into_iter())
             }),
     );
+    functions.extend(
+        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
+            .into_iter()
+            .flat_map(|dt| Softmax::split_kernel_names(dt).into_iter().flatten()),
+    );
 
     functions.extend(
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
