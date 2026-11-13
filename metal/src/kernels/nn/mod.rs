@@ -26,6 +26,7 @@ pub use softmax::Softmax;
 pub use softmax::metal_softmax_dispatch;
 
 use crate::kernels::BroadcastKind;
+use tract_core::ops::nn::SoftmaxKind;
 
 pub fn all_functions() -> Vec<String> {
     use std::collections::HashSet;
@@ -44,11 +45,13 @@ pub fn all_functions() -> Vec<String> {
                     .flat_map(move |large| reduce::kernel_name(&op, dt, large).into_iter())
             }),
     );
-    functions.extend(
-        tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
-            .into_iter()
-            .flat_map(|dt| Softmax.kernel_name(dt).into_iter()),
-    );
+    functions.extend(tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(|dt| {
+        [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax].into_iter().flat_map(move |kind| {
+            [false, true]
+                .into_iter()
+                .flat_map(move |contig| Softmax.kernel_name(dt, kind, contig).into_iter())
+        })
+    }));
 
     functions.extend(tract_gpu::tensor::DeviceTensor::SUPPORTED_DT.into_iter().flat_map(|dt| {
         [false, true]

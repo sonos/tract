@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+# A log-softmax with masked (-inf) entries, as samplers write it.
+
+graph log_softmax(x) -> (y)
+{
+    x = tract_core_external(shape = [2, 8], datum_type = 'f32');
+    y = tract_core_log_softmax(x, 1);
+}

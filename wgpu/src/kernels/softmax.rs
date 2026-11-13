@@ -1,4 +1,5 @@
 use tract_core::internal::*;
+use tract_core::ops::nn::SoftmaxKind;
 use tract_gpu::tensor::DeviceTensor;
 
 use crate::kernels::shaders::{
@@ -22,6 +23,7 @@ fn reshape_to_rank_3(shape: &[usize], axis: usize) -> [usize; 3] {
 pub fn wgpu_softmax_dispatch(
     input: &DeviceTensor,
     axis: usize,
+    kind: SoftmaxKind,
     output: &DeviceTensor,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
@@ -47,7 +49,7 @@ pub fn wgpu_softmax_dispatch(
             nd3[0] as u32,
             nd3[1] as u32,
             nd3[2] as u32,
-            0,
+            (kind == SoftmaxKind::LogSoftmax) as u32,
             0,
             0,
         ]);
@@ -62,7 +64,6 @@ register_wgpu_op!(tract_core::ops::nn::Softmax, |source, node, op| {
         DatumType::F32 | DatumType::F16
     ));
     rule_if!(op.quant_output_dt.is_none());
-    rule_if!(op.kind == tract_core::ops::nn::SoftmaxKind::Softmax);
     Ok(Some(Box::new(tract_gpu::ops::softmax::GpuSoftmax::from_tract_core(
         op,
         "Wgpu",
@@ -82,7 +83,7 @@ struct Params {{
     outer: u32,
     k: u32,
     inner: u32,
-    _p0: u32,
+    log_out: u32,
     _p1: u32,
     _p2: u32,
 }}
@@ -107,9 +108,12 @@ fn softmax_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
         sum += exp(f32(inp[params.off_in + (o * params.k + k) * params.inner + r]) - m);
     }}
     let inv = 1.0 / sum;
+    let shift = m + log(sum);
     for (var k = 0u; k < params.k; k++) {{
         let x = f32(inp[params.off_in + (o * params.k + k) * params.inner + r]);
-        outp[params.off_out + (o * params.k + k) * params.inner + r] = {t}(exp(x - m) * inv);
+        var y = exp(x - m) * inv;
+        if (params.log_out != 0u) {{ y = x - shift; }}
+        outp[params.off_out + (o * params.k + k) * params.inner + r] = {t}(y);
     }}
 }}
 "#

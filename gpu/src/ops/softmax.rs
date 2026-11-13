@@ -4,11 +4,14 @@ use tract_core::ops::nn as core_ops_nn;
 
 use crate::tensor::DeviceTensor;
 
-pub type DispatchSoftmaxFn = fn(&DeviceTensor, usize, &DeviceTensor) -> TractResult<()>;
+pub type DispatchSoftmaxFn =
+    fn(&DeviceTensor, usize, core_ops_nn::SoftmaxKind, &DeviceTensor) -> TractResult<()>;
 
+/// Backend-agnostic `core::ops::nn::Softmax` (`Softmax` or `LogSoftmax` kind) over a single axis.
 #[derive(Clone)]
 pub struct GpuSoftmax {
     pub axes: TVec<usize>,
+    pub kind: core_ops_nn::SoftmaxKind,
     pub backend_name: &'static str,
     pub dispatch: DispatchSoftmaxFn,
 }
@@ -16,6 +19,7 @@ pub struct GpuSoftmax {
 impl GpuSoftmax {
     pub fn new(
         axes: TVec<usize>,
+        kind: core_ops_nn::SoftmaxKind,
         backend_name: &'static str,
         dispatch: DispatchSoftmaxFn,
     ) -> TractResult<Self> {
@@ -24,7 +28,7 @@ impl GpuSoftmax {
             "Only one axis of softmax is supported by {}Softmax",
             backend_name
         );
-        Ok(Self { axes, backend_name, dispatch })
+        Ok(Self { axes, kind, backend_name, dispatch })
     }
 
     pub fn from_tract_core(
@@ -33,19 +37,21 @@ impl GpuSoftmax {
         dispatch: DispatchSoftmaxFn,
     ) -> TractResult<Self> {
         ensure!(core_softmax.quant_output_dt.is_none());
-        Self::new(core_softmax.axes.clone(), backend_name, dispatch)
+        Self::new(core_softmax.axes.clone(), core_softmax.kind, backend_name, dispatch)
     }
 }
 
 impl std::fmt::Debug for GpuSoftmax {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}Softmax(axes: {:?})", self.backend_name, self.axes)
+        write!(f, "{}{:?}(axes: {:?})", self.backend_name, self.kind, self.axes)
     }
 }
 
 impl PartialEq for GpuSoftmax {
     fn eq(&self, other: &Self) -> bool {
-        self.backend_name == other.backend_name && self.axes == other.axes
+        self.backend_name == other.backend_name
+            && self.axes == other.axes
+            && self.kind == other.kind
     }
 }
 
@@ -55,12 +61,13 @@ impl std::hash::Hash for GpuSoftmax {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.backend_name.hash(state);
         self.axes.hash(state);
+        self.kind.hash(state);
     }
 }
 
 impl Op for GpuSoftmax {
     fn name(&self) -> StaticName {
-        format!("{}Softmax", self.backend_name).into()
+        format!("{}{:?}", self.backend_name, self.kind).into()
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -78,7 +85,7 @@ impl EvalOp for GpuSoftmax {
         let input = input_value.to_device_tensor()?;
         let output =
             crate::turn_handler::make_tensor_for_node(ctx, input.datum_type(), input.shape())?;
-        (self.dispatch)(input, self.axes[0], &output)?;
+        (self.dispatch)(input, self.axes[0], self.kind, &output)?;
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
 }
@@ -116,6 +123,7 @@ impl TypedOp for GpuSoftmax {
                 node,
                 Some(Box::new(GpuSoftmax {
                     axes,
+                    kind: self.kind,
                     backend_name: self.backend_name,
                     dispatch: self.dispatch,
                 })),

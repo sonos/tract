@@ -1134,7 +1134,13 @@ mod tests {
                 })?;
                 let explode = bench(&|| {
                     gemm.dispatch_eval(stream, &qg, &kg, &smat)?;
-                    crate::kernels::nn::Softmax.dispatch_eval(stream, &smat, 2, &sm)?;
+                    crate::kernels::nn::Softmax.dispatch_eval(
+                        stream,
+                        &smat,
+                        2,
+                        tract_core::ops::nn::SoftmaxKind::Softmax,
+                        &sm,
+                    )?;
                     gemm.dispatch_eval(stream, &sm, &vg, &o2)?;
                     Ok(())
                 })?;

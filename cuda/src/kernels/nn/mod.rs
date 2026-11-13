@@ -29,6 +29,7 @@ pub use softmax::Softmax;
 pub use softmax::cuda_softmax_dispatch;
 
 use crate::kernels::{BroadcastKind, MAX_THREADS};
+use tract_core::ops::nn::SoftmaxKind;
 use tract_core::prelude::DatumType;
 use tract_gpu::ops::pool::PoolKind;
 
@@ -60,7 +61,11 @@ pub fn all_functions() -> Vec<String> {
         tract_gpu::tensor::DeviceTensor::SUPPORTED_DT
             .into_iter()
             .flat_map(|dt| [0, MAX_THREADS].into_iter().map(move |n_cols| (dt, n_cols)))
-            .flat_map(|(dt, n_cols)| Softmax.kernel_name(dt, n_cols).into_iter()),
+            .flat_map(|(dt, n_cols)| {
+                [SoftmaxKind::Softmax, SoftmaxKind::LogSoftmax]
+                    .into_iter()
+                    .flat_map(move |kind| Softmax.kernel_name(dt, n_cols, kind).into_iter())
+            }),
     );
 
     functions.extend(
