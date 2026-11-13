@@ -517,7 +517,7 @@ fn declutter_pow(
             )?));
         }
     }
-    crate::ops::nn::gelu_approximate::detect_gelu_approx(_op, model, node)
+    Ok(None)
 }
 
 element_wise!(abs, Abs, [i8, i16, i32, i64, f16, f32, f64] => |_, xs| {
@@ -724,7 +724,8 @@ element_wise!(tanh, Tanh,
  [f32] => |_, xs| { Func::Tanh.ew_f32()?.run(xs) },
  [f64] => |_, xs| { xs.iter_mut().for_each(|x| *x = x.tanh()); Ok(()) };
  q: [i8, u8, i32] => f32::tanh;
- cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))}
+ cost: |dt| {tvec!((Cost::FMA(dt), 11), (Cost::Div(dt), 1))};
+ declutter: crate::ops::nn::gelu_approximate::detect_gelu_approx
 );
 
 /// Every f16 bit pattern mapped through the registered f32 erf kernel and rounded
