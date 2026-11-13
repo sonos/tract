@@ -1,7 +1,10 @@
 use crate::internal::*;
 use crate::ops::binary::TypedBinOp;
 use crate::ops::element_wise::ElementWiseOp;
-use crate::ops::math::{Add, Mul, Pow, Tanh};
+use crate::ops::math::Add;
+use crate::ops::math::Mul;
+use crate::ops::math::PowConst;
+use crate::ops::math::Square;
 
 use tract_data::half::f16;
 use tract_linalg::routines::Func;
@@ -34,87 +37,141 @@ element_wise!(gelu_approximate, GeluApproximate { fast_impl: bool },
     cost: |dt| {tvec!((Cost::FMA(dt), 15))}
 );
 
-/// Search pattern => NEW_GELU(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))); N ∈ {2, 3}
-pub fn detect_gelu_approx(
-    _op: &Pow,
+/// A tree of `Mul`s as its non-constant factors and constant coefficient. `Square` and
+/// `PowConst(3)` count their operand's factors twice and three times; any other node is a
+/// factor of its own.
+fn product(
+    model: &TypedModel,
+    outlet: OutletId,
+    depth: usize,
+) -> TractResult<(TVec<OutletId>, f32)> {
+    let node = model.node(outlet.node);
+    if depth > 0 {
+        if let Some(bin) = node.op_as::<TypedBinOp>()
+            && bin.0.is::<Mul>()
+        {
+            let (mut factors, mut coef) = (tvec!(), 1.0);
+            for input in &node.inputs {
+                if let Some(k) = &model.outlet_fact(*input)?.uniform {
+                    coef *= k.cast_to_scalar::<f32>()?;
+                } else {
+                    let (f, k) = product(model, *input, depth - 1)?;
+                    factors.extend(f);
+                    coef *= k;
+                }
+            }
+            return Ok((factors, coef));
+        }
+        if let Some(ew) = node.op_as::<ElementWiseOp>() {
+            let power = if ew.0.is::<Square>() {
+                2
+            } else if ew.0.downcast_ref::<PowConst>().is_some_and(|p| p.exponent == 3.0) {
+                3
+            } else {
+                0
+            };
+            if power > 0 {
+                let (f, k) = product(model, node.inputs[0], depth - 1)?;
+                return Ok(((0..power).flat_map(|_| f.iter().copied()).collect(), k.powi(power)));
+            }
+        }
+    }
+    Ok((tvec!(outlet), 1.0))
+}
+
+fn close(a: f32, b: f32) -> bool {
+    (a - b).abs() <= 1e-5 * b.abs()
+}
+
+/// The other operand of an `Add` whose one operand is the uniform constant `konst`.
+fn add_const_operand(
     model: &TypedModel,
     node: &TypedNode,
+    konst: f32,
+) -> TractResult<Option<OutletId>> {
+    rule_if_some!(bin = node.op_as::<TypedBinOp>());
+    rule_if!(bin.0.is::<Add>() && node.inputs.len() == 2);
+    for (i, input) in node.inputs.iter().enumerate() {
+        if let Some(k) = &model.outlet_fact(*input)?.uniform
+            && close(k.cast_to_scalar::<f32>()?, konst)
+        {
+            return Ok(Some(node.inputs[1 - i]));
+        }
+    }
+    Ok(None)
+}
+
+fn is_only(factors: &[OutletId], x: OutletId, count: usize) -> bool {
+    factors.len() == count && factors.iter().all(|f| *f == x)
+}
+
+/// The tanh argument `c · (x + a · x^n)`, written expanded or factored as `c · x · (1 + a · x²)`,
+/// with its factors in any order: returns `(x, c, a, n)`.
+fn tanh_argument(
+    model: &TypedModel,
+    outlet: OutletId,
+) -> TractResult<Option<(OutletId, f32, f32, usize)>> {
+    let (factors, c) = product(model, outlet, 4)?;
+    if factors.len() == 1 {
+        let sum = model.node(factors[0].node);
+        rule_if_some!(bin = sum.op_as::<TypedBinOp>());
+        rule_if!(bin.0.is::<Add>() && sum.inputs.len() == 2);
+        for (lin, pow) in [(0, 1), (1, 0)] {
+            let (x, k) = product(model, sum.inputs[lin], 4)?;
+            let (p, a) = product(model, sum.inputs[pow], 4)?;
+            if x.len() == 1 && k == 1.0 && (is_only(&p, x[0], 3) || is_only(&p, x[0], 2)) {
+                return Ok(Some((x[0], c, a, p.len())));
+            }
+        }
+    } else if factors.len() == 2 {
+        for (lin, sum) in [(0, 1), (1, 0)] {
+            let x = factors[lin];
+            if let Some(rest) = add_const_operand(model, model.node(factors[sum].node), 1.0)? {
+                let (p, a) = product(model, rest, 4)?;
+                if is_only(&p, x, 2) {
+                    return Ok(Some((x, c, a, 3)));
+                }
+            }
+        }
+    }
+    Ok(None)
+}
+
+/// Detects the tanh approximation of GELU anchored on its `Tanh`:
+/// `0.5 · x · (1 + tanh(√(2/π) · (x + 0.044715 · x^n)))` with n = 3, or n = 2 for the fast
+/// variant, the cubic one also as `√(2/π) · x · (1 + 0.044715 · x²)`, with the products in any
+/// grouping and order (`Square` and `PowConst(3)` included). Replaces the whole expression by
+/// [`GeluApproximate`]. Only F16 and F32.
+pub fn detect_gelu_approx(
+    model: &TypedModel,
+    tanh: &TypedNode,
 ) -> TractResult<Option<TypedModelPatch>> {
-    let pow_node = node;
-
-    let in_fact = model.node_input_facts(pow_node.id)?[0];
-    let dt = in_fact.datum_type;
-
-    // Only F16 and F32 is supported.
-    rule_if!(matches!(dt, DatumType::F32 | DatumType::F16));
-
-    rule_if!(
-        model.matches_single_input_const(pow_node, 3.0)
-            || model.matches_single_input_const(pow_node, 2.0)
-    );
-    let fast_impl = model.matches_single_input_const(pow_node, 2.0);
-
-    // 0.044715 * x^N
-    rule_if_some!(mul_coef_a = model.find_succ_bin_with_const::<Mul>(pow_node, 0.044715));
-
-    // x + 0.044715 * x^N
-    rule_if_some!(
-        x_plus_mul_coef_a = model.find_succ_bin_with_outlet::<Add>(mul_coef_a, &pow_node.inputs[0])
-    );
-
-    // sqrt(2/pi) * (x + 0.044715 * x^N)
-    let sqrt_2_over_pi = (2.0 / std::f32::consts::PI).sqrt();
-    rule_if_some!(
-        mul_sqrt_2_over_pi =
-            model.find_succ_bin_with_const::<Mul>(x_plus_mul_coef_a, sqrt_2_over_pi)
-    );
-
-    // tanh(sqrt(2/pi) * (x + 0.044715 * x^N))
-    rule_if_some!(tanh_succ = model.single_succ(mul_sqrt_2_over_pi.id)?);
-    rule_if_some!(tanh_succ_op = tanh_succ.op_as::<ElementWiseOp>());
-    rule_if!(tanh_succ_op.0.is::<Tanh>());
-
-    // 1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)) N ∈ {2, 3}
-    rule_if_some!(tanh_plus_1 = model.find_succ_bin_with_const::<Add>(tanh_succ, 1.0));
-
-    // Identify Mul
-    rule_if_some!(mul_succ = model.single_succ(tanh_plus_1.id)?);
-    rule_if_some!(mul_succ_op = mul_succ.op_as::<TypedBinOp>());
-    rule_if!(mul_succ_op.0.is::<Mul>());
-
-    // Search first
-    // tmp = x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
-    // out = 0.5 * tmp
-    let last_node_id = if mul_succ.inputs.contains(&pow_node.inputs[0]) {
-        // 0.5 * x * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N)))
-        rule_if_some!(last_mul_with_0_5 = model.find_succ_bin_with_const::<Mul>(mul_succ, 0.5));
-        last_mul_with_0_5.id
-    } else {
-        // tmp = 0.5 * x
-        // out = tmp * (1.0 + tanh(sqrt(2/pi) * (x + 0.044715 * x^N))) N ∈ {2, 3}
-        rule_if_some!(
-            x_mul_0_5 = mul_succ
-                .inputs
-                .iter()
-                .filter_map(|i| {
-                    let n = &model.nodes()[i.node];
-                    let op = n.op_as::<TypedBinOp>()?;
-                    op.0.is::<Mul>().then_some(n)
-                })
-                .next()
-        );
-        rule_if!(model.matches_single_input_const(x_mul_0_5, 0.5));
-        rule_if!(x_mul_0_5.inputs.contains(&pow_node.inputs[0]));
-        mul_succ.id
-    };
-
-    let mut patch = TypedModelPatch::default();
-    let gelu_approx_input = patch.taps(model, &pow_node.inputs)?;
-    let out = patch.wire_node(
-        format!("{}.gelu_approx", pow_node.name),
-        gelu_approximate(fast_impl),
-        &[gelu_approx_input[0]],
-    )?;
-    patch.shunt_outside(model, last_node_id.into(), out[0])?;
-    Ok(Some(patch))
+    rule_if_some!((x, c, a, power) = tanh_argument(model, tanh.inputs[0])?);
+    rule_if!(matches!(model.outlet_fact(x)?.datum_type, DatumType::F32 | DatumType::F16));
+    rule_if!(close(c, (2.0 / std::f32::consts::PI).sqrt()) && close(a, 0.044715));
+    rule_if_some!(one_plus = model.single_succ(tanh.id)?);
+    rule_if_some!(one_plus_tanh = add_const_operand(model, one_plus, 1.0)?);
+    rule_if!(one_plus_tanh == tanh.id.into());
+    let mut end = one_plus;
+    for _ in 0..2 {
+        rule_if_some!(next = model.single_succ(end.id)?);
+        end = next;
+        let (factors, k) = product(model, end.id.into(), 4)?;
+        let mut factors = factors.to_vec();
+        factors.sort();
+        let mut want = vec![x, one_plus.id.into()];
+        want.sort();
+        if factors == want && close(k, 0.5) {
+            let mut patch = TypedModelPatch::default();
+            let input = patch.tap_model(model, x)?;
+            let out = patch.wire_node(
+                format!("{}.gelu_approx", end.name),
+                gelu_approximate(power == 2),
+                &[input],
+            )?;
+            patch.shunt_outside(model, end.id.into(), out[0])?;
+            return Ok(Some(patch));
+        }
+    }
+    Ok(None)
 }

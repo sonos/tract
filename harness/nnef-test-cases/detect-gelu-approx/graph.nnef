@@ -1,0 +1,9 @@
+version 1.0;
+
+graph network(input) -> (factored, canonical, fast)
+{
+    input = external<scalar>(shape = [2, 64]);
+    factored = 0.5 * input * (1.0 + tanh(input * 0.7978845608 * (1.0 + 0.044715 * input * input)));
+    canonical = input * (1.0 + tanh(0.7978845608 * (input + 0.044715 * pow(input, 3.0)))) * 0.5;
+    fast = 0.5 * input * (1.0 + tanh(0.7978845608 * (input + 0.044715 * pow(input, 2.0))));
+}
