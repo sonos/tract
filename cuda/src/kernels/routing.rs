@@ -317,6 +317,7 @@ const CUDA_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
             postamble(s, gate, up, bias, bias_up, expert_ids, activation, out)
         })
     },
+    fused_pair: None,
 };
 
 crate::register_cuda_op!(RoutedLinear, |source, node, op| {
