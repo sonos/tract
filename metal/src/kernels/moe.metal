@@ -147,63 +147,81 @@ enum RouteGateMode : uint {
     output[gid] = (up + 1.0f) * glu;
 }
 
-[[kernel]] void routed_combine_f32(
+// Token-major routes (token * k + slot): each output element sums its own k
+// routes.
+template <typename T>
+[[kernel]] void routed_combine(
     device const float *route_values [[buffer(0)]],
-    device const long *route_token_ids [[buffer(1)]],
-    device const float *route_weights [[buffer(2)]],
-    device float *output [[buffer(3)]],
-    constant uint &route_count [[buffer(4)]],
-    constant uint &token_count [[buffer(5)]],
-    constant uint &d_model [[buffer(6)]],
-    constant uint &routes_per_token [[buffer(7)]],
+    device const float *route_weights [[buffer(1)]],
+    device T *output [[buffer(2)]],
+    constant uint &token_count [[buffer(3)]],
+    constant uint &d_model [[buffer(4)]],
+    constant uint &routes_per_token [[buffer(5)]],
     uint gid [[thread_position_in_grid]])
 {
-    const uint total = token_count * d_model;
-    if (gid >= total) {
+    if (gid >= token_count * d_model) {
         return;
     }
-
     const uint token = gid / d_model;
     const uint dim = gid - token * d_model;
+    const uint base = token * routes_per_token;
     float acc = 0.0f;
-    if (routes_per_token != 0) {
-        // Token-major routes (route_topk layout: token*k + slot): each output
-        // element only touches its own k routes instead of scanning all of
-        // them (512x fewer reads at a 512-token prefill chunk with k=4).
-        const uint base = token * routes_per_token;
-        for (uint slot = 0; slot < routes_per_token; slot++) {
-            const uint route = base + slot;
-            acc += route_weights[route] * route_values[route * d_model + dim];
-        }
-    } else {
-        for (uint route = 0; route < route_count; route++) {
-            if ((uint)route_token_ids[route] == token) {
-                acc += route_weights[route] * route_values[route * d_model + dim];
-            }
-        }
+    for (uint slot = 0; slot < routes_per_token; slot++) {
+        const uint route = base + slot;
+        acc += route_weights[route] * route_values[route * d_model + dim];
     }
-    output[gid] = acc;
+    output[gid] = T(acc);
 }
 
-// Fused per-route expert bias add: out[route, col] = value[route, col] +
-// bias[expert_ids[route], col]. Replaces a gather of a full [routes, n]
-// bias matrix plus a separate binary add (two passes and a 20+ MB
-// intermediate per MoE matmul at prefill).
-[[kernel]] void routed_bias_add_f32(
-    device const float *value [[buffer(0)]],
-    device const float *bias [[buffer(1)]],
-    device const long *route_expert_ids [[buffer(2)]],
-    device float *out [[buffer(3)]],
-    constant uint &route_count [[buffer(4)]],
-    constant uint &n [[buffer(5)]],
+template [[host_name("routed_combine_f32")]] kernel decltype(routed_combine<float>) routed_combine<float>;
+template [[host_name("routed_combine_f16")]] kernel decltype(routed_combine<half>) routed_combine<half>;
+
+inline float routed_activate(float v, uint activation) {
+    if (activation == 1) {
+        return v / (1.0f + exp(-v));
+    } else if (activation == 2) {
+        return 0.5f * v * (1.0f + precise::tanh(0.7978845608f * (v + 0.044715f * v * v * v)));
+    } else if (activation == 3) {
+        return max(v, 0.0f);
+    }
+    return v;
+}
+
+// RoutedLinear postamble over [routes, n] projections: bias at the route's
+// expert, then the activation (0 none, 1 silu, 2 tanh gelu, 3 relu), times
+// `up` for a pair, or clamped SwiGLU (4) of the pair.
+[[kernel]] void routed_postamble_f32(
+    device const float *gate [[buffer(0)]],
+    device const float *up [[buffer(1)]],
+    device const float *bias [[buffer(2)]],
+    device const float *bias_up [[buffer(3)]],
+    device const long *expert_ids [[buffer(4)]],
+    device float *out [[buffer(5)]],
+    constant uint &routes [[buffer(6)]],
+    constant uint &n [[buffer(7)]],
+    constant uint &activation [[buffer(8)]],
+    constant float &alpha [[buffer(9)]],
+    constant float &limit [[buffer(10)]],
+    constant uint &flags [[buffer(11)]],
     uint gid [[thread_position_in_grid]])
 {
-    const uint total = route_count * n;
-    if (gid >= total) {
+    if (gid >= routes * n) {
         return;
     }
     const uint route = gid / n;
     const uint col = gid - route * n;
-    const uint expert = (uint)route_expert_ids[route];
-    out[gid] = value[gid] + bias[expert * n + col];
+    const ulong bias_ix = (ulong)expert_ids[route] * n + col;
+    float g = gate[gid] + ((flags & 2) ? bias[bias_ix] : 0.0f);
+    if ((flags & 1) == 0) {
+        out[gid] = routed_activate(g, activation);
+        return;
+    }
+    float u = up[gid] + ((flags & 4) ? bias_up[bias_ix] : 0.0f);
+    if (activation == 4) {
+        g = min(g, limit);
+        u = clamp(u, -limit, limit);
+        out[gid] = (u + 1.0f) * g / (1.0f + exp(-alpha * g));
+    } else {
+        out[gid] = routed_activate(g, activation) * u;
+    }
 }

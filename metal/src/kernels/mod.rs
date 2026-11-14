@@ -10,6 +10,7 @@ pub mod gdn_recurrent;
 pub mod matmul;
 pub mod moe;
 pub mod nn;
+pub mod routing;
 mod utils;
 
 use tract_core::internal::*;
