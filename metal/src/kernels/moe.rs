@@ -4,17 +4,9 @@ use crate::{LibraryName, MetalStream};
 use anyhow::ensure;
 use metal::{MTLSize, NSUInteger};
 use tract_core::internal::*;
+use tract_gpu::ops::routing::gate_code;
 use tract_gpu::tensor::DeviceTensor;
 use tract_transformers::ops::moe_ffn::GateMode;
-
-fn gate_mode_code(gate: &GateMode) -> u32 {
-    match gate {
-        GateMode::SoftmaxTopk => 0,
-        GateMode::SoftmaxAll => 1,
-        GateMode::Sigmoid => 2,
-        GateMode::Raw => 3,
-    }
-}
 
 #[allow(clippy::too_many_arguments)]
 pub fn dispatch_route_topk_f32(
@@ -77,45 +69,80 @@ pub fn dispatch_route_topk_f32(
     ensure!(route_expert_ids.shape() == [route_count]);
     ensure!(route_weights.shape() == [route_count]);
 
-    let token_count = token_count as u32;
-    let d_model = d_model as u32;
-    let num_experts = num_experts as u32;
-    let k = k as u32;
-    let gate_mode = gate_mode_code(gate);
-    let has_wg_bias = u32::from(wg_bias.is_some());
-    let wg_bias = wg_bias.unwrap_or(wg);
-
-    let x2 = x.reshaped(tvec![token_count as usize, d_model as usize])?;
-    let wg2 = wg.reshaped(tvec![num_experts as usize, d_model as usize])?;
-    let scores = DeviceTensor::uninitialized_dt(
-        f32::datum_type(),
-        &[token_count as usize, num_experts as usize],
-    )?;
+    let x2 = x.reshaped(tvec![token_count, d_model])?;
+    let wg2 = wg.reshaped(tvec![num_experts, d_model])?;
+    let scores = DeviceTensor::uninitialized_dt(f32::datum_type(), &[token_count, num_experts])?;
     dispatch_router_scores(stream, &x2, &wg2, &scores)?;
+    dispatch_route_select_f32(
+        stream,
+        &scores,
+        wg_bias,
+        k,
+        gate_code(gate),
+        route_token_ids,
+        route_expert_ids,
+        route_weights,
+    )?;
+    // Cadence submission can move the initial retention onto an earlier buffer.
+    stream.retain_tensor(&scores);
+    Ok(())
+}
 
-    // Phase 2: tiny per-token top-k over the score rows, one simdgroup per
-    // token.
+/// Top-k selection over f32 router `scores [T, E]` plus the optional f32 `bias [E]`, one
+/// simdgroup per token, to token-major `token_ids`, `expert_ids` (i64) and `weights` (f32),
+/// `[T * k]` each, gated by `gate` (see [`gate_code`]).
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_route_select_f32(
+    stream: &MetalStream,
+    scores: &DeviceTensor,
+    bias: Option<&DeviceTensor>,
+    k: usize,
+    gate: u32,
+    route_token_ids: &DeviceTensor,
+    route_expert_ids: &DeviceTensor,
+    route_weights: &DeviceTensor,
+) -> TractResult<()> {
+    let _retained = stream.retain_for_dispatch(&[
+        scores,
+        bias.unwrap_or(scores),
+        route_token_ids,
+        route_expert_ids,
+        route_weights,
+    ]);
+    ensure!(scores.rank() == 2 && scores.datum_type() == f32::datum_type());
+    let (token_count, num_experts) = (scores.shape()[0], scores.shape()[1]);
+    ensure!((1..=256).contains(&num_experts), "Metal route select scores at most 256 experts");
+    ensure!(k <= 16 && k <= num_experts, "Metal route select picks at most 16 routes");
+    if let Some(bias) = bias {
+        ensure!(bias.datum_type() == f32::datum_type() && bias.shape() == [num_experts]);
+    }
+    for ids in [route_token_ids, route_expert_ids] {
+        ensure!(ids.datum_type() == i64::datum_type() && ids.shape() == [token_count * k]);
+    }
+    ensure!(
+        route_weights.datum_type() == f32::datum_type()
+            && route_weights.shape() == [token_count * k]
+    );
+    let has_bias = u32::from(bias.is_some());
+    let bias = bias.unwrap_or(scores);
     let pipeline = stream.load_pipeline(LibraryName::MoeOps, "route_select_topk_f32")?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, &scores, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(0, scores, metal::MTLResourceUsage::Read);
         encoder.set_metal_tensor(1, route_token_ids, metal::MTLResourceUsage::Write);
         encoder.set_metal_tensor(2, route_expert_ids, metal::MTLResourceUsage::Write);
         encoder.set_metal_tensor(3, route_weights, metal::MTLResourceUsage::Write);
-        encoder.set_slice(4, &[token_count]);
-        encoder.set_slice(5, &[num_experts]);
-        encoder.set_slice(6, &[k]);
-        encoder.set_slice(7, &[gate_mode]);
-        encoder.set_metal_tensor(8, wg_bias, metal::MTLResourceUsage::Read);
-        encoder.set_slice(9, &[has_wg_bias]);
-
+        encoder.set_slice(4, &[token_count as u32]);
+        encoder.set_slice(5, &[num_experts as u32]);
+        encoder.set_slice(6, &[k as u32]);
+        encoder.set_slice(7, &[gate]);
+        encoder.set_metal_tensor(8, bias, metal::MTLResourceUsage::Read);
+        encoder.set_slice(9, &[has_bias]);
         let grid_size = MTLSize { width: token_count.max(1) as NSUInteger, height: 1, depth: 1 };
         let group_size = MTLSize { width: 32, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
-    // Cadence submission can move the initial retention onto an earlier buffer.
-    stream.retain_tensor(&scores);
     Ok(())
 }
 
@@ -158,106 +185,99 @@ pub fn dispatch_clamped_swiglu_f32(
     Ok(())
 }
 
-pub fn dispatch_routed_combine_f32(
+/// Weighted sum of token-major f32 `route_values [T * k, D]` by f32 `route_weights [T * k]`,
+/// `k` routes per token, into an f32 or f16 `output [T, D]`.
+pub fn dispatch_routed_combine(
     stream: &MetalStream,
     route_values: &DeviceTensor,
-    route_token_ids: &DeviceTensor,
     route_weights: &DeviceTensor,
+    k: usize,
     output: &DeviceTensor,
-    routes_per_token: usize,
 ) -> TractResult<()> {
-    stream.retain_tensor(route_values);
-    stream.retain_tensor(route_token_ids);
-    stream.retain_tensor(route_weights);
-    stream.retain_tensor(output);
-
-    ensure!(route_values.rank() == 2, "route_values must be [routes, d_model]");
-    ensure!(route_token_ids.rank() == 1, "route_token_ids must be [routes]");
-    ensure!(route_weights.rank() == 1, "route_weights must be [routes]");
-    ensure!(output.rank() == 2 || output.rank() == 3, "output must be rank 2 or 3");
-    ensure!(route_values.datum_type() == f32::datum_type());
-    ensure!(route_token_ids.datum_type() == i64::datum_type());
-    ensure!(route_weights.datum_type() == f32::datum_type());
-    ensure!(output.datum_type() == f32::datum_type());
-
-    let route_count = route_token_ids.shape()[0];
-    ensure!(route_values.shape()[0] == route_count);
-    ensure!(route_weights.shape()[0] == route_count);
-
+    let _retained = stream.retain_for_dispatch(&[route_values, route_weights, output]);
+    ensure!(route_values.rank() == 2 && route_values.datum_type() == f32::datum_type());
+    ensure!(route_weights.rank() == 1 && route_weights.datum_type() == f32::datum_type());
+    ensure!(matches!(output.datum_type(), DatumType::F32 | DatumType::F16));
     let d_model = *output.shape().last().context("output has no feature axis")?;
-    let token_count: usize = output.shape()[..output.rank() - 1].iter().product();
-    ensure!(
-        route_values.shape()[1] == d_model,
-        "route value dim {} does not match output dim {d_model}",
-        route_values.shape()[1]
-    );
-
-    // Only trust the token-major fast path when the counts line up.
-    let rpt = if routes_per_token > 0 && token_count * routes_per_token == route_count {
-        routes_per_token as u32
+    let token_count = output.shape()[..output.rank() - 1].iter().product::<usize>();
+    ensure!(route_values.shape() == [token_count * k, d_model]);
+    ensure!(route_weights.shape() == [token_count * k]);
+    let kernel = if output.datum_type() == f32::datum_type() {
+        "routed_combine_f32"
     } else {
-        0
+        "routed_combine_f16"
     };
-    let route_count = route_count as u32;
-    let token_count = token_count as u32;
-    let d_model = d_model as u32;
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_combine_f32")?;
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, kernel)?;
     let total = output.len() as u64;
-    let group_width = pipeline.max_total_threads_per_threadgroup().min(256).min(total).max(1);
-    let grid_width = total.div_ceil(group_width);
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
         encoder.set_metal_tensor(0, route_values, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, route_token_ids, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(2, route_weights, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(3, output, metal::MTLResourceUsage::Write);
-        encoder.set_slice(4, &[route_count]);
-        encoder.set_slice(5, &[token_count]);
-        encoder.set_slice(6, &[d_model]);
-        encoder.set_slice(7, &[rpt]);
-
-        let grid_size = MTLSize { width: grid_width as NSUInteger, height: 1, depth: 1 };
-        let group_size = MTLSize { width: group_width as NSUInteger, height: 1, depth: 1 };
+        encoder.set_metal_tensor(1, route_weights, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, output, metal::MTLResourceUsage::Write);
+        encoder.set_slice(3, &[token_count as u32]);
+        encoder.set_slice(4, &[d_model as u32]);
+        encoder.set_slice(5, &[k as u32]);
+        let grid_size = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
+        let group_size = MTLSize { width: 256, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
 }
 
-/// Fused per-route expert bias add (see routed_bias_add_f32).
-pub fn dispatch_routed_bias_add_f32(
+/// RoutedLinear postamble over f32 `[R, N]` projections: `gate`, then `up`, `bias` and
+/// `bias_up` (`[E, N]`, read at each route's expert) when present, and the activation (see
+/// [`tract_gpu::ops::routing::routed_activation_code`]) to f32 `out [R, N]`.
+#[allow(clippy::too_many_arguments)]
+pub fn dispatch_routed_postamble_f32(
     stream: &MetalStream,
-    value: &DeviceTensor,
-    bias: &DeviceTensor,
-    route_expert_ids: &DeviceTensor,
+    gate: &DeviceTensor,
+    up: Option<&DeviceTensor>,
+    bias: Option<&DeviceTensor>,
+    bias_up: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    (activation, alpha, limit): (u32, f32, f32),
     out: &DeviceTensor,
 ) -> TractResult<()> {
-    for t in [value, bias, route_expert_ids] {
-        stream.retain_tensor(t);
+    let _retained = stream.retain_for_dispatch(&[
+        gate,
+        up.unwrap_or(gate),
+        bias.unwrap_or(gate),
+        bias_up.unwrap_or(gate),
+        expert_ids,
+        out,
+    ]);
+    ensure!(gate.rank() == 2 && gate.datum_type() == f32::datum_type());
+    ensure!(out.shape() == gate.shape() && out.datum_type() == f32::datum_type());
+    ensure!(up.is_none_or(|up| up.shape() == gate.shape()));
+    let (routes, n) = (gate.shape()[0], gate.shape()[1]);
+    ensure!(expert_ids.datum_type() == i64::datum_type() && expert_ids.shape() == [routes]);
+    for b in bias.iter().chain(bias_up.iter()) {
+        ensure!(b.datum_type() == f32::datum_type() && b.rank() == 2 && b.shape()[1] == n);
     }
-    stream.retain_tensor(out);
-    ensure!(value.datum_type() == f32::datum_type());
-    ensure!(bias.datum_type() == f32::datum_type());
-    ensure!(route_expert_ids.datum_type() == i64::datum_type());
-    let n = *value.shape().last().context("value rank 0")?;
-    let route_count = value.len() / n;
-    ensure!(bias.shape().last() == Some(&n));
-    ensure!(route_expert_ids.len() == route_count);
-    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_bias_add_f32")?;
-    let total = (route_count * n) as u64;
+    let flags = u32::from(up.is_some())
+        | (u32::from(bias.is_some()) << 1)
+        | (u32::from(bias_up.is_some()) << 2);
+    let pipeline = stream.load_pipeline(LibraryName::MoeOps, "routed_postamble_f32")?;
+    let total = (routes * n) as u64;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
-        encoder.set_metal_tensor(0, value, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(1, bias, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(2, route_expert_ids, metal::MTLResourceUsage::Read);
-        encoder.set_metal_tensor(3, out, metal::MTLResourceUsage::Write);
-        encoder.set_slice(4, &[route_count as u32]);
-        encoder.set_slice(5, &[n as u32]);
-        let group_width = total.clamp(1, 256);
-        let grid = MTLSize { width: total.div_ceil(group_width), height: 1, depth: 1 };
-        let group = MTLSize { width: group_width, height: 1, depth: 1 };
-        encoder.dispatch_thread_groups(grid, group);
+        encoder.set_metal_tensor(0, gate, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(1, up.unwrap_or(gate), metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(2, bias.unwrap_or(gate), metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(3, bias_up.unwrap_or(gate), metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(4, expert_ids, metal::MTLResourceUsage::Read);
+        encoder.set_metal_tensor(5, out, metal::MTLResourceUsage::Write);
+        encoder.set_slice(6, &[routes as u32]);
+        encoder.set_slice(7, &[n as u32]);
+        encoder.set_slice(8, &[activation]);
+        encoder.set_slice(9, &[alpha]);
+        encoder.set_slice(10, &[limit]);
+        encoder.set_slice(11, &[flags]);
+        let grid_size = MTLSize { width: total.div_ceil(256), height: 1, depth: 1 };
+        let group_size = MTLSize { width: 256, height: 1, depth: 1 };
+        encoder.dispatch_thread_groups(grid_size, group_size);
     });
     Ok(())
 }
