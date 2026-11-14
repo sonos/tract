@@ -288,6 +288,23 @@ pub struct RoutedLinearKernels {
         (u32, f32, f32),
         &DeviceTensor,
     ) -> TractResult<()>,
+    /// A paired projection and its postamble in one pass, for backends that fuse them: `input`,
+    /// `weights`, `weights_up`, `bias` and `bias_up` when present, the rows and `expert_ids` as
+    /// for `project`, the activation, to f32 `out [R, N]`. Returns false, having done nothing,
+    /// when it does not handle this activation; `project` and `postamble` then run instead.
+    #[allow(clippy::type_complexity)]
+    pub fused_pair: Option<
+        fn(
+            &DeviceTensor,
+            &DeviceTensor,
+            &DeviceTensor,
+            Option<(&DeviceTensor, &DeviceTensor)>,
+            Option<&DeviceTensor>,
+            &DeviceTensor,
+            (u32, f32, f32),
+            &DeviceTensor,
+        ) -> TractResult<bool>,
+    >,
 }
 
 /// A postamble kernel's activation: its code (0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped
@@ -413,6 +430,19 @@ impl EvalOp for GpuRoutedLinear {
             (self.kernels.project)(input, weights, rows, expert_ids, out)
                 .with_context(|| format!("Error while dispatching eval for {}", self.name()))
         };
+        let bias_at = 4 + self.op.pair as usize;
+        let activation = routed_activation_code(&self.op.activation);
+        let fused = match self.kernels.fused_pair {
+            Some(fused_pair) if self.op.pair => {
+                let biases = self.op.bias.then(|| (device[bias_at], device[bias_at + 1]));
+                fused_pair(input, device[3], device[4], biases, rows, expert_ids, activation, &out)
+                    .with_context(|| format!("Error while dispatching eval for {}", self.name()))?
+            }
+            _ => false,
+        };
+        if fused {
+            return Ok(tvec!(out.into_tensor().into_tvalue()));
+        }
         if direct {
             project(device[3], &out)?;
         } else {
@@ -426,7 +456,6 @@ impl EvalOp for GpuRoutedLinear {
             } else {
                 None
             };
-            let bias_at = 4 + self.op.pair as usize;
             let bias = self.op.bias.then(|| device[bias_at]);
             let bias_up = (self.op.bias && self.op.pair).then(|| device[bias_at + 1]);
             (self.kernels.postamble)(
@@ -435,7 +464,7 @@ impl EvalOp for GpuRoutedLinear {
                 bias,
                 bias_up,
                 expert_ids,
-                routed_activation_code(&self.op.activation),
+                activation,
                 &out,
             )?;
         }
