@@ -6,7 +6,7 @@ use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensorExt;
 
-use crate::kernels::matmul::{Transposes, output_shape, wgpu_matmul_dispatch};
+use crate::kernels::matmul::{Transposes, output_shape, wgpu_matmul_dispatch_with_precision};
 use crate::kernels::shaders::ChainStep;
 use crate::transform::Mapping;
 
@@ -17,6 +17,8 @@ use crate::transform::Mapping;
 pub struct WgpuGemm {
     pub op: PrefixMatMul,
     pub epilogue: Vec<ChainStep>,
+    /// FP16 arithmetic policy captured during model translation.
+    pub accumulate_f32: bool,
 }
 
 impl Op for WgpuGemm {
@@ -32,6 +34,7 @@ impl Op for WgpuGemm {
         if !self.epilogue.is_empty() {
             info.push(format!("epilogue: {:?}", self.epilogue));
         }
+        info.push(format!("f16_accumulate_f32: {}", self.accumulate_f32));
         Ok(info)
     }
 
@@ -54,7 +57,7 @@ impl EvalOp for WgpuGemm {
         )?;
         let output = tract_gpu::turn_handler::make_tensor_for_node(ctx, a.datum_type(), &shape)?;
         if output.len() > 0 {
-            wgpu_matmul_dispatch(
+            wgpu_matmul_dispatch_with_precision(
                 Transposes {
                     a: self.op.transpose_a,
                     b: self.op.transpose_b,
@@ -65,6 +68,7 @@ impl EvalOp for WgpuGemm {
                 b,
                 &inputs[2..],
                 &output,
+                self.accumulate_f32,
             )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
@@ -165,7 +169,10 @@ pub fn translate_gemm(
     if on_a {
         device_inputs.swap(0, 1);
     }
-    let outlet_ids =
-        target.wire_node(node.name.clone(), WgpuGemm { op, epilogue: vec![] }, &device_inputs)?;
+    let outlet_ids = target.wire_node(
+        node.name.clone(),
+        WgpuGemm { op, epilogue: vec![], accumulate_f32: crate::precision::for_model(source)? },
+        &device_inputs,
+    )?;
     Ok(Some(outlet_ids))
 }

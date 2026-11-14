@@ -46,6 +46,20 @@ pub(crate) fn tiled_gemm_core(
     k_prologue: &str,
     tile_m: usize,
 ) -> String {
+    tiled_gemm_core_with_accumulator(t, a_k_fast, b_n_fast, store_args, k_prologue, tile_m, "f32")
+}
+
+/// As [`tiled_gemm_core`], with explicit arithmetic precision. The stores still
+/// receive f32 values; f16 accumulators widen only when writing each result.
+pub(crate) fn tiled_gemm_core_with_accumulator(
+    t: &str,
+    a_k_fast: &str,
+    b_n_fast: &str,
+    store_args: &str,
+    k_prologue: &str,
+    tile_m: usize,
+    accumulator: &str,
+) -> String {
     let tile = MATMUL_TILE;
     let tk = MATMUL_TILE_K;
     let tk4 = tk / 4;
@@ -63,7 +77,8 @@ pub(crate) fn tiled_gemm_core(
     );
     for i in 0..tm {
         for j in 0..tn {
-            s += &format!("    var c{i}_{j} = 0.0;\n");
+            let zero = if accumulator == "f32" { "0.0" } else { "f16(0.0)" };
+            s += &format!("    var c{i}_{j} = {zero};\n");
         }
     }
     let k_prologue = if k_prologue.is_empty() {
@@ -108,12 +123,12 @@ pub(crate) fn tiled_gemm_core(
     );
     for i in 0..tm {
         s += &format!(
-            "            let a{i} = vec4<f32>(a_tile[(ty * {tm}u + {i}u) * {tk4}u + kq]);\n"
+            "            let a{i} = vec4<{accumulator}>(a_tile[(ty * {tm}u + {i}u) * {tk4}u + kq]);\n"
         );
     }
     for (sub, comp) in ["x", "y", "z", "w"].iter().enumerate() {
         s += &format!(
-            "            let b{sub} = vec4<f32>(b_tile[(kq * 4u + {sub}u) * {tile4}u + tx]);\n"
+            "            let b{sub} = vec4<{accumulator}>(b_tile[(kq * 4u + {sub}u) * {tile4}u + tx]);\n"
         );
         for i in 0..tm {
             for (j, cj) in ["x", "y", "z", "w"].iter().enumerate() {
@@ -125,7 +140,9 @@ pub(crate) fn tiled_gemm_core(
     s += &format!("    let r = row0 + ty * {tm}u;\n    let c = col0 + tx * {tn}u;\n");
     for i in 0..tm {
         for j in 0..tn {
-            s += &format!("    store_out({store_args}r + {i}u, c + {j}u, c{i}_{j});\n");
+            let value =
+                if accumulator == "f32" { format!("c{i}_{j}") } else { format!("f32(c{i}_{j})") };
+            s += &format!("    store_out({store_args}r + {i}u, c + {j}u, {value});\n");
         }
     }
     s
