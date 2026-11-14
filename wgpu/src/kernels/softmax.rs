@@ -147,7 +147,9 @@ fn softmax_rows_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(wor
     if (row >= params.outer) {{ return; }}
     let src = params.off_in + row * params.k;
     let dst = params.off_out + row * params.k;
-    var m = bitcast<f32>(0xff800000u);
+    // A constant -inf is a WGSL shader-creation error in Tint (Chrome); build it at runtime.
+    var neg_inf_bits = 0xff800000u;
+    var m = bitcast<f32>(neg_inf_bits);
     var s = 0.0;
     for (var i = lid.x; i < params.k; i += {ROW_WG}u) {{
         let x = f32(inp[src + i]);
