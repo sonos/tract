@@ -146,18 +146,28 @@ extern "C" __global__ void routed_combine_f16(const float *values,
 
 #define ROUTED_ROWS 4
 
-// One struct per weight format the routed kernels read: `load4` gives
-// weights k .. k + 3 of row `row`, k a multiple of 4, as f32.
+// One struct per weight format the routed kernels read: `codes4` gives
+// weights k .. k + 3 of row `row`, k a multiple of 4, as f32 before the
+// scale `scale` of their block. Kernels multiply by the scale once per
+// dot product where they can, as the compiler may not reassociate it.
 struct w_f32 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int row_len, int k) {
+  static __device__ __forceinline__ float scale(const void *, long long, int,
+                                                int) {
+    return 1.0f;
+  }
+  static __device__ __forceinline__ float4 codes4(const void *w, long long row,
+                                                  int row_len, int k) {
     return *(const float4 *)((const float *)w + row * row_len + k);
   }
 };
 
 struct w_f16 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int row_len, int k) {
+  static __device__ __forceinline__ float scale(const void *, long long, int,
+                                                int) {
+    return 1.0f;
+  }
+  static __device__ __forceinline__ float4 codes4(const void *w, long long row,
+                                                  int row_len, int k) {
     const half2 *p = (const half2 *)((const half *)w + row * row_len + k);
     const float2 lo = __half22float2(p[0]);
     const float2 hi = __half22float2(p[1]);
@@ -166,32 +176,50 @@ struct w_f16 {
 };
 
 struct w_q40 {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int row_len, int k) {
-    const block_q4_0 *b = (const block_q4_0 *)w + row * (row_len / 32) + k / 32;
-    const float d = __half2float(b->d);
+  static __device__ __forceinline__ const block_q4_0 *
+  block(const void *w, long long row, int row_len, int k) {
+    return (const block_q4_0 *)w + row * (row_len / 32) + k / 32;
+  }
+  static __device__ __forceinline__ float scale(const void *w, long long row,
+                                                int row_len, int k) {
+    return __half2float(block(w, row, row_len, k)->d);
+  }
+  static __device__ __forceinline__ float4 codes4(const void *w, long long row,
+                                                  int row_len, int k) {
     const int i = k % 32;
     const int shift = i < 16 ? 0 : 4;
-    const uint8_t *qs = b->qs + i % 16;
-    return make_float4((float)(((qs[0] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[1] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[2] >> shift) & 0xF) - 8) * d,
-                       (float)(((qs[3] >> shift) & 0xF) - 8) * d);
+    const uint8_t *qs = block(w, row, row_len, k)->qs + i % 16;
+    return make_float4((float)(((qs[0] >> shift) & 0xF) - 8),
+                       (float)(((qs[1] >> shift) & 0xF) - 8),
+                       (float)(((qs[2] >> shift) & 0xF) - 8),
+                       (float)(((qs[3] >> shift) & 0xF) - 8));
   }
 };
 
 struct w_q20t {
-  static __device__ __forceinline__ float4 load4(const void *w, long long row,
-                                                 int row_len, int k) {
-    const block_q2_0_t *b =
-        (const block_q2_0_t *)w + row * (row_len / 32) + k / 32;
-    const float d = __half2float(b->d);
-    const int q = b->qs[(k % 32) / 4];
-    return make_float4((float)((q & 3) - 1) * d, (float)(((q >> 2) & 3) - 1) * d,
-                       (float)(((q >> 4) & 3) - 1) * d,
-                       (float)(((q >> 6) & 3) - 1) * d);
+  static __device__ __forceinline__ const block_q2_0_t *
+  block(const void *w, long long row, int row_len, int k) {
+    return (const block_q2_0_t *)w + row * (row_len / 32) + k / 32;
+  }
+  static __device__ __forceinline__ float scale(const void *w, long long row,
+                                                int row_len, int k) {
+    return __half2float(block(w, row, row_len, k)->d);
+  }
+  static __device__ __forceinline__ float4 codes4(const void *w, long long row,
+                                                  int row_len, int k) {
+    const int q = block(w, row, row_len, k)->qs[(k % 32) / 4];
+    return make_float4((float)((q & 3) - 1), (float)(((q >> 2) & 3) - 1),
+                       (float)(((q >> 4) & 3) - 1), (float)(((q >> 6) & 3) - 1));
   }
 };
+
+template <typename W>
+static __device__ __forceinline__ float4 load4(const void *w, long long row,
+                                               int row_len, int k) {
+  const float d = W::scale(w, row, row_len, k);
+  const float4 c = W::codes4(w, row, row_len, k);
+  return make_float4(c.x * d, c.y * d, c.z * d, c.w * d);
+}
 
 static __device__ __forceinline__ float dot4(float4 a, float4 b) {
   return a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
@@ -220,7 +248,8 @@ static __device__ void routed_mul_vec_q(const void *w, const float *x,
 #pragma unroll
     for (int r = 0; r < ROUTED_ROWS; r++) {
       if (r < rows) {
-        acc[r] += dot4(W::load4(w, w_row + r, k, kk), xv);
+        acc[r] += W::scale(w, w_row + r, k, kk) *
+                  dot4(W::codes4(w, w_row + r, k, kk), xv);
       }
     }
   }
@@ -409,16 +438,17 @@ static __device__ void routed_mm(const void *w, const float *x, float *dst,
       as[8 * part + j][load_row] = v[j];
     }
     if (b_valid) {
-      const float4 lo = W::load4(w, b_row, k, k0 + 8 * part);
-      const float4 hi = W::load4(w, b_row, k, k0 + 8 * part + 4);
-      v[0] = lo.x;
-      v[1] = lo.y;
-      v[2] = lo.z;
-      v[3] = lo.w;
-      v[4] = hi.x;
-      v[5] = hi.y;
-      v[6] = hi.z;
-      v[7] = hi.w;
+      const float d = W::scale(w, b_row, k, k0 + 8 * part);
+      const float4 lo = W::codes4(w, b_row, k, k0 + 8 * part);
+      const float4 hi = W::codes4(w, b_row, k, k0 + 8 * part + 4);
+      v[0] = lo.x * d;
+      v[1] = lo.y * d;
+      v[2] = lo.z * d;
+      v[3] = lo.w * d;
+      v[4] = hi.x * d;
+      v[5] = hi.y * d;
+      v[6] = hi.z * d;
+      v[7] = hi.w * d;
     } else {
 #pragma unroll
       for (int j = 0; j < 8; j++) {
@@ -501,7 +531,7 @@ static __device__ void routed_mv_grouped(const void *w, const float *x,
     float4 wv[ROUTED_ROWS];
 #pragma unroll
     for (int r = 0; r < ROUTED_ROWS; r++) {
-      wv[r] = r < rows ? W::load4(w, w_row + r, k, 32 * b + 4 * sub)
+      wv[r] = r < rows ? load4<W>(w, w_row + r, k, 32 * b + 4 * sub)
                        : make_float4(0.0f, 0.0f, 0.0f, 0.0f);
     }
 #pragma unroll
@@ -541,7 +571,7 @@ static __device__ void routed_mv_grouped(const void *w, const float *x,
     routed_mv_grouped<W>(w, x, dst, row_ids, sorted, chunks, k, n);            \
   }
 
-// Block-quantized formats also get the per-route GEMV over load4; plain ones
+// Block-quantized formats also get the per-route GEMV over codes4; plain ones
 // keep routed_mul_vec_plain, one warp per output row.
 #define INSTANTIATE_ROUTED_BLOCK_QUANT(name, W)                                \
   INSTANTIATE_ROUTED_TILED(name, W)                                            \
