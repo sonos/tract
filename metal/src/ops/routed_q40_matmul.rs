@@ -275,39 +275,7 @@ mod tests {
 
         let mut transformed = model.clone();
         MetalTransform::default().transform(&mut transformed)?;
-        let routed_count = transformed
-            .nodes()
-            .iter()
-            .filter(|node| node.op().name() == "MetalRoutedQ40MatMul")
-            .count();
-        let transformed_ops = || {
-            transformed
-                .nodes()
-                .iter()
-                .map(|node| format!("{}: {}", node.name, node.op().name()))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
-        ensure!(
-            routed_count == 1,
-            "expected 1 MetalRoutedQ40MatMul node (w2), got {routed_count}\n{}",
-            transformed_ops()
-        );
-        // The fused op may be wrapped in MetalFusedAxisOp (rank-3 inputs),
-        // which forwards the inner op's name.
-        let fused_count = transformed
-            .nodes()
-            .iter()
-            .filter(|node| node.op().name() == "MetalRoutedQ40SwiGlu")
-            .count();
-        ensure!(
-            fused_count == 1,
-            "expected 1 MetalRoutedQ40SwiGlu node, got {fused_count}\n{}",
-            transformed_ops()
-        );
-        let has_combine =
-            transformed.nodes().iter().any(|node| node.op_is::<crate::ops::MetalRoutedCombine>());
-        ensure!(has_combine, "expected MetalRoutedCombine in lowered MoE graph");
+        check_lowered_to_shared_routing_ops(&transformed)?;
 
         let input = tensor_from_f32(&input_shape, &input_data, input_dt)?;
         let expected =
@@ -317,6 +285,25 @@ mod tests {
             .clone()
             .into_tensor()
             .close_enough(&expected[0].clone().into_tensor(), Approximation::Approximate)
+    }
+
+    fn check_lowered_to_shared_routing_ops(transformed: &TypedModel) -> TractResult<()> {
+        let count =
+            |name: &str| transformed.nodes().iter().filter(|n| n.op().name() == name).count();
+        let ops = || {
+            transformed
+                .nodes()
+                .iter()
+                .map(|node| format!("{}: {}", node.name, node.op().name()))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        for (name, expected) in
+            [("MetalRouteSelect", 1), ("MetalRoutedLinear", 2), ("MetalRoutedCombine", 1)]
+        {
+            ensure!(count(name) == expected, "expected {expected} {name}\n{}", ops());
+        }
+        Ok(())
     }
 
     #[test]
@@ -391,20 +378,7 @@ mod tests {
 
         let mut transformed = model.clone();
         MetalTransform::default().transform(&mut transformed)?;
-        let routed_count = transformed
-            .nodes()
-            .iter()
-            .filter(|node| node.op().name() == "MetalRoutedQ40MatMul")
-            .count();
-        ensure!(routed_count == 1, "expected 1 MetalRoutedQ40MatMul node (w2), got {routed_count}");
-        ensure!(
-            transformed.nodes().iter().any(|node| node.op().name() == "MetalRoutedQ40SwiGlu"),
-            "expected MetalRoutedQ40SwiGlu in lowered MoE graph"
-        );
-        ensure!(
-            transformed.nodes().iter().any(|node| node.op_is::<crate::ops::MetalRoutedCombine>()),
-            "expected MetalRoutedCombine in lowered MoE graph"
-        );
+        check_lowered_to_shared_routing_ops(&transformed)?;
 
         let input = tensor_from_f32(&input_shape, &input_data, DatumType::F16)?;
         let expected =
