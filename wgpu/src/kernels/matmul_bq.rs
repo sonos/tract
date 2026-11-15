@@ -206,7 +206,7 @@ pub(crate) fn is_block_quant_weight(b: &DeviceTensor) -> bool {
     bq_fact(b).is_some()
 }
 
-fn bq_fact(t: &DeviceTensor) -> Option<WgpuBqFact> {
+pub(crate) fn bq_fact(t: &DeviceTensor) -> Option<WgpuBqFact> {
     let fact = match t {
         DeviceTensor::Owned(t) => t.exotic_fact(),
         DeviceTensor::View(t) => t.exotic_fact(),

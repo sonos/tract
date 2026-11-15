@@ -82,6 +82,7 @@ impl ModelTransform for WgpuTransform {
                 "deconv_as_matmul",
                 tract_gpu::rewrite_rules::deconv_as_matmul::deconv_as_matmul,
             )
+            .with_rule_for("lower_moe_ffn", crate::kernels::routing::lower_moe_ffn)
             .rewrite(&(), model)?;
         // Pointwise convolutions reach the backend as EinSum, so a segmenter is
         // mostly matmuls until this runs.
@@ -219,6 +220,14 @@ fn translator_for(node: &TypedNode) -> Option<TranslateNodeFn> {
             (TypeId::of::<Resize>(), crate::kernels::resize::translate_resize),
             (TypeId::of::<Gather>(), crate::kernels::gather::translate_gather),
             (TypeId::of::<Topk>(), crate::kernels::topk::translate_topk),
+            (
+                TypeId::of::<tract_transformers::ops::moe_ffn::RoutedLinear>(),
+                crate::kernels::routing::translate_routed_linear,
+            ),
+            (
+                TypeId::of::<tract_transformers::ops::moe_ffn::RoutedCombine>(),
+                crate::kernels::routing::translate_routed_combine,
+            ),
             (TypeId::of::<Iff>(), crate::kernels::nan_replace::translate_nan_replace),
             (TypeId::of::<Const>(), translate_const),
         ])
