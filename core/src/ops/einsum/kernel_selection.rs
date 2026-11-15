@@ -2,8 +2,6 @@
 
 use dyn_clone::clone_box;
 use tract_itertools::Itertools;
-use tract_linalg::WeightType;
-use tract_linalg::block_quant::BlockQuantFact;
 use tract_linalg::mmm::{MMMInputFormat, Query, Suitable, pick_by_shape, retain_best};
 
 use crate::internal::*;
@@ -155,18 +153,11 @@ pub fn strategize(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> Tr
 /// wherever they are already concrete.
 pub fn query(model: &TypedModel, node: &TypedNode, op: &EinSumMatMul) -> TractResult<Query> {
     let (a_fact, b_fact) = model.node_input_facts(node.id)?.into_iter().collect_tuple().unwrap();
-    let a_dt = a_fact.datum_type;
     let b_dt = b_fact.datum_type;
 
-    let a_weight: WeightType = if let Some(of) = a_fact.exotic_fact() {
-        if let Some(bqf) = of.downcast_ref::<BlockQuantFact>() {
-            WeightType::BlockQuant(bqf.format.clone())
-        } else {
-            bail!("Can not translate to matmul operand {a_fact:?}");
-        }
-    } else {
-        a_dt.into()
-    };
+    let a_weight = a_fact
+        .weight_type()
+        .with_context(|| format!("Can not translate to matmul operand {a_fact:?}"))?;
 
     Ok(Query {
         weight: a_weight,

@@ -3,6 +3,7 @@ use crate::internal::*;
 use downcast_rs::Downcast;
 use std::fmt;
 use tract_data::dyn_eq::DynEq;
+use tract_linalg::WeightType;
 use tract_linalg::block_quant::{BlockQuantFact, BlockQuantStorage};
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -235,6 +236,27 @@ pub struct TypedFact {
 }
 
 impl TypedFact {
+    /// What these values are as matmul weights: the block format of a [`BlockQuantFact`], or the
+    /// datum type of plain values a [`WeightType`] covers (floats, i32, i8 and u8, quantized
+    /// ones as their storage type). `None` for any other exotic fact or datum type.
+    pub fn weight_type(&self) -> Option<WeightType> {
+        match self.exotic_fact() {
+            Some(exotic) => exotic
+                .downcast_ref::<BlockQuantFact>()
+                .map(|bqf| WeightType::BlockQuant(bqf.format.clone())),
+            None => matches!(
+                self.datum_type.unquantized(),
+                DatumType::F16
+                    | DatumType::F32
+                    | DatumType::F64
+                    | DatumType::I32
+                    | DatumType::I8
+                    | DatumType::U8
+            )
+            .then(|| self.datum_type.into()),
+        }
+    }
+
     pub fn scalar<T>() -> TypedFact
     where
         T: Datum,
