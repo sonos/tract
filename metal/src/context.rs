@@ -204,7 +204,7 @@ impl DeviceContext for MetalContext {
         let bqs = view
             .tensor
             .storage_as::<BlockQuantStorage>()
-            .filter(|bqs| crate::kernels::matmul::GgmlQuant::of(bqs.format()).is_some());
+            .filter(|bqs| crate::kernels::matmul::ggml_quant(bqs.format()).is_some());
 
         let (data_bytes, bqf) = if let Some(bqs) = bqs {
             (

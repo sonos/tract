@@ -23,7 +23,8 @@ use num_traits::One;
 use std::fmt;
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::{as_q40_tensor, get_quant_fact};
+use tract_gpu::utils::get_quant_fact;
+use tract_gpu::weight_format::GpuWeightFormat;
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, Default)]
 pub enum MetalGemmImplKind {
@@ -34,46 +35,21 @@ pub enum MetalGemmImplKind {
     Mpp,
 }
 
-/// A block-quant weight format the GGML kernels take on B.
-#[allow(non_camel_case_types)]
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
-pub enum GgmlQuant {
-    Q4_0,
-    Q2_0_T,
+/// The weight format of block-quantized weights the GGML kernels take on B: an exhaustive
+/// list of the [`GpuWeightFormat`]s they have kernels for.
+pub fn ggml_quant(format: &dyn BlockQuant) -> Option<GpuWeightFormat> {
+    match GpuWeightFormat::of_block_quant(format)? {
+        format @ (GpuWeightFormat::Q40 | GpuWeightFormat::Q20T) => Some(format),
+        GpuWeightFormat::F16 | GpuWeightFormat::F32 => None,
+    }
 }
 
-impl GgmlQuant {
-    pub fn of(format: &dyn BlockQuant) -> Option<GgmlQuant> {
-        if format.dyn_eq(&Q4_0) {
-            Some(GgmlQuant::Q4_0)
-        } else if format.dyn_eq(&Q2_0_T) {
-            Some(GgmlQuant::Q2_0_T)
-        } else {
-            None
-        }
-    }
-
-    pub fn of_fact(fact: &TypedFact) -> Option<GgmlQuant> {
-        fact.exotic_fact
-            .as_ref()
-            .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-            .and_then(|bqf| Self::of(&*bqf.format))
-    }
-
-    pub fn format(&self) -> &'static dyn BlockQuant {
-        match self {
-            GgmlQuant::Q4_0 => &Q4_0,
-            GgmlQuant::Q2_0_T => &Q2_0_T,
-        }
-    }
-
-    /// The weight type in the GGML kernel names.
-    pub fn tname(&self) -> &'static str {
-        match self {
-            GgmlQuant::Q4_0 => "q4_0",
-            GgmlQuant::Q2_0_T => "q2_0_t",
-        }
-    }
+/// [`ggml_quant`] of a fact's [`BlockQuantFact`].
+pub fn ggml_quant_of_fact(fact: &TypedFact) -> Option<GpuWeightFormat> {
+    fact.exotic_fact
+        .as_ref()
+        .and_then(|of| of.downcast_ref::<BlockQuantFact>())
+        .and_then(|bqf| ggml_quant(&*bqf.format))
 }
 
 #[derive(Debug, PartialEq, Eq, Hash, Clone)]
@@ -88,7 +64,7 @@ pub struct GemmDispatchParams {
     pub a_offset: usize,
     pub transpose_b: bool,
     pub b_offset: usize,
-    pub quant_b: Option<GgmlQuant>,
+    pub quant_b: Option<GpuWeightFormat>,
     pub c_offset: usize,
     pub a_strides: TVec<isize>,
     pub b_strides: TVec<isize>,
@@ -104,7 +80,7 @@ impl GemmDispatchParams {
         b_offset: usize,
         b_shape: &[usize],
         transpose_b: bool,
-        quant_b: Option<GgmlQuant>,
+        quant_b: Option<GpuWeightFormat>,
         c_offset: usize,
         c_shape: &[usize],
     ) -> TractResult<Vec<GemmDispatchParams>> {
@@ -134,8 +110,7 @@ impl GemmDispatchParams {
             natural_strides(&[b_batch, k, n])
         };
 
-        let b_batch_stride = if let Some(quant) = quant_b {
-            let format = quant.format();
+        let b_batch_stride = if let Some(format) = quant_b.and_then(GpuWeightFormat::block_quant) {
             ensure!(k % format.block_len() == 0);
             n * (k / format.block_len()) * format.block_bytes()
         } else {
@@ -362,7 +337,7 @@ impl<M: GemmKernel> GemmImpl<M> {
             DeviceTensor::Owned(t) => t
                 .exotic_fact()
                 .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-                .and_then(|bqf| GgmlQuant::of(&*bqf.format)),
+                .and_then(|bqf| ggml_quant(&*bqf.format)),
             DeviceTensor::View(_) => None,
         };
         // For block-quant weights the tensor shape already carries the full logical
