@@ -1,12 +1,10 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::BlockQuant;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
-use tract_core::tract_linalg::block_quant::Q2_0_T;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
+use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedLinearKernels;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::tensor::DeviceTensor;
@@ -106,37 +104,25 @@ crate::register_cuda_op!(RoutedCombine, |source, node, op| {
 const ROUTED_WARPS: u32 = 4;
 const ROUTED_ROWS: usize = 4;
 
-/// The block-quantized formats the routed kernels read, with the name their kernels carry.
-/// A format here needs a `w_<name>` struct in `routing.cu`, instantiated with
-/// `INSTANTIATE_ROUTED_BLOCK_QUANT`.
-fn block_quant_kernel_name(format: &dyn BlockQuant) -> Option<&'static str> {
-    let formats: [(&dyn BlockQuant, &'static str); 2] = [(&Q4_0, "q40"), (&Q2_0_T, "q20t")];
-    formats.into_iter().find(|(f, _)| f.dyn_eq(format)).map(|(_, name)| name)
-}
-
-/// Plain f32 or f16 expert weights, or block-quantized ones in a format the routed kernels
-/// read, with K in whole blocks.
+/// The expert weights the routed kernels read: a [`RoutedFormat`], `[E, N, K]`. Each format
+/// has its kernels in `routing.cu`, named by [`RoutedFormat::name`].
 fn supports(weights: &TypedFact) -> bool {
-    if let Some(bqf) = weights.exotic_fact().and_then(|f| f.downcast_ref::<BlockQuantFact>()) {
-        block_quant_kernel_name(&*bqf.format).is_some() && bqf.k() % bqf.format.block_len() == 0
-    } else {
-        weights.is_plain() && matches!(weights.datum_type, DatumType::F32 | DatumType::F16)
-    }
+    weights.rank() == 3 && RoutedFormat::of_fact(weights).is_some()
 }
 
-/// The routed kernels' name for these weights, and whether they are block-quantized.
-fn weights_kernel_name(weights: &DeviceTensor) -> TractResult<(&'static str, bool)> {
+/// The format of these weights.
+fn weights_format(weights: &DeviceTensor) -> TractResult<RoutedFormat> {
     let exotic = match weights {
         DeviceTensor::Owned(t) => t.exotic_fact(),
         DeviceTensor::View(v) => v.exotic_fact(),
     };
-    if let Some(bqf) = exotic.and_then(|f| f.downcast_ref::<BlockQuantFact>()) {
-        let name = block_quant_kernel_name(&*bqf.format)
-            .with_context(|| format!("No CUDA routed kernel for {:?}", bqf.format))?;
-        Ok((name, true))
-    } else {
-        Ok((DeviceTensor::tname(weights.datum_type())?, false))
+    match exotic {
+        Some(exotic) => exotic
+            .downcast_ref::<BlockQuantFact>()
+            .and_then(|bqf| RoutedFormat::of_block(&*bqf.format, bqf.k())),
+        None => RoutedFormat::of_plain(weights.datum_type()),
     }
+    .with_context(|| format!("No CUDA routed kernel for {weights:?}"))
 }
 
 /// The route chunk of the sorted path — tiled matmul ([`RMM_M`]) or grouped GEMV
@@ -171,10 +157,11 @@ fn fused_pair(
     out: &DeviceTensor,
 ) -> TractResult<bool> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
-    let (name, block_quant) = weights_kernel_name(weights)?;
+    let format = weights_format(weights)?;
+    let block_quant = format.block_quant().is_some();
     if input.shape()[0] != 1
         || sorted_chunk(routes, weights.shape()[0], k, block_quant).is_some()
-        || weights_kernel_name(weights_up)?.0 != name
+        || weights_format(weights_up)? != format
         || weights_up.shape() != weights.shape()
     {
         return Ok(false);
@@ -186,7 +173,7 @@ fn fused_pair(
         "the block-quant routed GEMV reads its input as float4"
     );
     let func = cuda_context()
-        .load_pipeline(LibraryName::Routing, format!("routed_mul_vec_pair_{name}"))?;
+        .load_pipeline(LibraryName::Routing, format!("routed_mul_vec_pair_{}", format.name()))?;
     let w = get_cuda_view(weights);
     let w_up = get_cuda_view(weights_up);
     let x = get_cuda_view(input);
@@ -236,7 +223,8 @@ fn project(
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
-    let (name, block_quant) = weights_kernel_name(weights)?;
+    let format = weights_format(weights)?;
+    let (name, block_quant) = (format.name(), format.block_quant().is_some());
     if let Some(chunk) = sorted_chunk(routes, weights.shape()[0], k, block_quant) {
         return project_sorted(stream, name, chunk, input, weights, rows, expert_ids, out);
     }

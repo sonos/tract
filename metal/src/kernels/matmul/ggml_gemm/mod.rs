@@ -7,7 +7,8 @@ use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q2_0_T, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, Q2_0_T, Q4_0};
+use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
@@ -498,42 +499,20 @@ struct RoutedWeights {
     mm_shared_bytes: u64,
 }
 
-/// Block-quantized expert formats the routed kernels read, with their kernel suffix.
-fn routed_block_formats() -> [(&'static dyn BlockQuant, &'static str); 2] {
-    [(&Q4_0, "q4_0"), (&Q2_0_T, "q2_0_t")]
-}
-
-fn routed_weights_of(
-    datum_type: DatumType,
-    format: Option<&dyn BlockQuant>,
-    k: usize,
-) -> Option<RoutedWeights> {
-    if let Some(format) = format {
-        let (format, name) = routed_block_formats().into_iter().find(|(f, _)| f.dyn_eq(format))?;
-        if !k.is_multiple_of(format.block_len()) {
-            return None;
-        }
-        let row_bytes = k / format.block_len() * format.block_bytes();
-        return Some(RoutedWeights { name, row_bytes, block: true, mm_shared_bytes: 8192 });
-    }
-    if !k.is_multiple_of(4) {
-        return None;
-    }
-    match datum_type {
-        F32 => Some(RoutedWeights {
-            name: "f32",
-            row_bytes: 4 * k,
-            block: false,
-            mm_shared_bytes: 12288,
-        }),
-        F16 => Some(RoutedWeights {
-            name: "f16",
-            row_bytes: 2 * k,
-            block: false,
-            mm_shared_bytes: 8192,
-        }),
-        _ => None,
-    }
+/// How the routed kernels read `format` with `k` weights per row; plain weights need `k` a
+/// multiple of 4.
+fn routed_weights_of(format: RoutedFormat, k: usize) -> Option<RoutedWeights> {
+    let row_bytes = match format.block_quant() {
+        Some(bq) => k / bq.block_len() * bq.block_bytes(),
+        None if !k.is_multiple_of(4) => return None,
+        None => k * if format == RoutedFormat::F32 { 4 } else { 2 },
+    };
+    Some(RoutedWeights {
+        name: format.name(),
+        row_bytes,
+        block: format.block_quant().is_some(),
+        mm_shared_bytes: if format == RoutedFormat::F32 { 12288 } else { 8192 },
+    })
 }
 
 fn routed_weights(weights: &DeviceTensor) -> TractResult<RoutedWeights> {
@@ -542,25 +521,25 @@ fn routed_weights(weights: &DeviceTensor) -> TractResult<RoutedWeights> {
         "routed weights must be [experts, n, k], got {:?}",
         weights.shape()
     );
-    let format = routed_block_formats()
-        .into_iter()
-        .find_map(|(f, _)| get_quant_fact(weights, f).map(|fact| fact.format));
-    routed_weights_of(weights.datum_type(), format.as_deref(), weights.shape()[2])
+    let k = weights.shape()[2];
+    let block =
+        [&Q4_0 as &dyn BlockQuant, &Q2_0_T].into_iter().find_map(|f| get_quant_fact(weights, f));
+    let format = match block {
+        Some(fact) => RoutedFormat::of_block(&*fact.format, k),
+        None => RoutedFormat::of_plain(weights.datum_type()),
+    };
+    format
+        .and_then(|format| routed_weights_of(format, k))
         .with_context(|| format!("no routed kernel for weights {weights:?}"))
 }
 
-/// Whether the routed kernels read expert weights of this fact, `[E, N, K]`: Q4_0 or Q2_0_T,
-/// or plain f32 or f16 with K a multiple of 4.
+/// Whether the routed kernels read expert weights of this fact, `[E, N, K]`: any
+/// [`RoutedFormat`], with K a multiple of 4 for plain weights.
 pub fn routed_weights_supported(fact: &TypedFact) -> bool {
-    if fact.rank() != 3 {
+    let Some(k) = fact.shape.as_concrete().filter(|s| s.len() == 3).map(|s| s[2]) else {
         return false;
-    }
-    let Some(k) = fact.shape[2].as_i64() else { return false };
-    let format = fact.exotic_fact().and_then(|e| e.downcast_ref::<BlockQuantFact>());
-    if fact.exotic_fact().is_some() && format.is_none() {
-        return false;
-    }
-    routed_weights_of(fact.datum_type, format.map(|f| &*f.format), k as usize).is_some()
+    };
+    RoutedFormat::of_fact(fact).is_some_and(|format| routed_weights_of(format, k).is_some())
 }
 
 /// Whether the routed fused pair kernel reads expert weights of this fact.
