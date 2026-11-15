@@ -9,6 +9,8 @@ use std::fmt;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q2_0_T, Q4_0};
 use tract_gpu::ops::routing::RoutedFormat;
+use tract_gpu::ops::routing::RoutedStrategy;
+use tract_gpu::ops::routing::RoutedTuning;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
@@ -486,8 +488,26 @@ pub(crate) fn dispatch_router_scores(
     Ok(())
 }
 
+/// Metal's routed strategies: the expert-grouped tiled matmul, from 3 routes per expert for
+/// Q4_0, 2 for Q2_0_T and 1 for the plain formats, whose GEMV is slowest; no grouped GEMV.
+const METAL_ROUTED_TUNING: RoutedTuning = RoutedTuning {
+    tiled_min_per_expert: |format| {
+        Some(match format {
+            RoutedFormat::Q40 => 3,
+            RoutedFormat::Q20T => 2,
+            RoutedFormat::F16 | RoutedFormat::F32 => 1,
+        })
+    },
+    tiled_chunk: 32,
+    grouped_min_per_expert: |_| None,
+    grouped_chunk: 0,
+    sorted_max_experts: 256,
+    sorted_k_multiple: 32,
+};
+
 /// How the routed kernels read one expert weight format.
 struct RoutedWeights {
+    format: RoutedFormat,
     /// Suffix of the format's routed kernels.
     name: &'static str,
     /// Bytes of one `[k]` weight row.
@@ -508,6 +528,7 @@ fn routed_weights_of(format: RoutedFormat, k: usize) -> Option<RoutedWeights> {
         None => k * if format == RoutedFormat::F32 { 4 } else { 2 },
     };
     Some(RoutedWeights {
+        format,
         name: format.name(),
         row_bytes,
         block: format.block_quant().is_some(),
@@ -637,9 +658,10 @@ pub fn dispatch_routed_f32(
         output_route_stride: output_route_stride as u64,
     };
 
-    let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
     let n_experts = weights.shape()[0];
-    if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
+    if METAL_ROUTED_TUNING.strategy(route_count, n_experts, k, format.format)
+        != RoutedStrategy::PerRoute
+    {
         // Worst case every expert has a ragged tail chunk.
         let max_chunks = route_count.div_ceil(32) + n_experts;
         let offsets = DeviceTensor::uninitialized_dt(u32::datum_type(), &[n_experts + 1])?;
@@ -849,8 +871,9 @@ pub fn dispatch_routed_swiglu_f32(
         ),
     };
 
-    let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
-    if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
+    if METAL_ROUTED_TUNING.strategy(route_count, n_experts, k, format.format)
+        != RoutedStrategy::PerRoute
+    {
         // Same grouped machinery as dispatch_routed_f32, with the sort
         // and gather shared between the two matmuls.
         let max_chunks = route_count.div_ceil(32) + n_experts;
@@ -1257,8 +1280,8 @@ mod tests {
         run_routed_q40_case(RoutedQ40InputMode::TokenRows)
     }
 
-    /// Route counts above moe_grouped_min_routes take the expert-grouped path
-    /// (counting sort + 32-routes-per-threadgroup matmul).
+    /// Prefill-sized route lists take the expert-grouped path (counting sort +
+    /// 32-routes-per-threadgroup matmul).
     fn run_routed_q40_grouped_case(input_mode: RoutedQ40InputMode) -> TractResult<()> {
         with_borrowed_metal_stream(|stream| {
             let experts = 8;

@@ -15,4 +15,3 @@ tract_core::tract_data::declare_knob!(
 );
 
 pub(crate) const MOE_COMMIT_MIN_ROUTES: usize = 64;
-pub(crate) const MOE_GROUPED_MIN_ROUTES: usize = 64;
