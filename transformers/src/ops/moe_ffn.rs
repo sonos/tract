@@ -52,7 +52,6 @@
 mod activation;
 mod cpu;
 mod nnef;
-mod q40;
 mod routed_linear;
 mod routing;
 #[cfg(test)]
@@ -62,7 +61,6 @@ use activation::activation_op;
 pub use cpu::OptMoeFfn;
 use cpu::{build_expert_plan, build_router_plan};
 pub use nnef::register;
-use q40::{build_q40_linear_expert_plan, q40_direct_activation_supported};
 pub use routed_linear::{RoutedActivation, RoutedLinear};
 pub use routing::{
     RouteSelect, RouteTopK, RoutedCombine, RoutedInputMode, RoutedMatMul, RoutedQ40MatMul,
@@ -923,7 +921,6 @@ impl MoeFfn {
         model: &TypedModel,
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
-        let biased_or_clamped = self.has_any_bias() || self.is_clamped_act();
         let wg_const = model.node(node.inputs[1].node).op_as::<Const>();
         let w1_const = model.node(node.inputs[2].node).op_as::<Const>();
         let w2_const = model.node(node.inputs[3].node).op_as::<Const>();
@@ -969,9 +966,6 @@ impl MoeFfn {
             let w3_bq =
                 w3_tensor.as_ref().is_none_or(|t| t.storage_as::<BlockQuantStorage>().is_some());
             let is_linear = self.expert_layout == ExpertLayout::Linear;
-            // The direct routed Q40 plan packs all three projections, so it
-            // needs all three block-quantized.
-            let expert_tensors_are_linear_block_quant = is_linear && w1_bq && w2_bq && w3_bq;
             let expert_tensors_are_linear_mixed_quant = is_linear && (w1_bq || w2_bq || w3_bq);
             if !expert_tensors_are_plain && !expert_tensors_are_linear_mixed_quant {
                 return Ok(None);
@@ -989,24 +983,6 @@ impl MoeFfn {
 
             let router_plan =
                 build_router_plan(&wg_tensor, &model.symbols).context("Building router plan")?;
-
-            let q40_linear_plan = if expert_tensors_are_linear_block_quant
-                && !biased_or_clamped
-                && q40_direct_activation_supported(&self.activation, self.has_w3)
-            {
-                Some(
-                    build_q40_linear_expert_plan(
-                        &w1_tensor,
-                        &w2_tensor,
-                        w3_tensor.as_deref(),
-                        &self.activation,
-                        num_experts,
-                    )
-                    .context("Building direct Q40 linear expert plan")?,
-                )
-            } else {
-                None
-            };
 
             // Fallback path only: each plan slices its own expert out of the
             // shared weight tensors and optimizes an independent sub-model,
@@ -1081,25 +1057,20 @@ impl MoeFfn {
                 .with_context(|| format!("Building expert plan for expert {eid}"))
             };
 
-            let experts = if let Some(plan) = q40_linear_plan {
-                cpu::CpuExpertPlan::PackedQ40(plan)
-            } else {
-                let plans = {
-                    #[cfg(not(target_family = "wasm"))]
-                    {
-                        use rayon::prelude::*;
-                        (0..num_experts)
-                            .into_par_iter()
-                            .map(build_one)
-                            .collect::<TractResult<Vec<_>>>()?
-                    }
-                    #[cfg(target_family = "wasm")]
-                    {
-                        (0..num_experts).map(build_one).collect::<TractResult<Vec<_>>>()?
-                    }
-                };
-                cpu::CpuExpertPlan::PerExpert(plans)
-            };
+            let experts = cpu::CpuExpertPlan::PerExpert({
+                #[cfg(not(target_family = "wasm"))]
+                {
+                    use rayon::prelude::*;
+                    (0..num_experts)
+                        .into_par_iter()
+                        .map(build_one)
+                        .collect::<TractResult<Vec<_>>>()?
+                }
+                #[cfg(target_family = "wasm")]
+                {
+                    (0..num_experts).map(build_one).collect::<TractResult<Vec<_>>>()?
+                }
+            });
 
             let opt_op = OptMoeFfn {
                 k: self.k,

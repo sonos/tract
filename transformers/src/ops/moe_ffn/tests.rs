@@ -139,7 +139,6 @@ fn codegen_selects_q40_execution_by_layout() -> TractResult<()> {
             ExpertLayout::Linear => {
                 assert_eq!(reference_count, 0);
                 assert_eq!(optimized.len(), 1);
-                assert!(optimized[0].uses_direct_q40());
             }
         }
         assert!(!model.nodes().iter().any(|n| n.op_is::<RoutedMatMul>()));
@@ -204,14 +203,6 @@ fn test_opt_moe_ffn_square_mixed_precision_long_sequence() -> TractResult<()> {
     let opt_model = model.into_optimized()?;
     let has_opt = opt_model.nodes().iter().any(|n| n.op_is::<OptMoeFfn>());
     assert!(has_opt, "mixed-precision square experts should reach OptMoeFfn");
-    // Mixed precision cannot use the all-Q40 routed plan; it must lower to
-    // per-expert subplans instead of silently dropping to the reference op.
-    let uses_direct_q40 = opt_model
-        .nodes()
-        .iter()
-        .filter_map(|n| n.op_as::<OptMoeFfn>())
-        .any(|op| op.uses_direct_q40());
-    assert!(!uses_direct_q40, "a float w2 rules out the direct Q40 plan");
 
     let result = SimplePlan::new(opt_model)?.spawn()?.run(tvec![x_data.clone().into_tvalue()])?;
     let ref_result = SimplePlan::new(ref_model)?.spawn()?.run(tvec![x_data.into_tvalue()])?;
