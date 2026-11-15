@@ -436,8 +436,8 @@ static __device__ void routed_mul_vec_plain_pair(
 
 INSTANTIATE_ROUTED_PAIR(f32, routed_mul_vec_plain_pair<float>, float)
 INSTANTIATE_ROUTED_PAIR(f16, routed_mul_vec_plain_pair<half>, half)
-INSTANTIATE_ROUTED_PAIR(q40, routed_mul_vec_q_pair<w_q40>, void)
-INSTANTIATE_ROUTED_PAIR(q20t, routed_mul_vec_q_pair<w_q20t>, void)
+INSTANTIATE_ROUTED_PAIR(q4_0, routed_mul_vec_q_pair<w_q40>, void)
+INSTANTIATE_ROUTED_PAIR(q2_0_t, routed_mul_vec_q_pair<w_q20t>, void)
 
 #define RMM_M 64
 #define RMM_N 64
@@ -686,5 +686,5 @@ static __device__ void routed_mv_grouped(const void *w, const float *x,
 
 INSTANTIATE_ROUTED_TILED(f32, w_f32)
 INSTANTIATE_ROUTED_TILED(f16, w_f16)
-INSTANTIATE_ROUTED_BLOCK_QUANT(q40, w_q40)
-INSTANTIATE_ROUTED_BLOCK_QUANT(q20t, w_q20t)
+INSTANTIATE_ROUTED_BLOCK_QUANT(q4_0, w_q40)
+INSTANTIATE_ROUTED_BLOCK_QUANT(q2_0_t, w_q20t)
