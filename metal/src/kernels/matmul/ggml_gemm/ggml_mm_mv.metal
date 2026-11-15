@@ -70,7 +70,7 @@ typedef struct {
 } routed_q40_f32_args;
 
 // Activation epilogue of the fused routed w1/w3 pair (see
-// kernel_routed_q4_0_swiglu_f32): mode 0 is plain swiglu silu(g)*u, mode 1
+// kernel_routed_swiglu): mode 0 is plain swiglu silu(g)*u, mode 1
 // is the clamped variant (same math as clamped_swiglu_f32 in moe.metal).
 typedef struct {
     int32_t act_mode;
@@ -787,7 +787,57 @@ kernel void route_sort_by_expert(
     }
 }
 
-kernel void kernel_routed_q4_0_f32(
+// Per-format pieces of the routed GEMVs. A thread pair covers one 32-weight block:
+// `load_y` stages the 16 activations this thread multiplies, in the layout `dot`
+// expects, and returns their sum; `dot` is the format's product over them.
+template <typename block_q> struct routed_block;
+
+template <> struct routed_block<block_q4_0> {
+    template <typename TX>
+    static inline float load_y(device const TX * yb, thread float * yl) {
+        float sumy[2] = { 0.f, 0.f };
+#pragma unroll
+        for (int i = 0; i < 8; i += 2) {
+            const float y00 = (float) yb[i +  0];
+            const float y01 = (float) yb[i +  1];
+            sumy[0]  += y00 + y01;
+            yl[i + 0] = y00;
+            yl[i + 1] = y01/256.f;
+
+            const float y16 = (float) yb[i + 16];
+            const float y17 = (float) yb[i + 17];
+            sumy[1]  += y16 + y17;
+            yl[i + 8] = y16/16.f;
+            yl[i + 9] = y17/4096.f;
+        }
+        return sumy[0] + sumy[1];
+    }
+
+    static inline float dot(device const block_q4_0 * qb, float sumy, thread float * yl, int il) {
+        return block_q_n_dot_y(qb, sumy, yl, il);
+    }
+};
+
+template <> struct routed_block<block_q2_0_t> {
+    template <typename TX>
+    static inline float load_y(device const TX * yb, thread float * yl) {
+        float sumy = 0.f;
+#pragma unroll
+        for (int i = 0; i < 8; i++) {
+            yl[i]     = (float) yb[i];
+            yl[i + 8] = (float) yb[i + 16];
+            sumy += yl[i] + yl[i + 8];
+        }
+        return sumy;
+    }
+
+    static inline float dot(device const block_q2_0_t * qb, float sumy, thread float * yl, int il) {
+        return block_q2_0_t_dot_y(qb, sumy, yl, il);
+    }
+};
+
+template <typename block_q>
+kernel void kernel_routed_mv(
         constant routed_q40_f32_args & args,
         device const char * weights,
         device const float * input,
@@ -797,7 +847,7 @@ kernel void kernel_routed_q4_0_f32(
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
-    const int nb = args.k/QK4_0;
+    const int nb = args.k/32;
 
     const int r0 = tgpig.x;
     const int route = tgpig.y;
@@ -815,14 +865,14 @@ kernel void kernel_routed_q4_0_f32(
     const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
     device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
 
-    device const block_q4_0 * ax[N_DST];
+    device const block_q * ax[N_DST];
     for (int row = 0; row < N_DST; ++row) {
         // Clamp so the last (partial) row group never builds pointers past
         // the expert's weight slice when n is not a multiple of N_DST: the
         // dot loop dereferences every ax[row], only the store is guarded.
         const int weight_row = min(first_row + row, args.n - 1);
         const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
-        ax[row] = (device const block_q4_0 *) (weights + offset);
+        ax[row] = (device const block_q *) (weights + offset);
     }
 
     float yl[16];
@@ -831,28 +881,17 @@ kernel void kernel_routed_q4_0_f32(
     const short ix = tiisg/2;
     const short il = (tiisg%2)*8;
 
-    device const float * yb = y + ix*QK4_0 + il;
+    device const float * yb = y + ix*32 + il;
 
     for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
-        float sumy[2] = { 0.f, 0.f };
-
-#pragma unroll
-        for (int i = 0; i < 8; i += 2) {
-            sumy[0]  += yb[i +  0] + yb[i +  1];
-            yl[i + 0] = yb[i +  0];
-            yl[i + 1] = yb[i +  1]/256.f;
-
-            sumy[1]  += yb[i + 16] + yb[i + 17];
-            yl[i + 8] = yb[i + 16]/16.f;
-            yl[i + 9] = yb[i + 17]/4096.f;
-        }
+        const float sumy = routed_block<block_q>::load_y(yb, yl);
 
 #pragma unroll
         for (int row = 0; row < N_DST; ++row) {
-            sumf[row] += block_q_n_dot_y(ax[row] + ib, sumy[0] + sumy[1], yl, il);
+            sumf[row] += routed_block<block_q>::dot(ax[row] + ib, sumy, yl, il);
         }
 
-        yb += QK4_0 * 16;
+        yb += 32 * 16;
     }
 
     device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
@@ -865,18 +904,79 @@ kernel void kernel_routed_q4_0_f32(
     }
 }
 
+template [[host_name("kernel_routed_mv_q4_0")]]   kernel decltype(kernel_routed_mv<block_q4_0>)   kernel_routed_mv<block_q4_0>;
+template [[host_name("kernel_routed_mv_q2_0_t")]] kernel decltype(kernel_routed_mv<block_q2_0_t>) kernel_routed_mv<block_q2_0_t>;
+
+// Routed GEMV over plain f32 or f16 weights: same geometry as kernel_routed_mv,
+// each lane reading four weights a step. K is a multiple of 4.
+template <typename T, typename T4>
+kernel void kernel_routed_mv_plain(
+        constant routed_q40_f32_args & args,
+        device const char * weights,
+        device const float * input,
+        device const long * route_token_ids,
+        device const long * route_expert_ids,
+        device float * dst,
+        uint3  tgpig[[threadgroup_position_in_grid]],
+        ushort tiisg[[thread_index_in_simdgroup]],
+        ushort sgitg[[simdgroup_index_in_threadgroup]]) {
+    const int r0 = tgpig.x;
+    const int route = tgpig.y;
+    if (route >= args.route_count) {
+        return;
+    }
+
+    const int first_row = (r0 * N_SIMDGROUP + sgitg) * N_DST;
+    const long expert = route_expert_ids[route];
+    const long input_row = args.input_mode == 0 ? route_token_ids[route] : route;
+    if (expert < 0 || input_row < 0) {
+        return;
+    }
+
+    const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
+    device const float * y = (device const float *) ((device const char *) input + (uint64_t) input_row * args.input_row_stride);
+
+    device const T * ax[N_DST];
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = min(first_row + row, args.n - 1);
+        const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
+        ax[row] = (device const T *) (weights + offset);
+    }
+
+    float sumf[N_DST] = {0.f};
+    for (int k = 4 * tiisg; k < args.k; k += 4 * N_SIMDWIDTH) {
+        const float4 yv = *(device const float4 *) (y + k);
+#pragma unroll
+        for (int row = 0; row < N_DST; ++row) {
+            sumf[row] += dot((float4) *(device const T4 *) (ax[row] + k), yv);
+        }
+    }
+
+    device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
+    for (int row = 0; row < N_DST; ++row) {
+        const int weight_row = first_row + row;
+        const float tot = simd_sum(sumf[row]);
+        if (tiisg == 0 && weight_row < args.n) {
+            dst_route[weight_row] = tot;
+        }
+    }
+}
+
+template [[host_name("kernel_routed_mv_f32")]] kernel decltype(kernel_routed_mv_plain<float, float4>) kernel_routed_mv_plain<float, float4>;
+template [[host_name("kernel_routed_mv_f16")]] kernel decltype(kernel_routed_mv_plain<half, half4>)   kernel_routed_mv_plain<half, half4>;
+
 // Fused routed w1/w3 gemv pair + swiglu epilogue: one dispatch computes
 // g = w1 x (+bias1), u = w3 x (+bias3) and writes act(g, u). Same shape
-// contract and route indexing as kernel_routed_q4_0_f32; both weight
-// tensors share expert/row strides (same [experts, n, k] q4_0 layout).
+// contract and route indexing as kernel_routed_mv; both weight
+// tensors share expert/row strides (same [experts, n, k] layout).
 // Reading both weight rows in the same k-block loop reuses the activation
 // registers, so the extra cost over the single-weight kernel is only the
 // second weight stream.
 // TX is the activation dtype: every element converts to float before any
 // arithmetic (exact for f16), so the f16-input instantiation is bit-identical
 // to upcasting the activations and running the f32 one.
-template<typename TX>
-kernel void kernel_routed_q4_0_swiglu(
+template<typename block_q, typename TX>
+kernel void kernel_routed_swiglu(
         constant routed_q40_f32_args & args,
         constant routed_swiglu_args & sargs,
         device const char * w1,
@@ -890,7 +990,7 @@ kernel void kernel_routed_q4_0_swiglu(
         uint3  tgpig[[threadgroup_position_in_grid]],
         ushort tiisg[[thread_index_in_simdgroup]],
         ushort sgitg[[simdgroup_index_in_threadgroup]]) {
-    const int nb = args.k/QK4_0;
+    const int nb = args.k/32;
 
     const int r0 = tgpig.x;
     const int route = tgpig.y;
@@ -908,15 +1008,15 @@ kernel void kernel_routed_q4_0_swiglu(
     const uint64_t expert_offset = (uint64_t) expert * args.weight_expert_stride;
     device const TX * y = (device const TX *) (input + (uint64_t) input_row * args.input_row_stride);
 
-    device const block_q4_0 * ax1[N_DST];
-    device const block_q4_0 * ax3[N_DST];
+    device const block_q * ax1[N_DST];
+    device const block_q * ax3[N_DST];
     for (int row = 0; row < N_DST; ++row) {
-        // Same OOB clamp as kernel_routed_q4_0_f32: dot loop dereferences
+        // Same OOB clamp as kernel_routed_mv: dot loop dereferences
         // every pointer, only the store checks weight_row < n.
         const int weight_row = min(first_row + row, args.n - 1);
         const uint64_t offset = expert_offset + (uint64_t) weight_row * args.weight_row_stride;
-        ax1[row] = (device const block_q4_0 *) (w1 + offset);
-        ax3[row] = (device const block_q4_0 *) (w3 + offset);
+        ax1[row] = (device const block_q *) (w1 + offset);
+        ax3[row] = (device const block_q *) (w3 + offset);
     }
 
     float yl[16];
@@ -926,33 +1026,18 @@ kernel void kernel_routed_q4_0_swiglu(
     const short ix = tiisg/2;
     const short il = (tiisg%2)*8;
 
-    device const TX * yb = y + ix*QK4_0 + il;
+    device const TX * yb = y + ix*32 + il;
 
     for (int ib = ix; ib < nb; ib += N_SIMDWIDTH/2) {
-        float sumy[2] = { 0.f, 0.f };
-
-#pragma unroll
-        for (int i = 0; i < 8; i += 2) {
-            const float y00 = (float) yb[i +  0];
-            const float y01 = (float) yb[i +  1];
-            sumy[0]  += y00 + y01;
-            yl[i + 0] = y00;
-            yl[i + 1] = y01/256.f;
-
-            const float y16 = (float) yb[i + 16];
-            const float y17 = (float) yb[i + 17];
-            sumy[1]  += y16 + y17;
-            yl[i + 8] = y16/16.f;
-            yl[i + 9] = y17/4096.f;
-        }
+        const float sumy = routed_block<block_q>::load_y(yb, yl);
 
 #pragma unroll
         for (int row = 0; row < N_DST; ++row) {
-            sumf1[row] += block_q_n_dot_y(ax1[row] + ib, sumy[0] + sumy[1], yl, il);
-            sumf3[row] += block_q_n_dot_y(ax3[row] + ib, sumy[0] + sumy[1], yl, il);
+            sumf1[row] += routed_block<block_q>::dot(ax1[row] + ib, sumy, yl, il);
+            sumf3[row] += routed_block<block_q>::dot(ax3[row] + ib, sumy, yl, il);
         }
 
-        yb += QK4_0 * 16;
+        yb += 32 * 16;
     }
 
     device float * dst_route = (device float *) ((device char *) dst + (uint64_t) route * args.output_route_stride);
@@ -970,10 +1055,13 @@ kernel void kernel_routed_q4_0_swiglu(
     }
 }
 
-typedef decltype(kernel_routed_q4_0_swiglu<float>) routed_q4_0_swiglu_t;
+typedef decltype(kernel_routed_swiglu<block_q4_0, float>) routed_q4_0_swiglu_t;
+typedef decltype(kernel_routed_swiglu<block_q2_0_t, float>) routed_q2_0_t_swiglu_t;
 
-template [[host_name("kernel_routed_q4_0_swiglu_f32")]]      kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<float>;
-template [[host_name("kernel_routed_q4_0_swiglu_f16x_f32")]] kernel routed_q4_0_swiglu_t kernel_routed_q4_0_swiglu<half>;
+template [[host_name("kernel_routed_swiglu_q4_0_f32")]]        kernel routed_q4_0_swiglu_t   kernel_routed_swiglu<block_q4_0, float>;
+template [[host_name("kernel_routed_swiglu_q4_0_f16x_f32")]]   kernel routed_q4_0_swiglu_t   kernel_routed_swiglu<block_q4_0, half>;
+template [[host_name("kernel_routed_swiglu_q2_0_t_f32")]]      kernel routed_q2_0_t_swiglu_t kernel_routed_swiglu<block_q2_0_t, float>;
+template [[host_name("kernel_routed_swiglu_q2_0_t_f16x_f32")]] kernel routed_q2_0_t_swiglu_t kernel_routed_swiglu<block_q2_0_t, half>;
 
 // Grouped-path epilogue of the fused routed swiglu: reads the two
 // expert-sorted mm results, applies bias + activation, scatters back to
@@ -1093,7 +1181,9 @@ kernel void routed_scatter_rows_f32(
 // [route_count, n] and scattered afterwards. This is what fixes prefill:
 // the scalar per-route gemv runs at ~1.7 TFLOPS while this path uses the
 // same simdgroup-matrix pipeline as the dense q40 matmuls.
-kernel void kernel_mul_mm_q4_0_routed_f32(
+template<typename TA, typename TA4x4, typename simdgroup_TA8x8, typename block_q, short nl,
+         void (*dequantize_func)(device const block_q *, short, thread TA4x4 &)>
+kernel void kernel_routed_mm(
         constant routed_q40_f32_args & args,
         device const char * weights,
         device const float * a_sorted,
@@ -1111,8 +1201,8 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
     const uint base = chunks[3 * tgpig.x + 1];
     const uint len = chunks[3 * tgpig.x + 2];
 
-    threadgroup half  * sa = (threadgroup half  *)(shmem);
-    threadgroup float * sb = (threadgroup float *)(shmem + 4096);
+    threadgroup TA    * sa = (threadgroup TA    *)(shmem);
+    threadgroup float * sb = (threadgroup float *)(shmem + sizeof(TA) * BLOCK_SIZE_M * BLOCK_SIZE_K);
 
     const int r0 = tgpig.y;
 
@@ -1129,7 +1219,7 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
     // garbage: its columns are never stored. Skip its matmul work.
     const bool n_slice_active = (short)(16*(sgitg >> 1)) < n_cols;
 
-    simdgroup_half8x8  ma[4];
+    simdgroup_TA8x8    ma[4];
     simdgroup_float8x8 mb[2];
     simdgroup_float8x8 mc[8];
 
@@ -1137,10 +1227,9 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
         mc[i] = make_filled_simdgroup_matrix<float, 8>(0.f);
     }
 
-    const short nl = 2;
     short il = (tiitg % THREAD_PER_ROW);
 
-    device const block_q4_0 * x = (device const block_q4_0 *)(weights
+    device const block_q * x = (device const block_q *)(weights
         + (uint64_t)expert * args.weight_expert_stride
         + args.weight_row_stride*(r0*BLOCK_SIZE_M + thread_row)) + (il/nl);
 
@@ -1149,8 +1238,8 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
         + (BLOCK_SIZE_K / THREAD_PER_COL * (tiitg % THREAD_PER_COL));
 
     for (int loop_k = 0; loop_k < args.k; loop_k += BLOCK_SIZE_K) {
-        half4x4 temp_a;
-        dequantize_q4_0(x, il, temp_a);
+        TA4x4 temp_a;
+        dequantize_func(x, il, temp_a);
 
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
@@ -1170,7 +1259,7 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
         threadgroup_barrier(mem_flags::mem_threadgroup);
 
         if (n_slice_active) {
-            threadgroup const half  * lsma = (sa + THREAD_MAT_M*SG_MAT_SIZE*(sgitg%2));
+            threadgroup const TA    * lsma = (sa + THREAD_MAT_M*SG_MAT_SIZE*(sgitg%2));
             threadgroup const float * lsmb = (sb + THREAD_MAT_N*SG_MAT_SIZE*(sgitg/2));
 
             #pragma unroll(4)
@@ -1222,3 +1311,10 @@ kernel void kernel_mul_mm_q4_0_routed_f32(
             = temp_all[j*BLOCK_SIZE_M + i];
     }
 }
+
+// Weight tiles hold the dequantized weights exactly in f16 for f16 and Q2_0_T
+// (whose values are -d, 0 and d); f32 weights keep f32 tiles. Q4_0 tiles are f16.
+template [[host_name("kernel_routed_mm_q4_0")]]   kernel decltype(kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  block_q4_0,   2, dequantize_q4_0>)   kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  block_q4_0,   2, dequantize_q4_0>;
+template [[host_name("kernel_routed_mm_q2_0_t")]] kernel decltype(kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  block_q2_0_t, 2, dequantize_q2_0_t>) kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  block_q2_0_t, 2, dequantize_q2_0_t>;
+template [[host_name("kernel_routed_mm_f16")]]    kernel decltype(kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  half4x4,      1, dequantize_f16>)    kernel_routed_mm<half,  half4x4,  simdgroup_half8x8,  half4x4,      1, dequantize_f16>;
+template [[host_name("kernel_routed_mm_f32")]]    kernel decltype(kernel_routed_mm<float, float4x4, simdgroup_float8x8, float4x4,     1, dequantize_f32>)    kernel_routed_mm<float, float4x4, simdgroup_float8x8, float4x4,     1, dequantize_f32>;

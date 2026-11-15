@@ -1,4 +1,4 @@
-use crate::kernels::matmul::{RoutedQ40InputMode, dispatch_routed_q40_f32};
+use crate::kernels::matmul::{RoutedQ40InputMode, dispatch_routed_f32};
 use anyhow::ensure;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::Q4_0;
@@ -70,7 +70,7 @@ impl EvalOp for MetalRoutedQ40MatMul {
         )?;
 
         crate::with_metal_stream(|stream| {
-            dispatch_routed_q40_f32(
+            dispatch_routed_f32(
                 stream,
                 input,
                 weights,
