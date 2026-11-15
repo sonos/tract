@@ -3,12 +3,12 @@
 //! read and write the low word.
 
 use tract_core::internal::*;
+use tract_core::tract_linalg::WeightType;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::ops::routing::FusePairPolicy;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
-use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedLinearKernels;
 use tract_gpu::ops::routing::RoutedStrategy;
 use tract_gpu::ops::routing::RoutedTuning;
@@ -16,6 +16,7 @@ use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::sync::DeviceSyncKind;
 use tract_gpu::sync::sync_inputs_if_required;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::weight_format::GpuWeightFormat;
 use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
@@ -364,11 +365,11 @@ register_wgpu_op!(RouteSelect, |source, node, op| {
 
 /// Units of work along one row of `k` weights: code words for the block formats, runs of four
 /// weights for the plain ones.
-fn units(format: RoutedFormat, k: usize) -> usize {
+fn units(format: GpuWeightFormat, k: usize) -> usize {
     match format {
-        RoutedFormat::Q40 => k / 32 * 4,
-        RoutedFormat::Q20T => k / 32 * 2,
-        RoutedFormat::F16 | RoutedFormat::F32 => k / 4,
+        GpuWeightFormat::Q40 => k / 32 * 4,
+        GpuWeightFormat::Q20T => k / 32 * 2,
+        GpuWeightFormat::F16 | GpuWeightFormat::F32 => k / 4,
     }
 }
 
@@ -385,10 +386,10 @@ const WGPU_ROUTED_TUNING: RoutedTuning = RoutedTuning {
 
 /// The format of `[E, N, K]` expert weights, if the kernels read them: plain weights need K a
 /// multiple of 4.
-fn format_of(dt: DatumType, block: Option<&BlockQuantFact>, k: usize) -> Option<RoutedFormat> {
+fn format_of(dt: DatumType, block: Option<&BlockQuantFact>, k: usize) -> Option<GpuWeightFormat> {
     match block {
-        Some(b) => RoutedFormat::of_block(&*b.format, k),
-        None if k.is_multiple_of(4) => RoutedFormat::of_plain(dt),
+        Some(b) => GpuWeightFormat::of_block_quant_fact(b),
+        None if k.is_multiple_of(4) => GpuWeightFormat::of(&WeightType::Plain(dt)),
         None => None,
     }
 }
@@ -407,9 +408,9 @@ fn supports(fact: &TypedFact) -> bool {
 /// The per-format body of the GEMV loop over `unit`: adds this unit's products to `acc[r]` for
 /// the workgroup's rows. Block formats decode a code word and its block scale; plain ones take
 /// four weights.
-fn mv_unit_body(format: RoutedFormat) -> &'static str {
+fn mv_unit_body(format: GpuWeightFormat) -> &'static str {
     match format {
-        RoutedFormat::Q40 => {
+        GpuWeightFormat::Q40 => {
             r#"
         let block = unit >> 2u;
         let w = unit & 3u;
@@ -426,7 +427,7 @@ fn mv_unit_body(format: RoutedFormat) -> &'static str {
             acc[r] = acc[r] + scale * (dot(lo, xl) + dot(hi, xh) - 8.0 * sum_x);
         }"#
         }
-        RoutedFormat::Q20T => {
+        GpuWeightFormat::Q20T => {
             r#"
         let block = unit >> 1u;
         let w = unit & 1u;
@@ -450,7 +451,7 @@ fn mv_unit_body(format: RoutedFormat) -> &'static str {
             acc[r] = acc[r] + scale * (cx - sum_x);
         }"#
         }
-        RoutedFormat::F16 => {
+        GpuWeightFormat::F16 => {
             r#"
         let xb = x_base + 4u * unit;
         let xv = vec4<f32>(x[xb], x[xb + 1u], x[xb + 2u], x[xb + 3u]);
@@ -460,7 +461,7 @@ fn mv_unit_body(format: RoutedFormat) -> &'static str {
             acc[r] = acc[r] + dot(wv, xv);
         }"#
         }
-        RoutedFormat::F32 => {
+        GpuWeightFormat::F32 => {
             r#"
         let xb = x_base + 4u * unit;
         let xv = vec4<f32>(x[xb], x[xb + 1u], x[xb + 2u], x[xb + 3u]);
@@ -473,7 +474,7 @@ fn mv_unit_body(format: RoutedFormat) -> &'static str {
     }
 }
 
-fn mv_module(format: RoutedFormat) -> String {
+fn mv_module(format: GpuWeightFormat) -> String {
     format!(
         r#"
 struct Params {{
@@ -599,9 +600,9 @@ fn route_plan(@builtin(local_invocation_index) t: u32) {
 "#;
 
 /// Reads weight `(k, c)` of expert `ctx.x` as f32, zero past the weights.
-fn mm_ld_b(format: RoutedFormat) -> &'static str {
+fn mm_ld_b(format: GpuWeightFormat) -> &'static str {
     match format {
-        RoutedFormat::Q40 => {
+        GpuWeightFormat::Q40 => {
             "    let bi = (ctx.x * params.n + c) * params.blocks_per_row + (k >> 5u);
     let scale = unpack2x16float(wbuf[params.scale_off + bi / params.group]).x;
     let inner = k & 31u;
@@ -609,25 +610,25 @@ fn mm_ld_b(format: RoutedFormat) -> &'static str {
     let shift = 8u * (inner & 3u) + select(0u, 4u, inner >= 16u);
     return (f32((word >> shift) & 15u) - 8.0) * scale;"
         }
-        RoutedFormat::Q20T => {
+        GpuWeightFormat::Q20T => {
             "    let bi = (ctx.x * params.n + c) * params.blocks_per_row + (k >> 5u);
     let scale = unpack2x16float(wbuf[params.scale_off + bi / params.group]).x;
     let inner = k & 31u;
     let word = wbuf[params.code_off + bi * 2u + (inner >> 4u)];
     return (f32((word >> (2u * (inner & 15u))) & 3u) - 1.0) * scale;"
         }
-        RoutedFormat::F16 => {
+        GpuWeightFormat::F16 => {
             "    let e = (ctx.x * params.n + c) * params.k + k;
     let pair = unpack2x16float(wbuf[params.code_off + e / 2u]);
     return select(pair.x, pair.y, (e & 1u) == 1u);"
         }
-        RoutedFormat::F32 => {
+        GpuWeightFormat::F32 => {
             "    return bitcast<f32>(wbuf[params.code_off + (ctx.x * params.n + c) * params.k + k]);"
         }
     }
 }
 
-fn mm_module(format: RoutedFormat) -> String {
+fn mm_module(format: GpuWeightFormat) -> String {
     format!(
         r#"
 struct Params {{
@@ -705,12 +706,12 @@ fn routed_mm_{name}(@builtin(local_invocation_index) lid: u32, @builtin(workgrou
 /// Where a projection's weights sit in their buffer: code (or plain weight) word offset, scale
 /// word offset, scale run and blocks per row.
 fn weight_layout(
-    format: RoutedFormat,
+    format: GpuWeightFormat,
     weights: &DeviceTensor,
 ) -> TractResult<(u32, u32, u32, u32)> {
     let (n, k) = (weights.shape()[1], weights.shape()[2]);
     let base = match format {
-        RoutedFormat::F16 => {
+        GpuWeightFormat::F16 => {
             let elems = element_offset(weights, 0);
             ensure!(elems.is_multiple_of(2), "f16 weights start on a word");
             u32_of(elems / 2)?
@@ -727,7 +728,7 @@ fn weight_layout(
     })
 }
 
-fn weights_format(weights: &DeviceTensor) -> TractResult<RoutedFormat> {
+fn weights_format(weights: &DeviceTensor) -> TractResult<GpuWeightFormat> {
     let k = weights.shape()[2];
     match bq_fact(weights) {
         Some(b) => format_of(weights.datum_type(), Some(&b.inner), k),
@@ -738,7 +739,7 @@ fn weights_format(weights: &DeviceTensor) -> TractResult<RoutedFormat> {
 
 /// The routes sorted by expert, then the tiled matmul over every chunk of [`SORT_CHUNK`].
 fn project_sorted(
-    format: RoutedFormat,
+    format: GpuWeightFormat,
     input: &DeviceTensor,
     weights: &DeviceTensor,
     rows: Option<&DeviceTensor>,
@@ -787,10 +788,10 @@ fn project_sorted(
             ("routed_mm", format),
             layout,
             EntryPoint::plain(match format {
-                RoutedFormat::Q40 => "routed_mm_q4_0",
-                RoutedFormat::Q20T => "routed_mm_q2_0_t",
-                RoutedFormat::F16 => "routed_mm_f16",
-                RoutedFormat::F32 => "routed_mm_f32",
+                GpuWeightFormat::Q40 => "routed_mm_q4_0",
+                GpuWeightFormat::Q20T => "routed_mm_q2_0_t",
+                GpuWeightFormat::F16 => "routed_mm_f16",
+                GpuWeightFormat::F32 => "routed_mm_f32",
             }),
             || mm_module(format),
         )?;
@@ -852,10 +853,10 @@ fn project(
             ("routed_mv", format),
             layout,
             EntryPoint::plain(match format {
-                RoutedFormat::Q40 => "routed_mv_q4_0",
-                RoutedFormat::Q20T => "routed_mv_q2_0_t",
-                RoutedFormat::F16 => "routed_mv_f16",
-                RoutedFormat::F32 => "routed_mv_f32",
+                GpuWeightFormat::Q40 => "routed_mv_q4_0",
+                GpuWeightFormat::Q20T => "routed_mv_q2_0_t",
+                GpuWeightFormat::F16 => "routed_mv_f16",
+                GpuWeightFormat::F32 => "routed_mv_f32",
             }),
             || mv_module(format),
         )?;
@@ -1009,7 +1010,7 @@ fn postamble(
 
 /// The GEMV body for a pair: the unit's activations once, then the gate rows from `wbuf`
 /// into `acc` and the up rows from `wup` into `acc_up`.
-fn mv_pair_unit_body(format: RoutedFormat) -> String {
+fn mv_pair_unit_body(format: GpuWeightFormat) -> String {
     let body = mv_unit_body(format);
     let split =
         body.find("        for (var r = 0u; r < 4u; r++) {").expect("one row loop per body");
@@ -1023,7 +1024,7 @@ fn mv_pair_unit_body(format: RoutedFormat) -> String {
     format!("{x_part}{rows}\n{up_rows}")
 }
 
-fn mv_pair_module(format: RoutedFormat) -> String {
+fn mv_pair_module(format: GpuWeightFormat) -> String {
     format!(
         r#"
 struct Params {{
@@ -1148,10 +1149,10 @@ fn fused_pair(
             ("routed_mv_pair", format),
             layout,
             EntryPoint::plain(match format {
-                RoutedFormat::Q40 => "routed_mv_pair_q4_0",
-                RoutedFormat::Q20T => "routed_mv_pair_q2_0_t",
-                RoutedFormat::F16 => "routed_mv_pair_f16",
-                RoutedFormat::F32 => "routed_mv_pair_f32",
+                GpuWeightFormat::Q40 => "routed_mv_pair_q4_0",
+                GpuWeightFormat::Q20T => "routed_mv_pair_q2_0_t",
+                GpuWeightFormat::F16 => "routed_mv_pair_f16",
+                GpuWeightFormat::F32 => "routed_mv_pair_f32",
             }),
             || mv_pair_module(format),
         )?;

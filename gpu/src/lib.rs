@@ -7,3 +7,4 @@ pub mod sync;
 pub mod tensor;
 pub mod turn_handler;
 pub mod utils;
+pub mod weight_format;

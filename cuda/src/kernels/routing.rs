@@ -1,16 +1,17 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
+use tract_core::tract_linalg::WeightType;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::ops::routing::FusePairPolicy;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
-use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedLinearKernels;
 use tract_gpu::ops::routing::RoutedStrategy;
 use tract_gpu::ops::routing::RoutedTuning;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::weight_format::GpuWeightFormat;
 use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
@@ -107,23 +108,23 @@ crate::register_cuda_op!(RoutedCombine, |source, node, op| {
 const ROUTED_WARPS: u32 = 4;
 const ROUTED_ROWS: usize = 4;
 
-/// The expert weights the routed kernels read: a [`RoutedFormat`], `[E, N, K]`. Each format
-/// has its kernels in `routing.cu`, named by [`RoutedFormat::name`].
+/// The expert weights the routed kernels read: a [`GpuWeightFormat`], `[E, N, K]`. Each format
+/// has its kernels in `routing.cu`, named by [`GpuWeightFormat::name`].
 fn supports(weights: &TypedFact) -> bool {
-    weights.rank() == 3 && RoutedFormat::of_fact(weights).is_some()
+    weights.rank() == 3 && GpuWeightFormat::of_fact(weights).is_some()
 }
 
 /// The format of these weights.
-fn weights_format(weights: &DeviceTensor) -> TractResult<RoutedFormat> {
+fn weights_format(weights: &DeviceTensor) -> TractResult<GpuWeightFormat> {
     let exotic = match weights {
         DeviceTensor::Owned(t) => t.exotic_fact(),
         DeviceTensor::View(v) => v.exotic_fact(),
     };
     match exotic {
-        Some(exotic) => exotic
-            .downcast_ref::<BlockQuantFact>()
-            .and_then(|bqf| RoutedFormat::of_block(&*bqf.format, bqf.k())),
-        None => RoutedFormat::of_plain(weights.datum_type()),
+        Some(exotic) => {
+            exotic.downcast_ref::<BlockQuantFact>().and_then(GpuWeightFormat::of_block_quant_fact)
+        }
+        None => GpuWeightFormat::of(&WeightType::Plain(weights.datum_type())),
     }
     .with_context(|| format!("No CUDA routed kernel for {weights:?}"))
 }
