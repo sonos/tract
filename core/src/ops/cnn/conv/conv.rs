@@ -1,5 +1,4 @@
 use tract_data::itertools::izip;
-use tract_linalg::WeightType;
 use tract_linalg::block_quant::{BlockQuantFact, PackedBlockQuantFormat};
 use tract_linalg::mmm::retain_best;
 use tract_num_traits::Zero;
@@ -560,23 +559,15 @@ impl Conv {
         k: usize,
         n: &TDim,
     ) -> TractResult<(Box<dyn MatMatMul>, usize)> {
-        let w_dt = weight_fact.datum_type;
         let x_dt = input_fact.datum_type;
 
         let acc = if x_dt.is_float() { x_dt } else { i32::datum_type() };
         // The weights are packed once, ahead of time, so a kernel reached through a panel
         // extractor would pay it on every panel of every call.
         let query = Query {
-            weight: if weight_fact.is_exotic() {
-                let bqf = weight_fact
-                    .exotic_fact
-                    .as_ref()
-                    .and_then(|of| of.downcast_ref::<BlockQuantFact>())
-                    .unwrap();
-                WeightType::BlockQuant(bqf.format.clone())
-            } else {
-                w_dt.into()
-            },
+            weight: weight_fact
+                .weight_type()
+                .with_context(|| format!("Can not use {weight_fact:?} as convolution weights"))?,
             activation: x_dt,
             accumulators: tvec!(acc),
             store: None,
