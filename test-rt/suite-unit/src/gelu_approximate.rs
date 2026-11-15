@@ -102,6 +102,17 @@ pub fn suite() -> TractResult<TestSuite> {
 
     suite.add_arbitrary::<GeluApproximateProblem<f32>>("proptest_f32", ());
     suite.add_arbitrary::<GeluApproximateProblem<f16>>("proptest_f16", ());
+    let large = [-100.0f32, -48.0, -26.0, -10.25, 0.0, 10.25, 26.0, 48.0, 100.0];
+    for fast_impl in [false, true] {
+        let suffix = if fast_impl { "_fast" } else { "" };
+        let input = ArrayD::from_shape_vec(vec![large.len()], large.to_vec())?;
+        suite.add(
+            format!("large_f32{suffix}"),
+            GeluApproximateProblem { input: input.clone(), fast_impl },
+        );
+        let input = input.mapv(f16::from_f32);
+        suite.add(format!("large_f16{suffix}"), GeluApproximateProblem { input, fast_impl });
+    }
 
     Ok(suite)
 }
