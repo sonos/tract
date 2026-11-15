@@ -1,8 +1,5 @@
-use super::{block_quant_group_as_2d, block_quant_group_tensor, plain_i64_slice};
-use crate::ops::routed_matmul::{
-    PreparedRoutedMatMulState, RoutedInputRows, build_block_quant_routed_matmul, f32_input,
-    run_prepared_routed_matmul,
-};
+use super::{block_quant_group_as_2d, plain_i64_slice};
+use crate::ops::routed_matmul::f32_input;
 use tract_ndarray::{Array2, ArrayView2, Axis, s};
 use tract_nnef::internal::*;
 use tract_nnef::tract_core::tract_linalg::block_quant::BlockQuantStorage;
@@ -101,51 +98,26 @@ fn project(
         by_expert[expert].push(route);
     }
     let mut output = Array2::<f32>::zeros((rows.len(), n));
-    let packed = if weights.storage_as::<BlockQuantStorage>().is_some() {
-        let groups = (0..num_experts)
-            .map(|e| block_quant_group_tensor(weights, e))
-            .collect::<TractResult<Vec<_>>>()?;
-        build_block_quant_routed_matmul(groups).ok()
-    } else {
-        None
-    };
     let plain = if weights.storage_as::<BlockQuantStorage>().is_none() {
         Some(weights.cast_to::<f32>()?.into_owned())
     } else {
         None
     };
     let x = input.to_plain_array_view::<f32>()?.into_dimensionality::<tract_ndarray::Ix2>()?;
-    let mut state = PreparedRoutedMatMulState::default();
-    let (row_stride, k_stride) =
-        (usize::try_from(input.strides()[0])?, usize::try_from(input.strides()[1])?);
     for (expert, routes) in by_expert.iter().enumerate() {
         if routes.is_empty() {
             continue;
         }
-        let expert_output = if let Some(plan) = &packed {
-            let offsets = routes.iter().map(|&r| row_stride * rows[r]).collect();
-            let mut out = Tensor::zero::<f32>(&[routes.len(), n])?;
-            run_prepared_routed_matmul(
-                plan,
-                expert,
-                input,
-                RoutedInputRows::explicit(offsets, k_stride),
-                &mut out,
-                &mut state,
-            )?;
-            out.into_plain_array::<f32>()?.into_dimensionality()?
+        let gathered = x.select(Axis(0), &routes.iter().map(|&r| rows[r]).collect::<Vec<_>>());
+        let w = if let Some(plain) = &plain {
+            plain.to_plain_array_view::<f32>()?.slice_move(s![expert, .., ..]).to_owned()
         } else {
-            let gathered = x.select(Axis(0), &routes.iter().map(|&r| rows[r]).collect::<Vec<_>>());
-            let w = if let Some(plain) = &plain {
-                plain.to_plain_array_view::<f32>()?.slice_move(s![expert, .., ..]).to_owned()
-            } else {
-                block_quant_group_as_2d(weights, expert)?
-                    .into_plain_array::<f32>()?
-                    .into_dimensionality()?
-            };
-            ensure!(w.shape() == [n, k]);
-            gathered.dot(&w.t())
+            block_quant_group_as_2d(weights, expert)?
+                .into_plain_array::<f32>()?
+                .into_dimensionality()?
         };
+        ensure!(w.shape() == [n, k]);
+        let expert_output = gathered.dot(&w.t());
         for (slot, &route) in routes.iter().enumerate() {
             output.row_mut(route).assign(&expert_output.row(slot));
         }

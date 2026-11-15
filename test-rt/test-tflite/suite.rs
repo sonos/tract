@@ -287,7 +287,6 @@ fn ignore_unit(t: &[String], case: &dyn Test) -> bool {
         "route_topk",
         "routed_combine",
         "routed_linear",
-        "routed_q40",
         "scaled_masked_softmax",
         "sdpa",
         "silu",
