@@ -152,7 +152,8 @@ null,
 "9125b7fe0405521461515a13d4ce243af7bc6f8a",
 "6d47949f298c7e56bad07ab9d4d252ccaa6f06e4",
 "8df660cbd06da87595ce0560f187604e1b6cf8dd",
-"4f840eb0806e3969b3fe8ad0d4ad0aa6e618166a"
+"4f840eb0806e3969b3fe8ad0d4ad0aa6e618166a",
+"e31a6d8e19bc0c8df0bbb15411fe781fdb6c21cb"
 ],
 "metrics": {
 "bundle.bench_runtime": [
@@ -307,7 +308,8 @@ null,
 1032,
 1022,
 1035,
-1032
+1032,
+1089
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.active_at_before_optimize.cuda": [
 4520000000,
@@ -380,6 +382,7 @@ null,
 4521000000,
 4521000000,
 4521000000,
+4520000000,
 4520000000,
 4520000000,
 4520000000,
@@ -615,6 +618,7 @@ null,
 300600000,
 300600000,
 300600000,
+300600000,
 300600000
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.pp512.cuda": [
@@ -769,7 +773,8 @@ null,
 2419,
 2417,
 2419,
-2421
+2421,
+2422
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.rsz_at_before_optimize.cuda": [
 4566000000,
@@ -923,6 +928,7 @@ null,
 4553000000,
 4557000000,
 4560000000,
+4551000000,
 4551000000
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.rsz_at_model_ready.cuda": [
@@ -1077,7 +1083,8 @@ null,
 824000000,
 835600000,
 826800000,
-831400000
+831400000,
+820700000
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.tg128.cuda": [
 48.2,
@@ -1231,7 +1238,8 @@ null,
 53.1,
 53.52,
 53.52,
-53.52
+53.52,
+53.51
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.time_to_before_optimize.cuda": [
 2.133,
@@ -1385,7 +1393,8 @@ null,
 2.833,
 2.603,
 2.648,
-2.802
+2.802,
+2.794
 ],
 "llm.llama_3_1_8B_instruct_q40ef16_541.time_to_model_ready.cuda": [
 3.286,
@@ -1539,7 +1548,8 @@ null,
 4.339,
 3.946,
 3.994,
-4.264
+4.264,
+4.236
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.active_at_before_optimize.cuda": [
 696900000,
@@ -1613,6 +1623,7 @@ null,
 696900000,
 696900000,
 696900000,
+696800000,
 696800000,
 696800000,
 696800000,
@@ -1847,6 +1858,7 @@ null,
 150400000,
 150400000,
 150400000,
+150400000,
 150400000
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.pp512.cuda": [
@@ -2001,7 +2013,8 @@ null,
 12550,
 12540,
 12600,
-12580
+12580,
+12540
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.rsz_at_before_optimize.cuda": [
 731700000,
@@ -2155,7 +2168,8 @@ null,
 745300000,
 744700000,
 743500000,
-744900000
+744900000,
+745600000
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.rsz_at_model_ready.cuda": [
 519300000,
@@ -2309,7 +2323,8 @@ null,
 683700000,
 694100000,
 683200000,
-693400000
+693400000,
+684000000
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.tg128.cuda": [
 247.9,
@@ -2463,7 +2478,8 @@ null,
 265.2,
 269,
 268.9,
-269.2
+269.2,
+268.9
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.time_to_before_optimize.cuda": [
 0.661,
@@ -2617,7 +2633,8 @@ null,
 0.59,
 0.595,
 0.589,
-0.592
+0.592,
+0.609
 ],
 "llm.llama_3_2_1B_instruct_q40ef16_541.time_to_model_ready.cuda": [
 1.068,
@@ -2771,7 +2788,8 @@ null,
 1.016,
 1.025,
 1.017,
-1.022
+1.022,
+1.052
 ],
 "llm.llama_3_2_1B_q40ef32_516.active_at_before_optimize.cuda": [
 697200000,
@@ -2844,6 +2862,7 @@ null,
 697200000,
 697200000,
 697300000,
+697200000,
 697200000,
 697200000,
 697200000,
@@ -3079,6 +3098,7 @@ null,
 150500000,
 150500000,
 150500000,
+150500000,
 150500000
 ],
 "llm.llama_3_2_1B_q40ef32_516.pp512.cuda": [
@@ -3233,7 +3253,8 @@ null,
 11890,
 11810,
 11830,
-11890
+11890,
+11750
 ],
 "llm.llama_3_2_1B_q40ef32_516.rsz_at_before_optimize.cuda": [
 733900000,
@@ -3387,7 +3408,8 @@ null,
 750600000,
 744000000,
 748300000,
-746500000
+746500000,
+745100000
 ],
 "llm.llama_3_2_1B_q40ef32_516.rsz_at_model_ready.cuda": [
 521100000,
@@ -3541,7 +3563,8 @@ null,
 684100000,
 694200000,
 685300000,
-694000000
+694000000,
+684800000
 ],
 "llm.llama_3_2_1B_q40ef32_516.tg128.cuda": [
 254.1,
@@ -3695,7 +3718,8 @@ null,
 275.2,
 274.9,
 275.1,
-274.9
+274.9,
+274.5
 ],
 "llm.llama_3_2_1B_q40ef32_516.time_to_before_optimize.cuda": [
 0.72,
@@ -3849,7 +3873,8 @@ null,
 0.634,
 0.637,
 0.648,
-0.641
+0.641,
+0.672
 ],
 "llm.llama_3_2_1B_q40ef32_516.time_to_model_ready.cuda": [
 1.134,
@@ -4003,7 +4028,8 @@ null,
 1.078,
 1.079,
 1.09,
-1.085
+1.085,
+1.123
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.active_at_before_optimize.cuda": [
 1810000000,
@@ -4055,6 +4081,7 @@ null,
 1810000000,
 1810000000,
 null,
+1810000000,
 1810000000,
 1810000000,
 1810000000,
@@ -4311,6 +4338,7 @@ null,
 226100000,
 226100000,
 226100000,
+226100000,
 226100000
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.pp512.cuda": [
@@ -4465,7 +4493,8 @@ null,
 5348,
 5361,
 5359,
-5359
+5359,
+5364
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.rsz_at_before_optimize.cuda": [
 1853000000,
@@ -4619,7 +4648,8 @@ null,
 1871000000,
 1870000000,
 1867000000,
-1875000000
+1875000000,
+1866000000
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.rsz_at_model_ready.cuda": [
 597800000,
@@ -4773,7 +4803,8 @@ null,
 763600000,
 774000000,
 758300000,
-769100000
+769100000,
+754200000
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.tg128.cuda": [
 107.1,
@@ -4925,6 +4956,7 @@ null,
 111.9,
 112,
 112,
+113.5,
 113.5,
 113.5,
 113.5
@@ -5081,7 +5113,8 @@ null,
 1.28,
 1.236,
 1.319,
-1.261
+1.261,
+1.314
 ],
 "llm.llama_3_2_3B_instruct_q40ef16_541.time_to_model_ready.cuda": [
 1.96,
@@ -5235,7 +5268,8 @@ null,
 1.983,
 1.911,
 2.033,
-1.997
+1.997,
+2.051
 ],
 "llm.llama_3_2_3B_q40ef32_516.active_at_before_optimize.cuda": [
 1811000000,
@@ -5287,6 +5321,7 @@ null,
 1811000000,
 1811000000,
 null,
+1811000000,
 1811000000,
 1811000000,
 1811000000,
@@ -5543,6 +5578,7 @@ null,
 226200000,
 226200000,
 226200000,
+226200000,
 226200000
 ],
 "llm.llama_3_2_3B_q40ef32_516.pp512.cuda": [
@@ -5697,7 +5733,8 @@ null,
 5214,
 5201,
 5199,
-5213
+5213,
+5205
 ],
 "llm.llama_3_2_3B_q40ef32_516.rsz_at_before_optimize.cuda": [
 1854000000,
@@ -5851,7 +5888,8 @@ null,
 1872000000,
 1872000000,
 1868000000,
-1870000000
+1870000000,
+1858000000
 ],
 "llm.llama_3_2_3B_q40ef32_516.rsz_at_model_ready.cuda": [
 601900000,
@@ -6005,7 +6043,8 @@ null,
 765100000,
 772800000,
 764600000,
-775000000
+775000000,
+752500000
 ],
 "llm.llama_3_2_3B_q40ef32_516.tg128.cuda": [
 109.2,
@@ -6150,6 +6189,7 @@ null,
 114.5,
 114.8,
 114.8,
+114.6,
 114.6,
 114.6,
 114.6,
@@ -6313,7 +6353,8 @@ null,
 1.364,
 1.369,
 1.362,
-1.358
+1.358,
+1.462
 ],
 "llm.llama_3_2_3B_q40ef32_516.time_to_model_ready.cuda": [
 2.167,
@@ -6467,7 +6508,8 @@ null,
 2.054,
 2.109,
 2.059,
-2.054
+2.054,
+2.229
 ],
 "llm.openelm_270M_q40ef16_516.active_at_before_optimize.cuda": [
 161200000,
@@ -6516,6 +6558,7 @@ null,
 161300000,
 null,
 161300000,
+null,
 null,
 null,
 null,
@@ -6775,6 +6818,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "llm.openelm_270M_q40ef16_516.pp512.cuda": [
@@ -6824,6 +6868,7 @@ null,
 25940,
 null,
 25900,
+null,
 null,
 null,
 null,
@@ -7083,6 +7128,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "llm.openelm_270M_q40ef16_516.rsz_at_model_ready.cuda": [
@@ -7132,6 +7178,7 @@ null,
 434600000,
 null,
 434100000,
+null,
 null,
 null,
 null,
@@ -7391,6 +7438,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "llm.openelm_270M_q40ef16_516.time_to_before_optimize.cuda": [
@@ -7440,6 +7488,7 @@ null,
 0.759,
 null,
 0.737,
+null,
 null,
 null,
 null,
@@ -7699,6 +7748,7 @@ null,
 null,
 null,
 null,
+null,
 null
 ],
 "llm.openelm_270M_q40ef16_541.active_at_before_optimize.cuda": [
@@ -7772,6 +7822,7 @@ null,
 160900000,
 161000000,
 161000000,
+160900000,
 160900000,
 160900000,
 160900000,
@@ -8007,6 +8058,7 @@ null,
 26150000,
 26150000,
 26150000,
+26150000,
 26150000
 ],
 "llm.openelm_270M_q40ef16_541.pp512.cuda": [
@@ -8161,7 +8213,8 @@ null,
 30350,
 30370,
 30450,
-30520
+30520,
+30470
 ],
 "llm.openelm_270M_q40ef16_541.rsz_at_before_optimize.cuda": [
 207300000,
@@ -8315,7 +8368,8 @@ null,
 194700000,
 194200000,
 195500000,
-195400000
+195400000,
+195700000
 ],
 "llm.openelm_270M_q40ef16_541.rsz_at_model_ready.cuda": [
 422300000,
@@ -8469,7 +8523,8 @@ null,
 551800000,
 562000000,
 553500000,
-564000000
+564000000,
+555600000
 ],
 "llm.openelm_270M_q40ef16_541.tg128.cuda": [
 439.1,
@@ -8623,7 +8678,8 @@ null,
 516.8,
 527,
 526.6,
-527.1
+527.1,
+527.3
 ],
 "llm.openelm_270M_q40ef16_541.time_to_before_optimize.cuda": [
 0.612,
@@ -8777,6 +8833,7 @@ null,
 0.476,
 0.48,
 0.477,
+0.479,
 0.479
 ],
 "llm.openelm_270M_q40ef16_541.time_to_model_ready.cuda": [
@@ -8931,7 +8988,8 @@ null,
 0.846,
 0.852,
 0.853,
-0.857
+0.857,
+0.856
 ],
 "llm.qwen3_1_7B_q40ef16_541.active_at_before_optimize.cuda": [
 971200000,
@@ -9004,6 +9062,7 @@ null,
 971200000,
 971300000,
 971300000,
+971200000,
 971200000,
 971200000,
 971200000,
@@ -9239,6 +9298,7 @@ null,
 180100000,
 180100000,
 180100000,
+180100000,
 180100000
 ],
 "llm.qwen3_1_7B_q40ef16_541.pp512.cuda": [
@@ -9393,7 +9453,8 @@ null,
 9132,
 9180,
 9176,
-9172
+9172,
+9173
 ],
 "llm.qwen3_1_7B_q40ef16_541.rsz_at_before_optimize.cuda": [
 1019000000,
@@ -9547,7 +9608,8 @@ null,
 1013000000,
 1014000000,
 1013000000,
-1014000000
+1014000000,
+1013000000
 ],
 "llm.qwen3_1_7B_q40ef16_541.rsz_at_model_ready.cuda": [
 557600000,
@@ -9701,7 +9763,8 @@ null,
 714200000,
 727000000,
 715600000,
-725900000
+725900000,
+715800000
 ],
 "llm.qwen3_1_7B_q40ef16_541.tg128.cuda": [
 161.1,
@@ -9855,6 +9918,7 @@ null,
 172.9,
 176.7,
 176.7,
+176.6,
 176.6
 ],
 "llm.qwen3_1_7B_q40ef16_541.time_to_before_optimize.cuda": [
@@ -10009,7 +10073,8 @@ null,
 1.129,
 1.127,
 1.135,
-1.132
+1.132,
+1.137
 ],
 "llm.qwen3_1_7B_q40ef16_541.time_to_model_ready.cuda": [
 1.701,
@@ -10163,7 +10228,8 @@ null,
 1.673,
 1.658,
 1.669,
-1.668
+1.668,
+1.674
 ],
 "net.birefnet_general_lite_1024px.active_at_before_optimize.cuda": [
 null,
@@ -10303,6 +10369,7 @@ null,
 239500000,
 239500000,
 239500000,
+236500000,
 236500000,
 236500000,
 236500000,
@@ -10471,6 +10538,7 @@ null,
 19240000,
 19240000,
 19240000,
+19240000,
 19240000
 ],
 "net.birefnet_general_lite_1024px.evaltime.cuda": [
@@ -10625,7 +10693,8 @@ null,
 0.4952,
 0.4956,
 0.4954,
-0.4955
+0.4955,
+0.4952
 ],
 "net.birefnet_general_lite_1024px.rsz_at_before_optimize.cuda": [
 null,
@@ -10779,7 +10848,8 @@ null,
 287300000,
 285300000,
 287000000,
-285000000
+285000000,
+287400000
 ],
 "net.birefnet_general_lite_1024px.rsz_at_model_ready.cuda": [
 null,
@@ -10933,7 +11003,8 @@ null,
 557800000,
 566600000,
 557200000,
-567600000
+567600000,
+557600000
 ],
 "net.birefnet_general_lite_1024px.time_to_before_optimize.cuda": [
 null,
@@ -11087,7 +11158,8 @@ null,
 6.349,
 6.267,
 6.297,
-6.296
+6.296,
+6.278
 ],
 "net.birefnet_general_lite_1024px.time_to_model_ready.cuda": [
 null,
@@ -11241,7 +11313,8 @@ null,
 7.378,
 7.291,
 7.325,
-7.346
+7.346,
+7.318
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.active_at_before_optimize.cuda": [
 null,
@@ -11329,6 +11402,7 @@ null,
 60000000,
 60000000,
 60000000,
+59990000,
 59990000,
 59990000,
 59990000,
@@ -11549,6 +11623,7 @@ null,
 429300,
 429600,
 431500,
+432100,
 432100
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.evaltime.cuda": [
@@ -11703,7 +11778,8 @@ null,
 0.0001976,
 0.0001979,
 0.0001977,
-0.0001976
+0.0001976,
+0.0001977
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_before_optimize.cuda": [
 null,
@@ -11857,7 +11933,8 @@ null,
 86840000,
 86930000,
 88770000,
-88720000
+88720000,
+88740000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.rsz_at_model_ready.cuda": [
 null,
@@ -12011,7 +12088,8 @@ null,
 521800000,
 530900000,
 523300000,
-532500000
+532500000,
+522300000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_before_optimize.cuda": [
 null,
@@ -12165,6 +12243,7 @@ null,
 0.041,
 0.043,
 0.044,
+0.043,
 0.043
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_decoder_pass.time_to_model_ready.cuda": [
@@ -12319,7 +12398,8 @@ null,
 0.285,
 0.291,
 0.288,
-0.285
+0.285,
+0.29
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.active_at_before_optimize.cuda": [
 null,
@@ -12442,6 +12522,7 @@ null,
 2362000000,
 2362000000,
 2362000000,
+2365000000,
 2365000000,
 2365000000,
 2365000000,
@@ -12627,6 +12708,7 @@ null,
 7285000,
 7285000,
 7287000,
+7288000,
 7288000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.evaltime.cuda": [
@@ -12777,6 +12859,7 @@ null,
 0.01467,
 0.01467,
 0.01466,
+0.01467,
 0.01467,
 0.01467,
 0.01467,
@@ -12935,7 +13018,8 @@ null,
 2415000000,
 2411000000,
 2411000000,
-2411000000
+2411000000,
+2406000000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.rsz_at_model_ready.cuda": [
 null,
@@ -13089,7 +13173,8 @@ null,
 549100000,
 552800000,
 545900000,
-555100000
+555100000,
+539800000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_before_optimize.cuda": [
 null,
@@ -13243,7 +13328,8 @@ null,
 4.977,
 5.298,
 5.002,
-5.029
+5.029,
+5.712
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_1s.time_to_model_ready.cuda": [
 null,
@@ -13397,7 +13483,8 @@ null,
 6.038,
 6.444,
 6.06,
-6.087
+6.087,
+6.972
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.active_at_before_optimize.cuda": [
 null,
@@ -13538,6 +13625,7 @@ null,
 2365000000,
 2365000000,
 2365000000,
+2366000000,
 2366000000,
 2366000000,
 2366000000,
@@ -13705,6 +13793,7 @@ null,
 8701000,
 8701000,
 8703000,
+8704000,
 8704000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.evaltime.cuda": [
@@ -13859,7 +13948,8 @@ null,
 0.01339,
 0.01339,
 0.01339,
-0.0134
+0.0134,
+0.01339
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_before_optimize.cuda": [
 null,
@@ -14013,7 +14103,8 @@ null,
 2416000000,
 2413000000,
 2413000000,
-2413000000
+2413000000,
+2408000000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.rsz_at_model_ready.cuda": [
 null,
@@ -14167,7 +14258,8 @@ null,
 551800000,
 557000000,
 549700000,
-560400000
+560400000,
+543000000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_before_optimize.cuda": [
 null,
@@ -14321,7 +14413,8 @@ null,
 7.162,
 7.563,
 7.181,
-7.103
+7.103,
+7.712
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_encoder_pulse320ms.time_to_model_ready.cuda": [
 null,
@@ -14475,7 +14568,8 @@ null,
 8.288,
 8.77,
 8.324,
-8.225
+8.225,
+9.011
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.active_at_before_optimize.cuda": [
 null,
@@ -14563,6 +14657,7 @@ null,
 37940000,
 37940000,
 37940000,
+37920000,
 37920000,
 37920000,
 37920000,
@@ -14783,6 +14878,7 @@ null,
 256400,
 256700,
 258600,
+259100,
 259100
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.evaltime.cuda": [
@@ -14937,7 +15033,8 @@ null,
 0.0001755,
 0.0001755,
 0.0001757,
-0.0001755
+0.0001755,
+0.0001756
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_before_optimize.cuda": [
 null,
@@ -15091,7 +15188,8 @@ null,
 62850000,
 62990000,
 65390000,
-64700000
+64700000,
+64910000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.rsz_at_model_ready.cuda": [
 null,
@@ -15245,7 +15343,8 @@ null,
 520700000,
 531300000,
 522600000,
-532800000
+532800000,
+522600000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.time_to_before_optimize.cuda": [
 null,
@@ -15399,7 +15498,8 @@ null,
 0.04,
 0.041,
 0.04,
-0.041
+0.041,
+0.04
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_joint_pass.time_to_model_ready.cuda": [
 null,
@@ -15553,6 +15653,7 @@ null,
 0.295,
 0.3,
 0.294,
+0.292,
 0.292
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.active_at_before_optimize.cuda": [
@@ -15697,6 +15798,7 @@ null,
 524600,
 524600,
 524600,
+522500,
 522500,
 522500,
 522500,
@@ -15861,6 +15963,7 @@ null,
 310200,
 310500,
 312400,
+313000,
 313000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.evaltime.cuda": [
@@ -16015,7 +16118,8 @@ null,
 0.0001517,
 0.0001516,
 0.000152,
-0.0001518
+0.0001518,
+0.0001522
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_before_optimize.cuda": [
 null,
@@ -16169,7 +16273,8 @@ null,
 26150000,
 26550000,
 28540000,
-28550000
+28550000,
+28170000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.rsz_at_model_ready.cuda": [
 null,
@@ -16323,7 +16428,8 @@ null,
 519400000,
 530100000,
 521100000,
-531700000
+531700000,
+521500000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_before_optimize.cuda": [
 null,
@@ -16477,6 +16583,7 @@ null,
 0.013,
 0.013,
 0.013,
+0.012,
 0.012
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_1s.time_to_model_ready.cuda": [
@@ -16631,7 +16738,8 @@ null,
 0.241,
 0.24,
 0.245,
-0.248
+0.248,
+0.247
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.active_at_before_optimize.cuda": [
 null,
@@ -16765,6 +16873,7 @@ null,
 251400,
 251400,
 251400,
+251900,
 251900,
 251900,
 251900,
@@ -16939,6 +17048,7 @@ null,
 268600,
 268800,
 270700,
+271300,
 271300
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.evaltime.cuda": [
@@ -17093,7 +17203,8 @@ null,
 0.00008461,
 0.00008437,
 0.00008647,
-0.00008516
+0.00008516,
+0.00008552
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_before_optimize.cuda": [
 null,
@@ -17247,7 +17358,8 @@ null,
 27590000,
 27990000,
 30790000,
-30730000
+30730000,
+30900000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.rsz_at_model_ready.cuda": [
 null,
@@ -17401,7 +17513,8 @@ null,
 520900000,
 531300000,
 523200000,
-533900000
+533900000,
+523900000
 ],
 "net.nemotron_3_5_asr_streaming_0_6b_f32f32_preprocessor_pulse100ms.time_to_before_optimize.cuda": [
 null,
@@ -17547,6 +17660,7 @@ null,
 0.031,
 0.028,
 0.028,
+0.029,
 0.029,
 0.029,
 0.029,
@@ -17709,7 +17823,8 @@ null,
 0.258,
 0.262,
 0.261,
-0.258
+0.258,
+0.263
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.active_at_before_optimize.cuda": [
 47470000,
@@ -17797,6 +17912,7 @@ null,
 47470000,
 47470000,
 47470000,
+47450000,
 47450000,
 47450000,
 47450000,
@@ -18017,6 +18133,7 @@ null,
 426800,
 427100,
 429000,
+429500,
 429500
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.evaltime.cuda": [
@@ -18169,6 +18286,7 @@ null,
 0.0001932,
 0.0001942,
 0.000194,
+0.0001942,
 0.0001942,
 0.0001942,
 0.0001942
@@ -18325,7 +18443,8 @@ null,
 74810000,
 77290000,
 77300000,
-79070000
+79070000,
+79140000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.rsz_at_model_ready.cuda": [
 389900000,
@@ -18479,7 +18598,8 @@ null,
 519900000,
 530800000,
 522100000,
-533300000
+533300000,
+522300000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_decoder_pass.time_to_before_optimize.cuda": [
 0.045,
@@ -18631,6 +18751,7 @@ null,
 0.038,
 0.041,
 0.038,
+0.04,
 0.04,
 0.04,
 0.04
@@ -18787,7 +18908,8 @@ null,
 0.281,
 0.286,
 0.284,
-0.284
+0.284,
+0.283
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.active_at_before_optimize.cuda": [
 2441000000,
@@ -18920,6 +19042,7 @@ null,
 2343000000,
 2343000000,
 2343000000,
+2342000000,
 2342000000,
 2342000000,
 2342000000,
@@ -19095,6 +19218,7 @@ null,
 7243000,
 7243000,
 7245000,
+7246000,
 7246000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.evaltime.cuda": [
@@ -19245,6 +19369,7 @@ null,
 0.0138,
 0.0138,
 0.0138,
+0.01378,
 0.01378,
 0.01378,
 0.01378,
@@ -19403,7 +19528,8 @@ null,
 2391000000,
 2389000000,
 2387000000,
-2387000000
+2387000000,
+2385000000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.rsz_at_model_ready.cuda": [
 4785000000,
@@ -19557,7 +19683,8 @@ null,
 548300000,
 554800000,
 543600000,
-553800000
+553800000,
+540200000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_before_optimize.cuda": [
 8.025,
@@ -19711,7 +19838,8 @@ null,
 9.05,
 9.326,
 9.043,
-9.064
+9.064,
+9.744
 ],
 "net.parakeet_tdt_600m_v3_f32f32_encoder_1s.time_to_model_ready.cuda": [
 8.98,
@@ -19865,7 +19993,8 @@ null,
 10.09,
 10.45,
 10.09,
-10.1
+10.1,
+10.98
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.active_at_before_optimize.cuda": [
 25400000,
@@ -19953,6 +20082,7 @@ null,
 25400000,
 25400000,
 25400000,
+25380000,
 25380000,
 25380000,
 25380000,
@@ -20173,6 +20303,7 @@ null,
 255300,
 255600,
 257500,
+258100,
 258100
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.evaltime.cuda": [
@@ -20327,7 +20458,8 @@ null,
 0.00006485,
 0.00006469,
 0.00006539,
-0.00006477
+0.00006477,
+0.00006486
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_before_optimize.cuda": [
 68400000,
@@ -20481,7 +20613,8 @@ null,
 52360000,
 52440000,
 54090000,
-55820000
+55820000,
+53920000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.rsz_at_model_ready.cuda": [
 367800000,
@@ -20635,7 +20768,8 @@ null,
 520900000,
 531200000,
 521900000,
-534400000
+534400000,
+522300000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_before_optimize.cuda": [
 0.032,
@@ -20789,6 +20923,7 @@ null,
 0.031,
 0.031,
 0.03,
+0.031,
 0.031
 ],
 "net.parakeet_tdt_600m_v3_f32f32_joint_pass.time_to_model_ready.cuda": [
@@ -20943,7 +21078,8 @@ null,
 0.277,
 0.292,
 0.282,
-0.275
+0.275,
+0.286
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.active_at_before_optimize.cuda": [
 597600,
@@ -21087,6 +21223,7 @@ null,
 586400,
 586400,
 586400,
+584300,
 584300,
 584300,
 584300,
@@ -21251,6 +21388,7 @@ null,
 418200,
 418500,
 420400,
+421000,
 421000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.evaltime.cuda": [
@@ -21405,7 +21543,8 @@ null,
 0.0002002,
 0.000201,
 0.0002003,
-0.000201
+0.000201,
+0.0002012
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_before_optimize.cuda": [
 24150000,
@@ -21559,7 +21698,8 @@ null,
 26240000,
 26430000,
 28480000,
-28770000
+28770000,
+28650000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.rsz_at_model_ready.cuda": [
 356900000,
@@ -21713,7 +21853,8 @@ null,
 519700000,
 530200000,
 521200000,
-532000000
+532000000,
+521800000
 ],
 "net.parakeet_tdt_600m_v3_f32f32_preprocessor_1s.time_to_before_optimize.cuda": [
 0.018,
@@ -21857,6 +21998,7 @@ null,
 0.016,
 0.017,
 0.021,
+0.015,
 0.015,
 0.015,
 0.015,
@@ -22021,7 +22163,8 @@ null,
 0.243,
 0.248,
 0.244,
-0.245
+0.245,
+0.246
 ],
 "net.sd15_dummy_f16_unet_step_b2.active_at_before_optimize.cuda": [
 null,
@@ -22154,6 +22297,7 @@ null,
 null,
 1723000000,
 1723000000,
+1722000000,
 1722000000,
 1722000000,
 1722000000,
@@ -22329,6 +22473,7 @@ null,
 6524000,
 6524000,
 6526000,
+6526000,
 6526000
 ],
 "net.sd15_dummy_f16_unet_step_b2.evaltime.cuda": [
@@ -22483,7 +22628,8 @@ null,
 0.07618,
 0.07619,
 0.07619,
-0.07622
+0.07622,
+0.0762
 ],
 "net.sd15_dummy_f16_unet_step_b2.rsz_at_before_optimize.cuda": [
 null,
@@ -22637,7 +22783,8 @@ null,
 1851000000,
 1861000000,
 1848000000,
-1842000000
+1842000000,
+1851000000
 ],
 "net.sd15_dummy_f16_unet_step_b2.rsz_at_model_ready.cuda": [
 null,
@@ -22791,7 +22938,8 @@ null,
 536200000,
 556000000,
 535300000,
-544600000
+544600000,
+536800000
 ],
 "net.sd15_dummy_f16_unet_step_b2.time_to_before_optimize.cuda": [
 null,
@@ -22945,7 +23093,8 @@ null,
 10.77,
 10.51,
 10.74,
-10.98
+10.98,
+10.69
 ],
 "net.sd15_dummy_f16_unet_step_b2.time_to_model_ready.cuda": [
 null,
@@ -23099,7 +23248,8 @@ null,
 12.08,
 11.75,
 12.06,
-12.38
+12.38,
+12.02
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.active_at_before_optimize.cuda": [
 null,
@@ -23232,6 +23382,7 @@ null,
 null,
 99640000,
 99640000,
+99410000,
 99410000,
 99410000,
 99410000,
@@ -23407,6 +23558,7 @@ null,
 1203000,
 1203000,
 1205000,
+1206000,
 1206000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.evaltime.cuda": [
@@ -23561,6 +23713,7 @@ null,
 0.1565,
 0.1565,
 0.1565,
+0.1566,
 0.1566
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.rsz_at_before_optimize.cuda": [
@@ -23715,7 +23868,8 @@ null,
 131100000,
 130900000,
 131700000,
-134300000
+134300000,
+132600000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.rsz_at_model_ready.cuda": [
 null,
@@ -23869,7 +24023,8 @@ null,
 524600000,
 534400000,
 524300000,
-536900000
+536900000,
+526500000
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.time_to_before_optimize.cuda": [
 null,
@@ -24023,7 +24178,8 @@ null,
 0.614,
 0.602,
 0.604,
-0.617
+0.617,
+0.615
 ],
 "net.sd15_dummy_f16_vae_decoder_512px.time_to_model_ready.cuda": [
 null,
@@ -24177,7 +24333,8 @@ null,
 0.905,
 0.891,
 0.894,
-0.911
+0.911,
+0.907
 ],
 "net.sd15_dummy_f32_unet_step_b2.active_at_before_optimize.cuda": [
 null,
@@ -24310,6 +24467,7 @@ null,
 null,
 3442000000,
 3442000000,
+3441000000,
 3441000000,
 3441000000,
 3441000000,
@@ -24485,6 +24643,7 @@ null,
 7735000,
 7735000,
 7737000,
+7737000,
 7737000
 ],
 "net.sd15_dummy_f32_unet_step_b2.evaltime.cuda": [
@@ -24639,7 +24798,8 @@ null,
 0.1936,
 0.1936,
 0.1937,
-0.1936
+0.1936,
+0.1937
 ],
 "net.sd15_dummy_f32_unet_step_b2.rsz_at_before_optimize.cuda": [
 null,
@@ -24793,7 +24953,8 @@ null,
 3511000000,
 3536000000,
 3511000000,
-3499000000
+3499000000,
+3517000000
 ],
 "net.sd15_dummy_f32_unet_step_b2.rsz_at_model_ready.cuda": [
 null,
@@ -24947,7 +25108,8 @@ null,
 536800000,
 554100000,
 536400000,
-545800000
+545800000,
+537300000
 ],
 "net.sd15_dummy_f32_unet_step_b2.time_to_before_optimize.cuda": [
 null,
@@ -25101,7 +25263,8 @@ null,
 10.44,
 10.08,
 10.36,
-10.49
+10.49,
+10.35
 ],
 "net.sd15_dummy_f32_unet_step_b2.time_to_model_ready.cuda": [
 null,
@@ -25255,7 +25418,8 @@ null,
 11.57,
 11.17,
 11.5,
-11.64
+11.64,
+11.52
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.active_at_before_optimize.cuda": [
 null,
@@ -25388,6 +25552,7 @@ null,
 null,
 198600000,
 198600000,
+198300000,
 198300000,
 198300000,
 198300000,
@@ -25563,6 +25728,7 @@ null,
 1193000,
 1193000,
 1195000,
+1195000,
 1195000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.evaltime.cuda": [
@@ -25717,6 +25883,7 @@ null,
 0.2518,
 0.252,
 0.252,
+0.2519,
 0.2519
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.rsz_at_before_optimize.cuda": [
@@ -25871,7 +26038,8 @@ null,
 230900000,
 230900000,
 234500000,
-231800000
+231800000,
+231100000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.rsz_at_model_ready.cuda": [
 null,
@@ -26025,7 +26193,8 @@ null,
 524100000,
 534600000,
 527200000,
-534400000
+534400000,
+526600000
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.time_to_before_optimize.cuda": [
 null,
@@ -26179,7 +26348,8 @@ null,
 0.576,
 0.572,
 0.575,
-0.587
+0.587,
+0.584
 ],
 "net.sd15_dummy_f32_vae_decoder_512px.time_to_model_ready.cuda": [
 null,
@@ -26333,7 +26503,8 @@ null,
 0.843,
 0.84,
 0.84,
-0.864
+0.864,
+0.858
 ]
 }
 }
