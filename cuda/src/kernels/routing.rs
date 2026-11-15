@@ -1,11 +1,14 @@
 use cudarc::driver::LaunchConfig;
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_gpu::ops::routing::FusePairPolicy;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
 use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedLinearKernels;
+use tract_gpu::ops::routing::RoutedStrategy;
+use tract_gpu::ops::routing::RoutedTuning;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::tensor::DeviceTensor;
 use tract_transformers::ops::moe_ffn::MoeFfn;
@@ -125,25 +128,19 @@ fn weights_format(weights: &DeviceTensor) -> TractResult<RoutedFormat> {
     .with_context(|| format!("No CUDA routed kernel for {weights:?}"))
 }
 
-/// The route chunk of the sorted path — tiled matmul ([`RMM_M`]) or grouped GEMV
-/// ([`RMV_ROUTES`]) — for this many routes per expert, or `None` for the per-route GEMV.
-fn sorted_chunk(routes: usize, experts: usize, k: usize, block_quant: bool) -> Option<usize> {
-    let per_expert = routes / experts.max(1);
-    if experts > RMM_MAX_EXPERTS || !k.is_multiple_of(RMM_K) {
-        None
-    } else if per_expert >= if block_quant { 14 } else { 20 } {
-        Some(RMM_M)
-    } else if !block_quant && per_expert >= 3 {
-        Some(RMV_ROUTES)
-    } else {
-        None
-    }
-}
+/// CUDA's routed strategies: the tiled matmul from 14 routes per expert for block-quantized
+/// weights and 20 for plain ones, the grouped GEMV from 3 for plain ones.
+const CUDA_ROUTED_TUNING: RoutedTuning = RoutedTuning {
+    tiled_min_per_expert: |format| Some(if format.block_quant().is_some() { 14 } else { 20 }),
+    tiled_chunk: RMM_M,
+    grouped_min_per_expert: |format| format.block_quant().is_none().then_some(3),
+    grouped_chunk: RMV_ROUTES,
+    sorted_max_experts: RMM_MAX_EXPERTS,
+    sorted_k_multiple: RMM_K,
+};
 
-/// Both projections of a pair and their postamble in one pass for a single input row, where
-/// one projection's GEMV alone leaves the GPU underused; false, having done nothing, for more
-/// rows, whose separate GEMVs keep each projection's weights in L2 across routes sharing an
-/// expert.
+/// Both projections of a pair and their postamble in one pass when the routes take the
+/// per-route GEMV; false, having done nothing, otherwise.
 #[allow(clippy::too_many_arguments)]
 fn fused_pair(
     stream: &TractCudaStream,
@@ -159,8 +156,8 @@ fn fused_pair(
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
     let format = weights_format(weights)?;
     let block_quant = format.block_quant().is_some();
-    if input.shape()[0] != 1
-        || sorted_chunk(routes, weights.shape()[0], k, block_quant).is_some()
+    if CUDA_ROUTED_TUNING.strategy(routes, weights.shape()[0], k, format)
+        != RoutedStrategy::PerRoute
         || weights_format(weights_up)? != format
         || weights_up.shape() != weights.shape()
     {
@@ -225,8 +222,11 @@ fn project(
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
     let format = weights_format(weights)?;
     let (name, block_quant) = (format.name(), format.block_quant().is_some());
-    if let Some(chunk) = sorted_chunk(routes, weights.shape()[0], k, block_quant) {
-        return project_sorted(stream, name, chunk, input, weights, rows, expert_ids, out);
+    match CUDA_ROUTED_TUNING.strategy(routes, weights.shape()[0], k, format) {
+        RoutedStrategy::Tiled { chunk } | RoutedStrategy::Grouped { chunk } => {
+            return project_sorted(stream, name, chunk, input, weights, rows, expert_ids, out);
+        }
+        RoutedStrategy::PerRoute => (),
     }
     ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
     let rows_per_warp = if block_quant { ROUTED_ROWS } else { 1 };
@@ -386,11 +386,14 @@ const CUDA_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
             postamble(s, gate, up, bias, bias_up, expert_ids, activation, out)
         })
     },
-    fused_pair: Some(|input, weights, weights_up, biases, rows, expert_ids, activation, out| {
-        crate::with_cuda_stream(|s| {
-            fused_pair(s, input, weights, weights_up, biases, rows, expert_ids, activation, out)
-        })
-    }),
+    fused_pair: Some((
+        FusePairPolicy::SingleRow,
+        |input, weights, weights_up, biases, rows, expert_ids, activation, out| {
+            crate::with_cuda_stream(|s| {
+                fused_pair(s, input, weights, weights_up, biases, rows, expert_ids, activation, out)
+            })
+        },
+    )),
 };
 
 crate::register_cuda_op!(RoutedLinear, |source, node, op| {

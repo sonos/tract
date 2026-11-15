@@ -4,11 +4,14 @@
 
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
+use tract_gpu::ops::routing::FusePairPolicy;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
 use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedLinearKernels;
+use tract_gpu::ops::routing::RoutedStrategy;
+use tract_gpu::ops::routing::RoutedTuning;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::sync::DeviceSyncKind;
 use tract_gpu::sync::sync_inputs_if_required;
@@ -369,15 +372,16 @@ fn units(format: RoutedFormat, k: usize) -> usize {
     }
 }
 
-/// Routes per expert from which projections sort the routes by expert and run the tiled matmul,
-/// reading each expert's weights once per chunk of routes. The block GEMV decodes cheaply enough
-/// to hold out longer than the plain one.
-fn sorted_min_per_expert(format: RoutedFormat) -> usize {
-    match format {
-        RoutedFormat::Q40 | RoutedFormat::Q20T => 12,
-        RoutedFormat::F16 | RoutedFormat::F32 => 5,
-    }
-}
+/// wgpu's routed strategies: the sorted tiled matmul from 12 routes per expert for block-quantized
+/// weights and 5 for plain ones, whose GEMV decodes slowest; no grouped GEMV.
+const WGPU_ROUTED_TUNING: RoutedTuning = RoutedTuning {
+    tiled_min_per_expert: |format| Some(if format.block_quant().is_some() { 12 } else { 5 }),
+    tiled_chunk: SORT_CHUNK,
+    grouped_min_per_expert: |_| None,
+    grouped_chunk: 0,
+    sorted_max_experts: SORT_MAX_EXPERTS,
+    sorted_k_multiple: 1,
+};
 
 /// The format of `[E, N, K]` expert weights, if the kernels read them: plain weights need K a
 /// multiple of 4.
@@ -833,7 +837,7 @@ fn project(
     let (n, k) = (weights.shape()[1], weights.shape()[2]);
     ensure!(input.shape()[1] == k && out.shape() == [routes, n]);
     let format = weights_format(weights)?;
-    if experts <= SORT_MAX_EXPERTS && routes >= sorted_min_per_expert(format) * experts {
+    if WGPU_ROUTED_TUNING.strategy(routes, experts, k, format) != RoutedStrategy::PerRoute {
         return project_sorted(format, input, weights, rows, expert_ids, out);
     }
     ensure!(routes <= GRID_LIMIT as usize, "Wgpu RoutedLinear takes up to {GRID_LIMIT} routes");
@@ -1110,8 +1114,8 @@ fn routed_mv_pair_{name}(
     )
 }
 
-/// Both projections of a pair and their postamble in one pass for a single input row, where one
-/// projection's GEMV alone leaves the GPU underused; false, having done nothing, for more rows.
+/// Both projections of a pair and their postamble in one GEMV pass; false, having done nothing,
+/// for weights of different formats or more routes than a grid takes.
 #[allow(clippy::too_many_arguments)]
 fn fused_pair(
     input: &DeviceTensor,
@@ -1125,8 +1129,7 @@ fn fused_pair(
 ) -> TractResult<bool> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], weights.shape()[2]);
     let format = weights_format(weights)?;
-    if input.shape()[0] != 1
-        || weights_up.shape() != weights.shape()
+    if weights_up.shape() != weights.shape()
         || weights_format(weights_up)? != format
         || routes > GRID_LIMIT as usize
     {
@@ -1198,8 +1201,12 @@ fn fused_pair(
     Ok(true)
 }
 
-const WGPU_ROUTED_LINEAR_KERNELS: RoutedLinearKernels =
-    RoutedLinearKernels { supports, project, postamble, fused_pair: Some(fused_pair) };
+const WGPU_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
+    supports,
+    project,
+    postamble,
+    fused_pair: Some((FusePairPolicy::SingleRow, fused_pair)),
+};
 
 /// Translates a `RoutedLinear` [`GpuRoutedLinear`] takes, its i64 ids moved to the device with
 /// the rest: the registry's dtype gate would refuse them.
