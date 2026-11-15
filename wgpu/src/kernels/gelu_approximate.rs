@@ -110,7 +110,8 @@ fn gelu_body(x: f32, cubic: bool, accurate: bool) -> f32 {{
     let x2 = x * x;
     let xp = select(x2, x2 * x, cubic);
     let inner = SQRT_2_OVER_PI * (x + GELU_COEF * xp);
-    let th = select(tanh(inner), stanh(inner), accurate);
+    // Metal's fast tanh turns NaN past about 44; tanh is 1.0 in f32 well before 15.
+    let th = select(tanh(clamp(inner, -15.0, 15.0)), stanh(inner), accurate);
     return 0.5 * x * (1.0 + th);
 }}
 
