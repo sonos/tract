@@ -39,7 +39,6 @@
 //! variants outside that lowering stay on the reference evaluator, preserving
 //! runtime cross-projection checks for unresolved weight dimensions. Symbolic
 //! token counts do not prevent lowering.
-//! [`RoutedQ40MatMul`] is a routed linear block-quant execution helper.
 //! These helper operators are execution forms, not additional NNEF primitives.
 //! Serialize before codegen: packed [`OptMoeFfn`] plans deliberately reject
 //! export rather than retaining a second copy of their source weights.
@@ -62,9 +61,7 @@ pub use cpu::OptMoeFfn;
 use cpu::{build_expert_plan, build_router_plan};
 pub use nnef::register;
 pub use routed_linear::{RoutedActivation, RoutedLinear};
-pub use routing::{
-    RouteSelect, RouteTopK, RoutedCombine, RoutedInputMode, RoutedMatMul, RoutedQ40MatMul,
-};
+pub use routing::{RouteSelect, RouteTopK, RoutedCombine, RoutedInputMode, RoutedMatMul};
 use std::sync::Arc;
 use tract_nnef::tract_core::ops::konst::Const;
 use tract_nnef::tract_core::ops::math::mul;
