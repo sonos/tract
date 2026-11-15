@@ -18,6 +18,7 @@ pub fn register_all(reg: &mut Registry) {
     reg.reg_to_tract(BuiltinOperator::ADD, deser_add);
     reg.reg_to_tract(BuiltinOperator::SUB, deser_sub);
     reg.reg_to_tract(BuiltinOperator::MUL, deser_mul);
+    reg.reg_to_tract(BuiltinOperator::SQUARED_DIFFERENCE, deser_squared_difference);
     reg.reg_to_tract(BuiltinOperator::DIV, deser_div);
     reg.reg_to_tract(BuiltinOperator::MAXIMUM, |op| deser_bin(op, tract_core::ops::math::max()));
     reg.reg_to_tract(BuiltinOperator::MINIMUM, |op| deser_bin(op, tract_core::ops::math::min()));
@@ -68,6 +69,17 @@ fn deser_sub(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
     let wires = wire_cast_and_rank_broadcast(op)?;
     let wires = op.ctx.target.wire_node(op.prefix, tract_core::ops::math::sub(), &wires)?;
     wire_fused_activation(op, &wires, &options.fused_activation_function())
+}
+
+/// (a - b)², as in LayerNorm's variance.
+fn deser_squared_difference(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
+    let wires = wire_cast_and_rank_broadcast(op)?;
+    let diff = op.ctx.target.wire_node(
+        format!("{}.sub", op.prefix),
+        tract_core::ops::math::sub(),
+        &wires,
+    )?;
+    op.ctx.target.wire_node(op.prefix, tract_core::ops::math::square(), &diff)
 }
 
 fn deser_mul(op: &mut DeserOp) -> TractResult<TVec<OutletId>> {
