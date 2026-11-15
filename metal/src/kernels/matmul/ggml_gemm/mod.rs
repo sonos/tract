@@ -7,7 +7,7 @@ use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::{BlockQuant, Q4_0};
+use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q2_0_T, Q4_0};
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
 
@@ -485,7 +485,90 @@ pub(crate) fn dispatch_router_scores(
     Ok(())
 }
 
-pub fn eval_routed_q40_f32(
+/// How the routed kernels read one expert weight format.
+struct RoutedWeights {
+    /// Suffix of the format's routed kernels.
+    name: &'static str,
+    /// Bytes of one `[k]` weight row.
+    row_bytes: usize,
+    /// Block-quantized, read by the per-format block GEMVs, fused pair included.
+    block: bool,
+    /// Threadgroup memory of the grouped matmul: the weight tile, f32 for f32
+    /// weights and f16 otherwise, then the f32 activation tile.
+    mm_shared_bytes: u64,
+}
+
+/// Block-quantized expert formats the routed kernels read, with their kernel suffix.
+fn routed_block_formats() -> [(&'static dyn BlockQuant, &'static str); 2] {
+    [(&Q4_0, "q4_0"), (&Q2_0_T, "q2_0_t")]
+}
+
+fn routed_weights_of(
+    datum_type: DatumType,
+    format: Option<&dyn BlockQuant>,
+    k: usize,
+) -> Option<RoutedWeights> {
+    if let Some(format) = format {
+        let (format, name) = routed_block_formats().into_iter().find(|(f, _)| f.dyn_eq(format))?;
+        if !k.is_multiple_of(format.block_len()) {
+            return None;
+        }
+        let row_bytes = k / format.block_len() * format.block_bytes();
+        return Some(RoutedWeights { name, row_bytes, block: true, mm_shared_bytes: 8192 });
+    }
+    if !k.is_multiple_of(4) {
+        return None;
+    }
+    match datum_type {
+        F32 => Some(RoutedWeights {
+            name: "f32",
+            row_bytes: 4 * k,
+            block: false,
+            mm_shared_bytes: 12288,
+        }),
+        F16 => Some(RoutedWeights {
+            name: "f16",
+            row_bytes: 2 * k,
+            block: false,
+            mm_shared_bytes: 8192,
+        }),
+        _ => None,
+    }
+}
+
+fn routed_weights(weights: &DeviceTensor) -> TractResult<RoutedWeights> {
+    ensure!(
+        weights.rank() == 3,
+        "routed weights must be [experts, n, k], got {:?}",
+        weights.shape()
+    );
+    let format = routed_block_formats()
+        .into_iter()
+        .find_map(|(f, _)| get_quant_fact(weights, f).map(|fact| fact.format));
+    routed_weights_of(weights.datum_type(), format.as_deref(), weights.shape()[2])
+        .with_context(|| format!("no routed kernel for weights {weights:?}"))
+}
+
+/// Whether the routed kernels read expert weights of this fact, `[E, N, K]`: Q4_0 or Q2_0_T,
+/// or plain f32 or f16 with K a multiple of 4.
+pub fn routed_weights_supported(fact: &TypedFact) -> bool {
+    if fact.rank() != 3 {
+        return false;
+    }
+    let Some(k) = fact.shape[2].as_i64() else { return false };
+    let format = fact.exotic_fact().and_then(|e| e.downcast_ref::<BlockQuantFact>());
+    if fact.exotic_fact().is_some() && format.is_none() {
+        return false;
+    }
+    routed_weights_of(fact.datum_type, format.map(|f| &*f.format), k as usize).is_some()
+}
+
+/// Whether the routed fused pair kernel reads expert weights of this fact.
+pub fn routed_pair_supported(weights: &DeviceTensor) -> bool {
+    routed_weights(weights).is_ok_and(|w| w.block)
+}
+
+pub fn eval_routed_f32(
     stream: &MetalStream,
     input: &DeviceTensor,
     weights: &DeviceTensor,
@@ -498,7 +581,7 @@ pub fn eval_routed_q40_f32(
     ensure!(weights.rank() == 3);
     let n = weights.shape()[1];
     let output = DeviceTensor::uninitialized_dt(F32, &[routes, n])?;
-    dispatch_routed_q40_f32(
+    dispatch_routed_f32(
         stream,
         input,
         weights,
@@ -511,7 +594,9 @@ pub fn eval_routed_q40_f32(
     Ok(output)
 }
 
-pub fn dispatch_routed_q40_f32(
+/// Routed projection: `output[r] = weights[expert_ids[r]] · input[row of r]`, f32 activations
+/// and output, weights in any format [`routed_weights_supported`] takes.
+pub fn dispatch_routed_f32(
     stream: &MetalStream,
     input: &DeviceTensor,
     weights: &DeviceTensor,
@@ -535,11 +620,7 @@ pub fn dispatch_routed_q40_f32(
         "routed q40 route ids must be i64"
     );
     ensure!(route_token_ids.shape() == route_expert_ids.shape());
-    ensure!(
-        weights.rank() == 3 && get_quant_fact(weights, &Q4_0).is_some(),
-        "routed q40 weights must be Q4_0 [experts,n,k], got {:?}",
-        weights.shape()
-    );
+    let format = routed_weights(weights)?;
     ensure!(output.rank() == 2 && output.datum_type() == F32);
 
     let route_count = route_token_ids.shape()[0];
@@ -547,7 +628,6 @@ pub fn dispatch_routed_q40_f32(
     let k = weights.shape()[2];
     ensure!(input.shape()[1] == k, "input k {} != weight k {k}", input.shape()[1]);
     ensure!(output.shape() == [route_count, n]);
-    ensure!(k.is_multiple_of(Q4_0.block_len()), "routed q40 k must be divisible by 32");
     if input_mode == RoutedQ40InputMode::RouteRows {
         ensure!(
             input.shape()[0] == route_count,
@@ -559,8 +639,7 @@ pub fn dispatch_routed_q40_f32(
         return Ok(());
     }
 
-    let block_count = k / Q4_0.block_len();
-    let weight_row_stride = block_count * Q4_0.block_bytes();
+    let weight_row_stride = format.row_bytes;
     let weight_expert_stride = n * weight_row_stride;
     let input_row_stride = input.strides()[0] as usize * input.datum_type().size_of();
     let output_route_stride = output.strides()[0] as usize * output.datum_type().size_of();
@@ -581,7 +660,6 @@ pub fn dispatch_routed_q40_f32(
 
     let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
     let n_experts = weights.shape()[0];
-    // The grouped matrix kernel converts Q40 weights to f16 before accumulation.
     if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
         // Worst case every expert has a ragged tail chunk.
         let max_chunks = route_count.div_ceil(32) + n_experts;
@@ -613,7 +691,8 @@ pub fn dispatch_routed_q40_f32(
         let _staging_retained = stream.retain_for_dispatch(&[&a_sorted, &c_sorted]);
         let gather = stream.load_pipeline(LibraryName::Ggml, "routed_gather_rows_f32")?;
         let scatter = stream.load_pipeline(LibraryName::Ggml, "routed_scatter_rows_f32")?;
-        let mm = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mm_q4_0_routed_f32")?;
+        let mm = stream
+            .load_pipeline(LibraryName::Ggml, &format!("kernel_routed_mm_{}", format.name))?;
         let set_args = |encoder: &metal::ComputeCommandEncoderRef| {
             encoder.set_bytes(
                 0,
@@ -646,7 +725,7 @@ pub fn dispatch_routed_q40_f32(
             encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Read);
             encoder.set_metal_tensor(4, &c_sorted, metal::MTLResourceUsage::Write);
-            encoder.set_threadgroup_memory_length(0, 8192);
+            encoder.set_threadgroup_memory_length(0, format.mm_shared_bytes);
             let grid =
                 MTLSize { width: max_chunks as u64, height: (n as u64).div_ceil(64), depth: 1 };
             let group = MTLSize { width: 128, height: 1, depth: 1 };
@@ -667,7 +746,8 @@ pub fn dispatch_routed_q40_f32(
         return Ok(());
     }
 
-    let pipeline = stream.load_pipeline(LibraryName::Ggml, "kernel_routed_q4_0_f32")?;
+    let pipeline =
+        stream.load_pipeline(LibraryName::Ggml, &format!("kernel_routed_mv_{}", format.name))?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -705,7 +785,7 @@ pub fn dispatch_routed_q40_f32(
 /// applies bias + activation on the way out (replacing 2x(sort, gather,
 /// scatter) + bias adds + activation dispatches of the unfused lowering).
 #[allow(clippy::too_many_arguments)]
-pub fn dispatch_routed_q40_swiglu_f32(
+pub fn dispatch_routed_swiglu_f32(
     stream: &MetalStream,
     input: &DeviceTensor,
     w1: &DeviceTensor,
@@ -730,12 +810,9 @@ pub fn dispatch_routed_q40_swiglu_f32(
             && route_expert_ids.datum_type() == i64::datum_type()
             && route_token_ids.shape() == route_expert_ids.shape()
     );
-    ensure!(
-        w1.rank() == 3 && get_quant_fact(w1, &Q4_0).is_some(),
-        "routed swiglu w1 must be Q4_0 [experts,n,k], got {:?}",
-        w1.shape()
-    );
-    ensure!(w3.rank() == 3 && get_quant_fact(w3, &Q4_0).is_some());
+    let format = routed_weights(w1)?;
+    ensure!(format.block, "routed swiglu pair takes block-quantized weights");
+    ensure!(routed_weights(w3)?.name == format.name, "w1/w3 must share their format");
     ensure!(w1.shape() == w3.shape(), "w1/w3 must share [experts,n,k]");
     ensure!(output.rank() == 2 && output.datum_type() == F32);
 
@@ -745,7 +822,6 @@ pub fn dispatch_routed_q40_swiglu_f32(
     let k = w1.shape()[2];
     ensure!(input.shape()[1] == k);
     ensure!(output.shape() == [route_count, n]);
-    ensure!(k.is_multiple_of(Q4_0.block_len()));
     if let Some((b1, b3)) = biases {
         for b in [b1, b3] {
             ensure!(
@@ -762,8 +838,7 @@ pub fn dispatch_routed_q40_swiglu_f32(
         return Ok(());
     }
 
-    let block_count = k / Q4_0.block_len();
-    let weight_row_stride = block_count * Q4_0.block_bytes();
+    let weight_row_stride = format.row_bytes;
     let params = RoutedQ40F32Params {
         k: k as i32,
         n: n as i32,
@@ -797,7 +872,7 @@ pub fn dispatch_routed_q40_swiglu_f32(
 
     let grouped_min_routes = crate::tuning::MOE_GROUPED_MIN_ROUTES;
     if route_count >= grouped_min_routes && n_experts <= 256 && k.is_multiple_of(32) {
-        // Same grouped machinery as dispatch_routed_q40_f32, with the sort
+        // Same grouped machinery as dispatch_routed_f32, with the sort
         // and gather shared between the two matmuls.
         let max_chunks = route_count.div_ceil(32) + n_experts;
         let offsets = DeviceTensor::uninitialized_dt(u32::datum_type(), &[n_experts + 1])?;
@@ -857,7 +932,8 @@ pub fn dispatch_routed_q40_swiglu_f32(
             let group = MTLSize { width: 256, height: 1, depth: 1 };
             encoder.dispatch_thread_groups(grid, group);
         });
-        let mm = stream.load_pipeline(LibraryName::Ggml, "kernel_mul_mm_q4_0_routed_f32")?;
+        let mm = stream
+            .load_pipeline(LibraryName::Ggml, &format!("kernel_routed_mm_{}", format.name))?;
         for (w, c_sorted) in [(w1, &c1_sorted), (w3, &c3_sorted)] {
             let command_buffer = stream.command_buffer();
             command_buffer.encode(|encoder| {
@@ -867,7 +943,7 @@ pub fn dispatch_routed_q40_swiglu_f32(
                 encoder.set_metal_tensor(2, &a_sorted, metal::MTLResourceUsage::Read);
                 encoder.set_metal_tensor(3, &chunks, metal::MTLResourceUsage::Read);
                 encoder.set_metal_tensor(4, c_sorted, metal::MTLResourceUsage::Write);
-                encoder.set_threadgroup_memory_length(0, 8192);
+                encoder.set_threadgroup_memory_length(0, format.mm_shared_bytes);
                 let grid =
                     MTLSize { width: max_chunks as u64, height: (n as u64).div_ceil(64), depth: 1 };
                 let group = MTLSize { width: 128, height: 1, depth: 1 };
@@ -904,12 +980,9 @@ pub fn dispatch_routed_q40_swiglu_f32(
         return Ok(());
     }
 
-    let gemv_name = if input.datum_type() == F16 {
-        "kernel_routed_q4_0_swiglu_f16x_f32"
-    } else {
-        "kernel_routed_q4_0_swiglu_f32"
-    };
-    let pipeline = stream.load_pipeline(LibraryName::Ggml, gemv_name)?;
+    let input_name = if input.datum_type() == F16 { "f16x_f32" } else { "f32" };
+    let gemv_name = format!("kernel_routed_swiglu_{}_{input_name}", format.name);
+    let pipeline = stream.load_pipeline(LibraryName::Ggml, &gemv_name)?;
     let command_buffer = stream.command_buffer();
     command_buffer.encode(|encoder| {
         encoder.set_compute_pipeline_state(&pipeline);
@@ -1188,7 +1261,7 @@ mod tests {
                 &route_expert_ids,
                 input_mode,
             )?;
-            let actual = eval_routed_q40_f32(
+            let actual = eval_routed_f32(
                 stream,
                 &input.into_device()?,
                 &weights.into_device()?,
@@ -1248,7 +1321,7 @@ mod tests {
                 &route_expert_ids,
                 input_mode,
             )?;
-            let actual = eval_routed_q40_f32(
+            let actual = eval_routed_f32(
                 stream,
                 &input.into_device()?,
                 &weights.into_device()?,
@@ -1321,7 +1394,7 @@ mod tests {
                 let mut outs: Vec<Tensor> = vec![];
                 for x in [&x32, &x16] {
                     let output = DeviceTensor::uninitialized_dt(F32, &[routes, n])?;
-                    dispatch_routed_q40_swiglu_f32(
+                    dispatch_routed_swiglu_f32(
                         stream,
                         x,
                         &w1,
@@ -1409,7 +1482,7 @@ mod tests {
             let batched = GemmImpl::<GgmlGemm>::new(false, true);
 
             for _ in 0..10 {
-                dispatch_routed_q40_f32(
+                dispatch_routed_f32(
                     stream,
                     &input,
                     &weights,
@@ -1427,7 +1500,7 @@ mod tests {
             for _ in 0..7 {
                 let start = Instant::now();
                 for _ in 0..50 {
-                    dispatch_routed_q40_f32(
+                    dispatch_routed_f32(
                         stream,
                         &input,
                         &weights,

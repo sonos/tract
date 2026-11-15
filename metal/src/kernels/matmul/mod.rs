@@ -8,8 +8,8 @@ mod mpp;
 pub use basic::BasicMatMul;
 pub(crate) use ggml_gemm::dispatch_router_scores;
 pub use ggml_gemm::{
-    GgmlGemm, RoutedQ40InputMode, RoutedSwigluAct, dispatch_routed_q40_f32,
-    dispatch_routed_q40_swiglu_f32, eval_routed_q40_f32,
+    GgmlGemm, RoutedQ40InputMode, RoutedSwigluAct, dispatch_routed_f32, dispatch_routed_swiglu_f32,
+    eval_routed_f32, routed_pair_supported, routed_weights_supported,
 };
 pub use mfa::MfaGemm;
 pub use mlx_gemm::MlxGemm;

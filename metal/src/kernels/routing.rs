@@ -1,19 +1,19 @@
 use crate::kernels::matmul::RoutedQ40InputMode;
 use crate::kernels::matmul::RoutedSwigluAct;
-use crate::kernels::matmul::dispatch_routed_q40_f32;
-use crate::kernels::matmul::dispatch_routed_q40_swiglu_f32;
+use crate::kernels::matmul::dispatch_routed_f32;
+use crate::kernels::matmul::dispatch_routed_swiglu_f32;
+use crate::kernels::matmul::routed_pair_supported;
+use crate::kernels::matmul::routed_weights_supported;
 use crate::kernels::moe::dispatch_route_select_f32;
 use crate::kernels::moe::dispatch_routed_combine;
 use crate::kernels::moe::dispatch_routed_postamble_f32;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
 use tract_gpu::ops::routing::RoutedLinearKernels;
 use tract_gpu::ops::routing::RoutingKernels;
 use tract_gpu::tensor::DeviceTensor;
-use tract_gpu::utils::as_quant_fact;
 use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
 use tract_transformers::ops::moe_ffn::RoutedCombine;
@@ -40,11 +40,6 @@ crate::register_metal_op!(RoutedCombine, |source, node, op| {
         .map(|op| Box::new(op) as _))
 });
 
-/// Expert weights the routed kernels read: Q4_0, `[E, N, K]`.
-fn supports(fact: &TypedFact) -> bool {
-    fact.rank() == 3 && as_quant_fact(fact, &Q4_0).is_some()
-}
-
 /// The kernels' row source: `rows` when routes read token rows, else the route's own row, for
 /// which the kernels never read `token_ids`.
 fn input_mode<'a>(
@@ -67,11 +62,11 @@ fn commit_after_many_routes(stream: &crate::MetalStream, routes: usize) -> Tract
 }
 
 const METAL_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
-    supports,
+    supports: routed_weights_supported,
     project: |input, weights, rows, expert_ids, out| {
         crate::with_metal_stream(|stream| {
             let (token_ids, mode) = input_mode(rows, expert_ids);
-            dispatch_routed_q40_f32(stream, input, weights, token_ids, expert_ids, mode, out)?;
+            dispatch_routed_f32(stream, input, weights, token_ids, expert_ids, mode, out)?;
             commit_after_many_routes(stream, expert_ids.len())
         })
     },
@@ -88,9 +83,12 @@ const METAL_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
             (4, alpha, limit) => RoutedSwigluAct::Clamped { alpha, limit },
             _ => return Ok(false),
         };
+        if !routed_pair_supported(weights) {
+            return Ok(false);
+        }
         crate::with_metal_stream(|stream| {
             let (token_ids, mode) = input_mode(rows, expert_ids);
-            dispatch_routed_q40_swiglu_f32(
+            dispatch_routed_swiglu_f32(
                 stream, input, weights, weights_up, biases, token_ids, expert_ids, mode, act, out,
             )?;
             commit_after_many_routes(stream, expert_ids.len())
@@ -112,5 +110,5 @@ pub fn lower_moe_ffn(
     _name: &str,
     op: &MoeFfn,
 ) -> TractResult<Option<TypedModelPatch>> {
-    tract_gpu::ops::routing::lower_moe_ffn(model, node, op, supports)
+    tract_gpu::ops::routing::lower_moe_ffn(model, node, op, routed_weights_supported)
 }
