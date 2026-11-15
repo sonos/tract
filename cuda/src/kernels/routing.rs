@@ -139,6 +139,94 @@ fn weights_kernel_name(weights: &DeviceTensor) -> TractResult<(&'static str, boo
     }
 }
 
+/// The route chunk of the sorted path — tiled matmul ([`RMM_M`]) or grouped GEMV
+/// ([`RMV_ROUTES`]) — for this many routes per expert, or `None` for the per-route GEMV.
+fn sorted_chunk(routes: usize, experts: usize, k: usize, block_quant: bool) -> Option<usize> {
+    let per_expert = routes / experts.max(1);
+    if experts > RMM_MAX_EXPERTS || !k.is_multiple_of(RMM_K) {
+        None
+    } else if per_expert >= if block_quant { 14 } else { 20 } {
+        Some(RMM_M)
+    } else if !block_quant && per_expert >= 3 {
+        Some(RMV_ROUTES)
+    } else {
+        None
+    }
+}
+
+/// Both projections of a pair and their postamble in one pass for a single input row, where
+/// one projection's GEMV alone leaves the GPU underused; false, having done nothing, for more
+/// rows, whose separate GEMVs keep each projection's weights in L2 across routes sharing an
+/// expert.
+#[allow(clippy::too_many_arguments)]
+fn fused_pair(
+    stream: &TractCudaStream,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    weights_up: &DeviceTensor,
+    biases: Option<(&DeviceTensor, &DeviceTensor)>,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    (activation, alpha, limit): (u32, f32, f32),
+    out: &DeviceTensor,
+) -> TractResult<bool> {
+    let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
+    let (name, block_quant) = weights_kernel_name(weights)?;
+    if input.shape()[0] != 1
+        || sorted_chunk(routes, weights.shape()[0], k, block_quant).is_some()
+        || weights_kernel_name(weights_up)?.0 != name
+        || weights_up.shape() != weights.shape()
+    {
+        return Ok(false);
+    }
+    ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
+    let rows_per_warp = if block_quant { ROUTED_ROWS } else { 1 };
+    ensure!(
+        rows_per_warp == 1 || input.buffer_offset::<usize>().is_multiple_of(16),
+        "the block-quant routed GEMV reads its input as float4"
+    );
+    let func = cuda_context()
+        .load_pipeline(LibraryName::Routing, format!("routed_mul_vec_pair_{name}"))?;
+    let w = get_cuda_view(weights);
+    let w_up = get_cuda_view(weights_up);
+    let x = get_cuda_view(input);
+    let o = get_cuda_view(out);
+    let rows = rows.map(get_cuda_view);
+    let ids = get_cuda_view(expert_ids);
+    let biases = biases.map(|(b, b_up)| (get_cuda_view(b), get_cuda_view(b_up)));
+    let mut args = TractLaunchArgs::new(stream, &func);
+    args.push_view(&w);
+    args.push_view(&w_up);
+    args.push_view(&x);
+    args.push_view(&o);
+    match &rows {
+        Some(rows) => args.push_view(rows),
+        None => args.push_null_ptr(),
+    }
+    args.push_view(&ids);
+    match &biases {
+        Some((b, b_up)) => {
+            args.push_view(b);
+            args.push_view(b_up);
+        }
+        None => {
+            args.push_null_ptr();
+            args.push_null_ptr();
+        }
+    }
+    args.push_i32(k);
+    args.push_i32(n);
+    args.push_i32(activation);
+    args.push::<f32>(alpha);
+    args.push::<f32>(limit);
+    args.launch(LaunchConfig {
+        grid_dim: (n.div_ceil(ROUTED_WARPS as usize * rows_per_warp) as u32, routes as u32, 1),
+        block_dim: (32, ROUTED_WARPS, 1),
+        shared_mem_bytes: 0,
+    })?;
+    Ok(true)
+}
+
 fn project(
     stream: &TractCudaStream,
     input: &DeviceTensor,
@@ -148,16 +236,9 @@ fn project(
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], input.shape()[1]);
-    let experts = weights.shape()[0];
     let (name, block_quant) = weights_kernel_name(weights)?;
-    let per_expert = routes / experts.max(1);
-    if experts <= RMM_MAX_EXPERTS && k.is_multiple_of(RMM_K) {
-        if per_expert >= if block_quant { 14 } else { 20 } {
-            return project_sorted(stream, name, RMM_M, input, weights, rows, expert_ids, out);
-        }
-        if !block_quant && per_expert >= 3 {
-            return project_sorted(stream, name, RMV_ROUTES, input, weights, rows, expert_ids, out);
-        }
+    if let Some(chunk) = sorted_chunk(routes, weights.shape()[0], k, block_quant) {
+        return project_sorted(stream, name, chunk, input, weights, rows, expert_ids, out);
     }
     ensure!(routes <= 65535, "CUDA RoutedLinear takes up to 65535 routes");
     let rows_per_warp = if block_quant { ROUTED_ROWS } else { 1 };
@@ -317,7 +398,11 @@ const CUDA_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
             postamble(s, gate, up, bias, bias_up, expert_ids, activation, out)
         })
     },
-    fused_pair: None,
+    fused_pair: Some(|input, weights, weights_up, biases, rows, expert_ids, activation, out| {
+        crate::with_cuda_stream(|s| {
+            fused_pair(s, input, weights, weights_up, biases, rows, expert_ids, activation, out)
+        })
+    }),
 };
 
 crate::register_cuda_op!(RoutedLinear, |source, node, op| {
