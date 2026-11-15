@@ -7,8 +7,10 @@ use libloading::{Library, Symbol};
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::*;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::weight_format::GpuWeightFormat;
 
 use crate::GGML_Q_ROW_PADDING;
+use crate::kernels::LibraryName;
 use crate::ops::GgmlQuantQ81Fact;
 
 static CULIBS_MISSING: OnceLock<Option<&'static str>> = OnceLock::new();
@@ -249,9 +251,20 @@ pub fn get_ggml_q81_fact(t: &DeviceTensor) -> Option<GgmlQuantQ81Fact> {
     }
 }
 
+/// The library holding the GGML quantized matmul kernels for weights in `format`, and the tag
+/// naming them; `None` for a format they do not take.
+pub fn ggml_q_kernels(format: &dyn BlockQuant) -> Option<(LibraryName, &'static str)> {
+    let format = GpuWeightFormat::of_block_quant(format)?;
+    match format {
+        GpuWeightFormat::Q40 => Some((LibraryName::GgmlQ, "q40")),
+        GpuWeightFormat::Q20T => Some((LibraryName::GgmlQTernary, "q20t")),
+        GpuWeightFormat::F16 | GpuWeightFormat::F32 => None,
+    }
+}
+
 /// Whether the GGML quantized matmul kernels take weights in `format`.
 pub fn is_ggml_q_format(format: &dyn BlockQuant) -> bool {
-    format.dyn_eq(&Q4_0) || format.dyn_eq(&Q2_0_T)
+    ggml_q_kernels(format).is_some()
 }
 
 /// The block-quant fact of a weight the GGML quantized matmul kernels take.

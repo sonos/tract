@@ -412,18 +412,6 @@ fn dispatch_cublaslt_gemm_bias(
     Ok(())
 }
 
-/// The library holding the GGML quantized kernels for a weight format, and the tag naming
-/// them.
-fn ggml_q_kernels(format: &dyn BlockQuant) -> TractResult<(LibraryName, &'static str)> {
-    if format.dyn_eq(&Q4_0) {
-        Ok((LibraryName::GgmlQ, "q40"))
-    } else if format.dyn_eq(&Q2_0_T) {
-        Ok((LibraryName::GgmlQTernary, "q20t"))
-    } else {
-        bail!("No GGML quantized kernel for {format:?}")
-    }
-}
-
 fn kernel_name_ggml_q(
     format: &dyn BlockQuant,
     params: &GemmParams,
@@ -433,7 +421,8 @@ fn kernel_name_ggml_q(
 ) -> TractResult<(LibraryName, String)> {
     let need_check = !params.n.is_multiple_of(mmq_act);
     let fixup_str = if fixup { "stream_k_fixup_" } else { "" };
-    let (library, tag) = ggml_q_kernels(format)?;
+    let (library, tag) = crate::utils::ggml_q_kernels(format)
+        .with_context(|| format!("No GGML quantized kernel for {format:?}"))?;
     Ok((library, format!("mul_mat_{tag}_{fixup_str}{mmq_w}_8_{need_check}")))
 }
 
@@ -633,7 +622,8 @@ fn dispatch_ggml_matvec_q(
 
     let batch_ratio = params.act_batch / params.w_batch;
 
-    let (library, tag) = ggml_q_kernels(format)?;
+    let (library, tag) = crate::utils::ggml_q_kernels(format)
+        .with_context(|| format!("No GGML quantized kernel for {format:?}"))?;
     let func = context.load_pipeline(library, format!("mul_vec_{tag}_m_{}", params.m))?;
     let mut launch_args = TractLaunchArgs::new(stream, &func);
     launch_args.push_view(weights);
