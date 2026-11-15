@@ -27,6 +27,10 @@ use crate::kernels::shaders::ShaderDtype;
 use crate::kernels::shaders::WORKGROUP;
 use crate::kernels::shaders::pack_u32s;
 use crate::kernels::shaders::preamble;
+use crate::kernels::tiled_gemm::MATMUL_TILE;
+use crate::kernels::tiled_gemm::TILED_THREADS;
+use crate::kernels::tiled_gemm::tiled_gemm_core;
+use crate::kernels::tiled_gemm::tiled_gemm_tiles;
 use crate::register_wgpu_op;
 use crate::transform::Mapping;
 use crate::utils::element_offset;
@@ -35,6 +39,12 @@ use crate::with_wgpu_queue;
 
 /// Output rows of one routed GEMV workgroup.
 const MV_ROWS: u32 = 4;
+
+/// Routes of one expert a tiled workgroup takes: the rows of its output tile.
+const SORT_CHUNK: usize = 32;
+
+/// Most experts the route sort bins.
+const SORT_MAX_EXPERTS: usize = 256;
 
 /// Word offset of a tensor in its buffer.
 fn word_offset(t: &DeviceTensor) -> TractResult<u32> {
@@ -379,6 +389,16 @@ impl Format {
         }
     }
 
+    /// Routes per expert from which projections sort the routes by expert and run the tiled
+    /// matmul, reading each expert's weights once per chunk of routes. The block GEMV decodes
+    /// cheaply enough to hold out longer than the plain one.
+    fn sorted_min_per_expert(self) -> usize {
+        match self {
+            Format::Q40 | Format::Q20T => 12,
+            Format::F16 | Format::F32 => 5,
+        }
+    }
+
     /// The format of `[E, N, K]` expert weights of this datum type and block format, if the GEMV
     /// reads them.
     fn of(dt: DatumType, block: Option<&BlockQuantFact>, k: usize) -> Option<Format> {
@@ -542,22 +562,171 @@ fn routed_mv_{name}(
     )
 }
 
-fn project(
-    input: &DeviceTensor,
-    weights: &DeviceTensor,
-    rows: Option<&DeviceTensor>,
-    expert_ids: &DeviceTensor,
-    out: &DeviceTensor,
-) -> TractResult<()> {
-    let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], weights.shape()[2]);
-    ensure!(input.shape()[1] == k && out.shape() == [routes, n]);
-    ensure!(routes <= GRID_LIMIT as usize, "Wgpu RoutedLinear takes up to {GRID_LIMIT} routes");
-    let block = bq_fact(weights);
-    let format = match &block {
-        Some(b) => Format::of(weights.datum_type(), Some(&b.inner), k),
-        None => Format::of(weights.datum_type(), None, k),
+const ROUTE_PLAN: &str = r#"
+struct Params {
+    off_experts: u32,
+    off_sorted: u32,
+    off_chunks: u32,
+    routes: u32,
+    experts: u32,
+    max_chunks: u32,
+    _pad0: u32,
+    _pad1: u32,
+}
+
+@group(0) @binding(0) var<storage, read> expert_ids: array<u32>;
+@group(0) @binding(1) var<storage, read_write> sorted: array<u32>;
+@group(0) @binding(2) var<storage, read_write> chunks: array<u32>;
+@group(0) @binding(3) var<uniform> params: Params;
+
+const CHUNK: u32 = 32u;
+var<workgroup> cursor: array<atomic<u32>, 256>;
+
+// One workgroup: `sorted` lists each expert's routes contiguously, `chunks` holds
+// [expert, base, len] for every CHUNK routes of an expert, then expert 0xFFFFFFFF.
+@compute @workgroup_size(256)
+fn route_plan(@builtin(local_invocation_index) t: u32) {
+    if (t < params.experts) { atomicStore(&cursor[t], 0u); }
+    workgroupBarrier();
+    for (var r = t; r < params.routes; r += 256u) {
+        atomicAdd(&cursor[expert_ids[2u * (params.off_experts + r)]], 1u);
     }
-    .context("no routed GEMV for these weights")?;
+    workgroupBarrier();
+    if (t == 0u) {
+        var run = 0u;
+        var chunk = 0u;
+        for (var e = 0u; e < params.experts; e++) {
+            let count = atomicLoad(&cursor[e]);
+            atomicStore(&cursor[e], run);
+            for (var b = 0u; b < count; b += CHUNK) {
+                let c = params.off_chunks + 3u * chunk;
+                chunks[c] = e;
+                chunks[c + 1u] = run + b;
+                chunks[c + 2u] = min(CHUNK, count - b);
+                chunk++;
+            }
+            run += count;
+        }
+        for (; chunk < params.max_chunks; chunk++) {
+            chunks[params.off_chunks + 3u * chunk] = 0xFFFFFFFFu;
+        }
+    }
+    workgroupBarrier();
+    for (var r = t; r < params.routes; r += 256u) {
+        let slot = atomicAdd(&cursor[expert_ids[2u * (params.off_experts + r)]], 1u);
+        sorted[params.off_sorted + slot] = r;
+    }
+}
+"#;
+
+/// Reads weight `(k, c)` of expert `ctx.x` as f32, zero past the weights.
+fn mm_ld_b(format: Format) -> &'static str {
+    match format {
+        Format::Q40 => {
+            "    let bi = (ctx.x * params.n + c) * params.blocks_per_row + (k >> 5u);
+    let scale = unpack2x16float(wbuf[params.scale_off + bi / params.group]).x;
+    let inner = k & 31u;
+    let word = wbuf[params.code_off + bi * 4u + ((inner & 15u) >> 2u)];
+    let shift = 8u * (inner & 3u) + select(0u, 4u, inner >= 16u);
+    return (f32((word >> shift) & 15u) - 8.0) * scale;"
+        }
+        Format::Q20T => {
+            "    let bi = (ctx.x * params.n + c) * params.blocks_per_row + (k >> 5u);
+    let scale = unpack2x16float(wbuf[params.scale_off + bi / params.group]).x;
+    let inner = k & 31u;
+    let word = wbuf[params.code_off + bi * 2u + (inner >> 4u)];
+    return (f32((word >> (2u * (inner & 15u))) & 3u) - 1.0) * scale;"
+        }
+        Format::F16 => {
+            "    let e = (ctx.x * params.n + c) * params.k + k;
+    let pair = unpack2x16float(wbuf[params.code_off + e / 2u]);
+    return select(pair.x, pair.y, (e & 1u) == 1u);"
+        }
+        Format::F32 => {
+            "    return bitcast<f32>(wbuf[params.code_off + (ctx.x * params.n + c) * params.k + k]);"
+        }
+    }
+}
+
+fn mm_module(format: Format) -> String {
+    format!(
+        r#"
+struct Params {{
+    code_off: u32,
+    scale_off: u32,
+    group: u32,
+    blocks_per_row: u32,
+    k: u32,
+    n: u32,
+    off_x: u32,
+    off_tokens: u32,
+    off_sorted: u32,
+    off_chunks: u32,
+    off_out: u32,
+    has_rows: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> wbuf: array<u32>;
+@group(0) @binding(1) var<storage, read> x: array<f32>;
+@group(0) @binding(2) var<storage, read> token_ids: array<u32>;
+@group(0) @binding(3) var<storage, read> sorted: array<u32>;
+@group(0) @binding(4) var<storage, read> chunks: array<u32>;
+@group(0) @binding(5) var<storage, read_write> out: array<f32>;
+@group(0) @binding(6) var<uniform> params: Params;
+
+{tiles}
+var<workgroup> chunk_expert: u32;
+
+// Row r of the chunk at ctx.x, ctx.y rows long: the input row of route sorted[ctx.x + r].
+fn ld_a(ctx: vec4<u32>, r: u32, k: u32, guard: bool) -> f32 {{
+    if (r >= ctx.y || k >= params.k) {{ return 0.0; }}
+    let route = sorted[params.off_sorted + ctx.x + r];
+    var in_row = route;
+    if (params.has_rows != 0u) {{ in_row = token_ids[2u * (params.off_tokens + route)]; }}
+    return x[params.off_x + in_row * params.k + k];
+}}
+
+fn ld_b(ctx: vec4<u32>, k: u32, c: u32, guard: bool) -> f32 {{
+    if (c >= params.n || k >= params.k) {{ return 0.0; }}
+{ld_b}
+}}
+
+fn store_out(base: u32, len: u32, row: u32, col: u32, acc: f32) {{
+    if (row >= len || col >= params.n) {{ return; }}
+    out[params.off_out + sorted[params.off_sorted + base + row] * params.n + col] = acc;
+}}
+
+// One workgroup per chunk wid.y of one expert's routes and {tile} output columns from wid.x.
+@compute @workgroup_size({threads})
+fn routed_mm_{name}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let chunk = params.off_chunks + 3u * wid.y;
+    if (lid == 0u) {{ chunk_expert = chunks[chunk]; }}
+    let expert = workgroupUniformLoad(&chunk_expert);
+    if (expert == 0xFFFFFFFFu) {{ return; }}
+    let base = chunks[chunk + 1u];
+    let len = chunks[chunk + 2u];
+    let actx = vec4<u32>(base, len, 0u, 0u);
+    let bctx = vec4<u32>(expert, 0u, 0u, 0u);
+    let row0 = 0u;
+    let col0 = wid.x * {tile}u;
+    let k_len = params.k;
+    let interior = false;
+{core}
+}}
+"#,
+        tiles = tiled_gemm_tiles("f32", SORT_CHUNK),
+        ld_b = mm_ld_b(format),
+        tile = MATMUL_TILE,
+        threads = TILED_THREADS,
+        name = format.name(),
+        core = tiled_gemm_core("f32", "true", "false", "base, len, ", "", SORT_CHUNK),
+    )
+}
+
+/// Where a projection's weights sit in their buffer: code (or plain weight) word offset, scale
+/// word offset, scale run and blocks per row.
+fn weight_layout(format: Format, weights: &DeviceTensor) -> TractResult<(u32, u32, u32, u32)> {
+    let (n, k) = (weights.shape()[1], weights.shape()[2]);
     let base = match format {
         Format::F16 => {
             let elems = element_offset(weights, 0);
@@ -566,14 +735,131 @@ fn project(
         }
         _ => word_offset(weights)?,
     };
-    let (scale_off, code_off, group, blocks_per_row) = match &block {
+    Ok(match bq_fact(weights) {
         Some(b) => {
             let group = b.group.max(1) as usize;
             let blocks = weights.shape()[0] * n * (k / 32);
-            (base, base + u32_of(blocks.div_ceil(group))?, u32_of(group)?, u32_of(k / 32)?)
+            (base + u32_of(blocks.div_ceil(group))?, base, u32_of(group)?, u32_of(k / 32)?)
         }
-        None => (0, base, 1, 0),
-    };
+        None => (base, 0, 1, 0),
+    })
+}
+
+fn weights_format(weights: &DeviceTensor) -> TractResult<Format> {
+    let k = weights.shape()[2];
+    match bq_fact(weights) {
+        Some(b) => Format::of(weights.datum_type(), Some(&b.inner), k),
+        None => Format::of(weights.datum_type(), None, k),
+    }
+    .context("no routed kernel for these weights")
+}
+
+/// The routes sorted by expert, then the tiled matmul over every chunk of [`SORT_CHUNK`].
+fn project_sorted(
+    format: Format,
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    let (routes, experts) = (expert_ids.shape()[0], weights.shape()[0]);
+    let (n, k) = (weights.shape()[1], weights.shape()[2]);
+    let max_chunks = routes.div_ceil(SORT_CHUNK) + experts;
+    ensure!(max_chunks <= GRID_LIMIT as usize, "too many routes for the sorted routed matmul");
+    let sorted = DeviceTensor::uninitialized_dt(u32::datum_type(), &[routes])?;
+    let chunks = DeviceTensor::uninitialized_dt(u32::datum_type(), &[3 * max_chunks])?;
+    let (code_off, scale_off, group, blocks_per_row) = weight_layout(format, weights)?;
+    with_wgpu_queue(|q| {
+        let token_ids = rows.unwrap_or(expert_ids);
+        for t in [input, weights, token_ids, expert_ids, &sorted, &chunks, out] {
+            q.retain_tensor(t);
+        }
+        let layout = LayoutKind::TailWrites { n: 3, writes: 2 };
+        let pipeline = q.context().chain_pipeline(
+            "route_plan",
+            layout,
+            EntryPoint::plain("route_plan"),
+            || ROUTE_PLAN.to_string(),
+        )?;
+        let bg = q.context().bind_group(
+            layout,
+            &[get_wgpu_buffer(expert_ids), get_wgpu_buffer(&sorted), get_wgpu_buffer(&chunks)],
+            q.uniform(),
+        )?;
+        let params = pack_u32s(&[
+            elem_offset(expert_ids)?,
+            elem_offset(&sorted)?,
+            elem_offset(&chunks)?,
+            u32_of(routes)?,
+            u32_of(experts)?,
+            u32_of(max_chunks)?,
+            0,
+            0,
+        ]);
+        let dyn_off = q.alloc_uniform(&params)?;
+        q.dispatch_grid("route_plan", &pipeline, &bg, dyn_off, [1, 1, 1])?;
+
+        let layout = LayoutKind::TailWrites { n: 6, writes: 1 };
+        let pipeline = q.context().chain_pipeline(
+            ("routed_mm", format),
+            layout,
+            EntryPoint::plain(match format {
+                Format::Q40 => "routed_mm_q4_0",
+                Format::Q20T => "routed_mm_q2_0_t",
+                Format::F16 => "routed_mm_f16",
+                Format::F32 => "routed_mm_f32",
+            }),
+            || mm_module(format),
+        )?;
+        let bg = q.context().bind_group(
+            layout,
+            &[
+                get_wgpu_buffer(weights),
+                get_wgpu_buffer(input),
+                get_wgpu_buffer(token_ids),
+                get_wgpu_buffer(&sorted),
+                get_wgpu_buffer(&chunks),
+                get_wgpu_buffer(out),
+            ],
+            q.uniform(),
+        )?;
+        let params = pack_u32s(&[
+            code_off,
+            scale_off,
+            group,
+            blocks_per_row,
+            u32_of(k)?,
+            u32_of(n)?,
+            elem_offset(input)?,
+            elem_offset(token_ids)?,
+            elem_offset(&sorted)?,
+            elem_offset(&chunks)?,
+            elem_offset(out)?,
+            rows.is_some() as u32,
+        ]);
+        let dyn_off = q.alloc_uniform(&params)?;
+        let grid = [u32_of(n.div_ceil(MATMUL_TILE))?, u32_of(max_chunks)?, 1];
+        q.dispatch_grid("routed_mm", &pipeline, &bg, dyn_off, grid)
+    })
+}
+
+fn project(
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    let (routes, experts) = (expert_ids.shape()[0], weights.shape()[0]);
+    let (n, k) = (weights.shape()[1], weights.shape()[2]);
+    ensure!(input.shape()[1] == k && out.shape() == [routes, n]);
+    let format = weights_format(weights)?;
+    if experts <= SORT_MAX_EXPERTS && routes >= format.sorted_min_per_expert() * experts {
+        return project_sorted(format, input, weights, rows, expert_ids, out);
+    }
+    ensure!(routes <= GRID_LIMIT as usize, "Wgpu RoutedLinear takes up to {GRID_LIMIT} routes");
+    let (code_off, scale_off, group, blocks_per_row) = weight_layout(format, weights)?;
     with_wgpu_queue(|q| {
         let token_ids = rows.unwrap_or(expert_ids);
         for t in [input, weights, token_ids, expert_ids, out] {
