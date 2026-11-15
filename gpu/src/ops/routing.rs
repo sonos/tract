@@ -1,10 +1,7 @@
 use crate::tensor::DeviceTensor;
 use crate::tensor::DeviceTensorExt;
+use crate::weight_format::GpuWeightFormat;
 use tract_core::internal::*;
-use tract_core::tract_linalg::block_quant::BlockQuant;
-use tract_core::tract_linalg::block_quant::BlockQuantFact;
-use tract_core::tract_linalg::block_quant::Q2_0_T;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_transformers::ops::moe_ffn::GateMode;
 use tract_transformers::ops::moe_ffn::MoeFfn;
 use tract_transformers::ops::moe_ffn::RouteSelect;
@@ -264,67 +261,6 @@ impl TypedOp for GpuRoutedCombine {
     as_op!();
 }
 
-/// An expert weight format the routed kernels read. Backends name their per-format kernels
-/// with [`RoutedFormat::name`] and match on it exhaustively, so a new format shows every kernel
-/// it needs.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum RoutedFormat {
-    Q40,
-    Q20T,
-    F16,
-    F32,
-}
-
-impl RoutedFormat {
-    /// The suffix of this format's routed kernels: `q4_0`, `q2_0_t`, `f16` or `f32`.
-    pub fn name(self) -> &'static str {
-        match self {
-            RoutedFormat::Q40 => "q4_0",
-            RoutedFormat::Q20T => "q2_0_t",
-            RoutedFormat::F16 => "f16",
-            RoutedFormat::F32 => "f32",
-        }
-    }
-
-    /// The block format of a block-quantized format.
-    pub fn block_quant(self) -> Option<&'static dyn BlockQuant> {
-        match self {
-            RoutedFormat::Q40 => Some(&Q4_0),
-            RoutedFormat::Q20T => Some(&Q2_0_T),
-            RoutedFormat::F16 | RoutedFormat::F32 => None,
-        }
-    }
-
-    /// Block-quantized weights of `format` with `k` inputs per row, when `k` is whole blocks.
-    pub fn of_block(format: &dyn BlockQuant, k: usize) -> Option<RoutedFormat> {
-        [RoutedFormat::Q40, RoutedFormat::Q20T]
-            .into_iter()
-            .find(|f| f.block_quant().is_some_and(|b| b.dyn_eq(format)))
-            .filter(|_| k.is_multiple_of(format.block_len()))
-    }
-
-    /// Plain weights of this datum type.
-    pub fn of_plain(datum_type: DatumType) -> Option<RoutedFormat> {
-        match datum_type {
-            DatumType::F16 => Some(RoutedFormat::F16),
-            DatumType::F32 => Some(RoutedFormat::F32),
-            _ => None,
-        }
-    }
-
-    /// The format of weights with this host fact: a [`BlockQuantFact`] through
-    /// [`RoutedFormat::of_block`], plain ones through [`RoutedFormat::of_plain`].
-    pub fn of_fact(fact: &TypedFact) -> Option<RoutedFormat> {
-        match fact.exotic_fact() {
-            Some(exotic) => {
-                let bqf = exotic.downcast_ref::<BlockQuantFact>()?;
-                RoutedFormat::of_block(&*bqf.format, bqf.k())
-            }
-            None => RoutedFormat::of_plain(fact.datum_type),
-        }
-    }
-}
-
 /// How a backend runs a routed projection.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RoutedStrategy {
@@ -342,9 +278,9 @@ pub enum RoutedStrategy {
 /// its sorted kernels take.
 #[derive(Clone, Copy, Debug)]
 pub struct RoutedTuning {
-    pub tiled_min_per_expert: fn(RoutedFormat) -> Option<usize>,
+    pub tiled_min_per_expert: fn(GpuWeightFormat) -> Option<usize>,
     pub tiled_chunk: usize,
-    pub grouped_min_per_expert: fn(RoutedFormat) -> Option<usize>,
+    pub grouped_min_per_expert: fn(GpuWeightFormat) -> Option<usize>,
     pub grouped_chunk: usize,
     /// Most experts the route sort bins.
     pub sorted_max_experts: usize,
@@ -361,14 +297,15 @@ impl RoutedTuning {
         routes: usize,
         experts: usize,
         k: usize,
-        format: RoutedFormat,
+        format: GpuWeightFormat,
     ) -> RoutedStrategy {
         if experts > self.sorted_max_experts || !k.is_multiple_of(self.sorted_k_multiple) {
             return RoutedStrategy::PerRoute;
         }
         let per_expert = routes / experts.max(1);
-        let reaches =
-            |min: fn(RoutedFormat) -> Option<usize>| min(format).is_some_and(|m| per_expert >= m);
+        let reaches = |min: fn(GpuWeightFormat) -> Option<usize>| {
+            min(format).is_some_and(|m| per_expert >= m)
+        };
         if reaches(self.tiled_min_per_expert) {
             RoutedStrategy::Tiled { chunk: self.tiled_chunk }
         } else if reaches(self.grouped_min_per_expert) {

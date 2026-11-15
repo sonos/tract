@@ -7,12 +7,13 @@ use anyhow::ensure;
 use metal::{Buffer, MTLSize, NSUInteger};
 use std::fmt;
 use tract_core::internal::*;
+use tract_core::tract_linalg::WeightType;
 use tract_core::tract_linalg::block_quant::{BlockQuant, Q2_0_T, Q4_0};
-use tract_gpu::ops::routing::RoutedFormat;
 use tract_gpu::ops::routing::RoutedStrategy;
 use tract_gpu::ops::routing::RoutedTuning;
 use tract_gpu::tensor::DeviceTensor;
 use tract_gpu::utils::{as_quant_fact, get_quant_fact};
+use tract_gpu::weight_format::GpuWeightFormat;
 
 #[derive(Debug)]
 #[repr(C)]
@@ -493,9 +494,9 @@ pub(crate) fn dispatch_router_scores(
 const METAL_ROUTED_TUNING: RoutedTuning = RoutedTuning {
     tiled_min_per_expert: |format| {
         Some(match format {
-            RoutedFormat::Q40 => 3,
-            RoutedFormat::Q20T => 2,
-            RoutedFormat::F16 | RoutedFormat::F32 => 1,
+            GpuWeightFormat::Q40 => 3,
+            GpuWeightFormat::Q20T => 2,
+            GpuWeightFormat::F16 | GpuWeightFormat::F32 => 1,
         })
     },
     tiled_chunk: 32,
@@ -507,7 +508,7 @@ const METAL_ROUTED_TUNING: RoutedTuning = RoutedTuning {
 
 /// How the routed kernels read one expert weight format.
 struct RoutedWeights {
-    format: RoutedFormat,
+    format: GpuWeightFormat,
     /// Suffix of the format's routed kernels.
     name: &'static str,
     /// Bytes of one `[k]` weight row.
@@ -521,18 +522,18 @@ struct RoutedWeights {
 
 /// How the routed kernels read `format` with `k` weights per row; plain weights need `k` a
 /// multiple of 4.
-fn routed_weights_of(format: RoutedFormat, k: usize) -> Option<RoutedWeights> {
+fn routed_weights_of(format: GpuWeightFormat, k: usize) -> Option<RoutedWeights> {
     let row_bytes = match format.block_quant() {
         Some(bq) => k / bq.block_len() * bq.block_bytes(),
         None if !k.is_multiple_of(4) => return None,
-        None => k * if format == RoutedFormat::F32 { 4 } else { 2 },
+        None => k * if format == GpuWeightFormat::F32 { 4 } else { 2 },
     };
     Some(RoutedWeights {
         format,
         name: format.name(),
         row_bytes,
         block: format.block_quant().is_some(),
-        mm_shared_bytes: if format == RoutedFormat::F32 { 12288 } else { 8192 },
+        mm_shared_bytes: if format == GpuWeightFormat::F32 { 12288 } else { 8192 },
     })
 }
 
@@ -546,8 +547,8 @@ fn routed_weights(weights: &DeviceTensor) -> TractResult<RoutedWeights> {
     let block =
         [&Q4_0 as &dyn BlockQuant, &Q2_0_T].into_iter().find_map(|f| get_quant_fact(weights, f));
     let format = match block {
-        Some(fact) => RoutedFormat::of_block(&*fact.format, k),
-        None => RoutedFormat::of_plain(weights.datum_type()),
+        Some(fact) => GpuWeightFormat::of_block_quant_fact(&fact),
+        None => GpuWeightFormat::of(&WeightType::Plain(weights.datum_type())),
     };
     format
         .and_then(|format| routed_weights_of(format, k))
@@ -555,12 +556,12 @@ fn routed_weights(weights: &DeviceTensor) -> TractResult<RoutedWeights> {
 }
 
 /// Whether the routed kernels read expert weights of this fact, `[E, N, K]`: any
-/// [`RoutedFormat`], with K a multiple of 4 for plain weights.
+/// [`GpuWeightFormat`], with K a multiple of 4 for plain weights.
 pub fn routed_weights_supported(fact: &TypedFact) -> bool {
     let Some(k) = fact.shape.as_concrete().filter(|s| s.len() == 3).map(|s| s[2]) else {
         return false;
     };
-    RoutedFormat::of_fact(fact).is_some_and(|format| routed_weights_of(format, k).is_some())
+    GpuWeightFormat::of_fact(fact).is_some_and(|format| routed_weights_of(format, k).is_some())
 }
 
 /// Whether the routed fused pair kernel reads expert weights of this fact.
