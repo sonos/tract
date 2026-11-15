@@ -325,6 +325,71 @@ impl RoutedFormat {
     }
 }
 
+/// How a backend runs a routed projection.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RoutedStrategy {
+    /// One GEMV per route.
+    PerRoute,
+    /// The routes sorted by expert, then a GEMV over each chunk of `chunk` routes of one expert.
+    Grouped { chunk: usize },
+    /// The routes sorted by expert, then a tiled matmul over each chunk of `chunk` routes of one
+    /// expert.
+    Tiled { chunk: usize },
+}
+
+/// A backend's choice among [`RoutedStrategy`]s: the fewest routes per expert from which each
+/// sorted strategy runs, by weight format (`None` where the backend has no such kernel), and what
+/// its sorted kernels take.
+#[derive(Clone, Copy, Debug)]
+pub struct RoutedTuning {
+    pub tiled_min_per_expert: fn(RoutedFormat) -> Option<usize>,
+    pub tiled_chunk: usize,
+    pub grouped_min_per_expert: fn(RoutedFormat) -> Option<usize>,
+    pub grouped_chunk: usize,
+    /// Most experts the route sort bins.
+    pub sorted_max_experts: usize,
+    /// The sorted kernels take K a multiple of this.
+    pub sorted_k_multiple: usize,
+}
+
+impl RoutedTuning {
+    /// The strategy for `routes` routes over `experts` experts of `k` inputs in `format`: the
+    /// tiled matmul, else the grouped GEMV, from their thresholds in routes per expert, else one
+    /// GEMV per route.
+    pub fn strategy(
+        &self,
+        routes: usize,
+        experts: usize,
+        k: usize,
+        format: RoutedFormat,
+    ) -> RoutedStrategy {
+        if experts > self.sorted_max_experts || !k.is_multiple_of(self.sorted_k_multiple) {
+            return RoutedStrategy::PerRoute;
+        }
+        let per_expert = routes / experts.max(1);
+        let reaches =
+            |min: fn(RoutedFormat) -> Option<usize>| min(format).is_some_and(|m| per_expert >= m);
+        if reaches(self.tiled_min_per_expert) {
+            RoutedStrategy::Tiled { chunk: self.tiled_chunk }
+        } else if reaches(self.grouped_min_per_expert) {
+            RoutedStrategy::Grouped { chunk: self.grouped_chunk }
+        } else {
+            RoutedStrategy::PerRoute
+        }
+    }
+}
+
+/// When [`GpuRoutedLinear`] hands a pair to its backend's fused kernel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FusePairPolicy {
+    /// Whatever the input rows: the fused kernel covers every route list it accepts.
+    Always,
+    /// For a single input row, where one projection's GEMV alone leaves the GPU underused. More
+    /// rows keep the separate projections, which reuse each projection's weights in cache across
+    /// routes sharing an expert.
+    SingleRow,
+}
+
 /// One backend's routed projection kernels.
 #[derive(Clone, Copy)]
 pub struct RoutedLinearKernels {
@@ -353,13 +418,14 @@ pub struct RoutedLinearKernels {
         (u32, f32, f32),
         &DeviceTensor,
     ) -> TractResult<()>,
-    /// A paired projection and its postamble in one pass, for backends that fuse them: `input`,
-    /// `weights`, `weights_up`, `bias` and `bias_up` when present, the rows and `expert_ids` as
-    /// for `project`, the activation, to f32 `out [R, N]`. Returns false, having done nothing,
-    /// when it does not handle this activation or route list; `project` and `postamble` then run
-    /// instead.
+    /// For backends that fuse them, when [`GpuRoutedLinear`] tries it and the kernel running a
+    /// paired projection and its postamble in one pass: `input`, `weights`, `weights_up`, `bias`
+    /// and `bias_up` when present, the rows and `expert_ids` as for `project`, the activation, to
+    /// f32 `out [R, N]`. The kernel returns false, having done nothing, when it does not handle
+    /// this activation or route list; `project` and `postamble` then run instead.
     #[allow(clippy::type_complexity)]
-    pub fused_pair: Option<
+    pub fused_pair: Option<(
+        FusePairPolicy,
         fn(
             &DeviceTensor,
             &DeviceTensor,
@@ -370,7 +436,7 @@ pub struct RoutedLinearKernels {
             (u32, f32, f32),
             &DeviceTensor,
         ) -> TractResult<bool>,
-    >,
+    )>,
 }
 
 /// A postamble kernel's activation: its code (0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped
@@ -499,7 +565,9 @@ impl EvalOp for GpuRoutedLinear {
         let bias_at = 4 + self.op.pair as usize;
         let activation = routed_activation_code(&self.op.activation);
         let fused = match self.kernels.fused_pair {
-            Some(fused_pair) if self.op.pair => {
+            Some((policy, fused_pair))
+                if self.op.pair && (policy == FusePairPolicy::Always || input.shape()[0] == 1) =>
+            {
                 let biases = self.op.bias.then(|| (device[bias_at], device[bias_at + 1]));
                 fused_pair(input, device[3], device[4], biases, rows, expert_ids, activation, &out)
                     .with_context(|| format!("Error while dispatching eval for {}", self.name()))?

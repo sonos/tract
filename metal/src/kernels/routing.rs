@@ -8,6 +8,7 @@ use crate::kernels::moe::dispatch_route_select_f32;
 use crate::kernels::moe::dispatch_routed_combine;
 use crate::kernels::moe::dispatch_routed_postamble_f32;
 use tract_core::internal::*;
+use tract_gpu::ops::routing::FusePairPolicy;
 use tract_gpu::ops::routing::GpuRouteSelect;
 use tract_gpu::ops::routing::GpuRoutedCombine;
 use tract_gpu::ops::routing::GpuRoutedLinear;
@@ -77,24 +78,28 @@ const METAL_ROUTED_LINEAR_KERNELS: RoutedLinearKernels = RoutedLinearKernels {
             )
         })
     },
-    fused_pair: Some(|input, weights, weights_up, biases, rows, expert_ids, activation, out| {
-        let act = match activation {
-            (1, _, _) => RoutedSwigluAct::Plain,
-            (4, alpha, limit) => RoutedSwigluAct::Clamped { alpha, limit },
-            _ => return Ok(false),
-        };
-        if !routed_pair_supported(weights) {
-            return Ok(false);
-        }
-        crate::with_metal_stream(|stream| {
-            let (token_ids, mode) = input_mode(rows, expert_ids);
-            dispatch_routed_swiglu_f32(
-                stream, input, weights, weights_up, biases, token_ids, expert_ids, mode, act, out,
-            )?;
-            commit_after_many_routes(stream, expert_ids.len())
-        })?;
-        Ok(true)
-    }),
+    fused_pair: Some((
+        FusePairPolicy::Always,
+        |input, weights, weights_up, biases, rows, expert_ids, activation, out| {
+            let act = match activation {
+                (1, _, _) => RoutedSwigluAct::Plain,
+                (4, alpha, limit) => RoutedSwigluAct::Clamped { alpha, limit },
+                _ => return Ok(false),
+            };
+            if !routed_pair_supported(weights) {
+                return Ok(false);
+            }
+            crate::with_metal_stream(|stream| {
+                let (token_ids, mode) = input_mode(rows, expert_ids);
+                dispatch_routed_swiglu_f32(
+                    stream, input, weights, weights_up, biases, token_ids, expert_ids, mode, act,
+                    out,
+                )?;
+                commit_after_many_routes(stream, expert_ids.len())
+            })?;
+            Ok(true)
+        },
+    )),
 };
 
 crate::register_metal_op!(RoutedLinear, |source, node, op| {
