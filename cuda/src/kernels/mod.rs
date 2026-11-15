@@ -31,7 +31,6 @@ use tract_core::internal::ExoticFact;
 use tract_core::prelude::{TDim, TractResult};
 use tract_core::tract_linalg::block_quant::{BlockQuant, BlockQuantFact, Q4_0, Q8_1};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::as_q40_tensor;
 
 const MAX_THREADS: usize = 1024;
 const WARP_SIZE: usize = 32;

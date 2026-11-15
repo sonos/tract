@@ -42,15 +42,20 @@ impl GpuWeightFormat {
             WeightType::Plain(DatumType::F16) => Some(GpuWeightFormat::F16),
             WeightType::Plain(DatumType::F32) => Some(GpuWeightFormat::F32),
             WeightType::Plain(_) => None,
-            WeightType::BlockQuant(bq) => [GpuWeightFormat::Q40, GpuWeightFormat::Q20T]
-                .into_iter()
-                .find(|f| f.block_quant().is_some_and(|b| b.dyn_eq(&**bq))),
+            WeightType::BlockQuant(bq) => GpuWeightFormat::of_block_quant(&**bq),
         }
+    }
+
+    /// The format of weights in this block format, if the GPU backends read it.
+    pub fn of_block_quant(format: &dyn BlockQuant) -> Option<GpuWeightFormat> {
+        [GpuWeightFormat::Q40, GpuWeightFormat::Q20T]
+            .into_iter()
+            .find(|f| f.block_quant().is_some_and(|b| b.dyn_eq(format)))
     }
 
     /// The format of block-quantized weights, when their rows are whole blocks.
     pub fn of_block_quant_fact(fact: &BlockQuantFact) -> Option<GpuWeightFormat> {
-        GpuWeightFormat::of(&WeightType::BlockQuant(fact.format.clone()))
+        GpuWeightFormat::of_block_quant(&*fact.format)
             .filter(|_| fact.k().is_multiple_of(fact.format.block_len()))
     }
 
