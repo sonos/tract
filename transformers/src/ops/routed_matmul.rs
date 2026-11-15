@@ -11,13 +11,12 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 
 use tract_nnef::internal::*;
-use tract_nnef::tract_core::tract_linalg::BinOp;
 use tract_nnef::tract_core::tract_linalg::block_quant::{
     BlockQuantStorage, PackedBlockQuantFormat,
 };
 use tract_nnef::tract_core::tract_linalg::mmm::{
-    AsInputValue, EagerPackedInput, FusedSpec, MMMInputFormat, MMMInputValue, MatMatMul,
-    PackedExoticFact, ScratchSpace,
+    AsInputValue, FusedSpec, MMMInputFormat, MMMInputValue, MatMatMul, PackedExoticFact,
+    ScratchSpace,
 };
 use tract_nnef::tract_core::tract_linalg::pack::{PackedFormat, PackingWriter};
 
@@ -255,13 +254,6 @@ pub(super) struct PreparedRoutedMatMul {
     left_by_group: Vec<Box<dyn MMMInputValue>>,
 }
 
-#[derive(Clone, Debug)]
-pub(super) struct RoutedMatMulGroup {
-    pub(super) group: usize,
-    pub(super) rows: RoutedInputRows,
-    pub(super) output_row_offset: usize,
-}
-
 #[derive(Default)]
 pub(super) struct PreparedRoutedMatMulState {
     scratch: Option<Box<dyn ScratchSpace>>,
@@ -367,39 +359,6 @@ fn pack_left_rows(t: &Tensor, format: &dyn MMMInputFormat) -> TractResult<Box<dy
     format.prepare_one(t, 1, 0)
 }
 
-fn pack_right_rows(
-    kernel: &PreparedPackedMatMul,
-    source: &Arc<Tensor>,
-    rows: RoutedInputRows,
-) -> TractResult<Box<dyn MMMInputValue>> {
-    let input =
-        RoutedRowsInput::new(source.clone(), rows, kernel.k_dim, kernel.right_format.clone())?;
-    let panel_layout =
-        kernel.right_format.single_panel_layout(kernel.k_dim, f32::datum_type().size_of());
-    let panel_count = input.mn().divceil(kernel.right_format.r());
-    let panel_bytes = panel_layout.size();
-    let mut packed = unsafe {
-        Blob::for_layout(std::alloc::Layout::from_size_align(
-            panel_bytes * panel_count,
-            panel_layout.align(),
-        )?)
-    };
-    for panel in 0..panel_count {
-        let buffer = unsafe { packed.as_mut_ptr().add(panel * panel_bytes) };
-        input.panel_bytes(panel, Some(buffer))?;
-    }
-    Ok(Box::new(EagerPackedInput {
-        fact: PackedExoticFact {
-            format: Box::new(kernel.right_format.clone()),
-            mn: input.mn().to_dim(),
-            k: kernel.k_dim,
-        },
-        packed: packed.into(),
-        panel_bytes,
-        mn: input.mn(),
-    }))
-}
-
 fn ensure_scratch<'a>(
     kernel: &PreparedPackedMatMul,
     state: &'a mut PreparedRoutedMatMulState,
@@ -432,15 +391,6 @@ pub(super) fn build_block_quant_routed_matmul(
     }
 
     Ok(PreparedRoutedMatMul { kernel, left_by_group })
-}
-
-pub(super) fn pack_prepared_routed_matmul_rhs(
-    plan: &PreparedRoutedMatMul,
-    source: &Arc<Tensor>,
-    rows: RoutedInputRows,
-) -> TractResult<Box<dyn MMMInputValue>> {
-    ensure!(rows.len() > 0, "prepared routed matmul cannot pack an empty RHS route list");
-    pack_right_rows(&plan.kernel, source, rows)
 }
 
 fn run_prepared_routed_matmul_with_rhs(
@@ -516,115 +466,6 @@ pub(super) fn run_prepared_routed_matmul(
         plan.kernel.right_format.clone(),
     )?;
     run_prepared_routed_matmul_with_rhs(plan, group, &input, route_count, output, 0, state)
-}
-
-pub(super) fn run_prepared_routed_matmul_many(
-    plan: &PreparedRoutedMatMul,
-    source: &Arc<Tensor>,
-    groups: &[RoutedMatMulGroup],
-    output: &mut Tensor,
-    state: &mut PreparedRoutedMatMulState,
-) -> TractResult<()> {
-    for group in groups {
-        let route_count = group.rows.len();
-        if route_count == 0 {
-            continue;
-        }
-        let input = RoutedRowsInput::new(
-            source.clone(),
-            group.rows.clone(),
-            plan.kernel.k_dim,
-            plan.kernel.right_format.clone(),
-        )?;
-        run_prepared_routed_matmul_with_rhs(
-            plan,
-            group.group,
-            &input,
-            route_count,
-            output,
-            group.output_row_offset,
-            state,
-        )?;
-    }
-    Ok(())
-}
-
-pub(super) fn run_prepared_routed_matmul_many_same_rhs(
-    plan: &PreparedRoutedMatMul,
-    groups: &[(usize, usize)],
-    rhs: &dyn MMMInputValue,
-    route_count: usize,
-    output: &mut Tensor,
-    state: &mut PreparedRoutedMatMulState,
-) -> TractResult<()> {
-    for &(group, output_row_offset) in groups {
-        run_prepared_routed_matmul_with_rhs(
-            plan,
-            group,
-            rhs,
-            route_count,
-            output,
-            output_row_offset,
-            state,
-        )?;
-    }
-    Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-pub(super) fn run_prepared_routed_matmul_accumulate_one(
-    plan: &PreparedRoutedMatMul,
-    group: usize,
-    source: &Arc<Tensor>,
-    rows: RoutedInputRows,
-    output: &mut Tensor,
-    output_row: usize,
-    scale: &Tensor,
-    state: &mut PreparedRoutedMatMulState,
-) -> TractResult<()> {
-    ensure!(
-        group < plan.left_by_group.len(),
-        "prepared routed matmul group {group} out of range for {} groups",
-        plan.left_by_group.len()
-    );
-    ensure!(rows.len() == 1, "accumulating routed matmul expects exactly one RHS row");
-    ensure!(scale.rank() == 0 && scale.datum_type() == f32::datum_type());
-    let out_dim = plan.kernel.out_dim;
-    ensure!(
-        output.len() >= (output_row + 1) * out_dim,
-        "routed matmul output has {} values, needs {}",
-        output.len(),
-        (output_row + 1) * out_dim
-    );
-
-    let scratch = ensure_scratch(&plan.kernel, state)?;
-    let input = RoutedRowsInput::new(
-        source.clone(),
-        rows,
-        plan.kernel.k_dim,
-        plan.kernel.right_format.clone(),
-    )?;
-    let shape = [1, out_dim];
-    let strides = [out_dim as isize, 1];
-    let output_offset_bytes = (output_row * out_dim * f32::datum_type().size_of()) as isize;
-    let view = unsafe { TensorView::from_bytes(output, output_offset_bytes, &shape, &strides) };
-    let store = unsafe {
-        plan.kernel
-            .mmm
-            .c_from_data_and_strides(f32::datum_type().size_of(), 1, out_dim as isize)
-            .wrap(&view)
-    };
-    let uops = tvec![
-        FusedSpec::AddMatMul {
-            a: AsInputValue::Borrowed(&*plan.left_by_group[group]),
-            b: AsInputValue::Borrowed(&input),
-            packing: plan.kernel.packing,
-        },
-        FusedSpec::BinScalar(scale, BinOp::Mul),
-        FusedSpec::AddUnicast(store),
-        FusedSpec::Store(store),
-    ];
-    unsafe { plan.kernel.mmm.run_with_scratch_space(out_dim, 1, scratch.as_mut(), &uops) }
 }
 
 #[cfg(test)]

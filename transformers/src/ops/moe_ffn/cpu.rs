@@ -1,5 +1,4 @@
 use super::activation::activation_op;
-use super::q40::{Q40LinearExpertPlan, Q40LinearExpertState};
 use super::{ExpertLayout, GateMode, concat_block_quant_rows, scatter_add_weighted, select_routes};
 use crate::ops::routed_matmul::f32_input;
 use std::hash::{Hash, Hasher};
@@ -219,11 +218,10 @@ pub struct OptMoeFfn {
     pub(super) experts: CpuExpertPlan,
 }
 
-/// Mutually exclusive prepared CPU strategies; neither owns session scratch.
+/// The prepared CPU expert plans, one per expert; they own no session scratch.
 #[derive(Clone, Debug)]
 pub(super) enum CpuExpertPlan {
     PerExpert(Vec<Arc<TypedSimplePlan>>),
-    PackedQ40(Arc<Q40LinearExpertPlan>),
 }
 
 impl PartialEq for CpuExpertPlan {
@@ -232,8 +230,6 @@ impl PartialEq for CpuExpertPlan {
             (Self::PerExpert(a), Self::PerExpert(b)) => {
                 a.len() == b.len() && a.iter().zip(b).all(|(a, b)| Arc::ptr_eq(a, b))
             }
-            (Self::PackedQ40(a), Self::PackedQ40(b)) => Arc::ptr_eq(a, b),
-            _ => false,
         }
     }
 }
@@ -250,15 +246,7 @@ impl Hash for CpuExpertPlan {
                     Arc::as_ptr(plan).hash(state);
                 }
             }
-            Self::PackedQ40(plan) => Arc::as_ptr(plan).hash(state),
         }
-    }
-}
-
-impl OptMoeFfn {
-    #[cfg(test)]
-    pub(super) fn uses_direct_q40(&self) -> bool {
-        matches!(self.experts, CpuExpertPlan::PackedQ40(_))
     }
 }
 
@@ -307,7 +295,6 @@ impl EvalOp for OptMoeFfn {
         let router_state = self.router_plan.spawn()?;
         let experts = match &self.experts {
             CpuExpertPlan::PerExpert(_) => CpuExpertState::PerExpert,
-            CpuExpertPlan::PackedQ40(_) => CpuExpertState::PackedQ40(Box::default()),
         };
         Ok(Some(Box::new(OptMoeFfnState { router_state, experts })))
     }
@@ -316,7 +303,6 @@ impl EvalOp for OptMoeFfn {
 #[derive(Clone, Debug)]
 enum CpuExpertState {
     PerExpert,
-    PackedQ40(Box<Q40LinearExpertState>),
 }
 
 /// Execution workspace, not model history: retains the router's runnable
@@ -390,21 +376,7 @@ impl OpState for OptMoeFfnState {
             router_logits_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
         let expert_plans = match (&op.experts, &mut self.experts) {
-            (CpuExpertPlan::PackedQ40(plan), CpuExpertState::PackedQ40(state)) => {
-                return state.eval(
-                    op,
-                    plan,
-                    &x_f32,
-                    router_logits,
-                    x_ndim,
-                    &x_orig_shape,
-                    dt,
-                    router_elapsed,
-                    profile,
-                );
-            }
             (CpuExpertPlan::PerExpert(plans), CpuExpertState::PerExpert) => plans,
-            _ => bail!("OptMoeFfn expert workspace does not match its plan"),
         };
 
         let topk_start = profile_start(profile);
