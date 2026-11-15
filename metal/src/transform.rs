@@ -6,7 +6,7 @@ use std::sync::OnceLock;
 
 use crate::context::metal_context;
 use crate::kernels::matmul::{
-    GemmKernel, GgmlGemm, GgmlQuant, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm,
+    GemmKernel, GgmlGemm, MetalGemmImplKind, MfaGemm, MlxGemm, MppGemm, ggml_quant_of_fact,
 };
 use crate::{kernels, ops};
 use tract_core::dyn_clone::clone_box;
@@ -515,8 +515,8 @@ pub fn resolve_gemm_impl(
 ) -> TractResult<MetalGemmImplKind> {
     if let Some(gemm) = gemm_impl {
         Ok(gemm)
-    } else if GgmlQuant::of_fact(input_facts[0]).is_some()
-        || GgmlQuant::of_fact(input_facts[1]).is_some()
+    } else if ggml_quant_of_fact(input_facts[0]).is_some()
+        || ggml_quant_of_fact(input_facts[1]).is_some()
         || input_facts[0].datum_type != input_facts[1].datum_type
         || is_input_broadcast(input_facts)
     {
@@ -607,7 +607,7 @@ fn convert_matmul_to_metal(
             let b_pos = 1 - swap_inputs as usize;
             if op.transpose_a {
                 ensure!(
-                    GgmlQuant::of_fact(input_facts[a_pos]).is_none(),
+                    ggml_quant_of_fact(input_facts[a_pos]).is_none(),
                     "Cannot transpose a block-quant tensor"
                 );
 
@@ -624,7 +624,7 @@ fn convert_matmul_to_metal(
 
             if !op.transpose_b {
                 ensure!(
-                    GgmlQuant::of_fact(input_facts[b_pos]).is_none(),
+                    ggml_quant_of_fact(input_facts[b_pos]).is_none(),
                     "Cannot transpose a block-quant tensor"
                 );
 

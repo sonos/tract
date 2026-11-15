@@ -1,5 +1,5 @@
 use crate::encoder::EncoderExt;
-use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, GgmlQuant};
+use crate::kernels::matmul::{GemmDispatchParams, GemmKernel, ggml_quant_of_fact};
 use crate::utils::get_metal_buffer;
 use crate::{LibraryName, MetalStream};
 use DatumType::{F16, F32};
@@ -39,7 +39,7 @@ impl From<GemmDispatchParams> for GgmlGemmParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let quant_b = params.quant_b.map(|q| q.format());
+        let quant_b = params.quant_b.and_then(GpuWeightFormat::block_quant);
         let b_el_size = quant_b.map(|f| f.block_bytes()).unwrap_or(params.dts[1].size_of());
         let mut b_strides = params.b_strides;
         if let Some(format) = quant_b {
@@ -150,7 +150,7 @@ impl From<GemmDispatchParams> for GgmlGemvParams {
         assert!(params.a_strides.len() == 3 && params.b_strides.len() == 3);
         let a_el_size = params.dts[0].size_of();
 
-        let quant_b = params.quant_b.map(|q| q.format());
+        let quant_b = params.quant_b.and_then(GpuWeightFormat::block_quant);
         let b_el_size = quant_b.map(|f| f.block_bytes()).unwrap_or(params.dts[1].size_of());
         let mut b_strides = params.b_strides;
         if let Some(format) = quant_b {
@@ -211,7 +211,7 @@ impl GemmKernel for GgmlGemm {
             );
 
         regular_types_support
-            || (GgmlQuant::of_fact(&facts[1]).is_some()
+            || (ggml_quant_of_fact(&facts[1]).is_some()
                 && facts[0].is_plain()
                 && matches!(facts[0].datum_type, F16 | F32))
     }
@@ -310,7 +310,7 @@ fn mv_kernel_name_and_dispatch_params(
     if let Some(quant) = params.quant_b {
         ensure!(matches!(params.dts[0], F32 | F16));
         // Activation/output dtype is carried at runtime by GgmlGemvParams::out_f16.
-        Ok((format!("kernel_mul_mv_{}", quant.tname()), (8, 8, 1)))
+        Ok((format!("kernel_mul_mv_{}", quant.name()), (8, 8, 1)))
     } else if params.dts[1] == F32 {
         if params.dts[0] == F16 {
             // f32 weights, f16 activations, full-precision f32 output (the
@@ -410,7 +410,7 @@ fn dispatch_metal_ggml_gemm(
     // load on apple-m1-max (the dead f16-output path inflates the f32 kernel's
     // footprint), so each combination gets its own specialized kernel.
     let i1_tname =
-        if let Some(quant) = quant_b { quant.tname() } else { DeviceTensor::tname(dts[1])? };
+        if let Some(quant) = quant_b { quant.name() } else { DeviceTensor::tname(dts[1])? };
     let i2_tname = DeviceTensor::tname(dts[0])?;
 
     let name = format!("kernel_mul_mm_{i1_tname}_{i2_tname}");

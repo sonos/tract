@@ -1,4 +1,4 @@
-use crate::kernels::matmul::{GemmImpl, GemmKernel, GgmlQuant};
+use crate::kernels::matmul::{GemmImpl, GemmKernel, ggml_quant_of_fact};
 
 use anyhow::{bail, ensure};
 use tract_core::internal::*;
@@ -52,7 +52,7 @@ impl<K: GemmKernel> MetalGemm<K> {
             );
             let out_shape = self.kernel.output_shape(&a.shape, &b.shape);
             Ok(self.kernel.output_facts(&out_shape, a.datum_type, b.datum_type)?)
-        } else if GgmlQuant::of_fact(inputs[0]).is_some() || GgmlQuant::of_fact(inputs[1]).is_some()
+        } else if ggml_quant_of_fact(inputs[0]).is_some() || ggml_quant_of_fact(inputs[1]).is_some()
         {
             // Exotic tensors now carry their full logical shape directly on the
             // fact, so no need to chain with BlockQuantFact.shape().
