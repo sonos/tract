@@ -83,9 +83,10 @@ struct RoutedLinearProblem {
 }
 
 /// How many routes per expert a [`RoutedLinearProblem`] has, to reach each of a backend's
-/// kernels: one or two, ten, or 150 with a partial output tile.
+/// kernels: a single token's routes, one or two, ten, or 150 with a partial output tile.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Size {
+    Single,
     Small,
     Mid,
     Large,
@@ -100,6 +101,7 @@ impl RoutedLinearProblem {
 
     fn tokens(&self) -> usize {
         match self.size {
+            Size::Single => 1,
             Size::Small => 3,
             Size::Mid => 5,
             Size::Large => 75,
@@ -447,6 +449,20 @@ pub fn suite() -> TractResult<TestSuite> {
             RoutedActivation::None,
             Size::Mid,
         );
+    }
+    for format in [Format::F32, Format::F16, Format::Q40, Format::Q20T] {
+        let single = |pair, bias, activation| (pair, bias, activation);
+        let mut cases =
+            vec![single(true, true, RoutedActivation::Silu), single(true, false, clamped)];
+        if matches!(format, Format::F32) {
+            cases.extend(
+                [RoutedActivation::None, RoutedActivation::Gelu, RoutedActivation::Relu]
+                    .map(|activation| (true, false, activation)),
+            );
+        }
+        for (pair, bias, activation) in cases {
+            add_sized(format, RoutedInputMode::TokenRows, pair, bias, activation, Size::Single);
+        }
     }
     let mut add = |format, mode, pair, bias, activation| {
         add_sized(format, mode, pair, bias, activation, Size::Small)

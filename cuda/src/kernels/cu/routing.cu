@@ -311,6 +311,18 @@ static __device__ __forceinline__ float routed_activate(float v, int activation)
   return v;
 }
 
+// The activation of a gate and up pair: act(gate) * up, or clamped SwiGLU (4).
+static __device__ __forceinline__ float routed_pair(float g, float u,
+                                                   int activation, float alpha,
+                                                   float limit) {
+  if (activation == 4) {
+    g = fminf(g, limit);
+    u = fminf(fmaxf(u, -limit), limit);
+    return (u + 1.0f) * g / (1.0f + expf(-alpha * g));
+  }
+  return routed_activate(g, activation) * u;
+}
+
 extern "C" __global__ void routed_postamble(
     const float *gate, const float *up, const float *bias,
     const float *bias_up, const long long *expert_ids, float *out, int routes,
@@ -327,15 +339,105 @@ extern "C" __global__ void routed_postamble(
     out[ix] = routed_activate(g, activation);
     return;
   }
-  float u = up[ix] + (bias_up ? bias_up[bias_ix] : 0.0f);
-  if (activation == 4) {
-    g = fminf(g, limit);
-    u = fminf(fmaxf(u, -limit), limit);
-    out[ix] = (u + 1.0f) * g / (1.0f + expf(-alpha * g));
-  } else {
-    out[ix] = routed_activate(g, activation) * u;
+  const float u = up[ix] + (bias_up ? bias_up[bias_ix] : 0.0f);
+  out[ix] = routed_pair(g, u, activation, alpha, limit);
+}
+
+// The pair GEMVs: both projections of route blockIdx.y in one pass over the
+// input, then the bias at the route's expert and the pair activation, as
+// routed_mul_vec_q and routed_mul_vec_plain followed by routed_postamble.
+template <typename W>
+static __device__ void routed_mul_vec_q_pair(
+    const void *w, const void *w_up, const float *x, float *dst,
+    const long long *row_ids, const long long *expert_ids, const float *bias,
+    const float *bias_up, int k, int n, int activation, float alpha,
+    float limit) {
+  const int route = blockIdx.y;
+  const int row0 = (blockIdx.x * ROUTED_WARPS + threadIdx.y) * ROUTED_ROWS;
+  if (row0 >= n) {
+    return;
+  }
+  const long long in_row = row_ids ? row_ids[route] : route;
+  const long long expert = expert_ids[route];
+  const long long w_row = expert * n + row0;
+  const float *xr = x + in_row * k;
+  const int rows = min(ROUTED_ROWS, n - row0);
+  float acc[ROUTED_ROWS] = {0.0f};
+  float acc_up[ROUTED_ROWS] = {0.0f};
+  for (int kk = 4 * threadIdx.x; kk < k; kk += 4 * WARP_SIZE) {
+    const float4 xv = *(const float4 *)(xr + kk);
+#pragma unroll
+    for (int r = 0; r < ROUTED_ROWS; r++) {
+      if (r < rows) {
+        acc[r] += W::scale(w, w_row + r, k, kk) *
+                  dot4(W::codes4(w, w_row + r, k, kk), xv);
+        acc_up[r] += W::scale(w_up, w_row + r, k, kk) *
+                     dot4(W::codes4(w_up, w_row + r, k, kk), xv);
+      }
+    }
+  }
+#pragma unroll
+  for (int r = 0; r < ROUTED_ROWS; r++) {
+    float g = warp_reduce_sum<WARP_SIZE>(acc[r]);
+    float u = warp_reduce_sum<WARP_SIZE>(acc_up[r]);
+    if (threadIdx.x == 0 && r < rows) {
+      const long long col = row0 + r;
+      if (bias) {
+        g += bias[expert * n + col];
+        u += bias_up[expert * n + col];
+      }
+      dst[(long long)route * n + col] = routed_pair(g, u, activation, alpha, limit);
+    }
   }
 }
+
+template <typename T>
+static __device__ void routed_mul_vec_plain_pair(
+    const T *w, const T *w_up, const float *x, float *dst,
+    const long long *row_ids, const long long *expert_ids, const float *bias,
+    const float *bias_up, int k, int n, int activation, float alpha,
+    float limit) {
+  const int route = blockIdx.y;
+  const int n_row = blockIdx.x * ROUTED_WARPS + threadIdx.y;
+  if (n_row >= n) {
+    return;
+  }
+  const long long in_row = row_ids ? row_ids[route] : route;
+  const long long expert = expert_ids[route];
+  const long long w_off = (expert * n + n_row) * (long long)k;
+  const float *xr = x + in_row * k;
+  float partial = 0.0f;
+  float partial_up = 0.0f;
+  for (int i = threadIdx.x; i < k; i += WARP_SIZE) {
+    partial += (float)w[w_off + i] * xr[i];
+    partial_up += (float)w_up[w_off + i] * xr[i];
+  }
+  float g = warp_reduce_sum<WARP_SIZE>(partial);
+  float u = warp_reduce_sum<WARP_SIZE>(partial_up);
+  if (threadIdx.x == 0) {
+    if (bias) {
+      g += bias[expert * n + n_row];
+      u += bias_up[expert * n + n_row];
+    }
+    dst[(long long)route * n + n_row] = routed_pair(g, u, activation, alpha, limit);
+  }
+}
+
+#define INSTANTIATE_ROUTED_PAIR(name, kernel, T)                                \
+  extern "C" __launch_bounds__(ROUTED_WARPS *WARP_SIZE, 1) __global__ void     \
+      routed_mul_vec_pair_##name(                                              \
+          const T *w, const T *w_up, const float *x, float *dst,               \
+          const long long *row_ids, const long long *expert_ids,               \
+          const float *bias, const float *bias_up, int k, int n,               \
+          int activation, float alpha, float limit) {                          \
+    kernel(w, w_up, x, dst, row_ids, expert_ids, bias, bias_up, k, n,          \
+           activation, alpha, limit);                                          \
+  }
+
+INSTANTIATE_ROUTED_PAIR(f32, routed_mul_vec_plain_pair<float>, float)
+INSTANTIATE_ROUTED_PAIR(f16, routed_mul_vec_plain_pair<half>, half)
+INSTANTIATE_ROUTED_PAIR(q40, routed_mul_vec_q_pair<w_q40>, void)
+INSTANTIATE_ROUTED_PAIR(q20t, routed_mul_vec_q_pair<w_q20t>, void)
 
 #define RMM_M 64
 #define RMM_N 64

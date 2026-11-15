@@ -291,7 +291,8 @@ pub struct RoutedLinearKernels {
     /// A paired projection and its postamble in one pass, for backends that fuse them: `input`,
     /// `weights`, `weights_up`, `bias` and `bias_up` when present, the rows and `expert_ids` as
     /// for `project`, the activation, to f32 `out [R, N]`. Returns false, having done nothing,
-    /// when it does not handle this activation; `project` and `postamble` then run instead.
+    /// when it does not handle this activation or route list; `project` and `postamble` then run
+    /// instead.
     #[allow(clippy::type_complexity)]
     pub fused_pair: Option<
         fn(
