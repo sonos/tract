@@ -912,6 +912,27 @@ fn project(
     })
 }
 
+/// The activations: 0 none, 1 silu, 2 tanh gelu, 3 relu, and for a gate and up pair either
+/// one of those of the gate times up, or clamped SwiGLU (4).
+const ACTIVATIONS: &str = r#"
+fn activate(v: f32, activation: u32) -> f32 {
+    if (activation == 1u) { return v / (1.0 + exp(-v)); }
+    // Tanh GELU as v * sigmoid(2c): tanh overflows to NaN on some backends.
+    if (activation == 2u) { return v / (1.0 + exp(-1.5957691216 * (v + 0.044715 * v * v * v))); }
+    if (activation == 3u) { return max(v, 0.0); }
+    return v;
+}
+
+fn activate_pair(g: f32, u: f32, activation: u32, alpha: f32, limit: f32) -> f32 {
+    if (activation == 4u) {
+        let gc = min(g, limit);
+        let uc = clamp(u, -limit, limit);
+        return (uc + 1.0) * gc / (1.0 + exp(-alpha * gc));
+    }
+    return activate(g, activation) * u;
+}
+"#;
+
 const POSTAMBLE: &str = r#"
 struct Params {
     off_gate: u32,
@@ -936,14 +957,6 @@ struct Params {
 @group(0) @binding(5) var<storage, read_write> out: array<f32>;
 @group(0) @binding(6) var<uniform> params: Params;
 
-fn activate(v: f32, activation: u32) -> f32 {
-    if (activation == 1u) { return v / (1.0 + exp(-v)); }
-    // Tanh GELU as v * sigmoid(2c): tanh overflows to NaN on some backends.
-    if (activation == 2u) { return v / (1.0 + exp(-1.5957691216 * (v + 0.044715 * v * v * v))); }
-    if (activation == 3u) { return max(v, 0.0); }
-    return v;
-}
-
 // Bias at the route's expert, then the activation (0 none, 1 silu, 2 tanh gelu, 3 relu) times
 // `up` for a pair, or clamped SwiGLU (4) of the pair. flags: 1 up, 2 bias, 4 bias_up.
 @compute @workgroup_size(64)
@@ -961,13 +974,7 @@ fn routed_postamble(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     var u = up[params.off_up + i];
     if ((params.flags & 4u) != 0u) { u = u + bias_up[params.off_bias_up + bias_ix]; }
-    if (params.activation == 4u) {
-        g = min(g, params.limit);
-        u = clamp(u, -params.limit, params.limit);
-        out[params.off_out + i] = (u + 1.0) * g / (1.0 + exp(-params.alpha * g));
-    } else {
-        out[params.off_out + i] = activate(g, params.activation) * u;
-    }
+    out[params.off_out + i] = activate_pair(g, u, params.activation, params.alpha, params.limit);
 }
 "#;
 
@@ -993,7 +1000,7 @@ fn postamble(
             "routed_postamble",
             layout,
             EntryPoint::plain("routed_postamble"),
-            || POSTAMBLE.to_string(),
+            || format!("{ACTIVATIONS}{POSTAMBLE}"),
         )?;
         let buffers: Vec<_> = inputs.iter().chain([&out]).map(|t| get_wgpu_buffer(t)).collect();
         let bg = q.context().bind_group(layout, &buffers, q.uniform())?;
@@ -1018,8 +1025,203 @@ fn postamble(
     })
 }
 
+/// The GEMV body for a pair: the unit's activations once, then the gate rows from `wbuf`
+/// into `acc` and the up rows from `wup` into `acc_up`.
+fn mv_pair_unit_body(format: Format) -> String {
+    let body = mv_unit_body(format);
+    let split =
+        body.find("        for (var r = 0u; r < 4u; r++) {").expect("one row loop per body");
+    let (x_part, rows) = body.split_at(split);
+    let up_rows = rows
+        .replace("wbuf", "wup")
+        .replace("acc[r]", "acc_up[r]")
+        .replace("params.code_off", "params.code_off_up")
+        .replace("params.scale_off", "params.scale_off_up")
+        .replace("params.group", "params.group_up");
+    format!("{x_part}{rows}\n{up_rows}")
+}
+
+fn mv_pair_module(format: Format) -> String {
+    format!(
+        r#"
+struct Params {{
+    code_off: u32,
+    scale_off: u32,
+    group: u32,
+    code_off_up: u32,
+    scale_off_up: u32,
+    group_up: u32,
+    blocks_per_row: u32,
+    k: u32,
+    n: u32,
+    units: u32,
+    off_x: u32,
+    off_tokens: u32,
+    off_experts: u32,
+    off_bias: u32,
+    off_bias_up: u32,
+    off_out: u32,
+    has_rows: u32,
+    has_bias: u32,
+    activation: u32,
+    _pad0: u32,
+    alpha: f32,
+    limit: f32,
+    _pad1: u32,
+    _pad2: u32,
+}}
+
+@group(0) @binding(0) var<storage, read> wbuf: array<u32>;
+@group(0) @binding(1) var<storage, read> wup: array<u32>;
+@group(0) @binding(2) var<storage, read> x: array<f32>;
+@group(0) @binding(3) var<storage, read> token_ids: array<u32>;
+@group(0) @binding(4) var<storage, read> expert_ids: array<u32>;
+@group(0) @binding(5) var<storage, read> bias: array<f32>;
+@group(0) @binding(6) var<storage, read> bias_up: array<f32>;
+@group(0) @binding(7) var<storage, read_write> out: array<f32>;
+@group(0) @binding(8) var<uniform> params: Params;
+{activations}
+var<workgroup> red: array<f32, 512>;
+
+// routed_mv_{name} over both weights of a pair, then the bias at the route's expert and the
+// pair activation.
+@compute @workgroup_size(64)
+fn routed_mv_pair_{name}(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_index) t: u32,
+) {{
+    let route = wid.y;
+    let row0 = wid.x * 4u;
+    let expert = expert_ids[2u * (params.off_experts + route)];
+    var in_row = route;
+    if (params.has_rows != 0u) {{ in_row = token_ids[2u * (params.off_tokens + route)]; }}
+    let rows = min(4u, params.n - row0);
+    var wr: array<u32, 4>;
+    for (var r = 0u; r < 4u; r++) {{ wr[r] = expert * params.n + min(row0 + r, params.n - 1u); }}
+    let x_base = params.off_x + in_row * params.k;
+    var acc = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    var acc_up = array<f32, 4>(0.0, 0.0, 0.0, 0.0);
+    for (var unit = t; unit < params.units; unit += 64u) {{{body}
+    }}
+    for (var r = 0u; r < 4u; r++) {{
+        red[r * 64u + t] = acc[r];
+        red[256u + r * 64u + t] = acc_up[r];
+    }}
+    workgroupBarrier();
+    for (var stride = 32u; stride > 0u; stride = stride >> 1u) {{
+        if (t < stride) {{
+            for (var r = 0u; r < 8u; r++) {{ red[r * 64u + t] = red[r * 64u + t] + red[r * 64u + t + stride]; }}
+        }}
+        workgroupBarrier();
+    }}
+    if (t < rows) {{
+        var g = red[t * 64u];
+        var u = red[256u + t * 64u];
+        let col = row0 + t;
+        if (params.has_bias != 0u) {{
+            g = g + bias[params.off_bias + expert * params.n + col];
+            u = u + bias_up[params.off_bias_up + expert * params.n + col];
+        }}
+        out[params.off_out + route * params.n + col] = activate_pair(g, u, params.activation, params.alpha, params.limit);
+    }}
+}}
+"#,
+        activations = ACTIVATIONS,
+        name = format.name(),
+        body = mv_pair_unit_body(format),
+    )
+}
+
+/// Both projections of a pair and their postamble in one pass for a single input row, where one
+/// projection's GEMV alone leaves the GPU underused; false, having done nothing, for more rows.
+#[allow(clippy::too_many_arguments)]
+fn fused_pair(
+    input: &DeviceTensor,
+    weights: &DeviceTensor,
+    weights_up: &DeviceTensor,
+    biases: Option<(&DeviceTensor, &DeviceTensor)>,
+    rows: Option<&DeviceTensor>,
+    expert_ids: &DeviceTensor,
+    (activation, alpha, limit): (u32, f32, f32),
+    out: &DeviceTensor,
+) -> TractResult<bool> {
+    let (routes, n, k) = (expert_ids.shape()[0], weights.shape()[1], weights.shape()[2]);
+    let format = weights_format(weights)?;
+    if input.shape()[0] != 1
+        || weights_up.shape() != weights.shape()
+        || weights_format(weights_up)? != format
+        || routes > GRID_LIMIT as usize
+    {
+        return Ok(false);
+    }
+    let (code_off, scale_off, group, blocks_per_row) = weight_layout(format, weights)?;
+    let (code_off_up, scale_off_up, group_up, _) = weight_layout(format, weights_up)?;
+    with_wgpu_queue(|q| {
+        let token_ids = rows.unwrap_or(expert_ids);
+        let (bias, bias_up) = biases.unwrap_or((input, input));
+        for t in [input, weights, weights_up, token_ids, expert_ids, bias, bias_up, out] {
+            q.retain_tensor(t);
+        }
+        let layout = LayoutKind::TailWrites { n: 8, writes: 1 };
+        let pipeline = q.context().chain_pipeline(
+            ("routed_mv_pair", format),
+            layout,
+            EntryPoint::plain(match format {
+                Format::Q40 => "routed_mv_pair_q4_0",
+                Format::Q20T => "routed_mv_pair_q2_0_t",
+                Format::F16 => "routed_mv_pair_f16",
+                Format::F32 => "routed_mv_pair_f32",
+            }),
+            || mv_pair_module(format),
+        )?;
+        let bg = q.context().bind_group(
+            layout,
+            &[
+                get_wgpu_buffer(weights),
+                get_wgpu_buffer(weights_up),
+                get_wgpu_buffer(input),
+                get_wgpu_buffer(token_ids),
+                get_wgpu_buffer(expert_ids),
+                get_wgpu_buffer(bias),
+                get_wgpu_buffer(bias_up),
+                get_wgpu_buffer(out),
+            ],
+            q.uniform(),
+        )?;
+        let mut params = pack_u32s(&[
+            code_off,
+            scale_off,
+            group,
+            code_off_up,
+            scale_off_up,
+            group_up,
+            blocks_per_row,
+            u32_of(k)?,
+            u32_of(n)?,
+            u32_of(format.units(k))?,
+            elem_offset(input)?,
+            elem_offset(token_ids)?,
+            elem_offset(expert_ids)?,
+            elem_offset(bias)?,
+            elem_offset(bias_up)?,
+            elem_offset(out)?,
+            rows.is_some() as u32,
+            biases.is_some() as u32,
+            activation,
+            0,
+        ]);
+        params.extend_from_slice(&alpha.to_le_bytes());
+        params.extend_from_slice(&limit.to_le_bytes());
+        params.extend_from_slice(&pack_u32s(&[0, 0]));
+        let dyn_off = q.alloc_uniform(&params)?;
+        let grid = [u32_of(n.div_ceil(MV_ROWS as usize))?, u32_of(routes)?, 1];
+        q.dispatch_grid("routed_mv_pair", &pipeline, &bg, dyn_off, grid)
+    })?;
+    Ok(true)
+}
+
 const WGPU_ROUTED_LINEAR_KERNELS: RoutedLinearKernels =
-    RoutedLinearKernels { supports, project, postamble, fused_pair: None };
+    RoutedLinearKernels { supports, project, postamble, fused_pair: Some(fused_pair) };
 
 /// Translates a `RoutedLinear` [`GpuRoutedLinear`] takes, its i64 ids moved to the device with
 /// the rest: the registry's dtype gate would refuse them.
