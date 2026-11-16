@@ -12,7 +12,7 @@ class State:
     Stateful models maintain internal buffers between calls to :meth:`run`
     (e.g. recurrent networks, pulsed convolutions). A ``State`` is created by
     ``Runnable.spawn_state()`` and can be called repeatedly with successive
-    input chunks. Use :meth:`freeze` to snapshot the state for later reuse.
+    input chunks.
     """
     def __init__(self, ptr):
         self.ptr = ptr
@@ -60,33 +60,3 @@ class State:
         for v in output_ptrs:
             result.append(Tensor(c_void_p(v)))
         return result
-
-    def freeze(self) -> "FrozenState":
-        """Freeze the state into an immutable ``FrozenState`` snapshot."""
-        self._valid()
-        frozen = c_void_p()
-        check(lib.tract_state_freeze(self.ptr, byref(frozen)))
-        return FrozenState(frozen)
-
-class FrozenState:
-    """
-    A frozen (immutable) snapshot of a stateful model's state.
-
-    Can be unfrozen back into a mutable ``State`` with :meth:`unfreeze`.
-    """
-    def __init__(self, ptr):
-        self.ptr = ptr
-
-    def __del__(self):
-        check(lib.tract_frozen_state_destroy(byref(self.ptr)))
-
-    def _valid(self):
-        if self.ptr == None:
-            raise TractError("invalid frozen state (maybe already destroyed ?)")
-
-    def unfreeze(self) -> State:
-        """Restore a mutable ``State`` from this frozen snapshot."""
-        self._valid()
-        state = c_void_p()
-        check(lib.tract_frozen_state_unfreeze(self.ptr, byref(state)))
-        return State(state)
