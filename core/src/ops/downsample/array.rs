@@ -38,8 +38,10 @@ pub fn pull_downsample_over_axis_op(
     let mut patch = TypedModelPatch::default();
     let tap = patch.tap_model(model, axis_node.inputs[0])?;
     let mut new_down = down_op.clone();
-    new_down.axis =
-        axis_op.recip().transform_axis(down_op.axis).ok_or_else(|| format_err!("Invalid axis"))?;
+    let Some(axis) = axis_op.recip().transform_axis(down_op.axis) else {
+        return Ok(None);
+    };
+    new_down.axis = axis;
     let wire = patch.wire_node(&*down_node.name, new_down, [tap].as_ref())?;
     let wire = patch.wire_node(&*axis_node.name, axis_op.clone(), &wire)?[0];
     patch.shunt_outside(model, OutletId::new(down_node.id, 0), wire)?;

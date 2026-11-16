@@ -95,5 +95,13 @@ pub fn suite() -> TractResult<TestSuite> {
         },
     );
 
+    suite.add_test(
+        "reverse_unit_axis",
+        DownsampleProblem {
+            input_shape: vec![2, 1],
+            op: Downsample { axis: 1, stride: -1, modulo: 0 },
+        },
+    );
+
     Ok(suite)
 }
