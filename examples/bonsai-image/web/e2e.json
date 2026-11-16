@@ -1,0 +1,43 @@
+{
+  "path": "bonsai-image/",
+  "timeout": 2400,
+  "progress": "document.getElementById('status').textContent",
+  "fail": "(document.getElementById('status').textContent.startsWith('Error') || document.getElementById('go').textContent === 'Unsupported') && document.getElementById('status').textContent",
+  "reference": {
+    "about": "16x16 block means of (r+g+b)/3 of the Fox example at 256x256, 4 steps, seed 7, rendered by bonsai-native",
+    "max_mean_abs_diff": 3,
+    "luma": [
+        38, 29, 7, 35, 25, 24, 34, 106, 164, 103, 127, 127, 39, 35, 23, 62,
+        53, 40, 7, 48, 27, 28, 60, 44, 58, 92, 51, 89, 52, 35, 30, 77,
+        72, 95, 14, 34, 29, 36, 46, 45, 108, 100, 123, 112, 53, 39, 36, 52,
+        60, 56, 17, 52, 34, 126, 66, 92, 66, 73, 97, 70, 52, 44, 38, 72,
+        114, 58, 14, 64, 88, 113, 77, 64, 96, 110, 93, 119, 58, 48, 50, 69,
+        147, 116, 105, 140, 77, 120, 73, 102, 97, 105, 136, 125, 61, 53, 145, 127,
+        146, 161, 148, 168, 57, 93, 102, 102, 90, 99, 116, 174, 82, 74, 204, 168,
+        172, 195, 202, 199, 199, 222, 164, 188, 105, 103, 153, 110, 65, 95, 160, 166,
+        215, 229, 230, 232, 235, 213, 186, 165, 144, 129, 99, 88, 133, 217, 183, 184,
+        199, 219, 227, 229, 235, 230, 202, 167, 113, 122, 101, 79, 107, 221, 224, 195,
+        176, 166, 179, 203, 214, 218, 226, 207, 129, 103, 62, 59, 82, 182, 229, 227,
+        201, 177, 216, 225, 231, 225, 233, 233, 93, 69, 57, 88, 82, 141, 220, 222,
+        220, 204, 214, 235, 230, 237, 239, 237, 87, 52, 69, 114, 66, 97, 122, 136,
+        228, 228, 220, 222, 220, 236, 233, 221, 58, 62, 63, 90, 41, 64, 74, 77,
+        227, 226, 224, 228, 222, 220, 232, 198, 163, 167, 182, 189, 188, 192, 203, 195,
+        233, 237, 239, 240, 240, 239, 241, 242, 242, 241, 241, 239, 237, 237, 235, 232
+      ]
+  },
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent === 'Ready.'"
+    },
+    {
+      "run": "window.e2eGallery = document.getElementById('gallery').children.length, [...document.querySelectorAll('#examples button')].find((b) => b.textContent === 'Fox').click(), document.getElementById('size').value = '256x256', document.getElementById('steps').value = 4, document.getElementById('go').click()"
+    },
+    {
+      "wait": "document.getElementById('gallery').children.length > window.e2eGallery"
+    },
+    {
+      "name": "image matches the native rendering",
+      "check": "(() => { const c = document.getElementById('canvas'); const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data; const n = 16, bw = c.width / n, bh = c.height / n, ref = SPEC.reference; let diff = 0; for (let by = 0; by < n; by++) for (let bx = 0; bx < n; bx++) { let s = 0; for (let y = by * bh; y < (by + 1) * bh; y++) for (let x = bx * bw; x < (bx + 1) * bw; x++) { const i = (y * c.width + x) * 4; s += d[i] + d[i + 1] + d[i + 2]; } diff += Math.abs(s / (3 * bw * bh) - ref.luma[by * n + bx]); } diff /= n * n; return { fail: diff > ref.max_mean_abs_diff && 'the image differs from the reference', info: `mean abs diff ${diff.toFixed(2)} / ${ref.max_mean_abs_diff}` }; })()"
+    }
+  ]
+}

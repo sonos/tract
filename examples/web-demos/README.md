@@ -7,6 +7,7 @@ prefix of the `tract-demo` R2 bucket:
 | Prefix        | Demo                                        |
 |---------------|---------------------------------------------|
 | `/sd15/`      | [`stable-diffusion/web`](../stable-diffusion/web) |
+| `/bonsai-image/` | [`bonsai-image/web`](../bonsai-image/web) |
 | `/pixel-lab/` | [`pixel-lab/web`](../pixel-lab/web)         |
 | `/hey-snips/` | [`hey-snips/web`](../hey-snips/web)         |
 | `/nemotron/`  | [`nemo-nemotron35-streaming-asr/web`](../nemo-nemotron35-streaming-asr/web) |

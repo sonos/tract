@@ -4,6 +4,7 @@ exclude = [
     "tools/asset-mirror",
 ]
 members = [
+    "examples/bonsai-image/web",
     "data",
     "linalg",
     "core",
