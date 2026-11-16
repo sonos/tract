@@ -51,9 +51,19 @@ fn concrete_shape(model: &TypedModel, outlet: OutletId) -> TractResult<Option<TV
     Ok(shape.as_concrete().map(|s| s.into()))
 }
 
+/// Whether a value is a plain dense tensor, the only layout the pair kernel reads.
+fn is_dense(model: &TypedModel, outlet: OutletId) -> TractResult<bool> {
+    let fact = model.outlet_fact(outlet)?;
+    let fact = fact.as_device_fact().map(|f| &f.fact).unwrap_or(fact);
+    Ok(fact.exotic_fact().is_none())
+}
+
 /// The number of columns a single-row product produces, or `None` if it has
-/// more than one row.
+/// more than one row or a packed operand.
 fn single_row(model: &TypedModel, node: &TypedNode, op: &WgpuGemm) -> TractResult<Option<usize>> {
+    if !(is_dense(model, node.inputs[0])? && is_dense(model, node.inputs[1])?) {
+        return Ok(None);
+    }
     let (Some(a), Some(b)) =
         (concrete_shape(model, node.inputs[0])?, concrete_shape(model, node.inputs[1])?)
     else {
