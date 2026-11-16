@@ -5,6 +5,7 @@ use std::ffi::c_void;
 use std::mem::ManuallyDrop;
 use std::num::NonZeroU64;
 use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
+use tract_core::tract_linalg::block_quant::BlockQuantStorage;
 
 #[cfg(not(target_arch = "wasm32"))]
 use anyhow::Context;
@@ -13,7 +14,6 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use tract_gpu::utils::as_q40_or_q20t_tensor;
 use wgpu::util::DeviceExt;
 
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
@@ -805,7 +805,11 @@ impl DeviceContext for WgpuContext {
             "Tensor of {:?} is not copied. No device buffer can be allocated for it.",
             view.datum_type(),
         );
-        if let Some(bqs) = as_q40_or_q20t_tensor(view.tensor) {
+        if let Some(bqs) = view
+            .tensor
+            .storage_as::<BlockQuantStorage>()
+            .filter(|bqs| crate::kernels::matmul_bq::bq_format(bqs.format()).is_some())
+        {
             let shape = view.shape();
             let (packed, group) = crate::kernels::matmul_bq::repack_weight(
                 bqs.value().as_bytes(),
