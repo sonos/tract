@@ -67,15 +67,15 @@ pub fn fuse_decoder_resize_output(
     let mut terminal = node;
     let out = model.output_outlets()?;
     let mut h = *height;
-    if *height == 46 && !out.contains(&terminal.id.into()) {
-        if let Some(crop) = model.single_succ(terminal.id)? {
-            if crop.op_as::<GpuSlice>().is_some_and(|s| {
-                s.inner.axis == 2 && s.inner.start == 0.to_dim() && s.inner.end == 45.to_dim()
-            }) {
-                h = 45;
-                terminal = crop;
-            }
-        }
+    if *height == 46
+        && !out.contains(&terminal.id.into())
+        && let Some(crop) = model.single_succ(terminal.id)?
+        && crop.op_as::<GpuSlice>().is_some_and(|s| {
+            s.inner.axis == 2 && s.inner.start == 0.to_dim() && s.inner.end == 45.to_dim()
+        })
+    {
+        h = 45;
+        terminal = crop;
     }
     rule_ensure!(!out.contains(&terminal.id.into()));
     let Some(concat) = model.single_succ(terminal.id)? else { return Ok(None) };
