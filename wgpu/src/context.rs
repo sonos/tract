@@ -14,7 +14,6 @@ use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
 use tract_gpu::device::{DeviceBuffer, DeviceContext};
 use tract_gpu::tensor::{DeviceTensor, OwnedDeviceTensor};
-use wgpu::util::DeviceExt;
 
 #[cfg(all(target_arch = "wasm32", target_feature = "atomics"))]
 compile_error!(
@@ -595,15 +594,28 @@ impl WgpuContext {
         })))
     }
 
+    /// A storage buffer holding `bytes`, zero-padded to a multiple of four. The bytes go through
+    /// the queue rather than a buffer mapped at creation, which in the browser would stage a full
+    /// copy of a multi-gigabyte weight in the wasm heap.
     pub fn create_storage_buffer(&self, bytes: &[u8]) -> wgpu::Buffer {
-        let padded = pad4(bytes);
-        self.inner.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+        let buffer = self.inner.device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("tract-wgpu-storage"),
-            contents: &padded,
+            size: bytes.len().next_multiple_of(4).max(4) as u64,
             usage: wgpu::BufferUsages::STORAGE
                 | wgpu::BufferUsages::COPY_SRC
                 | wgpu::BufferUsages::COPY_DST,
-        })
+            mapped_at_creation: false,
+        });
+        let whole = bytes.len() & !3;
+        if whole > 0 {
+            self.inner.queue.write_buffer(&buffer, 0, &bytes[..whole]);
+        }
+        if whole < bytes.len() {
+            let mut tail = [0u8; 4];
+            tail[..bytes.len() - whole].copy_from_slice(&bytes[whole..]);
+            self.inner.queue.write_buffer(&buffer, whole as u64, &tail);
+        }
+        buffer
     }
 
     /// Starts a new allocation sequence. Called when the queue flushes, which
@@ -780,17 +792,6 @@ fn uniform_entry(binding: u32, uniform: &wgpu::Buffer) -> wgpu::BindGroupEntry<'
             size: Some(NonZeroU64::new(UNIFORM_ALIGN).unwrap()),
         }),
     }
-}
-
-fn pad4(bytes: &[u8]) -> Vec<u8> {
-    let mut v = bytes.to_vec();
-    while !v.len().is_multiple_of(4) {
-        v.push(0);
-    }
-    if v.is_empty() {
-        v.resize(4, 0);
-    }
-    v
 }
 
 impl DeviceContext for WgpuContext {
