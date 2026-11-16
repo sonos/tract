@@ -6,7 +6,7 @@ use derive_new::new;
 use tract_core::internal::*;
 use tract_transformers::ops::dyn_kv_cache::{DynKeyValueCache, DynKeyValueCacheState};
 
-#[derive(Debug, Clone, new)]
+#[derive(Debug, new)]
 pub struct GpuDynKVCacheState {
     name: String,
     axis: usize,
@@ -27,6 +27,20 @@ pub struct GpuDynKVCacheState {
     /// [`GpuDynKVCache::window_output`].
     #[new(default)]
     window_output: bool,
+}
+
+impl Clone for GpuDynKVCacheState {
+    fn clone(&self) -> Self {
+        GpuDynKVCacheState {
+            name: self.name.clone(),
+            axis: self.axis,
+            past_sequence_fact: self.past_sequence_fact.clone(),
+            buffer: self.buffer.as_ref().map(|b| b.deep_clone().expect("cloning a KV cache")),
+            len: self.len,
+            reallocs: self.reallocs,
+            window_output: self.window_output,
+        }
+    }
 }
 
 impl GpuDynKVCacheState {
