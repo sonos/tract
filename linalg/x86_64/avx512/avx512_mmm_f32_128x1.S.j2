@@ -33,8 +33,12 @@ Windows ABI:
     mov     rax,    [rdi + 16]   // A
 
     mov     rbx,    [rdi + 8]    // k
+    mov     r8,     [rdi + 32]   // packing
     test    rbx,    rbx
     jz      {{L}}non_linear_loop
+
+    cmp     r8, 1
+    jz      {{L}}f16f32
 
 {{align}} 16
 {{L}}main_loop_packed_packed:
@@ -42,6 +46,22 @@ Windows ABI:
 
     sub             rbx, 1
     jnz             {{L}}main_loop_packed_packed
+
+    jmp             {{L}}non_linear_loop
+
+{{align}} 16
+{{L}}f16f32:
+    vbroadcastss    zmm15, dword ptr [rcx]
+{% for i in range(0, 8) %}
+    vcvtph2ps       zmm{{16 + i}}, ymmword ptr [rax + {{ i * 32 }}]
+{% endfor %}
+{% for i in range(0, 8) %}
+    vfmadd231ps     zmm{{i}}, zmm15, zmm{{16 + i}}
+{% endfor %}
+    add             rcx, 4
+    add             rax, 256
+    sub             rbx, 1
+    jnz             {{L}}f16f32
 
     jmp             {{L}}non_linear_loop
 

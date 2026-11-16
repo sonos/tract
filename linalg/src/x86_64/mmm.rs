@@ -123,7 +123,9 @@ MMMExternKernel!(x86_64; fma_mmm_f32_32x3<f32>(32,3)@(256,4) isa(X86_64Avx, X86_
  store(f16)
 );
 
-MMMExternKernel!(x86_64; avx512_mmm_f32_128x1<f32>(128, 1)@(512,4) isa(X86_64Avx512f));
+MMMExternKernel!(x86_64; avx512_mmm_f32_128x1<f32>(128, 1)@(512,4) isa(X86_64Avx512f)
+    packing[1] = f16f32 => |k| k.with_packing(f16::packing(128).align(512), f32::packing(1).align(4));
+);
 MMMExternKernel!(x86_64; avx512_mmm_f32_16x1 <f32>( 16, 1)@(512,4) isa(X86_64Avx512f));
 MMMExternKernel!(x86_64; avx512_mmm_f32_16x12<f32>( 16,12)@(512,4) isa(X86_64Avx512f));
 MMMExternKernel!(x86_64; avx512_mmm_f32_16x8 <f32>( 16, 8)@(512,4) isa(X86_64Avx512f));
@@ -632,6 +634,21 @@ mod tests {
     use super::*;
     use crate::frame::mmm::{AsInputValue, FusedSpec};
     use tract_data::internal::*;
+
+    /// f16 weights holding signed zeros, subnormals, the largest finite f16 and negatives, with
+    /// m off the tile.
+    #[test]
+    fn avx512_128x1_f16f32_special_values() -> TractResult<()> {
+        use crate::frame::mmm::tests::packed_packed::PackedPackedProblem;
+        let specials = [0.0f32, -0.0, 5.96e-8, -5.96e-8, 6.1e-5, 65504.0, -65504.0, -1.5, 0.333];
+        let m = 150;
+        for k in [1usize, 7, 37] {
+            let a: Vec<f32> = (0..m * k).map(|i| specials[i % specials.len()]).collect();
+            let b: Vec<f32> = (0..k).map(|i| ((i % 7) as f32 - 3.0) / 4.0).collect();
+            PackedPackedProblem::frame(&*avx512_mmm_f32_128x1, 1, m, 1, a, b).check()?;
+        }
+        Ok(())
+    }
 
     #[test]
     fn avx512_128x1_add_unicast_with_strided_c() -> TractResult<()> {
