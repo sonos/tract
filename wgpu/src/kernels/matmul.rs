@@ -185,6 +185,19 @@ fn tiled_applies(prefix: usize, m: usize, k: usize, n: usize) -> bool {
         && n.div_ceil(MATMUL_TILE) <= 65535
 }
 
+fn apple_webgpu(_device: &wgpu::Device) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(raw) = _device.as_webgpu()
+        && let Ok(info) =
+            js_sys::Reflect::get(raw.as_ref(), &wasm_bindgen::JsValue::from_str("adapterInfo"))
+    {
+        let lookup = |key| js_sys::Reflect::get(&info, &wasm_bindgen::JsValue::from_str(key)).ok();
+        return lookup("vendor").and_then(|v| v.as_string()).as_deref() == Some("apple")
+            && lookup("isFallbackAdapter").and_then(|v| v.as_bool()) != Some(true);
+    }
+    false
+}
+
 pub fn wgpu_matmul_dispatch(
     t: Transposes,
     epilogue: &[ChainStep],
@@ -192,6 +205,18 @@ pub fn wgpu_matmul_dispatch(
     b: &DeviceTensor,
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
+) -> TractResult<()> {
+    wgpu_matmul_dispatch_impl(t, epilogue, a, b, extras, output, None)
+}
+
+fn wgpu_matmul_dispatch_impl(
+    t: Transposes,
+    epilogue: &[ChainStep],
+    a: &DeviceTensor,
+    b: &DeviceTensor,
+    extras: &[&DeviceTensor],
+    output: &DeviceTensor,
+    small_gemv_override: Option<bool>,
 ) -> TractResult<()> {
     if crate::kernels::matmul_bq::is_block_quant_weight(b) {
         return crate::kernels::matmul_bq::wgpu_bq_dispatch(t, epilogue, a, b, extras, output);
@@ -273,14 +298,29 @@ pub fn wgpu_matmul_dispatch(
             return q.dispatch_grid("matmul_blocked", &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
 
+        let gemv_small = gemv
+            && dt == ShaderDtype::F16
+            && prefix == 1
+            && matches!((k, n), (480, 120) | (672, 168) | (960, 240))
+            && !t.a
+            && t.b
+            && !t.c
+            && a.strides()[a.rank() - 1] == 1
+            && b.strides()[b.rank() - 1] == 1
+            && b.strides()[b.rank() - 2] == k as isize
+            && output.strides()[output.rank() - 1] == 1
+            && element_offset(a, 0).is_multiple_of(4)
+            && element_offset(b, 0).is_multiple_of(4)
+            && small_gemv_override.unwrap_or_else(|| apple_webgpu(q.context().device()));
+        let gemv_name = if gemv_small { "matmul_gemv_small" } else { "matmul_gemv" };
         let tiled = tiled_applies(prefix, m, k, n);
         let tile_m = tile_rows(m);
         let pipeline = if gemv {
             q.context().chain_pipeline(
-                ("matmul_gemv", dt, epilogue, extras.len()),
+                (gemv_name, dt, epilogue, extras.len()),
                 layout,
-                EntryPoint::typed("matmul_gemv", dt),
-                || matmul_gemv_module(dt, epilogue, extras.len()),
+                EntryPoint::typed(gemv_name, dt),
+                || matmul_gemv_module_for_layout(dt, epilogue, extras.len(), gemv_small),
             )?
         } else if gemv_n {
             q.context().chain_pipeline(
@@ -343,10 +383,11 @@ pub fn wgpu_matmul_dispatch(
         vals.extend_from_slice(&mode_extra);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
         if gemv {
-            let tiles = prefix * n.div_ceil(MATMUL_GEMV_WG as usize);
+            let columns = if gemv_small { MATMUL_GEMV_SMALL_COLS } else { MATMUL_GEMV_WG };
+            let tiles = prefix * n.div_ceil(columns as usize);
             let x = tiles.min(GRID_LIMIT as usize) as u32;
             let y = tiles.div_ceil(GRID_LIMIT as usize) as u32;
-            return q.dispatch_grid("matmul_gemv", &pipeline, &bg, dyn_off, [x, y, 1]);
+            return q.dispatch_grid(gemv_name, &pipeline, &bg, dyn_off, [x, y, 1]);
         }
         if gemv_n {
             let tiles = prefix * m.div_ceil(MATMUL_GEMV_N_WG as usize);
@@ -367,6 +408,7 @@ pub const MATMUL_BLOCKED_WG: u32 = 192;
 
 /// Columns one `m = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_WG: u32 = 64;
+const MATMUL_GEMV_SMALL_COLS: u32 = 8;
 
 /// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_N_WG: u32 = 64;
@@ -487,6 +529,15 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// and each then walks its own column. Same `Params`, strides and epilogue as
 /// [`matmul_module`]. `k` past the last partial slice is padded with zeros.
 pub fn matmul_gemv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    matmul_gemv_module_for_layout(dt, epilogue, extras, false)
+}
+
+fn matmul_gemv_module_for_layout(
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    small: bool,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let wg = MATMUL_GEMV_WG;
@@ -503,42 +554,12 @@ pub fn matmul_gemv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body_at(epilogue, "col", "oe");
-    let mut s = preamble(dt);
-    s.push_str(&format!(
-        r#"
-struct Params {{
-    off_a: u32,
-    off_b: u32,
-    off_out: u32,
-    prefix: u32,
-    m: u32,
-    k: u32,
-    n: u32,
-    ta: u32,
-    tb: u32,
-    tc: u32,
-    _p0: u32,
-    _p1: u32,
-    a_s0: vec4<u32>,
-    a_s1: vec4<u32>,
-    b_s0: vec4<u32>,
-    b_s1: vec4<u32>,
-    out_s0: vec4<u32>,
-    out_s1: vec4<u32>,
-    out_sh0: vec4<u32>,
-    out_sh1: vec4<u32>,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
-}}
-
-@group(0) @binding(0) var<storage, read> a: array<{t}>;
-@group(0) @binding(1) var<storage, read> b: array<{t}>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding({uniform_binding}) var<uniform> params: Params;
-{lib}
-{AT8}
-
-var<workgroup> avec: array<f32, {wg}>;
+    let input_t = if small { format!("vec4<{t}>") } else { t.to_string() };
+    let body = if small {
+        matmul_gemv_small_body(t, suf, &epilogue)
+    } else {
+        format!(
+            r#"var<workgroup> avec: array<f32, {wg}>;
 
 @compute @workgroup_size({wg})
 fn matmul_gemv_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
@@ -594,8 +615,75 @@ fn matmul_gemv_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(work
     }}
 }}
 "#
+        )
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{input_t}>;
+@group(0) @binding(1) var<storage, read> b: array<{input_t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+{body}
+"#
     ));
     s
+}
+
+/// Aligned unit-prefix GEMV with contiguous vector loads and ordered f32 dots.
+fn matmul_gemv_small_body(t: &str, suf: &str, epilogue: &str) -> String {
+    let cols = MATMUL_GEMV_SMALL_COLS;
+    format!(
+        r#"
+@compute @workgroup_size({cols})
+fn matmul_gemv_small_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let col = wid.x * {cols}u + lid.x;
+    let a_base = params.off_a / 4u;
+    let b_base = (params.off_b + col * params.k) / 4u;
+    var acc = 0.0;
+    for (var q = 0u; q < params.k / 4u; q += 1u) {{
+        let av = vec4<f32>(a[a_base + q]);
+        let bv = vec4<f32>(b[b_base + q]);
+        acc += av.x * bv.x;
+        acc += av.y * bv.y;
+        acc += av.z * bv.z;
+        acc += av.w * bv.w;
+    }}
+    let oe = col;
+    var v = {t}(acc);
+{epilogue}
+    outp[params.off_out + col] = v;
+}}
+"#
+    )
 }
 
 /// `n = 1` product. One workgroup owns [`MATMUL_GEMV_N_WG`] rows of one prefix
@@ -1538,6 +1626,59 @@ mod tests {
             let c = Arc::new(cpu).run(tvec!(a_in.into(), r_in.into()))?.remove(0).into_tensor();
             g.close_enough(&c, Approximation::Approximate)
                 .with_context(|| format!("residual ta={ta} tb={tb} tc={tc}"))?;
+        }
+        Ok(())
+    }
+
+    fn small_gemv_fixture(
+        k: usize,
+        n: usize,
+    ) -> TractResult<(
+        tract_gpu::tensor::DeviceTensor,
+        tract_gpu::tensor::DeviceTensor,
+        tract_gpu::tensor::DeviceTensor,
+    )> {
+        use tract_gpu::tensor::IntoDevice;
+
+        let values = |count: usize, seed: u64| {
+            fill(seed, count)
+                .into_iter()
+                .enumerate()
+                .map(|(i, x)| f16::from_f32(x * 2.0_f32.powi((i % 17) as i32 - 12)))
+                .collect::<Vec<_>>()
+        };
+        let a = Tensor::from_shape(&[1, 1, k], &values(k, 1))?.into_device()?;
+        let b = Tensor::from_shape(&[1, n, k], &values(k * n, 3))?.into_device()?;
+        let bias = Tensor::from_shape(&[1, 1, n], &values(n, 5))?.into_device()?;
+        Ok((a, b, bias))
+    }
+
+    #[test]
+    fn matmul_gemv_small_matches_original() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensor;
+
+        use super::Transposes;
+        use super::wgpu_matmul_dispatch_impl;
+        use crate::kernels::shaders::ChainStep;
+
+        crate::context::wgpu_context();
+        for (k, n) in [(480, 120), (672, 168), (960, 240)] {
+            let (a, b, bias) = small_gemv_fixture(k, n)?;
+            let output_old = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, 1, n])?;
+            let output_new = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, 1, n])?;
+            let t = Transposes { a: false, b: true, c: false };
+            let epilogue = [ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }];
+            for (new, output) in [(false, &output_old), (true, &output_new)] {
+                wgpu_matmul_dispatch_impl(t, &epilogue, &a, &b, &[&bias], output, Some(new))?;
+            }
+            crate::with_wgpu_queue(|q| q.flush())?;
+            let old = output_old.to_host()?;
+            let new = output_new.to_host()?;
+            assert_eq!(
+                old.try_as_plain_ram()?.as_slice::<f16>()?,
+                new.try_as_plain_ram()?.as_slice::<f16>()?,
+                "k={k} n={n}"
+            );
         }
         Ok(())
     }
