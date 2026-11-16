@@ -256,6 +256,12 @@ Classes:
 | P1 | `TRACT_CUDA_ALLOW_TF32` (global, read at eval) | CUDA cuDNN conv | PORT | `mm.{w,act}=tf32`, decided at lowering as a per-op math type (cuDNN descriptor, cuBLASLt compute type, not per-handle math mode) |
 | P2 | `TRACT_AMX_BF16` (global, read in linalg) | x86 AMX | PORT | `mm.{w,act}=bf16`, passed through the kernel-selection query |
 
+L5 measured on VoxCPM2 (f32 export, relative max error against PyTorch, flash attention cast to
+f16 / decomposed SDPA in f32): LM `dit_mu` 2.4e-5 / 1e-7 with the stop logits unchanged, local
+encoder 6.9e-5 / 1.5e-7, DiT 3.6e-4 / 3.9e-7, 10-step CFM 1.8e-3 / 4.6e-6. A degradation, not a
+failure. The decomposed path costs 2–3 % on these short sequences; f32 LLMs at long context are
+unmeasured.
+
 Compliant under the proposal, no change:
 - Metal fast math (after B4 and the approximation check);
 - softmax exp stored as half before rescaling;
