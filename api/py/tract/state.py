@@ -12,7 +12,7 @@ class State:
     Stateful models maintain internal buffers between calls to :meth:`run`
     (e.g. recurrent networks, pulsed convolutions). A ``State`` is created by
     ``Runnable.spawn_state()`` and can be called repeatedly with successive
-    input chunks.
+    input chunks. Use :meth:`clone` to fork a stream.
     """
     def __init__(self, ptr):
         self.ptr = ptr
@@ -60,3 +60,10 @@ class State:
         for v in output_ptrs:
             result.append(Tensor(c_void_p(v)))
         return result
+
+    def clone(self) -> "State":
+        """Return an independent copy of this state, which carries on from the same point of the stream."""
+        self._valid()
+        clone = c_void_p()
+        check(lib.tract_state_clone(self.ptr, byref(clone)))
+        return State(clone)
