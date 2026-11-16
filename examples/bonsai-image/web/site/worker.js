@@ -5,6 +5,7 @@ const post = (message, transfer) => self.postMessage(message, transfer || []);
 
 // One sync access handle per cached file, read synchronously from the wasm side.
 const handles = {};
+let cacheDir = null;
 const reading = { file: null, sizes: {}, last: 0 };
 globalThis.bonsaiRead = (file, offset, dest) => {
   const n = handles[file].read(dest, { at: offset });
@@ -16,14 +17,31 @@ globalThis.bonsaiRead = (file, offset, dest) => {
   return n;
 };
 
-// The file at `url` in OPFS under `name`, downloaded (or resumed) unless already complete.
+// Safari closes a sync access handle when it suspends the page, as when the phone locks.
+const closedHandle = (e) => e && e.name === "InvalidStateError";
+// What a suspension does to a download: a closed handle, or a fetch that fails mid-stream.
+const interrupted = (e) => closedHandle(e) || (e && e.name === "TypeError");
+
+// The file at `url` in OPFS under `name`, downloaded (or resumed) unless already complete. A
+// download cut short by a suspension resumes from the bytes already written.
 async function cache(dir, name, url, size, onBytes) {
   const handle = await dir.getFileHandle(name, { create: true });
-  if ((await handle.getFile()).size === size) {
-    onBytes(size);
-    return handle;
+  for (let resumed = 0; ; resumed++) {
+    if ((await handle.getFile()).size === size) {
+      onBytes(size);
+      return handle;
+    }
+    try {
+      await download(handle, name, url, size, onBytes);
+    } catch (e) {
+      if (!interrupted(e) || resumed >= 20) throw e;
+    }
   }
+}
+
+async function download(handle, name, url, size, onBytes) {
   const access = await handle.createSyncAccessHandle();
+  let reader = null;
   try {
     let position = access.getSize();
     if (position > size) {
@@ -36,7 +54,7 @@ async function cache(dir, name, url, size, onBytes) {
       access.truncate(0);
       position = 0;
     }
-    const reader = response.body.getReader();
+    reader = response.body.getReader();
     for (;;) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -47,9 +65,23 @@ async function cache(dir, name, url, size, onBytes) {
     access.flush();
     if (position !== size) throw new Error(`${name}: got ${position} bytes, expected ${size}`);
   } finally {
-    access.close();
+    reader?.cancel().catch(() => {});
+    try {
+      access.close();
+    } catch {}
   }
-  return handle;
+}
+
+// The read handles, reopened if Safari closed them while the page was suspended.
+async function reopenClosedHandles(dir) {
+  for (const [name, access] of Object.entries(handles)) {
+    try {
+      access.getSize();
+    } catch (e) {
+      if (!closedHandle(e)) throw e;
+      handles[name] = await (await dir.getFileHandle(name)).createSyncAccessHandle();
+    }
+  }
 }
 
 class StorageUnavailable extends Error {}
@@ -97,6 +129,7 @@ async function start() {
     }
   }
   const dir = await root.getDirectoryHandle("bonsai", { create: true });
+  cacheDir = dir;
   for (const f of manifest.files) reading.sizes[f.name] = f.size;
   const wanted = new Set(manifest.files.map((f) => f.name));
   for await (const name of dir.keys()) {
@@ -134,6 +167,7 @@ self.onmessage = async ({ data }) => {
       await root.removeEntry("bonsai", { recursive: true });
       post({ type: "dropped" });
     } else if (data.type === "generate") {
+      await reopenClosedHandles(cacheDir);
       const t = performance.now();
       const rgba = await bonsai.generate(data.prompt, data.steps, data.seed, data.width, data.height, (stage, step, steps) =>
         post({ type: "progress", stage, step, steps }),
