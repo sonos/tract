@@ -139,3 +139,18 @@ impl ModelTransform for TransformersTransform {
             .rewrite(&(), model)
     }
 }
+
+/// Opt-in recognition of split rotary embeddings using ApplyRope.
+#[derive(Debug, Default)]
+pub struct SplitRopeTransform;
+
+impl ModelTransform for SplitRopeTransform {
+    fn name(&self) -> StaticName {
+        "experimental_split_rope".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("split-rope", ops::apply_rope::split_apply_rope_rule)
+            .rewrite(&(), model)
+    }
+}

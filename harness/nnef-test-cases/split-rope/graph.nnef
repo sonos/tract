@@ -1,0 +1,23 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+graph split_rope(x, c, s) -> (output) {
+    x = tract_core_external(shape = [1, S, 4, 64], datum_type = 'f16');
+    c = tract_core_external(shape = [1, 1, S, 32], datum_type = 'f16');
+    s = tract_core_external(shape = [1, 1, S, 32], datum_type = 'f16');
+    x16 = tract_core_cast(x, to = 'f16');
+    c16 = tract_core_cast(c, to = 'f16');
+    s16 = tract_core_cast(s, to = 'f16');
+    a = slice(x16, axes = [3], begin = [0], end = [32]);
+    b = slice(x16, axes = [3], begin = [32], end = [64]);
+    at = transpose(a, axes = [0, 2, 1, 3]);
+    bt = transpose(b, axes = [0, 2, 1, 3]);
+    ac = mul(at, c16);
+    bs = mul(bt, s16);
+    bc = mul(bt, c16);
+    ass = mul(at, s16);
+    lo = sub(ac, bs);
+    hi = add(bc, ass);
+    output = concat([lo, hi], axis = 3);
+}
