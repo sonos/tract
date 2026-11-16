@@ -117,3 +117,4 @@ pub fn memory_arena_hints_for_causal_llm(model: &TypedModel) -> TractResult<Symb
 }
 
 register_simple_model_transform!("experimental_split_rope", SplitRopeTransform);
+register_simple_model_transform!("experimental_grouped_masked_sdpa", GroupedMaskedSdpaTransform);
