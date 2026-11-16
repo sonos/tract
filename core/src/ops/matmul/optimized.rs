@@ -705,9 +705,9 @@ impl TypedOp for OptMatMul {
             }
             if node_axis_op(model, succ)?.is_some()
                 && (next_node.op_is::<Cast>()
-                    || next_node
-                        .op_as::<ops::binary::TypedBinOp>()
-                        .is_some_and(|op| op.0.as_linalg_binop().is_some()))
+                    || next_node.op_as::<ops::binary::TypedBinOp>().is_some_and(|op| {
+                        op.0.as_linalg_binop().is_some_and(|b| b.fuses_into_mmm())
+                    }))
             {
                 return sink_axis_op(model, succ);
             }
@@ -983,6 +983,7 @@ impl OptMatMul {
         value: OutletId,
         binop: BinOp,
     ) -> TractResult<Option<TypedModelPatch>> {
+        rule_if!(binop.fuses_into_mmm());
         let fact = model.outlet_fact(value)?;
         let mut v = patch.tap_model(model, value)?;
         if fact.datum_type != self.mmm[0].internal_type() {

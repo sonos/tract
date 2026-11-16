@@ -13,6 +13,12 @@ macro_rules! bin_reference {
     (SubF) => {
         |a, b| b - a
     };
+    (Div) => {
+        |a, b| a / b
+    };
+    (DivF) => {
+        |a, b| b / a
+    };
     (Min) => {
         |a, b| a.min(b)
     };

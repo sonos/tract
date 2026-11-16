@@ -61,7 +61,7 @@ pub enum Func {
 
 impl Func {
     /// Every binary operation, in both layouts: what [`Self::ALL`] ends with.
-    const BIN: [Func; 12] = {
+    const BIN: [Func; 16] = {
         use crate::BinOp::*;
         [
             Func::BinByScalar(Min),
@@ -70,16 +70,20 @@ impl Func {
             Func::BinByScalar(Mul),
             Func::BinByScalar(Sub),
             Func::BinByScalar(SubF),
+            Func::BinByScalar(Div),
+            Func::BinByScalar(DivF),
             Func::BinUnicast(Min),
             Func::BinUnicast(Max),
             Func::BinUnicast(Add),
             Func::BinUnicast(Mul),
             Func::BinUnicast(Sub),
             Func::BinUnicast(SubF),
+            Func::BinUnicast(Div),
+            Func::BinUnicast(DivF),
         ]
     };
 
-    pub const ALL: [Func; 32] = [
+    pub const ALL: [Func; 36] = [
         Func::Sigmoid,
         Func::Tanh,
         Func::Silu,
@@ -108,6 +112,10 @@ impl Func {
         Func::BIN[9],
         Func::BIN[10],
         Func::BIN[11],
+        Func::BIN[12],
+        Func::BIN[13],
+        Func::BIN[14],
+        Func::BIN[15],
         Func::DepthwiseW,
         Func::DepthwiseC,
         Func::ConvW4,
@@ -134,11 +142,11 @@ impl Func {
             Func::LeakyRelu => 14,
             Func::MulByScalar => 15,
             Func::BinByScalar(op) => 16 + op as usize,
-            Func::BinUnicast(op) => 22 + op as usize,
-            Func::DepthwiseW => 28,
-            Func::DepthwiseC => 29,
-            Func::ConvW4 => 30,
-            Func::SoftmaxRows => 31,
+            Func::BinUnicast(op) => 24 + op as usize,
+            Func::DepthwiseW => 32,
+            Func::DepthwiseC => 33,
+            Func::ConvW4 => 34,
+            Func::SoftmaxRows => 35,
         }
     }
 
@@ -168,6 +176,8 @@ impl Func {
                 crate::BinOp::Mul => "by_scalar_mul",
                 crate::BinOp::Sub => "by_scalar_sub",
                 crate::BinOp::SubF => "by_scalar_subf",
+                crate::BinOp::Div => "by_scalar_div",
+                crate::BinOp::DivF => "by_scalar_divf",
             },
             Func::BinUnicast(op) => match op {
                 crate::BinOp::Min => "unicast_min",
@@ -176,6 +186,8 @@ impl Func {
                 crate::BinOp::Mul => "unicast_mul",
                 crate::BinOp::Sub => "unicast_sub",
                 crate::BinOp::SubF => "unicast_subf",
+                crate::BinOp::Div => "unicast_div",
+                crate::BinOp::DivF => "unicast_divf",
             },
             Func::DepthwiseW => "depthwise_w",
             Func::DepthwiseC => "depthwise_c",

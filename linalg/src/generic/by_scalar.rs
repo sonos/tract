@@ -59,6 +59,34 @@ routine_by_scalar_rust!(generic;
 
 routine_by_scalar_rust!(generic;
     f32,
+    SDivByScalar4,
+    4,
+    4,
+    fn run(x: &mut [f32], s: f32) {
+        debug_assert!(x.len() % Self::nr() == 0);
+        debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+        x.iter_mut().for_each(|px| *px /= s)
+    },
+    op(Div),
+    bin
+);
+
+routine_by_scalar_rust!(generic;
+    f32,
+    SDivFByScalar4,
+    4,
+    4,
+    fn run(x: &mut [f32], s: f32) {
+        debug_assert!(x.len() % Self::nr() == 0);
+        debug_assert!(x.as_ptr() as usize % Self::alignment_bytes() == 0);
+        x.iter_mut().for_each(|px| *px = s / *px)
+    },
+    op(DivF),
+    bin
+);
+
+routine_by_scalar_rust!(generic;
+    f32,
     SMinByScalar4,
     4,
     4,
