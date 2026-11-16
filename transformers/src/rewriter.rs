@@ -176,3 +176,18 @@ impl ModelTransform for GroupedMaskedSdpaTransform {
             .rewrite(&(), model)
     }
 }
+
+/// Opt-in sink attention conversion using SDPA accumulation and rounding.
+#[derive(Debug, Default)]
+pub struct SinkSdpaTransform;
+
+impl ModelTransform for SinkSdpaTransform {
+    fn name(&self) -> StaticName {
+        "experimental_sink_sdpa".into()
+    }
+    fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
+        Rewriter::default()
+            .with_rule_for("sink-sdpa", ops::detect_sink_sdpa::detect_sink_sdpa_rule)
+            .rewrite(&(), model)
+    }
+}

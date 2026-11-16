@@ -41,3 +41,5 @@ pub use scaled_masked_softmax::scaled_masked_softmax_rule;
 pub use sdpa::fuse_kv_cache_broadcast_rule;
 
 pub mod detect_grouped_masked_sdpa;
+
+pub mod detect_sink_sdpa;
