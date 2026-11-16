@@ -10,9 +10,8 @@
 use tract_core::internal::*;
 use tract_core::tract_linalg::block_quant::BlockQuant;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
-use tract_core::tract_linalg::block_quant::Q2_0_T;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::tensor::DeviceTensor;
+use tract_gpu::weight_format::GpuWeightFormat;
 
 use crate::kernels::matmul::Transposes;
 use crate::kernels::matmul::gemm_epilogue_mode;
@@ -93,8 +92,13 @@ impl WgpuBqFact {
     }
 }
 
-fn is_repackable(format: &dyn BlockQuant) -> bool {
-    format.block_len() == 32 && (format.dyn_eq(&Q4_0) || format.dyn_eq(&Q2_0_T))
+/// The weight format of block-quantized weights the block-quant matmul and its upload take: an
+/// exhaustive list of the [`GpuWeightFormat`]s it has kernels for.
+pub(crate) fn bq_format(format: &dyn BlockQuant) -> Option<GpuWeightFormat> {
+    match GpuWeightFormat::of_block_quant(format)? {
+        format @ (GpuWeightFormat::Q40 | GpuWeightFormat::Q20T) => Some(format),
+        GpuWeightFormat::F16 | GpuWeightFormat::F32 => None,
+    }
 }
 
 fn geometry(fact: &BlockQuantFact) -> TractResult<(usize, usize, usize)> {
@@ -124,7 +128,7 @@ pub(crate) fn repack_weight(
     format: &dyn BlockQuant,
     shape: &[usize],
 ) -> TractResult<(Vec<u8>, u32)> {
-    ensure!(is_repackable(format), "only Q4_0 and Q2_0_T are repacked");
+    ensure!(bq_format(format).is_some(), "only Q4_0 and Q2_0_T are repacked");
     let k = *shape.last().context("block-quant weight has no K")?;
     let block_len = format.block_len();
     ensure!(k.is_multiple_of(block_len), "K {k} is not a multiple of {block_len}");
@@ -212,7 +216,7 @@ pub(crate) fn bq_fact(t: &DeviceTensor) -> Option<WgpuBqFact> {
         DeviceTensor::View(t) => t.exotic_fact(),
     }?;
     let wgpu = fact.downcast_ref::<WgpuBqFact>()?;
-    if is_repackable(&*wgpu.inner.format) && (wgpu.group == 1 || wgpu.group == 4) {
+    if bq_format(&*wgpu.inner.format).is_some() && (wgpu.group == 1 || wgpu.group == 4) {
         Some(wgpu.clone())
     } else {
         None
@@ -377,7 +381,15 @@ pub fn wgpu_bq_dispatch(
         let scale_off = 0u32;
         let code_off = u32_of(total_blocks.div_ceil(group as usize))?;
 
-        let format = if fact.inner.format.dyn_eq(&Q4_0) { 0 } else { 1 };
+        let weight_format = bq_format(&*fact.inner.format)
+            .context("block-quant matmul expects a Q4_0 or Q2_0_T weight")?;
+        let (format, q4) = match weight_format {
+            GpuWeightFormat::Q40 => (0u32, true),
+            GpuWeightFormat::Q20T => (1u32, false),
+            GpuWeightFormat::F16 | GpuWeightFormat::F32 => {
+                bail!("plain weights are no block-quant")
+            }
+        };
         let a_off = u32_of(element_offset(a, 0))?;
         let tiled = a_stride_k == 1
             && a_stride_m.is_multiple_of(4)
@@ -386,15 +398,10 @@ pub fn wgpu_bq_dispatch(
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
         let pipeline = if tiled {
             q.context().chain_pipeline(
-                (
-                    if format == 0 { "matmul_bq_q4" } else { "matmul_bq_q2" },
-                    dt,
-                    epilogue,
-                    extras.len(),
-                ),
+                ("matmul_bq", weight_format, dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("bq_tiled", dt),
-                || bq_tiled_module(format == 0, dt, epilogue, extras.len()),
+                || bq_tiled_module(q4, dt, epilogue, extras.len()),
             )?
         } else {
             q.context().chain_pipeline(

@@ -1,8 +1,6 @@
 use tract_core::internal::*;
 use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
 use tract_core::tract_linalg::block_quant::BlockQuantFact;
-use tract_core::tract_linalg::block_quant::Q2_0_T;
-use tract_core::tract_linalg::block_quant::Q4_0;
 use tract_gpu::sync::{DeviceSyncKind, sync_inputs_if_required};
 use tract_gpu::tensor::DeviceTensorExt;
 
@@ -103,8 +101,7 @@ fn packed_weight_ok(op: &PrefixMatMul, facts: &[&TypedFact]) -> bool {
     let k = b.shape.dims().last().and_then(|d| d.to_usize().ok());
     k == Some(bqf.k())
         && bqf.k() % 32 == 0
-        && bqf.format.block_len() == 32
-        && (bqf.format.dyn_eq(&Q4_0) || bqf.format.dyn_eq(&Q2_0_T))
+        && crate::kernels::matmul_bq::bq_format(&*bqf.format).is_some()
 }
 
 /// Whether the kernel's single prefix stride per operand can address A and B: each is broadcast
