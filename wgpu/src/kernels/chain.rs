@@ -32,6 +32,10 @@ pub fn wgpu_chain_dispatch(
         let natural = Tensor::natural_strides(out_shape);
         let contiguous: Vec<bool> =
             inputs.iter().map(|t| t.shape() == out_shape && t.strides() == &natural[..]).collect();
+        let scalar_mask = inputs
+            .iter()
+            .enumerate()
+            .fold(0u8, |mask, (i, t)| if t.len() == 1 { mask | (1 << i) } else { mask });
         // Four values a thread: the kernel is bandwidth-bound, so a wider load
         // is the whole win. The four sit next to each other along the last
         // axis, so an operand that broadcasts over that axis is one value for
@@ -59,10 +63,10 @@ pub fn wgpu_chain_dispatch(
                 .collect::<Option<Vec<_>>>()
         })
         .flatten();
-        let key = ("chain", dt, steps, &contiguous, kinds.as_deref());
+        let key = ("chain", dt, steps, &contiguous, kinds.as_deref(), scalar_mask);
         let pipeline =
             q.context().chain_pipeline(key, layout, EntryPoint::plain("chain"), || {
-                chain_wgsl(dt, steps, &contiguous, kinds.as_deref())
+                chain_wgsl(dt, steps, &contiguous, kinds.as_deref(), scalar_mask)
             })?;
 
         let mut buffers: Vec<&crate::context::WgpuBuffer> =
@@ -102,7 +106,12 @@ pub enum ChainOperand {
 /// where the win is on a bandwidth-bound kernel. The four are adjacent along
 /// the last axis, so an operand broadcasting over that axis is read once and
 /// splatted.
-fn chain_vec4_wgsl(dt: ShaderDtype, steps: &[ChainStep], kinds: &[ChainOperand]) -> String {
+fn chain_vec4_wgsl(
+    dt: ShaderDtype,
+    steps: &[ChainStep],
+    kinds: &[ChainOperand],
+    scalar_mask: u8,
+) -> String {
     let t = dt.wgsl();
     let inputs = kinds.len();
     let mut s = preamble(dt);
@@ -130,6 +139,10 @@ fn chain_vec4_wgsl(dt: ShaderDtype, steps: &[ChainStep], kinds: &[ChainOperand])
     s.push_str(&binary_ops_vec4_wgsl(t));
     for (i, kind) in kinds.iter().enumerate() {
         if *kind == ChainOperand::Contiguous {
+            continue;
+        }
+        if scalar_mask & (1 << i) != 0 {
+            s.push_str(&format!("\nfn gather{i}(_linear: u32) -> u32 {{ return 0u; }}\n"));
             continue;
         }
         s.push_str(&format!(
@@ -192,9 +205,10 @@ pub fn chain_wgsl(
     steps: &[ChainStep],
     contiguous: &[bool],
     kinds: Option<&[ChainOperand]>,
+    scalar_mask: u8,
 ) -> String {
     if let Some(kinds) = kinds {
-        return chain_vec4_wgsl(dt, steps, kinds);
+        return chain_vec4_wgsl(dt, steps, kinds, scalar_mask);
     }
     let t = dt.wgsl();
     let inputs = contiguous.len();
@@ -218,6 +232,10 @@ pub fn chain_wgsl(
     for (i, contig) in contiguous.iter().enumerate() {
         if *contig {
             s.push_str(&format!("\nfn gather{i}(linear: u32) -> u32 {{ return linear; }}\n"));
+            continue;
+        }
+        if scalar_mask & (1 << i) != 0 {
+            s.push_str(&format!("\nfn gather{i}(_linear: u32) -> u32 {{ return 0u; }}\n"));
             continue;
         }
         s.push_str(&format!(
