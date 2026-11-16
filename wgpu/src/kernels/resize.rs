@@ -26,6 +26,7 @@ pub fn wgpu_resize_2d_dispatch(
     rows: (&DeviceTensor, &DeviceTensor, usize),
     cols: (&DeviceTensor, &DeviceTensor, usize),
     output: &DeviceTensor,
+    resize_channels: Option<usize>,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         for t in [input, rows.0, rows.1, cols.0, cols.1, output] {
@@ -41,7 +42,9 @@ pub fn wgpu_resize_2d_dispatch(
         );
         let dt = ShaderDtype::from_datum(input.datum_type())?;
         let layout = LayoutKind::Chain(if second.is_some() { 7 } else { 6 });
-        let outer: usize = output.shape()[..rank - 2].iter().product::<usize>().max(1);
+        let output_outer = output.shape()[..rank - 2].iter().product::<usize>().max(1);
+        let outer = resize_channels.unwrap_or(output_outer);
+        ensure!(outer <= output_outer);
         let (h_in, w_in) = (input.shape()[rank - 2], input.shape()[rank - 1]);
         let (h_out, w_out) = (output.shape()[rank - 2], output.shape()[rank - 1]);
         let [wx, wy, wz] = RESIZE_2D_WG.map(|d| d as usize);
@@ -193,6 +196,7 @@ pub fn wgpu_resize_2d(source: &TypedModel, node: &TypedNode) -> TractResult<Opti
             window_w: baked.windows[1],
             output_shape: baked.output_shape.clone(),
             concat_inputs: false,
+            append_inputs: 0,
         },
         plans: [ih.clone(), wh.clone(), iw.clone(), ww.clone()],
     }))
@@ -464,6 +468,78 @@ mod tests {
     use tract_core::internal::*;
 
     use crate::test_utils::{f16_vs_f32, fill, gpu_vs_cpu, transformed};
+
+    #[test]
+    fn concat_after_bilinear_resize_preserves_crop_and_channel_order() -> TractResult<()> {
+        use crate::ops::resize2d::WgpuResize2d;
+        use tract_core::ops::array::Slice;
+        use tract_core::ops::array::TypedConcat;
+        use tract_core::ops::nn::resize::CoordTransformer;
+        use tract_core::ops::nn::resize::Interpolator;
+        use tract_core::ops::nn::resize::Nearest;
+        use tract_core::ops::nn::resize::Resize;
+
+        let shapes = [[1, 64, 23, 40], [1, 64, 23, 40], [1, 40, 45, 80], [1, 3, 45, 80]];
+        let mut model = TypedModel::default();
+        let inputs = shapes
+            .iter()
+            .enumerate()
+            .map(|(ix, shape)| model.add_source(format!("x{ix}"), f16::fact(shape)))
+            .collect::<TractResult<TVec<_>>>()?;
+        let low = model.wire_node("low", TypedConcat::new(1), &inputs[..2])?[0];
+        let scales = model.add_const("scales", tensor1(&[1.0f32, 1.0, 2.0, 2.0]))?;
+        let resize = model.wire_node(
+            "resize",
+            Resize {
+                coord_transformer: CoordTransformer::HalfPixel,
+                interpolator: Interpolator::Linear,
+                nearest: Nearest::RoundPreferCeil,
+                optional_scales_input: Some(1),
+                optional_sizes_input: None,
+            },
+            &[low, scales],
+        )?[0];
+        let crop = model.wire_node("crop", Slice::new(2, 0, 45), &[resize])?[0];
+        let output =
+            model.wire_node("features", TypedConcat::new(1), &[crop, inputs[2], inputs[3]])?[0];
+        model.select_output_outlets(&[output])?;
+        let rt = tract_core::runtime::runtime_for_name("wgpu")?.unwrap();
+        let fused = rt.prepare(model.clone())?;
+        assert!(
+            fused
+                .typed_model()
+                .unwrap()
+                .nodes()
+                .iter()
+                .any(|n| n.op_as::<WgpuResize2d>().is_some_and(|op| op.append_inputs == 2))
+        );
+        model.select_output_outlets(&[output, resize])?;
+        let separate = rt.prepare(model)?;
+        assert!(
+            !separate
+                .typed_model()
+                .unwrap()
+                .nodes()
+                .iter()
+                .any(|n| n.op_as::<WgpuResize2d>().is_some_and(|op| op.append_inputs > 0))
+        );
+        let inputs = shapes
+            .iter()
+            .enumerate()
+            .map(|(i, shape)| {
+                let tensor =
+                    Tensor::from_shape(shape, &fill(i as u64 + 1, shape.iter().product()))?;
+                Ok(tensor.cast_to::<f16>()?.into_owned().into())
+            })
+            .collect::<TractResult<TVec<TValue>>>()?;
+        let got = fused.run(inputs.clone())?;
+        let expected = separate.run(inputs)?;
+        assert_eq!(
+            got[0].try_as_plain_ram()?.as_slice::<f16>()?,
+            expected[0].try_as_plain_ram()?.as_slice::<f16>()?
+        );
+        Ok(())
+    }
 
     #[test]
     fn concat_bilinear_resize_eliminates_copies() -> TractResult<()> {
