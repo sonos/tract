@@ -1,0 +1,21 @@
+{
+  "tokenizer": "https://huggingface.co/prism-ml/bonsai-image-ternary-4B-unpacked/resolve/30bbc032dd26939bff95c3d523477ad5065c3e1a/tokenizer/tokenizer.json",
+  "sizes": ["256x256", "384x384", "512x512", "384x512", "512x384", "768x768"],
+  "files": [
+    {
+      "name": "text_encoder_gptq.nnef.tar",
+      "url": "https://huggingface.co/tract-nnef/bonsai-image-ternary-4B/resolve/0982c3fa7ae95b97c62eb3ec12915a51f5632ce8/text_encoder_gptq.nnef.tar",
+      "size": 2312591360
+    },
+    {
+      "name": "transformer.nnef.tar",
+      "url": "https://huggingface.co/tract-nnef/bonsai-image-ternary-4B/resolve/0982c3fa7ae95b97c62eb3ec12915a51f5632ce8/transformer.nnef.tar",
+      "size": 1931243520
+    },
+    {
+      "name": "vae_decoder.nnef.tar",
+      "url": "https://huggingface.co/tract-nnef/bonsai-image-ternary-4B/resolve/0982c3fa7ae95b97c62eb3ec12915a51f5632ce8/vae_decoder.nnef.tar",
+      "size": 199004160
+    }
+  ]
+}

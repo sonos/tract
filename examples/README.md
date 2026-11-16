@@ -77,6 +77,7 @@ cannot run the GPU path.
 | [`ppocr`](ppocr) | PP-OCRv6 reads a sample page, an uploaded picture, or a camera snapshot. |
 | [`pixel-lab`](pixel-lab) | Live person segmentation, with the background blurred or replaced. |
 | [`stable-diffusion`](stable-diffusion) | SD 1.5 text to image. The `web` crate is the browser build. |
+| [`bonsai-image`](bonsai-image) | Ternary Bonsai Image 4B text to image on WebGPU, weights packed on the GPU (`Q2_0_T`, `Q4_0`). |
 
 ## Legacy
 
