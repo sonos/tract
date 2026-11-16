@@ -1,2 +1,4 @@
 *.nnef.tgz
 *.onnx
+hey_snips.nnef.tar
+hey-snips-tts.wav
