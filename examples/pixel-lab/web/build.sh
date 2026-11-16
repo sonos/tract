@@ -21,6 +21,7 @@ cargo build --release -p pixel-lab-web --lib --target wasm32-unknown-unknown
 rm -rf dist
 mkdir -p dist/pkg
 cp site/*.html site/*.js site/*.mjs dist/
+cp -r site/backgrounds dist/
 rm -f dist/*.test.mjs
 wasm-bindgen --target web --out-dir dist/pkg ${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-unknown-unknown/release/pixel_lab_web.wasm
 
