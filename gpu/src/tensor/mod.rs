@@ -153,7 +153,6 @@ impl DeviceTensor {
         format!("|{},{:?}|", self.shape().iter().join(","), self.datum_type(),)
     }
 
-    /// Reshaped tensor with given shape.
     /// A packed copy of this tensor in a fresh buffer of its own.
     ///
     /// `Clone` on a `DeviceTensor` shares the device buffer; op states that
@@ -167,6 +166,7 @@ impl DeviceTensor {
         Ok(copy)
     }
 
+    /// Reshaped tensor with given shape.
     pub fn reshaped(&self, shape: TVec<usize>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(t.reshaped(shape)?),
