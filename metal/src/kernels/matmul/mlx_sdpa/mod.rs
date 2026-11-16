@@ -1,7 +1,8 @@
 //! Fused SDPA via tract-owned ports of the MLX attention kernels (see
 //! mlx_sdpa.metal): a decode-specialized `sdpa_vector` family (single-pass +
 //! split-KV 2-pass) and the `steel_attention` tiled prefill kernel. Native
-//! GQA (`gqa_factor`), f32/f16, causal or no mask. Dispatch mirrors MLX's
+//! GQA (`gqa_factor`), f32/f16, additive masks and optional f32 attention sinks.
+//! Dispatch mirrors MLX's
 //! decision tree; unsupported shapes fall back to `MetalMfaSdpa` or the
 //! explode path via the chooser translator at the bottom of this file.
 
@@ -192,17 +193,18 @@ fn dispatch_sdpa_vector_1pass(
     k: &DeviceTensor,
     v: &DeviceTensor,
     mask: Option<&DeviceTensor>,
+    sinks: Option<&DeviceTensor>,
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let name = format!("sdpa_vector_{t}_{d}_{d}", t = vector_tname(dt)?);
     let mask_strides = mask.map(|m| mask_bhqk_strides(m, hq, ql, kl)).transpose()?;
     let constants = Some(ConstantValues::new(vec![
-        (20, Value::Bool(mask.is_some())), // has_mask
-        (21, Value::Bool(false)),          // query_transposed
-        (22, Value::Bool(do_causal)),      // do_causal
-        (23, Value::Bool(false)),          // bool_mask
-        (24, Value::Bool(mask.is_some())), // float_mask
-        (25, Value::Bool(false)),          // has_sinks
+        (20, Value::Bool(mask.is_some())),  // has_mask
+        (21, Value::Bool(false)),           // query_transposed
+        (22, Value::Bool(do_causal)),       // do_causal
+        (23, Value::Bool(false)),           // bool_mask
+        (24, Value::Bool(mask.is_some())),  // float_mask
+        (25, Value::Bool(sinks.is_some())), // has_sinks
     ]));
     let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxSdpa, &name, constants)?;
 
@@ -228,6 +230,9 @@ fn dispatch_sdpa_vector_1pass(
             encoder.set_slice(14, &[ms.q_seq]);
             encoder.set_slice(15, &[ms.head]);
         }
+        if let Some(sinks) = sinks {
+            encoder.set_metal_tensor(16, sinks, metal::MTLResourceUsage::Read);
+        }
         let grid = MTLSize { width: (b * hq) as _, height: ql as _, depth: 1 };
         let group = MTLSize { width: 1024, height: 1, depth: 1 };
         encoder.dispatch_thread_groups(grid, group);
@@ -248,6 +253,7 @@ fn dispatch_sdpa_vector_2pass(
     k: &DeviceTensor,
     v: &DeviceTensor,
     mask: Option<&DeviceTensor>,
+    sinks: Option<&DeviceTensor>,
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let mask_strides = mask.map(|m| mask_bhqk_strides(m, hq, ql, kl)).transpose()?;
@@ -270,7 +276,7 @@ fn dispatch_sdpa_vector_2pass(
         (22, Value::Bool(do_causal)),
         (23, Value::Bool(false)),
         (24, Value::Bool(mask.is_some())),
-        (25, Value::Bool(false)),
+        (25, Value::Bool(sinks.is_some())),
         (26, Value::I32(TWO_PASS_BLOCKS)), // blocks
     ]));
     let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxSdpa, &name, constants)?;
@@ -295,6 +301,9 @@ fn dispatch_sdpa_vector_2pass(
             encoder.set_slice(15, &[ms.kv_seq]);
             encoder.set_slice(16, &[ms.q_seq]);
             encoder.set_slice(17, &[ms.head]);
+        }
+        if let Some(sinks) = sinks {
+            encoder.set_metal_tensor(18, sinks, metal::MTLResourceUsage::Read);
         }
         let grid = MTLSize { width: hkv as _, height: b as _, depth: blocks as _ };
         let group = MTLSize { width: 32, height: gqa_factor as _, depth: ql as _ };
@@ -340,6 +349,7 @@ fn dispatch_steel_attention(
     k: &DeviceTensor,
     v: &DeviceTensor,
     mask: Option<&DeviceTensor>,
+    sinks: Option<&DeviceTensor>,
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let (bq, bk) = (32usize, if d < 128 { 32usize } else { 16usize });
@@ -352,11 +362,11 @@ fn dispatch_steel_attention(
         })
         .transpose()?;
     let constants = Some(ConstantValues::new(vec![
-        (200, Value::Bool(ql % bq == 0)),   // align_Q
-        (201, Value::Bool(kl % bk == 0)),   // align_K
-        (300, Value::Bool(mask.is_some())), // has_mask
-        (301, Value::Bool(do_causal)),      // do_causal
-        (302, Value::Bool(false)),          // has_sinks
+        (200, Value::Bool(ql % bq == 0)),    // align_Q
+        (201, Value::Bool(kl % bk == 0)),    // align_K
+        (300, Value::Bool(mask.is_some())),  // has_mask
+        (301, Value::Bool(do_causal)),       // do_causal
+        (302, Value::Bool(sinks.is_some())), // has_sinks
     ]));
     let pipeline = stream.load_pipeline_with_constants(LibraryName::MlxSdpa, &name, constants)?;
 
@@ -395,6 +405,9 @@ fn dispatch_steel_attention(
             encoder.set_slice(5, std::slice::from_ref(ms));
             encoder.set_metal_tensor(6, m, metal::MTLResourceUsage::Read);
         }
+        if let Some(sinks) = sinks {
+            encoder.set_metal_tensor(7, sinks, metal::MTLResourceUsage::Read);
+        }
         let grid = MTLSize { width: nq as _, height: hq as _, depth: b as _ };
         let group = MTLSize { width: 32, height: 4, depth: 1 };
         encoder.dispatch_thread_groups(grid, group);
@@ -414,6 +427,21 @@ pub fn dispatch_mlx_sdpa(
     k: &DeviceTensor,
     v: &DeviceTensor,
     mask: Option<&DeviceTensor>,
+    out: &DeviceTensor,
+) -> TractResult<()> {
+    dispatch_mlx_sdpa_with_sinks(stream, scale, is_causal, q, k, v, mask, None, out)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn dispatch_mlx_sdpa_with_sinks(
+    stream: &MetalStream,
+    scale: f32,
+    is_causal: bool,
+    q: &DeviceTensor,
+    k: &DeviceTensor,
+    v: &DeviceTensor,
+    mask: Option<&DeviceTensor>,
+    sinks: Option<&DeviceTensor>,
     out: &DeviceTensor,
 ) -> TractResult<()> {
     let dt = q.datum_type();
@@ -441,6 +469,11 @@ pub fn dispatch_mlx_sdpa(
     stream.retain_tensor(v);
     stream.retain_tensor(out);
 
+    if let Some(sinks) = sinks {
+        ensure!(sinks.datum_type() == DatumType::F32 && sinks.shape() == [hq]);
+        ensure_natural(sinks, "sinks")?;
+        stream.retain_tensor(sinks);
+    }
     let gqa_factor = hq / hkv;
     let shape6 = (b, hq, hkv, ql, kl, d);
     let vector_ok = VECTOR_DIMS.contains(&d) && ql <= 8 && ql <= kl && ql * gqa_factor <= 32;
@@ -448,9 +481,13 @@ pub fn dispatch_mlx_sdpa(
         // mlx forces causal off for single-position queries (cpp:746)
         let do_causal = is_causal && ql > 1;
         if use_two_pass(hq, hkv, kl) {
-            dispatch_sdpa_vector_2pass(stream, dt, scale, do_causal, shape6, q, k, v, mask, out)
+            dispatch_sdpa_vector_2pass(
+                stream, dt, scale, do_causal, shape6, q, k, v, mask, sinks, out,
+            )
         } else {
-            dispatch_sdpa_vector_1pass(stream, dt, scale, do_causal, shape6, q, k, v, mask, out)
+            dispatch_sdpa_vector_1pass(
+                stream, dt, scale, do_causal, shape6, q, k, v, mask, sinks, out,
+            )
         }
     } else {
         ensure!(
@@ -458,7 +495,7 @@ pub fn dispatch_mlx_sdpa(
             "MLX SDPA: no kernel for head dim {d} with query len {ql} (translator gate too wide?)"
         );
         ensure!(!is_causal || ql <= kl, "causal SDPA needs qL <= kL, got {ql} > {kl}");
-        dispatch_steel_attention(stream, dt, scale, is_causal, shape6, q, k, v, mask, out)
+        dispatch_steel_attention(stream, dt, scale, is_causal, shape6, q, k, v, mask, sinks, out)
     }
 }
 
@@ -496,15 +533,26 @@ impl EvalOp for MetalMlxSdpa {
     op_out_of_plan!();
     fn eval(&self, ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         use tract_gpu::tensor::DeviceTensorExt;
-        ensure!((3..=4).contains(&inputs.len()), "MetalMlxSdpa expects Q,K,V[,mask]");
+        ensure!((3..=5).contains(&inputs.len()), "MetalMlxSdpa expects Q,K,V[,mask[,sinks]]");
         let q = inputs[0].to_device_tensor()?;
         let k = inputs[1].to_device_tensor()?;
         let v = inputs[2].to_device_tensor()?;
         let mask = inputs.get(3).map(|m| m.to_device_tensor()).transpose()?;
+        let sinks = inputs.get(4).map(|s| s.to_device_tensor()).transpose()?;
         ensure!(q.rank() == 4, "expects rank-4 [B,H,Sq,D], got {:?}", q.shape());
         let out = tract_gpu::turn_handler::make_tensor_for_node(ctx, q.datum_type(), q.shape())?;
         crate::with_metal_stream(|stream| {
-            dispatch_mlx_sdpa(stream, self.scale, self.is_causal, q, k, v, mask, &out)
+            dispatch_mlx_sdpa_with_sinks(
+                stream,
+                self.scale,
+                self.is_causal,
+                q,
+                k,
+                v,
+                mask,
+                sinks,
+                &out,
+            )
         })?;
         Ok(tvec![out.into_tensor().into_tvalue()])
     }
@@ -517,20 +565,30 @@ impl TypedOp for MetalMlxSdpa {
     as_op!();
 }
 
-/// Whether an `Sdpa` node can be fused by the MLX kernels: exactly Q,K,V
-/// (causal or no external mask), f16/f32, rank-4, concrete heads with
-/// `Hq % Hkv == 0`, equal concrete head dim. Steel dims ({64,80,128}) cover
+/// Whether rank-4 f16/f32 attention fits the MLX kernels. Optional additive
+/// masks broadcast over batch, head and query; a fifth input contains one
+/// f32 sink logit per query head. Concrete heads require `Hq % Hkv == 0`
+/// and equal concrete head dimensions. Steel dims ({64,80,128}) cover
 /// any sequence lengths; vector-only dims ({96,256}) additionally need
 /// translate-time proof of decode-shape eligibility.
 pub fn mlx_sdpa_supported(
     op: &tract_transformers::ops::sdpa::Sdpa,
     in_facts: &[&TypedFact],
 ) -> bool {
-    if !(3..=4).contains(&in_facts.len()) {
+    if !(3..=5).contains(&in_facts.len()) {
         return false;
     }
     let (q, k, v) = (in_facts[0], in_facts[1], in_facts[2]);
     if !matches!(q.datum_type, DatumType::F16 | DatumType::F32) || !op.acc_datum_type.is_float() {
+        return false;
+    }
+    if let Some(sinks) = in_facts.get(4)
+        && (q.rank() != 4
+            || sinks.rank() != 1
+            || sinks.datum_type != DatumType::F32
+            || sinks.shape[0] != q.shape[1]
+            || op.acc_datum_type != DatumType::F32)
+    {
         return false;
     }
     if let Some(mask) = in_facts.get(3) {
@@ -583,7 +641,7 @@ pub fn mlx_sdpa_supported(
 crate::register_metal_op!(tract_transformers::ops::sdpa::Sdpa, |source, node, op| {
     let in_facts = source.node_input_facts(node.id)?;
     let mlx = mlx_sdpa_supported(op, &in_facts);
-    let mfa = crate::kernels::matmul::mfa::mfa_sdpa_supported(op, &in_facts);
+    let mfa = in_facts.len() < 5 && crate::kernels::matmul::mfa::mfa_sdpa_supported(op, &in_facts);
     if !mlx && !mfa {
         return Ok(None);
     }
@@ -726,6 +784,7 @@ mod tests {
                 &qd,
                 &kd,
                 &vd,
+                None,
                 None,
                 &out,
             )?;
@@ -938,7 +997,19 @@ mod tests {
                         } else {
                             dispatch_sdpa_vector_1pass
                         };
-                        f(stream, f32::datum_type(), 0.125, false, shape6, &q, &k, &v, None, &o)
+                        f(
+                            stream,
+                            f32::datum_type(),
+                            0.125,
+                            false,
+                            shape6,
+                            &q,
+                            &k,
+                            &v,
+                            None,
+                            None,
+                            &o,
+                        )
                     };
                     for _ in 0..5 {
                         run()?;

@@ -2873,7 +2873,7 @@ template <
     const constant AttnParams* params [[buffer(4)]],
     const constant AttnMaskParams* mask_params [[buffer(5), function_constant(has_mask)]],
     const device MaskType* mask [[buffer(6), function_constant(has_mask)]],
-    const device T* sinks [[buffer(7), function_constant(has_sinks)]],
+    const device float* sinks [[buffer(7), function_constant(has_sinks)]],
     uint simd_lane_id [[thread_index_in_simdgroup]],
     uint simd_group_id [[simdgroup_index_in_threadgroup]],
     uint3 tid [[threadgroup_position_in_grid]],
@@ -3315,7 +3315,7 @@ template <typename T, int D, int V = D>
     [[buffer(14), function_constant(sdpa_vector_has_mask)]],
     const constant int& mask_head_stride
     [[buffer(15), function_constant(sdpa_vector_has_mask)]],
-    const device T* sinks [[buffer(16), function_constant(sdpa_vector_has_sinks)]],
+    const device float* sinks [[buffer(16), function_constant(sdpa_vector_has_sinks)]],
     const constant int& num_q_heads
     [[buffer(17)]],
     uint3 tid [[threadgroup_position_in_grid]],
@@ -3480,7 +3480,7 @@ template <typename T, int D, int V = D>
     [[buffer(16), function_constant(sdpa_vector_has_mask)]],
     const constant int& mask_head_stride
     [[buffer(17), function_constant(sdpa_vector_has_mask)]],
-    const device T* sinks [[buffer(18), function_constant(sdpa_vector_has_sinks)]],
+    const device float* sinks [[buffer(18), function_constant(sdpa_vector_has_sinks)]],
     uint3 tptg [[threads_per_threadgroup]],
     uint3 tidtg [[thread_position_in_threadgroup]],
     uint3 tid [[threadgroup_position_in_grid]],

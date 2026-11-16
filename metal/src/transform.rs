@@ -103,7 +103,7 @@ fn cast_sdpa_mask_to_query_dt(
     _op: &tract_transformers::ops::sdpa::Sdpa,
 ) -> TractResult<Option<TypedModelPatch>> {
     let in_facts = model.node_input_facts(node.id)?;
-    if in_facts.len() != 4 {
+    if !(4..=5).contains(&in_facts.len()) {
         return Ok(None);
     }
     let (q_dt, mask_dt) = (in_facts[0].datum_type, in_facts[3].datum_type);
