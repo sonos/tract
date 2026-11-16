@@ -1,0 +1,23 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_symbol T;
+
+graph masked_attention(q, k, v, mask) -> (output) {
+    q = external<scalar>(shape = [1, 2, S, 128]);
+    k = external<scalar>(shape = [1, 2, T, 128]);
+    v = external<scalar>(shape = [1, 2, T, 128]);
+    mask = external<scalar>(shape = [1, S, T]);
+    q16 = tract_core_cast(q, to = 'f16');
+    k16 = tract_core_cast(k, to = 'f16');
+    v16 = tract_core_cast(v, to = 'f16');
+    scores = tract_core_einsum([q16, k16], expr = 'bhsd,bhkd->hsk', acc = 'f16');
+    scale = tract_core_cast(0.08837890625, to = 'f16');
+    scaled = mul(scores, scale);
+    scores32 = tract_core_cast(scaled, to = 'f32');
+    masked = add(scores32, mask);
+    weights = softmax(masked, axes = [2]);
+    weights16 = tract_core_cast(weights, to = 'f16');
+    output = tract_core_einsum([weights16, v16], expr = 'hsk,bhkd->shd', acc = 'f16');
+}

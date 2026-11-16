@@ -1,0 +1,27 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_symbol T;
+
+graph grouped_attention(q, k, v, mask) -> (output) {
+    q = external<scalar>(shape = [1, 4, S, 64]);
+    k = external<scalar>(shape = [1, 2, T, 64]);
+    v = external<scalar>(shape = [1, 2, T, 64]);
+    mask = external<scalar>(shape = [1, S, T]);
+    q_scaled = mul(q, 256.0);
+    k_scaled = mul(k, 256.0);
+    q16 = tract_core_cast(q_scaled, to = 'f16');
+    k16 = tract_core_cast(k_scaled, to = 'f16');
+    v16 = tract_core_cast(v, to = 'f16');
+    k_group = unsqueeze(k16, axes = [2]);
+    k_broadcast = tract_core_broadcast(k_group, shape = [1, 2, 2, T, 64]);
+    k_heads = reshape(k_broadcast, shape = [4], axis_start = 1, axis_count = 2);
+    q32 = tract_core_cast(q16, to = 'f32');
+    k32 = tract_core_cast(k_heads, to = 'f32');
+    scores = tract_core_einsum([q32, k32], expr = 'bhsd,bhkd->hsk', acc = 'f32');
+    weights = tract_transformers_scaled_masked_softmax(scores, mask, scale = 0.125);
+    weights16 = tract_core_cast(weights, to = 'f16');
+    grouped = reshape(weights16, shape = [2, 2], axis_start = 0, axis_count = 1);
+    output = tract_core_einsum([grouped, v16], expr = 'hgsk,bhkd->hgsd', acc = 'f16');
+}
