@@ -3026,8 +3026,10 @@ template <
   if (has_sinks) {
     STEEL_PRAGMA_UNROLL
     for (short i = 0; i < kRowsPT; ++i) {
-      max_score[i] = M_LOG2E_F * static_cast<AccumType>(sinks[tidl.y]);
-      sum_score[i] = 1;
+      if (sinks[tidl.y] != -INFINITY) {
+        max_score[i] = M_LOG2E_F * static_cast<AccumType>(sinks[tidl.y]);
+        sum_score[i] = 1;
+      }
     }
   }
 
@@ -3083,7 +3085,7 @@ template <
     if (!align_K && kb == (params->NK_aligned)) {
       using stile_t = decltype(Stile);
       using selem_t = typename stile_t::elem_type;
-      constexpr auto neg_inf = Limits<selem_t>::finite_min;
+      constexpr auto neg_inf = -INFINITY;
 
       STEEL_PRAGMA_UNROLL
       for (short i = 0; i < stile_t::kTileRows; i++) {
@@ -3104,7 +3106,7 @@ template <
     if (do_causal && kb >= kb_min_causal) {
       using stile_t = decltype(Stile);
       using selem_t = typename stile_t::elem_type;
-      constexpr auto neg_inf = Limits<selem_t>::finite_min;
+      constexpr auto neg_inf = -INFINITY;
 
       STEEL_PRAGMA_UNROLL
       for (short i = 0; i < stile_t::kTileRows; i++) {
@@ -3127,7 +3129,7 @@ template <
     if (has_mask) {
       using stile_t = decltype(Stile);
       using selem_t = typename stile_t::elem_type;
-      constexpr auto neg_inf = Limits<selem_t>::finite_min;
+      constexpr auto neg_inf = -INFINITY;
 
       constexpr bool is_bool = is_same_v<MaskType, bool>;
       using melem_t = typename metal::conditional_t<is_bool, bool, selem_t>;
@@ -3315,7 +3317,7 @@ template <typename T, int D, int V = D>
     [[buffer(15), function_constant(sdpa_vector_has_mask)]],
     const device T* sinks [[buffer(16), function_constant(sdpa_vector_has_sinks)]],
     const constant int& num_q_heads
-    [[buffer(17), function_constant(sdpa_vector_has_sinks)]],
+    [[buffer(17)]],
     uint3 tid [[threadgroup_position_in_grid]],
     uint3 tpg [[threadgroups_per_grid]],
     uint simd_gid [[simdgroup_index_in_threadgroup]],
@@ -3350,11 +3352,11 @@ template <typename T, int D, int V = D>
   values += kv_head_idx * v_head_stride + simd_gid * v_seq_stride +
       simd_lid * v_per_thread;
   if (bool_mask) {
-    bmask += q_batch_head_idx * mask_head_stride +
+    bmask += (q_batch_head_idx % num_q_heads) * mask_head_stride +
         simd_gid * mask_kv_seq_stride + q_seq_idx * mask_q_seq_stride;
   }
   if (float_mask) {
-    fmask += q_batch_head_idx * mask_head_stride +
+    fmask += (q_batch_head_idx % num_q_heads) * mask_head_stride +
         simd_gid * mask_kv_seq_stride + q_seq_idx * mask_q_seq_stride;
   }
 
@@ -3383,7 +3385,7 @@ template <typename T, int D, int V = D>
     } else if (bool_mask) {
       use_key = bmask[0];
     } else if (float_mask) {
-      use_key = (fmask[0] >= Limits<T>::finite_min);
+      use_key = fmask[0] >= Limits<T>::finite_min;
     }
     if (use_key) {
       // Read the key
@@ -3517,11 +3519,11 @@ template <typename T, int D, int V = D>
       simd_lid * v_per_thread;
   out += o_offset * blocks * V + block_idx * V + simd_lid * v_per_thread;
   if (bool_mask) {
-    bmask += q_batch_head_idx * mask_head_stride +
+    bmask += q_head_idx * mask_head_stride +
         block_idx * mask_kv_seq_stride + q_seq_idx * mask_q_seq_stride;
   }
   if (float_mask) {
-    fmask += q_batch_head_idx * mask_head_stride +
+    fmask += q_head_idx * mask_head_stride +
         block_idx * mask_kv_seq_stride + q_seq_idx * mask_q_seq_stride;
   }
   sums += o_offset * blocks + block_idx;
@@ -3547,7 +3549,7 @@ template <typename T, int D, int V = D>
     } else if (bool_mask) {
       use_key = bmask[0];
     } else if (float_mask) {
-      use_key = (fmask[0] >= Limits<T>::finite_min);
+      use_key = fmask[0] >= Limits<T>::finite_min;
     }
     if (use_key) {
       // Compute the i-th score
