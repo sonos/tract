@@ -298,6 +298,9 @@ impl MetalTransform {
             .rewrite(&(), model)?;
 
         rewire_syncs(model)?;
+        Rewriter::default()
+            .with_rule_for("bypass-host-axis-roundtrip", bypass_host_axis_roundtrip)
+            .rewrite(&(), model)?;
 
         Rewriter::default()
             .with_rule_for("window_kv_cache_output", window_kv_cache_output)
@@ -752,4 +755,30 @@ fn window_fused_kv_cache_output(
 fn reads_kv_window(succ: &TypedNode) -> bool {
     succ.op_is::<crate::kernels::matmul::mlx_sdpa::MetalMlxSdpa>()
         || succ.op_is::<tract_gpu::sync::DeviceSync>()
+}
+
+/// Keep shape-only host branches on the host when they immediately undo an upload.
+fn bypass_host_axis_roundtrip(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &crate::ops::MetalFusedAxisOp,
+) -> TractResult<Option<TypedModelPatch>> {
+    rule_if!(
+        op.op.downcast_ref::<DeviceSync>().is_some_and(|sync| sync.kind == DeviceSyncKind::ToHost)
+    );
+    rule_if!(node.inputs.len() == 1 && op.grouped_axis_ops.len() == 1);
+    let upload = model.node(node.inputs[0].node);
+    rule_if!(
+        upload.op_as::<DeviceSync>().is_some_and(|sync| sync.kind == DeviceSyncKind::ToDevice)
+    );
+    let mut patch = TypedModelPatch::default();
+    let mut output = patch.tap_model(model, upload.inputs[0])?;
+    for (ix, axis) in op.grouped_axis_ops[0].iter().enumerate() {
+        output =
+            patch.wire_node(format!("{name}.host_axis_{ix}"), axis.inner.clone(), &[output])?[0];
+    }
+    patch.shunt_outside(model, node.id.into(), output)?;
+    Ok(Some(patch))
 }
