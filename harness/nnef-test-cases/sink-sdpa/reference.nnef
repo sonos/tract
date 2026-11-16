@@ -1,0 +1,36 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_symbol T;
+graph attention(q, k, v, mask, sinks) -> (output) {
+    q = external<scalar>(shape = [1, 4, S, 64]);
+    k = external<scalar>(shape = [1, 2, T, 64]);
+    v = external<scalar>(shape = [1, 2, T, 64]);
+    mask = external<scalar>(shape = [1, 1, S, T]);
+    sinks = external<scalar>(shape = [4]);
+    q16 = tract_core_cast(q, to = 'f16');
+    k16 = tract_core_cast(k, to = 'f16');
+    v16 = tract_core_cast(v, to = 'f16');
+    q32 = tract_core_cast(q16, to = 'f32');
+    k32 = tract_core_cast(k16, to = 'f32');
+    v32 = tract_core_cast(v16, to = 'f32');
+    mask16 = tract_core_cast(mask, to = 'f16');
+    mask32 = tract_core_cast(mask16, to = 'f32');
+    kg = unsqueeze(k32, axes = [2]);
+    kb = tract_core_broadcast(kg, shape = [1, 2, 2, T, 64]);
+    kh = reshape(kb, shape = [4], axis_start = 1, axis_count = 2);
+    vg = unsqueeze(v32, axes = [2]);
+    vb = tract_core_broadcast(vg, shape = [1, 2, 2, T, 64]);
+    vh = reshape(vb, shape = [4], axis_start = 1, axis_count = 2);
+    scores = tract_core_einsum([q32, kh], expr = 'bhsd,bhtd->bhst', acc = 'f32');
+    scaled = mul(scores, 0.125);
+    masked = add(scaled, mask32);
+    sink_heads = reshape(sinks, shape = [1, 4, 1, 1]);
+    sb = tract_core_broadcast(sink_heads, shape = [1, 4, S, 1]);
+    logits = concat([masked, sb], axis = 3);
+    probabilities = softmax(logits, axes = [3]);
+    weights = slice(probabilities, axes = [3], begin = [0], end = [T]);
+    result = tract_core_einsum([weights, vh], expr = 'bhst,bhtd->bhsd', acc = 'f32');
+    output = tract_core_cast(result, to = 'f16');
+}

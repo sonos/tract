@@ -28,6 +28,7 @@ pub fn register(registry: &mut Registry) {
             TypeName::String.named("datum_type"),
             TypeName::String.named("acc_datum_type"),
             TypeName::Logical.named("is_causal"),
+            TypeName::Scalar.tensor().named("sinks"),
         ],
         &[("output", TypeName::Scalar.tensor())],
         deser_spda,
@@ -50,6 +51,9 @@ fn ser_sdpa(ast: &mut IntoAst, node: &TypedNode, op: &Sdpa) -> TractResult<Optio
         ("datum_type", datum_type(op.datum_type)),
         ("acc_datum_type", datum_type(op.acc_datum_type)),
     ];
+    if let Some(sinks) = node.inputs.get(4) {
+        attrs.push(("sinks", (*ast.mapping[sinks]).clone()));
+    }
     if let Some(scale) = op.scale.as_ref() {
         attrs.push(("scale", numeric(scale.cast_to_scalar::<f32>()?)));
     }
@@ -71,6 +75,10 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
         }
         inputs.push(mask);
     };
+    if let Some(sinks) = invocation.get_named_arg_as(builder, "sinks")? {
+        ensure!(inputs.len() == 4, "Attention sinks require an explicit mask");
+        inputs.push(sinks);
+    }
     let scale: Option<f32> = invocation.get_named_arg_as(builder, "scale")?;
     let datum_type =
         DatumType::from_str(&invocation.named_arg_as::<String>(builder, "datum_type")?)?;
@@ -80,6 +88,9 @@ fn deser_spda(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tr
     builder.wire(Sdpa { scale: scale.map(tensor0), datum_type, acc_datum_type, is_causal }, &inputs)
 }
 
+/// Scaled dot-product attention over Q, K, V and an optional additive mask.
+/// A fifth input supplies one f32 sink logit per query head; it contributes
+/// only to the softmax denominator and requires a rank-4 query and a mask.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Sdpa {
     pub scale: Option<Tensor>,
@@ -95,11 +106,56 @@ impl Sdpa {
         scores: OutletId,
         mask: Option<OutletId>,
         scale: f32,
+        sinks: Option<OutletId>,
     ) -> TractResult<OutletId> {
         let scores_fact = graph.outlet_fact(scores)?.clone();
         let rank = scores_fact.rank();
         ensure!(rank == 5);
 
+        if let Some(sinks) = sinks {
+            let scale = graph.add_const("sink_scale", tensor0(scale))?;
+            let scores = wire_with_rank_broadcast(
+                "sink_scores_scaled",
+                graph,
+                math::mul(),
+                &[scores, scale],
+            )?[0];
+            let scores = wire_with_rank_broadcast(
+                "sink_scores_masked",
+                graph,
+                math::add(),
+                &[scores, mask.context("Sinks require a mask")?],
+            )?[0];
+            let shape = scores_fact.shape.to_tvec();
+            let sinks = graph.wire_node(
+                "sink_heads",
+                AxisOp::Reshape(
+                    0,
+                    tvec![shape[1].clone() * &shape[2]],
+                    tvec![1.to_dim(), shape[1].clone(), shape[2].clone(), 1.to_dim(), 1.to_dim()],
+                ),
+                &[sinks],
+            )?[0];
+            let mut sink_shape = shape.clone();
+            sink_shape[4] = 1.to_dim();
+            let sinks = graph.wire_node(
+                "sink_broadcast",
+                MultiBroadcastTo::new(sink_shape.into()),
+                &[sinks],
+            )?[0];
+            let logits =
+                graph.wire_node("sink_logits", TypedConcat { axis: 4 }, &[scores, sinks])?[0];
+            let probabilities = graph.wire_node(
+                "sink_softmax",
+                Softmax::new(tvec![4], None, SoftmaxKind::Softmax),
+                &[logits],
+            )?[0];
+            return Ok(graph.wire_node(
+                "sink_drop",
+                tract_core::ops::array::Slice { axis: 4, start: 0.to_dim(), end: shape[4].clone() },
+                &[probabilities],
+            )?[0]);
+        }
         let scale = tensor0(scale).cast_to_dt(self.acc_datum_type)?.into_owned();
         if let Some(mask) = mask {
             ensure!(graph.outlet_fact(mask)?.rank() == 5);
@@ -129,6 +185,9 @@ impl Sdpa {
         let mut v = graph.add_source("v", input_facts[2].clone())?;
         let mut mask =
             input_facts.get(3).map(|m| graph.add_source("mask", (*m).clone())).transpose()?;
+
+        let sinks =
+            input_facts.get(4).map(|s| graph.add_source("sinks", (*s).clone())).transpose()?;
 
         if input_facts[0].rank() == 3 {
             q = graph.wire_node("reshape_q_heads", Add(1), &[q])?[0];
@@ -204,7 +263,7 @@ impl Sdpa {
         }
 
         let attention_weights =
-            self.wire_softmax(&mut graph, scores, mask, scale).context("In wire_softmax")?;
+            self.wire_softmax(&mut graph, scores, mask, scale, sinks).context("In wire_softmax")?;
         let mut output = graph.wire_node(
             "att_out",
             EinSum::new("bhgmn,bhgnv->bhgmv".parse().unwrap(), self.acc_datum_type),
@@ -292,6 +351,12 @@ impl EvalOp for Sdpa {
 
 impl TypedOp for Sdpa {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
+        ensure!((3..=5).contains(&inputs.len()));
+        if let Some(sinks) = inputs.get(4) {
+            ensure!(inputs[0].rank() == 4 && sinks.rank() == 1);
+            ensure!(sinks.shape[0] == inputs[0].shape[1]);
+            ensure!(sinks.datum_type == DatumType::F32 && self.acc_datum_type == DatumType::F32);
+        }
         if self.is_causal {
             ensure!(inputs.len() == 3, "Mask cannot be provided if is_causal=true")
         };
@@ -379,7 +444,9 @@ impl TypedOp for Sdpa {
     ) -> TractResult<Option<TypedModelPatch>> {
         // FlashSdpaOp accumulates in f32 whatever the input floats are, so an f16
         // accumulator request is satisfied (with extra precision) as well.
-        if self.acc_datum_type.is::<f32>() || self.acc_datum_type.is::<f16>() {
+        if node.inputs.len() < 5
+            && (self.acc_datum_type.is::<f32>() || self.acc_datum_type.is::<f16>())
+        {
             // FlashSdpaOp requires Q and V to share the same head dim (last axis).
             // When they differ (MLA / diff-head-sizes attention), fall back to the
             // generic SDPA expansion instead.
