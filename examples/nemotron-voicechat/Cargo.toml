@@ -9,7 +9,7 @@ clap.workspace = true
 hound = "3.5.1"
 serde_json.workspace = true
 tract.workspace = true
-tungstenite = "0.26"
+tungstenite = "0.30"
 
 [features]
 cuda = ["tract/cuda-13000"]
