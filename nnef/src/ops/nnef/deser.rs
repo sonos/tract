@@ -218,8 +218,12 @@ pub fn slice(builder: &mut ModelBuilder, invocation: &ResolvedInvocation) -> Tra
             }
             None
         };
-        let begin_ix_tdim: Option<TDim> = get_tdim_at(begins);
-        let end_ix_tdim: Option<TDim> = get_tdim_at(ends);
+        let from_end = |v: TDim, zero_is_end: bool| match v.to_i64() {
+            Ok(i) if i < 0 || (zero_is_end && i == 0) => input_fact.shape[axis].clone() + i,
+            _ => v,
+        };
+        let begin_ix_tdim: Option<TDim> = get_tdim_at(begins).map(|b| from_end(b, false));
+        let end_ix_tdim: Option<TDim> = get_tdim_at(ends).map(|e| from_end(e, true));
 
         let axis_len = builder
             .wire_as_outlets(Const::new(rctensor0(input_fact.shape[axis].clone()))?, &[])?[0];

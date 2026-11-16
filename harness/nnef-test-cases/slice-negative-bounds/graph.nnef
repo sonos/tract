@@ -1,0 +1,11 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(data) -> (last_two, last, middle)
+{
+    data = external<scalar>(shape = [1, 5, 2]);
+    last_two = slice(data, axes = [1], begin = [-2], end = [0], stride = [1]);
+    last = slice(data, axes = [1], begin = [-1], end = [0], stride = [1]);
+    middle = slice(data, axes = [1], begin = [-4], end = [-2], stride = [1]);
+}
