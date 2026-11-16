@@ -538,20 +538,19 @@ pub fn mlx_sdpa_supported(
         if mask.datum_type != q.datum_type || mask.rank() != 4 {
             return false;
         }
-        let dims: Option<Vec<usize>> = mask.shape.iter().map(|d| d.to_usize().ok()).collect();
-        let (Some(md), Some(qd)) =
-            (dims, q.shape.iter().map(|d| d.to_usize().ok()).collect::<Option<Vec<_>>>())
-        else {
-            return false;
-        };
-        let kl = k.shape[2].to_usize().ok();
-        if md[0] != 1 || md[3] != kl.unwrap_or(usize::MAX) {
+        if q.rank() != 4 || k.rank() != 4 || v.rank() != 4 {
             return false;
         }
-        if !(md[1] == 1 || md[1] == qd[1]) || !(md[2] == 1 || md[2] == qd[2]) {
+        if !mask.shape[0].is_one() || mask.shape[3] != k.shape[2] {
+            return false;
+        }
+        if !(mask.shape[1].is_one() || mask.shape[1] == q.shape[1])
+            || !(mask.shape[2].is_one() || mask.shape[2] == q.shape[2])
+        {
             return false;
         }
     }
+
     if q.rank() != 4 || k.rank() != 4 || v.rank() != 4 {
         return false;
     }
