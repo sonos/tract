@@ -15,6 +15,7 @@ that is harder to derive from reading the source.
 * [`pgo.md`](pgo.md) — profile-guided optimization build recipe
 * [`kernel-notes.md`](kernel-notes.md) — tract-linalg kernels and debugging
 * [`pgo-bolt.md`](pgo-bolt.md) — profile-guided optimization and BOLT release builds
+* [`precision-policy.md`](precision-policy.md) — RFC: numerical precision policy, tolerances, migration
 * [`nnef/`](nnef/) — reference schemas for the `tract_*` NNEF extensions
 
 Documentation drifts faster than code. If something here disagrees with the
