@@ -1,6 +1,7 @@
 use tract_core::internal::*;
 use tract_gpu::tensor::DeviceTensorExt;
 
+use crate::kernels::copy::wgpu_copy_nd_dispatch;
 use crate::kernels::resize::wgpu_resize_2d_dispatch;
 
 /// A resize over the two trailing axes in one launch, each output gathering
@@ -14,6 +15,7 @@ pub struct WgpuResize2d {
     pub window_w: usize,
     pub output_shape: TVec<usize>,
     pub concat_inputs: bool,
+    pub append_inputs: usize,
 }
 
 impl Op for WgpuResize2d {
@@ -41,13 +43,44 @@ impl EvalOp for WgpuResize2d {
             &self.output_shape,
         )?;
         if output.len() > 0 {
+            let mut cursor = if self.append_inputs > 0 {
+                ensure!(self.concat_inputs && inputs.len() == 6 + self.append_inputs);
+                Some(input.shape()[1] + inputs[5].shape()[1])
+            } else {
+                None
+            };
             wgpu_resize_2d_dispatch(
                 input,
                 if self.concat_inputs { Some(inputs[5]) } else { None },
                 (inputs[1], inputs[2], self.window_h),
                 (inputs[3], inputs[4], self.window_w),
                 &output,
+                cursor,
             )?;
+            if let Some(c) = cursor.as_mut() {
+                for extra in &inputs[6..] {
+                    let [1, channels, h, w] = extra.shape() else {
+                        bail!("Expected NCHW features");
+                    };
+                    ensure!(
+                        [*h, *w] == self.output_shape[2..]
+                            && extra.datum_type() == output.datum_type()
+                    );
+                    ensure!(*c + channels <= self.output_shape[1]);
+                    let offset = *c * h * w * output.datum_type().size_of();
+                    wgpu_copy_nd_dispatch(
+                        extra,
+                        0,
+                        extra.strides(),
+                        &output,
+                        offset,
+                        extra.shape(),
+                        output.strides(),
+                    )?;
+                    *c += channels;
+                }
+                ensure!(*c == self.output_shape[1]);
+            }
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
