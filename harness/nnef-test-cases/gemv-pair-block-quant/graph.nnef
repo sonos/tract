@@ -1,0 +1,13 @@
+version 1.0;
+
+extension tract_registry tract_core;
+
+graph network(input) -> (output)
+{
+    input = external(shape = [1, 64]);
+    w1 = variable(label = 'w1', shape = [128, 64]);
+    w2 = variable(label = 'w2', shape = [32, 128]);
+    hidden = linear(input, w1, 0.0);
+    gate = sigmoid(hidden);
+    output = linear(gate, w2, 0.0);
+}
