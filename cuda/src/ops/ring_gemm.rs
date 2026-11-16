@@ -104,13 +104,31 @@ impl TypedOp for CudaRingGemm {
 /// oldest slot of its window, `slots_view` addresses the ring in the slot order
 /// a turn writes through, and `table` is the kernel's copy of where each
 /// activation channel reads, rebuilt each turn.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct CudaRingGemmState {
     ring: Option<DeviceTensor>,
     slots_view: Option<DeviceTensor>,
     table: Option<DeviceTensor>,
     heads: TVec<usize>,
     lanes: usize,
+}
+
+impl Clone for CudaRingGemmState {
+    fn clone(&self) -> Self {
+        let ring = self.ring.as_ref().map(|r| r.deep_clone().expect("cloning a ring"));
+        let slots_view = ring.as_ref().zip(self.slots_view.as_ref()).map(|(ring, view)| {
+            ring.reshaped(view.shape().into())
+                .and_then(|r| r.restrided(view.strides().into()))
+                .expect("re-viewing a cloned ring")
+        });
+        CudaRingGemmState {
+            ring,
+            slots_view,
+            table: self.table.clone(),
+            heads: self.heads.clone(),
+            lanes: self.lanes,
+        }
+    }
 }
 
 impl CudaRingGemmState {

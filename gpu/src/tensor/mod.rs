@@ -154,6 +154,19 @@ impl DeviceTensor {
     }
 
     /// Reshaped tensor with given shape.
+    /// A packed copy of this tensor in a fresh buffer of its own.
+    ///
+    /// `Clone` on a `DeviceTensor` shares the device buffer; op states that
+    /// write their buffers in place clone them through this instead, so a
+    /// cloned state never writes into the original's memory. Not for exotic
+    /// tensors.
+    pub fn deep_clone(&self) -> TractResult<DeviceTensor> {
+        ensure!(!self.is_exotic(), "deep_clone of an exotic tensor");
+        let copy = DeviceTensor::uninitialized_dt(self.datum_type(), self.shape())?;
+        get_context()?.copy_nd(self, 0, self.strides(), &copy, 0, self.shape(), copy.strides())?;
+        Ok(copy)
+    }
+
     pub fn reshaped(&self, shape: TVec<usize>) -> TractResult<Self> {
         match self {
             Self::Owned(t) => Ok(t.reshaped(shape)?),

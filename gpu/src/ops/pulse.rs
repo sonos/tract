@@ -174,12 +174,23 @@ fn fill_lane(
 /// the frames it retires instead of shifting the whole buffer down. `lanes` is
 /// the extent of the buffer's lane axis, 1 when the state serves a single
 /// stream and the buffer has no lane axis at all.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct GpuDelayState {
     pub node_id: usize,
     pub buffer: Option<DeviceTensor>,
     heads: TVec<usize>,
     lanes: usize,
+}
+
+impl Clone for GpuDelayState {
+    fn clone(&self) -> Self {
+        GpuDelayState {
+            node_id: self.node_id,
+            buffer: self.buffer.as_ref().map(|b| b.deep_clone().expect("cloning a delay buffer")),
+            heads: self.heads.clone(),
+            lanes: self.lanes,
+        }
+    }
 }
 
 impl GpuDelayState {
@@ -348,12 +359,26 @@ impl TypedOp for GpuPulsePad {
 /// stream and `last_valid_frame` each lane's last frame of valid input, for edge
 /// padding. `lanes` is the extent of their lane axis, 1 when the state serves a
 /// single stream and they have no lane axis at all.
-#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Debug, Hash, PartialEq, Eq)]
 struct GpuPulsePadState {
     node_id: usize,
     current_pos: TVec<usize>,
     last_valid_frame: Option<DeviceTensor>,
     lanes: usize,
+}
+
+impl Clone for GpuPulsePadState {
+    fn clone(&self) -> Self {
+        GpuPulsePadState {
+            node_id: self.node_id,
+            current_pos: self.current_pos.clone(),
+            last_valid_frame: self
+                .last_valid_frame
+                .as_ref()
+                .map(|f| f.deep_clone().expect("cloning a pulse pad frame")),
+            lanes: self.lanes,
+        }
+    }
 }
 
 /// Repeat one frame of `src` over `range` along `axis` of one lane of `dst`.
@@ -682,10 +707,22 @@ impl TypedOp for GpuDeconvDelay {
     as_op!();
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct GpuDeconvDelayState {
     valid_inputed: isize,
     buffer: Option<DeviceTensor>,
+}
+
+impl Clone for GpuDeconvDelayState {
+    fn clone(&self) -> Self {
+        GpuDeconvDelayState {
+            valid_inputed: self.valid_inputed,
+            buffer: self
+                .buffer
+                .as_ref()
+                .map(|b| b.deep_clone().expect("cloning a deconv delay buffer")),
+        }
+    }
 }
 
 impl OpState for GpuDeconvDelayState {
