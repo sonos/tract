@@ -115,3 +115,5 @@ pub fn memory_arena_hints_for_causal_llm(model: &TypedModel) -> TractResult<Symb
     }
     Ok(values)
 }
+
+register_simple_model_transform!("experimental_split_rope", SplitRopeTransform);

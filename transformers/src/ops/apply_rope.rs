@@ -268,6 +268,60 @@ pub fn apply_rope_rule(
     Ok(Some(patch))
 }
 
+/// Recognize rotary embeddings expressed as two half-width product sums.
+/// The slices must cover one input and share the same cosine and sine tensors.
+pub fn split_apply_rope_rule(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    op: &TypedConcat,
+) -> TractResult<Option<TypedModelPatch>> {
+    use tract_core::ops::math::Sub;
+    rule_if!(op.axis == 3 && node.inputs.len() == 2);
+    let lo = model.node(node.inputs[0].node);
+    let hi = model.node(node.inputs[1].node);
+    rule_if!(lo.op_as::<TypedBinOp>().is_some_and(|op| op.0.is::<Sub>()));
+    rule_if!(hi.op_as::<TypedBinOp>().is_some_and(|op| op.0.is::<Add>()));
+    let products =
+        [lo.inputs[0], lo.inputs[1], hi.inputs[0], hi.inputs[1]].map(|o| model.node(o.node));
+    rule_if!(products.iter().all(|n| n.op_as::<TypedBinOp>().is_some_and(|op| op.0.is::<Mul>())));
+    let (a, cos) = (products[0].inputs[0], products[0].inputs[1]);
+    let (b, sin) = (products[1].inputs[0], products[1].inputs[1]);
+    rule_if!(
+        products[2].inputs.as_slice() == [b, cos] && products[3].inputs.as_slice() == [a, sin]
+    );
+    let am = model.node(a.node);
+    let bm = model.node(b.node);
+    rule_if!(am.op_as::<AxisOp>() == Some(&AxisOp::Move(1, 2)));
+    rule_if!(bm.op_as::<AxisOp>() == Some(&AxisOp::Move(1, 2)));
+    let an = model.node(am.inputs[0].node);
+    let bn = model.node(bm.inputs[0].node);
+    rule_if_some!(asl = an.op_as::<Slice>());
+    rule_if_some!(bsl = bn.op_as::<Slice>());
+    rule_if!(an.inputs == bn.inputs && asl.axis == 3 && bsl.axis == 3);
+    let fact = model.outlet_fact(an.inputs[0])?;
+    rule_if!(fact.rank() == 4 && ApplyRope::is_supported_dt(fact.datum_type));
+    rule_if!(asl.start == 0.to_dim() && asl.end == bsl.start && bsl.end == fact.shape[3]);
+    rule_if!(asl.end.clone() * 2 == bsl.end);
+    let cf = model.outlet_fact(cos)?;
+    let sf = model.outlet_fact(sin)?;
+    rule_if!(cf.rank() == 4 && cf.shape == sf.shape && cf.shape[3] == asl.end);
+    rule_if!(cf.datum_type == fact.datum_type && sf.datum_type == fact.datum_type);
+    let af = model.outlet_fact(a)?;
+    rule_if!((0..3).all(|axis| cf.shape[axis].is_one() || cf.shape[axis] == af.shape[axis]));
+    let mut patch = TypedModelPatch::default();
+    let input = patch.tap_model(model, an.inputs[0])?;
+    let input = patch.wire_node(format!("{name}.input"), AxisOp::Move(1, 2), &[input])?[0];
+    let cos = patch.tap_model(model, cos)?;
+    let sin = patch.tap_model(model, sin)?;
+    let cos = patch.wire_node(format!("{name}.cos"), TypedConcat { axis: 3 }, &[cos, cos])?[0];
+    let sin = patch.wire_node(format!("{name}.sin"), TypedConcat { axis: 3 }, &[sin, sin])?[0];
+    let output = patch.wire_node(format!("{name}.rope"), ApplyRope, &[input, cos, sin])?[0];
+    patch.shunt_outside(model, node.id.into(), output)?;
+    Ok(Some(patch))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
