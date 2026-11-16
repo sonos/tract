@@ -1,0 +1,12 @@
+version 1.0;
+extension tract_registry tract_core;
+graph roundtrip(x, y) -> (device_result, host_result) {
+    x = tract_core_external(shape = [3], datum_type = 'i64');
+    y = tract_core_external(shape = [3], datum_type = 'i64');
+    device_result = lt(x, y);
+    xa = unsqueeze(x, axes = [0]);
+    ya = unsqueeze(y, axes = [1]);
+    xt = tract_core_cast(xa, to = 'tdim');
+    yt = tract_core_cast(ya, to = 'tdim');
+    host_result = gt(xt, yt);
+}
