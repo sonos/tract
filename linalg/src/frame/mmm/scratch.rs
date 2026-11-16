@@ -165,6 +165,9 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
         }
         for (ix, spec) in specs.iter().enumerate() {
             offset = offset.next_multiple_of(&align);
+            if let FS::BinScalar(_, op) | FS::BinPerRow(_, op) | FS::BinPerCol(_, op) = spec {
+                ensure!(op.fuses_into_mmm(), "{op:?} has no fused matmul form");
+            }
             let ker_spec = match spec {
                 FS::BinScalar(t, op) => match op {
                     BinOp::Min => FKS::ScalarMin(*t.try_as_plain_ram()?.to_scalar()?),
@@ -173,6 +176,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                     BinOp::Add => FKS::ScalarAdd(*t.try_as_plain_ram()?.to_scalar()?),
                     BinOp::Sub => FKS::ScalarSub(*t.try_as_plain_ram()?.to_scalar()?),
                     BinOp::SubF => FKS::ScalarSubF(*t.try_as_plain_ram()?.to_scalar()?),
+                    BinOp::Div | BinOp::DivF => unreachable!(),
                 },
                 FS::ShiftLeft(s) => FKS::ShiftLeft(*s),
                 FS::RoundingShiftRight(s, rp) => FKS::RoundingShiftRight(*s, *rp),
@@ -347,6 +351,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             BinOp::Mul => FKS::PerRowMul(v),
                             BinOp::Sub => FKS::PerRowSub(v),
                             BinOp::SubF => FKS::PerRowSubF(v),
+                            BinOp::Div | BinOp::DivF => unreachable!(),
                         }
                     }
                     FS::BinPerCol(v, op) => {
@@ -358,6 +363,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             BinOp::Mul => FKS::PerColMul(v),
                             BinOp::Sub => FKS::PerColSub(v),
                             BinOp::SubF => FKS::PerColSubF(v),
+                            BinOp::Div | BinOp::DivF => unreachable!(),
                         }
                     }
                     FS::AddRowColProducts(rows, cols) => {
@@ -454,6 +460,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             BinOp::Mul => FKS::PerRowMul(ptr),
                             BinOp::Sub => FKS::PerRowSub(ptr),
                             BinOp::SubF => FKS::PerRowSubF(ptr),
+                            BinOp::Div | BinOp::DivF => unreachable!(),
                         }
                     }
                     FS::BinPerCol(v, op) => {
@@ -480,6 +487,7 @@ impl<TI: LADatum> ScratchSpaceImpl<TI> {
                             BinOp::Mul => FKS::PerColMul(ptr),
                             BinOp::Sub => FKS::PerColSub(ptr),
                             BinOp::SubF => FKS::PerColSubF(ptr),
+                            BinOp::Div | BinOp::DivF => unreachable!(),
                         }
                     }
                     FS::AddRowColProducts(rows, cols) => {

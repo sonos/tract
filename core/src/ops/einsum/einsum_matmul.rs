@@ -390,7 +390,7 @@ fn push_reshape_below_binop_rule(
     rule_if!(matches!(op, AxisOp::Reshape(..)));
     rule_if_some!(succ = model.single_succ(node.id)?);
     rule_if_some!(binop = succ.op_as::<crate::ops::binary::TypedBinOp>());
-    rule_if!(binop.0.as_linalg_binop().is_some());
+    rule_if!(binop.0.as_linalg_binop().is_some_and(|b| b.fuses_into_mmm()));
     crate::optim::change_axes::sink_axis_op(model, node)
 }
 

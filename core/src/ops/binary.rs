@@ -7,7 +7,7 @@ use tract_itertools::Itertools;
 use tract_linalg::multithread::BShare;
 use tract_linalg::{BinFn, BinOp};
 
-use super::math::{Add, Max, Min, Mul, Sub};
+use super::math::{Add, Div, DivF, Max, Min, Mul, Sub};
 use super::{cast::cast, math::SubF};
 use tract_linalg::routines::Func;
 
@@ -460,6 +460,16 @@ fn repeat_broadcast(op: BinOp, a: &mut Tensor, b: &Tensor, period: usize) -> Tra
                         c.iter_mut().for_each(|x| *x = s - *x)
                     }
                 }
+                BinOp::Div => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x /= s)
+                    }
+                }
+                BinOp::DivF => {
+                    for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
+                        c.iter_mut().for_each(|x| *x = s / *x)
+                    }
+                }
                 BinOp::Min => {
                     for (c, &s) in av.chunks_exact_mut(period).zip(bs) {
                         c.iter_mut().for_each(|x| *x = if *x < s { *x } else { s })
@@ -494,6 +504,8 @@ fn core_op_for_linalg_op(linalg: &BinOp) -> Box<dyn BinMiniOp> {
         BinOp::Mul => Box::new(Mul),
         BinOp::Sub => Box::new(Sub),
         BinOp::SubF => Box::new(SubF),
+        BinOp::Div => Box::new(Div),
+        BinOp::DivF => Box::new(DivF),
     }
 }
 fn declutter_broadcasting_operand_1(
@@ -985,6 +997,10 @@ fn linalg_op_for_binop(binop: &dyn BinMiniOp) -> Option<BinOp> {
         Some(BinOp::Sub)
     } else if binop.is::<SubF>() {
         Some(BinOp::SubF)
+    } else if binop.is::<Div>() {
+        Some(BinOp::Div)
+    } else if binop.is::<DivF>() {
+        Some(BinOp::DivF)
     } else {
         None
     }

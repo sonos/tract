@@ -110,6 +110,8 @@ pub enum BinOp {
     Mul,
     Sub,
     SubF,
+    Div,
+    DivF,
 }
 
 impl BinOp {
@@ -118,8 +120,16 @@ impl BinOp {
         match self {
             Sub => SubF,
             SubF => Sub,
+            Div => DivF,
+            DivF => Div,
             sym => *sym,
         }
+    }
+
+    /// Whether a matmul kernel can apply this operation in its fused epilogue. Division has
+    /// by-scalar and unicast kernels but no fused matmul form.
+    pub fn fuses_into_mmm(&self) -> bool {
+        !matches!(self, BinOp::Div | BinOp::DivF)
     }
 }
 
