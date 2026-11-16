@@ -3,18 +3,19 @@ use tract_gpu::tensor::DeviceTensorExt;
 
 use crate::kernels::reduce::wgpu_sum_run_launch;
 
-/// A sum over a contiguous run of trailing axes, one workgroup per output
+/// A sum or mean over a contiguous run of trailing axes, one workgroup per output
 /// value: the global pooling of a squeeze-excitation gate, where a per-axis
 /// pass would be one launch per axis and a serial loop would starve the
 /// device. The shape keeps the reduced axes as ones.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WgpuSumRun {
     pub first_axis: usize,
+    pub mean: bool,
 }
 
 impl Op for WgpuSumRun {
     fn name(&self) -> StaticName {
-        "WgpuSumRun".into()
+        if self.mean { "WgpuMeanRun".into() } else { "WgpuSumRun".into() }
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
@@ -37,7 +38,7 @@ impl EvalOp for WgpuSumRun {
         let output =
             tract_gpu::turn_handler::make_tensor_for_node(ctx, input.datum_type(), &shape)?;
         if output.len() > 0 {
-            wgpu_sum_run_launch(input, self.first_axis, &output)?;
+            wgpu_sum_run_launch(input, self.first_axis, self.mean, &output)?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
