@@ -22,7 +22,8 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
 
 /// Copies `input` into `output` under the given strides. A copy that is a
 /// batch of 2-D transposes (see [`transpose_launch`]) goes through the tiled
-/// transpose; any other runs one invocation per element.
+/// transpose. Aligned contiguous FP16 copies move four values per invocation;
+/// other copies run one invocation per element.
 pub fn wgpu_copy_nd_dispatch(
     input: &DeviceTensor,
     input_offset: usize,
@@ -67,6 +68,32 @@ pub fn wgpu_copy_nd_dispatch(
         q.retain_tensor(input);
         q.retain_tensor(output);
         let dt = ShaderDtype::from_datum(input.datum_type())?;
+        let n: u64 = output_shape.iter().map(|d| *d as u64).product();
+        let off_in = element_offset(input, input_offset);
+        let off_out = element_offset(output, output_offset);
+        if dt == ShaderDtype::F16
+            && output_shape.len() == 1
+            && input_strides == [1]
+            && output_strides == [1]
+            && n.is_multiple_of(4)
+            && off_in.is_multiple_of(4)
+            && off_out.is_multiple_of(4)
+        {
+            let pipeline = q.context().chain_pipeline(
+                ("copy_vec4", dt),
+                LayoutKind::Unary,
+                EntryPoint::typed("copy_vec4", dt),
+                || copy_vec4_wgsl(dt),
+            )?;
+            let bg = q.context().bind_group(
+                LayoutKind::Unary,
+                &[get_wgpu_buffer(input), get_wgpu_buffer(output)],
+                q.uniform(),
+            )?;
+            let values = [off_in as u32 / 4, off_out as u32 / 4, n as u32 / 4, 0];
+            let dyn_off = q.alloc_uniform(&pack_u32s(&values))?;
+            return q.dispatch("copy_vec4", &pipeline, &bg, dyn_off, n / 4);
+        }
         let key = PipelineKey {
             module: ModuleKey { kind: ModuleKind::Copy, dtype: dt },
             entry: EntryPoint::typed("copy", dt),
@@ -75,7 +102,6 @@ pub fn wgpu_copy_nd_dispatch(
         let in_buf = get_wgpu_buffer(input);
         let out_buf = get_wgpu_buffer(output);
         let bg = q.context().bind_group(LayoutKind::Unary, &[in_buf, out_buf], q.uniform())?;
-        let n: u64 = output_shape.iter().map(|d| *d as u64).product();
         let rank = output_shape.len().max(1);
         let mut vals = vec![
             element_offset(input, input_offset) as u32,
@@ -89,6 +115,25 @@ pub fn wgpu_copy_nd_dispatch(
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
         q.dispatch("copy", &pipeline, &bg, dyn_off, n)
     })
+}
+
+fn copy_vec4_wgsl(dt: ShaderDtype) -> String {
+    let t = dt.wgsl();
+    let suffix = dt.suffix();
+    format!(
+        "{}\n\
+struct Params {{ off_in: u32, off_out: u32, len: u32, _pad: u32 }}
+@group(0) @binding(0) var<storage, read> inp: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read_write> outp: array<vec4<{t}>>;
+@group(0) @binding(2) var<uniform> params: Params;
+@compute @workgroup_size({WORKGROUP})
+fn copy_vec4_{suffix}(@builtin(global_invocation_id) gid: vec3<u32>) {{
+    let i = gid.y * {GRID_LIMIT}u * {WORKGROUP}u + gid.x;
+    if (i >= params.len) {{ return; }}
+    outp[params.off_out + i] = inp[params.off_in + i];
+}}",
+        preamble(dt)
+    )
 }
 
 fn wgpu_transpose_dispatch(
@@ -256,6 +301,57 @@ mod tests {
     use super::wgpu_copy_nd_dispatch;
     use crate::test_utils::close;
     use crate::with_wgpu_queue;
+
+    #[test]
+    fn copy_contiguous_preserves_offsets_tails_and_special_values() -> TractResult<()> {
+        crate::wgpu_context();
+        for dt in [DatumType::F32, DatumType::F16] {
+            let mut values: Vec<f32> = (0..600).map(|i| (i % 113) as f32 - 55.0).collect();
+            values[8..12].copy_from_slice(&[f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -0.0]);
+            let source = Tensor::from_shape(&[600], &values)?.cast_to_dt(dt)?.into_owned();
+            let src = source.into_device()?;
+            for (start, end, len) in [(0, 0, 512), (4, 8, 260), (1, 4, 64), (4, 1, 64), (4, 8, 259)]
+            {
+                let mut expected = vec![-999f32; 600];
+                let dst = Tensor::from_shape(&[600], &expected)?
+                    .cast_to_dt(dt)?
+                    .into_owned()
+                    .into_device()?;
+                expected[end..end + len].copy_from_slice(&values[start..start + len]);
+                wgpu_copy_nd_dispatch(
+                    &src,
+                    start * dt.size_of(),
+                    &[1],
+                    &dst,
+                    end * dt.size_of(),
+                    &[len],
+                    &[1],
+                )?;
+                let actual = dst.to_host()?.into_tensor().cast_to::<f32>()?.into_owned();
+                for (actual, expected) in
+                    actual.try_as_plain_ram()?.as_slice::<f32>()?.iter().zip(expected)
+                {
+                    assert!(*actual == expected || (actual.is_nan() && expected.is_nan()));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn copy_contiguous_vectors_cross_grid_dimension() -> TractResult<()> {
+        crate::wgpu_context();
+        use crate::kernels::shaders::GRID_LIMIT;
+        use crate::kernels::shaders::WORKGROUP;
+        let len = GRID_LIMIT as usize * WORKGROUP as usize * 4 + 4;
+        let values: Vec<f16> = (0..len).map(|i| f16::from_f32((i % 251) as f32)).collect();
+        let source = Tensor::from_shape(&[len], &values)?;
+        let src = source.clone().into_device()?;
+        let dst = DeviceTensor::uninitialized_dt(DatumType::F16, &[len])?;
+        wgpu_copy_nd_dispatch(&src, 0, &[1], &dst, 0, &[len], &[1])?;
+        assert_eq!(dst.to_host()?.into_tensor(), source);
+        Ok(())
+    }
 
     #[test]
     fn copy_nd_transposed_matches_cpu() -> TractResult<()> {
