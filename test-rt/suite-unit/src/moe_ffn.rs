@@ -32,6 +32,7 @@ struct MoeProblem {
     wg_bias: Option<Tensor>,
     k: usize,
     gate: GateMode,
+    relu2: bool,
     linear: bool,
     storage: Storage,
     weight_inputs: WeightInputs,
@@ -53,8 +54,16 @@ impl Arbitrary for MoeProblem {
 
     fn arbitrary_with((linear, storage, weight_inputs): Self::Parameters) -> Self::Strategy {
         let dimension = if matches!(storage, Storage::Float) { 1usize..33 } else { 1usize..3 };
-        (1usize..17, dimension.clone(), dimension, 1usize..9, any::<bool>(), 0usize..5)
-            .prop_flat_map(move |(tokens, d, h, experts, has_w3, gate)| {
+        (
+            1usize..17,
+            dimension.clone(),
+            dimension,
+            1usize..9,
+            any::<bool>(),
+            0usize..5,
+            any::<bool>(),
+        )
+            .prop_flat_map(move |(tokens, d, h, experts, has_w3, gate, relu2)| {
                 let (d, h) =
                     if matches!(storage, Storage::Float) { (d, h) } else { (d * 32, h * 32) };
                 let up = if linear { [experts, h, d] } else { [experts, d, h] };
@@ -72,9 +81,10 @@ impl Arbitrary for MoeProblem {
                     },
                     1..=experts,
                     Just(gate),
+                    Just(relu2),
                 )
             })
-            .prop_map(move |(x, wg, w1, w2, w3, wg_bias, k, gate)| Self {
+            .prop_map(move |(x, wg, w1, w2, w3, wg_bias, k, gate, relu2)| Self {
                 x,
                 wg,
                 w1,
@@ -89,6 +99,7 @@ impl Arbitrary for MoeProblem {
                     3 => GateMode::Raw,
                     _ => GateMode::SigmoidNorm,
                 },
+                relu2,
                 linear,
                 storage,
                 weight_inputs,
@@ -190,7 +201,11 @@ impl MoeProblem {
                             .sum()
                     };
                     let gate = project(&w1);
-                    *value = gate / (1.0 + (-gate).exp());
+                    *value = if self.relu2 {
+                        gate.max(0.0) * gate.max(0.0)
+                    } else {
+                        gate / (1.0 + (-gate).exp())
+                    };
                     if let Some(up) = &w3 {
                         *value *= project(up);
                     }
@@ -258,7 +273,7 @@ impl Test for MoeProblem {
         }
         let op = MoeFfn {
             k: self.k,
-            activation: "silu".into(),
+            activation: if self.relu2 { "relu2" } else { "silu" }.into(),
             gate: self.gate.clone(),
             has_w3: self.w3.is_some(),
             has_wg_bias: self.wg_bias.is_some(),
@@ -320,6 +335,7 @@ pub fn suite() -> TractResult<TestSuite> {
             wg_bias: None,
             k: 1,
             gate: GateMode::Sigmoid,
+            relu2: false,
             linear: false,
             storage: Storage::Float,
             weight_inputs: WeightInputs::All,

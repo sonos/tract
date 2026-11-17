@@ -305,7 +305,8 @@ static __device__ void routed_mul_vec_plain(const T *w, const float *x,
 INSTANTIATE_ROUTED_MUL_VEC_PLAIN(f32, float)
 INSTANTIATE_ROUTED_MUL_VEC_PLAIN(f16, half)
 
-// activation: 0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped swiglu (pairs).
+// activation: 0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped swiglu (pairs),
+// 5 squared relu.
 static __device__ __forceinline__ float routed_activate(float v, int activation) {
   if (activation == 1) {
     return v / (1.0f + expf(-v));
@@ -313,6 +314,9 @@ static __device__ __forceinline__ float routed_activate(float v, int activation)
     return 0.5f * v * (1.0f + tanhf(0.7978845608f * (v + 0.044715f * v * v * v)));
   } else if (activation == 3) {
     return fmaxf(v, 0.0f);
+  } else if (activation == 5) {
+    const float r = fmaxf(v, 0.0f);
+    return r * r;
   }
   return v;
 }

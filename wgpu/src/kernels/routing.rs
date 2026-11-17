@@ -902,14 +902,15 @@ fn project(
     })
 }
 
-/// The activations: 0 none, 1 silu, 2 tanh gelu, 3 relu, and for a gate and up pair either
-/// one of those of the gate times up, or clamped SwiGLU (4).
+/// The activations: 0 none, 1 silu, 2 tanh gelu, 3 relu, 5 squared relu, and for a gate and
+/// up pair either one of those of the gate times up, or clamped SwiGLU (4).
 const ACTIVATIONS: &str = r#"
 fn activate(v: f32, activation: u32) -> f32 {
     if (activation == 1u) { return v / (1.0 + exp(-v)); }
     // Tanh GELU as v * sigmoid(2c): tanh overflows to NaN on some backends.
     if (activation == 2u) { return v / (1.0 + exp(-1.5957691216 * (v + 0.044715 * v * v * v))); }
     if (activation == 3u) { return max(v, 0.0); }
+    if (activation == 5u) { let r = max(v, 0.0); return r * r; }
     return v;
 }
 

@@ -1,4 +1,4 @@
-use super::activation::activation_op;
+use super::activation::{activation_ops, wire_activation};
 use super::{ExpertLayout, GateMode, concat_block_quant_rows, scatter_add_weighted};
 use crate::ops::routed_matmul::f32_input;
 use std::hash::{Hash, Hasher};
@@ -115,9 +115,9 @@ pub(super) fn build_expert_plan(
                 &[h, up],
             )?[0]
         } else {
-            let act_op = activation_op(activation, w3.is_some())
+            let act_ops = activation_ops(activation, w3.is_some())
                 .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
-            let h = model.wire_node("activation", act_op, &[h])?[0];
+            let h = wire_activation(&mut model, "activation", act_ops, h)?;
             if let Some(w3) = w3 {
                 let w3_const = model.add_const("w3", expert_const(w3)?)?;
                 let mut gate = model.wire_node(
@@ -146,7 +146,7 @@ pub(super) fn build_expert_plan(
         return SimplePlan::new(model.into_optimized()?);
     }
 
-    let act_op = activation_op(activation, w3.is_some())
+    let act_ops = activation_ops(activation, w3.is_some())
         .ok_or_else(|| format_err!("Unsupported activation: {activation}"))?;
 
     let h = if preserve_block_quant
@@ -169,12 +169,12 @@ pub(super) fn build_expert_plan(
         let gate =
             model.wire_node("w3_slice", Slice::new(1, hidden, hidden + w3.shape()[0]), &[fused])?
                 [0];
-        let h = model.wire_node("activation", act_op, &[h])?[0];
+        let h = wire_activation(&mut model, "activation", act_ops, h)?;
         model.wire_node("swiglu_mul", mul(), &[h, gate])?[0]
     } else {
         let w1_const = model.add_const("w1", expert_const(w1)?)?;
         let h = model.wire_node("w1_matmul", EinSum::new(axes_in.clone(), dt), &[x, w1_const])?[0];
-        let h = model.wire_node("activation", act_op, &[h])?[0];
+        let h = wire_activation(&mut model, "activation", act_ops, h)?;
 
         if let Some(w3) = w3 {
             let w3_const = model.add_const("w3", expert_const(w3)?)?;

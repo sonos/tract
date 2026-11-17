@@ -378,13 +378,14 @@ pub struct RoutedLinearKernels {
 }
 
 /// A postamble kernel's activation: its code (0 none, 1 silu, 2 tanh gelu, 3 relu, 4 clamped
-/// SwiGLU), then the clamped SwiGLU's alpha and limit.
+/// SwiGLU, 5 squared relu), then the clamped SwiGLU's alpha and limit.
 pub fn routed_activation_code(activation: &RoutedActivation) -> (u32, f32, f32) {
     match activation {
         RoutedActivation::None => (0, 0.0, 0.0),
         RoutedActivation::Silu => (1, 0.0, 0.0),
         RoutedActivation::Gelu => (2, 0.0, 0.0),
         RoutedActivation::Relu => (3, 0.0, 0.0),
+        RoutedActivation::Relu2 => (5, 0.0, 0.0),
         RoutedActivation::ClampedSwiGlu { alpha_bits, limit_bits } => {
             (4, f32::from_bits(*alpha_bits), f32::from_bits(*limit_bits))
         }
