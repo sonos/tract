@@ -18,7 +18,12 @@ def write_inputs(path, arrays):
 
 cli = shlex.split(os.environ["TRACT_RUN"])
 with_sinks = os.environ.get("TEST_SINKS") == "1"
-metal = os.environ.get("TEST_METAL") == "1"
+runtimes = os.environ.get("TRACT_RUNTIMES", "").split()
+op_assertions = {
+    "--metal": ["--assert-op-count", "MetalMlxSdpa", "1"],
+    "--cuda": ["--assert-op-count", "CudaFlashAttention", "1"],
+    "--runtime=wgpu": [],
+}
 symbolic = os.environ.get("TEST_SYMBOLIC") == "1"
 with tempfile.TemporaryDirectory() as temporary:
     root = Path(temporary)
@@ -57,5 +62,7 @@ with tempfile.TemporaryDirectory() as temporary:
                 run = ["run"] + (symbols if symbolic else []) + ["--input-from-npz", str(inputs)]
                 print(f"{dtype} S={query_len} T={key_len} {case} sinks={with_sinks}", flush=True)
                 subprocess.run(common + run + ["--save-outputs-npz", str(outputs)], check=True)
-                if metal:
-                    subprocess.run(common + ["--metal"] + run + ["--assert-output-bundle", str(outputs), "--approx", "approximate", "--assert-op-count", "MetalMlxSdpa", "1"], check=True)
+                for runtime in runtimes:
+                    if runtime in op_assertions:
+                        check = ["--assert-output-bundle", str(outputs), "--approx", "approximate"]
+                        subprocess.run(common + [runtime] + run + check + op_assertions[runtime], check=True)
