@@ -4,11 +4,11 @@ const stamped = file => import(`./${file}?stamp=${stamp}`);
 // The page posts the first command as soon as the worker is created. A top-level
 // await yields before onmessage exists, and Chrome drops that message, so the
 // canvas is transferred and never drawn. Load the modules in the handler instead.
-let model, modelUrl, rvmScale, formatR, shouldWarp, isFirefox, createCompletionPoll;
+let model, modelUrl, rvmScale, formatR, holdsUncertainMask, shouldWarp, isFirefox, createCompletionPoll;
 const modulesReady = Promise.all([
   stamped('models.mjs'), stamped('pairing.mjs'), stamped('firefox-poll.mjs'),
 ]).then(([models, pairing, firefoxPoll]) => {
-  ({model, modelUrl, rvmScale, formatR} = models);
+  ({model, modelUrl, rvmScale, formatR, holdsUncertainMask} = models);
   shouldWarp = pairing.shouldWarp;
   ({isFirefox, createCompletionPoll} = firefoxPoll);
 });
@@ -17,6 +17,7 @@ let modulePromise, segmenter, tractDevice, composer, device, frameCanvas, frameC
 let tractPoll, compositePoll;
 // Set while a new R factor is installed, so the in-flight mask can finish and the next one waits.
 let holdInference = false;
+let canHold = false;
 let rvmSize = null;
 // How the latest camera frame was drawn. A finished mask is shown with these,
 // instead of waiting for the next camera frame.
@@ -118,7 +119,7 @@ function warpNow(frameId) {
 
 function showMask() {
   if (!shown || gpuFrames >= MAX_GPU_FRAMES) return;
-  present(composer.draw(shown.refine, shown.view, {frameId: framesSeen, motion: warpNow(framesSeen)}));
+  present(composer.draw(shown.refine, shown.view, {frameId: framesSeen, motion: warpNow(framesSeen), hold: shown.hold}));
 }
 
 // Count a composited picture once. A held frame is drawn on every camera frame,
@@ -175,6 +176,8 @@ async function command(type, payload) {
     const target = device.createTexture({size: [width, height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST});
     mask = new MaskRelay(segmenter.mask_texture(), target, width, height);
     composer = await Compositor.create(device, target, payload.canvas);
+    canHold = holdsUncertainMask(m);
+    composer.setHold(canHold);
     frameCanvas = new OffscreenCanvas(payload.canvas.width, payload.canvas.height);
     frameContext = frameCanvas.getContext('2d');
     modelCanvas = new OffscreenCanvas(width, height);
@@ -200,6 +203,15 @@ async function command(type, payload) {
   }
   if (type === 'harmonize') {
     composer.setHarmonize(payload.enabled);
+    return {};
+  }
+  if (type === 'hold') {
+    const enabled = canHold && payload.enabled;
+    composer.setHold(enabled);
+    if (shown) {
+      shown.hold = enabled;
+      showMask();
+    }
     return {};
   }
   if (type === 'background') {
@@ -230,8 +242,9 @@ async function command(type, payload) {
       composer.uploadFrame(frameCanvas, frameId);
       inferLatest();
     } finally { bitmap.close(); }
-    shown = {refine: payload.refine, view: payload.view, motion};
-    const drawn = composer.draw(payload.refine, payload.view, {frameId: framesSeen, motion: warpNow(framesSeen)});
+    const hold = canHold && payload.hold;
+    shown = {refine: payload.refine, view: payload.view, motion, hold};
+    const drawn = composer.draw(payload.refine, payload.view, {frameId: framesSeen, motion: warpNow(framesSeen), hold});
     present(drawn);
     return {gpuFrames, inferring: mask.busy, warped: drawn.warped, held: drawn.held, synced: drawn.synced};
   }

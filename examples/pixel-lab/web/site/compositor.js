@@ -7,6 +7,7 @@
 const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const {MotionWarp} = await import(`./motion.js?stamp=${stamp}`);
 const {presentationKey, ringSlot, shownPicture} = await import(`./pairing.mjs?stamp=${stamp}`);
+const {BLEND_KEEP, SHOW_BACKGROUND, SHOW_PERSON} = await import(`./mask-hold.mjs?stamp=${stamp}`);
 const FULLSCREEN = `
 struct VsOut { @builtin(position) position: vec4f, @location(0) uv: vec2f };
 @vertex fn vs(@builtin(vertex_index) i: u32) -> VsOut {
@@ -149,7 +150,9 @@ fn refinedAlpha(uv: vec2f, centre: vec3f, shift: vec2f) -> f32 {
       total += w;
     }
   }
-  return smoothstep(0.15, 0.85, sum / total);
+  // Leave the average soft. A steep ramp here turns a one-column mask
+  // change into a sparkling fringe, and this pass has no previous frame.
+  return sum / total;
 }
 @fragment fn fs(in: VsOut) -> @location(0) vec4f {
   let fg = textureSampleLevel(frameTex, linearSampler, in.uv, 0.0).rgb;
@@ -188,6 +191,33 @@ fn refinedAlpha(uv: vec2f, centre: vec3f, shift: vec2f) -> f32 {
   return vec4f(mix(bg, harmonized(fg), alpha), 1.0);
 }`;
 
+// One decision per new mask, at the mask's own resolution. The same rule as
+// mask-hold.mjs. Red is the mask that is drawn. Green is the mix, before the
+// hard picture gate, and the next mask blends against that.
+const HOLD = FULLSCREEN + `
+struct HoldParams { seed: u32, pad0: u32, pad1: u32, pad2: u32 };
+@group(0) @binding(0) var currentMask: texture_2d<f32>;
+@group(0) @binding(1) var previousMask: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> holdParams: HoldParams;
+fn uncertainty_of(v: f32) -> f32 {
+  let centered = min(abs(v - 0.5) * 2.0, 1.0);
+  return 1.0 - centered * centered;
+}
+fn shown_of(blended: f32) -> f32 {
+  if (blended >= ${SHOW_PERSON}) { return 1.0; }
+  if (blended <= ${SHOW_BACKGROUND}) { return 0.0; }
+  return blended;
+}
+@fragment fn fs(in: VsOut) -> @location(0) vec4f {
+  let coord = vec2i(in.position.xy);
+  let raw = textureLoad(currentMask, coord, 0).r;
+  let stored = textureLoad(previousMask, coord, 0);
+  let history = select(stored.g, raw, holdParams.seed == 1u);
+  let blended = raw + (history - raw) * uncertainty_of(raw) * ${BLEND_KEEP};
+  let shown = shown_of(blended);
+  return vec4f(shown, blended, 0.0, shown);
+}`;
+
 const MODES={colour:0,blur:1,mask:2,image:3};
 const LOW_SCALE=4;
 const HIGH_SCALE=8;
@@ -222,14 +252,14 @@ export class Compositor {
       const module=device.createShaderModule({code});
       return device.createRenderPipelineAsync({layout:'auto',vertex:{module,entryPoint:'vs'},fragment:{module,entryPoint:'fs',targets:[{format:target}]},primitive:{topology:'triangle-list'}});
     };
-    const [composite,blurLow,blurHigh,downsample]=await Promise.all([
-      pipeline(COMPOSITE,format),pipeline(BLUR_LOW,'rgba8unorm'),pipeline(BLUR_HIGH,'rgba8unorm'),pipeline(DOWNSAMPLE,'rgba8unorm'),
+    const [composite,blurLow,blurHigh,downsample,hold]=await Promise.all([
+      pipeline(COMPOSITE,format),pipeline(BLUR_LOW,'rgba8unorm'),pipeline(BLUR_HIGH,'rgba8unorm'),pipeline(DOWNSAMPLE,'rgba8unorm'),pipeline(HOLD,'rgba8unorm'),
     ]);
-    return new Compositor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample);
+    return new Compositor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample,hold);
   }
 
-  constructor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample) {
-    Object.assign(this,{device,maskTexture,context,composite,blurLow,blurHigh,downsample});
+  constructor(device,maskTexture,canvas,context,composite,blurLow,blurHigh,downsample,holdPipeline) {
+    Object.assign(this,{device,maskTexture,context,composite,blurLow,blurHigh,downsample,holdPipeline});
     this.width=canvas.width;this.height=canvas.height;
     this.sampler=device.createSampler({magFilter:'linear',minFilter:'linear',addressModeU:'clamp-to-edge',addressModeV:'clamp-to-edge'});
     this.frame=device.createTexture({size:[this.width,this.height],format:'rgba8unorm',usage:SAMPLED});
@@ -247,6 +277,10 @@ export class Compositor {
     this.setBlur('high');
     this.motion=null;
     this.maskFrameId=-1;
+    this.hold=true;
+    this.holdRead=null;
+    this.smoothedMaskId=-1;
+    this.holdParams=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
     this.inferenceFrameId=-1;
     this.heldFrameId=-1;
     this.heldSource=null;
@@ -294,6 +328,67 @@ export class Compositor {
 
   setHarmonize(enabled) {
     this.harmonize = Boolean(enabled);
+  }
+
+  setHold(enabled) {
+    this.hold = Boolean(enabled);
+    if (!this.hold) {
+      this.holdRead = null;
+      this.smoothedMaskId = -1;
+    }
+  }
+
+  // Textures match the mask. A model change replaces the compositor, so a new
+  // size always starts without a previous mask.
+  ensureHoldTextures() {
+    const width = this.maskTexture.width;
+    const height = this.maskTexture.height;
+    if (this.holdTextures && this.holdWidth === width && this.holdHeight === height) return;
+    this.holdTextures?.forEach(texture => texture.destroy());
+    const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_DST;
+    this.holdTextures = [0, 1].map(() => this.device.createTexture({
+      size: [width, height], format: 'rgba8unorm', usage, label: 'held mask',
+    }));
+    this.holdWidth = width;
+    this.holdHeight = height;
+    this.holdRead = null;
+    this.smoothedMaskId = -1;
+  }
+
+  drawHold(encoder, destination, previous, seed) {
+    this.device.queue.writeBuffer(this.holdParams, 0, new Uint32Array([seed ? 1 : 0, 0, 0, 0]));
+    const group = this.device.createBindGroup({layout: this.holdPipeline.getBindGroupLayout(0), entries: [
+      {binding: 0, resource: this.maskTexture.createView()},
+      {binding: 1, resource: previous.createView()},
+      {binding: 2, resource: {buffer: this.holdParams}},
+    ]});
+    const pass = encoder.beginRenderPass({colorAttachments: [{
+      view: destination.createView(), loadOp: 'clear', storeOp: 'store',
+    }]});
+    pass.setPipeline(this.holdPipeline);
+    pass.setBindGroup(0, group);
+    pass.draw(3);
+    pass.end();
+  }
+
+  // Blend this mask once. Camera frames that reuse it sample the stored result.
+  settleHold(encoder) {
+    if (!this.hold || this.maskFrameId < 0) return null;
+    this.ensureHoldTextures();
+    if (this.smoothedMaskId === this.maskFrameId && this.holdRead) return this.holdRead;
+    const [first, second] = this.holdTextures;
+    if (!this.holdRead) {
+      // The mask texture can be sampled, not copied. Binding it as both inputs
+      // makes the blend a copy of the current mask.
+      this.drawHold(encoder, first, this.maskTexture, true);
+      this.holdRead = first;
+    } else {
+      const destination = this.holdRead === first ? second : first;
+      this.drawHold(encoder, destination, this.holdRead, false);
+      this.holdRead = destination;
+    }
+    this.smoothedMaskId = this.maskFrameId;
+    return this.holdRead;
   }
 
   setBlur(level = 'high') {
@@ -389,24 +484,26 @@ export class Compositor {
       {binding: 0, resource: this.sampler}, {binding: 1, resource: texture.createView()}, {binding: 2, resource: {buffer}}]}));
   }
 
-  compositeFrom(source, flow, currentLuma, keyLuma, keyFrame, blurTexture) {
+  compositeFrom(source, flow, currentLuma, keyLuma, keyFrame, blurTexture, maskTexture) {
     let cache = this.compositeCache.get(source);
     if (!cache) {
       cache = new Map();
       this.compositeCache.set(source, cache);
     }
     const background = this.mode === 'image' && this.imageTexture ? this.imageTexture : blurTexture;
-    const key = `${this.textureId(background)}:${this.textureId(flow)}:${this.textureId(currentLuma)}:${this.textureId(keyLuma)}:${this.textureId(keyFrame)}`;
+    const key = `${this.textureId(maskTexture)}:${this.textureId(background)}:${this.textureId(flow)}:${this.textureId(currentLuma)}:${this.textureId(keyLuma)}:${this.textureId(keyFrame)}`;
     return this.cached(cache, key, () => this.device.createBindGroup({layout: this.composite.getBindGroupLayout(0), entries: [
-      {binding: 0, resource: this.sampler}, {binding: 1, resource: source.createView()}, {binding: 2, resource: this.maskTexture.createView()},
+      {binding: 0, resource: this.sampler}, {binding: 1, resource: source.createView()}, {binding: 2, resource: maskTexture.createView()},
       {binding: 3, resource: background.createView()}, {binding: 4, resource: {buffer: this.params}}, {binding: 5, resource: flow.createView()},
       {binding: 6, resource: currentLuma.createView()}, {binding: 7, resource: keyLuma.createView()},
       {binding: 8, resource: keyFrame.createView()}]}));
   }
 
-  draw(refine, view, {frameId = -1, motion = false} = {}) {
+  draw(refine, view, {frameId = -1, motion = false, hold = this.hold} = {}) {
+    if (Boolean(hold) !== this.hold) this.setHold(hold);
     const maskTexel=[1/this.maskTexture.width,1/this.maskTexture.height];
     const encoder=this.device.createCommandEncoder({label:'pixel-lab composite'});
+    const maskSource = this.settleHold(encoder) ?? this.maskTexture;
     const live = this.ringTexture(frameId);
     const matched = this.maskFrameId >= 0 ? this.ringTexture(this.maskFrameId) : null;
     // Warp only when it can take the mask from its own frame onto this newer one.
@@ -449,7 +546,7 @@ export class Compositor {
       pass(shrunk.createView(), this.activeBlur, this.reducedFrom(horizontal, 'v'));
       blurTexture = shrunk;
     }
-    pass(this.context.getCurrentTexture().createView(),this.composite,this.compositeFrom(source, flow, currentLuma, boundKey, boundFrame, blurTexture));
+    pass(this.context.getCurrentTexture().createView(),this.composite,this.compositeFrom(source, flow, currentLuma, boundKey, boundFrame, blurTexture, maskSource));
     this.device.queue.submit([encoder.finish()]);
     return {warped, held, synced, presented: presentationKey(picture)};
   }

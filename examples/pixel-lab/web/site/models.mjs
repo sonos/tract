@@ -105,6 +105,12 @@ export function model(id) {
   return found;
 }
 
+// MediaPipe and MODNet classify each frame on its own. RVM already carries a
+// recurrent state, so the uncertain-mask hold is not applied to it.
+export function holdsUncertainMask(entry) {
+  return entry.kind !== 'rvm';
+}
+
 export function capture(id) {
   const found = CAPTURES.find(candidate => candidate.id === id);
   if (!found) throw new Error(`Unsupported capture size ${id}`);
