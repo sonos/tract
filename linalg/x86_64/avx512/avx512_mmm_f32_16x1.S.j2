@@ -45,8 +45,10 @@ Windows ABI:
 	cmp rbx,        4
 	jge              {{L}}main_loop_packed_packed
 
+	// fold the partials into zmm0 and zero them, so a following AddMatMul starts clean
 	{% for r in range(1, 4) %}
 	   vaddps zmm0, zmm0, zmm{{r}}
+	   vxorps zmm{{r}}, zmm{{r}}, zmm{{r}}
 	{% endfor %}
 
     test    rbx, rbx
