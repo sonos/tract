@@ -1,17 +1,131 @@
 use tract_core::internal::*;
+use tract_core::ops::math::Sub;
+use tract_core::ops::nn::Sigmoid;
 use tract_gpu::fact::DeviceTypedFactExt;
 use tract_gpu::ops::binary::GpuBinOp;
+use tract_gpu::ops::cast::GpuCast;
 use tract_gpu::ops::change_axes::GpuAxisOp;
+use tract_gpu::ops::concat::GpuConcat;
 use tract_gpu::ops::element_wise::GpuElementWise;
+use tract_gpu::ops::slice::GpuSlice;
 use tract_gpu::rule_ensure;
 
 use crate::kernels::bin_ops::BINARY_OPS;
+use crate::kernels::conv::DECODER_STATE_UPDATE;
+use crate::kernels::conv::decoder_state_epilogue;
 use crate::kernels::element_wise::ELEMENT_WISE_OPS;
 use crate::kernels::shaders::ChainStep;
 use crate::ops::chain::WgpuElementWiseChain;
 use crate::ops::conv::WgpuConv;
 use crate::ops::deconv::WgpuDeconv;
 use crate::ops::matmul::WgpuGemm;
+
+/// Fuses a gated FP16 recurrent update into a direct NCHW convolution.
+pub fn fuse_decoder_state_update(
+    _ctx: &(),
+    model: &TypedModel,
+    node: &TypedNode,
+    name: &str,
+    conv: &WgpuConv,
+) -> TractResult<Option<TypedModelPatch>> {
+    let context = crate::wgpu_context();
+    rule_ensure!(
+        context.apple_hardware_webgpu()
+            && context.shader_f16()
+            && context.device().limits().max_storage_buffers_per_shader_stage >= 7
+    );
+    let spec = &conv.op.pool_spec;
+    rule_ensure!(
+        conv.epilogue.is_empty()
+            && conv.f16_accumulation
+            && conv.op.group == 1
+            && spec.data_format == tract_core::ops::nn::DataFormat::NCHW
+            && spec.kernel_shape[..] == [3, 3]
+            && spec.strides()[..] == [1, 1]
+            && spec.dilations()[..] == [1, 1]
+    );
+    let input = model.outlet_fact(node.inputs[0])?.to_device_fact()?;
+    let output = model.outlet_fact(node.id.into())?.to_device_fact()?;
+    rule_ensure!(input.datum_type == DatumType::F16 && output.datum_type == DatumType::F16);
+    let Some([1, c, h, w]) = output.shape.as_concrete() else { return Ok(None) };
+    rule_ensure!(matches!(
+        (*c, *h, *w),
+        (64, 23, 40) | (40, 45, 80) | (20, 90, 160) | (16, 180, 320)
+    ));
+    rule_ensure!(input.shape.as_concrete() == Some(&[1, 2 * c, *h, *w]));
+    let pad = spec.computed_padding(&input.shape.dims()[2..]);
+    rule_ensure!(pad.iter().all(|p| p.pad_before == 1.to_dim() && p.pad_after == 1.to_dim()));
+    let Some(concat) = model.node(node.inputs[0].node).op_as::<GpuConcat>() else {
+        return Ok(None);
+    };
+    rule_ensure!(concat.axis == 1);
+    let Some(term) = model.single_succ(node.id)? else { return Ok(None) };
+    let Some(activation) = term.op_as::<WgpuElementWiseChain>() else { return Ok(None) };
+    let [head, bias, gate] = term.inputs.as_slice() else { return Ok(None) };
+    rule_ensure!(*head == OutletId::from(node.id));
+    let bias_fact = model.outlet_fact(*bias)?.to_device_fact()?;
+    rule_ensure!(
+        bias_fact.datum_type == DatumType::F16
+            && bias_fact.shape.as_concrete().is_some_and(|shape| {
+                shape.iter().all(|&dim| dim == 1) || shape == [1, *c, 1, 1]
+            })
+    );
+    let binary = |op: &str, rhs, swapped| ChainStep::Binary { op: op.into(), rhs, swapped };
+    rule_ensure!(
+        activation.steps
+            == [binary("add", 1, false), ChainStep::Unary("tanh".into()), binary("mul", 2, true)]
+    );
+    let Some(state) = model.single_succ(term.id)? else { return Ok(None) };
+    let Some(blend) = state.op_as::<WgpuElementWiseChain>() else { return Ok(None) };
+    let [inverse, prev, term_in] = state.inputs.as_slice() else { return Ok(None) };
+    rule_ensure!(
+        *term_in == OutletId::from(term.id)
+            && blend.steps == [binary("mul", 1, false), binary("add", 2, false)]
+    );
+    let subtract = model.node(inverse.node);
+    let [one, gate_in] = subtract.inputs.as_slice() else { return Ok(None) };
+    rule_ensure!(
+        *gate_in == *gate
+            && subtract
+                .op_as::<GpuBinOp>()
+                .is_some_and(|op| op.backend_name == "Wgpu" && op.mini_op.is::<Sub>())
+    );
+    let start = model.outlet_fact(*one)?.to_device_fact()?;
+    rule_ensure!(start.datum_type == DatumType::F16 && start.shape.volume() == 1.to_dim());
+    let outs = model.output_outlets()?;
+    rule_ensure!(!outs.contains(head) && !outs.contains(term_in));
+    for o in [term.id.into(), state.id.into(), *inverse, *gate, *prev] {
+        let f = model.outlet_fact(o)?.to_device_fact()?;
+        rule_ensure!(f.datum_type == DatumType::F16 && f.shape == output.shape);
+    }
+    let gate_node = model.node(gate.node);
+    rule_ensure!(
+        gate_node.op_is::<GpuSlice>()
+            || gate_node
+                .op_as::<GpuElementWise>()
+                .is_some_and(|op| { op.backend_name == "Wgpu" && op.mini_op.is::<Sigmoid>() })
+    );
+    let previous = model.node(prev.node);
+    let [previous_input] = previous.inputs.as_slice() else { return Ok(None) };
+    rule_ensure!(
+        previous
+            .op_as::<GpuCast>()
+            .is_some_and(|op| { op.backend_name == "Wgpu" && op.to == DatumType::F16 })
+            && model.outlet_fact(*previous_input)?.datum_type == DatumType::F32
+    );
+    let mut patch = TypedModelPatch::default();
+    let mut inputs = tvec![];
+    for o in [node.inputs[0], node.inputs[1], *bias, *gate, *prev, *one] {
+        inputs.push(patch.tap_model(model, o)?);
+    }
+    let result = patch.wire_node(
+        format!("{name}.decoder-state"),
+        WgpuConv { epilogue: vec![ChainStep::Unary(DECODER_STATE_UPDATE.into())], ..conv.clone() },
+        &inputs,
+    )?[0];
+    patch.shunt_outside(model, state.id.into(), result)?;
+    Ok(Some(patch))
+}
 
 /// Epilogue operands ride in one `vec4` of offsets.
 const MAX_EPILOGUE_OPERANDS: usize = 3;
@@ -86,6 +200,7 @@ pub fn fuse_conv_epilogue(
     node_name: &str,
     op: &WgpuConv,
 ) -> TractResult<Option<TypedModelPatch>> {
+    rule_ensure!(!decoder_state_epilogue(&op.epilogue));
     let channels = op.op.pool_spec.output_channels.to_dim();
     absorb(model, node, node_name, channels, &op.epilogue, false, |steps| WgpuConv {
         op: op.op.clone(),

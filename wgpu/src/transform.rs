@@ -123,6 +123,10 @@ impl ModelTransform for WgpuTransform {
             .rewrite(&(), model)?;
         Rewriter::default()
             .with_rule_for("fuse_gemm_epilogue", crate::rewrite_rules::fuse_gemm_epilogue)
+            .with_rule_for(
+                "fuse_decoder_state_update",
+                crate::rewrite_rules::fuse_decoder_state_update,
+            )
             .with_rule_for("fuse_conv_epilogue", crate::rewrite_rules::fuse_conv_epilogue)
             .with_rule_for("fuse_deconv_epilogue", crate::rewrite_rules::fuse_deconv_epilogue)
             .rewrite(&(), model)?;
