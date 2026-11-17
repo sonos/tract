@@ -7,8 +7,13 @@ test('every model is pinned and has a 16-pixel-aligned size', () => {
   for (const m of MODELS) {
     assert.equal(m.mean.length, 3);
     assert.ok(m.std.every(s => s > 0));
+    if (m.url) {
+      assert.match(m.sha256, /^[0-9a-f]{64}$/);
+      assert.ok(m.source);
+    } else {
+      assert.match(m.revision, /^[0-9a-f]{40}$/);
+    }
     if (m.kind === 'rvm') continue;
-    assert.match(m.revision, /^[0-9a-f]{40}$/);
     assert.equal(m.width % 16, 0);
     assert.equal(m.height % 16, 0);
   }
@@ -18,21 +23,27 @@ test('every model is pinned and has a 16-pixel-aligned size', () => {
   ]);
   assert.deepEqual(MODELS.filter(m => m.id.startsWith('modnet')).map(m => [m.id, m.width, m.height]), [
     ['modnet', 512, 288],
-    ['modnet-fast', 448, 256],
-    ['modnet-384', 384, 224],
   ]);
-  assert.equal(modelUrl(model('modnet-fast')), 'https://huggingface.co/Xenova/modnet/resolve/fa2fa546052fba4c08921230a26cc69a333fca12/onnx/model.onnx');
-  assert.equal(model('rvm').bytes, 14975696);
-  assert.equal(model('rvm').sha256, '88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828');
-  assert.equal(model('rvm').source, 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp32.onnx');
-  assert.match(model('rvm').revision, /^[0-9a-f]{40}$/);
-  assert.equal(modelUrl(model('rvm')), 'https://huggingface.co/eafish/web-onnx/resolve/576473dca1b5792d8c30753b21325edc4063440b/rvm_mobilenetv3_fp32.onnx');
+  assert.equal(modelUrl(model('modnet')), 'models/modnet_webcam.onnx');
+  assert.equal(model('modnet').bytes, 25969398);
+  assert.equal(model('modnet').sha256, 'de03cc16f3c91f25b7c2f0b42ea1a8d34f40a752234f3887572655e744e55306');
+  assert.equal(model('pp-humanseg-v2').bytes, 3831310);
+  assert.equal(model('pp-humanseg-v2').sha256, '6734ac175ca3c3d94bf1dfb7e253573c84a602b8b49d27499d256b73faa476f7');
+  assert.equal(modelUrl(model('pp-humanseg-v2')), 'models/pp_humanseg_v2.onnx');
+  assert.equal(model('rvm').name, 'RVM MobileNetV3 fp16');
+  assert.equal(model('rvm').bytes, 7503609);
+  assert.equal(model('rvm').sha256, '84c01698359a946d2167152f378d27e59eaebc86666190ffd9b5642aba7e4e98');
+  assert.equal(model('rvm').source, 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp16.onnx');
+  assert.equal(modelUrl(model('rvm')), 'models/rvm_mobilenetv3_fp16.onnx');
+  assert.equal(model('rvm-fp32').bytes, 14975696);
+  assert.equal(model('rvm-fp32').sha256, '88d4531297118f595bf2fd60f6f566aec2e559393802d1f436c380f0cbbd2828');
+  assert.equal(modelUrl(model('rvm-fp32')), 'https://huggingface.co/eafish/web-onnx/resolve/576473dca1b5792d8c30753b21325edc4063440b/rvm_mobilenetv3_fp32.onnx');
   assert.throws(() => model('nope'), /Unknown/);
 });
 
 test('the uncertain-mask hold is for the single-frame models', () => {
-  assert.equal(holdsUncertainMask(model('rvm')), false);
-  for (const id of ['mediapipe', 'mediapipe-landscape', 'modnet', 'modnet-fast', 'modnet-384']) {
+  for (const id of ['rvm', 'rvm-fp32']) assert.equal(holdsUncertainMask(model(id)), false);
+  for (const id of ['mediapipe', 'mediapipe-landscape', 'pp-humanseg-v2', 'modnet']) {
     assert.equal(holdsUncertainMask(model(id)), true);
   }
 });
@@ -73,10 +84,10 @@ test('the model menu follows the capture aspect', () => {
   assert.equal(frameShape(1280, 720), 'landscape');
   assert.equal(frameShape(256, 256), 'square');
   assert.equal(frameShape(180, 320), 'portrait');
-  assert.deepEqual(modelsFor(1280, 720).map(entry => entry.id), ['mediapipe-landscape', 'modnet', 'modnet-fast', 'modnet-384', 'rvm']);
+  assert.deepEqual(modelsFor(1280, 720).map(entry => entry.id), ['mediapipe-landscape', 'pp-humanseg-v2', 'modnet', 'rvm', 'rvm-fp32']);
   assert.deepEqual(modelsFor(640, 360).map(entry => entry.id), modelsFor(1920, 1080).map(entry => entry.id));
-  assert.deepEqual(modelsFor(256, 256).map(entry => entry.id), ['mediapipe', 'rvm']);
-  assert.deepEqual(modelsFor(180, 320).map(entry => entry.id), ['rvm']);
+  assert.deepEqual(modelsFor(256, 256).map(entry => entry.id), ['mediapipe', 'rvm', 'rvm-fp32']);
+  assert.deepEqual(modelsFor(180, 320).map(entry => entry.id), ['rvm', 'rvm-fp32']);
   assert.throws(() => frameShape(0, 180), /size/);
 });
 

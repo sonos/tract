@@ -1,10 +1,9 @@
-// The segmenters the page offers. MediaPipe and MODNet come from Hugging Face at pinned
-// revisions. RVM is the official Robust Video Matting v1.0.0 MobileNetV3 fp32 ONNX.
-// That GitHub release does not send the cross-origin header a browser needs, so the page
-// fetches a pinned Hugging Face copy of the same bytes.
-// `mean` and `std` map RGB in [0, 1] to what each model was trained on. MODNet takes any size
-// divisible by 32 and is given the camera's 16:9 shape: a square input stretches the face, and
-// its matte breaks up on close-ups. The three MODNet entries are that one model at three sizes.
+// The segmenters the page offers. MediaPipe and the fp32 RVM come from Hugging Face at a pinned
+// revision. prepare-models.py writes the webcam MODNet, the PP-HumanSegV2 person channel and the
+// fp16 RVM into dist/models. The fp16 file is the official graph with two Casts, so the camera
+// and the matte are float32 and the recurrent state stays float16. The PP-HumanSegV2 slice is not
+// published upstream, so it is fetched from tract-test-assets.
+// `mean` and `std` map RGB in [0, 1] to what each model was trained on.
 //
 // RVM's downsample ratio follows the camera, using the project's rule of one: the long side of
 // the frame its main network sees is 512, and a camera already smaller than that is not shrunk.
@@ -37,48 +36,47 @@ export const MODELS = [
     std: [1, 1, 1],
   },
   {
+    id: 'pp-humanseg-v2',
+    name: 'PP-HumanSegV2 256 × 144',
+    note: 'portrait segmentation, steadier when the person is still',
+    url: 'models/pp_humanseg_v2.onnx',
+    bytes: 3831310,
+    sha256: '6734ac175ca3c3d94bf1dfb7e253573c84a602b8b49d27499d256b73faa476f7',
+    source: 'https://github.com/PaddlePaddle/PaddleSeg',
+    width: 256,
+    height: 144,
+    mean: [0.5, 0.5, 0.5],
+    std: [0.5, 0.5, 0.5],
+  },
+  {
     id: 'modnet',
     name: 'MODNet 512 × 288',
-    note: 'alpha matting with finer edges',
-    repo: 'Xenova/modnet',
-    revision: 'fa2fa546052fba4c08921230a26cc69a333fca12',
-    file: 'onnx/model.onnx',
-    bytes: 25888640,
+    note: 'webcam matte, finer edges',
+    url: 'models/modnet_webcam.onnx',
+    bytes: 25969398,
+    sha256: 'de03cc16f3c91f25b7c2f0b42ea1a8d34f40a752234f3887572655e744e55306',
+    source: 'https://github.com/yakhyo/modnet/releases/download/weights/modnet_webcam.onnx',
     width: 512,
     height: 288,
     mean: [0.5, 0.5, 0.5],
     std: [0.5, 0.5, 0.5],
   },
   {
-    id: 'modnet-fast',
-    name: 'MODNet 448 × 256',
-    note: 'alpha matting, faster',
-    repo: 'Xenova/modnet',
-    revision: 'fa2fa546052fba4c08921230a26cc69a333fca12',
-    file: 'onnx/model.onnx',
-    bytes: 25888640,
-    width: 448,
-    height: 256,
-    mean: [0.5, 0.5, 0.5],
-    std: [0.5, 0.5, 0.5],
-  },
-  {
-    id: 'modnet-384',
-    name: 'MODNet 384 × 224',
-    note: 'alpha matting, fastest',
-    repo: 'Xenova/modnet',
-    revision: 'fa2fa546052fba4c08921230a26cc69a333fca12',
-    file: 'onnx/model.onnx',
-    bytes: 25888640,
-    width: 384,
-    height: 224,
-    mean: [0.5, 0.5, 0.5],
-    std: [0.5, 0.5, 0.5],
-  },
-  {
     id: 'rvm',
     kind: 'rvm',
-    name: 'RVM MobileNetV3',
+    name: 'RVM MobileNetV3 fp16',
+    note: 'recurrent matting, scale follows the camera',
+    url: 'models/rvm_mobilenetv3_fp16.onnx',
+    bytes: 7503609,
+    sha256: '84c01698359a946d2167152f378d27e59eaebc86666190ffd9b5642aba7e4e98',
+    source: 'https://github.com/PeterL1n/RobustVideoMatting/releases/download/v1.0.0/rvm_mobilenetv3_fp16.onnx',
+    mean: [0, 0, 0],
+    std: [1, 1, 1],
+  },
+  {
+    id: 'rvm-fp32',
+    kind: 'rvm',
+    name: 'RVM MobileNetV3 fp32',
     note: 'recurrent matting, scale follows the camera',
     repo: 'eafish/web-onnx',
     revision: '576473dca1b5792d8c30753b21325edc4063440b',

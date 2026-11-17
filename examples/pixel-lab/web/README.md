@@ -6,26 +6,34 @@ leaves the machine.
 
 ## How it works
 
-The page offers three segmenters, fetched as ONNX files and kept in the browser's cache:
+The page offers MediaPipe, PP-HumanSegV2, webcam MODNet, and RVM in fp16 and fp32. MediaPipe and
+the fp32 RVM are fetched from Hugging Face. The others are written into `dist/models` when the
+site is built, then kept in the browser's cache:
 
 - MediaPipe Selfie Segmentation (0.5 MB), fast, as its
   [square](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation) (256 × 256 mask)
   and [landscape](https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape)
   (256 × 144 mask) models. The page lists the one whose shape matches the capture size.
-- [MODNet](https://huggingface.co/Xenova/modnet) (26 MB, alpha matte), finer edges, at 512 × 288,
-  448 × 256 or 384 × 224: one set of weights, three input sizes. MODNet takes any size divisible
-  by 32, and keeping the camera's 16:9 shape holds the matte together on close-ups, where a square
-  input that stretches the face breaks it up;
-- [RVM MobileNetV3](https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0)
-  (GPL-3.0), recurrent video matting, the official v1.0.0 fp32 ONNX (15 MB).
-  The release host does not send the cross-origin header a browser needs, so the page fetches a
-  pinned Hugging Face copy of those same bytes. It reads the camera frame at the capture size.
-  The downsample ratio is `min(512 / long side, 1)`, so the main network's long side stays at 512
-  and a smaller camera is left at scale 1. The page shows that factor for the capture size, as
-  `R=0.4` or `R=1.0`, and does not offer another. The mask stays the camera size.
+- [PP-HumanSegV2](https://github.com/PaddlePaddle/PaddleSeg) Lite (3.7 MB), the 256 × 144 person
+  channel, shown for a 16:9 capture. That sliced ONNX is not published upstream, so
+  `prepare-models.py` downloads it from tract-test-assets while the site is built.
+- [MODNet webcam](https://github.com/yakhyo/modnet/releases/download/weights/modnet_webcam.onnx)
+  (26 MB, alpha matte) at 512 × 288. `prepare-models.py` downloads it while the site is built.
+- [RVM MobileNetV3](https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0) fp16
+  (GPL-3.0, 7.5 MB). The page opens on this model. It is the official v1.0.0 fp16 graph with two
+  Casts, so the camera and the matte are float32 and the recurrent state stays float16.
+  `prepare-models.py` writes it from the pinned Hugging Face copy of the official file. The loader
+  has to accept that mix: a float32 camera, a float32 matte, and float16 recurrent state.
+- The same RVM in fp32 (15 MB, GPL-3.0). The release host does not send the cross-origin header a
+  browser needs, so the page fetches a pinned Hugging Face copy of those bytes.
 
-MediaPipe and MODNet are Apache 2.0. `site/models.mjs` lists every entry with its source, size
-and input normalization.
+Both RVM files read the camera frame at the capture size. The downsample ratio is
+`min(512 / long side, 1)`, so the main network's long side stays at 512 and a smaller camera is left
+at scale 1. The page shows that factor for the capture size, as `R=0.4` or `R=1.0`, and does not
+offer another. The mask stays the camera size.
+
+MediaPipe, PP-HumanSegV2, and MODNet are Apache 2.0. `site/models.mjs` lists every entry with its
+source, size and input normalization.
 
 A worker hands camera frames to tract with `Tensor::from_canvas_normalized`, which copies a frame
 onto the GPU at the model's size and normalizes it there; the model writes its mask into an RGBA8
@@ -34,7 +42,7 @@ the blurred, coloured, or still-image background at the camera's resolution, res
 image's edges, or shows the mask itself. Four still images come from
 [Livestorm's virtual background library](https://livestorm.co/virtual-background-library), which
 offers them free for commercial use: a library, a conference room, a beach, and a mountain path.
-A fifth is the white Sonos Five pair from [Sonos.com](https://www.sonos.com/). The page names the image and links its source while it is selected. The page opens on RVM. Blur strength sits on the background row and is shown only while the background is Blur. Low is a
+A fifth is the white Sonos Five pair from [Sonos.com](https://www.sonos.com/). The page names the image and links its source while it is selected. The page opens on RVM fp16. Blur strength sits on the background row and is shown only while the background is Blur. Low is a
 10 px blur after the frame is shrunk by 4, about 20 camera pixels. High is a 12 px blur after the frame is shrunk by 8. High is the default,
 and it can change while the camera is running. Harmonize colours
 is off by default and appears for a solid colour or a still image. On, it shifts the person's colour
@@ -102,6 +110,8 @@ cargo install wasm-bindgen-cli --version <the version Cargo.lock pins>
 
 `dist/` is then the whole site, to serve as static files over HTTPS (or on localhost) for camera
 access. `build.sh` writes `build.json`, the commit and date the page shows next to its source link.
+It also runs `prepare-models.py`, which needs network access and the `onnx` Python package, to
+download the webcam MODNet and the PP-HumanSegV2 slice and write the fp16 RVM into `dist/models`.
 
 ## Checking natively
 
