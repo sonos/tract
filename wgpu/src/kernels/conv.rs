@@ -190,6 +190,10 @@ pub fn wgpu_conv_dispatch(
             [n, co, ih, iw, oh, ow],
             in_strides,
         );
+        let decoder = decoder_state_epilogue(epilogue);
+        if decoder {
+            ensure!(direct.is_some() && extras.len() == 4 && f16_acc);
+        }
         let pixels = n * oh * ow;
         let tiled = direct.is_none() && tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
         let tile_m = tile_rows(co_pg);
@@ -265,7 +269,17 @@ pub fn wgpu_conv_dispatch(
         let mut mode_extra = [0u32; 4];
         for (i, t) in extras.iter().enumerate() {
             off_extra[i] = element_offset(t, 0) as u32;
-            mode_extra[i] = crate::kernels::matmul::epilogue_mode(t, co)?;
+            mode_extra[i] = match (decoder, i) {
+                (true, 0) if t.len() == co => u32::try_from(t.strides()[1])?,
+                (true, 1 | 2) => {
+                    ensure!(
+                        t.shape() == output.shape() && t.strides()[1..] == output.strides()[1..],
+                        "FP16 state epilogue requires matching channel and spatial strides"
+                    );
+                    0
+                }
+                _ => crate::kernels::matmul::epilogue_mode(t, co)?,
+            };
         }
         tail.extend_from_slice(&off_extra);
         tail.extend_from_slice(&mode_extra);
@@ -283,10 +297,11 @@ pub fn wgpu_conv_dispatch(
             );
         }
         let pipeline = if let Some(co_tile) = direct {
+            let entry = if decoder { DECODER_CONV_ENTRY } else { "conv2d_direct" };
             q.context().chain_pipeline(
                 ("conv_direct", dt, f16_acc, co_tile, epilogue, extras.len()),
                 layout,
-                EntryPoint::typed("conv2d_direct", dt),
+                EntryPoint::typed(entry, dt),
                 || conv_direct_module(dt, f16_acc, epilogue, extras.len(), co_tile),
             )?
         } else if tiled {
@@ -325,7 +340,8 @@ pub fn wgpu_conv_dispatch(
             let threads = n * oh * (ow / DIRECT_PX);
             let grid =
                 [threads.div_ceil(CONV_DIRECT_WG as usize) as u32, co.div_ceil(co_tile) as u32, 1];
-            return q.dispatch_grid("conv_direct", &pipeline, &bg, dyn_off, grid);
+            let label = if decoder { "conv_direct_state" } else { "conv_direct" };
+            return q.dispatch_grid(label, &pipeline, &bg, dyn_off, grid);
         }
         if tiled {
             return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, tiled_grid);
@@ -1071,6 +1087,13 @@ pub const CONV_DIRECT_WG: u32 = 64;
 /// `vec4` of input along W feeds all of them.
 const DIRECT_PX: usize = 4;
 
+pub(crate) const DECODER_STATE_UPDATE: &str = "decoder_state_update";
+const DECODER_CONV_ENTRY: &str = "conv2d_direct_state";
+
+pub(crate) fn decoder_state_epilogue(steps: &[ChainStep]) -> bool {
+    matches!(steps, [ChainStep::Unary(op)] if op == DECODER_STATE_UPDATE)
+}
+
 /// Output channels one direct-convolution thread owns, if the
 /// register-blocked kernel can serve this convolution: dense 3x3, stride 1,
 /// dilation 1, NCHW f32/f16, one pad on each side so the output keeps the input's
@@ -1141,9 +1164,24 @@ pub fn conv_direct_module(
     } else {
         format!("{}{}", unary_ops_wgsl(a), binary_ops_wgsl(a))
     };
-    let epilogue = conv_direct_epilogue(epilogue, t != a);
+    let decoder = decoder_state_epilogue(epilogue);
+    let entry = if decoder { DECODER_CONV_ENTRY } else { "conv2d_direct" };
+    let epi_arg = if decoder { ", oe: u32" } else { "" };
+    let epilogue = if decoder {
+        // Round the new term before contracting the multiply-add of the old term.
+        r#"    let bias = extra0[params.off_extra.x + co * params.mode_extra.x];
+    v = op_tanh(f16(f32(v) + f32(bias)));
+    let gate = extra1[params.off_extra.y + oe];
+    let prev = extra2[params.off_extra.z + oe];
+    let inverse = f16(f32(extra3[params.off_extra.w]) - f32(gate));
+    let new_term = f16(f32(gate) * f32(v));
+    v = fma(inverse, prev, new_term);"#
+            .to_owned()
+    } else {
+        conv_direct_epilogue(epilogue, t != a)
+    };
     let result = if t == a { "v".to_owned() } else { format!("{t}(v)") };
-    let (decls, taps, stores) = conv_direct_body(co_tile, t, a);
+    let (decls, taps, stores) = conv_direct_body(co_tile, t, a, decoder);
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -1192,14 +1230,14 @@ struct Params {{
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-fn epi(acc: {a}, co: u32) -> {t} {{
+fn epi(acc: {a}, co: u32{epi_arg}) -> {t} {{
     var v = acc;
 {epilogue}
     return {result};
 }}
 
 @compute @workgroup_size({CONV_DIRECT_WG})
-fn conv2d_direct_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
     let xqw = params.ow / 4u;
     let i = wid.x * {CONV_DIRECT_WG}u + lid;
     if (i >= params.n * params.oh * xqw) {{ return; }}
@@ -1230,7 +1268,7 @@ fn conv2d_direct_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workg
 /// per output channel, the three input rows of each input channel, and the
 /// nine taps and the stores of each output channel, so the register tile never
 /// becomes an indexed private array.
-fn conv_direct_body(co_tile: usize, t: &str, a: &str) -> (String, String, String) {
+fn conv_direct_body(co_tile: usize, t: &str, a: &str, decoder: bool) -> (String, String, String) {
     use std::fmt::Write;
     let mut decls = String::new();
     for c in 0..co_tile {
@@ -1296,9 +1334,14 @@ fn conv_direct_body(co_tile: usize, t: &str, a: &str) -> (String, String, String
         writeln!(stores, "        let co = co0 + {c}u;").unwrap();
         writeln!(stores, "        let o = i32(params.off_out) + i32(n) * params.out_sn + i32(co) * params.out_sc + i32(y0) * params.out_sh + i32(x0) * params.out_sw;").unwrap();
         for (x, lane) in ["x", "y", "z", "w"].iter().enumerate() {
+            let extra = if decoder {
+                format!(", u32(o + {x} * params.out_sw) - params.off_out")
+            } else {
+                String::new()
+            };
             writeln!(
                 stores,
-                "        outp[u32(o + {x} * params.out_sw)] = epi(acc{c}.{lane}, co);"
+                "        outp[u32(o + {x} * params.out_sw)] = epi(acc{c}.{lane}, co{extra});"
             )
             .unwrap();
         }

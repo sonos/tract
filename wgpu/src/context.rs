@@ -140,6 +140,7 @@ struct WgpuContextInner {
     device: wgpu::Device,
     queue: wgpu::Queue,
     shader_f16: bool,
+    apple_hardware_webgpu: bool,
     modules: RwLock<HashMap<ModuleKey, wgpu::ShaderModule>>,
     pipelines: RwLock<HashMap<PipelineKey, (Arc<wgpu::ComputePipeline>, u32)>>,
     /// Keyed by [`ProgramKey`], the pair of hashes of whatever names a
@@ -276,6 +277,20 @@ impl WgpuContext {
         Ok((device, queue, shader_f16))
     }
 
+    #[cfg(target_arch = "wasm32")]
+    fn apple_hardware_webgpu_device(device: &wgpu::Device) -> bool {
+        use js_sys::Reflect;
+        use wasm_bindgen::JsValue;
+
+        let Some(device) = device.as_webgpu() else { return false };
+        let Ok(info) = Reflect::get(device.as_ref(), &JsValue::from_str("adapterInfo")) else {
+            return false;
+        };
+        let field = |key| Reflect::get(&info, &JsValue::from_str(key)).ok();
+        field("vendor").and_then(|v| v.as_string()).as_deref() == Some("apple")
+            && field("isFallbackAdapter").and_then(|v| v.as_bool()) != Some(true)
+    }
+
     fn from_device(
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -283,6 +298,10 @@ impl WgpuContext {
     ) -> TractResult<Self> {
         let ctxt = Self {
             inner: Arc::new(WgpuContextInner {
+                #[cfg(target_arch = "wasm32")]
+                apple_hardware_webgpu: Self::apple_hardware_webgpu_device(&device),
+                #[cfg(not(target_arch = "wasm32"))]
+                apple_hardware_webgpu: false,
                 device,
                 queue,
                 shader_f16,
@@ -328,6 +347,10 @@ impl WgpuContext {
 
     pub fn queue(&self) -> &wgpu::Queue {
         &self.inner.queue
+    }
+
+    pub(crate) fn apple_hardware_webgpu(&self) -> bool {
+        self.inner.apple_hardware_webgpu
     }
 
     pub fn shader_f16(&self) -> bool {
