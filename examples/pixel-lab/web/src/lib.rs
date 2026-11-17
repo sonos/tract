@@ -36,6 +36,8 @@ struct RvmReady {
     ratio: f32,
     runnable: tract::Runnable,
     shapes: [[usize; 4]; 4],
+    /// Recurrent state of an fp16 file. The camera and the matte stay f32.
+    recurrent_f16: bool,
     graph: String,
 }
 
@@ -58,11 +60,28 @@ fn rvm_states(width: u32, height: u32, ratio: f32) -> Result<[[usize; 4]; 4], Js
     Ok(spec.map(|(channels, stride)| [1, channels, h.div_ceil(stride), w.div_ceil(stride)]))
 }
 
-fn rvm_memory(shapes: &[[usize; 4]; 4]) -> Result<Vec<tract::Tensor>, JsValue> {
+/// The trailing type token of a fact, `f16` or `f32`. A trailing `?` is ignored.
+fn fact_dtype(fact: &str) -> Result<&'static str, JsValue> {
+    let token = fact.rsplit(',').next().unwrap_or(fact).trim().trim_end_matches('?');
+    match token {
+        "f16" => Ok("f16"),
+        "f32" => Ok("f32"),
+        other => Err(JsValue::from_str(&format!("RVM type {other} in {fact} is not f16 or f32"))),
+    }
+}
+
+/// Zeros for the four recurrent states. An fp16 file keeps those states in fp16.
+fn rvm_memory(shapes: &[[usize; 4]; 4], f16: bool) -> Result<Vec<tract::Tensor>, JsValue> {
     shapes
         .iter()
         .map(|shape| {
-            tract::Tensor::from_slice(shape, &vec![0f32; shape.iter().product()]).map_err(js_error)
+            let len = shape.iter().product::<usize>();
+            if f16 {
+                tract::Tensor::from_bytes(DatumType::F16, shape, &vec![0u8; len * 2])
+                    .map_err(js_error)
+            } else {
+                tract::Tensor::from_slice(shape, &vec![0f32; len]).map_err(js_error)
+            }
         })
         .collect()
 }
@@ -95,22 +114,35 @@ fn build_rvm(model: &[u8], width: u32, height: u32, ratio: f32) -> Result<RvmRea
             return Err(JsValue::from_str(&format!("RVM input {i} is {actual}, expected {name}")));
         }
     }
-    let declared = inference.input_fact(0).map_err(js_error)?.to_string();
-    if !declared.ends_with("f32") {
-        return Err(JsValue::from_str(&format!("RVM src is {declared}, expected f32")));
+    // Each input keeps the dtype the file declares. The camera may be f16 or f32.
+    // Recurrent inputs share one dtype and stay that dtype. A file that needs a cast
+    // carries it in the graph; this loader does not insert one.
+    let src_dt = fact_dtype(&inference.input_fact(0).map_err(js_error)?.to_string())?;
+    let mut recurrent_dt = None;
+    for i in 1..expected_in.len() {
+        let dt = fact_dtype(&inference.input_fact(i).map_err(js_error)?.to_string())?;
+        if recurrent_dt.is_some_and(|prev| prev != dt) {
+            return Err(JsValue::from_str("RVM recurrent inputs disagree on float type"));
+        }
+        recurrent_dt = Some(dt);
     }
-    inference.set_input_fact(0, format!("1,3,{height},{width},f32").as_str()).map_err(js_error)?;
+    let recurrent_dt = recurrent_dt.unwrap();
+    inference
+        .set_input_fact(0, format!("1,3,{height},{width},{src_dt}").as_str())
+        .map_err(js_error)?;
     for (i, shape) in shapes.iter().enumerate() {
         inference
             .set_input_fact(
                 i + 1,
-                format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]).as_str(),
+                format!("{},{},{},{},{recurrent_dt}", shape[0], shape[1], shape[2], shape[3])
+                    .as_str(),
             )
             .map_err(js_error)?;
     }
     // Tract names an output after the node that produces it, not the ONNX name,
     // so the check is the shape. Order is the file's: foreground, alpha, then the
-    // four recurrent states.
+    // four recurrent states. The matte is f32 for the compositor. Foreground and the
+    // recurrent states follow the body.
     let output_count = inference.output_count().map_err(js_error)?;
     if output_count != 6 {
         return Err(JsValue::from_str(&format!("RVM should have 6 outputs, found {output_count}")));
@@ -120,9 +152,10 @@ fn build_rvm(model: &[u8], width: u32, height: u32, ratio: f32) -> Result<RvmRea
     }
     let built = inference.into_model().map_err(js_error)?;
     let mut expected =
-        vec![format!("1,3,{height},{width},f32"), format!("1,1,{height},{width},f32")];
+        vec![format!("1,3,{height},{width},{recurrent_dt}"), format!("1,1,{height},{width},f32")];
     for shape in &shapes {
-        expected.push(format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]));
+        expected
+            .push(format!("{},{},{},{},{recurrent_dt}", shape[0], shape[1], shape[2], shape[3]));
     }
     for (i, shape) in expected.iter().enumerate() {
         let actual = built.output_fact(i).map_err(js_error)?.to_string();
@@ -135,7 +168,7 @@ fn build_rvm(model: &[u8], width: u32, height: u32, ratio: f32) -> Result<RvmRea
     let runnable =
         tract::runtime_for_name("wgpu").map_err(js_error)?.prepare(built).map_err(js_error)?;
     let graph = runnable.cost_json().map_err(js_error)?;
-    Ok(RvmReady { ratio, runnable, shapes, graph })
+    Ok(RvmReady { ratio, runnable, shapes, recurrent_f16: recurrent_dt == "f16", graph })
 }
 
 #[wasm_bindgen]
@@ -200,10 +233,10 @@ impl Segmenter {
         })
     }
 
-    /// Robust Video Matting, MobileNetV3, the official fp32 or fp16 ONNX. `ratio` is the
-    /// downsample factor for this run, in (0, 1]. Pass it at init and change it later with
-    /// [`Segmenter::set_ratio`]. The four recurrent states stay on the GPU from frame to frame.
-    /// An fp16 file keeps an fp16 body; the canvas and the mask stay fp32.
+    /// Robust Video Matting, MobileNetV3. `ratio` is the downsample factor for this run, in
+    /// (0, 1]. Pass it at init and change it later with [`Segmenter::set_ratio`]. The four
+    /// recurrent states stay on the GPU from frame to frame. Each input keeps the file's
+    /// dtype. Recurrent state stays that dtype. The matte is f32.
     pub async fn create_rvm(
         model: Vec<u8>,
         width: u32,
@@ -217,7 +250,7 @@ impl Segmenter {
         tract::wgpu::init().await.map_err(js_error)?;
         let ready = build_rvm(&model, width, height, ratio)?;
         let state = ready.runnable.spawn_state().map_err(js_error)?;
-        let recurrent = rvm_memory(&ready.shapes)?;
+        let recurrent = rvm_memory(&ready.shapes, ready.recurrent_f16)?;
         let mask = tract::WgpuMask::new(width, height).map_err(js_error)?;
         let graph = ready.graph.clone();
         Ok(Self {
@@ -258,7 +291,7 @@ impl Segmenter {
             None => (build_rvm(bytes, self.width, self.height, ratio)?, true),
         };
         *self.state.borrow_mut() = ready.runnable.spawn_state().map_err(js_error)?;
-        *self.recurrent.borrow_mut() = rvm_memory(&ready.shapes)?;
+        *self.recurrent.borrow_mut() = rvm_memory(&ready.shapes, ready.recurrent_f16)?;
         *self.graph.borrow_mut() = ready.graph.clone();
         self.ratio.set(Some(ready.ratio));
         let applied = ready.ratio;

@@ -47,16 +47,29 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
     for (i, name) in expected_in.iter().enumerate() {
         ensure!(inference.input_name(i)? == *name, "RVM input {i} is not {name}");
     }
-    let declared = inference.input_fact(0)?.to_string();
-    ensure!(
-        declared.ends_with("f32") || declared.ends_with("f32?"),
-        "RVM src is {declared}, expected f32"
-    );
-    inference.set_input_fact(0, format!("1,3,{height},{width},f32").as_str())?;
+    let dtype = |fact: &str| -> Result<&'static str> {
+        let token = fact.rsplit(',').next().unwrap_or(fact).trim().trim_end_matches('?');
+        match token {
+            "f16" => Ok("f16"),
+            "f32" => Ok("f32"),
+            other => anyhow::bail!("RVM type {other} in {fact} is not f16 or f32"),
+        }
+    };
+    let src_dt = dtype(&inference.input_fact(0)?.to_string())?;
+    let mut recurrent_dt = None;
+    for i in 1..expected_in.len() {
+        let dt = dtype(&inference.input_fact(i)?.to_string())?;
+        if recurrent_dt.is_some_and(|prev| prev != dt) {
+            anyhow::bail!("RVM recurrent inputs disagree on float type");
+        }
+        recurrent_dt = Some(dt);
+    }
+    let recurrent_dt = recurrent_dt.context("RVM has no recurrent input")?;
+    inference.set_input_fact(0, format!("1,3,{height},{width},{src_dt}").as_str())?;
     for (i, shape) in shapes.iter().enumerate() {
         inference.set_input_fact(
             i + 1,
-            format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]).as_str(),
+            format!("{},{},{},{},{recurrent_dt}", shape[0], shape[1], shape[2], shape[3]).as_str(),
         )?;
     }
     let output_count = inference.output_count()?;
@@ -66,9 +79,10 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
     }
     let model = inference.into_model()?;
     let mut expected =
-        vec![format!("1,3,{height},{width},f32"), format!("1,1,{height},{width},f32")];
+        vec![format!("1,3,{height},{width},{recurrent_dt}"), format!("1,1,{height},{width},f32")];
     for shape in &shapes {
-        expected.push(format!("{},{},{},{},f32", shape[0], shape[1], shape[2], shape[3]));
+        expected
+            .push(format!("{},{},{},{},{recurrent_dt}", shape[0], shape[1], shape[2], shape[3]));
     }
     for (i, shape) in expected.iter().enumerate() {
         let actual = model.output_fact(i)?.to_string();
@@ -101,8 +115,23 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
         rgb[pixels + i] = value[1];
         rgb[2 * pixels + i] = value[2];
     }
-    let image = || Tensor::from_slice(&[1, 3, height, width], &rgb);
-    let zeros = |shape: &[usize; 4]| Tensor::from_slice(shape, &vec![0f32; shape.iter().product()]);
+    let image = || -> Result<Tensor> {
+        let f32_image = Tensor::from_slice(&[1, 3, height, width], &rgb)?;
+        if src_dt == "f16" {
+            Ok(f32_image.cast_to_dt(DatumType::F16)?.into_owned())
+        } else {
+            Ok(f32_image)
+        }
+    };
+    let f16 = recurrent_dt == "f16";
+    let zeros = |shape: &[usize; 4]| {
+        let len = shape.iter().product::<usize>();
+        if f16 {
+            Tensor::from_bytes(DatumType::F16, shape, &vec![0u8; len * 2])
+        } else {
+            Tensor::from_slice(shape, &vec![0f32; len])
+        }
+    };
     let mut gpu_state = shapes.iter().map(zeros).collect::<Result<Vec<_>>>()?;
     let cpu_state = shapes.iter().map(zeros).collect::<Result<Vec<_>>>()?;
     let inputs = |state: &[Tensor]| {
