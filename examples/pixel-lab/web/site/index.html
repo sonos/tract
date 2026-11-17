@@ -37,6 +37,8 @@
   select { background: var(--panel); }
   .choice { display: flex; gap: 8px; align-items: stretch; }
   .choice select { flex: 1; width: auto; min-width: 0; }
+  .choice select#blur { flex: none; width: 88px; }
+  select[hidden] { display: none; }
   .choice input[type=color] { width: 46px; height: 38px; padding: 4px; flex: none; cursor: pointer; background: var(--panel); }
   .choice input[type=color]:disabled { display: none; }
   input[type=checkbox] { width: auto; margin: 0 8px 0 0; }
@@ -125,12 +127,11 @@
         <option value="mountains">Swiss mountains</option>
         <option value="sonos">Sonos Five</option>
       </select>
+      <select id="blur" aria-label="Blur strength" title="Blur strength"><option value="low">Low</option><option value="high" selected>High</option></select>
       <input id="colour" type="color" value="#457b75" disabled aria-label="Background colour" title="Change the background colour">
     </div>
     <p class="hint" id="background-credit" hidden>“<span id="background-credit-title"></span>” from <a id="background-credit-link" href="https://livestorm.co/virtual-background-library"><span id="background-credit-source">the Livestorm virtual background library</span></a>.</p>
     <label class="check" id="harmonize-label" hidden><input id="harmonize" type="checkbox">Harmonize colours<span class="info"><button type="button" class="info-i" aria-label="About colour harmonization">i</button><span class="info-text" role="tooltip">Shifts the person's colour toward the background and keeps the brightness. Used for a solid colour or a still image.</span></span></label>
-    <label for="blur" id="blur-label">Blur strength</label>
-    <select id="blur"><option value="low">Low</option><option value="high" selected>High</option></select>
     <label for="view">View</label>
     <select id="view"><option value="composited">Composited</option><option value="mask">Mask (alpha)</option></select>
     <label for="layout">Layout</label>
