@@ -17,8 +17,8 @@ struct VsOut { @builtin(position) position: vec4f, @location(0) uv: vec2f };
   return out;
 }`;
 
-// Separable gaussian on the reduced frame. Low is radius 5 (sigma 2.5) after a
-// half-size shrink. High is radius 12 (sigma 6) after an 8× shrink.
+// Separable gaussian on the reduced frame. Low is radius 10 (sigma 5) after a
+// 4× shrink, about 20 camera pixels. High is radius 12 (sigma 6) after an 8× shrink.
 function separableBlur(radius, sigma) {
   const denom = 2 * sigma * sigma;
   return FULLSCREEN + `
@@ -37,7 +37,7 @@ struct Blur { step: vec2f, pad: vec2f };
   return vec4f(sum / max(total, 1e-6), 1.0);
 }`;
 }
-const BLUR_LOW = separableBlur(5, 2.5);
+const BLUR_LOW = separableBlur(10, 5);
 const BLUR_HIGH = separableBlur(12, 6);
 
 // Average the camera frame into the smaller blur target. The window is the
@@ -189,7 +189,7 @@ fn refinedAlpha(uv: vec2f, centre: vec3f, shift: vec2f) -> f32 {
 }`;
 
 const MODES={colour:0,blur:1,mask:2,image:3};
-const LOW_SCALE=2;
+const LOW_SCALE=4;
 const HIGH_SCALE=8;
 // Medium strength from the replacement harmonization pass: chroma only.
 const HARMONIZE_STRENGTH=0.14;

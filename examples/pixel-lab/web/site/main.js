@@ -168,7 +168,7 @@ const SCENES = {
 function showBackground() {
   const mode = $('background').value;
   const scene = SCENES[mode];
-  $('blur-label').hidden = $('blur').hidden = mode !== 'blur';
+  $('blur').hidden = mode !== 'blur';
   $('colour').disabled = mode !== 'colour';
   $('harmonize-label').hidden = mode === 'blur';
   $('background-credit').hidden = !scene;

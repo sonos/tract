@@ -36,9 +36,9 @@ the blurred, coloured, or still-image background at the camera's resolution, res
 image's edges, or shows the mask itself. Four still images come from
 [Livestorm's virtual background library](https://livestorm.co/virtual-background-library), which
 offers them free for commercial use: a library, a conference room, a beach, and a mountain path.
-A fifth is the white Sonos Five pair from [Sonos.com](https://www.sonos.com/). The page names the image and links its source while it is selected. The page opens on RVM. Blur strength is Low, a
-5 px blur after the frame is shrunk by 2, or High, a 12 px blur after the frame is shrunk by 8. High is the default,
-shown only while the background is Blur, and it can change while the camera is running. Harmonize colours
+A fifth is the white Sonos Five pair from [Sonos.com](https://www.sonos.com/). The page names the image and links its source while it is selected. The page opens on RVM. Blur strength sits on the background row and is shown only while the background is Blur. Low is a
+10 px blur after the frame is shrunk by 4, about 20 camera pixels. High is a 12 px blur after the frame is shrunk by 8. High is the default,
+and it can change while the camera is running. Harmonize colours
 is off by default and appears for a solid colour or a still image. On, it shifts the person's colour
 toward that background and leaves the brightness alone.
 

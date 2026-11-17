@@ -49,9 +49,9 @@ export function motionBytes() {
   return pyramid * 4 + flows + rgba16(coarseWidth, coarseHeight) + rgba16(gridWidth, gridHeight) * 3 + rgba16(320, 180);
 }
 
-// Two blur targets at the active shrink. Low is half size, High is one eighth.
+// Two blur targets at the active shrink. Low is a quarter size, High is one eighth.
 export function blurBytes(width, height, level = 'high') {
-  const scale = level === 'low' ? 2 : 8;
+  const scale = level === 'low' ? 4 : 8;
   return rgba8(Math.max(1, Math.floor(width / scale)), Math.max(1, Math.floor(height / scale))) * 2;
 }
 
