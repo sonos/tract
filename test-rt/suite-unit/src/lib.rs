@@ -17,6 +17,7 @@ pub mod conv_f16;
 pub mod conv_f32;
 pub mod conv_q;
 pub mod cumsum;
+pub mod decoder_gate;
 pub mod deconv;
 pub mod diag_gather;
 pub mod downsample;
@@ -62,6 +63,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("conv_f32", conv_f32::suite()?);
     suite.add("conv_q", conv_q::suite()?);
     suite.add("cumsum", cumsum::suite()?);
+    suite.add("decoder_gate", decoder_gate::suite());
     suite.add("deconv", deconv::suite()?);
     suite.add("diag_gather", diag_gather::suite()?);
     suite.add("downsample", downsample::suite()?);
