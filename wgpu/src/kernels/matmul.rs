@@ -207,7 +207,7 @@ pub fn wgpu_matmul_dispatch(
     output: &DeviceTensor,
     f16_accumulation: bool,
 ) -> TractResult<()> {
-    wgpu_matmul_dispatch_impl(t, epilogue, a, b, extras, output, f16_accumulation, None)
+    wgpu_matmul_dispatch_impl(t, epilogue, a, b, extras, output, f16_accumulation, None, None)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -220,6 +220,7 @@ fn wgpu_matmul_dispatch_impl(
     output: &DeviceTensor,
     f16_accumulation: bool,
     small_gemv_override: Option<bool>,
+    column_first_override: Option<bool>,
 ) -> TractResult<()> {
     if crate::kernels::matmul_bq::is_block_quant_weight(b) {
         return crate::kernels::matmul_bq::wgpu_bq_dispatch(t, epilogue, a, b, extras, output);
@@ -253,12 +254,31 @@ fn wgpu_matmul_dispatch_impl(
             let packed = repacked_b(q, b, k, n)?;
             let split_k = m < MATMUL_SPLITK_MAX_M;
             let f16_acc = dt == ShaderDtype::F16 && f16_accumulation;
+            let column_first = split_k
+                && f16_acc
+                && matches!((m, k, n), (920, 160, 960) | (920, 960, 160))
+                && column_first_override
+                    .unwrap_or_else(|| apple_splitk_device(q.context().device()));
+            let splitk_wg = if column_first { 64 } else { MATMUL_SPLITK_WG };
+            let splitk_name = if column_first { "matmul_splitk_col_fast" } else { "matmul_splitk" };
             let pipeline = if split_k {
                 q.context().chain_pipeline(
-                    ("matmul_splitk", dt, f16_acc, epilogue, extras.len()),
+                    (splitk_name, dt, f16_acc, epilogue, extras.len()),
                     layout,
-                    EntryPoint::typed("matmul_splitk", dt),
-                    || matmul_splitk_module(dt, f16_acc, epilogue, extras.len()),
+                    EntryPoint::typed(splitk_name, dt),
+                    || {
+                        if column_first {
+                            matmul_splitk_module_for_layout(
+                                dt,
+                                f16_acc,
+                                epilogue,
+                                extras.len(),
+                                true,
+                            )
+                        } else {
+                            matmul_splitk_module(dt, f16_acc, epilogue, extras.len())
+                        }
+                    },
                 )?
             } else {
                 q.context().chain_pipeline(
@@ -295,11 +315,12 @@ fn wgpu_matmul_dispatch_impl(
             let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
             let tiles = (m / 4) * (n / 4);
             let groups = if split_k {
-                (tiles * 4).div_ceil(MATMUL_SPLITK_WG as usize)
+                (tiles * 4).div_ceil(splitk_wg as usize)
             } else {
                 tiles.div_ceil(MATMUL_BLOCKED_WG as usize)
             } as u32;
-            return q.dispatch_grid("matmul_blocked", &pipeline, &bg, dyn_off, [groups, 1, 1]);
+            let label = if column_first { splitk_name } else { "matmul_blocked" };
+            return q.dispatch_grid(label, &pipeline, &bg, dyn_off, [groups, 1, 1]);
         }
 
         let gemv_small = gemv
@@ -944,6 +965,19 @@ pub const MATMUL_SPLITK_WG: u32 = 128;
 /// Below this `m` the blocked matmul runs split over k.
 pub const MATMUL_SPLITK_MAX_M: usize = 2304;
 
+fn apple_splitk_device(_device: &wgpu::Device) -> bool {
+    #[cfg(target_arch = "wasm32")]
+    if let Some(raw) = _device.as_webgpu()
+        && let Ok(info) =
+            js_sys::Reflect::get(raw.as_ref(), &wasm_bindgen::JsValue::from_str("adapterInfo"))
+    {
+        let lookup = |key| js_sys::Reflect::get(&info, &wasm_bindgen::JsValue::from_str(key)).ok();
+        return lookup("vendor").and_then(|v| v.as_string()).as_deref() == Some("apple")
+            && lookup("isFallbackAdapter").and_then(|v| v.as_bool()) != Some(true);
+    }
+    false
+}
+
 /// The blocked matmul for small `m`: four lanes share a four-by-four output
 /// tile, each summing a quarter of `k`, and reduce through workgroup memory.
 /// The squeeze-excitation projections (m = 144, k up to 128) put only a few
@@ -958,6 +992,21 @@ pub fn matmul_splitk_module(
     epilogue: &[ChainStep],
     extras: usize,
 ) -> String {
+    matmul_splitk_module_for_layout(dt, f16_accumulation, epilogue, extras, false)
+}
+
+fn matmul_splitk_module_for_layout(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+    column_first: bool,
+) -> String {
+    let (entry, wg, row_tile, col_tile) = if column_first {
+        ("matmul_splitk_col_fast", 64, "tile_global / n4", "tile_global % n4")
+    } else {
+        ("matmul_splitk", MATMUL_SPLITK_WG, "tile_global % m4", "tile_global / m4")
+    };
     let t = dt.wgsl();
     let acc = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let (widen, widen_end) = if t == acc { ("", "") } else { ("vec4<f32>(", ")") };
@@ -1007,10 +1056,10 @@ struct Params {{
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> c4: array<vec4<{t}>>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
-var<workgroup> sh0: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh1: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh2: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
-var<workgroup> sh3: array<vec4<{acc}>, {MATMUL_SPLITK_WG}>;
+var<workgroup> sh0: array<vec4<{acc}>, {wg}>;
+var<workgroup> sh1: array<vec4<{acc}>, {wg}>;
+var<workgroup> sh2: array<vec4<{acc}>, {wg}>;
+var<workgroup> sh3: array<vec4<{acc}>, {wg}>;
 
 fn epi(v_in: {acc}, col: u32, oe: u32) -> {acc} {{
     var v = v_in;
@@ -1018,14 +1067,14 @@ fn epi(v_in: {acc}, col: u32, oe: u32) -> {acc} {{
     return v;
 }}
 
-@compute @workgroup_size({MATMUL_SPLITK_WG})
-fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
+@compute @workgroup_size({wg})
+fn {entry}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(local_invocation_id) lid: vec3<u32>) {{
     let m4 = params.m / 4u;
     let n4 = params.n / 4u;
     let tile_global = gid.x >> 2u;
     let lane = gid.x & 3u;
-    let row_tile_raw = tile_global % m4;
-    let col_tile_raw = tile_global / m4;
+    let row_tile_raw = {row_tile};
+    let col_tile_raw = {col_tile};
     let valid = (row_tile_raw < m4) && (col_tile_raw < n4);
     let row_tile = min(row_tile_raw, m4 - 1u);
     let col_tile = min(col_tile_raw, n4 - 1u);
@@ -1415,6 +1464,56 @@ mod tests {
     }
 
     #[test]
+    fn splitk_column_first_preserves_fp16_projection_outputs() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+
+        use super::Transposes;
+        use super::wgpu_matmul_dispatch_impl;
+        use crate::kernels::shaders::ChainStep;
+
+        crate::wgpu_context();
+        let m = 920;
+        let t = Transposes { a: true, b: true, c: true };
+        let epilogue = [ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }];
+        let make = |shape: &[usize], seed| -> TractResult<DeviceTensor> {
+            let values: Vec<_> = fill(seed, shape.iter().product())
+                .into_iter()
+                .map(|x| f16::from_f32(x * 0.125))
+                .collect();
+            Tensor::from_shape(shape, &values)?.into_device()
+        };
+        for (k, n) in [(160, 960), (960, 160)] {
+            let a = make(&[k, m], 1)?;
+            let b = make(&[n, k], 2)?;
+            let bias = make(&[n], 3)?;
+            let normal = DeviceTensor::uninitialized_dt(DatumType::F16, &[n, m])?;
+            let column = DeviceTensor::uninitialized_dt(DatumType::F16, &[n, m])?;
+            wgpu_matmul_dispatch_impl(
+                t, &epilogue, &a, &b, &[&bias], &normal, true, None, Some(false),
+            )?;
+            let (_result, profile) = crate::with_wgpu_queue(|queue| {
+                queue.profile(|| {
+                    wgpu_matmul_dispatch_impl(
+                        t,
+                        &epilogue,
+                        &a,
+                        &b,
+                        &[&bias],
+                        &column,
+                        true,
+                        None,
+                        Some(true),
+                    )
+                })
+            })?;
+            ensure!(profile.iter().any(|(name, _)| *name == "matmul_splitk_col_fast"));
+            assert_eq!(normal.to_host()?, column.to_host()?, "k={k} n={n}");
+        }
+        Ok(())
+    }
+
+    #[test]
     fn matmul_residual_matches_cpu() -> TractResult<()> {
         matmul_residual(6, 5, 7, false)?;
         matmul_residual(8, 8, 16, true)
@@ -1726,6 +1825,7 @@ mod tests {
                     output,
                     false,
                     Some(new),
+                    None,
                 )?;
             }
             crate::with_wgpu_queue(|q| q.flush())?;
