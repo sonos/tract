@@ -1,5 +1,5 @@
 use super::activation::activation_op;
-use super::{ExpertLayout, GateMode, concat_block_quant_rows, scatter_add_weighted, select_routes};
+use super::{ExpertLayout, GateMode, concat_block_quant_rows, scatter_add_weighted};
 use crate::ops::routed_matmul::f32_input;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -362,36 +362,19 @@ impl OpState for OptMoeFfnState {
         let router_result = self.router_state.run(tvec![x_2d_tensor.into_tvalue()])?;
         let router_elapsed = profile_elapsed(router_start);
         let router_logits_f32 = router_result[0].cast_to::<f32>()?;
-        let mut router_logits_t = router_logits_f32.into_owned();
-        if let Some(bias) = op.wg_bias.clone() {
-            let num_experts = op.num_experts;
-            let bias = bias.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
-            let mut logits_ram = router_logits_t.try_as_plain_ram_mut()?;
-            let logits = logits_ram.as_slice_mut::<f32>()?;
-            for row in logits.chunks_mut(num_experts) {
-                row.iter_mut().zip(&bias).for_each(|(v, &b)| *v += b);
-            }
-        }
+        let bias_ram = op.wg_bias.as_ref().map(|b| b.try_as_plain_ram()).transpose()?;
+        let bias = bias_ram.as_ref().map(|b| b.as_slice::<f32>()).transpose()?;
         let router_logits: ArrayView2<f32> =
-            router_logits_t.to_plain_array_view::<f32>()?.into_dimensionality()?;
+            router_logits_f32.to_plain_array_view::<f32>()?.into_dimensionality()?;
 
         let expert_plans = match (&op.experts, &mut self.experts) {
             (CpuExpertPlan::PerExpert(plans), CpuExpertState::PerExpert) => plans,
         };
 
         let topk_start = profile_start(profile);
-        let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
-        for t in 0..t_tokens {
-            let row = router_logits.row(t);
-            let full: Vec<f32> = row.iter().copied().collect();
-            let mut scores: Vec<(usize, f32)> =
-                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
-            select_routes(&mut scores, op.k);
-
-            let gate_weights = op.gate.weights(&full, &scores);
-            assignments
-                .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
-        }
+        let assignments: Vec<Vec<(usize, f32)>> = (0..t_tokens)
+            .map(|t| op.gate.route(&router_logits.row(t).to_vec(), bias, op.k))
+            .collect();
         let topk_elapsed = profile_elapsed(topk_start);
 
         let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); op.num_experts];

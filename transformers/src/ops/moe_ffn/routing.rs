@@ -1,6 +1,5 @@
 use super::{
-    GateMode, as_2d_tokens, plain_f32_slice, plain_i64_slice, router_weights_as_2d, select_routes,
-    token_count_dim,
+    GateMode, as_2d_tokens, plain_f32_slice, plain_i64_slice, router_weights_as_2d, token_count_dim,
 };
 use crate::ops::routed_matmul::{RoutedInputRows, RoutedRowsInput, f32_input};
 use tract_ndarray::{Array2, ArrayView2, ArrayView3, s};
@@ -12,8 +11,8 @@ use tract_nnef::tract_core::tract_linalg::mmm::{
 };
 use tract_nnef::tract_core::tract_linalg::pack::PackedFormat;
 
-/// Picks each token's `k` experts: router logits `x . wg^T` (plus the optional `wg_bias [E]`),
-/// then `gate` turns them into weights. Outputs `route_token_ids`, `route_expert_ids` (i64) and
+/// Picks each token's `k` experts: router logits `x . wg^T` and the optional `wg_bias [E]`
+/// go through [`GateMode::route`]. Outputs `route_token_ids`, `route_expert_ids` (i64) and
 /// `route_weights` (f32), `T * k` each, token-major.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct RouteTopK {
@@ -55,24 +54,15 @@ impl EvalOp for RouteTopK {
         let mut route_expert_ids = Vec::with_capacity(route_count);
         let mut route_weights = Vec::with_capacity(route_count);
 
-        let mut router_logits: Array2<f32> = x.dot(&wg.t());
-        if let Some(bias) = bias {
-            ensure!(bias.len() == wg.shape()[0], "router bias must have one value per expert");
-            for mut row in router_logits.rows_mut() {
-                row.iter_mut().zip(bias).for_each(|(v, b)| *v += b);
-            }
-        }
+        let router_logits: Array2<f32> = x.dot(&wg.t());
+        ensure!(
+            bias.is_none_or(|b| b.len() == wg.shape()[0]),
+            "router bias must have one value per expert"
+        );
         for t in 0..t_tokens {
-            let row = router_logits.row(t);
-            let full: Vec<f32> = row.iter().copied().collect();
-            let mut scores: Vec<(usize, f32)> =
-                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
-            select_routes(&mut scores, self.k);
-
-            let gate_weights = self.gate.weights(&full, &scores);
-            for ((eid, _), gw) in scores.iter().zip(gate_weights) {
+            for (eid, gw) in self.gate.route(&router_logits.row(t).to_vec(), bias, self.k) {
                 route_token_ids.push(t as i64);
-                route_expert_ids.push(*eid as i64);
+                route_expert_ids.push(eid as i64);
                 route_weights.push(gw);
             }
         }
@@ -110,8 +100,8 @@ impl TypedOp for RouteTopK {
     as_op!();
 }
 
-/// Picks each token's `k` experts from its router scores `[T, E]` (f32) plus the optional
-/// `bias [E]`; `gate` turns the chosen scores into weights. Outputs `route_token_ids`,
+/// Picks each token's `k` experts from its router scores `[T, E]` (f32) and the optional
+/// `bias [E]` through [`GateMode::route`]. Outputs `route_token_ids`,
 /// `route_expert_ids` (i64) and `route_weights` (f32), `T * k` each and token-major: route
 /// `t * k + j` is token `t`'s `j`-th best expert, ties going to the lower expert index.
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
@@ -150,15 +140,9 @@ impl EvalOp for RouteSelect {
         let mut expert_ids = Vec::with_capacity(route_count);
         let mut weights = Vec::with_capacity(route_count);
         for (t, row) in scores.outer_iter().enumerate() {
-            let full: Vec<f32> = match bias {
-                Some(b) => row.iter().zip(b).map(|(s, b)| s + b).collect(),
-                None => row.to_vec(),
-            };
-            let mut selected: Vec<(usize, f32)> = full.iter().copied().enumerate().collect();
-            select_routes(&mut selected, self.k);
-            for ((e, _), w) in selected.iter().zip(self.gate.weights(&full, &selected)) {
+            for (e, w) in self.gate.route(&row.to_vec(), bias, self.k) {
                 token_ids.push(t as i64);
-                expert_ids.push(*e as i64);
+                expert_ids.push(e as i64);
                 weights.push(w);
             }
         }

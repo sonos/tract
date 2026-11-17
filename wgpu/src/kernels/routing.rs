@@ -145,6 +145,7 @@ fn route_select(
         if (e < params.experts) {
             valid = valid | (1u << r);
             var v = scores[params.off_scores + token * params.experts + e];
+            if (params.gate == 4u) { v = 1.0 / (1.0 + exp(-v)); }
             if (params.has_bias != 0u) { v = v + bias[params.off_bias + e]; }
             s[r] = v;
             local_max = max(local_max, v);
@@ -159,6 +160,7 @@ fn route_select(
 
     var top = 0.0;
     var denom_topk = 0.0;
+    var denom_sigmoid = 0.0;
     for (var slot = 0u; slot < params.k; slot++) {
         var best_key = 0u;
         var best_expert = NONE;
@@ -206,14 +208,19 @@ fn route_select(
                 w = 1.0 / (1.0 + exp(-win_score));
             } else if (params.gate == 3u) {
                 w = win_score;
+            } else if (params.gate == 4u) {
+                w = 1.0 / (1.0 + exp(-scores[params.off_scores + token * params.experts + win_expert]));
+                denom_sigmoid = denom_sigmoid + w;
             }
             weights[params.off_weights + route] = w;
         }
     }
-    if (params.gate == 0u && t == 0u) {
+    if ((params.gate == 0u || params.gate == 4u) && t == 0u) {
+        var denom = denom_topk;
+        if (params.gate == 4u) { denom = denom_sigmoid + 1e-20; }
         for (var slot = 0u; slot < params.k; slot++) {
             let ix = params.off_weights + token * params.k + slot;
-            weights[ix] = weights[ix] / denom_topk;
+            weights[ix] = weights[ix] / denom;
         }
     }
 }

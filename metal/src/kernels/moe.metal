@@ -6,6 +6,7 @@ enum RouteGateMode : uint {
     RouteGateSoftmaxAll = 1,
     RouteGateSigmoid = 2,
     RouteGateRaw = 3,
+    RouteGateSigmoidNorm = 4,
 };
 
 // Top-k selection over precomputed router scores [token_count, num_experts].
@@ -50,6 +51,9 @@ enum RouteGateMode : uint {
         if (e < num_experts) {
             valid_mask |= 1u << r;
             v = scores[e];
+            if (gate_mode == RouteGateSigmoidNorm) {
+                v = 1.0f / (1.0f + exp(-v));
+            }
             if (has_wg_bias != 0) {
                 v += wg_bias[e];
             }
@@ -74,6 +78,7 @@ enum RouteGateMode : uint {
 
     float s0 = 0.0f;
     float denom_topk = 0.0f;
+    float denom_sigmoid = 0.0f;
     for (uint slot = 0; slot < k; slot++) {
         uint best_key = 0;
         uint best_expert = 0xFFFFFFFFu;
@@ -113,6 +118,10 @@ enum RouteGateMode : uint {
                 route_weights[route] = 1.0f / (1.0f + exp(-win_s));
             } else if (gate_mode == RouteGateSoftmaxAll) {
                 route_weights[route] = exp(win_s - max_all) / denom_all;
+            } else if (gate_mode == RouteGateSigmoidNorm) {
+                const float w = 1.0f / (1.0f + exp(-scores[win_e]));
+                denom_sigmoid += w;
+                route_weights[route] = w;
             } else {
                 // RouteGateSoftmaxTopk: denominator only known after the
                 // last slot; store the numerator now, divide below.
@@ -121,9 +130,11 @@ enum RouteGateMode : uint {
         }
     }
 
-    if (gate_mode == RouteGateSoftmaxTopk && lane == 0) {
+    if ((gate_mode == RouteGateSoftmaxTopk || gate_mode == RouteGateSigmoidNorm) && lane == 0) {
+        const float denom =
+            gate_mode == RouteGateSoftmaxTopk ? denom_topk : denom_sigmoid + 1e-20f;
         for (uint slot = 0; slot < k; slot++) {
-            route_weights[token * k + slot] /= denom_topk;
+            route_weights[token * k + slot] /= denom;
         }
     }
 }

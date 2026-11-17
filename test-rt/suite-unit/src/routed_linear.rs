@@ -494,13 +494,20 @@ pub fn suite() -> TractResult<TestSuite> {
             );
         }
     }
-    let gates = [GateMode::SoftmaxTopk, GateMode::SoftmaxAll, GateMode::Sigmoid, GateMode::Raw];
+    let gates = [
+        GateMode::SoftmaxTopk,
+        GateMode::SoftmaxAll,
+        GateMode::Sigmoid,
+        GateMode::Raw,
+        GateMode::SigmoidNorm,
+    ];
     let mut selects: Vec<(usize, usize, bool, GateMode)> = vec![];
     for (ix, gate) in gates.iter().enumerate() {
         selects.push((4, 1, ix % 2 == 0, gate.clone()));
         selects.push((40, 4, ix % 2 == 1, gate.clone()));
     }
     selects.push((300, 2, true, GateMode::SoftmaxAll));
+    selects.push((128, 6, true, GateMode::SigmoidNorm));
     for (experts, k, bias, gate) in selects {
         suite.add(
             format!("select_e{experts}_k{k}_bias{bias}_{gate:?}").to_lowercase(),
