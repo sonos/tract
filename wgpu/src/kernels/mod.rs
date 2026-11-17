@@ -51,3 +51,12 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<shaders::PipelineKey> {
     keys.extend(softmax::all_pipeline_keys(shader_f16));
     keys
 }
+
+tract_core::declare_knob!(
+    scopable TRACT_WGPU_ALLOW_F16_ACCUMULATION,
+    bool,
+    false,
+    "Let f16 convolutions and matrix products accumulate in f16 in the blocked, split-K and \
+     direct kernels instead of widening to f32: faster, but sums can lose precision or overflow. \
+     Read when a model is prepared."
+);

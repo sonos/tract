@@ -140,6 +140,7 @@ pub fn wgpu_conv_dispatch(
     weights: &DeviceTensor,
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
+    f16_accumulation: bool,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
@@ -153,6 +154,7 @@ pub fn wgpu_conv_dispatch(
             return dispatch_depthwise(q, op, shape, epilogue, input, weights, extras, output);
         }
         let dt = ShaderDtype::from_datum(input.datum_type())?;
+        let f16_acc = dt == ShaderDtype::F16 && f16_accumulation;
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
         let in_shape = op.pool_spec.data_format.shape(input.shape())?;
         let out_shape = op.pool_spec.data_format.shape(output.shape())?;
@@ -276,15 +278,16 @@ pub fn wgpu_conv_dispatch(
                 conv_splitk::slices(dt, groups, co_pg, pixels, ci_pg * kh * kw, tile_m)
         {
             return conv_splitk::dispatch(
-                q, dt, tile_m, slices, epilogue, input, weights, extras, output, params, tiled_grid,
+                q, dt, f16_acc, tile_m, slices, epilogue, input, weights, extras, output, params,
+                tiled_grid,
             );
         }
         let pipeline = if let Some(co_tile) = direct {
             q.context().chain_pipeline(
-                ("conv_direct", dt, co_tile, epilogue, extras.len()),
+                ("conv_direct", dt, f16_acc, co_tile, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed("conv2d_direct", dt),
-                || conv_direct_module(dt, epilogue, extras.len(), co_tile),
+                || conv_direct_module(dt, f16_acc, epilogue, extras.len(), co_tile),
             )?
         } else if tiled {
             q.context().chain_pipeline(
@@ -1114,15 +1117,17 @@ fn direct_tiling(
 /// an edge never leaks into a padded output. Serves the convolutions
 /// [`direct_tiling`] admits. f16 inputs and weights are widened as they are
 /// read: the accumulators and the epilogue run in f32 and the result is
-/// rounded to the storage type once.
+/// rounded to the storage type once. With `f16_accumulation`, f16 stays f16
+/// throughout.
 pub fn conv_direct_module(
     dt: ShaderDtype,
+    f16_accumulation: bool,
     epilogue: &[ChainStep],
     extras: usize,
     co_tile: usize,
 ) -> String {
     let t = dt.wgsl();
-    let a = "f32";
+    let a = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let suf = dt.suffix();
     let out_binding = 2 + extras;
     let uniform_binding = 3 + extras;
@@ -1770,6 +1775,60 @@ mod tests {
             let n: usize = shape.iter().product();
             gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(3, n))?)
                 .with_context(|| format!("case {i}"))?;
+        }
+        Ok(())
+    }
+
+    /// `TRACT_WGPU_ALLOW_F16_ACCUMULATION` is captured when the model is
+    /// prepared: products overflow f16 but cancel in pairs of input channels,
+    /// so f32 accumulation gives exact zeros and f16 accumulation does not. The
+    /// shapes take the direct and the split-K kernels.
+    #[test]
+    fn conv_f16_accumulation_follows_knob() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        use tract_data::knobs::KnobScope;
+        crate::context::wgpu_context();
+        let rt = tract_core::runtime::runtime_for_name("wgpu")?.context("no wgpu runtime")?;
+        for (n, ci, co, h, w) in [(1usize, 8usize, 16usize, 8usize, 16usize), (2, 24, 64, 5, 6)] {
+            let mut model = TypedModel::default();
+            let x = model.add_source("x", f16::fact([n, ci, h, w]))?;
+            let weights = (0..co * ci * 9)
+                .map(|i| f16::from_f32(if (i / 9) % ci % 2 == 0 { 300. } else { -300. }))
+                .collect::<Vec<_>>();
+            let k = model.add_const("k", Tensor::from_shape(&[co, ci, 3, 3], &weights)?)?;
+            let b = model.add_const("b", rctensor0(f16::ZERO))?;
+            let conv = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: None,
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+            model.select_output_outlets(&[y])?;
+            let input =
+                Tensor::from_shape(&[n, ci, h, w], &vec![f16::from_f32(300.); n * ci * h * w])?;
+            for f16_accumulation in [false, true, false] {
+                let value = if f16_accumulation { "true" } else { "false" };
+                let scope = KnobScope::new([("TRACT_WGPU_ALLOW_F16_ACCUMULATION", value)])?;
+                let runnable = scope.enter(|| rt.prepare(model.clone()))?;
+                let output = runnable.run(tvec![input.clone().into_tvalue()])?.remove(0);
+                let output = output.into_tensor();
+                let values = output.try_as_plain_ram()?.as_slice::<f16>()?;
+                let all_zero = values.iter().all(|v| *v == f16::ZERO);
+                ensure!(
+                    all_zero != f16_accumulation,
+                    "ci{ci} co{co} {h}x{w}: f16_accumulation={f16_accumulation}, all zero: {all_zero}"
+                );
+            }
         }
         Ok(())
     }

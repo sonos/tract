@@ -42,7 +42,11 @@ pub fn wire_wgpu_conv(
     let conv_name = format!("{prefix}.conv");
     let mut conv_wire = target.wire_node(
         if need_bias { &conv_name } else { &node.name },
-        WgpuConv { op: op.clone(), epilogue: vec![] },
+        WgpuConv {
+            op: op.clone(),
+            epilogue: vec![],
+            f16_accumulation: crate::kernels::TRACT_WGPU_ALLOW_F16_ACCUMULATION.get(),
+        },
         &inputs[0..2],
     )?[0];
     if need_bias {
@@ -69,6 +73,8 @@ pub fn wire_wgpu_conv(
 pub struct WgpuConv {
     pub op: Conv,
     pub epilogue: Vec<crate::kernels::shaders::ChainStep>,
+    /// f16 data and weights accumulate in f16 rather than f32.
+    pub f16_accumulation: bool,
 }
 
 impl Op for WgpuConv {
@@ -76,7 +82,11 @@ impl Op for WgpuConv {
         "WgpuConv".into()
     }
     fn info(&self) -> TractResult<Vec<String>> {
-        self.op.info()
+        let mut info = self.op.info()?;
+        if self.f16_accumulation {
+            info.push("f16 accumulation".to_string());
+        }
+        Ok(info)
     }
     op_as_typed_op!();
 }
@@ -101,6 +111,7 @@ impl EvalOp for WgpuConv {
                 inputs[1],
                 &inputs[2..],
                 &output,
+                self.f16_accumulation,
             )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))

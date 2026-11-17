@@ -15,6 +15,8 @@ use crate::transform::Mapping;
 pub struct WgpuGemm {
     pub op: PrefixMatMul,
     pub epilogue: Vec<ChainStep>,
+    /// f16 operands accumulate in f16 rather than f32.
+    pub f16_accumulation: bool,
 }
 
 impl Op for WgpuGemm {
@@ -29,6 +31,9 @@ impl Op for WgpuGemm {
         )];
         if !self.epilogue.is_empty() {
             info.push(format!("epilogue: {:?}", self.epilogue));
+        }
+        if self.f16_accumulation {
+            info.push("f16 accumulation".to_string());
         }
         Ok(info)
     }
@@ -63,6 +68,7 @@ impl EvalOp for WgpuGemm {
                 b,
                 &inputs[2..],
                 &output,
+                self.f16_accumulation,
             )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
@@ -162,7 +168,11 @@ pub fn translate_gemm(
     if on_a {
         device_inputs.swap(0, 1);
     }
-    let outlet_ids =
-        target.wire_node(node.name.clone(), WgpuGemm { op, epilogue: vec![] }, &device_inputs)?;
+    let gemm = WgpuGemm {
+        op,
+        epilogue: vec![],
+        f16_accumulation: crate::kernels::TRACT_WGPU_ALLOW_F16_ACCUMULATION.get(),
+    };
+    let outlet_ids = target.wire_node(node.name.clone(), gemm, &device_inputs)?;
     Ok(Some(outlet_ids))
 }
