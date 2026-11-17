@@ -1,5 +1,6 @@
 pub mod chain;
 pub mod conv;
+pub mod decoder_gate;
 pub mod deconv;
 pub mod fused_axis_op;
 pub mod gemv_pair;

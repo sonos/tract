@@ -1,3 +1,4 @@
+mod decoder_gate;
 mod fuse_axis_op;
 mod fuse_concat_resize;
 mod fuse_elementwise;
@@ -5,6 +6,7 @@ mod fuse_epilogue;
 mod fuse_gemv_pair;
 mod winograd;
 
+pub use decoder_gate::fuse_decoder_gate;
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use fuse_concat_resize::fuse_concat_resize;
 pub use fuse_concat_resize::fuse_resize_concat_output;

@@ -73,7 +73,7 @@ impl ModelTransform for WgpuTransform {
 
     fn transform(&self, model: &mut TypedModel) -> TractResult<()> {
         crate::kernels::pool::link_translators();
-        wgpu_context();
+        let shader_f16 = wgpu_context().shader_f16();
         Rewriter::default()
             .with_rule_for("flatten_unfused_sdpa", flatten_unfused_sdpa)
             .rewrite(&(), model)?;
@@ -108,6 +108,9 @@ impl ModelTransform for WgpuTransform {
             .with_rule_for("conv_to_winograd_f43", crate::rewrite_rules::conv_to_winograd_f43)
             .rewrite(&(), model)?;
         *model = self.translate_model(model)?;
+        Rewriter::default()
+            .with_rule_for("fuse_decoder_gate", crate::rewrite_rules::fuse_decoder_gate)
+            .rewrite(&shader_f16, model)?;
         Rewriter::default()
             .with_rule_for("start_elementwise_chain", crate::rewrite_rules::start_elementwise_chain)
             .with_rule_for("start_binary_chain", crate::rewrite_rules::start_binary_chain)
