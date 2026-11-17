@@ -171,9 +171,9 @@ impl CudaFlashAttn {
 
         let mask_strides = if let Some(m) = mask {
             let strides = compute_broadcast_strides(m.shape(), m.strides())?;
-            (strides[0], strides[1])
+            (strides[0], strides[1], strides[2])
         } else {
-            (0, 0)
+            (0, 0, 0)
         };
 
         let kernel_launcher = |suffix: &str, num_q_blocks: usize| -> TractResult<()> {
@@ -197,6 +197,7 @@ impl CudaFlashAttn {
             launch_args.push_i32(v_cap);
             launch_args.push_i32(mask_strides.0);
             launch_args.push_i32(mask_strides.1);
+            launch_args.push_i32(mask_strides.2);
             launch_args.push::<f32>(scale);
 
             let cfg = LaunchConfig {

@@ -151,7 +151,7 @@ template <int BLOCK_Q, int BLOCK_KV, int DIM, int PADDED_DIM, int NUM_WARPS, Mas
 static __device__ __forceinline__ void
 kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv, const int past,
              const int q_block_base, const int warp_id, const int lane_id, float scale,
-             const half *__restrict__ MaskBase,
+             const half *__restrict__ MaskBase, const int mask_q_stride,
              float S_rmem[(BLOCK_Q / NUM_WARPS) / 16][BLOCK_KV / 8][4],
              uint32_t (&P_rmem)[(BLOCK_Q / NUM_WARPS) / 16][BLOCK_KV / 16][4],
              float (&O_rmem)[(BLOCK_Q / NUM_WARPS) / 16][PADDED_DIM / 8][4],
@@ -215,13 +215,13 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv, const in
                     c11 &= (j1 <= jlim1);
                 } else if constexpr (MASK_MODE == mask) {
                     if (i0_valid && j0_valid)
-                        r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
+                        r[0] += (float)MaskBase[(size_t)i0 * mask_q_stride + j0];
                     if (i0_valid && j1_valid)
-                        r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+                        r[1] += (float)MaskBase[(size_t)i0 * mask_q_stride + j1];
                     if (i1_valid && j0_valid)
-                        r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
+                        r[2] += (float)MaskBase[(size_t)i1 * mask_q_stride + j0];
                     if (i1_valid && j1_valid)
-                        r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+                        r[3] += (float)MaskBase[(size_t)i1 * mask_q_stride + j1];
                 }
 
                 r[0] = fsel_neg_inf(c00, r[0]);
@@ -244,12 +244,12 @@ kv_iter_body(const int kv_tile_base, const int len_q, const int len_kv, const in
                     const bool i0_valid = Q_TILE_MODE == fullq ? true : (i0g < len_q);
                     const bool i1_valid = Q_TILE_MODE == fullq ? true : (i1g < len_q);
                     if (i0_valid) {
-                        r[0] += (float)MaskBase[(size_t)i0 * len_kv + j0];
-                        r[1] += (float)MaskBase[(size_t)i0 * len_kv + j1];
+                        r[0] += (float)MaskBase[(size_t)i0 * mask_q_stride + j0];
+                        r[1] += (float)MaskBase[(size_t)i0 * mask_q_stride + j1];
                     }
                     if (i1_valid) {
-                        r[2] += (float)MaskBase[(size_t)i1 * len_kv + j0];
-                        r[3] += (float)MaskBase[(size_t)i1 * len_kv + j1];
+                        r[2] += (float)MaskBase[(size_t)i1 * mask_q_stride + j0];
+                        r[3] += (float)MaskBase[(size_t)i1 * mask_q_stride + j1];
                     }
                 }
             }
@@ -322,7 +322,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
                                         half *__restrict__ O,       // [bs, len_q, DIM]
                                         int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q,
                                         int32_t len_kv, int32_t k_cap, int32_t v_cap,
-                                        int32_t mask_b_stride, int32_t mask_h_stride, float scale) {
+                                        int32_t mask_b_stride, int32_t mask_h_stride,
+                                        int32_t mask_q_stride, float scale) {
     constexpr int TB_SIZE = NUM_WARPS * WARP_SIZE;
     constexpr int WARP_Q = BLOCK_Q / NUM_WARPS;
     constexpr int MMA_M = 16, MMA_N = 8, MMA_K = 16;
@@ -360,7 +361,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     if constexpr (MASK_MODE == mask) {
         if (M) {
             MaskBase =
-                M + (size_t)(q_block_base * len_kv + mask_b_stride * bid + mask_h_stride * hid);
+                M + (size_t)(q_block_base * mask_q_stride + mask_b_stride * bid +
+                              mask_h_stride * hid);
         }
     }
 
@@ -482,7 +484,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
             kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, PADDED_DIM, NUM_WARPS, MASK_MODE, Q_TILE_MODE,
                          false>(kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id,
-                                scale, MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp);
+                                scale, MaskBase, mask_q_stride, S_rmem, P_rmem, O_rmem, rowmax,
+                                rowsumexp);
         }
 
         // Wait V, load V and do O += P@V
@@ -547,7 +550,8 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
 
             kv_iter_body<BLOCK_Q, BLOCK_KV, DIM, PADDED_DIM, NUM_WARPS, MASK_MODE, Q_TILE_MODE,
                          true>(kv_tile_base, len_q, len_kv, past, q_block_base, warp_id, lane_id,
-                               scale, MaskBase, S_rmem, P_rmem, O_rmem, rowmax, rowsumexp);
+                               scale, MaskBase, mask_q_stride, S_rmem, P_rmem, O_rmem, rowmax,
+                               rowsumexp);
         }
         // Wait V and finish O += P@V (tail)
         asm volatile("cp.async.wait_all;");
@@ -605,10 +609,10 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
                   const half *__restrict__ V, const half *__restrict__ M, half *__restrict__ O,    \
                   int32_t bs, int32_t qh, int32_t head_ratio, int32_t len_q, int32_t len_kv,       \
                   int32_t k_cap, int32_t v_cap, int32_t mask_b_stride, int32_t mask_h_stride,      \
-                  float scale) {                                                                   \
+                  int32_t mask_q_stride, float scale) {                                            \
         attention_kernel<BLOCK_Q, BLOCK_KV, D, PADDED_D, 4, mask_mode, q_tile_mode>(               \
             Q, K, V, M, O, bs, qh, head_ratio, len_q, len_kv, k_cap, v_cap, mask_b_stride,         \
-            mask_h_stride, scale);                                                                 \
+            mask_h_stride, mask_q_stride, scale);                                                  \
     }                                                                                              \
     }
 
@@ -633,7 +637,7 @@ static __device__ void attention_kernel(const half *__restrict__ Q, // [bs, len_
     // Other supported D value.
 // Never encountered in practice so commented to keep compilation fast
 //                                           INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 96)
-//                                                                                                                                       \
+//                                                                                                 \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 112) \
   //INSTANTIATE_FLASH_ATTN_FOR_D(block_q, block_kv, 256) \
 
