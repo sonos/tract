@@ -35,7 +35,8 @@ extern "C" __global__ void route_select_f32(
     float v = -CUDART_INF_F;
     if (e < experts) {
       valid |= 1u << r;
-      v = row[e] + (has_bias ? bias[e] : 0.0f);
+      v = gate == 4 ? 1.0f / (1.0f + expf(-row[e])) : row[e];
+      v += has_bias ? bias[e] : 0.0f;
     }
     s[r] = v;
   }
@@ -58,6 +59,7 @@ extern "C" __global__ void route_select_f32(
 
   float top = 0.0f;
   float denom_topk = 0.0f;
+  float denom_sigmoid = 0.0f;
   for (int slot = 0; slot < k; slot++) {
     unsigned int best_key = 0;
     unsigned int best_expert = 0xFFFFFFFFu;
@@ -100,15 +102,19 @@ extern "C" __global__ void route_select_f32(
         w = 1.0f / (1.0f + expf(-win_score));
       } else if (gate == 3) {
         w = win_score;
+      } else if (gate == 4) {
+        w = 1.0f / (1.0f + expf(-row[win_expert]));
+        denom_sigmoid += w;
       } else {
         w = expf(win_score - top);
       }
       weights[route] = w;
     }
   }
-  if (gate == 0 && lane == 0) {
+  if ((gate == 0 || gate == 4) && lane == 0) {
+    const float denom = gate == 0 ? denom_topk : denom_sigmoid + 1e-20f;
     for (int slot = 0; slot < k; slot++) {
-      weights[(long long)token * k + slot] /= denom_topk;
+      weights[(long long)token * k + slot] /= denom;
     }
   }
 }

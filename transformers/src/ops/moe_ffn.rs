@@ -13,7 +13,9 @@
 //!
 //! `k` selects between one and E experts. `gate` is `softmax_topk` (normalize
 //! selected logits), `softmax_all` (normalize all logits before selection),
-//! `sigmoid`, or `raw`. Equal scores select lower expert indices first, including
+//! `sigmoid`, `sigmoid_norm` (pick the top k of `sigmoid(logits) + wg_bias`, weight by
+//! the picked sigmoids renormalized to sum to one; `wg_bias` is otherwise added to the
+//! logits), or `raw`. Equal scores select lower expert indices first, including
 //! signed zero; this is a deterministic local convention, not a promise of
 //! matching another framework's unspecified tie order.
 //! `activation` accepts `silu`, `gelu`, `relu`, or `swiglu` (requires `w3`).
@@ -83,6 +85,9 @@ pub enum GateMode {
     Sigmoid,
     /// raw top-k logits as weights.
     Raw,
+    /// sigmoid of every logit; the top-k pick ranks `sigmoid + bias`, the weights are the
+    /// picked sigmoids renormalized to sum to one (Nemotron 3, DeepSeek-V3 style routing).
+    SigmoidNorm,
 }
 
 impl GateMode {
@@ -92,14 +97,38 @@ impl GateMode {
             "softmax_all" => Ok(GateMode::SoftmaxAll),
             "sigmoid" => Ok(GateMode::Sigmoid),
             "raw" => Ok(GateMode::Raw),
+            "sigmoid_norm" => Ok(GateMode::SigmoidNorm),
             other => bail!("unknown tract_moe_ffn gate mode {other:?}"),
         }
     }
 
-    /// Weights for the selected experts given the full logits row and the
-    /// (expert_id, logit) pairs chosen by top-k.
+    /// One token's `k` routes as `(expert_id, weight)`, best first, from its router
+    /// `logits [E]` and the optional `bias [E]`. The bias is added to the logits, except for
+    /// [`GateMode::SigmoidNorm`] where it only biases the pick.
+    pub fn route(&self, logits: &[f32], bias: Option<&[f32]>, k: usize) -> Vec<(usize, f32)> {
+        if *self == GateMode::SigmoidNorm {
+            let sig: Vec<f32> = logits.iter().map(|l| 1.0 / (1.0 + (-l).exp())).collect();
+            let mut pick: Vec<(usize, f32)> = match bias {
+                Some(b) => sig.iter().zip(b).map(|(s, b)| s + b).enumerate().collect(),
+                None => sig.iter().copied().enumerate().collect(),
+            };
+            select_routes(&mut pick, k);
+            let sum: f32 = pick.iter().map(|(e, _)| sig[*e]).sum::<f32>() + 1e-20;
+            return pick.iter().map(|(e, _)| (*e, sig[*e] / sum)).collect();
+        }
+        let full: Vec<f32> = match bias {
+            Some(b) => logits.iter().zip(b).map(|(l, b)| l + b).collect(),
+            None => logits.to_vec(),
+        };
+        let mut selected: Vec<(usize, f32)> = full.iter().copied().enumerate().collect();
+        select_routes(&mut selected, k);
+        let weights = self.weights(&full, &selected);
+        selected.iter().zip(weights).map(|((e, _), w)| (*e, w)).collect()
+    }
+
     fn weights(&self, full_logits: &[f32], selected: &[(usize, f32)]) -> Vec<f32> {
         match self {
+            GateMode::SigmoidNorm => unreachable!("routed by GateMode::route"),
             GateMode::Raw => selected.iter().map(|(_, l)| *l).collect(),
             GateMode::Sigmoid => selected.iter().map(|(_, l)| 1.0 / (1.0 + (-l).exp())).collect(),
             GateMode::SoftmaxTopk => {
@@ -392,25 +421,15 @@ impl MoeFfn {
         let d_model = x.shape()[1];
         let num_experts = wg.shape()[0];
 
-        let mut router_logits: Array2<f32> = x.dot(&wg.t());
-        if let Some(ref b) = wg_bias {
-            let bias = b.as_slice().context("wg_bias not contiguous")?;
-            for mut row in router_logits.rows_mut() {
-                row.iter_mut().zip(bias).for_each(|(v, &bv)| *v += bv);
-            }
-        }
+        let router_logits: Array2<f32> = x.dot(&wg.t());
+        let bias =
+            wg_bias.as_ref().map(|b| b.as_slice().context("wg_bias not contiguous")).transpose()?;
 
         let mut expert_tokens: Vec<Vec<(usize, f32)>> = vec![Vec::new(); num_experts];
         for t in 0..t_tokens {
-            let row = router_logits.row(t);
-            let full: Vec<f32> = row.iter().copied().collect();
-            let mut scores: Vec<(usize, f32)> =
-                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
-            select_routes(&mut scores, self.k);
-
-            let gate_weights = self.gate.weights(&full, &scores);
-            for ((eid, _), gw) in scores.iter().zip(gate_weights) {
-                expert_tokens[*eid].push((t, gw));
+            let row = router_logits.row(t).to_vec();
+            for (eid, gw) in self.gate.route(&row, bias, self.k) {
+                expert_tokens[eid].push((t, gw));
             }
         }
 
@@ -762,30 +781,16 @@ impl EvalOp for MoeFfn {
         };
 
         // ---- Step 1: Router ----
-        // logits = x @ wg.T  [T, D] @ [D, E] -> [T, E]  (+ optional bias [E])
-        let mut router_logits: Array2<f32> = x.dot(&wg.t());
-        if let Some(ref b) = wg_bias {
-            let bias = b.as_slice().context("wg_bias not contiguous")?;
-            for mut row in router_logits.rows_mut() {
-                row.iter_mut().zip(bias).for_each(|(v, &bv)| *v += bv);
-            }
-        }
+        // logits = x @ wg.T  [T, D] @ [D, E] -> [T, E]
+        let router_logits: Array2<f32> = x.dot(&wg.t());
+        let bias =
+            wg_bias.as_ref().map(|b| b.as_slice().context("wg_bias not contiguous")).transpose()?;
 
         // ---- Step 2: Top-k selection + gate weights per token ----
         // assignments[token] = Vec<(expert_id, gate_weight)>
-        let mut assignments: Vec<Vec<(usize, f32)>> = Vec::with_capacity(t_tokens);
-        for t in 0..t_tokens {
-            let row = router_logits.row(t);
-            let full: Vec<f32> = row.iter().copied().collect();
-            let mut scores: Vec<(usize, f32)> =
-                row.iter().enumerate().map(|(e, &s)| (e, s)).collect();
-            select_routes(&mut scores, self.k);
-
-            let gate_weights = self.gate.weights(&full, &scores);
-
-            assignments
-                .push(scores.iter().zip(gate_weights).map(|((eid, _), gw)| (*eid, gw)).collect());
-        }
+        let assignments: Vec<Vec<(usize, f32)>> = (0..t_tokens)
+            .map(|t| self.gate.route(&router_logits.row(t).to_vec(), bias, self.k))
+            .collect();
 
         // ---- Step 3: Group tokens per expert ----
         // expert_tokens[eid] = Vec<(token_idx, gate_weight)>

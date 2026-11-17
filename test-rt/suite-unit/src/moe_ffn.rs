@@ -29,6 +29,7 @@ struct MoeProblem {
     w1: Tensor,
     w2: Tensor,
     w3: Option<Tensor>,
+    wg_bias: Option<Tensor>,
     k: usize,
     gate: GateMode,
     linear: bool,
@@ -52,7 +53,7 @@ impl Arbitrary for MoeProblem {
 
     fn arbitrary_with((linear, storage, weight_inputs): Self::Parameters) -> Self::Strategy {
         let dimension = if matches!(storage, Storage::Float) { 1usize..33 } else { 1usize..3 };
-        (1usize..17, dimension.clone(), dimension, 1usize..9, any::<bool>(), 0usize..4)
+        (1usize..17, dimension.clone(), dimension, 1usize..9, any::<bool>(), 0usize..5)
             .prop_flat_map(move |(tokens, d, h, experts, has_w3, gate)| {
                 let (d, h) =
                     if matches!(storage, Storage::Float) { (d, h) } else { (d * 32, h * 32) };
@@ -64,22 +65,29 @@ impl Arbitrary for MoeProblem {
                     tensor(&up),
                     tensor(&down),
                     if has_w3 { tensor(&up).prop_map(Some).boxed() } else { Just(None).boxed() },
+                    if gate == 4 {
+                        tensor(&[experts]).prop_map(Some).boxed()
+                    } else {
+                        Just(None).boxed()
+                    },
                     1..=experts,
                     Just(gate),
                 )
             })
-            .prop_map(move |(x, wg, w1, w2, w3, k, gate)| Self {
+            .prop_map(move |(x, wg, w1, w2, w3, wg_bias, k, gate)| Self {
                 x,
                 wg,
                 w1,
                 w2,
                 w3,
+                wg_bias,
                 k,
                 gate: match gate {
                     0 => GateMode::SoftmaxTopk,
                     1 => GateMode::SoftmaxAll,
                     2 => GateMode::Sigmoid,
-                    _ => GateMode::Raw,
+                    3 => GateMode::Raw,
+                    _ => GateMode::SigmoidNorm,
                 },
                 linear,
                 storage,
@@ -133,12 +141,27 @@ impl MoeProblem {
             let logits: Vec<f64> = (0..experts)
                 .map(|e| (0..d).map(|i| f64::from(x[[t, i]]) * f64::from(wg[[e, i]])).sum())
                 .collect();
+            let sigmoid = |l: f64| 1.0 / (1.0 + (-l).exp());
+            // the pick ranks f32 values computed like the op, so near ties cannot flip
+            let pick: Vec<f64> = match (&self.gate, &self.wg_bias) {
+                (GateMode::SigmoidNorm, Some(b)) => {
+                    let b = b.try_as_plain_ram()?.as_slice::<f32>()?.to_vec();
+                    (0..experts)
+                        .map(|e| {
+                            let l = logits[e] as f32;
+                            f64::from(1.0 / (1.0 + (-l).exp()) + b[e])
+                        })
+                        .collect()
+                }
+                (GateMode::SigmoidNorm, None) => logits.iter().map(|&l| sigmoid(l)).collect(),
+                _ => logits.clone(),
+            };
             let mut selected: Vec<usize> = (0..experts).collect();
             selected.sort_by(|&a, &b| {
-                let order = if logits[a] == logits[b] {
+                let order = if pick[a] == pick[b] {
                     std::cmp::Ordering::Equal
                 } else {
-                    logits[b].total_cmp(&logits[a])
+                    pick[b].total_cmp(&pick[a])
                 };
                 order.then(a.cmp(&b))
             });
@@ -146,12 +169,14 @@ impl MoeProblem {
             let denominator: f64 = match self.gate {
                 GateMode::SoftmaxTopk => selected.iter().map(|&e| logits[e].exp()).sum(),
                 GateMode::SoftmaxAll => logits.iter().map(|l| l.exp()).sum(),
+                GateMode::SigmoidNorm => selected.iter().map(|&e| sigmoid(logits[e])).sum(),
                 _ => 1.0,
             };
             for e in selected {
                 let scale = match self.gate {
                     GateMode::SoftmaxTopk | GateMode::SoftmaxAll => logits[e].exp() / denominator,
-                    GateMode::Sigmoid => 1.0 / (1.0 + (-logits[e]).exp()),
+                    GateMode::Sigmoid => sigmoid(logits[e]),
+                    GateMode::SigmoidNorm => sigmoid(logits[e]) / denominator,
                     GateMode::Raw => logits[e],
                 };
                 let mut hidden = vec![0f64; h];
@@ -223,12 +248,20 @@ impl Test for MoeProblem {
         if let Some((w3, _)) = w3 {
             inputs.push(expert(&mut model, "w3", w3)?);
         }
+        if let Some(bias) = &self.wg_bias {
+            inputs.push(if matches!(self.weight_inputs, WeightInputs::Constants) {
+                model.add_const("wg_bias", bias.clone())?
+            } else {
+                extra_inputs.push(bias.clone().into_tvalue());
+                model.add_source("wg_bias", TypedFact::shape_and_dt_of(bias))?
+            });
+        }
         let op = MoeFfn {
             k: self.k,
             activation: "silu".into(),
             gate: self.gate.clone(),
             has_w3: self.w3.is_some(),
-            has_wg_bias: false,
+            has_wg_bias: self.wg_bias.is_some(),
             has_w1_bias: false,
             has_w3_bias: false,
             has_w2_bias: false,
@@ -284,6 +317,7 @@ pub fn suite() -> TractResult<TestSuite> {
             w1: tensor3(&[[[0f32]; 2], [[1.]; 2]]),
             w2: tensor3(&[[[0f32; 2]], [[1.; 2]]]),
             w3: None,
+            wg_bias: None,
             k: 1,
             gate: GateMode::Sigmoid,
             linear: false,

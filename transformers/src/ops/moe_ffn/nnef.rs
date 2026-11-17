@@ -33,6 +33,9 @@ pub fn register(registry: &mut Registry) {
             //   softmax_all:  softmax over ALL experts, gather top-k, no
             //                 renormalization (OLMoE, Qwen w/o norm_topk_prob)
             //   sigmoid:      per-expert sigmoid of the top-k logits (Llama4)
+            //   sigmoid_norm: top-k of sigmoid(logits) + wg_bias, weights are the
+            //                 picked sigmoids renormalized (Nemotron 3, DeepSeek-V3);
+            //                 wg_bias only biases the pick here
             //   raw:          raw top-k logits as weights
             TypeName::String.named("gate"),
             // Optional clamped-SwiGLU params (gpt-oss): when act_limit is set
@@ -72,6 +75,7 @@ fn ser_moe_ffn(
         GateMode::SoftmaxTopk => "softmax_topk",
         GateMode::SoftmaxAll => "softmax_all",
         GateMode::Sigmoid => "sigmoid",
+        GateMode::SigmoidNorm => "sigmoid_norm",
         GateMode::Raw => "raw",
     };
     let layout = match op.expert_layout {

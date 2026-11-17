@@ -17,13 +17,14 @@ pub const ROUTE_SELECT_MAX_EXPERTS: usize = 256;
 pub const ROUTE_SELECT_MAX_K: usize = 16;
 
 /// The gate a select kernel applies: 0 softmax over the top k, 1 softmax over all experts,
-/// 2 sigmoid, 3 raw scores.
+/// 2 sigmoid, 3 raw scores, 4 [`GateMode::SigmoidNorm`] (the bias then only biases the pick).
 pub fn gate_code(gate: &GateMode) -> u32 {
     match gate {
         GateMode::SoftmaxTopk => 0,
         GateMode::SoftmaxAll => 1,
         GateMode::Sigmoid => 2,
         GateMode::Raw => 3,
+        GateMode::SigmoidNorm => 4,
     }
 }
 
