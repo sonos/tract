@@ -14,7 +14,7 @@ use crate::kernels::shaders::{
     pack_u32s, preamble, unary_ops_wgsl,
 };
 use crate::kernels::tiled_gemm::{
-    MATMUL_TILE, MATMUL_TILE_K, TILED_THREADS, tiled_gemm_core, tiled_gemm_tiles,
+    MATMUL_TILE, MATMUL_TILE_K, TILED_THREADS, tiled_gemm_core_with_accumulator, tiled_gemm_tiles,
 };
 use crate::utils::get_wgpu_buffer;
 
@@ -68,6 +68,7 @@ pub(crate) fn slices(
 pub(crate) fn dispatch(
     q: &WgpuQueue,
     dt: ShaderDtype,
+    f16_accumulation: bool,
     tile_m: usize,
     slices: Slices,
     epilogue: &[ChainStep],
@@ -86,10 +87,10 @@ pub(crate) fn dispatch(
 
     let layout = LayoutKind::Chain(3);
     let pipeline = context.chain_pipeline(
-        ("conv_splitk_partial", tile_m, dt),
+        ("conv_splitk_partial", tile_m, dt, f16_accumulation),
         layout,
         EntryPoint::typed("conv2d_splitk_partial", dt),
-        || conv_splitk_partial_module(dt, tile_m),
+        || conv_splitk_partial_module(dt, f16_accumulation, tile_m),
     )?;
     let buffers = [get_wgpu_buffer(input), get_wgpu_buffer(weights), get_wgpu_buffer(&scratch)];
     let bg = context.bind_group(layout, &buffers, q.uniform())?;
@@ -98,10 +99,10 @@ pub(crate) fn dispatch(
 
     let layout = LayoutKind::Chain(2 + extras.len() as u8);
     let pipeline = context.chain_pipeline(
-        ("conv_splitk_finish", dt, epilogue, extras.len()),
+        ("conv_splitk_finish", dt, f16_accumulation, epilogue, extras.len()),
         layout,
         EntryPoint::typed("conv2d_splitk_finish", dt),
-        || conv_splitk_finish_module(dt, epilogue, extras.len()),
+        || conv_splitk_finish_module(dt, f16_accumulation, epilogue, extras.len()),
     )?;
     let mut buffers = vec![get_wgpu_buffer(&scratch)];
     buffers.extend(extras.iter().map(|t| get_wgpu_buffer(t)));
@@ -161,7 +162,12 @@ struct Params {
 /// [`tiled_gemm_core`] over its slice of the reduction alone, `k` counting from
 /// the slice's start. The sums land unscaled in `scratch`, laid out as
 /// `[slice, n, co, oh, ow]`, with no epilogue.
-pub fn conv_splitk_partial_module(dt: ShaderDtype, tile_m: usize) -> String {
+pub fn conv_splitk_partial_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    tile_m: usize,
+) -> String {
+    let accumulator = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let t = dt.wgsl();
     let suf = dt.suffix();
     let tile = MATMUL_TILE;
@@ -257,18 +263,31 @@ fn conv2d_splitk_partial_{suf}(@builtin(local_invocation_index) lid: u32, @built
 "#,
         tiles = tiled_gemm_tiles(t, tile_m),
         threads = TILED_THREADS,
-        core = tiled_gemm_core(t, "true", "true", "g, slice, ", &k_prologue, tile_m),
+        core = tiled_gemm_core_with_accumulator(
+            t,
+            "true",
+            "true",
+            "g, slice, ",
+            &k_prologue,
+            tile_m,
+            accumulator,
+        ),
     ));
     s
 }
 
 /// The second pass: one thread per output value adds its slices up in f32,
-/// applies the epilogue in f32 and stores the result, rounded to the storage
-/// type, through the output's strides. `extras` epilogue operands bind between
-/// the scratch and the output.
-pub fn conv_splitk_finish_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+/// applies the epilogue in f32 (in f16 with `f16_accumulation`) and stores the
+/// result, rounded to the storage type, through the output's strides. `extras`
+/// epilogue operands bind between the scratch and the output.
+pub fn conv_splitk_finish_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
     let t = dt.wgsl();
-    let a = "f32";
+    let a = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let suf = dt.suffix();
     let out_binding = 1 + extras;
     let uniform_binding = 2 + extras;

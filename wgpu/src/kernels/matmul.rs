@@ -192,6 +192,7 @@ pub fn wgpu_matmul_dispatch(
     b: &DeviceTensor,
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
+    f16_accumulation: bool,
 ) -> TractResult<()> {
     if crate::kernels::matmul_bq::is_block_quant_weight(b) {
         return crate::kernels::matmul_bq::wgpu_bq_dispatch(t, epilogue, a, b, extras, output);
@@ -224,19 +225,20 @@ pub fn wgpu_matmul_dispatch(
         if blocked_applies(prefix, m, k, n, a, b, output, t) {
             let packed = repacked_b(q, b, k, n)?;
             let split_k = m < MATMUL_SPLITK_MAX_M;
+            let f16_acc = dt == ShaderDtype::F16 && f16_accumulation;
             let pipeline = if split_k {
                 q.context().chain_pipeline(
-                    ("matmul_splitk", dt, epilogue, extras.len()),
+                    ("matmul_splitk", dt, f16_acc, epilogue, extras.len()),
                     layout,
                     EntryPoint::typed("matmul_splitk", dt),
-                    || matmul_splitk_module(dt, epilogue, extras.len()),
+                    || matmul_splitk_module(dt, f16_acc, epilogue, extras.len()),
                 )?
             } else {
                 q.context().chain_pipeline(
-                    ("matmul_blocked", dt, epilogue, extras.len()),
+                    ("matmul_blocked", dt, f16_acc, epilogue, extras.len()),
                     layout,
                     EntryPoint::typed("matmul_blocked", dt),
-                    || matmul_blocked_module(dt, epilogue, extras.len()),
+                    || matmul_blocked_module(dt, f16_acc, epilogue, extras.len()),
                 )?
             };
             q.retain_tensor(&packed);
@@ -860,9 +862,14 @@ pub const MATMUL_SPLITK_MAX_M: usize = 2304;
 /// in Chrome at 2-2.5x on those shapes (m = 144: 56 -> 22 us, m = 576 with
 /// k >= 72: 47 -> 23 us). Same contract and epilogue as
 /// [`matmul_blocked_module`]; `k` a multiple of four.
-pub fn matmul_splitk_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+pub fn matmul_splitk_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
     let t = dt.wgsl();
-    let acc = "f32";
+    let acc = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let (widen, widen_end) = if t == acc { ("", "") } else { ("vec4<f32>(", ")") };
     let (narrow, narrow_end) = if t == acc { ("", "") } else { ("vec4<f16>(", ")") };
     let suf = dt.suffix();
@@ -1008,9 +1015,14 @@ fn matmul_splitk_{suf}(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(l
     s
 }
 
-pub fn matmul_blocked_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+pub fn matmul_blocked_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
     let t = dt.wgsl();
-    let acc = "f32";
+    let acc = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
     let (widen, widen_end) = if t == acc { ("", "") } else { ("vec4<f32>(", ")") };
     let (narrow, narrow_end) = if t == acc { ("", "") } else { ("vec4<f16>(", ")") };
     let suf = dt.suffix();
@@ -1252,7 +1264,7 @@ mod tests {
                         reference.push(f16::from_f64(sum + extra_values[extra_index].to_f64()));
                     }
                 }
-                wgpu_matmul_dispatch(transposes, &epilogue, &a, &b, &[&extra], &output)?;
+                wgpu_matmul_dispatch(transposes, &epilogue, &a, &b, &[&extra], &output, false)?;
                 crate::with_wgpu_queue(|q| q.flush())?;
                 let actual = output.to_host()?;
                 for (i, (actual, expected)) in
@@ -1270,10 +1282,44 @@ mod tests {
         let b_values = b_values.into_iter().map(f16::from_f32).collect::<Vec<_>>();
         let b = Tensor::from_shape(&[4, 4], &b_values)?.into_device()?;
         let output = DeviceTensor::uninitialized_dt(DatumType::F16, &[4, 4])?;
-        wgpu_matmul_dispatch(transposes, &[], &a, &b, &[], &output)?;
+        wgpu_matmul_dispatch(transposes, &[], &a, &b, &[], &output, false)?;
         let actual = output.to_host()?;
         for value in actual.try_as_plain_ram()?.as_slice::<f16>()? {
             ensure!(*value == f16::ZERO, "partial sum overflowed f16: {value}");
+        }
+        Ok(())
+    }
+
+    /// With f16 accumulation the blocked and split-K kernels multiply in f16, so
+    /// products that overflow f16 no longer cancel; each mode keeps its own
+    /// cached pipeline.
+    #[test]
+    fn matmul_blocked_f16_accumulation_modes() -> TractResult<()> {
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+
+        use super::Transposes;
+        use super::wgpu_matmul_dispatch;
+
+        crate::context::wgpu_context();
+        let transposes = Transposes { a: true, b: true, c: true };
+        for m in [4usize, 2304] {
+            let a = Tensor::from_shape(&[4, m], &vec![f16::from_f32(300.0); 4 * m])?;
+            let b_values = [300.0f32, -300.0, 0.0, 0.0].repeat(4);
+            let b_values = b_values.into_iter().map(f16::from_f32).collect::<Vec<_>>();
+            let b = Tensor::from_shape(&[4, 4], &b_values)?.into_device()?;
+            let a = a.into_device()?;
+            let output = DeviceTensor::uninitialized_dt(DatumType::F16, &[4, m])?;
+            for f16_accumulation in [false, true, false] {
+                wgpu_matmul_dispatch(transposes, &[], &a, &b, &[], &output, f16_accumulation)?;
+                let actual = output.to_host()?;
+                for value in actual.try_as_plain_ram()?.as_slice::<f16>()? {
+                    ensure!(
+                        if f16_accumulation { !value.is_finite() } else { *value == f16::ZERO },
+                        "m={m} f16_accumulation={f16_accumulation}: {value}"
+                    );
+                }
+            }
         }
         Ok(())
     }
