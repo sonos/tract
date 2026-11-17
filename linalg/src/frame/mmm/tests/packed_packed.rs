@@ -107,6 +107,13 @@ macro_rules! mmm_packed_packed_tests {
                     }
                     Ok(())
                 }
+
+                #[test]
+                fn two_products() -> TractResult<()> {
+                    let a = (0..13 * $ker.mr()).map(|i| (i % 5 + 1) as f32).collect_vec();
+                    let b = (0..13 * $ker.nr()).map(|i| (i % 3 + 1) as f32).collect_vec();
+                    PackedPackedProblem::kernel($ker, $packing, a, b).with_products(2).check()
+                }
             }
 
             mod frame {
@@ -163,6 +170,14 @@ macro_rules! mmm_packed_packed_tests {
                 fn mat_mul_2() -> TractResult<()> {
                     ti(1, 3, [122, 82], [0, 0, 37, 0, 0, 57])
                 }
+
+                #[test]
+                fn two_products() -> TractResult<()> {
+                    let (m, n) = ($ker.mr() + 1, $ker.nr() + 1);
+                    let a = (0..13 * m).map(|i| (i % 5 + 1) as f32).collect_vec();
+                    let b = (0..13 * n).map(|i| (i % 3 + 1) as f32).collect_vec();
+                    PackedPackedProblem::frame($ker, $packing, m, n, a, b).with_products(2).check()
+                }
             }
         }
     };
@@ -177,6 +192,8 @@ where
     pub ker: K,
     pub packing: usize,
     pub output_dt: DatumType,
+    /// How many `AddMatMul` of `a` by `b` one kernel run accumulates before the store.
+    pub products: usize,
     pub a: Vec<f32>,
     pub b: Vec<f32>,
 }
@@ -207,6 +224,7 @@ pub fn arbitrary_problem<K: MatMatMulKer>(
                 ker: ker.clone(),
                 packing,
                 output_dt: K::Acc::datum_type(),
+                products: 1,
                 a,
                 b,
             }
@@ -226,6 +244,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
             ker: ker.clone(),
             packing,
             output_dt: K::Acc::datum_type(),
+            products: 1,
             a: a.into(),
             b: b.into(),
         }
@@ -244,6 +263,7 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
             ker: ker.clone(),
             packing,
             output_dt: K::Acc::datum_type(),
+            products: 1,
             a: a.into(),
             b: b.into(),
         }
@@ -253,6 +273,12 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
     pub fn with_output_type(mut self, output_dt: DatumType) -> Self {
         assert!(self.ker.stores().contains(&output_dt));
         self.output_dt = output_dt;
+        self
+    }
+
+    /// Accumulates the product `products` times in one kernel run, as that many `AddMatMul`.
+    pub fn with_products(mut self, products: usize) -> Self {
+        self.products = products;
         self
     }
 
@@ -311,7 +337,9 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
                 for ix_k in 0..k {
                     let a = a[ix_k + k_aligned * ix_m];
                     let b = b[ix_n + n * ix_k];
-                    view[(ix_m, ix_n)] += a * b;
+                    for _ in 0..self.products {
+                        view[(ix_m, ix_n)] += a * b;
+                    }
                 }
             }
         }
@@ -333,14 +361,14 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
         if self.frame_test.is_some() {
             unsafe {
                 let c = self.ker.c_view(Some(0), Some(1)).wrap(&v.view_mut());
-                let ops = tvec!(
-                    FusedSpec::AddMatMul {
+                let mut ops: TVec<FusedSpec> = (0..self.products)
+                    .map(|_| FusedSpec::AddMatMul {
                         a: AsInputValue::Borrowed(&*pa),
                         b: AsInputValue::Borrowed(&*pb),
-                        packing: self.packing
-                    },
-                    FusedSpec::Store(c)
-                );
+                        packing: self.packing,
+                    })
+                    .collect();
+                ops.push(FusedSpec::Store(c));
                 self.ker.run(m, n, &ops)?;
             }
         } else {
@@ -351,17 +379,16 @@ impl<K: MatMatMulKer> PackedPackedProblem<K> {
                 item_size,
             };
 
-            let non_linear_ops = tvec!(
-                FusedKerSpec::Clear,
-                FusedKerSpec::AddMatMul {
-                    k: k_aligned,
-                    pa: pa.panel_bytes(0, None)?,
-                    pb: pb.panel_bytes(0, None)?,
-                    packing: self.packing
-                },
-                FusedKerSpec::Store(c),
-                FusedKerSpec::Done
-            );
+            let add_mat_mul = FusedKerSpec::AddMatMul {
+                k: k_aligned,
+                pa: pa.panel_bytes(0, None)?,
+                pb: pb.panel_bytes(0, None)?,
+                packing: self.packing,
+            };
+            let mut non_linear_ops = tvec!(FusedKerSpec::Clear);
+            non_linear_ops.extend(std::iter::repeat_n(add_mat_mul, self.products));
+            non_linear_ops.push(FusedKerSpec::Store(c));
+            non_linear_ops.push(FusedKerSpec::Done);
             let err = self.ker.kernel(&non_linear_ops);
             assert_eq!(err, 0);
         }
