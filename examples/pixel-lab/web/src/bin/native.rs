@@ -115,14 +115,7 @@ fn run_rvm(mut args: impl Iterator<Item = String>) -> Result<()> {
         rgb[pixels + i] = value[1];
         rgb[2 * pixels + i] = value[2];
     }
-    let image = || -> Result<Tensor> {
-        let f32_image = Tensor::from_slice(&[1, 3, height, width], &rgb)?;
-        if src_dt == "f16" {
-            Ok(f32_image.cast_to_dt(DatumType::F16)?.into_owned())
-        } else {
-            Ok(f32_image)
-        }
-    };
+    let image = || Tensor::from_slice(&[1, 3, height, width], &rgb);
     let f16 = recurrent_dt == "f16";
     let zeros = |shape: &[usize; 4]| {
         let len = shape.iter().product::<usize>();
