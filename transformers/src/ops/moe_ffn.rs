@@ -18,7 +18,8 @@
 //! logits), or `raw`. Equal scores select lower expert indices first, including
 //! signed zero; this is a deterministic local convention, not a promise of
 //! matching another framework's unspecified tie order.
-//! `activation` accepts `silu`, `gelu`, `relu`, or `swiglu` (requires `w3`).
+//! `activation` accepts `silu`, `gelu`, `relu`, `relu2` (squared relu), or `swiglu`
+//! (requires `w3`).
 //! With `w3`, the activated gate is multiplied by the up projection. Optional
 //! `act_limit` instead selects clamped SwiGLU, with `act_alpha` defaulting to 1;
 //! alpha alone does not change an unclamped activation.
@@ -58,7 +59,7 @@ mod routing;
 #[cfg(test)]
 mod tests;
 
-use activation::activation_op;
+use activation::{activation_ops, wire_activation};
 pub use cpu::OptMoeFfn;
 use cpu::{build_expert_plan, build_router_plan};
 pub use nnef::register;
@@ -257,7 +258,7 @@ impl MoeFfn {
         ensure!(!self.has_w3_bias || self.has_w3, "MoeFfn w3_bias requires w3");
         ensure!(!self.is_clamped_act() || self.has_w3, "clamped activation requires w3");
         ensure!(
-            activation_op(&self.activation, self.has_w3).is_some(),
+            activation_ops(&self.activation, self.has_w3).is_some(),
             "Unsupported MoE activation {}",
             self.activation
         );
@@ -353,9 +354,9 @@ impl MoeFfn {
         }
     }
 
-    /// Inner activation of the reference paths, matching `activation_op`:
+    /// Inner activation of the reference paths, matching `activation_ops`:
     /// silu for "silu"/"swiglu" (w3 provides the gate branch), the pow-3
-    /// tanh-approximate gelu, and relu. The clamped-SwiGLU (gpt-oss) case is
+    /// tanh-approximate gelu, relu and squared relu. The clamped-SwiGLU (gpt-oss) case is
     /// handled by the callers before reaching this.
     fn apply_reference_activation(&self, h: &mut Array2<f32>) -> TractResult<()> {
         match self.activation.as_str() {
@@ -371,6 +372,9 @@ impl MoeFfn {
             }
             "relu" => {
                 h.iter_mut().for_each(|v| *v = v.max(0.0));
+            }
+            "relu2" => {
+                h.iter_mut().for_each(|v| *v = v.max(0.0) * v.max(0.0));
             }
             other => bail!("MoeFfn reference eval: unsupported activation {other:?}"),
         }
@@ -1103,7 +1107,7 @@ impl MoeFfn {
         node: &TypedNode,
     ) -> TractResult<Option<TypedModelPatch>> {
         let biased_or_clamped = self.has_any_bias() || self.is_clamped_act();
-        let act_op = activation_op(&self.activation, self.has_w3);
+        let act_ops = activation_ops(&self.activation, self.has_w3);
         if self.expert_layout == ExpertLayout::Linear {
             return Ok(None);
         }
@@ -1114,7 +1118,7 @@ impl MoeFfn {
         if biased_or_clamped {
             return Ok(None);
         }
-        let Some(act_op) = act_op else {
+        let Some(act_ops) = act_ops else {
             return Ok(None);
         };
 
@@ -1165,7 +1169,8 @@ impl MoeFfn {
             RoutedMatMul { input_mode: RoutedInputMode::TokenRows, cache_weights: cache_w1 },
             &[x, w1, route_token_ids, route_expert_ids],
         )?[0];
-        let activated = patch.wire_node(format!("{}.activation", node.name), act_op, &[h1])?[0];
+        let activated =
+            wire_activation(&mut patch, &format!("{}.activation", node.name), act_ops, h1)?;
 
         let hidden = if self.has_w3 {
             let w3 = patch.tap_model(model, node.inputs[4])?;

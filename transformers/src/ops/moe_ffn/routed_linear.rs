@@ -19,6 +19,8 @@ pub enum RoutedActivation {
     /// The tanh approximation.
     Gelu,
     Relu,
+    /// `max(v, 0)^2` (Nemotron 3).
+    Relu2,
     /// gpt-oss: `gate = min(g, limit)`, `up = clamp(u, -limit, limit)`,
     /// `h = (up + 1) * gate * sigmoid(alpha * gate)`. Pairs only.
     ClampedSwiGlu {
@@ -37,6 +39,7 @@ impl RoutedActivation {
                 0.5 * v * (1.0 + f32::tanh(sqrt_2_over_pi * (v + 0.044715 * v.powi(3))))
             }
             RoutedActivation::Relu => v.max(0.0),
+            RoutedActivation::Relu2 => v.max(0.0) * v.max(0.0),
         }
     }
 
@@ -268,6 +271,7 @@ impl MoeFfn {
             ("swiglu", None) if self.has_w3 => RoutedActivation::Silu,
             ("gelu", None) => RoutedActivation::Gelu,
             ("relu", None) => RoutedActivation::Relu,
+            ("relu2", None) => RoutedActivation::Relu2,
             _ => return Ok(None),
         };
         let idx = self.input_idx();

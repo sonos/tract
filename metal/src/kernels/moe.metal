@@ -194,12 +194,15 @@ inline float routed_activate(float v, uint activation) {
         return 0.5f * v * (1.0f + precise::tanh(0.7978845608f * (v + 0.044715f * v * v * v)));
     } else if (activation == 3) {
         return max(v, 0.0f);
+    } else if (activation == 5) {
+        const float r = max(v, 0.0f);
+        return r * r;
     }
     return v;
 }
 
 // RoutedLinear postamble over [routes, n] projections: bias at the route's
-// expert, then the activation (0 none, 1 silu, 2 tanh gelu, 3 relu), times
+// expert, then the activation (0 none, 1 silu, 2 tanh gelu, 3 relu, 5 squared relu), times
 // `up` for a pair, or clamped SwiGLU (4) of the pair.
 [[kernel]] void routed_postamble_f32(
     device const float *gate [[buffer(0)]],

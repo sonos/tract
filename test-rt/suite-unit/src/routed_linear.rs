@@ -132,6 +132,7 @@ fn activate(activation: &RoutedActivation, v: f32) -> f32 {
                     + ((2.0f32 / std::f32::consts::PI).sqrt() * (v + 0.044715 * v * v * v)).tanh())
         }
         RoutedActivation::Relu => v.max(0.0),
+        RoutedActivation::Relu2 => v.max(0.0) * v.max(0.0),
         _ => v,
     }
 }
@@ -404,6 +405,7 @@ pub fn suite() -> TractResult<TestSuite> {
         RoutedActivation::Silu,
         RoutedActivation::Gelu,
         RoutedActivation::Relu,
+        RoutedActivation::Relu2,
         clamped,
     ];
     let mut add_sized = |format: Format, mode, pair, bias, activation: RoutedActivation, size| {
@@ -520,6 +522,7 @@ pub fn suite() -> TractResult<TestSuite> {
         ("gelu", true, false, true),
         ("relu", false, false, true),
         ("swiglu", true, true, true),
+        ("relu2", false, false, false),
     ];
     let mut moes = vec![(Format::F32, ExpertLayout::Linear, &shapes[..])];
     moes.push((Format::F32, ExpertLayout::Canonical, &shapes[1..3]));
