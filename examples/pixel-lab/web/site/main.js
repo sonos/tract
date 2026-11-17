@@ -1,6 +1,6 @@
 const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const stamped = file => import(`./${file}?stamp=${stamp}`);
-const {CAPTURES, model, capture, rvmNetworkSize, rvmScale, formatR, modelsFor} = await stamped('models.mjs');
+const {CAPTURES, model, capture, rvmNetworkSize, formatR, modelsFor, holdsUncertainMask} = await stamped('models.mjs');
 const {GpuClient} = await stamped('gpu-client.js');
 const {FrameRate, isNewSourceFrame} = await stamped('frame-rate.mjs');
 const {inspectorView, textureBytes} = await stamped('inspector.mjs');
@@ -75,7 +75,7 @@ function tensorSize() {
   const size = capture($('capture').value);
   const chosen = model($('model').value);
   if (chosen.kind === 'rvm') {
-    const network = rvmNetworkSize(size.width, size.height, rvmScale(size.width, size.height, $('r-factor').value));
+    const network = rvmNetworkSize(size.width, size.height);
     return {width: network.width, height: network.height, label: `${network.width}×${network.height}`};
   }
   return {width: chosen.width, height: chosen.height, label: `${chosen.width}×${chosen.height}`};
@@ -200,6 +200,11 @@ $('harmonize').onchange = () => {
 };
 showBackground();
 $('refine').onchange = resetStats;
+$('hold').onchange = () => {
+  resetStats();
+  if (!state.client) return;
+  state.client.request('hold', {enabled: $('hold').checked}).catch(error => status(error.message));
+};
 
 const LOAD_CONTROLS = ['model', 'camera', 'capture'];
 
@@ -217,66 +222,28 @@ function showModels() {
   $('model').replaceChildren(...fitting.map(entry => new Option(entry.name, entry.id)));
   $('model').value = keep;
   showScale();
+  showHold();
 }
 
-// Auto prints the official factor for this capture size. A change while live swaps the network.
+function showHold() {
+  $('hold-label').hidden = !holdsUncertainMask(model($('model').value));
+}
+
+// The factor for this capture size. The long side of the inner frame stays at 512.
 function showScale() {
   const rvm = model($('model').value).kind === 'rvm';
-  $('r-label').hidden = $('r-factor').hidden = $('scale').hidden = !rvm;
+  $('scale').hidden = !rvm;
   if (!rvm) return;
   const size = capture($('capture').value);
-  const auto = rvmNetworkSize(size.width, size.height);
-  const factor = $('r-factor');
-  factor.options[0].textContent = `Auto (R=${formatR(auto.ratio)})`;
-  const network = rvmNetworkSize(size.width, size.height, rvmScale(size.width, size.height, factor.value));
-  $('scale').textContent = `Main network ${network.width} × ${network.height}. You can change it while the camera is running.`;
+  const network = rvmNetworkSize(size.width, size.height);
+  $('scale').textContent = `R=${formatR(network.ratio)}. Main network ${network.width} × ${network.height}.`;
 }
 
-// One change at a time. A newer pick waits and then replaces whatever just finished.
-async function pushFactor() {
+$('model').onchange = () => {
   showScale();
-  if (!state.running || !state.client) return;
-  if (state.factorBusy) {
-    state.factorDirty = true;
-    return;
-  }
-  state.factorBusy = true;
-  try {
-    do {
-      state.factorDirty = false;
-      const choice = $('r-factor').value;
-      state.ratioPending = true;
-      let updated;
-      try {
-        updated = await state.client.request('ratio', {ratio: choice}, [], 180000);
-      } finally {
-        state.ratioPending = false;
-        if (state.running) state.liveSince = performance.now();
-      }
-      if (!state.running || state.factorDirty) continue;
-      state.ops = updated.ops;
-      // The previous rate was the smaller network. Start the mask and output
-      // clocks again so they show this network instead of averaging the old one in.
-      state.rate = new FrameRate();
-      state.maskRate = new FrameRate();
-      state.frames = 0;
-      state.masks = 0;
-      state.outputTimes = [];
-      state.latencies = [];
-      state.compositeMs = [];
-      state.lastStats = 0;
-      liveStatus(updated.ratio, updated.ops);
-    } while (state.factorDirty && state.running && state.client);
-  } catch (error) {
-    if (state.running) status(error.message);
-  } finally {
-    state.factorBusy = false;
-    state.ratioPending = false;
-  }
-}
-$('model').onchange = showScale;
+  showHold();
+};
 $('capture').onchange = showModels;
-$('r-factor').onchange = () => pushFactor().catch(error => status(error.message));
 showModels();
 
 function applyLayout() {
@@ -289,7 +256,6 @@ applyLayout();
 function stallReport(now = performance.now()) {
   const ago = t => `${((now - t) / 1000).toFixed(0)} s`;
   const timers = state.tick !== undefined && now - state.tick > 3000 ? [`page timers last ran ${ago(state.tick)} ago`] : [];
-  if (state.ratioPending) return timers.join('; ');
   if (!state.running) {
     const worker = state.starting && state.lastWorker && now - state.lastWorker.at > WORKER_SILENCE_MS ? [`starting, last word from the GPU worker ${ago(state.lastWorker.at)} ago: ${state.lastWorker.status}`] : [];
     return [...worker, ...timers].join('; ');
@@ -339,7 +305,6 @@ function stop(message = 'Camera stopped.') {
   state.motionAllocated = false;
   showInspector();
   for (const id of LOAD_CONTROLS) $(id).disabled = false;
-  $('r-factor').disabled = false;
   status(message);
   idle();
 }
@@ -372,7 +337,6 @@ async function start() {
   const generation = ++state.generation;
   go.disabled = true;
   for (const id of LOAD_CONTROLS) $(id).disabled = true;
-  $('r-factor').disabled = true;
   try {
     const size = capture($('capture').value);
     const m = model($('model').value);
@@ -410,8 +374,7 @@ async function start() {
       }
       if (message.mask !== undefined && state.running) maskReady(message.mask);
     });
-    const choice = $('r-factor').value;
-    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: choice}, [canvas], 180000);
+    const prepared = await state.client.request('init', {canvas, model: m.id, ratio: 'auto'}, [canvas], 180000);
     if (generation !== state.generation) return;
     await applyBackground();
     bar(1);
@@ -421,12 +384,10 @@ async function start() {
     state.motionAllocated = false;
     Object.assign(state, {liveSince: performance.now(), lastCompleted: undefined, lastMask: undefined, lastReply: null, waiting: null, lastWorker: null});
     state.running = true;
-    $('r-factor').disabled = false;
     go.disabled = false;
     go.textContent = 'Stop camera';
     Object.assign(state, {modelName: m.name, modelNote: m.note, ops: prepared.ops});
     liveStatus(prepared.ratio, prepared.ops);
-    if (m.kind === 'rvm' && $('r-factor').value !== choice) pushFactor().catch(error => status(error.message));
     const frame = (_now, metadata) => {
       if (!state.running || generation !== state.generation) return;
       state.callback = video.requestVideoFrameCallback(frame);
@@ -451,6 +412,7 @@ async function start() {
           const reply = await state.client.request('frame', {
             bitmap,
             refine: $('refine').checked,
+            hold: holdsUncertainMask(model($('model').value)) && $('hold').checked,
             view: $('view').value,
             motion: moving,
           }, [bitmap], 15000);

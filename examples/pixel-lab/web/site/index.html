@@ -41,6 +41,7 @@
   .choice input[type=color]:disabled { display: none; }
   input[type=checkbox] { width: auto; margin: 0 8px 0 0; }
   .check { display: flex; align-items: center; color: var(--fg); font-size: 14px; margin-top: 14px; }
+  .check[hidden] { display: none; }
   .hint + .check { margin-top: 10px; }
   .hint { margin: 2px 0 0; font-size: 12px; line-height: 1.35; color: var(--muted); }
   .info { position: relative; display: inline-flex; margin-left: 6px; }
@@ -105,14 +106,6 @@
     <select id="capture"></select>
     <label for="model">Model</label>
     <select id="model"></select>
-    <label for="r-factor" id="r-label" hidden>R factor</label>
-    <select id="r-factor" hidden>
-      <option value="auto">Auto</option>
-      <option value="0.25">R=0.25</option>
-      <option value="0.5">R=0.5</option>
-      <option value="0.75">R=0.75</option>
-      <option value="1">R=1.0</option>
-    </select>
     <p class="hint" id="scale" hidden></p>
     <label for="background">Background</label>
     <div class="choice">
@@ -137,6 +130,7 @@
     <select id="layout"><option value="both">Side by side</option><option value="output">Output only</option></select>
     <p class="hint">Side by side keeps the camera on the left. Output only shows the composited picture or the mask.</p>
     <label class="check"><input id="refine" type="checkbox" checked>Smooth mask edges<span class="info"><button type="button" class="info-i" aria-label="About smooth mask edges">i</button><span class="info-text" role="tooltip">Softens the mask and pulls its edge onto the camera image. Works whether or not the mask is moved.</span></span></label>
+    <label class="check" id="hold-label"><input id="hold" type="checkbox" checked>Hold uncertain mask<span class="info"><button type="button" class="info-i" aria-label="About holding the mask">i</button><span class="info-text" role="tooltip">For the single-frame models. An unsure pixel keeps most of the previous mask. A sure pixel updates. The picture shows background below 0.1 and solid person from 0.7. Hidden for RVM.</span></span></label>
     <label class="check"><input id="motion" type="checkbox">Move the mask with the camera<span class="info"><button type="button" class="info-i" aria-label="About moving the mask">i</button><span class="info-text" role="tooltip">Off, the composited picture stays on the camera frame the mask was measured from. On, that pair is shown while the mask keeps up with the camera. When the camera gets ahead, the last mask is moved onto those extra frames, so the output stays on the camera clock. The preview keeps running live.</span></span></label>
     <button id="go" disabled>Loading…</button>
     <div class="bar"><div id="bar"></div></div>
@@ -187,12 +181,12 @@
     come from Hugging Face at a pinned revision, under the Apache 2.0 license.
     <a href="https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0">RVM MobileNetV3</a>
     is the official v1.0.0 fp32 file (15 MB), GPL-3.0. The page downloads it from a pinned Hugging Face copy,
-    because the release host does not let a web page read it. It reads the camera frame itself. Auto keeps the long side of the inner frame at 512,
-    and a smaller camera is not shrunk. A fixed R factor replaces that, including while the camera is running. Changing it clears the model's memory.
+    because the release host does not let a web page read it. It reads the camera frame itself. The downsample keeps the long side of the inner frame at 512,
+    and a smaller camera is not shrunk. The page shows that factor for the capture size.
     The composited picture uses the camera frame the mask was measured from, so a slower model
     holds that pair instead of painting the new picture with the old mask. The preview keeps running
     live. The mask latency runs from handing a frame to the model to its mask being ready to composite.
-    “Smooth mask edges” softens the mask on its own. “Move the mask with
+    “Smooth mask edges” softens the mask on its own. “Hold uncertain mask” is shown for the single-frame models. An unsure pixel keeps most of the previous mask, and a sure pixel updates. The picture shows background below 0.1 and solid person from 0.7. Smooth mask edges feathers the outline onto the camera picture and does not remember the previous frame. RVM already remembers the previous frame, so the control is hidden and the blend is not applied. “Move the mask with
     the camera” keeps the output on the camera clock. A frame that gets its own mask is shown
     as that pair. A frame that arrives while a mask is still being computed is filled by moving
     the last mask onto it. Skin follows that motion. Only the outline is

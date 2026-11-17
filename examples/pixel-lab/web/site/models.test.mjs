@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor} from './models.mjs';
+import {MODELS, CAPTURES, model, capture, modelUrl, rvmRatio, rvmNetworkSize, rvmScale, formatR, frameShape, modelsFor, holdsUncertainMask} from './models.mjs';
 
 test('every model is pinned and has a 16-pixel-aligned size', () => {
   assert.equal(new Set(MODELS.map(m => m.id)).size, MODELS.length);
@@ -28,6 +28,13 @@ test('every model is pinned and has a 16-pixel-aligned size', () => {
   assert.match(model('rvm').revision, /^[0-9a-f]{40}$/);
   assert.equal(modelUrl(model('rvm')), 'https://huggingface.co/eafish/web-onnx/resolve/576473dca1b5792d8c30753b21325edc4063440b/rvm_mobilenetv3_fp32.onnx');
   assert.throws(() => model('nope'), /Unknown/);
+});
+
+test('the uncertain-mask hold is for the single-frame models', () => {
+  assert.equal(holdsUncertainMask(model('rvm')), false);
+  for (const id of ['mediapipe', 'mediapipe-landscape', 'modnet', 'modnet-fast', 'modnet-384']) {
+    assert.equal(holdsUncertainMask(model(id)), true);
+  }
 });
 
 test('RVM scale keeps a 512 long side and does not enlarge a smaller camera', () => {

@@ -20,11 +20,9 @@ The page offers three segmenters, fetched as ONNX files and kept in the browser'
   (GPL-3.0), recurrent video matting, the official v1.0.0 fp32 ONNX (15 MB).
   The release host does not send the cross-origin header a browser needs, so the page fetches a
   pinned Hugging Face copy of those same bytes. It reads the camera frame at the capture size.
-  The downsample ratio defaults to `min(512 / long side, 1)`, so the main network's long side stays at 512
-  and a smaller camera is left at scale 1. The page shows that Auto factor as `(R=1.0)` or `(R=0.4)` and can pin
-  0.25, 0.5, 0.75, or 1. Pass the factor to `Segmenter.create_rvm` at init, and to `set_ratio` while the
-  camera is running. The first use of a factor builds that network; switching back reuses it. Recurrent
-  memory is cleared on a change, because its spatial size follows the factor. The mask stays the camera size.
+  The downsample ratio is `min(512 / long side, 1)`, so the main network's long side stays at 512
+  and a smaller camera is left at scale 1. The page shows that factor for the capture size, as
+  `R=0.4` or `R=1.0`, and does not offer another. The mask stays the camera size.
 
 MediaPipe and MODNet are Apache 2.0. `site/models.mjs` lists every entry with its source, size
 and input normalization.
@@ -57,8 +55,15 @@ timer. Chrome and Safari are unchanged.
 MediaPipe and MODNet masks are 256 KB to 600 KB. RVM's alpha is the camera frame, so that copy
 grows with the capture size. Camera frames stay on the GPU.
 
-Two mask controls sit under the view picker. “Smooth mask edges” is on by default and stands alone:
+The mask controls sit under the view picker. “Smooth mask edges” is on by default and stands alone:
 it softens the mask and pulls the edge onto the camera image whether or not the mask moves.
+“Hold uncertain mask” is on by default for MediaPipe and MODNet, and hidden for RVM. Once per new
+mask, at the mask's resolution, each new score is mixed toward the previous blended score by how
+close it sits to one half. A sure 0 or 1 replaces that history. A score near one half keeps most of
+it. The picture then shows background at or below 0.1 and solid person at or above 0.7. The next
+mask blends against the mix, before that picture step. “Smooth mask edges” is the separate step
+that feathers the outline onto the camera picture. It does not remember the previous frame. The first mask passes through. Turning the hold off
+forgets the previous mask. RVM already carries a recurrent state, so the blend is not applied to it.
 “Move the mask with the camera” is off unless the visitor turns it on. While it is off, the
 composite shows the camera frame the mask was measured on, so the output steps at the mask rate.
 While it is on, a frame that inference is computing waits for that mask and is shown as that pair.
