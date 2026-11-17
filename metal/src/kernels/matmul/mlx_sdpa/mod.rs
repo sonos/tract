@@ -221,6 +221,7 @@ fn dispatch_sdpa_vector_1pass(
         encoder.set_slice(8, &[v.strides()[1] as u64]);
         encoder.set_slice(9, &[v.strides()[2] as u64]);
         encoder.set_slice(10, &[scale]);
+        encoder.set_slice(17, &[hq as i32]);
         if let (Some(m), Some(ms)) = (mask, mask_strides.as_ref()) {
             encoder.set_metal_tensor(12, m, metal::MTLResourceUsage::Read);
             encoder.set_slice(13, &[ms.kv_seq]);

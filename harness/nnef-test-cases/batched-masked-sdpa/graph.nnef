@@ -1,0 +1,18 @@
+version 1.0;
+extension tract_registry tract_core;
+extension tract_registry tract_transformers;
+extension tract_symbol S;
+extension tract_symbol T;
+extension tract_symbol B;
+extension tract_symbol M;
+graph attention(q, k, v, mask) -> (output) {
+    q = external<scalar>(shape = [B, 4, S, 64]);
+    k = external<scalar>(shape = [B, 2, T, 64]);
+    v = external<scalar>(shape = [B, 2, T, 64]);
+    mask = external<scalar>(shape = [1, 4, M, T]);
+    q16 = tract_core_cast(q, to = 'f16');
+    k16 = tract_core_cast(k, to = 'f16');
+    v16 = tract_core_cast(v, to = 'f16');
+    mask16 = tract_core_cast(mask, to = 'f16');
+    output = tract_transformers_sdpa(q16, k16, v16, mask16, scale = 0.125, datum_type = 'f16', acc_datum_type = 'f32', is_causal = false);
+}
