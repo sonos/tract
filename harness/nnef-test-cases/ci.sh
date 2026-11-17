@@ -1,5 +1,5 @@
 #!/bin/sh
-# ci-runners: ubuntu-24.04 cuda-tests
+# ci-runners: ubuntu-24.04 cuda-tests metal-tests
 
 set -e
 
