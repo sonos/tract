@@ -151,30 +151,31 @@ impl Translate<TypedFact, Box<dyn TypedOp>, TypedFact, Box<dyn TypedOp>>
         target: &mut TypedModel,
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>> {
-        let outlets = self.wire_translated(source, node, target, mapping)?;
-        if !self.keep_io {
-            return Ok(outlets);
+        self.wire_translated(source, node, target, mapping)
+    }
+
+    fn translate_output(
+        &self,
+        source: &TypedModel,
+        outlet: OutletId,
+        target: &mut TypedModel,
+        mapped: OutletId,
+    ) -> TractResult<OutletId> {
+        let declared = source.outlet_fact(outlet)?.datum_type;
+        let fact = target.outlet_fact(mapped)?;
+        if !self.keep_io || fact.datum_type == declared || !fact.is_plain() {
+            return Ok(mapped);
         }
-        outlets
-            .into_iter()
-            .enumerate()
-            .map(|(slot, outlet)| {
-                let declared = node.outputs[slot].fact.datum_type;
-                let fact = target.outlet_fact(outlet)?;
-                if source.outputs.contains(&OutletId::new(node.id, slot))
-                    && fact.datum_type != declared
-                    && fact.is_plain()
-                {
-                    Ok(target.wire_node(
-                        format!("{}.cast-out-{slot}", node.name),
-                        cast(declared),
-                        &[outlet],
-                    )?[0])
-                } else {
-                    Ok(outlet)
-                }
-            })
-            .collect()
+        if let Some(cast) = target.outlet_successors(mapped).iter().find(|inlet| {
+            target.node(inlet.node).op_as::<Cast>().is_some_and(|cast| cast.to == declared)
+        }) {
+            return Ok(cast.node.into());
+        }
+        Ok(target.wire_node(
+            format!("{}.cast-out-{}", source.node(outlet.node).name, outlet.slot),
+            cast(declared),
+            &[mapped],
+        )?[0])
     }
 }
 
@@ -428,21 +429,42 @@ mod test {
         let input = model.add_source("input", f32::fact([2]))?;
         let scale = model.add_const("scale", tensor1(&[0.25f32]))?;
         let scaled = model.wire_node("scaled", math::mul(), &[input, scale])?[0];
-        model.select_output_outlets(&[scaled, input])?;
+        let narrow = model.wire_node("narrow", math::add(), &[scaled, scaled])?[0];
+        let wide = model.wire_node("wide", math::sub(), &[scaled, scaled])?[0];
+        model.set_outlet_label(scaled, "state".into())?;
+        model.select_output_outlets(&[scaled, input, narrow, wide])?;
 
-        let translated = FloatPrecisionTranslator::new(f32::datum_type(), f16::datum_type())
+        let translated =
+            FloatPrecisionTranslator::with_filter(f32::datum_type(), f16::datum_type(), |node| {
+                node.name != "wide"
+            })
             .keeping_io(true)
             .transform_into(model.clone())?;
         assert_eq!(translated.input_fact(0)?, model.input_fact(0)?);
-        assert_eq!(translated.output_fact(0)?, model.output_fact(0)?);
-        assert_eq!(translated.output_fact(1)?, model.output_fact(1)?);
+        for i in 0..model.output_outlets()?.len() {
+            assert_eq!(translated.output_fact(i)?, model.output_fact(i)?);
+        }
         let scaled = translated.node_by_name("scaled")?;
         assert_eq!(scaled.outputs[0].fact.datum_type, f16::datum_type());
+        let public = translated.output_outlets()?[0];
+        assert_eq!(translated.find_outlet_label("state"), Some(public));
+        assert_eq!(translated.node(public.node).inputs.as_slice(), &[scaled.id.into()]);
+        assert_eq!(
+            translated.node_by_name("narrow")?.inputs.as_slice(),
+            &[scaled.id.into(), scaled.id.into()]
+        );
+        let wide = translated.node_by_name("wide")?;
+        assert!(wide.inputs.iter().all(|&o| {
+            translated.outlet_fact(o).is_ok_and(|f| f.datum_type == f32::datum_type())
+        }));
+        assert!(wide.inputs.contains(&public));
 
         let input = tensor1(&[2.0f32, -6.0]);
         let outputs = translated.into_runnable()?.run(tvec![input.clone().into_tvalue()])?;
         assert_eq!(*outputs[0], tensor1(&[0.5f32, -1.5]));
         assert_eq!(*outputs[1], input);
+        assert_eq!(*outputs[2], tensor1(&[1.0f32, -3.0]));
+        assert_eq!(*outputs[3], tensor1(&[0.0f32, 0.0]));
         Ok(())
     }
 
