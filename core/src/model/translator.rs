@@ -19,6 +19,17 @@ where
         mapping: &HashMap<OutletId, OutletId>,
     ) -> TractResult<TVec<OutletId>>;
 
+    /// Maps a public output after all internal consumers have been translated.
+    fn translate_output(
+        &self,
+        _source: &Graph<TI1, O1>,
+        _outlet: OutletId,
+        _target: &mut Graph<TI2, O2>,
+        mapped: OutletId,
+    ) -> TractResult<OutletId> {
+        Ok(mapped)
+    }
+
     fn translate_model(&self, source: &Graph<TI1, O1>) -> TractResult<Graph<TI2, O2>> {
         Ok(self.translate_model_with_mappings(source)?.0)
     }
@@ -55,7 +66,20 @@ where
         }
         // maintaining order of i/o interface
         target.inputs = source.input_outlets()?.iter().map(|i| mapping[i]).collect();
-        target.outputs = source.output_outlets()?.iter().map(|o| mapping[o]).collect();
+        for &outlet in source.output_outlets()? {
+            let mapped = mapping[&outlet];
+            let output = self.translate_output(source, outlet, &mut target, mapped)?;
+            if output != mapped {
+                if let Some(label) = source.outlet_label(outlet) {
+                    if target.outlet_label(mapped) == Some(label) {
+                        target.outlet_labels.remove(&mapped);
+                    }
+                    target.set_outlet_label(output, label.to_string())?;
+                }
+                mapping.insert(outlet, output);
+            }
+            target.outputs.push(output);
+        }
         target.properties.clone_from(&source.properties);
         Ok((target, mapping))
     }
