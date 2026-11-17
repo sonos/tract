@@ -175,14 +175,15 @@
     </section>
   </div>
   <p class="note">
-    The camera frames stay on the GPU; only the models come over the network, and they stay in your browser's cache.
+    The camera frames stay on the GPU. MediaPipe and the fp32 RVM come over the network and stay in the browser's cache. The other weights ship with the page.
     MediaPipe Selfie Segmentation, <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation">square</a>
-    or <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape">landscape</a> (0.5 MB), and
-    <a href="https://huggingface.co/Xenova/modnet">MODNet</a> (26 MB) at 512 × 288, 448 × 256 and 384 × 224,
-    come from Hugging Face at a pinned revision, under the Apache 2.0 license.
-    <a href="https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0">RVM MobileNetV3</a>
-    is the official v1.0.0 fp32 file (15 MB), GPL-3.0. The page downloads it from a pinned Hugging Face copy,
-    because the release host does not let a web page read it. It reads the camera frame itself. The downsample keeps the long side of the inner frame at 512,
+    or <a href="https://huggingface.co/onnx-community/mediapipe_selfie_segmentation_landscape">landscape</a> (0.5 MB), comes from Hugging Face at a pinned revision, under the Apache 2.0 license.
+    <a href="https://github.com/PaddlePaddle/PaddleSeg">PP-HumanSegV2</a> (3.7 MB, Apache 2.0) is the 256 × 144 person channel, downloaded while the site is built because that sliced file is not published upstream.
+    <a href="https://github.com/yakhyo/modnet/releases/download/weights/modnet_webcam.onnx">MODNet</a> (26 MB, Apache 2.0) is the webcam matte at 512 × 288, downloaded while the site is built.
+    <a href="https://github.com/PeterL1n/RobustVideoMatting/releases/tag/v1.0.0">RVM MobileNetV3 fp16</a>
+    is the model the page opens on. It is the official v1.0.0 fp16 graph (GPL-3.0) with a float32 camera cast and a float32 matte cast, written while the site is built.
+    The fp32 file (15 MB) stays on a pinned Hugging Face copy, because the release host does not let a web page read it.
+    It reads the camera frame itself. The downsample keeps the long side of the inner frame at 512,
     and a smaller camera is not shrunk. The page shows that factor for the capture size.
     The composited picture uses the camera frame the mask was measured from, so a slower model
     holds that pair instead of painting the new picture with the old mask. The preview keeps running

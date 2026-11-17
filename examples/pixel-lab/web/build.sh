@@ -1,6 +1,7 @@
 #!/bin/sh
-# Builds the deployable site into dist/: the wasm, the page and build.json. The models are not part
-# of it: the page fetches MediaPipe, MODNet and a pinned copy of official RVM from Hugging Face.
+# Builds the deployable site into dist/: the wasm, the page and build.json. MediaPipe and the
+# fp32 RVM come from Hugging Face. prepare-models.py fetches the webcam MODNet and the
+# PP-HumanSegV2 slice and writes the fp16 RVM.
 #
 # Needs the wasm32-unknown-unknown target and a wasm-bindgen CLI of the version Cargo.lock pins.
 
@@ -22,6 +23,8 @@ rm -rf dist
 mkdir -p dist/pkg
 cp site/*.html site/*.js site/*.mjs dist/
 cp -r site/backgrounds dist/
+mkdir -p dist/models
+python3 prepare-models.py dist/models
 rm -f dist/*.test.mjs
 wasm-bindgen --target web --out-dir dist/pkg ${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-unknown-unknown/release/pixel_lab_web.wasm
 
