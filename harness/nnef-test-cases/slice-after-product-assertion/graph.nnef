@@ -1,0 +1,46 @@
+version 1.0;
+
+extension tract_registry tract_core;
+extension tract_symbol MH;
+extension tract_symbol MW;
+extension tract_assert MH >= 1;
+extension tract_assert MW >= 1;
+extension tract_assert MH * MW >= 1;
+
+fragment within_bound_index(
+    index: tensor<scalar>,
+    input_axis_size: tensor<scalar>
+) -> ( bounded_index: tensor<scalar> )
+{
+    cond = ge(index, 0);
+    offset = select(cond, 0, input_axis_size);
+    bounded_index = tract_core_cast(min(max(0, offset + index), input_axis_size), to="tdim");
+}
+
+fragment dyn_slice_begin(
+    input: tensor<scalar>,
+    axis: tensor<scalar>,
+    begin: tensor<scalar>,
+    stride: tensor<scalar>
+) -> ( output: tensor<scalar> )
+{
+    input_shape = tract_core_shape_of(input);
+    input_dim = slice(input_shape, axes=[0], begin=[axis], end=[axis + 1], stride=[1]);
+    input_axis_size = squeeze(input_dim, axes=[0]);
+    output = slice(
+        input,
+        axes = [axis],
+        begin=[within_bound_index(begin, input_axis_size)],
+        end = [input_axis_size],
+        stride = [stride]
+    );
+}
+
+graph network(x) -> (y)
+{
+    x = tract_core_external(shape = [MH, MW, 4], datum_type = 'f32');
+    flat = reshape(x, shape = [-1, 4]);
+    prefix = tile([[0.0, 0.0, 0.0, 0.0]], repeats = [10, 1]);
+    full = concat([prefix, flat], axis = 0);
+    y = dyn_slice_begin(full, axis = 0, begin = 10, stride = 1);
+}
