@@ -207,9 +207,10 @@ pub fn wgpu_matmul_dispatch(
     output: &DeviceTensor,
     f16_accumulation: bool,
 ) -> TractResult<()> {
-    wgpu_matmul_dispatch_impl(t, epilogue, a, b, extras, output, None)
+    wgpu_matmul_dispatch_impl(t, epilogue, a, b, extras, output, f16_accumulation, None)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn wgpu_matmul_dispatch_impl(
     t: Transposes,
     epilogue: &[ChainStep],
@@ -217,6 +218,7 @@ fn wgpu_matmul_dispatch_impl(
     b: &DeviceTensor,
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
+    f16_accumulation: bool,
     small_gemv_override: Option<bool>,
 ) -> TractResult<()> {
     if crate::kernels::matmul_bq::is_block_quant_weight(b) {
@@ -1715,7 +1717,16 @@ mod tests {
             let t = Transposes { a: false, b: true, c: false };
             let epilogue = [ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }];
             for (new, output) in [(false, &output_old), (true, &output_new)] {
-                wgpu_matmul_dispatch_impl(t, &epilogue, &a, &b, &[&bias], output, Some(new))?;
+                wgpu_matmul_dispatch_impl(
+                    t,
+                    &epilogue,
+                    &a,
+                    &b,
+                    &[&bias],
+                    output,
+                    false,
+                    Some(new),
+                )?;
             }
             crate::with_wgpu_queue(|q| q.flush())?;
             let old = output_old.to_host()?;
