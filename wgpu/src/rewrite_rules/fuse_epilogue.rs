@@ -91,6 +91,8 @@ pub fn fuse_conv_epilogue(
         op: op.op.clone(),
         epilogue: steps,
         f16_accumulation: op.f16_accumulation,
+        packed_weights: op.packed_weights.clone(),
+        packed_tile: op.packed_tile,
     })
 }
 

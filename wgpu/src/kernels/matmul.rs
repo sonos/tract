@@ -185,7 +185,7 @@ fn tiled_applies(prefix: usize, m: usize, k: usize, n: usize) -> bool {
         && n.div_ceil(MATMUL_TILE) <= 65535
 }
 
-fn apple_webgpu(_device: &wgpu::Device) -> bool {
+pub(crate) fn apple_webgpu(_device: &wgpu::Device) -> bool {
     #[cfg(target_arch = "wasm32")]
     if let Some(raw) = _device.as_webgpu()
         && let Ok(info) =
