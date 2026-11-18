@@ -1159,7 +1159,9 @@ pub fn compute_shape_with_onnx_rules(
         shape[pos] = div.0;
     } else {
         let shape_vol: TDim = shape.iter().product();
-        if input_vol != shape_vol {
+        if input_vol != shape_vol
+            && input_vol.clone().expand_polynomial() != shape_vol.clone().expand_polynomial()
+        {
             bail!(
                 "Reshape volume mismatch: input {input:?} (vol={input_vol}) vs shape {shape:?} (vol={shape_vol})"
             );
@@ -1223,10 +1225,11 @@ pub fn to_axis_ops_with_onnx_rules(
                 for i in common..current_input.len() {
                     let i_group = &current_input[common..i + 1];
                     let i_volume: TDim = i_group.iter().product();
+                    let i_expanded = i_volume.clone().expand_polynomial();
                     for o in common..final_output.len() {
                         let o_group = &final_output[common..o + 1];
                         let o_volume: TDim = o_group.iter().product();
-                        if i_volume == o_volume {
+                        if i_volume == o_volume || i_expanded == o_volume.expand_polynomial() {
                             stack.push(AxisOp::Reshape(common, i_group.into(), o_group.into()));
                             continue 'top;
                         }
