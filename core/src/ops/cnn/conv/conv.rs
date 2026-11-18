@@ -662,9 +662,8 @@ impl Conv {
     ) -> TractResult<OutletId> {
         let &[x, kernel, mut bias] = wire else { bail!("Wrong number of inputs") };
         let x_fact = model.outlet_fact(x)?.clone();
-        let x_shape = x_fact.shape.as_concrete().unwrap();
-        let ConcretePoolGeometry { input_shape, patch, output_shape } =
-            self.pool_spec.compute_geo(&x_fact.shape)?.to_concrete(x_shape)?.into_owned();
+        let geometry =
+            self.pool_spec.compute_geo(&x_fact.shape)?.optimize_if(x_fact.shape.as_concrete())?;
         let kernel = self.wire_kernel_as_g_o_ihw(model, name, kernel)?;
         // Channel-last DepthWise reads the kernel tap-major, [G, HW, O]: one channel vector per tap.
         let kernel = if self.pool_spec.data_format.c_is_last()
@@ -674,7 +673,7 @@ impl Conv {
         } else {
             kernel
         };
-        let c_axis = self.pool_spec.data_format.shape(x_shape)?.c_axis();
+        let c_axis = self.pool_spec.data_format.shape(&*x_fact.shape)?.c_axis();
         bias = wire_reshape_bias_for_bin(
             model,
             name,
@@ -683,7 +682,7 @@ impl Conv {
             c_axis,
             self.output_channels(),
         )?[0];
-        let op = DepthWise::new(patch, input_shape, output_shape);
+        let op = DepthWise::new(geometry);
         Ok(model.wire_node(name, op, &[x, kernel[0], bias])?[0])
     }
 
@@ -1436,7 +1435,6 @@ impl TypedOp for Conv {
             } else if self.group != 1
                 && self.group == self.output_channels()
                 && self.group == self.input_channels()
-                && input_fact.shape.as_concrete().is_some()
             {
                 let mut patch = TypedModelPatch::new("depth_wise");
                 let inputs = patch.taps(model, &node.inputs)?;
