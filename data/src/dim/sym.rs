@@ -368,7 +368,10 @@ impl SymbolScopeData {
                 for pos in &positives {
                     if pos.symbols().contains(&s) {
                         let other = pos.guess_slope(&s);
-                        if me.0.signum() == other.0.signum() {
+                        // t * a - pos * b >= 0 with pos >= 0 proves t >= 0 only for
+                        // a = me.1 * |other.0| > 0: a zero slope (s only in a
+                        // product) would turn any t into 0 - 0
+                        if other.0 != 0 && me.0.signum() == other.0.signum() {
                             let new = t.clone() * me.1 * other.0.abs()
                                 - pos.clone() * me.0.abs() * other.1;
                             if !visited.contains(&new) {

@@ -2178,6 +2178,20 @@ mod tests {
     }
 
     #[test]
+    fn product_assertion_does_not_prove_its_negation() {
+        // The slope of MH * MW in MH is not linear: an assertion on the product
+        // must not let -MH * MW >= 0, nor min(10, 10 + MH * MW) pick the larger.
+        let s = SymbolScope::default();
+        for assertion in ["MH >= 1", "MW >= 1", "MH * MW >= 1"] {
+            s.add_assertion(assertion).unwrap();
+        }
+        let product = Sym(s.sym("MH")) * Sym(s.sym("MW"));
+        assert!(!(-product.clone()).prove_positive_or_zero());
+        let larger = Val(10) + product;
+        assert_ne!(Min(vec![Val(10), larger.clone()]).simplify(), larger);
+    }
+
+    #[test]
     fn eq_with_assertion_proves_false() {
         // Eq(T, 0) should reduce to Val(0) when T >= 1
         let s = SymbolScope::default();
