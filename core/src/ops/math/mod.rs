@@ -327,6 +327,23 @@ bin_to_super_type!(max, Max,
 
 bin_to_super_type!(pow, Pow,
                    declutter: declutter_pow,
+                   eval_override: |a: TValue, b: TValue, c_dt: DatumType| -> TractResult<Tensor> {
+                       if c_dt != TDim::datum_type() {
+                           return Pow.generic_eval(a, b, c_dt);
+                       }
+                       let a = a.to_plain_array_view::<TDim>()?;
+                       let b = b.cast_to::<i64>()?;
+                       let b = b.to_plain_array_view::<i64>()?;
+                       ensure!(b.iter().all(|e| *e >= 0), "TDim Pow needs non-negative exponents");
+                       let c_shape = crate::broadcast::multi_broadcast(&[a.shape(), b.shape()]).context("no broadcast solution")?;
+                       let mut c = Tensor::zero_dt(TDim::datum_type(), &c_shape)?;
+                       let mut c_plain = c.try_as_plain_ram_mut()?;
+                       let view = c_plain.to_array_view_mut::<TDim>()?;
+                       crate::ndarray::Zip::from(view).and_broadcast(a).and_broadcast(b).for_each(|c, a, b| {
+                           *c = (0..*b).fold(TDim::Val(1), |acc, _| acc * a)
+                       });
+                       Ok(c)
+                   },
                    is_commutative: false,
                    neutral_element: 1,
                    q_op_on_f32: |a: f32, b: f32| -> f32 {a.powf(b)},
