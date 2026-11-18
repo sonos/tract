@@ -430,6 +430,9 @@ fn declutter_mul(
     if let Some(patch) = declutter_mul_const_mul_const(model, node)? {
         return Ok(Some(patch));
     }
+    if let Some(patch) = crate::ops::nn::detect_hard_swish::detect_hardswish(model, node)? {
+        return Ok(Some(patch));
+    }
     Ok(None)
 }
 
