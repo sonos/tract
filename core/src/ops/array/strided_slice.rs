@@ -60,17 +60,13 @@ impl StridedSlice {
 
         let mut end: Option<TDim> = if self.ignore_end(ix) || ix >= end.len() {
             None
-        } else if end.datum_type() == i64::datum_type() {
-            let end = *end.try_as_plain_ram()?.as_slice::<i64>()?.get(ix).unwrap();
-            if end == i64::MAX || end == i64::MIN || end == i64::MIN + 1 || end == (i32::MAX as i64)
-            {
-                None
-            } else {
-                Some(end.to_dim())
-            }
         } else {
             let end = end.cast_to::<TDim>()?;
-            end.try_as_plain_ram()?.as_slice::<TDim>()?.get(ix).cloned()
+            let end = end.try_as_plain_ram()?.as_slice::<TDim>()?[ix].clone();
+            let to_the_end = |end: i64| {
+                end == i64::MAX || end == i64::MIN || end == i64::MIN + 1 || end == i32::MAX as i64
+            };
+            if end.as_i64().is_some_and(to_the_end) { None } else { Some(end) }
         };
 
         let stride = strides.get(ix).cloned().unwrap_or(1);
