@@ -238,7 +238,7 @@ toml = "1.1"
 unicode-normalization = "0.1.19"
 walkdir = "2.3.2"
 webpki-roots = "1"
-wgpu = { version = "30.0.1", features = ["fragile-send-sync-non-atomic-wasm"] }
+wgpu = { version = "30.0.2", features = ["fragile-send-sync-non-atomic-wasm"] }
 zerofrom = "0.1.5"
 zip = { version = "9.0.5", default-features = false, features = ["deflate-flate2"] }
 # default-features off so the GPU backends stay opt-in per crate: an example
