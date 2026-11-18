@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Speak some text</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2214%22 fill=%22%230C2366%22/%3E%3Cg fill=%22%23fff%22%3E%3Crect x=%2213%22 y=%2226%22 width=%225%22 height=%2212%22 rx=%222.5%22/%3E%3Crect x=%2221%22 y=%2219%22 width=%225%22 height=%2226%22 rx=%222.5%22/%3E%3Crect x=%2229%22 y=%2213%22 width=%225%22 height=%2238%22 rx=%222.5%22/%3E%3Crect x=%2237%22 y=%2221%22 width=%225%22 height=%2222%22 rx=%222.5%22/%3E%3Crect x=%2245%22 y=%2227%22 width=%225%22 height=%2210%22 rx=%222.5%22/%3E%3C/g%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+  <header>
+    <a class="crumb" href="../">← tract demos</a>
+    <h1>Speak some text, in your browser</h1>
+    <p class="sub">Supertone's Supertonic reads your text aloud with <a href="https://github.com/sonos/tract">tract</a>, on the CPU or on WebGPU. Your text is not uploaded. The model is fetched from Hugging Face the first time and kept in this browser.</p>
+  </header>
+  <section class="controls">
+    <label>Model
+      <select id="model"></select>
+    </label>
+    <label>Runtime
+      <select id="runtime">
+        <option value="wgpu">GPU</option>
+        <option value="cpu">CPU</option>
+      </select>
+    </label>
+    <label>Language
+      <select id="lang"></select>
+    </label>
+    <label>Voice
+      <select id="voice"></select>
+    </label>
+    <label>Quality
+      <select id="steps">
+        <option value="2">Draft · 2 steps</option>
+        <option value="5" selected>Good · 5 steps</option>
+        <option value="8">Best · 8 steps</option>
+      </select>
+    </label>
+    <label>Speed
+      <select id="speed">
+        <option value="0.85">Slower</option>
+        <option value="1.05" selected>Normal</option>
+        <option value="1.25">Faster</option>
+      </select>
+    </label>
+  </section>
+  <textarea id="text" rows="5" spellcheck="true"></textarea>
+  <section class="controls">
+    <div class="buttons">
+      <button id="speak" type="button">Speak</button>
+      <button id="stop" type="button" disabled>Stop</button>
+      <button id="save" type="button" disabled>Save WAV</button>
+    </div>
+  </section>
+  <p id="status">Press Speak to hear the text.</p>
+  <div id="bar"><span></span></div>
+  <p id="pace"></p>
+  <p class="note">
+    The voice you hear is synthesized speech, made by a machine learning model; it is not a recording of a person.
+    Model: <a id="card" href="https://huggingface.co/supertone-oss-archive/supertonic-3">Supertonic</a> by Supertone Inc.,
+    used under the <a id="license" href="https://huggingface.co/supertone-oss-archive/supertonic-3/blob/main/LICENSE">BigScience OpenRAIL-M license</a>,
+    whose use restrictions (Attachment A) apply to anything you make with it, including no impersonation and no deceptive use.
+    The ONNX graphs run unchanged in tract, compiled to WebAssembly.
+    <span class="build"><a id="source" href="https://github.com/sonos/tract/tree/main/examples/supertonic/web">Source code</a><span id="build"></span></span>
+  </p>
+</main>
+<script type="module" src="main.js"></script>
+</body>
+</html>

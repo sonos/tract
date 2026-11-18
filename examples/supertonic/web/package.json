@@ -1,0 +1,9 @@
+{
+  "name": "supertonic-web",
+  "private": true,
+  "type": "module",
+  "description": "Supertonic text to speech running on tract.",
+  "scripts": {
+    "start": "python3 -m http.server 8761 -d dist"
+  }
+}
