@@ -24,7 +24,15 @@ mkdir -p dist/pkg
 cp site/*.html site/*.js site/*.mjs dist/
 cp -r site/backgrounds dist/
 mkdir -p dist/models
-python3 prepare-models.py dist/models
+PYTHON=python3
+if ! python3 -c 'import onnx' 2>/dev/null
+then
+    venv=${CARGO_TARGET_DIR:-$ROOT/target}/pixel-lab-venv
+    [ -x $venv/bin/python ] || python3 -m venv $venv
+    $venv/bin/pip install -q onnx==1.23.2
+    PYTHON=$venv/bin/python
+fi
+$PYTHON prepare-models.py dist/models
 rm -f dist/*.test.mjs
 wasm-bindgen --target web --out-dir dist/pkg ${CARGO_TARGET_DIR:-$ROOT/target}/wasm32-unknown-unknown/release/pixel_lab_web.wasm
 
