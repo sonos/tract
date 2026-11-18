@@ -174,3 +174,23 @@ fn unicast_2() {
     .check()
     .unwrap()
 }
+
+/// A broadcast feeding an EinSum is folded away only when the EinSum output keeps its shape:
+/// here no other operand carries the broadcast batch axis, so the broadcast must stay.
+#[test]
+fn broadcast_on_axis_only_one_operand_has() -> TractResult<()> {
+    use crate::ops::array::MultiBroadcastTo;
+    let mut model = TypedModel::default();
+    let x = model.add_source("x", f32::fact([1, 3, 5]))?;
+    let x = model.wire_node("tile", MultiBroadcastTo::new(tvec!(2, 3, 5).into()), &[x])?[0];
+    let w = model.add_const("w", Tensor::from_shape(&[4, 3], &[1f32; 12])?)?;
+    let op = EinSum::new("nih,oi->noh".parse()?, f32::datum_type());
+    let y = model.wire_node("einsum", op, &[x, w])?;
+    model.select_output_outlets(&y)?;
+    let input = Tensor::from_shape(&[1, 3, 5], &(0..15).map(|i| i as f32).collect::<Vec<_>>())?;
+    let reference = model.clone().into_runnable()?.run(tvec!(input.clone().into_tvalue()))?;
+    let decluttered = model.into_decluttered()?;
+    assert_eq!(decluttered.output_fact(0)?.shape, f32::fact([2, 4, 5]).shape);
+    let got = decluttered.into_runnable()?.run(tvec!(input.into_tvalue()))?;
+    got[0].close_enough(&reference[0], Approximation::Exact)
+}

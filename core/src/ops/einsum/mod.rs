@@ -510,6 +510,11 @@ fn declutter_broadcast(
     for (ix, outlet) in node.inputs.iter().enumerate() {
         let prec = model.node(outlet.node);
         if prec.op_is::<MultiBroadcastTo>() && prec.outputs[0].successors.len() == 1 {
+            let mut facts = model.node_input_facts(node.id)?;
+            facts[ix] = model.outlet_fact(prec.inputs[0])?;
+            if op.output_facts(&facts)?[0].shape != node.outputs[0].fact.shape {
+                continue;
+            }
             let mut patch = TypedModelPatch::default();
             let mut wires = patch.taps(model, &node.inputs)?;
             wires[ix] = patch.tap_model(model, prec.inputs[0])?;
