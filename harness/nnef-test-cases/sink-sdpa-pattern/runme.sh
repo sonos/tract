@@ -8,6 +8,9 @@ for lengths in '1 13' '9 17'; do
     set -- $lengths
     $TRACT_RUN . --opl --input 'sinks:4,f32=-20,-2,2,20' --set S="$1" --set T="$2" run --allow-random-input --save-outputs-npz "$TEMP_CASE/pattern.npz"
     $TRACT_RUN . --opl --input 'sinks:4,f32=-20,-2,2,20' --set S="$1" --set T="$2" -t experimental_sink_sdpa run --allow-random-input --assert-output-bundle "$TEMP_CASE/pattern.npz" --approx approximate --assert-op-count SDPA 1
+    for rt in ${TRACT_RUNTIMES:-}; do
+        $TRACT_RUN . --opl --input 'sinks:4,f32=-20,-2,2,20' --set S="$1" --set T="$2" -t experimental_sink_sdpa $rt run --allow-random-input --assert-output-bundle "$TEMP_CASE/pattern.npz" --approx approximate
+    done
 done
 
 mkdir "$TEMP_CASE/negative"
