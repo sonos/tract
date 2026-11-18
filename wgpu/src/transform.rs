@@ -228,11 +228,26 @@ fn translator_for(node: &TypedNode) -> Option<TranslateNodeFn> {
                 TypeId::of::<tract_transformers::ops::moe_ffn::RoutedCombine>(),
                 crate::kernels::routing::translate_routed_combine,
             ),
-            (TypeId::of::<Iff>(), crate::kernels::nan_replace::translate_nan_replace),
+            (TypeId::of::<Iff>(), translate_iff),
             (TypeId::of::<Const>(), translate_const),
         ])
     });
     map.get(&(*node.op).type_id()).copied()
+}
+
+/// `Iff` runs on the device only in the shapes wgpu can express without boolean tensors.
+fn translate_iff(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    if let Some(wires) =
+        crate::kernels::nan_replace::translate_nan_replace(source, node, target, mapping)?
+    {
+        return Ok(Some(wires));
+    }
+    crate::kernels::compare_select::translate_compare_select(source, node, target, mapping)
 }
 
 /// The node's `ix`-th input, moved to the device unless it is there already.
