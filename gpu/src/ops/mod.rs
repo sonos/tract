@@ -4,6 +4,7 @@ pub mod broadcast;
 pub mod cast;
 pub mod causal_conv1d_update;
 pub mod change_axes;
+pub mod compare_select;
 pub mod concat;
 pub mod copy_based;
 pub mod cumsum;
