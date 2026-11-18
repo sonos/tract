@@ -2,7 +2,8 @@ const stamp = new URL(import.meta.url).searchParams.get('stamp') || Date.now();
 const stamped = file => import(`./${file}?stamp=${stamp}`);
 const {CAPTURES, model, capture, rvmNetworkSize, formatR, modelsFor, holdsUncertainMask} = await stamped('models.mjs');
 const {GpuClient} = await stamped('gpu-client.js');
-const {FrameRate, isNewSourceFrame} = await stamped('frame-rate.mjs');
+const {FrameRate} = await stamped('frame-rate.mjs');
+const {emptyPump, rememberFrame, startSend, finishSend} = await stamped('frame-pump.mjs');
 const {inspectorView, textureBytes} = await stamped('inspector.mjs');
 
 const $ = id => document.getElementById(id);
@@ -10,7 +11,7 @@ const status = text => ($('status').textContent = text);
 const bar = fraction => ($('bar').style.width = `${Math.round(fraction * 100)}%`);
 const go = $('go');
 const video = $('camera-feed');
-const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null};
+const state = {client: null, stream: null, running: false, starting: false, generation: 0, callback: null, inFlight: null, pump: emptyPump()};
 // Past this without a composited frame or a mask, the camera is stopped with what was pending.
 const STALL_MS = 15000;
 const WORKER_SILENCE_MS = 10000;
@@ -27,7 +28,7 @@ function resetStats() {
   Object.assign(state, {
     rate: new FrameRate(), cameraRate: new FrameRate(), maskRate: new FrameRate(),
     frames: 0, masks: 0, latencies: [], lastStats: 0,
-    cameraTimes: [], outputTimes: [], compositeMs: [], sent: 0, drops: 0, lastPresented: undefined,
+    cameraTimes: [], outputTimes: [], compositeMs: [], sent: 0, drops: 0,
   });
   $('camera-fps').textContent = $('out-fps').textContent = $('stats').textContent = '';
   showInspector();
@@ -284,6 +285,7 @@ function stop(message = 'Camera stopped.') {
   state.generation++;
   state.running = false;
   state.inFlight = state.waiting = null;
+  state.pump = emptyPump();
   if (state.callback !== null) video.cancelVideoFrameCallback(state.callback);
   state.callback = null;
   state.client?.close();
@@ -384,23 +386,14 @@ async function start() {
     state.motionAllocated = false;
     Object.assign(state, {liveSince: performance.now(), lastCompleted: undefined, lastMask: undefined, lastReply: null, waiting: null, lastWorker: null});
     state.running = true;
+    state.pump = emptyPump();
     go.disabled = false;
     go.textContent = 'Stop camera';
     Object.assign(state, {modelName: m.name, modelNote: m.note, ops: prepared.ops});
     liveStatus(prepared.ratio, prepared.ops);
-    const frame = (_now, metadata) => {
-      if (!state.running || generation !== state.generation) return;
-      state.callback = video.requestVideoFrameCallback(frame);
-      // The display may call this at 60 Hz for a 30 fps camera. Motion moves the
-      // mask onto each new camera frame, and does not invent frames the camera never sent.
-      if (!isNewSourceFrame(state.lastPresented, metadata.presentedFrames)) return;
-      state.lastPresented = metadata.presentedFrames;
-      const now = performance.now();
-      state.cameraRate.add(now, metadata.presentedFrames);
-      state.cameraTimes.push(now);
-      if (state.cameraTimes.length > 60) state.cameraTimes.shift();
-      watch();
-      if (!state.running || state.inFlight || document.hidden) return;
+    // The display may call this at 60 Hz for a 30 fps camera. Motion moves the
+    // mask onto each new camera frame, and does not invent frames the camera never sent.
+    const launchSend = () => {
       state.inFlight = (async () => {
         try {
           state.waiting = {stage: 'createImageBitmap', since: performance.now()};
@@ -422,9 +415,32 @@ async function start() {
         } catch (error) {
           if (generation === state.generation) stop(`Stopped: ${error.message || error}`);
         } finally {
-          if (generation === state.generation) state.inFlight = state.waiting = null;
+          if (generation !== state.generation) return;
+          state.inFlight = state.waiting = null;
+          state.pump = finishSend(state.pump);
+          if (document.hidden) return;
+          const step = startSend(state.pump);
+          state.pump = step.pump;
+          if (step.start) launchSend();
         }
       })();
+    };
+    const frame = (_now, metadata) => {
+      if (!state.running || generation !== state.generation) return;
+      state.callback = video.requestVideoFrameCallback(frame);
+      const noted = rememberFrame(state.pump, metadata.presentedFrames);
+      state.pump = noted.pump;
+      if (noted.fresh) {
+        const now = performance.now();
+        state.cameraRate.add(now, metadata.presentedFrames);
+        state.cameraTimes.push(now);
+        if (state.cameraTimes.length > 60) state.cameraTimes.shift();
+        watch();
+      }
+      if (!state.running || document.hidden) return;
+      const step = startSend(state.pump);
+      state.pump = step.pump;
+      if (step.start) launchSend();
     };
     state.callback = video.requestVideoFrameCallback(frame);
   } catch (error) {
