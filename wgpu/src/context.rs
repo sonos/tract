@@ -49,6 +49,16 @@ thread_local! {
     static LAST_BG_ID: Cell<u32> = const { Cell::new(0) };
 }
 
+pub(crate) fn last_bind_group_id() -> u32 {
+    LAST_BG_ID.with(|cell| cell.get())
+}
+
+/// A reused bind group must put its own id back. The packed pass reads whatever
+/// id the latest `createBindGroup` stored, and a cache hit creates nothing.
+pub(crate) fn remember_bind_group(id: u32) {
+    LAST_BG_ID.with(|cell| cell.set(id));
+}
+
 pub fn with_wgpu_queue<R>(f: impl FnOnce(&WgpuQueue) -> TractResult<R>) -> TractResult<R> {
     wgpu_context();
     WGPU_QUEUE.with(|cell| {
@@ -923,6 +933,29 @@ pub struct KernelTime {
     pub nanos: f64,
 }
 
+/// Camera upload and the bind group that reads it. WebKit releases a texture's
+/// memory only once every bind group that referenced it has been collected, and
+/// WebGPU objects sit outside the JS heap, so a frame loop never collects them.
+/// One texture and one group per size stays flat; the next frame writes into it.
+pub(crate) struct IngestSlot {
+    pub width: u32,
+    pub height: u32,
+    pub texture: wgpu::Texture,
+    pub view: wgpu::TextureView,
+    pub output_id: u64,
+    pub bind_group: Arc<wgpu::BindGroup>,
+    pub bg_id: u32,
+}
+
+/// Mask export group. Same constraint as [`IngestSlot`]: rebuilding it every
+/// frame leaves the previous group, and the texture it wrote, alive.
+pub(crate) struct ExportSlot {
+    pub buffer_id: u64,
+    pub texture: wgpu::Texture,
+    pub bind_group: Arc<wgpu::BindGroup>,
+    pub bg_id: u32,
+}
+
 pub struct WgpuQueue {
     context: WgpuContext,
     encoder: RefCell<Option<wgpu::CommandEncoder>>,
@@ -962,6 +995,8 @@ pub struct WgpuQueue {
     retained: RefCell<Vec<DeviceTensor>>,
     retained_textures: RefCell<Vec<wgpu::Texture>>,
     staging: RefCell<Option<wgpu::Buffer>>,
+    pub(crate) ingest: RefCell<Option<IngestSlot>>,
+    pub(crate) export_group: RefCell<Option<ExportSlot>>,
 }
 
 /// One timestamp pair per dispatch, plus the buffers to read them back.
@@ -1099,6 +1134,8 @@ impl WgpuQueue {
             retained: RefCell::new(vec![]),
             retained_textures: RefCell::new(vec![]),
             staging: RefCell::new(None),
+            ingest: RefCell::new(None),
+            export_group: RefCell::new(None),
         })
     }
 
@@ -1117,6 +1154,8 @@ impl WgpuQueue {
     fn leak_gpu_objects(&mut self) {
         std::mem::forget(self.encoder.replace(None));
         std::mem::forget(self.staging.replace(None));
+        std::mem::forget(self.ingest.replace(None));
+        std::mem::forget(self.export_group.replace(None));
         std::mem::forget(std::mem::take(&mut *self.retained.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.retained_textures.borrow_mut()));
         std::mem::forget(std::mem::take(&mut *self.buffer_slots.borrow_mut()));
