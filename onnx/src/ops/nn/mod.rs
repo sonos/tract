@@ -424,12 +424,18 @@ pub fn shrink(
     Ok((expand(ops::activations::Shrink(bias, lambd)), vec![]))
 }
 
+/// Imports Selu with the defaults from the model's ONNX opset.
 pub fn selu(
-    _ctx: &ParsingContext,
+    ctx: &ParsingContext,
     node: &NodeProto,
 ) -> TractResult<(Box<dyn InferenceOp>, Vec<String>)> {
-    let alpha = node.get_attr_opt("alpha")?.unwrap_or(1.67326);
-    let gamma = node.get_attr_opt("gamma")?.unwrap_or(1.0507);
+    let (default_alpha, default_gamma) = if (1..6).contains(&ctx.onnx_operator_set_version) {
+        (1.6732, 1.0507)
+    } else {
+        (1.6732632, 1.050701)
+    };
+    let alpha = node.get_attr_opt("alpha")?.unwrap_or(default_alpha);
+    let gamma = node.get_attr_opt("gamma")?.unwrap_or(default_gamma);
     Ok((expand(ops::activations::Selu(alpha, gamma)), vec![]))
 }
 

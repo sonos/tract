@@ -4,9 +4,13 @@ use tract_onnx::pb::*;
 
 mod celu;
 mod convolution;
+mod selu;
 
 pub fn suite() -> TestSuite {
-    TestSuite::default().with("convolution", convolution::suite()).with("celu", celu::suite())
+    TestSuite::default()
+        .with("convolution", convolution::suite())
+        .with("celu", celu::suite())
+        .with("selu", selu::suite())
 }
 
 fn proto(name: &str, tensor: &Tensor) -> TensorProto {
@@ -63,6 +67,18 @@ fn check(
     runtime: &dyn Runtime,
     approximation: Approximation,
 ) -> TractResult<()> {
+    check_with_opset(node, inputs, constants, expected, runtime, approximation, 20)
+}
+
+fn check_with_opset(
+    node: NodeProto,
+    inputs: Vec<(&str, Tensor)>,
+    constants: Vec<(&str, Tensor)>,
+    expected: Vec<Tensor>,
+    runtime: &dyn Runtime,
+    approximation: Approximation,
+    opset: i64,
+) -> TractResult<()> {
     let graph = GraphProto {
         input: inputs.iter().map(|(name, t)| info(name, t)).collect(),
         output: node.output.iter().zip(&expected).map(|(name, t)| info(name, t)).collect(),
@@ -74,7 +90,7 @@ fn check(
         ir_version: 8,
         graph: Some(graph),
         opset_import: vec![
-            OperatorSetIdProto { domain: "".into(), version: 20 },
+            OperatorSetIdProto { domain: "".into(), version: opset },
             OperatorSetIdProto { domain: "com.microsoft".into(), version: 1 },
         ],
         ..Default::default()
