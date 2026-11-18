@@ -446,7 +446,11 @@ mod tests {
             wgpu_reduce_launch(&Reducer::Mean, &input, 3, &rows)?;
             wgpu_reduce_launch(&Reducer::Mean, &rows, 2, &split)?;
             wgpu_sum_run_launch(&input, 2, true, &fused)?;
-            assert_eq!(split.to_host()?.into_tensor(), fused.to_host()?.into_tensor());
+            // WGSL f32 division is not correctly rounded: kernels may differ by an f16 ulp.
+            fused
+                .to_host()?
+                .into_tensor()
+                .close_enough(&split.to_host()?.into_tensor(), Approximation::Close)?;
         }
         Ok(())
     }
