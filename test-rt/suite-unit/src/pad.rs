@@ -10,6 +10,7 @@ struct PadProblem {
     input_shape: Vec<usize>,
     pads: Vec<(usize, usize)>,
     value: f32,
+    edge: bool,
 }
 
 impl Arbitrary for PadProblem {
@@ -23,9 +24,15 @@ impl Arbitrary for PadProblem {
                     Just(input_shape),
                     vec((0..3usize, 0..3usize), rank..=rank),
                     prop_oneof![Just(0i8), -3i8..3i8].prop_map(|v| v as f32),
+                    any::<bool>(),
                 )
             })
-            .prop_map(|(input_shape, pads, value)| PadProblem { input_shape, pads, value })
+            .prop_map(|(input_shape, pads, value, edge)| PadProblem {
+                input_shape,
+                pads,
+                value,
+                edge,
+            })
             .boxed()
     }
 }
@@ -35,6 +42,18 @@ impl PadProblem {
         let input = input.to_plain_array_view::<f32>()?;
         let shape: Vec<usize> =
             self.input_shape.iter().zip(&self.pads).map(|(d, (b, a))| d + b + a).collect();
+        if self.edge {
+            let output = ArrayD::from_shape_fn(shape, |coords| {
+                let source: Vec<usize> = (0..self.input_shape.len())
+                    .map(|ax| {
+                        let (before, _) = self.pads[ax];
+                        coords[ax].saturating_sub(before).min(self.input_shape[ax] - 1)
+                    })
+                    .collect();
+                input[&*source]
+            });
+            return Ok(output.into_tensor());
+        }
         let mut output = ArrayD::from_elem(shape, self.value);
         let mut view = output.view_mut();
         for (ax, (&(before, _), &dim)) in self.pads.iter().zip(&self.input_shape).enumerate() {
@@ -63,7 +82,8 @@ impl Test for PadProblem {
         let mut model = TypedModel::default();
         model.properties.insert("tract-rt-test.id".to_string(), rctensor0(id.to_string()));
         let wire = model.add_source("input", TypedFact::shape_and_dt_of(&input))?;
-        let op = Pad::new(self.pads.clone(), PadMode::Constant(rctensor0(self.value)));
+        let mode = if self.edge { PadMode::Edge } else { PadMode::Constant(rctensor0(self.value)) };
+        let op = Pad::new(self.pads.clone(), mode);
         let output = model.wire_node("pad", op, &[wire])?;
         model.select_output_outlets(&output)?;
         let prepared = runtime.prepare(model)?;
@@ -83,17 +103,43 @@ pub fn suite() -> TractResult<TestSuite> {
             input_shape: vec![1, 1, 3, 32],
             pads: vec![(0, 0), (0, 0), (0, 0), (1, 1)],
             value: 0.0,
+            edge: false,
         },
     );
 
     suite.add(
         "outer_axis_nonzero_0",
-        PadProblem { input_shape: vec![2, 3, 2], pads: vec![(1, 2), (0, 0), (0, 0)], value: 1.5 },
+        PadProblem {
+            input_shape: vec![2, 3, 2],
+            pads: vec![(1, 2), (0, 0), (0, 0)],
+            value: 1.5,
+            edge: false,
+        },
     );
 
     suite.add(
         "no_pad_0",
-        PadProblem { input_shape: vec![2, 3], pads: vec![(0, 0), (0, 0)], value: 0.0 },
+        PadProblem { input_shape: vec![2, 3], pads: vec![(0, 0), (0, 0)], value: 0.0, edge: false },
+    );
+
+    suite.add(
+        "edge_inner_axis_0",
+        PadProblem {
+            input_shape: vec![1, 4, 5],
+            pads: vec![(0, 0), (0, 0), (2, 3)],
+            value: 0.0,
+            edge: true,
+        },
+    );
+
+    suite.add(
+        "edge_corners_0",
+        PadProblem {
+            input_shape: vec![2, 3, 4],
+            pads: vec![(1, 0), (2, 1), (1, 2)],
+            value: 0.0,
+            edge: true,
+        },
     );
 
     Ok(suite)
