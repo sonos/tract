@@ -1201,6 +1201,8 @@ impl TDim {
                     terms.iter().map(|t| t.inclusive_bound(scope, true)).collect();
                 bounds.map(|b| b.into_iter().max().unwrap_or(i64::MIN))
             }
+            Min(terms) => terms.iter().filter_map(|t| t.inclusive_bound(scope, true)).min(),
+            Max(terms) => terms.iter().filter_map(|t| t.inclusive_bound(scope, false)).max(),
             Div(a, q) => a.inclusive_bound(scope, upper).map(|x| x / (*q as i64)),
             Broadcast(terms) => {
                 if upper {
@@ -1216,7 +1218,6 @@ impl TDim {
                     Some(0)
                 }
             }
-            _ => None,
         }
     }
 
@@ -1709,6 +1710,16 @@ mod tests {
     #[test]
     fn reduce_add() {
         assert_eq!(add(&A.to_dim(), &neg(&A.to_dim())).reduce(), Val(0))
+    }
+
+    #[test]
+    fn max_low_bound_from_any_term() {
+        let a = A.to_dim();
+        let pad = TDim::Max(vec![Val(0), a.clone() - 4]);
+        assert_eq!(pad.low_inclusive_bound(), Some(0));
+        assert!(pad.prove_positive_or_zero());
+        let crop = TDim::Min(vec![Val(4), a]);
+        assert_eq!(crop.high_inclusive_bound(), Some(4));
     }
 
     #[test]
