@@ -161,6 +161,7 @@ fn dispatch_depthwise(
     q.dispatch_grid("conv_depthwise", &pipeline, &bg, dyn_off, groups)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn wgpu_conv_dispatch(
     op: &Conv,
     epilogue: &[ChainStep],
@@ -169,6 +170,8 @@ pub fn wgpu_conv_dispatch(
     extras: &[&DeviceTensor],
     output: &DeviceTensor,
     f16_accumulation: bool,
+    packed_weights: Option<&DeviceTensor>,
+    packed_tile: Option<DirectTile>,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         q.retain_tensor(input);
@@ -229,6 +232,31 @@ pub fn wgpu_conv_dispatch(
             [n, co, ih, iw, oh, ow],
             in_strides,
         );
+        // Packed rows are a vec4 with a zero in `.w`. Native tests may request
+        // them; the browser uses them only on Apple, where that load was measured.
+        let packed_weights = packed_weights.filter(|_| {
+            cfg!(test) || crate::kernels::matmul::apple_webgpu(q.context().device())
+        });
+        let packed = packed_weights.is_some();
+        if packed {
+            ensure!(
+                direct.is_some() && f16_acc,
+                "packed direct weights require the f16 direct kernel"
+            );
+        }
+        let weights = packed_weights.unwrap_or(weights);
+        if packed {
+            q.retain_tensor(weights);
+            ensure!(
+                dt == ShaderDtype::F16
+                    && weights.datum_type() == DatumType::F16
+                    && weights.shape() == [co, ci_pg, 3, 4]
+                    && weights.strides() == [(ci_pg * 12) as isize, 12, 4, 1]
+                    && element_offset(weights, 0).is_multiple_of(4),
+                "packed direct weights must be contiguous f16 [co, ci, 3, 4]"
+            );
+        }
+        let direct = direct.map(|tile| if packed { packed_tile.unwrap_or(tile) } else { tile });
         let pixels = n * oh * ow;
         let tiled = direct.is_none() && tiled_applies(groups, co_pg, pixels, ci_pg * kh * kw);
         let tile_m = tile_rows(co_pg);
@@ -322,11 +350,12 @@ pub fn wgpu_conv_dispatch(
             );
         }
         let pipeline = if let Some(tile) = direct {
+            let entry = if packed { "conv2d_direct_packed_weights" } else { "conv2d_direct" };
             q.context().chain_pipeline(
-                ("conv_direct", dt, f16_acc, tile.co, tile.rows, epilogue, extras.len()),
+                (entry, dt, f16_acc, tile.co, tile.rows, epilogue, extras.len()),
                 layout,
-                EntryPoint::typed("conv2d_direct", dt),
-                || conv_direct_module(dt, f16_acc, epilogue, extras.len(), tile),
+                EntryPoint::typed(entry, dt),
+                || conv_direct_module(dt, f16_acc, epilogue, extras.len(), tile, packed),
             )?
         } else if tiled {
             q.context().chain_pipeline(
@@ -366,7 +395,8 @@ pub fn wgpu_conv_dispatch(
                 co.div_ceil(tile.co) as u32,
                 1,
             ];
-            return q.dispatch_grid("conv_direct", &pipeline, &bg, dyn_off, grid);
+            let label = if packed { "conv_direct_packed_weights" } else { "conv_direct" };
+            return q.dispatch_grid(label, &pipeline, &bg, dyn_off, grid);
         }
         if tiled {
             return q.dispatch_grid("conv_tiled", &pipeline, &bg, dyn_off, tiled_grid);
@@ -1384,6 +1414,18 @@ impl DirectTile {
     }
 }
 
+/// Tile measured for the eight RVM f16 direct 3×3 layers: eight output channels,
+/// two rows at 180p and 360p, one row on the smaller maps. Each filter row is
+/// stored as a vec4 so the kernel loads it in one read.
+pub(crate) fn measured_packed_tile(ci: usize, co: usize, h: usize, w: usize) -> Option<DirectTile> {
+    let rows = match (ci, co, h, w) {
+        (35, 16, 360, 640) | (16, 16, 360, 640) | (59, 32, 180, 320) | (32, 32, 180, 320) => 2,
+        (107, 40, 90, 160) | (171, 80, 45, 80) | (128, 64, 23, 40) | (32, 16, 180, 320) => 1,
+        _ => return None,
+    };
+    Some(DirectTile { co: 8, rows })
+}
+
 /// Register tile of the direct convolution, if the register-blocked kernel can
 /// serve this convolution: dense 3x3, stride 1, dilation 1, NCHW f32/f16, one
 /// pad on each side so the output keeps the input's size, and every input
@@ -1432,13 +1474,15 @@ fn direct_tiling(
 /// output. Serves the convolutions [`direct_tiling`] admits. f16 inputs and
 /// weights are widened as they are read: the accumulators and the epilogue run
 /// in f32 and the result is rounded to the storage type once. With
-/// `f16_accumulation`, f16 stays f16 throughout.
+/// `f16_accumulation`, f16 stays f16 throughout. `packed` reads each 3-tap
+/// filter row from a `vec4`, whose last lane is zero and unused.
 pub fn conv_direct_module(
     dt: ShaderDtype,
     f16_accumulation: bool,
     epilogue: &[ChainStep],
     extras: usize,
     tile: DirectTile,
+    packed: bool,
 ) -> String {
     let t = dt.wgsl();
     let a = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
@@ -1458,7 +1502,9 @@ pub fn conv_direct_module(
     let epilogue = conv_direct_epilogue(epilogue, t != a);
     let result = if t == a { "v".to_owned() } else { format!("{t}(v)") };
     let DirectTile { co: co_tile, rows } = tile;
-    let (decls, rows_setup, taps, stores) = conv_direct_body(tile, t, a);
+    let (decls, rows_setup, taps, stores) = conv_direct_body(tile, t, a, packed);
+    let weight_type = if packed { format!("vec4<{t}>") } else { t.to_owned() };
+    let entry = if packed { "conv2d_direct_packed_weights" } else { "conv2d_direct" };
     let mut s = preamble(dt);
     s.push_str(&format!(
         r#"
@@ -1503,7 +1549,7 @@ struct Params {{
 }}
 
 @group(0) @binding(0) var<storage, read> inp: array<vec4<{t}>>;
-@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+@group(0) @binding(1) var<storage, read> wgt: array<{weight_type}>;
 {extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
 @group(0) @binding({uniform_binding}) var<uniform> params: Params;
 {lib}
@@ -1514,7 +1560,7 @@ fn epi(acc: {a}, co: u32) -> {t} {{
 }}
 
 @compute @workgroup_size({CONV_DIRECT_WG})
-fn conv2d_direct_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
     let xqw = params.ow / 4u;
     let row_tiles = (params.oh + {rows}u - 1u) / {rows}u;
     let i = wid.x * {CONV_DIRECT_WG}u + lid;
@@ -1541,7 +1587,12 @@ fn conv2d_direct_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workg
 /// accumulator per output row and channel, the `rows + 2` input rows of each
 /// input channel, and the nine taps and the stores of each output, so the
 /// register tile never becomes an indexed private array.
-fn conv_direct_body(tile: DirectTile, t: &str, a: &str) -> (String, String, String, String) {
+fn conv_direct_body(
+    tile: DirectTile,
+    t: &str,
+    a: &str,
+    packed: bool,
+) -> (String, String, String, String) {
     use std::fmt::Write;
     let DirectTile { co: co_tile, rows } = tile;
     let mut decls = String::new();
@@ -1582,11 +1633,25 @@ fn conv_direct_body(tile: DirectTile, t: &str, a: &str) -> (String, String, Stri
     }
     for c in 0..co_tile {
         writeln!(taps, "        {{").unwrap();
-        writeln!(taps, "            let wi = u32(i32(params.off_w) + i32(co0 + {c}u) * params.w_so + i32(ci) * params.w_si);").unwrap();
+        if packed {
+            writeln!(
+                taps,
+                "            let wi = params.off_w / 4u + ((co0 + {c}u) * params.ci_pg + ci) * 3u;"
+            )
+            .unwrap();
+        } else {
+            writeln!(taps, "            let wi = u32(i32(params.off_w) + i32(co0 + {c}u) * params.w_so + i32(ci) * params.w_si);").unwrap();
+        }
         for r in 0..3 {
-            for k in 0..3 {
-                let index = format!("wi + {r}u * u32(params.w_sh) + {k}u * u32(params.w_sw)");
-                let value = format!("wgt[{index}]");
+            if packed {
+                writeln!(taps, "            let wr{r} = wgt[wi + {r}u];").unwrap();
+            }
+            for (k, lane) in ["x", "y", "z"].iter().enumerate() {
+                let value = if packed {
+                    format!("wr{r}.{lane}")
+                } else {
+                    format!("wgt[wi + {r}u * u32(params.w_sh) + {k}u * u32(params.w_sw)]")
+                };
                 let value = if t == a { value } else { format!("{a}({value})") };
                 writeln!(taps, "            let w{r}{k} = vec4<{a}>({value});").unwrap();
             }
@@ -2145,6 +2210,109 @@ mod tests {
                     "ci{ci} co{co} {h}x{w}: f16_accumulation={f16_accumulation}, all zero: {all_zero}"
                 );
             }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn measured_packed_tiles_cover_the_rvm_layers() {
+        use super::DirectTile;
+        use super::measured_packed_tile;
+        for (ci, co, h, w, rows) in [
+            (35usize, 16usize, 360usize, 640usize, 2usize),
+            (16, 16, 360, 640, 2),
+            (59, 32, 180, 320, 2),
+            (32, 32, 180, 320, 2),
+            (107, 40, 90, 160, 1),
+            (171, 80, 45, 80, 1),
+            (128, 64, 23, 40, 1),
+            (32, 16, 180, 320, 1),
+        ] {
+            assert_eq!(measured_packed_tile(ci, co, h, w), Some(DirectTile { co: 8, rows }));
+        }
+        assert_eq!(measured_packed_tile(35, 16, 384, 640), None);
+        assert_eq!(measured_packed_tile(3, 16, 360, 640), None);
+    }
+
+    /// Packed vec4 filter rows and the measured eight-channel tile match the
+    /// scalar direct kernel bit for bit, including a per-channel bias epilogue.
+    #[test]
+    fn packed_direct_weights_match_scalar() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        use tract_gpu::tensor::DeviceTensor;
+        use tract_gpu::tensor::IntoDevice;
+
+        use super::DirectTile;
+        use super::wgpu_conv_dispatch;
+        use crate::kernels::shaders::ChainStep;
+
+        crate::context::wgpu_context();
+        for (ci, co, h, w, rows, bias) in [
+            (4usize, 8usize, 8usize, 16usize, 2usize, true),
+            (5, 8, 8, 16, 1, false),
+        ] {
+            let halves = |seed: u64, len: usize, scale: f32| {
+                fill(seed, len).into_iter().map(|v| f16::from_f32(v * scale)).collect::<Vec<_>>()
+            };
+            let input =
+                Tensor::from_shape(&[1, ci, h, w], &halves(1, ci * h * w, 0.25))?.into_device()?;
+            let weight_vals = halves(2, co * ci * 9, 0.05);
+            let weights = Tensor::from_shape(&[co, ci, 3, 3], &weight_vals)?.into_device()?;
+            let packed_vals: Vec<f16> = weight_vals
+                .chunks_exact(3)
+                .flat_map(|row| [row[0], row[1], row[2], f16::ZERO])
+                .collect();
+            let packed = Tensor::from_shape(&[co, ci, 3, 4], &packed_vals)?.into_device()?;
+            let bias_t = if bias {
+                Some(Tensor::from_shape(&[co], &halves(3, co, 0.1))?.into_device()?)
+            } else {
+                None
+            };
+            let op = Conv {
+                pool_spec: PoolSpec {
+                    data_format: DataFormat::NCHW,
+                    kernel_shape: tvec![3, 3],
+                    padding: PaddingSpec::Explicit(tvec![1, 1], tvec![1, 1]),
+                    dilations: None,
+                    strides: Some(tvec![1, 1]),
+                    input_channels: ci,
+                    output_channels: co,
+                },
+                kernel_fmt: KernelFormat::OIHW,
+                group: 1,
+                q_params: None,
+            };
+            let epilogue = if bias {
+                vec![ChainStep::Binary { op: "add".into(), rhs: 1, swapped: false }]
+            } else {
+                vec![]
+            };
+            let extras: Vec<&DeviceTensor> = bias_t.iter().collect();
+            let scalar_out = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, co, h, w])?;
+            let packed_out = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, co, h, w])?;
+            wgpu_conv_dispatch(
+                &op, &epilogue, &input, &weights, &extras, &scalar_out, true, None, None,
+            )?;
+            wgpu_conv_dispatch(
+                &op,
+                &epilogue,
+                &input,
+                &weights,
+                &extras,
+                &packed_out,
+                true,
+                Some(&packed),
+                Some(DirectTile { co: 8, rows }),
+            )?;
+            crate::with_wgpu_queue(|q| q.flush())?;
+            let scalar = scalar_out.to_host()?;
+            let packed_host = packed_out.to_host()?;
+            assert_eq!(
+                scalar.try_as_plain_ram()?.as_slice::<f16>()?,
+                packed_host.try_as_plain_ram()?.as_slice::<f16>()?,
+                "ci={ci} rows={rows} bias={bias}"
+            );
         }
         Ok(())
     }
