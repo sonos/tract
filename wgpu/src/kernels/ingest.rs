@@ -153,9 +153,83 @@ fn pad_rgba_rows(width: u32, height: u32, rgba: &[u8]) -> TractResult<(Vec<u8>, 
     Ok((out, padded_row))
 }
 
+/// One RGBA texture and one bind group for this size and output buffer.
+fn prepare_ingest(
+    q: &crate::WgpuQueue,
+    width: u32,
+    height: u32,
+    output: &DeviceTensor,
+) -> TractResult<(wgpu::Texture, Arc<wgpu::BindGroup>)> {
+    let output_id = get_wgpu_buffer(output).id;
+    {
+        let slot = q.ingest.borrow();
+        if let Some(slot) = slot.as_ref()
+            && slot.width == width
+            && slot.height == height
+            && slot.output_id == output_id
+        {
+            crate::context::remember_bind_group(slot.bg_id);
+            return Ok((slot.texture.clone(), slot.bind_group.clone()));
+        }
+    }
+    let (texture, view) = {
+        let existing = q.ingest.borrow();
+        match existing.as_ref() {
+            Some(slot) if slot.width == width && slot.height == height => {
+                (slot.texture.clone(), slot.view.clone())
+            }
+            _ => {
+                let texture = create_rgba8_texture(q.context().device(), width, height);
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                (texture, view)
+            }
+        }
+    };
+    let group =
+        q.context().bind_group_ingest(&view, &get_wgpu_buffer(output).inner, q.uniform())?;
+    *q.ingest.borrow_mut() = Some(crate::context::IngestSlot {
+        width,
+        height,
+        texture: texture.clone(),
+        view,
+        output_id,
+        bind_group: group.clone(),
+        bg_id: crate::context::last_bind_group_id(),
+    });
+    Ok((texture, group))
+}
+
+fn prepare_export(
+    q: &crate::WgpuQueue,
+    mask: &DeviceTensor,
+    texture: &wgpu::Texture,
+) -> TractResult<Arc<wgpu::BindGroup>> {
+    let buffer_id = get_wgpu_buffer(mask).id;
+    {
+        let slot = q.export_group.borrow();
+        if let Some(slot) = slot.as_ref()
+            && slot.buffer_id == buffer_id
+            && &slot.texture == texture
+        {
+            crate::context::remember_bind_group(slot.bg_id);
+            return Ok(slot.bind_group.clone());
+        }
+    }
+    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let group = q.context().bind_group_export(&get_wgpu_buffer(mask).inner, &view, q.uniform())?;
+    *q.export_group.borrow_mut() = Some(crate::context::ExportSlot {
+        buffer_id,
+        texture: texture.clone(),
+        bind_group: group.clone(),
+        bg_id: crate::context::last_bind_group_id(),
+    });
+    Ok(group)
+}
+
 fn dispatch_rgba_to_nchw(
     q: &crate::WgpuQueue,
     texture: wgpu::Texture,
+    bg: &Arc<wgpu::BindGroup>,
     width: u32,
     height: u32,
     output: &DeviceTensor,
@@ -163,18 +237,15 @@ fn dispatch_rgba_to_nchw(
 ) -> TractResult<()> {
     let scale_offset = normalization.scale_offset()?;
     q.retain_tensor(output);
-    let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
     let pipeline = q.context().pipeline(PipelineKey {
         module: ModuleKey { kind: ModuleKind::Ingest, dtype: ShaderDtype::F32 },
         entry: EntryPoint::plain("rgba_to_nchw_f32"),
     })?;
-    let out_buf = get_wgpu_buffer(output);
-    let bg = q.context().bind_group_ingest(&view, &out_buf.inner, q.uniform())?;
     let mut words = vec![element_offset(output, 0) as u32, width, height, 0];
     words.extend(scale_offset.iter().map(|v| v.to_bits()));
     let params = pack_u32s(&words);
     let dyn_off = q.alloc_uniform(&params)?;
-    q.dispatch("ingest", &pipeline, &bg, dyn_off, width as u64 * height as u64)?;
+    q.dispatch("ingest", &pipeline, bg, dyn_off, width as u64 * height as u64)?;
     q.retain_texture(texture);
     Ok(())
 }
@@ -198,8 +269,9 @@ pub(crate) fn tensor_from_rgba8_normalized(
     ensure!(width > 0 && height > 0, "ingest size must be > 0");
     wgpu_context();
     with_wgpu_queue(|q| {
+        let output = output_tensor(width, height)?;
+        let (texture, group) = prepare_ingest(q, width, height, &output)?;
         let (padded, bpr) = pad_rgba_rows(width, height, rgba)?;
-        let texture = create_rgba8_texture(q.context().device(), width, height);
         q.context().queue().write_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: &texture,
@@ -215,8 +287,7 @@ pub(crate) fn tensor_from_rgba8_normalized(
             },
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
-        let output = output_tensor(width, height)?;
-        dispatch_rgba_to_nchw(q, texture, width, height, &output, normalization)?;
+        dispatch_rgba_to_nchw(q, texture, &group, width, height, &output, normalization)?;
         Ok(output)
     })
 }
@@ -243,7 +314,8 @@ pub fn tensor_from_external_image_normalized(
     ensure!(width > 0 && height > 0, "ingest size must be > 0");
     wgpu_context();
     with_wgpu_queue(|q| {
-        let texture = create_rgba8_texture(q.context().device(), width, height);
+        let output = output_tensor(width, height)?;
+        let (texture, group) = prepare_ingest(q, width, height, &output)?;
         q.context().queue().copy_external_image_to_texture(
             &wgpu::CopyExternalImageSourceInfo {
                 source,
@@ -260,8 +332,7 @@ pub fn tensor_from_external_image_normalized(
             },
             wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
         );
-        let output = output_tensor(width, height)?;
-        dispatch_rgba_to_nchw(q, texture, width, height, &output, normalization)?;
+        dispatch_rgba_to_nchw(q, texture, &group, width, height, &output, normalization)?;
         Ok(output)
     })
 }
@@ -293,8 +364,7 @@ pub fn tensor_to_texture(
             module: ModuleKey { kind: ModuleKind::Export, dtype: dt },
             entry: EntryPoint::typed("export", dt),
         })?;
-        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let bg = q.context().bind_group_export(&get_wgpu_buffer(mask).inner, &view, q.uniform())?;
+        let bg = prepare_export(q, mask, texture)?;
         let params = pack_u32s(&[element_offset(mask, 0) as u32, width, height, 0]);
         let dyn_off = q.alloc_uniform(&params)?;
         q.retain_texture(texture.clone());

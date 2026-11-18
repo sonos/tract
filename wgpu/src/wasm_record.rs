@@ -19,7 +19,7 @@ export function tract_install_record_hooks() {
   const origBG = GPUDevice.prototype.createBindGroup;
   GPUDevice.prototype.createBindGroup = function(desc) {
     const g = origBG.call(this, desc);
-    if (desc && desc.label) bgs.set(desc.label, g);
+    if (desc && desc.label) bgs.set(desc.label, new WeakRef(g));
     return g;
   };
   const origBegin = GPUCommandEncoder.prototype.beginComputePass;
@@ -32,11 +32,12 @@ export function tract_install_record_hooks() {
 export function tract_record_pass(data) {
   const pass = globalThis.__tractPass;
   if (!pass) throw new Error("tract-wgpu: no compute pass");
+  for (const [key, ref] of bgs) if (!ref.deref()) bgs.delete(key);
   const u32 = new Uint32Array(data.buffer, data.byteOffset, data.byteLength >> 2);
   let last = null;
   for (let i = 0; i < u32.length; i += 6) {
     const pl = pipes.get("tp" + u32[i]);
-    const bg = bgs.get("tb" + u32[i + 1]);
+    const bg = bgs.get("tb" + u32[i + 1])?.deref();
     if (!pl) throw new Error("tract-wgpu: missing pipeline tp" + u32[i]);
     if (!bg) throw new Error("tract-wgpu: missing bind group tb" + u32[i + 1]);
     if (pl !== last) { pass.setPipeline(pl); last = pl; }
