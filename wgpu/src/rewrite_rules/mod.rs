@@ -7,7 +7,7 @@ mod winograd;
 
 pub use fuse_axis_op::{fuse_axis_op, fuse_move_axis};
 pub use fuse_concat_resize::fuse_concat_resize;
-pub use fuse_concat_resize::fuse_decoder_resize_output;
+pub use fuse_concat_resize::fuse_resize_concat_output;
 pub use fuse_elementwise::{grow_elementwise_chain, start_binary_chain, start_elementwise_chain};
 pub use fuse_epilogue::{fuse_conv_epilogue, fuse_deconv_epilogue, fuse_gemm_epilogue};
 pub use fuse_gemv_pair::{fuse_gemv_pair, fuse_gemv_pair_tail};

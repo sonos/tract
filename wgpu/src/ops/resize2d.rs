@@ -8,14 +8,28 @@ use crate::kernels::resize::wgpu_resize_2d_dispatch;
 /// its `window_h x window_w` taps straight from the input. The per-axis form
 /// costs a launch and an intermediate per axis, and re-uploads its plans every
 /// frame; here the plans are inputs 1..=4 (row indices, row weights, column
-/// indices, column weights), constants that live on the device.
+/// indices, column weights), constants that live on the device. With
+/// `concat_inputs`, input 5 is the second half of a channel concat the resize
+/// reads in place. With `output_concat`, the resize writes its slab of a concat
+/// and copies the trailing inputs into the rest of it.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct WgpuResize2d {
     pub window_h: usize,
     pub window_w: usize,
     pub output_shape: TVec<usize>,
     pub concat_inputs: bool,
-    pub append_inputs: usize,
+    pub output_concat: Option<OutputConcat>,
+}
+
+/// The concat a resize writes into: along `axis`, before every resize axis
+/// with only unit axes ahead of it, so the resize's slab is contiguous. The
+/// last `siblings` inputs are the other concat inputs, in order; the resize
+/// result sits after the first `position` of them.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OutputConcat {
+    pub axis: usize,
+    pub position: usize,
+    pub siblings: usize,
 }
 
 impl Op for WgpuResize2d {
@@ -24,7 +38,17 @@ impl Op for WgpuResize2d {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("windows {}x{} -> {:?}", self.window_h, self.window_w, self.output_shape)])
+        let mut info =
+            vec![format!("windows {}x{} -> {:?}", self.window_h, self.window_w, self.output_shape)];
+        if let Some(oc) = &self.output_concat {
+            info.push(format!(
+                "into concat axis {} at {} of {}",
+                oc.axis,
+                oc.position,
+                oc.siblings + 1
+            ));
+        }
+        Ok(info)
     }
 
     op_as_typed_op!();
@@ -37,50 +61,63 @@ impl EvalOp for WgpuResize2d {
         let inputs =
             inputs.iter().map(|it| it.to_device_tensor()).collect::<TractResult<TVec<_>>>()?;
         let input = inputs[0];
+        let second = if self.concat_inputs { Some(inputs[5]) } else { None };
+        let siblings = &inputs[5 + self.concat_inputs as usize..];
         let output = tract_gpu::turn_handler::make_tensor_for_node(
             ctx,
             input.datum_type(),
             &self.output_shape,
         )?;
-        if output.len() > 0 {
-            let mut cursor = if self.append_inputs > 0 {
-                ensure!(self.concat_inputs && inputs.len() == 6 + self.append_inputs);
-                Some(input.shape()[1] + inputs[5].shape()[1])
-            } else {
-                None
-            };
+        if output.len() == 0 {
+            return Ok(tvec!(output.into_tensor().into_tvalue()));
+        }
+        let rank = self.output_shape.len();
+        let plane = self.output_shape[rank - 2] * self.output_shape[rank - 1];
+        let Some(oc) = &self.output_concat else {
+            ensure!(siblings.is_empty());
             wgpu_resize_2d_dispatch(
                 input,
-                if self.concat_inputs { Some(inputs[5]) } else { None },
+                second,
                 (inputs[1], inputs[2], self.window_h),
                 (inputs[3], inputs[4], self.window_w),
                 &output,
-                cursor,
+                None,
             )?;
-            if let Some(c) = cursor.as_mut() {
-                for extra in &inputs[6..] {
-                    let [1, channels, h, w] = extra.shape() else {
-                        bail!("Expected NCHW features");
-                    };
-                    ensure!(
-                        [*h, *w] == self.output_shape[2..]
-                            && extra.datum_type() == output.datum_type()
-                    );
-                    ensure!(*c + channels <= self.output_shape[1]);
-                    let offset = *c * h * w * output.datum_type().size_of();
-                    wgpu_copy_nd_dispatch(
-                        extra,
-                        0,
-                        extra.strides(),
-                        &output,
-                        offset,
-                        extra.shape(),
-                        output.strides(),
-                    )?;
-                    *c += channels;
-                }
-                ensure!(*c == self.output_shape[1]);
+            return Ok(tvec!(output.into_tensor().into_tvalue()));
+        };
+        ensure!(siblings.len() == oc.siblings && oc.position <= oc.siblings);
+        let lens = siblings.iter().map(|s| s.shape()[oc.axis]).collect::<TVec<_>>();
+        let resize_len = self.output_shape[oc.axis] - lens.iter().sum::<usize>();
+        let resize_start = lens[..oc.position].iter().sum::<usize>();
+        let slab = output.strides()[oc.axis] as usize;
+        let mut start = 0;
+        for (ix, sibling) in siblings.iter().enumerate() {
+            if ix == oc.position {
+                start += resize_len;
             }
+            if sibling.len() > 0 {
+                wgpu_copy_nd_dispatch(
+                    sibling,
+                    0,
+                    sibling.strides(),
+                    &output,
+                    start * slab * output.datum_type().size_of(),
+                    sibling.shape(),
+                    output.strides(),
+                )?;
+            }
+            start += lens[ix];
+        }
+        let planes = slab / plane;
+        if resize_len > 0 {
+            wgpu_resize_2d_dispatch(
+                input,
+                second,
+                (inputs[1], inputs[2], self.window_h),
+                (inputs[3], inputs[4], self.window_w),
+                &output,
+                Some((resize_start * planes, resize_len * planes)),
+            )?;
         }
         Ok(tvec!(output.into_tensor().into_tvalue()))
     }
