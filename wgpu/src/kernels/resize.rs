@@ -19,14 +19,15 @@ pub fn all_pipeline_keys(shader_f16: bool) -> Vec<PipelineKey> {
 }
 
 /// Both trailing axes in one launch; `rows` and `cols` are (indices, weights,
-/// window) plans as [`wgpu_resize_axis_dispatch`] takes them.
+/// window) plans as [`wgpu_resize_axis_dispatch`] takes them. `output_planes`
+/// (first, count) confines the writes to a contiguous run of output planes.
 pub fn wgpu_resize_2d_dispatch(
     input: &DeviceTensor,
     second: Option<&DeviceTensor>,
     rows: (&DeviceTensor, &DeviceTensor, usize),
     cols: (&DeviceTensor, &DeviceTensor, usize),
     output: &DeviceTensor,
-    resize_channels: Option<usize>,
+    output_planes: Option<(usize, usize)>,
 ) -> TractResult<()> {
     with_wgpu_queue(|q| {
         for t in [input, rows.0, rows.1, cols.0, cols.1, output] {
@@ -43,8 +44,8 @@ pub fn wgpu_resize_2d_dispatch(
         let dt = ShaderDtype::from_datum(input.datum_type())?;
         let layout = LayoutKind::Chain(if second.is_some() { 7 } else { 6 });
         let output_outer = output.shape()[..rank - 2].iter().product::<usize>().max(1);
-        let outer = resize_channels.unwrap_or(output_outer);
-        ensure!(outer <= output_outer);
+        let (first_plane, outer) = output_planes.unwrap_or((0, output_outer));
+        ensure!(first_plane + outer <= output_outer);
         let (h_in, w_in) = (input.shape()[rank - 2], input.shape()[rank - 1]);
         let (h_out, w_out) = (output.shape()[rank - 2], output.shape()[rank - 1]);
         let [wx, wy, wz] = RESIZE_2D_WG.map(|d| d as usize);
@@ -88,7 +89,7 @@ pub fn wgpu_resize_2d_dispatch(
             element_offset(rows.1, 0) as u32,
             element_offset(cols.0, 0) as u32,
             element_offset(cols.1, 0) as u32,
-            element_offset(output, 0) as u32,
+            (element_offset(output, 0) + first_plane * h_out * w_out) as u32,
             outer as u32,
             h_in as u32,
             w_in as u32,
@@ -196,7 +197,7 @@ pub fn wgpu_resize_2d(source: &TypedModel, node: &TypedNode) -> TractResult<Opti
             window_w: baked.windows[1],
             output_shape: baked.output_shape.clone(),
             concat_inputs: false,
-            append_inputs: 0,
+            output_concat: None,
         },
         plans: [ih.clone(), wh.clone(), iw.clone(), ww.clone()],
     }))
@@ -469,8 +470,11 @@ mod tests {
 
     use crate::test_utils::{f16_vs_f32, fill, gpu_vs_cpu, transformed};
 
+    /// A resize feeding a concat writes into the concat output, wherever it
+    /// sits among the concat inputs, through optional crops, and composed with
+    /// an input concat; bit-identical to the unfused graph.
     #[test]
-    fn concat_after_bilinear_resize_preserves_crop_and_channel_order() -> TractResult<()> {
+    fn resize_writes_into_following_concat() -> TractResult<()> {
         use crate::ops::resize2d::WgpuResize2d;
         use tract_core::ops::array::Slice;
         use tract_core::ops::array::TypedConcat;
@@ -479,65 +483,119 @@ mod tests {
         use tract_core::ops::nn::resize::Nearest;
         use tract_core::ops::nn::resize::Resize;
 
-        let shapes = [[1, 64, 23, 40], [1, 64, 23, 40], [1, 40, 45, 80], [1, 3, 45, 80]];
-        let mut model = TypedModel::default();
-        let inputs = shapes
-            .iter()
-            .enumerate()
-            .map(|(ix, shape)| model.add_source(format!("x{ix}"), f16::fact(shape)))
-            .collect::<TractResult<TVec<_>>>()?;
-        let low = model.wire_node("low", TypedConcat::new(1), &inputs[..2])?[0];
-        let scales = model.add_const("scales", tensor1(&[1.0f32, 1.0, 2.0, 2.0]))?;
-        let resize = model.wire_node(
-            "resize",
-            Resize {
-                coord_transformer: CoordTransformer::HalfPixel,
+        struct Case {
+            dt: DatumType,
+            interpolator: Interpolator,
+            low: Vec<Vec<usize>>,
+            crop: Option<(usize, usize)>,
+            before: Vec<Vec<usize>>,
+            after: Vec<Vec<usize>>,
+            axis: usize,
+        }
+        let cases = [
+            Case {
+                dt: f16::datum_type(),
                 interpolator: Interpolator::Linear,
-                nearest: Nearest::RoundPreferCeil,
-                optional_scales_input: Some(1),
-                optional_sizes_input: None,
+                low: vec![vec![1, 64, 23, 40], vec![1, 64, 23, 40]],
+                crop: Some((2, 45)),
+                before: vec![],
+                after: vec![vec![1, 40, 45, 80], vec![1, 3, 45, 80]],
+                axis: 1,
             },
-            &[low, scales],
-        )?[0];
-        let crop = model.wire_node("crop", Slice::new(2, 0, 45), &[resize])?[0];
-        let output =
-            model.wire_node("features", TypedConcat::new(1), &[crop, inputs[2], inputs[3]])?[0];
-        model.select_output_outlets(&[output])?;
-        let rt = tract_core::runtime::runtime_for_name("wgpu")?.unwrap();
-        let fused = rt.prepare(model.clone())?;
-        assert!(
-            fused
-                .typed_model()
-                .unwrap()
-                .nodes()
+            Case {
+                dt: f32::datum_type(),
+                interpolator: Interpolator::Linear,
+                low: vec![vec![1, 5, 7, 9]],
+                crop: Some((3, 17)),
+                before: vec![vec![1, 2, 14, 17]],
+                after: vec![vec![1, 3, 14, 17]],
+                axis: 1,
+            },
+            Case {
+                dt: f16::datum_type(),
+                interpolator: Interpolator::Linear,
+                low: vec![vec![1, 3, 5, 6], vec![1, 4, 5, 6]],
+                crop: None,
+                before: vec![vec![1, 1, 10, 12], vec![1, 6, 10, 12]],
+                after: vec![],
+                axis: 1,
+            },
+            Case {
+                dt: f32::datum_type(),
+                interpolator: Interpolator::Nearest,
+                low: vec![vec![4, 5, 6]],
+                crop: Some((1, 9)),
+                before: vec![vec![2, 9, 12]],
+                after: vec![vec![1, 9, 12]],
+                axis: 0,
+            },
+        ];
+        for (ix, case) in cases.iter().enumerate() {
+            let mut model = TypedModel::default();
+            let shapes = case.low.iter().chain(&case.before).chain(&case.after).collect::<Vec<_>>();
+            let sources = shapes
                 .iter()
-                .any(|n| n.op_as::<WgpuResize2d>().is_some_and(|op| op.append_inputs == 2))
-        );
-        model.select_output_outlets(&[output, resize])?;
-        let separate = rt.prepare(model)?;
-        assert!(
-            !separate
-                .typed_model()
-                .unwrap()
-                .nodes()
+                .enumerate()
+                .map(|(ix, shape)| {
+                    model.add_source(format!("x{ix}"), case.dt.fact(shape.as_slice()))
+                })
+                .collect::<TractResult<TVec<_>>>()?;
+            let (low, rest) = sources.split_at(case.low.len());
+            let (before, after) = rest.split_at(case.before.len());
+            let low = if low.len() > 1 {
+                model.wire_node("low", TypedConcat::new(case.axis), low)?[0]
+            } else {
+                low[0]
+            };
+            let rank = case.low[0].len();
+            let mut scales = vec![1f32; rank];
+            scales[rank - 2..].fill(2.0);
+            let scales = model.add_const("scales", tensor1(&scales))?;
+            let resize = model.wire_node(
+                "resize",
+                Resize {
+                    coord_transformer: CoordTransformer::HalfPixel,
+                    interpolator: case.interpolator.clone(),
+                    nearest: Nearest::RoundPreferCeil,
+                    optional_scales_input: Some(1),
+                    optional_sizes_input: None,
+                },
+                &[low, scales],
+            )?[0];
+            let up = if let Some((axis, end)) = case.crop {
+                model.wire_node("crop", Slice::new(axis, 0, end), &[resize])?[0]
+            } else {
+                resize
+            };
+            let inputs = before.iter().chain([&up]).chain(after).copied().collect::<TVec<_>>();
+            let output = model.wire_node("concat", TypedConcat::new(case.axis), &inputs)?[0];
+            let rt = tract_core::runtime::runtime_for_name("wgpu")?.unwrap();
+            let fused_into_concat = |model: &TypedModel| {
+                model
+                    .nodes()
+                    .iter()
+                    .any(|n| n.op_as::<WgpuResize2d>().is_some_and(|op| op.output_concat.is_some()))
+            };
+            model.select_output_outlets(&[output])?;
+            let fused = rt.prepare(model.clone())?;
+            assert!(fused_into_concat(fused.typed_model().unwrap()), "case {ix}");
+            model.select_output_outlets(&[output, resize])?;
+            let separate = rt.prepare(model)?;
+            assert!(!fused_into_concat(separate.typed_model().unwrap()), "case {ix}");
+            let values = shapes
                 .iter()
-                .any(|n| n.op_as::<WgpuResize2d>().is_some_and(|op| op.append_inputs > 0))
-        );
-        let inputs = shapes
-            .iter()
-            .enumerate()
-            .map(|(i, shape)| {
-                let tensor =
-                    Tensor::from_shape(shape, &fill(i as u64 + 1, shape.iter().product()))?;
-                Ok(tensor.cast_to::<f16>()?.into_owned().into())
-            })
-            .collect::<TractResult<TVec<TValue>>>()?;
-        let got = fused.run(inputs.clone())?;
-        let expected = separate.run(inputs)?;
-        assert_eq!(
-            got[0].try_as_plain_ram()?.as_slice::<f16>()?,
-            expected[0].try_as_plain_ram()?.as_slice::<f16>()?
-        );
+                .enumerate()
+                .map(|(i, shape)| {
+                    let t = Tensor::from_shape(shape, &fill(i as u64 + 1, shape.iter().product()))?;
+                    Ok(t.cast_to_dt(case.dt)?.into_owned().into())
+                })
+                .collect::<TractResult<TVec<TValue>>>()?;
+            let got = fused.run(values.clone())?;
+            let expected = separate.run(values)?;
+            got[0]
+                .close_enough(&expected[0], Approximation::Exact)
+                .with_context(|| format!("case {ix}"))?;
+        }
         Ok(())
     }
 
