@@ -385,10 +385,20 @@ impl RuntimeInterface for Runtime {
         }
     }
 
-    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
+    fn prepare_with_options(
+        &self,
+        model: Self::Model,
+        options: impl Into<RunOptionsSpec>,
+    ) -> Result<Self::Runnable> {
         let mut model = model;
+        let options = CString::new(options.into().to_json())?;
         let mut runnable = null_mut();
-        check!(sys::tract_runtime_prepare(self.0, &mut model.0, &mut runnable))?;
+        check!(sys::tract_runtime_prepare_with_options(
+            self.0,
+            &mut model.0,
+            options.as_ptr(),
+            &mut runnable
+        ))?;
         Ok(Runnable(runnable))
     }
 }

@@ -207,6 +207,73 @@ impl From<String> for OnnxOptionsSpec {
     }
 }
 
+/// Options for preparing a model on a runtime, carried as JSON.
+///
+/// Follows the same principle as [`OnnxOptions`]: a typed struct that
+/// serializes to a JSON object, so a caller can pass either the struct or a
+/// JSON string, and the C and Python entry points can pass the string. An
+/// unknown field is an error.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct RunOptions {
+    /// Symbol values the runtime sizes its memory for, by symbol name. They
+    /// only steer memory planning (GPU arenas): inputs above or below them still
+    /// run. Each name must be a symbol of the prepared model and each value
+    /// nonnegative.
+    pub memory_sizing_hints: BTreeMap<String, i64>,
+}
+
+impl RunOptions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Size memory for symbol `name` taking `value`.
+    pub fn memory_sizing_hint(mut self, name: impl Into<String>, value: i64) -> Self {
+        self.memory_sizing_hints.insert(name.into(), value);
+        self
+    }
+
+    /// Produce the JSON the runtime expects.
+    pub fn to_json(&self) -> String {
+        serde_json::to_string(self).expect("RunOptions serialization cannot fail")
+    }
+}
+
+/// A serialized [`RunOptions`], accepted as either the struct or a JSON string.
+#[derive(Debug, Clone)]
+pub struct RunOptionsSpec(String);
+
+impl RunOptionsSpec {
+    /// The JSON the runtime expects.
+    pub fn to_json(&self) -> String {
+        self.0.clone()
+    }
+
+    /// Parse back into the typed form.
+    pub fn parse(&self) -> Result<RunOptions> {
+        Ok(serde_json::from_str(&self.0)?)
+    }
+}
+
+impl From<RunOptions> for RunOptionsSpec {
+    fn from(o: RunOptions) -> Self {
+        RunOptionsSpec(o.to_json())
+    }
+}
+
+impl From<&str> for RunOptionsSpec {
+    fn from(s: &str) -> Self {
+        RunOptionsSpec(s.to_string())
+    }
+}
+
+impl From<String> for RunOptionsSpec {
+    fn from(s: String) -> Self {
+        RunOptionsSpec(s)
+    }
+}
+
 pub trait OnnxInterface: Debug {
     type InferenceModel: InferenceModelInterface;
 
@@ -313,7 +380,18 @@ pub trait RuntimeInterface: Debug {
     type Runnable: RunnableInterface;
     type Model: ModelInterface;
     fn name(&self) -> Result<String>;
-    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable>;
+    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
+        self.prepare_with_options(model, RunOptions::new())
+    }
+
+    /// Prepare `model` for this runtime, configured by `options`.
+    ///
+    /// `options` is either a [`RunOptions`] or the JSON for one.
+    fn prepare_with_options(
+        &self,
+        model: Self::Model,
+        options: impl Into<RunOptionsSpec>,
+    ) -> Result<Self::Runnable>;
 }
 
 pub trait RunnableInterface: Debug + Send + Sync {
