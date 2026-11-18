@@ -165,14 +165,19 @@ impl Expansion for Pad18 {
             .konst
             .as_ref()
             .context("Expect padding to be constant")?
-            .cast_to::<i64>()?;
-        let pads = pads.try_as_plain_ram()?.as_slice::<i64>()?.to_vec();
+            .cast_to::<TDim>()?;
+        let pads = pads.try_as_plain_ram()?.as_slice::<TDim>()?.to_vec();
 
         let mut fixed_pads = vec![(0, 0); rank];
+        let mut symbolic_pads = vec![];
         let mut wire = inputs[0];
         for (ix, &axis) in axes.iter().enumerate() {
-            let before = pads[ix];
-            let after = pads[ix + pads.len() / 2];
+            let before = &pads[ix];
+            let after = &pads[ix + pads.len() / 2];
+            let (Ok(before), Ok(after)) = (before.to_i64(), after.to_i64()) else {
+                symbolic_pads.push((axis, before.clone(), after.clone()));
+                continue;
+            };
             if before < 0 || after < 0 {
                 let start = before.saturating_neg().max(0) as usize;
                 let end =
@@ -185,6 +190,56 @@ impl Expansion for Pad18 {
             }
             fixed_pads[axis] = (before.max(0) as usize, after.max(0) as usize);
         }
-        model.wire_node(name, array::Pad { mode, pads: fixed_pads }, &[wire])
+        if symbolic_pads.is_empty() {
+            return model.wire_node(name, array::Pad { mode, pads: fixed_pads }, &[wire]);
+        }
+        wire = model.wire_node(
+            format!("{name}.fixed"),
+            array::Pad { mode: mode.clone(), pads: fixed_pads },
+            &[wire],
+        )?[0];
+        wire_symbolic_constant_pads(name, model, wire, &mode, &symbolic_pads)
     }
+}
+
+/// Pads with symbolic amounts as a concatenation of broadcast constants around the input.
+/// Only constant mode is supported, and every amount must be provably non-negative.
+fn wire_symbolic_constant_pads(
+    name: &str,
+    model: &mut TypedModel,
+    mut wire: OutletId,
+    mode: &array::PadMode,
+    pads: &[(usize, TDim, TDim)],
+) -> TractResult<TVec<OutletId>> {
+    let array::PadMode::Constant(value) = mode else {
+        bail!("Symbolic pads are only supported in constant mode, got {mode:?}")
+    };
+    let fact = model.outlet_fact(wire)?.clone();
+    let value = value.clone().into_tensor().cast_to_dt(fact.datum_type)?.into_owned();
+    let value =
+        model.add_const(format!("{name}.value"), value.broadcast_into_rank(fact.rank())?)?;
+    for (axis, before, after) in pads {
+        ensure!(
+            before.prove_positive_or_zero() && after.prove_positive_or_zero(),
+            "Symbolic pads must be provably non-negative, got {before} and {after}"
+        );
+        let mut parts = tvec![];
+        for (side, amount) in [("before", before), ("after", after)] {
+            let mut shape = model.outlet_fact(wire)?.shape.to_tvec();
+            shape[*axis] = amount.clone();
+            let filler = model.wire_node(
+                format!("{name}.{side}-{axis}"),
+                tract_core::ops::array::MultiBroadcastTo::new(shape.into()),
+                &[value],
+            )?[0];
+            parts.push(filler);
+        }
+        parts.insert(1, wire);
+        wire = model.wire_node(
+            format!("{name}.concat-{axis}"),
+            tract_core::ops::array::TypedConcat::new(*axis),
+            &parts,
+        )?[0];
+    }
+    model.wire_node(name, tract_core::ops::identity::Identity, &[wire])
 }
