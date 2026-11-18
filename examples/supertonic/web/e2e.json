@@ -1,0 +1,31 @@
+{
+  "path": "supertonic/",
+  "timeout": 1800,
+  "progress": "document.getElementById('status').textContent",
+  "fail": "document.getElementById('status').classList.contains('warn') && document.getElementById('status').textContent",
+  "steps": [
+    {
+      "wait": "document.getElementById('status').textContent === 'Press Speak to hear the text.'"
+    },
+    {
+      "run": "(() => { const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); }; set('model', 'supertonic-3'); set('runtime', 'wgpu'); set('lang', 'en'); set('voice', 'F1'); set('steps', '5'); document.getElementById('speak').click(); })()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent === 'Done.' && !document.getElementById('speak').disabled"
+    },
+    {
+      "name": "speaks the English sample on WebGPU",
+      "check": "(() => { const p = document.getElementById('pace'); const seconds = parseFloat(p.textContent); const rms = parseFloat(p.dataset.rms); return { fail: seconds > 4 && seconds < 20 && rms > 0.01 && rms < 0.5 && p.dataset.finite === 'true' ? null : `${p.textContent} rms ${p.dataset.rms} finite ${p.dataset.finite}`, info: `${p.textContent} envelope ${p.dataset.envelope}` }; })()"
+    },
+    {
+      "run": "(() => { const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event('change')); }; set('model', 'supertonic-2'); set('runtime', 'cpu'); set('lang', 'fr'); set('voice', 'M1'); set('steps', '2'); document.getElementById('text').value = 'Bonjour tout le monde.'; document.getElementById('speak').click(); })()"
+    },
+    {
+      "wait": "document.getElementById('status').textContent === 'Done.' && !document.getElementById('speak').disabled"
+    },
+    {
+      "name": "speaks French on the CPU with Supertonic 2",
+      "check": "(() => { const p = document.getElementById('pace'); const seconds = parseFloat(p.textContent); const rms = parseFloat(p.dataset.rms); return { fail: seconds > 0.5 && seconds < 5 && rms > 0.01 && rms < 0.5 && p.dataset.finite === 'true' ? null : `${p.textContent} rms ${p.dataset.rms} finite ${p.dataset.finite}`, info: `${p.textContent} envelope ${p.dataset.envelope}` }; })()"
+    }
+  ]
+}
