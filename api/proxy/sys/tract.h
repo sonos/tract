@@ -437,6 +437,19 @@ enum TRACT_RESULT tract_runtime_prepare(const struct TractRuntime *runtime,
                                         struct TractModel **model,
                                         struct TractRunnable **runnable);
 
+/**
+ * Convert a Model into a Runnable for this Runtime, with run options.
+ *
+ * `options` is a null-terminated utf-8 JSON object, or null for the defaults.
+ * See `RunOptions` in the Rust API for the fields. An unknown field is an error.
+ *
+ * Ownership of `model` goes as in `tract_runtime_prepare`.
+ */
+enum TRACT_RESULT tract_runtime_prepare_with_options(const struct TractRuntime *runtime,
+                                                     struct TractModel **model,
+                                                     const char *options,
+                                                     struct TractRunnable **runnable);
+
 enum TRACT_RESULT tract_runtime_release(struct TractRuntime **runtime);
 
 /**

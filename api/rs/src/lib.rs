@@ -65,7 +65,7 @@ pub mod prelude {
     // User-facing API types
     pub use tract_api::{
         ConstantInput, Datum, DatumType, FloatPrecision, OnnxOptions, OnnxOptionsSpec, Pulse,
-        SetSymbols, TransformSpec, tensor,
+        RunOptions, RunOptionsSpec, SetSymbols, TransformSpec, tensor,
     };
 
     // Traits needed for method resolution — hidden from namespace
@@ -460,30 +460,6 @@ impl Debug for Runtime {
     }
 }
 
-impl Runtime {
-    /// Prepares a model with named symbol estimates for GPU arena planning.
-    /// Estimates must be nonnegative and name existing model symbols. They
-    /// affect memory placement only; runtime shapes are not constrained.
-    pub fn prepare_with_memory_sizing_hints(
-        &self,
-        model: Model,
-        hints: &[(&str, i64)],
-    ) -> Result<Runnable> {
-        let mut values = SymbolValues::default();
-        for &(name, value) in hints {
-            anyhow::ensure!(value >= 0, "Negative memory sizing hint for {name}");
-            let symbol =
-                model.0.symbols.get(name).with_context(|| format!("Unknown symbol {name}"))?;
-            values.set(&symbol, value);
-        }
-        let options = tract_core::runtime::RunOptions {
-            memory_sizing_hints: Some(values),
-            ..Default::default()
-        };
-        Ok(Runnable(self.0.prepare_with_options(model.0, &options)?.into()))
-    }
-}
-
 impl RuntimeInterface for Runtime {
     type Runnable = Runnable;
 
@@ -493,9 +469,27 @@ impl RuntimeInterface for Runtime {
         Ok(self.0.name().into_owned())
     }
 
-    fn prepare(&self, model: Self::Model) -> Result<Self::Runnable> {
-        let runnable = self.0.prepare(model.0)?;
-        Ok(Runnable(runnable.into()))
+    fn prepare_with_options(
+        &self,
+        model: Self::Model,
+        options: impl Into<RunOptionsSpec>,
+    ) -> Result<Self::Runnable> {
+        let options = options.into().parse()?;
+        if options == RunOptions::default() {
+            return Ok(Runnable(self.0.prepare(model.0)?.into()));
+        }
+        let mut hints = SymbolValues::default();
+        for (name, &value) in &options.memory_sizing_hints {
+            anyhow::ensure!(value >= 0, "Negative memory sizing hint for {name}");
+            let symbol =
+                model.0.symbols.get(name).with_context(|| format!("Unknown symbol {name}"))?;
+            hints.set(&symbol, value);
+        }
+        let options = tract_core::runtime::RunOptions {
+            memory_sizing_hints: Some(hints),
+            ..Default::default()
+        };
+        Ok(Runnable(self.0.prepare_with_options(model.0, &options)?.into()))
     }
 }
 

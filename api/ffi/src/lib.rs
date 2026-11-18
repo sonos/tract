@@ -6,8 +6,8 @@ use std::ffi::{CStr, CString, c_char, c_void};
 use tract::{State, Tensor};
 use tract_api::{
     AsFact, DatumType, DimInterface, FactInterface, InferenceModelInterface, ModelInterface,
-    NnefInterface, OnnxInterface, OnnxOptions, OnnxOptionsSpec, RunnableInterface,
-    RuntimeInterface, StateInterface, TensorInterface,
+    NnefInterface, OnnxInterface, OnnxOptions, OnnxOptionsSpec, RunOptions, RunOptionsSpec,
+    RunnableInterface, RuntimeInterface, StateInterface, TensorInterface,
 };
 
 /// Used as a return type of functions that can encounter errors.
@@ -859,6 +859,35 @@ pub unsafe extern "C" fn tract_runtime_prepare(
         let m = Box::from_raw(*model).0;
         *model = std::ptr::null_mut();
         *runnable = Box::into_raw(Box::new(TractRunnable((*runtime).0.prepare(m)?))) as _;
+        Ok(())
+    })
+}
+
+/// Convert a Model into a Runnable for this Runtime, with run options.
+///
+/// `options` is a null-terminated utf-8 JSON object, or null for the defaults.
+/// See `RunOptions` in the Rust API for the fields. An unknown field is an error.
+///
+/// Ownership of `model` goes as in `tract_runtime_prepare`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn tract_runtime_prepare_with_options(
+    runtime: *const TractRuntime,
+    model: *mut *mut TractModel,
+    options: *const c_char,
+    runnable: *mut *mut TractRunnable,
+) -> TRACT_RESULT {
+    wrap(|| unsafe {
+        check_not_null!(runtime, model, runnable);
+        let options: RunOptionsSpec = if options.is_null() {
+            RunOptions::new().into()
+        } else {
+            CStr::from_ptr(options).to_str()?.into()
+        };
+        let m = Box::from_raw(*model).0;
+        *model = std::ptr::null_mut();
+        *runnable =
+            Box::into_raw(Box::new(TractRunnable((*runtime).0.prepare_with_options(m, options)?)))
+                as _;
         Ok(())
     })
 }

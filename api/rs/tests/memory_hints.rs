@@ -8,9 +8,17 @@ fn check_memory_hints(runtime_name: &str) -> anyhow::Result<()> {
     )?;
     let model = tract::nnef()?.load(dir.path())?;
     let runtime = tract::runtime_for_name(runtime_name)?;
-    assert!(runtime.prepare_with_memory_sizing_hints(model.clone(), &[("missing", 4)]).is_err());
-    assert!(runtime.prepare_with_memory_sizing_hints(model.clone(), &[("T", -1)]).is_err());
-    let runnable = runtime.prepare_with_memory_sizing_hints(model, &[("T", 4)])?;
+    assert!(
+        runtime
+            .prepare_with_options(model.clone(), RunOptions::new().memory_sizing_hint("missing", 4))
+            .is_err()
+    );
+    assert!(
+        runtime
+            .prepare_with_options(model.clone(), RunOptions::new().memory_sizing_hint("T", -1))
+            .is_err()
+    );
+    let runnable = runtime.prepare_with_options(model, r#"{"memory_sizing_hints":{"T":4}}"#)?;
     for len in [2, 7, 3] {
         let input = Tensor::from_slice(&[len], &vec![0.5f32; len])?;
         let output = runnable.run([input])?;
