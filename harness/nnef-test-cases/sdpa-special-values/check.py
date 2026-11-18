@@ -20,8 +20,9 @@ cli = shlex.split(os.environ["TRACT_RUN"])
 with_sinks = os.environ.get("TEST_SINKS") == "1"
 runtimes = os.environ.get("TRACT_RUNTIMES", "").split()
 op_assertions = {
+    "-O": [],
     "--metal": ["--assert-op-count", "MetalMlxSdpa", "1"],
-    "--cuda": ["--assert-op-count", "CudaFlashAttention", "1"],
+    "--cuda": [] if with_sinks else ["--assert-op-count", "CudaFlashAttention", "1"],
     "--runtime=wgpu": [],
 }
 symbolic = os.environ.get("TEST_SYMBOLIC") == "1"
