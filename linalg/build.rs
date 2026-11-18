@@ -15,6 +15,12 @@ fn use_masm() -> bool {
         && !target_is_windows_arm64_msvc()
 }
 
+fn target_is_elf() -> bool {
+    let os = var("CARGO_CFG_TARGET_OS");
+    var("CARGO_CFG_TARGET_FAMILY").split(',').any(|f| f == "unix")
+        && !matches!(os.as_str(), "macos" | "ios" | "tvos" | "watchos" | "visionos")
+}
+
 fn arm64_cc() -> cc::Build {
     let mut build = cc::Build::new();
     if target_is_windows_arm64_msvc() {
@@ -758,7 +764,10 @@ fn preprocess_file(
 
     match tmpl.render(&ctx) {
         Ok(rendered) => {
-            let rendered = if msvc { strip_comments(&rendered) } else { rendered };
+            let mut rendered = if msvc { strip_comments(&rendered) } else { rendered };
+            if target_is_elf() {
+                rendered.push_str("\n.section .note.GNU-stack,\"\",%progbits\n");
+            }
             fs::write(&output, rendered).unwrap();
         }
         Err(e) => {
