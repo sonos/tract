@@ -1,18 +1,26 @@
 use crate::internal::*;
 use crate::ops::cnn::Patch;
 use crate::ops::cnn::patches::ZoneScanner;
+use crate::ops::cnn::pools::PoolGeometry;
 use crate::ops::nn::DataShape;
+use crate::ops::nn::SymDataShape;
 use num_traits::Zero;
 
 /// Largest zone `process_zone_any` hands to the vectorised kernel; 9x9 is 81 taps and 11x11
 /// is 121. The taps live in stack arrays of this size, two per call.
 const MAX_VECTORISED_TAPS: usize = 128;
 
+/// Depthwise convolution: one kernel per channel, as many output channels as input ones. The
+/// geometry is resolved against the input shape at eval when it is symbolic.
 #[derive(Debug, Clone, new, Hash, PartialEq, Eq)]
 pub struct DepthWise {
-    patch: Patch,
-    input_shape: DataShape,
-    output_shape: DataShape,
+    geometry: PoolGeometry,
+}
+
+struct Resolved<'a> {
+    patch: &'a Patch,
+    input_shape: &'a DataShape,
+    output_shape: &'a DataShape,
 }
 
 impl Op for DepthWise {
@@ -21,7 +29,7 @@ impl Op for DepthWise {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}", self.patch)])
+        Ok(vec![format!("{:?}", self.geometry)])
     }
 
     fn validation(&self) -> Validation {
@@ -35,23 +43,29 @@ impl EvalOp for DepthWise {
     op_out_of_plan!();
 
     fn eval(&self, _ctx: &EvalContext, inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
+        let geometry = self.geometry.to_concrete(inputs[0].shape())?;
+        let dw = Resolved {
+            patch: &geometry.patch,
+            input_shape: &geometry.input_shape,
+            output_shape: &geometry.output_shape,
+        };
         let dt = inputs[0].datum_type();
         #[cfg(target_arch = "aarch64")]
         if dt == f16::datum_type() && tract_linalg::arm64::has_fp16() {
             return unsafe {
                 eval_t_aarch64fp16::<f16>(
-                    self,
+                    &dw,
                     inputs,
                     |a, b| tract_linalg::arm64::add_f16(a, b),
                     |a, b| tract_linalg::arm64::mul_f16(a, b),
                 )
             };
         }
-        dispatch_floatlike!(Self::eval_gen(dt)(self, inputs))
+        dispatch_floatlike!(Resolved::eval_gen(dt)(&dw, inputs))
     }
 }
 
-impl DepthWise {
+impl Resolved<'_> {
     fn eval_gen<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
         &self,
         inputs: TVec<TValue>,
@@ -73,34 +87,48 @@ impl DepthWise {
     }
 
     fn zone_scanners(&self) -> Vec<ZoneScanner<'_>> {
-        self.patch.zones.iter().map(|zone| ZoneScanner::new(zone, &self.patch)).collect()
+        self.patch.zones.iter().map(|zone| ZoneScanner::new(zone, self.patch)).collect()
+    }
+}
+
+impl DepthWise {
+    fn shapes(&self) -> TractResult<(SymDataShape, SymDataShape)> {
+        let to_dim = |shape: &DataShape| {
+            shape.fmt.shape(shape.shape.iter().map(|d| d.to_dim()).collect::<TVec<TDim>>())
+        };
+        match &self.geometry {
+            GeometryBound::Symbolic(s) => Ok((s.input_shape.clone(), s.output_shape.clone())),
+            GeometryBound::Concrete(c) => Ok((to_dim(&c.input_shape)?, to_dim(&c.output_shape)?)),
+        }
     }
 }
 
 impl TypedOp for DepthWise {
     fn output_facts(&self, inputs: &[&TypedFact]) -> TractResult<TVec<TypedFact>> {
         anyhow::ensure!(inputs.len() == 3);
+        let (input_shape, output_shape) = self.shapes()?;
         anyhow::ensure!(
-            self.input_shape.c() == self.output_shape.c(),
+            input_shape.c() == output_shape.c(),
             "DepthWiseConv must have same input and output channels"
         );
         anyhow::ensure!(
-            self.input_shape.c().to_dim() == inputs[2].shape.volume(),
+            *input_shape.c() == inputs[2].shape.volume(),
             "DepthWiseConv data has {} channels, bias has {}",
-            self.input_shape.c(),
+            input_shape.c(),
             inputs[2].shape.len()
         );
-        Ok(tvec!(inputs[0].datum_type.fact(&self.output_shape.shape)))
+        Ok(tvec!(inputs[0].datum_type.fact(&output_shape.shape)))
     }
 
     fn cost(&self, inputs: &[&TypedFact]) -> TractResult<TVec<(Cost, TDim)>> {
         let [_input, kernel, _bias] = inputs else {
             bail!("Depthwise expects three inputs");
         };
-        let n_output_points = self.patch.output_shape.iter().cloned().product::<usize>();
+        let (input_shape, output_shape) = self.shapes()?;
+        let n_output_points: TDim = output_shape.hw_dims().iter().product();
         Ok(tvec!((
             Cost::FMA(inputs[0].datum_type),
-            kernel.shape.volume() * self.input_shape.n().unwrap_or(&1) * n_output_points
+            kernel.shape.volume() * input_shape.n().cloned().unwrap_or(1.into()) * n_output_points
         )))
     }
 
@@ -112,7 +140,7 @@ macro_rules! impl_eval {
         pastey::paste! {
             $(#[$meta])*
             unsafe fn [<eval_t_ $suffix>]<T: Datum + Copy + num_traits::Zero + ndarray::LinalgScalar>(
-                dw: &DepthWise,
+                dw: &Resolved,
                 inputs: TVec<TValue>,
                 add: impl Fn(T, T) -> T + Copy + Send + Sync + 'static,
                 mul: impl Fn(T, T) -> T + Copy + Send + Sync + 'static,
@@ -278,7 +306,7 @@ macro_rules! impl_eval {
             #[allow(clippy::too_many_arguments)]
             $(#[$meta])*
             unsafe fn [<eval_c_inner_ $suffix>]<T: Datum + Copy + Zero>(
-                dw: &DepthWise,
+                dw: &Resolved,
                 n: usize,
                 n_stride_i: isize,
                 n_stride_o: isize,
@@ -888,6 +916,90 @@ mod tests {
     use crate::ops::cnn::conv::{BlockedConv, Conv, KernelFormat};
     use crate::ops::cnn::{PaddingSpec, PoolSpec};
     use crate::ops::nn::DataFormat;
+
+    fn depthwise_model(
+        fmt: DataFormat,
+        input: ShapeFact,
+        spatial: usize,
+        pad: PaddingSpec,
+    ) -> TypedModel {
+        let c = 6;
+        let kernel_shape: TVec<usize> = tvec![3; spatial];
+        let taps = kernel_shape.iter().product::<usize>();
+        let kernel: Vec<f32> = (0..c * taps).map(|i| ((i as f32 * 0.091).cos()) * 0.3).collect();
+        let bias: Vec<f32> = (0..c).map(|i| (i as f32 * 0.05) - 0.1).collect();
+        let mut kernel_dims = tvec![c, 1];
+        kernel_dims.extend(kernel_shape.iter().copied());
+        let mut model = TypedModel::default();
+        let x = model.add_source("x", f32::fact(input)).unwrap();
+        let k = model.add_const("k", Tensor::from_shape(&kernel_dims, &kernel).unwrap()).unwrap();
+        let b = model.add_const("b", Tensor::from_shape(&[c], &bias).unwrap()).unwrap();
+        let pool_spec = PoolSpec {
+            data_format: fmt,
+            kernel_shape,
+            padding: pad,
+            dilations: None,
+            strides: None,
+            input_channels: c,
+            output_channels: c,
+        };
+        let conv = Conv { pool_spec, kernel_fmt: KernelFormat::OIHW, group: c, q_params: None };
+        let out = model.wire_node("dw", conv, &[x, k, b]).unwrap();
+        model.select_output_outlets(&out).unwrap();
+        model.into_decluttered().unwrap().into_optimized().unwrap()
+    }
+
+    /// A depthwise conv over symbolic spatial axes is lowered to DepthWise and matches the same
+    /// conv prepared for each concrete size.
+    #[test]
+    fn depthwise_symbolic_matches_concrete() {
+        let symbols = SymbolScope::default();
+        for fmt in [DataFormat::NCHW, DataFormat::NHWC] {
+            for pad in [PaddingSpec::SameUpper, PaddingSpec::Valid] {
+                for spatial in [1, 2] {
+                    let dims: TVec<TDim> =
+                        (0..spatial).map(|ax| symbols.sym(&format!("s{ax}")).to_dim()).collect();
+                    let shape = |hw: &[TDim]| fmt.from_n_c_hw(1.to_dim(), 6.to_dim(), hw).unwrap();
+                    let symbolic =
+                        depthwise_model(fmt, shape(&dims).shape.into(), spatial, pad.clone());
+                    assert!(
+                        symbolic.nodes.iter().any(|node| node.op_as::<DepthWise>().is_some()),
+                        "expected DepthWiseConv, got {}",
+                        symbolic
+                            .nodes
+                            .iter()
+                            .map(|node| node.op().name())
+                            .collect::<Vec<_>>()
+                            .join(",")
+                    );
+                    let symbolic = symbolic.into_runnable().unwrap();
+                    for len in [4usize, 9] {
+                        let hw: TVec<TDim> = tvec![len.to_dim(); spatial];
+                        let concrete_shape = shape(&hw);
+                        let concrete = depthwise_model(
+                            fmt,
+                            concrete_shape.shape.clone().into(),
+                            spatial,
+                            pad.clone(),
+                        )
+                        .into_runnable()
+                        .unwrap();
+                        let dims: TVec<usize> =
+                            concrete_shape.shape.iter().map(|d| d.to_usize().unwrap()).collect();
+                        let volume = dims.iter().product::<usize>();
+                        let data: Vec<f32> =
+                            (0..volume).map(|i| ((i as f32 * 0.137).sin()) * 0.7).collect();
+                        let input = Tensor::from_shape(&dims, &data).unwrap();
+                        let want = concrete.run(tvec![input.clone().into_tvalue()]).unwrap();
+                        let got = symbolic.run(tvec![input.into_tvalue()]).unwrap();
+                        got[0].close_enough(&want[0], Approximation::Close).unwrap_or_else(|e| {
+                            panic!("{fmt:?} {pad:?} {spatial}d len {len}: {e}")
+                        });
+                    }
+                }
+            }
+        }
+    }
 
     #[allow(clippy::too_many_arguments)]
     fn run_dw(
