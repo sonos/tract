@@ -1,5 +1,6 @@
 pub mod clamped_swiglu;
 mod data_formats;
+pub(crate) mod detect_hard_swish;
 pub mod gelu_approximate;
 pub mod gelu_exact;
 pub mod grid_sample;
