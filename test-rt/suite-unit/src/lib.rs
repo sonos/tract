@@ -48,6 +48,7 @@ pub mod sdpa;
 pub mod silu;
 pub mod slice;
 pub mod sum_pool;
+pub mod tile;
 pub mod topk;
 
 pub fn suite() -> TractResult<TestSuite> {
@@ -86,6 +87,7 @@ pub fn suite() -> TractResult<TestSuite> {
     suite.add("sdpa", sdpa::suite()?);
     suite.add("silu", silu::suite()?);
     suite.add("slice", slice::suite()?);
+    suite.add("tile", tile::suite()?);
     suite.add("topk", topk::suite()?);
     suite.add("sum_pool", sum_pool::suite()?);
     suite.add("q_binary", q_binary::suite()?);
