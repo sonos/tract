@@ -112,6 +112,8 @@ cargo install wasm-bindgen-cli --version <the version Cargo.lock pins>
 access. `build.sh` writes `build.json`, the commit and date the page shows next to its source link.
 It also runs `prepare-models.py`, which needs network access and the `onnx` Python package, to
 download the webcam MODNet and the PP-HumanSegV2 slice and write the fp16 RVM into `dist/models`.
+When `python3` cannot import `onnx`, `build.sh` installs a pinned one into a venv under `target/`
+and reuses it on later builds.
 
 ## Checking natively
 
