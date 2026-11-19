@@ -46,5 +46,6 @@ bench_runtime = 10
 "jetson-orin-nx"      = "orin"
 "cortex-a55"          = "a55"
 "cortex-a53"          = "a53"
+"cortex-a76-raspi5"   = "a76-pi5"
 "cortex-a7"           = "a7"
 "cortex-a9"           = "a9"
