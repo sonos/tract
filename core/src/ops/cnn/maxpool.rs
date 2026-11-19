@@ -290,32 +290,42 @@ impl OptMaxPool {
                 (lo < hi).then(|| (lo, hi, ((lo * sw) as isize + offset) as usize))
             })
             .collect();
-        for (image, out_image) in
-            input_slice.chunks_exact(h * w * px).zip(output_slice.chunks_exact_mut(oh * ow * px))
-        {
-            for (oy, row) in out_image.chunks_exact_mut(ow * px).enumerate() {
-                for ky in 0..kh {
-                    let iy = (oy * sh + ky * dh) as isize - pt;
-                    if iy < 0 || iy >= h as isize {
-                        continue;
-                    }
-                    let irow = &image[iy as usize * w * px..][..w * px];
-                    for &(lo, hi, start) in &column_spans {
-                        let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
-                        if sw == 1 {
-                            fold_max(row, taps.iter());
-                        } else if px == 1 {
-                            fold_max(row, taps.iter().step_by(sw));
-                        } else {
-                            for (pixel, taps) in row.chunks_exact_mut(px).zip(taps.chunks(sw * px))
-                            {
-                                fold_max(pixel, taps.iter());
+        let (in_image_len, out_image_len) = (h * w * px, oh * ow * px);
+        let work = output_slice.len() * kh * kw;
+        tract_linalg::multithread::par_chunks_mut(
+            output_slice,
+            out_image_len,
+            work,
+            |first, out_images| {
+                let images = input_slice[first * in_image_len..].chunks_exact(in_image_len);
+                for (image, out_image) in images.zip(out_images.chunks_exact_mut(out_image_len)) {
+                    for (oy, row) in out_image.chunks_exact_mut(ow * px).enumerate() {
+                        for ky in 0..kh {
+                            let iy = (oy * sh + ky * dh) as isize - pt;
+                            if iy < 0 || iy >= h as isize {
+                                continue;
+                            }
+                            let irow = &image[iy as usize * w * px..][..w * px];
+                            for &(lo, hi, start) in &column_spans {
+                                let (row, taps) = (&mut row[lo * px..hi * px], &irow[start * px..]);
+                                if sw == 1 {
+                                    fold_max(row, taps.iter());
+                                } else if px == 1 {
+                                    fold_max(row, taps.iter().step_by(sw));
+                                } else {
+                                    for (pixel, taps) in
+                                        row.chunks_exact_mut(px).zip(taps.chunks(sw * px))
+                                    {
+                                        fold_max(pixel, taps.iter());
+                                    }
+                                }
                             }
                         }
                     }
                 }
-            }
-        }
+                Ok(())
+            },
+        )?;
         Ok(Some(output))
     }
 }
@@ -496,15 +506,17 @@ mod tests {
     }
 
     #[test]
-    fn maxpool_2x2_multithreaded_matches_reference() {
+    fn maxpool_multithreaded_matches_reference() {
         let cases = [
-            ((1usize, 24, 320, 320), PaddingSpec::SameUpper, tvec![1usize, 1]),
-            ((2, 8, 33, 17), PaddingSpec::Valid, tvec![2, 2]),
+            ((1usize, 24, 320, 320), tvec![2usize, 2], PaddingSpec::SameUpper, tvec![1usize, 1]),
+            ((2, 8, 33, 17), tvec![2, 2], PaddingSpec::Valid, tvec![2, 2]),
+            ((1, 128, 20, 20), tvec![5, 5], PaddingSpec::SameUpper, tvec![1, 1]),
+            ((2, 16, 41, 37), tvec![5, 3], PaddingSpec::Valid, tvec![2, 3]),
         ];
-        for (shape, padding, strides) in cases {
+        for (shape, kernel, padding, strides) in cases {
             let c = shape.1;
             let pool_spec =
-                PoolSpec::new(DataFormat::NCHW, tvec![2, 2], padding, None, Some(strides), c, c);
+                PoolSpec::new(DataFormat::NCHW, kernel, padding, None, Some(strides), c, c);
             let input = ndarray::Array4::from_shape_fn(shape, |(n, c, y, x)| {
                 ((n * 31 + c * 7 + y * 13 + x * 3) % 97) as f32 * 0.25 - 12.0
             })
