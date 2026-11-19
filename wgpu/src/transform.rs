@@ -254,7 +254,12 @@ fn translate_iff(
     {
         return Ok(Some(wires));
     }
-    crate::kernels::compare_select::translate_compare_select(source, node, target, mapping)
+    if let Some(wires) =
+        crate::kernels::compare_select::translate_compare_select(source, node, target, mapping)?
+    {
+        return Ok(Some(wires));
+    }
+    crate::kernels::compare_select::translate_host_condition_select(source, node, target, mapping)
 }
 
 /// The node's `ix`-th input, moved to the device unless it is there already.

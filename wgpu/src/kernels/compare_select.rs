@@ -100,6 +100,59 @@ pub fn translate_compare_select(
     target.wire_node(node.name.clone(), op, &inputs).map(Some)
 }
 
+/// Translates `Iff(cond, t, f)` whose boolean `cond` stays on the host into one
+/// [`GpuCompareSelect`] of `cond as T != 0, t, f`, `t` and `f` being float tensors of one type
+/// and of `cond`'s rank. The cast and its upload are wired once per condition, for every
+/// `Iff` that reads it. Complements [`translate_compare_select`], which fuses conditions a
+/// single comparison makes.
+pub fn translate_host_condition_select(
+    source: &TypedModel,
+    node: &TypedNode,
+    target: &mut TypedModel,
+    mapping: &Mapping,
+) -> TractResult<Option<TVec<OutletId>>> {
+    rule_if!(node.op_is::<Iff>());
+    let facts: TVec<&TypedFact> =
+        node.inputs.iter().map(|o| source.outlet_fact(*o)).collect::<TractResult<_>>()?;
+    let dt = facts[1].datum_type;
+    rule_if!(facts[0].datum_type == DatumType::Bool);
+    rule_if!(facts[1..].iter().all(|f| crate::utils::is_supported_fact(f) && f.datum_type == dt));
+    rule_if!(facts.iter().all(|f| f.rank() == facts[0].rank()) && facts[0].rank() <= 8);
+    let cond = mapping[&node.inputs[0]];
+    rule_if!(target.outlet_fact(cond)?.as_device_fact().is_none());
+
+    let cond_name = format!("{}.{}.as_{dt:?}", target.node(cond.node).name, cond.slot);
+    let device_cond = if let Ok(uploaded) = target.node_by_name(format!("{cond_name}.to-device")) {
+        OutletId::new(uploaded.id, 0)
+    } else {
+        let cast = target.wire_node(&cond_name, tract_core::ops::cast::cast(dt), &[cond])?;
+        target.wire_node(
+            format!("{cond_name}.to-device"),
+            tract_gpu::sync::DeviceSync::new(tract_gpu::sync::DeviceSyncKind::ToDevice),
+            &cast,
+        )?[0]
+    };
+    let zero = tensor0(0f32).cast_to_dt(dt)?.into_owned().broadcast_into_rank(facts[0].rank())?;
+    let zero = target.add_const(format!("{}.zero", node.name), zero)?;
+    let mut inputs = tvec![device_cond];
+    for (ix, outlet) in
+        [zero, mapping[&node.inputs[1]], mapping[&node.inputs[2]]].into_iter().enumerate()
+    {
+        let input = if target.outlet_fact(outlet)?.as_device_fact().is_some() {
+            outlet
+        } else {
+            target.wire_node(
+                format!("{}.to-device-{ix}", node.name),
+                tract_gpu::sync::DeviceSync::new(tract_gpu::sync::DeviceSyncKind::ToDevice),
+                &[outlet],
+            )?[0]
+        };
+        inputs.push(input);
+    }
+    let op = GpuCompareSelect::new(Comparison::Ne, "Wgpu", wgpu_compare_select_dispatch);
+    target.wire_node(node.name.clone(), op, &inputs).map(Some)
+}
+
 /// `cmp(a, b) ? t : f` over four broadcasting inputs, one entry point per comparison.
 pub fn compare_select_module(dt: ShaderDtype) -> String {
     let t = dt.wgsl();
@@ -186,7 +239,7 @@ fn compare_select_{name}_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 mod tests {
     use tract_core::internal::*;
     use tract_core::ops::binary::TypedBinOp;
-    use tract_core::ops::logic::{Iff, comp_eq, comp_gt};
+    use tract_core::ops::logic::{Iff, comp_eq, comp_gt, comp_lt};
     use tract_gpu::ops::compare_select::GpuCompareSelect;
 
     use crate::test_utils::{gpu_vs_cpu, transformed};
@@ -224,6 +277,45 @@ mod tests {
             crate::ensure_wgpu_coverage(&fused)?;
             let selects = fused.nodes().iter().filter(|n| n.op_is::<GpuCompareSelect>()).count();
             ensure!(selects == 2, "{selects} compare-selects in {fused}");
+            let data: Vec<f32> = (0..15).map(|i| (i as f32 - 7.0) * 0.4).collect();
+            let input = Tensor::from_shape(&[3, 5], &data)?.cast_to_dt(dt)?.into_owned();
+            gpu_vs_cpu(build()?, input).with_context(|| format!("{dt:?}"))?;
+        }
+        Ok(())
+    }
+
+    /// A sliding-window style mask, `Iff(!(x > lo && x < hi), -inf, x)`, then a constant
+    /// boolean mask broadcast over rows: neither condition is one comparison, both selects
+    /// run on the device from a condition computed on the host.
+    #[test]
+    fn host_condition_select_runs_on_device() -> TractResult<()> {
+        for dt in [f32::datum_type(), f16::datum_type()] {
+            let build = || -> TractResult<TypedModel> {
+                let konst =
+                    |model: &mut TypedModel, name: &str, t: Tensor| -> TractResult<OutletId> {
+                        model.add_const(name, t.cast_to_dt(dt)?.into_owned())
+                    };
+                let mut model = TypedModel::default();
+                let x = model.add_source("x", dt.fact([3, 5]))?;
+                let lo = konst(&mut model, "lo", tensor2(&[[-1.5f32]]))?;
+                let hi = konst(&mut model, "hi", tensor2(&[[2.0f32]]))?;
+                let fill = konst(&mut model, "fill", tensor2(&[[f32::NEG_INFINITY]]))?;
+                let above = model.wire_node("above", TypedBinOp(comp_gt(), None), &[x, lo])?[0];
+                let below = model.wire_node("below", TypedBinOp(comp_lt(), None), &[x, hi])?[0];
+                let and = TypedBinOp(Box::new(tract_core::ops::logic::And), None);
+                let inside = model.wire_node("inside", and, &[above, below])?[0];
+                let outside =
+                    model.wire_node("outside", tract_core::ops::logic::not(), &[inside])?[0];
+                let y = model.wire_node("y", Iff, &[outside, fill, x])?[0];
+                let mask = model.add_const("mask", tensor2(&[[true, false, true, true, false]]))?;
+                let z = model.wire_node("z", Iff, &[mask, y, x])?[0];
+                model.select_output_outlets(&[z])?;
+                Ok(model)
+            };
+            let fused = transformed(build()?)?;
+            let selects = fused.nodes().iter().filter(|n| n.op_is::<GpuCompareSelect>()).count();
+            ensure!(selects == 2, "{selects} compare-selects in {fused}");
+            ensure!(!fused.nodes().iter().any(|n| n.op_is::<Iff>()), "Iff left on CPU in {fused}");
             let data: Vec<f32> = (0..15).map(|i| (i as f32 - 7.0) * 0.4).collect();
             let input = Tensor::from_shape(&[3, 5], &data)?.cast_to_dt(dt)?.into_owned();
             gpu_vs_cpu(build()?, input).with_context(|| format!("{dt:?}"))?;
