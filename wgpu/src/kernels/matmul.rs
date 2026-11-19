@@ -171,6 +171,26 @@ fn blocked_applies(
         && element_offset(out, 0).is_multiple_of(4)
 }
 
+/// Whether the lane-parallel `gemv_kc` kernel applies: `b` contiguous along `k`
+/// with a few rows of `a`, so a slice of lanes walks it side by side for one
+/// output column — or, an `m = 1` product too thin to fill the plain kernel's
+/// grid, whatever stride `b` has, since a grid of lane reductions beats a
+/// handful of serial workgroups.
+fn gemv_kc_applies(
+    m: usize,
+    k: usize,
+    n: usize,
+    prefix: usize,
+    gemv_small: bool,
+    b_k_stride: isize,
+) -> bool {
+    !gemv_small
+        && prefix > 0
+        && n > 0
+        && ((1..=MATMUL_GEMV_KC_MAX_M).contains(&m) && b_k_stride == 1
+            || (m == 1 && k >= 256 && prefix * n.div_ceil(MATMUL_GEMV_WG as usize) < 16))
+}
+
 /// Whether the four-rows-a-thread `gemv_n` kernel applies: a vec4 of `a` is one
 /// load and a vec4 of the output one store, which needs the `m` axis
 /// contiguous and four-aligned on both sides. One staging pass of `b` covers
@@ -364,11 +384,7 @@ fn wgpu_matmul_dispatch_impl(
             && element_offset(b, 0).is_multiple_of(4)
             && small_gemv_override.unwrap_or_else(|| apple_webgpu(q.context().device()));
         let b_k_stride = b.strides()[b.rank() - if t.b { 1 } else { 2 }];
-        let gemv_kc = (1..=MATMUL_GEMV_KC_MAX_M).contains(&m)
-            && prefix > 0
-            && n > 0
-            && !gemv_small
-            && b_k_stride == 1;
+        let gemv_kc = gemv_kc_applies(m, k, n, prefix, gemv_small, b_k_stride);
         let gemv = gemv || gemv_kc;
         let gemv_name = if gemv_small {
             "matmul_gemv_small"
@@ -484,11 +500,11 @@ pub const MATMUL_BLOCKED_WG: u32 = 192;
 /// Columns one `m = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_WG: u32 = 64;
 const MATMUL_GEMV_SMALL_COLS: u32 = 8;
-/// Columns one workgroup of the k-contiguous GEMV kernel owns, each reduced by
+/// Columns one workgroup of the lane-parallel GEMV kernel owns, each reduced by
 /// `MATMUL_GEMV_KC_LANES` lanes.
 const MATMUL_GEMV_KC_COLS: u32 = 8;
 const MATMUL_GEMV_KC_LANES: u32 = 32;
-/// Rows of `a` the k-contiguous GEMV kernel serves, each `b` load feeding all of them.
+/// Rows of `a` the lane-parallel GEMV kernel serves, each `b` load feeding all of them.
 const MATMUL_GEMV_KC_MAX_M: usize = 8;
 
 /// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
@@ -742,11 +758,11 @@ struct Params {{
     s
 }
 
-/// Product of up to `MATMUL_GEMV_KC_MAX_M` rows of `a` by a `b` contiguous along `k`, such
-/// as a linear layer's weight: each column is reduced by a slice of lanes walking `k` side by
-/// side, so a warp reads consecutive addresses of `b`, then summed across the slice in
-/// workgroup memory. Accumulates in f32. Same `Params`, strides and epilogue as
-/// [`matmul_module`].
+/// Product of up to `MATMUL_GEMV_KC_MAX_M` rows of `a` by `b`: each column is
+/// reduced by a slice of lanes walking `k` side by side — consecutive addresses
+/// of `b` when it is contiguous along `k`, as a linear layer's weight is — then
+/// summed across the slice in workgroup memory. Accumulates in f32. Same
+/// `Params`, strides and epilogue as [`matmul_module`].
 fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str) -> String {
     let cols = MATMUL_GEMV_KC_COLS;
     let lanes = MATMUL_GEMV_KC_LANES;
@@ -780,6 +796,7 @@ fn matmul_gemv_kc_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(w
     }}
     let a_k_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
     let b_n_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    let b_k_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
     let o_n_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
     let a_m_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
     let o_m_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
@@ -788,7 +805,7 @@ fn matmul_gemv_kc_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(w
     if (col < params.n) {{
         let b_base = b_i + col * b_n_s;
         for (var k = lane; k < params.k; k += {lanes}u) {{
-            let bv = f32(b[b_base + k]);
+            let bv = f32(b[b_base + k * b_k_s]);
             for (var r = 0u; r < params.m; r++) {{
                 acc[r] += f32(a[a_i + r * a_m_s + k * a_k_s]) * bv;
             }}
@@ -2097,6 +2114,35 @@ mod tests {
                 .with_context(|| format!("m={m} k={k} v4={v4}"))?;
         }
         Ok(())
+    }
+
+    /// An `m = 1` product too thin to fill the plain GEMV's grid rides the
+    /// lane-parallel kernel even when `b` is not contiguous along `k`.
+    #[test]
+    fn matmul_gemv_lane_parallel_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        let (k, n) = (960usize, 64usize);
+        ensure!(
+            super::gemv_kc_applies(1, k, n, 1, false, n as isize),
+            "a thin product should ride gemv_kc"
+        );
+        ensure!(
+            !super::gemv_kc_applies(1, k, 4096, 1, false, 4096),
+            "a full grid should keep the plain kernel"
+        );
+        let mut model = TypedModel::default();
+        let a = model.add_source("a", f32::fact([1, 1, k]))?;
+        let b = model.add_const("b", Tensor::from_shape(&[1, k, n], &fill(1, k * n))?)?;
+        let op = PrefixMatMul {
+            transpose_a: false,
+            transpose_b: false,
+            transpose_c: false,
+            quantize_output: None,
+            operating_dt: None,
+        };
+        let y = model.wire_node("mm", op, &[a, b])?[0];
+        model.select_output_outlets(&[y])?;
+        gpu_vs_cpu(model, Tensor::from_shape(&[1, 1, k], &fill(3, k))?)
     }
 
     fn small_gemv_fixture(
