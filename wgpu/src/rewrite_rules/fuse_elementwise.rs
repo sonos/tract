@@ -40,7 +40,7 @@ pub fn grow_elementwise_chain(
     node_name: &str,
     op: &WgpuElementWiseChain,
 ) -> TractResult<Option<TypedModelPatch>> {
-    fuse_into_successor(model, node, node_name, op.steps.clone(), node.inputs.len() - 1)
+    fuse_into_successor(model, node, node_name, op.steps.clone(), node.inputs.to_vec())
 }
 
 pub fn start_elementwise_chain(
@@ -51,7 +51,7 @@ pub fn start_elementwise_chain(
     _op: &GpuElementWise,
 ) -> TractResult<Option<TypedModelPatch>> {
     let Some(name) = unary_name(node) else { return Ok(None) };
-    fuse_into_successor(model, node, node_name, vec![ChainStep::Unary(name)], 0)
+    fuse_into_successor(model, node, node_name, vec![ChainStep::Unary(name)], vec![node.inputs[0]])
 }
 
 pub fn start_binary_chain(
@@ -65,26 +65,34 @@ pub fn start_binary_chain(
     // is not broadcast.
     let facts = model.node_input_facts(node.id)?;
     let out_shape = model.node_output_facts(node.id)?[0].shape.clone();
-    rule_ensure!(facts[0].shape == out_shape);
+    let head = if facts[0].shape == out_shape {
+        0
+    } else if facts[1].shape == out_shape {
+        1
+    } else {
+        return Ok(None);
+    };
     let Some(name) = binary_name(node) else { return Ok(None) };
     fuse_into_successor(
         model,
         node,
         node_name,
-        vec![ChainStep::Binary { op: name, rhs: 1, swapped: false }],
-        1,
+        vec![ChainStep::Binary { op: name, rhs: 1, swapped: head == 1 }],
+        vec![node.inputs[head], node.inputs[1 - head]],
     )
 }
 
-/// Merges `node` and its single consumer into one chain kernel. Growth stops at
-/// a value anyone else reads, at a step that would change the running shape,
-/// and at the uniform slot's operand budget.
+/// Merges `node` and its single consumer into one chain kernel. `inputs` is the
+/// chain's operands in order, its first being the head: the extras of `steps`
+/// already taken are `inputs.len() - 1`. Growth stops at a value anyone else
+/// reads, at a step that would change the running shape, and at the uniform
+/// slot's operand budget.
 fn fuse_into_successor(
     model: &TypedModel,
     node: &TypedNode,
     node_name: &str,
     mut steps: Vec<ChainStep>,
-    extras: usize,
+    inputs: Vec<OutletId>,
 ) -> TractResult<Option<TypedModelPatch>> {
     let Some(succ) = model.single_succ(node.id)? else { return Ok(None) };
     rule_ensure!(!succ.op_is::<WgpuElementWiseChain>());
@@ -93,6 +101,7 @@ fn fuse_into_successor(
     rule_ensure!(
         model.node_output_facts(succ.id)?[0].shape == model.node_output_facts(node.id)?[0].shape
     );
+    let extras = inputs.len() - 1;
     rule_ensure!(extras < MAX_EXTRA_INPUTS);
 
     let slot = succ.inputs.iter().position(|i| i.node == node.id).unwrap();
@@ -100,15 +109,15 @@ fn fuse_into_successor(
     steps.push(step);
 
     let mut patch = TypedModelPatch::default();
-    let mut inputs = vec![];
-    for inlet in node.inputs.iter() {
-        inputs.push(patch.tap_model(model, *inlet)?);
+    let mut taps = vec![];
+    for inlet in inputs.iter() {
+        taps.push(patch.tap_model(model, *inlet)?);
     }
     if let Some(extra) = extra {
-        inputs.push(patch.tap_model(model, extra)?);
+        taps.push(patch.tap_model(model, extra)?);
     }
     let out =
-        patch.wire_node(format!("{node_name}.chain"), WgpuElementWiseChain { steps }, &inputs)?;
+        patch.wire_node(format!("{node_name}.chain"), WgpuElementWiseChain { steps }, &taps)?;
     patch.shunt_outside(model, succ.id.into(), out[0])?;
     Ok(Some(patch))
 }
