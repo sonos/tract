@@ -128,6 +128,69 @@ fn elementwise_run_becomes_one_chain() -> TractResult<()> {
     Ok(())
 }
 
+/// A binary whose full-shape operand is input 1 still starts a chain: the
+/// scalar rides as an extra and the step runs swapped.
+#[test]
+fn scalar_minus_tensor_starts_a_chain() -> TractResult<()> {
+    use tract_core::ops::math::add;
+    use tract_core::ops::math::sub;
+    use tract_gpu::ops::binary::GpuBinOp;
+    let shape = [1usize, 16, 8, 8];
+    let len: usize = shape.iter().product();
+    let mut model = TypedModel::default();
+    let z = model.add_source("z", f32::fact(shape))?;
+    let one = model.add_const("one", Tensor::from_shape(&[1, 1, 1, 1], &[1.0f32])?)?;
+    let h = model.add_const("h", Tensor::from_shape(&shape, &fill(11, len))?)?;
+    let c = model.add_const("c", Tensor::from_shape(&shape, &fill(23, len))?)?;
+    let s = model.wire_node("sub", sub(), &[one, z])?[0];
+    let m = model.wire_node("mul", mul(), &[s, h])?[0];
+    let y = model.wire_node("add", add(), &[m, c])?[0];
+    model.select_output_outlets(&[y])?;
+    let fused = transformed(model.clone())?;
+    let chains = fused
+        .nodes()
+        .iter()
+        .filter_map(|n| n.op_as::<crate::ops::chain::WgpuElementWiseChain>())
+        .collect::<Vec<_>>();
+    ensure!(chains.len() == 1, "the run should leave one chain, got {chains:?}");
+    ensure!(chains[0].steps.len() == 3, "chain should hold all three steps");
+    ensure!(
+        chains[0].steps[0]
+            == crate::kernels::shaders::ChainStep::Binary {
+                op: "sub".to_string(),
+                rhs: 1,
+                swapped: true
+            },
+        "head should be the swapped sub, got {:?}",
+        chains[0].steps[0]
+    );
+    ensure!(
+        fused.nodes().iter().all(|n| !n.op_is::<GpuBinOp>()),
+        "no binary op should be left over"
+    );
+    gpu_vs_cpu(model, Tensor::from_shape(&shape, &fill(5, len))?)
+}
+
+/// Without a successor to grow into, the same binary stays a plain binop.
+#[test]
+fn scalar_minus_tensor_alone_stays_a_binop() -> TractResult<()> {
+    use tract_core::ops::math::sub;
+    use tract_gpu::ops::binary::GpuBinOp;
+    let mut model = TypedModel::default();
+    let z = model.add_source("z", f32::fact([1, 16, 8, 8]))?;
+    let one = model.add_const("one", Tensor::from_shape(&[1, 1, 1, 1], &[1.0f32])?)?;
+    let s = model.wire_node("sub", sub(), &[one, z])?[0];
+    model.select_output_outlets(&[s])?;
+    let model = transformed(model)?;
+    ensure!(
+        model.nodes().iter().all(|n| !n.op_is::<crate::ops::chain::WgpuElementWiseChain>()),
+        "a lone binary should not start a chain"
+    );
+    let binops = model.nodes().iter().filter(|n| n.op_is::<GpuBinOp>()).count();
+    ensure!(binops == 1, "the sub should stay a GpuBinOp, got {binops}");
+    Ok(())
+}
+
 #[test]
 fn bias_and_activation_become_a_gemm_epilogue() -> TractResult<()> {
     use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
