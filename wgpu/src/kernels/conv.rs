@@ -234,9 +234,8 @@ pub fn wgpu_conv_dispatch(
         );
         // Packed rows are a vec4 with a zero in `.w`. Native tests may request
         // them; the browser uses them only on Apple, where that load was measured.
-        let packed_weights = packed_weights.filter(|_| {
-            cfg!(test) || crate::kernels::matmul::apple_webgpu(q.context().device())
-        });
+        let packed_weights = packed_weights
+            .filter(|_| cfg!(test) || crate::kernels::matmul::apple_webgpu(q.context().device()));
         let packed = packed_weights.is_some();
         if packed {
             ensure!(
@@ -2248,10 +2247,9 @@ mod tests {
         use crate::kernels::shaders::ChainStep;
 
         crate::context::wgpu_context();
-        for (ci, co, h, w, rows, bias) in [
-            (4usize, 8usize, 8usize, 16usize, 2usize, true),
-            (5, 8, 8, 16, 1, false),
-        ] {
+        for (ci, co, h, w, rows, bias) in
+            [(4usize, 8usize, 8usize, 16usize, 2usize, true), (5, 8, 8, 16, 1, false)]
+        {
             let halves = |seed: u64, len: usize, scale: f32| {
                 fill(seed, len).into_iter().map(|v| f16::from_f32(v * scale)).collect::<Vec<_>>()
             };
@@ -2292,7 +2290,15 @@ mod tests {
             let scalar_out = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, co, h, w])?;
             let packed_out = DeviceTensor::uninitialized_dt(DatumType::F16, &[1, co, h, w])?;
             wgpu_conv_dispatch(
-                &op, &epilogue, &input, &weights, &extras, &scalar_out, true, None, None,
+                &op,
+                &epilogue,
+                &input,
+                &weights,
+                &extras,
+                &scalar_out,
+                true,
+                None,
+                None,
             )?;
             wgpu_conv_dispatch(
                 &op,
