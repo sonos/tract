@@ -1490,7 +1490,15 @@ mod tests {
             let normal = DeviceTensor::uninitialized_dt(DatumType::F16, &[n, m])?;
             let column = DeviceTensor::uninitialized_dt(DatumType::F16, &[n, m])?;
             wgpu_matmul_dispatch_impl(
-                t, &epilogue, &a, &b, &[&bias], &normal, true, None, Some(false),
+                t,
+                &epilogue,
+                &a,
+                &b,
+                &[&bias],
+                &normal,
+                true,
+                None,
+                Some(false),
             )?;
             let (_result, profile) = crate::with_wgpu_queue(|queue| {
                 queue.profile(|| {
