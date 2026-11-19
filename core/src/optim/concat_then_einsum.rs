@@ -6,6 +6,13 @@ use crate::ops::math::add;
 use crate::optim::OptimizerSession;
 use tract_itertools::Itertools;
 
+crate::declare_knob!(
+    TRACT_CONCAT_EINSUM_MIN_SLICE,
+    usize,
+    64,
+    "Narrowest concatenated slice, along the summed axis, for which ConcatThenEinsum splits an einsum with a large output into one partial einsum per slice."
+);
+
 #[derive(Clone, Debug, Default)]
 pub struct ConcatThenEinsum(Option<InletId>);
 
@@ -50,6 +57,9 @@ impl super::TypedPass for ConcatThenEinsum {
                 let axis_info = einsum.axes.axis((InOut::In(inlet.slot), concat.axis))?;
                 // only split if axis is a summing axis
                 if axis_info.outputs[0].len() > 0 {
+                    continue;
+                }
+                if splits_into_narrow_slices(model, einsum_node, &offsets)? {
                     continue;
                 }
                 let mut patch = TypedModelPatch::new(format!(
@@ -125,6 +135,28 @@ impl super::TypedPass for ConcatThenEinsum {
             }
         }
     }
+}
+
+/// Output volume from which every extra partial einsum, which re-reads and rewrites the
+/// whole output to accumulate into it, costs more than the concatenation it avoids.
+const LARGE_OUTPUT_VOLUME: usize = 1 << 16;
+
+/// Whether splitting `einsum_node` at `offsets` would leave a concrete slice narrower than
+/// [`TRACT_CONCAT_EINSUM_MIN_SLICE`] while producing a [`LARGE_OUTPUT_VOLUME`] output.
+fn splits_into_narrow_slices(
+    model: &TypedModel,
+    einsum_node: &TypedNode,
+    offsets: &[TDim],
+) -> TractResult<bool> {
+    let volume = model.outlet_fact(einsum_node.id.into())?.shape.volume();
+    if !volume.to_usize().is_ok_and(|v| v >= LARGE_OUTPUT_VOLUME) {
+        return Ok(false);
+    }
+    let min_slice = TRACT_CONCAT_EINSUM_MIN_SLICE.get();
+    Ok(offsets
+        .iter()
+        .tuple_windows()
+        .any(|(start, end)| (end.clone() - start).to_usize().is_ok_and(|w| w < min_slice)))
 }
 
 fn next_inlet(model: &TypedModel, inlet: &InletId) -> Option<InletId> {
