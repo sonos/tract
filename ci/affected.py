@@ -273,6 +273,7 @@ def legs():
     for device, triple in [
         ("cortex-a55", "aarch64-unknown-linux-gnu"),
         ("cortex-a53", "aarch64-unknown-linux-gnu"),
+        ("cortex-a76-raspi5", "aarch64-unknown-linux-gnu"),
         ("cortex-a7", "armv7-unknown-linux-gnueabihf"),
         ("cortex-a9", "armv7-unknown-linux-gnueabihf"),
         ("beaglev-ahead", "riscv64gc-unknown-linux-musl"),
