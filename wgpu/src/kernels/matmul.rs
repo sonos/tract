@@ -171,6 +171,32 @@ fn blocked_applies(
         && element_offset(out, 0).is_multiple_of(4)
 }
 
+/// Whether the four-rows-a-thread `gemv_n` kernel applies: a vec4 of `a` is one
+/// load and a vec4 of the output one store, which needs the `m` axis
+/// contiguous and four-aligned on both sides. One staging pass of `b` covers
+/// `k`, so `k` may not exceed the workgroup.
+fn gemv_n_v4_applies(
+    prefix: usize,
+    m: usize,
+    k: usize,
+    a: &DeviceTensor,
+    output: &DeviceTensor,
+    transpose_a: bool,
+    transpose_c: bool,
+) -> bool {
+    let a_m_stride = a.strides()[a.rank() - if transpose_a { 1 } else { 2 }];
+    let a_k_stride = a.strides()[a.rank() - if transpose_a { 2 } else { 1 }];
+    let o_m_stride = output.strides()[output.rank() - if transpose_c { 1 } else { 2 }];
+    prefix == 1
+        && k <= MATMUL_GEMV_N_WG as usize
+        && a_m_stride == 1
+        && a_k_stride % 4 == 0
+        && o_m_stride == 1
+        && m.is_multiple_of(4)
+        && element_offset(a, 0).is_multiple_of(4)
+        && element_offset(output, 0).is_multiple_of(4)
+}
+
 /// Whether the tiled kernel should serve this product: `m`, `n` and `k` are at
 /// least 16, with every tile index inside one grid dimension. The number of
 /// tiles does not matter: on a thin product with a long `k`, such as a late
@@ -351,6 +377,9 @@ fn wgpu_matmul_dispatch_impl(
         } else {
             "matmul_gemv"
         };
+        let gemv_n_v4 =
+            gemv_n && gemv_n_v4_applies(prefix, m, k, a, output, transpose_a, transpose_c);
+        let gemv_n_name = if gemv_n_v4 { "matmul_gemv_n_v4" } else { "matmul_gemv_n" };
         let tiled = tiled_applies(prefix, m, k, n);
         let tile_m = tile_rows(m);
         let pipeline = if gemv {
@@ -362,10 +391,10 @@ fn wgpu_matmul_dispatch_impl(
             )?
         } else if gemv_n {
             q.context().chain_pipeline(
-                ("matmul_gemv_n", dt, epilogue, extras.len()),
+                (gemv_n_name, dt, epilogue, extras.len()),
                 layout,
-                EntryPoint::typed("matmul_gemv_n", dt),
-                || matmul_gemv_n_module(dt, epilogue, extras.len()),
+                EntryPoint::typed(gemv_n_name, dt),
+                || matmul_gemv_n_module_for_layout(dt, epilogue, extras.len(), gemv_n_v4),
             )?
         } else if tiled {
             q.context().chain_pipeline(
@@ -434,10 +463,12 @@ fn wgpu_matmul_dispatch_impl(
             return q.dispatch_grid(gemv_name, &pipeline, &bg, dyn_off, [x, y, 1]);
         }
         if gemv_n {
-            let tiles = prefix * m.div_ceil(MATMUL_GEMV_N_WG as usize);
+            let rows =
+                if gemv_n_v4 { 4 * MATMUL_GEMV_N_WG as usize } else { MATMUL_GEMV_N_WG as usize };
+            let tiles = prefix * m.div_ceil(rows);
             let x = tiles.min(GRID_LIMIT as usize) as u32;
             let y = tiles.div_ceil(GRID_LIMIT as usize) as u32;
-            return q.dispatch_grid("matmul_gemv_n", &pipeline, &bg, dyn_off, [x, y, 1]);
+            return q.dispatch_grid(gemv_n_name, &pipeline, &bg, dyn_off, [x, y, 1]);
         }
         if tiled {
             let grid = [n.div_ceil(MATMUL_TILE) as u32, m.div_ceil(tile_m) as u32, prefix as u32];
@@ -818,6 +849,19 @@ fn matmul_gemv_small_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builti
 /// memory and each then walks its own row. Same `Params`, strides and epilogue
 /// as [`matmul_module`]. `k` past the last partial slice is padded with zeros.
 pub fn matmul_gemv_n_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
+    matmul_gemv_n_module_for_layout(dt, epilogue, extras, false)
+}
+
+/// [`matmul_gemv_n_module`]'s `v4` form: a thread owns four adjacent rows of a
+/// contiguous `a` and reaches them as `vec4`s, so a fourth of the threads does
+/// the same taps. The dispatch only picks it when `a` and the output are
+/// unit-strided along `m` and four-aligned.
+fn matmul_gemv_n_module_for_layout(
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+    v4: bool,
+) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
     let wg = MATMUL_GEMV_N_WG;
@@ -833,43 +877,78 @@ pub fn matmul_gemv_n_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usi
     } else {
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
-    let epilogue = epilogue_body_at(epilogue, "col", "oe");
-    let mut s = preamble(dt);
-    s.push_str(&format!(
-        r#"
-struct Params {{
-    off_a: u32,
-    off_b: u32,
-    off_out: u32,
-    prefix: u32,
-    m: u32,
-    k: u32,
-    n: u32,
-    ta: u32,
-    tb: u32,
-    tc: u32,
-    _p0: u32,
-    _p1: u32,
-    a_s0: vec4<u32>,
-    a_s1: vec4<u32>,
-    b_s0: vec4<u32>,
-    b_s1: vec4<u32>,
-    out_s0: vec4<u32>,
-    out_s1: vec4<u32>,
-    out_sh0: vec4<u32>,
-    out_sh1: vec4<u32>,
-    off_extra: vec4<u32>,
-    mode_extra: vec4<u32>,
+    let row_t = if v4 { format!("vec4<{t}>") } else { t.to_string() };
+    let body = if v4 {
+        let epilogue = epilogue_body_at(epilogue, "col", "oe + r");
+        format!(
+            r#"var<workgroup> bvec: array<f32, {wg}>;
+
+@compute @workgroup_size({wg})
+fn matmul_gemv_n_v4_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let rows = {wg}u * 4u;
+    let tiles_m = (params.m + rows - 1u) / rows;
+    let tile = wid.y * {GRID_LIMIT}u + wid.x;
+    if (tile >= params.prefix * tiles_m) {{ return; }}
+    let pref = tile / tiles_m;
+    let row = (tile % tiles_m) * rows + lid.x * 4u;
+
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = pref;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_m_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let a_k_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_k_s = select(at8(params.b_s0, params.b_s1, 6u), at8(params.b_s0, params.b_s1, 7u), params.tb != 0u);
+    let o_m_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    let o_n_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+
+    var acc = vec4<f32>(0.0);
+    for (var k0 = 0u; k0 < params.k; k0 += {wg}u) {{
+        let kk = k0 + lid.x;
+        if (kk < params.k) {{
+            bvec[lid.x] = f32(b[b_i + kk * b_k_s]);
+        }} else {{
+            bvec[lid.x] = 0.0;
+        }}
+        workgroupBarrier();
+        if (row < params.m) {{
+            let a_base = a_i + row * a_m_s;
+            for (var t = 0u; t < {wg}u; t++) {{
+                let k = k0 + t;
+                if (k < params.k) {{
+                    acc += vec4<f32>(a[(a_base + k * a_k_s) / 4u]) * bvec[t];
+                }}
+            }}
+        }}
+        workgroupBarrier();
+    }}
+    if (row < params.m) {{
+        let col = 0u;
+        let oe = o_i - params.off_out + row * o_m_s + col * o_n_s;
+        var outv: vec4<{t}>;
+        for (var r = 0u; r < 4u; r++) {{
+            var v = {t}(acc[r]);
+{epilogue}
+            outv[r] = v;
+        }}
+        outp[(o_i + row * o_m_s + col * o_n_s) / 4u] = outv;
+    }}
 }}
-
-@group(0) @binding(0) var<storage, read> a: array<{t}>;
-@group(0) @binding(1) var<storage, read> b: array<{t}>;
-{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
-@group(0) @binding({uniform_binding}) var<uniform> params: Params;
-{lib}
-{AT8}
-
-var<workgroup> bvec: array<f32, {wg}>;
+"#
+        )
+    } else {
+        let epilogue = epilogue_body_at(epilogue, "col", "oe");
+        format!(
+            r#"var<workgroup> bvec: array<f32, {wg}>;
 
 @compute @workgroup_size({wg})
 fn matmul_gemv_n_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
@@ -926,6 +1005,45 @@ fn matmul_gemv_n_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(wo
         outp[o_i + row * o_m_s + col * o_n_s] = v;
     }}
 }}
+"#
+        )
+    };
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+struct Params {{
+    off_a: u32,
+    off_b: u32,
+    off_out: u32,
+    prefix: u32,
+    m: u32,
+    k: u32,
+    n: u32,
+    ta: u32,
+    tb: u32,
+    tc: u32,
+    _p0: u32,
+    _p1: u32,
+    a_s0: vec4<u32>,
+    a_s1: vec4<u32>,
+    b_s0: vec4<u32>,
+    b_s1: vec4<u32>,
+    out_s0: vec4<u32>,
+    out_s1: vec4<u32>,
+    out_sh0: vec4<u32>,
+    out_sh1: vec4<u32>,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> a: array<{row_t}>;
+@group(0) @binding(1) var<storage, read> b: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{row_t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+{AT8}
+
+{body}
 "#
     ));
     s
@@ -1928,6 +2046,55 @@ mod tests {
             let c = Arc::new(cpu).run(tvec!(a_in.into(), r_in.into()))?.remove(0).into_tensor();
             g.close_enough(&c, Approximation::Approximate)
                 .with_context(|| format!("residual ta={ta} tb={tb} tc={tc}"))?;
+        }
+        Ok(())
+    }
+
+    /// `a` transposed so the `m` axis is contiguous: four rows a thread, a
+    /// scalar bias and a clamp riding the epilogue. Shapes that miss a
+    /// constraint fall back to the plain `gemv_n` kernel.
+    #[test]
+    fn matmul_gemv_n_v4_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        use tract_core::ops::math::add;
+        use tract_core::ops::math::max;
+        use tract_core::ops::math::min;
+        use tract_gpu::tensor::IntoDevice;
+        for (m, k, v4) in [(256usize, 16usize, true), (130, 16, false), (256, 100, false)] {
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", f32::fact([1, k, m]))?;
+            let b = model.add_const("b", Tensor::from_shape(&[1, k, 1], &fill(1, k))?)?;
+            let op = PrefixMatMul {
+                transpose_a: true,
+                transpose_b: false,
+                transpose_c: false,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let mut y = model.wire_node("mm", op, &[a, b])?[0];
+            for (name, ew, seed) in
+                [("bias", add(), 2u64), ("lo", max(), 3u64), ("hi", min(), 4u64)]
+            {
+                let c = Tensor::from_shape(&[1, 1, 1], &fill(seed, 1))?;
+                let c = model.add_const(format!("{name}_c"), c)?;
+                y = model.wire_node(name, ew, &[y, c])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let fused = transformed(model.clone())?;
+            let gemm = fused
+                .nodes()
+                .iter()
+                .find_map(|node| node.op_as::<crate::ops::matmul::WgpuGemm>())
+                .context("n=1 product left the device")?;
+            ensure!(gemm.epilogue.len() == 3, "epilogue {:?}", gemm.epilogue);
+            let a_dev = Tensor::from_shape(&[1, k, m], &fill(9, k * m))?.into_device()?;
+            let out_dev = Tensor::from_shape(&[1, m, 1], &fill(9, m))?.into_device()?;
+            ensure!(
+                super::gemv_n_v4_applies(1, m, k, &a_dev, &out_dev, true, false) == v4,
+                "v4 selection m={m} k={k}"
+            );
+            gpu_vs_cpu(model, Tensor::from_shape(&[1, k, m], &fill(5, k * m))?)
+                .with_context(|| format!("m={m} k={k} v4={v4}"))?;
         }
         Ok(())
     }
