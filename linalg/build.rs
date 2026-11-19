@@ -5,7 +5,8 @@ fn var(k: &str) -> String {
 }
 
 fn target_is_windows_arm64_msvc() -> bool {
-    env::var("CARGO_CFG_TARGET_ARCH") == Ok("aarch64".to_string())
+    env::var("CARGO_CFG_TARGET_FAMILY") == Ok("windows".to_string())
+        && env::var("CARGO_CFG_TARGET_ARCH") == Ok("aarch64".to_string())
         && env::var("CARGO_CFG_TARGET_ENV") == Ok("msvc".to_string())
 }
 
@@ -23,9 +24,13 @@ fn target_is_elf() -> bool {
 
 fn arm64_cc() -> cc::Build {
     let mut build = cc::Build::new();
-    if target_is_windows_arm64_msvc() {
+    let compiler = build.get_compiler();
+
+    if target_is_windows_arm64_msvc() && !(compiler.is_like_clang() || compiler.is_like_clang_cl())
+    {
         build.compiler("clang");
     }
+
     build
 }
 
