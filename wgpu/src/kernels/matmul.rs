@@ -316,7 +316,20 @@ fn wgpu_matmul_dispatch_impl(
             && element_offset(a, 0).is_multiple_of(4)
             && element_offset(b, 0).is_multiple_of(4)
             && small_gemv_override.unwrap_or_else(|| apple_webgpu(q.context().device()));
-        let gemv_name = if gemv_small { "matmul_gemv_small" } else { "matmul_gemv" };
+        let b_k_stride = b.strides()[b.rank() - if t.b { 1 } else { 2 }];
+        let gemv_kc = (1..=MATMUL_GEMV_KC_MAX_M).contains(&m)
+            && prefix > 0
+            && n > 0
+            && !gemv_small
+            && b_k_stride == 1;
+        let gemv = gemv || gemv_kc;
+        let gemv_name = if gemv_small {
+            "matmul_gemv_small"
+        } else if gemv_kc {
+            "matmul_gemv_kc"
+        } else {
+            "matmul_gemv"
+        };
         let tiled = tiled_applies(prefix, m, k, n);
         let tile_m = tile_rows(m);
         let pipeline = if gemv {
@@ -324,7 +337,7 @@ fn wgpu_matmul_dispatch_impl(
                 (gemv_name, dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed(gemv_name, dt),
-                || matmul_gemv_module_for_layout(dt, epilogue, extras.len(), gemv_small),
+                || matmul_gemv_module_for_layout(dt, epilogue, extras.len(), gemv_small, gemv_kc),
             )?
         } else if gemv_n {
             q.context().chain_pipeline(
@@ -387,7 +400,13 @@ fn wgpu_matmul_dispatch_impl(
         vals.extend_from_slice(&mode_extra);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
         if gemv {
-            let columns = if gemv_small { MATMUL_GEMV_SMALL_COLS } else { MATMUL_GEMV_WG };
+            let columns = if gemv_small {
+                MATMUL_GEMV_SMALL_COLS
+            } else if gemv_kc {
+                MATMUL_GEMV_KC_COLS
+            } else {
+                MATMUL_GEMV_WG
+            };
             let tiles = prefix * n.div_ceil(columns as usize);
             let x = tiles.min(GRID_LIMIT as usize) as u32;
             let y = tiles.div_ceil(GRID_LIMIT as usize) as u32;
@@ -413,6 +432,12 @@ pub const MATMUL_BLOCKED_WG: u32 = 192;
 /// Columns one `m = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_WG: u32 = 64;
 const MATMUL_GEMV_SMALL_COLS: u32 = 8;
+/// Columns one workgroup of the k-contiguous GEMV kernel owns, each reduced by
+/// `MATMUL_GEMV_KC_LANES` lanes.
+const MATMUL_GEMV_KC_COLS: u32 = 8;
+const MATMUL_GEMV_KC_LANES: u32 = 32;
+/// Rows of `a` the k-contiguous GEMV kernel serves, each `b` load feeding all of them.
+const MATMUL_GEMV_KC_MAX_M: usize = 8;
 
 /// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_N_WG: u32 = 64;
@@ -533,7 +558,7 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// and each then walks its own column. Same `Params`, strides and epilogue as
 /// [`matmul_module`]. `k` past the last partial slice is padded with zeros.
 pub fn matmul_gemv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
-    matmul_gemv_module_for_layout(dt, epilogue, extras, false)
+    matmul_gemv_module_for_layout(dt, epilogue, extras, false, false)
 }
 
 fn matmul_gemv_module_for_layout(
@@ -541,6 +566,7 @@ fn matmul_gemv_module_for_layout(
     epilogue: &[ChainStep],
     extras: usize,
     small: bool,
+    k_contiguous: bool,
 ) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -561,6 +587,8 @@ fn matmul_gemv_module_for_layout(
     let input_t = if small { format!("vec4<{t}>") } else { t.to_string() };
     let body = if small {
         matmul_gemv_small_body(t, suf, &epilogue)
+    } else if k_contiguous {
+        matmul_gemv_kc_body(t, suf, &epilogue)
     } else {
         format!(
             r#"var<workgroup> avec: array<f32, {wg}>;
@@ -660,6 +688,80 @@ struct Params {{
 "#
     ));
     s
+}
+
+/// Product of up to `MATMUL_GEMV_KC_MAX_M` rows of `a` by a `b` contiguous along `k`, such
+/// as a linear layer's weight: each column is reduced by a slice of lanes walking `k` side by
+/// side, so a warp reads consecutive addresses of `b`, then summed across the slice in
+/// workgroup memory. Accumulates in f32. Same `Params`, strides and epilogue as
+/// [`matmul_module`].
+fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str) -> String {
+    let cols = MATMUL_GEMV_KC_COLS;
+    let lanes = MATMUL_GEMV_KC_LANES;
+    let max_m = MATMUL_GEMV_KC_MAX_M;
+    let wg = cols * lanes;
+    format!(
+        r#"var<workgroup> partial: array<f32, {wg}>;
+
+@compute @workgroup_size({wg})
+fn matmul_gemv_kc_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let tiles_n = (params.n + {cols}u - 1u) / {cols}u;
+    let tile = wid.y * {GRID_LIMIT}u + wid.x;
+    if (tile >= params.prefix * tiles_n) {{ return; }}
+    let pref = tile / tiles_n;
+    let lane = lid.x % {lanes}u;
+    let slot = lid.x / {lanes}u;
+    let col = (tile % tiles_n) * {cols}u + slot;
+
+    var a_i = params.off_a;
+    var b_i = params.off_b;
+    var o_i = params.off_out;
+    var restp = pref;
+    for (var j = 0u; j < 6u; j++) {{
+        let ax = 5u - j;
+        let dim = max(at8(params.out_sh0, params.out_sh1, ax), 1u);
+        let c = restp % dim;
+        restp = restp / dim;
+        a_i += c * at8(params.a_s0, params.a_s1, ax);
+        b_i += c * at8(params.b_s0, params.b_s1, ax);
+        o_i += c * at8(params.out_s0, params.out_s1, ax);
+    }}
+    let a_k_s = select(at8(params.a_s0, params.a_s1, 7u), at8(params.a_s0, params.a_s1, 6u), params.ta != 0u);
+    let b_n_s = select(at8(params.b_s0, params.b_s1, 7u), at8(params.b_s0, params.b_s1, 6u), params.tb != 0u);
+    let o_n_s = select(at8(params.out_s0, params.out_s1, 7u), at8(params.out_s0, params.out_s1, 6u), params.tc != 0u);
+    let a_m_s = select(at8(params.a_s0, params.a_s1, 6u), at8(params.a_s0, params.a_s1, 7u), params.ta != 0u);
+    let o_m_s = select(at8(params.out_s0, params.out_s1, 6u), at8(params.out_s0, params.out_s1, 7u), params.tc != 0u);
+    var acc: array<f32, {max_m}>;
+    for (var r = 0u; r < {max_m}u; r++) {{ acc[r] = 0.0; }}
+    if (col < params.n) {{
+        let b_base = b_i + col * b_n_s;
+        for (var k = lane; k < params.k; k += {lanes}u) {{
+            let bv = f32(b[b_base + k]);
+            for (var r = 0u; r < params.m; r++) {{
+                acc[r] += f32(a[a_i + r * a_m_s + k * a_k_s]) * bv;
+            }}
+        }}
+    }}
+    for (var r = 0u; r < params.m; r++) {{
+        partial[lid.x] = acc[r];
+        workgroupBarrier();
+        for (var s = {lanes}u / 2u; s > 0u; s = s / 2u) {{
+            if (lane < s) {{
+                partial[lid.x] += partial[lid.x + s];
+            }}
+            workgroupBarrier();
+        }}
+        if (lane == 0u && col < params.n) {{
+            let oe = o_i - params.off_out + r * o_m_s + col * o_n_s;
+            var v = {t}(partial[lid.x]);
+{epilogue}
+            outp[o_i + r * o_m_s + col * o_n_s] = v;
+        }}
+        workgroupBarrier();
+    }}
+}}
+"#
+    )
 }
 
 /// Aligned unit-prefix GEMV with contiguous vector loads and ordered f32 dots.
@@ -1284,6 +1386,51 @@ mod tests {
         let y = model.wire_node("residual", tract_core::ops::math::add(), &[second, first])?[0];
         model.select_output_outlets(&[y])?;
         gpu_vs_cpu(model, Tensor::from_shape(&a_shape, &fill(4, m * k))?)
+    }
+
+    /// Products the k-contiguous GEMV kernel takes, `b` transposed so its rows run along `k`:
+    /// one to eight rows of `a`, `k` and `n` off the lane and column counts, a prefix, `a`
+    /// and `c` transposed, f16 and a bias epilogue.
+    #[test]
+    fn matmul_gemv_k_contiguous_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
+        for (prefix, m, k, n, ta, tc, f16_, bias) in [
+            (1usize, 1usize, 70usize, 13usize, false, false, false, false),
+            (1, 3, 70, 13, false, false, false, false),
+            (1, 8, 1000, 37, false, false, false, false),
+            (3, 4, 33, 9, false, false, false, false),
+            (1, 4, 70, 13, true, false, false, false),
+            (1, 4, 70, 13, false, true, false, false),
+            (1, 2, 40, 21, false, false, true, false),
+            (1, 4, 70, 13, false, false, false, true),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
+            let b_shape = [prefix, n, k];
+            let mut model = TypedModel::default();
+            let a = model.add_source("a", dt.fact(a_shape))?;
+            let b_data = Tensor::from_shape(&b_shape, &fill(1, b_shape.iter().product()))?;
+            let b = model.add_const("b", b_data.cast_to_dt(dt)?.into_owned())?;
+            let op = PrefixMatMul {
+                transpose_a: ta,
+                transpose_b: true,
+                transpose_c: tc,
+                quantize_output: None,
+                operating_dt: None,
+            };
+            let mut y = model.wire_node("mm", op, &[a, b])?[0];
+            if bias {
+                let bias = Tensor::from_shape(&[1, 1, n], &fill(2, n))?;
+                let bias = model.add_const("bias", bias.cast_to_dt(dt)?.into_owned())?;
+                y = model.wire_node("bias_add", tract_core::ops::math::add(), &[y, bias])?[0];
+            }
+            model.select_output_outlets(&[y])?;
+            let input = Tensor::from_shape(&a_shape, &fill(3, a_shape.iter().product()))?;
+            gpu_vs_cpu(model, input.cast_to_dt(dt)?.into_owned()).with_context(|| {
+                format!("prefix={prefix} m={m} k={k} n={n} ta={ta} tc={tc} f16={f16_} bias={bias}")
+            })?;
+        }
+        Ok(())
     }
 
     /// `k` a multiple of four but not of eight, so the blocked kernel's unrolled
