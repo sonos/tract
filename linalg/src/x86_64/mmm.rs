@@ -650,6 +650,30 @@ mod tests {
         Ok(())
     }
 
+    /// With f16 weights a matrix-vector product must not pad a small `m` up to the 128x1 tile,
+    /// while a large `m` gets it.
+    #[test]
+    fn avx512_f16_weights_mmv_tile_follows_m() {
+        if !is_x86_feature_detected!("avx512f") {
+            return;
+        }
+        let f16_weights = |m, k| Query {
+            weight: DatumType::F16.into(),
+            activation: DatumType::F32,
+            accumulators: tvec!(DatumType::F32),
+            store: None,
+            allow_extractor: true,
+            m: Some(m),
+            k: Some(k),
+            n: Some(1),
+        };
+        let dispatch = crate::MmmDispatch::native();
+        let (mmm, _, pe) = dispatch.pick(&f16_weights(32, 64)).unwrap();
+        assert!(mmm.nr() == 1 && mmm.mr() <= 32 && pe.is_none(), "m=32 got {}", mmm.name());
+        let (mmm, _, _) = dispatch.pick(&f16_weights(768, 256)).unwrap();
+        assert_eq!(mmm.name(), avx512_mmm_f32_128x1.name.as_str());
+    }
+
     #[test]
     fn avx512_128x1_add_unicast_with_strided_c() -> TractResult<()> {
         if !is_x86_feature_detected!("avx512f") {
