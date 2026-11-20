@@ -93,11 +93,17 @@ pub fn retain_best(suitable: &mut Vec<Suitable>) {
 /// go to the last one, so the order of the suitable list breaks them.
 pub fn pick_by_shape(query: &Query, suitable: &[Suitable]) -> Option<usize> {
     match query.n {
-        // A true GEMV first, then no extractor to pay for, then the widest tile.
+        // A true GEMV first, then no extractor to pay for, then a tile that does not pad `m`
+        // to twice its size or more, then the widest tile. A GEMV reads every packed row of
+        // the weights once, padding included, so a 128-row tile on m=32 does 4x the work of a
+        // 32-row one.
         Some(1) => suitable
             .iter()
             .enumerate()
-            .max_by_key(|(_, (mmm, _, pe))| (mmm.nr() == 1, pe.is_none(), mmm.mr()))
+            .max_by_key(|(_, (mmm, _, pe))| {
+                let overpad = query.m.map_or(0, |m| mmm.mr() / (2 * m.max(1)));
+                (mmm.nr() == 1, pe.is_none(), std::cmp::Reverse(overpad), mmm.mr())
+            })
             .map(|(ix, _)| ix),
         // For a 2D matmul a GEMV kernel (nr == 1) is a poor fit: it processes one output
         // column per pass, so a matrix kernel beats it even behind a panel extractor, and
