@@ -6,13 +6,19 @@ on a target triple, with the features it exercises. Its inputs are the workspace
 `cargo tree` finds in that closure, plus some paths of its own. A change affects the leg
 when it touches one of them. Anything this script cannot place affects every leg.
 
+Cargo.lock and the root Cargo.toml count by content against the base revision: a lockfile
+change affects the legs whose dependency tree holds a changed package, and a manifest
+change confined to `workspace.members` affects none by itself. Either one affects every
+leg when the base cannot be read or the change cannot be explained that way.
+
 linalg arch trees (`linalg/{arm32,arm64,x86_64,riscv64}`, `linalg/src/wasm`) only count
 for legs that compile them: legs on that target_arch, and legs whose build enables
 `foreign-inventory` (the tract-cli builds on x86_64 and aarch64-apple-darwin compile every
 tree, though they only run their own).
 
-Usage: affected.py --files CHANGED [--json OUT] [--summary OUT]
-CHANGED lists one changed path per line, relative to the repository root.
+Usage: affected.py --files CHANGED [--base REV] [--json OUT] [--summary OUT]
+CHANGED lists one changed path per line, relative to the repository root. REV defaults to
+HEAD's first parent: the PR base when HEAD is the PR merge commit.
 """
 
 import argparse
@@ -59,8 +65,6 @@ IGNORED = [
 ]
 
 GLOBAL = [
-    "Cargo.toml",
-    "Cargo.lock",
     "rust-toolchain.toml",
     ".cargo/**",
     ".github/scripts/**",
@@ -332,7 +336,7 @@ def legs():
 _closures = {}
 
 
-def closure(spec, triple, members):
+def closure(spec, triple):
     key = (spec, triple)
     if key not in _closures:
         cmd = ["cargo", "tree", "--locked", "-q", "--target", triple, "--prefix", "none",
@@ -344,9 +348,58 @@ def closure(spec, triple, members):
         if spec.features:
             cmd += ["--features", spec.features]
         tree = subprocess.run(cmd, cwd=ROOT, check=True, capture_output=True, text=True).stdout
-        names = {line.split()[0] for line in tree.splitlines() if line.strip()}
-        _closures[key] = names & members
+        _closures[key] = {line.split()[0] for line in tree.splitlines() if line.strip()}
     return _closures[key]
+
+
+def git(*args):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True)
+
+
+def first_parent():
+    head = git("cat-file", "-p", "HEAD").stdout
+    return next((l.split()[1] for l in head.splitlines() if l.startswith("parent ")), None)
+
+
+def at_base(base, path):
+    """`path` as of `base`, fetching `base` into a shallow checkout; None if unreadable."""
+    if base is None:
+        return None
+    shown = git("show", f"{base}:{path}")
+    if shown.returncode != 0 and git("fetch", "-q", "--depth=1", "--no-tags", "origin", base).returncode == 0:
+        shown = git("show", f"{base}:{path}")
+    return shown.stdout if shown.returncode == 0 else None
+
+
+def lock_changes(base):
+    """Names of the Cargo.lock packages added, removed or edited since `base`; None when
+    that cannot be told, or when nothing changed (a listed but unchanged lockfile is the
+    caller's way of forcing every leg)."""
+    old = at_base(base, "Cargo.lock")
+    if old is None:
+        return None
+    try:
+        entries = lambda text: {json.dumps(p, sort_keys=True) for p in tomllib.loads(text).get("package", [])}
+        changed = entries(old) ^ entries((ROOT / "Cargo.lock").read_text())
+    except tomllib.TOMLDecodeError:
+        return None
+    return {json.loads(e)["name"] for e in changed} or None
+
+
+def members_only_manifest_change(base):
+    old = at_base(base, "Cargo.toml")
+    if old is None:
+        return False
+
+    def without_members(text):
+        doc = tomllib.loads(text)
+        doc.get("workspace", {}).pop("members", None)
+        return doc
+
+    try:
+        return without_members(old) == without_members((ROOT / "Cargo.toml").read_text())
+    except tomllib.TOMLDecodeError:
+        return False
 
 
 def package_dirs():
@@ -369,7 +422,7 @@ def owner(path, dirs):
     return best[1] if best and best[0] != "." else None
 
 
-def decide(files):
+def decide(files, base):
     dirs = package_dirs()
     members = set(dirs.values())
     all_legs = legs()
@@ -380,8 +433,20 @@ def decide(files):
     unplaced = []
     global_hits = []
     workflow_hits = {}
+    locked = set()
     for f in files:
         if matches(f, IGNORED):
+            continue
+        if f == "Cargo.lock":
+            changes = lock_changes(base)
+            if changes is None:
+                global_hits.append(f)
+            else:
+                locked = changes
+            continue
+        if f == "Cargo.toml":
+            if not members_only_manifest_change(base):
+                global_hits.append(f)
             continue
         if f in SCRIPT_WORKFLOWS:
             for name in SCRIPT_WORKFLOWS[f]:
@@ -416,11 +481,12 @@ def decide(files):
             if hit:
                 reason = f"path: {hit}"
             elif not leg.path_only:
-                crates = set()
+                tree = set()
                 try:
                     for spec in leg.specs:
-                        crates |= closure(spec, leg.triple, members)
-                    crates -= leg.exclude
+                        tree |= closure(spec, leg.triple)
+                    tree -= leg.exclude
+                    crates = tree & members
                 except subprocess.CalledProcessError as e:
                     print(e.stderr, file=sys.stderr)
                     reason = f"cargo tree failed: {' '.join(e.cmd[2:])}"
@@ -432,6 +498,8 @@ def decide(files):
                                           or (arch == "x86_64" and leg.arch == "x86")):
                         reason = f"{pkg}: {f}"
                         break
+                if reason is None and locked & tree:
+                    reason = f"Cargo.lock: {min(locked & tree)}"
         results.append({"workflow": leg.workflow, "leg": leg.key, "affected": reason is not None,
                         "reason": reason or ""})
     return results
@@ -454,11 +522,12 @@ def summary(results, nfiles):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--files", required=True)
+    parser.add_argument("--base")
     parser.add_argument("--json")
     parser.add_argument("--summary")
     args = parser.parse_args()
     files = sorted({l.strip() for l in Path(args.files).read_text().splitlines() if l.strip()})
-    results = decide(files)
+    results = decide(files, args.base or first_parent())
     doc = {"files": files, "legs": results}
     if args.json:
         Path(args.json).write_text(json.dumps(doc, indent=1) + "\n")
