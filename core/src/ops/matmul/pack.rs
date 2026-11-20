@@ -4,17 +4,29 @@ use ndarray::*;
 use tract_linalg::block_quant::{
     BlockQuantStorage, PackedBlockQuantFact, PackedBlockQuantFormat, block_quant_slice,
 };
+use tract_linalg::lazy_pack::LazyPackedInput;
 use tract_linalg::mmm::{EagerPackedInput, MMMInputFormat, MMMInputValue, PackedMatrixStorage};
 use tract_linalg::pack::PackedFormat;
 
 use super::ModePicker;
 
+/// Packs a matmul operand for the kernels of `packers`, one batch item at a time.
+///
+/// Packs a matmul operand for the kernels of `packers`, one batch item at a time.
+///
+/// A plain [`PackedFormat`] operand of at least `lazy_min_bytes` per batch item, whose mn
+/// axis is contiguous, is not packed here: each batch item becomes a [`LazyPackedInput`]
+/// that the matmul packs one panel at a time into cache-resident scratch. `usize::MAX`
+/// packs everything eagerly. Only runtime A operands get a finite threshold: a folded
+/// constant would be repacked on every run, and the matmul walks A panels in the outer
+/// loop, so a lazy B panel would be repacked for every one of them.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct OptMatMulPack {
     pub(crate) packers: Vec<Box<dyn MMMInputFormat>>,
     pub(crate) mode_picker: ModePicker,
     pub(crate) k_axis: usize,
     pub(crate) mn_axis: usize,
+    pub(crate) lazy_min_bytes: usize,
 }
 
 impl Op for OptMatMulPack {
@@ -23,7 +35,17 @@ impl Op for OptMatMulPack {
     }
 
     fn info(&self) -> TractResult<Vec<String>> {
-        Ok(vec![format!("{:?}. k axis: {}, mn axis: {}", self.packers, self.k_axis, self.mn_axis)])
+        Ok(vec![format!(
+            "{:?}. k axis: {}, mn axis: {}{}",
+            self.packers,
+            self.k_axis,
+            self.mn_axis,
+            if self.lazy_min_bytes < usize::MAX {
+                format!(", lazy from {} bytes", self.lazy_min_bytes)
+            } else {
+                String::new()
+            }
+        )])
     }
 
     op_as_typed_op!();
@@ -34,7 +56,7 @@ impl EvalOp for OptMatMulPack {
 
     fn eval(&self, ctx: &EvalContext, mut inputs: TVec<TValue>) -> TractResult<TVec<TValue>> {
         let input = inputs.remove(0);
-        if ctx.session == SessionId::NONE {
+        if ctx.session == SessionId::NONE || self.packs_lazily(&input) {
             return self.do_eval(ctx, input);
         }
         KEPT_PACKS.with_borrow_mut(|kept| {
@@ -56,6 +78,22 @@ impl EvalOp for OptMatMulPack {
     fn drop_session(&self, session: SessionId, _node_id: usize) {
         KEPT_PACKS.with_borrow_mut(|kept| kept.drop_session(session));
     }
+}
+
+crate::declare_knob!(
+    scopable TRACT_LAZY_PACK_MIN_BYTES,
+    usize,
+    default_lazy_pack_min_bytes(),
+    "Runtime A operand bytes from which a matmul packs panel by panel inside the kernel loop rather than up front, read when the matmul is lowered. Defaults to one core's share of L2, or never when that share is under 512 KiB or unknown."
+);
+
+/// One core's share of L2, below which an eager pack stays in cache and costs no memory
+/// round trip. Cores with less than 512 KiB of it, the in-order and cluster-shared-L2
+/// parts, run strided panel packs slower than one eager pass and never pack lazily.
+fn default_lazy_pack_min_bytes() -> usize {
+    let info = tract_linalg::cache::cache_info();
+    let share = info.l2 / info.l2_sharers.max(1);
+    if share < 512 << 10 { usize::MAX } else { share }
 }
 
 crate::declare_knob!(
@@ -213,6 +251,15 @@ impl TypedOp for OptMatMulPack {
 }
 
 impl OptMatMulPack {
+    /// Whether `input` is left to the matmul to pack panel by panel: one matmul operand
+    /// (one batch item) of at least `lazy_min_bytes`.
+    fn packs_lazily(&self, input: &Tensor) -> bool {
+        let shape = input.shape();
+        self.lazy_min_bytes < usize::MAX
+            && shape[self.k_axis] * shape[self.mn_axis] * input.datum_type().size_of()
+                >= self.lazy_min_bytes
+    }
+
     fn do_eval(&self, _ctx: &EvalContext, input: TValue) -> TractResult<TVec<TValue>> {
         // The packers read the bytes unchecked: a weight whose bytes live elsewhere is fetched
         // here, where failing to is an error.
@@ -248,6 +295,38 @@ impl OptMatMulPack {
                 }
                 values
             };
+            let stores = PackedMatrixStorage::new_batched(&output_shape, values)
+                .into_tensor(input.datum_type());
+            return Ok(tvec!(stores.into_tvalue()));
+        }
+        if self.packs_lazily(&input)
+            && let Some(format) = packer.downcast_ref::<PackedFormat>()
+            && let Some(arc) = input.as_arc_tensor().cloned()
+        {
+            let mut bc_shape: TVec<usize> = input.shape().into();
+            bc_shape[self.k_axis] = 1;
+            bc_shape[self.mn_axis] = 1;
+            let mut values: TVec<Box<dyn MMMInputValue>> =
+                TVec::with_capacity(output_shape.iter().product());
+            for coord in indices(&*bc_shape) {
+                let offset = coord
+                    .as_array_view()
+                    .iter()
+                    .zip(input.strides())
+                    .map(|(x, s)| *x as isize * s)
+                    .sum::<isize>()
+                    * input.datum_type().size_of() as isize;
+                let lazy =
+                    LazyPackedInput::new(format, arc.clone(), offset, self.k_axis, self.mn_axis)?;
+                values.push(match lazy {
+                    Some(lazy) => Box::new(lazy),
+                    None => unsafe {
+                        let view =
+                            TensorView::from_bytes(&input, offset, input.shape(), input.strides());
+                        format.prepare_one_view(&view, self.k_axis, self.mn_axis)?
+                    },
+                });
+            }
             let stores = PackedMatrixStorage::new_batched(&output_shape, values)
                 .into_tensor(input.datum_type());
             return Ok(tvec!(stores.into_tvalue()));

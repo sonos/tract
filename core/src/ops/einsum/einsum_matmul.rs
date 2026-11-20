@@ -924,6 +924,7 @@ fn optimized_mat_mul(
                 mode_picker: ModePicker::Single,
                 k_axis: op.a_k(),
                 mn_axis: op.a_m(),
+                lazy_min_bytes: usize::MAX,
             })
         }
     } else if strided_a {
@@ -932,6 +933,7 @@ fn optimized_mat_mul(
             mode_picker: mode_picker.clone(),
             k_axis: op.a_k(),
             mn_axis: op.a_m(),
+            lazy_min_bytes: usize::MAX,
         })
     } else {
         Box::new(OptMatMulPack {
@@ -946,6 +948,11 @@ fn optimized_mat_mul(
             mode_picker: mode_picker.clone(),
             k_axis: op.a_k(),
             mn_axis: op.a_m(),
+            lazy_min_bytes: if impls.iter().all(|(_, _, pe)| pe.is_none()) {
+                crate::ops::matmul::pack::TRACT_LAZY_PACK_MIN_BYTES.get()
+            } else {
+                usize::MAX
+            },
         })
     };
     let pa = patch.wire_node(format!("{prefix}.pack_a"), pack_a, &[taps[0]])?[0];
@@ -957,6 +964,7 @@ fn optimized_mat_mul(
             mn_axis: op.b_n(),
             packers: impls.iter().map(|(mmm, p, _)| mmm.packings()[*p].1.clone()).collect(),
             mode_picker: mode_picker.clone(),
+            lazy_min_bytes: usize::MAX,
         },
         &[taps[1]],
     )?[0];
