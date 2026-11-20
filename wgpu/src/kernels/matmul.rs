@@ -385,9 +385,15 @@ fn wgpu_matmul_dispatch_impl(
             && small_gemv_override.unwrap_or_else(|| apple_webgpu(q.context().device()));
         let b_k_stride = b.strides()[b.rank() - if t.b { 1 } else { 2 }];
         let gemv_kc = gemv_kc_applies(m, k, n, prefix, gemv_small, b_k_stride);
+        let gemv_kc4 = gemv_kc
+            && k.is_multiple_of(4)
+            && vec4_along_k(a, if t.a { a.rank() - 2 } else { a.rank() - 1 })
+            && vec4_along_k(b, if t.b { b.rank() - 1 } else { b.rank() - 2 });
         let gemv = gemv || gemv_kc;
         let gemv_name = if gemv_small {
             "matmul_gemv_small"
+        } else if gemv_kc4 {
+            "matmul_gemv_kc4"
         } else if gemv_kc {
             "matmul_gemv_kc"
         } else {
@@ -403,7 +409,18 @@ fn wgpu_matmul_dispatch_impl(
                 (gemv_name, dt, epilogue, extras.len()),
                 layout,
                 EntryPoint::typed(gemv_name, dt),
-                || matmul_gemv_module_for_layout(dt, epilogue, extras.len(), gemv_small, gemv_kc),
+                || {
+                    let variant = if gemv_small {
+                        GemvVariant::Small
+                    } else if gemv_kc4 {
+                        GemvVariant::LaneParallelVec4
+                    } else if gemv_kc {
+                        GemvVariant::LaneParallel
+                    } else {
+                        GemvVariant::Staged
+                    };
+                    matmul_gemv_module_for_layout(dt, epilogue, extras.len(), variant)
+                },
             )?
         } else if gemv_n {
             q.context().chain_pipeline(
@@ -509,6 +526,27 @@ const MATMUL_GEMV_KC_MAX_M: usize = 8;
 /// Shortest `k` the lane-parallel GEMV kernel takes for a `b` contiguous along `k`: below it
 /// a product is too small for coalescing to pay for the per-column reduction.
 const MATMUL_GEMV_KC_MIN_K: usize = 128;
+
+/// The m = 1 (or few rows) kernels, by how they walk `k`.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GemvVariant {
+    /// Stages `a` through workgroup memory, one thread per column.
+    Staged,
+    /// Apple's aligned unit-prefix kernel for a few measured shapes.
+    Small,
+    /// Lanes walking `k` side by side, one column per slice of lanes.
+    LaneParallel,
+    /// As `LaneParallel`, loading four `k` steps of `a` and `b` at once.
+    LaneParallelVec4,
+}
+
+/// Whether `t` reads as `vec4`s along its `k_axis`: contiguous along it, with every other
+/// stride and its offset whole multiples of four elements.
+fn vec4_along_k(t: &DeviceTensor, k_axis: usize) -> bool {
+    t.strides()[k_axis] == 1
+        && element_offset(t, 0).is_multiple_of(4)
+        && t.strides().iter().enumerate().all(|(ax, s)| ax == k_axis || s % 4 == 0)
+}
 
 /// Rows one `n = 1` workgroup owns, and the `k` slice it stages for them.
 pub const MATMUL_GEMV_N_WG: u32 = 64;
@@ -629,15 +667,14 @@ fn matmul_{suf}(@builtin(global_invocation_id) gid: vec3<u32>) {{
 /// and each then walks its own column. Same `Params`, strides and epilogue as
 /// [`matmul_module`]. `k` past the last partial slice is padded with zeros.
 pub fn matmul_gemv_module(dt: ShaderDtype, epilogue: &[ChainStep], extras: usize) -> String {
-    matmul_gemv_module_for_layout(dt, epilogue, extras, false, false)
+    matmul_gemv_module_for_layout(dt, epilogue, extras, GemvVariant::Staged)
 }
 
 fn matmul_gemv_module_for_layout(
     dt: ShaderDtype,
     epilogue: &[ChainStep],
     extras: usize,
-    small: bool,
-    k_contiguous: bool,
+    variant: GemvVariant,
 ) -> String {
     let t = dt.wgsl();
     let suf = dt.suffix();
@@ -655,11 +692,17 @@ fn matmul_gemv_module_for_layout(
         format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
     };
     let epilogue = epilogue_body_at(epilogue, "col", "oe");
-    let input_t = if small { format!("vec4<{t}>") } else { t.to_string() };
-    let body = if small {
+    let input_t = if matches!(variant, GemvVariant::Small | GemvVariant::LaneParallelVec4) {
+        format!("vec4<{t}>")
+    } else {
+        t.to_string()
+    };
+    let body = if variant == GemvVariant::Small {
         matmul_gemv_small_body(t, suf, &epilogue)
-    } else if k_contiguous {
-        matmul_gemv_kc_body(t, suf, &epilogue)
+    } else if variant == GemvVariant::LaneParallel {
+        matmul_gemv_kc_body(t, suf, &epilogue, false)
+    } else if variant == GemvVariant::LaneParallelVec4 {
+        matmul_gemv_kc_body(t, suf, &epilogue, true)
     } else {
         format!(
             r#"var<workgroup> avec: array<f32, {wg}>;
@@ -764,9 +807,32 @@ struct Params {{
 /// Product of up to `MATMUL_GEMV_KC_MAX_M` rows of `a` by `b`: each column is
 /// reduced by a slice of lanes walking `k` side by side — consecutive addresses
 /// of `b` when it is contiguous along `k`, as a linear layer's weight is — then
-/// summed across the slice in workgroup memory. Accumulates in f32. Same
-/// `Params`, strides and epilogue as [`matmul_module`].
-fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str) -> String {
+/// summed across the slice in workgroup memory. When `k` is a multiple of 4 and both
+/// operands read as `vec4`s along it, each lane loads four `k` steps at a time. Accumulates
+/// in f32. Same `Params`, strides and epilogue as [`matmul_module`].
+fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str, vec4: bool) -> String {
+    let entry = if vec4 { "matmul_gemv_kc4" } else { "matmul_gemv_kc" };
+    let walk_k = if vec4 {
+        format!(
+            r#"for (var k4 = lane; k4 < params.k / 4u; k4 += {lanes}u) {{
+            let bv = vec4<f32>(b[b_base / 4u + k4]);
+            for (var r = 0u; r < params.m; r++) {{
+                acc[r] += dot(vec4<f32>(a[(a_i + r * a_m_s) / 4u + k4]), bv);
+            }}
+        }}"#,
+            lanes = MATMUL_GEMV_KC_LANES
+        )
+    } else {
+        format!(
+            r#"for (var k = lane; k < params.k; k += {lanes}u) {{
+            let bv = f32(b[b_base + k * b_k_s]);
+            for (var r = 0u; r < params.m; r++) {{
+                acc[r] += f32(a[a_i + r * a_m_s + k * a_k_s]) * bv;
+            }}
+        }}"#,
+            lanes = MATMUL_GEMV_KC_LANES
+        )
+    };
     let cols = MATMUL_GEMV_KC_COLS;
     let lanes = MATMUL_GEMV_KC_LANES;
     let max_m = MATMUL_GEMV_KC_MAX_M;
@@ -775,7 +841,7 @@ fn matmul_gemv_kc_body(t: &str, suf: &str, epilogue: &str) -> String {
         r#"var<workgroup> partial: array<f32, {wg}>;
 
 @compute @workgroup_size({wg})
-fn matmul_gemv_kc_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
+fn {entry}_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(workgroup_id) wid: vec3<u32>) {{
     let tiles_n = (params.n + {cols}u - 1u) / {cols}u;
     let tile = wid.y * {GRID_LIMIT}u + wid.x;
     if (tile >= params.prefix * tiles_n) {{ return; }}
@@ -807,12 +873,7 @@ fn matmul_gemv_kc_{suf}(@builtin(local_invocation_id) lid: vec3<u32>, @builtin(w
     for (var r = 0u; r < {max_m}u; r++) {{ acc[r] = 0.0; }}
     if (col < params.n) {{
         let b_base = b_i + col * b_n_s;
-        for (var k = lane; k < params.k; k += {lanes}u) {{
-            let bv = f32(b[b_base + k * b_k_s]);
-            for (var r = 0u; r < params.m; r++) {{
-                acc[r] += f32(a[a_i + r * a_m_s + k * a_k_s]) * bv;
-            }}
-        }}
+        {walk_k}
     }}
     for (var r = 0u; r < params.m; r++) {{
         partial[lid.x] = acc[r];
@@ -1577,7 +1638,8 @@ mod tests {
 
     /// Products the k-contiguous GEMV kernel takes, `b` transposed so its rows run along `k`:
     /// one to eight rows of `a`, `k` past the kernel's minimum and `k`, `n` off the lane and
-    /// column counts, a prefix, `a` and `c` transposed, f16 and a bias epilogue.
+    /// column counts, a prefix, `a` and `c` transposed, f16 and a bias epilogue, with `k`
+    /// a multiple of four or not, for the `vec4` and scalar loads.
     #[test]
     fn matmul_gemv_k_contiguous_matches_cpu() -> TractResult<()> {
         use tract_core::ops::einsum::prefix_matmul::PrefixMatMul;
@@ -1590,6 +1652,11 @@ mod tests {
             (1, 4, 170, 13, false, true, false, false),
             (1, 2, 130, 21, false, false, true, false),
             (1, 4, 170, 13, false, false, false, true),
+            (1, 1, 256, 13, false, false, false, false),
+            (1, 5, 256, 13, false, false, false, false),
+            (3, 4, 132, 9, false, false, false, false),
+            (1, 2, 128, 21, false, false, true, false),
+            (1, 4, 256, 13, false, false, false, true),
         ] {
             let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
             let a_shape = [prefix, if ta { k } else { m }, if ta { m } else { k }];
