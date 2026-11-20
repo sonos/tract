@@ -31,6 +31,12 @@ use crate::utils::get_wgpu_buffer;
 use crate::with_wgpu_queue;
 
 const TILE: u32 = 8;
+/// Output columns one `bq_gemv` workgroup owns.
+const GEMV_COLS: u32 = 8;
+/// Lanes walking one column's weight row, one block apart.
+const GEMV_LANES: u32 = 32;
+/// Most rows of A `bq_gemv` serves.
+const GEMV_MAX_M: usize = 4;
 
 /// Uniform block shared by both kernels. Twenty scalars, then two `vec4`s:
 /// a `vec4` in a uniform buffer starts on a 16-byte boundary.
@@ -395,8 +401,18 @@ pub fn wgpu_bq_dispatch(
             && a_stride_m.is_multiple_of(4)
             && a_off.is_multiple_of(4)
             && a_prefix.is_multiple_of(4);
+        let gemv =
+            tiled && m <= GEMV_MAX_M && n.div_ceil(GEMV_COLS as usize) <= GRID_LIMIT as usize;
         let layout = LayoutKind::Chain(3 + extras.len() as u8);
-        let pipeline = if tiled {
+        let gemv_rows = if m == 1 { 1 } else { GEMV_MAX_M as u32 };
+        let pipeline = if gemv {
+            q.context().chain_pipeline(
+                ("matmul_bq_gemv", weight_format, gemv_rows, dt, epilogue, extras.len()),
+                layout,
+                EntryPoint::typed("bq_gemv", dt),
+                || bq_gemv_module(q4, gemv_rows, dt, epilogue, extras.len()),
+            )?
+        } else if tiled {
             q.context().chain_pipeline(
                 ("matmul_bq", weight_format, dt, epilogue, extras.len()),
                 layout,
@@ -447,6 +463,10 @@ pub fn wgpu_bq_dispatch(
         vals.extend_from_slice(&mode_extra);
         debug_assert_eq!(vals.len(), 28);
         let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+        if gemv {
+            let grid = [n.div_ceil(GEMV_COLS as usize) as u32, 1, prefix.max(1) as u32];
+            return q.dispatch_grid("matmul_bq_gemv", &pipeline, &bg, dyn_off, grid);
+        }
         let grid = if tiled {
             [
                 n.div_ceil(4).div_ceil(TILE as usize) as u32,
@@ -590,6 +610,121 @@ fn bq_tiled_{suf}(
         emit(acc1[i], row0 + i, col0 + 1u, pref);
         emit(acc2[i], row0 + i, col0 + 2u, pref);
         emit(acc3[i], row0 + i, col0 + 3u, pref);
+    }}
+}}
+"#
+    ));
+    s
+}
+
+/// `bq_tiled_module`'s product for at most [`GEMV_MAX_M`] rows of A: a workgroup owns
+/// [`GEMV_COLS`] output columns, and the [`GEMV_LANES`] lanes of each column walk its weight row
+/// one block apart, so a column's scales and codes are read as consecutive words. The lanes' f32
+/// partial sums for the `rows` rows are then reduced in workgroup memory.
+fn bq_gemv_module(
+    q4: bool,
+    rows: u32,
+    dt: ShaderDtype,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
+    let t = dt.wgsl();
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(t), binary_ops_wgsl(t))
+    };
+    let epilogue = epilogue_body_at(epilogue, "col", "oe");
+    let words = if q4 { 4 } else { 2 };
+    let wg = GEMV_COLS * GEMV_LANES;
+    let lanes = GEMV_LANES;
+    let loads =
+        (0..words).map(|w| format!("            let w{w} = b[cw + {w}u];\n")).collect::<String>();
+    let rows_ix = (0..rows)
+        .map(|r| format!("    let r{r} = a_base + min({r}u, params.m - 1u) * a_rows;\n"))
+        .collect::<String>();
+    let dots = (0..8)
+        .map(|c| {
+            let q = if q4 {
+                format!(
+                    "vec4<f32>((vec4<u32>(w{} >> {}u) >> vec4<u32>(0u, 8u, 16u, 24u)) & vec4<u32>(15u)) - 8.0",
+                    c & 3,
+                    4 * (c >> 2)
+                )
+            } else {
+                format!(
+                    "vec4<f32>((vec4<u32>(w{} >> {}u) >> vec4<u32>(0u, 2u, 4u, 6u)) & vec4<u32>(3u)) - 1.0",
+                    c / 4,
+                    (c % 4) * 8
+                )
+            };
+            let acc = (0..rows)
+                .map(|r| format!("            d[{r}] += dot(vec4<f32>(a4[r{r} + kv + {c}u]), q{c});\n"))
+                .collect::<String>();
+            format!("            let q{c} = {q};\n{acc}")
+        })
+        .collect::<String>();
+    let params = BQ_PARAMS;
+    let mut s = preamble(dt);
+    s.push_str(&format!(
+        r#"
+{params}
+@group(0) @binding(0) var<storage, read> a4: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> b: array<u32>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+var<workgroup> partial: array<vec4<f32>, {wg}>;
+
+fn emit(value: f32, row: u32, col: u32, pref: u32) {{
+    let oe = pref * params.c_prefix_stride + row * params.c_stride_m + col * params.c_stride_n;
+    var v = {t}(value);
+{epilogue}    outp[params.c_off + oe] = v;
+}}
+
+@compute @workgroup_size({wg})
+fn bq_gemv_{suf}(
+    @builtin(workgroup_id) wid: vec3<u32>,
+    @builtin(local_invocation_id) lid: vec3<u32>,
+) {{
+    let lane = lid.x % {lanes}u;
+    let slot = lid.x / {lanes}u;
+    let col = wid.x * {GEMV_COLS}u + slot;
+    let pref = wid.z;
+    let n_row = min(col, params.n - 1u);
+    let scale_base = params.scale_off + pref * params.scale_prefix;
+    let code_base = params.code_off + pref * params.code_prefix;
+    let a_base = (params.a_off + pref * params.a_prefix_stride) >> 2u;
+    let a_rows = params.a_stride_m >> 2u;
+{rows_ix}    var acc = vec4<f32>(0.0);
+    for (var block = lane; block < params.blocks_per_row; block += {lanes}u) {{
+        let bi = n_row * params.blocks_per_row + block;
+        let scale = unpack2x16float(b[scale_base + bi / params.bq_group]).x;
+        let cw = code_base + bi * {words}u;
+        let kv = block * 8u;
+        var d = vec4<f32>(0.0);
+        {{
+{loads}{dots}        }}
+        acc += d * scale;
+    }}
+    partial[lid.x] = acc;
+    workgroupBarrier();
+    for (var s = {lanes}u / 2u; s > 0u; s = s / 2u) {{
+        if (lane < s) {{
+            partial[lid.x] += partial[lid.x + s];
+        }}
+        workgroupBarrier();
+    }}
+    if (lane < params.m && col < params.n) {{
+        emit(partial[slot * {lanes}u][lane], lane, col, pref);
     }}
 }}
 "#
@@ -804,6 +939,27 @@ mod tests {
             .cast_to_dt(dt)?
             .into_owned();
         gpu_vs_cpu(model, input)
+    }
+
+    /// Products of at most four rows, which the lane-parallel GEMV serves: one and several rows,
+    /// fewer blocks per row than lanes and more, a partial column tile, a batched broadcast
+    /// weight, f16 and a bias epilogue.
+    #[test]
+    fn gemv_rows_match_cpu() -> TractResult<()> {
+        for (format, m, k, n, f16_, bias) in [
+            (&Q4_0 as &dyn BlockQuant, 1usize, 64usize, 17usize, false, true),
+            (&Q4_0, 1, 2048, 21, false, false),
+            (&Q4_0, 3, 1088, 9, false, true),
+            (&Q4_0, 4, 96, 40, true, false),
+            (&Q4_0, 1, 288, 13, true, true),
+            (&Q2_0_T, 1, 1152, 11, false, false),
+            (&Q2_0_T, 2, 64, 7, true, false),
+        ] {
+            let dt = if f16_ { f16::datum_type() } else { f32::datum_type() };
+            run_packed(format, &[m, k], &[n, k], dt, false, false, bias)
+                .with_context(|| format!("{format:?} m={m} k={k} n={n} {dt:?} bias={bias}"))?;
+        }
+        run_packed(&Q4_0, &[2, 1, 256], &[1, 19, 256], f32::datum_type(), false, false, false)
     }
 
     #[test]
