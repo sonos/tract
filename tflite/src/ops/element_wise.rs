@@ -122,7 +122,7 @@ fn ser(
     } else if (*op.0).is::<Sqrt>() {
         builder.write_op(&[input], &[output], 75, 1, BuiltinOperator::SQRT)
     } else if (*op.0).is::<Rsqrt>() {
-        builder.write_op(&[input], &[output], 76, 1, BuiltinOperator::SQRT)
+        builder.write_op(&[input], &[output], 76, 1, BuiltinOperator::RSQRT)
     } else if (*op.0).is::<Sigmoid>() {
         builder.write_op(&[input], &[output], 14, 1, BuiltinOperator::LOGISTIC)
     } else if (*op.0).is::<Tanh>() {
