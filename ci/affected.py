@@ -14,7 +14,8 @@ leg when the base cannot be read or the change cannot be explained that way.
 linalg arch trees (`linalg/{arm32,arm64,x86_64,riscv64}`, `linalg/src/wasm`) only count
 for legs that compile them: legs on that target_arch, and legs whose build enables
 `foreign-inventory` (the tract-cli builds on x86_64 and aarch64-apple-darwin compile every
-tree, though they only run their own).
+tree, though they only run their own). The GPU bench legs ignore them: they time the GPU
+runtime, not the CPU kernels.
 
 Usage: affected.py --files CHANGED [--base REV] [--json OUT] [--summary OUT]
 CHANGED lists one changed path per line, relative to the repository root. REV defaults to
@@ -163,6 +164,7 @@ class Leg:
     path_only: bool = False
     claims: bool = True
     exclude: frozenset = frozenset()
+    cpu_kernels: bool = True
 
     @property
     def arch(self):
@@ -265,7 +267,8 @@ def legs():
         ("jetson-orin-nx", "aarch64-unknown-linux-gnu", f"{CPU},cuda-12000"),
     ]:
         leg(cli, f"bench {box}", triple, [cli_spec(features)], paths=BENCH_PATHS,
-            exclude=unbenched | (frozenset() if features != CPU else GPU_CRATES))
+            exclude=unbenched | (frozenset() if features != CPU else GPU_CRATES),
+            cpu_kernels=features == CPU)
     for device, triple in [
         ("cortex-a55", "aarch64-unknown-linux-gnu"),
         ("cortex-a53", "aarch64-unknown-linux-gnu"),
@@ -507,7 +510,7 @@ def decide(files, base):
                     touched_here = touched
                 dev = any(spec.dev for spec in leg.specs)
                 for f, pkg, arch, test_only in touched_here:
-                    if test_only and not dev:
+                    if (test_only and not dev) or (arch is not None and not leg.cpu_kernels):
                         continue
                     if pkg in crates and (arch is None or leg.foreign_inventory or arch == leg.arch
                                           or (arch == "x86_64" and leg.arch == "x86")):
