@@ -12,7 +12,9 @@ def setup_module(module):
         ("https://tract-test-assets.tract.rs/e2e/hey-snips-tts.wav", "hey-snips-tts.wav"),
     ]:
         if not Path(file).exists():
-            urllib.request.urlretrieve(url, file)
+            request = urllib.request.Request(url, headers={"User-Agent": "tract-tests"})
+            with urllib.request.urlopen(request) as response, open(file, "wb") as handle:
+                handle.write(response.read())
 
 
 def speech():
