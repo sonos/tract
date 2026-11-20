@@ -107,6 +107,16 @@ ARCH_TREES = {
 
 ALL_ARCHES = "all"
 
+# Sources compiled only into a crate's own tests or benches (out-of-line `#[cfg(test)]`
+# modules, plus every package's tests/ and benches/): they count for dev legs only.
+TEST_ONLY = [
+    "core/src/ops/einsum/proptest.rs",
+    "linalg/src/frame/mmm/tests/**",
+    "transformers/src/ops/test_utils.rs",
+    "transformers/src/ops/moe_ffn/tests.rs",
+]
+PACKAGE_TEST_DIRS = ["tests/**", "benches/**"]
+
 # The GPU runtimes' crates. tract-cli links some of them in every build, but a CPU bench
 # never runs their code.
 GPU_CRATES = frozenset(["tract-gpu", "tract-cuda", "tract-metal", "tract-wgpu"])
@@ -419,7 +429,7 @@ def owner(path, dirs):
     for d, name in dirs.items():
         if (d == "." or path == d or path.startswith(d + "/")) and (best is None or len(d) > len(best[0])):
             best = (d, name)
-    return best[1] if best and best[0] != "." else None
+    return best if best and best[0] != "." else None
 
 
 def decide(files, base):
@@ -460,10 +470,12 @@ def decide(files, base):
             if name in workflows:
                 workflow_hits.setdefault(name, []).append(f)
             continue
-        pkg = owner(f, dirs)
-        if pkg:
+        found = owner(f, dirs)
+        if found:
+            pkg_dir, pkg = found
             arch = next((a for p, a in ARCH_TREES.items() if matches(f, [p])), None)
-            touched.append((f, pkg, arch))
+            test_only = matches(f, TEST_ONLY) or matches(f[len(pkg_dir) + 1:], PACKAGE_TEST_DIRS)
+            touched.append((f, pkg, arch, test_only))
         elif not matches(f, claimed) and f != "ci/affected.py":
             unplaced.append(f)
 
@@ -493,7 +505,10 @@ def decide(files, base):
                     touched_here = []
                 else:
                     touched_here = touched
-                for f, pkg, arch in touched_here:
+                dev = any(spec.dev for spec in leg.specs)
+                for f, pkg, arch, test_only in touched_here:
+                    if test_only and not dev:
+                        continue
                     if pkg in crates and (arch is None or leg.foreign_inventory or arch == leg.arch
                                           or (arch == "x86_64" and leg.arch == "x86")):
                         reason = f"{pkg}: {f}"
