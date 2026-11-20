@@ -89,6 +89,21 @@ fn dispatch_depthwise(
     ];
     let f16_acc = dt == ShaderDtype::F16 && f16_accumulation;
     let pad = [padding[0].pad_before as i32, padding[1].pad_before as i32];
+    let out_strides = [
+        *out_shape.n_stride().unwrap_or(&0),
+        *out_shape.c_stride(),
+        out_shape.hw_strides()[0],
+        out_shape.hw_strides()[1],
+    ];
+    let channel_groups = depthwise_channel_tiling(
+        op.pool_spec.data_format.c_is_last(),
+        shape,
+        co,
+        [n, oh, ow],
+        in_strides,
+        out_strides,
+        [element_offset(input, 0), element_offset(output, 0)],
+    );
     let vec_rows = depthwise_vec_tiling(
         op,
         shape,
@@ -98,7 +113,12 @@ fn dispatch_depthwise(
         element_offset(input, 0),
     )
     .filter(|_| dt != ShaderDtype::F32 || (shape.kh < 9 && shape.kw < 9));
-    let pipeline = if let Some(rows) = vec_rows {
+    let pipeline = if channel_groups {
+        let key = ("conv_dw_ch", shape, dt, f16_acc, epilogue, extras.len());
+        q.context().chain_pipeline(key, layout, EntryPoint::typed("conv_dw_ch", dt), || {
+            conv_depthwise_channel_module(dt, f16_acc, shape, epilogue, extras.len())
+        })?
+    } else if let Some(rows) = vec_rows {
         let key = ("conv_dw_vec", shape, pad, rows, dt, f16_acc, epilogue, extras.len());
         q.context().chain_pipeline(key, layout, EntryPoint::typed("conv_dw_vec", dt), || {
             conv_depthwise_vec_module(dt, f16_acc, shape, pad, rows, epilogue, extras.len())
@@ -151,6 +171,11 @@ fn dispatch_depthwise(
     vals.extend_from_slice(&off_extra);
     vals.extend_from_slice(&mode_extra);
     let dyn_off = q.alloc_uniform(&pack_u32s(&vals))?;
+    if channel_groups {
+        let threads = n * oh * ow.div_ceil(DIRECT_PX) * (co / DIRECT_PX);
+        let groups = [threads.div_ceil(CONV_DIRECT_WG as usize) as u32, 1, 1];
+        return q.dispatch_grid("conv_depthwise_ch", &pipeline, &bg, dyn_off, groups);
+    }
     if let Some(rows) = vec_rows {
         let threads = n * oh.div_ceil(rows) * ow.div_ceil(DIRECT_PX);
         let groups = [threads.div_ceil(CONV_DIRECT_WG as usize) as u32, co as u32, 1];
@@ -686,6 +711,192 @@ impl DepthwiseShape {
         let hi = self.vec_lane(DIRECT_PX - 1, self.kw as usize - 1, pad_w).div_euclid(4);
         (lo, hi)
     }
+}
+
+/// Channels-last 3×3 depthwise whose threads walk channels. One thread owns four
+/// adjacent channels and four output columns, so a subgroup reads one pixel's
+/// channels contiguously. Below 32 channels that subgroup is only partly full
+/// and the spatial kernel is faster, which is the full-resolution stage of
+/// these segmenters. 5×5 stays there too until it has its own measurement.
+fn depthwise_channel_tiling(
+    channels_last: bool,
+    shape: DepthwiseShape,
+    co: usize,
+    grid: [usize; 3],
+    in_strides: [usize; 4],
+    out_strides: [usize; 4],
+    offsets: [usize; 2],
+) -> bool {
+    if !channels_last
+        || shape.kh > 3
+        || shape.kw > 3
+        || co < 32
+        || !co.is_multiple_of(DIRECT_PX)
+        || in_strides[1] != 1
+        || out_strides[1] != 1
+        || !offsets[0].is_multiple_of(DIRECT_PX)
+        || !offsets[1].is_multiple_of(DIRECT_PX)
+    {
+        return false;
+    }
+    let aligned = |stride: usize| stride == 0 || stride.is_multiple_of(DIRECT_PX);
+    if !aligned(in_strides[0])
+        || !aligned(out_strides[0])
+        || !in_strides[2].is_multiple_of(DIRECT_PX)
+        || !in_strides[3].is_multiple_of(DIRECT_PX)
+        || !out_strides[2].is_multiple_of(DIRECT_PX)
+        || !out_strides[3].is_multiple_of(DIRECT_PX)
+    {
+        return false;
+    }
+    let [n, oh, ow] = grid;
+    let threads = n * oh * ow.div_ceil(DIRECT_PX) * (co / DIRECT_PX);
+    threads.div_ceil(CONV_DIRECT_WG as usize) <= GRID_LIMIT as usize
+}
+
+/// Register-blocked channels-last depthwise. Input and the four owned channels
+/// are contiguous, so each tap is one `vec4` load per output column. A tap
+/// outside the input contributes zero through `select` with an in-range index,
+/// so a padded read never fetches the neighbour. Serves the convolutions
+/// [`depthwise_channel_tiling`] admits. The uniform block matches
+/// [`conv_depthwise_vec_module`].
+fn conv_depthwise_channel_module(
+    dt: ShaderDtype,
+    f16_accumulation: bool,
+    shape: DepthwiseShape,
+    epilogue: &[ChainStep],
+    extras: usize,
+) -> String {
+    let t = dt.wgsl();
+    let a = if dt == ShaderDtype::F16 && f16_accumulation { "f16" } else { "f32" };
+    let suf = dt.suffix();
+    let out_binding = 2 + extras;
+    let uniform_binding = 3 + extras;
+    let extra_bindings = (0..extras)
+        .map(|i| {
+            format!("@group(0) @binding({}) var<storage, read> extra{i}: array<{t}>;\n", 2 + i)
+        })
+        .collect::<String>();
+    let lib = if epilogue.is_empty() {
+        String::new()
+    } else {
+        format!("{}{}", unary_ops_wgsl(a), binary_ops_wgsl(a))
+    };
+    let epilogue = conv_direct_epilogue(epilogue, t != a);
+    let result = if t == a { "v".to_owned() } else { format!("{t}(v)") };
+    let widen = if t == a { String::new() } else { a.to_string() };
+    let DepthwiseShape { kh, kw, stride_h, stride_w, dil_h, dil_w } = shape;
+    let weight = |lane: u32| {
+        let loaded = format!("wgt[u32(wbase + i32(c0 + {lane}u) * params.w_so)]");
+        if widen.is_empty() { loaded } else { format!("{widen}({loaded})") }
+    };
+    let mut taps = String::new();
+    let mut stores = String::new();
+    for j in 0..DIRECT_PX {
+        taps.push_str(&format!(
+            r#"
+        let iw{j} = i32(x0 + {j}u) * {stride_w} + i32(wc) * {dil_w} - params.pad_w;
+        let xok{j} = yok && iw{j} >= 0 && iw{j} < i32(params.iw) && x0 + {j}u < params.ow;
+        let iw_s{j} = select(0, iw{j}, xok{j});
+        let idx{j} = i32(params.off_in) + i32(n) * params.in_sn + i32(c0) * params.in_sc + ih_s * params.in_sh + iw_s{j} * params.in_sw;
+        let raw{j} = select(vec4<{t}>(0.0), inp[u32(idx{j} / 4)], xok{j});
+"#
+        ));
+        let value = if widen.is_empty() { format!("raw{j}") } else { format!("vec4<{a}>(raw{j})") };
+        taps.push_str(&format!("        acc{j} = fma(wv, {value}, acc{j});\n"));
+        stores.push_str(&format!(
+            r#"    if (x0 + {j}u < params.ow) {{
+        let o{j} = u32(obase + i32(x0 + {j}u) * params.out_sw);
+        outp[o{j}] = epi(acc{j}.x, c0);
+        outp[o{j} + 1u] = epi(acc{j}.y, c0 + 1u);
+        outp[o{j} + 2u] = epi(acc{j}.z, c0 + 2u);
+        outp[o{j} + 3u] = epi(acc{j}.w, c0 + 3u);
+    }}
+"#
+        ));
+    }
+    format!(
+        r#"
+{preamble}
+struct Params {{
+    off_in: u32,
+    off_w: u32,
+    off_out: u32,
+    n: u32,
+    co: u32,
+    ih: u32,
+    iw: u32,
+    oh: u32,
+    ow: u32,
+    pad_h: i32,
+    pad_w: i32,
+    _p0: u32,
+    in_sn: i32,
+    in_sc: i32,
+    in_sh: i32,
+    in_sw: i32,
+    w_so: i32,
+    w_sh: i32,
+    w_sw: i32,
+    _p1: u32,
+    out_sn: i32,
+    out_sc: i32,
+    out_sh: i32,
+    out_sw: i32,
+    off_extra: vec4<u32>,
+    mode_extra: vec4<u32>,
+}}
+
+@group(0) @binding(0) var<storage, read> inp: array<vec4<{t}>>;
+@group(0) @binding(1) var<storage, read> wgt: array<{t}>;
+{extra_bindings}@group(0) @binding({out_binding}) var<storage, read_write> outp: array<{t}>;
+@group(0) @binding({uniform_binding}) var<uniform> params: Params;
+{lib}
+fn epi(acc: {a}, co: u32) -> {t} {{
+    var v = acc;
+{epilogue}
+    return {result};
+}}
+
+@compute @workgroup_size({wg})
+fn conv_dw_ch_{suf}(@builtin(local_invocation_index) lid: u32, @builtin(workgroup_id) wid: vec3<u32>) {{
+    let c_threads = params.co / 4u;
+    let x_blocks = (params.ow + 3u) / 4u;
+    let i = wid.x * {wg}u + lid;
+    if (i >= params.n * params.oh * x_blocks * c_threads) {{ return; }}
+    let cv = i % c_threads;
+    let t1 = i / c_threads;
+    let xq = t1 % x_blocks;
+    let t2 = t1 / x_blocks;
+    let y = t2 % params.oh;
+    let n = t2 / params.oh;
+    let c0 = cv * 4u;
+    let x0 = xq * 4u;
+    var acc0 = vec4<{a}>(0.0);
+    var acc1 = vec4<{a}>(0.0);
+    var acc2 = vec4<{a}>(0.0);
+    var acc3 = vec4<{a}>(0.0);
+    for (var wr = 0u; wr < {kh}u; wr++) {{
+        let ih = i32(y) * {stride_h} + i32(wr) * {dil_h} - params.pad_h;
+        let yok = ih >= 0 && ih < i32(params.ih);
+        let ih_s = select(0, ih, yok);
+        for (var wc = 0u; wc < {kw}u; wc++) {{
+            let wbase = i32(params.off_w) + i32(wr) * params.w_sh + i32(wc) * params.w_sw;
+            let wv = vec4<{a}>({w0}, {w1}, {w2}, {w3});
+{taps}        }}
+    }}
+    let obase = i32(params.off_out) + i32(n) * params.out_sn + i32(y) * params.out_sh + i32(c0) * params.out_sc;
+{stores}}}
+"#,
+        preamble = preamble(dt),
+        wg = CONV_DIRECT_WG,
+        w0 = weight(0),
+        w1 = weight(1),
+        w2 = weight(2),
+        w3 = weight(3),
+        taps = taps,
+        stores = stores,
+    )
 }
 
 /// Output rows per thread of the vector depthwise kernel, if it can serve this
@@ -2319,6 +2530,108 @@ mod tests {
                 packed_host.try_as_plain_ram()?.as_slice::<f16>()?,
                 "ci={ci} rows={rows} bias={bias}"
             );
+        }
+        Ok(())
+    }
+
+    /// Channels-last depthwise from 32 channels up walks channels four at a time.
+    /// Sixteen channels stay on the spatial kernel. Both match the CPU, including
+    /// a short width, a stride, a dilation, and f16.
+    #[test]
+    fn conv_depthwise_channels_matches_cpu() -> TractResult<()> {
+        use tract_core::ops::cnn::{Conv, KernelFormat, PaddingSpec, PoolSpec};
+        use tract_core::ops::nn::DataFormat;
+        let shape =
+            super::DepthwiseShape { kh: 3, kw: 3, stride_h: 1, stride_w: 1, dil_h: 1, dil_w: 1 };
+        let strides = |h, w, c| [h * w * c, 1, w * c, c];
+        ensure!(super::depthwise_channel_tiling(
+            true,
+            shape,
+            32,
+            [1, 15, 18],
+            strides(15, 18, 32),
+            strides(15, 18, 32),
+            [0, 0],
+        ));
+        ensure!(!super::depthwise_channel_tiling(
+            true,
+            shape,
+            16,
+            [1, 15, 18],
+            strides(15, 18, 16),
+            strides(15, 18, 16),
+            [0, 0],
+        ));
+        ensure!(!super::depthwise_channel_tiling(
+            false,
+            shape,
+            32,
+            [1, 15, 18],
+            strides(15, 18, 32),
+            strides(15, 18, 32),
+            [0, 0],
+        ));
+        let wide = super::DepthwiseShape { kh: 5, kw: 5, ..shape };
+        ensure!(!super::depthwise_channel_tiling(
+            true,
+            wide,
+            72,
+            [1, 8, 8],
+            strides(8, 8, 72),
+            strides(8, 8, 72),
+            [0, 0],
+        ));
+
+        // n, c, h, w, stride, dilation, pad, f16
+        let cases = [
+            (1usize, 32usize, 15usize, 18usize, 1usize, 1usize, 1usize, false),
+            (1, 32, 17, 13, 2, 1, 1, false),
+            (2, 64, 12, 20, 1, 1, 1, false),
+            (1, 36, 9, 8, 1, 1, 1, false),
+            (1, 72, 8, 7, 1, 1, 0, false),
+            (1, 32, 10, 10, 1, 2, 2, false),
+            (1, 48, 11, 14, 2, 1, 1, true),
+            (1, 16, 15, 18, 1, 1, 1, false),
+        ];
+        for (i, (n, c, h, w, stride, dilation, pad, f16_)) in cases.into_iter().enumerate() {
+            let hw = [h, w];
+            let shape = DataFormat::NHWC.from_n_c_hw(n, c, hw)?.shape.to_vec();
+            let k_shape = [c, 1, 3, 3];
+            let values = |seed, dims: &[usize]| -> TractResult<Tensor> {
+                let t = Tensor::from_shape(dims, &fill(seed, dims.iter().product()))?;
+                Ok(if f16_ { t.cast_to::<f16>()?.cast_to::<f32>()?.into_owned() } else { t })
+            };
+            let input = values(3, &shape)?;
+            let build = |dt: DatumType| -> TractResult<TypedModel> {
+                let mut model = TypedModel::default();
+                let x = model.add_source("x", dt.fact(&shape))?;
+                let k = model.add_const("k", values(1, &k_shape)?.cast_to_dt(dt)?.into_owned())?;
+                let b = model.add_const("b", values(2, &[c])?.cast_to_dt(dt)?.into_owned())?;
+                let conv = Conv {
+                    pool_spec: PoolSpec {
+                        data_format: DataFormat::NHWC,
+                        kernel_shape: tvec![3, 3],
+                        padding: PaddingSpec::Explicit(tvec![pad, pad], tvec![pad, pad]),
+                        dilations: Some(tvec![dilation, dilation]),
+                        strides: Some(tvec![stride, stride]),
+                        input_channels: c,
+                        output_channels: c,
+                    },
+                    kernel_fmt: KernelFormat::OIHW,
+                    group: c,
+                    q_params: None,
+                };
+                let y = model.wire_node("conv", conv, &[x, k, b])?[0];
+                model.select_output_outlets(&[y])?;
+                Ok(model)
+            };
+            if f16_ {
+                f16_vs_f32(build, input, Approximation::Approximate)
+                    .with_context(|| format!("case {i}"))?;
+            } else {
+                gpu_vs_cpu(build(f32::datum_type())?, input)
+                    .with_context(|| format!("case {i}"))?;
+            }
         }
         Ok(())
     }
