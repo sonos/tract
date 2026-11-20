@@ -64,4 +64,5 @@ pub mod silu;
 pub mod tanh;
 #[macro_use]
 pub mod weights;
+pub mod lazy_pack;
 pub mod strided_panel;

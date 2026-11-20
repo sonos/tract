@@ -60,6 +60,11 @@ macro_rules! mmm_frame_tests {
                 unsafe { add_d::<_, $ta, $tb, $tc, $ti>($ker, 197, 1)? }
                 Ok(())
             }
+
+            #[test]
+            fn lazy_a() -> TractResult<()> {
+                $crate::frame::mmm::tests::frame::lazy_a::<_, $ta>($ker)
+            }
         }
     };
 }
@@ -297,4 +302,54 @@ where
             |_, _| TC::zero(),
         )
     }
+}
+
+/// A [`crate::lazy_pack::LazyPackedInput`] A operand runs through the kernel exactly like
+/// its eager pack: same packed bytes, same results, partial and multiple panels included.
+pub fn lazy_a<K: MatMatMulKer, TA: LADatum>(ker: &K) -> TractResult<()> {
+    if !ker.runnable() {
+        return Ok(());
+    }
+    let Some(format) = ker.packings()[0].0.downcast_ref::<crate::pack::PackedFormat>() else {
+        return Ok(());
+    };
+    if format.dt != TA::datum_type() {
+        return Ok(());
+    }
+    let (mr, nr) = (ker.mr(), ker.nr());
+    for (k, m, n) in [(3, 2 * mr + 1, nr + 1), (17, mr, 2 * nr), (1, 1, 1), (8, 3 * mr, nr)] {
+        let a = tensor1(&(0..k * m).map(|i| (i % 23) as f32 * 0.125 - 1.0).collect::<Vec<_>>())
+            .into_shape(&[k, m])?
+            .cast_to_dt(TA::datum_type())?
+            .into_owned();
+        let b = tensor1(&(0..k * n).map(|i| (i % 19) as f32 * 0.25 - 2.0).collect::<Vec<_>>())
+            .into_shape(&[k, n])?
+            .cast_to_dt(TA::datum_type())?
+            .into_owned();
+        let pb = ker.packings()[0].1.prepare_one(&b, 0, 1)?;
+        let eager = format.prepare_one(&a, 0, 1)?;
+        let lazy = crate::lazy_pack::LazyPackedInput::new(format, std::sync::Arc::new(a), 0, 0, 1)?
+            .context("contiguous mn should pack lazily")?;
+        let run = |pa: &dyn MMMInputValue| -> TractResult<Tensor> {
+            let mut c = Tensor::zero_dt(TA::datum_type(), &[m, n])?;
+            unsafe {
+                let store = ker.c_view(Some(0), Some(1)).wrap(&c.view_mut());
+                ker.run(
+                    m,
+                    n,
+                    &[
+                        FusedSpec::AddMatMul {
+                            a: AsInputValue::Borrowed(pa),
+                            b: AsInputValue::Borrowed(&*pb),
+                            packing: 0,
+                        },
+                        FusedSpec::Store(store),
+                    ],
+                )?;
+            }
+            Ok(c)
+        };
+        assert_eq!(run(&lazy)?, run(&*eager)?, "lazy A k={k} m={m} n={n}");
+    }
+    Ok(())
 }
